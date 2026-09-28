@@ -1,0 +1,24 @@
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# JavaScript / web
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+
+# Rust
+/target/
+**/target/
+
+# Secrets / local environment
+.env
+.env.*
+!.env.example
+
+# Logs / temporary files
+*.log
+*.tmp
+*.swp
