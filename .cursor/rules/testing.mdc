@@ -1,0 +1,13 @@
+---
+description: Cryptex verification and testing discipline
+alwaysApply: false
+---
+
+Testing requirements:
+- A feature is not complete because it compiles.
+- Run the tests and checks required by the current milestone and Definition of Done.
+- Do not weaken or delete a failing test merely to make CI green.
+- Verify cross-platform behavior where required.
+- Include failure, corruption, recovery and security cases when the milestone requires them.
+- Doctor and recovery verification are product requirements, not optional tooling.
+- Report exactly what was executed, what passed, what failed and what was not verified.

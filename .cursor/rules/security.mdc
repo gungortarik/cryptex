@@ -1,0 +1,18 @@
+---
+description: Cryptex security and untrusted-input rules
+globs:
+  - "**/*.rs"
+  - "**/*.ts"
+  - "**/*.tsx"
+alwaysApply: false
+---
+
+Security requirements:
+- Treat imported memory, Markdown, attachment metadata and AI output as untrusted input.
+- Renderer/webview code must use least privilege.
+- UI code must not receive arbitrary shell or filesystem access.
+- Secrets belong in OS secure storage.
+- Logs must not contain memory bodies, credentials, recovery material or secrets by default.
+- Files arriving through synchronization are not trusted merely because they exist locally.
+- Purge, recovery and trust-changing operations require the authority defined by the specification.
+- Never bypass validation or authorization to simplify implementation.

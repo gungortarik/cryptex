@@ -1,0 +1,25 @@
+---
+description: Cryptex architecture invariants and milestone discipline
+alwaysApply: true
+---
+
+Before implementation:
+- Follow AGENTS.md.
+- Treat docs/00_MASTER_SPEC.md as the primary architecture authority.
+- Accepted ADRs override implementation convenience.
+- Work only on the currently assigned milestone.
+- Do not implement later milestones opportunistically.
+- If a requirement conflicts with the Master Spec or an accepted ADR, stop and report the conflict.
+
+Architecture invariants:
+- Cryptex is local-first and offline-capable.
+- macOS and Windows are first-class.
+- No device is the canonical master.
+- cryptexd is the only supported canonical writer.
+- AI/Desktop/CLI/Obsidian must not directly mutate canonical memory files.
+- SQLite, indexes, caches and Obsidian projections are derived and rebuildable.
+- Runtime data must never be stored inside the source repository.
+- Do not introduce a cloud dependency without explicit approval.
+- Do not weaken recovery, provenance, security or offline operation for convenience.
+
+Never report a feature as working unless it has actually been verified.

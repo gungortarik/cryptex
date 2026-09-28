@@ -1,0 +1,16 @@
+---
+description: Rust/core implementation rules for Cryptex
+globs:
+  - "**/*.rs"
+alwaysApply: false
+---
+
+For Rust and core-domain work:
+- Prefer simple, deterministic and testable implementations.
+- Use typed errors and structured diagnostics.
+- Do not silently swallow corruption, signature failures or schema incompatibility.
+- Keep platform-specific behavior behind platform adapters rather than scattering OS conditionals through domain code.
+- Security-sensitive operations belong in the trusted Rust/core boundary where specified.
+- Do not implement custom cryptography.
+- Preserve canonical/derived storage boundaries defined by the Master Spec and accepted ADRs.
+- Add or update tests for behavior changes.
