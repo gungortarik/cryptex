@@ -71,6 +71,14 @@ jobs:
       - name: Check Rust workspace
         run: cargo check --workspace
 
+      - name: Capture generated Cargo lock
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: m0-generated-cargo-lock
+          path: Cargo.lock
+          if-no-files-found: error
+
       - name: Run cryptexd foundation binary
         run: cargo run -p cryptexd --quiet
 
