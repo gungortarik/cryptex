@@ -1,6 +1,6 @@
 # M2 — Immutable Event Store
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## Purpose
