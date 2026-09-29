@@ -1,6 +1,6 @@
 # 14 — Cryptex Desktop UX and Design System
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## 1. Purpose
