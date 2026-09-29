@@ -22,3 +22,26 @@ coverage/
 *.log
 *.tmp
 *.swp
+
+# Local editor/project state
+.vscode/
+.idea/
+*.local
+
+# Signing / secret material
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+
+# Cryptex local-only/runtime safety guards
+/Cryptex-Dev/
+/.cryptex-dev/
+/personal-brain/
+/personal-brains/
+/recovery-kit/
+/recovery-kits/
+/diagnostic-bundles/

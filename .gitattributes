@@ -12,3 +12,17 @@
 *.jsx text eol=lf
 *.sh text eol=lf
 *.ps1 text eol=lf
+
+# Lockfiles
+Cargo.lock text eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.zip binary
