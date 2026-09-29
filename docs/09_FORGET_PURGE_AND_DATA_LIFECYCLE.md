@@ -1,6 +1,6 @@
 # 09 — Cryptex Forget, Purge and Data Lifecycle
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## 1. Purpose
