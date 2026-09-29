@@ -1,6 +1,6 @@
 # 02 — Cryptex V1 Scope and Non-Goals
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## 1. Purpose
