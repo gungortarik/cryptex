@@ -1,6 +1,6 @@
 # M1 — Brain + Device Identity
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## Purpose
