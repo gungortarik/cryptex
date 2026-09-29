@@ -1,6 +1,6 @@
 # M7 — Obsidian Controlled Write-back
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## Purpose
