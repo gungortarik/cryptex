@@ -1,6 +1,6 @@
 # M11 — Backup + Disaster Restore
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## Purpose
