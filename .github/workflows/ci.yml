@@ -68,6 +68,12 @@ jobs:
       - name: Validate Cargo workspace manifest
         run: cargo metadata --format-version 1 --no-deps
 
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust workspace
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
       - name: Check Rust workspace
         run: cargo check --workspace
 
@@ -86,5 +92,5 @@ jobs:
       - name: Run cryptexd foundation binary
         run: cargo run -p cryptexd --quiet
 
-      # M0 will add format, lint, schema, Golden Brain,
-      # packaging and failure-path checks as those targets exist.
+      # M0 will add schema, Golden Brain, packaging and failure-path
+      # checks as those targets exist.
