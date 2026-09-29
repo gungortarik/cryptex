@@ -94,3 +94,45 @@ jobs:
 
       # M0 will add schema, Golden Brain, packaging and failure-path
       # checks as those targets exist.
+
+  m0-rust-bootstrap:
+    name: One-time M0 Rust bootstrap
+    if: github.event_name == 'pull_request' && github.head_ref == 'm0/foundation'
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout M0 head branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+
+      - name: Apply deterministic bootstrap fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/m0-storage-bench/src/main.rs')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('use std::io::{Read, Write};', 'use std::io::Write;')
+          path.write_text(text, encoding='utf-8', newline='\n')
+          PY
+          cargo fmt --all
+          cargo generate-lockfile
+
+      - name: Commit bootstrap output
+        shell: bash
+        run: |
+          if git diff --quiet -- Cargo.lock tools/m0-storage-bench/src/main.rs; then
+            echo "No bootstrap changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock tools/m0-storage-bench/src/main.rs
+          git commit -m "chore: format M0 Rust and refresh lockfile [skip ci]"
+          git push origin HEAD:${{ github.head_ref }}
