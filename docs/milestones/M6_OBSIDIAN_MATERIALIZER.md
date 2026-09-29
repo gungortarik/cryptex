@@ -1,6 +1,6 @@
 # M6 — Obsidian Materializer
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## Purpose
