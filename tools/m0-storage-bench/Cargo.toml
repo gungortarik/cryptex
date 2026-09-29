@@ -1,0 +1,10 @@
+[package]
+name = "m0-storage-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "m0-storage-bench"
+path = "src/main.rs"

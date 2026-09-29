@@ -71,16 +71,11 @@ jobs:
       - name: Check Rust workspace
         run: cargo check --workspace
 
-      - name: Capture generated Cargo lock
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: m0-generated-cargo-lock
-          path: Cargo.lock
-          if-no-files-found: error
+      - name: Test M0 storage benchmark harness
+        run: cargo test -p m0-storage-bench
 
       - name: Run cryptexd foundation binary
         run: cargo run -p cryptexd --quiet
 
-      # M0 will add format, lint, test, schema, Golden Brain,
+      # M0 will add format, lint, schema, Golden Brain,
       # packaging and failure-path checks as those targets exist.
