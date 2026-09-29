@@ -1,6 +1,6 @@
 # 05 — Cryptex Entity, Fact and Relation Model
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## 1. Purpose
