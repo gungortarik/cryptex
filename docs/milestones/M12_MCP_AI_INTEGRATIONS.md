@@ -1,6 +1,6 @@
 # M12 — MCP + AI Integrations
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## Purpose
