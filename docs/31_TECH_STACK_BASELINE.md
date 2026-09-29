@@ -1,6 +1,6 @@
 # 31 — Technology Stack Baseline
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline date:** 2026-09-28  
 **Purpose:** Convert the validated technology sources in `docs/29_SOURCE_VALIDATION_2026-09-28.md` into an explicit Cryptex implementation baseline without changing the architecture.
 

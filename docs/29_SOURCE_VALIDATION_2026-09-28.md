@@ -1,6 +1,6 @@
 # 29 — Source Validation — 2026-09-28
 
-**Status:** PROPOSED source-audit record  
+**Status:** ACCEPTED source-audit record  
 **Audit date:** 2026-09-28  
 **Purpose:** Record the official-source technology baseline used to prepare Cryptex implementation. This document is evidence and version validation; it does not override `docs/00_MASTER_SPEC.md`, accepted ADRs, or milestone contracts.
 
