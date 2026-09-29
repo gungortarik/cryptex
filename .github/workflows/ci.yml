@@ -16,7 +16,7 @@ jobs:
   readiness:
     name: Readiness (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     strategy:
       fail-fast: false
@@ -62,8 +62,17 @@ jobs:
           pnpm --filter @cryptex/desktop exec tsc --version
           pnpm --filter @cryptex/desktop exec vite --version
 
+      - name: Build desktop frontend
+        run: pnpm --filter @cryptex/desktop build
+
       - name: Validate Cargo workspace manifest
         run: cargo metadata --format-version 1 --no-deps
 
-      # M0 will add real format, lint, test, schema, Golden Brain,
-      # build and packaging checks when those targets exist.
+      - name: Check Rust workspace
+        run: cargo check --workspace
+
+      - name: Run cryptexd foundation binary
+        run: cargo run -p cryptexd --quiet
+
+      # M0 will add format, lint, test, schema, Golden Brain,
+      # packaging and failure-path checks as those targets exist.
