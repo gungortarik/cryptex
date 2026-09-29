@@ -1,6 +1,6 @@
 # M17 — Private Beta / Release Candidate
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## Purpose
