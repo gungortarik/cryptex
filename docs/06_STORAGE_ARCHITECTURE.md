@@ -1,0 +1,295 @@
+# 06 — Cryptex Storage Architecture
+
+**Status:** ACCEPTED
+**Baseline:** 2026-09-28
+
+## 1. Purpose
+
+This document defines the Cryptex storage boundaries that are already fixed by the authoritative architecture.
+
+It distinguishes:
+
+- canonical durable data
+- derived and rebuildable data
+- local runtime placement
+- replication boundaries
+- writer authority
+- recovery requirements
+
+It intentionally does not select the physical immutable-event packaging that must be decided by the M0 P0-1 benchmark.
+
+## 2. Authority and scope
+
+This document must remain consistent with:
+
+1. `docs/00_MASTER_SPEC.md`
+2. accepted ADRs relevant to storage
+3. `docs/20_MILESTONE_ROADMAP.md`
+4. `docs/21_DEFINITION_OF_DONE.md`
+5. `docs/23_REQUIRED_TECHNICAL_SPIKES.md`
+6. `docs/30_ADR_INDEX.md`
+7. `docs/32_PRE_IMPLEMENTATION_AUDIT_REPORT.md`
+8. `docs/milestones/M0_FOUNDATION.md`
+
+If implementation evidence conflicts with an accepted architectural decision, implementation must stop and the ADR/specification process must be followed.
+
+## 3. Storage principles
+
+Cryptex storage is local-first.
+
+Every trusted desktop holds sufficient local state to operate offline within the behavior implemented for that milestone.
+
+No server or desktop is the canonical master.
+
+Loss or reinstallation of one computer must not make that device's disposable local database, cache, generated vault or UI state necessary for recovery.
+
+Canonical replicated memory and required attachment data are the durable recovery basis.
+
+## 4. Canonical durable data
+
+Canonical storage includes:
+
+- immutable durable events
+- attachment blobs
+- immutable brain identity metadata
+- minimal purge-ledger / integrity-bridge data required by the architecture
+
+Canonical durable memory must not depend on SQLite, search indexes, generated Markdown or UI state for correctness.
+
+Existing canonical events are never edited in place.
+
+The logical event model is independent from the physical event packaging selected by M0.
+
+## 5. Derived and disposable data
+
+The following are derived and rebuildable:
+
+- SQLite database
+- search index
+- materialized active facts
+- relationship graph cache
+- Obsidian vault projection
+- thumbnails and previews
+- diagnostics cache
+
+Derived data is not a replication source of truth.
+
+Loss or corruption of derived state must be recoverable by rebuilding it from canonical data according to the applicable milestone contract.
+
+A derived database becoming unavailable must not redefine canonical memory.
+
+## 6. Canonical writer boundary
+
+`cryptexd` is the only supported writer to canonical local Cryptex storage on a device.
+
+The following components must not directly mutate canonical memory files:
+
+- Cryptex Desktop
+- CLI clients
+- MCP clients
+- Obsidian integration
+- AI adapters
+
+Those components request canonical changes through the daemon.
+
+AI agents must never gain a direct canonical-file mutation path.
+
+## 7. Local runtime placement
+
+Default production application/runtime roots are:
+
+- macOS: `~/Library/Application Support/Cryptex/`
+- Windows: `%LOCALAPPDATA%\Cryptex\`
+
+Development uses the corresponding `Cryptex-Dev` roots.
+
+Runtime data must remain outside the source repository.
+
+Cryptex must not create application/runtime folders in the user's visible home, Desktop or Documents by default.
+
+The exact internal directory structure beneath the application-data root is not frozen by this document and must not be invented merely for implementation convenience.
+
+## 8. Replication boundary
+
+Cryptex is peer-oriented and offline-first.
+
+Each trusted desktop may create memory while disconnected and reconcile later.
+
+No device is the canonical owner.
+
+Syncthing is the V1 transport candidate and accepted architecture direction.
+
+Its storage role is limited to transporting canonical files/blobs between trusted devices.
+
+Syncthing does not define Cryptex semantics.
+
+The following remain Cryptex responsibilities:
+
+- trust
+- schema validation
+- signatures and integrity
+- knowledge consolidation
+- purge semantics
+- recovery behavior
+
+A replication transport must not become the application database or semantic authority.
+
+## 9. Physical immutable-event packaging
+
+The logical event model is frozen.
+
+The physical packaging of immutable events is not yet frozen.
+
+M0 P0-1 must compare:
+
+1. one immutable file per event
+2. immutable sealed per-device segment/pack files
+3. a hybrid thresholded approach only if evidence justifies it
+
+The benchmark must evaluate realistic scale at:
+
+- 10k events
+- 100k events
+- 500k events
+
+Required measurements include:
+
+- event append latency
+- directory enumeration
+- initial Syncthing scan/sync
+- incremental sync
+- rebuild speed
+- disk overhead
+- crash behavior
+- purge complexity
+- corruption blast radius
+
+The selected design must be the simplest option that satisfies scale and recovery goals on both macOS and Windows.
+
+The result must be recorded in ADR-0013.
+
+Until that evidence exists, no implementation may treat one-file-per-event, sealed segments or a hybrid layout as the accepted production architecture.
+
+## 10. Search and projection relationship
+
+V1 search uses SQLite FTS5 with metadata, relationships and filters.
+
+SQLite search state remains derived.
+
+The Obsidian-compatible vault is also a local derived projection.
+
+Neither SQLite nor the Obsidian vault is canonical replicated memory.
+
+Their exact implementation belongs to their respective later milestones and must not be implemented opportunistically during M0 beyond explicitly required foundation work.
+
+## 11. Purge implications
+
+Forget and purge have different storage semantics.
+
+Forget removes content from normal retrieval and AI context while remaining reversible.
+
+Purge is a deliberate content-removal workflow and semantically wins over stale replicas.
+
+Minimal opaque integrity/ledger data may remain after purge where required to preserve integrity verification and stale-device suppression without retaining the purged content.
+
+Physical purge is best-effort across reachable Cryptex-controlled replicas, snapshots and backups.
+
+Cryptex must not claim deletion from inaccessible lost devices or provider-controlled historical versions it cannot control.
+
+Physical event packaging selected by M0 must therefore consider purge complexity as an explicit benchmark criterion.
+
+## 12. Cross-platform storage requirements
+
+macOS and Windows are first-class storage targets.
+
+Canonical storage behavior must not depend on:
+
+- an OS-specific path assumption
+- filename case behavior available on only one platform
+- platform-specific line endings
+- canonical-data symlink behavior
+
+Canonical text uses UTF-8 with LF.
+
+Platform-specific filesystem integration belongs behind platform adapters rather than being scattered through core domain logic.
+
+## 13. Recovery and rebuild contract
+
+Recovery architecture assumes canonical data remains the durable source from which disposable local state can be reconstructed.
+
+A local SQLite database, search index, generated Obsidian vault, cache or UI state must never become required recovery state.
+
+Storage implementation must preserve the ability to:
+
+- validate canonical data
+- rebuild derived state
+- detect integrity failures rather than silently swallowing them
+- reconstruct a device without relying on disposable local projections
+
+Recovery-sensitive behavior requires actual recovery/rebuild verification under the applicable milestone Definition of Done.
+
+## 14. Repository boundary
+
+Source code and runtime memory are separate concerns.
+
+The Git repository contains:
+
+- source code
+- tests
+- synthetic fixtures
+- schemas
+- documentation
+- repository-controlled development configuration
+
+The repository must not contain:
+
+- real personal brains
+- real Cortex memory
+- runtime databases
+- private logs
+- secrets
+- Recovery Kits
+
+Golden Brain and other test fixtures must contain synthetic data only.
+
+## 15. M0 storage constraints
+
+M0 may implement only the storage work required by the accepted M0 milestone contract.
+
+For storage, M0 must:
+
+- establish enough foundation to execute the P0-1 benchmark
+- benchmark the physical immutable-event packaging alternatives
+- retain reproducible benchmark evidence
+- evaluate both macOS and Windows
+- select the simplest option meeting scale and recovery requirements
+- record the accepted result in ADR-0013
+
+M0 must not opportunistically implement the full M2 immutable event store or M3 SQLite/search system.
+
+## 16. Explicitly unresolved until M0 evidence
+
+The following are intentionally not decided by this document:
+
+- final physical event-file/segment packaging
+- segment thresholds, if any
+- final production on-disk event directory structure
+- final filenames for physical event containers
+- implementation details that depend on the P0-1 benchmark result
+
+These must not be silently converted into implementation assumptions before ADR-0013 is accepted.
+
+## 17. Source basis
+
+This document consolidates existing storage requirements from:
+
+- `docs/00_MASTER_SPEC.md`
+- `AGENTS.md`
+- `docs/18_IMPLEMENTATION_READINESS_PLAN.md`
+- `docs/20_MILESTONE_ROADMAP.md`
+- `docs/23_REQUIRED_TECHNICAL_SPIKES.md`
+- `docs/30_ADR_INDEX.md`
+- `docs/32_PRE_IMPLEMENTATION_AUDIT_REPORT.md`
+- `docs/milestones/M0_FOUNDATION.md`
+
+It does not independently select the unresolved physical event-storage architecture.
