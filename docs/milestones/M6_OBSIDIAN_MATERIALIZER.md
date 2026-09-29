@@ -25,6 +25,24 @@ M6 includes:
 - attachment projection
 - Open Vault/Graph integration
 
+## Attachment boundary with M9
+
+M6 proves and productizes the **derived projection side** of attachment handling without implementing the later canonical attachment backend.
+
+For M6:
+
+- attachment projection uses synthetic attachment fixtures and a stable projection boundary/interface
+- copy/hard-link fallback behavior and cleanup are proven according to the required P1 spike
+- generated attachment output remains derived and rebuildable
+- no canonical attachment blob store is introduced
+- no SHA-256 blob-store implementation, deduplication, reference tracking or integrity-repair subsystem is implemented
+
+Those canonical attachment responsibilities remain owned by M9.
+
+M9 later connects the real canonical attachment subsystem to the projection boundary already proven by M6.
+
+This boundary preserves milestone order and must not be used to pull M9 implementation into M6.
+
 ## Required invariants
 
 - The Obsidian vault is derived and rebuildable.
@@ -32,14 +50,19 @@ M6 includes:
 - Canonical writes remain daemon-controlled.
 - Cross-platform path/name behavior must be safe.
 - V1 uses Obsidian Graph for full graph visualization rather than requiring a separate full graph engine.
+- M6 attachment fixtures are synthetic and do not create a second canonical attachment store.
 
 ## Non-goals
 
 M6 does not implement managed-note controlled write-back from M7.
 
+M6 also does not implement the canonical attachment/blob subsystem owned by M9.
+
 ## Verification
 
 M6 must verify projection/rebuild behavior, safe naming/link behavior, attachment projection according to accepted spike evidence and relevant macOS/Windows cases.
+
+Attachment verification in M6 must demonstrate the projection contract using synthetic fixtures; it must not claim that canonical attachment storage, deduplication, reference tracking or integrity repair are complete.
 
 ## Completion gate
 
