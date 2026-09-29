@@ -1,6 +1,6 @@
 # 27 — Cryptex Release, Distribution and Signing
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## 1. Purpose
