@@ -1,6 +1,6 @@
 # Windows Development Preparation Checklist
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## Purpose
