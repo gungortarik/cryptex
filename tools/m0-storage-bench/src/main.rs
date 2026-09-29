@@ -1,6 +1,6 @@
 use std::env;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::time::{Duration, Instant};
@@ -140,10 +140,7 @@ fn parse_usize(value: Option<String>, name: &str) -> Result<usize, String> {
     usize::try_from(parsed).map_err(|_| format!("{name} is too large for this platform"))
 }
 
-fn parse_segment_events(
-    layout: LayoutKind,
-    value: Option<String>,
-) -> Result<Option<u64>, String> {
+fn parse_segment_events(layout: LayoutKind, value: Option<String>) -> Result<Option<u64>, String> {
     match layout {
         LayoutKind::Files => {
             if value.is_some() {
@@ -165,10 +162,18 @@ fn reject_extra_args(mut args: impl Iterator<Item = String>) -> Result<(), Strin
 fn ensure_empty_root(root: &Path) -> Result<(), String> {
     if root.exists() {
         if !root.is_dir() {
-            return Err(format!("benchmark root is not a directory: {}", root.display()));
+            return Err(format!(
+                "benchmark root is not a directory: {}",
+                root.display()
+            ));
         }
         let mut entries = fs::read_dir(root).map_err(io_error("read benchmark root"))?;
-        if entries.next().transpose().map_err(io_error("read benchmark root"))?.is_some() {
+        if entries
+            .next()
+            .transpose()
+            .map_err(io_error("read benchmark root"))?
+            .is_some()
+        {
             return Err(format!(
                 "benchmark root must be empty; refusing to delete existing data: {}",
                 root.display()
@@ -364,7 +369,10 @@ fn scan(layout: LayoutKind, root: &Path) -> Result<ScanStats, String> {
 fn scan_files(root: &Path) -> Result<ScanStats, String> {
     let events_dir = root.join("events");
     if !events_dir.is_dir() {
-        return Err(format!("event directory does not exist: {}", events_dir.display()));
+        return Err(format!(
+            "event directory does not exist: {}",
+            events_dir.display()
+        ));
     }
 
     let enumerate_started = Instant::now();
@@ -391,7 +399,10 @@ fn scan_files(root: &Path) -> Result<ScanStats, String> {
         let bytes = fs::read(path).map_err(io_error("read event file"))?;
         let parsed = parse_records(&bytes, false)?;
         if parsed.events != 1 {
-            return Err(format!("event file did not contain exactly one record: {}", path.display()));
+            return Err(format!(
+                "event file did not contain exactly one record: {}",
+                path.display()
+            ));
         }
         events += 1;
         payload_bytes += parsed.payload_bytes;
@@ -413,7 +424,10 @@ fn scan_files(root: &Path) -> Result<ScanStats, String> {
 fn scan_segments(root: &Path) -> Result<ScanStats, String> {
     let segments_dir = root.join("segments");
     if !segments_dir.is_dir() {
-        return Err(format!("segment directory does not exist: {}", segments_dir.display()));
+        return Err(format!(
+            "segment directory does not exist: {}",
+            segments_dir.display()
+        ));
     }
 
     let enumerate_started = Instant::now();
@@ -544,7 +558,8 @@ fn run_crash_probe(layout: LayoutKind, root: &Path, payload_bytes: usize) -> Res
                 .map_err(io_error("write crash-probe length"))?;
             file.write_all(&payload)
                 .map_err(io_error("write crash-probe partial payload"))?;
-            file.sync_all().map_err(io_error("sync crash-probe temp event"))?;
+            file.sync_all()
+                .map_err(io_error("sync crash-probe temp event"))?;
             drop(file);
 
             let stats = scan_files(root)?;
@@ -566,7 +581,8 @@ fn run_crash_probe(layout: LayoutKind, root: &Path, payload_bytes: usize) -> Res
             for seq in 0..9_u64 {
                 fill_payload(&mut payload, seq);
                 write_record(&mut file, seq, &payload)?;
-                file.sync_data().map_err(io_error("sync crash-probe record"))?;
+                file.sync_data()
+                    .map_err(io_error("sync crash-probe record"))?;
             }
             fill_payload(&mut payload, 9);
             file.write_all(&9_u64.to_le_bytes())
@@ -575,14 +591,18 @@ fn run_crash_probe(layout: LayoutKind, root: &Path, payload_bytes: usize) -> Res
                 .map_err(io_error("write crash-probe length"))?;
             file.write_all(&payload[..payload.len() / 2])
                 .map_err(io_error("write crash-probe partial payload"))?;
-            file.sync_all().map_err(io_error("sync crash-probe active segment"))?;
+            file.sync_all()
+                .map_err(io_error("sync crash-probe active segment"))?;
             drop(file);
 
             let stats = scan_segments(root)?;
             print_stats("crash-probe", layout, root, None, &stats);
             println!("crash_probe_recovered_events={}", stats.events);
             println!("crash_probe_incomplete_events=1");
-            println!("crash_probe_truncated_active_tail={}", stats.truncated_active_tail);
+            println!(
+                "crash_probe_truncated_active_tail={}",
+                stats.truncated_active_tail
+            );
         }
     }
 
@@ -689,7 +709,8 @@ mod tests {
         let mut file = File::create(&path).expect("create active segment");
         let payload = vec![0x11; 32];
         write_record(&mut file, 0, &payload).expect("write complete record");
-        file.write_all(&1_u64.to_le_bytes()).expect("write partial header");
+        file.write_all(&1_u64.to_le_bytes())
+            .expect("write partial header");
         file.sync_all().expect("sync active segment");
         drop(file);
 
