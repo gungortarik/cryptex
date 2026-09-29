@@ -64,6 +64,26 @@ The authoritative event-count matrix is:
 
 Do not treat a small CI smoke/test run as evidence for those scale points.
 
+## Physical-machine runners
+
+Repository-controlled runners execute one required event-count point for both layouts and retain the generated synthetic data for the later Syncthing phase.
+
+macOS:
+
+```bash
+./tools/m0-storage-bench/scripts/run-local-macos.sh <events> <payload_bytes> <segment_events>
+```
+
+Windows PowerShell:
+
+```powershell
+./tools/m0-storage-bench/scripts/run-local-windows.ps1 -Events <events> -PayloadBytes <payload_bytes> -SegmentEvents <segment_events>
+```
+
+The runners require a clean worktree, build the release harness with the committed Cargo lockfile, record the exact Git commit and platform/toolchain metadata, and write only under the Cryptex-Dev benchmark root.
+
+The input values are experiment parameters, not accepted production defaults. Use the same declared values when comparing platforms and layouts. See `evidence/m0/p0-1/README.md` for the evidence protocol.
+
 ## Metrics emitted by the tool
 
 The tool prints line-oriented `key=value` measurements so runs can be captured without a parser dependency.
@@ -97,4 +117,4 @@ Those measurements must be run on both macOS and Windows using the same declared
 
 ## CI scope
 
-CI only compiles and tests the harness with tiny synthetic fixtures. It is a correctness smoke test, not the 10k/100k/500k benchmark and not a substitute for physical-machine verification.
+CI compiles, formats, lints and tests the harness with tiny synthetic fixtures on macOS and Windows. It is a correctness smoke test, not the 10k/100k/500k benchmark and not a substitute for physical-machine verification.
