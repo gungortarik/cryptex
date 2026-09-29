@@ -1,6 +1,6 @@
 # 08 — Cryptex Security, Device Trust and Recovery Root
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## 1. Purpose
