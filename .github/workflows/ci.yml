@@ -71,6 +71,15 @@ jobs:
       - name: Check Rust workspace
         run: cargo check --workspace
 
+      - name: Capture generated Cargo lockfile
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: m0-cargo-lock
+          path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Test M0 storage benchmark harness
         run: cargo test -p m0-storage-bench
 
