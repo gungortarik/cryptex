@@ -66,73 +66,22 @@ jobs:
         run: pnpm --filter @cryptex/desktop build
 
       - name: Validate Cargo workspace manifest
-        run: cargo metadata --format-version 1 --no-deps
+        run: cargo metadata --locked --format-version 1 --no-deps
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
       - name: Lint Rust workspace
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       - name: Check Rust workspace
-        run: cargo check --workspace
-
-      - name: Capture generated Cargo lockfile
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: m0-cargo-lock
-          path: Cargo.lock
-          if-no-files-found: error
-          retention-days: 1
+        run: cargo check --locked --workspace
 
       - name: Test M0 storage benchmark harness
-        run: cargo test -p m0-storage-bench
+        run: cargo test --locked -p m0-storage-bench
 
       - name: Run cryptexd foundation binary
-        run: cargo run -p cryptexd --quiet
+        run: cargo run --locked -p cryptexd --quiet
 
       # M0 will add schema, Golden Brain, packaging and failure-path
       # checks as those targets exist.
-
-  m0-rust-bootstrap:
-    name: One-time M0 Rust bootstrap
-    if: github.event_name == 'pull_request' && github.head_ref == 'm0/foundation'
-    runs-on: macos-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout M0 head branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
-
-      - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt
-
-      - name: Apply deterministic bootstrap fixes
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('tools/m0-storage-bench/src/main.rs')
-          text = path.read_text(encoding='utf-8')
-          text = text.replace('use std::io::{Read, Write};', 'use std::io::Write;')
-          path.write_text(text, encoding='utf-8', newline='\n')
-          PY
-          cargo fmt --all
-          cargo generate-lockfile
-
-      - name: Commit bootstrap output
-        shell: bash
-        run: |
-          if git diff --quiet -- Cargo.lock tools/m0-storage-bench/src/main.rs; then
-            echo "No bootstrap changes required."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock tools/m0-storage-bench/src/main.rs
-          git commit -m "chore: format M0 Rust and refresh lockfile [skip ci]"
-          git push origin HEAD:${{ github.head_ref }}
