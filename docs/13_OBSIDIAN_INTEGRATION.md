@@ -97,6 +97,30 @@ Cryptex must not assume hard links are universally available or correct.
 
 Canonical attachment storage remains separate from the derived Obsidian projection.
 
+### M6 / M9 attachment boundary
+
+M6 proves the attachment **projection side** using synthetic attachment fixtures and a stable projection boundary/interface.
+
+M6 may prove:
+
+- projected path/name behavior
+- hard-link versus copy fallback behavior
+- cleanup/rebuild behavior
+- cross-platform projection semantics
+
+M6 must not implement:
+
+- the canonical SHA-256 attachment blob store
+- canonical deduplication
+- canonical attachment reference tracking
+- canonical attachment integrity repair
+
+Those responsibilities belong to M9.
+
+M9 later connects the real canonical attachment subsystem to the projection boundary already proven by M6.
+
+This clarification preserves the roadmap order; it does not move M9 implementation into M6.
+
 ## 12. Cross-platform behavior
 
 macOS and Windows are first-class Obsidian integration targets.
@@ -130,10 +154,12 @@ M6 productizes the read/materialization side:
 - complete generated vault
 - safe names/frontmatter/links
 - rebuild
-- attachment projection
+- attachment projection over synthetic fixtures through the stable projection boundary
 - Open Vault/Graph integration
 
 M6 does not authorize uncontrolled direct canonical write-back from Obsidian.
+
+M6 also does not implement the canonical attachment/blob backend owned by M9.
 
 ## 16. M7 boundary
 
