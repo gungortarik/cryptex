@@ -1,6 +1,6 @@
 # M5 — Capture + Timeline
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## Purpose
