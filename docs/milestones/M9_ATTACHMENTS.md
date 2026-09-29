@@ -1,6 +1,6 @@
 # M9 — Attachments
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## Purpose
@@ -11,16 +11,6 @@ M9 productizes canonical attachment/blob storage and integrity behavior.
 
 Follow `AGENTS.md`, `docs/00_MASTER_SPEC.md`, `docs/06_STORAGE_ARCHITECTURE.md`, `docs/09_FORGET_PURGE_AND_DATA_LIFECYCLE.md`, `docs/13_OBSIDIAN_INTEGRATION.md`, `docs/17_TEST_AND_FAILURE_MATRIX.md`, `docs/21_DEFINITION_OF_DONE.md` and this contract.
 
-## Relationship to M6
-
-M6 proves the **derived attachment-projection boundary** using synthetic attachment fixtures and accepted copy/hard-link fallback evidence.
-
-M6 does not implement canonical attachment storage.
-
-M9 owns the real canonical attachment backend and connects it to the projection boundary established earlier.
-
-Therefore M9 must not reinterpret M6 projection fixtures as canonical attachment state.
-
 ## Scope
 
 M9 includes:
@@ -29,8 +19,23 @@ M9 includes:
 - deduplication
 - reference tracking
 - integrity repair
-- connection of the canonical attachment subsystem to the previously proven projection boundary
-- production projection copy/hard-link behavior using accepted attachment-projection evidence
+- projection copy/hard-link behavior
+
+## Boundary with M6
+
+M6 proves the **derived projection side** of attachment handling using synthetic attachment fixtures and a stable projection boundary/interface.
+
+M6 must not implement:
+
+- the canonical attachment blob store
+- SHA-256 blob-store ownership
+- deduplication
+- canonical reference tracking
+- integrity repair
+
+Those responsibilities begin here in M9.
+
+M9 connects the real canonical attachment/blob subsystem to the projection boundary already proven in M6, using the accepted hard-link/copy fallback evidence rather than redesigning the projection contract.
 
 ## Required invariants
 
@@ -39,7 +44,7 @@ M9 includes:
 - Dedup/reference logic must not delete still-referenced data.
 - Cross-platform projection behavior must follow accepted attachment-projection evidence.
 - Integrity failures must be explicit rather than silently ignored.
-- The M6 projection layer must remain rebuildable and must not become canonical when wired to M9.
+- M9 must preserve the M6 projection boundary rather than making the Obsidian vault canonical.
 
 ## Non-goals
 
@@ -49,9 +54,9 @@ Full attachment reference-aware purge behavior belongs to M10.
 
 ## Verification
 
-M9 must verify relevant blob-store behavior, dedup/reference behavior, integrity checking/repair, the connection to the M6 projection boundary, projection behavior and platform-specific copy/hard-link cases.
+M9 must verify relevant dedup/reference behavior, integrity checking/repair, projection behavior and platform-specific copy/hard-link cases.
 
-Verification must prove that loss of the derived Obsidian attachment projection can be reconstructed from canonical attachment state without treating the projection as a recovery source.
+Verification must demonstrate that the real canonical attachment backend can drive the already-proven M6 projection boundary without making generated projection output canonical.
 
 ## Completion gate
 
