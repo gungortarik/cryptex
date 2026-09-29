@@ -1,6 +1,6 @@
 # 28 — Cryptex Privacy, Classification and AI Authority
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## 1. Purpose
