@@ -1,6 +1,6 @@
 # M3 — Local Projection + Search
 
-**Status:** PROPOSED  
+**Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
 ## Purpose
