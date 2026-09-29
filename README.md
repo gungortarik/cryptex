@@ -1,14 +1,7 @@
 # Cryptex
 
-Cryptex is a personal, local-first, cross-platform memory system for one user across trusted macOS and Windows devices.
+Cryptex is a cross-platform, local-first personal memory and knowledge system for macOS and Windows.
 
-**Current phase:** pre-implementation repository/readiness preparation.
+Current implementation milestone: **M0 — Foundation**.
 
-Start with:
-- `DOCUMENT_INDEX.md`
-- `docs/00_MASTER_SPEC.md`
-- `docs/18_IMPLEMENTATION_READINESS_PLAN.md`
-- `docs/20_MILESTONE_ROADMAP.md`
-- `AGENTS.md`
-
-Runtime data and real personal memory must never be stored in this source repository.
+Authoritative project documentation lives under `docs/`. Runtime data must remain outside this source repository.
