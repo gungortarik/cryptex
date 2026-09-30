@@ -139,11 +139,32 @@ scope=isolated_p0_1_initial_sync_preparation_only
 
 This verifies that the Windows destination working folder was created empty, configured as `receiveonly`, left unpaused, and prepared while the intended macOS benchmark peer was connected. No source folder had yet been configured, so the timed sync had not started at this checkpoint.
 
-### macOS source preparation
+### macOS source preparation — VERIFIED
 
-Pending physical execution and verification. The source working copy must contain exactly 10,000 files and 10,360,000 logical bytes and remain paused until the timed runner starts.
+The guarded preparation helper was then run on the physical macOS benchmark machine against the retained 10k one-file-per-event corpus.
 
-After source preparation is physically verified, the timed source runner may unpause the source and record initial scan and synchronization completion. After this run is physically verified and evidence is recorded, the equivalent 10k sealed-segment run will be performed under a distinct working folder ID. Reverse-direction and larger scale points remain required before P0-1 acceptance.
+Observed output:
+
+```text
+home=/Users/tarikgungor/Library/Application Support/Cryptex-Dev/syncthing-p0-1
+local_device_id=MHS264T-3YLCW4F-GL35TOB-DXZ6SUX-4MVY7YK-AZZFNZI-XFOXHN3-DYMMEQM
+peer_id=G3IQV46-V6WYJ2U-WDLQQOC-FXMJBGA-QRIXPNV-GVARBCC-IHYTOBI-BOIG6QA
+folder_id=p0-1-10k-files-macos-to-windows
+folder_path=/Users/tarikgungor/Library/Application Support/Cryptex-Dev/syncthing-p0-1-runs/p0-1-10k-files-macos-to-windows/source
+role=source
+folder_type=sendonly
+fs_watcher_enabled=false
+pre_config_files=10000
+pre_config_bytes=10360000
+source_corpus=/Users/tarikgungor/Library/Application Support/Cryptex-Dev/benchmarks/p0-1/macos-10000-20260929T054105Z/data/files-10000
+paused=true
+peer_runtime_connected=true
+scope=isolated_p0_1_initial_sync_preparation_only
+```
+
+This verifies that the retained corpus was copied into the isolated runtime working root, the working copy contains exactly 10,000 files and 10,360,000 logical bytes, and the source folder is `sendonly`, watcher-disabled, and paused. The intended Windows peer remained connected. Copy/setup time is outside the timed Syncthing measurement window.
+
+Both endpoints are now prepared for the timed 10k one-file-per-event initial scan/sync measurement. The timed source runner may unpause the source, record source scan completion and peer synchronization completion, then pause the source again. After this run is physically verified and evidence is recorded, the equivalent 10k sealed-segment run will be performed under a distinct working folder ID. Reverse-direction and larger scale points remain required before P0-1 acceptance.
 
 ## Boundary
 
