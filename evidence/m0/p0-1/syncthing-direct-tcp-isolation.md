@@ -104,9 +104,26 @@ The first macOS launch after transport isolation did not proceed to pairing or s
 
 This launch is not benchmark transport evidence. No benchmark folder existed, no peer pairing had been configured, and no sync run started.
 
-The macOS launcher referenced the Syncthing executable inside `/Applications/Syncthing.app`. Therefore the on-disk application binary may have been updated even though the benchmark config home was isolated. The existing/default macOS Syncthing configuration was not modified by the repository helper, but the application binary version must be re-verified before continuing.
+The macOS launcher referenced the Syncthing executable inside `/Applications/Syncthing.app`, so the shared application binary was affected by the upgrade even though the benchmark config home was isolated.
 
-Repository remediation has been added but is not yet physical-machine verified:
+Physical re-verification after the incident showed:
+
+```text
+syncthing v2.1.5 "Hafnium Hornet" (go1.27.1 darwin-arm64) builder@github.syncthing.net 2026-09-08 06:57:55 UTC
+```
+
+The process list at the same check showed two Syncthing processes with the normal/default application command line and no P0-1 `--home` argument:
+
+```text
+1663 /Applications/Syncthing.app/Contents/Resources/syncthing/syncthing --no-browser --no-restart --logfile=default
+2238 /Applications/Syncthing.app/Contents/Resources/syncthing/syncthing --no-browser --no-restart --logfile=default
+```
+
+These processes are not treated as P0-1 benchmark instances. Their personal/default runtime health has not been independently verified and they have not been stopped or modified by the benchmark procedure.
+
+## Upgrade isolation remediation
+
+The repository-controlled config helper and launchers now require upgrade isolation for P0-1:
 
 ```text
 autoUpgradeIntervalH=0
@@ -114,17 +131,30 @@ releasesURL=<blank>
 launcher flag=--no-upgrade
 ```
 
-The same upgrade guards are required on Windows for deterministic benchmark execution.
+The macOS physical benchmark config has now been re-run with the remediation and verified as:
+
+```text
+previous_autoUpgradeIntervalH=12
+autoUpgradeIntervalH=0
+previous_releasesURL=https://upgrades.syncthing.net/meta.json
+releasesURL=
+active_folder_count=0
+transport_scope=direct_tcp_only
+upgrade_policy=disabled
+scope=isolated_p0_1_syncthing_config_only
+```
+
+This verifies the macOS isolated benchmark profile has upgrade checks disabled at config level. The next macOS launch must also use the repository launcher so the `--no-upgrade` process guard is exercised.
+
+The same upgrade guards still require physical verification on the Windows benchmark profile before either benchmark instance is relaunched.
 
 ## Next evidence
 
-- pull and apply the upgraded-isolation config on both benchmark homes
-- verify `autoUpgradeIntervalH=0` and blank `releasesURL` on both physical machines
-- verify the macOS application binary version after the observed auto-upgrade
-- verify the existing/default macOS Syncthing process/config remains separate; do not claim its runtime health without a direct check
-- relaunch only after the upgrade guards are physically verified
+- apply and verify the upgraded-isolation config on the Windows benchmark home
+- relaunch both isolated P0-1 Syncthing instances only after both platforms verify the upgrade guards
 - verify no discovery/relay/NAT/upgrade mechanisms are active for the benchmark profiles
 - verify GUI `127.0.0.1:18384` and TCP listener `22001` are live on both machines
 - verify bidirectional direct TCP reachability over the selected LAN addresses
+- leave the existing/default macOS Syncthing processes/config untouched; do not claim their runtime health without a direct check
 - pair only the two benchmark device identities using explicit TCP addresses
 - do not configure a benchmark folder until transport pairing is verified
