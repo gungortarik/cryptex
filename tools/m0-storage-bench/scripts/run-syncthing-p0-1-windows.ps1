@@ -26,6 +26,23 @@ if ($Listeners.Count -ne 1 -or $Listeners[0] -ne 'tcp://0.0.0.0:22001') {
     throw "unexpected sync listeners: $($Listeners -join ',')"
 }
 
+$RequiredOptions = @{
+    globalAnnounceEnabled = 'false'
+    localAnnounceEnabled  = 'false'
+    relaysEnabled         = 'false'
+    natEnabled            = 'false'
+}
+foreach ($Name in $RequiredOptions.Keys) {
+    $Node = $Config.configuration.options.SelectSingleNode($Name)
+    if ($null -eq $Node) {
+        throw "required isolated transport option missing: $Name"
+    }
+    $Value = [string]$Node.InnerText
+    if ($Value -ne $RequiredOptions[$Name]) {
+        throw "unexpected $Name value: $Value"
+    }
+}
+
 $FolderNodes = @($Config.SelectNodes('/configuration/folder'))
 $ActiveFolders = @($FolderNodes | Where-Object { $_.id -and $_.path })
 if ($ActiveFolders.Count -ne 0) {
@@ -43,6 +60,11 @@ Write-Output 'scope=isolated_p0_1_syncthing_only'
 Write-Output "home=$STHOME"
 Write-Output 'gui=127.0.0.1:18384'
 Write-Output 'listen_address=tcp://0.0.0.0:22001'
+Write-Output 'global_announce=false'
+Write-Output 'local_announce=false'
+Write-Output 'relays=false'
+Write-Output 'nat=false'
+Write-Output 'transport_scope=direct_tcp_only'
 Write-Output 'active_folder_count=0'
 Write-Output 'starting_foreground=true'
 
