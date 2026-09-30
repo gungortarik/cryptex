@@ -26,6 +26,36 @@ function parseArgs(argv) {
   return { home: path.resolve(home) };
 }
 
+function setSingleOption(body, name, value, lineEnding) {
+  const pattern = new RegExp(
+    `^([ \\t]*)<${name}>[^<]*<\\/${name}>[ \\t]*\\r?\\n?`,
+    "gm",
+  );
+  const matches = [...body.matchAll(pattern)];
+  const previous = matches.map((match) => {
+    const valueMatch = match[0].match(new RegExp(`<${name}>([^<]*)<\\/${name}>`));
+    return valueMatch ? valueMatch[1] : "";
+  });
+
+  if (matches.length > 0) {
+    const indent = matches[0][1];
+    let inserted = false;
+    const updated = body.replace(pattern, () => {
+      if (inserted) return "";
+      inserted = true;
+      return `${indent}<${name}>${value}</${name}>${lineEnding}`;
+    });
+    return { body: updated, previous };
+  }
+
+  const indentMatch = body.match(/^([ \t]*)<listenAddress>/m);
+  const indent = indentMatch ? indentMatch[1] : "        ";
+  return {
+    body: `${lineEnding}${indent}<${name}>${value}</${name}>${body}`,
+    previous,
+  };
+}
+
 const { home } = parseArgs(process.argv.slice(2));
 const normalized = home.replaceAll("\\", "/");
 
@@ -73,6 +103,19 @@ if (listenerMatches.length > 0) {
   optionsBody = `${lineEnding}        <listenAddress>tcp://0.0.0.0:22001</listenAddress>${optionsBody}`;
 }
 
+const transportOptions = [
+  ["globalAnnounceEnabled", "false"],
+  ["localAnnounceEnabled", "false"],
+  ["relaysEnabled", "false"],
+  ["natEnabled", "false"],
+];
+const previousTransportOptions = new Map();
+for (const [name, value] of transportOptions) {
+  const result = setSingleOption(optionsBody, name, value, lineEnding);
+  optionsBody = result.body;
+  previousTransportOptions.set(name, result.previous);
+}
+
 updated = updated.replace(
   optionsPattern,
   (_match, prefix, _body, suffix) => `${prefix}${optionsBody}${suffix}`,
@@ -100,5 +143,11 @@ console.log(`previous_gui=${previousGui}`);
 console.log("gui=127.0.0.1:18384");
 console.log(`previous_listeners=${previousListeners.join(",") || "none"}`);
 console.log("listen_address=tcp://0.0.0.0:22001");
+for (const [name, value] of transportOptions) {
+  const previous = previousTransportOptions.get(name) ?? [];
+  console.log(`previous_${name}=${previous.join(",") || "missing"}`);
+  console.log(`${name}=${value}`);
+}
 console.log(`active_folder_count=${activeFolders.length}`);
+console.log("transport_scope=direct_tcp_only");
 console.log("scope=isolated_p0_1_syncthing_config_only");
