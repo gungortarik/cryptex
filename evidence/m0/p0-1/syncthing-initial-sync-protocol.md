@@ -340,6 +340,69 @@ Evidence: `evidence/m0/p0-1/syncthing-10k-files-macos-to-windows-r3-incremental.
 
 This r3 working folder must not be reused as a fresh initial-sync cell.
 
+## Cell `p0-1-10k-segments-macos-to-windows`
+
+### r3 retirement (macOS) before segments cell — VERIFIED
+
+```text
+folder_id=p0-1-10k-files-macos-to-windows-r3
+config_removed=true
+work_path_deleted=false
+retained_corpus_untouched=true
+scope=isolated_p0_1_folder_retirement_only
+```
+
+### macOS segments source preparation — VERIFIED
+
+```text
+folder_id=p0-1-10k-segments-macos-to-windows
+source_corpus=.../macos-10000-20260929T054105Z/data/segments-10000
+role=source
+folder_type=sendonly
+fs_watcher_enabled=false
+pre_config_files=10
+pre_config_bytes=10360000
+paused=true
+peer_runtime_connected=true
+scope=isolated_p0_1_initial_sync_preparation_only
+```
+
+### Timed initial measurement (segments) — VERIFIED
+
+```text
+started_at_utc=2026-09-30T19:18:47.659Z
+completed_at_utc=2026-09-30T19:18:49.508Z
+initial_scan_ms=290.412
+initial_sync_total_ms=1843.674
+source_local_files=10
+source_local_bytes=10360000
+peer_completion=100
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_paused_after_completion=true
+syncthing_version=v2.1.5
+```
+
+Evidence: `evidence/m0/p0-1/syncthing-10k-segments-macos-to-windows.md`
+
+### Incremental measurement (segments) — VERIFIED
+
+```text
+append_setup_ms=424.346
+incremental_scan_ms=276.749
+incremental_sync_total_ms=1319.043
+expected_files_after_append=11
+expected_bytes_after_append=10463600
+incremental_logical_bytes=103600
+peer_completion=100
+source_paused_after_completion=true
+```
+
+Evidence: `evidence/m0/p0-1/syncthing-10k-segments-macos-to-windows-incremental.md`
+
+This segments working folder must not be reused as a fresh initial-sync cell.
+
 ## Boundary
 
 A successful Syncthing transport measurement does not prove Cryptex replication semantics or complete P0-4. Production pairing/device trust remains governed by the appropriate later milestone and accepted architecture.

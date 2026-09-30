@@ -10,6 +10,8 @@ Executed so far:
 
 - `p0-1-10k-files-macos-to-windows-r3` files layout — VERIFIED  
   Evidence: `evidence/m0/p0-1/syncthing-10k-files-macos-to-windows-r3-incremental.md`
+- `p0-1-10k-segments-macos-to-windows` segments layout — VERIFIED  
+  Evidence: `evidence/m0/p0-1/syncthing-10k-segments-macos-to-windows-incremental.md`
 
 Remaining incremental cells still require a prior valid initial-sync measurement for that matrix cell.
 
