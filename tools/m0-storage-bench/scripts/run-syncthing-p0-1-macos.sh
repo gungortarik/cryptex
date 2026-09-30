@@ -22,6 +22,11 @@ LISTENER_COUNT="$(printf '%s\n' "$LISTENER_LINES" | sed '/^[[:space:]]*$/d' | wc
 [[ "$LISTENER_COUNT" == "1" ]] || fail "expected exactly one sync listener, found $LISTENER_COUNT"
 printf '%s\n' "$LISTENER_LINES" | grep -q '<listenAddress>tcp://0.0.0.0:22001</listenAddress>' || fail "expected TCP listener tcp://0.0.0.0:22001"
 
+for OPTION in globalAnnounceEnabled localAnnounceEnabled relaysEnabled natEnabled; do
+  VALUE="$(sed -n "s:.*<$OPTION>\([^<]*\)</$OPTION>.*:\1:p" "$CONFIG" | head -1)"
+  [[ "$VALUE" == "false" ]] || fail "unexpected $OPTION value: ${VALUE:-missing}"
+done
+
 if grep -Eq '<folder .*id="[^"]+".*path="[^"]+"' "$CONFIG"; then
   fail "active folder entries already exist; refusing pre-pairing launch"
 fi
@@ -37,6 +42,11 @@ echo "scope=isolated_p0_1_syncthing_only"
 echo "home=$STHOME"
 echo "gui=127.0.0.1:18384"
 echo "listen_address=tcp://0.0.0.0:22001"
+echo "global_announce=false"
+echo "local_announce=false"
+echo "relays=false"
+echo "nat=false"
+echo "transport_scope=direct_tcp_only"
 echo "active_folder_count=0"
 echo "starting_foreground=true"
 
