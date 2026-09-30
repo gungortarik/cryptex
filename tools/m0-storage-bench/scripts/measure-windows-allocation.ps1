@@ -18,7 +18,11 @@ if (-not (Test-Path -LiteralPath $ResolvedRoot -PathType Container)) {
     throw "root is not a directory: $ResolvedRoot"
 }
 
-if (-not ([System.Management.Automation.PSTypeName]'Cryptex.Win32DiskUsage').Type) {
+# PowerShell Add-Type definitions persist for the lifetime of the process.
+# Use an implementation-specific type name so an older version loaded by a
+# previous run in the same shell cannot shadow this implementation.
+$InteropTypeName = 'Cryptex.Win32DiskUsageFileStandardInfoV1'
+if (-not ([System.Management.Automation.PSTypeName]$InteropTypeName).Type) {
     Add-Type -TypeDefinition @"
 using System;
 using System.IO;
@@ -28,7 +32,7 @@ using Microsoft.Win32.SafeHandles;
 namespace Cryptex
 {
     [StructLayout(LayoutKind.Sequential)]
-    public struct FileStandardInfo
+    public struct FileStandardInfoV1
     {
         public long AllocationSize;
         public long EndOfFile;
@@ -41,7 +45,7 @@ namespace Cryptex
         public bool Directory;
     }
 
-    public static class Win32DiskUsage
+    public static class Win32DiskUsageFileStandardInfoV1
     {
         private enum FileInfoByHandleClass
         {
@@ -53,7 +57,7 @@ namespace Cryptex
         private static extern bool GetFileInformationByHandleEx(
             SafeFileHandle hFile,
             FileInfoByHandleClass fileInformationClass,
-            out FileStandardInfo fileInformation,
+            out FileStandardInfoV1 fileInformation,
             uint bufferSize);
 
         public static long GetAllocationSize(string path)
@@ -64,8 +68,8 @@ namespace Cryptex
                 FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete))
             {
-                FileStandardInfo info;
-                uint size = (uint)Marshal.SizeOf(typeof(FileStandardInfo));
+                FileStandardInfoV1 info;
+                uint size = (uint)Marshal.SizeOf(typeof(FileStandardInfoV1));
 
                 if (!GetFileInformationByHandleEx(
                     stream.SafeFileHandle,
@@ -91,7 +95,7 @@ function Get-AllocatedFileBytes {
         [string]$Path
     )
 
-    $Allocated = [Cryptex.Win32DiskUsage]::GetAllocationSize($Path)
+    $Allocated = [Cryptex.Win32DiskUsageFileStandardInfoV1]::GetAllocationSize($Path)
     if ($Allocated -lt 0) {
         throw "negative allocation size returned for '$Path': $Allocated"
     }
