@@ -77,10 +77,42 @@ This verifies the macOS isolated benchmark profile now knows only the intended W
 
 ## Pairing checkpoint
 
-Pair configuration is now complete on both physical benchmark machines. This checkpoint verifies configuration only; runtime connection establishment still requires explicit REST verification before any benchmark folder is created or shared.
+Pair configuration is now complete on both physical benchmark machines. Runtime connection establishment still requires explicit verification on both sides before any benchmark folder is created or shared.
+
+## macOS runtime peer connection verification
+
+The repository verifier was run against the live macOS isolated benchmark instance:
+
+```text
+tools/m0-storage-bench/scripts/verify-syncthing-p0-1-peer-connection.mjs
+```
+
+Observed verified output:
+
+```text
+home=/Users/tarikgungor/Library/Application Support/Cryptex-Dev/syncthing-p0-1
+local_device_id=MHS264T-3YLCW4F-GL35TOB-DXZ6SUX-4MVY7YK-AZZFNZI-XFOXHN3-DYMMEQM
+peer_id=G3IQV46-V6WYJ2U-WDLQQOC-FXMJBGA-QRIXPNV-GVARBCC-IHYTOBI-BOIG6QA
+configured_peer_address=tcp://192.168.50.137:22001
+peer_address_mode=explicit_direct_tcp_only
+runtime_connected=true
+runtime_type=tcp-client
+runtime_address=192.168.50.137:22001
+runtime_client_version=v2.1.5
+runtime_peer_ip_matches=true
+runtime_is_local=true
+active_folder_count=0
+scope=isolated_p0_1_peer_connection_verification_only
+```
+
+This physically verifies the macOS benchmark peer connection is established to the intended Windows benchmark device over the explicit direct TCP LAN path. No benchmark folder exists and no storage sync run has started.
+
+## Windows runtime peer connection verification
+
+Pending physical execution and verification.
 
 ## Next evidence
 
-- verify both Syncthing instances report the intended peer connection as established at runtime
-- verify the runtime connection type is TCP and the observed remote address belongs to the selected peer LAN address
-- do not create or share any benchmark folder until peer connection verification is complete
+- verify the Windows isolated Syncthing instance reports the intended macOS peer connection as established at runtime
+- verify the Windows runtime connection type is TCP and the observed remote address belongs to the selected macOS LAN address
+- do not create or share any benchmark folder until the Windows-side runtime connection verification also passes
