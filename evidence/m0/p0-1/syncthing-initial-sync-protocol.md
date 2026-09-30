@@ -80,7 +80,12 @@ Initial synchronization completion is the first observation, after source scan c
 - `needBytes = 0`
 - `needItems = 0`
 - `needDeletes = 0`
-- `globalItems` equals the expected physical file count
+
+and the source folder status reports:
+
+- `globalFiles` equals the expected physical file count for the candidate
+
+Note: Syncthing `globalItems` also counts directories, so P0-1 timing completion verifies `globalFiles`, not `globalItems`.
 
 The runner then pauses the source folder again to freeze the measured state.
 
@@ -165,6 +170,21 @@ scope=isolated_p0_1_initial_sync_preparation_only
 This verifies that the retained corpus was copied into the isolated runtime working root, the working copy contains exactly 10,000 files and 10,360,000 logical bytes, and the source folder is `sendonly`, watcher-disabled, and paused. The intended Windows peer remained connected. Copy/setup time is outside the timed Syncthing measurement window.
 
 Both endpoints are now prepared for the timed 10k one-file-per-event initial scan/sync measurement. The timed source runner may unpause the source, record source scan completion and peer synchronization completion, then pause the source again. After this run is physically verified and evidence is recorded, the equivalent 10k sealed-segment run will be performed under a distinct working folder ID. Reverse-direction and larger scale points remain required before P0-1 acceptance.
+
+### Timed measurement attempt — FAILED / INVALID
+
+The timed runner was executed once on macOS at `2026-09-30T04:35:51Z` and failed closed:
+
+```text
+EXIT_CODE=2
+stderr=error: source folder must be paused before timed initial sync start
+```
+
+Live state at failure showed the source already unpaused and the Windows peer already at completion 100 with zero need counts. The prepared initial-sync experiment had been consumed outside the timed runner. Evidence:
+
+- `evidence/m0/p0-1/syncthing-10k-files-macos-to-windows-TIMED-FAILED.md`
+
+Per protocol, folder ID `p0-1-10k-files-macos-to-windows` must not be reused as a new initial run. A replacement cell must use a unique folder ID and fresh working paths.
 
 ## Boundary
 

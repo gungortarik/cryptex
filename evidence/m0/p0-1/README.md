@@ -102,3 +102,17 @@ Windows real allocation/directory-metadata overhead must be captured as a separa
 No layout is accepted until all required macOS and Windows evidence has been reviewed. The final selected direction, rejected alternatives, scale/recovery implications, purge implications and corruption-blast-radius reasoning must be recorded in ADR-0013.
 
 Until then, ADR-0013 remains unresolved and M0 remains IN PROGRESS.
+
+## Current evidence index (non-exhaustive)
+
+Local filesystem scale matrix (macOS + Windows, 10k/100k/500k) is recorded in the dated `macos-*` and `windows-*` files in this directory.
+
+Additional P0-1 evidence files:
+
+- `syncthing-setup.md`, `syncthing-direct-tcp-isolation.md`, `syncthing-direct-tcp-reachability.md`, `syncthing-peer-pairing.md`
+- `syncthing-initial-sync-protocol.md`
+- `syncthing-10k-files-macos-to-windows-TIMED-FAILED.md` — first timed initial-sync attempt failed because preparation was consumed
+- `purge-complexity.md` — physical purge-complexity probes for both candidates
+- `corruption-blast-radius.md` — physical corruption blast-radius probes for both candidates
+- `syncthing-incremental-workload-PROPOSED.md` — proposed incremental workload (not yet accepted/executed)
+
