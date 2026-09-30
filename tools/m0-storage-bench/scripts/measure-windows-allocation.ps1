@@ -21,16 +21,65 @@ if (-not (Test-Path -LiteralPath $ResolvedRoot -PathType Container)) {
 if (-not ([System.Management.Automation.PSTypeName]'Cryptex.Win32DiskUsage').Type) {
     Add-Type -TypeDefinition @"
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace Cryptex
 {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct FileStandardInfo
+    {
+        public long AllocationSize;
+        public long EndOfFile;
+        public uint NumberOfLinks;
+
+        [MarshalAs(UnmanagedType.U1)]
+        public bool DeletePending;
+
+        [MarshalAs(UnmanagedType.U1)]
+        public bool Directory;
+    }
+
     public static class Win32DiskUsage
     {
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        public static extern uint GetCompressedFileSizeW(
-            string lpFileName,
-            out uint lpFileSizeHigh);
+        private enum FileInfoByHandleClass
+        {
+            FileBasicInfo = 0,
+            FileStandardInfo = 1
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetFileInformationByHandleEx(
+            SafeFileHandle hFile,
+            FileInfoByHandleClass fileInformationClass,
+            out FileStandardInfo fileInformation,
+            uint bufferSize);
+
+        public static long GetAllocationSize(string path)
+        {
+            using (FileStream stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete))
+            {
+                FileStandardInfo info;
+                uint size = (uint)Marshal.SizeOf(typeof(FileStandardInfo));
+
+                if (!GetFileInformationByHandleEx(
+                    stream.SafeFileHandle,
+                    FileInfoByHandleClass.FileStandardInfo,
+                    out info,
+                    size))
+                {
+                    throw new System.ComponentModel.Win32Exception(
+                        Marshal.GetLastWin32Error());
+                }
+
+                return info.AllocationSize;
+            }
+        }
     }
 }
 "@
@@ -42,15 +91,12 @@ function Get-AllocatedFileBytes {
         [string]$Path
     )
 
-    [uint32]$High = 0
-    [uint32]$Low = [Cryptex.Win32DiskUsage]::GetCompressedFileSizeW($Path, [ref]$High)
-    $ErrorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-
-    if (($Low -eq [uint32]::MaxValue) -and ($ErrorCode -ne 0)) {
-        throw "GetCompressedFileSizeW failed for '$Path' with Win32 error $ErrorCode"
+    $Allocated = [Cryptex.Win32DiskUsage]::GetAllocationSize($Path)
+    if ($Allocated -lt 0) {
+        throw "negative allocation size returned for '$Path': $Allocated"
     }
 
-    return ([uint64]$High * [uint64]4294967296) + [uint64]$Low
+    return [uint64]$Allocated
 }
 
 [uint64]$FileCount = 0
@@ -90,6 +136,6 @@ Write-Output "logical_bytes=$LogicalBytes"
 Write-Output "allocated_file_bytes=$AllocatedFileBytes"
 Write-Output "file_allocation_delta_bytes=$AllocationDeltaBytes"
 Write-Output "file_allocation_ratio=$AllocationRatio"
-Write-Output "measurement_method=GetCompressedFileSizeW"
+Write-Output "measurement_method=GetFileInformationByHandleEx(FileStandardInfo.AllocationSize)"
 Write-Output "directory_metadata_included=false"
 Write-Output "measurement_scope=file_allocation_only"
