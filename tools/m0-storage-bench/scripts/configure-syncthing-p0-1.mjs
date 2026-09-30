@@ -37,13 +37,17 @@ const configPath = path.join(home, "config.xml");
 if (!fs.existsSync(configPath)) fail(`config.xml not found: ${configPath}`);
 
 const original = fs.readFileSync(configPath, "utf8");
+const lineEnding = original.includes("\r\n") ? "\r\n" : "\n";
 let updated = original;
 
 const guiBlockPattern = /(<gui\b[^>]*>[\s\S]*?<address>)([^<]*)(<\/address>[\s\S]*?<\/gui>)/;
 const guiMatch = updated.match(guiBlockPattern);
 if (!guiMatch) fail("unable to locate GUI address in config.xml");
 const previousGui = guiMatch[2];
-updated = updated.replace(guiBlockPattern, `$1${"127.0.0.1:18384"}$3`);
+updated = updated.replace(
+  guiBlockPattern,
+  (_match, prefix, _value, suffix) => `${prefix}127.0.0.1:18384${suffix}`,
+);
 
 const optionsPattern = /(<options\b[^>]*>)([\s\S]*?)(<\/options>)/;
 const optionsMatch = updated.match(optionsPattern);
@@ -63,14 +67,16 @@ if (listenerMatches.length > 0) {
   optionsBody = optionsBody.replace(listenerPattern, () => {
     if (inserted) return "";
     inserted = true;
-    return `${indent}<listenAddress>tcp://0.0.0.0:22001</listenAddress>\n`;
+    return `${indent}<listenAddress>tcp://0.0.0.0:22001</listenAddress>${lineEnding}`;
   });
 } else {
-  const lineEnding = original.includes("\r\n") ? "\r\n" : "\n";
   optionsBody = `${lineEnding}        <listenAddress>tcp://0.0.0.0:22001</listenAddress>${optionsBody}`;
 }
 
-updated = updated.replace(optionsPattern, `$1${optionsBody}$3`);
+updated = updated.replace(
+  optionsPattern,
+  (_match, prefix, _body, suffix) => `${prefix}${optionsBody}${suffix}`,
+);
 
 const activeFolderPattern = /<folder\b(?=[^>]*\bid="[^"]+")(?=[^>]*\bpath="[^"]+")[^>]*>/g;
 const activeFolders = updated.match(activeFolderPattern) ?? [];
@@ -91,8 +97,8 @@ console.log(`home=${home}`);
 console.log(`config=${configPath}`);
 console.log(`backup=${backupPath}`);
 console.log(`previous_gui=${previousGui}`);
-console.log(`gui=127.0.0.1:18384`);
+console.log("gui=127.0.0.1:18384");
 console.log(`previous_listeners=${previousListeners.join(",") || "none"}`);
-console.log(`listen_address=tcp://0.0.0.0:22001`);
+console.log("listen_address=tcp://0.0.0.0:22001");
 console.log(`active_folder_count=${activeFolders.length}`);
 console.log("scope=isolated_p0_1_syncthing_config_only");
