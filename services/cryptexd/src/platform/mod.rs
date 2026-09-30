@@ -1,13 +1,12 @@
-//! Platform adapters for background registration.
+//! Platform adapters for background registration / supervision proofs.
 //!
-//! These adapters intentionally do **not** install LaunchAgents or Windows
-//! startup entries. Registration remains NotConfigured until P0-2 evidence
-//! selects a supervision architecture for ADR-0012.
+//! Production registration remains NotConfigured until ADR-0012 evidence exists.
+//! macOS exposes a reversible test-only LaunchAgent harness for Mode A.
 
 use crate::supervision::RegistrationStatus;
 
 #[cfg(target_os = "macos")]
-mod macos;
+pub mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
 

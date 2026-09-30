@@ -1,12 +1,13 @@
 //! M0 P0-2 lifecycle foundation for `cryptexd`.
 //!
 //! This crate provides testable abstractions for single-instance enforcement,
-//! structured lifecycle status, crash/restart harness helpers, and
-//! version-compatibility fixtures.
+//! structured lifecycle status, crash/restart harness helpers,
+//! version-compatibility fixtures, and Mode A/B supervision comparison helpers.
 //!
 //! Supervision architecture (LaunchAgent vs tray sidecar vs hybrid) remains
 //! intentionally unresolved until ADR-0012 evidence is complete.
 
+pub mod compare;
 pub mod compat;
 pub mod error;
 pub mod instance;
@@ -14,7 +15,12 @@ pub mod paths;
 pub mod platform;
 pub mod status;
 pub mod supervision;
+pub mod supervisor;
 
+pub use compare::{
+    ComparisonMeasurement, EvidenceClass, MEASUREMENT_SCHEMA, SupervisorMode, measurement_path,
+    mode_runtime_root, unix_now_ms,
+};
 pub use compat::{CompatDecision, CompatError, ComponentVersions, evaluate_compat};
 pub use error::{LifecycleError, LifecycleResult};
 pub use instance::{InstanceLock, InstanceObservation, observe_instance, try_acquire_instance};
@@ -24,3 +30,4 @@ pub use paths::{
 };
 pub use status::{HealthState, InstanceState, LifecycleReport, write_status_file};
 pub use supervision::{RegistrationStatus, SupervisionStrategy, selected_supervision};
+pub use supervisor::DesktopSupervisor;

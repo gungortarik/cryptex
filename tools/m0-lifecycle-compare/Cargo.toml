@@ -1,0 +1,13 @@
+[package]
+name = "m0-lifecycle-compare"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "m0-lifecycle-compare"
+path = "src/main.rs"
+
+[dependencies]
+cryptexd = { path = "../../services/cryptexd" }

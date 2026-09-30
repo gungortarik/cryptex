@@ -4,6 +4,7 @@ members = [
   "apps/desktop/src-tauri",
   "services/cryptexd",
   "tools/m0-storage-bench",
+  "tools/m0-lifecycle-compare",
 ]
 
 [workspace.package]
