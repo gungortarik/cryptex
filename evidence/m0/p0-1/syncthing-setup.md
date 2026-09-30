@@ -153,7 +153,27 @@ scope=isolated_p0_1_syncthing_config_only
 
 This verifies the Windows isolated benchmark profile is now configured for GUI `127.0.0.1:18384` and a single TCP sync listener `tcp://0.0.0.0:22001`.
 
-No sync transport run has started from this setup evidence.
+## Final read-only config verification
+
+After both repository-controlled configuration runs, each physical machine was checked again without modifying the config.
+
+Windows observed:
+
+```text
+gui_address=127.0.0.1:18384
+listen_address=tcp://0.0.0.0:22001
+active_folder_count=0
+```
+
+macOS observed:
+
+```text
+gui_address=127.0.0.1:18384
+listen_address=tcp://0.0.0.0:22001
+active_folder_count=0
+```
+
+Both isolated benchmark profiles therefore match the intended P0-1 listener setup and still contain no active benchmark folders. No sync transport run has started from this setup evidence.
 
 ## Version note
 
@@ -161,11 +181,11 @@ The macOS benchmark binary is Syncthing v2.1.2 and the Windows benchmark binary 
 
 ## Next evidence
 
-Both isolated device identities, candidate listener ports, and benchmark listener configurations are now verified. Next steps:
+Both isolated device identities, candidate listener ports, benchmark listener configurations, and final read-only config checks are verified. Next steps:
 
-- perform a read-only final verification of both isolated configs
+- record the direct LAN addresses that will be used for benchmark device pairing
 - leave the existing/default macOS Syncthing profile untouched
-- pair only the benchmark devices
+- pair only the benchmark devices using the isolated identities and direct TCP listener
 - use only synthetic benchmark folders under Cryptex-Dev
 - record initial scan/sync timing for files and segments
 - record incremental workload definition and sync timing
