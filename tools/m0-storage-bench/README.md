@@ -116,6 +116,7 @@ Relevant helpers:
 - `configure-syncthing-p0-1.mjs` / `pair-syncthing-p0-1.mjs` / `verify-syncthing-p0-1-peer-connection.mjs`
 - `prepare-syncthing-p0-1-initial-sync.mjs`
 - `run-syncthing-p0-1-initial-sync.mjs`
+- `run-syncthing-p0-1-incremental-sync.mjs`
 - `capture-syncthing-p0-1-raw-result.mjs`
 - `retire-syncthing-p0-1-folder.mjs`
 - `verify-retained-corpus.mjs`
