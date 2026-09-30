@@ -29,21 +29,33 @@ The macOS benchmark identity is isolated under the Cryptex-Dev runtime root. No 
 
 ## Windows benchmark identity
 
-Pending. The Windows benchmark profile must be generated under:
+Verified on the physical Windows machine.
 
 ```text
-%LOCALAPPDATA%\Cryptex-Dev\syncthing-p0-1
+syncthing_binary=syncthing (resolved from PATH)
+syncthing_version=syncthing v2.1.5 "Hafnium Hornet" (go1.27.1 windows-amd64) builder@github.syncthing.net 2026-09-08 06:57:55 UTC
+isolated_home=C:\Users\Tarik\AppData\Local\Cryptex-Dev\syncthing-p0-1
+device_id=G3IQV46-V6WYJ2U-WDLQQOC-FXMJBGA-QRIXPNV-GVARBCC-IHYTOBI-BOIG6QA
 ```
 
-The exact Windows Syncthing version and generated device ID must be recorded before pairing.
+Observed setup command sequence:
+
+```powershell
+$STHOME="$env:LOCALAPPDATA\Cryptex-Dev\syncthing-p0-1"
+New-Item -ItemType Directory -Force -Path $STHOME | Out-Null
+syncthing generate --home="$STHOME"
+syncthing device-id --home="$STHOME"
+```
+
+The generated Windows device ID was observed in the `generate` output. The benchmark identity is isolated under the Cryptex-Dev runtime root. No global Syncthing profile is used by this setup.
 
 ## Version note
 
-The macOS benchmark binary is Syncthing v2.1.2. Previous Windows benchmark metadata recorded Syncthing v2.1.5. P0-1 will preserve the exact versions used as evidence. Version pinning and managed product packaging are P0-4 concerns and are not inferred from this setup record.
+The macOS benchmark binary is Syncthing v2.1.2 and the Windows benchmark binary is Syncthing v2.1.5. P0-1 preserves the exact versions used as evidence. Version pinning and managed product packaging are P0-4 concerns and are not inferred from this setup record.
 
 ## Next evidence
 
-After both isolated device identities are verified:
+Both isolated device identities are now verified. Next steps:
 
 - pair only the benchmark devices
 - use only synthetic benchmark folders under Cryptex-Dev
