@@ -83,7 +83,15 @@ sync_candidate=tcp://0.0.0.0:22001
 observed_status=free_at_check_time
 ```
 
-These ports are only candidates until the Windows check also passes and the isolated benchmark config is explicitly updated.
+On Windows, the same candidate ports were checked with `Get-NetTCPConnection -State Listen` and also produced no listening process:
+
+```text
+gui_candidate=127.0.0.1:18384
+sync_candidate=tcp://0.0.0.0:22001
+observed_status=free_at_check_time
+```
+
+The candidate ports are therefore free on both physical benchmark machines at the observed check times. They are not yet configured; the isolated benchmark configs must be explicitly updated before either P0-1 instance is launched.
 
 No sync transport run has started from this setup evidence.
 
@@ -93,10 +101,9 @@ The macOS benchmark binary is Syncthing v2.1.2 and the Windows benchmark binary 
 
 ## Next evidence
 
-Both isolated device identities are now verified. Next steps:
+Both isolated device identities and candidate listener ports are now verified. Next steps:
 
-- verify the same candidate GUI/sync ports are free on Windows
-- configure the isolated benchmark instances so their GUI/sync listeners do not collide with the existing macOS Syncthing application profile
+- configure both isolated benchmark instances to use GUI `127.0.0.1:18384` and sync listener `tcp://0.0.0.0:22001`
 - leave the existing/default macOS Syncthing profile untouched
 - pair only the benchmark devices
 - use only synthetic benchmark folders under Cryptex-Dev
