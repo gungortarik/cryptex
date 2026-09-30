@@ -195,6 +195,8 @@ async function main() {
     fail(`folder path already exists; refusing automatic reuse or deletion: ${args.folderPath}`);
   }
 
+  await fsp.mkdir(path.dirname(args.folderPath), { recursive: true });
+
   let preConfigStats;
   if (args.role === "source") {
     if (!fs.existsSync(args.sourceCorpus)) fail(`source corpus does not exist: ${args.sourceCorpus}`);
