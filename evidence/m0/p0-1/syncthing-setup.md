@@ -91,7 +91,7 @@ sync_candidate=tcp://0.0.0.0:22001
 observed_status=free_at_check_time
 ```
 
-The candidate ports are therefore free on both physical benchmark machines at the observed check times. They are not yet configured; the isolated benchmark configs must be explicitly updated before either P0-1 instance is launched.
+The candidate ports are therefore free on both physical benchmark machines at the observed check times.
 
 ## Generated listener defaults before benchmark reconfiguration
 
@@ -113,6 +113,26 @@ listen_address=quic://0.0.0.0:52746
 
 These are generated/default isolated-profile values only. They are evidence of the pre-benchmark state and are not accepted benchmark listener settings.
 
+## macOS benchmark listener configuration
+
+The repository-controlled helper `tools/m0-storage-bench/scripts/configure-syncthing-p0-1.mjs` was run against the isolated macOS P0-1 home. It created a pre-change backup, found no active folders, and rewrote only the isolated benchmark config.
+
+Observed output:
+
+```text
+home=/Users/tarikgungor/Library/Application Support/Cryptex-Dev/syncthing-p0-1
+config=/Users/tarikgungor/Library/Application Support/Cryptex-Dev/syncthing-p0-1/config.xml
+backup=/Users/tarikgungor/Library/Application Support/Cryptex-Dev/syncthing-p0-1/config.xml.pre-p0-1.bak
+previous_gui=127.0.0.1:52743
+gui=127.0.0.1:18384
+previous_listeners=tcp://0.0.0.0:52746,dynamic+https://relays.syncthing.net/endpoint,quic://0.0.0.0:52746
+listen_address=tcp://0.0.0.0:22001
+active_folder_count=0
+scope=isolated_p0_1_syncthing_config_only
+```
+
+This verifies the macOS isolated benchmark profile is now configured for GUI `127.0.0.1:18384` and a single TCP sync listener `tcp://0.0.0.0:22001`. The existing/default macOS Syncthing profile was outside the helper's permitted path and was not modified.
+
 No sync transport run has started from this setup evidence.
 
 ## Version note
@@ -121,9 +141,10 @@ The macOS benchmark binary is Syncthing v2.1.2 and the Windows benchmark binary 
 
 ## Next evidence
 
-Both isolated device identities and candidate listener ports are now verified. Next steps:
+Both isolated device identities and candidate listener ports are verified. The macOS isolated benchmark listener configuration is also verified. Next steps:
 
-- configure both isolated benchmark instances to use GUI `127.0.0.1:18384` and sync listener `tcp://0.0.0.0:22001`
+- configure the Windows isolated benchmark instance to use GUI `127.0.0.1:18384` and sync listener `tcp://0.0.0.0:22001`
+- verify both isolated configs after modification
 - leave the existing/default macOS Syncthing profile untouched
 - pair only the benchmark devices
 - use only synthetic benchmark folders under Cryptex-Dev
