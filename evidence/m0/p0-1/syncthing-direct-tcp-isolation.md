@@ -165,12 +165,45 @@ upgrade_policy=disabled
 scope=isolated_p0_1_syncthing_config_only
 ```
 
-Both isolated benchmark configs now physically verify the same direct-TCP-only and upgrade-disabled policy. The next launch on each platform must use the repository launcher so the `--no-upgrade` process guard is also exercised.
+Both isolated benchmark configs now physically verify the same direct-TCP-only and upgrade-disabled policy.
+
+## Windows isolated relaunch verification
+
+The repository-controlled Windows launcher was then run on the physical Windows benchmark machine after the upgrade and transport guards were applied.
+
+Observed launcher state:
+
+```text
+scope=isolated_p0_1_syncthing_only
+home=C:\Users\Tarik\AppData\Local\Cryptex-Dev\syncthing-p0-1
+gui=127.0.0.1:18384
+listen_address=tcp://0.0.0.0:22001
+global_announce=false
+local_announce=false
+relays=false
+nat=false
+auto_upgrade_interval_h=0
+releases_url=blank
+launch_no_upgrade=true
+transport_scope=direct_tcp_only
+active_folder_count=0
+starting_foreground=true
+```
+
+Observed startup log included:
+
+```text
+2026-09-29 22:34:47 INF syncthing v2.1.5 "Hafnium Hornet" (go1.27.1 windows-amd64) ...
+2026-09-29 22:34:47 INF No automatic upgrades; STNOUPGRADE environment variable defined
+2026-09-29 22:34:47 INF GUI and API listening (address=127.0.0.1:18384 ...)
+2026-09-29 22:34:47 INF TCP listener starting (address="[::]:22001" ...)
+```
+
+The supplied startup excerpt contained no global-discovery, local-discovery, relay, NAT, or upgrade-attempt activation lines. The isolated Windows process remained running in the foreground with zero active benchmark folders. No peer pairing or sync had started at this point.
 
 ## Next evidence
 
-- relaunch both isolated P0-1 Syncthing instances with the repository-controlled launchers
-- verify no discovery/relay/NAT/upgrade mechanisms are active for the benchmark profiles
+- relaunch the macOS isolated P0-1 Syncthing instance with the repository-controlled launcher and verify the same guarded startup behavior
 - verify GUI `127.0.0.1:18384` and TCP listener `22001` are live on both machines
 - verify bidirectional direct TCP reachability over the selected LAN addresses
 - leave the existing/default macOS Syncthing processes/config untouched; do not claim their runtime health without a direct check
