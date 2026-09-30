@@ -43,7 +43,17 @@ Implemented and test-backed in `services/cryptexd`:
 - protocol-compat + synthetic canonical-marker safety fixtures
 - platform registration adapters left as `not_configured`
 
+Comparison harness added:
+
+- `tools/m0-lifecycle-compare` Mode A/B runners
+- measurement contract + KV capture
+- reversible macOS LaunchAgent test harness (Mode A)
+- DesktopSupervisor process harness (Mode B)
+- temporary Desktop hide-on-close developer hooks (GUI physical close still pending)
+
 See:
 
-- `macos-foundation-slice.md` for macOS verification status
-- Windows physical proofs remain NOT YET VERIFIED on this machine
+- `macos-foundation-slice.md`
+- `macos-supervision-comparison-protocol.md`
+- `macos-native-supervision-evidence.md`
+- `macos-desktop-supervision-evidence.md`
