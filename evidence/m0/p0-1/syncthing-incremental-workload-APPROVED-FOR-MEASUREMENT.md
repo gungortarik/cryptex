@@ -1,8 +1,17 @@
 ﻿# M0 P0-1 — APPROVED Incremental Syncthing Workload (Measurement Protocol)
 
-**Status:** APPROVED FOR P0-1 MEASUREMENT — not yet executed  
+**Status:** APPROVED FOR P0-1 MEASUREMENT — partially executed  
 **Scope:** deterministic incremental sync workload for P0-1 only  
 **Architecture effect:** none; does **not** accept ADR-0013 and does **not** select a layout
+
+## Execution status
+
+Executed so far:
+
+- `p0-1-10k-files-macos-to-windows-r3` files layout — VERIFIED  
+  Evidence: `evidence/m0/p0-1/syncthing-10k-files-macos-to-windows-r3-incremental.md`
+
+Remaining incremental cells still require a prior valid initial-sync measurement for that matrix cell.
 
 ## Approval boundary
 

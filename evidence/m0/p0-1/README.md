@@ -113,6 +113,8 @@ Additional P0-1 evidence files:
 - `syncthing-initial-sync-protocol.md` — includes consumed-cell Windows retirement and r2 Windows destination preparation
 - `syncthing-10k-files-macos-to-windows-TIMED-FAILED.md` — first timed initial-sync attempt failed because preparation was consumed; do not reuse that folder ID
 - `syncthing-10k-files-macos-to-windows-r2-TIMED-FAILED.md` — r2 timed attempt failed on paused-folder completion preflight before unpause; do not reuse r2
+- `syncthing-10k-files-macos-to-windows-r3.md` — **valid** 10k files macOS→Windows initial sync timing
+- `syncthing-10k-files-macos-to-windows-r3-incremental.md` — **valid** approved incremental sync on the r3 cell
 - `purge-complexity.md` — physical purge-complexity probes for both candidates, with macOS and Windows sections separated
 - `corruption-blast-radius.md` — physical corruption blast-radius probes for both candidates, with macOS and Windows sections separated
 - `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md` — incremental workload approved for measurement only (not executed; does not accept ADR-0013)

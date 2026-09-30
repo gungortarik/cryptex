@@ -277,6 +277,69 @@ Root cause: the pre-unpause consumed-state preflight called Syncthing completion
 
 A later unique cell (r3) is required after the runner treats paused-folder completion 404 as non-consumed during preflight.
 
+## Replacement cell `p0-1-10k-files-macos-to-windows-r3`
+
+### r2 retirement (macOS) before r3 — VERIFIED
+
+```text
+folder_id=p0-1-10k-files-macos-to-windows-r2
+config_removed=true
+work_path_deleted=false
+retained_corpus_untouched=true
+scope=isolated_p0_1_folder_retirement_only
+```
+
+### macOS r3 source preparation — VERIFIED
+
+```text
+folder_id=p0-1-10k-files-macos-to-windows-r3
+role=source
+folder_type=sendonly
+fs_watcher_enabled=false
+pre_config_files=10000
+pre_config_bytes=10360000
+paused=true
+peer_runtime_connected=true
+scope=isolated_p0_1_initial_sync_preparation_only
+```
+
+### Timed initial measurement (r3) — VERIFIED
+
+```text
+started_at_utc=2026-09-30T19:00:29.983Z
+completed_at_utc=2026-09-30T19:01:26.705Z
+initial_scan_ms=2324.080
+initial_sync_total_ms=56716.159
+source_local_files=10000
+source_local_bytes=10360000
+peer_completion=100
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_paused_after_completion=true
+syncthing_version=v2.1.5
+```
+
+Evidence: `evidence/m0/p0-1/syncthing-10k-files-macos-to-windows-r3.md`
+
+### Incremental measurement (r3 files) — VERIFIED
+
+Approved workload (+100 events / +103600 bytes) executed on the same valid cell after initial sync:
+
+```text
+incremental_sync_total_ms=2344.387
+incremental_scan_ms=533.633
+append_setup_ms=909.490
+expected_files_after_append=10100
+expected_bytes_after_append=10463600
+peer_completion=100
+source_paused_after_completion=true
+```
+
+Evidence: `evidence/m0/p0-1/syncthing-10k-files-macos-to-windows-r3-incremental.md`
+
+This r3 working folder must not be reused as a fresh initial-sync cell.
+
 ## Boundary
 
 A successful Syncthing transport measurement does not prove Cryptex replication semantics or complete P0-4. Production pairing/device trust remains governed by the appropriate later milestone and accepted architecture.
