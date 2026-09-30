@@ -131,7 +131,7 @@ releasesURL=<blank>
 launcher flag=--no-upgrade
 ```
 
-The macOS physical benchmark config has now been re-run with the remediation and verified as:
+The macOS physical benchmark config was re-run with the remediation and verified as:
 
 ```text
 previous_autoUpgradeIntervalH=12
@@ -144,14 +144,32 @@ upgrade_policy=disabled
 scope=isolated_p0_1_syncthing_config_only
 ```
 
-This verifies the macOS isolated benchmark profile has upgrade checks disabled at config level. The next macOS launch must also use the repository launcher so the `--no-upgrade` process guard is exercised.
+The Windows physical benchmark config was then re-run with the same remediation and verified as:
 
-The same upgrade guards still require physical verification on the Windows benchmark profile before either benchmark instance is relaunched.
+```text
+previous_globalAnnounceEnabled=false
+globalAnnounceEnabled=false
+previous_localAnnounceEnabled=false
+localAnnounceEnabled=false
+previous_relaysEnabled=false
+relaysEnabled=false
+previous_natEnabled=false
+natEnabled=false
+previous_autoUpgradeIntervalH=12
+autoUpgradeIntervalH=0
+previous_releasesURL=https://upgrades.syncthing.net/meta.json
+releasesURL=
+active_folder_count=0
+transport_scope=direct_tcp_only
+upgrade_policy=disabled
+scope=isolated_p0_1_syncthing_config_only
+```
+
+Both isolated benchmark configs now physically verify the same direct-TCP-only and upgrade-disabled policy. The next launch on each platform must use the repository launcher so the `--no-upgrade` process guard is also exercised.
 
 ## Next evidence
 
-- apply and verify the upgraded-isolation config on the Windows benchmark home
-- relaunch both isolated P0-1 Syncthing instances only after both platforms verify the upgrade guards
+- relaunch both isolated P0-1 Syncthing instances with the repository-controlled launchers
 - verify no discovery/relay/NAT/upgrade mechanisms are active for the benchmark profiles
 - verify GUI `127.0.0.1:18384` and TCP listener `22001` are live on both machines
 - verify bidirectional direct TCP reachability over the selected LAN addresses
