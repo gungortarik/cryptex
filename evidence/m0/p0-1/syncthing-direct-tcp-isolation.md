@@ -1,6 +1,6 @@
 # M0 P0-1 — Syncthing Direct-TCP Transport Isolation Evidence
 
-**Status:** VERIFIED CONFIGURATION EVIDENCE  
+**Status:** IN PROGRESS  
 **Scope:** P0-1 benchmark transport isolation only  
 **Architecture effect:** none; this does not select a production storage layout or complete P0-1/P0-4.
 
@@ -68,7 +68,7 @@ scope=isolated_p0_1_syncthing_config_only
 
 ## Verified isolated transport configuration
 
-Both physical benchmark machines now have the following isolated P0-1 configuration:
+Both physical benchmark machines have the following verified transport configuration:
 
 ```text
 gui_address=127.0.0.1:18384
@@ -81,7 +81,7 @@ active_folder_count=0
 transport_scope=direct_tcp_only
 ```
 
-The existing/default macOS Syncthing profile is separate from the Cryptex-Dev benchmark home and is outside the repository helper's permitted path.
+The existing/default macOS Syncthing profile is separate from the Cryptex-Dev benchmark home and is outside the repository helper's permitted config path.
 
 Direct LAN addresses already selected for the benchmark path:
 
@@ -92,10 +92,38 @@ windows_sync_address=tcp://192.168.50.137:22001
 
 These LAN addresses are environment evidence for this run only, not product defaults.
 
+## macOS first-launch auto-upgrade incident
+
+The first macOS launch after transport isolation did not proceed to pairing or sync. The isolated profile started with no active folders, then Syncthing v2.1.2 reported an available v2.1.5 upgrade, performed an automatic upgrade, and exited:
+
+```text
+2026-09-29 22:22:52 INF syncthing v2.1.2 ...
+2026-09-29 22:22:53 INF Upgrade available (current=v2.1.2 latest=v2.1.5 ...)
+2026-09-29 22:22:54 INF Upgraded, should exit now (newVersion=v2.1.5 ...)
+```
+
+This launch is not benchmark transport evidence. No benchmark folder existed, no peer pairing had been configured, and no sync run started.
+
+The macOS launcher referenced the Syncthing executable inside `/Applications/Syncthing.app`. Therefore the on-disk application binary may have been updated even though the benchmark config home was isolated. The existing/default macOS Syncthing configuration was not modified by the repository helper, but the application binary version must be re-verified before continuing.
+
+Repository remediation has been added but is not yet physical-machine verified:
+
+```text
+autoUpgradeIntervalH=0
+releasesURL=<blank>
+launcher flag=--no-upgrade
+```
+
+The same upgrade guards are required on Windows for deterministic benchmark execution.
+
 ## Next evidence
 
-- launch both isolated P0-1 Syncthing instances with the repository-controlled launchers
-- verify no discovery/relay/NAT mechanisms are reported active for the benchmark profiles
+- pull and apply the upgraded-isolation config on both benchmark homes
+- verify `autoUpgradeIntervalH=0` and blank `releasesURL` on both physical machines
+- verify the macOS application binary version after the observed auto-upgrade
+- verify the existing/default macOS Syncthing process/config remains separate; do not claim its runtime health without a direct check
+- relaunch only after the upgrade guards are physically verified
+- verify no discovery/relay/NAT/upgrade mechanisms are active for the benchmark profiles
 - verify GUI `127.0.0.1:18384` and TCP listener `22001` are live on both machines
 - verify bidirectional direct TCP reachability over the selected LAN addresses
 - pair only the two benchmark device identities using explicit TCP addresses
