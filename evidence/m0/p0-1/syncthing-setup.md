@@ -133,6 +133,26 @@ scope=isolated_p0_1_syncthing_config_only
 
 This verifies the macOS isolated benchmark profile is now configured for GUI `127.0.0.1:18384` and a single TCP sync listener `tcp://0.0.0.0:22001`. The existing/default macOS Syncthing profile was outside the helper's permitted path and was not modified.
 
+## Windows benchmark listener configuration
+
+The same repository-controlled helper was run against the isolated Windows P0-1 home. It created a pre-change backup, found no active folders, and rewrote only the isolated benchmark config.
+
+Observed output:
+
+```text
+home=C:\Users\Tarik\AppData\Local\Cryptex-Dev\syncthing-p0-1
+config=C:\Users\Tarik\AppData\Local\Cryptex-Dev\syncthing-p0-1\config.xml
+backup=C:\Users\Tarik\AppData\Local\Cryptex-Dev\syncthing-p0-1\config.xml.pre-p0-1.bak
+previous_gui=127.0.0.1:8384
+gui=127.0.0.1:18384
+previous_listeners=default
+listen_address=tcp://0.0.0.0:22001
+active_folder_count=0
+scope=isolated_p0_1_syncthing_config_only
+```
+
+This verifies the Windows isolated benchmark profile is now configured for GUI `127.0.0.1:18384` and a single TCP sync listener `tcp://0.0.0.0:22001`.
+
 No sync transport run has started from this setup evidence.
 
 ## Version note
@@ -141,10 +161,9 @@ The macOS benchmark binary is Syncthing v2.1.2 and the Windows benchmark binary 
 
 ## Next evidence
 
-Both isolated device identities and candidate listener ports are verified. The macOS isolated benchmark listener configuration is also verified. Next steps:
+Both isolated device identities, candidate listener ports, and benchmark listener configurations are now verified. Next steps:
 
-- configure the Windows isolated benchmark instance to use GUI `127.0.0.1:18384` and sync listener `tcp://0.0.0.0:22001`
-- verify both isolated configs after modification
+- perform a read-only final verification of both isolated configs
 - leave the existing/default macOS Syncthing profile untouched
 - pair only the benchmark devices
 - use only synthetic benchmark folders under Cryptex-Dev
