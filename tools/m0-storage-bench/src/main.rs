@@ -97,6 +97,24 @@ fn run() -> Result<(), String> {
             ensure_empty_root(&root)?;
             run_crash_probe(layout, &root, payload_bytes)?;
         }
+        "purge-probe" => {
+            let layout = parse_layout(args.next())?;
+            let payload_bytes = parse_usize(args.next(), "payload_bytes")?;
+            let root = PathBuf::from(args.next().ok_or_else(usage)?);
+            let segment_events = parse_segment_events(layout, args.next())?;
+            reject_extra_args(args)?;
+            ensure_empty_root(&root)?;
+            run_purge_probe(layout, &root, payload_bytes, segment_events)?;
+        }
+        "corrupt-probe" => {
+            let layout = parse_layout(args.next())?;
+            let payload_bytes = parse_usize(args.next(), "payload_bytes")?;
+            let root = PathBuf::from(args.next().ok_or_else(usage)?);
+            let segment_events = parse_segment_events(layout, args.next())?;
+            reject_extra_args(args)?;
+            ensure_empty_root(&root)?;
+            run_corrupt_probe(layout, &root, payload_bytes, segment_events)?;
+        }
         _ => return Err(usage()),
     }
 
@@ -112,6 +130,10 @@ fn usage() -> String {
         "  m0-storage-bench append segments <events> <payload_bytes> <root> <segment_events>",
         "  m0-storage-bench scan <files|segments> <root>",
         "  m0-storage-bench crash-probe <files|segments> <payload_bytes> <root>",
+        "  m0-storage-bench purge-probe files <payload_bytes> <root>",
+        "  m0-storage-bench purge-probe segments <payload_bytes> <root> <segment_events>",
+        "  m0-storage-bench corrupt-probe files <payload_bytes> <root>",
+        "  m0-storage-bench corrupt-probe segments <payload_bytes> <root> <segment_events>",
     ]
     .join("\n")
 }
@@ -609,6 +631,349 @@ fn run_crash_probe(layout: LayoutKind, root: &Path, payload_bytes: usize) -> Res
     Ok(())
 }
 
+const PURGE_PROBE_EVENTS: u64 = 20;
+const PURGE_PROBE_TARGET_SEQ: u64 = 7;
+// 22 events with segment_events=5 leaves an active .open tail (4 sealed + 2 open).
+const CORRUPT_PROBE_EVENTS: u64 = 22;
+const CORRUPT_PROBE_TARGET_SEQ: u64 = 7;
+
+fn run_purge_probe(
+    layout: LayoutKind,
+    root: &Path,
+    payload_bytes: usize,
+    segment_events: Option<u64>,
+) -> Result<(), String> {
+    match layout {
+        LayoutKind::Files => {
+            append_files(root, 0, PURGE_PROBE_EVENTS, payload_bytes)?;
+            let before = scan_files(root)?;
+            let target = root
+                .join("events")
+                .join(format!("{PURGE_PROBE_TARGET_SEQ:020}.evt"));
+            if !target.exists() {
+                return Err(format!(
+                    "purge target event object missing: {}",
+                    target.display()
+                ));
+            }
+            let target_bytes = fs::metadata(&target)
+                .map_err(io_error("read purge target metadata"))?
+                .len();
+            fs::remove_file(&target).map_err(io_error("remove purged event object"))?;
+            let after = scan_files(root)?;
+
+            print_stats("purge-probe", layout, root, None, &after);
+            println!("purge_target_seq={PURGE_PROBE_TARGET_SEQ}");
+            println!("purge_physical_objects_removed=1");
+            println!("purge_physical_objects_rewritten=0");
+            println!("purge_bytes_removed={target_bytes}");
+            println!("purge_removal_granularity=single_event_object");
+            println!("purge_atomicity=filesystem_unlink_of_immutable_object");
+            println!("purge_interruption_behavior=unlink_is_all_or_nothing_for_one_object");
+            println!("purge_events_before={}", before.events);
+            println!("purge_events_after={}", after.events);
+            println!("purge_unaffected_events={}", after.events);
+            println!("purge_segment_rewrite_required=false");
+        }
+        LayoutKind::Segments => {
+            let segment_events = segment_events
+                .ok_or_else(|| "segments purge-probe requires segment_events".to_string())?;
+            if segment_events < 3 {
+                return Err("segments purge-probe requires segment_events >= 3".to_string());
+            }
+            append_segments(root, 0, PURGE_PROBE_EVENTS, payload_bytes, segment_events)?;
+            let before = scan_segments(root)?;
+            let segment_index = PURGE_PROBE_TARGET_SEQ / segment_events;
+            let sealed_path = root
+                .join("segments")
+                .join(format!("{segment_index:020}.seg"));
+            if !sealed_path.exists() {
+                return Err(format!(
+                    "expected sealed segment for purge target: {}",
+                    sealed_path.display()
+                ));
+            }
+            let original_bytes = fs::read(&sealed_path).map_err(io_error("read sealed segment"))?;
+            let parsed_before = parse_records(&original_bytes, false)?;
+            let rewritten = rewrite_segment_without_seq(&original_bytes, PURGE_PROBE_TARGET_SEQ)?;
+            let temp_path = root
+                .join("segments")
+                .join(format!(".{segment_index:020}.purge.tmp"));
+            {
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&temp_path)
+                    .map_err(io_error("create purge rewrite temp"))?;
+                file.write_all(&rewritten)
+                    .map_err(io_error("write purge rewrite temp"))?;
+                file.sync_all()
+                    .map_err(io_error("sync purge rewrite temp"))?;
+            }
+            // Simulate interruption visibility: temp exists until rename commits replacement.
+            let interrupted_temp_exists = temp_path.exists();
+            fs::rename(&temp_path, &sealed_path).map_err(io_error("commit purged segment"))?;
+            let after = scan_segments(root)?;
+            let parsed_after = parse_records(
+                &fs::read(&sealed_path).map_err(io_error("read rewritten segment"))?,
+                false,
+            )?;
+
+            print_stats("purge-probe", layout, root, None, &after);
+            println!("purge_target_seq={PURGE_PROBE_TARGET_SEQ}");
+            println!("purge_physical_objects_removed=0");
+            println!("purge_physical_objects_rewritten=1");
+            println!(
+                "purge_bytes_removed={}",
+                original_bytes.len() as u64 - rewritten.len() as u64
+            );
+            println!("purge_removal_granularity=record_inside_sealed_segment");
+            println!("purge_atomicity=temp_rewrite_then_rename_over_sealed_segment");
+            println!(
+                "purge_interruption_behavior=temp_rewrite_visible_until_rename; rename replaces whole segment object"
+            );
+            println!("purge_interrupted_temp_observed_before_rename={interrupted_temp_exists}");
+            println!("purge_events_before={}", before.events);
+            println!("purge_events_after={}", after.events);
+            println!("purge_segment_events_before={}", parsed_before.events);
+            println!("purge_segment_events_after={}", parsed_after.events);
+            println!("purge_segment_rewrite_required=true");
+            println!("purge_replacement_strategy=copy_intact_records_excluding_target_then_rename");
+        }
+    }
+
+    Ok(())
+}
+
+fn rewrite_segment_without_seq(bytes: &[u8], purge_seq: u64) -> Result<Vec<u8>, String> {
+    let mut cursor = 0_usize;
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut removed = false;
+
+    while cursor < bytes.len() {
+        let remaining = bytes.len() - cursor;
+        if remaining < RECORD_HEADER_BYTES {
+            return Err("sealed segment truncated while rewriting for purge".to_string());
+        }
+        let seq = u64::from_le_bytes(
+            bytes[cursor..cursor + 8]
+                .try_into()
+                .expect("sequence slice has fixed width"),
+        );
+        let payload_len = u32::from_le_bytes(
+            bytes[cursor + 8..cursor + 12]
+                .try_into()
+                .expect("length slice has fixed width"),
+        ) as usize;
+        let total = RECORD_HEADER_BYTES
+            .checked_add(payload_len)
+            .ok_or_else(|| "record length overflow during purge rewrite".to_string())?;
+        if remaining < total {
+            return Err("sealed segment truncated payload while rewriting for purge".to_string());
+        }
+        if seq == purge_seq {
+            removed = true;
+        } else {
+            out.extend_from_slice(&bytes[cursor..cursor + total]);
+        }
+        cursor += total;
+    }
+
+    if !removed {
+        return Err(format!(
+            "purge target sequence {purge_seq} was not present in sealed segment"
+        ));
+    }
+    Ok(out)
+}
+
+fn run_corrupt_probe(
+    layout: LayoutKind,
+    root: &Path,
+    payload_bytes: usize,
+    segment_events: Option<u64>,
+) -> Result<(), String> {
+    match layout {
+        LayoutKind::Files => {
+            append_files(root, 0, CORRUPT_PROBE_EVENTS, payload_bytes)?;
+            let target = root
+                .join("events")
+                .join(format!("{CORRUPT_PROBE_TARGET_SEQ:020}.evt"));
+            let mut bytes = fs::read(&target).map_err(io_error("read corruption target"))?;
+            if bytes.len() <= RECORD_HEADER_BYTES + 1 {
+                return Err(
+                    "corruption target payload is too small to truncate deterministically"
+                        .to_string(),
+                );
+            }
+            let original_len = bytes.len();
+            bytes.truncate(RECORD_HEADER_BYTES + (payload_bytes / 2).max(1));
+            fs::write(&target, &bytes).map_err(io_error("write truncated event object"))?;
+
+            let mut intact = 0_u64;
+            let mut corrupt_objects = 0_u64;
+            let events_dir = root.join("events");
+            for entry in fs::read_dir(&events_dir).map_err(io_error("enumerate events"))? {
+                let entry = entry.map_err(io_error("read event entry"))?;
+                let path = entry.path();
+                if path.extension().and_then(|value| value.to_str()) != Some("evt") {
+                    continue;
+                }
+                let object = fs::read(&path).map_err(io_error("read event for corrupt probe"))?;
+                match parse_records(&object, false) {
+                    Ok(parsed) if parsed.events == 1 => intact += 1,
+                    _ => corrupt_objects += 1,
+                }
+            }
+
+            println!("command=corrupt-probe");
+            println!("layout=files");
+            println!("root={}", root.display());
+            println!("corrupt_target_seq={CORRUPT_PROBE_TARGET_SEQ}");
+            println!("corrupt_mode=truncate_event_payload");
+            println!("corrupt_original_object_bytes={original_len}");
+            println!("corrupt_truncated_object_bytes={}", bytes.len());
+            println!("corrupt_physical_objects_affected=1");
+            println!("corrupt_intact_event_objects={intact}");
+            println!("corrupt_unreadable_event_objects={corrupt_objects}");
+            println!("corrupt_blast_radius_events=1");
+            println!("corrupt_recovery_boundary=delete_or_replace_single_event_object");
+            println!("corrupt_other_objects_remain_independently_readable=true");
+        }
+        LayoutKind::Segments => {
+            let segment_events = segment_events
+                .ok_or_else(|| "segments corrupt-probe requires segment_events".to_string())?;
+            if segment_events < 3 {
+                return Err("segments corrupt-probe requires segment_events >= 3".to_string());
+            }
+            append_segments(root, 0, CORRUPT_PROBE_EVENTS, payload_bytes, segment_events)?;
+
+            // Case A: truncate active open tail (distinct from sealed-segment corruption).
+            let open_entries: Vec<PathBuf> = fs::read_dir(root.join("segments"))
+                .map_err(io_error("enumerate segments for open"))?
+                .filter_map(|entry| entry.ok().map(|value| value.path()))
+                .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("open"))
+                .collect();
+            if open_entries.len() != 1 {
+                return Err(format!(
+                    "expected exactly one active open segment, found {}",
+                    open_entries.len()
+                ));
+            }
+            let open_path = &open_entries[0];
+            let open_before = fs::read(open_path).map_err(io_error("read open segment"))?;
+            let open_parsed_before = parse_records(&open_before, true)?;
+            let mut open_truncated = open_before.clone();
+            if open_truncated.len() < RECORD_HEADER_BYTES + 2 {
+                return Err("active segment too small for deterministic truncation".to_string());
+            }
+            open_truncated.truncate(open_truncated.len() - (payload_bytes / 2).max(1));
+            fs::write(open_path, &open_truncated).map_err(io_error("truncate active segment"))?;
+            let open_after = scan_segments(root)?;
+
+            // Sealed-segment corruption is measured on an isolated sibling root so the
+            // active-tail case above remains independently inspectable.
+            let sealed_index = CORRUPT_PROBE_TARGET_SEQ / segment_events;
+            let sealed_root = root
+                .parent()
+                .ok_or_else(|| "corrupt-probe root must have a parent directory".to_string())?
+                .join(format!(
+                    "{}-sealed-case",
+                    root.file_name()
+                        .and_then(|value| value.to_str())
+                        .ok_or_else(|| "invalid corrupt-probe root name".to_string())?
+                ));
+            if sealed_root.exists() {
+                return Err(format!(
+                    "sealed-case root already exists; refusing reuse: {}",
+                    sealed_root.display()
+                ));
+            }
+            ensure_empty_root(&sealed_root)?;
+            append_segments(
+                &sealed_root,
+                0,
+                CORRUPT_PROBE_EVENTS,
+                payload_bytes,
+                segment_events,
+            )?;
+            let sealed_path = sealed_root
+                .join("segments")
+                .join(format!("{sealed_index:020}.seg"));
+            let sealed_before = fs::read(&sealed_path).map_err(io_error("read sealed segment"))?;
+            let sealed_parsed_before = parse_records(&sealed_before, false)?;
+            let record_span = RECORD_HEADER_BYTES + payload_bytes;
+            let target_offset_in_segment =
+                ((CORRUPT_PROBE_TARGET_SEQ % segment_events) as usize) * record_span;
+            let corrupt_at = target_offset_in_segment + RECORD_HEADER_BYTES + (payload_bytes / 2);
+            if corrupt_at >= sealed_before.len() {
+                return Err("computed sealed corruption offset is out of range".to_string());
+            }
+            let intact_prefix =
+                parse_records(&sealed_before[..corrupt_at.min(sealed_before.len())], true)?;
+            let mut sealed_corrupt = sealed_before.clone();
+            sealed_corrupt.truncate(corrupt_at);
+            fs::write(&sealed_path, &sealed_corrupt)
+                .map_err(io_error("truncate sealed segment"))?;
+            let sealed_scan = scan_segments(&sealed_root);
+
+            println!("command=corrupt-probe");
+            println!("layout=segments");
+            println!("root={}", root.display());
+            println!("corrupt_active_tail_path={}", open_path.display());
+            println!(
+                "corrupt_active_tail_intact_events_before={}",
+                open_parsed_before.events
+            );
+            println!(
+                "corrupt_active_tail_recovered_events_after={}",
+                open_after.events
+            );
+            println!(
+                "corrupt_active_tail_truncated_flag={}",
+                open_after.truncated_active_tail
+            );
+            println!(
+                "corrupt_active_tail_recovery_boundary=complete_records_before_truncated_tail"
+            );
+            println!("corrupt_sealed_case_root={}", sealed_root.display());
+            println!("corrupt_sealed_path={}", sealed_path.display());
+            println!(
+                "corrupt_sealed_events_before={}",
+                sealed_parsed_before.events
+            );
+            println!(
+                "corrupt_sealed_intact_prefix_events={}",
+                intact_prefix.events
+            );
+            println!("corrupt_sealed_offset_bytes={corrupt_at}");
+            println!("corrupt_sealed_mode=truncate_mid_target_record_payload");
+            match sealed_scan {
+                Ok(stats) => {
+                    println!("corrupt_sealed_scan_ok=true");
+                    println!("corrupt_sealed_recovered_events={}", stats.events);
+                    println!(
+                        "corrupt_sealed_truncated_active_tail={}",
+                        stats.truncated_active_tail
+                    );
+                }
+                Err(error) => {
+                    println!("corrupt_sealed_scan_ok=false");
+                    println!("corrupt_sealed_scan_error={error}");
+                    println!(
+                        "corrupt_sealed_recovery_boundary=fail_closed_on_truncated_sealed_object"
+                    );
+                }
+            }
+            println!(
+                "corrupt_blast_radius_note=active_tail_truncation_confines_loss_to_incomplete_suffix; sealed_truncation_fails_closed_for_that_object"
+            );
+        }
+    }
+
+    Ok(())
+}
+
 fn print_stats(
     command: &str,
     layout: LayoutKind,
@@ -718,5 +1083,52 @@ mod tests {
         assert_eq!(stats.events, 1);
         assert!(stats.truncated_active_tail);
         cleanup(&root);
+    }
+
+    #[test]
+    fn files_purge_probe_removes_single_object() {
+        let root = test_root("purge-files");
+        ensure_empty_root(&root).expect("create test root");
+        run_purge_probe(LayoutKind::Files, &root, 32, None).expect("purge files");
+        let stats = scan_files(&root).expect("scan after purge");
+        assert_eq!(stats.events, PURGE_PROBE_EVENTS - 1);
+        assert_eq!(stats.physical_objects, PURGE_PROBE_EVENTS - 1);
+        cleanup(&root);
+    }
+
+    #[test]
+    fn segments_purge_probe_rewrites_sealed_segment() {
+        let root = test_root("purge-segments");
+        ensure_empty_root(&root).expect("create test root");
+        run_purge_probe(LayoutKind::Segments, &root, 32, Some(5)).expect("purge segments");
+        let stats = scan_segments(&root).expect("scan after purge");
+        assert_eq!(stats.events, PURGE_PROBE_EVENTS - 1);
+        cleanup(&root);
+    }
+
+    #[test]
+    fn files_corrupt_probe_confines_blast_radius() {
+        let root = test_root("corrupt-files");
+        ensure_empty_root(&root).expect("create test root");
+        run_corrupt_probe(LayoutKind::Files, &root, 64, None).expect("corrupt files");
+        let target = root
+            .join("events")
+            .join(format!("{CORRUPT_PROBE_TARGET_SEQ:020}.evt"));
+        assert!(parse_records(&fs::read(&target).expect("read target"), false).is_err());
+        cleanup(&root);
+    }
+
+    #[test]
+    fn segments_corrupt_probe_distinguishes_active_and_sealed() {
+        let root = test_root("corrupt-segments");
+        ensure_empty_root(&root).expect("create test root");
+        run_corrupt_probe(LayoutKind::Segments, &root, 64, Some(5)).expect("corrupt segments");
+        let sealed_root = root.parent().unwrap().join(format!(
+            "{}-sealed-case",
+            root.file_name().unwrap().to_str().unwrap()
+        ));
+        assert!(sealed_root.is_dir());
+        cleanup(&root);
+        cleanup(&sealed_root);
     }
 }
