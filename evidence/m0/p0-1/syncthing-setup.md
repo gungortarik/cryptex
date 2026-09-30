@@ -175,15 +175,32 @@ active_folder_count=0
 
 Both isolated benchmark profiles therefore match the intended P0-1 listener setup and still contain no active benchmark folders. No sync transport run has started from this setup evidence.
 
+## Direct LAN pairing addresses
+
+The physical machines are on the same observed `192.168.50.0/24` LAN. The direct addresses selected for P0-1 pairing are:
+
+```text
+macos_lan_ipv4=192.168.50.104
+windows_lan_ipv4=192.168.50.137
+macos_sync_address=tcp://192.168.50.104:22001
+windows_sync_address=tcp://192.168.50.137:22001
+```
+
+Windows also reported VMware host-only adapter addresses `192.168.177.1` and `192.168.182.1`; those are not selected for the benchmark path. The selected Windows address is the Wi-Fi interface address `192.168.50.137`.
+
+These LAN addresses are environment evidence for this run only, not product defaults or stable device addresses.
+
 ## Version note
 
 The macOS benchmark binary is Syncthing v2.1.2 and the Windows benchmark binary is Syncthing v2.1.5. P0-1 preserves the exact versions used as evidence. Version pinning and managed product packaging are P0-4 concerns and are not inferred from this setup record.
 
 ## Next evidence
 
-Both isolated device identities, candidate listener ports, benchmark listener configurations, and final read-only config checks are verified. Next steps:
+Both isolated device identities, candidate listener ports, benchmark listener configurations, final read-only config checks, and direct LAN pairing addresses are verified. Next steps:
 
-- record the direct LAN addresses that will be used for benchmark device pairing
+- launch only the isolated P0-1 Syncthing instances using the Cryptex-Dev homes
+- verify the configured GUI/sync listeners are active on both machines
+- verify direct TCP reachability between `192.168.50.104:22001` and `192.168.50.137:22001`
 - leave the existing/default macOS Syncthing profile untouched
 - pair only the benchmark devices using the isolated identities and direct TCP listener
 - use only synthetic benchmark folders under Cryptex-Dev
