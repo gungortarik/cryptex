@@ -26,7 +26,8 @@ if ($Listeners.Count -ne 1 -or $Listeners[0] -ne 'tcp://0.0.0.0:22001') {
     throw "unexpected sync listeners: $($Listeners -join ',')"
 }
 
-$ActiveFolders = @($Config.configuration.folder | Where-Object { $_.id -and $_.path })
+$FolderNodes = @($Config.SelectNodes('/configuration/folder'))
+$ActiveFolders = @($FolderNodes | Where-Object { $_.id -and $_.path })
 if ($ActiveFolders.Count -ne 0) {
     throw 'active folder entries already exist; refusing pre-pairing launch'
 }
