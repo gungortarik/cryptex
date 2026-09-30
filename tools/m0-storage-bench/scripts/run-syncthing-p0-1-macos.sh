@@ -27,6 +27,11 @@ for OPTION in globalAnnounceEnabled localAnnounceEnabled relaysEnabled natEnable
   [[ "$VALUE" == "false" ]] || fail "unexpected $OPTION value: ${VALUE:-missing}"
 done
 
+AUTO_UPGRADE="$(sed -n 's:.*<autoUpgradeIntervalH>\([^<]*\)</autoUpgradeIntervalH>.*:\1:p' "$CONFIG" | head -1)"
+[[ "$AUTO_UPGRADE" == "0" ]] || fail "unexpected autoUpgradeIntervalH value: ${AUTO_UPGRADE:-missing}"
+RELEASES_URL="$(sed -n 's:.*<releasesURL>\([^<]*\)</releasesURL>.*:\1:p' "$CONFIG" | head -1)"
+[[ -z "$RELEASES_URL" ]] || fail "expected blank releasesURL, got: $RELEASES_URL"
+
 if grep -Eq '<folder .*id="[^"]+".*path="[^"]+"' "$CONFIG"; then
   fail "active folder entries already exist; refusing pre-pairing launch"
 fi
@@ -46,8 +51,11 @@ echo "global_announce=false"
 echo "local_announce=false"
 echo "relays=false"
 echo "nat=false"
+echo "auto_upgrade_interval_h=0"
+echo "releases_url=blank"
+echo "launch_no_upgrade=true"
 echo "transport_scope=direct_tcp_only"
 echo "active_folder_count=0"
 echo "starting_foreground=true"
 
-exec "$ST" serve --home="$STHOME" --no-browser --no-restart
+exec "$ST" serve --home="$STHOME" --no-browser --no-restart --no-upgrade
