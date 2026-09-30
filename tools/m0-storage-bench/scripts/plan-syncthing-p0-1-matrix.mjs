@@ -38,7 +38,10 @@ const DIRECTIONS = [
 ];
 
 // Consumed / invalid for initial timing; must never be reissued.
-const RETIRED_FOLDER_IDS = new Set(["p0-1-10k-files-macos-to-windows"]);
+const RETIRED_FOLDER_IDS = new Set([
+  "p0-1-10k-files-macos-to-windows",
+  "p0-1-10k-files-macos-to-windows-r2",
+]);
 
 function main() {
   const args = parseArgs(process.argv.slice(2));

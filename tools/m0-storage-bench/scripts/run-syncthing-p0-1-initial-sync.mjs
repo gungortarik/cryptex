@@ -170,15 +170,18 @@ async function main() {
   }
 
   // Fail closed if the prepared initial-sync state was already consumed.
-  const preCompletion = await requestJson(
+  // Syncthing returns HTTP 404 "folder is paused" for completion while paused;
+  // that is the expected pre-unpause state and must not abort timing.
+  const preCompletion = await tryRequestJson(
     `${baseUrl}/rest/db/completion?folder=${encodeURIComponent(args.folderId)}&device=${encodeURIComponent(args.peerId)}`,
     apiKey,
   );
   if (
-    numeric(preCompletion?.completion) >= 100 &&
-    numeric(preCompletion?.needItems) === 0 &&
-    numeric(preCompletion?.needBytes) === 0 &&
-    numeric(preCompletion?.needDeletes) === 0
+    preCompletion &&
+    numeric(preCompletion.completion) >= 100 &&
+    numeric(preCompletion.needItems) === 0 &&
+    numeric(preCompletion.needBytes) === 0 &&
+    numeric(preCompletion.needDeletes) === 0
   ) {
     fail(
       "peer already reports completion before timed unpause; initial-sync preparation was consumed and must not be remeasured on this folder ID",
