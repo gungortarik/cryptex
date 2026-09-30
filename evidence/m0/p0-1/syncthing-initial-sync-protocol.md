@@ -185,7 +185,8 @@ Live state at failure showed the source already unpaused and the Windows peer al
 - `evidence/m0/p0-1/syncthing-10k-files-macos-to-windows-TIMED-FAILED.md`
 
 Per protocol, folder ID `p0-1-10k-files-macos-to-windows` must not be reused as a new initial run. A replacement cell must use a unique folder ID and fresh working paths.
-## Consumed cell retirement (Windows) - VERIFIED
+
+## Consumed cell retirement (Windows) — VERIFIED
 
 After the invalid timed attempt, the Windows isolated Syncthing profile still had folder ID `p0-1-10k-files-macos-to-windows` configured. The guarded retirement helper was run on the physical Windows machine **without** `--delete-work-path` so forensic working data is retained.
 
@@ -207,7 +208,17 @@ Post-retire verification on Windows:
 - forensic work path still present under `Cryptex-Dev/syncthing-p0-1-runs/p0-1-10k-files-macos-to-windows/`
 - intended macOS peer remained connected over direct TCP (`192.168.50.104:22001`, type `tcp-server`)
 
-macOS-side retirement of the matching source folder config is still required and is not claimed here.
+## Consumed cell retirement (macOS) — VERIFIED
+
+The matching consumed source folder was retired from the isolated macOS Syncthing config without deleting forensic work data:
+
+```text
+folder_id=p0-1-10k-files-macos-to-windows
+config_removed=true
+work_path_deleted=false
+retained_corpus_untouched=true
+scope=isolated_p0_1_folder_retirement_only
+```
 
 ## Replacement cell `p0-1-10k-files-macos-to-windows-r2`
 
@@ -219,7 +230,7 @@ p0-1-10k-files-macos-to-windows-r2
 
 Same logical matrix cell (10k files, macOS → Windows). The consumed ID must not be reused.
 
-### Windows r2 destination preparation - VERIFIED
+### Windows r2 destination preparation — VERIFIED
 
 ```text
 home=C:\Users\Tarik\AppData\Local\Cryptex-Dev\syncthing-p0-1
@@ -237,7 +248,34 @@ peer_runtime_connected=true
 scope=isolated_p0_1_initial_sync_preparation_only
 ```
 
-This verifies the Windows r2 destination is empty, `receiveonly`, unpaused, watcher-disabled, and prepared while the intended macOS peer is connected. macOS r2 source preparation and the timed initial sync are **not** started from Windows and remain outstanding.
+### macOS r2 source preparation — VERIFIED
+
+```text
+folder_id=p0-1-10k-files-macos-to-windows-r2
+role=source
+folder_type=sendonly
+fs_watcher_enabled=false
+pre_config_files=10000
+pre_config_bytes=10360000
+paused=true
+peer_runtime_connected=true
+scope=isolated_p0_1_initial_sync_preparation_only
+```
+
+### Timed measurement attempt (r2) — FAILED / INVALID
+
+The timed runner was executed once on macOS at `2026-09-30T05:15:03Z` and failed closed before unpausing:
+
+```text
+EXIT_CODE=2
+stderr=error: GET .../rest/db/completion?... failed: HTTP 404 folder is paused
+```
+
+Root cause: the pre-unpause consumed-state preflight called Syncthing completion while the source was correctly paused; Syncthing v2.1.5 returns HTTP 404 `folder is paused` for that call. The source remained paused. Per stop protocol, folder ID `p0-1-10k-files-macos-to-windows-r2` must not be reused. Evidence:
+
+- `evidence/m0/p0-1/syncthing-10k-files-macos-to-windows-r2-TIMED-FAILED.md`
+
+A later unique cell (r3) is required after the runner treats paused-folder completion 404 as non-consumed during preflight.
 
 ## Boundary
 
