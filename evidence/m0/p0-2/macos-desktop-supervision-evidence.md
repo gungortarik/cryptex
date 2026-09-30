@@ -57,12 +57,11 @@ Interactive Tauri window-close was **not** executed in this slice to avoid GUI s
 - Fast restart latency in-process does not prove package-update atomicity
 - Orphaning vs stopping child on app quit remains an OPEN product decision for Mode B
 
-## Limitations
+## Interactive GUI window-close
 
-- Process-level window-close ≠ interactive Tauri close
-- No tray icon / menu-bar product behavior
-- No Windows proof
-- No login/reboot proof
+See `macos-mode-b-gui-window-close.md`.
+
+CloseRequested hide-on-close with daemon survival is **VERIFIED**. Literal traffic-light click remains **NOT YET VERIFIED** while macOS Accessibility UI elements are disabled for the agent session.
 
 ## Decision note
 

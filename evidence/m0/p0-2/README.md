@@ -49,7 +49,8 @@ Comparison harness added:
 - measurement contract + KV capture
 - reversible macOS LaunchAgent test harness (Mode A)
 - DesktopSupervisor process harness (Mode B)
-- temporary Desktop hide-on-close developer hooks (GUI physical close still pending)
+- temporary Desktop hide-on-close developer hooks
+- interactive Mode B GUI CloseRequested proof (`macos-mode-b-gui-window-close.md`)
 
 See:
 
@@ -57,3 +58,4 @@ See:
 - `macos-supervision-comparison-protocol.md`
 - `macos-native-supervision-evidence.md`
 - `macos-desktop-supervision-evidence.md`
+- `macos-mode-b-gui-window-close.md`
