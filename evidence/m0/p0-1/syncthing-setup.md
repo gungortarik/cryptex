@@ -75,6 +75,16 @@ The isolated P0-1 config is separately located at:
 
 The observed running process has no P0-1 `--home` argument, while the benchmark identity/config is under the separate Cryptex-Dev home. This supports treating the running application process as the existing/default Syncthing profile, not the P0-1 benchmark instance. The existing process has not been stopped or modified.
 
+On macOS, the following candidate benchmark listener ports were checked with `lsof` and produced no listening process:
+
+```text
+gui_candidate=127.0.0.1:18384
+sync_candidate=tcp://0.0.0.0:22001
+observed_status=free_at_check_time
+```
+
+These ports are only candidates until the Windows check also passes and the isolated benchmark config is explicitly updated.
+
 No sync transport run has started from this setup evidence.
 
 ## Version note
@@ -85,6 +95,7 @@ The macOS benchmark binary is Syncthing v2.1.2 and the Windows benchmark binary 
 
 Both isolated device identities are now verified. Next steps:
 
+- verify the same candidate GUI/sync ports are free on Windows
 - configure the isolated benchmark instances so their GUI/sync listeners do not collide with the existing macOS Syncthing application profile
 - leave the existing/default macOS Syncthing profile untouched
 - pair only the benchmark devices
