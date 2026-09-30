@@ -60,7 +60,20 @@ if [[ ! -x "$bench" ]]; then
   exit 2
 fi
 
-syncthing_version="$(syncthing --version 2>/dev/null || printf 'unavailable')"
+syncthing_binary=""
+if command -v syncthing >/dev/null 2>&1; then
+  syncthing_binary="$(command -v syncthing)"
+elif [[ -x "/Applications/Syncthing.app/Contents/Resources/syncthing/syncthing" ]]; then
+  syncthing_binary="/Applications/Syncthing.app/Contents/Resources/syncthing/syncthing"
+elif [[ -x "$HOME/Applications/Syncthing.app/Contents/Resources/syncthing/syncthing" ]]; then
+  syncthing_binary="$HOME/Applications/Syncthing.app/Contents/Resources/syncthing/syncthing"
+fi
+
+if [[ -n "$syncthing_binary" ]]; then
+  syncthing_version="$($syncthing_binary --version 2>/dev/null || printf 'unavailable')"
+else
+  syncthing_version="unavailable"
+fi
 
 {
   echo "platform=macos"
@@ -74,6 +87,7 @@ syncthing_version="$(syncthing --version 2>/dev/null || printf 'unavailable')"
   echo "os_product_version=$(sw_vers -productVersion)"
   echo "os_build_version=$(sw_vers -buildVersion)"
   echo "arch=$(uname -m)"
+  echo "syncthing_binary=${syncthing_binary:-unavailable}"
   echo "syncthing_version=$syncthing_version"
   echo "run_root=$run_root"
 } > "$results_dir/metadata.txt"
