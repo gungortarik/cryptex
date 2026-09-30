@@ -51,7 +51,7 @@ The generated Windows device ID was observed in the `generate` output. The bench
 
 ## Pre-pairing safety check
 
-Both generated isolated configs contain the generated empty folder-template element (`id=""`, `label=""`, `path=""`). No Cryptex benchmark folder has been configured yet.
+Both generated isolated configs contain the generated empty folder-template element (`id=""`, `label=""`, `path=""`) inside the `<defaults>` section. This is a defaults template, not an active benchmark folder. No Cryptex benchmark folder has been configured yet.
 
 Windows process check showed no running `syncthing` process.
 
@@ -61,7 +61,19 @@ After a macOS restart, a separate Syncthing application process was observed run
 /Applications/Syncthing.app/Contents/Resources/syncthing/syncthing --no-browser --no-restart --logfile=default
 ```
 
-That observed process does not include the P0-1 `--home` argument, so it is not treated as the isolated benchmark instance. The isolated benchmark instance must not be started until this port/config collision risk is removed or explicitly isolated.
+The standard macOS Syncthing config also exists at:
+
+```text
+/Users/tarikgungor/Library/Application Support/Syncthing/config.xml
+```
+
+The isolated P0-1 config is separately located at:
+
+```text
+/Users/tarikgungor/Library/Application Support/Cryptex-Dev/syncthing-p0-1/config.xml
+```
+
+The observed running process has no P0-1 `--home` argument, while the benchmark identity/config is under the separate Cryptex-Dev home. This supports treating the running application process as the existing/default Syncthing profile, not the P0-1 benchmark instance. The existing process has not been stopped or modified.
 
 No sync transport run has started from this setup evidence.
 
@@ -73,7 +85,8 @@ The macOS benchmark binary is Syncthing v2.1.2 and the Windows benchmark binary 
 
 Both isolated device identities are now verified. Next steps:
 
-- stop or otherwise isolate the unrelated macOS Syncthing application process before launching the P0-1 instance
+- configure the isolated benchmark instances so their GUI/sync listeners do not collide with the existing macOS Syncthing application profile
+- leave the existing/default macOS Syncthing profile untouched
 - pair only the benchmark devices
 - use only synthetic benchmark folders under Cryptex-Dev
 - record initial scan/sync timing for files and segments
