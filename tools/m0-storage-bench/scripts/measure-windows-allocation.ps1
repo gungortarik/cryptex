@@ -6,7 +6,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-if (-not $IsWindows) {
+# $IsWindows exists in PowerShell Core, but not in Windows PowerShell 5.1.
+# Use the long-standing Windows_NT environment marker so this helper works
+# in both shells under StrictMode.
+if ($env:OS -ne "Windows_NT") {
     throw "measure-windows-allocation.ps1 must be run on Windows"
 }
 
