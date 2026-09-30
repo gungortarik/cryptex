@@ -117,6 +117,8 @@ Additional P0-1 evidence files:
 - `syncthing-10k-files-macos-to-windows-r3-incremental.md` — **valid** approved incremental sync on the r3 files cell
 - `syncthing-10k-segments-macos-to-windows.md` — **valid** 10k segments macOS→Windows initial sync timing
 - `syncthing-10k-segments-macos-to-windows-incremental.md` — **valid** approved incremental sync on the segments cell
+- `syncthing-10k-files-windows-to-macos.md` — **valid** 10k files Windows→macOS initial sync timing
+- `syncthing-10k-files-windows-to-macos-incremental.md` — **valid** approved incremental sync on the Windows→macOS files cell
 - `purge-complexity.md` — physical purge-complexity probes for both candidates, with macOS and Windows sections separated
 - `corruption-blast-radius.md` — physical corruption blast-radius probes for both candidates, with macOS and Windows sections separated
 - `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md` — incremental workload approved for measurement only (not executed; does not accept ADR-0013)
