@@ -49,6 +49,22 @@ syncthing device-id --home="$STHOME"
 
 The generated Windows device ID was observed in the `generate` output. The benchmark identity is isolated under the Cryptex-Dev runtime root. No global Syncthing profile is used by this setup.
 
+## Pre-pairing safety check
+
+Both generated isolated configs contain the generated empty folder-template element (`id=""`, `label=""`, `path=""`). No Cryptex benchmark folder has been configured yet.
+
+Windows process check showed no running `syncthing` process.
+
+After a macOS restart, a separate Syncthing application process was observed running as:
+
+```text
+/Applications/Syncthing.app/Contents/Resources/syncthing/syncthing --no-browser --no-restart --logfile=default
+```
+
+That observed process does not include the P0-1 `--home` argument, so it is not treated as the isolated benchmark instance. The isolated benchmark instance must not be started until this port/config collision risk is removed or explicitly isolated.
+
+No sync transport run has started from this setup evidence.
+
 ## Version note
 
 The macOS benchmark binary is Syncthing v2.1.2 and the Windows benchmark binary is Syncthing v2.1.5. P0-1 preserves the exact versions used as evidence. Version pinning and managed product packaging are P0-4 concerns and are not inferred from this setup record.
@@ -57,6 +73,7 @@ The macOS benchmark binary is Syncthing v2.1.2 and the Windows benchmark binary 
 
 Both isolated device identities are now verified. Next steps:
 
+- stop or otherwise isolate the unrelated macOS Syncthing application process before launching the P0-1 instance
 - pair only the benchmark devices
 - use only synthetic benchmark folders under Cryptex-Dev
 - record initial scan/sync timing for files and segments
