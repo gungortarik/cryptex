@@ -45,3 +45,6 @@ coverage/
 /recovery-kit/
 /recovery-kits/
 /diagnostic-bundles/
+
+# Tauri generated schemas
+apps/desktop/src-tauri/gen/
