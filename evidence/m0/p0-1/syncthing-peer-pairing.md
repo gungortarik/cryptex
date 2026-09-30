@@ -53,23 +53,34 @@ This verifies the Windows isolated benchmark profile now knows only the intended
 
 ## macOS-side peer configuration
 
-Pending physical execution and verification.
+The same guarded repository helper was then run on the physical macOS benchmark machine.
 
-Expected peer:
+Observed verified output:
 
 ```text
+home=/Users/tarikgungor/Library/Application Support/Cryptex-Dev/syncthing-p0-1
+local_device_id=MHS264T-3YLCW4F-GL35TOB-DXZ6SUX-4MVY7YK-AZZFNZI-XFOXHN3-DYMMEQM
 peer_id=G3IQV46-V6WYJ2U-WDLQQOC-FXMJBGA-QRIXPNV-GVARBCC-IHYTOBI-BOIG6QA
 peer_name=P0-1-Windows
 peer_address=tcp://192.168.50.137:22001
+peer_action=added
 peer_address_mode=explicit_direct_tcp_only
 auto_accept_folders=false
 introducer=false
 paused=false
 active_folder_count=0
+restart_required=false
+scope=isolated_p0_1_peer_pairing_only
 ```
+
+This verifies the macOS isolated benchmark profile now knows only the intended Windows benchmark peer at the explicit direct TCP address. Both sides are configured symmetrically, no benchmark folders exist, and no storage sync run has started.
+
+## Pairing checkpoint
+
+Pair configuration is now complete on both physical benchmark machines. This checkpoint verifies configuration only; runtime connection establishment still requires explicit REST verification before any benchmark folder is created or shared.
 
 ## Next evidence
 
-- add the Windows benchmark peer to the macOS isolated benchmark profile with the same guarded helper
-- verify both Syncthing instances report the intended peer connection established over the explicit direct TCP path
+- verify both Syncthing instances report the intended peer connection as established at runtime
+- verify the runtime connection type is TCP and the observed remote address belongs to the selected peer LAN address
 - do not create or share any benchmark folder until peer connection verification is complete
