@@ -31,11 +31,13 @@ $RequiredOptions = @{
     localAnnounceEnabled  = 'false'
     relaysEnabled         = 'false'
     natEnabled            = 'false'
+    autoUpgradeIntervalH  = '0'
+    releasesURL           = ''
 }
 foreach ($Name in $RequiredOptions.Keys) {
     $Node = $Config.configuration.options.SelectSingleNode($Name)
     if ($null -eq $Node) {
-        throw "required isolated transport option missing: $Name"
+        throw "required isolated option missing: $Name"
     }
     $Value = [string]$Node.InnerText
     if ($Value -ne $RequiredOptions[$Name]) {
@@ -64,11 +66,14 @@ Write-Output 'global_announce=false'
 Write-Output 'local_announce=false'
 Write-Output 'relays=false'
 Write-Output 'nat=false'
+Write-Output 'auto_upgrade_interval_h=0'
+Write-Output 'releases_url=blank'
+Write-Output 'launch_no_upgrade=true'
 Write-Output 'transport_scope=direct_tcp_only'
 Write-Output 'active_folder_count=0'
 Write-Output 'starting_foreground=true'
 
-& syncthing serve "--home=$STHOME" --no-browser --no-restart
+& syncthing serve "--home=$STHOME" --no-browser --no-restart --no-upgrade
 if ($LASTEXITCODE -ne 0) {
     throw "syncthing exited with code $LASTEXITCODE"
 }
