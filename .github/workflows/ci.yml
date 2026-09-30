@@ -80,6 +80,9 @@ jobs:
       - name: Test M0 storage benchmark harness
         run: cargo test --locked -p m0-storage-bench
 
+      - name: Test M0 cryptexd lifecycle harness
+        run: cargo test --locked -p cryptexd
+
       - name: Run cryptexd foundation binary
         run: cargo run --locked -p cryptexd --quiet
 
