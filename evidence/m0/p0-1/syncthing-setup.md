@@ -91,14 +91,27 @@ sync_candidate=tcp://0.0.0.0:22001
 observed_status=free_at_check_time
 ```
 
-The Windows isolated config was then inspected read-only and currently contains:
+The candidate ports are therefore free on both physical benchmark machines at the observed check times. They are not yet configured; the isolated benchmark configs must be explicitly updated before either P0-1 instance is launched.
+
+## Generated listener defaults before benchmark reconfiguration
+
+Windows isolated profile:
 
 ```text
 gui_address=127.0.0.1:8384
-sync_listen_address=default
+listen_address=default
 ```
 
-These are generated defaults and have not yet been changed. The candidate benchmark GUI/sync ports are therefore free on both physical benchmark machines at the observed check times, but neither isolated benchmark config is yet fully pinned to those candidate values.
+macOS isolated profile:
+
+```text
+gui_address=127.0.0.1:52743
+listen_address=tcp://0.0.0.0:52746
+listen_address=dynamic+https://relays.syncthing.net/endpoint
+listen_address=quic://0.0.0.0:52746
+```
+
+These are generated/default isolated-profile values only. They are evidence of the pre-benchmark state and are not accepted benchmark listener settings.
 
 No sync transport run has started from this setup evidence.
 
@@ -110,7 +123,6 @@ The macOS benchmark binary is Syncthing v2.1.2 and the Windows benchmark binary 
 
 Both isolated device identities and candidate listener ports are now verified. Next steps:
 
-- inspect the current macOS isolated GUI/sync listener values
 - configure both isolated benchmark instances to use GUI `127.0.0.1:18384` and sync listener `tcp://0.0.0.0:22001`
 - leave the existing/default macOS Syncthing profile untouched
 - pair only the benchmark devices
