@@ -110,9 +110,10 @@ Local filesystem scale matrix (macOS + Windows, 10k/100k/500k) is recorded in th
 Additional P0-1 evidence files:
 
 - `syncthing-setup.md`, `syncthing-direct-tcp-isolation.md`, `syncthing-direct-tcp-reachability.md`, `syncthing-peer-pairing.md`
-- `syncthing-initial-sync-protocol.md`
-- `syncthing-10k-files-macos-to-windows-TIMED-FAILED.md` — first timed initial-sync attempt failed because preparation was consumed
-- `purge-complexity.md` — physical purge-complexity probes for both candidates
-- `corruption-blast-radius.md` — physical corruption blast-radius probes for both candidates
-- `syncthing-incremental-workload-PROPOSED.md` — proposed incremental workload (not yet accepted/executed)
+- `syncthing-initial-sync-protocol.md` — includes consumed-cell Windows retirement and r2 Windows destination preparation
+- `syncthing-10k-files-macos-to-windows-TIMED-FAILED.md` — first timed initial-sync attempt failed because preparation was consumed; do not reuse that folder ID
+- `purge-complexity.md` — physical purge-complexity probes for both candidates, with macOS and Windows sections separated
+- `corruption-blast-radius.md` — physical corruption blast-radius probes for both candidates, with macOS and Windows sections separated
+- `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md` — incremental workload approved for measurement only (not executed; does not accept ADR-0013)
+- `syncthing-incremental-workload-PROPOSED.md` — pointer to the approved measurement protocol
 
