@@ -1,6 +1,6 @@
 # M0 P0-1 — Syncthing Peer Pairing Evidence
 
-**Status:** IN PROGRESS  
+**Status:** VERIFIED FOR PAIRING/TRANSPORT CHECKPOINT  
 **Scope:** P0-1 isolated benchmark peer pairing only  
 **Architecture effect:** none; this does not select a production storage layout or complete P0-1/P0-4.
 
@@ -75,10 +75,6 @@ scope=isolated_p0_1_peer_pairing_only
 
 This verifies the macOS isolated benchmark profile now knows only the intended Windows benchmark peer at the explicit direct TCP address. Both sides are configured symmetrically, no benchmark folders exist, and no storage sync run has started.
 
-## Pairing checkpoint
-
-Pair configuration is now complete on both physical benchmark machines. Runtime connection establishment still requires explicit verification on both sides before any benchmark folder is created or shared.
-
 ## macOS runtime peer connection verification
 
 The repository verifier was run against the live macOS isolated benchmark instance:
@@ -109,10 +105,44 @@ This physically verifies the macOS benchmark peer connection is established to t
 
 ## Windows runtime peer connection verification
 
-Pending physical execution and verification.
+The same repository verifier was run against the live Windows isolated benchmark instance.
+
+Observed verified output:
+
+```text
+home=C:\Users\Tarik\AppData\Local\Cryptex-Dev\syncthing-p0-1
+local_device_id=G3IQV46-V6WYJ2U-WDLQQOC-FXMJBGA-QRIXPNV-GVARBCC-IHYTOBI-BOIG6QA
+peer_id=MHS264T-3YLCW4F-GL35TOB-DXZ6SUX-4MVY7YK-AZZFNZI-XFOXHN3-DYMMEQM
+configured_peer_address=tcp://192.168.50.104:22001
+peer_address_mode=explicit_direct_tcp_only
+runtime_connected=true
+runtime_type=tcp-server
+runtime_address=192.168.50.104:22001
+runtime_client_version=v2.1.5
+runtime_peer_ip_matches=true
+runtime_is_local=true
+active_folder_count=0
+scope=isolated_p0_1_peer_connection_verification_only
+```
+
+This physically verifies the Windows benchmark peer connection is established to the intended macOS benchmark device over the explicit direct TCP LAN path. No benchmark folder exists and no storage sync run has started.
+
+## Pairing/transport checkpoint
+
+The isolated P0-1 transport and peer-pairing checkpoint is now verified on both physical benchmark machines:
+
+- both peers are explicitly configured by device ID
+- both peer addresses use the selected RFC1918 LAN path on TCP port 22001
+- runtime connection is established in both directions
+- both runtimes report Syncthing v2.1.5 for the peer connection
+- discovery, relay, NAT, and automatic-upgrade paths remain disabled for the isolated benchmark profiles
+- active benchmark folder count remains zero on both sides
+
+This checkpoint does **not** complete P0-1. It only establishes the controlled transport required before storage sync measurements.
 
 ## Next evidence
 
-- verify the Windows isolated Syncthing instance reports the intended macOS peer connection as established at runtime
-- verify the Windows runtime connection type is TCP and the observed remote address belongs to the selected macOS LAN address
-- do not create or share any benchmark folder until the Windows-side runtime connection verification also passes
+- define and create the first guarded benchmark folder pair for the retained 10k datasets
+- measure initial Syncthing scan/sync behavior for the file-per-event and sealed-segment candidates without modifying the source benchmark datasets destructively
+- then measure incremental sync behavior under the same controlled direct-TCP transport
+- preserve raw outputs and platform metadata for later P0-1 evidence review and ADR-0013
