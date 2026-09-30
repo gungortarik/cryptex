@@ -109,11 +109,15 @@ const transportOptions = [
   ["relaysEnabled", "false"],
   ["natEnabled", "false"],
 ];
-const previousTransportOptions = new Map();
-for (const [name, value] of transportOptions) {
+const safetyOptions = [
+  ["autoUpgradeIntervalH", "0"],
+  ["releasesURL", ""],
+];
+const previousOptions = new Map();
+for (const [name, value] of [...transportOptions, ...safetyOptions]) {
   const result = setSingleOption(optionsBody, name, value, lineEnding);
   optionsBody = result.body;
-  previousTransportOptions.set(name, result.previous);
+  previousOptions.set(name, result.previous);
 }
 
 updated = updated.replace(
@@ -143,11 +147,12 @@ console.log(`previous_gui=${previousGui}`);
 console.log("gui=127.0.0.1:18384");
 console.log(`previous_listeners=${previousListeners.join(",") || "none"}`);
 console.log("listen_address=tcp://0.0.0.0:22001");
-for (const [name, value] of transportOptions) {
-  const previous = previousTransportOptions.get(name) ?? [];
+for (const [name, value] of [...transportOptions, ...safetyOptions]) {
+  const previous = previousOptions.get(name) ?? [];
   console.log(`previous_${name}=${previous.join(",") || "missing"}`);
   console.log(`${name}=${value}`);
 }
 console.log(`active_folder_count=${activeFolders.length}`);
 console.log("transport_scope=direct_tcp_only");
+console.log("upgrade_policy=disabled");
 console.log("scope=isolated_p0_1_syncthing_config_only");
