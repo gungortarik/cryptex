@@ -859,6 +859,37 @@ Evidence: `evidence/m0/p0-1/syncthing-100k-segments-windows-to-macos-incremental
 
 This verifies the incremental Syncthing transport cell only. It does not prove Cryptex replication semantics, does not complete P0-4, and does not select files vs segments. This working folder must not be reused as a fresh initial-sync cell. Do not retire it yet.
 
+## Cell `p0-1-500k-files-macos-to-windows` — FAILED / INVALID
+
+### Timed measurement attempt — FAILED / INVALID
+
+```text
+folder_id=p0-1-500k-files-macos-to-windows
+layout=files
+events=500000
+source_platform=macos
+destination_platform=windows
+syncthing_version=v2.1.5
+START_TIMESTAMP_UTC=2026-10-01T15:05:39Z
+COMPLETION_TIMESTAMP_UTC=(none)
+EXIT_CODE=(none)
+timed-initial-capture.txt=41 bytes
+timed-initial-stdout.txt=0 bytes
+timed-initial-stderr.txt=0 bytes
+```
+
+Forensic process check at `2026-10-01T19:26:20Z`: known PIDs `3464`/`3465` absent; `runner_processes=none`; `caffeinate_processes=none`.
+
+Power-event observation: macOS did not reboot; source machine experienced low-power sleep/hibernate during the timed window, breaking measurement continuity. Do not convert interrupted wall time into a benchmark result.
+
+Source containment: observed `paused=False` after interruption; manually set `paused=True` at `2026-10-01T19:10:42Z`; type remained `sendonly`; runtime path retained.
+
+Windows destination forensic snapshot at `2026-10-01T19:12:45Z`: `state=sync-preparing`, `localFiles/Bytes=161491/167304676`, `globalFiles/Bytes=500000/518000000`, `needFiles/Bytes=338509/350695324`, `physical_files/bytes=161560/167376160`, needs incomplete; DB vs physical counts differed.
+
+Folder ID must never be reused. Proposed replacement unique ID: `p0-1-500k-files-macos-to-windows-r2` (not started by this documentation update).
+
+Evidence: `evidence/m0/p0-1/syncthing-500k-files-macos-to-windows-TIMED-FAILED.md`
+
 ## Boundary
 
 A successful Syncthing transport measurement does not prove Cryptex replication semantics or complete P0-4. Production pairing/device trust remains governed by the appropriate later milestone and accepted architecture.

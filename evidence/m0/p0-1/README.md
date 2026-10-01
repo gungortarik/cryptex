@@ -131,6 +131,7 @@ Additional P0-1 evidence files:
 - `syncthing-100k-files-windows-to-macos-incremental.md` — **valid** approved incremental sync on the Windows→macOS 100k files cell
 - `syncthing-100k-segments-windows-to-macos.md` — **valid** 100k segments Windows→macOS initial sync timing; retain cell (do not retire yet)
 - `syncthing-100k-segments-windows-to-macos-incremental.md` — **valid** approved incremental sync on the Windows→macOS 100k segments cell
+- `syncthing-500k-files-macos-to-windows-TIMED-FAILED.md` — 500k files macOS→Windows timed initial sync interrupted by source low-power sleep/hibernate; FAILED/INVALID for timing; do not reuse that folder ID; replacement requires `p0-1-500k-files-macos-to-windows-r2`
 - `purge-complexity.md` — physical purge-complexity probes for both candidates, with macOS and Windows sections separated
 - `corruption-blast-radius.md` — physical corruption blast-radius probes for both candidates, with macOS and Windows sections separated
 - `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md` — incremental workload approved for measurement only (not executed; does not accept ADR-0013)
