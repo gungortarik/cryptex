@@ -700,6 +700,45 @@ Evidence: `evidence/m0/p0-1/syncthing-100k-segments-macos-to-windows-incremental
 
 This working folder must not be reused as a fresh initial-sync cell. Do not retire it yet.
 
+## Cell `p0-1-100k-files-windows-to-macos` — VERIFIED
+
+```text
+folder_id=p0-1-100k-files-windows-to-macos
+layout=files
+events=100000
+source_platform=windows
+destination_platform=macos
+syncthing_version=v2.1.5
+START_TIMESTAMP_UTC=2026-10-01T04:17:50Z
+started_at_utc=2026-10-01T04:17:50.927Z
+scan_completed_at_utc=2026-10-01T04:19:24.124Z
+completed_at_utc=2026-10-01T05:41:22.680Z
+COMPLETION_TIMESTAMP_UTC=2026-10-01T05:41:22Z
+EXIT_CODE=0
+initial_scan_ms=93197.326
+initial_sync_total_ms=5011750.868
+source_local_files=100000
+source_local_bytes=103600000
+source_global_files=100000
+source_global_bytes=103600000
+peer_completion=100
+peer_global_items=100001
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_global_files_verified=100000
+source_paused_after_completion=true
+transport_scope=explicit_direct_tcp_only
+```
+
+macOS destination physical post-check at `2026-10-01T10:11:54Z`: `state=idle`, `localFiles/Bytes=100000/103600000`, `globalFiles/Bytes=100000/103600000`, `physical_files/bytes=100000/103600000`, needs/errors all zero.
+
+Raw-capture note: original PowerShell stdout is UTF-16LE and was left unmodified; first `capture-syncthing-p0-1-raw-result.mjs` invocation failed on UTF-8 read; a separate BOM-less UTF-8 copy was used for successful capture. This does not invalidate the timed measurement. Tooling fix remains an OPEN P0-1 follow-up.
+
+Evidence: `evidence/m0/p0-1/syncthing-100k-files-windows-to-macos.md`
+
+Retain this working folder for the approved incremental measurement on the same cell. Do not retire/recreate/reuse it as a new initial cell. Incremental for this cell = NOT YET EXECUTED.
+
 ## Boundary
 
 A successful Syncthing transport measurement does not prove Cryptex replication semantics or complete P0-4. Production pairing/device trust remains governed by the appropriate later milestone and accepted architecture.
