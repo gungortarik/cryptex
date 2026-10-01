@@ -1,6 +1,6 @@
 # M0 P0-2 — Background Runtime / Atomic Update Lifecycle Evidence
 
-**Status:** IN PROGRESS  
+**Status:** IN PROGRESS (update/rollback synthetic proof VERIFIED; ADR still open)  
 **ADR-0012:** UNRESOLVED (do not accept yet)
 
 This directory records reproducible evidence for M0 P0-2 only. It does not
@@ -51,6 +51,7 @@ Comparison harness added:
 - DesktopSupervisor process harness (Mode B)
 - temporary Desktop hide-on-close developer hooks
 - interactive Mode B GUI CloseRequested proof (`macos-mode-b-gui-window-close.md`)
+- test-only staged binary update / failed update / rollback proof (`macos-update-rollback-evidence.md`)
 
 See:
 
@@ -59,3 +60,5 @@ See:
 - `macos-native-supervision-evidence.md`
 - `macos-desktop-supervision-evidence.md`
 - `macos-mode-b-gui-window-close.md`
+- `macos-update-rollback-protocol.md`
+- `macos-update-rollback-evidence.md`
