@@ -79,3 +79,8 @@ Source scan reached expected local counts, but peer synchronization had not reac
 ## Follow-up implication
 
 A replacement unique folder ID is required for any later 100k-files macOS→Windows initial timing attempt. Any such replacement should use an explicitly larger `--timeout-seconds` appropriate to observed 100k one-file-per-event LAN transfer rates; that is tooling/protocol adjustment for a **new** cell, not a retry of this one.
+
+Succession (documented later; not retries of this cell):
+
+- `p0-1-100k-files-macos-to-windows-r2` — INVALID (timed runner disappeared before completion)
+- `p0-1-100k-files-macos-to-windows-r3` — VERIFIED initial sync (`syncthing-100k-files-macos-to-windows-r3.md`)

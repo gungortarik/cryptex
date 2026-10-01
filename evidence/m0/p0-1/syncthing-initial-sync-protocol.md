@@ -531,6 +531,55 @@ Evidence: `evidence/m0/p0-1/syncthing-10k-segments-windows-to-macos-incremental.
 
 This Windows→macOS segments working folder must not be reused as a fresh initial-sync cell.
 
+## Cell `p0-1-100k-files-macos-to-windows` (and replacements)
+
+### Timed measurement attempt — FAILED / INVALID
+
+Default 7200s timeout expired at ~75% peer completion. Folder ID must not be reused.
+
+Evidence: `evidence/m0/p0-1/syncthing-100k-files-macos-to-windows-TIMED-FAILED.md`
+
+### Replacement cell `p0-1-100k-files-macos-to-windows-r2` — FAILED / INVALID
+
+Timed runner disappeared before completion while Syncthing itself continued transferring. No confirmed root cause is claimed for the runner disappearance. Folder ID must not be reused as a new initial-timed cell.
+
+Evidence: `evidence/m0/p0-1/syncthing-100k-files-macos-to-windows-r2-TIMED-FAILED.md`
+
+### Replacement cell `p0-1-100k-files-macos-to-windows-r3` — VERIFIED
+
+```text
+folder_id=p0-1-100k-files-macos-to-windows-r3
+layout=files
+events=100000
+source_platform=macos
+destination_platform=windows
+syncthing_version=v2.1.5
+START_TIMESTAMP_UTC=2026-10-01T02:11:43Z
+started_at_utc=2026-10-01T02:11:43.263Z
+scan_completed_at_utc=2026-10-01T02:12:15.634Z
+completed_at_utc=2026-10-01T02:53:21.928Z
+COMPLETION_TIMESTAMP_UTC=2026-10-01T02:53:21Z
+EXIT_CODE=0
+initial_scan_ms=32371.464
+initial_sync_total_ms=2498632.230
+source_local_files=100000
+source_local_bytes=103600000
+source_global_files=100000
+source_global_bytes=103600000
+peer_completion=100
+peer_global_items=100001
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_global_files_verified=100000
+source_paused_after_completion=true
+transport_scope=explicit_direct_tcp_only
+```
+
+Evidence: `evidence/m0/p0-1/syncthing-100k-files-macos-to-windows-r3.md`
+
+Retain this r3 working folder for the approved incremental measurement on the same cell. Do not retire it yet. Do not start incremental from this documentation update alone.
+
 ## Boundary
 
 A successful Syncthing transport measurement does not prove Cryptex replication semantics or complete P0-4. Production pairing/device trust remains governed by the appropriate later milestone and accepted architecture.
