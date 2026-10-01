@@ -737,7 +737,48 @@ Raw-capture note: original PowerShell stdout is UTF-16LE and was left unmodified
 
 Evidence: `evidence/m0/p0-1/syncthing-100k-files-windows-to-macos.md`
 
-Retain this working folder for the approved incremental measurement on the same cell. Do not retire/recreate/reuse it as a new initial cell. Incremental for this cell = NOT YET EXECUTED.
+### Incremental measurement (100k files Windows→macOS) — VERIFIED
+
+```text
+folder_id=p0-1-100k-files-windows-to-macos
+layout=files
+baseline_events=100000
+incremental_events=100
+payload_bytes=1024
+source_platform=windows
+destination_platform=macos
+syncthing_version=v2.1.5
+INCREMENTAL_START_UTC=2026-10-01T10:30:41Z
+INCREMENTAL_END_UTC=2026-10-01T10:31:23Z
+EXIT_CODE=0
+append_setup_ms=10764.116
+started_at_utc=2026-10-01T10:31:02.485Z
+scan_completed_at_utc=2026-10-01T10:31:23.538Z
+completed_at_utc=2026-10-01T10:31:23.837Z
+incremental_scan_ms=21053.008
+incremental_sync_total_ms=21351.494
+incremental_logical_bytes=103600
+source_local_files=100100
+source_local_bytes=103703600
+source_global_files=100100
+source_global_bytes=103703600
+peer_completion=100
+peer_global_items=100101
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_global_files_verified=100100
+source_paused_after_completion=true
+transport_scope=explicit_direct_tcp_only
+```
+
+`append_setup_ms` is outside the timed incremental sync window and must not be combined with `incremental_sync_total_ms`. Files physical object count was physically verified as 100000 → 100100 (+100 events = +103600 logical bytes).
+
+macOS destination physical post-check at `2026-10-01T10:32:33Z`: `state=idle`, `localFiles/Bytes=100100/103703600`, `globalFiles/Bytes=100100/103703600`, `physical_files/bytes=100100/103703600`, needs/errors all zero.
+
+Evidence: `evidence/m0/p0-1/syncthing-100k-files-windows-to-macos-incremental.md`
+
+This working folder must not be reused as a fresh initial-sync cell. Do not retire it yet.
 
 ## Boundary
 
