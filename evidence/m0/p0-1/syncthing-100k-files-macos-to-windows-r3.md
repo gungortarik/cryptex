@@ -80,9 +80,13 @@ Runtime raw captures (outside repository):
 - transport remained explicit direct TCP only
 - working tree remains under guarded `syncthing-p0-1-runs` root
 
-## Retention for incremental measurement
+## Retention
 
-This r3 cell is the valid initial-sync base for the approved incremental measurement on the same logical matrix point. Do **not** retire or recreate this folder ID until that incremental run is recorded. Do not treat this file as incremental evidence.
+Approved incremental measurement for this same cell is recorded separately in:
+
+- `evidence/m0/p0-1/syncthing-100k-files-macos-to-windows-r3-incremental.md`
+
+Do **not** retire or recreate this folder ID yet. Do not treat this file as incremental evidence.
 
 ## Boundary
 

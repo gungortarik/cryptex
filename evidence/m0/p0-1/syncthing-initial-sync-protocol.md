@@ -578,7 +578,48 @@ transport_scope=explicit_direct_tcp_only
 
 Evidence: `evidence/m0/p0-1/syncthing-100k-files-macos-to-windows-r3.md`
 
-Retain this r3 working folder for the approved incremental measurement on the same cell. Do not retire it yet. Do not start incremental from this documentation update alone.
+### Incremental measurement (r3 100k files) — VERIFIED
+
+```text
+folder_id=p0-1-100k-files-macos-to-windows-r3
+layout=files
+baseline_events=100000
+incremental_events=100
+payload_bytes=1024
+source_platform=macos
+destination_platform=windows
+syncthing_version=v2.1.5
+INCREMENTAL_START_UTC=2026-10-01T03:06:11Z
+INCREMENTAL_END_UTC=2026-10-01T03:06:38Z
+EXIT_CODE=0
+append_setup_ms=10012.087
+started_at_utc=2026-10-01T03:06:32.863Z
+scan_completed_at_utc=2026-10-01T03:06:37.959Z
+completed_at_utc=2026-10-01T03:06:38.878Z
+incremental_scan_ms=5096.537
+incremental_sync_total_ms=6007.964
+incremental_logical_bytes=103600
+source_local_files=100100
+source_local_bytes=103703600
+source_global_files=100100
+source_global_bytes=103703600
+peer_completion=100
+peer_global_items=100101
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_global_files_verified=100100
+source_paused_after_completion=true
+transport_scope=explicit_direct_tcp_only
+```
+
+`append_setup_ms` is outside the timed incremental sync window and must not be combined with `incremental_sync_total_ms`.
+
+Windows destination physical post-check at `2026-10-01T03:08:34Z`: `state=idle`, `local_files/bytes=100100/103703600`, `global_files/bytes=100100/103703600`, needs/errors all zero.
+
+Evidence: `evidence/m0/p0-1/syncthing-100k-files-macos-to-windows-r3-incremental.md`
+
+This r3 working folder must not be reused as a fresh initial-sync cell. Do not retire it yet.
 
 ## Boundary
 
