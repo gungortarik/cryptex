@@ -125,6 +125,7 @@ Additional P0-1 evidence files:
 - `syncthing-100k-files-macos-to-windows-r2-TIMED-FAILED.md` — r2 timed runner disappeared before completion while Syncthing continued transferring; INVALID for timing; do not reuse r2; no confirmed root cause claimed
 - `syncthing-100k-files-macos-to-windows-r3.md` — **valid** 100k files macOS→Windows initial sync timing; retain cell (do not retire yet)
 - `syncthing-100k-files-macos-to-windows-r3-incremental.md` — **valid** approved incremental sync on the r3 100k files cell
+- `syncthing-100k-segments-macos-to-windows.md` — **valid** 100k segments macOS→Windows initial sync timing; retain cell for approved incremental measurement (do not retire yet)
 - `purge-complexity.md` — physical purge-complexity probes for both candidates, with macOS and Windows sections separated
 - `corruption-blast-radius.md` — physical corruption blast-radius probes for both candidates, with macOS and Windows sections separated
 - `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md` — incremental workload approved for measurement only (not executed; does not accept ADR-0013)

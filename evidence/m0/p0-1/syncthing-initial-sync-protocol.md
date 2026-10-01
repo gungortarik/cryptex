@@ -621,6 +621,43 @@ Evidence: `evidence/m0/p0-1/syncthing-100k-files-macos-to-windows-r3-incremental
 
 This r3 working folder must not be reused as a fresh initial-sync cell. Do not retire it yet.
 
+## Cell `p0-1-100k-segments-macos-to-windows` — VERIFIED
+
+```text
+folder_id=p0-1-100k-segments-macos-to-windows
+layout=segments
+events=100000
+source_platform=macos
+destination_platform=windows
+syncthing_version=v2.1.5
+START_TIMESTAMP_UTC=2026-10-01T03:20:48Z
+started_at_utc=2026-10-01T03:20:49.173Z
+scan_completed_at_utc=2026-10-01T03:20:49.453Z
+completed_at_utc=2026-10-01T03:21:05.533Z
+COMPLETION_TIMESTAMP_UTC=2026-10-01T03:21:05Z
+EXIT_CODE=0
+initial_scan_ms=280.887
+initial_sync_total_ms=16354.909
+source_local_files=100
+source_local_bytes=103600000
+source_global_files=100
+source_global_bytes=103600000
+peer_completion=100
+peer_global_items=101
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_global_files_verified=100
+source_paused_after_completion=true
+transport_scope=explicit_direct_tcp_only
+```
+
+Windows destination physical post-check at `2026-10-01T03:45:55Z`: `state=idle`, `local_files/bytes=100/103600000`, `global_files/bytes=100/103600000`, needs/errors all zero.
+
+Evidence: `evidence/m0/p0-1/syncthing-100k-segments-macos-to-windows.md`
+
+Retain this working folder for the approved incremental measurement on the same cell. Do not retire it yet. Do not start incremental from this documentation update alone. Incremental for this cell = NOT YET EXECUTED.
+
 ## Boundary
 
 A successful Syncthing transport measurement does not prove Cryptex replication semantics or complete P0-4. Production pairing/device trust remains governed by the appropriate later milestone and accepted architecture.
