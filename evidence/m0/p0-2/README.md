@@ -1,6 +1,6 @@
 # M0 P0-2 — Background Runtime / Atomic Update Lifecycle Evidence
 
-**Status:** IN PROGRESS (update/rollback synthetic proof VERIFIED; ADR still open)  
+**Status:** IN PROGRESS  
 **ADR-0012:** UNRESOLVED (do not accept yet)
 
 This directory records reproducible evidence for M0 P0-2 only. It does not
@@ -41,17 +41,18 @@ Implemented and test-backed in `services/cryptexd`:
 - structured lifecycle status output
 - crash/restart harness commands
 - protocol-compat + synthetic canonical-marker safety fixtures
+- test-only binary stage/activate/rollback harness (`lifecycle update-proof`)
 - platform registration adapters left as `not_configured`
 
 Comparison harness added:
 
 - `tools/m0-lifecycle-compare` Mode A/B runners
+- `run-update-rollback` synthetic update/rollback runner
 - measurement contract + KV capture
 - reversible macOS LaunchAgent test harness (Mode A)
 - DesktopSupervisor process harness (Mode B)
 - temporary Desktop hide-on-close developer hooks
 - interactive Mode B GUI CloseRequested proof (`macos-mode-b-gui-window-close.md`)
-- test-only staged binary update / failed update / rollback proof (`macos-update-rollback-evidence.md`)
 
 See:
 
