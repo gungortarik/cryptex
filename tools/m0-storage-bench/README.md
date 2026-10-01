@@ -117,7 +117,7 @@ Relevant helpers:
 - `prepare-syncthing-p0-1-initial-sync.mjs`
 - `run-syncthing-p0-1-initial-sync.mjs`
 - `run-syncthing-p0-1-incremental-sync.mjs`
-- `capture-syncthing-p0-1-raw-result.mjs`
+- `capture-syncthing-p0-1-raw-result.mjs` — writes a guarded runtime capture under `syncthing-p0-1-runs/<folder-id>/`; `--raw-file` accepts UTF-8 and BOM-marked UTF-16LE (`FF FE`) only
 - `retire-syncthing-p0-1-folder.mjs`
 - `verify-retained-corpus.mjs`
 - `plan-syncthing-p0-1-matrix.mjs`

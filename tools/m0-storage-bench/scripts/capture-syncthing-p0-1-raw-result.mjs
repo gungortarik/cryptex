@@ -3,10 +3,15 @@
 /**
  * Capture raw timed-runner stdout into a Cryptex-Dev runtime evidence file.
  * Refuses repository destinations and non-run roots.
+ *
+ * `--raw-file` decoding:
+ * - BOM `FF FE` => UTF-16LE (PowerShell redirected stdout)
+ * - otherwise => UTF-8 (existing behavior)
  */
 
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 function fail(message) {
   throw new Error(message);
@@ -69,6 +74,37 @@ function platformRunsRoot() {
   fail(`unsupported platform: ${process.platform}`);
 }
 
+/** Decode a --raw-file buffer using explicit BOM detection only. */
+export function decodeRawFileBuffer(buffer) {
+  if (
+    Buffer.isBuffer(buffer) &&
+    buffer.length >= 2 &&
+    buffer[0] === 0xff &&
+    buffer[1] === 0xfe
+  ) {
+    return buffer.subarray(2).toString("utf16le");
+  }
+  return Buffer.from(buffer).toString("utf8");
+}
+
+/** Shared marker / folder-id guards for timed initial-sync captures. */
+export function validateTimedRawBody(body, folderId) {
+  if (!body.includes("scope=isolated_p0_1_initial_syncthing_scan_sync_measurement")) {
+    fail("raw result does not look like a timed initial-sync measurement output");
+  }
+  if (!body.includes(`folder_id=${folderId}`)) {
+    fail("raw result folder_id does not match requested folder-id");
+  }
+}
+
+function readRawBody(args) {
+  if (args.rawFile) {
+    const buffer = fs.readFileSync(path.resolve(args.rawFile));
+    return decodeRawFileBuffer(buffer);
+  }
+  return args.rawText;
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const dir = path.join(platformRunsRoot(), args.folderId);
@@ -77,22 +113,25 @@ function main() {
   const stamp = new Date().toISOString().replaceAll(":", "").replaceAll(".", "");
   const outPath = path.join(dir, `timed-result-${stamp}.txt`);
   if (fs.existsSync(outPath)) fail(`refusing to overwrite existing capture: ${outPath}`);
-  const body = args.rawFile ? fs.readFileSync(path.resolve(args.rawFile), "utf8") : args.rawText;
-  if (!body.includes("scope=isolated_p0_1_initial_syncthing_scan_sync_measurement")) {
-    fail("raw result does not look like a timed initial-sync measurement output");
-  }
-  if (!body.includes(`folder_id=${args.folderId}`)) {
-    fail("raw result folder_id does not match requested folder-id");
-  }
+  const body = readRawBody(args);
+  validateTimedRawBody(body, args.folderId);
   fs.writeFileSync(outPath, body.endsWith("\n") ? body : `${body}\n`, { flag: "wx" });
   console.log(`folder_id=${args.folderId}`);
   console.log(`raw_capture=${outPath}`);
   console.log("scope=isolated_p0_1_raw_result_capture_only");
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
-  process.exitCode = 2;
+function isDirectRun() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return pathToFileURL(path.resolve(entry)).href === import.meta.url;
+}
+
+if (isDirectRun()) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 2;
+  }
 }

@@ -733,7 +733,7 @@ transport_scope=explicit_direct_tcp_only
 
 macOS destination physical post-check at `2026-10-01T10:11:54Z`: `state=idle`, `localFiles/Bytes=100000/103600000`, `globalFiles/Bytes=100000/103600000`, `physical_files/bytes=100000/103600000`, needs/errors all zero.
 
-Raw-capture note: original PowerShell stdout is UTF-16LE and was left unmodified; first `capture-syncthing-p0-1-raw-result.mjs` invocation failed on UTF-8 read; a separate BOM-less UTF-8 copy was used for successful capture. This does not invalidate the timed measurement. Tooling fix remains an OPEN P0-1 follow-up.
+Raw-capture note: original PowerShell stdout is UTF-16LE and was left unmodified; first `capture-syncthing-p0-1-raw-result.mjs` invocation failed on UTF-8 read; a separate BOM-less UTF-8 copy was used for successful capture. This does not invalidate the timed measurement. That encoding mismatch was an OPEN P0-1 tooling follow-up at capture time and was subsequently fixed so `--raw-file` accepts UTF-8 and BOM-marked UTF-16LE (`FF FE`).
 
 Evidence: `evidence/m0/p0-1/syncthing-100k-files-windows-to-macos.md`
 

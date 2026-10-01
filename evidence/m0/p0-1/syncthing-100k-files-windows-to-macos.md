@@ -78,7 +78,8 @@ C:\Users\Tarik\AppData\Local\Cryptex-Dev\syncthing-p0-1-runs\p0-1-100k-files-win
 - Both required markers were verified `True` before the successful capture into `timed-result-2026-10-01T101735124Z.txt`.
 - This encoding/capture issue is **not** a benchmark failure and does **not** invalidate the timed measurement.
 - Verified scope of the capture problem: UTF-16LE stdout vs UTF-8 raw-file reader. No broader root cause is claimed.
-- Tooling fix is **not** applied in this evidence update; recorded as an OPEN P0-1 tooling follow-up.
+- Tooling fix is **not** applied in this evidence update; recorded as an OPEN P0-1 tooling follow-up at the time of measurement.
+- Later follow-up: `capture-syncthing-p0-1-raw-result.mjs` was updated to accept BOM-marked UTF-16LE (`FF FE`) in addition to UTF-8. The historical first-capture failure above remains accurate for the measurement window and is not rewritten.
 
 ## macOS destination physical post-check
 
