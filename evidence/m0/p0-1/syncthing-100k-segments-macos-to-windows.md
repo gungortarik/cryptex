@@ -87,9 +87,13 @@ pull_errors=0
 - transport remained explicit direct TCP only
 - Windows destination independently idle with matching local/global counts and zero needs/errors
 
-## Retention for incremental measurement
+## Retention
 
-This cell is the valid initial-sync base for the approved incremental measurement on the same logical matrix point. Do **not** retire or recreate this folder ID until that incremental run is recorded. Do not start incremental from this documentation update alone. Do not treat this file as incremental evidence.
+Approved incremental measurement for this same cell is recorded separately in:
+
+- `evidence/m0/p0-1/syncthing-100k-segments-macos-to-windows-incremental.md`
+
+Do **not** retire or recreate this folder ID yet. Do not treat this file as incremental evidence.
 
 ## Boundary
 

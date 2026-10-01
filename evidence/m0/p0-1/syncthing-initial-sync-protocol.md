@@ -656,7 +656,49 @@ Windows destination physical post-check at `2026-10-01T03:45:55Z`: `state=idle`,
 
 Evidence: `evidence/m0/p0-1/syncthing-100k-segments-macos-to-windows.md`
 
-Retain this working folder for the approved incremental measurement on the same cell. Do not retire it yet. Do not start incremental from this documentation update alone. Incremental for this cell = NOT YET EXECUTED.
+### Incremental measurement (100k segments) — VERIFIED
+
+```text
+folder_id=p0-1-100k-segments-macos-to-windows
+layout=segments
+baseline_events=100000
+incremental_events=100
+payload_bytes=1024
+segment_events=1000
+source_platform=macos
+destination_platform=windows
+syncthing_version=v2.1.5
+INCREMENTAL_START_UTC=2026-10-01T03:50:28Z
+INCREMENTAL_END_UTC=2026-10-01T03:50:31Z
+EXIT_CODE=0
+append_setup_ms=458.918
+started_at_utc=2026-10-01T03:50:29.770Z
+scan_completed_at_utc=2026-10-01T03:50:30.045Z
+completed_at_utc=2026-10-01T03:50:31.095Z
+incremental_scan_ms=275.727
+incremental_sync_total_ms=1317.548
+incremental_logical_bytes=103600
+source_local_files=101
+source_local_bytes=103703600
+source_global_files=101
+source_global_bytes=103703600
+peer_completion=100
+peer_global_items=102
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_global_files_verified=101
+source_paused_after_completion=true
+transport_scope=explicit_direct_tcp_only
+```
+
+`append_setup_ms` is outside the timed incremental sync window and must not be combined with `incremental_sync_total_ms`. Post-append physical object count was measured as 101 (not assumed).
+
+Windows destination physical post-check at `2026-10-01T03:52:05Z`: `state=idle`, `local_files/bytes=101/103703600`, `global_files/bytes=101/103703600`, needs/errors all zero.
+
+Evidence: `evidence/m0/p0-1/syncthing-100k-segments-macos-to-windows-incremental.md`
+
+This working folder must not be reused as a fresh initial-sync cell. Do not retire it yet.
 
 ## Boundary
 
