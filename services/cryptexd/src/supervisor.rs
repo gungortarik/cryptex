@@ -66,14 +66,26 @@ impl DesktopSupervisor {
             .stderr(Stdio::null())
             .spawn()?;
         self.child = Some(child);
-        let pid = self.wait_ready(Duration::from_secs(5))?;
-        self.write_state("active", Some(pid))?;
-        Ok(pid)
+        match self.wait_ready(Duration::from_secs(5)) {
+            Ok(pid) => {
+                self.write_state("active", Some(pid))?;
+                Ok(pid)
+            }
+            Err(error) => {
+                let _ = self.force_kill_daemon();
+                Err(error)
+            }
+        }
     }
 
-    pub fn wait_ready(&self, timeout: Duration) -> LifecycleResult<u32> {
+    pub fn wait_ready(&mut self, timeout: Duration) -> LifecycleResult<u32> {
         let started = Instant::now();
         while started.elapsed() < timeout {
+            if let Some(code) = self.poll_child_exit()? {
+                return Err(LifecycleError::Attention(format!(
+                    "daemon exited before ready (code {code})"
+                )));
+            }
             if self.ready_file.exists() {
                 let contents = fs::read_to_string(&self.ready_file)?;
                 if let Ok(pid) = contents.trim().parse::<u32>() {
@@ -101,10 +113,9 @@ impl DesktopSupervisor {
     }
 
     pub fn force_kill_daemon(&mut self) -> LifecycleResult<()> {
-        if let Some(child) = self.child.as_mut() {
-            child.kill()?;
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
             let _ = child.wait();
-            self.child = None;
             self.write_state("forced_kill", None)?;
         }
         Ok(())

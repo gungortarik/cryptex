@@ -17,6 +17,7 @@ use cryptexd::error::LifecycleError;
 use cryptexd::instance::observe_instance;
 use cryptexd::paths::{assert_outside_repository, default_p0_2_runtime_root, ensure_runtime_root};
 use cryptexd::supervisor::DesktopSupervisor;
+use cryptexd::update::run_update_rollback_proof;
 
 fn main() {
     match run(env::args().skip(1).collect()) {
@@ -50,6 +51,10 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
         "cleanup" => {
             let opts = parse_run_opts(&args[1..])?;
             cleanup(&opts)
+        }
+        "run-update-rollback" => {
+            let opts = parse_run_opts(&args[1..])?;
+            run_update_rollback(opts)
         }
         other => Err(LifecycleError::Usage(format!(
             "unknown command '{other}'\n{}",
@@ -523,6 +528,20 @@ fn run_mode_b(opts: RunOpts) -> Result<(), LifecycleError> {
     result
 }
 
+fn run_update_rollback(opts: RunOpts) -> Result<(), LifecycleError> {
+    let mode_root = opts.base_runtime.join("update-rollback");
+    ensure_runtime_root(&mode_root)?;
+    assert_outside_repository(&mode_root)?;
+    let report = run_update_rollback_proof(&mode_root, &opts.cryptexd_bin, &opts.experiment_id)?;
+    let out = mode_root.join("measurements");
+    fs::create_dir_all(&out)?;
+    let path = out.join(format!("{}.kv", opts.experiment_id));
+    fs::write(&path, report.render_kv())?;
+    print!("{}", report.render_kv());
+    println!("measurement_path={}", path.display());
+    Ok(())
+}
+
 fn print_status(opts: &RunOpts) -> Result<(), LifecycleError> {
     for mode in [
         SupervisorMode::NativeLaunchAgent,
@@ -618,12 +637,14 @@ fn usage() -> String {
         "usage:",
         "  m0-lifecycle-compare run-mode-a [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
         "  m0-lifecycle-compare run-mode-b [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
+        "  m0-lifecycle-compare run-update-rollback [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
         "  m0-lifecycle-compare status [--runtime-root PATH]",
         "  m0-lifecycle-compare cleanup [--runtime-root PATH] [--cryptexd PATH]",
         "",
         "Notes:",
         "  - ADR-0012 remains unresolved; this tool compares candidates only",
         "  - default runtime: Cryptex-Dev/p0-2/compare",
+        "  - update-rollback uses synthetic staged binaries only (not a production updater)",
         "  - does not reboot/logout and must not touch syncthing-p0-1*",
     ]
     .join("\n")
@@ -638,6 +659,7 @@ mod tests {
         let text = usage();
         assert!(text.contains("run-mode-a"));
         assert!(text.contains("run-mode-b"));
+        assert!(text.contains("run-update-rollback"));
         assert!(text.contains("ADR-0012"));
     }
 }

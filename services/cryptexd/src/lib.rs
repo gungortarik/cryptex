@@ -2,7 +2,8 @@
 //!
 //! This crate provides testable abstractions for single-instance enforcement,
 //! structured lifecycle status, crash/restart harness helpers,
-//! version-compatibility fixtures, and Mode A/B supervision comparison helpers.
+//! version-compatibility fixtures, Mode A/B supervision comparison helpers,
+//! and a test-only binary update/rollback harness.
 //!
 //! Supervision architecture (LaunchAgent vs tray sidecar vs hybrid) remains
 //! intentionally unresolved until ADR-0012 evidence is complete.
@@ -16,6 +17,7 @@ pub mod platform;
 pub mod status;
 pub mod supervision;
 pub mod supervisor;
+pub mod update;
 
 pub use compare::{
     ComparisonMeasurement, EvidenceClass, MEASUREMENT_SCHEMA, SupervisorMode, measurement_path,
@@ -31,3 +33,7 @@ pub use paths::{
 pub use status::{HealthState, InstanceState, LifecycleReport, write_status_file};
 pub use supervision::{RegistrationStatus, SupervisionStrategy, selected_supervision};
 pub use supervisor::DesktopSupervisor;
+pub use update::{
+    UpdateLayout, UpdateProofReport, activate_staged, install_known_good, marker_digest,
+    rollback_to_previous, run_update_rollback_proof, stage_candidate, stage_failing_candidate,
+};

@@ -14,6 +14,7 @@ use cryptexd::instance::{observe_instance, try_acquire_instance};
 use cryptexd::paths::{assert_outside_repository, default_p0_2_runtime_root, ensure_runtime_root};
 use cryptexd::status::{LifecycleReport, write_status_file};
 use cryptexd::supervision::selected_supervision;
+use cryptexd::update::run_update_rollback_proof;
 
 fn main() {
     match run(env::args().skip(1).collect()) {
@@ -155,6 +156,14 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
                     "desktop protocol {desktop} is incompatible with daemon protocol {daemon}"
                 ))),
             }
+        }
+        "update-proof" => {
+            let opts = parse_update_proof_opts(&args[1..])?;
+            ensure_runtime_root(&opts.runtime_root)?;
+            let report =
+                run_update_rollback_proof(&opts.runtime_root, &opts.base_bin, &opts.experiment_id)?;
+            print!("{}", report.render_kv());
+            Ok(())
         }
         other => Err(LifecycleError::Usage(format!(
             "unknown lifecycle command '{other}'\n{}",
@@ -344,6 +353,75 @@ fn print_usage() {
     println!("{}", usage_text());
 }
 
+#[derive(Debug)]
+struct UpdateProofOpts {
+    runtime_root: PathBuf,
+    base_bin: PathBuf,
+    experiment_id: String,
+}
+
+fn parse_update_proof_opts(args: &[String]) -> Result<UpdateProofOpts, LifecycleError> {
+    let mut runtime_root = None;
+    let mut base_bin = None;
+    let mut experiment_id = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--runtime-root" => {
+                let value = args.get(index + 1).ok_or_else(|| {
+                    LifecycleError::Usage("--runtime-root requires a path".into())
+                })?;
+                runtime_root = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--base-bin" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| LifecycleError::Usage("--base-bin requires a path".into()))?;
+                base_bin = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--experiment-id" => {
+                let value = args.get(index + 1).ok_or_else(|| {
+                    LifecycleError::Usage("--experiment-id requires a value".into())
+                })?;
+                experiment_id = Some(value.clone());
+                index += 2;
+            }
+            other => {
+                return Err(LifecycleError::Usage(format!(
+                    "unknown update-proof argument '{other}'"
+                )));
+            }
+        }
+    }
+
+    let runtime_root = match runtime_root {
+        Some(path) => {
+            assert_outside_repository(&path)?;
+            path
+        }
+        None => default_p0_2_runtime_root()?.join("update-rollback"),
+    };
+    let base_bin = base_bin.ok_or_else(|| {
+        LifecycleError::Usage("lifecycle update-proof requires --base-bin".into())
+    })?;
+    let experiment_id = experiment_id.unwrap_or_else(|| {
+        format!(
+            "update-rollback-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+        )
+    });
+    Ok(UpdateProofOpts {
+        runtime_root,
+        base_bin,
+        experiment_id,
+    })
+}
+
 fn usage_text() -> String {
     [
         "usage:",
@@ -352,11 +430,13 @@ fn usage_text() -> String {
         "  cryptexd lifecycle probe [--runtime-root <path>]",
         "  cryptexd lifecycle hold --runtime-root <path> (--stop-file <path> | --hold-ms <ms> | --crash-after-ready) [--ready-file <path>]",
         "  cryptexd lifecycle compat --desktop-protocol <n> [--daemon-protocol <n>] [--runtime-root <path>]",
+        "  cryptexd lifecycle update-proof --base-bin <path> [--runtime-root <path>] [--experiment-id <id>]",
         "",
         "P0-2 notes:",
         "  - supervision strategy remains unresolved (ADR-0012 open)",
         "  - default runtime root is Cryptex-Dev/p0-2 (never inside the repository)",
         "  - platform registration adapters are placeholders only",
+        "  - update-proof is a synthetic fixture harness, not a production updater",
     ]
     .join("\n")
 }
