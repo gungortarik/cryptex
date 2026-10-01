@@ -98,9 +98,13 @@ The later physical post-check timestamp is **not** part of `initial_sync_total_m
 - transport remained explicit direct TCP only
 - macOS destination independently idle with matching local/global/physical counts and zero needs/errors
 
-## Retention for incremental measurement
+## Retention
 
-This cell is the valid initial-sync base for the approved incremental measurement on the same logical matrix point. Do **not** retire, recreate, or reuse this folder ID as a new initial cell until that incremental run is recorded. Do not start incremental from this documentation update alone. Do not treat this file as incremental evidence. Incremental for this cell = NOT YET EXECUTED.
+Approved incremental measurement for this same cell is recorded separately in:
+
+- `evidence/m0/p0-1/syncthing-100k-segments-windows-to-macos-incremental.md`
+
+Do **not** retire or recreate this folder ID yet. Do not treat this file as incremental evidence.
 
 ## Boundary
 

@@ -815,7 +815,49 @@ macOS destination physical post-check at `2026-10-01T14:01:51Z`: `state=idle`, `
 
 Evidence: `evidence/m0/p0-1/syncthing-100k-segments-windows-to-macos.md`
 
-This verifies the initial Syncthing transport cell only. It does not prove Cryptex replication semantics, does not complete P0-4, and does not justify choosing files vs segments. Retain this working folder for the approved incremental measurement on the same cell. Do not retire it yet. Incremental for this cell = NOT YET EXECUTED.
+### Incremental measurement (100k segments Windows→macOS) — VERIFIED
+
+```text
+folder_id=p0-1-100k-segments-windows-to-macos
+layout=segments
+baseline_events=100000
+incremental_events=100
+payload_bytes=1024
+segment_events=1000
+source_platform=windows
+destination_platform=macos
+syncthing_version=v2.1.5
+INCREMENTAL_START_UTC=2026-10-01T14:44:55Z
+INCREMENTAL_END_UTC=2026-10-01T14:44:57Z
+EXIT_CODE=0
+append_setup_ms=213.133
+started_at_utc=2026-10-01T14:44:56.559Z
+scan_completed_at_utc=2026-10-01T14:44:56.870Z
+completed_at_utc=2026-10-01T14:44:57.774Z
+incremental_scan_ms=311.589
+incremental_sync_total_ms=1213.776
+incremental_logical_bytes=103600
+source_local_files=101
+source_local_bytes=103703600
+source_global_files=101
+source_global_bytes=103703600
+peer_completion=100
+peer_global_items=102
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_global_files_verified=101
+source_paused_after_completion=true
+transport_scope=explicit_direct_tcp_only
+```
+
+`append_setup_ms` is outside the timed incremental sync window and must not be combined with `incremental_sync_total_ms`. Post-append physical object count was measured as 100 → 101 (not assumed).
+
+macOS destination physical post-check at `2026-10-01T14:47:04Z`: `state=idle`, `localFiles/Bytes=101/103703600`, `globalFiles/Bytes=101/103703600`, `physical_files/bytes=101/103703600`, needs/errors all zero.
+
+Evidence: `evidence/m0/p0-1/syncthing-100k-segments-windows-to-macos-incremental.md`
+
+This verifies the incremental Syncthing transport cell only. It does not prove Cryptex replication semantics, does not complete P0-4, and does not select files vs segments. This working folder must not be reused as a fresh initial-sync cell. Do not retire it yet.
 
 ## Boundary
 
