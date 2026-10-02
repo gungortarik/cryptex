@@ -63,3 +63,4 @@ See:
 - `macos-mode-b-gui-window-close.md`
 - `macos-update-rollback-protocol.md`
 - `macos-update-rollback-evidence.md`
+- `windows-mode-b-invalid-harness-20261002.md` (FAILED/INVALID HARNESS EVIDENCE — observe lock-byte read; not a Mode B lifecycle verdict)

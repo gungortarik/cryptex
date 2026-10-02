@@ -135,6 +135,28 @@ note={}
     }
 }
 
+/// Read the holder PID from `lifecycle.status` without touching `daemon.lock`.
+///
+/// Used as a side-channel while an exclusive instance lock is held: on Windows,
+/// reading locked `daemon.lock` bytes can fail with ERROR_LOCK_VIOLATION (33).
+/// Missing/malformed status yields `None` and is not treated as an I/O failure.
+pub fn read_status_pid(runtime_root: &Path) -> Option<u32> {
+    let body = fs::read_to_string(status_path(runtime_root)).ok()?;
+    for line in body.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key == "pid" {
+            let trimmed = value.trim();
+            if trimmed == "none" || trimmed.is_empty() {
+                return None;
+            }
+            return trimmed.parse::<u32>().ok();
+        }
+    }
+    None
+}
+
 pub fn write_status_file(runtime_root: &Path, report: &LifecycleReport) -> LifecycleResult<()> {
     let path = status_path(runtime_root);
     let mut body = report.render_kv();
