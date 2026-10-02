@@ -105,6 +105,14 @@ Not verified by that run:
 - Source inspection confirms the current Desktop only queries status through a
   short-lived CLI process; full reconnect needs the M0 P0-3 transport proof.
   Status observation is not a named-pipe reconnect handshake.
+- The new instrumented Windows login at 16:41:48 EDT on 2026-10-02 confirmed a
+  regular user-profile logon. After 11.4 minutes, neither the direct daemon Run
+  entry nor the PowerShell observer had produced a runtime artifact; the
+  observer never attached, so no daemon exit code was captured. Shell-Core had
+  no matching Run execution event, and Code Integrity had no matching block.
+  Both temporary Run values were then removed and verified absent. Classify this
+  as **login start NOT OBSERVED / cause OPEN**, not daemon start-then-exit. See
+  `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
 - Desktop close/restore/snapshot proof artifacts now query a fresh daemon
   lifecycle observation for the live PID instead of treating `ready` as live;
   status errors are reported as unavailable. A physical stale-ready Windows
@@ -232,20 +240,15 @@ The reboot therefore stopped it. P0-1 is already complete. Do not restart it mer
 
 Before implementing another supervision mechanism or changing architecture:
 
-1. collect the already armed Windows `wl-1002a` sign-out/sign-in experiment:
-   `%LOCALAPPDATA%\Cryptex-Dev\p0-2\wl-1002a\mode-a-hkcu`. Both the direct
-   daemon and independent observer Run values are registered, with no ready or
-   stop marker at preparation. Save open work, sign out and sign back in; then
-   inspect `observations/` and the preserved raw files. See
-   `evidence/m0/p0-2/windows-instrumented-login-preparation-20261002.md`.
-   **Do not run the Rust registry tests while armed:** they overwrite/remove
-   the same test Run value. Use the documented Status/Cleanup scripts after
-   collecting evidence. The observer controls are verified; actual new login
-   and the historical exit cause are not yet verified. Do not change supervision
-   strategy based on an unproven cause.
-2. verify full Desktop IPC reconnect after a supervised daemon restart
-3. perform the macOS login/reboot startup proof
-4. compare the candidates and document the evidence before accepting ADR-0012
+1. diagnose why the confirmed Windows user logon did not dispatch either
+   instrumented HKCU Run command. Preserve process-start and shell-launch
+   evidence in a new isolated candidate run. The prior values have been removed;
+   do not treat this run as daemon-survival evidence or infer a termination cause.
+   See `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
+2. complete the M0 P0-3 local IPC prototype/evidence before claiming a full
+   Desktop reconnect test; current Desktop status uses a short-lived CLI call.
+3. perform/record the macOS login/reboot startup proof on the Mac host
+4. compare the candidates and document evidence before accepting ADR-0012
 
 ## OPEN
 
