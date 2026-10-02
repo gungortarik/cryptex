@@ -2,6 +2,12 @@
 //!
 //! This does **not** select ADR-0012 or a production Windows startup primitive.
 //! Registration is reversible and scoped to Cryptex-Dev comparison experiments.
+//!
+//! Privilege note (physical evidence `windows-mode-a-r1-20261002T052751Z`):
+//! `RunLevel=LeastPrivilege` is the *runtime* identity of the task process.
+//! Creating/changing the task via `schtasks /Create` required Administrator
+//! membership in the interactive Windows session (Access denied without elevation).
+//! Do not treat this harness as a proven no-admin registration path.
 
 use std::fs;
 use std::path::{Path, PathBuf};
