@@ -198,6 +198,32 @@ fn forced_crash_is_detectable_and_restart_path_works() {
         "lock should release after crash"
     );
 
+    let observed = Command::new(cryptexd_bin())
+        .args([
+            "lifecycle",
+            "status",
+            "--runtime-root",
+            runtime.to_str().unwrap(),
+        ])
+        .output()
+        .expect("refresh status after crash");
+    assert!(observed.status.success());
+    let observed_out = String::from_utf8_lossy(&observed.stdout);
+    assert_eq!(
+        parse_kv(&observed_out, "instance").as_deref(),
+        Some("stale")
+    );
+    assert_eq!(
+        parse_kv(&observed_out, "health").as_deref(),
+        Some("attention")
+    );
+    assert_eq!(parse_kv(&observed_out, "pid").as_deref(), Some("none"));
+    let crashed_pid = parse_kv(&observed_out, "recorded_pid").expect("recorded PID");
+    let persisted = fs::read_to_string(runtime.join("lifecycle.status")).expect("status file");
+    assert_eq!(parse_kv(&persisted, "health").as_deref(), Some("attention"));
+    assert_eq!(parse_kv(&persisted, "pid").as_deref(), Some("none"));
+    assert_eq!(parse_kv(&persisted, "recorded_pid"), Some(crashed_pid));
+
     let restart = Command::new(cryptexd_bin())
         .args([
             "lifecycle",
@@ -241,6 +267,10 @@ fn lifecycle_state_reflects_runtime_and_avoids_repo_files() {
         !path_has_runtime_residue(&repo_root),
         "no lifecycle runtime residue may appear inside the repository"
     );
+
+    let persisted = fs::read_to_string(runtime.join("lifecycle.status")).expect("status file");
+    assert_eq!(parse_kv(&persisted, "instance").as_deref(), Some("stale"));
+    assert_eq!(parse_kv(&persisted, "health").as_deref(), Some("attention"));
 
     let _ = fs::remove_dir_all(&runtime);
 }

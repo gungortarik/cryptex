@@ -128,6 +128,7 @@ pub struct LogonTaskStatus {
     pub registered: bool,
     pub daemon_lock_held: bool,
     pub daemon_pid: Option<u32>,
+    pub recorded_pid: Option<u32>,
     pub ready_present: bool,
 }
 
@@ -222,6 +223,7 @@ pub fn status(spec: &LogonTaskSpec) -> LifecycleResult<LogonTaskStatus> {
         registered,
         daemon_lock_held: observation.lock_held,
         daemon_pid: observation.holder_pid,
+        recorded_pid: observation.recorded_pid,
         ready_present: spec.ready_file.exists(),
     })
 }

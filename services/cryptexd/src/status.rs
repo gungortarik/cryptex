@@ -62,7 +62,10 @@ impl fmt::Display for InstanceState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LifecycleReport {
     pub runtime_root: String,
+    /// PID associated with the currently held instance lock.
     pub pid: Option<u32>,
+    /// PID retained in status/lock metadata, including when it is stale.
+    pub recorded_pid: Option<u32>,
     pub instance: InstanceState,
     pub health: HealthState,
     pub supervision: SupervisionStrategy,
@@ -76,6 +79,7 @@ impl LifecycleReport {
         Self {
             runtime_root: runtime_root.display().to_string(),
             pid: Some(pid),
+            recorded_pid: Some(pid),
             instance: InstanceState::Held,
             health: HealthState::Active,
             supervision: selected_supervision(),
@@ -99,7 +103,12 @@ impl LifecycleReport {
 
         Self {
             runtime_root: runtime_root.display().to_string(),
-            pid: self_pid.or(observation.holder_pid),
+            pid: if observation.lock_held {
+                self_pid.or(observation.holder_pid)
+            } else {
+                None
+            },
+            recorded_pid: observation.recorded_pid,
             instance,
             health,
             supervision: selected_supervision(),
@@ -114,6 +123,7 @@ impl LifecycleReport {
             "\
 runtime_root={}
 pid={}
+recorded_pid={}
 instance={}
 health={}
 supervision={}
@@ -123,6 +133,9 @@ note={}
 ",
             self.runtime_root,
             self.pid
+                .map(|pid| pid.to_string())
+                .unwrap_or_else(|| "none".into()),
+            self.recorded_pid
                 .map(|pid| pid.to_string())
                 .unwrap_or_else(|| "none".into()),
             self.instance,
@@ -141,12 +154,21 @@ note={}
 /// reading locked `daemon.lock` bytes can fail with ERROR_LOCK_VIOLATION (33).
 /// Missing/malformed status yields `None` and is not treated as an I/O failure.
 pub fn read_status_pid(runtime_root: &Path) -> Option<u32> {
+    read_status_value(runtime_root, "pid")
+}
+
+/// Read the most recently recorded PID from lifecycle status, even when stale.
+pub fn read_status_recorded_pid(runtime_root: &Path) -> Option<u32> {
+    read_status_value(runtime_root, "recorded_pid").or_else(|| read_status_pid(runtime_root))
+}
+
+fn read_status_value(runtime_root: &Path, wanted_key: &str) -> Option<u32> {
     let body = fs::read_to_string(status_path(runtime_root)).ok()?;
     for line in body.lines() {
         let Some((key, value)) = line.split_once('=') else {
             continue;
         };
-        if key == "pid" {
+        if key == wanted_key {
             let trimmed = value.trim();
             if trimmed == "none" || trimmed.is_empty() {
                 return None;

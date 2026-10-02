@@ -164,6 +164,25 @@ This also exposes a truthful-health problem:
 
 Persisted status is therefore not sufficient evidence of current runtime health.
 
+### Follow-up after the read-only audit
+
+The Codex implementation pass keeps the supervision comparison open and changes
+only lifecycle status reporting:
+
+- `InstanceObservation` separates a PID associated with a currently held lock
+  from the last PID recorded in lock/status metadata.
+- `lifecycle status` refreshes the timestamped status snapshot from a fresh lock
+  observation.
+- the short-lived `lifecycle probe` writes a released/stale snapshot after it
+  drops its lock, instead of leaving its temporary `active` report behind.
+- platform status results expose `daemon_pid` separately from `recorded_pid`.
+- tests cover crash, stale PID reporting, status refresh and the persisted
+  snapshot.
+
+This does not explain the post-login process exit or add a supervision
+mechanism. A persisted snapshot may still age between checks; consumers must
+query current status and must not treat the ready marker as liveness evidence.
+
 ## Syncthing state after reboot
 
 Before reboot, the running Windows Syncthing process was confirmed to be the old P0-1 development instance:
@@ -180,26 +199,18 @@ The reboot therefore stopped it. P0-1 is already complete. Do not restart it mer
 
 Before implementing another supervision mechanism or changing architecture:
 
-1. perform a read-only root-cause audit of why the HKCU Run-launched `cryptexd`:
-   - launched successfully
-   - acquired the lock
-   - wrote `ready` and active status
-   - then exited without a stop file
-2. inspect:
-   - Windows startup command construction and quoting
-   - console/session/process-lifetime behavior at login
-   - `lifecycle hold` semantics
-   - inherited handles / process-group behavior if relevant
-   - runtime artifact semantics
-3. separate proven facts from hypotheses
-4. audit the stale PID / persisted health truthfulness issue
-5. record the reboot/login evidence under `evidence/m0/p0-2/`
-6. do not implement a replacement supervision mechanism until the audit is reviewed
+1. continue investigating the Windows post-login exit using isolated runtime
+   evidence; do not change supervision strategy based on an unproven cause
+2. perform the Windows physical Tauri GUI-close proof
+3. verify full Desktop IPC reconnect after a supervised daemon restart
+4. perform the macOS login/reboot startup proof
+5. verify Windows compatible-update and rollback behavior with synthetic data
+6. compare the candidates and document the evidence before accepting ADR-0012
 
 ## OPEN
 
 - root cause of Windows HKCU Run post-login daemon exit
-- truthful runtime-health handling for stale PID/status artifacts
+- downstream consumers treating an old persisted lifecycle snapshot as live
 - Windows crash-restart parity for a no-elevation/native candidate
 - Windows physical Tauri GUI close proof
 - full Desktop IPC reconnect after daemon restart

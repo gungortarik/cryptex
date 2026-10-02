@@ -238,6 +238,12 @@ pub fn status_only(opts: &RunOpts) -> Result<(), LifecycleError> {
             .map(|p| p.to_string())
             .unwrap_or_else(|| "none".into())
     );
+    println!(
+        "recorded_pid={}",
+        st.recorded_pid
+            .map(|p| p.to_string())
+            .unwrap_or_else(|| "none".into())
+    );
     println!("ready_present={}", st.ready_present);
     println!("runtime_root={}", mode_root.display());
     Ok(())

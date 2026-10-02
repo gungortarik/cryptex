@@ -68,6 +68,7 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
                 None,
                 "observed without acquiring instance lock",
             );
+            write_status_file(&runtime_root, &report)?;
             print!("{}", report.render_kv());
             Ok(())
         }
@@ -83,6 +84,14 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             write_status_file(&runtime_root, &report)?;
             print!("{}", report.render_kv());
             drop(lock);
+            let observation = observe_instance(&runtime_root)?;
+            let released_report = LifecycleReport::from_observation(
+                &runtime_root,
+                &observation,
+                None,
+                "probe released instance lock",
+            );
+            write_status_file(&runtime_root, &released_report)?;
             Ok(())
         }
         "hold" => {

@@ -582,14 +582,16 @@ fn print_status(opts: &RunOpts) -> Result<(), LifecycleError> {
                 lock_present: false,
                 lock_held: false,
                 holder_pid: None,
+                recorded_pid: None,
             }
         };
         println!(
-            "mode={} runtime_root={} lock_held={} holder_pid={:?}",
+            "mode={} runtime_root={} lock_held={} holder_pid={:?} recorded_pid={:?}",
             mode.as_str(),
             mode_root.display(),
             obs.lock_held,
-            obs.holder_pid
+            obs.holder_pid,
+            obs.recorded_pid
         );
     }
     Ok(())

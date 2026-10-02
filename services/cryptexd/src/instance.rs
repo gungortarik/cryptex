@@ -6,7 +6,7 @@ use fs2::FileExt;
 
 use crate::error::{LifecycleError, LifecycleResult};
 use crate::paths::lock_path;
-use crate::status::read_status_pid;
+use crate::status::{read_status_pid, read_status_recorded_pid};
 
 /// Exclusive single-instance lock for one local runtime context.
 pub struct InstanceLock {
@@ -29,7 +29,10 @@ impl InstanceLock {
 pub struct InstanceObservation {
     pub lock_present: bool,
     pub lock_held: bool,
+    /// PID associated with a currently held lock, when available.
     pub holder_pid: Option<u32>,
+    /// PID retained in the lock/status metadata; this may be stale.
+    pub recorded_pid: Option<u32>,
 }
 
 /// Attempt to become the sole daemon instance for `runtime_root`.
@@ -85,6 +88,7 @@ pub fn observe_instance(runtime_root: &Path) -> LifecycleResult<InstanceObservat
             lock_present: false,
             lock_held: false,
             holder_pid: None,
+            recorded_pid: None,
         });
     }
 
@@ -96,15 +100,18 @@ pub fn observe_instance(runtime_root: &Path) -> LifecycleResult<InstanceObservat
             Ok(InstanceObservation {
                 lock_present: true,
                 lock_held: false,
-                holder_pid,
+                holder_pid: None,
+                recorded_pid: holder_pid,
             })
         }
         Err(error) if is_lock_conflict(&error) => {
             let holder_pid = read_status_pid(runtime_root);
+            let recorded_pid = read_status_recorded_pid(runtime_root).or(holder_pid);
             Ok(InstanceObservation {
                 lock_present: true,
                 lock_held: true,
                 holder_pid,
+                recorded_pid,
             })
         }
         Err(error) => Err(LifecycleError::Io(format!(
@@ -201,7 +208,11 @@ mod tests {
         let obs = observe_instance(&root).expect("observe released lock");
         assert!(obs.lock_present);
         assert!(!obs.lock_held);
-        assert_eq!(obs.holder_pid, Some(pid), "stale PID bytes remain readable");
+        assert_eq!(obs.holder_pid, None, "stale PID is not a live holder");
+        assert_eq!(obs.recorded_pid, Some(pid), "stale PID remains diagnosable");
+        let report = LifecycleReport::from_observation(&root, &obs, None, "stale");
+        assert_eq!(report.pid, None);
+        assert_eq!(report.recorded_pid, Some(pid));
 
         let _ = fs::remove_dir_all(&root);
     }
@@ -224,6 +235,8 @@ mod tests {
 
         let released = observe_instance(&root).expect("observe after release");
         assert!(!released.lock_held);
+        assert_eq!(released.holder_pid, None);
+        assert_eq!(released.recorded_pid, Some(first_pid));
 
         let restarted = try_acquire_instance(&root).expect("restart acquire");
         assert_eq!(restarted.pid(), std::process::id());
@@ -232,6 +245,7 @@ mod tests {
         let held = observe_instance(&root).expect("observe restarted holder");
         // Status still has old pid until rewritten; lock probe is authoritative.
         assert!(held.lock_held);
+        assert_eq!(held.holder_pid, Some(first_pid));
 
         write_status_file(
             &root,
@@ -240,6 +254,7 @@ mod tests {
         .expect("rewrite status");
         let held2 = observe_instance(&root).expect("observe with fresh status");
         assert_eq!(held2.holder_pid, Some(restarted.pid()));
+        assert_eq!(held2.recorded_pid, Some(restarted.pid()));
 
         drop(restarted);
         let _ = fs::remove_dir_all(&root);
@@ -289,6 +304,7 @@ mod tests {
         let obs = observe_instance(&root).expect("observe must tolerate Windows lock bytes");
         assert!(obs.lock_held);
         assert_eq!(obs.holder_pid, Some(lock.pid()));
+        assert_eq!(obs.recorded_pid, Some(lock.pid()));
 
         drop(lock);
         let _ = fs::remove_dir_all(&root);

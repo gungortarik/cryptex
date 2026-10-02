@@ -44,13 +44,17 @@ reproduction.
 - If the process is terminated outside that normal path, the last persisted
   status and ready marker are not cleared by `cryptexd`; they can outlive the
   process.
-- A fresh `observe_instance` call probes the lock. When the lock is free but
-  `daemon.lock` remains, the recorded PID is returned even though it is not a
-  live holder. `LifecycleReport::from_observation` marks that state `stale` /
-  `attention`, but its `pid` field still contains the recorded PID.
-- `hkcu-run status` reports `daemon_lock_held` separately from `daemon_pid`;
-  that PID may be the stale recorded PID. `ready_present` likewise reports
-  marker presence, not process liveness.
+- At audit time, a fresh `observe_instance` call probed the lock but returned
+  the recorded PID through `holder_pid` even when the lock was free. The
+  follow-up fix separates `holder_pid` from `recorded_pid`; unlocked
+  observations now leave the live-holder field empty.
+- At audit time, `lifecycle status` printed a fresh observation but did not
+  refresh the persisted status file. The follow-up fix refreshes that snapshot
+  on each status check and after the short-lived `probe` command releases its
+  lock.
+- The platform status structs now expose `daemon_pid` only from an observed
+  held lock and expose the retained metadata as `recorded_pid`. The ready
+  marker still indicates a historical startup event, not current liveness.
 
 ### Not established
 
@@ -73,9 +77,10 @@ them.
    process and lock observation.
 3. The exact exit cause remains unknown; do not select a different startup or
    supervision mechanism based on a guessed cause.
-4. Persisted `health=active`, `daemon_pid`, and `ready_present` values are not
-   sufficient to claim current liveness. Current status reporting needs to
-   distinguish a live lock holder from retained last-run metadata.
+4. Persisted `health=active`, PID, and ready-marker values are not sufficient
+   to claim current liveness. The follow-up status change now refreshes the
+   snapshot when queried, separates lock-associated `pid` from diagnostic
+   `recorded_pid`, and preserves the last PID without calling it live.
 5. The absent raw artifacts limit independent verification of the initial
    reboot observation. Preserve measurement/runtime evidence before subsequent
    harness runs in future experiments, using an isolated experiment runtime
@@ -83,3 +88,6 @@ them.
 
 This audit does not select Mode A, Mode B, or a hybrid and does not accept
 ADR-0012. No replacement supervision mechanism was implemented.
+
+The follow-up changes address status truthfulness only; they do not identify
+why Windows ended the post-login process or add crash supervision.
