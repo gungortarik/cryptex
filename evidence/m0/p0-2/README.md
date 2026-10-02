@@ -32,6 +32,9 @@ No option has been selected.
 - Do not touch P0-1 Syncthing paths (`Cryptex-Dev/syncthing-p0-1*`).
 - Do not install LaunchAgents / Windows startup entries until comparison evidence exists.
 - Do not mark P0-2 complete and do not accept ADR-0012 from foundation-slice work alone.
+- Login/reboot startup proofs remain OPEN; historical harness notes that deferred reboot
+  "while P0-1 active" are stale now that P0-1 is complete and must not be treated as a
+  current blocker.
 
 ## Current foundation slice
 
@@ -51,6 +54,7 @@ Comparison harness added:
 - measurement contract + KV capture
 - reversible macOS LaunchAgent test harness (Mode A)
 - DesktopSupervisor process harness (Mode B)
+- Windows Mode B AUTOMATED physical foundation evidence (`windows-desktop-supervision-evidence.md`)
 - temporary Desktop hide-on-close developer hooks
 - interactive Mode B GUI CloseRequested proof (`macos-mode-b-gui-window-close.md`)
 
@@ -63,4 +67,5 @@ See:
 - `macos-mode-b-gui-window-close.md`
 - `macos-update-rollback-protocol.md`
 - `macos-update-rollback-evidence.md`
-- `windows-mode-b-invalid-harness-20261002.md` (FAILED/INVALID HARNESS EVIDENCE — observe lock-byte read; not a Mode B lifecycle verdict)
+- `windows-desktop-supervision-evidence.md` (Windows Mode B AUTOMATED — VERIFIED for listed fields only; GUI close / login-reboot / full Desktop IPC reconnect remain NOT YET VERIFIED)
+- `windows-mode-b-invalid-harness-20261002.md` (historical FAILED/INVALID HARNESS EVIDENCE; superseded by r2)

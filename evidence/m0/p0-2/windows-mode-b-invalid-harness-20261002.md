@@ -54,3 +54,10 @@ behavior failed on Windows; the harness could not continue past the observation 
 another process. While the lock is held, holder PID must come from the existing
 `lifecycle.status` side-channel. Exclusive locking itself must remain authoritative and
 unchanged.
+
+## Superseded by
+
+Valid Windows Mode B AUTOMATED foundation evidence is recorded in
+`windows-desktop-supervision-evidence.md`
+(experiment `windows-mode-b-r2-20261002T050408Z`). Keep this file as the invalid-harness
+audit trail only.

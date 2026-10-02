@@ -72,7 +72,7 @@ Observed:
 | Desktop reconnect after daemon restart | NOT YET VERIFIED |
 | real Desktop + daemon package update orchestration | NOT YET VERIFIED |
 | real updater rollback path | PARTIAL (synthetic marker fixture only) |
-| Windows any physical lifecycle proof | NOT YET VERIFIED |
+| Windows Mode B AUTOMATED process-supervisor foundation | VERIFIED — see `windows-desktop-supervision-evidence.md` (GUI close / login-reboot / full Desktop IPC reconnect still NOT YET VERIFIED) |
 | ADR-0012 selection among A/B/hybrid | OPEN / NOT ACCEPTED |
 
 ## Notes

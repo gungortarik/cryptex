@@ -67,7 +67,7 @@ RUNTIME="$HOME/Library/Application Support/Cryptex-Dev/p0-2/compare"
 
 - Runtime only under `Cryptex-Dev/p0-2/compare`
 - Never touch `syncthing-p0-1*`
-- No reboot/logout while P0-1 is active
+- Login/reboot startup proofs remain required and OPEN; do not treat historical "while P0-1 active" harness notes as a current blocker (P0-1 is complete)
 - Mode A LaunchAgent label is test-only: `com.cryptex.dev.p0-2.compare`
 - Always `cleanup` / `bootout`+`remove` after Mode A
 - Do not accept ADR-0012 from this protocol alone
@@ -77,5 +77,5 @@ RUNTIME="$HOME/Library/Application Support/Cryptex-Dev/p0-2/compare"
 - login/reboot startup
 - full Desktop IPC reconnect after daemon restart
 - interactive Tauri window-close physical proof (hooks exist; interactive GUI run may still be pending)
-- Windows equivalents
+- Windows Mode B AUTOMATED process-supervisor foundation is recorded in `windows-desktop-supervision-evidence.md`; Windows Mode A native startup, physical Tauri GUI close, login/reboot, and full Desktop IPC reconnect remain OPEN
 - production updater/rollback orchestration beyond synthetic marker fixtures
