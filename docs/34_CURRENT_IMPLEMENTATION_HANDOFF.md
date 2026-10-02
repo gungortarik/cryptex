@@ -102,6 +102,9 @@ Not verified by that run:
   startup PID from that same sequence remains alive. The old runtime artifacts
   are insufficient to identify why PID 25856 later disappeared.
 - Full Desktop IPC reconnect after supervised restart remains OPEN.
+- Source inspection confirms the current Desktop only queries status through a
+  short-lived CLI process; full reconnect needs the M0 P0-3 transport proof.
+  Status observation is not a named-pipe reconnect handshake.
 - Desktop close/restore/snapshot proof artifacts now query a fresh daemon
   lifecycle observation for the live PID instead of treating `ready` as live;
   status errors are reported as unavailable. A physical stale-ready Windows
@@ -229,8 +232,17 @@ The reboot therefore stopped it. P0-1 is already complete. Do not restart it mer
 
 Before implementing another supervision mechanism or changing architecture:
 
-1. continue investigating the Windows post-login exit using isolated runtime
-   evidence; do not change supervision strategy based on an unproven cause
+1. collect the already armed Windows `wl-1002a` sign-out/sign-in experiment:
+   `%LOCALAPPDATA%\Cryptex-Dev\p0-2\wl-1002a\mode-a-hkcu`. Both the direct
+   daemon and independent observer Run values are registered, with no ready or
+   stop marker at preparation. Save open work, sign out and sign back in; then
+   inspect `observations/` and the preserved raw files. See
+   `evidence/m0/p0-2/windows-instrumented-login-preparation-20261002.md`.
+   **Do not run the Rust registry tests while armed:** they overwrite/remove
+   the same test Run value. Use the documented Status/Cleanup scripts after
+   collecting evidence. The observer controls are verified; actual new login
+   and the historical exit cause are not yet verified. Do not change supervision
+   strategy based on an unproven cause.
 2. verify full Desktop IPC reconnect after a supervised daemon restart
 3. perform the macOS login/reboot startup proof
 4. compare the candidates and document the evidence before accepting ADR-0012
