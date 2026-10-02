@@ -26,7 +26,7 @@ If an ADR record is referenced by authoritative documents but its source file is
 | ADR-0004 | Managed Syncthing integration | SOURCE RECORD MISSING / ADDENDUM REQUIRED | M0 P0-4 must prove managed Syncthing lifecycle/configuration. Record chosen packaging/supervision in the ADR addendum before the replication milestone. |
 | ADR-0007 | Local IPC transport | SOURCE RECORD MISSING / ADDENDUM REQUIRED | M0 P0-3 must prove transport, user-only ACLs, protocol negotiation and reconnect behavior. Record the exact implementation/library in the ADR addendum before production daemon APIs. |
 | ADR-0012 | Background runtime / atomic update lifecycle | SOURCE RECORD MISSING / PENDING M0 | M0 P0-2 must resolve supervision, startup, single-instance, reconnect, update and rollback behavior on macOS and Windows. Accept ADR-0012 before M1/M2. |
-| ADR-0013 | Physical immutable event storage layout | PROPOSED / PENDING M0 (draft source present; not accepted) | Draft: `docs/adr/ADR-0013-physical-event-storage-layout.md`. 500k files r2 is recorded as controlled timeout / impracticality; complete remaining 500k **segments** Syncthing evidence, then accept before M2. Do not treat the draft as ACCEPTED. |
+| ADR-0013 | Physical immutable event storage layout | PROPOSED / PENDING M0 (draft source present; not accepted) | Draft: `docs/adr/ADR-0013-physical-event-storage-layout.md`. 500k files r2 is controlled-timeout impracticality; 500k segments macOS→Windows initial+incremental are VERIFIED. Remaining: 500k segments Windows→macOS, then accept before M2. Do not treat the draft as ACCEPTED. |
 
 ## 4. M0 gate
 

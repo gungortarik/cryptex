@@ -133,8 +133,10 @@ Additional P0-1 evidence files:
 - `syncthing-100k-segments-windows-to-macos-incremental.md` — **valid** approved incremental sync on the Windows→macOS 100k segments cell
 - `syncthing-500k-files-macos-to-windows-TIMED-FAILED.md` — 500k files macOS→Windows timed initial sync interrupted by source low-power sleep/hibernate; FAILED/INVALID for timing; do not reuse that folder ID
 - `syncthing-500k-files-macos-to-windows-r2-TIMED-FAILED.md` — 500k files macOS→Windows r2 **completed controlled timeout / impracticality** at 21600s (~21.2% peer completion); not a Syncthing crash; not a timing result; no further 500k files retry; do not reuse r2
-- `syncthing-500k-segments-runbook.md` — **DRAFT** runbook/checklist for remaining 500k segments Syncthing cells (not executed by this file)
-- `syncthing-500k-segments-*-DRAFT.md` — **DRAFT** evidence templates/predicates for 500k segments initial+incremental both directions
+- `syncthing-500k-segments-macos-to-windows.md` — **valid** 500k segments macOS→Windows initial sync timing; retain cell (do not retire yet)
+- `syncthing-500k-segments-macos-to-windows-incremental.md` — **valid** approved incremental sync on the 500k segments macOS→Windows cell
+- `syncthing-500k-segments-runbook.md` — runbook/checklist; Cell A (macOS→Windows) VERIFIED; Cell B (Windows→macOS) still PENDING
+- `syncthing-500k-segments-windows-to-macos*.DRAFT.md` — **DRAFT** templates for remaining 500k segments reverse-direction cells
 - `docs/adr/ADR-0013-physical-event-storage-layout.md` — **PROPOSED / PENDING** draft ADR (not accepted; no layout selected)
 - `purge-complexity.md` — physical purge-complexity probes for both candidates, with macOS and Windows sections separated
 - `corruption-blast-radius.md` — physical corruption blast-radius probes for both candidates, with macOS and Windows sections separated

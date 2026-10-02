@@ -1,18 +1,18 @@
-# M0 P0-1 — DRAFT Runbook: 500k Segments Syncthing Cells
+# M0 P0-1 — Runbook: 500k Segments Syncthing Cells
 
-**Status:** DRAFT / PENDING EXECUTION  
+**Status:** IN PROGRESS — Cell A VERIFIED; Cell B PENDING  
 **Architecture effect:** none; does not accept ADR-0013; does not select a layout
 
 `p0-1-500k-files-macos-to-windows-r2` is **complete** (controlled timeout / files impracticality evidence). Do not schedule another 500k files retry. This runbook does not execute the segments cells by itself.
 
 ## Purpose
 
-Exact checklist for the four remaining segments Syncthing measurements planned for P0-1 closure:
+Exact checklist for the four 500k segments Syncthing measurements planned for P0-1 closure:
 
-1. 500k segments macOS → Windows — initial
-2. same cell — approved +100 incremental
-3. 500k segments Windows → macOS — initial
-4. same cell — approved +100 incremental
+1. 500k segments macOS → Windows — initial — **VERIFIED**
+2. same cell — approved +100 incremental — **VERIFIED**
+3. 500k segments Windows → macOS — initial — PENDING
+4. same cell — approved +100 incremental — PENDING
 
 ## Script capability verification (read-only)
 
@@ -87,40 +87,19 @@ Recommended timeout: start with `--timeout-seconds 7200` (segments historically 
 
 ### A3. Timed initial
 
-- [ ] On macOS source machine:
-```bash
-node tools/m0-storage-bench/scripts/run-syncthing-p0-1-initial-sync.mjs \
-  --folder-id p0-1-500k-segments-macos-to-windows \
-  --layout segments \
-  --events 500000 \
-  --source-platform macos \
-  --destination-platform windows \
-  --timeout-seconds 7200 \
-  # plus home/path/peer args per existing protocol
-```
-- [ ] Capture raw result (`capture-syncthing-p0-1-raw-result.mjs`)
-- [ ] Independent Windows destination post-check: idle, local/global 500 / 518000000, needs 0
-- [ ] Record evidence from template `syncthing-500k-segments-macos-to-windows.md` (replace DRAFT)
+- [x] On macOS source machine: timed initial runner `EXIT_CODE=0`
+- [x] Independent Windows destination post-check: idle, local/global 500 / 518000000, physical 500 / 518000000, needs 0
+- [x] Record evidence `syncthing-500k-segments-macos-to-windows.md` (VERIFIED)
 
 ### A4. Timed incremental (+100)
 
-- [ ] Only after valid initial on **same** folder ID
-- [ ] Source remains paused before append
-```bash
-node tools/m0-storage-bench/scripts/run-syncthing-p0-1-incremental-sync.mjs \
-  --folder-id p0-1-500k-segments-macos-to-windows \
-  --layout segments \
-  --baseline-events 500000 \
-  --incremental-events 100 \
-  --segment-events 1000 \
-  --source-platform macos \
-  --destination-platform windows \
-  --timeout-seconds 7200
-```
-- [ ] Do **not** combine `append_setup_ms` with `incremental_sync_total_ms`
-- [ ] Measure post-append physical object count (do not assume)
-- [ ] Windows post-check matches measured post-append counts
-- [ ] Record `syncthing-500k-segments-macos-to-windows-incremental.md`
+- [x] Valid initial on **same** folder ID
+- [x] `append_setup_ms` recorded outside timed window; not combined with `incremental_sync_total_ms`
+- [x] Post-append physical object count measured: 501 / 518103600
+- [x] Windows post-check matches measured post-append counts
+- [x] Record `syncthing-500k-segments-macos-to-windows-incremental.md` (VERIFIED)
+
+Do **not** retire `p0-1-500k-segments-macos-to-windows` yet.
 
 ---
 
@@ -128,7 +107,7 @@ node tools/m0-storage-bench/scripts/run-syncthing-p0-1-incremental-sync.mjs \
 
 ### B0. Preconditions
 
-- [ ] Cell A incremental recorded (or operators accept parallel only if homes/folders do not collide — default: serialize after A)
+- [x] Cell A incremental recorded (or operators accept parallel only if homes/folders do not collide — default: serialize after A)
 - [ ] Retained Windows segments corpus verified
 - [ ] Prior Windows source cell retired from config if required
 

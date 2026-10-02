@@ -23,9 +23,9 @@ Required scale matrix: 10k / 100k / 500k events on both macOS and Windows, inclu
 
 **No final layout decision.**
 
-Working hypothesis from verified evidence so far (subject to remaining 500k segments Syncthing measurements):
+Working hypothesis from verified evidence so far (subject to remaining 500k segments Windows→macOS Syncthing measurements):
 
-- Candidate **B (segments)** is currently the leading pragmatic option for Syncthing-scale transport and local enumeration/rebuild cost.
+- Candidate **B (segments)** is currently the leading pragmatic option for Syncthing-scale transport and local enumeration/rebuild cost. 500k segments macOS→Windows initial + approved incremental are now VERIFIED.
 - Candidate **A (files)** remains practical at 10k and completed at 100k, but shows large Syncthing initial-sync cost that worsens sharply with scale. The 500k files macOS→Windows r2 cell is **completed controlled timeout / impracticality evidence** (`p0-1-500k-files-macos-to-windows-r2`, 21600s, ~21.2% peer completion). That is not a Syncthing crash, not a timing result, and does not by itself accept this ADR. No further 500k files retry is scheduled.
 - Candidate **C (hybrid)** is **not** justified yet; do not evaluate unless A/B remain inconclusive after mandatory evidence closes.
 
@@ -34,7 +34,7 @@ Working hypothesis from verified evidence so far (subject to remaining 500k segm
 | Alternative | Status in this draft |
 |---|---|
 | A — one file per event | Under evaluation; strong Syncthing cost signal against it at ≥100k; 500k macOS→Windows r2 closed as controlled timeout / impracticality |
-| B — sealed segments | Leading on verified local + Syncthing evidence through 100k; **500k Syncthing still required** |
+| B — sealed segments | Leading on verified local + Syncthing evidence through 500k macOS→Windows; **500k reverse Syncthing still required** |
 | C — hybrid thresholded segments | Deferred; only if A/B cannot satisfy scale/recovery together |
 
 ## 4. Evidence summary (verified only)
@@ -72,13 +72,17 @@ Illustrative verified timings (exact values live in evidence files):
 |---|---|
 | 10k segments both directions (initial + incremental) | VERIFIED |
 | 100k segments both directions (initial + incremental) | VERIFIED |
-| 500k segments any direction | **NOT YET EXECUTED** |
+| 500k segments macOS→Windows initial | VERIFIED |
+| 500k segments macOS→Windows incremental | VERIFIED |
+| 500k segments Windows→macOS | **NOT YET EXECUTED** |
 
 Illustrative verified timings:
 
 - 100k segments macOS→Windows initial ≈ 1.64e4 ms (~16 s)
 - 100k segments Windows→macOS initial ≈ 3.79e3 ms (~3.8 s)
 - 100k segments incremental ≈ 1.2–1.3 s timed window
+- 500k segments macOS→Windows initial ≈ 1.84e4 ms (~18 s)
+- 500k segments macOS→Windows incremental ≈ 1.34e3 ms (~1.3 s timed window)
 
 ### 4.4 Recovery / purge / corruption tradeoffs
 
@@ -95,8 +99,8 @@ These tradeoffs favor **files** for fine-grained purge/corruption isolation and 
 Mandatory before this ADR may be marked ACCEPTED:
 
 1. Record outcome of **`p0-1-500k-files-macos-to-windows-r2`** — **DONE** as completed controlled timeout / impracticality (`evidence/m0/p0-1/syncthing-500k-files-macos-to-windows-r2-TIMED-FAILED.md`). Do not convert the timeout wall window into a timing result. Do not schedule another 500k files retry.
-2. **500k segments macOS→Windows** initial Syncthing measurement — VERIFIED
-3. Approved **+100-event incremental** on that same segments cell — VERIFIED
+2. **500k segments macOS→Windows** initial Syncthing measurement — **DONE** (`evidence/m0/p0-1/syncthing-500k-segments-macos-to-windows.md`)
+3. Approved **+100-event incremental** on that same segments cell — **DONE** (`evidence/m0/p0-1/syncthing-500k-segments-macos-to-windows-incremental.md`)
 4. **500k segments Windows→macOS** initial Syncthing measurement — VERIFIED  
    *(recommended by evidence-protocol parity with 10k/100k; treat as required for this closure plan unless a later audit explicitly narrows to one direction)*
 5. Approved **+100-event incremental** on that reverse segments cell — VERIFIED
@@ -134,7 +138,9 @@ Not required by Master Spec given r2's controlled-timeout impracticality signal,
 - `evidence/m0/p0-1/README.md`
 - `evidence/m0/p0-1/syncthing-initial-sync-protocol.md`
 - `evidence/m0/p0-1/syncthing-500k-files-macos-to-windows-r2-TIMED-FAILED.md`
-- `evidence/m0/p0-1/syncthing-500k-segments-runbook.md` (DRAFT)
+- `evidence/m0/p0-1/syncthing-500k-segments-runbook.md`
+- `evidence/m0/p0-1/syncthing-500k-segments-macos-to-windows.md`
+- `evidence/m0/p0-1/syncthing-500k-segments-macos-to-windows-incremental.md`
 - Verified 10k/100k Syncthing evidence files under `evidence/m0/p0-1/`
 - `evidence/m0/p0-1/purge-complexity.md`
 - `evidence/m0/p0-1/corruption-blast-radius.md`
