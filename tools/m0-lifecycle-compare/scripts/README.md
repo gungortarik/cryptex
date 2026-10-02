@@ -4,6 +4,43 @@ These test-only scripts investigate daemon survival after an actual Windows
 sign-out/sign-in. They neither choose supervision for ADR-0012 nor restart the
 daemon. All runtime files stay under `%LOCALAPPDATA%\Cryptex-Dev\p0-2`.
 
+## Isolated Explorer Run dispatch check
+
+The 2026-10-02 `wl-1002a` attempt had a confirmed interactive logon but no
+Shell-Core launch event or runtime artifact for either Cryptex Run value. Before
+repeating the daemon test, isolate Explorer's dispatch using one harmless
+PowerShell marker. The marker process writes only its PID, session ID, and UTC
+launch time under the supplied runtime directory. It does not start `cryptexd`
+or touch canonical data.
+
+After completing the relevant build/tests below, choose a fresh runtime directory
+and prepare. Preparation self-checks the marker script without using the registry
+and records any existing StartupApproved bytes without modifying that key.
+
+```powershell
+$dispatch = Join-Path $env:LOCALAPPDATA 'Cryptex-Dev\p0-2\wd-1003a'
+powershell.exe -NoProfile -NonInteractive -File tools/m0-lifecycle-compare/scripts/prepare-windows-run-dispatch.ps1 -Action Prepare -SessionRoot $dispatch
+```
+
+Sign out of Windows and sign in normally. Do not use lock/unlock as a substitute.
+After sign-in, inspect the marker and Run registration:
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -File tools/m0-lifecycle-compare/scripts/prepare-windows-run-dispatch.ps1 -Action Status -SessionRoot $dispatch
+```
+
+If the marker is present, Explorer dispatched this benign Run command, narrowing
+the prior failure to the Cryptex entries or their command forms. If absent, collect
+the corresponding Shell-Core and process-start evidence before cleanup; do not
+infer why dispatch was skipped. Then remove only the matching test value:
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -File tools/m0-lifecycle-compare/scripts/prepare-windows-run-dispatch.ps1 -Action Cleanup -SessionRoot $dispatch
+```
+
+The manifest and marker evidence remain outside the repository. This probe is
+diagnostic only and is not supervision or daemon-survival evidence.
+
 Build and test **before preparing a real login experiment**. The existing Rust
 registry integration test uses/removes `CryptexDevP02HkcuRun`; do not run it while
 an experiment is armed.

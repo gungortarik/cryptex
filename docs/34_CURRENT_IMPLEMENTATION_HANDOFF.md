@@ -240,15 +240,19 @@ The reboot therefore stopped it. P0-1 is already complete. Do not restart it mer
 
 Before implementing another supervision mechanism or changing architecture:
 
-1. diagnose why the confirmed Windows user logon did not dispatch either
-   instrumented HKCU Run command. Preserve process-start and shell-launch
-   evidence in a new isolated candidate run. The prior values have been removed;
-   do not treat this run as daemon-survival evidence or infer a termination cause.
-   See `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
-2. complete the M0 P0-3 local IPC prototype/evidence before claiming a full
+1. run the isolated benign Explorer HKCU Run dispatch check documented in
+   `tools/m0-lifecycle-compare/scripts/README.md`. Its preparation self-checks
+   the marker, stores runtime data outside the repo, and changes only its own
+   temporary Run value. Preserve Shell-Core/process-start evidence. This probe
+   does not establish daemon survival or explain a termination cause.
+2. if Explorer dispatches the marker, repeat the instrumented Cryptex login
+   attempt with a fresh runtime root and preserve process-start/shell-launch
+   evidence. Do not infer a termination cause if no observer attaches. See
+   `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
+3. complete the M0 P0-3 local IPC prototype/evidence before claiming a full
    Desktop reconnect test; current Desktop status uses a short-lived CLI call.
-3. perform/record the macOS login/reboot startup proof on the Mac host
-4. compare the candidates and document evidence before accepting ADR-0012
+4. perform/record the macOS login/reboot startup proof on the Mac host
+5. compare the candidates and document evidence before accepting ADR-0012
 
 ## OPEN
 
