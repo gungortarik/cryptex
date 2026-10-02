@@ -33,6 +33,26 @@ outside the Git repository at:
 The daemon's final lifecycle record reported `pid=none`, `recorded_pid=33584`,
 and `note=clean shutdown released instance lock`.
 
+## Stale-ready PID regression proof
+
+Repeated the physical Windows Tauri close flow after changing the runtime
+`ready` file to the deliberately invalid historical PID `99999` (Desktop PID
+30248):
+
+- While the daemon lock was held, the snapshot recorded live lock-holder PID
+  `35252`, not the stale `ready` value, and marked
+  `daemon_pid_observation=live`.
+- After cleanly stopping the daemon while leaving `ready=99999`, lifecycle
+  status reported `pid=none`, `recorded_pid=35252`, `instance=stale`.
+- A subsequent Tauri `CloseRequested` snapshot and event both recorded
+  `daemon_pid=none` and `daemon_pid_observation=not_running` despite the
+  unchanged stale ready file.
+
+This confirms these Desktop proof artifacts now query a fresh daemon lifecycle
+observation instead of treating the startup marker as a current PID. The
+snapshot records `unavailable` plus an error when lifecycle status cannot be
+queried or parsed, rather than silently classifying that case as stopped.
+
 ## Limits
 
 This is a physical Windows host run through the application's automated

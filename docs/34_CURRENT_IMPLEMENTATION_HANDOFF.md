@@ -88,6 +88,10 @@ Not verified by that run:
   safety: VERIFIED for the Windows comparison harness. See
   `evidence/m0/p0-2/windows-update-rollback-evidence-20261002.md`.
 - Full Desktop IPC reconnect after supervised restart remains OPEN.
+- Desktop close/restore/snapshot proof artifacts now query a fresh daemon
+  lifecycle observation for the live PID instead of treating `ready` as live;
+  status errors are reported as unavailable. A physical stale-ready Windows
+  regression proof is included in the GUI evidence.
 - These proofs do not explain the separate HKCU Run daemon exit after login,
   select a supervision candidate, or accept ADR-0012.
 - login/reboot startup
@@ -220,7 +224,6 @@ Before implementing another supervision mechanism or changing architecture:
 ## OPEN
 
 - root cause of Windows HKCU Run post-login daemon exit
-- downstream consumers treating an old persisted lifecycle snapshot as live
 - Windows crash-restart parity for a no-elevation/native candidate
 - full Desktop IPC reconnect after daemon restart
 - macOS login/reboot startup proof

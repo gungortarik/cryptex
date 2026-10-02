@@ -88,7 +88,7 @@ fn p0_2_start_daemon(state: State<'_, ProbeState>, cryptexd: String) -> Result<u
     *state.cryptexd_bin.lock().map_err(|e| e.to_string())? = Some(PathBuf::from(&cryptexd));
     *state.child.lock().map_err(|e| e.to_string())? = Some(child);
     write_supervisor_state(&runtime, "active", Some(pid), true)?;
-    write_snapshot(&runtime, "daemon_started", true, Some(pid))?;
+    write_snapshot(&runtime, "daemon_started", true, Ok(Some(pid)))?;
     Ok(pid)
 }
 
@@ -100,23 +100,8 @@ fn p0_2_daemon_status(state: State<'_, ProbeState>) -> Result<String, String> {
         .map_err(|e| e.to_string())?
         .clone()
         .unwrap_or(runtime_root_path()?);
-    let bin = state
-        .cryptexd_bin
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clone()
-        .or_else(|| std::env::var_os("CRYPTEXD_BIN").map(PathBuf::from))
-        .ok_or_else(|| "cryptexd path unknown".to_string())?;
-    let output = Command::new(bin)
-        .args([
-            "lifecycle",
-            "status",
-            "--runtime-root",
-            runtime.to_str().ok_or("runtime utf8")?,
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    let bin = daemon_binary(&state).ok_or_else(|| "cryptexd path unknown".to_string())?;
+    query_daemon_status(&bin, &runtime)
 }
 
 #[tauri::command]
@@ -126,8 +111,8 @@ fn p0_2_stop_daemon(state: State<'_, ProbeState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn p0_2_show_main_window(app: AppHandle) -> Result<(), String> {
-    show_main_window(&app, "p0_2_show_main_window")
+fn p0_2_show_main_window(app: AppHandle, state: State<'_, ProbeState>) -> Result<(), String> {
+    show_main_window(&app, "p0_2_show_main_window", &state)
 }
 
 #[tauri::command]
@@ -147,7 +132,7 @@ fn p0_2_write_snapshot(
         .get_webview_window("main")
         .and_then(|w| w.is_visible().ok())
         .unwrap_or(false);
-    let daemon_pid = read_ready_pid(&runtime);
+    let daemon_pid = current_daemon_pid(&runtime, &state);
     let path = write_snapshot(&runtime, &note, window_visible, daemon_pid)?;
     Ok(path.display().to_string())
 }
@@ -157,7 +142,7 @@ fn p0_2_quit_clean(app: AppHandle, state: State<'_, ProbeState>) -> Result<(), S
     stop_supervised_daemon(&state)?;
     if let Ok(root) = runtime_root_path() {
         write_supervisor_state(&root, "clean_quit", None, false)?;
-        write_snapshot(&root, "clean_quit", false, None)?;
+        write_snapshot(&root, "clean_quit", false, Ok(None))?;
     }
     app.exit(0);
     Ok(())
@@ -187,15 +172,20 @@ fn stop_supervised_daemon(state: &State<'_, ProbeState>) -> Result<(), String> {
     Ok(())
 }
 
-fn show_main_window(app: &AppHandle, source: &str) -> Result<(), String> {
+fn show_main_window(app: &AppHandle, source: &str, state: &ProbeState) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window missing".to_string())?;
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())?;
     if let Ok(root) = runtime_root_path() {
-        let daemon_pid = read_ready_pid(&root);
-        write_supervisor_state(&root, "window_restored", daemon_pid, true)?;
+        let daemon_pid = current_daemon_pid(&root, state);
+        write_supervisor_state(
+            &root,
+            "window_restored",
+            daemon_pid.as_ref().ok().copied().flatten(),
+            true,
+        )?;
         write_snapshot(
             &root,
             &format!("window_restored_via_{source}"),
@@ -210,20 +200,28 @@ fn show_main_window(app: &AppHandle, source: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn record_window_close(_app: &AppHandle) {
+fn record_window_close(_app: &AppHandle, state: &ProbeState) {
     if let Ok(runtime) = runtime_root_path() {
-        let daemon_pid = read_ready_pid(&runtime);
+        let daemon_pid = current_daemon_pid(&runtime, state);
+        let observed_pid = daemon_pid.as_ref().ok().copied().flatten();
+        let (pid_text, observation_text) = match &daemon_pid {
+            Ok(Some(pid)) => (pid.to_string(), "live".to_string()),
+            Ok(None) => ("none".into(), "not_running".into()),
+            Err(error) => (
+                "unavailable".into(),
+                format!("unavailable: {}", error.replace(['\r', '\n'], " ")),
+            ),
+        };
         let _ = fs::write(
             runtime.join("window-close.event"),
             format!(
-                "event=window_close\nsource=tauri_close_requested\nsupervisor_alive=true\ndaemon_expected_alive=true\ndaemon_pid={}\ndesktop_pid={}\n",
-                daemon_pid
-                    .map(|p| p.to_string())
-                    .unwrap_or_else(|| "none".into()),
+                "event=window_close\nsource=tauri_close_requested\nsupervisor_alive=true\ndaemon_expected_alive=true\ndaemon_pid={}\ndaemon_pid_observation={}\ndesktop_pid={}\n",
+                pid_text,
+                observation_text,
                 std::process::id()
             ),
         );
-        let _ = write_supervisor_state(&runtime, "window_closed_hidden", daemon_pid, true);
+        let _ = write_supervisor_state(&runtime, "window_closed_hidden", observed_pid, true);
         let _ = write_snapshot(&runtime, "window_closed_hidden", false, daemon_pid);
     }
 }
@@ -251,16 +249,23 @@ fn write_snapshot(
     runtime: &Path,
     note: &str,
     window_visible: bool,
-    daemon_pid: Option<u32>,
+    daemon_pid: Result<Option<u32>, String>,
 ) -> Result<PathBuf, String> {
     let path = runtime.join("gui-proof.snapshot");
+    let (pid_text, observation_text) = match daemon_pid {
+        Ok(Some(pid)) => (pid.to_string(), "live".to_string()),
+        Ok(None) => ("none".into(), "not_running".into()),
+        Err(error) => (
+            "unavailable".into(),
+            format!("unavailable: {}", error.replace(['\r', '\n'], " ")),
+        ),
+    };
     let body = format!(
-        "note={}\ndesktop_pid={}\ndaemon_pid={}\nwindow_visible={}\nruntime_root={}\nupdated_unix_ms={}\n",
+        "note={}\ndesktop_pid={}\ndaemon_pid={}\ndaemon_pid_observation={}\nwindow_visible={}\nruntime_root={}\nupdated_unix_ms={}\n",
         note.replace('\n', " "),
         std::process::id(),
-        daemon_pid
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| "none".into()),
+        pid_text,
+        observation_text,
         window_visible,
         runtime.display(),
         std::time::SystemTime::now()
@@ -272,10 +277,49 @@ fn write_snapshot(
     Ok(path)
 }
 
-fn read_ready_pid(runtime: &Path) -> Option<u32> {
-    fs::read_to_string(runtime.join("ready"))
+fn daemon_binary(state: &ProbeState) -> Option<PathBuf> {
+    state
+        .cryptexd_bin
+        .lock()
         .ok()
-        .and_then(|s| s.trim().parse().ok())
+        .and_then(|bin| bin.clone())
+        .or_else(|| std::env::var_os("CRYPTEXD_BIN").map(PathBuf::from))
+}
+
+fn query_daemon_status(cryptexd: &Path, runtime: &Path) -> Result<String, String> {
+    let output = Command::new(cryptexd)
+        .args([
+            "lifecycle",
+            "status",
+            "--runtime-root",
+            runtime.to_str().ok_or("runtime utf8")?,
+        ])
+        .output()
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn current_daemon_pid(runtime: &Path, state: &ProbeState) -> Result<Option<u32>, String> {
+    let bin = daemon_binary(state).ok_or_else(|| "cryptexd path unknown".to_string())?;
+    let status = query_daemon_status(&bin, runtime)?;
+    parse_live_daemon_pid(&status)
+}
+
+fn parse_live_daemon_pid(status: &str) -> Result<Option<u32>, String> {
+    let pid_field = status
+        .lines()
+        .find_map(|line| line.strip_prefix("pid="))
+        .ok_or_else(|| "lifecycle status omitted live pid field".to_string())?;
+    if pid_field == "none" {
+        return Ok(None);
+    }
+    pid_field
+        .parse::<u32>()
+        .map(Some)
+        .map_err(|_| "lifecycle status returned an invalid live pid".to_string())
 }
 
 fn start_daemon_inner(cryptexd: &str, runtime: &Path) -> Result<(u32, Child), String> {
@@ -365,7 +409,7 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
                                     &root,
                                     "daemon_started_via_request_file",
                                     true,
-                                    Some(pid),
+                                    Ok(Some(pid)),
                                 );
                             }
                             Err(error) => {
@@ -401,7 +445,7 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
             let show = root.join("show.request");
             if show.exists() {
                 let _ = fs::remove_file(&show);
-                let _ = show_main_window(&app, "show.request");
+                let _ = show_main_window(&app, "show.request", &state);
             }
 
             let quit = root.join("quit.request");
@@ -414,7 +458,7 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
                     let _ = child.kill();
                     let _ = child.wait();
                 }
-                let _ = write_snapshot(&root, "clean_quit_via_request_file", false, None);
+                let _ = write_snapshot(&root, "clean_quit_via_request_file", false, Ok(None));
                 app.exit(0);
                 break;
             }
@@ -446,14 +490,16 @@ fn main() {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                record_window_close(window.app_handle());
+                let app = window.app_handle();
+                record_window_close(app, &app.state::<ProbeState>());
                 let _ = window.hide();
             }
         })
         .setup(move |app| {
             let _ = runtime_root_path().and_then(|root| {
                 fs::create_dir_all(&root).map_err(|e| e.to_string())?;
-                write_snapshot(&root, "desktop_launched", true, None)?;
+                let observation = current_daemon_pid(&root, &probe_state);
+                write_snapshot(&root, "desktop_launched", true, observation)?;
                 Ok(())
             });
             spawn_control_file_watcher(app.handle().clone(), probe_state.clone());
@@ -470,7 +516,11 @@ fn main() {
                 } = event
                     && !has_visible_windows
                 {
-                    let _ = show_main_window(app_handle, "dock_reopen");
+                    let _ = show_main_window(
+                        app_handle,
+                        "dock_reopen",
+                        &app_handle.state::<ProbeState>(),
+                    );
                 }
             }
             #[cfg(not(target_os = "macos"))]
@@ -482,7 +532,7 @@ fn main() {
 
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
-    use super::windows_runtime_root;
+    use super::{parse_live_daemon_pid, windows_runtime_root};
     use std::ffi::OsStr;
     use std::path::PathBuf;
 
@@ -508,5 +558,25 @@ mod tests {
             windows_runtime_root(None).unwrap_err(),
             "LOCALAPPDATA unset"
         );
+    }
+
+    #[test]
+    fn live_pid_parser_ignores_recorded_pid_when_lock_is_stale() {
+        let status = "pid=none\nrecorded_pid=731\ninstance=stale\nhealth=attention\n";
+
+        assert_eq!(parse_live_daemon_pid(status).unwrap(), None);
+    }
+
+    #[test]
+    fn live_pid_parser_uses_fresh_lock_observation() {
+        let status = "pid=904\nrecorded_pid=731\ninstance=held\nhealth=active\n";
+
+        assert_eq!(parse_live_daemon_pid(status).unwrap(), Some(904));
+    }
+
+    #[test]
+    fn live_pid_parser_surfaces_malformed_status_instead_of_calling_it_stopped() {
+        assert!(parse_live_daemon_pid("recorded_pid=731\ninstance=stale\n").is_err());
+        assert!(parse_live_daemon_pid("pid=not-a-number\n").is_err());
     }
 }
