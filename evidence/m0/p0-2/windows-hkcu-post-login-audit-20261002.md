@@ -1,9 +1,9 @@
 # P0-2 Windows HKCU Run — post-login exit audit
 
-**Date:** 2026-10-02  
-**Platform:** Windows x86_64 physical workstation  
-**Branch under audit:** `m0/p0-2-cursor` at `34073a6`  
-**Mode:** test-only `native_hkcu_run`  
+**Date:** 2026-10-02
+**Platform:** Windows x86_64 physical workstation
+**Branch under audit:** `m0/p0-2-cursor` at `34073a6`
+**Mode:** test-only `native_hkcu_run`
 **ADR-0012:** UNRESOLVED
 
 ## Evidence basis

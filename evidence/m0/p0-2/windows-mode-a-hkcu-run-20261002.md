@@ -1,11 +1,11 @@
 # P0-2 Windows Mode A — HKCU Run automated probe
 
-**Date (UTC):** 2026-10-02T18:06:07Z  
-**Host:** Windows physical machine / x86_64  
-**Branch:** `m0/p0-2-cursor`  
-**Commit:** `34073a6`  
-**Experiment ID:** `windows-mode-a-hkcu-r1-20261002T180600Z`  
-**Mode:** `native_hkcu_run`  
+**Date (UTC):** 2026-10-02T18:06:07Z
+**Host:** Windows physical machine / x86_64
+**Branch:** `m0/p0-2-cursor`
+**Commit:** `34073a6`
+**Experiment ID:** `windows-mode-a-hkcu-r1-20261002T180600Z`
+**Mode:** `native_hkcu_run`
 **Classification:** AUTOMATED physical-host harness evidence; interactive login remains open
 
 ## Result
