@@ -9,7 +9,7 @@ Authoritative basis:
 - `docs/milestones/M0_FOUNDATION.md`
 - `docs/30_ADR_INDEX.md`
 
-It does **not** define the production event format, event schema, purge algorithm, replication semantics, or accepted physical layout. ADR-0013 remains pending until the required cross-platform measurements are complete and accepted.
+It does **not** define production event schema, purge algorithm, or replication semantics. Physical packaging is accepted in ADR-0013 (sealed per-device segments). This harness's `segment_events=1000` profile is a benchmark parameter, not a production constant. P0-4 remains separate.
 
 ## Candidate layouts represented
 

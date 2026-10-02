@@ -1,8 +1,8 @@
 # M0 P0-1 — Initial Syncthing Scan/Sync Protocol
 
-**Status:** IN PROGRESS  
+**Status:** COMPLETE for required P0-1 initial-sync cells  
 **Scope:** P0-1 initial Syncthing scan/sync measurement only  
-**Architecture effect:** none; this protocol does not select a production storage layout or complete P0-1/P0-4.
+**Architecture effect:** packaging architecture is recorded in ADR-0013; this protocol does not complete P0-4 or M0.
 
 ## Authority and requirement
 
@@ -934,7 +934,7 @@ peer_address=192.168.50.137:22001
 
 Retirement: macOS and Windows folder config removed; work paths retained on both sides; retained corpus untouched; `--delete-work-path` not used.
 
-No further 500k files retry is scheduled. 500k segments macOS→Windows initial + incremental are VERIFIED. Remaining Syncthing matrix work is the 500k segments Windows→macOS cells.
+No further 500k files retry is scheduled. 500k segments both directions (initial + incremental) are VERIFIED.
 
 Evidence: `evidence/m0/p0-1/syncthing-500k-files-macos-to-windows-r2-TIMED-FAILED.md`
 
@@ -1014,6 +1014,85 @@ transport_scope=explicit_direct_tcp_only
 Windows destination physical post-check: `state=idle`, `localFiles/Bytes=501/518103600`, `globalFiles/Bytes=501/518103600`, `physical_files/bytes=501/518103600`, needs/errors all zero. A separate destination observation timestamp was not supplied with this recording.
 
 Evidence: `evidence/m0/p0-1/syncthing-500k-segments-macos-to-windows-incremental.md`
+
+This working folder must not be reused as a fresh initial-sync cell. Do not retire it yet.
+
+## Cell `p0-1-500k-segments-windows-to-macos` — VERIFIED
+
+```text
+folder_id=p0-1-500k-segments-windows-to-macos
+layout=segments
+events=500000
+source_platform=windows
+destination_platform=macos
+syncthing_version=v2.1.5
+START_TIMESTAMP_UTC=2026-10-02T03:03:36Z
+started_at_utc=2026-10-02T03:03:36.671Z
+scan_completed_at_utc=2026-10-02T03:03:37.260Z
+completed_at_utc=2026-10-02T03:03:52.237Z
+COMPLETION_TIMESTAMP_UTC=2026-10-02T03:03:52Z
+EXIT_CODE=0
+initial_scan_ms=589.162
+initial_sync_total_ms=15565.032
+source_local_files=500
+source_local_bytes=518000000
+source_global_files=500
+source_global_bytes=518000000
+peer_completion=100
+peer_global_items=501
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_global_files_verified=500
+source_paused_after_completion=true
+transport_scope=explicit_direct_tcp_only
+```
+
+macOS destination physical post-check: `state=idle`, `localFiles/Bytes=500/518000000`, `globalFiles/Bytes=500/518000000`, `physical_files/bytes=500/518000000`, needs/errors all zero. A separate destination observation timestamp was not supplied with this recording.
+
+Evidence: `evidence/m0/p0-1/syncthing-500k-segments-windows-to-macos.md`
+
+### Incremental measurement (500k segments Windows→macOS) — VERIFIED
+
+```text
+folder_id=p0-1-500k-segments-windows-to-macos
+layout=segments
+baseline_events=500000
+incremental_events=100
+payload_bytes=1024
+segment_events=1000
+source_platform=windows
+destination_platform=macos
+syncthing_version=v2.1.5
+INCREMENTAL_START_UTC=2026-10-02T03:07:38Z
+INCREMENTAL_END_UTC=2026-10-02T03:07:40Z
+EXIT_CODE=0
+append_setup_ms=311.646
+started_at_utc=2026-10-02T03:07:39.037Z
+scan_completed_at_utc=2026-10-02T03:07:39.334Z
+completed_at_utc=2026-10-02T03:07:40.225Z
+incremental_scan_ms=297.252
+incremental_sync_total_ms=1187.504
+incremental_logical_bytes=103600
+source_local_files=501
+source_local_bytes=518103600
+source_global_files=501
+source_global_bytes=518103600
+peer_completion=100
+peer_global_items=502
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_global_files_verified=501
+source_paused_after_completion=true
+transport_scope=explicit_direct_tcp_only
+```
+
+`append_setup_ms` is outside the timed incremental sync window and must not be combined with `incremental_sync_total_ms`. Post-append physical object count was measured as 500 → 501 (not assumed).
+
+macOS destination physical post-check: `state=idle`, `localFiles/Bytes=501/518103600`, `globalFiles/Bytes=501/518103600`, `physical_files/bytes=501/518103600`, needs/errors all zero. A separate destination observation timestamp was not supplied with this recording.
+
+Evidence: `evidence/m0/p0-1/syncthing-500k-segments-windows-to-macos-incremental.md`
 
 This working folder must not be reused as a fresh initial-sync cell. Do not retire it yet.
 

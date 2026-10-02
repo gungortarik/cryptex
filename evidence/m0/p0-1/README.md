@@ -1,8 +1,8 @@
 # M0 P0-1 — Physical Event Storage Benchmark Evidence
 
-**Status:** IN PROGRESS
+**Status:** COMPLETE (P0-1 spike resolved; M0 remains IN PROGRESS)
 
-This directory records reproducible evidence for M0 P0-1 only. It does not select or freeze the production physical event layout.
+This directory records reproducible evidence for M0 P0-1. The production physical packaging decision is recorded in ADR-0013 (ACCEPTED: sealed per-device segments). Individual measurement files do not themselves complete P0-4 or M0.
 
 ## Authority
 
@@ -95,13 +95,15 @@ The exact managed-Syncthing product integration remains P0-4 and must not be inf
 
 The harness reports logical stored bytes and physical object counts. macOS runner output also records `du` allocated KiB for each generated root.
 
-Windows real allocation/directory-metadata overhead must be captured as a separate platform measurement before P0-1 can be accepted; logical byte count alone is insufficient.
+Windows real allocation/directory-metadata overhead was captured as a separate platform measurement on the retained 500k files corpus; logical byte count alone is insufficient.
 
 ## Decision record
 
-No layout is accepted until all required macOS and Windows evidence has been reviewed. The final selected direction, rejected alternatives, scale/recovery implications, purge implications and corruption-blast-radius reasoning must be recorded in ADR-0013.
+ADR-0013 is **ACCEPTED**. Canonical packaging is immutable sealed per-device segment/pack files. One-file-per-event is rejected. Hybrid is not selected.
 
-Until then, ADR-0013 remains unresolved and M0 remains IN PROGRESS.
+`segment_events=1000` was the verified P0-1 benchmark profile and is **not** a frozen production constant.
+
+M0 remains IN PROGRESS. P0-2, P0-3 and P0-4 are unchanged.
 
 ## Current evidence index (non-exhaustive)
 
@@ -135,11 +137,12 @@ Additional P0-1 evidence files:
 - `syncthing-500k-files-macos-to-windows-r2-TIMED-FAILED.md` — 500k files macOS→Windows r2 **completed controlled timeout / impracticality** at 21600s (~21.2% peer completion); not a Syncthing crash; not a timing result; no further 500k files retry; do not reuse r2
 - `syncthing-500k-segments-macos-to-windows.md` — **valid** 500k segments macOS→Windows initial sync timing; retain cell (do not retire yet)
 - `syncthing-500k-segments-macos-to-windows-incremental.md` — **valid** approved incremental sync on the 500k segments macOS→Windows cell
-- `syncthing-500k-segments-runbook.md` — runbook/checklist; Cell A (macOS→Windows) VERIFIED; Cell B (Windows→macOS) still PENDING
-- `syncthing-500k-segments-windows-to-macos*.DRAFT.md` — **DRAFT** templates for remaining 500k segments reverse-direction cells
-- `docs/adr/ADR-0013-physical-event-storage-layout.md` — **PROPOSED / PENDING** draft ADR (not accepted; no layout selected)
+- `syncthing-500k-segments-windows-to-macos.md` — **valid** 500k segments Windows→macOS initial sync timing; retain cell (do not retire yet)
+- `syncthing-500k-segments-windows-to-macos-incremental.md` — **valid** approved incremental sync on the 500k segments Windows→macOS cell
+- `syncthing-500k-segments-runbook.md` — runbook/checklist; Cell A and Cell B timed measurements VERIFIED; do not retire folders from this file
+- `docs/adr/ADR-0013-physical-event-storage-layout.md` — **ACCEPTED** (sealed per-device segments; files rejected; hybrid not selected)
 - `purge-complexity.md` — physical purge-complexity probes for both candidates, with macOS and Windows sections separated
 - `corruption-blast-radius.md` — physical corruption blast-radius probes for both candidates, with macOS and Windows sections separated
-- `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md` — incremental workload approved for measurement only (not executed; does not accept ADR-0013)
+- `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md` — incremental workload protocol; required cells executed; does not accept ADR-0013
 - `syncthing-incremental-workload-PROPOSED.md` — pointer to the approved measurement protocol
 

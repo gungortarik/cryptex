@@ -1,7 +1,7 @@
 # M0 P0-1 — Runbook: 500k Segments Syncthing Cells
 
-**Status:** IN PROGRESS — Cell A VERIFIED; Cell B PENDING  
-**Architecture effect:** none; does not accept ADR-0013; does not select a layout
+**Status:** COMPLETE FOR TIMED CELLS — Cell A and Cell B VERIFIED; ADR-0013 ACCEPTED; folders not retired by this file  
+**Architecture effect:** packaging architecture is recorded in ADR-0013; this runbook does not complete P0-4 or M0
 
 `p0-1-500k-files-macos-to-windows-r2` is **complete** (controlled timeout / files impracticality evidence). Do not schedule another 500k files retry. This runbook does not execute the segments cells by itself.
 
@@ -11,8 +11,8 @@ Exact checklist for the four 500k segments Syncthing measurements planned for P0
 
 1. 500k segments macOS → Windows — initial — **VERIFIED**
 2. same cell — approved +100 incremental — **VERIFIED**
-3. 500k segments Windows → macOS — initial — PENDING
-4. same cell — approved +100 incremental — PENDING
+3. 500k segments Windows → macOS — initial — **VERIFIED**
+4. same cell — approved +100 incremental — **VERIFIED**
 
 ## Script capability verification (read-only)
 
@@ -122,17 +122,18 @@ Do **not** retire `p0-1-500k-segments-macos-to-windows` yet.
 
 ### B3. Timed initial
 
-- [ ] Run initial sync on Windows source with `--layout segments --events 500000`
-- [ ] Prefer UTF-16LE-safe raw capture (helper accepts BOM `FF FE`)
-- [ ] macOS destination post-check: idle, 500 / 518000000, needs 0
-- [ ] Record `syncthing-500k-segments-windows-to-macos.md`
+- [x] Timed initial on Windows source `EXIT_CODE=0`
+- [x] macOS destination post-check: idle, 500 / 518000000, physical 500 / 518000000, needs 0
+- [x] Record `syncthing-500k-segments-windows-to-macos.md` (VERIFIED)
 
 ### B4. Timed incremental (+100)
 
-- [ ] Same folder ID; approved workload; `--segment-events 1000`
-- [ ] Measure physical objects after append
-- [ ] macOS post-check matches post-append counts
-- [ ] Record `syncthing-500k-segments-windows-to-macos-incremental.md`
+- [x] Same folder ID; approved workload
+- [x] Post-append physical objects measured: 501 / 518103600
+- [x] macOS post-check matches post-append counts
+- [x] Record `syncthing-500k-segments-windows-to-macos-incremental.md` (VERIFIED)
+
+Do **not** retire `p0-1-500k-segments-windows-to-macos` yet.
 
 ---
 
@@ -168,7 +169,7 @@ scope=isolated_p0_1_incremental_syncthing_scan_sync_measurement
 
 ## After all four VERIFIED
 
-- [ ] Update `evidence/m0/p0-1/README.md` index
-- [ ] Update `syncthing-initial-sync-protocol.md` execution status
-- [ ] Update `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md`
-- [ ] Revisit `docs/adr/ADR-0013-physical-event-storage-layout.md` for ACCEPTED — **separate human decision**
+- [x] Update `evidence/m0/p0-1/README.md` index
+- [x] Update `syncthing-initial-sync-protocol.md` execution status
+- [x] Update `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md`
+- [x] Revisit `docs/adr/ADR-0013-physical-event-storage-layout.md` for ACCEPTED — recorded 2026-10-02; M0 remains incomplete

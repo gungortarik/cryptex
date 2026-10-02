@@ -84,6 +84,8 @@ Select the simplest option that satisfies scale and recovery goals on both platf
 
 Record the decision in ADR-0013 and mark it ACCEPTED before the applicable downstream milestone gate.
 
+**Recorded 2026-10-02:** P0-1 is complete. ADR-0013 is ACCEPTED (sealed per-device segments). M0 remains IN PROGRESS until P0-2, P0-3 and P0-4 and the remaining M0 gate items are verified.
+
 ## 6. P0-2 — Background Runtime / Atomic Update Lifecycle
 
 M0 must prove how `cryptexd` remains available and safely coordinated with Cryptex Desktop on both operating systems.
