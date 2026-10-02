@@ -1,0 +1,43 @@
+# P0-2 Mode B — Windows Tauri GUI close/hide proof
+
+**Date (local):** 2026-10-02 15:11–15:12 America/New_York  
+**Host:** Windows physical machine / x86_64  
+**Branch:** `m0/p0-2-cursor`  
+**Mode:** Tauri Desktop supervising `cryptexd`  
+**Status:** VERIFIED for the automated physical Tauri `CloseRequested` event path only
+
+## Method
+
+Started the Windows Tauri development application and its bundled Vite frontend.
+With the app's P0-2 control-file hook, started the built `cryptexd.exe`, requested
+window close (which calls Tauri `Window::close()` and enters the same
+`CloseRequested` handler), then requested window restore. The runtime was kept
+outside the Git repository at:
+
+```text
+%LOCALAPPDATA%\Cryptex-Dev\p0-2\compare\mode-b-desktop
+```
+
+## Observed results
+
+| Observation | Result |
+|---|---|
+| Desktop process | PID 31872 (`cryptex-desktop`) remained alive while hidden |
+| Daemon process | PID 33584 (`cryptexd`) remained alive while window was hidden |
+| Close event | `source=tauri_close_requested`; supervisor and daemon expected alive |
+| Hidden snapshot | `note=window_closed_hidden`, `window_visible=false`, daemon PID 33584 |
+| Lifecycle while hidden | `instance=held`, `health=active`, PID 33584 |
+| Restore event | `source=show.request`; snapshot `window_visible=true` |
+| Cleanup | stop file released daemon lock; lifecycle became `instance=stale`, `health=attention`; app quit request exited Desktop |
+
+The daemon's final lifecycle record reported `pid=none`, `recorded_pid=33584`,
+and `note=clean shutdown released instance lock`.
+
+## Limits
+
+This is a physical Windows host run through the application's automated
+control-file hook; it is not a manually clicked title-bar close test. It verifies
+the Tauri `CloseRequested` handling and the window-hide/restore lifecycle. It
+does not verify full Desktop IPC reconnect after daemon restart, login/reboot
+startup, or crash recovery, and it does not select a supervision architecture.
+ADR-0012 remains unresolved.

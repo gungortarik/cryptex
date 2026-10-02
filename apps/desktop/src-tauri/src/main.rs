@@ -5,6 +5,8 @@
 //! These hooks exist only to observe window-close vs daemon lifetime. They do
 //! not select ADR-0012 and are not product tray UX.
 
+#[cfg(target_os = "windows")]
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -12,7 +14,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager, RunEvent, State, WindowEvent};
+#[cfg(target_os = "macos")]
+use tauri::RunEvent;
+use tauri::{AppHandle, Manager, State, WindowEvent};
 
 #[derive(Clone)]
 struct ProbeState {
@@ -28,10 +32,35 @@ fn p0_2_runtime_root() -> Result<String, String> {
     Ok(root.display().to_string())
 }
 
+#[cfg(target_os = "macos")]
 fn runtime_root_path() -> Result<PathBuf, String> {
-    let home = std::env::var("HOME").map_err(|_| "HOME unset".to_string())?;
+    let home = std::env::var_os("HOME").ok_or("HOME unset")?;
     Ok(PathBuf::from(home)
-        .join("Library/Application Support/Cryptex-Dev/p0-2/compare/mode-b-desktop"))
+        .join("Library")
+        .join("Application Support")
+        .join("Cryptex-Dev")
+        .join("p0-2")
+        .join("compare")
+        .join("mode-b-desktop"))
+}
+
+#[cfg(target_os = "windows")]
+fn runtime_root_path() -> Result<PathBuf, String> {
+    windows_runtime_root(std::env::var_os("LOCALAPPDATA").as_deref())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_runtime_root(local_app_data: Option<&OsStr>) -> Result<PathBuf, String> {
+    Ok(PathBuf::from(local_app_data.ok_or("LOCALAPPDATA unset")?)
+        .join("Cryptex-Dev")
+        .join("p0-2")
+        .join("compare")
+        .join("mode-b-desktop"))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn runtime_root_path() -> Result<PathBuf, String> {
+    Err("Cryptex Desktop P0-2 runtime root is supported only on macOS and Windows".into())
 }
 
 #[tauri::command]
@@ -433,13 +462,51 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("failed to build Cryptex Desktop")
         .run(|app_handle, event| {
-            if let RunEvent::Reopen {
-                has_visible_windows,
-                ..
-            } = event
-                && !has_visible_windows
+            #[cfg(target_os = "macos")]
             {
-                let _ = show_main_window(app_handle, "dock_reopen");
+                if let RunEvent::Reopen {
+                    has_visible_windows,
+                    ..
+                } = event
+                    && !has_visible_windows
+                {
+                    let _ = show_main_window(app_handle, "dock_reopen");
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                let _ = (app_handle, event);
             }
         });
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::windows_runtime_root;
+    use std::ffi::OsStr;
+    use std::path::PathBuf;
+
+    #[test]
+    fn windows_runtime_root_uses_local_app_data() {
+        let root = windows_runtime_root(Some(OsStr::new(r"C:\Users\Tarik\AppData\Local")))
+            .expect("Windows runtime root");
+
+        assert_eq!(
+            root,
+            PathBuf::from(r"C:\Users\Tarik\AppData\Local")
+                .join("Cryptex-Dev")
+                .join("p0-2")
+                .join("compare")
+                .join("mode-b-desktop")
+        );
+        assert!(!root.to_string_lossy().contains("Library"));
+    }
+
+    #[test]
+    fn missing_platform_runtime_root_is_a_typed_message() {
+        assert_eq!(
+            windows_runtime_root(None).unwrap_err(),
+            "LOCALAPPDATA unset"
+        );
+    }
 }

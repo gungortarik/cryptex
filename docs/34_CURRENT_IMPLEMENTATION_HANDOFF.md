@@ -24,7 +24,7 @@
 - Do not redesign architecture or choose a new supervision strategy without explicit user approval.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
 - Do not assume that moving between Cursor, Codex, and Work changes which tool is the write-capable implementer.
-- Cursor remains the current implementation tool unless the user explicitly changes that role. Codex/Work may be used for read-only review, audit, or verification.
+- The user explicitly changed the implementation role to Codex in this conversation; Codex is the active implementation tool on Windows. Resume Mac-specific validation on the Mac host when needed.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
@@ -78,6 +78,18 @@ Verified:
 Not verified by that run:
 - physical Tauri GUI window close
 - full Desktop IPC reconnect
+
+### Additional Windows physical-host proofs (2026-10-02)
+
+- Tauri `CloseRequested` hide/restore and daemon-survival proof: VERIFIED for the
+  automated control-file-triggered physical Tauri event path. See
+  `evidence/m0/p0-2/windows-mode-b-gui-window-close-20261002.md`.
+- synthetic compatible update, bad-candidate rejection and rollback marker
+  safety: VERIFIED for the Windows comparison harness. See
+  `evidence/m0/p0-2/windows-update-rollback-evidence-20261002.md`.
+- Full Desktop IPC reconnect after supervised restart remains OPEN.
+- These proofs do not explain the separate HKCU Run daemon exit after login,
+  select a supervision candidate, or accept ADR-0012.
 - login/reboot startup
 
 ### Windows native Task Scheduler candidate — failed candidate
@@ -201,21 +213,18 @@ Before implementing another supervision mechanism or changing architecture:
 
 1. continue investigating the Windows post-login exit using isolated runtime
    evidence; do not change supervision strategy based on an unproven cause
-2. perform the Windows physical Tauri GUI-close proof
-3. verify full Desktop IPC reconnect after a supervised daemon restart
-4. perform the macOS login/reboot startup proof
-5. verify Windows compatible-update and rollback behavior with synthetic data
-6. compare the candidates and document the evidence before accepting ADR-0012
+2. verify full Desktop IPC reconnect after a supervised daemon restart
+3. perform the macOS login/reboot startup proof
+4. compare the candidates and document the evidence before accepting ADR-0012
 
 ## OPEN
 
 - root cause of Windows HKCU Run post-login daemon exit
 - downstream consumers treating an old persisted lifecycle snapshot as live
 - Windows crash-restart parity for a no-elevation/native candidate
-- Windows physical Tauri GUI close proof
 - full Desktop IPC reconnect after daemon restart
 - macOS login/reboot startup proof
-- remaining update/rollback acceptance coverage
+- remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
 - final Mode A vs Mode B vs justified hybrid comparison
 - ADR-0012 acceptance
 

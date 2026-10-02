@@ -73,3 +73,5 @@ See:
 - `windows-mode-a-task-scheduler-permission-20261002.md` (Mode A schtasks FAILED CANDIDATE / PERMISSION)
 - `windows-mode-a-hkcu-run-20261002.md` (Windows physical-host AUTOMATED HKCU Run register/run/cleanup for this experiment; separate reboot evidence is in the post-login audit)
 - `windows-hkcu-post-login-audit-20261002.md` (records handoff's physical login-start success / post-login daemon exit and read-only source audit; root cause remains OPEN)
+- `windows-mode-b-gui-window-close-20261002.md` (Windows physical Tauri CloseRequested/hide/restore proof; verified for this flow only)
+- `windows-update-rollback-evidence-20261002.md` (Windows physical synthetic compatible update/reject/rollback marker safety; verified for harness behavior only)
