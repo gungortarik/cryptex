@@ -12,7 +12,7 @@ use cryptexd::error::LifecycleError;
 use cryptexd::instance::observe_instance;
 use cryptexd::paths::ensure_runtime_root;
 use cryptexd::platform::windows::{
-    HkcuRunSpec, register_hkcu_run, status_hkcu_run, unregister_hkcu_run,
+    HkcuRunSpec, clear_hkcu_stop_request, register_hkcu_run, status_hkcu_run, unregister_hkcu_run,
 };
 
 use crate::{RunOpts, seed_measurement, wait_until, write_measurement};
@@ -129,7 +129,11 @@ pub fn run_mode_a_hkcu(opts: RunOpts, leave_registered: bool) -> Result<(), Life
                 .map(|o| !o.lock_held)
                 .unwrap_or(false)
         });
+        if !stopped {
+            let _ = child.kill();
+        }
         let _ = child.wait();
+        clear_hkcu_stop_request(&spec)?;
         measurement.clean_shutdown_result = if stopped {
             format!(
                 "{}: stop-file clean shutdown after on-demand hold",
