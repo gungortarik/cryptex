@@ -135,9 +135,27 @@ pub struct HkcuRunStatus {
 pub fn prepare_runtime(spec: &HkcuRunSpec) -> LifecycleResult<()> {
     std::fs::create_dir_all(&spec.runtime_root)?;
     assert_outside_repository(&spec.runtime_root)?;
-    let _ = std::fs::remove_file(&spec.ready_file);
-    let _ = std::fs::remove_file(&spec.stop_file);
+    remove_if_present(&spec.ready_file)?;
+    clear_stop_request(spec)?;
     Ok(())
+}
+
+/// Remove the one-shot stop marker after the on-demand registration probe ends.
+/// The registered login command reuses this path, so leaving the marker behind
+/// would make the next login-start process exit immediately.
+pub fn clear_stop_request(spec: &HkcuRunSpec) -> LifecycleResult<()> {
+    remove_if_present(&spec.stop_file)
+}
+
+fn remove_if_present(path: &Path) -> LifecycleResult<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(LifecycleError::Io(format!(
+            "failed to remove lifecycle control file {}: {error}",
+            path.display()
+        ))),
+    }
 }
 
 /// Create or update only the test-only HKCU Run value.
@@ -274,6 +292,20 @@ mod tests {
         assert!(cmd.contains("--runtime-root"));
         assert!(cmd.contains("mode-a-hkcu"));
         assert!(!cmd.contains("syncthing-p0-1"));
+    }
+
+    #[test]
+    fn clear_stop_request_removes_one_shot_marker_idempotently() {
+        let root = unique_root("stop-cleanup");
+        let spec = HkcuRunSpec::for_runtime(&root, Path::new(r"C:\Cryptex-Dev\cryptexd.exe"))
+            .expect("HKCU run spec");
+        std::fs::write(&spec.stop_file, "stop\n").expect("write stop request");
+
+        clear_stop_request(&spec).expect("clear stop request");
+        assert!(!spec.stop_file.exists());
+        clear_stop_request(&spec).expect("clear missing stop request");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

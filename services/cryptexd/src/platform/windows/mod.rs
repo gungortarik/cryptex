@@ -11,8 +11,8 @@ pub mod logon_task;
 
 pub use hkcu_run::{
     HKCU_RUN_SUBKEY, HkcuRunSpec, HkcuRunStatus, TEST_HKCU_RUN_VALUE_NAME, build_run_command_line,
-    quote_windows_arg, register as register_hkcu_run, status as status_hkcu_run,
-    unregister as unregister_hkcu_run,
+    clear_stop_request as clear_hkcu_stop_request, quote_windows_arg,
+    register as register_hkcu_run, status as status_hkcu_run, unregister as unregister_hkcu_run,
 };
 pub use logon_task::{
     LogonTaskSpec, LogonTaskStatus, TEST_LOGON_TASK_NAME, install, register, remove,

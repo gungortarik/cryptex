@@ -91,3 +91,33 @@ ADR-0012. No replacement supervision mechanism was implemented.
 
 The follow-up changes address status truthfulness only; they do not identify
 why Windows ended the post-login process or add crash supervision.
+
+## Later Shell-Core event review
+
+A later read-only review found Shell-Core Operational events 9707 and 9708 in
+the same logon window. Provider metadata identifies their task as
+`Explorer_ExecutingFromRunKey`; the 9708 event records `Command=stop` and
+`PID=25856`. This is evidence tied to Explorer's HKCU Run command execution,
+but it does not by itself establish that PID 25856 exited at that timestamp.
+The event text says the Run-key command execution finished and includes the
+created PID; it does not by itself prove process exit. In the same logon
+sequence, Shell-Core recorded PID 17492 (`GoogleDriveFS.exe`) as having finished
+Run-key command execution at 09:00:26 local time. That same PID is still running
+with a 09:00:22 start time on this Windows installation, confirming event 9708
+records completion of the shell's command launch operation, not the lifetime of
+the launched process. No matching cryptexd record was found in the inspected
+Application, System, Defender, Code Integrity, or available Security logs for
+the time window.
+
+The retained source path was also audited: a successful
+`run-mode-a-hkcu --leave-registered` probe previously left its one-shot `stop`
+file after stopping the pre-login test daemon. That could make a later login
+launch exit immediately if the marker were still present. The physical reboot
+record says the marker was absent when inspected and the status still said
+`holding instance lock`, so this harness defect is **not established as the
+cause of the recorded post-login exit**. It has been fixed, and a separate
+isolated Windows run verified the stop marker is removed while the test Run
+value remains registered. See `windows-hkcu-stop-marker-cleanup-20261002.md`.
+
+The original post-login exit cause therefore remains OPEN pending a new
+instrumented interactive login observation.
