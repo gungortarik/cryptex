@@ -58,11 +58,10 @@ impl HkcuRunSpec {
     }
 
     pub fn command_line(&self) -> String {
-        build_run_command_line(
-            &self.cryptexd_bin,
-            &self.runtime_root,
-            &self.ready_file,
-            &self.stop_file,
+        format!(
+            "{} lifecycle login-hold --runtime-root {}",
+            quote_windows_arg(&self.cryptexd_bin.display().to_string()),
+            quote_windows_arg(&self.runtime_root.display().to_string()),
         )
     }
 }
@@ -160,12 +159,19 @@ fn remove_if_present(path: &Path) -> LifecycleResult<()> {
 
 /// Create or update only the test-only HKCU Run value.
 pub fn register(spec: &HkcuRunSpec) -> LifecycleResult<()> {
+    let command = spec.command_line();
+    // Windows documents a maximum of 260 characters for a Run command.
+    // Reject before touching control files or the registry.
+    if command.encode_utf16().count() > 260 {
+        return Err(LifecycleError::Usage(
+            "HKCU Run command exceeds 260 characters; use shorter test binary/runtime paths".into(),
+        ));
+    }
     prepare_runtime(spec)?;
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let (key, _) = hkcu
         .create_subkey(HKCU_RUN_SUBKEY)
         .map_err(|error| LifecycleError::Io(format!("failed to open HKCU Run key: {error}")))?;
-    let command = spec.command_line();
     key.set_value(&spec.value_name, &command).map_err(|error| {
         LifecycleError::Io(format!(
             "failed to set HKCU Run value {}: {error}",
@@ -292,6 +298,39 @@ mod tests {
         assert!(cmd.contains("--runtime-root"));
         assert!(cmd.contains("mode-a-hkcu"));
         assert!(!cmd.contains("syncthing-p0-1"));
+    }
+
+    #[test]
+    fn compact_login_command_uses_runtime_control_files_without_repeating_paths() {
+        let root = Path::new(r"C:\Users\Tarik\AppData\Local\Cryptex-Dev\p0-2\wl-1002");
+        let bin = root.join("cryptexd.exe");
+        let spec = HkcuRunSpec::for_runtime(root, &bin).expect("spec");
+        let command = spec.command_line();
+        assert!(command.contains("lifecycle login-hold --runtime-root"));
+        assert!(command.encode_utf16().count() <= 260);
+        assert_eq!(spec.ready_file, root.join("ready"));
+        assert_eq!(spec.stop_file, root.join("stop"));
+    }
+
+    #[test]
+    fn oversized_command_is_rejected_before_runtime_or_registry_mutation() {
+        let root = unique_root("oversized");
+        let mut spec =
+            HkcuRunSpec::for_runtime(&root, &root.join(format!("{}.exe", "x".repeat(260))))
+                .expect("spec");
+        spec.value_name = format!(
+            "CryptexDevP02Oversized{}",
+            root.file_name().unwrap().to_string_lossy()
+        );
+        std::fs::write(&spec.stop_file, "sentinel\n").expect("stop sentinel");
+        let before = read_test_value(&spec.value_name).expect("registry snapshot");
+        assert!(matches!(register(&spec), Err(LifecycleError::Usage(_))));
+        assert_eq!(
+            std::fs::read_to_string(&spec.stop_file).unwrap(),
+            "sentinel\n"
+        );
+        assert_eq!(read_test_value(&spec.value_name).unwrap(), before);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

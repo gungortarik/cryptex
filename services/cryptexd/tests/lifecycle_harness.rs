@@ -162,6 +162,49 @@ fn clean_shutdown_releases_instance_lock() {
 }
 
 #[test]
+fn compact_login_hold_publishes_ready_and_clean_stops_under_runtime_root() {
+    let runtime = unique_runtime("login-hold");
+    let mut holder = Command::new(cryptexd_bin())
+        .args([
+            "lifecycle",
+            "login-hold",
+            "--runtime-root",
+            runtime.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn login hold");
+    let became_ready = wait_until(Duration::from_secs(5), || runtime.join("ready").exists());
+    if !became_ready {
+        let _ = holder.kill();
+        let _ = holder.wait();
+        panic!("login hold did not become ready");
+    }
+    let ready_pid = fs::read_to_string(runtime.join("ready")).expect("read ready");
+    let observation = observe_instance(&runtime).expect("observe running login hold");
+    fs::write(runtime.join("stop"), "stop\n").expect("clean stop");
+    if !wait_until(Duration::from_secs(5), || {
+        holder.try_wait().unwrap().is_some()
+    }) {
+        let _ = holder.kill();
+        let _ = holder.wait();
+        panic!("login hold did not react to runtime stop file");
+    }
+    let exit = holder.wait().expect("reap login hold");
+    assert!(exit.success());
+    assert_eq!(ready_pid.trim().parse::<u32>().unwrap(), holder.id());
+    assert_eq!(observation.holder_pid, Some(holder.id()));
+    assert!(!observe_instance(&runtime).unwrap().lock_held);
+    assert!(
+        fs::read_to_string(runtime.join("lifecycle.status"))
+            .unwrap()
+            .contains("clean shutdown released instance lock")
+    );
+    let _ = fs::remove_dir_all(&runtime);
+}
+
+#[test]
 fn forced_crash_is_detectable_and_restart_path_works() {
     let runtime = unique_runtime("crash-restart");
     let ready = runtime.join("ready");

@@ -707,22 +707,9 @@ fn read_macos_version() -> String {
 }
 
 fn parse_hkcu_run_opts(args: &[String]) -> Result<(RunOpts, bool), LifecycleError> {
-    let mut leave_registered = false;
-    let mut filtered = Vec::new();
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--leave-registered" => {
-                leave_registered = true;
-                index += 1;
-            }
-            other => {
-                filtered.push(other.to_string());
-                index += 1;
-            }
-        }
-    }
-    Ok((parse_run_opts(&filtered)?, leave_registered))
+    let opts = parse_run_opts(args)?;
+    let leave_registered = opts.leave_registered;
+    Ok((opts, leave_registered))
 }
 
 #[cfg(target_os = "windows")]
@@ -811,8 +798,28 @@ mod tests {
 
     #[test]
     fn mode_a_accepts_leave_registered_for_login_reboot_proof() {
-        let args = vec!["--leave-registered".to_string()];
+        // Parsing only: an explicit existing executable avoids depending on a
+        // separately built daemon next to Cargo's test executable in deps/.
+        let args = vec![
+            "--cryptexd".to_string(),
+            env::current_exe().unwrap().display().to_string(),
+            "--leave-registered".to_string(),
+        ];
         let opts = parse_run_opts(&args).expect("mode A registration flag should parse");
+        assert!(opts.leave_registered);
+    }
+
+    #[test]
+    fn hkcu_parser_preserves_registration_flag_and_defaults_to_cleanup() {
+        let mut args = vec![
+            "--cryptexd".to_string(),
+            env::current_exe().unwrap().display().to_string(),
+        ];
+        let (_, leave) = parse_hkcu_run_opts(&args).expect("default HKCU options");
+        assert!(!leave);
+        args.push("--leave-registered".to_string());
+        let (opts, leave) = parse_hkcu_run_opts(&args).expect("persistent HKCU options");
+        assert!(leave);
         assert!(opts.leave_registered);
     }
 }

@@ -94,8 +94,19 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             write_status_file(&runtime_root, &released_report)?;
             Ok(())
         }
-        "hold" => {
-            let opts = parse_hold_opts(&args[1..])?;
+        "hold" | "login-hold" => {
+            let opts = if command == "login-hold" {
+                // Compact test-only startup command: avoid repeating long app-data
+                // paths in a Windows Run value. Uses the same hold lifecycle.
+                let runtime_root = parse_runtime_root(&args[1..])?;
+                HoldOpts {
+                    ready_file: Some(runtime_root.join("ready")),
+                    mode: HoldMode::UntilStopFile(runtime_root.join("stop")),
+                    runtime_root,
+                }
+            } else {
+                parse_hold_opts(&args[1..])?
+            };
             ensure_runtime_root(&opts.runtime_root)?;
             let lock = try_acquire_instance(&opts.runtime_root)?;
             let report = LifecycleReport::active_holder(
@@ -438,6 +449,7 @@ fn usage_text() -> String {
         "  cryptexd lifecycle status [--runtime-root <path>]",
         "  cryptexd lifecycle probe [--runtime-root <path>]",
         "  cryptexd lifecycle hold --runtime-root <path> (--stop-file <path> | --hold-ms <ms> | --crash-after-ready) [--ready-file <path>]",
+        "  cryptexd lifecycle login-hold --runtime-root <path> (test-only; ready/stop under runtime root)",
         "  cryptexd lifecycle compat --desktop-protocol <n> [--daemon-protocol <n>] [--runtime-root <path>]",
         "  cryptexd lifecycle update-proof --base-bin <path> [--runtime-root <path>] [--experiment-id <id>]",
         "",
