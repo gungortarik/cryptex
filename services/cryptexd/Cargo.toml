@@ -12,4 +12,7 @@ path = "src/main.rs"
 [dependencies]
 fs2 = "0.4.3"
 
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+
 [dev-dependencies]

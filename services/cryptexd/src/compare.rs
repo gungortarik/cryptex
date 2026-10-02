@@ -15,6 +15,8 @@ pub const MEASUREMENT_SCHEMA: &str = "p0-2-supervision-compare-v1";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SupervisorMode {
     NativeLaunchAgent,
+    /// Windows HKCU Run login-start probe (no OS crash restart).
+    NativeHkcuRun,
     DesktopSupervisor,
 }
 
@@ -35,6 +37,7 @@ impl SupervisorMode {
                     "native_per_user"
                 }
             }
+            Self::NativeHkcuRun => "native_hkcu_run",
             Self::DesktopSupervisor => "desktop_supervisor",
         }
     }
@@ -44,6 +47,7 @@ impl SupervisorMode {
             "native_launchagent" | "native_logon_task" | "mode-a" | "a" => {
                 Ok(Self::NativeLaunchAgent)
             }
+            "native_hkcu_run" | "mode-a-hkcu" | "hkcu" => Ok(Self::NativeHkcuRun),
             "desktop_supervisor" | "mode-b" | "b" => Ok(Self::DesktopSupervisor),
             other => Err(LifecycleError::Usage(format!(
                 "unknown supervisor mode '{other}'"
@@ -228,6 +232,7 @@ pub fn unix_now_ms() -> u128 {
 pub fn mode_runtime_root(base: &Path, mode: SupervisorMode) -> PathBuf {
     match mode {
         SupervisorMode::NativeLaunchAgent => base.join("mode-a"),
+        SupervisorMode::NativeHkcuRun => base.join("mode-a-hkcu"),
         SupervisorMode::DesktopSupervisor => base.join("mode-b"),
     }
 }
@@ -264,6 +269,13 @@ mod tests {
     fn native_logon_task_alias_parses_to_mode_a() {
         let mode = SupervisorMode::parse("native_logon_task").expect("parse");
         assert_eq!(mode, SupervisorMode::NativeLaunchAgent);
+    }
+
+    #[test]
+    fn native_hkcu_run_alias_parses() {
+        let mode = SupervisorMode::parse("native_hkcu_run").expect("parse");
+        assert_eq!(mode, SupervisorMode::NativeHkcuRun);
+        assert_eq!(mode.as_str(), "native_hkcu_run");
     }
 
     #[test]

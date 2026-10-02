@@ -26,7 +26,7 @@ Do not conflate XML `RunLevel=LeastPrivilege` (runtime) with registration privil
 | Mechanism | Per-user runtime identity | Registration privilege | Login start | Crash restart / OS supervision | Single-instance fit | Update / rollback practicality | Reversible test install | P0-2 Mode A fit (no-elevated register) |
 |---|---|---|---|---|---|---|---|---|
 | Task Scheduler logon task (`schtasks` / XML) | Yes (`LeastPrivilege` / InteractiveToken) | **Admin required** (physical r1 + `schtasks` docs) | Yes (`LogonTrigger`) | Yes (`RestartOnFailure`) | Compatible with exclusive `daemon.lock` | Re-point task / re-register; **re-register also needs admin** | Yes (`schtasks /Delete`; may also need admin) | **FAILED for no-admin registration** |
-| HKCU `Run` value | Yes | No admin (HKCU write) | Yes | **No** (one-shot at logon) | Compatible with `daemon.lock` only | Easy rewrite of value / path | Yes (delete value) | Candidate for *login registration* only; KeepAlive gap remains |
+| HKCU `Run` value | Yes | No admin (HKCU write) | Yes | **No** (one-shot at logon) | Compatible with `daemon.lock` only | Easy rewrite of value / path | Yes (delete value) | **Harness implemented** (`native_hkcu_run`); login PHYSICAL_MANUAL open; crash restart unsupported |
 | Startup-folder shortcut | Yes | No admin (user Startup folder) | Yes | **No** (one-shot at logon) | Compatible with `daemon.lock` only | Replace/remove shortcut | Yes | Same as HKCU `Run` |
 | Windows Service | Usually service account / session 0 (poor Desktop affinity) | Typically admin to install | Boot/logon depends on config | SCM can restart | Possible but different trust model | Service binary updates often elevate | Possible with admin | Poor fit for Cryptex personal per-user Desktop model |
 | Mode B Desktop/tray supervisor | Yes | N/A for OS login item (app must be running) | **Not by itself** (needs separate login start or always-open Desktop) | Yes (process supervisor) | Compatible | App-owned restart / staged binary proofs | N/A / process cleanup | Separate candidate; **not auto-selected** by Task Scheduler failure |
@@ -77,18 +77,43 @@ Do **not** elevate this harness to make registration pass.
 - **FAILED CANDIDATE / PERMISSION:** r1 `schtasks /Create` Access denied
 - **NOT_YET_VERIFIED:** Mode A lifecycle after registration; physical Tauri GUI close; full Desktop IPC reconnect; production packaging
 
-## Recommended next experiment (DO NOT IMPLEMENT YET)
+## HKCU Run login-start probe (IMPLEMENTED — test-only)
 
-**Preferred next P0-2 probe:** a **read-only-designed, reversible HKCU `Run` (or Startup-folder) registration experiment** that measures only:
+**Status:** harness ready; interactive login PHYSICAL_MANUAL not yet verified  
+**Mode string:** `native_hkcu_run`  
+**Runtime root:** `%LOCALAPPDATA%\Cryptex-Dev\p0-2\compare\mode-a-hkcu`  
+**Registry:** `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` value `CryptexDevP02HkcuRun`  
+**OS crash restart:** **unsupported / NOT_YET_VERIFIED** for this candidate (explicit; do not claim KeepAlive parity)
 
-1. registration without elevation
-2. login start
-3. coexistence with exclusive `daemon.lock`
-4. clean unregister
+### Harness commands
 
-Explicitly leave **OS-level crash restart** as a known gap for that candidate (parity with macOS KeepAlive would then require Mode B, hybrid, or another mechanism — undecided).
+```text
+m0-lifecycle-compare run-mode-a-hkcu --experiment-id <id> --cryptexd <path> --branch m0/p0-2-cursor --commit <sha>
+m0-lifecycle-compare run-mode-a-hkcu ... --leave-registered
+m0-lifecycle-compare hkcu-run register --cryptexd <path>
+m0-lifecycle-compare hkcu-run status --cryptexd <path>
+m0-lifecycle-compare hkcu-run remove --cryptexd <path>
+m0-lifecycle-compare cleanup --runtime-root <compare-root> --cryptexd <path>
+```
 
-**Optional later exhaustiveness probe (also not implemented here):** Task Scheduler 2.0 / current-user COM registration without `schtasks`, only if needed to close the “tool vs API” question. Do not elevate `schtasks` to force green.
+`run-mode-a-hkcu` measures no-elevation register, on-demand hold (not login), duplicate reject, clean stop, and scoped unregister. It does **not** sign out/reboot and does **not** claim OS crash restart.
+
+### PHYSICAL_MANUAL login test procedure (do not automate logout/reboot)
+
+1. Build: `cargo build -p cryptexd -p m0-lifecycle-compare --locked`
+2. Register only (leave installed):  
+   `m0-lifecycle-compare hkcu-run register --cryptexd <path-to-cryptexd.exe>`  
+   Confirm: `hkcu-run status` shows `registered=true` and the expected command line under `mode-a-hkcu`.
+3. Sign out and sign back in **manually** (or one controlled reboot). Harness must not force this.
+4. After login, verify:
+   - `hkcu-run status` → `daemon_lock_held=true` (or `lifecycle status --runtime-root %LOCALAPPDATA%\Cryptex-Dev\p0-2\compare\mode-a-hkcu` shows `health=active`)
+   - `ready` / `lifecycle.status` under the mode-a-hkcu runtime root
+5. Record PHYSICAL_MANUAL evidence (login start VERIFIED; crash restart still unsupported).
+6. Remove only the test value: `hkcu-run remove` (or `cleanup`). Confirm unrelated HKCU Run values remain.
+
+Startup-folder and Task Scheduler COM remain **not implemented**. ADR-0012 remains unresolved; Mode A/B/hybrid are not selected.
+
+**Optional later exhaustiveness probe:** Task Scheduler 2.0 / current-user COM registration without `schtasks`, only if needed. Do not elevate `schtasks` to force green.
 
 ## Safety rules
 

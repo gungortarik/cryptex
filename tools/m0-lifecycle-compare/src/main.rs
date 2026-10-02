@@ -20,6 +20,8 @@ use cryptexd::supervisor::DesktopSupervisor;
 use cryptexd::update::run_update_rollback_proof;
 
 #[cfg(target_os = "windows")]
+mod mode_a_hkcu_windows;
+#[cfg(target_os = "windows")]
 mod mode_a_windows;
 
 fn main() {
@@ -42,6 +44,22 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
         "run-mode-a" => {
             let opts = parse_run_opts(&args[1..])?;
             run_mode_a(opts)
+        }
+        "run-mode-a-hkcu" => {
+            let (opts, leave) = parse_hkcu_run_opts(&args[1..])?;
+            run_mode_a_hkcu(opts, leave)
+        }
+        "hkcu-run" => {
+            let sub = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            let (opts, _) = parse_hkcu_run_opts(&args[2..])?;
+            match sub {
+                "register" => run_hkcu_register(&opts),
+                "status" => run_hkcu_status(&opts),
+                "remove" => run_hkcu_remove(&opts),
+                other => Err(LifecycleError::Usage(format!(
+                    "unknown hkcu-run subcommand '{other}' (register|status|remove)"
+                ))),
+            }
         }
         "run-mode-b" => {
             let opts = parse_run_opts(&args[1..])?;
@@ -553,6 +571,7 @@ fn run_update_rollback(opts: RunOpts) -> Result<(), LifecycleError> {
 fn print_status(opts: &RunOpts) -> Result<(), LifecycleError> {
     for mode in [
         SupervisorMode::NativeLaunchAgent,
+        SupervisorMode::NativeHkcuRun,
         SupervisorMode::DesktopSupervisor,
     ] {
         let mode_root = mode_runtime_root(&opts.base_runtime, mode);
@@ -588,15 +607,23 @@ fn cleanup(opts: &RunOpts) -> Result<(), LifecycleError> {
     }
     #[cfg(target_os = "windows")]
     {
-        use cryptexd::platform::windows::{LogonTaskSpec, remove};
+        use cryptexd::platform::windows::{
+            HkcuRunSpec, LogonTaskSpec, remove, unregister_hkcu_run,
+        };
         let mode_root = mode_runtime_root(&opts.base_runtime, SupervisorMode::NativeLaunchAgent);
         if mode_root.exists() {
             let spec = LogonTaskSpec::for_runtime(&mode_root, &opts.cryptexd_bin)?;
             remove(&spec)?;
         }
+        let hkcu_root = mode_runtime_root(&opts.base_runtime, SupervisorMode::NativeHkcuRun);
+        if hkcu_root.exists() {
+            let spec = HkcuRunSpec::for_runtime(&hkcu_root, &opts.cryptexd_bin)?;
+            unregister_hkcu_run(&spec)?;
+        }
     }
     for mode in [
         SupervisorMode::NativeLaunchAgent,
+        SupervisorMode::NativeHkcuRun,
         SupervisorMode::DesktopSupervisor,
     ] {
         let mode_root = mode_runtime_root(&opts.base_runtime, mode);
@@ -650,10 +677,79 @@ fn read_macos_version() -> String {
     }
 }
 
+fn parse_hkcu_run_opts(args: &[String]) -> Result<(RunOpts, bool), LifecycleError> {
+    let mut leave_registered = false;
+    let mut filtered = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--leave-registered" => {
+                leave_registered = true;
+                index += 1;
+            }
+            other => {
+                filtered.push(other.to_string());
+                index += 1;
+            }
+        }
+    }
+    Ok((parse_run_opts(&filtered)?, leave_registered))
+}
+
+#[cfg(target_os = "windows")]
+fn run_mode_a_hkcu(opts: RunOpts, leave_registered: bool) -> Result<(), LifecycleError> {
+    mode_a_hkcu_windows::run_mode_a_hkcu(opts, leave_registered)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_mode_a_hkcu(_opts: RunOpts, _leave_registered: bool) -> Result<(), LifecycleError> {
+    Err(LifecycleError::Attention(
+        "HKCU Run Mode A probe is Windows-only".into(),
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn run_hkcu_register(opts: &RunOpts) -> Result<(), LifecycleError> {
+    mode_a_hkcu_windows::register_only(opts)
+}
+
+#[cfg(target_os = "windows")]
+fn run_hkcu_status(opts: &RunOpts) -> Result<(), LifecycleError> {
+    mode_a_hkcu_windows::status_only(opts)
+}
+
+#[cfg(target_os = "windows")]
+fn run_hkcu_remove(opts: &RunOpts) -> Result<(), LifecycleError> {
+    mode_a_hkcu_windows::remove_only(opts)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_hkcu_register(_opts: &RunOpts) -> Result<(), LifecycleError> {
+    Err(LifecycleError::Attention(
+        "HKCU Run probe is Windows-only".into(),
+    ))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_hkcu_status(_opts: &RunOpts) -> Result<(), LifecycleError> {
+    Err(LifecycleError::Attention(
+        "HKCU Run probe is Windows-only".into(),
+    ))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_hkcu_remove(_opts: &RunOpts) -> Result<(), LifecycleError> {
+    Err(LifecycleError::Attention(
+        "HKCU Run probe is Windows-only".into(),
+    ))
+}
+
 fn usage() -> String {
     [
         "usage:",
         "  m0-lifecycle-compare run-mode-a [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
+        "  m0-lifecycle-compare run-mode-a-hkcu [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C] [--leave-registered]",
+        "  m0-lifecycle-compare hkcu-run register|status|remove [--runtime-root PATH] [--cryptexd PATH]",
         "  m0-lifecycle-compare run-mode-b [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
         "  m0-lifecycle-compare run-update-rollback [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
         "  m0-lifecycle-compare status [--runtime-root PATH]",
@@ -661,7 +757,8 @@ fn usage() -> String {
         "",
         "Notes:",
         "  - ADR-0012 remains unresolved; this tool compares candidates only",
-        "  - default runtime: Cryptex-Dev/p0-2/compare",
+        "  - default runtime: Cryptex-Dev/p0-2/compare (HKCU probe uses mode-a-hkcu)",
+        "  - HKCU Run probe does not claim OS crash restart and does not auto logout/reboot",
         "  - update-rollback uses synthetic staged binaries only (not a production updater)",
         "  - does not reboot/logout and must not touch syncthing-p0-1*",
     ]
@@ -676,6 +773,8 @@ mod tests {
     fn usage_mentions_both_modes() {
         let text = usage();
         assert!(text.contains("run-mode-a"));
+        assert!(text.contains("run-mode-a-hkcu"));
+        assert!(text.contains("hkcu-run"));
         assert!(text.contains("run-mode-b"));
         assert!(text.contains("run-update-rollback"));
         assert!(text.contains("ADR-0012"));

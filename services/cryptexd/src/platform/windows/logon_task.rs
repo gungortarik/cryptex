@@ -18,7 +18,6 @@ use std::time::{Duration, Instant};
 use crate::error::{LifecycleError, LifecycleResult};
 use crate::instance::observe_instance;
 use crate::paths::assert_outside_repository;
-use crate::supervision::RegistrationStatus;
 
 /// Stable test-only task name. Must never be used as a production service identity.
 pub const TEST_LOGON_TASK_NAME: &str = "CryptexDevP02Compare";
@@ -120,10 +119,6 @@ fn quote_windows_arg(value: &str) -> String {
     } else {
         value.to_string()
     }
-}
-
-pub fn registration_status() -> RegistrationStatus {
-    RegistrationStatus::NotConfigured
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
