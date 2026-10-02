@@ -87,6 +87,10 @@ Not verified by that run:
 - synthetic compatible update, bad-candidate rejection and rollback marker
   safety: VERIFIED for the Windows comparison harness. See
   `evidence/m0/p0-2/windows-update-rollback-evidence-20261002.md`.
+- A direct child-process parent-exit control passed: the daemon retained its lock
+  after the launching PowerShell exited. This does not reproduce HKCU Run or
+  explain the separate post-login daemon exit; see
+  `evidence/m0/p0-2/windows-parent-exit-control-20261002.md`.
 - Full Desktop IPC reconnect after supervised restart remains OPEN.
 - Desktop close/restore/snapshot proof artifacts now query a fresh daemon
   lifecycle observation for the live PID instead of treating `ready` as live;

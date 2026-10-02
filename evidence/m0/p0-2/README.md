@@ -75,3 +75,4 @@ See:
 - `windows-hkcu-post-login-audit-20261002.md` (records handoff's physical login-start success / post-login daemon exit and read-only source audit; root cause remains OPEN)
 - `windows-mode-b-gui-window-close-20261002.md` (Windows physical Tauri CloseRequested/hide/restore proof; verified for this flow only)
 - `windows-update-rollback-evidence-20261002.md` (Windows physical synthetic compatible update/reject/rollback marker safety; verified for harness behavior only)
+- `windows-parent-exit-control-20261002.md` (isolated Windows child-process survival after launcher-shell exit; does not reproduce HKCU Run or explain post-login exit)
