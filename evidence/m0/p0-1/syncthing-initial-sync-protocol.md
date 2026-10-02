@@ -886,9 +886,57 @@ Source containment: observed `paused=False` after interruption; manually set `pa
 
 Windows destination forensic snapshot at `2026-10-01T19:12:45Z`: `state=sync-preparing`, `localFiles/Bytes=161491/167304676`, `globalFiles/Bytes=500000/518000000`, `needFiles/Bytes=338509/350695324`, `physical_files/bytes=161560/167376160`, needs incomplete; DB vs physical counts differed.
 
-Folder ID must never be reused. Proposed replacement unique ID: `p0-1-500k-files-macos-to-windows-r2` (not started by this documentation update).
+Folder ID must never be reused. Replacement unique ID `p0-1-500k-files-macos-to-windows-r2` was executed later (see next section).
 
 Evidence: `evidence/m0/p0-1/syncthing-500k-files-macos-to-windows-TIMED-FAILED.md`
+
+## Cell `p0-1-500k-files-macos-to-windows-r2` — COMPLETED CONTROLLED TIMEOUT / IMPRACTICALITY
+
+### Timed measurement attempt — EXIT_CODE=2 (timeout)
+
+```text
+folder_id=p0-1-500k-files-macos-to-windows-r2
+layout=files
+events=500000
+expected_files=500000
+expected_bytes=518000000
+source_platform=macos
+destination_platform=windows
+timeout_seconds=21600
+START_TIMESTAMP_UTC=2026-10-01T19:45:24Z
+COMPLETION_TIMESTAMP_UTC=2026-10-02T01:45:25Z
+EXIT_CODE=2
+stderr=error: peer synchronization did not reach completion within 21600 seconds
+```
+
+This is a completed controlled timeout, not a Syncthing crash. Do not convert 21600s into `initial_sync_total_ms`. The runner process was gone after the timeout, as expected for a closed wrapper.
+
+Post-timeout source forensic snapshot:
+
+```text
+state=idle
+localFiles=500000
+localBytes=518000000
+globalFiles=500000
+globalBytes=518000000
+errors=0
+pullErrors=0
+peer_completion=21.2256
+peer_need_items=393872
+peer_need_bytes=408051392
+peer_need_deletes=0
+source_paused=False
+folder_type=sendonly
+peer_connected=True
+peer_type=tcp-client
+peer_address=192.168.50.137:22001
+```
+
+Retirement: macOS and Windows folder config removed; work paths retained on both sides; retained corpus untouched; `--delete-work-path` not used.
+
+No further 500k files retry is scheduled. Remaining Syncthing matrix work is the 500k segments cells.
+
+Evidence: `evidence/m0/p0-1/syncthing-500k-files-macos-to-windows-r2-TIMED-FAILED.md`
 
 ## Boundary
 

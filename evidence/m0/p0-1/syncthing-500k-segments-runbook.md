@@ -1,0 +1,195 @@
+# M0 P0-1 — DRAFT Runbook: 500k Segments Syncthing Cells
+
+**Status:** DRAFT / PENDING EXECUTION  
+**Architecture effect:** none; does not accept ADR-0013; does not select a layout
+
+`p0-1-500k-files-macos-to-windows-r2` is **complete** (controlled timeout / files impracticality evidence). Do not schedule another 500k files retry. This runbook does not execute the segments cells by itself.
+
+## Purpose
+
+Exact checklist for the four remaining segments Syncthing measurements planned for P0-1 closure:
+
+1. 500k segments macOS → Windows — initial
+2. same cell — approved +100 incremental
+3. 500k segments Windows → macOS — initial
+4. same cell — approved +100 incremental
+
+## Script capability verification (read-only)
+
+No benchmark implementation change is required for these cells.
+
+| Script | 500k / segments support |
+|---|---|
+| `run-syncthing-p0-1-initial-sync.mjs` | `events` ∈ {10000,100000,**500000**}; `layout=segments` |
+| `run-syncthing-p0-1-incremental-sync.mjs` | `baseline-events=500000`; `layout=segments`; `--segment-events 1000` |
+| `prepare-syncthing-p0-1-initial-sync.mjs` | folder-id + expected-files/bytes only |
+| `plan-syncthing-p0-1-matrix.mjs` | 500k segments expected files = **500**, bytes = **518000000** |
+| `capture-syncthing-p0-1-raw-result.mjs` | UTF-8 + BOM UTF-16LE |
+| `retire-syncthing-p0-1-folder.mjs` | after incremental recorded (do not retire early) |
+
+## Shared constants
+
+```text
+layout=segments
+events=500000
+segment_events=1000
+payload_bytes=1024
+expected_files_initial=500
+expected_bytes_initial=518000000
+incremental_events=100
+incremental_logical_bytes=103600
+expected_events_after_append=500100
+expected_bytes_after_append=518103600
+# expected_files_after_append: MEASURE after append (do not assume); prior 100k was 101
+syncthing_version=v2.1.5
+transport_scope=explicit_direct_tcp_only
+```
+
+Retained corpora (copy only; do not mutate):
+
+```text
+macos_segments_corpus=~/Library/Application Support/Cryptex-Dev/benchmarks/p0-1/macos-500000-20260929T165249Z/data/segments-500000
+windows_segments_corpus=%LOCALAPPDATA%\Cryptex-Dev\benchmarks\p0-1\windows-500000-20260929T203439Z\data\segments-500000
+```
+
+Folder IDs (unique; never reuse failed IDs):
+
+```text
+p0-1-500k-segments-macos-to-windows
+p0-1-500k-segments-windows-to-macos
+```
+
+Recommended timeout: start with `--timeout-seconds 7200` (segments historically finish far sooner; raise only if a clean cell approaches the limit).
+
+---
+
+## Cell A — macOS → Windows
+
+### A0. Preconditions
+
+- [x] `p0-1-500k-files-macos-to-windows-r2` finished (controlled timeout / impracticality; no further 500k files retry)
+- [ ] Peer connection verified (direct TCP only)
+- [ ] Prior conflicting folder retired from config if needed (`retire-syncthing-p0-1-folder.mjs`, no `--delete-work-path` unless forensic policy says otherwise)
+- [ ] Retained macOS segments corpus verified (`verify-retained-corpus.mjs`)
+
+### A1. Destination prepare (Windows)
+
+- [ ] `prepare-syncthing-p0-1-initial-sync.mjs --role destination`  
+  `folder-id=p0-1-500k-segments-macos-to-windows`  
+  empty receiveonly destination under `syncthing-p0-1-runs/.../destination`
+
+### A2. Source prepare (macOS)
+
+- [ ] `prepare-syncthing-p0-1-initial-sync.mjs --role source`  
+  `--source-corpus` = macOS retained segments-500000  
+  `--expected-files 500 --expected-bytes 518000000`  
+  source sendonly, paused, watcher disabled
+
+### A3. Timed initial
+
+- [ ] On macOS source machine:
+```bash
+node tools/m0-storage-bench/scripts/run-syncthing-p0-1-initial-sync.mjs \
+  --folder-id p0-1-500k-segments-macos-to-windows \
+  --layout segments \
+  --events 500000 \
+  --source-platform macos \
+  --destination-platform windows \
+  --timeout-seconds 7200 \
+  # plus home/path/peer args per existing protocol
+```
+- [ ] Capture raw result (`capture-syncthing-p0-1-raw-result.mjs`)
+- [ ] Independent Windows destination post-check: idle, local/global 500 / 518000000, needs 0
+- [ ] Record evidence from template `syncthing-500k-segments-macos-to-windows.md` (replace DRAFT)
+
+### A4. Timed incremental (+100)
+
+- [ ] Only after valid initial on **same** folder ID
+- [ ] Source remains paused before append
+```bash
+node tools/m0-storage-bench/scripts/run-syncthing-p0-1-incremental-sync.mjs \
+  --folder-id p0-1-500k-segments-macos-to-windows \
+  --layout segments \
+  --baseline-events 500000 \
+  --incremental-events 100 \
+  --segment-events 1000 \
+  --source-platform macos \
+  --destination-platform windows \
+  --timeout-seconds 7200
+```
+- [ ] Do **not** combine `append_setup_ms` with `incremental_sync_total_ms`
+- [ ] Measure post-append physical object count (do not assume)
+- [ ] Windows post-check matches measured post-append counts
+- [ ] Record `syncthing-500k-segments-macos-to-windows-incremental.md`
+
+---
+
+## Cell B — Windows → macOS
+
+### B0. Preconditions
+
+- [ ] Cell A incremental recorded (or operators accept parallel only if homes/folders do not collide — default: serialize after A)
+- [ ] Retained Windows segments corpus verified
+- [ ] Prior Windows source cell retired from config if required
+
+### B1. Destination prepare (macOS)
+
+- [ ] receiveonly empty destination for `p0-1-500k-segments-windows-to-macos`
+
+### B2. Source prepare (Windows)
+
+- [ ] sendonly paused source from Windows `segments-500000` corpus  
+  `--expected-files 500 --expected-bytes 518000000`
+
+### B3. Timed initial
+
+- [ ] Run initial sync on Windows source with `--layout segments --events 500000`
+- [ ] Prefer UTF-16LE-safe raw capture (helper accepts BOM `FF FE`)
+- [ ] macOS destination post-check: idle, 500 / 518000000, needs 0
+- [ ] Record `syncthing-500k-segments-windows-to-macos.md`
+
+### B4. Timed incremental (+100)
+
+- [ ] Same folder ID; approved workload; `--segment-events 1000`
+- [ ] Measure physical objects after append
+- [ ] macOS post-check matches post-append counts
+- [ ] Record `syncthing-500k-segments-windows-to-macos-incremental.md`
+
+---
+
+## Completion predicates (all four timed runs)
+
+```text
+EXIT_CODE=0
+peer_completion=100
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_paused_after_completion=true
+transport_scope=explicit_direct_tcp_only
+```
+
+Initial additionally:
+
+```text
+source_local_files=500
+source_local_bytes=518000000
+source_global_files=500
+source_global_bytes=518000000
+source_global_files_verified=500
+scope=isolated_p0_1_initial_syncthing_scan_sync_measurement
+```
+
+Incremental additionally:
+
+```text
+source_local/global files+bytes == measured post-append expectations
+scope=isolated_p0_1_incremental_syncthing_scan_sync_measurement
+```
+
+## After all four VERIFIED
+
+- [ ] Update `evidence/m0/p0-1/README.md` index
+- [ ] Update `syncthing-initial-sync-protocol.md` execution status
+- [ ] Update `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md`
+- [ ] Revisit `docs/adr/ADR-0013-physical-event-storage-layout.md` for ACCEPTED — **separate human decision**

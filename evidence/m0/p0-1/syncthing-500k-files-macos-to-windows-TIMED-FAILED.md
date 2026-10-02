@@ -106,14 +106,8 @@ Destination was incomplete. Syncthing DB counts and physical filesystem counts d
 
 ## Follow-up implication
 
-Any later 500k-files macOS→Windows initial timing attempt requires a fresh unique folder ID. Proposed replacement:
-
-```text
-p0-1-500k-files-macos-to-windows-r2
-```
-
-Do not start that replacement from this documentation update alone.
+Replacement unique folder ID `p0-1-500k-files-macos-to-windows-r2` was later executed and closed as a **completed controlled timeout / impracticality** result. Evidence: `syncthing-500k-files-macos-to-windows-r2-TIMED-FAILED.md`. No further 500k files retry is scheduled.
 
 ## Boundary
 
-P0-1 remains IN PROGRESS. ADR-0013 remains OPEN. No production layout is selected.
+P0-1 remains IN PROGRESS. ADR-0013 remains PROPOSED / PENDING. No production layout is selected.
