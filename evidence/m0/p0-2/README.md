@@ -69,3 +69,4 @@ See:
 - `macos-update-rollback-evidence.md`
 - `windows-desktop-supervision-evidence.md` (Windows Mode B AUTOMATED — VERIFIED for listed fields only; GUI close / login-reboot / full Desktop IPC reconnect remain NOT YET VERIFIED)
 - `windows-mode-b-invalid-harness-20261002.md` (historical FAILED/INVALID HARNESS EVIDENCE; superseded by r2)
+- `windows-supervision-comparison-protocol.md` (Windows Mode A test-only logon task harness)

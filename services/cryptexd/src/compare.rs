@@ -21,14 +21,29 @@ pub enum SupervisorMode {
 impl SupervisorMode {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::NativeLaunchAgent => "native_launchagent",
+            Self::NativeLaunchAgent => {
+                #[cfg(target_os = "macos")]
+                {
+                    "native_launchagent"
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    "native_logon_task"
+                }
+                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+                {
+                    "native_per_user"
+                }
+            }
             Self::DesktopSupervisor => "desktop_supervisor",
         }
     }
 
     pub fn parse(value: &str) -> Result<Self, LifecycleError> {
         match value {
-            "native_launchagent" | "mode-a" | "a" => Ok(Self::NativeLaunchAgent),
+            "native_launchagent" | "native_logon_task" | "mode-a" | "a" => {
+                Ok(Self::NativeLaunchAgent)
+            }
             "desktop_supervisor" | "mode-b" | "b" => Ok(Self::DesktopSupervisor),
             other => Err(LifecycleError::Usage(format!(
                 "unknown supervisor mode '{other}'"
@@ -241,7 +256,15 @@ fn escape(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::SupervisorMode;
+
     use super::*;
+
+    #[test]
+    fn native_logon_task_alias_parses_to_mode_a() {
+        let mode = SupervisorMode::parse("native_logon_task").expect("parse");
+        assert_eq!(mode, SupervisorMode::NativeLaunchAgent);
+    }
 
     #[test]
     fn renders_required_measurement_keys() {

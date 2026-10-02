@@ -19,6 +19,9 @@ use cryptexd::paths::{assert_outside_repository, default_p0_2_runtime_root, ensu
 use cryptexd::supervisor::DesktopSupervisor;
 use cryptexd::update::run_update_rollback_proof;
 
+#[cfg(target_os = "windows")]
+mod mode_a_windows;
+
 fn main() {
     match run(env::args().skip(1).collect()) {
         Ok(()) => process::exit(0),
@@ -64,7 +67,7 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
 }
 
 #[derive(Debug)]
-struct RunOpts {
+pub(crate) struct RunOpts {
     experiment_id: String,
     base_runtime: PathBuf,
     cryptexd_bin: PathBuf,
@@ -167,7 +170,7 @@ fn default_cryptexd_bin() -> Result<PathBuf, LifecycleError> {
     ))
 }
 
-fn seed_measurement(
+pub(crate) fn seed_measurement(
     opts: &RunOpts,
     mode: SupervisorMode,
 ) -> Result<ComparisonMeasurement, LifecycleError> {
@@ -179,7 +182,7 @@ fn seed_measurement(
     measurement.macos_version = read_macos_version();
     measurement.architecture = env::consts::ARCH.into();
     measurement.login_startup_result = format!(
-        "{}: reboot/logout not performed while P0-1 active",
+        "{}: interactive login/reboot not performed by this harness (register + on-demand run only)",
         EvidenceClass::NotYetVerified.as_str()
     );
     measurement.desktop_reconnect_result = format!(
@@ -189,7 +192,7 @@ fn seed_measurement(
     Ok(measurement)
 }
 
-fn write_measurement(
+pub(crate) fn write_measurement(
     opts: &RunOpts,
     mode: SupervisorMode,
     measurement: &ComparisonMeasurement,
@@ -392,10 +395,15 @@ fn run_mode_a(opts: RunOpts) -> Result<(), LifecycleError> {
     result
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn run_mode_a(opts: RunOpts) -> Result<(), LifecycleError> {
+    mode_a_windows::run_mode_a(opts)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn run_mode_a(_opts: RunOpts) -> Result<(), LifecycleError> {
     Err(LifecycleError::Attention(
-        "Mode A LaunchAgent compare harness is macOS-only in this slice".into(),
+        "Mode A native compare harness is supported on macOS and Windows only".into(),
     ))
 }
 
@@ -578,6 +586,15 @@ fn cleanup(opts: &RunOpts) -> Result<(), LifecycleError> {
             remove(&spec)?;
         }
     }
+    #[cfg(target_os = "windows")]
+    {
+        use cryptexd::platform::windows::{LogonTaskSpec, remove};
+        let mode_root = mode_runtime_root(&opts.base_runtime, SupervisorMode::NativeLaunchAgent);
+        if mode_root.exists() {
+            let spec = LogonTaskSpec::for_runtime(&mode_root, &opts.cryptexd_bin)?;
+            remove(&spec)?;
+        }
+    }
     for mode in [
         SupervisorMode::NativeLaunchAgent,
         SupervisorMode::DesktopSupervisor,
@@ -593,6 +610,7 @@ fn cleanup(opts: &RunOpts) -> Result<(), LifecycleError> {
                 "supervisor.state",
                 "window-close.event",
                 "LaunchAgent.plist",
+                "LogonTask.xml",
                 "launchagent.stdout.log",
                 "launchagent.stderr.log",
             ] {
@@ -604,7 +622,7 @@ fn cleanup(opts: &RunOpts) -> Result<(), LifecycleError> {
     Ok(())
 }
 
-fn wait_until(timeout: Duration, mut predicate: impl FnMut() -> bool) -> bool {
+pub(crate) fn wait_until(timeout: Duration, mut predicate: impl FnMut() -> bool) -> bool {
     let started = Instant::now();
     while started.elapsed() < timeout {
         if predicate() {
