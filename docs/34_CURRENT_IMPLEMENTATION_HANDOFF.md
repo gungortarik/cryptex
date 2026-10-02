@@ -91,6 +91,16 @@ Not verified by that run:
   after the launching PowerShell exited. This does not reproduce HKCU Run or
   explain the separate post-login daemon exit; see
   `evidence/m0/p0-2/windows-parent-exit-control-20261002.md`.
+- Fixed a reproducible HKCU comparison-harness defect: the on-demand
+  `--leave-registered` probe now clears its one-shot stop marker before a later
+  login. The physical Windows regression run retained the Run value during
+  inspection, then removed it; see
+  `evidence/m0/p0-2/windows-hkcu-stop-marker-cleanup-20261002.md`. This does
+  not explain the historical reboot event, whose cause remains OPEN.
+- Additional Shell-Core review confirmed the 9708 `Explorer_ExecutingFromRunKey`
+  event is launch-operation completion, not proof of process exit: another
+  startup PID from that same sequence remains alive. The old runtime artifacts
+  are insufficient to identify why PID 25856 later disappeared.
 - Full Desktop IPC reconnect after supervised restart remains OPEN.
 - Desktop close/restore/snapshot proof artifacts now query a fresh daemon
   lifecycle observation for the live PID instead of treating `ready` as live;
