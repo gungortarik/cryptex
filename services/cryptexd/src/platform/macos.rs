@@ -45,6 +45,24 @@ impl LaunchAgentSpec {
         })
     }
 
+    pub fn for_persistent_runtime(
+        runtime_root: &Path,
+        cryptexd_bin: &Path,
+    ) -> LifecycleResult<Self> {
+        let mut spec = Self::for_runtime(runtime_root, cryptexd_bin)?;
+        spec.plist_path = spec.persistent_plist_path()?;
+        Ok(spec)
+    }
+
+    pub fn persistent_plist_path(&self) -> LifecycleResult<PathBuf> {
+        let home = std::env::var_os("HOME")
+            .ok_or_else(|| LifecycleError::Io("HOME is not configured".into()))?;
+        Ok(PathBuf::from(home)
+            .join("Library")
+            .join("LaunchAgents")
+            .join(format!("{}.plist", self.label)))
+    }
+
     pub fn plist_body(&self) -> String {
         let program = xml_escape(&self.cryptexd_bin.display().to_string());
         let runtime = xml_escape(&self.runtime_root.display().to_string());
@@ -118,6 +136,9 @@ pub struct LaunchAgentStatus {
 
 pub fn install(spec: &LaunchAgentSpec) -> LifecycleResult<()> {
     fs::create_dir_all(&spec.runtime_root)?;
+    if let Some(parent) = spec.plist_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     assert_outside_repository(&spec.runtime_root)?;
     let _ = fs::remove_file(&spec.ready_file);
     let _ = fs::remove_file(&spec.stop_file);
@@ -253,5 +274,13 @@ mod tests {
         assert!(body.contains("lifecycle"));
         assert!(body.contains("hold"));
         assert!(!body.contains("syncthing-p0-1"));
+    }
+
+    #[test]
+    fn persistent_plist_path_uses_user_launchagents_directory() {
+        let root = std::env::temp_dir().join("cryptex-launchagent-persistent-path");
+        let spec = LaunchAgentSpec::for_runtime(&root, Path::new("/tmp/cryptexd")).expect("spec");
+        let path = spec.persistent_plist_path().expect("persistent path");
+        assert!(path.ends_with("Library/LaunchAgents/com.cryptex.dev.p0-2.compare.plist"));
     }
 }

@@ -60,3 +60,28 @@ Raw KV retained outside git under the Cryptex-Dev runtime measurements directory
 ## Decision note
 
 No architecture winner. ADR-0012 remains unresolved.
+
+## Latest physical login/reboot proof — 2026-10-02
+
+Experiment:
+- `macos-codex-20261002-login-proof-persistent-v2`
+
+Runtime and registration:
+- runtime root: `~/Library/Application Support/Cryptex-Dev/p0-2/login-proof-20261002-v2/mode-a`
+- persistent test plist: `~/Library/LaunchAgents/com.cryptex.dev.p0-2.compare.plist`
+- registration was observed through `launchctl print gui/$UID/com.cryptex.dev.p0-2.compare`
+
+Verified:
+- pre-reboot LaunchAgent state: `running`, lock held by PID `2808`
+- physical macOS reboot completed
+- post-login LaunchAgent state: `running`, lock held by new PID `1047`
+- post-login runtime status: `lock_held=true`, `recorded_pid=1047`
+- post-login stdout contains the new PID and active lifecycle snapshot
+- cleanup removed the LaunchAgent label and released the runtime lock
+
+Classification:
+- login/reboot startup: **PHYSICALLY VERIFIED** for the test-only native LaunchAgent registration path
+- full Desktop IPC reconnect: **NOT YET VERIFIED**
+- production registration/package integration: **NOT YET VERIFIED**
+
+This proof validates the persistence mechanism used by the comparison harness. It does not select Mode A, accept ADR-0012, or establish production packaging.

@@ -91,6 +91,7 @@ pub(crate) struct RunOpts {
     cryptexd_bin: PathBuf,
     branch: String,
     commit: String,
+    leave_registered: bool,
 }
 
 fn parse_run_opts(args: &[String]) -> Result<RunOpts, LifecycleError> {
@@ -99,9 +100,14 @@ fn parse_run_opts(args: &[String]) -> Result<RunOpts, LifecycleError> {
     let mut cryptexd_bin = None;
     let mut branch = String::new();
     let mut commit = String::new();
+    let mut leave_registered = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
+            "--leave-registered" => {
+                leave_registered = true;
+                index += 1;
+            }
             "--experiment-id" => {
                 experiment_id = Some(require_value(args, index, "--experiment-id")?);
                 index += 2;
@@ -159,6 +165,7 @@ fn parse_run_opts(args: &[String]) -> Result<RunOpts, LifecycleError> {
         cryptexd_bin,
         branch,
         commit,
+        leave_registered,
     })
 }
 
@@ -234,7 +241,11 @@ fn run_mode_a(opts: RunOpts) -> Result<(), LifecycleError> {
     let mode_root = mode_runtime_root(&opts.base_runtime, mode);
     ensure_runtime_root(&mode_root)?;
     let mut measurement = seed_measurement(&opts, mode)?;
-    let spec = LaunchAgentSpec::for_runtime(&mode_root, &opts.cryptexd_bin)?;
+    let spec = if opts.leave_registered {
+        LaunchAgentSpec::for_persistent_runtime(&mode_root, &opts.cryptexd_bin)?
+    } else {
+        LaunchAgentSpec::for_runtime(&mode_root, &opts.cryptexd_bin)?
+    };
 
     // Always attempt cleanup on failure paths.
     let result: Result<(), LifecycleError> = (|| {
@@ -362,6 +373,19 @@ fn run_mode_a(opts: RunOpts) -> Result<(), LifecycleError> {
                 "{}: status observe after restart succeeded (IPC Desktop reconnect still NOT_YET_VERIFIED)",
                 EvidenceClass::Automated.as_str()
             );
+        }
+
+        if opts.leave_registered {
+            measurement.clean_shutdown_result =
+                "PHYSICAL_MANUAL_PENDING: LaunchAgent intentionally left loaded for login/reboot proof"
+                    .into();
+            measurement.runtime_cleanup_result =
+                "PHYSICAL_MANUAL_PENDING: run cleanup after post-login observation".into();
+            measurement.evidence_class_notes = format!(
+                "LaunchAgent left loaded for physical login/reboot; full Desktop reconnect {}",
+                EvidenceClass::NotYetVerified.as_str()
+            );
+            return Ok(());
         }
 
         // Clean shutdown: stop-file then bootout/remove.
@@ -603,8 +627,11 @@ fn cleanup(opts: &RunOpts) -> Result<(), LifecycleError> {
         use cryptexd::platform::macos::{LaunchAgentSpec, remove};
         let mode_root = mode_runtime_root(&opts.base_runtime, SupervisorMode::NativeLaunchAgent);
         if mode_root.exists() {
-            let spec = LaunchAgentSpec::for_runtime(&mode_root, &opts.cryptexd_bin)?;
-            remove(&spec)?;
+            let runtime_spec = LaunchAgentSpec::for_runtime(&mode_root, &opts.cryptexd_bin)?;
+            remove(&runtime_spec)?;
+            let persistent_spec =
+                LaunchAgentSpec::for_persistent_runtime(&mode_root, &opts.cryptexd_bin)?;
+            remove(&persistent_spec)?;
         }
     }
     #[cfg(target_os = "windows")]
@@ -749,7 +776,7 @@ fn run_hkcu_remove(_opts: &RunOpts) -> Result<(), LifecycleError> {
 fn usage() -> String {
     [
         "usage:",
-        "  m0-lifecycle-compare run-mode-a [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
+        "  m0-lifecycle-compare run-mode-a [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C] [--leave-registered]",
         "  m0-lifecycle-compare run-mode-a-hkcu [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C] [--leave-registered]",
         "  m0-lifecycle-compare hkcu-run register|status|remove [--runtime-root PATH] [--cryptexd PATH]",
         "  m0-lifecycle-compare run-mode-b [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
@@ -780,5 +807,12 @@ mod tests {
         assert!(text.contains("run-mode-b"));
         assert!(text.contains("run-update-rollback"));
         assert!(text.contains("ADR-0012"));
+    }
+
+    #[test]
+    fn mode_a_accepts_leave_registered_for_login_reboot_proof() {
+        let args = vec!["--leave-registered".to_string()];
+        let opts = parse_run_opts(&args).expect("mode A registration flag should parse");
+        assert!(opts.leave_registered);
     }
 }
