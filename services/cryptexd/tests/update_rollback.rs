@@ -44,6 +44,9 @@ fn update_rollback_proof_preserves_marker_and_single_instance() {
         run_update_rollback_proof(&root, &cryptexd_bin(), "test-update-rollback").expect("proof");
 
     assert_eq!(report.initial_identity, "v1");
+    assert!(report.incompatible_pair_rejected);
+    assert_eq!(report.active_identity_after_incompatible_pair, "v1");
+    assert!(report.compatible_pair_accepted);
     assert_eq!(report.compatible_identity, "v2");
     assert!(report.failed_detected);
     assert_eq!(report.rollback_identity, "v2");
@@ -93,6 +96,9 @@ fn update_proof_cli_runs_outside_repository() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("compatible_identity=v2"));
+    assert!(stdout.contains("incompatible_pair_rejected=true"));
+    assert!(stdout.contains("active_identity_after_incompatible_pair=v1"));
+    assert!(stdout.contains("compatible_pair_accepted=true"));
     assert!(stdout.contains("failed_detected=true"));
     assert!(stdout.contains("rollback_identity=v2"));
     assert!(stdout.contains("compatible_marker_unchanged=true"));

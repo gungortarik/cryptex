@@ -145,6 +145,14 @@ Not verified by that run:
   crash/reconnect gate is **PASS / VERIFIED**. Desktop remained open until
   the result appeared, then exited 0 through `Quit clean`. The prior attempt
   without a post-restart hold remains historical NOT YET VERIFIED evidence.
+- `cryptexd lifecycle update-proof` now rejects a synthetic mismatched
+  Desktop/daemon protocol pair before staging, keeps active daemon `v1`, accepts
+  a matching pair, and then runs the existing failed-candidate/rollback proof.
+  Windows local tests passed (44 tests); the physical-host measurement is
+  retained under `%LOCALAPPDATA%\Cryptex-Dev\p0-2\compare\windows-update-compat-20261003`.
+  This remains test-only protocol metadata; it does not update a Desktop
+  package. Mac validation instructions are in
+  `evidence/m0/p0-2/macos-update-compat-test-plan-20261003.md`.
 - The new instrumented Windows login at 16:41:48 EDT on 2026-10-02 confirmed a
   regular user-profile logon. After 11.4 minutes, neither the direct daemon Run
   entry nor the PowerShell observer had produced a runtime artifact; the
@@ -417,7 +425,8 @@ Retained diagnostic history and continuation constraints:
   production packaging remain open
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
-- remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
+- macOS repeat of the updated synthetic Desktop/daemon protocol-pair rejection proof
+- real compatible Desktop + daemon package coordination and rollback/canonical-data proof
 - production-backed Mode A vs Mode B vs justified hybrid comparison
 - ADR-0012 acceptance
 

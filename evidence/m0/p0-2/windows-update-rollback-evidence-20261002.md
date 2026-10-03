@@ -37,3 +37,33 @@ marker across compatible activation, rejected activation and rollback. It does
 not constitute a signed production package/update test, prove power-loss
 atomicity, or authorize a production update architecture. ADR-0012 remains
 unresolved.
+
+## Windows Desktop/daemon protocol-pair rejection follow-up — 2026-10-03
+
+The `cryptexd lifecycle update-proof` fixture was extended to check a synthetic
+Desktop/daemon protocol pair before staging the daemon candidate. On the
+Windows development host, the updated proof completed with:
+
+```text
+experiment_id=windows-update-compat-20261003
+incompatible_pair_rejected=true
+active_identity_after_incompatible_pair=v1
+compatible_pair_accepted=true
+compatible_identity=v2
+compatible_restart_ms=157
+compatible_marker_unchanged=true
+failed_detected=true
+failed_marker_unchanged=true
+rollback_identity=v2
+rollback_marker_unchanged=true
+final_instance_count=0
+```
+
+The full measurement was retained outside the repository under
+`%LOCALAPPDATA%\Cryptex-Dev\p0-2\compare\windows-update-compat-20261003`.
+`cargo test -p cryptexd --locked` also passed on the Windows host (44 tests).
+
+This is still synthetic protocol metadata and daemon-fixture evidence. It does
+not replace or execute a Desktop package and does not prove production package
+atomicity. A matching macOS run is requested in
+`macos-update-compat-test-plan-20261003.md`.

@@ -36,5 +36,6 @@ pub use supervision::{RegistrationStatus, SupervisionStrategy, selected_supervis
 pub use supervisor::DesktopSupervisor;
 pub use update::{
     UpdateLayout, UpdateProofReport, activate_staged, install_known_good, marker_digest,
-    rollback_to_previous, run_update_rollback_proof, stage_candidate, stage_failing_candidate,
+    rollback_to_previous, run_update_rollback_proof, stage_candidate, stage_compatible_candidate,
+    stage_failing_candidate,
 };

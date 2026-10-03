@@ -42,6 +42,18 @@ pub fn evaluate_compat(versions: ComponentVersions) -> Result<CompatDecision, Co
     Ok(CompatDecision::Compatible)
 }
 
+/// Reject an update candidate whose synthetic Desktop/daemon protocol pair is
+/// incompatible before the update harness stages or activates its daemon.
+pub(crate) fn require_compatible(versions: ComponentVersions) -> LifecycleResult<()> {
+    match evaluate_compat(versions).map_err(|error| LifecycleError::Incompatible(error.message))? {
+        CompatDecision::Compatible => Ok(()),
+        CompatDecision::Incompatible => Err(LifecycleError::Incompatible(format!(
+            "desktop protocol {} is incompatible with daemon protocol {}",
+            versions.desktop_protocol, versions.daemon_protocol
+        ))),
+    }
+}
+
 /// Write a synthetic canonical marker used only for lifecycle/update safety proofs.
 pub fn write_synthetic_marker(runtime_root: &Path, contents: &str) -> LifecycleResult<()> {
     fs::create_dir_all(runtime_root)?;
@@ -119,6 +131,26 @@ mod tests {
         })
         .expect("compat");
         assert_eq!(decision, CompatDecision::Incompatible);
+    }
+
+    #[test]
+    fn incompatible_component_pair_is_rejected_explicitly() {
+        let error = require_compatible(ComponentVersions {
+            desktop_protocol: 2,
+            daemon_protocol: 1,
+        })
+        .expect_err("mismatched candidate must be rejected");
+        assert!(matches!(error, LifecycleError::Incompatible(_)));
+    }
+
+    #[test]
+    fn invalid_zero_protocol_is_rejected_explicitly() {
+        let error = require_compatible(ComponentVersions {
+            desktop_protocol: 0,
+            daemon_protocol: 1,
+        })
+        .expect_err("zero protocol must be rejected");
+        assert!(matches!(error, LifecycleError::Incompatible(_)));
     }
 
     #[test]

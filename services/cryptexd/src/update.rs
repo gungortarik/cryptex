@@ -11,6 +11,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use crate::compat::{ComponentVersions, require_compatible};
 use crate::error::{LifecycleError, LifecycleResult};
 use crate::paths::{assert_outside_repository, marker_path};
 use crate::supervisor::DesktopSupervisor;
@@ -187,6 +188,18 @@ pub fn stage_candidate(
     Ok(layout)
 }
 
+/// Validate the synthetic Desktop/daemon protocol pair before staging the
+/// daemon fixture. This is evidence scaffolding, not package installation.
+pub fn stage_compatible_candidate(
+    runtime_root: &Path,
+    source_bin: &Path,
+    identity: &str,
+    versions: ComponentVersions,
+) -> LifecycleResult<UpdateLayout> {
+    require_compatible(versions)?;
+    stage_candidate(runtime_root, source_bin, identity)
+}
+
 /// Write an intentionally non-starting fixture into staging (failed-update case).
 pub fn stage_failing_candidate(
     runtime_root: &Path,
@@ -299,6 +312,9 @@ pub struct UpdateProofReport {
     pub initial_identity: String,
     pub initial_pid: u32,
     pub initial_marker_digest: String,
+    pub incompatible_pair_rejected: bool,
+    pub active_identity_after_incompatible_pair: String,
+    pub compatible_pair_accepted: bool,
     pub compatible_identity: String,
     pub compatible_pid: u32,
     pub compatible_restart_ms: u128,
@@ -321,6 +337,9 @@ supervisor_mode=desktop_supervisor\n\
 initial_identity={}\n\
 initial_pid={}\n\
 initial_marker_digest={}\n\
+incompatible_pair_rejected={}\n\
+active_identity_after_incompatible_pair={}\n\
+compatible_pair_accepted={}\n\
 compatible_identity={}\n\
 compatible_pid={}\n\
 compatible_restart_ms={}\n\
@@ -341,6 +360,9 @@ scope=isolated_p0_2_update_rollback_proof\n",
             self.initial_identity,
             self.initial_pid,
             self.initial_marker_digest,
+            self.incompatible_pair_rejected,
+            self.active_identity_after_incompatible_pair,
+            self.compatible_pair_accepted,
             self.compatible_identity,
             self.compatible_pid,
             self.compatible_restart_ms,
@@ -381,9 +403,52 @@ pub fn run_update_rollback_proof(
     }
     assert_single_instance(runtime_root)?;
 
+    // An incompatible candidate pair must fail before any staged daemon or
+    // active identity changes. The protocol numbers stand in for package
+    // metadata; this does not replace or execute a Desktop package.
+    let incompatible_pair_rejected = match stage_compatible_candidate(
+        runtime_root,
+        base_bin,
+        "v2",
+        ComponentVersions {
+            desktop_protocol: 2,
+            daemon_protocol: 1,
+        },
+    ) {
+        Err(LifecycleError::Incompatible(_)) => true,
+        Err(error) => return Err(error),
+        Ok(_) => false,
+    };
+    if !incompatible_pair_rejected {
+        return Err(LifecycleError::Attention(
+            "incompatible Desktop/daemon update pair was not rejected".into(),
+        ));
+    }
+    let active_identity_after_incompatible_pair = layout.active_identity()?;
+    if active_identity_after_incompatible_pair != "v1" || layout.staging_bin().exists() {
+        return Err(LifecycleError::Attention(
+            "incompatible update modified active identity or staged a daemon".into(),
+        ));
+    }
+    assert_single_instance(runtime_root)?;
+    if marker_digest(runtime_root)? != initial_marker {
+        return Err(LifecycleError::Attention(
+            "synthetic marker changed after incompatible update rejection".into(),
+        ));
+    }
+
     // Compatible replacement v2.
     supervisor.clean_stop()?;
-    stage_candidate(runtime_root, base_bin, "v2")?;
+    let _compatible_layout = stage_compatible_candidate(
+        runtime_root,
+        base_bin,
+        "v2",
+        ComponentVersions {
+            desktop_protocol: 2,
+            daemon_protocol: 2,
+        },
+    )?;
+    let compatible_pair_accepted = true;
     activate_staged(runtime_root)?;
     let layout = UpdateLayout::new(runtime_root)?;
     supervisor.cryptexd_bin = layout.active_bin();
@@ -456,6 +521,9 @@ pub fn run_update_rollback_proof(
         initial_identity,
         initial_pid,
         initial_marker_digest: initial_marker,
+        incompatible_pair_rejected,
+        active_identity_after_incompatible_pair,
+        compatible_pair_accepted,
         compatible_identity,
         compatible_pid,
         compatible_restart_ms,
@@ -551,6 +619,28 @@ mod tests {
             UpdateLayout::new(&root).unwrap().active_identity().unwrap(),
             "v2"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn incompatible_pair_is_rejected_before_staging_or_replacing_active() {
+        let root = temp_root("incompatible-pair");
+        let good = fake_bin(&root, "good.bin");
+        let layout = install_known_good(&root, &good, "v1").expect("install");
+        let error = stage_compatible_candidate(
+            &root,
+            &good,
+            "v2",
+            ComponentVersions {
+                desktop_protocol: 2,
+                daemon_protocol: 1,
+            },
+        )
+        .expect_err("mismatched candidate must be rejected");
+        assert!(matches!(error, LifecycleError::Incompatible(_)));
+        assert_eq!(layout.active_identity().expect("active identity"), "v1");
+        assert!(!layout.staging_bin().exists());
+        assert_eq!(layout.previous_identity().expect("previous"), None);
         let _ = fs::remove_dir_all(&root);
     }
 
