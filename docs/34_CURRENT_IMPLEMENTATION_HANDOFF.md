@@ -109,7 +109,8 @@ Not verified by that run:
   Its Windows physical run verified role/version/capability handling,
   malformed/oversized rejection and a client reconnecting across an actual
   server-process restart. The DACL is explicitly set to the current token SID,
-  but access denial from another account remains untested. The macOS physical
+  and access denial with an authenticated second account subsequently passed
+  on a disposable Windows CI VM (`windows-cross-account-acl-20261002.md`). The macOS physical
   runtime proof now verifies socket permissions/path, protocol rejection and
   reconnect after server restart. This is not production-client integration or
   an ADR-0007 decision. Evidence:
@@ -279,7 +280,12 @@ execution. See `evidence/m0/p0-3/windows-cross-account-acl-20261002.md`.
 Before implementing another supervision mechanism or changing architecture:
 
 1. repeat a real sign-out/sign-in with the still-registered `wd-1003a` benign
-   marker command; then collect Status plus Shell-Core/process-start evidence.
+   marker command; then run `collect-windows-run-dispatch.ps1` with that session
+   root. This command captures registry views, identity, policy, marker integrity
+   and relevant Shell-Core events into a unique retained JSON observation.
+   Five synthetic controls passed; collection on the physical Windows host
+   recorded matching registry views, unchanged script hash, no Run-disabling
+   policy values, Run enumeration and no experiment launch/marker.
    The first post-login Status read conflicted with a later registry read, so
    the result is inconclusive. Preserve the existing session evidence. This
    probe does not establish daemon survival or explain a termination cause.

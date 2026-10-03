@@ -65,6 +65,35 @@ returned PID `21528`, session `3`, user SID
 registration and no marker. This is a read-only observation, not another login
 trial. The existing registration remains armed.
 
+## Combined collector follow-up
+
+`collect-windows-run-dispatch.ps1` ran under Windows PowerShell 5.1 at
+`2026-10-03T01:30:13.4484145Z`. Retained observation:
+`dispatch-observations/20261003T0130134484145Z-f14e5d14d2b44a3795ff4ba9cd3ac3ea.json`
+under the existing session root.
+
+- Registry32 and Registry64: present, matching command, length 186.
+- This value's StartupApproved bytes: absent in both views.
+- Inspected HKCU/HKLM Run-disabling policy values: absent.
+- Marker script SHA-256: matches the prepared manifest.
+- Explorer PID 5208: same session 3, created at `2026-10-03T00:32:04.5700840Z`.
+- Eight Shell-Core Run/RunOnce enumeration events were retained; no experiment
+  launch event was found. Explicit UTC XPath avoids inconsistent date-boundary
+  interpretation across Windows PowerShell and PowerShell 7.
+- Marker absent; collection errors: none.
+
+The collector's five synthetic controls passed under Windows PowerShell 5.1:
+absent marker, present marker requiring login correlation, changed script hash,
+mismatched-manifest refusal, and out-of-root refusal. Unique observations
+preserve earlier records; the existing startup registration was unchanged.
+Synthetic fixture root:
+`%LOCALAPPDATA%\Cryptex-Dev\p0-2\dispatch-collector-test-0e0a96a93ca34dd6a089f7379087de22`.
+PowerShell syntax parsing and `git diff --check` passed.
+
+This is diagnostic preparation. No new physical login was performed and no
+startup root cause is established. Next: real sign-out/sign-in, then the combined
+collector against `wd-1003a`, preserving the currently armed registration.
+
 **Final classification: INCONCLUSIVE — marker dispatch not observed; registry
 observation inconsistent.** Shell-Core confirms that the Run key was enumerated
 but does not expose its value list. No test-command launch event or process

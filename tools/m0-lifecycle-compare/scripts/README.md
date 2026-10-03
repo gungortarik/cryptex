@@ -34,6 +34,27 @@ session ID. `run_value_present` and `run_value_matches_manifest` distinguish a
 missing registry value from a changed command; `run_registered` remains the
 manifest-match result for compatibility.
 
+For the next login trial, capture the combined diagnostic evidence instead of
+only copying Status. From any PowerShell working directory:
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -File 'D:\github_repos\cryptex\tools\m0-lifecycle-compare\scripts\collect-windows-run-dispatch.ps1' -SessionRoot "$env:LOCALAPPDATA\Cryptex-Dev\p0-2\wd-1003a"
+```
+
+The collector preserves uniquely named JSON observations outside the repository.
+It reads both registry views, this value's StartupApproved bytes, Run policy
+values, the current session's Explorer process, execution policy, marker/script
+hash and filtered Shell-Core events using explicit UTC boundaries. Unrelated
+application launch events are excluded. Collection errors are recorded explicitly.
+Marker presence still requires correlation with the real login and timestamps.
+The collector neither registers startup nor launches the marker/daemon.
+
+Synthetic controls (no startup registration changes):
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -File tools/m0-lifecycle-compare/scripts/test-windows-run-dispatch-collector.ps1
+```
+
 If the marker is present, Explorer dispatched this benign Run command, narrowing
 the prior failure to the Cryptex entries or their command forms. If absent, collect
 the corresponding Shell-Core and process-start evidence before cleanup; do not
@@ -114,5 +135,5 @@ An observer result alone does not establish that startup came from login. Correl
 the fresh ready timestamp, observer/start time, registered command, and actual
 sign-in. An exit code may narrow the cause but does not identify who terminated
 the process. These controls do not prove full Desktop IPC reconnect: the current
-Desktop reads status via a short-lived CLI process; the P0-3 IPC transport is not
-implemented yet.
+Desktop reads status via a short-lived CLI process; the separate P0-3 IPC spike
+has been verified but is not integrated into Desktop.
