@@ -426,7 +426,7 @@ Retained diagnostic history and continuation constraints:
 - Tauri renderer health/reconnect invocation is physically verified on both
   platforms for clean daemon stop/replacement and external Mode B crash/restart.
   Literal macOS traffic-light close and operator Dock restore are VERIFIED at
-  `aed973d`: Desktop PID `27505`, daemon PID `27600` unchanged after restore,
+  evidence commit `52e9dc4` (test build source `aed973d`): Desktop PID `27505`, daemon PID `27600` unchanged after restore,
   `source=tauri_close_requested`, clean exit 0 and released daemon lock.
   See `evidence/m0/p0-2/macos-physical-traffic-light-close-evidence-20261003.md`.
   Production Desktop supervision, tray UX and packaging remain open.

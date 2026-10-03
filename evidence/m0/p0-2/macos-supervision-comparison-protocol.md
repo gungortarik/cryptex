@@ -76,6 +76,6 @@ RUNTIME="$HOME/Library/Application Support/Cryptex-Dev/p0-2/compare"
 
 - test-only LaunchAgent login/reboot startup is PHYSICALLY VERIFIED in `macos-native-supervision-evidence.md`; production registration remains OPEN
 - visible Tauri renderer reconnect during external Mode B crash/restart is VERIFIED in `macos-tauri-renderer-ipc-reconnect-20261003.md`; production Desktop-owned supervision remains OPEN
-- `CloseRequested` hide/restore and daemon survival are VERIFIED in `macos-mode-b-gui-window-close.md`; literal traffic-light input remains NOT YET VERIFIED because Accessibility permission was unavailable
+- `CloseRequested` hide/restore and daemon survival are VERIFIED in `macos-mode-b-gui-window-close.md`; physical red traffic-light close and Dock restore are VERIFIED in `macos-physical-traffic-light-close-evidence-20261003.md` (evidence commit `52e9dc4`). The earlier Accessibility limitation applied to UI automation; the operator performed these actions physically.
 - Windows Mode B process-supervisor, test-only HKCU login/reboot, Tauri CloseRequested event path, and renderer reconnect evidence are recorded in their Windows evidence files; production registration and Desktop-owned supervision remain OPEN
 - production updater/rollback orchestration beyond synthetic marker fixtures
