@@ -104,10 +104,10 @@ Not verified by that run:
   event is launch-operation completion, not proof of process exit: another
   startup PID from that same sequence remains alive. The old runtime artifacts
   are insufficient to identify why PID 25856 later disappeared.
-- Full Desktop IPC reconnect after supervised restart remains OPEN.
-- Source inspection confirms the current Desktop only queries status through a
-  short-lived CLI process; full reconnect needs the M0 P0-3 transport proof.
-  Status observation is not a named-pipe reconnect handshake.
+- The shared production Desktop Rust IPC client has now physically reconnected
+  to real daemons after supervised restart on both Windows and macOS; see the
+  platform-specific proofs below. The actual Tauri renderer-to-command
+  invocation remains OPEN. Status observation alone is not a reconnect proof.
 - A separate P0-3 candidate prototype now exists at `tools/m0-ipc-spike/`.
   Its Windows physical run verified role/version/capability handling,
   malformed/oversized rejection and a client reconnecting across an actual

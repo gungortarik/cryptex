@@ -69,7 +69,9 @@ See:
 - `macos-mode-b-gui-window-close.md`
 - `macos-update-rollback-protocol.md`
 - `macos-update-rollback-evidence.md`
-- `windows-desktop-supervision-evidence.md` (Windows Mode B AUTOMATED — VERIFIED for listed fields only; GUI close / login-reboot / full Desktop IPC reconnect remain NOT YET VERIFIED)
+- `windows-desktop-supervision-evidence.md` (historical Windows Mode B process-supervisor run; later Windows daemon IPC reconnect proof is recorded separately; physical Tauri GUI close remains open)
+- `windows-desktop-ipc-reconnect-20261002.md` (physical Windows shared Desktop Rust client reconnect after supervised daemon restart; Tauri renderer invocation remains open)
+- `macos-desktop-ipc-reconnect-20261003.md` (physical macOS shared Desktop Rust client reconnect after supervised daemon restart; Tauri renderer invocation remains open)
 - `windows-mode-b-invalid-harness-20261002.md` (historical FAILED/INVALID HARNESS EVIDENCE; superseded by r2)
 - `windows-supervision-comparison-protocol.md` (Windows Mode A comparison; Task Scheduler permission failure recorded; HKCU Run `native_hkcu_run` login-start probe harness; ADR-0012 still open)
 - `windows-mode-a-task-scheduler-permission-20261002.md` (Mode A schtasks FAILED CANDIDATE / PERMISSION)
