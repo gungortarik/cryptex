@@ -44,10 +44,12 @@ logs and JSON summary are kept under `%LOCALAPPDATA%\Cryptex-Dev\p0-3`.
 ### Windows cross-account ACL test in CI
 
 `scripts/test-windows-ipc-acl-ci.ps1` runs only on disposable GitHub-hosted
-Windows runners. It creates a temporary non-admin account, starts a pipe client
-as that account, verifies its actual SID differs from the owner and checks for
+Windows runners. It creates a temporary non-admin account, authenticates it
+with `LogonUserW`, and opens the pipe on a thread impersonating that account.
+It verifies the thread's actual SID differs from the owner and checks for
 `ERROR_ACCESS_DENIED`. Owner handshakes must succeed before and after that
-attempt. Owned processes and the temporary account are removed before PASS is
+attempt. The thread must restore its owner identity. The owned server process,
+authenticated token and temporary account are removed before PASS is
 reported; cleanup errors fail the test. Credentials are generated in memory
 and never printed or placed in command arguments.
 
@@ -58,11 +60,11 @@ administrator environment in its [hosted runner reference](https://docs.github.c
 This test's execution result is pending; preparation alone does not verify ACL
 denial.
 
-For a focused run, dispatch `ci.yml` with `ipc_acl_only=true`. Credentialed
-process launch uses a short script-file command within the [Windows API's
-1024-character limit](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createprocesswithlogonw).
-The script/result folder under ProgramData grants access only to the two test
-SIDs; no credential is stored there.
+For a focused run, dispatch `ci.yml` with `ipc_acl_only=true`. The test helper
+uses Microsoft's [local authentication API](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-logonuserw)
+and [thread impersonation API](https://learn.microsoft.com/en-us/dotnet/api/system.security.principal.windowsidentity.impersonate?view=netframework-4.8.1).
+The native password buffer is zeroed immediately after authentication.
+The server remains a separate process under its original owner throughout.
 
 ## macOS run
 

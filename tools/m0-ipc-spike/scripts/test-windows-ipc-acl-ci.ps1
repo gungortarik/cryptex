@@ -20,10 +20,8 @@ $runtimeRoot = Join-Path $env:LOCALAPPDATA ('Cryptex-Dev\p0-3\ipc-acl-ci-' + $no
 $utf8 = New-Object Text.UTF8Encoding($false)
 $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $server = $null
-$child = $null
 $testUser = $null
 $probeResult = $null
-$childExitCode = $null
 $failure = $null
 $cleanupErrors = [Collections.Generic.List[string]]::new()
 $accountRemoved = $false
@@ -56,63 +54,17 @@ try {
     $usersSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-545')
     $alreadyMember = Get-LocalGroupMember -SID $usersSid | Where-Object { $_.SID -eq $testUser.SID }
     if ($null -eq $alreadyMember) { Add-LocalGroupMember -SID $usersSid -Member $testUser }
-    $credential = [Management.Automation.PSCredential]::new(($env:COMPUTERNAME + '\' + $userName), $password)
-
-    # Keep the credentialed command short and avoid inherited stdout handles.
-    # The script and result directory are limited to these two test SIDs.
-    $sharedRoot = Join-Path $env:ProgramData ('Cryptex-Dev\p0-3\ipc-acl-ci-' + $nonce)
-    [void][IO.Directory]::CreateDirectory($sharedRoot)
-    $outputAcl = [Security.AccessControl.DirectorySecurity]::new()
-    $outputAcl.SetAccessRuleProtection($true, $false)
-    $ownerIdentity = [Security.Principal.SecurityIdentifier]::new($ownerSid)
-    $outputAcl.SetOwner($ownerIdentity)
-    $inheritance = [Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'
-    $outputAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($ownerIdentity, 'FullControl', $inheritance, 'None', 'Allow'))
-    $outputAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($testUser.SID, 'Modify', $inheritance, 'None', 'Allow'))
-    Set-Acl -LiteralPath $sharedRoot -AclObject $outputAcl
-    $clientOut = Join-Path $sharedRoot 'other-user.json'
-
-    # Only the endpoint ID is substituted; no credential enters child arguments.
-    $probe = @'
-$ErrorActionPreference = 'Stop'
-$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$output = '__RESULT__'
-function Write-ProbeResult($result) {
-    [IO.File]::WriteAllText($output, ($result | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
-}
-$pipe = [IO.Pipes.NamedPipeClientStream]::new('.', '__PIPE__', [IO.Pipes.PipeDirection]::InOut)
-try {
-    $pipe.Connect(5000)
-    Write-ProbeResult @{sid=$sid; denied=$false; error='unexpected_connection'}
-    exit 21
-} catch [UnauthorizedAccessException] {
-    Write-ProbeResult @{sid=$sid; denied=$true; exception=$_.Exception.GetType().FullName; hresult=$_.Exception.HResult}
-    exit 0
-} catch {
-    Write-ProbeResult @{sid=$sid; denied=$false; exception=$_.Exception.GetType().FullName; hresult=$_.Exception.HResult}
-    exit 22
-} finally { $pipe.Dispose() }
-'@
-    $probe = $probe.Replace('__PIPE__', $pipeName).Replace('__RESULT__', $clientOut.Replace("'", "''"))
-    $probeFile = Join-Path $sharedRoot 'probe.ps1'
-    [IO.File]::WriteAllText($probeFile, $probe, $utf8)
-    $phase = 'different_user_process'
-    $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $childArguments = '-NoProfile -NonInteractive -File "' + $probeFile + '"'
-    if (($powershell.Length + $childArguments.Length + 4) -ge 1024) { throw 'Credentialed process command exceeds the Windows API limit.' }
-    $child = Start-Process -FilePath $powershell -ArgumentList $childArguments -Credential $credential -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -PassThru
-    # Retain the process handle before waiting so .NET can read its exit code
-    # even after the credentialed process has terminated.
-    $null = $child.Handle
-    if (-not $child.WaitForExit(15000)) { throw 'Different-user client timed out.' }
-    $child.Refresh()
-    $childExitCode = $child.ExitCode
-    $probeResult = Get-Content -LiteralPath $clientOut -Raw | ConvertFrom-Json
+    $phase = 'different_user_token'
+    Add-Type -Path (Join-Path $PSScriptRoot 'WindowsAclProbe.cs')
+    $probeResult = [WindowsAclProbe]::Connect($userName, $password, $testUser.SID.Value, $pipeName)
     if ($probeResult.sid -ne $testUser.SID.Value -or $probeResult.sid -eq $ownerSid) {
-        throw 'Client process did not run as the intended distinct Windows user.'
+        throw 'Client thread did not run as the intended distinct Windows user.'
     }
-    if ($null -eq $childExitCode -or $childExitCode -ne 0 -or -not $probeResult.denied -or $probeResult.hresult -ne -2147024891) {
+    if (-not $probeResult.denied -or $probeResult.hresult -ne -2147024891) {
         throw 'The different-account connection did not fail with ERROR_ACCESS_DENIED.'
+    }
+    if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne $ownerSid) {
+        throw 'Client thread did not restore its owner identity.'
     }
 
     $phase = 'same_user_after'
@@ -124,7 +76,7 @@ try {
 } catch {
     $failure = $_.Exception.Message
 } finally {
-    foreach ($process in @($child, $server)) {
+    foreach ($process in @($server)) {
         if ($null -ne $process) {
             try {
                 if (-not $process.HasExited) {
@@ -151,7 +103,6 @@ $summary = [ordered]@{
     endpoint = '\\.\pipe\' + $pipeName
     owner_sid = $ownerSid
     different_user_probe = $probeResult
-    different_user_exit_code = $childExitCode
     same_user_before_and_after = ($phase -eq 'passed')
     temporary_account_removed = $accountRemoved
     phase = $phase
