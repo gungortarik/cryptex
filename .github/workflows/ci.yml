@@ -8,12 +8,18 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      ipc_acl_only:
+        description: Run only the isolated Windows cross-account IPC test
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   readiness:
+    if: github.event_name != 'workflow_dispatch' || !inputs.ipc_acl_only
     name: Readiness (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20

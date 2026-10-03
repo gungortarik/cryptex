@@ -58,6 +58,12 @@ administrator environment in its [hosted runner reference](https://docs.github.c
 This test's execution result is pending; preparation alone does not verify ACL
 denial.
 
+For a focused run, dispatch `ci.yml` with `ipc_acl_only=true`. Credentialed
+process launch uses a short script-file command within the [Windows API's
+1024-character limit](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createprocesswithlogonw).
+The script/result folder under ProgramData grants access only to the two test
+SIDs; no credential is stored there.
+
 ## macOS run
 
 Run this on the Mac host from the repository root:

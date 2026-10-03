@@ -57,29 +57,49 @@ try {
     if ($null -eq $alreadyMember) { Add-LocalGroupMember -SID $usersSid -Member $testUser }
     $credential = [Management.Automation.PSCredential]::new(($env:COMPUTERNAME + '\' + $userName), $password)
 
+    # Keep the credentialed command short and avoid inherited stdout handles.
+    # The script and result directory are limited to these two test SIDs.
+    $sharedRoot = Join-Path $env:ProgramData ('Cryptex-Dev\p0-3\ipc-acl-ci-' + $nonce)
+    [void][IO.Directory]::CreateDirectory($sharedRoot)
+    $outputAcl = [Security.AccessControl.DirectorySecurity]::new()
+    $outputAcl.SetAccessRuleProtection($true, $false)
+    $ownerIdentity = [Security.Principal.SecurityIdentifier]::new($ownerSid)
+    $outputAcl.SetOwner($ownerIdentity)
+    $inheritance = [Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'
+    $outputAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($ownerIdentity, 'FullControl', $inheritance, 'None', 'Allow'))
+    $outputAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($testUser.SID, 'Modify', $inheritance, 'None', 'Allow'))
+    Set-Acl -LiteralPath $sharedRoot -AclObject $outputAcl
+    $clientOut = Join-Path $sharedRoot 'other-user.json'
+
     # Only the endpoint ID is substituted; no credential enters child arguments.
     $probe = @'
 $ErrorActionPreference = 'Stop'
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$output = '__RESULT__'
+function Write-ProbeResult($result) {
+    [IO.File]::WriteAllText($output, ($result | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+}
 $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', '__PIPE__', [IO.Pipes.PipeDirection]::InOut)
 try {
     $pipe.Connect(5000)
-    @{sid=$sid; denied=$false; error='unexpected_connection'} | ConvertTo-Json -Compress
+    Write-ProbeResult @{sid=$sid; denied=$false; error='unexpected_connection'}
     exit 21
 } catch [UnauthorizedAccessException] {
-    @{sid=$sid; denied=$true; exception=$_.Exception.GetType().FullName; hresult=$_.Exception.HResult} | ConvertTo-Json -Compress
+    Write-ProbeResult @{sid=$sid; denied=$true; exception=$_.Exception.GetType().FullName; hresult=$_.Exception.HResult}
     exit 0
 } catch {
-    @{sid=$sid; denied=$false; exception=$_.Exception.GetType().FullName; hresult=$_.Exception.HResult} | ConvertTo-Json -Compress
+    Write-ProbeResult @{sid=$sid; denied=$false; exception=$_.Exception.GetType().FullName; hresult=$_.Exception.HResult}
     exit 22
 } finally { $pipe.Dispose() }
 '@
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probe.Replace('__PIPE__', $pipeName)))
+    $probe = $probe.Replace('__PIPE__', $pipeName).Replace('__RESULT__', $clientOut.Replace("'", "''"))
+    $probeFile = Join-Path $sharedRoot 'probe.ps1'
+    [IO.File]::WriteAllText($probeFile, $probe, $utf8)
     $phase = 'different_user_process'
-    $clientOut = Join-Path $runtimeRoot 'other-user.stdout'
-    $clientErr = Join-Path $runtimeRoot 'other-user.stderr'
     $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $child = Start-Process -FilePath $powershell -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded) -Credential $credential -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput $clientOut -RedirectStandardError $clientErr
+    $childArguments = '-NoProfile -NonInteractive -File "' + $probeFile + '"'
+    if (($powershell.Length + $childArguments.Length + 4) -ge 1024) { throw 'Credentialed process command exceeds the Windows API limit.' }
+    $child = Start-Process -FilePath $powershell -ArgumentList $childArguments -Credential $credential -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -PassThru
     if (-not $child.WaitForExit(15000)) { throw 'Different-user client timed out.' }
     $child.Refresh()
     $probeResult = Get-Content -LiteralPath $clientOut -Raw | ConvertFrom-Json

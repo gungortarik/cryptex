@@ -267,7 +267,7 @@ the Tauri Desktop with embedded frontend built successfully. The release IPC
 process-level check passed. CI now includes the IPC spike on both platforms;
 the first dispatched run passed on macOS and exposed a Windows-only redundant
 borrow lint. The fix passed full local Windows workspace Clippy; combined-source
-CI revalidation is pending.
+CI revalidation passed on Windows and macOS for source commit `a0f1c6f`.
 See `evidence/m0/windows-release-build-20261002.md`. The user currently has no
 accessible second Windows account, so the cross-account IPC ACL test remains
 pending. A disposable GitHub-hosted Windows CI job now prepares a temporary

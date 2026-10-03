@@ -51,7 +51,10 @@ macOS CI passed. Windows CI found one `needless_borrows_for_generic_args`
 warning in the Windows-only IPC security-descriptor construction. The redundant
 borrow was removed without changing the descriptor. The full local Windows
 workspace then passed `cargo clippy --locked --workspace --all-targets -- -D warnings`.
-Combined-source CI revalidation is pending.
+Combined-source CI revalidation passed on Windows and macOS at source commit
+`a0f1c6f`: [successful CI run](https://github.com/gungortarik/cryptex/actions/runs/37084164722).
+The newly added cross-account ACL job is being evaluated separately in the
+newer [CI run](https://github.com/gungortarik/cryptex/actions/runs/37084572187).
 
 These outputs are M0 foundation executables. Installer bundling is disabled in
 the repository configuration. This build does not accept ADR-0012/0007 or
