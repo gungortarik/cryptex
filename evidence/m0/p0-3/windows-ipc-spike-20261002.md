@@ -47,6 +47,19 @@ MCP clients are not connected to this transport.
 The Apple-target check confirms source compilation only. No macOS socket,
 permission, path-length, or reconnect runtime proof was performed on this host.
 
+## Follow-up run and macOS test handoff
+
+On the follow-up Windows run at 2026-10-03 00:25 UTC, the same process-level
+checks passed again with server PIDs `3160` and `15508`. The restarted-server
+reconnect reached PID `15508`. This is still Windows-only runtime evidence;
+the second-account ACL check remains open.
+
+A physical macOS run is now prepared at
+`tools/m0-ipc-spike/scripts/test_unix_ipc_spike.py`. Run the three commands in
+`tools/m0-ipc-spike/README.md` on the Mac. The script writes a JSON result and
+startup log under `~/Library/Application Support/Cryptex-Dev/p0-3`. The Mac
+result is pending; cross-target compilation above is not a substitute.
+
 ## Scope
 
 `m0-ipc-spike` is a separate tool. It does not alter `cryptexd`, Desktop, the

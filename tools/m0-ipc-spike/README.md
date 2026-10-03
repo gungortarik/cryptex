@@ -41,6 +41,23 @@ incompatible protocol and unapproved capability, rejects malformed and
 oversized frames, and reconnects a client after restarting the server. Its
 logs and JSON summary are kept under `%LOCALAPPDATA%\Cryptex-Dev\p0-3`.
 
+## macOS run
+
+Run this on the Mac host from the repository root:
+
+```sh
+cargo test -p m0-ipc-spike --locked
+cargo build -p m0-ipc-spike --locked
+python3 tools/m0-ipc-spike/scripts/test_unix_ipc_spike.py
+```
+
+The process-level script checks socket-directory ownership and mode, path
+length, Desktop/CLI/MCP role handshakes, invalid protocol/capability/role,
+malformed and oversized frames, and client reconnection after the server
+process is restarted. It stores JSON and server startup evidence under
+`~/Library/Application Support/Cryptex-Dev/p0-3`. This is candidate-spike
+evidence only; it does not accept ADR-0007 or prove application integration.
+
 ## Protocol slice
 
 The proof accepts only `health.ping` with the `status.read` capability for the

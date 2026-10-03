@@ -118,7 +118,7 @@ fn serve(id: &str, once: bool) -> io::Result<()> {
 
 fn create_listener(id: &str) -> io::Result<interprocess::local_socket::Listener> {
     let name = socket_name(id)?;
-    let options = ListenerOptions::new().name(name);
+    let options = ListenerOptions::new().name(name).try_overwrite(true);
 
     #[cfg(windows)]
     {
