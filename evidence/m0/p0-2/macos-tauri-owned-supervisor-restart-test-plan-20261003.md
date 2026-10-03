@@ -1,6 +1,6 @@
 # macOS Tauri-owned daemon restart test — 2026-10-03
 
-**Status:** PARTIAL / NOT YET VERIFIED overall; login, IPC, Stop and cleanup passed; actual tray Open/Quit remain unverified
+**Status:** PARTIAL / NOT YET VERIFIED overall; focused tray follow-up at `924cc13` did not expose the menu; cleanup exited 0
 
 See `macos-tauri-owned-supervisor-restart-evidence-20261003.md` for measured
 results and continuation.

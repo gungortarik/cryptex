@@ -72,6 +72,16 @@ runtime evidence is retained.
 See `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-evidence-20261003.md`.
 Do not count the full Mac lifecycle gate as PASS yet.
 
+The focused tray-only follow-up at checkout `924cc13` reused the validated
+release build without repeating login/restart/Stop suites. Desktop `38558`
+started daemon `38569`; red close-control activation hid the window and
+preserved that PID. Native right/left clicks at the accessible tray item's
+observed center did not expose Open/Quit or restore the window. Physical
+display captures are retained outside Git in `/tmp/cryptex-tray-only-*.png`.
+Tray Open/Quit remain NOT YET VERIFIED. Fallback single-instance focus plus
+renderer `Quit clean` exited 0; no test processes or held lock remain and
+login start remained disabled. The UI limitation's root cause is unproven.
+
 Existing evidence proves:
 - single-instance rejection
 - crash detection / restart under the macOS native supervision candidate

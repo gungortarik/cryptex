@@ -142,3 +142,52 @@ The overall test remains **PARTIAL / NOT YET VERIFIED**: actual tray Open and
 Quit were not demonstrated. Login startup, renderer IPC after Dock reopen,
 Stop-without-restart, login-registration removal and process cleanup are
 separate verified results recorded above.
+
+## Focused tray-only follow-up — NOT YET VERIFIED
+
+On 2026-10-03, checkout `924cc139bbba0abd322f1aef6bc174df5864261d`
+ran the previously built release artifacts from the validated `c77479f` code.
+There were no intervening Desktop/daemon source changes and no build, login,
+restart or Stop regression suites were rerun. Login registration remained
+absent throughout this follow-up.
+
+Artifact SHA-256:
+
+```text
+Desktop: 0bfd52594a4a30bfcd6e37678835bb7d833cfe6be867f44996e45e18de36f1a5
+daemon:  bfbfa26c6df1934312ba0d483f5351ac759c8f3f96458f8753d5b4a70157feb4
+```
+
+Foreground Desktop `38558` automatically started daemon `38569` under the
+expected runtime. Renderer status reported `pid=38569`, `instance=held`,
+`health=active`; renderer IPC showed
+`IPC health.pong · daemon pid=38569 · protocol=1`.
+
+The native red close control was accessibility-pressed for this follow-up.
+The window hid, the same daemon remained active, and `window-close.event`
+recorded `source=tauri_close_requested`, `daemon_pid=38569`,
+`daemon_pid_observation=live`, `desktop_pid=38558`. The snapshot recorded
+`note=window_closed_hidden`, `window_visible=false`.
+
+The enabled tray status item was located at logical display position
+`1003,5`, size `36,24`. Native right mouse down/up events were sent at its
+center `1021,17`; event-post access was confirmed true. The display bounds
+were `1710x1107` logical pixels. No Open/Quit context menu appeared in the
+physical display capture or accessibility tree. A subsequent native left
+click also left the snapshot `window_closed_hidden` and the window absent.
+This establishes failed observation of tray interaction, not a proven cause.
+Tray Open and tray Quit remain NOT YET VERIFIED.
+
+Physical display captures were retained locally outside Git:
+`/tmp/cryptex-tray-only-before.png` and
+`/tmp/cryptex-tray-only-rightclick.png`. They include desktop context and are
+not committed. The first shows the visible renderer/IPC; the second shows
+the hidden Cryptex window and no tray context menu after the right-click.
+
+Cleanup followed the plan's fallback: a second release launch focused the
+existing window through single-instance handling, then renderer `Quit clean`
+was invoked. The foreground original Desktop command exited **0**. Fresh
+status showed `pid=none`, `recorded_pid=38569`, `instance=stale`; both test
+PIDs were absent. Supervisor state recorded `state=clean_quit`,
+`daemon_pid=none`, `supervisor_alive=false`. `Cryptex.plist` remained absent.
+This exit 0 is renderer cleanup evidence and does not count as tray Quit.
