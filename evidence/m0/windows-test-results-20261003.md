@@ -1,7 +1,8 @@
 # Windows M0 test results — consolidated evidence index
 
-**Snapshot date:** 2026-10-03 UTC  
-**Branch:** `m0/p0-2-cursor`  
+**Snapshot date:** 2026-10-03 UTC
+
+**Branch:** `m0/p0-2-cursor`
 **Purpose:** Repository-local index of the Windows physical-host and Windows CI
 results already recorded in the detailed evidence files below.
 
@@ -48,4 +49,3 @@ the scope explicitly covered by its source evidence.
   a supervised restart.
 - Final Mode A versus Mode B comparison and ADR-0012 acceptance.
 - Remaining packaging, managed startup and other M0 acceptance gates.
-
