@@ -47,7 +47,9 @@ same `Status` action then reported `run_registered=true`. A new `Prepare` was
 correctly refused because the test value is occupied. The current
 `StartupApproved\Run` value remains absent. This conflicts with the user's
 earlier post-login status output; the point at which the observed registry
-state changed is unknown.
+state changed is unknown. A fresh `wd-1003b` experiment was not armed because
+the preparation script correctly refused to replace this occupied test value.
+The existing registration and evidence were left intact.
 
 **Final classification: INCONCLUSIVE — marker dispatch not observed; registry
 observation inconsistent.** Shell-Core confirms that the Run key was enumerated
