@@ -232,6 +232,20 @@ This does not explain the post-login process exit or add a supervision
 mechanism. A persisted snapshot may still age between checks; consumers must
 query current status and must not treat the ready marker as liveness evidence.
 
+### Benign Explorer Run dispatch probe — INCONCLUSIVE
+
+The `wd-1003a` test-only registration had reported present before the user's
+sign-out/sign-in. The post-login status output reported both the registration
+and marker absent. Read-only inspection later found the exact registered
+command present again; rerunning Status returned `run_registered=true`. The
+marker remains absent. Shell-Core shows that the Run key was enumerated but has
+no launch event for the test marker. Its enumeration event does not expose the
+value list, and the Security log was unavailable without elevation. Preserve
+the session artifacts; use the currently matching registration for another
+real sign-out/sign-in observation before cleanup. Do not infer a dispatch skip
+or registration-removal cause. Evidence:
+`evidence/m0/p0-2/windows-run-dispatch-followup-20261002.md`.
+
 ## Syncthing state after reboot
 
 Before reboot, the running Windows Syncthing process was confirmed to be the old P0-1 development instance:
@@ -248,11 +262,11 @@ The reboot therefore stopped it. P0-1 is already complete. Do not restart it mer
 
 Before implementing another supervision mechanism or changing architecture:
 
-1. run the isolated benign Explorer HKCU Run dispatch check documented in
-   `tools/m0-lifecycle-compare/scripts/README.md`. Its preparation self-checks
-   the marker, stores runtime data outside the repo, and changes only its own
-   temporary Run value. Preserve Shell-Core/process-start evidence. This probe
-   does not establish daemon survival or explain a termination cause.
+1. repeat a real sign-out/sign-in with the still-registered `wd-1003a` benign
+   marker command; then collect Status plus Shell-Core/process-start evidence.
+   The first post-login Status read conflicted with a later registry read, so
+   the result is inconclusive. Preserve the existing session evidence. This
+   probe does not establish daemon survival or explain a termination cause.
 2. if Explorer dispatches the marker, repeat the instrumented Cryptex login
    attempt with a fresh runtime root and preserve process-start/shell-launch
    evidence. Do not infer a termination cause if no observer attaches. See
