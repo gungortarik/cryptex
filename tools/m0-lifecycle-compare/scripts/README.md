@@ -140,6 +140,14 @@ It leaves evidence files and binary snapshots intact. Changed ownership or faile
 clean stop requires inspection rather than deleting a replacement value or
 killing an unrelated process. Cleanup is idempotent.
 
+Preparation now retains `preparation.jsonl` with step names, UTC times and
+failure diagnostics. Hashes use the framework SHA-256 API rather than depending
+on `Get-FileHash` module autoload when launched through Explorer's shell.
+The `wl-1003g` login experiment was prepared that way without elevation;
+`external-preflight.json` confirms both registrations in the external context.
+Preparation is not a login/survival result. Retained incomplete attempts are
+never overwritten or reused.
+
 An observer result alone does not establish that startup came from login. Correlate
 the fresh ready timestamp, observer/start time, registered command, and actual
 sign-in. An exit code may narrow the cause but does not identify who terminated

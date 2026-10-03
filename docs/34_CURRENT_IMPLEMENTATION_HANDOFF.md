@@ -27,6 +27,9 @@
 - The user explicitly changed the implementation role to Codex in this conversation; Codex is the active implementation tool on Windows. Resume Mac-specific validation on the Mac host when needed.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
+- GitHub Actions minutes are constrained. Prefer relevant local checks and
+  retained physical-host evidence. Dispatch workflows only when a required
+  check cannot be satisfied locally; do not launch redundant runs for progress.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
 
@@ -286,8 +289,10 @@ Before implementing another supervision mechanism or changing architecture:
    `2026-10-03T01:38:11Z`; external collection confirmed
    `run_matches_both_views=true`. The next collection at `01:39:33Z` still
    shows session 4 / Explorer created at `01:33:05Z`, before preparation.
-   No new login after preparation is established yet. Next: real sign-out/sign-in;
-   Codex can read retained evidence and run diagnostics after the user returns.
+   The subsequent real login changed session 4 to 5. Marker PID 15656 wrote
+   at `01:42:14.7693778Z`; Shell-Core 9708 recorded that PID at `01:42:15Z`.
+   The external-prepared benign HKCU Run command is now physically verified
+   to dispatch after login. This does not prove daemon survival.
    Preserve `wd-1003a` and avoid preparing/cleaning startup values from Codex.
    The collector now records package identity and executable ancestry as well.
    Run `collect-windows-run-dispatch.ps1` after the next login with that session
@@ -299,8 +304,15 @@ Before implementing another supervision mechanism or changing architecture:
    Registry visibility depends on observer context; package virtualization is
    a hypothesis, not yet a verified root cause. Preserve session evidence. This
    probe does not establish daemon survival or explain a termination cause.
-2. if Explorer dispatches the marker, repeat the instrumented Cryptex login
-   attempt with a fresh runtime root and preserve process-start/shell-launch
+2. The next instrumented Cryptex login experiment is prepared in `wl-1003g`
+   through Explorer's normal-shell launch, without elevation. Preparation
+   manifest exists and external-shell preflight reports both daemon and
+   observer registered; hashes were independently verified. Next: user performs
+   real sign-out/sign-in and returns; Codex reads retained observer results.
+   Earlier `wl-1003c/d/e/f` preparations are incomplete retained attempts, not
+   armed experiments. The failure trace in `wl-1003f` identifies missing
+   `Get-FileHash`; framework SHA-256 removed that autoload dependency. No CI
+   was dispatched. Preserve process-start/shell-launch
    evidence. Do not infer a termination cause if no observer attaches. See
    `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
 3. use the verified Windows cross-account named-pipe ACL evidence to

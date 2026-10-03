@@ -67,6 +67,10 @@ try {
         })
 } catch { $errors.Add(@{ source = 'explorer'; error = $_.Exception.Message }) }
 $prepared = [DateTime]::Parse($manifest.prepared_utc).ToUniversalTime()
+$marker = $null
+if (Test-Path -LiteralPath $manifest.marker_path) {
+    $marker = Get-Content -LiteralPath $manifest.marker_path -Raw | ConvertFrom-Json
+}
 $events = @()
 try {
     # Retain only Run enumeration and this experiment's launch events, not
@@ -81,13 +85,25 @@ try {
         $xml = [xml]$event.ToXml()
         $fields = @($xml.Event.EventData.Data | ForEach-Object { $_.InnerText })
         $related = @($fields | Where-Object { $null -ne $_ -and ($_.Contains($manifest.run_value) -or $_.Contains($manifest.marker_script) -or $_.Contains($sessionPath)) }).Count -gt 0
-        if ($event.Id -in @(9705, 9706) -or $related) {
+        # Shell-Core may retain only the trailing script name. Correlate that
+        # truncated command with this marker's PID and launch time, not by name alone.
+        $markerCorrelated = $false
+        if ($null -ne $marker -and $event.Id -in @(9707, 9708)) {
+            $pidFields = @($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'PID' } | ForEach-Object { $_.InnerText })
+            $commandFields = @($xml.Event.EventData.Data | Where-Object { $_.Name -eq 'Command' } | ForEach-Object { $_.InnerText })
+            $markerUtc = [DateTime]::Parse($marker.launched_utc).ToUniversalTime()
+            $markerCorrelated = ($pidFields -contains ([string]$marker.pid)) -and
+                (@($commandFields | Where-Object { $_ -match 'write-marker\.ps1' }).Count -gt 0) -and
+                ([Math]::Abs(($event.TimeCreated.ToUniversalTime() - $markerUtc).TotalSeconds) -le 10)
+        }
+        if ($event.Id -in @(9705, 9706) -or $related -or $markerCorrelated) {
             $events += [ordered]@{
                 id = $event.Id; record_id = $event.RecordId
                 utc = $event.TimeCreated.ToUniversalTime().ToString('o')
-                experiment_launch = $related
+                experiment_launch = ($related -or $markerCorrelated)
+                marker_pid_time_correlated = $markerCorrelated
                 registry_key = if ($event.Id -in @(9705, 9706)) { $fields } else { @() }
-                experiment_fields = if ($related) { $fields } else { @() }
+                experiment_fields = if ($related -or $markerCorrelated) { $fields } else { @() }
             }
         }
     }
@@ -95,10 +111,6 @@ try {
     if ($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*') {
         # Successful query with no matching events is distinct from unavailable log.
     } else { $errors.Add(@{ source = 'shell_core'; error = $_.Exception.Message }) }
-}
-$marker = $null
-if (Test-Path -LiteralPath $manifest.marker_path) {
-    $marker = Get-Content -LiteralPath $manifest.marker_path -Raw | ConvertFrom-Json
 }
 $report = [ordered]@{
     experiment = 'm0-p0-2-run-dispatch-observation'; observed_utc = $observed.ToString('o')

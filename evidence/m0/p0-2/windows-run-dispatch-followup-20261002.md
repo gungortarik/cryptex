@@ -156,6 +156,57 @@ the chat. Codex can read the retained runtime evidence and perform subsequent
 diagnostic collection; external commands are needed only if comparing observer
 contexts again becomes necessary.
 
+## wd-1003b real login dispatch: VERIFIED
+
+After the user's next real sign-out/sign-in, session changed to 5. Explorer
+PID 2288 was created at `2026-10-03T01:41:41.729304Z` (9:41 PM EDT).
+The benign marker records PID 15656, session 5 and launch time
+`2026-10-03T01:42:14.7693778Z`, approximately 33 seconds after shell creation.
+Shell-Core event 9708, record 3298, at `01:42:15.0945097Z` records PID 15656
+and the truncated command `write-marker.ps1"`.
+
+The collector now correlates a truncated script name with the marker PID and
+launch time within ten seconds, instead of treating a name alone as attribution.
+The physical collection at `01:44:44.9403733Z` retained that correlated event
+with no collection errors. The five synthetic collector controls passed again.
+The Codex registry view still shows the old `wd-1003a` command, so its mismatch
+with the `wd-1003b` manifest is not evidence of external value removal.
+
+**Verified scope:** the ordinary-PowerShell-prepared benign HKCU Run command
+was dispatched during a real login. Event 9708 is launch-operation completion,
+not process-exit evidence. No daemon survival or supervision decision follows.
+
+## Next instrumented daemon experiment
+
+Local build of `cryptexd` and `m0-lifecycle-compare` passed. Five observer
+controls passed under
+`%LOCALAPPDATA%\Cryptex-Dev\p0-2\observer-controls-20261003T014403138Z`.
+No GitHub workflow was dispatched.
+
+Codex launched preparation through the ordinary Explorer shell without elevation.
+Attempts `wl-1003c/d/e/f` did not produce a manifest and remain retained.
+`wl-1003f/preparation.jsonl` records failure after daemon registration because
+`Get-FileHash` was unavailable. Preparation's existing rollback removed its
+matching registrations; subsequent fresh preparation passed its occupied-value
+check. No OS policy or application manifest was changed.
+
+Using standard framework SHA-256 avoids that module-autoload dependency.
+`wl-1003g` was prepared at `2026-10-03T01:49:21.3976179Z`. Its retained manifest
+records source `b24253b` with `source_dirty=true`, reflecting the diagnostic
+changes in progress. Binary SHA-256:
+`EDA29D5001CAFCA9091893696E8C46FC4436702152810A9CF764EDD9D0E18DB2`.
+Observer SHA-256:
+`49B77FCB4570D8013044D74A5C4B39F06F0AFDBA92A842C48A5EB591780AA10E`.
+Both independently matched `Get-FileHash` in the working tool environment.
+`preparation.jsonl` reached `manifest_written`; the ordinary-shell
+`external-preflight.json` confirms both registrations, no stop marker and no
+observer results yet. Syntax parsing and Git diff checks passed.
+
+Next: real sign-out/sign-in and allow the observer its ten-minute observation
+window. Codex will inspect the retained results after the user returns. This
+experiment is ARMED, not verified login/survival evidence. Preserve all prior
+roots; do not run registry-mutating Rust lifecycle tests while it is armed.
+
 **Final classification: INCONCLUSIVE — marker dispatch not observed; registry
 observation inconsistent.** Shell-Core confirms that the Run key was enumerated
 but does not expose its value list. No test-command launch event or process

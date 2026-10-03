@@ -20,9 +20,26 @@ $regPath = 'Software\Microsoft\Windows\CurrentVersion\Run'
 $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($regPath, $true)
 if ($null -eq $key) { throw 'Current-user Run key is unavailable.' }
 $utf8 = New-Object Text.UTF8Encoding($false)
+$preparationTrace = $null
+
+function Write-PreparationStep([string]$Step, [string]$Diagnostic = '') {
+    if ($null -ne $preparationTrace) {
+        $entry = @{ utc = [DateTime]::UtcNow.ToString('o'); pid = $PID; step = $Step; diagnostic = $Diagnostic } | ConvertTo-Json -Compress
+        [IO.File]::AppendAllText($preparationTrace, ($entry + "`n"), $utf8)
+    }
+}
 
 function Read-RunValue([string]$Name) {
     return $key.GetValue($Name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+}
+
+function Get-FileSha256([string]$Path) {
+    # Native-shell launches may inherit a PowerShell 7 module search path;
+    # use the framework API instead of depending on Get-FileHash autoload.
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    $stream = [IO.File]::OpenRead($Path)
+    try { return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-', '') }
+    finally { $stream.Dispose(); $algorithm.Dispose() }
 }
 
 try {
@@ -36,6 +53,8 @@ try {
         $sourceBinary = Join-Path $repoPath 'target\debug\cryptexd.exe'
         if (-not (Test-Path -LiteralPath $harness) -or -not (Test-Path -LiteralPath $sourceBinary)) { throw 'Build cryptexd and m0-lifecycle-compare first.' }
         [void][IO.Directory]::CreateDirectory($runtimePath)
+        $preparationTrace = Join-Path $sessionPath 'preparation.jsonl'
+        Write-PreparationStep 'runtime_created'
         $pinnedBinary = Join-Path $runtimePath 'cryptexd.exe'
         $observerScript = Join-Path $runtimePath 'observe-windows-login.ps1'
         Copy-Item -LiteralPath $sourceBinary -Destination $pinnedBinary
@@ -43,26 +62,33 @@ try {
         $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
         $observerCommand = '"' + $powershell + '" -NoProfile -NonInteractive -WindowStyle Hidden -File "' + $observerScript + '"'
         if ($observerCommand.Length -gt 260) { throw 'Observer Run command exceeds 260 characters; use a shorter SessionRoot.' }
+        Write-PreparationStep 'binary_self_check_start'
         $null = & $pinnedBinary --help
         if ($LASTEXITCODE -ne 0) { throw 'Pinned daemon cannot execute; no login registration was written.' }
+        Write-PreparationStep 'binary_self_check_passed'
+        Write-PreparationStep 'source_metadata_start'
         $sourceCommit = (& git -C $repoPath rev-parse HEAD).Trim()
         $sourceBranch = (& git -C $repoPath branch --show-current).Trim()
         $sourceDirty = [bool](& git -C $repoPath status --porcelain)
+        Write-PreparationStep 'source_metadata_collected'
+        Write-PreparationStep 'daemon_registration_start'
         $registrationOutput = & $harness hkcu-run register --runtime-root $sessionPath --cryptexd $pinnedBinary 2>&1
         if ($LASTEXITCODE -ne 0) { throw ('Daemon registration failed: ' + ($registrationOutput -join ' ')) }
         $daemonCommand = Read-RunValue $daemonValue
+        Write-PreparationStep 'daemon_registration_completed'
         try {
             $key.SetValue($observerValue, $observerCommand, [Microsoft.Win32.RegistryValueKind]::String)
             $manifest = [ordered]@{
                 prepared_utc = [DateTime]::UtcNow.ToString('o'); session_root = $sessionPath; runtime_root = $runtimePath
                 source_commit = $sourceCommit; source_branch = $sourceBranch; source_dirty = $sourceDirty
-                binary = $pinnedBinary; binary_sha256 = (Get-FileHash -LiteralPath $pinnedBinary -Algorithm SHA256).Hash
+                binary = $pinnedBinary; binary_sha256 = Get-FileSha256 $pinnedBinary
                 daemon_value = $daemonValue; daemon_command = $daemonCommand
                 observer_value = $observerValue; observer_command = $observerCommand
-                observer_sha256 = (Get-FileHash -LiteralPath $observerScript -Algorithm SHA256).Hash
+                observer_sha256 = Get-FileSha256 $observerScript
                 login_proof = 'PENDING_REAL_SIGN_OUT_AND_SIGN_IN'; observation_seconds = 600
             }
             [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json), $utf8)
+            Write-PreparationStep 'manifest_written'
         } catch {
             # Only revert entries owned by this failed preparation.
             if ((Read-RunValue $daemonValue) -eq $daemonCommand) { $key.DeleteValue($daemonValue, $false) }
@@ -119,4 +145,7 @@ try {
             observations = $results
         } | ConvertTo-Json -Depth 8
     }
+} catch {
+    Write-PreparationStep 'preparation_failed' $_.Exception.Message
+    throw
 } finally { $key.Dispose() }
