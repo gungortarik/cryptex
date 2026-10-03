@@ -317,8 +317,11 @@ Desktop. The proposal is recorded at
 child-exit detection and bounded restart handling to the current Tauri P0-2
 supervisor, plus lock-aware restart behavior to the shared process controller.
 A target-matched daemon sidecar is now built into the Tauri package-smoke
-artifact. Signed installers, default production runtime paths, Desktop login
-registration, and tray UX remain open.
+artifact. Release builds use the product app-data runtime root, start or attach
+the daemon, watch adopted daemon processes, enforce one Desktop instance,
+expose reversible per-user login-start controls, and create a tray menu for
+Open/Quit. Signed installer packaging and physical validation of the new
+startup/tray/supervisor flow remain open.
 
 Verification on Windows:
 
@@ -329,25 +332,34 @@ Verification on Windows:
 - `pnpm --dir apps/desktop tauri:package-smoke`: PASS; Tauri's package-flavored
   release build staged `cryptexd-x86_64-pc-windows-msvc.exe` and produced
   `target/release/cryptex-desktop.exe`. The sidecar is a synthetic development
-  build, not yet a signed installer.
-- `cargo test -p cryptex-desktop --bin cryptex-desktop --locked
-  sidecar_resolution_tests`: PASS (2 tests).
-- `cargo build -p cryptex-desktop --release --locked`: PASS after the restart-path
-  edit.
-- Rust formatting and `git diff --check`: PASS after the restart-path edit.
+  build, not yet a signed installer. The current run includes tray and
+  autostart integration and completed without compiler warnings.
+- `cargo check -p cryptex-desktop --tests --locked`: PASS; all Rust test targets
+  compile, including the pinned Tauri single-instance integration.
+- `cargo test -p cryptex-desktop --bin cryptex-desktop --locked`: PASS (8 tests)
+  on the current implementation, including release runtime paths and sidecar
+  resolution.
+- `cargo clippy -p cryptex-desktop --all-targets --locked -- -D warnings`:
+  blocked because Smart App Control rejected `cargo-clippy` with OS error 4551.
+- Rust formatting and `git diff --check`: PASS.
 - `cargo test -p cryptexd --test mode_b_supervisor --locked`: test binary built,
   but two process-spawning cases were blocked by Windows Smart App Control
   (OS error 4551). Do not bypass that policy. `cargo check -p cryptexd --tests
   --locked` passed, so integration tests compile but runtime proof awaits Mac.
+- `pnpm --dir apps/desktop test:sidecar-build-script`: PASS (3 target/path
+  tests).
+- `cargo build -p cryptex-desktop --release --locked`: PASS.
 - No GitHub Actions workflow ran.
 
 The exact Mac execution request is
 `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-test-plan-20261003.md`.
 Run that focused test on the Mac host, preserve its synthetic runtime, and
-commit/push the evidence plus a handoff update. Then continue the per-user
-Desktop startup adapter and tray/quit UX on Windows. Keep ADR-0012 unaccepted
-until every P0-2 proof, including compatible package update/rollback and
-canonical-data preservation, passes on both platforms.
+commit/push the evidence plus a handoff update. Then continue final installer
+packaging and coordinated Desktop+daemon update/rollback work. Keep ADR-0012
+unaccepted until every P0-2 proof, including compatible package update/rollback
+and canonical-data preservation, passes on both platforms. The Mac run must now
+also prove that a second Desktop launch focuses the existing supervisor and
+does not create an extra app, tray icon or daemon.
 
 ### Prior continuation record
 

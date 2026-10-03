@@ -9,6 +9,7 @@ export function App() {
   const [log, setLog] = useState("Desktop shell ready for foundation / P0-2 Mode B probes.");
   const [cryptexd, setCryptexd] = useState("");
   const [runtimeRoot, setRuntimeRoot] = useState("");
+  const [autostartEnabled, setAutostartEnabled] = useState(false);
   const [lastIpcPid, setLastIpcPid] = useState<number | null>(null);
 
   useEffect(() => {
@@ -23,10 +24,27 @@ export function App() {
         const path = await invoke<string>("p0_2_default_cryptexd");
         setCryptexd(path);
       } catch {
-        // Operator must paste cryptexd path when CRYPTEXD_BIN is unset.
+        // The packaged sidecar is resolved automatically; development may need an explicit path.
+      }
+      try {
+        setAutostartEnabled(await invoke<boolean>("p0_2_autostart_status"));
+      } catch (error) {
+        setLog(`login-start status failed: ${String(error)}`);
       }
     })();
   }, []);
+
+  async function toggleAutostart() {
+    const command = autostartEnabled ? "p0_2_autostart_disable" : "p0_2_autostart_enable";
+    try {
+      await invoke(command);
+      const enabled = await invoke<boolean>("p0_2_autostart_status");
+      setAutostartEnabled(enabled);
+      setLog(`Desktop login start ${enabled ? "enabled" : "disabled"}`);
+    } catch (error) {
+      setLog(`Desktop login-start update failed: ${String(error)}`);
+    }
+  }
 
   async function startDaemon() {
     try {
@@ -120,6 +138,9 @@ export function App() {
         </p>
         <p className="status">{log}</p>
         {runtimeRoot ? <p className="status">runtime: {runtimeRoot}</p> : null}
+        <button type="button" onClick={toggleAutostart}>
+          {autostartEnabled ? "Disable Desktop login start" : "Start Desktop at login"}
+        </button>
         <label>
           cryptexd path
           <input

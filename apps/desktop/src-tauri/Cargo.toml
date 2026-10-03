@@ -10,4 +10,8 @@ tauri-build.workspace = true
 
 [dependencies]
 tauri.workspace = true
+tauri-plugin-single-instance.workspace = true
 cryptexd = { path = "../../../services/cryptexd" }
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+tauri-plugin-autostart = "=2.6.0"

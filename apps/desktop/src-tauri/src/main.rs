@@ -2,8 +2,9 @@
 
 //! M0 Desktop foundation with temporary P0-2 Mode B developer hooks.
 //!
-//! These hooks exist only to observe window-close vs daemon lifetime. They do
-//! not select ADR-0012 and are not product tray UX.
+//! This remains a P0-2 foundation surface. It now contains the approved Mode B
+//! tray, per-user login-start controls and Desktop-owned daemon lifecycle; the
+//! product UI and M0 production evidence gates are still open.
 
 #[cfg(target_os = "windows")]
 use std::ffi::OsStr;
@@ -16,7 +17,11 @@ use std::time::{Duration, Instant};
 
 #[cfg(target_os = "macos")]
 use tauri::RunEvent;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, State, WindowEvent};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use tauri_plugin_autostart::ManagerExt as AutoStartManagerExt;
 
 #[derive(Clone)]
 struct ProbeState {
@@ -26,6 +31,7 @@ struct ProbeState {
     restart_attempts: Arc<Mutex<u8>>,
     restart_not_before: Arc<Mutex<Instant>>,
     pending_exit_code: Arc<Mutex<Option<i32>>>,
+    supervised_pid: Arc<Mutex<Option<u32>>>,
 }
 
 #[tauri::command]
@@ -35,7 +41,7 @@ fn p0_2_runtime_root() -> Result<String, String> {
     Ok(root.display().to_string())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", debug_assertions))]
 fn runtime_root_path() -> Result<PathBuf, String> {
     let home = std::env::var_os("HOME").ok_or("HOME unset")?;
     Ok(PathBuf::from(home)
@@ -47,18 +53,46 @@ fn runtime_root_path() -> Result<PathBuf, String> {
         .join("mode-b-desktop"))
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "macos", not(debug_assertions)))]
+fn runtime_root_path() -> Result<PathBuf, String> {
+    mac_product_runtime_root(std::env::var_os("HOME").as_deref())
+}
+
+#[cfg(target_os = "macos")]
+fn mac_product_runtime_root(home: Option<&std::ffi::OsStr>) -> Result<PathBuf, String> {
+    Ok(PathBuf::from(home.ok_or("HOME unset")?)
+        .join("Library")
+        .join("Application Support")
+        .join("Cryptex")
+        .join("runtime")
+        .join("p0-2"))
+}
+
+#[cfg(all(target_os = "windows", debug_assertions))]
 fn runtime_root_path() -> Result<PathBuf, String> {
     windows_runtime_root(std::env::var_os("LOCALAPPDATA").as_deref())
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", not(debug_assertions)))]
+fn runtime_root_path() -> Result<PathBuf, String> {
+    windows_product_runtime_root(std::env::var_os("LOCALAPPDATA").as_deref())
+}
+
+#[cfg(all(target_os = "windows", any(debug_assertions, test)))]
 fn windows_runtime_root(local_app_data: Option<&OsStr>) -> Result<PathBuf, String> {
     Ok(PathBuf::from(local_app_data.ok_or("LOCALAPPDATA unset")?)
         .join("Cryptex-Dev")
         .join("p0-2")
         .join("compare")
         .join("mode-b-desktop"))
+}
+
+#[cfg(all(target_os = "windows", any(not(debug_assertions), test)))]
+fn windows_product_runtime_root(local_app_data: Option<&OsStr>) -> Result<PathBuf, String> {
+    Ok(PathBuf::from(local_app_data.ok_or("LOCALAPPDATA unset")?)
+        .join("Cryptex")
+        .join("runtime")
+        .join("p0-2"))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -74,6 +108,25 @@ fn p0_2_default_cryptexd() -> Result<String, String> {
         &std::env::current_exe().map_err(|e| e.to_string())?,
     )
     .map(|path| path.display().to_string())
+}
+
+#[tauri::command]
+fn p0_2_autostart_status(app: AppHandle) -> Result<bool, String> {
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn p0_2_autostart_enable(app: AppHandle) -> Result<(), String> {
+    app.autolaunch().enable().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn p0_2_autostart_disable(app: AppHandle) -> Result<(), String> {
+    app.autolaunch()
+        .disable()
+        .map_err(|error| error.to_string())
 }
 
 fn resolve_cryptexd_binary(
@@ -122,6 +175,7 @@ fn p0_2_start_daemon(state: State<'_, ProbeState>, cryptexd: String) -> Result<u
     *state.runtime_root.lock().map_err(|e| e.to_string())? = Some(runtime.clone());
     *state.cryptexd_bin.lock().map_err(|e| e.to_string())? = Some(PathBuf::from(&cryptexd));
     *state.child.lock().map_err(|e| e.to_string())? = Some(child);
+    *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(pid);
     *state.restart_attempts.lock().map_err(|e| e.to_string())? = 0;
     *state.restart_not_before.lock().map_err(|e| e.to_string())? = Instant::now();
     *state.pending_exit_code.lock().map_err(|e| e.to_string())? = None;
@@ -223,21 +277,140 @@ fn stop_supervised_daemon(state: &State<'_, ProbeState>) -> Result<(), String> {
         .lock()
         .map_err(|e| e.to_string())?
         .clone();
-    if let Some(runtime) = runtime {
+    if let Some(runtime) = &runtime {
         let _ = fs::write(runtime.join("stop"), "stop\n");
         write_supervisor_state(&runtime, "daemon_stop_requested", None, true)?;
     }
     if let Some(mut child) = state.child.lock().map_err(|e| e.to_string())?.take() {
-        for _ in 0..40 {
-            match child.try_wait() {
-                Ok(Some(_)) => break,
-                Ok(None) => thread::sleep(Duration::from_millis(25)),
-                Err(_) => break,
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            match child.try_wait().map_err(|error| error.to_string())? {
+                Some(_) => {
+                    *state.supervised_pid.lock().map_err(|e| e.to_string())? = None;
+                    return Ok(());
+                }
+                None if Instant::now() < deadline => thread::sleep(Duration::from_millis(25)),
+                None => {
+                    child.kill().map_err(|error| error.to_string())?;
+                    child.wait().map_err(|error| error.to_string())?;
+                    *state.supervised_pid.lock().map_err(|e| e.to_string())? = None;
+                    return Err("daemon ignored clean stop and had to be force-stopped".into());
+                }
             }
         }
-        let _ = child.kill();
-        let _ = child.wait();
     }
+
+    if let Some(runtime) = &runtime {
+        let bin = daemon_binary(state).ok_or_else(|| "cryptexd path unknown".to_string())?;
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let status = query_daemon_status(&bin, &runtime)?;
+            if parse_live_daemon_pid(&status)?.is_none() {
+                *state.supervised_pid.lock().map_err(|e| e.to_string())? = None;
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err("daemon did not release its lock after clean stop request".into());
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(debug_assertions))]
+fn start_daemon_for_desktop_launch(state: &ProbeState) -> Result<u32, String> {
+    let runtime = runtime_root_path()?;
+    fs::create_dir_all(&runtime).map_err(|error| error.to_string())?;
+    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    let bin = resolve_cryptexd_binary(
+        std::env::var_os("CRYPTEXD_BIN").map(PathBuf::from),
+        &executable,
+    )?;
+
+    let status = query_daemon_status(&bin, &runtime)
+        .map_err(|error| format!("failed to inspect existing daemon before startup: {error}"))?;
+    if let Some(pid) = parse_live_daemon_pid(&status)? {
+        *state.runtime_root.lock().map_err(|e| e.to_string())? = Some(runtime.clone());
+        *state.cryptexd_bin.lock().map_err(|e| e.to_string())? = Some(bin);
+        *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(pid);
+        write_supervisor_state(&runtime, "attached_to_existing_daemon", Some(pid), true)?;
+        return Ok(pid);
+    }
+
+    let (pid, child) = start_daemon_inner(
+        bin.to_str()
+            .ok_or_else(|| "cryptexd path is not valid UTF-8".to_string())?,
+        &runtime,
+    )?;
+    *state.runtime_root.lock().map_err(|e| e.to_string())? = Some(runtime.clone());
+    *state.cryptexd_bin.lock().map_err(|e| e.to_string())? = Some(bin);
+    *state.child.lock().map_err(|e| e.to_string())? = Some(child);
+    *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(pid);
+    write_supervisor_state(&runtime, "active", Some(pid), true)?;
+    write_snapshot(&runtime, "daemon_started_with_desktop", true, Ok(Some(pid)))?;
+    Ok(pid)
+}
+
+fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let open = MenuItem::with_id(app, "open", "Open Cryptex", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Cryptex", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let icon = app
+        .default_window_icon()
+        .cloned()
+        .ok_or("default tray icon is missing")?;
+
+    TrayIconBuilder::new()
+        .icon(icon)
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "open" => {
+                let state = app.state::<ProbeState>();
+                if let Err(error) = show_main_window(app, "tray_menu", &state)
+                    && let Ok(runtime) = runtime_root_path()
+                {
+                    let _ = fs::write(runtime.join("window.error"), format!("{error}\n"));
+                }
+            }
+            "quit" => {
+                let state = app.state::<ProbeState>();
+                match stop_supervised_daemon(&state) {
+                    Ok(()) => {
+                        if let Ok(root) = runtime_root_path() {
+                            let _ =
+                                write_supervisor_state(&root, "clean_quit_from_tray", None, false);
+                            let _ = write_snapshot(&root, "clean_quit_from_tray", false, Ok(None));
+                        }
+                        app.exit(0);
+                    }
+                    Err(error) => {
+                        if let Ok(root) = runtime_root_path() {
+                            let _ = fs::write(root.join("quit.error"), format!("{error}\n"));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let app = tray.app_handle();
+                let state = app.state::<ProbeState>();
+                if let Err(error) = show_main_window(&app, "tray_left_click", &state)
+                    && let Ok(runtime) = runtime_root_path()
+                {
+                    let _ = fs::write(runtime.join("window.error"), format!("{error}\n"));
+                }
+            }
+        })
+        .build(app)?;
     Ok(())
 }
 
@@ -456,7 +629,26 @@ fn restart_exited_daemon(state: &ProbeState, runtime: &Path) -> Result<(), Strin
         }
     };
     if let Some(exit_code) = newly_exited {
+        *state.supervised_pid.lock().map_err(|e| e.to_string())? = None;
         *state.pending_exit_code.lock().map_err(|e| e.to_string())? = Some(exit_code);
+    }
+    let child_is_supervised = state.child.lock().map_err(|e| e.to_string())?.is_some();
+    let expected_pid = *state.supervised_pid.lock().map_err(|e| e.to_string())?;
+    if newly_exited.is_none() && !child_is_supervised {
+        if let Some(expected_pid) = expected_pid {
+            match current_daemon_pid(runtime, state) {
+                Ok(Some(actual_pid)) if actual_pid == expected_pid => return Ok(()),
+                Ok(Some(actual_pid)) => {
+                    *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(actual_pid);
+                    return Ok(());
+                }
+                Ok(None) => {
+                    *state.supervised_pid.lock().map_err(|e| e.to_string())? = None;
+                    *state.pending_exit_code.lock().map_err(|e| e.to_string())? = Some(1);
+                }
+                Err(error) => return Err(format!("failed to observe attached daemon: {error}")),
+            }
+        }
     }
     let exit_code = *state.pending_exit_code.lock().map_err(|e| e.to_string())?;
     let Some(exit_code) = exit_code else {
@@ -500,6 +692,7 @@ fn restart_exited_daemon(state: &ProbeState, runtime: &Path) -> Result<(), Strin
     ) {
         Ok((pid, child)) => {
             *state.child.lock().map_err(|e| e.to_string())? = Some(child);
+            *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(pid);
             *state.restart_attempts.lock().map_err(|e| e.to_string())? = 0;
             *state.restart_not_before.lock().map_err(|e| e.to_string())? = Instant::now();
             *state.pending_exit_code.lock().map_err(|e| e.to_string())? = None;
@@ -549,6 +742,9 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
                             Ok((pid, child)) => {
                                 if let Ok(mut guard) = state.child.lock() {
                                     *guard = Some(child);
+                                }
+                                if let Ok(mut guard) = state.supervised_pid.lock() {
+                                    *guard = Some(pid);
                                 }
                                 if let Ok(mut guard) = state.runtime_root.lock() {
                                     *guard = Some(root.clone());
@@ -632,13 +828,43 @@ fn main() {
         restart_attempts: Arc::new(Mutex::new(0)),
         restart_not_before: Arc::new(Mutex::new(Instant::now())),
         pending_exit_code: Arc::new(Mutex::new(None)),
+        supervised_pid: Arc::new(Mutex::new(None)),
     };
 
-    tauri::Builder::default()
+    let builder =
+        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            let state = app.state::<ProbeState>();
+            if let Err(error) = show_main_window(app, "single_instance_launch", &state)
+                && let Ok(runtime) = runtime_root_path()
+            {
+                let _ = fs::write(runtime.join("window.error"), format!("{error}\n"));
+            }
+        }));
+
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(
+        tauri_plugin_autostart::Builder::new()
+            .app_name("Cryptex")
+            .args(["--cryptex-background"])
+            .macos_launcher(tauri_plugin_autostart::MacosLauncher::LaunchAgent)
+            .build(),
+    );
+    #[cfg(target_os = "windows")]
+    let builder = builder.plugin(
+        tauri_plugin_autostart::Builder::new()
+            .app_name("Cryptex")
+            .args(["--cryptex-background"])
+            .build(),
+    );
+
+    builder
         .manage(probe_state.clone())
         .invoke_handler(tauri::generate_handler![
             p0_2_runtime_root,
             p0_2_default_cryptexd,
+            p0_2_autostart_status,
+            p0_2_autostart_enable,
+            p0_2_autostart_disable,
             p0_2_start_daemon,
             p0_2_daemon_status,
             p0_3_ipc_health,
@@ -657,12 +883,25 @@ fn main() {
             }
         })
         .setup(move |app| {
+            build_tray(&app.handle())?;
+            #[cfg(not(debug_assertions))]
+            if let Err(error) = start_daemon_for_desktop_launch(&probe_state) {
+                if let Ok(root) = runtime_root_path() {
+                    let _ = fs::create_dir_all(&root);
+                    let _ = fs::write(root.join("start.error"), format!("{error}\n"));
+                }
+            }
             let _ = runtime_root_path().and_then(|root| {
                 fs::create_dir_all(&root).map_err(|e| e.to_string())?;
                 let observation = current_daemon_pid(&root, &probe_state);
                 write_snapshot(&root, "desktop_launched", true, observation)?;
                 Ok(())
             });
+            if std::env::args_os().any(|argument| argument == "--cryptex-background")
+                && let Some(window) = app.get_webview_window("main")
+            {
+                window.hide()?;
+            }
             spawn_control_file_watcher(app.handle().clone(), probe_state.clone());
             Ok(())
         })
@@ -748,7 +987,7 @@ mod sidecar_resolution_tests {
 
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
-    use super::{parse_live_daemon_pid, windows_runtime_root};
+    use super::{parse_live_daemon_pid, windows_product_runtime_root, windows_runtime_root};
     use std::ffi::OsStr;
     use std::path::PathBuf;
 
@@ -766,6 +1005,20 @@ mod tests {
                 .join("mode-b-desktop")
         );
         assert!(!root.to_string_lossy().contains("Library"));
+    }
+
+    #[test]
+    fn release_runtime_root_uses_hidden_local_app_data() {
+        let root = windows_product_runtime_root(Some(OsStr::new(r"C:\Users\Tarik\AppData\Local")))
+            .expect("product runtime root");
+
+        assert_eq!(
+            root,
+            PathBuf::from(r"C:\Users\Tarik\AppData\Local")
+                .join("Cryptex")
+                .join("runtime")
+                .join("p0-2")
+        );
     }
 
     #[test]
@@ -794,5 +1047,26 @@ mod tests {
     fn live_pid_parser_surfaces_malformed_status_instead_of_calling_it_stopped() {
         assert!(parse_live_daemon_pid("recorded_pid=731\ninstance=stale\n").is_err());
         assert!(parse_live_daemon_pid("pid=not-a-number\n").is_err());
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod mac_runtime_path_tests {
+    use super::mac_product_runtime_root;
+    use std::ffi::OsStr;
+    use std::path::PathBuf;
+
+    #[test]
+    fn release_runtime_root_uses_hidden_application_support() {
+        assert_eq!(
+            mac_product_runtime_root(Some(OsStr::new("/Users/tarik")))
+                .expect("product runtime root"),
+            PathBuf::from("/Users/tarik")
+                .join("Library")
+                .join("Application Support")
+                .join("Cryptex")
+                .join("runtime")
+                .join("p0-2")
+        );
     }
 }
