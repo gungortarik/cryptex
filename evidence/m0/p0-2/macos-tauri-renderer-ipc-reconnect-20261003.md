@@ -36,4 +36,3 @@ This verifies the Tauri renderer-to-command path for health and reconnect on a
 physical macOS session, using the real daemon transport and a replacement PID.
 It does not verify literal traffic-light interaction, production packaging,
 or accept ADR-0012. Those remain separate gates.
-
