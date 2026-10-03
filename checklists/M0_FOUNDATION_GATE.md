@@ -28,8 +28,8 @@ Configuration presence, an implementation claim, compilation alone, or success o
 - [ ] Repository state is clean and required CI checks are green.
   - Evidence:
 
-- [ ] Rust workspace builds successfully.
-  - Evidence:
+- [x] Rust workspace builds successfully.
+  - Evidence: `evidence/m0/windows-release-build-20261002.md` records the full Windows release workspace build. Cross-platform CI remains a separate gate.
 
 - [ ] Blank Cryptex Desktop launches successfully on macOS.
   - Evidence:
@@ -103,29 +103,29 @@ Configuration presence, an implementation claim, compilation alone, or success o
 
 ## D. P0-3 — Local IPC Transport
 
-- [ ] macOS local IPC proof works with safe socket-path handling.
-  - Evidence:
+- [x] macOS local IPC proof works with safe socket-path handling.
+  - Evidence: `evidence/m0/p0-3/windows-ipc-spike-20261002.md` records physical Mac socket ownership/mode, a 28-byte path and process-level requests.
 
-- [ ] Windows named-pipe proof works.
-  - Evidence:
+- [x] Windows named-pipe proof works.
+  - Evidence: `evidence/m0/p0-3/windows-ipc-spike-20261002.md`; release binary revalidation in `evidence/m0/windows-release-build-20261002.md`.
 
 - [ ] Current-user-only permissions/ACL behavior is verified.
   - Evidence:
 
-- [ ] Protocol version negotiation is verified.
-  - Evidence:
+- [x] Protocol version negotiation is verified.
+  - Evidence: physical Windows and Mac spike runs in `evidence/m0/p0-3/windows-ipc-spike-20261002.md` reject an incompatible version.
 
-- [ ] Desktop/CLI/MCP client-role handling is verified as required by the spike.
-  - Evidence:
+- [x] Desktop/CLI/MCP client-role handling is verified as required by the spike.
+  - Evidence: physical role-handshake and unknown-role rejection tests in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`. These are spike clients; production application integration remains open.
 
-- [ ] Daemon restart/reconnect behavior is verified.
-  - Evidence:
+- [x] Daemon restart/reconnect behavior is verified.
+  - Evidence: physical Windows and Mac spike clients reconnect to a restarted server process in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`. Full Desktop reconnect remains open in P0-2.
 
-- [ ] Malformed request handling is verified.
-  - Evidence:
+- [x] Malformed request handling is verified.
+  - Evidence: physical malformed-frame tests on both platforms in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
 
-- [ ] Oversized request handling is verified.
-  - Evidence:
+- [x] Oversized request handling is verified.
+  - Evidence: physical 65,537-byte frame rejection tests on both platforms in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
 
 - [ ] ADR-0007 implementation addendum records the exact IPC implementation/library and relevant security details.
   - Evidence:

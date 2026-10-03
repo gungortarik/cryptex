@@ -236,9 +236,10 @@ query current status and must not treat the ready marker as liveness evidence.
 ### Benign Explorer Run dispatch probe — INCONCLUSIVE
 
 The `wd-1003a` test-only registration had reported present before the user's
-sign-out/sign-in. The post-login status output reported both the registration
-and marker absent. Read-only inspection later found the exact registered
-command present again; rerunning Status returned `run_registered=true`. The
+sign-out/sign-in. The post-login status output reported a registration mismatch
+or absence and no marker; its old boolean does not distinguish the two cases.
+Read-only inspection later found the exact registered
+command present; rerunning Status returned `run_registered=true`. The
 marker remains absent. Shell-Core shows that the Run key was enumerated but has
 no launch event for the test marker. Its enumeration event does not expose the
 value list, and the Security log was unavailable without elevation. Preserve
@@ -260,6 +261,16 @@ It was launched from a user PowerShell process and was not registered as a Windo
 The reboot therefore stopped it. P0-1 is already complete. Do not restart it merely to continue P0-2, and do not delete retained P0-1 forensic/corpus data.
 
 ## Immediate next task
+
+Windows release foundation build is now verified: the full Rust workspace and
+the Tauri Desktop with embedded frontend built successfully. The release IPC
+process-level check passed. CI now includes the IPC spike on both platforms;
+the first dispatched run passed on macOS and exposed a Windows-only redundant
+borrow lint. The fix passed full local Windows workspace Clippy; combined-source
+CI revalidation is pending.
+See `evidence/m0/windows-release-build-20261002.md`. The user currently has no
+accessible second Windows account, so the cross-account IPC ACL test remains
+pending.
 
 Before implementing another supervision mechanism or changing architecture:
 

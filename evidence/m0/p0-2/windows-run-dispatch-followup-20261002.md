@@ -27,8 +27,10 @@ marker_present=false
 marker=null
 ```
 
-The manifest and marker script remain in the session root. The test Run value
-is absent after sign-in. Read-only inspection of `Microsoft-Windows-Shell-Core/Operational`
+The manifest and marker script remain in the session root. The old
+`run_registered` field measures equality with the manifest command; false does
+not distinguish a missing value from a changed value. No absence or removal
+was established by that output. Read-only inspection of `Microsoft-Windows-Shell-Core/Operational`
 found a Run-key enumeration beginning at 8:32:11 PM EDT and finishing at
 8:32:28 PM EDT. No event in that window names `write-marker.ps1`,
 `CryptexDevP02RunDispatch`, or `wd-1003a`; no matching 9707/9708 command
@@ -38,16 +40,16 @@ were present during enumeration.
 
 ## Classification
 
-**INCONCLUSIVE — Run registration disappeared by the post-login status check.**
+**INCONCLUSIVE — marker dispatch not observed.**
 
 The marker was not written, and its command has no Shell-Core execution event.
-However, a later read-only inspection found the Run value present again, with
+However, a later read-only inspection found the Run value present, with
 the exact manifest command and a matching 186-character length. Re-running the
 same `Status` action then reported `run_registered=true`. A new `Prepare` was
 correctly refused because the test value is occupied. The current
 `StartupApproved\Run` value remains absent. This conflicts with the user's
-earlier post-login status output; the point at which the observed registry
-state changed is unknown. A fresh `wd-1003b` experiment was not armed because
+earlier post-login status output; the reason for the differing equality result
+is unknown. It does not establish a removal or re-addition. A fresh `wd-1003b` experiment was not armed because
 the preparation script correctly refused to replace this occupied test value.
 The existing registration and evidence were left intact.
 
