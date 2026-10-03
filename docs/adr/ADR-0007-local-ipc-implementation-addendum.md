@@ -67,16 +67,19 @@ role strings are authorization inputs, not cryptographic identity. A process
 under the same OS account can claim a role, so each operation must still be
 authorized by its granted capability and later feature policy.
 
-The spike proves the narrow health operation, not full production client
-integration. Desktop/CLI/MCP production APIs must be added incrementally under
-the canonical-writer and least-privilege rules. The M0 Desktop reconnect proof
-must use the actual Desktop backend client and actual daemon transport across a
-supervised daemon restart on both Windows and macOS before P0-3/P0-2 reconnect
-claims are marked complete.
+The spike proves the narrow health operation, not the full future Desktop/CLI/MCP
+API surface. The production Desktop health command now uses the shared IPC
+client. Physical Windows and macOS harness evidence records that client
+reconnecting to real daemons after supervised restarts; physical Tauri renderer
+health/reconnect invocation is separately recorded on both platforms after
+clean stop/replacement. See the linked P0-2 evidence. Additional client APIs
+remain subject to canonical-writer and least-privilege rules.
 
 ## Acceptance
 
 The user selected the evidence-backed candidate on 2026-10-03. This addendum is
-accepted for the narrow M0 implementation above. It does not accept ADR-0012,
-complete M0, authorize M1, or claim that production Desktop reconnect has
-already been verified.
+accepted for the narrow M0 implementation above. Subsequent physical Windows
+and macOS evidence verifies production Desktop health/reconnect behavior within
+the scopes stated in the evidence files. This does not accept ADR-0012,
+complete M0, authorize M1, or claim that the broader Desktop/CLI/MCP API surface
+is complete.

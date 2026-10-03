@@ -71,26 +71,26 @@ Configuration presence, an implementation claim, compilation alone, or success o
 
 ## C. P0-2 — Background Runtime / Atomic Update Lifecycle
 
-- [ ] Main-window close behavior was verified.
-  - Evidence:
+- [x] Main-window `CloseRequested` hide/restore behavior was verified on both platforms.
+  - Evidence: `evidence/m0/p0-2/windows-mode-b-gui-window-close-20261002.md` and `evidence/m0/p0-2/macos-mode-b-gui-window-close.md`. Both use a physical Tauri process and the application's `CloseRequested` path. Literal title-bar/traffic-light clicking remains unverified (macOS Accessibility blocked it).
 
 - [x] Reboot/login startup behavior was verified.
   - Evidence: `evidence/m0/p0-2/windows-reboot-login-survival-20261002.md` records a real Windows reboot/login, startup launch correlation and the complete 600-second daemon survival observation. `evidence/m0/p0-2/macos-native-supervision-evidence.md` records physical Mac LaunchAgent reboot/login. Both are test-only registrations; production installation remains open.
 
-- [ ] Crash detection/restart behavior was verified.
-  - Evidence:
+- [x] Mode B process-level crash detection/restart behavior was verified on both platforms.
+  - Evidence: `evidence/m0/p0-2/windows-desktop-supervision-evidence.md` and `evidence/m0/p0-2/macos-desktop-supervision-evidence.md`. This verifies the comparison supervisor path; it does not select ADR-0012 or prove a production packaged supervisor.
 
-- [ ] Single-daemon-instance behavior was verified.
-  - Evidence:
+- [x] Single-daemon-instance behavior was verified on both platforms.
+  - Evidence: the Windows and macOS Mode B supervision evidence above records duplicate launch rejection while the daemon lock is held.
 
-- [ ] Desktop reconnect behavior was verified.
-  - Evidence:
+- [x] Desktop IPC reconnect behavior was verified on both platforms.
+  - Evidence: `evidence/m0/p0-2/windows-desktop-ipc-reconnect-20261002.md` and `evidence/m0/p0-2/macos-desktop-ipc-reconnect-20261003.md` cover the shared Desktop Rust client across supervised restart. `windows-tauri-renderer-ipc-reconnect-20261003.md` and `macos-tauri-renderer-ipc-reconnect-20261003.md` additionally verify renderer health/reconnect commands after clean daemon replacement.
 
 - [ ] Compatible Desktop + daemon update behavior was verified.
   - Evidence:
 
-- [ ] Rollback/error path was verified.
-  - Evidence:
+- [x] Synthetic rollback/error path was verified on both platforms.
+  - Evidence: `evidence/m0/p0-2/windows-update-rollback-evidence-20261002.md` and `evidence/m0/p0-2/macos-update-rollback-evidence.md`. These are test-only staged binaries/markers, not installer/update UX.
 
 - [ ] Lifecycle/update behavior does not damage canonical data.
   - Evidence:
@@ -110,7 +110,7 @@ Configuration presence, an implementation claim, compilation alone, or success o
   - Evidence: `evidence/m0/p0-3/windows-ipc-spike-20261002.md`; release binary revalidation in `evidence/m0/windows-release-build-20261002.md`.
 
 - [x] Current-user-only permissions/ACL behavior is verified.
-  - Evidence: `evidence/m0/p0-3/windows-cross-account-acl-20261002.md` records actual authenticated different-account denial on a Windows CI VM plus owner connectivity before/after; physical Mac socket ownership/mode evidence is in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`. Production integration remains open.
+  - Evidence: `evidence/m0/p0-3/windows-cross-account-acl-20261002.md` records actual authenticated different-account denial on a Windows CI VM plus owner connectivity before/after; physical Mac socket ownership/mode evidence is in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`. The production read-only Desktop health command is integrated and exercised on both platforms; additional CLI/MCP production APIs remain absent.
 
 - [x] Protocol version negotiation is verified.
   - Evidence: physical Windows and Mac spike runs in `evidence/m0/p0-3/windows-ipc-spike-20261002.md` reject an incompatible version.
@@ -119,7 +119,7 @@ Configuration presence, an implementation claim, compilation alone, or success o
   - Evidence: physical role-handshake and unknown-role rejection tests in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`. These are spike clients; production application integration remains open.
 
 - [x] Daemon restart/reconnect behavior is verified.
-  - Evidence: physical Windows and Mac spike clients reconnect to a restarted server process in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`. Full Desktop reconnect remains open in P0-2.
+  - Evidence: physical Windows and Mac spike clients reconnect to a restarted server process in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`; the production Desktop Rust client reconnects to real daemons on both platforms in the P0-2 evidence linked above.
 
 - [x] Malformed request handling is verified.
   - Evidence: physical malformed-frame tests on both platforms in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
@@ -127,8 +127,8 @@ Configuration presence, an implementation claim, compilation alone, or success o
 - [x] Oversized request handling is verified.
   - Evidence: physical 65,537-byte frame rejection tests on both platforms in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
 
-- [ ] ADR-0007 implementation addendum records the exact IPC implementation/library and relevant security details.
-  - Evidence:
+- [x] ADR-0007 implementation addendum records the exact IPC implementation/library and relevant security details.
+  - Evidence: accepted `docs/adr/ADR-0007-local-ipc-implementation-addendum.md` records `interprocess` 2.4.4, Windows DACL and macOS socket ownership/mode, protocol/capability boundaries, limitations and evidence.
 
 ## E. P0-4 — Managed Syncthing Integration
 
