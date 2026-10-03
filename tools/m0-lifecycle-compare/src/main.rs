@@ -463,6 +463,12 @@ fn run_mode_b(opts: RunOpts) -> Result<(), LifecycleError> {
         let pid = supervisor.start_daemon()?;
         measurement.daemon_pid = Some(pid);
         measurement.time_to_daemon_ready_ms = Some(startup.elapsed().as_millis());
+        let before_restart = wait_for_desktop_ipc_pid(pid, Duration::from_secs(5))?;
+        measurement.desktop_reconnect_result = format!(
+            "{}: shared Tauri Desktop IPC client connected before crash; pid={}",
+            EvidenceClass::Automated.as_str(),
+            before_restart.daemon_pid
+        );
 
         let dup = Command::new(&opts.cryptexd_bin)
             .args([
@@ -528,6 +534,14 @@ fn run_mode_b(opts: RunOpts) -> Result<(), LifecycleError> {
             EvidenceClass::Automated.as_str()
         );
 
+        let reconnected = wait_for_desktop_ipc_pid(new_pid, Duration::from_secs(10))?;
+        measurement.desktop_reconnect_result = format!(
+            "{}: shared Tauri Desktop IPC client reconnected after supervised restart; pid={} -> {}; actual Tauri UI invocation remains PHYSICAL_MANUAL",
+            EvidenceClass::Automated.as_str(),
+            old_pid.unwrap_or_default(),
+            reconnected.daemon_pid
+        );
+
         let status_out = Command::new(&opts.cryptexd_bin)
             .args([
                 "lifecycle",
@@ -536,11 +550,10 @@ fn run_mode_b(opts: RunOpts) -> Result<(), LifecycleError> {
                 mode_root.to_str().unwrap(),
             ])
             .output()?;
-        if status_out.status.success() {
-            measurement.desktop_reconnect_result = format!(
-                "{}: status observe after supervised restart succeeded (full Desktop reconnect still NOT_YET_VERIFIED)",
-                EvidenceClass::Automated.as_str()
-            );
+        if !status_out.status.success() {
+            return Err(LifecycleError::Attention(
+                "status observation after IPC reconnect failed".into(),
+            ));
         }
 
         supervisor.clean_stop()?;
@@ -576,6 +589,28 @@ fn run_mode_b(opts: RunOpts) -> Result<(), LifecycleError> {
     }
     write_measurement(&opts, mode, &measurement)?;
     result
+}
+
+fn wait_for_desktop_ipc_pid(
+    expected_pid: u32,
+    timeout: Duration,
+) -> Result<cryptexd::ipc::HealthResponse, LifecycleError> {
+    let started = Instant::now();
+    let mut last_observation = "no IPC response".to_string();
+    while started.elapsed() < timeout {
+        match cryptexd::ipc::desktop_health_ping(Duration::from_millis(300)) {
+            Ok(response) if response.daemon_pid == expected_pid => return Ok(response),
+            Ok(response) => {
+                last_observation =
+                    format!("IPC answered with unexpected pid {}", response.daemon_pid);
+            }
+            Err(error) => last_observation = error.to_string(),
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    Err(LifecycleError::Attention(format!(
+        "Desktop IPC did not reach expected daemon pid {expected_pid}: {last_observation}"
+    )))
 }
 
 fn run_update_rollback(opts: RunOpts) -> Result<(), LifecycleError> {
