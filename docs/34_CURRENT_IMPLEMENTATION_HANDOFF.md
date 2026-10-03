@@ -258,12 +258,13 @@ Before implementing another supervision mechanism or changing architecture:
    attempt with a fresh runtime root and preserve process-start/shell-launch
    evidence. Do not infer a termination cause if no observer attaches. See
    `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
-3. finish P0-3 validation on macOS by running the exact commands in
-   `tools/m0-ipc-spike/README.md` and prove denial from a second Windows
-   account; then compare the transport candidates and record ADR-0007 details
-   before production daemon APIs or Desktop reconnect claims.
-4. perform/record the macOS login/reboot startup proof on the Mac host
-5. compare the candidates and document evidence before accepting ADR-0012
+3. finish P0-3 validation by proving denial from a second Windows account;
+   then compare the transport candidates and record ADR-0007 details before
+   production daemon APIs or Desktop reconnect claims. The macOS candidate
+   runtime proof is complete; see the P0-3 evidence file.
+4. compare the supervision candidates and document evidence before accepting
+   ADR-0012. The macOS login/reboot startup proof is complete for the test-only
+   native LaunchAgent path.
 
 ## OPEN
 
