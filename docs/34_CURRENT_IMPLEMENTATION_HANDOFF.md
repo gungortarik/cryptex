@@ -377,8 +377,10 @@ Retained diagnostic history and continuation constraints:
 - root cause of Windows HKCU Run post-login daemon exit
 - Windows crash-restart parity for a no-elevation/native candidate
 - full Tauri UI/renderer IPC reconnect remains open: the shared Rust client
-  passed against real Windows and macOS daemons across supervised restart, but
-  the visible renderer invocation remains outstanding
+  passed against real Windows and macOS daemons across supervised restart. The
+  physical macOS renderer invocation is now verified in
+  `evidence/m0/p0-2/macos-tauri-renderer-ipc-reconnect-20261003.md`; literal
+  traffic-light interaction and production packaging remain open
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
 - remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
