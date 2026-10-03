@@ -28,6 +28,9 @@
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks and
+  retained physical-host evidence. Run workflows only when required evidence
+  cannot be produced locally; avoid redundant progress runs.
+- GitHub Actions minutes are constrained. Prefer relevant local checks and
   retained physical-host evidence. Dispatch workflows only when a required
   check cannot be satisfied locally; do not launch redundant runs for progress.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
@@ -304,15 +307,17 @@ Before implementing another supervision mechanism or changing architecture:
    Registry visibility depends on observer context; package virtualization is
    a hypothesis, not yet a verified root cause. Preserve session evidence. This
    probe does not establish daemon survival or explain a termination cause.
-2. The next instrumented Cryptex login experiment is prepared in `wl-1003g`
-   through Explorer's normal-shell launch, without elevation. Preparation
-   manifest exists and external-shell preflight reports both daemon and
-   observer registered; hashes were independently verified. Next: user performs
-   real sign-out/sign-in and returns; Codex reads retained observer results.
-   Earlier `wl-1003c/d/e/f` preparations are incomplete retained attempts, not
-   armed experiments. The failure trace in `wl-1003f` identifies missing
-   `Get-FileHash`; framework SHA-256 removed that autoload dependency. No CI
-   was dispatched. Preserve process-start/shell-launch
+2. The `wl-1003g` attempt was prepared through `Shell.Application` from Codex.
+   Its process chain reaches Explorer, but its status wrapper still inherited
+   Codex's registry view; this is not proof of the user's unvirtualized Run
+   values. After the latest user sign-out/sign-in, no daemon or observer runtime
+   files were present under `wl-1003g`. It is NOT a verified armed login test.
+   Prepare a fresh instrumented root in the user's ordinary Windows PowerShell,
+   confirm the manifest there, then sign out/in and return. Codex can read the
+   retained results. Earlier `wl-1003c/d/e/f` preparations are incomplete.
+   `wl-1003f` identified missing `Get-FileHash`; framework SHA-256 fixed that
+   failure but not registry-view separation. No CI was dispatched. Preserve
+   process-start/shell-launch
    evidence. Do not infer a termination cause if no observer attaches. See
    `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
 3. use the verified Windows cross-account named-pipe ACL evidence to

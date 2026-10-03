@@ -143,10 +143,13 @@ killing an unrelated process. Cleanup is idempotent.
 Preparation now retains `preparation.jsonl` with step names, UTC times and
 failure diagnostics. Hashes use the framework SHA-256 API rather than depending
 on `Get-FileHash` module autoload when launched through Explorer's shell.
-The `wl-1003g` login experiment was prepared that way without elevation;
-`external-preflight.json` confirms both registrations in the external context.
-Preparation is not a login/survival result. Retained incomplete attempts are
-never overwritten or reused.
+The `wl-1003g` attempt was dispatched with `Shell.Application` from Codex.
+Its child still read Codex's registry view: an Explorer process in the ancestry
+does not prove an unvirtualized caller. No daemon/observer artifacts appeared
+after that login, so `wl-1003g` is NOT an armed/valid experiment. Prepare a fresh
+experiment directly in the user's ordinary Windows PowerShell and require the
+printed manifest before signing out. Retained incomplete attempts are never
+overwritten or reused.
 
 An observer result alone does not establish that startup came from login. Correlate
 the fresh ready timestamp, observer/start time, registered command, and actual

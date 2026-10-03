@@ -183,8 +183,10 @@ controls passed under
 `%LOCALAPPDATA%\Cryptex-Dev\p0-2\observer-controls-20261003T014403138Z`.
 No GitHub workflow was dispatched.
 
-Codex launched preparation through the ordinary Explorer shell without elevation.
-Attempts `wl-1003c/d/e/f` did not produce a manifest and remain retained.
+An attempt was dispatched with `Shell.Application` from the Codex process,
+without elevation. Although Explorer appears in the ancestry, this did not
+establish an independent ordinary-shell registry context. Attempts
+`wl-1003c/d/e/f` did not produce a manifest and remain retained.
 `wl-1003f/preparation.jsonl` records failure after daemon registration because
 `Get-FileHash` was unavailable. Preparation's existing rollback removed its
 matching registrations; subsequent fresh preparation passed its occupied-value
@@ -198,19 +200,14 @@ changes in progress. Binary SHA-256:
 Observer SHA-256:
 `49B77FCB4570D8013044D74A5C4B39F06F0AFDBA92A842C48A5EB591780AA10E`.
 Both independently matched `Get-FileHash` in the working tool environment.
-`preparation.jsonl` reached `manifest_written`; the ordinary-shell
-`external-preflight.json` confirms both registrations, no stop marker and no
-observer results yet. Syntax parsing and Git diff checks passed.
+`preparation.jsonl` reached `manifest_written`. However,
+`external-preflight.json` was written by a shell launch descended from the
+packaged Codex context and does NOT prove Explorer's unvirtualized Run values.
+The latest user login entered session 6; no daemon or observer runtime files
+appeared under `wl-1003g`. Classify it as **NOT ARMED / NOT TESTED**. No daemon
+survival claim follows. Syntax parsing, five collector controls and five
+observer controls passed; no CI was dispatched.
 
-Next: real sign-out/sign-in and allow the observer its ten-minute observation
-window. Codex will inspect the retained results after the user returns. This
-experiment is ARMED, not verified login/survival evidence. Preserve all prior
-roots; do not run registry-mutating Rust lifecycle tests while it is armed.
-
-**Final classification: INCONCLUSIVE — marker dispatch not observed; registry
-observation inconsistent.** Shell-Core confirms that the Run key was enumerated
-but does not expose its value list. No test-command launch event or process
-creation proof is available. Do not infer whether Explorer skipped the entry,
-whether its state changed during login, or why the earlier status differed.
-Preserve this session directory and use the currently matching registration
-for a further real sign-out/sign-in observation before cleanup.
+Next: prepare a fresh instrumented root in the user's ordinary Windows
+PowerShell and require the printed manifest before sign-out/sign-in. Codex can
+inspect retained evidence afterward. Preserve every earlier runtime root.
