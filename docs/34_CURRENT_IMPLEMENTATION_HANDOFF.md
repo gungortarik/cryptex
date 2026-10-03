@@ -125,15 +125,18 @@ Not verified by that run:
   login daemon using the same named-pipe endpoint was active; this may confound
   the observation, but its effect is not proven. Classify the renderer crash
   reconnect as **NOT YET VERIFIED** and preserve the login daemon. The optional
-  `--pre-crash-hold-ms` harness window supports another coordinated attempt.
+  `--pre-crash-hold-ms` and `--post-restart-hold-ms` harness windows support a
+  coordinated repeat that leaves the replacement daemon available for the
+  renderer.
   See `evidence/m0/p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md`.
 - The coordinated physical macOS renderer crash/reconnect test is recorded at
   `evidence/m0/p0-2/macos-renderer-crash-reconnect-test-plan-20261003.md`.
   The Mode B harness restarted the daemon successfully (`23314 -> 23330`,
   30 ms), but the visible renderer retained the old health status and did not
   display the replacement PID. Classify this renderer crash/reconnect gate as
-  **NOT YET VERIFIED**; do not count the shared Rust-client line as a renderer
-  pass.
+  **NOT YET VERIFIED**; that attempt did not hold the replacement daemon open
+  after restart. The current test plan uses the new bounded hold. Do not count
+  the shared Rust-client line as a renderer pass.
 - The new instrumented Windows login at 16:41:48 EDT on 2026-10-02 confirmed a
   regular user-profile logon. After 11.4 minutes, neither the direct daemon Run
   entry nor the PowerShell observer had produced a runtime artifact; the

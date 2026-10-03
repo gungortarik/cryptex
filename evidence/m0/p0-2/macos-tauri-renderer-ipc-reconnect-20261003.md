@@ -50,6 +50,11 @@ and `Wait for IPC reconnect` during the 15-second pre-crash window. Its final
 visible status remained `IPC health.pong · daemon pid=23314 · protocol=1` and
 did not display `IPC reconnected after restart · pid 23314 → 23330`.
 
+This run used the pre-crash coordination window but not the post-restart hold;
+the replacement daemon's availability window for the renderer was therefore
+not controlled. The updated repeat procedure is in
+`macos-renderer-crash-reconnect-test-plan-20261003.md`.
+
 Therefore the shared Rust-client result is retained as harness evidence, but
 the coordinated Tauri renderer crash/restart requirement remains **NOT YET
 VERIFIED**. This does not change the clean stop/replacement renderer proof

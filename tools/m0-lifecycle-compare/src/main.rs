@@ -93,6 +93,7 @@ pub(crate) struct RunOpts {
     commit: String,
     leave_registered: bool,
     pre_crash_hold_ms: u64,
+    post_restart_hold_ms: u64,
 }
 
 fn parse_run_opts(args: &[String]) -> Result<RunOpts, LifecycleError> {
@@ -103,6 +104,7 @@ fn parse_run_opts(args: &[String]) -> Result<RunOpts, LifecycleError> {
     let mut commit = String::new();
     let mut leave_registered = false;
     let mut pre_crash_hold_ms = 0;
+    let mut post_restart_hold_ms = 0;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -121,6 +123,21 @@ fn parse_run_opts(args: &[String]) -> Result<RunOpts, LifecycleError> {
                 if pre_crash_hold_ms > 15_000 {
                     return Err(LifecycleError::Usage(
                         "--pre-crash-hold-ms must be an integer from 0 to 15000".into(),
+                    ));
+                }
+                index += 2;
+            }
+            "--post-restart-hold-ms" => {
+                post_restart_hold_ms = require_value(args, index, "--post-restart-hold-ms")?
+                    .parse::<u64>()
+                    .map_err(|_| {
+                        LifecycleError::Usage(
+                            "--post-restart-hold-ms must be an integer from 0 to 15000".into(),
+                        )
+                    })?;
+                if post_restart_hold_ms > 15_000 {
+                    return Err(LifecycleError::Usage(
+                        "--post-restart-hold-ms must be an integer from 0 to 15000".into(),
                     ));
                 }
                 index += 2;
@@ -184,6 +201,7 @@ fn parse_run_opts(args: &[String]) -> Result<RunOpts, LifecycleError> {
         commit,
         leave_registered,
         pre_crash_hold_ms,
+        post_restart_hold_ms,
     })
 }
 
@@ -556,6 +574,11 @@ fn run_mode_b(opts: RunOpts) -> Result<(), LifecycleError> {
             EvidenceClass::Automated.as_str()
         );
 
+        if opts.post_restart_hold_ms > 0 {
+            println!("post_restart_hold_started_ms={}", opts.post_restart_hold_ms);
+            thread::sleep(Duration::from_millis(opts.post_restart_hold_ms));
+        }
+
         let reconnected = wait_for_desktop_ipc_pid(new_pid, Duration::from_secs(10))?;
         measurement.desktop_reconnect_result = format!(
             "{}: shared Tauri Desktop IPC client reconnected after supervised restart; pid={} -> {}; actual Tauri UI invocation remains PHYSICAL_MANUAL",
@@ -823,7 +846,7 @@ fn usage() -> String {
         "  m0-lifecycle-compare run-mode-a [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C] [--leave-registered]",
         "  m0-lifecycle-compare run-mode-a-hkcu [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C] [--leave-registered]",
         "  m0-lifecycle-compare hkcu-run register|status|remove [--runtime-root PATH] [--cryptexd PATH]",
-        "  m0-lifecycle-compare run-mode-b [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C] [--pre-crash-hold-ms MS]",
+        "  m0-lifecycle-compare run-mode-b [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C] [--pre-crash-hold-ms MS] [--post-restart-hold-ms MS]",
         "  m0-lifecycle-compare run-update-rollback [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
         "  m0-lifecycle-compare status [--runtime-root PATH]",
         "  m0-lifecycle-compare cleanup [--runtime-root PATH] [--cryptexd PATH]",
@@ -834,6 +857,7 @@ fn usage() -> String {
         "  - HKCU Run probe does not claim OS crash restart and does not auto logout/reboot",
         "  - update-rollback uses synthetic staged binaries only (not a production updater)",
         "  - run-mode-b pre-crash hold is optional and limited to 15000 ms for coordinated renderer observation",
+        "  - run-mode-b post-restart hold keeps the replacement daemon available for up to 15000 ms during renderer observation",
         "  - does not reboot/logout and must not touch syncthing-p0-1*",
     ]
     .join("\n")
@@ -868,7 +892,7 @@ mod tests {
     }
 
     #[test]
-    fn pre_crash_hold_defaults_to_zero_and_is_bounded() {
+    fn coordinated_hold_options_default_to_zero_and_are_bounded() {
         let args = vec![
             "--cryptexd".to_string(),
             env::current_exe().unwrap().display().to_string(),
@@ -882,6 +906,19 @@ mod tests {
         let mut too_long = args;
         too_long.extend(["--pre-crash-hold-ms".into(), "15001".into()]);
         assert!(parse_run_opts(&too_long).is_err());
+
+        let mut post_restart = vec![
+            "--cryptexd".to_string(),
+            env::current_exe().unwrap().display().to_string(),
+            "--post-restart-hold-ms".into(),
+            "5000".into(),
+        ];
+        assert_eq!(
+            parse_run_opts(&post_restart).unwrap().post_restart_hold_ms,
+            5_000
+        );
+        post_restart[3] = "15001".into();
+        assert!(parse_run_opts(&post_restart).is_err());
     }
 
     #[test]

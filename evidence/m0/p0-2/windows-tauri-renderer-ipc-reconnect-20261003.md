@@ -78,7 +78,11 @@ observation. The renderer command itself has a 90-second timeout, so this is
 separate login daemon (PID `31512`) remained active on this host and uses the
 same named-pipe endpoint; endpoint contention is a possible test confounder,
 not an established cause. That daemon and its registration were left untouched.
+This attempt did not use a post-restart hold, so the replacement daemon's
+availability window for the renderer was not controlled.
 
 The Mode B crash/restart and shared Rust client reconnect passed independently.
 The missing proof is specifically the visible Tauri renderer receiving the
 supervisor's replacement PID while its reconnect command is pending.
+The comparison harness now has an optional bounded post-restart hold for a
+controlled repeat.

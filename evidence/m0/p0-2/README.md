@@ -75,7 +75,7 @@ See:
 - `../windows-release-build-20261003.md` (current Tauri CLI release executable loaded its embedded renderer and passed the Windows renderer IPC flow)
 - `macos-desktop-ipc-reconnect-20261003.md` (physical macOS shared Desktop Rust client reconnect after supervised daemon restart; Tauri renderer invocation remains open)
 - `macos-tauri-renderer-ipc-reconnect-20261003.md` (physical macOS Tauri renderer health and reconnect command invocation; traffic-light and packaging gates remain open)
-- `macos-renderer-crash-reconnect-test-plan-20261003.md` (coordinated Mac renderer crash/reconnect attempt; NOT YET VERIFIED because the visible renderer retained the old PID)
+- `macos-renderer-crash-reconnect-test-plan-20261003.md` (Mac renderer crash/reconnect retest using a bounded post-restart hold; prior attempt remains NOT YET VERIFIED)
 - `windows-mode-b-invalid-harness-20261002.md` (historical FAILED/INVALID HARNESS EVIDENCE; superseded by r2)
 - `windows-supervision-comparison-protocol.md` (Windows Mode A comparison; Task Scheduler permission failure recorded; HKCU Run `native_hkcu_run` login-start probe harness; ADR-0012 still open)
 - `windows-mode-a-task-scheduler-permission-20261002.md` (Mode A schtasks FAILED CANDIDATE / PERMISSION)

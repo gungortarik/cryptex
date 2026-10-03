@@ -2,15 +2,16 @@
 
 **Status:** NOT YET VERIFIED
 **Scope:** M0 / P0-2 only  
-**Required source:** branch `m0/p0-2-cursor` at or after commit `a66d78f`
+**Required source:** latest `m0/p0-2-cursor` containing both coordinated hold options
 
 ## Purpose
 
 Verify that the visible Tauri renderer's `Wait for IPC reconnect` command stays
 pending while the Mode B comparison harness force-kills and restarts the daemon,
-then displays the replacement daemon PID. This isolates the renderer path from
-the Windows host's simultaneously active login daemon and its shared named-pipe
-endpoint.
+then displays the replacement daemon PID. The post-restart hold keeps that
+replacement alive long enough for the renderer to observe it. Running on macOS
+also isolates this Unix-socket check from the Windows host's shared named-pipe
+endpoint and active login daemon.
 
 This does not verify that the production Desktop itself supervises or restarts
 the daemon. The external Mode B harness owns that lifecycle in this test.
@@ -52,7 +53,8 @@ the daemon. The external Mode B harness owns that lifecycle in this test.
      --experiment-id mac-renderer-crash-wait-20261003 \
      --runtime-root "$HOME/Library/Application Support/Cryptex-Dev/p0-2/renderer-crash-wait-20261003" \
      --cryptexd "$PWD/target/release/cryptexd" \
-     --pre-crash-hold-ms 15000
+     --pre-crash-hold-ms 15000 \
+     --post-restart-hold-ms 10000
    ```
 
 4. When the harness prints `pre_crash_hold_started_ms=15000`, immediately use
@@ -60,12 +62,16 @@ the daemon. The external Mode B harness owns that lifecycle in this test.
    reconnect` while the original daemon is still alive. Record the initial PID
    shown in the UI and verify it matches
    `.../mode-b/ready` before the harness removes that control file.
-5. Wait for the harness and renderer to finish. Record the renderer's exact
+5. Confirm the harness subsequently prints
+   `post_restart_hold_started_ms=10000`. The replacement daemon remains
+   available during this window; wait for the renderer to show its reconnect
+   result while the harness is holding that PID.
+6. Wait for the harness and renderer to finish. Record the renderer's exact
    `IPC reconnected after restart · pid OLD → NEW` text. Compare `NEW` against
    both `restart_success` and the replacement PID in `desktop_reconnect_result`
    in the retained measurement. Require harness exit code 0 and exact PID
    agreement for a PASS.
-6. Click `Quit clean` in the renderer and confirm Desktop exits. Preserve the
+7. Click `Quit clean` in the renderer and confirm Desktop exits. Preserve the
    measurement file; remove only this test's disposable runtime control files.
 
 ## Classification and report
