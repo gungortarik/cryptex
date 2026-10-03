@@ -16,6 +16,7 @@ the scope explicitly covered by its source evidence.
 | Area | Result | Environment / scope | Detailed evidence |
 |---|---|---|---|
 | Release foundation build | **VERIFIED** | Physical Windows host; Rust workspace and Tauri Desktop release build with embedded frontend | [`windows-release-build-20261002.md`](windows-release-build-20261002.md) |
+| Current Tauri release executable | **VERIFIED** | Physical Windows host; Tauri CLI produced embedded renderer; release executable loaded and passed renderer IPC health/replacement flow | [`windows-release-build-20261003.md`](windows-release-build-20261003.md) |
 | IPC candidate transport | **VERIFIED** | Physical Windows host; `interprocess` 2.4.4 named-pipe roles, protocol/capability rejection, malformed/oversized frames and reconnect after server restart | [`windows-ipc-spike-20261002.md`](p0-3/windows-ipc-spike-20261002.md) |
 | Real daemon Desktop IPC client reconnect | **VERIFIED within harness scope** | Physical Windows host; shared Tauri Rust health client reconnected to real `cryptexd` after `DesktopSupervisor` restart; Tauri UI invocation was not exercised | [`windows-desktop-ipc-reconnect-20261002.md`](p0-2/windows-desktop-ipc-reconnect-20261002.md) |
 | Tauri renderer IPC invocation | **VERIFIED within recorded flow** | Physical Windows host; rendered health and reconnect buttons invoked production Tauri commands against real daemon PIDs `29556 -> 1336` after clean stop/replacement | [`windows-tauri-renderer-ipc-reconnect-20261003.md`](p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md) |
