@@ -1,6 +1,6 @@
 # macOS Tauri renderer reconnect during supervised crash — test plan
 
-**Status:** PLANNED / NOT RUN  
+**Status:** NOT YET VERIFIED
 **Scope:** M0 / P0-2 only  
 **Required source:** branch `m0/p0-2-cursor` at or after commit `a66d78f`
 
@@ -83,3 +83,22 @@ After running the test, append the measured result to
 `macos-tauri-renderer-ipc-reconnect-20261003.md`, update the implementation
 handoff and Windows/macOS result index as applicable, and make a small normal
 commit and push. Do not accept ADR-0012 or claim P0-2 complete from this test.
+
+## Run record — 2026-10-03 UTC
+
+The release build and visible renderer were run on macOS 27.0.1 / aarch64 at
+source `7615b08`. The coordinated Mode B harness completed successfully for
+experiment `mac-renderer-crash-wait-20261003-r7`:
+
+- `pre_crash_hold_ms=15000`
+- replacement daemon PID: `23330`
+- `restart_latency_ms=30`
+- shared Desktop IPC measurement: `pid=23314 -> 23330`
+- harness exit code: `0`
+
+The renderer was invoked with `IPC health ping` and `Wait for IPC reconnect`
+inside the coordination window, but the final visible status remained
+`IPC health.pong · daemon pid=23314 · protocol=1`; it did not display the
+required reconnect text or replacement PID. This is **NOT YET VERIFIED** for
+the renderer crash/restart path. The shared Rust-client reconnect line in the
+harness measurement is not counted as renderer evidence.

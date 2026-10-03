@@ -36,3 +36,21 @@ This verifies the Tauri renderer-to-command path for health and reconnect on a
 physical macOS session, using the real daemon transport and a replacement PID.
 It does not verify literal traffic-light interaction, production packaging,
 or accept ADR-0012. Those remain separate gates.
+
+## Coordinated supervised-crash reconnect — NOT YET VERIFIED
+
+On 2026-10-03 UTC, the release renderer and Mode B harness were coordinated
+from source `7615b08` on macOS 27.0.1 / aarch64 using experiment
+`mac-renderer-crash-wait-20261003-r7`.
+
+The retained harness measurement recorded `restart_success=... pid=23330`,
+`restart_latency_ms=30`, and shared-client reconnect `pid=23314 -> 23330`;
+the harness exited 0. The visible renderer was invoked with `IPC health ping`
+and `Wait for IPC reconnect` during the 15-second pre-crash window. Its final
+visible status remained `IPC health.pong · daemon pid=23314 · protocol=1` and
+did not display `IPC reconnected after restart · pid 23314 → 23330`.
+
+Therefore the shared Rust-client result is retained as harness evidence, but
+the coordinated Tauri renderer crash/restart requirement remains **NOT YET
+VERIFIED**. This does not change the clean stop/replacement renderer proof
+above, and does not accept ADR-0012.
