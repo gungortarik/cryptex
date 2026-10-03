@@ -269,11 +269,12 @@ the first dispatched run passed on macOS and exposed a Windows-only redundant
 borrow lint. The fix passed full local Windows workspace Clippy; combined-source
 CI revalidation passed on Windows and macOS for source commit `a0f1c6f`.
 See `evidence/m0/windows-release-build-20261002.md`. The user currently has no
-accessible second Windows account, so the cross-account IPC ACL test remains
-pending. A disposable GitHub-hosted Windows CI job now prepares a temporary
-non-admin user, verifies its real SID and requires an access-denied pipe
-connection plus successful owner connections before/after. Its runtime result
-is pending; the script refuses local workstation execution.
+accessible second Windows account. The cross-account IPC ACL proof instead
+passed on a disposable GitHub-hosted Windows VM at source `7668d11`, run
+`37085465368`. The test authenticates a temporary non-admin account and checks
+the effective client-thread SID, exact access denial, owner connections before
+and after, identity restoration and account cleanup. It refuses local workstation
+execution. See `evidence/m0/p0-3/windows-cross-account-acl-20261002.md`.
 
 Before implementing another supervision mechanism or changing architecture:
 
@@ -286,7 +287,7 @@ Before implementing another supervision mechanism or changing architecture:
    attempt with a fresh runtime root and preserve process-start/shell-launch
    evidence. Do not infer a termination cause if no observer attaches. See
    `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
-3. prove Windows second-account denial for the P0-3 named-pipe ACL, then
+3. use the verified Windows cross-account named-pipe ACL evidence to
    compare the transport candidates and record ADR-0007 details before
    production daemon APIs or Desktop reconnect claims. The Mac process-level
    socket proof is recorded in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
@@ -301,8 +302,8 @@ Before implementing another supervision mechanism or changing architecture:
 - Windows crash-restart parity for a no-elevation/native candidate
 - full Desktop IPC reconnect after daemon restart remains open because the
   current Desktop still uses short-lived CLI status observation
-- Windows second-account ACL denial not tested; production Desktop/CLI/MCP
-  integration absent
+- Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
+  integration remains absent
 - remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
 - final Mode A vs Mode B vs justified hybrid comparison
 - ADR-0012 acceptance

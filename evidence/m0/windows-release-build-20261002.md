@@ -39,8 +39,9 @@ Runtime evidence was retained under
 `%LOCALAPPDATA%\Cryptex-Dev\p0-3\ipc-windows-20261003T004952260Z`.
 Role/version/capability checks, malformed/oversized rejection and actual
 process-restart reconnect passed. The reconnect reached the new server PID
-`34228`. Second-account denial remains untested; the user currently has no
-accessible second Windows account.
+`34228`. The user currently has no accessible second Windows account;
+actual authenticated second-account denial subsequently passed on a disposable
+Windows CI VM. See `p0-3/windows-cross-account-acl-20261002.md`.
 
 ## CI and remaining gates
 
@@ -53,10 +54,12 @@ borrow was removed without changing the descriptor. The full local Windows
 workspace then passed `cargo clippy --locked --workspace --all-targets -- -D warnings`.
 Combined-source CI revalidation passed on Windows and macOS at source commit
 `a0f1c6f`: [successful CI run](https://github.com/gungortarik/cryptex/actions/runs/37084164722).
-The newly added cross-account ACL job is being evaluated separately in the
-newer [CI run](https://github.com/gungortarik/cryptex/actions/runs/37084572187).
+The new cross-account ACL job passed separately at source `7668d11` in
+[focused CI run](https://github.com/gungortarik/cryptex/actions/runs/37085465368).
+Readiness jobs were intentionally skipped in that focused run; their latest
+full Windows/macOS pass remains the `a0f1c6f` run above.
 
 These outputs are M0 foundation executables. Installer bundling is disabled in
 the repository configuration. This build does not accept ADR-0012/0007 or
-complete the unresolved Windows login, cross-account ACL, Desktop reconnect,
+complete the unresolved Windows login, Desktop reconnect,
 managed Syncthing, packaging, and human-review gates.

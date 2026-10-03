@@ -58,6 +58,13 @@ Its read-only follow-up returned `run_value_present=true`,
 `run_value_matches_manifest=true`, `run_command_length=186`, and
 `marker_present=false`. PowerShell syntax parsing passed.
 
+The subsequent Status enhancement adds observation UTC, PID, session ID, user
+SID and process bitness. The physical read at `2026-10-03T01:14:28.5872041Z`
+returned PID `21528`, session `3`, user SID
+`S-1-5-21-958957750-515913097-3701153746-1001`, 64-bit process, matching
+registration and no marker. This is a read-only observation, not another login
+trial. The existing registration remains armed.
+
 **Final classification: INCONCLUSIVE — marker dispatch not observed; registry
 observation inconsistent.** Shell-Core confirms that the Run key was enumerated
 but does not expose its value list. No test-command launch event or process

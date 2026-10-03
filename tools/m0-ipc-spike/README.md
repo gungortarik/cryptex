@@ -18,15 +18,15 @@ decision.
 The Windows prototype reads the current process token SID and supplies an
 explicit owner and protected DACL granting access to that SID. It does not rely
 on the broader [default named-pipe ACL](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights),
-which grants read access to Everyone and anonymous users. A second-account
-denial proof is still needed before the user-only ACL acceptance criterion is
-marked verified.
+which grants read access to Everyone and anonymous users. Actual authenticated
+second-account denial passed on a disposable Windows CI VM; see
+`evidence/m0/p0-3/windows-cross-account-acl-20261002.md`.
 
 On Unix, the prototype makes a short per-run socket path inside a directory
 created with mode `0700`, then verifies that an existing directory is owned by
 the current UID and has no group/other permissions. This avoids relying on a
-long Application Support path for the macOS socket. macOS mode/path behavior
-still requires an actual Mac run.
+long Application Support path for the macOS socket. Physical Mac mode/path
+verification is recorded in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
 
 ## Windows run
 
@@ -57,8 +57,9 @@ The separate CI job runs this test in parallel with the main readiness jobs.
 The script refuses local workstation and self-hosted runner execution before
 creating any account. GitHub documents the disposable runner and Windows
 administrator environment in its [hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
-This test's execution result is pending; preparation alone does not verify ACL
-denial.
+The test passed at source `7668d11` in
+[CI run 37085465368](https://github.com/gungortarik/cryptex/actions/runs/37085465368).
+This is candidate permission evidence; production application integration remains open.
 
 For a focused run, dispatch `ci.yml` with `ipc_acl_only=true`. The test helper
 uses Microsoft's [local authentication API](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-logonuserw)

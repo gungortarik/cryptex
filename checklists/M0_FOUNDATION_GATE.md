@@ -109,8 +109,8 @@ Configuration presence, an implementation claim, compilation alone, or success o
 - [x] Windows named-pipe proof works.
   - Evidence: `evidence/m0/p0-3/windows-ipc-spike-20261002.md`; release binary revalidation in `evidence/m0/windows-release-build-20261002.md`.
 
-- [ ] Current-user-only permissions/ACL behavior is verified.
-  - Evidence:
+- [x] Current-user-only permissions/ACL behavior is verified.
+  - Evidence: `evidence/m0/p0-3/windows-cross-account-acl-20261002.md` records actual authenticated different-account denial on a Windows CI VM plus owner connectivity before/after; physical Mac socket ownership/mode evidence is in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`. Production integration remains open.
 
 - [x] Protocol version negotiation is verified.
   - Evidence: physical Windows and Mac spike runs in `evidence/m0/p0-3/windows-ipc-spike-20261002.md` reject an incompatible version.
