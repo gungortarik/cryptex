@@ -2,7 +2,9 @@
 
 **Status:** PARTIAL / NOT YET VERIFIED overall; login, IPC, Stop and cleanup passed; actual tray Open/Quit remain unverified
 
-See `macos-tauri-owned-supervisor-restart-evidence-20261003.md` for measured results and continuation.
+See `macos-tauri-owned-supervisor-restart-evidence-20261003.md` for measured
+results and continuation.
+
 **Scope:** P0-2; isolated lifecycle runtime and synthetic daemon
 
 ## Purpose
@@ -87,3 +89,41 @@ In Cryptex Desktop:
 If any check fails, preserve the runtime root and logs, report exact output, and
 do not classify the gate as PASS. Commit the evidence and handoff update on the
 Mac Codex branch; do not modify application code during this evidence run.
+
+## Recorded result for this run
+
+The local checks, second-instance handling, release daemon startup and restart,
+duplicate-daemon rejection, real sign-out/sign-in, hidden login launch, Dock
+reopen, renderer IPC, explicit Stop with a 10-second no-restart observation,
+login-start removal and process cleanup passed. The operator used Dock reopen
+to reach the renderer after login; this does not count as tray **Open Cryptex**.
+
+The menu-bar item was present, but its Open/Quit menu could not be exposed by
+the available UI controls. Tray **Open Cryptex** and **Quit Cryptex**, including
+Quit exit code 0, remain **NOT YET VERIFIED**. The overall test remains partial;
+see the evidence file for observations and cleanup details.
+
+## Remaining tray-only follow-up
+
+The previous run removed the login-start registration and shut down all test
+processes. Keep login start disabled and run this focused check from the Mac
+checkout; no sign-out or reboot is needed:
+
+1. Confirm no Cryptex Desktop or lifecycle daemon process is running. Start
+   `./target/release/cryptex-desktop` in a foreground Terminal and keep that
+   Terminal open so it can report the Desktop exit code.
+2. Confirm one daemon starts under
+   `~/Library/Application Support/Cryptex/runtime/p0-2`; record its PID and
+   verify **Daemon status** plus **IPC health ping**.
+3. Close the main window with its traffic-light close button. Confirm the
+   window hides and the same daemon PID remains active.
+4. Open the Cryptex menu-bar item's context menu and select **Open Cryptex**.
+   Confirm the main window returns, then verify status and IPC still report the
+   same daemon PID. This is the tray Open proof; Dock restore does not count.
+5. Open the menu-bar item's context menu again and select **Quit Cryptex**.
+   Confirm the foreground command exits with code 0, Desktop and daemon
+   processes are gone, and fresh lifecycle status reports no live PID/lock.
+6. If either menu action is still inaccessible, capture the physical Mac
+   display and exact pointer/menu behavior, clean up through renderer **Quit
+   clean**, verify no processes remain, and leave that tray gate NOT YET
+   VERIFIED. Do not recreate the login-start registration.

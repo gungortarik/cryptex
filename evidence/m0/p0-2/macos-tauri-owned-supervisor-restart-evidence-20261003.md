@@ -51,7 +51,7 @@ and IPC returned `IPC health.pong · daemon pid=32006 · protocol=1`.
 The duplicate `lifecycle probe` returned
 `cryptexd: daemon instance already running (pid 32006)` with exit 1.
 
-## Physical login continuation
+## Login-start registration before sign-in
 
 The renderer initially showed `Start Desktop at login` (disabled). The test
 enabled it through that control; renderer reported `Desktop login start enabled`.
@@ -64,16 +64,10 @@ ProgramArguments[1]=--cryptex-background
 RunAtLoad=true
 ```
 
-The operator must sign out and sign back in. Do not manually launch Desktop
-after login: first observe its hidden window, one tray icon and one active
-daemon. Then use tray `Open Cryptex` and verify renderer status/IPC. Finally
-disable login start, verify removal of the per-user entry, Stop and observe no
-restart for 10 seconds, then use tray `Quit Cryptex` and verify cleanup.
-
-The current runtime and registration are deliberately retained for this
-pending physical step. This record does not yet classify the entire test as
-PASS. No application code or GitHub Actions workflow was changed/run.
-ADR-0012 and P0-2 acceptance remain open.
+This registration was used for the physical sign-out/sign-in step below. The
+registration has since been disabled and removed as part of scoped cleanup.
+The run used synthetic lifecycle state; no application code or GitHub Actions
+workflow was changed/run. ADR-0012 and P0-2 acceptance remain open.
 
 ## Actual sign-out/sign-in observation
 
@@ -89,10 +83,10 @@ The retained `desktop_launched` snapshot recorded `window_visible=true` before
 the startup code hides the window; it is not a post-hide visibility snapshot.
 The live no-window observation establishes the hidden state after login.
 
-Tray Open and post-login renderer IPC are the next checks. The native UI tool
-could not bind the unbundled release executable by process name or path;
-operator tray interaction is required to continue those UI checks. No code
-was changed to work around that tooling limitation.
+The hidden launch was observed before any manual launch. The native UI tool
+could not bind the unbundled release executable by process name or path. The
+operator reopened the app through Dock; this confirms Dock reopen, not tray
+Open. Renderer IPC was verified after that Dock reopen below.
 
 ## Post-login renderer and explicit Stop
 
@@ -109,10 +103,10 @@ After an additional measured 10-second wait, the status and state were unchanged
 and no release daemon hold process remained. Explicit Stop did not restart the
 daemon. Desktop `32654` remained alive.
 
-The login registration still exists; operator login-disable and actual tray
-Open/Quit checks remain pending. The operator's screenshot shows the Dock's
-Options/Open at Login menu, which is distinct from Cryptex's own tray menu and
-renderer login-start control.
+The Stop observation was completed before login-start removal. The macOS
+Dock's Options/Open at Login menu is distinct from Cryptex's own tray menu and
+the renderer login-start control; it is not evidence for either Cryptex tray
+action.
 
 ## Login disable and final cleanup
 
@@ -144,4 +138,7 @@ launched by the login agent rather than the retained shell session. The normal
 Quit state and process disappearance are verified; tray Quit exit 0 remains
 unverified. The successful physical login, renderer IPC, login-disable cleanup
 and 10-second no-restart-after-Stop checks are retained as separate passes.
-The full test remains NOT YET VERIFIED pending actual tray Open/Quit evidence.
+The overall test remains **PARTIAL / NOT YET VERIFIED**: actual tray Open and
+Quit were not demonstrated. Login startup, renderer IPC after Dock reopen,
+Stop-without-restart, login-registration removal and process cleanup are
+separate verified results recorded above.

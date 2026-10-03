@@ -20,29 +20,41 @@ The current cross-platform evidence comparison is in
 If evidence conflicts with an accepted architectural decision, stop and use the
 ADR/specification process.
 
-## Options under comparison (still OPEN)
+## Options under comparison (final decision still OPEN)
 
 Current Mac Desktop-owned run: `macos-tauri-owned-supervisor-restart-evidence-20261003.md`
-(local checks, release crash/restart, physical login, IPC, Stop and cleanup passed; actual tray Open/Quit remain unverified).
+(local checks, release crash/restart, physical login, Dock reopen/IPC, Stop and cleanup passed; actual tray Open/Quit remain unverified).
+
+The project owner approved Mode B with per-user login startup as the
+implementation direction. The cross-platform comparison and ADR-0012 acceptance
+remain open; this approval does not close the P0-2 gate.
 
 1. native per-user background registration (macOS LaunchAgent + Windows per-user startup)
 2. Tauri/tray supervisor spawning `cryptexd` sidecar
 3. hybrid only if evidence justifies it
 
-No option has been selected.
+The implementation direction is selected for the current slice; no final
+architecture decision has been recorded or accepted in ADR-0012.
 
 ## Safety and isolation rules
 
 - Use only synthetic/runtime test state.
-- Store runtime under `Cryptex-Dev/p0-2`, never inside the source repository.
+- Keep all runtime data outside the source repository. Comparison-harness
+  experiments use `Cryptex-Dev/p0-2`; the release Desktop lifecycle test uses
+  the isolated app-data runtime path in its test plan and only synthetic state.
 - Do not touch P0-1 Syncthing paths (`Cryptex-Dev/syncthing-p0-1*`).
-- Do not install LaunchAgents / Windows startup entries until comparison evidence exists.
+- Create per-user test startup entries only through the reversible procedure in
+  the active test plan, and verify their removal during cleanup. Do not treat a
+  test registration as approval to ship production startup integration.
 - Do not mark P0-2 complete and do not accept ADR-0012 from foundation-slice work alone.
-- Test-only login/reboot startup proofs are now verified on both platforms:
+- Test-only native login/reboot startup proofs are verified on both platforms:
   `windows-reboot-login-survival-20261002.md` and
-  `macos-native-supervision-evidence.md`. Production registration and the
-  production supervision/update comparison gates are open. Renderer reconnect
-  during external Mode B crash/restart is now verified on both platforms.
+  `macos-native-supervision-evidence.md`. The separate Mac release Desktop run
+  also has partial physical evidence for Desktop login startup, supervision,
+  renderer IPC and Stop behavior; tray Open/Quit remain unverified. Windows
+  release-mode physical lifecycle proof, signed packaging and production
+  update/canonical-data gates remain open. Renderer reconnect during external
+  Mode B crash/restart is verified on both platforms.
   Historical notes that deferred reboot "while P0-1 active" are stale.
 
 ## Current foundation slice

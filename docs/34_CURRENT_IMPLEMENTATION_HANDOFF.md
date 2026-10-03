@@ -49,7 +49,7 @@ Important branch note:
 - stale P0-1 references on this branch must not be silently "fixed" by inventing or recreating the P0-1 integration
 - integrate branches only through an explicit approved integration step
 
-## P0-2 status — DECIDED / VERIFIED evidence
+## P0-2 evidence status — verified slices; acceptance open
 
 ### macOS
 
@@ -129,7 +129,9 @@ Not verified by that run:
   to real daemons after supervised restart on both Windows and macOS; see the
   platform-specific proofs below. The actual Tauri renderer-to-command
   invocation during external Mode B crash/restart is VERIFIED on both Windows
-  and macOS. Production Desktop ownership of the supervisor remains OPEN.
+  and macOS. The Mac release Desktop-owned lifecycle now has partial physical
+  evidence (see the current Mac run above); Windows release-mode physical
+  verification and the complete cross-platform production gate remain OPEN.
 - A separate P0-3 candidate prototype now exists at `tools/m0-ipc-spike/`.
   Its Windows physical run verified role/version/capability handling,
   malformed/oversized rejection and a client reconnecting across an actual
@@ -325,22 +327,23 @@ It was launched from a user PowerShell process and was not registered as a Windo
 
 The reboot therefore stopped it. P0-1 is already complete. Do not restart it merely to continue P0-2, and do not delete retained P0-1 forensic/corpus data.
 
-## Immediate next task
+## Current continuation
 
-### Codex Windows continuation — Desktop-owned restart slice in progress
+### Windows implementation slice — committed; Mac physical run partial
 
 The project owner approved Mode B with per-user login startup launching
 Desktop. The proposal is recorded at
 `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`; it is
-**PROPOSED, not accepted**. This Windows implementation slice adds unexpected
-child-exit detection and bounded restart handling to the current Tauri P0-2
+**PROPOSED, not accepted**. The committed Windows implementation slice adds
+unexpected child-exit detection and bounded restart handling to the current Tauri P0-2
 supervisor, plus lock-aware restart behavior to the shared process controller.
 A target-matched daemon sidecar is now built into the Tauri package-smoke
 artifact. Release builds use the product app-data runtime root, start or attach
 the daemon, watch adopted daemon processes, enforce one Desktop instance,
 expose reversible per-user login-start controls, and create a tray menu for
-Open/Quit. Signed installer packaging and physical validation of the new
-startup/tray/supervisor flow remain open.
+Open/Quit. Signed installer packaging and complete Windows physical validation
+of the startup/tray/supervisor flow remain open; Mac release-mode results are
+summarized below.
 
 Verification on Windows:
 
@@ -364,21 +367,27 @@ Verification on Windows:
 - `cargo test -p cryptexd --test mode_b_supervisor --locked`: test binary built,
   but two process-spawning cases were blocked by Windows Smart App Control
   (OS error 4551). Do not bypass that policy. `cargo check -p cryptexd --tests
-  --locked` passed, so integration tests compile but runtime proof awaits Mac.
-- `pnpm --dir apps/desktop test:sidecar-build-script`: PASS (3 target/path
-  tests).
+  --locked` passed. The Mac run passed all three targeted process tests; Windows
+  release-mode physical lifecycle verification remains open.
 - `cargo build -p cryptex-desktop --release --locked`: PASS.
 - No GitHub Actions workflow ran.
 
-The exact Mac execution request is
-`evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-test-plan-20261003.md`.
-Run that focused test on the Mac host, preserve its synthetic runtime, and
-commit/push the evidence plus a handoff update. Then continue final installer
-packaging and coordinated Desktop+daemon update/rollback work. Keep ADR-0012
-unaccepted until every P0-2 proof, including compatible package update/rollback
-and canonical-data preservation, passes on both platforms. The Mac run must now
-also prove that a second Desktop launch focuses the existing supervisor and
-does not create an extra app, tray icon or daemon.
+The Mac execution request at
+`evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-test-plan-20261003.md`
+has been executed. The evidence at
+`evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-evidence-20261003.md`
+records release Desktop startup and crash/restart, duplicate rejection, real
+login startup, Dock reopen plus renderer IPC, Stop without restart, login-start
+removal and process cleanup. Actual tray **Open Cryptex** and **Quit Cryptex**
+remain unverified because the menu was not exposed by available UI controls;
+the test registration and processes were cleaned up. Do not repeat the passed
+steps merely to fix the document state.
+
+Next, verify both tray actions on the Mac while the release Desktop is running
+and retain evidence for each action, including tray Quit exit code 0. Then
+complete Windows release-mode physical lifecycle verification and the real
+compatible Desktop+daemon package update/rollback and canonical-data checks on
+both platforms. Keep ADR-0012 unaccepted until every required P0-2 proof passes.
 
 ### Prior continuation record
 
@@ -488,8 +497,9 @@ Retained diagnostic history and continuation constraints:
    production supervisor/packaging decision remains open; do not accept ADR-0012
    yet.
 4. use the existing physically verified macOS LaunchAgent login/reboot proof
-   in `evidence/m0/p0-2/macos-native-supervision-evidence.md`; production
-   registration/package integration remains unverified.
+   in `evidence/m0/p0-2/macos-native-supervision-evidence.md`. The separate
+   release Desktop login-start flow now has partial physical evidence on Mac;
+   Windows release-mode proof and signed package integration remain open.
 5. use `evidence/m0/p0-2/supervision-candidate-comparison-20261003.md` as the
    current test-evidence comparison; production supervision/update proofs and
    the ADR-0012 decision remain open.
@@ -504,7 +514,9 @@ Retained diagnostic history and continuation constraints:
   evidence commit `52e9dc4` (test build source `aed973d`): Desktop PID `27505`, daemon PID `27600` unchanged after restore,
   `source=tauri_close_requested`, clean exit 0 and released daemon lock.
   See `evidence/m0/p0-2/macos-physical-traffic-light-close-evidence-20261003.md`.
-  Production Desktop supervision, tray UX and packaging remain open.
+  That historical run did not test the production tray menu or packaged
+  supervision. The later Mac release Desktop-owned run is recorded at the top
+  of this handoff; tray Open/Quit and signed package verification remain open.
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
 - real compatible Desktop + daemon package coordination and rollback/canonical-data proof
