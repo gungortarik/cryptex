@@ -82,6 +82,11 @@ try {
         $matchesManifest = ($current -eq $manifest.run_command)
         [ordered]@{
             action = $Action
+            observed_utc = [DateTime]::UtcNow.ToString('o')
+            observer_pid = $PID
+            observer_session_id = [Diagnostics.Process]::GetCurrentProcess().SessionId
+            observer_user_sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            observer_process_bits = [IntPtr]::Size * 8
             run_registered = $matchesManifest
             run_value_present = ($null -ne $current)
             run_value_matches_manifest = $matchesManifest

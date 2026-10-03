@@ -29,6 +29,11 @@ After sign-in, inspect the marker and Run registration:
 powershell.exe -NoProfile -NonInteractive -File tools/m0-lifecycle-compare/scripts/prepare-windows-run-dispatch.ps1 -Action Status -SessionRoot $dispatch
 ```
 
+Status reports the observation time, process bitness, user SID and Windows
+session ID. `run_value_present` and `run_value_matches_manifest` distinguish a
+missing registry value from a changed command; `run_registered` remains the
+manifest-match result for compatibility.
+
 If the marker is present, Explorer dispatched this benign Run command, narrowing
 the prior failure to the Cryptex entries or their command forms. If absent, collect
 the corresponding Shell-Core and process-start evidence before cleanup; do not

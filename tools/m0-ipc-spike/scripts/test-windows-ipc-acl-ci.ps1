@@ -23,6 +23,7 @@ $server = $null
 $child = $null
 $testUser = $null
 $probeResult = $null
+$childExitCode = $null
 $failure = $null
 $cleanupErrors = [Collections.Generic.List[string]]::new()
 $accountRemoved = $false
@@ -100,13 +101,17 @@ try {
     $childArguments = '-NoProfile -NonInteractive -File "' + $probeFile + '"'
     if (($powershell.Length + $childArguments.Length + 4) -ge 1024) { throw 'Credentialed process command exceeds the Windows API limit.' }
     $child = Start-Process -FilePath $powershell -ArgumentList $childArguments -Credential $credential -WorkingDirectory $env:SystemRoot -WindowStyle Hidden -PassThru
+    # Retain the process handle before waiting so .NET can read its exit code
+    # even after the credentialed process has terminated.
+    $null = $child.Handle
     if (-not $child.WaitForExit(15000)) { throw 'Different-user client timed out.' }
     $child.Refresh()
+    $childExitCode = $child.ExitCode
     $probeResult = Get-Content -LiteralPath $clientOut -Raw | ConvertFrom-Json
     if ($probeResult.sid -ne $testUser.SID.Value -or $probeResult.sid -eq $ownerSid) {
         throw 'Client process did not run as the intended distinct Windows user.'
     }
-    if ($child.ExitCode -ne 0 -or -not $probeResult.denied -or $probeResult.hresult -ne -2147024891) {
+    if ($null -eq $childExitCode -or $childExitCode -ne 0 -or -not $probeResult.denied -or $probeResult.hresult -ne -2147024891) {
         throw 'The different-account connection did not fail with ERROR_ACCESS_DENIED.'
     }
 
@@ -146,6 +151,7 @@ $summary = [ordered]@{
     endpoint = '\\.\pipe\' + $pipeName
     owner_sid = $ownerSid
     different_user_probe = $probeResult
+    different_user_exit_code = $childExitCode
     same_user_before_and_after = ($phase -eq 'passed')
     temporary_account_removed = $accountRemoved
     phase = $phase
