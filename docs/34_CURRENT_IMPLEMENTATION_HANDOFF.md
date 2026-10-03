@@ -105,6 +105,14 @@ Not verified by that run:
 - Source inspection confirms the current Desktop only queries status through a
   short-lived CLI process; full reconnect needs the M0 P0-3 transport proof.
   Status observation is not a named-pipe reconnect handshake.
+- A separate P0-3 candidate prototype now exists at `tools/m0-ipc-spike/`.
+  Its Windows physical run verified role/version/capability handling,
+  malformed/oversized rejection and a client reconnecting across an actual
+  server-process restart. The DACL is explicitly set to the current token SID,
+  but access denial from another account remains untested. The Apple target
+  cross-compiled; macOS runtime socket permissions/path/reconnect remain OPEN.
+  This is not production-client integration or an ADR-0007 decision. Evidence:
+  `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
 - The new instrumented Windows login at 16:41:48 EDT on 2026-10-02 confirmed a
   regular user-profile logon. After 11.4 minutes, neither the direct daemon Run
   entry nor the PowerShell observer had produced a runtime artifact; the
@@ -249,8 +257,9 @@ Before implementing another supervision mechanism or changing architecture:
    attempt with a fresh runtime root and preserve process-start/shell-launch
    evidence. Do not infer a termination cause if no observer attaches. See
    `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
-3. complete the M0 P0-3 local IPC prototype/evidence before claiming a full
-   Desktop reconnect test; current Desktop status uses a short-lived CLI call.
+3. finish P0-3 validation on macOS and prove denial from a second Windows
+   account; then compare the transport candidates and record ADR-0007 details
+   before production daemon APIs or Desktop reconnect claims.
 4. perform/record the macOS login/reboot startup proof on the Mac host
 5. compare the candidates and document evidence before accepting ADR-0012
 
@@ -259,6 +268,8 @@ Before implementing another supervision mechanism or changing architecture:
 - root cause of Windows HKCU Run post-login daemon exit
 - Windows crash-restart parity for a no-elevation/native candidate
 - full Desktop IPC reconnect after daemon restart
+- P0-3 local IPC candidate not physically tested on macOS; Windows second-account
+  ACL denial not tested; production Desktop/CLI/MCP integration absent
 - macOS login/reboot startup proof
 - remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
 - final Mode A vs Mode B vs justified hybrid comparison
