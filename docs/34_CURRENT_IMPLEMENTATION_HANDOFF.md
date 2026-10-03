@@ -118,6 +118,15 @@ Not verified by that run:
   reconnect after server restart. This is not production-client integration or
   an ADR-0007 decision. Evidence:
   `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
+- A coordinated Windows release-renderer attempt kept the Tauri reconnect
+  command active while Mode B force-killed and restarted the daemon. Mode B and
+  its shared Rust IPC reconnect passed (`25988 -> 35808`, 34 ms), but the
+  renderer's status did not change during the 12-second observation. A separate
+  login daemon using the same named-pipe endpoint was active; this may confound
+  the observation, but its effect is not proven. Classify the renderer crash
+  reconnect as **NOT YET VERIFIED** and preserve the login daemon. The optional
+  `--pre-crash-hold-ms` harness window supports another coordinated attempt.
+  See `evidence/m0/p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md`.
 - The new instrumented Windows login at 16:41:48 EDT on 2026-10-02 confirmed a
   regular user-profile logon. After 11.4 minutes, neither the direct daemon Run
   entry nor the PowerShell observer had produced a runtime artifact; the

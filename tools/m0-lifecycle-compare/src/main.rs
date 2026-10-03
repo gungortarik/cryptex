@@ -92,6 +92,7 @@ pub(crate) struct RunOpts {
     branch: String,
     commit: String,
     leave_registered: bool,
+    pre_crash_hold_ms: u64,
 }
 
 fn parse_run_opts(args: &[String]) -> Result<RunOpts, LifecycleError> {
@@ -101,12 +102,28 @@ fn parse_run_opts(args: &[String]) -> Result<RunOpts, LifecycleError> {
     let mut branch = String::new();
     let mut commit = String::new();
     let mut leave_registered = false;
+    let mut pre_crash_hold_ms = 0;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--leave-registered" => {
                 leave_registered = true;
                 index += 1;
+            }
+            "--pre-crash-hold-ms" => {
+                pre_crash_hold_ms = require_value(args, index, "--pre-crash-hold-ms")?
+                    .parse::<u64>()
+                    .map_err(|_| {
+                        LifecycleError::Usage(
+                            "--pre-crash-hold-ms must be an integer from 0 to 15000".into(),
+                        )
+                    })?;
+                if pre_crash_hold_ms > 15_000 {
+                    return Err(LifecycleError::Usage(
+                        "--pre-crash-hold-ms must be an integer from 0 to 15000".into(),
+                    ));
+                }
+                index += 2;
             }
             "--experiment-id" => {
                 experiment_id = Some(require_value(args, index, "--experiment-id")?);
@@ -166,6 +183,7 @@ fn parse_run_opts(args: &[String]) -> Result<RunOpts, LifecycleError> {
         branch,
         commit,
         leave_registered,
+        pre_crash_hold_ms,
     })
 }
 
@@ -499,6 +517,10 @@ fn run_mode_b(opts: RunOpts) -> Result<(), LifecycleError> {
 
         // Crash detection + supervised restart.
         let old_pid = measurement.daemon_pid;
+        if opts.pre_crash_hold_ms > 0 {
+            println!("pre_crash_hold_started_ms={}", opts.pre_crash_hold_ms);
+            thread::sleep(Duration::from_millis(opts.pre_crash_hold_ms));
+        }
         measurement.forced_crash_unix_ms = Some(unix_now_ms());
         supervisor.force_kill_daemon()?;
         let detected = wait_until(Duration::from_secs(2), || {
@@ -801,7 +823,7 @@ fn usage() -> String {
         "  m0-lifecycle-compare run-mode-a [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C] [--leave-registered]",
         "  m0-lifecycle-compare run-mode-a-hkcu [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C] [--leave-registered]",
         "  m0-lifecycle-compare hkcu-run register|status|remove [--runtime-root PATH] [--cryptexd PATH]",
-        "  m0-lifecycle-compare run-mode-b [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
+        "  m0-lifecycle-compare run-mode-b [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C] [--pre-crash-hold-ms MS]",
         "  m0-lifecycle-compare run-update-rollback [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
         "  m0-lifecycle-compare status [--runtime-root PATH]",
         "  m0-lifecycle-compare cleanup [--runtime-root PATH] [--cryptexd PATH]",
@@ -811,6 +833,7 @@ fn usage() -> String {
         "  - default runtime: Cryptex-Dev/p0-2/compare (HKCU probe uses mode-a-hkcu)",
         "  - HKCU Run probe does not claim OS crash restart and does not auto logout/reboot",
         "  - update-rollback uses synthetic staged binaries only (not a production updater)",
+        "  - run-mode-b pre-crash hold is optional and limited to 15000 ms for coordinated renderer observation",
         "  - does not reboot/logout and must not touch syncthing-p0-1*",
     ]
     .join("\n")
@@ -842,6 +865,23 @@ mod tests {
         ];
         let opts = parse_run_opts(&args).expect("mode A registration flag should parse");
         assert!(opts.leave_registered);
+    }
+
+    #[test]
+    fn pre_crash_hold_defaults_to_zero_and_is_bounded() {
+        let args = vec![
+            "--cryptexd".to_string(),
+            env::current_exe().unwrap().display().to_string(),
+        ];
+        assert_eq!(parse_run_opts(&args).unwrap().pre_crash_hold_ms, 0);
+
+        let mut bounded = args.clone();
+        bounded.extend(["--pre-crash-hold-ms".into(), "15000".into()]);
+        assert_eq!(parse_run_opts(&bounded).unwrap().pre_crash_hold_ms, 15_000);
+
+        let mut too_long = args;
+        too_long.extend(["--pre-crash-hold-ms".into(), "15001".into()]);
+        assert!(parse_run_opts(&too_long).is_err());
     }
 
     #[test]

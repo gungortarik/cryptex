@@ -32,7 +32,7 @@ the scope explicitly covered by its source evidence.
 |---|---|---|---|
 | Task Scheduler Mode A candidate | **FAILED CANDIDATE / PERMISSION** | `schtasks /Create` returned `ERROR: Access is denied` in a normal interactive user session; no elevation or bypass was used | [`windows-mode-a-task-scheduler-permission-20261002.md`](p0-2/windows-mode-a-task-scheduler-permission-20261002.md) |
 | HKCU Run harness-only probe | **PARTIAL** | Registration/run/cleanup passed, but that experiment did not perform interactive login or reboot | [`windows-mode-a-hkcu-run-20261002.md`](p0-2/windows-mode-a-hkcu-run-20261002.md) |
-| Automatic restart while renderer waits | **OPEN** | The renderer invoked reconnect after a cleanly stopped daemon had been replaced; unexpected-crash restart while the command is waiting was not exercised | [`windows-tauri-renderer-ipc-reconnect-20261003.md`](p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md) |
+| Supervised crash while renderer waits | **NOT YET VERIFIED** | Renderer health ping reached the Mode B daemon. The harness crashed/restarted it and the shared Rust client reconnected, but the visible renderer showed no reconnect result during a 12-second observation. A same-endpoint login daemon was active; its effect remains unknown | [`windows-tauri-renderer-ipc-reconnect-20261003.md`](p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md) |
 
 ## Reproduction and integrity notes
 
@@ -50,6 +50,7 @@ the scope explicitly covered by its source evidence.
 
 - Unexpected-crash automatic restart observed while the Tauri renderer's
   reconnect command is waiting; current physical UI evidence covers clean
-  stop/replacement on both Windows and macOS.
+  stop/replacement on both Windows and macOS, while the coordinated crash run
+  is recorded as NOT YET VERIFIED.
 - Final Mode A versus Mode B comparison and ADR-0012 acceptance.
 - Remaining packaging, managed startup and other M0 acceptance gates.

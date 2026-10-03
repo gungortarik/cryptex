@@ -60,3 +60,25 @@ process. The UI's `Wait for IPC reconnect` command was invoked after each
 replacement was already running. This does not verify automatic restart after
 an unexpected crash, an installer, literal Windows traffic-light interaction,
 or ADR-0012 acceptance.
+
+## Supervised crash while the renderer waits — NOT YET VERIFIED
+
+A coordinated physical Windows attempt used the release renderer and the
+Mode B comparison harness with its optional `--pre-crash-hold-ms 8000` window.
+The renderer's initial health ping reached the harness-owned daemon at PID
+`25988`. The harness then force-killed it, restarted the daemon as PID `35808`
+in `34 ms`, and its shared Rust IPC client reconnected. The retained measurement
+is under
+`%LOCALAPPDATA%\Cryptex-Dev\p0-2\renderer-wait-20261003d\mode-b\measurements\renderer-wait-1791000931925.kv`.
+
+The renderer was told to wait for the restart, but its visible status remained
+at the initial health response throughout the controller's 12-second
+observation. The renderer command itself has a 90-second timeout, so this is
+**NOT VERIFIED**, not a demonstrated product timeout or a reconnect pass. A
+separate login daemon (PID `31512`) remained active on this host and uses the
+same named-pipe endpoint; endpoint contention is a possible test confounder,
+not an established cause. That daemon and its registration were left untouched.
+
+The Mode B crash/restart and shared Rust client reconnect passed independently.
+The missing proof is specifically the visible Tauri renderer receiving the
+supervisor's replacement PID while its reconnect command is pending.
