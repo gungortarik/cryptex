@@ -71,6 +71,7 @@ See:
 - `macos-update-rollback-evidence.md`
 - `windows-desktop-supervision-evidence.md` (historical Windows Mode B process-supervisor run; later Windows daemon IPC reconnect proof is recorded separately; physical Tauri GUI close remains open)
 - `windows-desktop-ipc-reconnect-20261002.md` (physical Windows shared Desktop Rust client reconnect after supervised daemon restart; Tauri renderer invocation remains open)
+- `windows-tauri-renderer-ipc-reconnect-20261003.md` (physical Windows rendered health/reconnect command path against real daemon processes; automatic crash restart while waiting remains open)
 - `macos-desktop-ipc-reconnect-20261003.md` (physical macOS shared Desktop Rust client reconnect after supervised daemon restart; Tauri renderer invocation remains open)
 - `macos-tauri-renderer-ipc-reconnect-20261003.md` (physical macOS Tauri renderer health and reconnect command invocation; traffic-light and packaging gates remain open)
 - `windows-mode-b-invalid-harness-20261002.md` (historical FAILED/INVALID HARNESS EVIDENCE; superseded by r2)

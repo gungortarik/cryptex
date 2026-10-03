@@ -362,11 +362,13 @@ Retained diagnostic history and continuation constraints:
    physical Windows Mode B comparison at source `c5e059d` verified that the
    client connected before forced crash and reconnected to the restarted daemon
    (`2880 -> 24780`, 32 ms restart); see
-   `evidence/m0/p0-2/windows-desktop-ipc-reconnect-20261002.md`. The harness did
-   not launch the actual Tauri UI. The matching physical Mac runtime proof is
-   recorded in `evidence/m0/p0-2/macos-desktop-ipc-reconnect-20261003.md`;
-   full renderer-to-command UI invocation remains open. Do not claim full
-   Desktop UI reconnect or accept ADR-0012 yet.
+   `evidence/m0/p0-2/windows-desktop-ipc-reconnect-20261002.md`. Separate
+   physical Tauri renderer proofs are now recorded for Windows and macOS in
+   `evidence/m0/p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md` and
+   `evidence/m0/p0-2/macos-tauri-renderer-ipc-reconnect-20261003.md`. Both drove
+   health/reconnect commands through the real renderer and observed a new daemon
+   PID after clean stop/replacement. Neither proves automatic crash restart;
+   keep that as a separate supervisor gate and do not accept ADR-0012 yet.
 4. use the existing physically verified macOS LaunchAgent login/reboot proof
    in `evidence/m0/p0-2/macos-native-supervision-evidence.md`; production
    registration/package integration remains unverified.
@@ -376,11 +378,10 @@ Retained diagnostic history and continuation constraints:
 
 - root cause of Windows HKCU Run post-login daemon exit
 - Windows crash-restart parity for a no-elevation/native candidate
-- full Tauri UI/renderer IPC reconnect remains open: the shared Rust client
-  passed against real Windows and macOS daemons across supervised restart. The
-  physical macOS renderer invocation is now verified in
-  `evidence/m0/p0-2/macos-tauri-renderer-ipc-reconnect-20261003.md`; literal
-  traffic-light interaction and production packaging remain open
+- Tauri renderer health/reconnect invocation is physically verified on both
+  platforms for clean daemon stop/replacement. Unexpected-crash automatic
+  restart, literal traffic-light interaction, and production packaging remain
+  open
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
 - remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run

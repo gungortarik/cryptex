@@ -18,6 +18,7 @@ the scope explicitly covered by its source evidence.
 | Release foundation build | **VERIFIED** | Physical Windows host; Rust workspace and Tauri Desktop release build with embedded frontend | [`windows-release-build-20261002.md`](windows-release-build-20261002.md) |
 | IPC candidate transport | **VERIFIED** | Physical Windows host; `interprocess` 2.4.4 named-pipe roles, protocol/capability rejection, malformed/oversized frames and reconnect after server restart | [`windows-ipc-spike-20261002.md`](p0-3/windows-ipc-spike-20261002.md) |
 | Real daemon Desktop IPC client reconnect | **VERIFIED within harness scope** | Physical Windows host; shared Tauri Rust health client reconnected to real `cryptexd` after `DesktopSupervisor` restart; Tauri UI invocation was not exercised | [`windows-desktop-ipc-reconnect-20261002.md`](p0-2/windows-desktop-ipc-reconnect-20261002.md) |
+| Tauri renderer IPC invocation | **VERIFIED within recorded flow** | Physical Windows host; rendered health and reconnect buttons invoked production Tauri commands against real daemon PIDs `29556 -> 1336` after clean stop/replacement | [`windows-tauri-renderer-ipc-reconnect-20261003.md`](p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md) |
 | IPC cross-account ACL | **VERIFIED** | Disposable GitHub-hosted Windows runner; authenticated distinct non-admin account denied, owner reconnect preserved | [`windows-cross-account-acl-20261002.md`](p0-3/windows-cross-account-acl-20261002.md) |
 | Mode B lifecycle foundation | **VERIFIED** | Physical Windows host; duplicate rejection, crash detection, supervised restart, 32 ms restart latency, clean stop and runtime cleanup | [`windows-desktop-supervision-evidence.md`](p0-2/windows-desktop-supervision-evidence.md) |
 | Tauri close/hide path | **VERIFIED within stated scope** | Physical Windows Tauri process using the automated `CloseRequested` path; Desktop and daemon survived hide and restored | [`windows-mode-b-gui-window-close-20261002.md`](p0-2/windows-mode-b-gui-window-close-20261002.md) |
@@ -30,7 +31,7 @@ the scope explicitly covered by its source evidence.
 |---|---|---|---|
 | Task Scheduler Mode A candidate | **FAILED CANDIDATE / PERMISSION** | `schtasks /Create` returned `ERROR: Access is denied` in a normal interactive user session; no elevation or bypass was used | [`windows-mode-a-task-scheduler-permission-20261002.md`](p0-2/windows-mode-a-task-scheduler-permission-20261002.md) |
 | HKCU Run harness-only probe | **PARTIAL** | Registration/run/cleanup passed, but that experiment did not perform interactive login or reboot | [`windows-mode-a-hkcu-run-20261002.md`](p0-2/windows-mode-a-hkcu-run-20261002.md) |
-| Tauri UI reconnect invocation | **PARTIAL / PHYSICAL MANUAL OPEN** | Backend IPC client reconnect passed in the comparison harness; the actual Tauri renderer-to-command invocation and visible result were not exercised | [`windows-desktop-ipc-reconnect-20261002.md`](p0-2/windows-desktop-ipc-reconnect-20261002.md) |
+| Automatic restart while renderer waits | **OPEN** | The renderer invoked reconnect after a cleanly stopped daemon had been replaced; unexpected-crash restart while the command is waiting was not exercised | [`windows-tauri-renderer-ipc-reconnect-20261003.md`](p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md) |
 
 ## Reproduction and integrity notes
 
@@ -46,8 +47,8 @@ the scope explicitly covered by its source evidence.
 
 ## Still open
 
-- Actual Tauri UI/renderer invocation of the production Desktop IPC reconnect
-  against the real `cryptexd` after a supervised restart, including macOS
-  runtime evidence.
+- Unexpected-crash automatic restart observed while the Tauri renderer's
+  reconnect command is waiting; current physical UI evidence covers clean
+  stop/replacement on both Windows and macOS.
 - Final Mode A versus Mode B comparison and ADR-0012 acceptance.
 - Remaining packaging, managed startup and other M0 acceptance gates.
