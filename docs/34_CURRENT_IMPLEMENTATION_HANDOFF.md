@@ -301,6 +301,8 @@ passed on a disposable GitHub-hosted Windows VM at source `7668d11`, run
 the effective client-thread SID, exact access denial, owner connections before
 and after, identity restoration and account cleanup. It refuses local workstation
 execution. See `evidence/m0/p0-3/windows-cross-account-acl-20261002.md`.
+The consolidated Windows result index is recorded at
+`evidence/m0/windows-test-results-20261003.md`.
 
 Retained diagnostic history and continuation constraints:
 
