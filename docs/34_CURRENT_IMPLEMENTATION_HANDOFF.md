@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-**Snapshot date:** 2026-10-02  
+**Snapshot date:** 2026-10-03
 **Current milestone:** M0 — Foundation / P0-2 Background Runtime & Atomic Update Lifecycle  
 **Current branch:** `m0/p0-2-cursor`  
 **Implementation base before this handoff:** `34073a655abc4ef5589b6e24a7192b4b9e1ef70c`
@@ -129,6 +129,12 @@ Not verified by that run:
   `--pre-crash-hold-ms` and `--post-restart-hold-ms` harness windows support a
   coordinated repeat that leaves the replacement daemon available for the
   renderer.
+  See `evidence/m0/p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md`.
+- A controlled Windows repeat used both bounded holds. The release renderer
+  displayed `35224 -> 3432`, matching the Mode B measurement; restart latency
+  was 32 ms, and both the harness and Desktop exited 0. The Windows external
+  Mode B renderer crash/reconnect gate is **PASS / VERIFIED**. The earlier
+  uncontrolled-window attempt remains historical NOT YET VERIFIED evidence.
   See `evidence/m0/p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md`.
 - The coordinated physical macOS renderer crash/reconnect test is recorded at
   `evidence/m0/p0-2/macos-renderer-crash-reconnect-test-plan-20261003.md`.
@@ -388,10 +394,10 @@ Retained diagnostic history and continuation constraints:
    `evidence/m0/p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md` and
    `evidence/m0/p0-2/macos-tauri-renderer-ipc-reconnect-20261003.md`. Both drove
    health/reconnect commands through the real renderer and observed a new daemon
-   PID after clean stop/replacement. The macOS repeat also proves renderer
-   reconnect while external Mode B force-restarts the daemon. The matching
-   Windows renderer crash/reconnect and production supervisor gates remain
-   open; do not accept ADR-0012 yet.
+   PID after clean stop/replacement. The macOS and Windows repeats also prove
+   renderer reconnect while external Mode B force-restarts the daemon. The
+   production supervisor/packaging decision remains open; do not accept ADR-0012
+   yet.
 4. use the existing physically verified macOS LaunchAgent login/reboot proof
    in `evidence/m0/p0-2/macos-native-supervision-evidence.md`; production
    registration/package integration remains unverified.
@@ -402,9 +408,8 @@ Retained diagnostic history and continuation constraints:
 - root cause of Windows HKCU Run post-login daemon exit
 - Windows crash-restart parity for a no-elevation/native candidate
 - Tauri renderer health/reconnect invocation is physically verified on both
-  platforms for clean daemon stop/replacement. The macOS renderer crash/reconnect
-  gate under external Mode B is now VERIFIED. Windows renderer crash/reconnect,
-  production Desktop supervision, literal traffic-light interaction, and
+  platforms for clean daemon stop/replacement and external Mode B crash/restart.
+  Production Desktop supervision, literal traffic-light interaction, and
   production packaging remain open
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent

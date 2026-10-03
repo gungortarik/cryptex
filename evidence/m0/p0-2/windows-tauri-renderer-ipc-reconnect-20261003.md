@@ -57,11 +57,12 @@ This verifies that the physical Windows Tauri renderer can invoke the health
 and reconnect commands in both development and release executables and reach
 the real named-pipe daemon before and after a cleanly stopped/replaced daemon
 process. The UI's `Wait for IPC reconnect` command was invoked after each
-replacement was already running. This does not verify automatic restart after
-an unexpected crash, an installer, literal Windows traffic-light interaction,
-or ADR-0012 acceptance.
+replacement was already running. Those clean-replacement runs alone do not
+verify crash restart; the controlled external Mode B crash/reconnect proof is
+recorded below. Installer packaging, literal Windows traffic-light interaction,
+and ADR-0012 acceptance remain separate gates.
 
-## Supervised crash while the renderer waits — NOT YET VERIFIED
+## Initial supervised-crash attempt — NOT YET VERIFIED (superseded)
 
 A coordinated physical Windows attempt used the release renderer and the
 Mode B comparison harness with its optional `--pre-crash-hold-ms 8000` window.
@@ -82,7 +83,36 @@ This attempt did not use a post-restart hold, so the replacement daemon's
 availability window for the renderer was not controlled.
 
 The Mode B crash/restart and shared Rust client reconnect passed independently.
-The missing proof is specifically the visible Tauri renderer receiving the
-supervisor's replacement PID while its reconnect command is pending.
-The comparison harness now has an optional bounded post-restart hold for a
-controlled repeat.
+This first attempt did not control how long the replacement stayed available.
+The controlled repeat below supersedes it.
+
+## Coordinated supervised-crash repeat — PASS / VERIFIED
+
+**Tauri release source:** `11c65a8ba56696b7d6d200bf0fde56608299fadb`
+
+**Mode B harness source:** `dc0ae10`
+
+**Experiment:** `windows-renderer-crash-wait-1791003816660`
+
+The physical Windows 11 release renderer was opened with its embedded frontend.
+The Mode B harness used both coordination windows:
+`--pre-crash-hold-ms 15000 --post-restart-hold-ms 10000`. The renderer's health
+ping reached the harness daemon at PID `35224`. While `Wait for IPC reconnect`
+was pending, the harness force-killed that daemon, restarted it, and held the
+replacement available. The renderer displayed:
+
+```text
+IPC reconnected after restart · pid 35224 → 3432
+```
+
+The replacement PID `3432` exactly matches the harness's `restart_success` and
+`desktop_reconnect_result` fields. The measured restart latency was `32 ms`;
+the harness exited `0`. The Desktop was then closed through `Quit clean` and
+exited `0`.
+
+The retained measurement is outside the repository at
+`%LOCALAPPDATA%\Cryptex-Dev\p0-2\windows-renderer-crash-wait-20261003\mode-b\measurements\windows-renderer-crash-wait-1791003816660.kv`.
+The previously active login daemon (PID `31512`) and its registration were left
+untouched. This proves the renderer reconnect path during an externally
+supervised Mode B crash/restart; it does not prove production Desktop
+supervision, installer packaging, or ADR-0012 acceptance.
