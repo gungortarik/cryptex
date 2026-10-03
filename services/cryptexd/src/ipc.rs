@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 const PROTOCOL_VERSION: u32 = DAEMON_PROTOCOL_VERSION;
 const MAX_FRAME_BYTES: usize = 64 * 1024;
 const CAPABILITY_STATUS_READ: &str = "status.read";
+#[cfg(windows)]
 const ENDPOINT_ID: &str = "cryptexd-v1";
 
 #[derive(Debug, Serialize, Deserialize)]
