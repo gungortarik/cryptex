@@ -41,8 +41,16 @@ Interactive Tauri window-close was **not** executed in this slice to avoid GUI s
 | clean_shutdown_result | stop-file clean shutdown | AUTOMATED / VERIFIED |
 | runtime_cleanup_result | control files removed | AUTOMATED / VERIFIED |
 | login_startup_result | not performed | NOT YET VERIFIED |
-| desktop_reconnect_result | status observe after restart only | PARTIAL (full Desktop IPC reconnect NOT YET VERIFIED) |
+| desktop_reconnect_result | shared Rust client reconnected after supervised restart; pid=17128 -> 17130 | AUTOMATED / VERIFIED (Tauri renderer invocation remains open) |
 | Tauri interactive window-close | hooks ready, not run | NOT YET VERIFIED |
+
+## Latest production IPC reconnect proof
+
+The matching physical macOS runtime proof is recorded in
+[`macos-desktop-ipc-reconnect-20261003.md`](macos-desktop-ipc-reconnect-20261003.md).
+It verifies the shared Desktop Rust client against the real daemon transport
+before and after a supervised restart. It does not verify a visible Tauri
+renderer invocation.
 
 ## Security / isolation implications
 

@@ -363,8 +363,9 @@ Retained diagnostic history and continuation constraints:
    client connected before forced crash and reconnected to the restarted daemon
    (`2880 -> 24780`, 32 ms restart); see
    `evidence/m0/p0-2/windows-desktop-ipc-reconnect-20261002.md`. The harness did
-   not launch the actual Tauri UI. Full renderer-to-command UI invocation and
-   matching physical Mac runtime evidence remain open; do not claim full
+   not launch the actual Tauri UI. The matching physical Mac runtime proof is
+   recorded in `evidence/m0/p0-2/macos-desktop-ipc-reconnect-20261003.md`;
+   full renderer-to-command UI invocation remains open. Do not claim full
    Desktop UI reconnect or accept ADR-0012 yet.
 4. use the existing physically verified macOS LaunchAgent login/reboot proof
    in `evidence/m0/p0-2/macos-native-supervision-evidence.md`; production
@@ -376,8 +377,8 @@ Retained diagnostic history and continuation constraints:
 - root cause of Windows HKCU Run post-login daemon exit
 - Windows crash-restart parity for a no-elevation/native candidate
 - full Tauri UI/renderer IPC reconnect remains open: the shared Rust client
-  passed against a real Windows daemon across supervised restart, but the UI
-  invocation and corresponding Mac runtime proof remain outstanding
+  passed against real Windows and macOS daemons across supervised restart, but
+  the visible renderer invocation remains outstanding
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
 - remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
