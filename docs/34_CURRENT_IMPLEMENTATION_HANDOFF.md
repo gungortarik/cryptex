@@ -282,9 +282,12 @@ Before implementing another supervision mechanism or changing architecture:
 1. the second real login changed session 3 to 4, but the user's external
    collector found `wd-1003a` registration absent while Codex-context reads
    found it present. Do not equate these views or infer deletion/recreation.
-   Prepare fresh `wd-1003b` **from the user's ordinary Windows PowerShell**,
-   then run `collect-windows-run-dispatch.ps1` and require
-   `run_matches_both_views=true` there before another real sign-out/sign-in.
+   The user prepared fresh `wd-1003b` from ordinary Windows PowerShell at
+   `2026-10-03T01:38:11Z`; external collection confirmed
+   `run_matches_both_views=true`. The next collection at `01:39:33Z` still
+   shows session 4 / Explorer created at `01:33:05Z`, before preparation.
+   No new login after preparation is established yet. Next: real sign-out/sign-in;
+   Codex can read retained evidence and run diagnostics after the user returns.
    Preserve `wd-1003a` and avoid preparing/cleaning startup values from Codex.
    The collector now records package identity and executable ancestry as well.
    Run `collect-windows-run-dispatch.ps1` after the next login with that session

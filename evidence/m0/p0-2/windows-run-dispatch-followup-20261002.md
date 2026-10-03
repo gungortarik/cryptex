@@ -136,6 +136,26 @@ marker experiment and collect its pre-login snapshot. Require matching
 registration in that external console before another sign-out/sign-in. Retain
 `wd-1003a`; do not clean it up or re-arm it from the Codex context.
 
+## External preparation of wd-1003b
+
+The user's ordinary Windows PowerShell prepared `wd-1003b` at
+`2026-10-03T01:38:11.1241028Z`, with a successful marker self-check and
+186-character Run command. The external snapshot at `01:38:13.4700102Z`
+confirmed matching registration in both views, no marker and no collection
+errors. This is valid external pre-login registration evidence.
+
+The user's follow-up at `01:39:33.0279611Z` also found matching registration,
+no marker and no collection errors. Its observer remains in session 4, with
+the same Explorer PID 28252 created at `01:33:05.6242650Z`, before preparation.
+`quser` still reports the 9:33 PM EDT login. Thus this snapshot does not establish
+a new login after preparation and must not be classified as another failed
+login launch. The experiment is armed pending a real sign-out/sign-in.
+
+The user only needs to perform the interactive sign-out/sign-in and return to
+the chat. Codex can read the retained runtime evidence and perform subsequent
+diagnostic collection; external commands are needed only if comparing observer
+contexts again becomes necessary.
+
 **Final classification: INCONCLUSIVE — marker dispatch not observed; registry
 observation inconsistent.** Shell-Core confirms that the Run key was enumerated
 but does not expose its value list. No test-command launch event or process
