@@ -57,6 +57,7 @@ Existing evidence proves:
 - crash detection / restart under the macOS native supervision candidate
 - Mode B DesktopSupervisor process-level lifecycle
 - Mode B GUI CloseRequested/hide path evidence
+- physical traffic-light close and operator Dock restore; daemon PID unchanged
 - synthetic compatible update / failed update / rollback marker-safety evidence
 
 Still not enough to accept ADR-0012.
@@ -424,9 +425,11 @@ Retained diagnostic history and continuation constraints:
 - Windows crash-restart parity for a no-elevation/native candidate
 - Tauri renderer health/reconnect invocation is physically verified on both
   platforms for clean daemon stop/replacement and external Mode B crash/restart.
-  Production Desktop supervision and packaging remain open. Literal macOS
-  traffic-light input remains open; an exact operator test is in
-  `evidence/m0/p0-2/macos-physical-traffic-light-close-test-plan-20261003.md`.
+  Literal macOS traffic-light close and operator Dock restore are VERIFIED at
+  `aed973d`: Desktop PID `27505`, daemon PID `27600` unchanged after restore,
+  `source=tauri_close_requested`, clean exit 0 and released daemon lock.
+  See `evidence/m0/p0-2/macos-physical-traffic-light-close-evidence-20261003.md`.
+  Production Desktop supervision, tray UX and packaging remain open.
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
 - real compatible Desktop + daemon package coordination and rollback/canonical-data proof

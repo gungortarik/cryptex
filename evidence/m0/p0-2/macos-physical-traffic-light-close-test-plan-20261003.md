@@ -1,6 +1,8 @@
 # macOS physical traffic-light close test — test request
 
-**Status:** REQUESTED; not yet run  
+**Status:** PASS / VERIFIED for the Mode B test build
+
+Run at `aed973d`; evidence: `macos-physical-traffic-light-close-evidence-20261003.md`.
 **Scope:** Verify that the actual macOS main-window close control enters the
 existing P0-2 `CloseRequested` hide path while Desktop and its test daemon stay
 alive. This is evidence for the Mode B candidate only; it does not select
