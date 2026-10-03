@@ -86,6 +86,9 @@ jobs:
       - name: Test M0 lifecycle compare harness
         run: cargo test --locked -p m0-lifecycle-compare
 
+      - name: Test M0 local IPC spike
+        run: cargo test --locked -p m0-ipc-spike
+
       - name: Run cryptexd foundation binary
         run: cargo run --locked -p cryptexd --quiet
 
