@@ -1,6 +1,6 @@
 # macOS Tauri renderer reconnect during supervised crash — test plan
 
-**Status:** NOT YET VERIFIED
+**Status:** PASS / VERIFIED (repeat at `dc0ae10`)
 **Scope:** M0 / P0-2 only  
 **Required source:** latest `m0/p0-2-cursor` containing both coordinated hold options
 
@@ -108,3 +108,14 @@ inside the coordination window, but the final visible status remained
 required reconnect text or replacement PID. This is **NOT YET VERIFIED** for
 the renderer crash/restart path. The shared Rust-client reconnect line in the
 harness measurement is not counted as renderer evidence.
+
+## Repeat result — PASS, 2026-10-03 UTC
+
+Experiment `mac-renderer-crash-wait-20261003-r9` used source `dc0ae10` with
+`--pre-crash-hold-ms 15000 --post-restart-hold-ms 10000`. The renderer displayed
+`IPC reconnected after restart · pid 24966 → 24987` before its 90-second
+timeout. Both PIDs match the harness measurement; restart latency was 30 ms
+and the harness exited 0. Desktop exited 0 after `Quit clean`.
+
+The measured repeat closes the macOS renderer crash/reconnect gate. See
+`macos-tauri-renderer-ipc-reconnect-20261003.md` for the retained measurement.

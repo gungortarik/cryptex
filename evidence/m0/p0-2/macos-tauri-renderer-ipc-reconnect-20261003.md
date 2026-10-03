@@ -37,7 +37,7 @@ physical macOS session, using the real daemon transport and a replacement PID.
 It does not verify literal traffic-light interaction, production packaging,
 or accept ADR-0012. Those remain separate gates.
 
-## Coordinated supervised-crash reconnect — NOT YET VERIFIED
+## Historical coordinated attempt — NOT YET VERIFIED
 
 On 2026-10-03 UTC, the release renderer and Mode B harness were coordinated
 from source `7615b08` on macOS 27.0.1 / aarch64 using experiment
@@ -59,3 +59,44 @@ Therefore the shared Rust-client result is retained as harness evidence, but
 the coordinated Tauri renderer crash/restart requirement remains **NOT YET
 VERIFIED**. This does not change the clean stop/replacement renderer proof
 above, and does not accept ADR-0012.
+
+## Coordinated supervised-crash repeat — PASS / VERIFIED
+
+**Source:** `dc0ae10c218e0113515f029089bf44a93dcfe3e6`
+
+**Host:** macOS 27.0.1 / aarch64, 2026-10-03 UTC
+
+**Experiment:** `mac-renderer-crash-wait-20261003-r9`
+
+Both release builds passed locally. The visible release Desktop was started
+without launching its own daemon. The external Mode B harness used
+`--pre-crash-hold-ms 15000 --post-restart-hold-ms 10000`. During the pre-crash
+window the renderer invoked health and then `Wait for IPC reconnect`; the
+initial ready-file PID was `24966`. The application stayed open until its
+visible renderer status, read through macOS accessibility, displayed:
+
+```text
+IPC reconnected after restart · pid 24966 → 24987
+```
+
+The status appeared after the forced restart and before the 90-second command
+timeout. The harness printed `post_restart_hold_started_ms=10000` and exited 0.
+The retained measurement contains:
+
+```text
+restart_success=AUTOMATED: restarted pid=24987
+restart_latency_ms=30
+desktop_reconnect_result=AUTOMATED: shared Tauri Desktop IPC client reconnected after supervised restart; pid=24966 -> 24987; actual Tauri UI invocation remains PHYSICAL_MANUAL
+errors=
+```
+
+The renderer's replacement PID exactly matches both measurement fields.
+The raw measurement remains outside Git at
+`/Users/tarikgungor/Library/Application Support/Cryptex-Dev/p0-2/renderer-crash-wait-20261003-r9/mode-b/measurements/mac-renderer-crash-wait-20261003-r9.kv`.
+Harness control files were cleaned by the harness; Desktop exited 0 after
+the renderer's `Quit clean` action.
+
+An earlier repeat (`r8`) reached health after the restart and is excluded from
+the crash-before-wait proof. The valid `r9` repeat closes the macOS renderer
+crash/reconnect gate. External Mode B owns the tested supervision; production
+Desktop supervision, packaging and ADR-0012 acceptance remain separate gates.

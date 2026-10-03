@@ -107,7 +107,8 @@ Not verified by that run:
 - The shared production Desktop Rust IPC client has now physically reconnected
   to real daemons after supervised restart on both Windows and macOS; see the
   platform-specific proofs below. The actual Tauri renderer-to-command
-  invocation remains OPEN. Status observation alone is not a reconnect proof.
+  invocation during external Mode B crash/restart is VERIFIED on macOS;
+  the coordinated Windows renderer gate remains OPEN.
 - A separate P0-3 candidate prototype now exists at `tools/m0-ipc-spike/`.
   Its Windows physical run verified role/version/capability handling,
   malformed/oversized rejection and a client reconnecting across an actual
@@ -131,12 +132,13 @@ Not verified by that run:
   See `evidence/m0/p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md`.
 - The coordinated physical macOS renderer crash/reconnect test is recorded at
   `evidence/m0/p0-2/macos-renderer-crash-reconnect-test-plan-20261003.md`.
-  The Mode B harness restarted the daemon successfully (`23314 -> 23330`,
-  30 ms), but the visible renderer retained the old health status and did not
-  display the replacement PID. Classify this renderer crash/reconnect gate as
-  **NOT YET VERIFIED**; that attempt did not hold the replacement daemon open
-  after restart. The current test plan uses the new bounded hold. Do not count
-  the shared Rust-client line as a renderer pass.
+  The repeat at `dc0ae10` used both bounded holds (15000 ms before crash,
+  10000 ms after restart). The visible renderer displayed
+  `IPC reconnected after restart · pid 24966 → 24987`; both PIDs match the
+  retained harness measurement (30 ms restart, exit 0). The macOS renderer
+  crash/reconnect gate is **PASS / VERIFIED**. Desktop remained open until
+  the result appeared, then exited 0 through `Quit clean`. The prior attempt
+  without a post-restart hold remains historical NOT YET VERIFIED evidence.
 - The new instrumented Windows login at 16:41:48 EDT on 2026-10-02 confirmed a
   regular user-profile logon. After 11.4 minutes, neither the direct daemon Run
   entry nor the PowerShell observer had produced a runtime artifact; the
@@ -386,8 +388,10 @@ Retained diagnostic history and continuation constraints:
    `evidence/m0/p0-2/windows-tauri-renderer-ipc-reconnect-20261003.md` and
    `evidence/m0/p0-2/macos-tauri-renderer-ipc-reconnect-20261003.md`. Both drove
    health/reconnect commands through the real renderer and observed a new daemon
-   PID after clean stop/replacement. Neither proves automatic crash restart;
-   keep that as a separate supervisor gate and do not accept ADR-0012 yet.
+   PID after clean stop/replacement. The macOS repeat also proves renderer
+   reconnect while external Mode B force-restarts the daemon. The matching
+   Windows renderer crash/reconnect and production supervisor gates remain
+   open; do not accept ADR-0012 yet.
 4. use the existing physically verified macOS LaunchAgent login/reboot proof
    in `evidence/m0/p0-2/macos-native-supervision-evidence.md`; production
    registration/package integration remains unverified.
@@ -398,9 +402,10 @@ Retained diagnostic history and continuation constraints:
 - root cause of Windows HKCU Run post-login daemon exit
 - Windows crash-restart parity for a no-elevation/native candidate
 - Tauri renderer health/reconnect invocation is physically verified on both
-  platforms for clean daemon stop/replacement. Unexpected-crash automatic
-  restart, literal traffic-light interaction, and production packaging remain
-  open
+  platforms for clean daemon stop/replacement. The macOS renderer crash/reconnect
+  gate under external Mode B is now VERIFIED. Windows renderer crash/reconnect,
+  production Desktop supervision, literal traffic-light interaction, and
+  production packaging remain open
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
 - remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
