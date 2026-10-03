@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[cfg(target_os = "macos")]
 use tauri::RunEvent;
@@ -102,6 +102,37 @@ fn p0_2_daemon_status(state: State<'_, ProbeState>) -> Result<String, String> {
         .unwrap_or(runtime_root_path()?);
     let bin = daemon_binary(&state).ok_or_else(|| "cryptexd path unknown".to_string())?;
     query_daemon_status(&bin, &runtime)
+}
+
+#[tauri::command]
+fn p0_3_ipc_health() -> Result<cryptexd::ipc::HealthResponse, String> {
+    cryptexd::ipc::desktop_health_ping(Duration::from_secs(2)).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn p0_3_wait_for_daemon_restart(
+    previous_pid: u32,
+    timeout_seconds: u64,
+) -> Result<cryptexd::ipc::HealthResponse, String> {
+    let timeout = Duration::from_secs(timeout_seconds.clamp(1, 600));
+    let started = Instant::now();
+    let mut last_error = None;
+    while started.elapsed() < timeout {
+        match cryptexd::ipc::desktop_health_ping(Duration::from_millis(250)) {
+            Ok(response) if response.daemon_pid != previous_pid => return Ok(response),
+            Ok(_) => thread::sleep(Duration::from_millis(250)),
+            Err(error) => {
+                last_error = Some(error.to_string());
+                thread::sleep(Duration::from_millis(250));
+            }
+        }
+    }
+    Err(format!(
+        "no replacement daemon answered IPC before the timeout; last connection result: {}",
+        last_error
+            .as_deref()
+            .unwrap_or("the original daemon is still responding")
+    ))
 }
 
 #[tauri::command]
@@ -482,6 +513,8 @@ fn main() {
             p0_2_default_cryptexd,
             p0_2_start_daemon,
             p0_2_daemon_status,
+            p0_3_ipc_health,
+            p0_3_wait_for_daemon_restart,
             p0_2_stop_daemon,
             p0_2_show_main_window,
             p0_2_write_snapshot,

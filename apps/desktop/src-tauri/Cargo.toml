@@ -10,3 +10,4 @@ tauri-build.workspace = true
 
 [dependencies]
 tauri.workspace = true
+cryptexd = { path = "../../../services/cryptexd" }

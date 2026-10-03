@@ -109,6 +109,7 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             };
             ensure_runtime_root(&opts.runtime_root)?;
             let lock = try_acquire_instance(&opts.runtime_root)?;
+            cryptexd::ipc::spawn_health_server()?;
             let report = LifecycleReport::active_holder(
                 &opts.runtime_root,
                 lock.pid(),

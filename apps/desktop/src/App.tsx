@@ -9,6 +9,7 @@ export function App() {
   const [log, setLog] = useState("Desktop shell ready for foundation / P0-2 Mode B probes.");
   const [cryptexd, setCryptexd] = useState("");
   const [runtimeRoot, setRuntimeRoot] = useState("");
+  const [lastIpcPid, setLastIpcPid] = useState<number | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -42,6 +43,33 @@ export function App() {
       setLog(text || "(empty status)");
     } catch (error) {
       setLog(`status failed: ${String(error)}`);
+    }
+  }
+
+  async function ipcHealth() {
+    try {
+      const response = await invoke<{ daemon_pid: number; protocol_version: number }>("p0_3_ipc_health");
+      setLastIpcPid(response.daemon_pid);
+      setLog(`IPC health.pong · daemon pid=${response.daemon_pid} · protocol=${response.protocol_version}`);
+    } catch (error) {
+      setLog(`IPC health failed: ${String(error)}`);
+    }
+  }
+
+  async function waitForRestart() {
+    if (lastIpcPid === null) {
+      setLog("Connect to the daemon once first, then use this after a supervised restart.");
+      return;
+    }
+    try {
+      const response = await invoke<{ daemon_pid: number; protocol_version: number }>(
+        "p0_3_wait_for_daemon_restart",
+        { previousPid: lastIpcPid, timeoutSeconds: 90 },
+      );
+      setLastIpcPid(response.daemon_pid);
+      setLog(`IPC reconnected after restart · pid ${lastIpcPid} → ${response.daemon_pid}`);
+    } catch (error) {
+      setLog(`IPC reconnect not observed: ${String(error)}`);
     }
   }
 
@@ -106,6 +134,12 @@ export function App() {
           </button>
           <button type="button" onClick={status}>
             Daemon status
+          </button>
+          <button type="button" onClick={ipcHealth}>
+            IPC health ping
+          </button>
+          <button type="button" onClick={waitForRestart}>
+            Wait for IPC reconnect
           </button>
           <button type="button" onClick={stopDaemon}>
             Stop daemon

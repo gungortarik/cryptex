@@ -12,6 +12,7 @@ pub mod compare;
 pub mod compat;
 pub mod error;
 pub mod instance;
+pub mod ipc;
 pub mod paths;
 pub mod platform;
 pub mod status;

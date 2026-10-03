@@ -425,6 +425,7 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 name = "cryptex-desktop"
 version = "0.0.0"
 dependencies = [
+ "cryptexd",
  "tauri",
  "tauri-build",
 ]
@@ -434,6 +435,12 @@ name = "cryptexd"
 version = "0.0.0"
 dependencies = [
  "fs2",
+ "interprocess",
+ "libc",
+ "serde",
+ "serde_json",
+ "widestring",
+ "windows-sys 0.61.2",
  "winreg",
 ]
 

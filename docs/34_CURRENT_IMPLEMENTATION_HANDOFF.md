@@ -283,8 +283,10 @@ user's actual context. Its old stop file remains retained. The new test daemon
 and registrations remain active; do not run registry-mutating Rust lifecycle
 tests. No GitHub workflow ran. Current Windows reboot/login startup and
 measured survival are verified; the historical 13:00 UTC disappearance still
-has no established cause. Next work is Windows crash-restart parity and full
-Desktop IPC reconnect, with evidence/ADR comparison before production APIs.
+has no established cause. The Windows Mode B physical crash/restart proof is
+already retained above. The next physical IPC check must use the actual Desktop
+client against the actual `cryptexd` transport across a process restart; this
+does not by itself accept the still-open ADR-0012 supervision choice.
 
 Windows release foundation build is now verified: the full Rust workspace and
 the Tauri Desktop with embedded frontend built successfully. The release IPC
@@ -349,10 +351,15 @@ Retained diagnostic history and continuation constraints:
    exact confirmed old command and an empty observer slot, saves the old value,
    refuses a live legacy ready PID and restores the saved command on preparation
    failure if both slots are vacant. It preserves legacy runtime files.
-3. use the verified Windows cross-account named-pipe ACL evidence to
-   compare the transport candidates and record ADR-0007 details before
-   production daemon APIs or Desktop reconnect claims. The Mac process-level
-   socket proof is recorded in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
+3. P0-3 candidate comparison is recorded in
+   `evidence/m0/p0-3/adr-0007-candidate-comparison-20261003.md`. The user
+   selected the evidence-backed `interprocess` 2.4.4 candidate; the scoped
+   implementation addendum is accepted at
+   `docs/adr/ADR-0007-local-ipc-implementation-addendum.md`. The initial daemon
+   health endpoint and Tauri Desktop reconnect client are implemented but have
+   only passed Windows compilation so far. They still need physical IPC runtime
+   proof on Windows and macOS. Do not mark Desktop reconnect VERIFIED based on
+   the isolated spike alone.
 4. use the existing physically verified macOS LaunchAgent login/reboot proof
    in `evidence/m0/p0-2/macos-native-supervision-evidence.md`; production
    registration/package integration remains unverified.
@@ -363,7 +370,8 @@ Retained diagnostic history and continuation constraints:
 - root cause of Windows HKCU Run post-login daemon exit
 - Windows crash-restart parity for a no-elevation/native candidate
 - full Desktop IPC reconnect after daemon restart remains open because the
-  current Desktop still uses short-lived CLI status observation
+  new Tauri IPC client is implemented but not yet physically exercised against
+  the real daemon on both platforms
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
 - remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
