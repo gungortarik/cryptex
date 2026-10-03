@@ -1,8 +1,7 @@
-//! Mode B desktop/tray-sidecar supervision candidate (process-level proof).
+//! Desktop-owned daemon process supervision.
 //!
-//! This harness proves ownership/restart semantics without selecting ADR-0012
-//! and without product tray UX. A Desktop window-close physical proof may use
-//! the Tauri CloseRequested hide path separately.
+//! P0-2 still requires production Tauri packaging and physical platform proofs;
+//! this process controller supplies the shared lifecycle behavior.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -105,11 +104,39 @@ impl DesktopSupervisor {
         };
         match child.try_wait()? {
             Some(status) => {
+                self.child.take();
                 self.write_state("child_exited", None)?;
                 Ok(Some(status.code().unwrap_or(1)))
             }
             None => Ok(None),
         }
+    }
+
+    /// Restart a daemon that exited unexpectedly. A stop marker distinguishes
+    /// an intentional shutdown from a crash. The method waits for the writer
+    /// lock to be released before attempting a new process.
+    pub fn restart_if_child_exited(&mut self) -> LifecycleResult<Option<(u32, u128)>> {
+        let Some(exit_code) = self.poll_child_exit()? else {
+            return Ok(None);
+        };
+        if !self.restart_on_exit || self.stop_file.exists() {
+            self.write_state("child_exited_without_restart", None)?;
+            return Ok(None);
+        }
+
+        self.write_state("child_crashed_restarting", None)?;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            if !observe_instance(&self.runtime_root)?.lock_held {
+                let started = Instant::now();
+                let pid = self.start_daemon()?;
+                return Ok(Some((pid, started.elapsed().as_millis())));
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        Err(LifecycleError::Attention(format!(
+            "daemon exited with code {exit_code}, but its instance lock was not released before restart"
+        )))
     }
 
     pub fn force_kill_daemon(&mut self) -> LifecycleResult<()> {

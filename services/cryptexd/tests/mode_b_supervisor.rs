@@ -59,6 +59,57 @@ fn mode_b_rejects_duplicate_and_restarts_after_crash() {
 }
 
 #[test]
+fn supervisor_detects_unexpected_exit_and_restarts_but_respects_clean_stop() {
+    let root = unique_root("automatic-restart");
+    let mut supervisor = DesktopSupervisor::new(&root, &cryptexd_bin()).expect("supervisor");
+    let first_pid = supervisor.start_daemon().expect("start");
+
+    terminate_process(first_pid);
+    let mut restarted = None;
+    for _ in 0..80 {
+        if let Some(result) = supervisor
+            .restart_if_child_exited()
+            .expect("restart after child exit")
+        {
+            restarted = Some(result);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    let (second_pid, _) = restarted.expect("replacement daemon");
+    assert_ne!(first_pid, second_pid);
+    assert!(observe_instance(&root).expect("live replacement").lock_held);
+
+    supervisor.clean_stop().expect("clean stop");
+    assert!(
+        supervisor
+            .restart_if_child_exited()
+            .expect("clean exit must not restart")
+            .is_none()
+    );
+    assert!(!observe_instance(&root).expect("stopped instance").lock_held);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(windows)]
+fn terminate_process(pid: u32) {
+    let status = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/F"])
+        .status()
+        .expect("taskkill");
+    assert!(status.success(), "taskkill failed for daemon PID {pid}");
+}
+
+#[cfg(unix)]
+fn terminate_process(pid: u32) {
+    let status = Command::new("kill")
+        .args(["-KILL", &pid.to_string()])
+        .status()
+        .expect("kill");
+    assert!(status.success(), "kill failed for daemon PID {pid}");
+}
+
+#[test]
 fn cleanup_control_files_are_idempotent() {
     let root = unique_root("cleanup");
     fs::write(root.join("ready"), "1\n").unwrap();

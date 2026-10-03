@@ -3,7 +3,7 @@
 **Snapshot date:** 2026-10-03
 **Current milestone:** M0 — Foundation / P0-2 Background Runtime & Atomic Update Lifecycle  
 **Current branch:** `m0/p0-2-cursor`  
-**Implementation base before this handoff:** `34073a655abc4ef5589b6e24a7192b4b9e1ef70c`
+**Implementation base before this handoff:** `8d71044 docs: close macOS physical window proof`
 
 > This file is an operational status snapshot, not an architecture authority. If it conflicts with `docs/00_MASTER_SPEC.md`, accepted ADRs, the milestone contract, or other authoritative project documents, stop and report the conflict instead of silently reconciling it.
 
@@ -25,6 +25,7 @@
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
 - Do not assume that moving between Cursor, Codex, and Work changes which tool is the write-capable implementer.
 - The user explicitly changed the implementation role to Codex in this conversation; Codex is the active implementation tool on Windows. Resume Mac-specific validation on the Mac host when needed.
+- The project owner explicitly approved Mode B with per-user login startup launching Desktop for implementation. The scoped proposal is at `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`; ADR-0012 remains unaccepted until the listed production proofs pass.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks and
@@ -306,6 +307,40 @@ It was launched from a user PowerShell process and was not registered as a Windo
 The reboot therefore stopped it. P0-1 is already complete. Do not restart it merely to continue P0-2, and do not delete retained P0-1 forensic/corpus data.
 
 ## Immediate next task
+
+### Codex Windows continuation — Desktop-owned restart slice in progress
+
+The project owner approved Mode B with per-user login startup launching
+Desktop. The proposal is recorded at
+`docs/adr/ADR-0012-background-runtime-implementation-proposal.md`; it is
+**PROPOSED, not accepted**. This Windows implementation slice adds unexpected
+child-exit detection and bounded restart handling to the current Tauri P0-2
+supervisor, plus lock-aware restart behavior to the shared process controller.
+It does not yet bundle the production sidecar, register Desktop at login, or
+provide tray UX.
+
+Verification on Windows:
+
+- `pnpm --dir apps/desktop build`: PASS.
+- `cargo check -p cryptex-desktop --locked`: PASS.
+- `cargo build -p cryptex-desktop --release --locked`: PASS after the restart-path
+  edit.
+- Rust formatting and `git diff --check`: PASS after the restart-path edit.
+- `cargo test -p cryptexd --test mode_b_supervisor --locked`: test binary built,
+  but two process-spawning cases were blocked by Windows Smart App Control
+  (OS error 4551). Do not bypass that policy. `cargo check -p cryptexd --tests
+  --locked` passed, so integration tests compile but runtime proof awaits Mac.
+- No GitHub Actions workflow ran.
+
+The exact Mac execution request is
+`evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-test-plan-20261003.md`.
+Run that focused test on the Mac host, preserve its synthetic runtime, and
+commit/push the evidence plus a handoff update. Then continue the production
+sidecar packaging and per-user Desktop startup adapter on Windows. Keep ADR-0012
+unaccepted until every P0-2 proof, including compatible package update/rollback
+and canonical-data preservation, passes on both platforms.
+
+### Prior continuation record
 
 ### Latest Windows reboot/login result — VERIFIED
 

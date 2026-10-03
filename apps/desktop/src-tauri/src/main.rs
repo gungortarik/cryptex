@@ -23,6 +23,9 @@ struct ProbeState {
     child: Arc<Mutex<Option<Child>>>,
     runtime_root: Arc<Mutex<Option<PathBuf>>>,
     cryptexd_bin: Arc<Mutex<Option<PathBuf>>>,
+    restart_attempts: Arc<Mutex<u8>>,
+    restart_not_before: Arc<Mutex<Instant>>,
+    pending_exit_code: Arc<Mutex<Option<i32>>>,
 }
 
 #[tauri::command]
@@ -87,6 +90,9 @@ fn p0_2_start_daemon(state: State<'_, ProbeState>, cryptexd: String) -> Result<u
     *state.runtime_root.lock().map_err(|e| e.to_string())? = Some(runtime.clone());
     *state.cryptexd_bin.lock().map_err(|e| e.to_string())? = Some(PathBuf::from(&cryptexd));
     *state.child.lock().map_err(|e| e.to_string())? = Some(child);
+    *state.restart_attempts.lock().map_err(|e| e.to_string())? = 0;
+    *state.restart_not_before.lock().map_err(|e| e.to_string())? = Instant::now();
+    *state.pending_exit_code.lock().map_err(|e| e.to_string())? = None;
     write_supervisor_state(&runtime, "active", Some(pid), true)?;
     write_snapshot(&runtime, "daemon_started", true, Ok(Some(pid)))?;
     Ok(pid)
@@ -403,6 +409,89 @@ fn start_daemon_inner(cryptexd: &str, runtime: &Path) -> Result<(u32, Child), St
     Ok((pid, child))
 }
 
+fn restart_exited_daemon(state: &ProbeState, runtime: &Path) -> Result<(), String> {
+    let newly_exited = {
+        let mut child = state.child.lock().map_err(|e| e.to_string())?;
+        match child.as_mut() {
+            Some(process) => match process.try_wait().map_err(|e| e.to_string())? {
+                Some(status) => {
+                    child.take();
+                    Some(status.code().unwrap_or(1))
+                }
+                None => None,
+            },
+            None => None,
+        }
+    };
+    if let Some(exit_code) = newly_exited {
+        *state.pending_exit_code.lock().map_err(|e| e.to_string())? = Some(exit_code);
+    }
+    let exit_code = *state.pending_exit_code.lock().map_err(|e| e.to_string())?;
+    let Some(exit_code) = exit_code else {
+        return Ok(());
+    };
+
+    if newly_exited.is_some() {
+        write_supervisor_state(runtime, "daemon_child_exited", None, true)?;
+    }
+    if runtime.join("stop").exists() {
+        *state.pending_exit_code.lock().map_err(|e| e.to_string())? = None;
+        write_supervisor_state(runtime, "daemon_stopped_cleanly", None, true)?;
+        return Ok(());
+    }
+
+    let retry_at = *state.restart_not_before.lock().map_err(|e| e.to_string())?;
+    if Instant::now() < retry_at {
+        return Ok(());
+    }
+
+    let attempts = {
+        let mut attempts = state.restart_attempts.lock().map_err(|e| e.to_string())?;
+        if *attempts >= 5 {
+            *state.pending_exit_code.lock().map_err(|e| e.to_string())? = None;
+            write_supervisor_state(runtime, "daemon_restart_attention", None, true)?;
+            fs::write(
+                runtime.join("restart.error"),
+                format!("daemon exited with code {exit_code}; restart limit reached\n"),
+            )
+            .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        *attempts += 1;
+        *attempts
+    };
+    let bin = daemon_binary(state).ok_or_else(|| "cryptexd path unknown".to_string())?;
+    match start_daemon_inner(
+        bin.to_str()
+            .ok_or_else(|| "cryptexd path is not valid UTF-8".to_string())?,
+        runtime,
+    ) {
+        Ok((pid, child)) => {
+            *state.child.lock().map_err(|e| e.to_string())? = Some(child);
+            *state.restart_attempts.lock().map_err(|e| e.to_string())? = 0;
+            *state.restart_not_before.lock().map_err(|e| e.to_string())? = Instant::now();
+            *state.pending_exit_code.lock().map_err(|e| e.to_string())? = None;
+            write_supervisor_state(runtime, "daemon_restarted", Some(pid), true)?;
+            write_snapshot(runtime, "daemon_restarted_after_exit", true, Ok(Some(pid)))?;
+            Ok(())
+        }
+        Err(error) => {
+            let delay_seconds = 1_u64 << (attempts - 1).min(4);
+            *state.restart_not_before.lock().map_err(|e| e.to_string())? =
+                Instant::now() + Duration::from_secs(delay_seconds);
+            let message =
+                format!("restart attempt {attempts}/5 after exit {exit_code} failed: {error}");
+            fs::write(runtime.join("start.error"), format!("{message}\n"))
+                .map_err(|e| e.to_string())?;
+            if attempts == 5 {
+                *state.pending_exit_code.lock().map_err(|e| e.to_string())? = None;
+                write_supervisor_state(runtime, "daemon_restart_attention", None, true)?;
+            }
+            Err(message)
+        }
+    }
+}
+
 fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
     thread::spawn(move || {
         loop {
@@ -494,6 +583,10 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
                 break;
             }
 
+            if let Err(error) = restart_exited_daemon(&state, &root) {
+                let _ = fs::write(root.join("restart.error"), format!("{error}\n"));
+            }
+
             thread::sleep(Duration::from_millis(150));
         }
     });
@@ -504,6 +597,9 @@ fn main() {
         child: Arc::new(Mutex::new(None)),
         runtime_root: Arc::new(Mutex::new(None)),
         cryptexd_bin: Arc::new(Mutex::new(None)),
+        restart_attempts: Arc::new(Mutex::new(0)),
+        restart_not_before: Arc::new(Mutex::new(Instant::now())),
+        pending_exit_code: Arc::new(Mutex::new(None)),
     };
 
     tauri::Builder::default()

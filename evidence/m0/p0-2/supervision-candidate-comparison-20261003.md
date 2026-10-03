@@ -1,7 +1,7 @@
 # P0-2 supervision candidate comparison — 2026-10-03
 
-**Status:** Evidence comparison only; no architecture selected  
-**ADR-0012:** UNRESOLVED  
+**Status:** Evidence comparison with implementation direction selected; production verification open
+**ADR-0012:** PROPOSED, NOT ACCEPTED
 **Scope:** Current repository evidence for Windows and macOS lifecycle candidates
 
 This comparison consolidates recorded P0-2 evidence. It does not turn a
@@ -37,7 +37,12 @@ explicit.
 
 ## Remaining P0-2 gates
 
-1. Decide and implement production Desktop/daemon supervision ownership, login
+The project owner approved **Mode B + per-user login startup launching Desktop**
+for implementation. The scoped proposal is recorded at
+`docs/adr/ADR-0012-background-runtime-implementation-proposal.md`. The choice
+remains PROPOSED until the production proofs below pass.
+
+1. Implement and verify production Desktop/daemon supervision ownership, login
    startup integration, and close/quit behavior for both platforms.
 2. Prove compatible
    Desktop **and** daemon package coordination, including controlled
