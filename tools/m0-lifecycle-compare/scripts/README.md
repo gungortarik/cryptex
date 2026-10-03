@@ -169,6 +169,7 @@ overwritten or reused.
 An observer result alone does not establish that startup came from login. Correlate
 the fresh ready timestamp, observer/start time, registered command, and actual
 sign-in. An exit code may narrow the cause but does not identify who terminated
-the process. These controls do not prove full Desktop IPC reconnect: the current
-Desktop reads status via a short-lived CLI process; the separate P0-3 IPC spike
-has been verified but is not integrated into Desktop.
+the process. These login controls do not prove Desktop IPC reconnect. The shared
+production Desktop Rust IPC client is now integrated and has physically
+reconnected across supervised daemon restarts on Windows and macOS; the actual
+Tauri renderer-to-command invocation remains a separate physical UI check.
