@@ -54,11 +54,8 @@ checks passed again with server PIDs `3160` and `15508`. The restarted-server
 reconnect reached PID `15508`. This is still Windows-only runtime evidence;
 the second-account ACL check remains open.
 
-A physical macOS run is now prepared at
-`tools/m0-ipc-spike/scripts/test_unix_ipc_spike.py`. Run the three commands in
-`tools/m0-ipc-spike/README.md` on the Mac. The script writes a JSON result and
-startup log under `~/Library/Application Support/Cryptex-Dev/p0-3`. The Mac
-result is pending; cross-target compilation above is not a substitute.
+A physical macOS run was prepared at
+`tools/m0-ipc-spike/scripts/test_unix_ipc_spike.py` and is recorded below.
 
 The client was then hardened to verify that the response protocol version and
 request ID match its request, and that an accepted response names
@@ -74,3 +71,40 @@ canonical writer boundary, or runtime supervision. Its protocol accepts only
 `health.ping` with `status.read`; it exposes no memory mutation, purge, recovery,
 or arbitrary tool capability. `interprocess` remains a P0-3 candidate until
 cross-platform evidence and the security gaps above are reviewed.
+
+## macOS physical result — 2026-10-02 EDT / 2026-10-03 UTC
+
+Commands:
+
+```sh
+cargo test -p m0-ipc-spike --locked
+cargo build -p m0-ipc-spike --locked
+python3 tools/m0-ipc-spike/scripts/test_unix_ipc_spike.py
+```
+
+Result: `PASS_MACOS_SPIKE_ONLY_NOT_ADR_ACCEPTANCE`
+
+Runtime evidence:
+
+```text
+runtime_root=~/Library/Application Support/Cryptex-Dev/p0-3/ipc-macos-20261003T003303532295Z
+endpoint=/tmp/cpx-mac-38233b5a607c0/s
+socket_path_bytes=28
+parent_mode=0700
+parent_uid=501
+server_pid_before_restart=9073
+server_pid_after_restart=9081
+```
+
+Verified on macOS:
+
+- Unix socket parent ownership and current-user-only mode
+- short socket path within the macOS limit
+- `desktop`, `cli`, and `mcp` `status.read` handshakes
+- incompatible protocol, unauthorized capability, and unknown role rejection
+- malformed and oversized frame rejection
+- client reconnect after the server process was restarted
+
+The macOS run is candidate-spike evidence only. It does not wire the transport
+into `cryptexd` or Desktop, prove second-account denial on Windows, or accept
+ADR-0007.

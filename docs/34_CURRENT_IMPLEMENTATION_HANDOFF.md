@@ -109,9 +109,10 @@ Not verified by that run:
   Its Windows physical run verified role/version/capability handling,
   malformed/oversized rejection and a client reconnecting across an actual
   server-process restart. The DACL is explicitly set to the current token SID,
-  but access denial from another account remains untested. The Apple target
-  cross-compiled; macOS runtime socket permissions/path/reconnect remain OPEN.
-  This is not production-client integration or an ADR-0007 decision. Evidence:
+  but access denial from another account remains untested. The macOS physical
+  runtime proof now verifies socket permissions/path, protocol rejection and
+  reconnect after server restart. This is not production-client integration or
+  an ADR-0007 decision. Evidence:
   `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
 - The new instrumented Windows login at 16:41:48 EDT on 2026-10-02 confirmed a
   regular user-profile logon. After 11.4 minutes, neither the direct daemon Run
@@ -283,9 +284,10 @@ Before implementing another supervision mechanism or changing architecture:
 - root cause of Windows HKCU Run post-login daemon exit
 - Windows crash-restart parity for a no-elevation/native candidate
 - full Desktop IPC reconnect after daemon restart
-- P0-3 local IPC candidate not physically tested on macOS; Windows second-account
-  ACL denial not tested; production Desktop/CLI/MCP integration absent
-- macOS login/reboot startup proof
+- Windows second-account ACL denial not tested; production Desktop/CLI/MCP
+  integration absent
+- full Desktop IPC reconnect after daemon restart remains open because the
+  current Desktop still uses short-lived CLI status observation
 - remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
 - final Mode A vs Mode B vs justified hybrid comparison
 - ADR-0012 acceptance
