@@ -107,8 +107,8 @@ Not verified by that run:
 - The shared production Desktop Rust IPC client has now physically reconnected
   to real daemons after supervised restart on both Windows and macOS; see the
   platform-specific proofs below. The actual Tauri renderer-to-command
-  invocation during external Mode B crash/restart is VERIFIED on macOS;
-  the coordinated Windows renderer gate remains OPEN.
+  invocation during external Mode B crash/restart is VERIFIED on both Windows
+  and macOS. Production Desktop ownership of the supervisor remains OPEN.
 - A separate P0-3 candidate prototype now exists at `tools/m0-ipc-spike/`.
   Its Windows physical run verified role/version/capability handling,
   malformed/oversized rejection and a client reconnecting across an actual
@@ -157,9 +157,11 @@ Not verified by that run:
   lifecycle observation for the live PID instead of treating `ready` as live;
   status errors are reported as unavailable. A physical stale-ready Windows
   regression proof is included in the GUI evidence.
-- These proofs do not explain the separate HKCU Run daemon exit after login,
-  select a supervision candidate, or accept ADR-0012.
-- login/reboot startup
+- The test-only native login/reboot path is verified on both platforms (Windows
+  HKCU Run; macOS LaunchAgent). This does not establish production registration
+  or select a supervision candidate.
+- The separate historical HKCU Run dispatch/exit findings remain without a
+  root cause. Do not relabel the later successful reboot/login proof.
 
 ### Windows native Task Scheduler candidate — failed candidate
 
@@ -401,7 +403,9 @@ Retained diagnostic history and continuation constraints:
 4. use the existing physically verified macOS LaunchAgent login/reboot proof
    in `evidence/m0/p0-2/macos-native-supervision-evidence.md`; production
    registration/package integration remains unverified.
-5. compare the candidates and document evidence before accepting ADR-0012
+5. use `evidence/m0/p0-2/supervision-candidate-comparison-20261003.md` as the
+   current test-evidence comparison; production supervision/update proofs and
+   the ADR-0012 decision remain open.
 
 ## OPEN
 
@@ -414,7 +418,7 @@ Retained diagnostic history and continuation constraints:
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
 - remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
-- final Mode A vs Mode B vs justified hybrid comparison
+- production-backed Mode A vs Mode B vs justified hybrid comparison
 - ADR-0012 acceptance
 
 ## BLOCKED

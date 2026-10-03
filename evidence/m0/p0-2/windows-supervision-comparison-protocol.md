@@ -75,11 +75,12 @@ Do **not** elevate this harness to make registration pass.
 - **AUTOMATED:** harness measurements when registration succeeds
 - **PHYSICAL_MANUAL:** interactive user logon/reboot after successful registration
 - **FAILED CANDIDATE / PERMISSION:** r1 `schtasks /Create` Access denied
-- **NOT_YET_VERIFIED:** Mode A lifecycle after registration; physical Tauri GUI close; full Desktop IPC reconnect; production packaging
+- **NOT_YET_VERIFIED:** Windows HKCU Run crash restart; production Desktop-owned supervision; production packaging/update coordination
+- The test-only Windows reboot/login start and ten-minute survival are PHYSICALLY VERIFIED (`windows-reboot-login-survival-20261002.md`). The Tauri renderer's reconnect during external Mode B crash/restart is VERIFIED (`windows-tauri-renderer-ipc-reconnect-20261003.md`).
 
 ## HKCU Run login-start probe (IMPLEMENTED — test-only)
 
-**Status:** harness ready; interactive login PHYSICAL_MANUAL not yet verified  
+**Status:** login/reboot start and ten-minute survival PHYSICALLY VERIFIED in the separate evidence below
 **Mode string:** `native_hkcu_run`  
 **Runtime root:** `%LOCALAPPDATA%\Cryptex-Dev\p0-2\compare\mode-a-hkcu`  
 **Registry:** `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` value `CryptexDevP02HkcuRun`  
@@ -111,7 +112,14 @@ m0-lifecycle-compare cleanup --runtime-root <compare-root> --cryptexd <path>
 5. Record PHYSICAL_MANUAL evidence (login start VERIFIED; crash restart still unsupported).
 6. Remove only the test value: `hkcu-run remove` (or `cleanup`). Confirm unrelated HKCU Run values remain.
 
-Startup-folder and Task Scheduler COM remain **not implemented**. ADR-0012 remains unresolved; Mode A/B/hybrid are not selected.
+The verified physical reboot/login result is recorded in
+`windows-reboot-login-survival-20261002.md`. The historical instrumented login
+dispatch failure and its later diagnostics are retained in
+`windows-instrumented-login-result-20261002.md` and
+`windows-run-dispatch-followup-20261002.md`; they do not supersede the later
+successful test-only reboot/login proof. Startup-folder and Task Scheduler COM
+remain **not implemented**. ADR-0012 remains unresolved; Mode A/B/hybrid are not
+selected.
 
 **Optional later exhaustiveness probe:** Task Scheduler 2.0 / current-user COM registration without `schtasks`, only if needed. Do not elevate `schtasks` to force green.
 

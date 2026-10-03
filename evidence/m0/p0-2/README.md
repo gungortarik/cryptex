@@ -6,6 +6,9 @@
 This directory records reproducible evidence for M0 P0-2 only. It does not
 select or freeze the production supervision/update architecture.
 
+The current cross-platform evidence comparison is in
+`supervision-candidate-comparison-20261003.md`. It is not an ADR decision.
+
 ## Authority
 
 - `docs/11_DAEMON_IPC_RUNTIME.md`
@@ -35,8 +38,9 @@ No option has been selected.
 - Test-only login/reboot startup proofs are now verified on both platforms:
   `windows-reboot-login-survival-20261002.md` and
   `macos-native-supervision-evidence.md`. Production registration and the
-  remaining P0-2 comparison/reconnect gates are open. Historical notes that
-  deferred reboot "while P0-1 active" are stale.
+  production supervision/update comparison gates are open. Renderer reconnect
+  during external Mode B crash/restart is now verified on both platforms.
+  Historical notes that deferred reboot "while P0-1 active" are stale.
 
 ## Current foundation slice
 
@@ -78,6 +82,7 @@ See:
 - `macos-renderer-crash-reconnect-test-plan-20261003.md` (PASS at `dc0ae10`: visible Mac renderer reconnected during the external Mode B supervised crash/restart; PID matched the harness)
 - `windows-mode-b-invalid-harness-20261002.md` (historical FAILED/INVALID HARNESS EVIDENCE; superseded by r2)
 - `windows-supervision-comparison-protocol.md` (Windows Mode A comparison; Task Scheduler permission failure recorded; HKCU Run `native_hkcu_run` login-start probe harness; ADR-0012 still open)
+- `supervision-candidate-comparison-20261003.md` (current cross-platform Mode A/Mode B evidence comparison and remaining P0-2 gates; no architecture selected)
 - `windows-mode-a-task-scheduler-permission-20261002.md` (Mode A schtasks FAILED CANDIDATE / PERMISSION)
 - `windows-mode-a-hkcu-run-20261002.md` (Windows physical-host AUTOMATED HKCU Run register/run/cleanup for this experiment; separate reboot evidence is in the post-login audit)
 - `windows-hkcu-post-login-audit-20261002.md` (records handoff's physical login-start success / post-login daemon exit and read-only source audit; root cause remains OPEN)

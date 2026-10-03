@@ -74,8 +74,8 @@ RUNTIME="$HOME/Library/Application Support/Cryptex-Dev/p0-2/compare"
 
 ## What this slice intentionally leaves open
 
-- login/reboot startup
-- full Desktop IPC reconnect after daemon restart
-- interactive Tauri window-close physical proof (hooks exist; interactive GUI run may still be pending)
-- Windows Mode B AUTOMATED process-supervisor foundation is recorded in `windows-desktop-supervision-evidence.md`; Windows Mode A native startup, physical Tauri GUI close, login/reboot, and full Desktop IPC reconnect remain OPEN
+- test-only LaunchAgent login/reboot startup is PHYSICALLY VERIFIED in `macos-native-supervision-evidence.md`; production registration remains OPEN
+- visible Tauri renderer reconnect during external Mode B crash/restart is VERIFIED in `macos-tauri-renderer-ipc-reconnect-20261003.md`; production Desktop-owned supervision remains OPEN
+- `CloseRequested` hide/restore and daemon survival are VERIFIED in `macos-mode-b-gui-window-close.md`; literal traffic-light input remains NOT YET VERIFIED because Accessibility permission was unavailable
+- Windows Mode B process-supervisor, test-only HKCU login/reboot, Tauri CloseRequested event path, and renderer reconnect evidence are recorded in their Windows evidence files; production registration and Desktop-owned supervision remain OPEN
 - production updater/rollback orchestration beyond synthetic marker fixtures
