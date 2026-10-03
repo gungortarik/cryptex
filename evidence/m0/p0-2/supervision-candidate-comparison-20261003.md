@@ -32,13 +32,13 @@ explicit.
 - macOS Mode B lifecycle and close event path: `macos-desktop-supervision-evidence.md` and `macos-mode-b-gui-window-close.md`
 - macOS renderer reconnect: `macos-tauri-renderer-ipc-reconnect-20261003.md`
 - Synthetic update/rollback: `windows-update-rollback-evidence-20261002.md` and `macos-update-rollback-evidence.md`
-- The Windows synthetic proof now also rejects a mismatched Desktop/daemon protocol pair before staging and preserves active `v1`; the matching Mac repeat is requested in `macos-update-compat-test-plan-20261003.md`.
+- The synthetic proof rejects a mismatched Desktop/daemon protocol pair before staging and preserves active `v1` on Windows and macOS; the Mac repeat passed at `46169ee` with 33 local tests and all requested measurement fields matching (`macos-update-compat-evidence-20261003.md`).
 
 ## Remaining P0-2 gates
 
 1. Decide and implement production Desktop/daemon supervision ownership, login
    startup integration, and close/quit behavior for both platforms.
-2. Run the new mismatched-pair rejection proof on macOS. Then prove compatible
+2. Prove compatible
    Desktop **and** daemon package coordination, including controlled
    error/rollback and canonical-data preservation through the real product
    lifecycle. Current marker and protocol-pair fixtures are synthetic.

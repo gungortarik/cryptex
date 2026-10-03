@@ -1,6 +1,8 @@
 # macOS P0-2 update compatibility follow-up — test request
 
-**Status:** REQUESTED; not yet run  
+**Status:** PASS / VERIFIED for the synthetic fixture
+
+Measured at source `46169ee`; see `macos-update-compat-evidence-20261003.md`.
 **Scope:** Verify the architecture-neutral synthetic Desktop/daemon protocol
 pair rejection and existing daemon update/rollback fixture on macOS. This does
 not test or select ADR-0012.

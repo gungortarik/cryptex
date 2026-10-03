@@ -89,6 +89,7 @@ See:
 - `windows-mode-b-gui-window-close-20261002.md` (Windows physical Tauri CloseRequested/hide/restore proof; verified for this flow only)
 - `windows-update-rollback-evidence-20261002.md` (Windows physical synthetic compatible update/reject/rollback marker safety; verified for harness behavior only)
 - `macos-update-compat-test-plan-20261003.md` (exact Mac validation request for the synthetic Desktop/daemon protocol-pair rejection and update/rollback repeat)
+- `macos-update-compat-evidence-20261003.md` (PASS at `46169ee`: 33 local tests and all synthetic protocol-pair/update/rollback acceptance fields passed on macOS)
 - `windows-parent-exit-control-20261002.md` (isolated Windows child-process survival after launcher-shell exit; does not reproduce HKCU Run or explain post-login exit)
 - `windows-hkcu-stop-marker-cleanup-20261002.md` (isolated physical Windows regression proof that `--leave-registered` removes its one-shot stop marker while retaining then cleaning the test registry value)
 - `windows-instrumented-login-preparation-20261002.md` (verified observer/preparation controls, compact Run command limit guard, and armed `wl-1002a` experiment; actual next login and exit cause remain pending)

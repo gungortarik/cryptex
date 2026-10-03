@@ -151,8 +151,11 @@ Not verified by that run:
   Windows local tests passed (44 tests); the physical-host measurement is
   retained under `%LOCALAPPDATA%\Cryptex-Dev\p0-2\compare\windows-update-compat-20261003`.
   This remains test-only protocol metadata; it does not update a Desktop
-  package. Mac validation instructions are in
-  `evidence/m0/p0-2/macos-update-compat-test-plan-20261003.md`.
+  package. The physical Mac repeat at `46169ee` is **PASS / VERIFIED** for
+  the synthetic fixture: 33 local tests passed, all ten requested measurement
+  fields matched, marker digest remained `d914619dfbb07c95`, and final instance
+  count was 0. Tests, build and update-proof exited 0. Evidence is in
+  `evidence/m0/p0-2/macos-update-compat-evidence-20261003.md`.
 - The new instrumented Windows login at 16:41:48 EDT on 2026-10-02 confirmed a
   regular user-profile logon. After 11.4 minutes, neither the direct daemon Run
   entry nor the PowerShell observer had produced a runtime artifact; the
@@ -425,7 +428,6 @@ Retained diagnostic history and continuation constraints:
   production packaging remain open
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
-- macOS repeat of the updated synthetic Desktop/daemon protocol-pair rejection proof
 - real compatible Desktop + daemon package coordination and rollback/canonical-data proof
 - production-backed Mode A vs Mode B vs justified hybrid comparison
 - ADR-0012 acceptance
