@@ -128,7 +128,7 @@ fn create_listener(id: &str) -> io::Result<interprocess::local_socket::Listener>
         use widestring::U16CString;
 
         let sid = current_user_sid()?;
-        let sddl = U16CString::from_str(&format!("O:{sid}D:P(A;;GA;;;{sid})"))
+        let sddl = U16CString::from_str(format!("O:{sid}D:P(A;;GA;;;{sid})"))
             .map_err(|_| invalid_input("invalid current-user pipe security descriptor"))?;
         let descriptor = SecurityDescriptor::deserialize(sddl.as_ucstr())?;
         options.security_descriptor(descriptor).create_sync()
