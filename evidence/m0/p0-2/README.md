@@ -32,9 +32,11 @@ No option has been selected.
 - Do not touch P0-1 Syncthing paths (`Cryptex-Dev/syncthing-p0-1*`).
 - Do not install LaunchAgents / Windows startup entries until comparison evidence exists.
 - Do not mark P0-2 complete and do not accept ADR-0012 from foundation-slice work alone.
-- Login/reboot startup proofs remain OPEN; historical harness notes that deferred reboot
-  "while P0-1 active" are stale now that P0-1 is complete and must not be treated as a
-  current blocker.
+- Test-only login/reboot startup proofs are now verified on both platforms:
+  `windows-reboot-login-survival-20261002.md` and
+  `macos-native-supervision-evidence.md`. Production registration and the
+  remaining P0-2 comparison/reconnect gates are open. Historical notes that
+  deferred reboot "while P0-1 active" are stale.
 
 ## Current foundation slice
 

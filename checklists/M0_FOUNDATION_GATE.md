@@ -74,8 +74,8 @@ Configuration presence, an implementation claim, compilation alone, or success o
 - [ ] Main-window close behavior was verified.
   - Evidence:
 
-- [ ] Reboot/login startup behavior was verified.
-  - Evidence:
+- [x] Reboot/login startup behavior was verified.
+  - Evidence: `evidence/m0/p0-2/windows-reboot-login-survival-20261002.md` records a real Windows reboot/login, startup launch correlation and the complete 600-second daemon survival observation. `evidence/m0/p0-2/macos-native-supervision-evidence.md` records physical Mac LaunchAgent reboot/login. Both are test-only registrations; production installation remains open.
 
 - [ ] Crash detection/restart behavior was verified.
   - Evidence:

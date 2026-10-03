@@ -163,7 +163,7 @@ The candidate is login-start only:
 - crash-restart parity remains OPEN
 - ADR-0012 remains unresolved
 
-## Latest physical event — real Windows reboot/login
+## Historical physical event — earlier Windows reboot/login
 
 Both Windows and macOS machines were shut down and restarted on 2026-10-02.
 
@@ -266,6 +266,26 @@ The reboot therefore stopped it. P0-1 is already complete. Do not restart it mer
 
 ## Immediate next task
 
+### Latest Windows reboot/login result — VERIFIED
+
+The user prepared `wl-1003h` from ordinary Windows PowerShell at
+`2026-10-03T02:02:24Z`, source `0a7eb0e`, clean tree, then physically restarted
+Windows. Boot was at 22:06:04 EDT; console session 1 logged in at 22:06.
+Daemon PID 31512 started at 22:07:32 EDT and observer PID 31192 attached.
+Shell-Core launch records match both PIDs. The complete 600-second observation
+ended at 22:17:34 EDT with `alive_at_observation_deadline`, no stop marker and
+no observed daemon exit. The direct process query afterward confirmed the same
+live daemon and executable. A duplicate probe was rejected with exit 1.
+See `evidence/m0/p0-2/windows-reboot-login-survival-20261002.md`.
+
+The legacy comparison registration was safely backed up and replaced in the
+user's actual context. Its old stop file remains retained. The new test daemon
+and registrations remain active; do not run registry-mutating Rust lifecycle
+tests. No GitHub workflow ran. Current Windows reboot/login startup and
+measured survival are verified; the historical 13:00 UTC disappearance still
+has no established cause. Next work is Windows crash-restart parity and full
+Desktop IPC reconnect, with evidence/ADR comparison before production APIs.
+
 Windows release foundation build is now verified: the full Rust workspace and
 the Tauri Desktop with embedded frontend built successfully. The release IPC
 process-level check passed. CI now includes the IPC spike on both platforms;
@@ -280,7 +300,7 @@ the effective client-thread SID, exact access denial, owner connections before
 and after, identity restoration and account cleanup. It refuses local workstation
 execution. See `evidence/m0/p0-3/windows-cross-account-acl-20261002.md`.
 
-Before implementing another supervision mechanism or changing architecture:
+Retained diagnostic history and continuation constraints:
 
 1. the second real login changed session 3 to 4, but the user's external
    collector found `wd-1003a` registration absent while Codex-context reads
@@ -295,7 +315,7 @@ Before implementing another supervision mechanism or changing architecture:
    to dispatch after login. This does not prove daemon survival.
    Preserve `wd-1003a` and avoid preparing/cleaning startup values from Codex.
    The collector now records package identity and executable ancestry as well.
-   Run `collect-windows-run-dispatch.ps1` after the next login with that session
+   `collect-windows-run-dispatch.ps1` retains observations in each session
    root. This command captures registry views, identity, policy, marker integrity
    and relevant Shell-Core events into a unique retained JSON observation.
    Five synthetic controls passed; collection on the physical Windows host
@@ -322,9 +342,10 @@ Before implementing another supervision mechanism or changing architecture:
    original `target/debug/cryptexd.exe lifecycle hold` command for
    `%LOCALAPPDATA%/Cryptex-Dev/p0-2/compare/mode-a-hkcu`; the external observer
    value is absent. This explains why cleanup against `wl-1003g` refused.
-   The legacy root retains a stop file and records a clean shutdown at the
-   latest login. Next: run `replace-legacy-windows-login.ps1 -Apply` from the
-   user's ordinary PowerShell with fresh `wl-1003h`. The helper requires the
+   The legacy root retains a stop file and records a clean shutdown at that
+   login. The user ran `replace-legacy-windows-login.ps1 -Apply` from ordinary
+   PowerShell and prepared `wl-1003h`; reboot/login and ten-minute survival
+   subsequently passed as recorded above. The helper requires the
    exact confirmed old command and an empty observer slot, saves the old value,
    refuses a live legacy ready PID and restores the saved command on preparation
    failure if both slots are vacant. It preserves legacy runtime files.
