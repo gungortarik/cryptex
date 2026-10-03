@@ -357,11 +357,15 @@ Retained diagnostic history and continuation constraints:
    `evidence/m0/p0-3/adr-0007-candidate-comparison-20261003.md`. The user
    selected the evidence-backed `interprocess` 2.4.4 candidate; the scoped
    implementation addendum is accepted at
-   `docs/adr/ADR-0007-local-ipc-implementation-addendum.md`. The initial daemon
-   health endpoint and Tauri Desktop reconnect client are implemented but have
-   only passed Windows compilation so far. They still need physical IPC runtime
-   proof on Windows and macOS. Do not mark Desktop reconnect VERIFIED based on
-   the isolated spike alone.
+   `docs/adr/ADR-0007-local-ipc-implementation-addendum.md`. The production
+   daemon health endpoint and shared Tauri Rust client are implemented. A
+   physical Windows Mode B comparison at source `c5e059d` verified that the
+   client connected before forced crash and reconnected to the restarted daemon
+   (`2880 -> 24780`, 32 ms restart); see
+   `evidence/m0/p0-2/windows-desktop-ipc-reconnect-20261002.md`. The harness did
+   not launch the actual Tauri UI. Full renderer-to-command UI invocation and
+   matching physical Mac runtime evidence remain open; do not claim full
+   Desktop UI reconnect or accept ADR-0012 yet.
 4. use the existing physically verified macOS LaunchAgent login/reboot proof
    in `evidence/m0/p0-2/macos-native-supervision-evidence.md`; production
    registration/package integration remains unverified.
@@ -371,9 +375,9 @@ Retained diagnostic history and continuation constraints:
 
 - root cause of Windows HKCU Run post-login daemon exit
 - Windows crash-restart parity for a no-elevation/native candidate
-- full Desktop IPC reconnect after daemon restart remains open because the
-  new Tauri IPC client is implemented but not yet physically exercised against
-  the real daemon on both platforms
+- full Tauri UI/renderer IPC reconnect remains open: the shared Rust client
+  passed against a real Windows daemon across supervised restart, but the UI
+  invocation and corresponding Mac runtime proof remain outstanding
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
 - remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
