@@ -51,6 +51,11 @@ state changed is unknown. A fresh `wd-1003b` experiment was not armed because
 the preparation script correctly refused to replace this occupied test value.
 The existing registration and evidence were left intact.
 
+The status script now reports value presence and manifest-match separately.
+Its read-only follow-up returned `run_value_present=true`,
+`run_value_matches_manifest=true`, `run_command_length=186`, and
+`marker_present=false`. PowerShell syntax parsing passed.
+
 **Final classification: INCONCLUSIVE — marker dispatch not observed; registry
 observation inconsistent.** Shell-Core confirms that the Run key was enumerated
 but does not expose its value list. No test-command launch event or process
