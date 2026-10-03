@@ -78,9 +78,14 @@ try {
             if ($null -ne $current -and $current -ne $manifest.run_command) { throw 'Run value ownership changed; cleanup stopped.' }
             $key.DeleteValue($valueName, $false)
         }
+        $current = Read-RunValue $valueName
+        $matchesManifest = ($current -eq $manifest.run_command)
         [ordered]@{
             action = $Action
-            run_registered = ((Read-RunValue $valueName) -eq $manifest.run_command)
+            run_registered = $matchesManifest
+            run_value_present = ($null -ne $current)
+            run_value_matches_manifest = $matchesManifest
+            run_command_length = if ($null -eq $current) { $null } else { ([string]$current).Length }
             marker_present = (Test-Path -LiteralPath $markerPath)
             marker = if (Test-Path -LiteralPath $markerPath) { Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json } else { $null }
             session_root = $sessionPath
