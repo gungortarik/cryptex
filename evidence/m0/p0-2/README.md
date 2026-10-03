@@ -59,6 +59,11 @@ architecture decision has been recorded or accepted in ADR-0012.
   recorded in `windows-reboot-login-survival-repeat-20261003.md`. It explains
   the visible console as the direct Mode A test-daemon launch and records exact
   cleanup of both temporary Run registrations; no matching test process remains.
+- Windows release Desktop-owned supervision is partially verified in
+  `windows-release-desktop-owned-supervisor-20261003.md`: single instance,
+  child restart and automated close/restore passed. Literal tray/login-start
+  checks remain open; Code Integrity currently blocks a fresh local package
+  build.
   Historical notes that deferred reboot "while P0-1 active" are stale.
 
 ## Current foundation slice
@@ -95,6 +100,7 @@ See:
 - `windows-desktop-supervision-evidence.md` (historical Windows Mode B process-supervisor run; later Windows daemon IPC reconnect proof is recorded separately; physical Tauri GUI close remains open)
 - `windows-desktop-ipc-reconnect-20261002.md` (physical Windows shared Desktop Rust client reconnect after supervised daemon restart; Tauri renderer invocation remains open)
 - `windows-tauri-renderer-ipc-reconnect-20261003.md` (physical Windows rendered health/reconnect path after clean replacement and during external Mode B crash/restart; production Desktop supervision and packaging remain open)
+- `windows-release-desktop-owned-supervisor-20261003.md` (partial Windows release Desktop physical run; Code Integrity build block, child restart, close/restore, duplicate and cleanup results)
 - `../windows-release-build-20261003.md` (current Tauri CLI release executable loaded its embedded renderer and passed the Windows renderer IPC flow)
 - `macos-desktop-ipc-reconnect-20261003.md` (physical macOS shared Desktop Rust client reconnect after supervised daemon restart; Tauri renderer invocation remains open)
 - `macos-tauri-renderer-ipc-reconnect-20261003.md` (physical macOS Tauri renderer health and reconnect command invocation; production packaging remains open)

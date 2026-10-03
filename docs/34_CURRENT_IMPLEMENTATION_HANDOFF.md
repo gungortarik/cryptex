@@ -198,6 +198,16 @@ Not verified by that run:
   The retained lock file is stale and is not held. Runtime evidence and a
   pre-cleanup registration backup remain under LocalAppData. See
   `evidence/m0/p0-2/windows-reboot-login-survival-repeat-20261003.md`.
+- A current-source Windows release executable physically started the
+  Desktop-owned daemon, rejected a second Desktop launch (exit 0), replaced an
+  exactly identified child after controlled termination, and passed the
+  automated Tauri close/show request path with the replacement daemon live.
+  This run used the existing executable built from `c77479f`; literal tray
+  Open/Quit and login startup were not exercised. A fresh
+  `tauri:package-smoke` build is blocked on this host: Code Integrity events
+  3033/3077 deny `rustc.exe` loading its generated unsigned
+  `serde_repr` proc-macro DLL. No policy bypass was attempted. See
+  `evidence/m0/p0-2/windows-release-desktop-owned-supervisor-20261003.md`.
 - Desktop close/restore/snapshot proof artifacts now query a fresh daemon
   lifecycle observation for the live PID instead of treating `ready` as live;
   status errors are reported as unavailable. A physical stale-ready Windows
@@ -381,6 +391,13 @@ Verification on Windows:
   --locked` passed. The Mac run passed all three targeted process tests; Windows
   release-mode physical lifecycle verification remains open.
 - `cargo build -p cryptex-desktop --release --locked`: PASS.
+- Latest `pnpm --filter @cryptex/desktop tauri:package-smoke`: frontend build
+  and sidecar preparation passed, but Tauri Rust compilation failed with
+  `E0463` because Windows Code Integrity blocked the generated
+  `serde_repr` proc-macro DLL (events 3033/3077). The previously built release
+  executable was byte-matched to the latest Desktop source commit and used for
+  partial physical lifecycle checks. Do not bypass the host policy. A fresh
+  Windows release package must be built on an approved host/configuration.
 - No GitHub Actions workflow ran.
 
 The Mac execution request at
@@ -395,10 +412,13 @@ the test registration and processes were cleaned up. Do not repeat the passed
 steps merely to fix the document state.
 
 Next, verify both tray actions on the Mac while the release Desktop is running
-and retain evidence for each action, including tray Quit exit code 0. Then
-complete Windows release-mode physical lifecycle verification and the real
-compatible Desktop+daemon package update/rollback and canonical-data checks on
-both platforms. Keep ADR-0012 unaccepted until every required P0-2 proof passes.
+and retain evidence for each action, including tray Quit exit code 0. On
+Windows, finish the remaining release login-start and actual tray/menu checks
+once a current package can be built on a Code-Integrity-approved host. The
+existing release run verified daemon replacement and automated close/show,
+but not those user-driven actions. Then complete the real compatible
+Desktop+daemon package update/rollback and canonical-data checks on both
+platforms. Keep ADR-0012 unaccepted until every required P0-2 proof passes.
 
 ### Prior continuation record
 
