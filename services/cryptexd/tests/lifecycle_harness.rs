@@ -6,12 +6,23 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use cryptexd::instance::observe_instance;
 use cryptexd::paths::assert_outside_repository;
 use cryptexd::status::{HealthState, InstanceState, LifecycleReport};
+
+// Keep process-level lifecycle fixtures deterministic on Windows, where
+// parallel child launches intermittently miss their short readiness windows.
+static PROCESS_HARNESS_LOCK: Mutex<()> = Mutex::new(());
+
+fn serialize_process_harness() -> MutexGuard<'static, ()> {
+    PROCESS_HARNESS_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 fn unique_runtime(label: &str) -> PathBuf {
     let stamp = SystemTime::now()
@@ -48,6 +59,7 @@ fn parse_kv(output: &str, key: &str) -> Option<String> {
 
 #[test]
 fn foundation_entrypoint_still_prints_banner() {
+    let _guard = serialize_process_harness();
     let output = Command::new(cryptexd_bin()).output().expect("run cryptexd");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -56,6 +68,7 @@ fn foundation_entrypoint_still_prints_banner() {
 
 #[test]
 fn second_daemon_instance_is_rejected_while_first_remains_healthy() {
+    let _guard = serialize_process_harness();
     let runtime = unique_runtime("single-instance");
     let ready = runtime.join("ready");
     let stop = runtime.join("stop");
@@ -140,6 +153,7 @@ fn second_daemon_instance_is_rejected_while_first_remains_healthy() {
 
 #[test]
 fn clean_shutdown_releases_instance_lock() {
+    let _guard = serialize_process_harness();
     let runtime = unique_runtime("clean-shutdown");
     let output = Command::new(cryptexd_bin())
         .args([
@@ -163,6 +177,7 @@ fn clean_shutdown_releases_instance_lock() {
 
 #[test]
 fn compact_login_hold_publishes_ready_and_clean_stops_under_runtime_root() {
+    let _guard = serialize_process_harness();
     let runtime = unique_runtime("login-hold");
     let mut holder = Command::new(cryptexd_bin())
         .args([
@@ -206,6 +221,7 @@ fn compact_login_hold_publishes_ready_and_clean_stops_under_runtime_root() {
 
 #[test]
 fn forced_crash_is_detectable_and_restart_path_works() {
+    let _guard = serialize_process_harness();
     let runtime = unique_runtime("crash-restart");
     let ready = runtime.join("ready");
 
@@ -289,6 +305,7 @@ fn forced_crash_is_detectable_and_restart_path_works() {
 
 #[test]
 fn lifecycle_state_reflects_runtime_and_avoids_repo_files() {
+    let _guard = serialize_process_harness();
     let runtime = unique_runtime("state-reflect");
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let repo_root = fs::canonicalize(&repo_root).expect("repo root");
@@ -320,6 +337,7 @@ fn lifecycle_state_reflects_runtime_and_avoids_repo_files() {
 
 #[test]
 fn compat_fixture_rejects_mismatch_and_keeps_marker_safe() {
+    let _guard = serialize_process_harness();
     let runtime = unique_runtime("compat");
 
     let bad = Command::new(cryptexd_bin())

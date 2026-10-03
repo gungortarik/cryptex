@@ -6,11 +6,20 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cryptexd::instance::observe_instance;
 use cryptexd::paths::assert_outside_repository;
 use cryptexd::update::{UpdateLayout, marker_digest, run_update_rollback_proof};
+
+static PROCESS_HARNESS_LOCK: Mutex<()> = Mutex::new(());
+
+fn serialize_process_harness() -> MutexGuard<'static, ()> {
+    PROCESS_HARNESS_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 fn unique_root(label: &str) -> PathBuf {
     let stamp = SystemTime::now()
@@ -29,6 +38,7 @@ fn cryptexd_bin() -> PathBuf {
 
 #[test]
 fn update_rollback_proof_preserves_marker_and_single_instance() {
+    let _guard = serialize_process_harness();
     let root = unique_root("proof");
     let report =
         run_update_rollback_proof(&root, &cryptexd_bin(), "test-update-rollback").expect("proof");
@@ -61,6 +71,7 @@ fn update_rollback_proof_preserves_marker_and_single_instance() {
 
 #[test]
 fn update_proof_cli_runs_outside_repository() {
+    let _guard = serialize_process_harness();
     let root = unique_root("cli");
     let output = Command::new(cryptexd_bin())
         .args([
