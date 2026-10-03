@@ -4,6 +4,21 @@ These test-only scripts investigate daemon survival after an actual Windows
 sign-out/sign-in. They neither choose supervision for ADR-0012 nor restart the
 daemon. All runtime files stay under `%LOCALAPPDATA%\Cryptex-Dev\p0-2`.
 
+The user's latest external inspection identified the legacy comparison Run
+command, not `wl-1003g`, as the occupied registration. To replace that exact
+confirmed command and prepare a fresh instrumented experiment from ordinary
+Windows PowerShell:
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -File 'D:\github_repos\cryptex\tools\m0-lifecycle-compare\scripts\replace-legacy-windows-login.ps1' -Apply -SessionRoot "$env:LOCALAPPDATA\Cryptex-Dev\p0-2\wl-1003h"
+```
+
+The helper preserves a JSON backup outside the repository before removing
+only the exact legacy daemon command. It requires an empty observer slot and
+refuses a live legacy ready PID. On preparation failure it restores the old
+command only when both slots are vacant. It retains the old stop/control files.
+Without `-Apply` it only validates; a mismatched command is always refused.
+
 ## Isolated Explorer Run dispatch check
 
 The 2026-10-02 `wl-1002a` attempt had a confirmed interactive logon but no

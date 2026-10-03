@@ -211,3 +211,28 @@ observer controls passed; no CI was dispatched.
 Next: prepare a fresh instrumented root in the user's ordinary Windows
 PowerShell and require the printed manifest before sign-out/sign-in. Codex can
 inspect retained evidence afterward. Preserve every earlier runtime root.
+
+## External occupied registration identified
+
+The user's ordinary PowerShell revealed the actual occupied daemon Run value:
+`D:\github_repos\cryptex\target\debug\cryptexd.exe lifecycle hold`, with
+runtime/ready/stop paths under `compare\mode-a-hkcu`. Its observer value was
+absent. Thus cleanup against `wl-1003g` correctly refused ownership mismatch.
+Codex's separate view still matched `wl-1003g`; that view did not identify the
+external owner. No cleanup or new preparation succeeded in those user attempts.
+
+The retained legacy root contains a stop file last written at 18:06 EDT.
+At the latest 21:52 login its ready/lock/status metadata was updated; status
+records PID 18100 released with `clean shutdown released instance lock`.
+No live `cryptexd` was found. The hold loop's stop-file check matches this
+clean-shutdown result. This explains the current legacy comparison run; it
+does not establish the cause of the earlier 13:00 UTC disappearance.
+
+`replace-legacy-windows-login.ps1` was added for a single external invocation.
+It validates the exact confirmed command and empty observer slot, refuses a
+live legacy ready PID, backs up the registry command, and prepares a fresh
+`wl-1003h` root after removing that matching value. Failure restores the saved
+command only if neither slot has a new owner. Legacy runtime/control files stay
+retained. Syntax parsing and Git diff checks passed; a local read-only guard
+check correctly refused Codex's nonmatching `wl-1003g` view without mutations.
+Actual external replacement is pending. No GitHub workflow ran.

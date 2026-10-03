@@ -30,9 +30,6 @@
 - GitHub Actions minutes are constrained. Prefer relevant local checks and
   retained physical-host evidence. Run workflows only when required evidence
   cannot be produced locally; avoid redundant progress runs.
-- GitHub Actions minutes are constrained. Prefer relevant local checks and
-  retained physical-host evidence. Dispatch workflows only when a required
-  check cannot be satisfied locally; do not launch redundant runs for progress.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
 
@@ -320,6 +317,17 @@ Before implementing another supervision mechanism or changing architecture:
    process-start/shell-launch
    evidence. Do not infer a termination cause if no observer attaches. See
    `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
+
+   Latest external registry output identifies the occupied daemon value as the
+   original `target/debug/cryptexd.exe lifecycle hold` command for
+   `%LOCALAPPDATA%/Cryptex-Dev/p0-2/compare/mode-a-hkcu`; the external observer
+   value is absent. This explains why cleanup against `wl-1003g` refused.
+   The legacy root retains a stop file and records a clean shutdown at the
+   latest login. Next: run `replace-legacy-windows-login.ps1 -Apply` from the
+   user's ordinary PowerShell with fresh `wl-1003h`. The helper requires the
+   exact confirmed old command and an empty observer slot, saves the old value,
+   refuses a live legacy ready PID and restores the saved command on preparation
+   failure if both slots are vacant. It preserves legacy runtime files.
 3. use the verified Windows cross-account named-pipe ACL evidence to
    compare the transport candidates and record ADR-0007 details before
    production daemon APIs or Desktop reconnect claims. The Mac process-level
