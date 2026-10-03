@@ -53,6 +53,19 @@ Important branch note:
 
 ### macOS
 
+The Desktop-owned lifecycle run at `c77479f` is PARTIAL. Local daemon supervisor
+tests (3), sidecar staging tests (3), sidecar resolution tests (2) and release
+package-smoke passed. Release Desktop `31422` automatically started daemon
+`31562`, rejected a second Desktop launch, and restarted the SIGKILLed daemon
+as `32006` within a 500 ms polling observation; renderer IPC answered protocol 1
+with the replacement PID. One tray icon and duplicate daemon rejection were
+confirmed. Login start is enabled through `Cryptex.plist` for the release
+Desktop with `--cryptex-background`. Physical sign-out/sign-in and the final
+disable/Stop/no-restart/tray Quit checks are pending. Preserve this registration
+and runtime until that step, then disable login start per the test plan.
+See `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-evidence-20261003.md`.
+Do not count the full Mac lifecycle gate as PASS yet.
+
 Existing evidence proves:
 - single-instance rejection
 - crash detection / restart under the macOS native supervision candidate

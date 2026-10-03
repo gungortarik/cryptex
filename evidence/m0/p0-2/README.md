@@ -22,6 +22,9 @@ ADR/specification process.
 
 ## Options under comparison (still OPEN)
 
+Current Mac Desktop-owned run: `macos-tauri-owned-supervisor-restart-evidence-20261003.md`
+(local checks and release crash/restart passed; physical login and final cleanup pending).
+
 1. native per-user background registration (macOS LaunchAgent + Windows per-user startup)
 2. Tauri/tray supervisor spawning `cryptexd` sidecar
 3. hybrid only if evidence justifies it

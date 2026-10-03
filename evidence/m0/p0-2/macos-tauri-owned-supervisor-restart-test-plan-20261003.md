@@ -1,6 +1,8 @@
 # macOS Tauri-owned daemon restart test — 2026-10-03
 
-**Status:** REQUESTED; not yet run
+**Status:** PARTIAL; local checks and release crash/restart passed; physical login and final Stop/tray Quit pending
+
+See `macos-tauri-owned-supervisor-restart-evidence-20261003.md` for measured results and continuation.
 **Scope:** P0-2; isolated lifecycle runtime and synthetic daemon
 
 ## Purpose
