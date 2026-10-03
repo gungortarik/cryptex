@@ -114,6 +114,12 @@ Preparation registers two reversible current-user Run values:
 - `CryptexDevP02LoginObserver`: launches the independent observer, hidden, using
   Windows PowerShell's normal policy. No execution-policy override is used.
 
+The direct daemon entry runs the console `cryptexd.exe`, so Windows may show a
+terminal at sign-in while this test registration is armed. That window is
+expected test-harness behavior; it is not Cryptex Desktop startup. Run the
+scoped Cleanup action after collecting the observation to remove both temporary
+Run values and stop the test daemon.
+
 The compact daemon command avoids repeating app-data paths. Registration rejects
 commands longer than 260 UTF-16 code units before touching runtime files or the
 registry. This follows Microsoft's documented

@@ -55,6 +55,10 @@ architecture decision has been recorded or accepted in ADR-0012.
   release-mode physical lifecycle proof, signed packaging and production
   update/canonical-data gates remain open. Renderer reconnect during external
   Mode B crash/restart is verified on both platforms.
+- Windows' second physical reboot/login and ten-minute survival repeat is
+  recorded in `windows-reboot-login-survival-repeat-20261003.md`. It explains
+  the visible console as the direct Mode A test-daemon launch and records exact
+  cleanup of both temporary Run registrations; no matching test process remains.
   Historical notes that deferred reboot "while P0-1 active" are stale.
 
 ## Current foundation slice
@@ -111,3 +115,4 @@ See:
 - `windows-hkcu-stop-marker-cleanup-20261002.md` (isolated physical Windows regression proof that `--leave-registered` removes its one-shot stop marker while retaining then cleaning the test registry value)
 - `windows-instrumented-login-preparation-20261002.md` (verified observer/preparation controls, compact Run command limit guard, and armed `wl-1002a` experiment; actual next login and exit cause remain pending)
 - `windows-instrumented-login-result-20261002.md` (regular Windows logon confirmed, but neither Cryptex Run value produced an observed start in 11.4 minutes; observer output absent; values cleaned; daemon exit cause remains open)
+- `windows-reboot-login-survival-repeat-20261003.md` (second physical reboot/login, 601-second daemon survival, visible test console cause, and exact registration/process cleanup)

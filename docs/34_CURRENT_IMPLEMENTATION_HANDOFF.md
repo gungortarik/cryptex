@@ -187,6 +187,17 @@ Not verified by that run:
   Both temporary Run values were then removed and verified absent. Classify this
   as **login start NOT OBSERVED / cause OPEN**, not daemon start-then-exit. See
   `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
+- A second physical reboot/login in the `wl-1003h` test produced a fresh
+  console daemon PID `26576`, attached observer PID `26356`, and another
+  `alive_at_observation_deadline` result after about 601 seconds. The screenshot
+  console was the expected output of this test's direct
+  `cryptexd.exe lifecycle login-hold` HKCU Run command; it was not the Cryptex Desktop. Both
+  test Run values were then removed by exact manifest comparison in the actual
+  user's SID-scoped registry view. A cooperative stop was requested; fresh
+  status reports `pid=none`, and no matching startup entries or process remain.
+  The retained lock file is stale and is not held. Runtime evidence and a
+  pre-cleanup registration backup remain under LocalAppData. See
+  `evidence/m0/p0-2/windows-reboot-login-survival-repeat-20261003.md`.
 - Desktop close/restore/snapshot proof artifacts now query a fresh daemon
   lifecycle observation for the live PID instead of treating `ready` as live;
   status errors are reported as unavailable. A physical stale-ready Windows
@@ -404,14 +415,15 @@ live daemon and executable. A duplicate probe was rejected with exit 1.
 See `evidence/m0/p0-2/windows-reboot-login-survival-20261002.md`.
 
 The legacy comparison registration was safely backed up and replaced in the
-user's actual context. Its old stop file remains retained. The new test daemon
-and registrations remain active; do not run registry-mutating Rust lifecycle
-tests. No GitHub workflow ran. Current Windows reboot/login startup and
-measured survival are verified; the historical 13:00 UTC disappearance still
-has no established cause. The Windows Mode B physical crash/restart proof is
-already retained above. The next physical IPC check must use the actual Desktop
-client against the actual `cryptexd` transport across a process restart; this
-does not by itself accept the still-open ADR-0012 supervision choice.
+user's actual context. Its old stop file remains retained. A second physical
+reboot/login repeat and cleanup are recorded at
+`evidence/m0/p0-2/windows-reboot-login-survival-repeat-20261003.md`. The
+`wl-1003h` test registrations are now absent and no matching daemon process is
+running, so registry-mutating Rust lifecycle tests no longer risk disturbing an
+armed experiment. No GitHub workflow ran. The historical 13:00 UTC disappearance
+still has no established cause. The Windows Mode B physical crash/restart proof
+is already retained above. The next Windows lifecycle task is the release-build
+Desktop physical startup/close/quit flow, not another Mode A login repeat.
 
 Windows release foundation build is now verified: the full Rust workspace and
 the Tauri Desktop with embedded frontend built successfully. The release IPC
