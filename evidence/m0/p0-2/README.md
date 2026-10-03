@@ -23,7 +23,7 @@ ADR/specification process.
 ## Options under comparison (still OPEN)
 
 Current Mac Desktop-owned run: `macos-tauri-owned-supervisor-restart-evidence-20261003.md`
-(local checks and release crash/restart passed; physical login and final cleanup pending).
+(local checks, release crash/restart, physical login, IPC, Stop and cleanup passed; actual tray Open/Quit remain unverified).
 
 1. native per-user background registration (macOS LaunchAgent + Windows per-user startup)
 2. Tauri/tray supervisor spawning `cryptexd` sidecar

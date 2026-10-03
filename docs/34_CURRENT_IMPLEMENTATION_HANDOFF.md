@@ -59,10 +59,16 @@ package-smoke passed. Release Desktop `31422` automatically started daemon
 `31562`, rejected a second Desktop launch, and restarted the SIGKILLed daemon
 as `32006` within a 500 ms polling observation; renderer IPC answered protocol 1
 with the replacement PID. One tray icon and duplicate daemon rejection were
-confirmed. Login start is enabled through `Cryptex.plist` for the release
-Desktop with `--cryptex-background`. Physical sign-out/sign-in and the final
-disable/Stop/no-restart/tray Quit checks are pending. Preserve this registration
-and runtime until that step, then disable login start per the test plan.
+confirmed. Login start was enabled through `Cryptex.plist` for the release
+Desktop with `--cryptex-background`. The operator completed real sign-out/sign-in:
+Desktop `32654` started with the background argument, no visible window and one
+tray icon; daemon `32891` answered renderer IPC with protocol 1 after Dock reopen.
+Explicit Stop left no daemon for a measured 10 seconds. Login start was disabled
+through the renderer and `Cryptex.plist` removal verified. Final `Quit clean`
+removed the Desktop/daemon processes and recorded `state=clean_quit`. Actual
+tray Open/Quit could not be exercised; tray exit 0 was not captured. Those tray
+checks remain NOT YET VERIFIED; the test registration is cleaned up and the
+runtime evidence is retained.
 See `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-evidence-20261003.md`.
 Do not count the full Mac lifecycle gate as PASS yet.
 
