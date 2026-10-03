@@ -94,3 +94,22 @@ jobs:
 
       # M0 will add schema, Golden Brain, packaging and failure-path
       # checks as those targets exist.
+
+  ipc-acl:
+    name: IPC cross-account ACL (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+
+      - name: Build IPC candidate
+        run: cargo build --locked -p m0-ipc-spike
+
+      - name: Verify actual different-user access denial
+        run: |
+          powershell.exe -NoProfile -NonInteractive -File tools/m0-ipc-spike/scripts/test-windows-ipc-acl-ci.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

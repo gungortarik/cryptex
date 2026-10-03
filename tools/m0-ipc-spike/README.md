@@ -41,6 +41,23 @@ incompatible protocol and unapproved capability, rejects malformed and
 oversized frames, and reconnects a client after restarting the server. Its
 logs and JSON summary are kept under `%LOCALAPPDATA%\Cryptex-Dev\p0-3`.
 
+### Windows cross-account ACL test in CI
+
+`scripts/test-windows-ipc-acl-ci.ps1` runs only on disposable GitHub-hosted
+Windows runners. It creates a temporary non-admin account, starts a pipe client
+as that account, verifies its actual SID differs from the owner and checks for
+`ERROR_ACCESS_DENIED`. Owner handshakes must succeed before and after that
+attempt. Owned processes and the temporary account are removed before PASS is
+reported; cleanup errors fail the test. Credentials are generated in memory
+and never printed or placed in command arguments.
+
+The separate CI job runs this test in parallel with the main readiness jobs.
+The script refuses local workstation and self-hosted runner execution before
+creating any account. GitHub documents the disposable runner and Windows
+administrator environment in its [hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+This test's execution result is pending; preparation alone does not verify ACL
+denial.
+
 ## macOS run
 
 Run this on the Mac host from the repository root:

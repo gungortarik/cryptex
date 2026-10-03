@@ -270,7 +270,10 @@ borrow lint. The fix passed full local Windows workspace Clippy; combined-source
 CI revalidation is pending.
 See `evidence/m0/windows-release-build-20261002.md`. The user currently has no
 accessible second Windows account, so the cross-account IPC ACL test remains
-pending.
+pending. A disposable GitHub-hosted Windows CI job now prepares a temporary
+non-admin user, verifies its real SID and requires an access-denied pipe
+connection plus successful owner connections before/after. Its runtime result
+is pending; the script refuses local workstation execution.
 
 Before implementing another supervision mechanism or changing architecture:
 
