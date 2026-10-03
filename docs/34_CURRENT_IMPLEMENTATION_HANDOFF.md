@@ -279,15 +279,22 @@ execution. See `evidence/m0/p0-3/windows-cross-account-acl-20261002.md`.
 
 Before implementing another supervision mechanism or changing architecture:
 
-1. repeat a real sign-out/sign-in with the still-registered `wd-1003a` benign
-   marker command; then run `collect-windows-run-dispatch.ps1` with that session
+1. the second real login changed session 3 to 4, but the user's external
+   collector found `wd-1003a` registration absent while Codex-context reads
+   found it present. Do not equate these views or infer deletion/recreation.
+   Prepare fresh `wd-1003b` **from the user's ordinary Windows PowerShell**,
+   then run `collect-windows-run-dispatch.ps1` and require
+   `run_matches_both_views=true` there before another real sign-out/sign-in.
+   Preserve `wd-1003a` and avoid preparing/cleaning startup values from Codex.
+   The collector now records package identity and executable ancestry as well.
+   Run `collect-windows-run-dispatch.ps1` after the next login with that session
    root. This command captures registry views, identity, policy, marker integrity
    and relevant Shell-Core events into a unique retained JSON observation.
    Five synthetic controls passed; collection on the physical Windows host
    recorded matching registry views, unchanged script hash, no Run-disabling
    policy values, Run enumeration and no experiment launch/marker.
-   The first post-login Status read conflicted with a later registry read, so
-   the result is inconclusive. Preserve the existing session evidence. This
+   Registry visibility depends on observer context; package virtualization is
+   a hypothesis, not yet a verified root cause. Preserve session evidence. This
    probe does not establish daemon survival or explain a termination cause.
 2. if Explorer dispatches the marker, repeat the instrumented Cryptex login
    attempt with a fresh runtime root and preserve process-start/shell-launch

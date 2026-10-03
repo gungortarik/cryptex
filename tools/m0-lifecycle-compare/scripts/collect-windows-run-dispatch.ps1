@@ -3,6 +3,8 @@ param([Parameter(Mandatory = $true)][string]$SessionRoot)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'get-windows-process-context.ps1')
+$processContext = Get-WindowsProcessContext
 $sessionPath = [IO.Path]::GetFullPath($SessionRoot)
 $allowedPrefix = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Cryptex-Dev\p0-2')).TrimEnd('\') + '\'
 if (-not $sessionPath.StartsWith($allowedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
@@ -102,6 +104,7 @@ $report = [ordered]@{
     experiment = 'm0-p0-2-run-dispatch-observation'; observed_utc = $observed.ToString('o')
     observer_pid = $PID; observer_session_id = $sessionId; observer_user_sid = $userSid
     observer_process_bits = [IntPtr]::Size * 8
+    process_context = $processContext
     session_root = $sessionPath; prepared_utc = $manifest.prepared_utc
     marker_script_hash_matches = ((Get-FileHash -LiteralPath $manifest.marker_script -Algorithm SHA256).Hash -eq $manifest.marker_script_sha256)
     registry = $registry; policies = $policies; explorers = $explorers
@@ -114,4 +117,9 @@ $observationRoot = Join-Path $sessionPath 'dispatch-observations'
 [void][IO.Directory]::CreateDirectory($observationRoot)
 $outputPath = Join-Path $observationRoot ($observed.ToString('yyyyMMddTHHmmssfffffffZ') + '-' + [Guid]::NewGuid().ToString('N') + '.json')
 [IO.File]::WriteAllText($outputPath, ($report | ConvertTo-Json -Depth 10), [Text.UTF8Encoding]::new($false))
-[ordered]@{ evidence_path = $outputPath; classification = $report.classification; collection_error_count = $errors.Count; marker_present = $report.marker_present } | ConvertTo-Json
+[ordered]@{
+    evidence_path = $outputPath; classification = $report.classification
+    collection_error_count = $errors.Count; marker_present = $report.marker_present
+    run_matches_both_views = (@($registry | Where-Object { -not $_.matches_manifest }).Count -eq 0)
+    packaged_process = $processContext.packaged_process
+} | ConvertTo-Json

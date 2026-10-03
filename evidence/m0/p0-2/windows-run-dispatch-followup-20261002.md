@@ -94,6 +94,48 @@ This is diagnostic preparation. No new physical login was performed and no
 startup root cause is established. Next: real sign-out/sign-in, then the combined
 collector against `wd-1003a`, preserving the currently armed registration.
 
+## Second real login: observer-dependent registry visibility
+
+The user's collected observation at `2026-10-03T01:33:28.6382498Z` is retained
+as `dispatch-observations/20261003T0133286382498Z-35977ce6db784a9b95df2da6986600c0.json`.
+Session changed from 3 to 4 with the same user SID. Explorer PID 28252 was
+created at `2026-10-03T01:33:05.6242650Z`; `quser` confirms the new 9:33 PM EDT
+console login. The user's Windows PowerShell collector recorded:
+
+- Run value absent in both registry views; no marker.
+- Matching script hash, no collection errors, no inspected Run-disabling policies.
+- New Shell-Core Run enumeration, but no experiment launch event.
+
+A subsequent read-only Codex-hosted query at `2026-10-03T01:34:02.0820868Z`
+found the Run value present; explicit HKCU and HKEY_USERS/current-SID reads
+both found it. No repository script changed registration between these reads.
+Another Codex-hosted collector at `2026-10-03T01:36:54.2103218Z` recorded both
+registry views matching, no marker, and no collection errors.
+
+**This establishes observer-dependent registry visibility; it does not prove
+registry deletion/recreation, dispatch skipping, or a daemon termination cause.**
+The user's external absence and the Codex-context presence must not be treated
+as equivalent Explorer-visible startup registration evidence.
+
+The Codex process ancestry leads to the packaged desktop app
+`OpenAI.Codex_26.930.3748.0_x64__2p2nqsd0c76g0`. The installed manifest includes
+both legacy virtualization-disabled properties and newer exclusions (registry:
+Chrome NativeMessagingHosts). Microsoft documents that newer exclusions take
+precedence on Windows 11 and that private HKCU writes may be visible only in an
+app context: [flexible virtualization](https://learn.microsoft.com/en-us/windows/msix/desktop/flexible-virtualization).
+This is a plausible explanation, not confirmed attribution: the child
+PowerShell's `GetCurrentPackageFullName` returned no package identity.
+
+The collector now records process package identity and executable ancestry,
+and exposes `run_matches_both_views` in its short output. Its five regression
+controls still pass. No application manifest, Windows policy or startup value
+was modified during this investigation.
+
+Next: from the user's ordinary Windows PowerShell, prepare a fresh `wd-1003b`
+marker experiment and collect its pre-login snapshot. Require matching
+registration in that external console before another sign-out/sign-in. Retain
+`wd-1003a`; do not clean it up or re-arm it from the Codex context.
+
 **Final classification: INCONCLUSIVE — marker dispatch not observed; registry
 observation inconsistent.** Shell-Core confirms that the Run key was enumerated
 but does not expose its value list. No test-command launch event or process

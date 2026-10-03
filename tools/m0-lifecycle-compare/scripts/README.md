@@ -49,6 +49,15 @@ application launch events are excluded. Collection errors are recorded explicitl
 Marker presence still requires correlation with the real login and timestamps.
 The collector neither registers startup nor launches the marker/daemon.
 
+The second real login showed different registry visibility between the user's
+ordinary PowerShell and Codex-hosted commands. The collector now records package
+identity and process ancestry, and prints `run_matches_both_views`. Prepare the
+next fresh `wd-1003b` experiment in the user's ordinary PowerShell; collect its
+pre-login state there and require matching registration before signing out.
+Do not treat Codex-context visibility as proof that Explorer sees the same value.
+Preserve `wd-1003a`; package virtualization is being investigated, not established
+as a root cause.
+
 Synthetic controls (no startup registration changes):
 
 ```powershell
