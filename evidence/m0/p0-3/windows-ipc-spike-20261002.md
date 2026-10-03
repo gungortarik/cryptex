@@ -61,8 +61,8 @@ The client was then hardened to verify that the response protocol version and
 request ID match its request, and that an accepted response names
 `health.pong`. The new regression test passed. The Windows process-level checks
 passed again, with reconnect reaching PID `34032` (run 2026-10-03 00:27 UTC),
-and Apple-target compilation passed again. Mac runtime execution remains
-pending.
+and Apple-target compilation passed again. The Mac physical run is recorded
+below; Windows second-account ACL denial remains open.
 
 ## Scope
 
@@ -108,3 +108,18 @@ Verified on macOS:
 The macOS run is candidate-spike evidence only. It does not wire the transport
 into `cryptexd` or Desktop, prove second-account denial on Windows, or accept
 ADR-0007.
+
+## Windows revalidation after Mac commit — 2026-10-03 00:40 UTC
+
+After merging the Mac-side test-order fix, Windows verification passed again:
+
+- formatting check passed
+- all 6 spike unit tests passed
+- Windows build passed
+- Windows process-level roles, denials, malformed/oversized frames and restart
+  reconnect passed; reconnect reached server PID `13548`
+- Apple target check compiled successfully
+
+The process-level result remains Windows-only candidate evidence. Mac runtime
+pass evidence is recorded above; different-account Windows ACL denial remains
+open.

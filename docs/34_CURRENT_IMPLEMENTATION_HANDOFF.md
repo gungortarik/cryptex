@@ -272,22 +272,23 @@ Before implementing another supervision mechanism or changing architecture:
    attempt with a fresh runtime root and preserve process-start/shell-launch
    evidence. Do not infer a termination cause if no observer attaches. See
    `evidence/m0/p0-2/windows-instrumented-login-result-20261002.md`.
-3. finish P0-3 validation on macOS by running the exact commands in
-   `tools/m0-ipc-spike/README.md` and prove denial from a second Windows
-   account; then compare the transport candidates and record ADR-0007 details
-   before production daemon APIs or Desktop reconnect claims.
-4. perform/record the macOS login/reboot startup proof on the Mac host
+3. prove Windows second-account denial for the P0-3 named-pipe ACL, then
+   compare the transport candidates and record ADR-0007 details before
+   production daemon APIs or Desktop reconnect claims. The Mac process-level
+   socket proof is recorded in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
+4. use the existing physically verified macOS LaunchAgent login/reboot proof
+   in `evidence/m0/p0-2/macos-native-supervision-evidence.md`; production
+   registration/package integration remains unverified.
 5. compare the candidates and document evidence before accepting ADR-0012
 
 ## OPEN
 
 - root cause of Windows HKCU Run post-login daemon exit
 - Windows crash-restart parity for a no-elevation/native candidate
-- full Desktop IPC reconnect after daemon restart
-- Windows second-account ACL denial not tested; production Desktop/CLI/MCP
-  integration absent
 - full Desktop IPC reconnect after daemon restart remains open because the
   current Desktop still uses short-lived CLI status observation
+- Windows second-account ACL denial not tested; production Desktop/CLI/MCP
+  integration absent
 - remaining update/rollback acceptance coverage beyond the recorded synthetic Windows harness run
 - final Mode A vs Mode B vs justified hybrid comparison
 - ADR-0012 acceptance
