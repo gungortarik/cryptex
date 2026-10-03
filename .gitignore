@@ -15,6 +15,7 @@ coverage/
 
 # Tauri generated files
 /apps/desktop/src-tauri/gen/
+/apps/desktop/src-tauri/binaries/
 
 # Secrets / local environment
 .env

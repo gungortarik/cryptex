@@ -68,12 +68,44 @@ fn runtime_root_path() -> Result<PathBuf, String> {
 
 #[tauri::command]
 fn p0_2_default_cryptexd() -> Result<String, String> {
-    if let Ok(path) = std::env::var("CRYPTEXD_BIN")
-        && Path::new(&path).exists()
-    {
-        return Ok(path);
+    let override_path = std::env::var_os("CRYPTEXD_BIN").map(PathBuf::from);
+    resolve_cryptexd_binary(
+        override_path,
+        &std::env::current_exe().map_err(|e| e.to_string())?,
+    )
+    .map(|path| path.display().to_string())
+}
+
+fn resolve_cryptexd_binary(
+    override_path: Option<PathBuf>,
+    desktop_executable: &Path,
+) -> Result<PathBuf, String> {
+    if let Some(path) = override_path {
+        if path.is_file() {
+            return Ok(path);
+        }
+        return Err(format!(
+            "CRYPTEXD_BIN points to a missing file: {}",
+            path.display()
+        ));
     }
-    Err("CRYPTEXD_BIN is unset or missing; paste the cryptexd absolute path".into())
+
+    let filename = if cfg!(target_os = "windows") {
+        "cryptexd.exe"
+    } else {
+        "cryptexd"
+    };
+    let sibling = desktop_executable
+        .parent()
+        .ok_or_else(|| "Desktop executable has no parent directory".to_string())?
+        .join(filename);
+    if sibling.is_file() {
+        return Ok(sibling);
+    }
+    Err(format!(
+        "cryptexd sidecar is missing beside Desktop: {}",
+        sibling.display()
+    ))
 }
 
 #[tauri::command]
@@ -657,6 +689,61 @@ fn main() {
                 let _ = (app_handle, event);
             }
         });
+}
+
+#[cfg(test)]
+mod sidecar_resolution_tests {
+    use super::resolve_cryptexd_binary;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_root() -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("cryptex-desktop-path-{stamp}"));
+        fs::create_dir_all(&root).expect("mkdir");
+        root
+    }
+
+    fn sidecar_name() -> &'static str {
+        if cfg!(target_os = "windows") {
+            "cryptexd.exe"
+        } else {
+            "cryptexd"
+        }
+    }
+
+    #[test]
+    fn packaged_sidecar_is_resolved_next_to_desktop_executable() {
+        let root = unique_root();
+        let desktop = root.join("cryptex-desktop");
+        let sidecar = root.join(sidecar_name());
+        fs::write(&sidecar, b"fixture").expect("sidecar fixture");
+
+        assert_eq!(
+            resolve_cryptexd_binary(None, &desktop).expect("sibling sidecar"),
+            sidecar
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn explicit_sidecar_override_is_validated_and_takes_precedence() {
+        let root = unique_root();
+        let desktop = root.join("desktop");
+        let override_path = root.join("custom-cryptexd");
+        fs::write(&override_path, b"fixture").expect("override fixture");
+        assert_eq!(
+            resolve_cryptexd_binary(Some(override_path.clone()), &desktop)
+                .expect("explicit override"),
+            override_path
+        );
+        assert!(resolve_cryptexd_binary(Some(root.join("missing")), &desktop).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 #[cfg(all(test, target_os = "windows"))]

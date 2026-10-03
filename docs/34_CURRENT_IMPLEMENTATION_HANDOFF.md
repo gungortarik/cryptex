@@ -316,13 +316,22 @@ Desktop. The proposal is recorded at
 **PROPOSED, not accepted**. This Windows implementation slice adds unexpected
 child-exit detection and bounded restart handling to the current Tauri P0-2
 supervisor, plus lock-aware restart behavior to the shared process controller.
-It does not yet bundle the production sidecar, register Desktop at login, or
-provide tray UX.
+A target-matched daemon sidecar is now built into the Tauri package-smoke
+artifact. Signed installers, default production runtime paths, Desktop login
+registration, and tray UX remain open.
 
 Verification on Windows:
 
 - `pnpm --dir apps/desktop build`: PASS.
 - `cargo check -p cryptex-desktop --locked`: PASS.
+- `pnpm --dir apps/desktop test:sidecar-build-script`: PASS (3 target/path
+  tests).
+- `pnpm --dir apps/desktop tauri:package-smoke`: PASS; Tauri's package-flavored
+  release build staged `cryptexd-x86_64-pc-windows-msvc.exe` and produced
+  `target/release/cryptex-desktop.exe`. The sidecar is a synthetic development
+  build, not yet a signed installer.
+- `cargo test -p cryptex-desktop --bin cryptex-desktop --locked
+  sidecar_resolution_tests`: PASS (2 tests).
 - `cargo build -p cryptex-desktop --release --locked`: PASS after the restart-path
   edit.
 - Rust formatting and `git diff --check`: PASS after the restart-path edit.
@@ -335,10 +344,10 @@ Verification on Windows:
 The exact Mac execution request is
 `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-test-plan-20261003.md`.
 Run that focused test on the Mac host, preserve its synthetic runtime, and
-commit/push the evidence plus a handoff update. Then continue the production
-sidecar packaging and per-user Desktop startup adapter on Windows. Keep ADR-0012
-unaccepted until every P0-2 proof, including compatible package update/rollback
-and canonical-data preservation, passes on both platforms.
+commit/push the evidence plus a handoff update. Then continue the per-user
+Desktop startup adapter and tray/quit UX on Windows. Keep ADR-0012 unaccepted
+until every P0-2 proof, including compatible package update/rollback and
+canonical-data preservation, passes on both platforms.
 
 ### Prior continuation record
 
