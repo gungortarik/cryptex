@@ -368,11 +368,34 @@ fn client(id: &str, role: &str, capability: &str, version: u32) -> io::Result<()
         ));
     }
     let response: Response = serde_json::from_slice(&response_line)?;
+    validate_response(&response, &request.request_id)?;
     println!("{}", serde_json::to_string(&response)?);
     if !response.accepted {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
             response.error.unwrap_or_else(|| "request rejected".into()),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_response(response: &Response, request_id: &str) -> io::Result<()> {
+    if response.protocol_version != PROTOCOL_VERSION {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "IPC response protocol version does not match",
+        ));
+    }
+    if response.request_id.as_deref() != Some(request_id) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "IPC response request ID does not match",
+        ));
+    }
+    if response.accepted && response.operation.as_deref() != Some("health.pong") {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "IPC response operation does not match",
         ));
     }
     Ok(())
@@ -434,6 +457,24 @@ mod tests {
             authorize(unsupported).error,
             Some("unsupported_operation".into())
         );
+    }
+
+    #[test]
+    fn client_rejects_response_for_another_protocol_or_request() {
+        let response = Response {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: Some("expected-id".into()),
+            accepted: true,
+            error: None,
+            operation: Some("health.pong".into()),
+            daemon_pid: 1,
+        };
+        assert!(validate_response(&response, "expected-id").is_ok());
+        assert!(validate_response(&response, "other-id").is_err());
+
+        let mut wrong_version = response;
+        wrong_version.protocol_version += 1;
+        assert!(validate_response(&wrong_version, "expected-id").is_err());
     }
 
     #[test]

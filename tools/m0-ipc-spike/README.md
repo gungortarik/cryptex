@@ -62,5 +62,6 @@ evidence only; it does not accept ADR-0007 or prove application integration.
 
 The proof accepts only `health.ping` with the `status.read` capability for the
 three named roles. Requests are one UTF-8 JSON object per LF-terminated frame,
-with a 64 KiB maximum. This narrow read-only protocol does not grant memory
-write, purge, recovery, or arbitrary tool capabilities.
+with a 64 KiB maximum. The client verifies the response protocol version,
+request ID, and accepted operation before trusting it. This narrow read-only
+protocol does not grant memory write, purge, recovery, or arbitrary tool capabilities.

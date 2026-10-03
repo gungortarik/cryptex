@@ -60,6 +60,13 @@ A physical macOS run is now prepared at
 startup log under `~/Library/Application Support/Cryptex-Dev/p0-3`. The Mac
 result is pending; cross-target compilation above is not a substitute.
 
+The client was then hardened to verify that the response protocol version and
+request ID match its request, and that an accepted response names
+`health.pong`. The new regression test passed. The Windows process-level checks
+passed again, with reconnect reaching PID `34032` (run 2026-10-03 00:27 UTC),
+and Apple-target compilation passed again. Mac runtime execution remains
+pending.
+
 ## Scope
 
 `m0-ipc-spike` is a separate tool. It does not alter `cryptexd`, Desktop, the
