@@ -493,6 +493,8 @@ mod tests {
         let id = format!("test-{}-{nonce:x}", process::id());
         validate_id(&id).expect("generated ID is valid");
 
+        let listener = create_listener(&id).expect("listener creation succeeds");
+
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
@@ -502,8 +504,6 @@ mod tests {
             assert_eq!(metadata.uid(), unsafe { libc::getuid() });
             assert_eq!(metadata.mode() & 0o077, 0);
         }
-
-        let listener = create_listener(&id).expect("listener creation succeeds");
         let server = thread::spawn(move || {
             let connection = listener
                 .incoming()
