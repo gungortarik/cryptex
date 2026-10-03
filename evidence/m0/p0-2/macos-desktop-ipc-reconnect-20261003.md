@@ -1,10 +1,14 @@
 # macOS Desktop IPC reconnect proof
 
-**Date:** 2026-10-03 UTC  
-**Host:** macOS 27.0.1 / aarch64  
-**Branch:** `m0/p0-2-cursor`  
-**Source commit:** `70b85ad64b88ed57920be1059cd07fadaa31fee7`  
-**Experiment:** `macos-ipc-e2e-20261003T230000Z`  
+**Date:** 2026-10-03 UTC
+
+**Host:** macOS 27.0.1 / aarch64
+
+**Branch:** `m0/p0-2-cursor`
+
+**Source commit:** `70b85ad64b88ed57920be1059cd07fadaa31fee7`
+
+**Experiment:** `macos-ipc-e2e-20261003T230000Z`
 **Classification:** AUTOMATED physical macOS evidence
 
 ## Result
@@ -42,4 +46,3 @@ Rust client reconnect on macOS across a supervised daemon restart. It does not
 verify a visible Tauri UI button invoking the command, literal traffic-light
 interaction, production packaging, or ADR-0012 acceptance. Those remain
 separate gates.
-
