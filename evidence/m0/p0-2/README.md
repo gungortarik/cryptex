@@ -90,6 +90,7 @@ Comparison harness added:
 
 See:
 
+- `macos-tray-input-diagnostic-plan-20261003.md` (pending focused physical-input diagnosis after `e26bc0b`; tray Open/Quit remain unverified)
 - `macos-foundation-slice.md`
 - `macos-supervision-comparison-protocol.md`
 - `macos-native-supervision-evidence.md`

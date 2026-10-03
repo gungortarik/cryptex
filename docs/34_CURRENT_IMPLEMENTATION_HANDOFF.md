@@ -421,8 +421,13 @@ remain unverified because the menu was not exposed by available UI controls;
 the test registration and processes were cleaned up. Do not repeat the passed
 steps merely to fix the document state.
 
-Next, verify both tray actions on the Mac while the release Desktop is running
-and retain evidence for each action, including tray Quit exit code 0. On
+Next, follow
+`evidence/m0/p0-2/macos-tray-input-diagnostic-plan-20261003.md`: identify the
+Cryptex icon by a before/after launch comparison and use physical operator
+input to distinguish an input-delivery limitation from an application defect.
+The pinned native implementation supports right-click menus and retains the
+tray object; this source inspection is not a physical pass. Retain evidence
+for both menu actions, including tray Quit exit code 0. On
 Windows, finish the remaining release login-start and actual tray/menu checks
 once a current package can be built on a Code-Integrity-approved host. The
 existing release run verified daemon replacement and automated close/show,
