@@ -558,16 +558,23 @@ Evidence: `evidence/m0/p0-2/macos-package-transaction-candidate-evidence-2026100
 No code repair or security-check weakening was made. Temporary fixtures were
 cleaned, including 27 verified leftovers from the failed setup run. Optional
 retained-binary-copy proof was not run; no two retained pairs were established.
-Mac serialized candidate parity is scoped PASS with the explicit non-symlink
-temporary-path prerequisite; the unprefixed default-path command remains failed.
+That initial Mac serialized candidate run was scoped PASS with the explicit
+non-symlink temporary-path prerequisite; its unprefixed command failed.
 After reviewing `12f76ac`, the test fixture allocator now resolves only the OS
 temporary directory before creating owned roots and registers cleanup before
 experiment initialization. The package engine's link/junction rejection is
 unchanged. A new alias regression passes on Windows: 29/29 tests, no skips.
 Evidence: `evidence/m0/p0-2/windows-package-fixture-path-fix-20261003.md`.
-Next Mac verification is the follow-up at the top of the existing candidate
-test plan: run with the original default TMPDIR, no override, and expect 29/29.
-Until that run is recorded, the Mac default-path repair remains unverified.
+Mac follow-up now PASS at `fc31489fc619b9b4b12f93cd350b215efa7f3c7c`:
+the ordinary test command with the host's original `/var/.../T/` TMPDIR,
+without override, passed all 29 tests (zero failed/skipped, exit 0). The alias
+regression and all five actual SIGKILL boundaries passed; POSIX directory
+fsync and fixture inventory checks completed. All six syntax checks and diff
+check passed. Owned temporary roots were absent before and after execution.
+The evidence above appends exact output and both temporary-path forms while
+preserving the prior default-path failure and overridden 28-test PASS.
+The Mac default-path fixture repair is now verified; no external override is
+required. No optional binary staging, source repair or physical test was repeated.
 Next: review native helper/startup integration and failure/data-preservation
 gates before production architecture selection. Publisher trust, actual
 runtime compatibility, concurrency, machine power loss and canonical-data

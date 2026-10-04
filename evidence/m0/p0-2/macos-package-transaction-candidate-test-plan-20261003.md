@@ -2,6 +2,10 @@
 
 ## Follow-up after `12f76ac`: default temporary-path regression
 
+**Follow-up status:** PASS at `fc31489`, 29/29 tests, zero failed/skipped,
+original default TMPDIR with no override; six syntax checks passed and no
+owned fixture roots remained. Exact output is appended to the Mac evidence.
+
 The fixture allocator now resolves the OS temporary directory before allocation;
 engine link/junction rejection is unchanged. On the commit containing
 `windows-package-fixture-path-fix-20261003.md`, rerun the ordinary command below
@@ -18,9 +22,9 @@ evidence and handoff, preserving the prior default-path failure and overridden
 tests or Actions for this fixture-only correction.
 
 The original procedure below describes the 28-test source and is retained as
-historical context. Follow-up Mac default-path verification is pending.
+historical context. Follow-up Mac default-path verification is complete.
 
-**Status:** scoped PASS at `780c047` with canonical process-local `TMPDIR`;
+**Historical status:** scoped PASS at `780c047` with canonical process-local `TMPDIR`;
 default `/var` temporary path fails closed (`UNSAFE_PATH`). See
 `macos-package-transaction-candidate-evidence-20261003.md` for both runs.
 **Scope:** M0 P0-2 test-only filesystem/process-interruption candidate.
