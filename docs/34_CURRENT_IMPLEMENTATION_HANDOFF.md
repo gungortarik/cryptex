@@ -422,6 +422,13 @@ Verification on Windows:
   Windows release package must be built on an approved host/configuration.
 - No GitHub Actions workflow ran.
 
+A later single-job manual Windows package build was dispatched at `0867b9f`:
+`https://github.com/gungortarik/cryptex/actions/runs/37168036553`.
+Readiness/Mac and IPC jobs were skipped. It builds an unsigned development
+NSIS installer and retains Desktop/daemon hashes; it is not signing or physical
+host acceptance. See `evidence/m0/p0-2/windows-ci-package-build-20261003.md`
+for execution status before requesting another run.
+
 The Mac execution request at
 `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-test-plan-20261003.md`
 has been executed. The evidence at

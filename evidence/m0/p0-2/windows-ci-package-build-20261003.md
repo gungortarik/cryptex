@@ -1,4 +1,4 @@
-# Windows package build on CI — pending execution
+# Windows package build on CI — in progress
 
 The local release build is blocked by Windows Code Integrity rejecting the
 generated `serde_repr` proc-macro DLL. See
@@ -19,7 +19,14 @@ the owner's login registration. Timeout is 25 minutes.
 
 Local validation: `actionlint` 1.7.12 and `git diff --check` passed. The
 actionlint binary was obtained from its upstream GitHub release and checked
-against that release's checksum file. Actual job execution remains required.
+against that release's checksum file.
+
+Manual run: https://github.com/gungortarik/cryptex/actions/runs/37168036553
+at source `0867b9f86152ec972419fcd58ffd46aa72005d50`. Only the Windows
+Desktop package job started; readiness and IPC ACL jobs were confirmed skipped.
+Sidecar staging tests passed and the NSIS build started. Build completion,
+release helper tests and artifact upload are still pending; no package PASS
+is claimed yet.
 
 This single scoped build is justified because the required current Windows
 package cannot be produced on the local host. An unsigned CI artifact does
