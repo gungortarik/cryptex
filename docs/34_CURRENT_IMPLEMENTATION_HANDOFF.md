@@ -580,6 +580,19 @@ gates before production architecture selection. Publisher trust, actual
 runtime compatibility, concurrency, machine power loss and canonical-data
 acceptance remain open; ADR-0012 remains PROPOSED. No repeated physical Mac
 lifecycle suite, installed-package change or GitHub workflow ran.
+
+Windows real-health candidate follow-up now PASS: the transaction health callback
+executes the copied daemon and the actual shared Rust Desktop IPC client, matches
+PID/protocol/held lock, then verifies clean exit 0 and lock release. Compatible
+replacement, non-executable daemon rollback and actual protocol mismatch rollback
+passed (3 scenarios); restored baselines also answered IPC. Active endpoint
+preflight refusal was measured. Rust tool tests 10/10, Node adapter tests 4/4,
+format, strict Clippy, local build and syntax checks passed. Evidence:
+`evidence/m0/p0-2/windows-package-real-health-20261003.md`.
+Next Mac task: `evidence/m0/p0-2/macos-package-real-health-test-plan-20261003.md`.
+No repeated 29-test filesystem suite or GUI/lifecycle tests are required. Desktop
+bytes are staged but never executed by this follow-up; installed launcher/startup
+handover and canonical-data acceptance remain open. No Actions needed locally.
 Canonical-data preservation and an operator-context post-exit lock query were
 not established by this baseline. The stock installer force-shutdown and sequential
 Desktop/daemon copy behavior does not prove safe atomic updates. Automatic

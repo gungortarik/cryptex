@@ -2,6 +2,15 @@
 
 ## Headless package transaction candidate
 
+For actual copied-daemon health (without launching Desktop), build the lifecycle
+tool locally and use `run-package-real-health-proof.mjs` with a fresh outside-repo
+`--root`, absolute `--health-helper` and the four baseline/candidate component
+path flags. The helper runs `probe-package-health` through the shared Desktop IPC
+client. Active/ambiguous endpoints are refused. Three scenarios exercise actual
+health, invalid binary rollback and actual protocol mismatch rollback. This is
+still a candidate experiment; installed updater/startup integration is absent.
+See the real-health evidence and Mac plan in `evidence/m0/p0-2/`.
+
 `package-transaction.mjs` is a separate, test-only serialized filesystem candidate.
 It never touches installed Desktop, startup registration or canonical storage.
 Run its 29 focused tests with:

@@ -60,12 +60,20 @@ custom cryptography is introduced. Windows directory fsync is not implemented
 through Node, so power-loss durability is explicitly unverified. POSIX directory
 fsync must pass on Mac; failures are reported, never swallowed.
 
-Current health callbacks are injected fixture outcomes. Retained binary copies
+The original filesystem-only proof uses injected health outcomes. Retained binary copies
 are hashed/staged but not executed. Desktop is not connected to the selection
 record. `.app` resources, code signing, native package layouts, executable locking,
 installed startup references and successor launch remain outside this experiment.
 Synthetic data is not accepted canonical events. No P0-1 corpus or production
 data is used, and no M1/M2 event-store implementation is authorized here.
+
+A separate Windows headless follow-up now connects the transaction callback to
+actual copied daemon startup, the shared Rust Desktop IPC client, PID/held-lock
+matching, clean stop and lock release. Failed executable and declared-versus-real
+protocol mismatch restore the old selection; the experiment explicitly restarts
+and checks the restored daemon. See `windows-package-real-health-20261003.md`.
+This does not integrate installed Desktop/successor launch or change proposal
+status. Mac real-health parity and the remaining native integration gates remain open.
 
 ## Gates before production integration or ADR acceptance
 

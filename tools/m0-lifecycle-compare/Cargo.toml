@@ -11,3 +11,4 @@ path = "src/main.rs"
 
 [dependencies]
 cryptexd = { path = "../../services/cryptexd" }
+serde_json = "=1.0.151"
