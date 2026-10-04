@@ -518,6 +518,19 @@ lifecycle suites for this request. Next, complete the real compatible
 Desktop+daemon package update/rollback and canonical-data checks on both
 platforms. Keep ADR-0012 unaccepted until every required P0-2 proof passes.
 
+Windows native-package candidate preparation now passed locally: retained
+unsigned NSIS `0.0.0` and test-labelled `0.0.1` installers at source `5015ff1`,
+with payload hashes outside Git under
+`%LOCALAPPDATA%\Cryptex-Dev\p0-2\native-package-proof-1003`.
+No version/dependency change was made in the repository and no workflow ran.
+Execution plan: `evidence/m0/p0-2/windows-native-package-replacement-plan-20261003.md`.
+Next operator action is baseline installation from the ordinary Windows session
+into the isolated folder in that plan, followed by installed-path/hash/IPC checks.
+No installer has run yet. The stock installer force-shutdown and sequential
+Desktop/daemon copy behavior does not prove safe atomic updates. Automatic
+rollback and incompatible-pair preflight remain unimplemented; keep these
+distinct from the planned operator-controlled replacement/rollback experiment.
+
 ### Prior continuation record
 
 ### Latest Windows reboot/login result — VERIFIED
