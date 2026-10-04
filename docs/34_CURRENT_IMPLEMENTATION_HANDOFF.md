@@ -530,8 +530,11 @@ exit 0 and no remaining processes. Evidence:
 `evidence/m0/p0-2/windows-native-package-baseline-20261003.md`.
 The installed Desktop differs from the retained loose binary only in Tauri's
 three-byte `UNK` to `NSS` bundle marker; the exact comparison reproduces its hash.
-Next operator action is candidate `0.0.1` installation into the same isolated
-directory, followed by payload/version/IPC checks and clean operator rollback.
+Candidate `0.0.1` replacement now passed installed version/payload/status/IPC
+checks: Desktop `9416`, daemon `28480`, protocol 1, clean exit 0 and no remaining
+processes. Evidence: `evidence/m0/p0-2/windows-native-package-update-20261003.md`.
+Next operator action is baseline `0.0.0` reinstallation with **Do not uninstall**
+into the same isolated directory, followed by rollback payload/version/IPC checks.
 Canonical-data preservation and an operator-context post-exit lock query were
 not established by this baseline. The stock installer force-shutdown and sequential
 Desktop/daemon copy behavior does not prove safe atomic updates. Automatic
