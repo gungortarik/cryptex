@@ -1,6 +1,8 @@
 # Mac task — focused package filesystem candidate parity
 
-**Status:** PENDING MAC EXECUTION
+**Status:** scoped PASS at `780c047` with canonical process-local `TMPDIR`;
+default `/var` temporary path fails closed (`UNSAFE_PATH`). See
+`macos-package-transaction-candidate-evidence-20261003.md` for both runs.
 **Scope:** M0 P0-2 test-only filesystem/process-interruption candidate.
 
 Mac Codex: read current handoff, accepted update spec and

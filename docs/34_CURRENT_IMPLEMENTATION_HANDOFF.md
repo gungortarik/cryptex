@@ -544,10 +544,27 @@ actual updater-subprocess kill boundaries, plus 8 retained-binary-copy scenarios
 It is not integrated with installed Desktop and its health is injected fixture
 behavior. Proposal: `docs/adr/ADR-0012-update-orchestration-candidate.md`.
 Windows evidence: `evidence/m0/p0-2/windows-package-transaction-candidate-20261003.md`.
-Next: Mac executes `evidence/m0/p0-2/macos-package-transaction-candidate-test-plan-20261003.md`,
-then review native helper/startup integration and failure/data-preservation gates
-before production architecture selection. No repeated physical Mac lifecycle
-suite or GitHub workflow is needed for this candidate.
+Mac executed `evidence/m0/p0-2/macos-package-transaction-candidate-test-plan-20261003.md`
+at `780c0473bdb85b52abc994661f10671cc85e4992`, macOS 27.0.1 arm64,
+Node 24.19.0. The default `/var` temporary path failed closed with
+`UNSAFE_PATH` (1 passed, 27 failed): `/var` is a symlink and initialization
+rejects symlink ancestors. With process-local TMPDIR set to the verified
+`/private/var/.../T` real path, all 28 tests passed, none skipped, including
+five actual owned-worker SIGKILL boundaries, pre-commit baseline recovery,
+post-commit candidate selection, idempotence, corrupt-baseline refusal and
+unchanged synthetic fixture inventories. POSIX directory fsync succeeded;
+this is not power-loss proof. All four syntax checks and diff checks passed.
+Evidence: `evidence/m0/p0-2/macos-package-transaction-candidate-evidence-20261003.md`.
+No code repair or security-check weakening was made. Temporary fixtures were
+cleaned, including 27 verified leftovers from the failed setup run. Optional
+retained-binary-copy proof was not run; no two retained pairs were established.
+Mac serialized candidate parity is scoped PASS with the explicit non-symlink
+temporary-path prerequisite; the unprefixed default-path command remains failed.
+Next: review native helper/startup integration and failure/data-preservation
+gates before production architecture selection. Publisher trust, actual
+runtime compatibility, concurrency, machine power loss and canonical-data
+acceptance remain open; ADR-0012 remains PROPOSED. No repeated physical Mac
+lifecycle suite, installed-package change or GitHub workflow ran.
 Canonical-data preservation and an operator-context post-exit lock query were
 not established by this baseline. The stock installer force-shutdown and sequential
 Desktop/daemon copy behavior does not prove safe atomic updates. Automatic
