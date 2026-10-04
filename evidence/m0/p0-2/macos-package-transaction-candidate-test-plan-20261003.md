@@ -1,5 +1,25 @@
 # Mac task — focused package filesystem candidate parity
 
+## Follow-up after `12f76ac`: default temporary-path regression
+
+The fixture allocator now resolves the OS temporary directory before allocation;
+engine link/junction rejection is unchanged. On the commit containing
+`windows-package-fixture-path-fix-20261003.md`, rerun the ordinary command below
+with the host's original default TMPDIR, **without** the real-path override.
+Record both `os.tmpdir()` and its real path, exact source SHA and test output.
+Expect **29 passed, zero failed/skipped**, including the new temporary-alias
+regression and the five actual SIGKILL boundaries.
+
+Also syntax-check `package-transaction-fixtures.mjs` and
+`package-transaction.test.mjs` along with the four files in the original plan.
+Confirm no owned fixture roots were left by this run. Add a follow-up to the Mac
+evidence and handoff, preserving the prior default-path failure and overridden
+28-test PASS. Commit/push. Do not repeat optional binary staging, GUI/lifecycle
+tests or Actions for this fixture-only correction.
+
+The original procedure below describes the 28-test source and is retained as
+historical context. Follow-up Mac default-path verification is pending.
+
 **Status:** scoped PASS at `780c047` with canonical process-local `TMPDIR`;
 default `/var` temporary path fails closed (`UNSAFE_PATH`). See
 `macos-package-transaction-candidate-evidence-20261003.md` for both runs.

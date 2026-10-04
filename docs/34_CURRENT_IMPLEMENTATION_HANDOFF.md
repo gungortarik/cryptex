@@ -560,6 +560,14 @@ cleaned, including 27 verified leftovers from the failed setup run. Optional
 retained-binary-copy proof was not run; no two retained pairs were established.
 Mac serialized candidate parity is scoped PASS with the explicit non-symlink
 temporary-path prerequisite; the unprefixed default-path command remains failed.
+After reviewing `12f76ac`, the test fixture allocator now resolves only the OS
+temporary directory before creating owned roots and registers cleanup before
+experiment initialization. The package engine's link/junction rejection is
+unchanged. A new alias regression passes on Windows: 29/29 tests, no skips.
+Evidence: `evidence/m0/p0-2/windows-package-fixture-path-fix-20261003.md`.
+Next Mac verification is the follow-up at the top of the existing candidate
+test plan: run with the original default TMPDIR, no override, and expect 29/29.
+Until that run is recorded, the Mac default-path repair remains unverified.
 Next: review native helper/startup integration and failure/data-preservation
 gates before production architecture selection. Publisher trust, actual
 runtime compatibility, concurrency, machine power loss and canonical-data

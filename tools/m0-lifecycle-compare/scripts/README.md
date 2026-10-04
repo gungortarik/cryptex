@@ -4,7 +4,7 @@
 
 `package-transaction.mjs` is a separate, test-only serialized filesystem candidate.
 It never touches installed Desktop, startup registration or canonical storage.
-Run its 28 focused tests with:
+Run its 29 focused tests with:
 
 ```sh
 node --test tools/m0-lifecycle-compare/scripts/package-transaction.test.mjs

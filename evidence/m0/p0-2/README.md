@@ -91,6 +91,8 @@ Comparison harness added:
 
 See:
 
+- `windows-package-fixture-path-fix-20261003.md` (29/29 Windows tests PASS; real temporary-root allocation and early cleanup; Mac default TMPDIR repeat pending, engine guards unchanged)
+
 - `windows-native-package-replacement-plan-20261003.md` (local unsigned baseline/candidate installer builds PASS; ordinary-session install/replace/operator rollback pending, automatic update safety open)
 - `windows-native-package-baseline-20261003.md` (installed 0.0.0 identity/status/IPC and clean exit PASS; NSIS bundle marker hash difference explained; candidate replacement/rollback pending)
 - `windows-native-package-update-20261003.md` (real 0.0.0 to 0.0.1 installed replacement, payload/status/IPC and clean exit PASS; operator rollback pending, atomic update acceptance open)

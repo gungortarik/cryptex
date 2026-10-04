@@ -1,31 +1,35 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describePackage, digest, initialize, PackageError, recover, selected, transition } from './package-transaction.mjs';
 import { killTransactionAt } from './package-transaction-crash.mjs';
+import { createFixtureRoot } from './package-transaction-fixtures.mjs';
 
 function setup(t) {
-  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'cryptex-m0-pair-'));
+  const parent = createFixtureRoot();
+  const fixture = path.join(parent, 'data-fixture');
+  let before = null;
+  // Register immediately: initialization failures must not leave owned roots.
+  t.after(() => {
+    try {
+      if (before !== null) assert.deepEqual(inventory(fixture), before, 'untouched fixture inventory and bytes');
+    } finally { fs.rmSync(parent, { recursive: true, force: true }); }
+  });
   const sources = {};
   for (const component of ['desktop', 'daemon']) {
     sources[component] = path.join(parent, `${component}.fixture`);
     fs.writeFileSync(sources[component], `synthetic ${component} payload\n`);
   }
-  const fixture = path.join(parent, 'data-fixture'); fs.mkdirSync(fixture);
+  fs.mkdirSync(fixture);
   fs.writeFileSync(path.join(fixture, 'sealed-events.fixture'), 'synthetic immutable bytes\n');
   fs.writeFileSync(path.join(fixture, 'blob.fixture'), Buffer.from([0, 255, 10, 42]));
-  const before = inventory(fixture);
+  before = inventory(fixture);
   const root = path.join(parent, 'transaction');
   const baseline = describePackage('baseline', sources.desktop, sources.daemon);
   const candidate = describePackage('candidate', sources.desktop, sources.daemon);
   initialize(root, baseline, sources);
-  t.after(() => {
-    try { assert.deepEqual(inventory(fixture), before, 'untouched fixture inventory and bytes'); }
-    finally { fs.rmSync(parent, { recursive: true, force: true }); }
-  });
   return { parent, root, sources, baseline, candidate };
 }
 function inventory(root) {
@@ -33,6 +37,19 @@ function inventory(root) {
 }
 function code(expected) { return error => error instanceof PackageError && error.code === expected; }
 const healthy = { health: async () => true };
+
+test('temporary directory alias resolved before allocation; engine still rejects alias', t => {
+  const { parent, sources, baseline } = setup(t);
+  const alias = path.join(parent, 'temporary-alias');
+  fs.symlinkSync(parent, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const allocated = createFixtureRoot(alias);
+  assert.equal(path.dirname(allocated), fs.realpathSync(parent));
+  assert.equal(allocated.startsWith(`${alias}${path.sep}`), false);
+  const experiment = path.join(allocated, 'experiment');
+  assert.equal(initialize(experiment, baseline, sources).active, 'baseline');
+  const aliasedExperiment = path.join(alias, path.basename(allocated), 'experiment');
+  assert.throws(() => selected(aliasedExperiment), code('UNSAFE_PATH'));
+});
 
 test('compatible pair commit retains complete previous pair', async t => {
   const { root, sources, candidate } = setup(t);
