@@ -71,7 +71,8 @@ The detailed comparison is in
    verification remains open.
 3. Add native tray/menu actions for Open and Quit and verify close/hide behavior.
    Both Mac tray actions are physically verified, including Quit exit 0 with
-   an active daemon. Windows physical tray verification remains open.
+   an active daemon. Windows physical tray Open and active-daemon Quit exit 0
+   also passed in `windows-physical-release-tray-20261003.md`.
 4. Register per-user login startup for Desktop with least privilege and provide
    a reversible user-facing setting or documented control. The Mac setting was
    physically enabled, exercised through real sign-out/sign-in, and removed;

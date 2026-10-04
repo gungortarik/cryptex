@@ -427,7 +427,31 @@ A later single-job manual Windows package build was dispatched at `0867b9f`:
 Readiness/Mac and IPC jobs were skipped. It builds an unsigned development
 NSIS installer and retains Desktop/daemon hashes; it is not signing or physical
 host acceptance. See `evidence/m0/p0-2/windows-ci-package-build-20261003.md`
-for execution status before requesting another run.
+for execution status before requesting another run. That run completed:
+NSIS build, 3 staging tests and 8 release helper tests passed. Artifacts were
+downloaded outside Git and their hashes verified. The loose CI Desktop/daemon
+ran on the Windows host; installer execution and signing remain unverified.
+
+Windows physical tray Open and active-daemon Quit now PASS in
+`evidence/m0/p0-2/windows-physical-release-tray-20261003.md`: Desktop `8140`,
+daemon `22828`, native title-bar close hid the window, physical Open preserved
+the daemon PID, and physical Quit exited 0 with both processes gone and lock
+released. Actual Desktop login startup remains open. A login toggle attempt
+from the CI artifact showed a direct-HKCU versus Windows startup-list mismatch;
+it was disabled again and the CI processes cleaned up. Launch from the
+operator's ordinary session before arming the real login test. Do not dispatch
+another workflow for these local checks.
+
+The ordinary-session follow-up is now armed: Explorer launched Desktop `12084`
+and daemon `8052`; the renderer enabled startup and Windows' startup list
+verified the exact CI-artifact Desktop command with `--cryptex-background`.
+Preparation is outside Git at
+`%LOCALAPPDATA%\Cryptex-Dev\p0-2\windows-desktop-login-1003`.
+**Next required operator action: real sign-out/sign-in.** Inspect hidden launch,
+new process times/PIDs and held lock before tray Open; then check renderer IPC,
+disable product login registration and cleanly Quit. This login proof is
+PENDING, not PASS. The product startup value intentionally remains enabled
+for this experiment; do not confuse it with the retained legacy dispatch probe.
 
 The Mac execution request at
 `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-test-plan-20261003.md`
@@ -443,10 +467,9 @@ cleaned up. Do not repeat the passed steps merely to fix the document state.
 The focused diagnostic procedure at
 `evidence/m0/p0-2/macos-tray-input-diagnostic-plan-20261003.md` is complete;
 its physical result closes the Mac tray gate. On Windows, finish the remaining
-release login-start and actual tray/menu checks
-once a current package can be built on a Code-Integrity-approved host. The
-existing release run verified daemon replacement and automated close/show,
-but not those user-driven actions. Then complete the real compatible
+release login-start check using the retained, hash-verified CI artifact;
+physical tray/menu actions are now verified. The existing release run also
+verified daemon replacement. Then complete the real compatible
 Desktop+daemon package update/rollback and canonical-data checks on both
 platforms. Keep ADR-0012 unaccepted until every required P0-2 proof passes.
 
