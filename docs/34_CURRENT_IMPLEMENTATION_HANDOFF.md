@@ -589,10 +589,25 @@ passed (3 scenarios); restored baselines also answered IPC. Active endpoint
 preflight refusal was measured. Rust tool tests 10/10, Node adapter tests 4/4,
 format, strict Clippy, local build and syntax checks passed. Evidence:
 `evidence/m0/p0-2/windows-package-real-health-20261003.md`.
-Next Mac task: `evidence/m0/p0-2/macos-package-real-health-test-plan-20261003.md`.
-No repeated 29-test filesystem suite or GUI/lifecycle tests are required. Desktop
-bytes are staged but never executed by this follow-up; installed launcher/startup
-handover and canonical-data acceptance remain open. No Actions needed locally.
+Mac real-health plan `evidence/m0/p0-2/macos-package-real-health-test-plan-20261003.md`
+now PASS at source `1e07ca4` on macOS 27.0.1 arm64 with Node 24.19.0. Format,
+Rust tests 10/10, strict Clippy, local helper build, Node adapter tests 4/4,
+both syntax checks and diff check passed. The retained arm64 release Desktop /
+daemon pair from `c77479f` was supplied as identical baseline and candidate
+inputs (Desktop SHA-256 `0bfd52594a4a30bfcd6e37678835bb7d833cfe6be867f44996e45e18de36f1a5`,
+daemon SHA-256 `bfbfa26c6df1934312ba0d483f5351ac759c8f3f96458f8753d5b4a70157feb4`).
+Three real health scenarios passed: compatible pair, non-executable candidate
+rollback and actual protocol 2/2 declaration against protocol 1 daemon rejection
+and baseline restoration. Four healthy IPC observations confirmed Desktop role,
+matching daemon PID, held lock and protocol 1; candidate/recovery exits were 0
+with locks released. The invalid daemon error was `DAEMON_START_FAILED`, child
+exit `-13`. Synthetic fixture bytes were unchanged. Full report remains outside
+Git at `~/Library/Application Support/Cryptex-Dev/p0-2/mac-package-real-health-20261003-b15a85f/real-health-report.json`.
+Detailed evidence: `evidence/m0/p0-2/macos-package-real-health-evidence-20261003.md`.
+Desktop bytes were staged only, not run. This is not a version-changing Mac
+upgrade or production canonical-data proof; installed updater handover, signing,
+concurrency, power loss and canonical-data gates remain open. No GUI/lifecycle
+repeat, Desktop rebuild or Actions ran; ADR-0012 remains PROPOSED.
 Canonical-data preservation and an operator-context post-exit lock query were
 not established by this baseline. The stock installer force-shutdown and sequential
 Desktop/daemon copy behavior does not prove safe atomic updates. Automatic

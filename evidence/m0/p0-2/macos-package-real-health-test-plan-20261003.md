@@ -1,6 +1,9 @@
 # Mac task — actual daemon health gate for the package candidate
 
-**Status:** PENDING
+**Status:** scoped PASS at `1e07ca406db4bfb2f39029e8fda82e5d936d4dc8`;
+3/3 headless real-health scenarios and all listed checks passed. Evidence:
+`macos-package-real-health-evidence-20261003.md`. Production acceptance limits
+below remain open.
 **Scope:** M0 P0-2 headless candidate health integration, not installed updater.
 
 Mac Codex: read the current handoff and candidate proposal, then record the exact

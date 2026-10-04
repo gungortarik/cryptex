@@ -92,7 +92,8 @@ Comparison harness added:
 See:
 
 - `windows-package-real-health-20261003.md` (3 actual daemon/shared Desktop IPC scenarios PASS, Rust 10/10 and Node 4/4; installed Desktop updater integration remains open)
-- `macos-package-real-health-test-plan-20261003.md` (PENDING: focused native health helper and 3 headless real-daemon scenarios; no repeated filesystem/GUI suites or Actions)
+- `macos-package-real-health-test-plan-20261003.md` (executed; no repeated filesystem/GUI suites or Actions)
+- `macos-package-real-health-evidence-20261003.md` (3/3 real daemon IPC health/recovery scenarios PASS using identical retained Mac release pair; full report retained outside Git; installed updater/canonical-data gates remain open)
 
 - `windows-package-fixture-path-fix-20261003.md` (29/29 Windows tests PASS; real temporary-root allocation and early cleanup; Mac default TMPDIR repeat pending, engine guards unchanged)
 
