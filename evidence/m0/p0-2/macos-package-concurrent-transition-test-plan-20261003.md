@@ -1,5 +1,8 @@
 # Mac task — package-candidate concurrent transition parity
 
+**Result:** scoped PASS at `ad379892ebd26f74544d37aa56e2552cc71daeee`.
+See `macos-package-concurrent-transition-evidence-20261003.md`.
+
 **Scope:** focused P0-2 regression check; no production updater integration.  
 **Workflow:** do not run GitHub Actions.  
 **UI:** no GUI, installer, login, or window interaction.

@@ -96,6 +96,7 @@ See:
 - `macos-package-real-health-evidence-20261003.md` (3/3 real daemon IPC health/recovery scenarios PASS using identical retained Mac release pair; full report retained outside Git; installed updater/canonical-data gates remain open)
 - `windows-package-concurrent-transition-evidence-20261003.md` (31/31 filesystem candidate tests PASS; two deterministic stale/concurrent-selection races fail closed; Mac parity requested, no native process lock or production integration claimed)
 - `macos-package-concurrent-transition-test-plan-20261003.md` (focused cross-platform parity request for the two new transaction race regressions; no GUI or workflow)
+- `macos-package-concurrent-transition-evidence-20261003.md` (reported Mac PASS at `ad37989`: 31/31 tests, two controlled races and five SIGKILL boundaries; native locking and recovery-I/O gates remain open)
 
 - `windows-package-fixture-path-fix-20261003.md` (29/29 Windows tests PASS; real temporary-root allocation and early cleanup; Mac default TMPDIR repeat pending, engine guards unchanged)
 

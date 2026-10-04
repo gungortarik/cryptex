@@ -58,7 +58,8 @@ resistance or immutable OS permissions for slots. Two deterministic Windows
 regressions now cover stale staging and the race between selection validation
 and pending-intent creation: the stale updater fails with a typed error and
 preserves the winner's selection. This is not stress testing or proof of native
-cross-platform serialization; Mac parity is pending. SHA-256 is from Node's
+cross-platform serialization. Mac parity of these two controlled interleavings
+passed at `ad37989` (31/31 tests); see the Mac concurrency evidence. SHA-256 is from Node's
 standard crypto library; no custom cryptography is introduced. Windows directory
 fsync is not implemented through Node, so power-loss durability is explicitly
 unverified. POSIX directory fsync must pass on Mac; failures are reported, never

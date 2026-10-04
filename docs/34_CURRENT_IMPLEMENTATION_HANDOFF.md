@@ -732,7 +732,7 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
-### Latest package-candidate concurrency slice — Windows PASS, Mac parity pending
+### Latest package-candidate concurrency slice — Windows and Mac scoped PASS
 
 Review of the serialized filesystem candidate found a lost-selection race when
 one updater paused after staging and another committed. The candidate now
@@ -748,10 +748,16 @@ tests plus `git diff --check` passed. Evidence:
 `evidence/m0/p0-2/windows-package-concurrent-transition-evidence-20261003.md`.
 Exact Mac parity request:
 `evidence/m0/p0-2/macos-package-concurrent-transition-test-plan-20261003.md`.
+The Mac operator/Codex reported parity PASS at
+`ad379892ebd26f74544d37aa56e2552cc71daeee`, macOS 27.0.1 arm64,
+Node v24.19.0: 31/31 tests, zero failures/skips, both controlled races and all
+five SIGKILL boundaries passed. Syntax/diff checks passed, temporary roots were
+cleaned, and the Mac branch was clean/synchronized. Mac changed no files.
+Evidence: `evidence/m0/p0-2/macos-package-concurrent-transition-evidence-20261003.md`.
 
 This remains a test-only serialized selection candidate. It has no OS-level
 process lock, publisher signature validation, Desktop executable handover, or
-installed updater integration. Mac parity, recovery-I/O failures, stress
+installed updater integration. Recovery-I/O failures, stress
 concurrency, native executable locks, canonical-data acceptance, and the
 explicit ADR-0012 orchestration decision remain open. Do not accept ADR-0012;
 do not run Actions for this slice.
