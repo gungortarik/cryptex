@@ -1,6 +1,6 @@
 # macOS Tauri-owned daemon restart test — 2026-10-03
 
-**Status:** PARTIAL / NOT YET VERIFIED overall; focused tray follow-up at `924cc13` did not expose the menu; cleanup exited 0
+**Status:** PASS for the combined Mac release lifecycle test slices; physical tray Open/Quit verified at `dfbaded`
 
 See `macos-tauri-owned-supervisor-restart-evidence-20261003.md` for measured
 results and continuation.
@@ -90,7 +90,7 @@ If any check fails, preserve the runtime root and logs, report exact output, and
 do not classify the gate as PASS. Commit the evidence and handoff update on the
 Mac Codex branch; do not modify application code during this evidence run.
 
-## Recorded result for this run
+## Historical result before physical tray diagnosis
 
 The local checks, second-instance handling, release daemon startup and restart,
 duplicate-daemon rejection, real sign-out/sign-in, hidden login launch, Dock
@@ -103,7 +103,7 @@ the available UI controls. Tray **Open Cryptex** and **Quit Cryptex**, including
 Quit exit code 0, remain **NOT YET VERIFIED**. The overall test remains partial;
 see the evidence file for observations and cleanup details.
 
-## Remaining tray-only follow-up
+## Tray-only follow-up procedure (completed by physical diagnosis)
 
 The previous run removed the login-start registration and shut down all test
 processes. Keep login start disabled and run this focused check from the Mac

@@ -1,4 +1,9 @@
-# macOS tray input diagnosis — pending
+# macOS tray input diagnosis — PASS
+
+The operator's physical left/right input and menu selection verified tray
+restore, Open and Quit at checkout `dfbaded`; daemon PID `41851` was preserved
+through restore/Open, and active-daemon tray Quit exited 0. See the dated
+physical-input section in `macos-tauri-owned-supervisor-restart-evidence-20261003.md`.
 
 Scope: the two remaining P0-2 tray actions. This request follows `e26bc0b`;
 it does not repeat login, crash/restart, Stop or build suites already passed.

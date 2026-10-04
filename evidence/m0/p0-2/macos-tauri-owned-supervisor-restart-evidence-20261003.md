@@ -1,6 +1,6 @@
 # macOS Desktop-owned lifecycle validation
 
-**Status:** PARTIAL / NOT YET VERIFIED overall; tray Open/Quit remain unverified; cleanup complete
+**Status:** PASS for the combined Mac release lifecycle test slices; physical tray Open/Quit verified; cleanup complete
 
 **Source:** `c77479ffb82b2fc697a2f4d16fb3e3a6bd19f4d7`
 
@@ -191,3 +191,100 @@ status showed `pid=none`, `recorded_pid=38569`, `instance=stale`; both test
 PIDs were absent. Supervisor state recorded `state=clean_quit`,
 `daemon_pid=none`, `supervisor_alive=false`. `Cryptex.plist` remained absent.
 This exit 0 is renderer cleanup evidence and does not count as tray Quit.
+
+## Physical tray-input diagnosis — PASS, 2026-10-03
+
+Checkout `dfbadedf53d72cde39fd4f4782a061cbc2333980` contains `e26bc0b`.
+Desktop/daemon sources were unchanged from the validated `c77479f` build.
+Both artifact hashes matched the preceding follow-up exactly:
+
+```text
+Desktop: 0bfd52594a4a30bfcd6e37678835bb7d833cfe6be867f44996e45e18de36f1a5
+daemon:  bfbfa26c6df1934312ba0d483f5351ac759c8f3f96458f8753d5b4a70157feb4
+```
+
+No test processes existed before launch, and login startup remained disabled.
+The original Desktop command was retained in a foreground shell to capture
+its exit code. Desktop `41780` started daemon `41851`. Renderer status showed
+`pid=41851`, `instance=held`, `health=active`; IPC showed
+`IPC health.pong · daemon pid=41851 · protocol=1`.
+
+### Icon ownership and physical input
+
+Before/after launch display captures were retained outside Git:
+`/tmp/cryptex-tray-diagnostic-before.png` and
+`/tmp/cryptex-tray-diagnostic-after.png`. Initially the newly registered
+accessible status item at `968,5` (size `36x24` logical points) was not visibly
+distinguishable in the menu bar. This comparison alone did not establish a
+click target. The display was `1710x1107` logical points, with captures at
+`3420x2214` pixels (2x capture scale).
+
+The operator was guided to reveal the menu-bar area, then independently found
+the black rounded-square Cryptex icon immediately left of the ChatGPT icon.
+The operator supplied display captures of the icon, restored window and actual
+two-item menu. Full captures remain outside Git; no private screen content is
+included in this record. After the operator's physical input, the accessible
+tray item was at `1057,5`, size `36x24` logical points. Its screen position had
+changed from the initial observation.
+
+The native close control hid the main window with daemon `41851` unchanged.
+An initial accessibility lookup ran before the renderer tree was available;
+the initial status/IPC checks were completed after single-instance focus and
+the window was closed again. Neither that fallback nor automated close is
+counted as a physical tray input result.
+
+The operator physically left-clicked the identified icon and the window
+returned. Snapshot:
+
+```text
+note=window_restored_via_tray_left_click
+desktop_pid=41780
+daemon_pid=41851
+daemon_pid_observation=live
+window_visible=true
+```
+
+The operator then physically right-clicked the same icon and selected
+**Open Cryptex**. The supplied capture showed the actual Open/Quit menu;
+the retained snapshot independently recorded:
+
+```text
+note=window_restored_via_tray_menu
+desktop_pid=41780
+daemon_pid=41851
+daemon_pid_observation=live
+window_visible=true
+```
+
+Fresh lifecycle status still reported PID `41851`, held lock and active
+health. The visible renderer retained protocol-1 IPC health for that PID.
+No synthetic left/right pointer event was substituted for the operator's
+physical input during this diagnostic run. These physical results establish
+tray input delivery and successful Open action; the earlier synthetic failures
+do not establish an application tray defect.
+
+### Tray Quit with an active daemon
+
+With daemon `41851` still active, the operator selected **Quit Cryptex** from
+the actual tray menu and confirmed closure. The retained original foreground
+Desktop command exited **0**. Supervisor state recorded:
+
+```text
+supervisor_pid=41780
+state=clean_quit_from_tray
+daemon_pid=none
+supervisor_alive=false
+```
+
+The snapshot likewise recorded `note=clean_quit_from_tray`,
+`daemon_pid_observation=not_running`, `window_visible=false`.
+Fresh lifecycle status returned `pid=none`, `recorded_pid=41851`,
+`instance=stale` (retained lock file, no held instance lock). Both Desktop and
+daemon PIDs were absent. `Cryptex.plist` remained absent.
+
+Physical tray left-click restore, right-click Open, and active-daemon tray
+Quit with exit 0 are now VERIFIED. Combined with the preceding release tests,
+this closes the Mac lifecycle plan's remaining tray actions. Signed installer,
+real Desktop+daemon update/rollback and ADR-0012 acceptance remain separate
+gates. No application code, login setting, build suite or GitHub Actions run
+was changed/repeated during this focused diagnosis.

@@ -53,7 +53,18 @@ Important branch note:
 
 ### macOS
 
-The Desktop-owned lifecycle run at `c77479f` is PARTIAL. Local daemon supervisor
+The combined Mac release lifecycle slices now PASS, including physical tray
+Open/Quit at checkout `dfbaded` using the validated `c77479f` release build.
+Desktop `41780` / daemon `41851` survived physical tray left-click restore and
+right-click Open with the same daemon PID. Snapshots recorded
+`window_restored_via_tray_left_click` and `window_restored_via_tray_menu`.
+Physical tray Quit with the daemon active exited 0 and recorded
+`clean_quit_from_tray`; both processes and the held lock were gone. Login start
+remained disabled. The operator identified the actual black rounded-square
+icon left of ChatGPT after its menu-bar position changed; earlier synthetic
+input failures are historical, not proof of an application defect.
+
+The initial Desktop-owned lifecycle run at `c77479f` was PARTIAL. Local daemon supervisor
 tests (3), sidecar staging tests (3), sidecar resolution tests (2) and release
 package-smoke passed. Release Desktop `31422` automatically started daemon
 `31562`, rejected a second Desktop launch, and restarted the SIGKILLed daemon
@@ -67,10 +78,11 @@ Explicit Stop left no daemon for a measured 10 seconds. Login start was disabled
 through the renderer and `Cryptex.plist` removal verified. Final `Quit clean`
 removed the Desktop/daemon processes and recorded `state=clean_quit`. Actual
 tray Open/Quit could not be exercised; tray exit 0 was not captured. Those tray
-checks remain NOT YET VERIFIED; the test registration is cleaned up and the
+checks were NOT YET VERIFIED in that initial run; the test registration was cleaned up and the
 runtime evidence is retained.
 See `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-evidence-20261003.md`.
-Do not count the full Mac lifecycle gate as PASS yet.
+The later physical diagnosis closes those two Mac tray checks. Signed installer
+delivery, actual package update/rollback and ADR-0012 acceptance remain open.
 
 The focused tray-only follow-up at checkout `924cc13` reused the validated
 release build without repeating login/restart/Stop suites. Desktop `38558`
@@ -78,7 +90,7 @@ started daemon `38569`; red close-control activation hid the window and
 preserved that PID. Native right/left clicks at the accessible tray item's
 observed center did not expose Open/Quit or restore the window. Physical
 display captures are retained outside Git in `/tmp/cryptex-tray-only-*.png`.
-Tray Open/Quit remain NOT YET VERIFIED. Fallback single-instance focus plus
+Tray Open/Quit remained NOT YET VERIFIED in that synthetic follow-up. Fallback single-instance focus plus
 renderer `Quit clean` exited 0; no test processes or held lock remain and
 login start remained disabled. The UI limitation's root cause is unproven.
 
@@ -416,19 +428,15 @@ has been executed. The evidence at
 `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-evidence-20261003.md`
 records release Desktop startup and crash/restart, duplicate rejection, real
 login startup, Dock reopen plus renderer IPC, Stop without restart, login-start
-removal and process cleanup. Actual tray **Open Cryptex** and **Quit Cryptex**
-remain unverified because the menu was not exposed by available UI controls;
-the test registration and processes were cleaned up. Do not repeat the passed
-steps merely to fix the document state.
+removal and process cleanup. The subsequent physical-input diagnosis verified
+actual tray **Open Cryptex** and **Quit Cryptex**, including active-daemon
+shutdown and foreground exit code 0. The test registration and processes are
+cleaned up. Do not repeat the passed steps merely to fix the document state.
 
-Next, follow
-`evidence/m0/p0-2/macos-tray-input-diagnostic-plan-20261003.md`: identify the
-Cryptex icon by a before/after launch comparison and use physical operator
-input to distinguish an input-delivery limitation from an application defect.
-The pinned native implementation supports right-click menus and retains the
-tray object; this source inspection is not a physical pass. Retain evidence
-for both menu actions, including tray Quit exit code 0. On
-Windows, finish the remaining release login-start and actual tray/menu checks
+The focused diagnostic procedure at
+`evidence/m0/p0-2/macos-tray-input-diagnostic-plan-20261003.md` is complete;
+its physical result closes the Mac tray gate. On Windows, finish the remaining
+release login-start and actual tray/menu checks
 once a current package can be built on a Code-Integrity-approved host. The
 existing release run verified daemon replacement and automated close/show,
 but not those user-driven actions. Then complete the real compatible
@@ -563,7 +571,8 @@ Retained diagnostic history and continuation constraints:
   See `evidence/m0/p0-2/macos-physical-traffic-light-close-evidence-20261003.md`.
   That historical run did not test the production tray menu or packaged
   supervision. The later Mac release Desktop-owned run is recorded at the top
-  of this handoff; tray Open/Quit and signed package verification remain open.
+  of this handoff; its physical tray Open/Quit checks now pass. Signed package
+  verification remains open.
 - Windows cross-account ACL denial verified on a CI VM; production Desktop/CLI/MCP
   integration remains absent
 - real compatible Desktop + daemon package coordination and rollback/canonical-data proof

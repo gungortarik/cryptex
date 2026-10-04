@@ -23,7 +23,7 @@ ADR/specification process.
 ## Options under comparison (final decision still OPEN)
 
 Current Mac Desktop-owned run: `macos-tauri-owned-supervisor-restart-evidence-20261003.md`
-(local checks, release crash/restart, physical login, Dock reopen/IPC, Stop and cleanup passed; actual tray Open/Quit remain unverified).
+(local checks, release crash/restart, physical login, IPC, Stop and cleanup passed; physical tray Open and active-daemon Quit exit 0 also verified at `dfbaded`).
 
 The project owner approved Mode B with per-user login startup as the
 implementation direction. The cross-platform comparison and ADR-0012 acceptance
@@ -51,7 +51,8 @@ architecture decision has been recorded or accepted in ADR-0012.
   `windows-reboot-login-survival-20261002.md` and
   `macos-native-supervision-evidence.md`. The separate Mac release Desktop run
   also has partial physical evidence for Desktop login startup, supervision,
-  renderer IPC and Stop behavior; tray Open/Quit remain unverified. Windows
+  renderer IPC and Stop behavior; physical tray Open/Quit passed in the focused
+  diagnosis at `dfbaded`. Windows
   release-mode physical lifecycle proof, signed packaging and production
   update/canonical-data gates remain open. Renderer reconnect during external
   Mode B crash/restart is verified on both platforms.
@@ -90,7 +91,7 @@ Comparison harness added:
 
 See:
 
-- `macos-tray-input-diagnostic-plan-20261003.md` (pending focused physical-input diagnosis after `e26bc0b`; tray Open/Quit remain unverified)
+- `macos-tray-input-diagnostic-plan-20261003.md` (completed physical-input diagnosis: tray left restore, Open and active-daemon Quit exit 0 verified at `dfbaded`)
 - `macos-foundation-slice.md`
 - `macos-supervision-comparison-protocol.md`
 - `macos-native-supervision-evidence.md`
