@@ -466,6 +466,15 @@ errors prevented the new-release status/IPC check. Do not count that visual
 gate as passed. Product login is now disabled; test processes are gone.
 Mac compile/lint request:
 `evidence/m0/p0-2/macos-background-command-check-plan-20261003.md`.
+Executed on macOS 27.0.1 arm64 at `83a770a`, Rust 1.98.1: format PASS
+(exit 0), Desktop check PASS (exit 0, dead-code warning), strict all-target
+Clippy FAIL (exit 101). `main.rs:64:4` reports unused
+`mac_product_runtime_root` in the debug binary; its production caller is
+release-only and its other use is test-only. The failure reproduced in an
+individual command run. Exact evidence:
+`evidence/m0/p0-2/macos-background-command-check-evidence-20261003.md`.
+No application code, lint allowance, release package or Actions was changed.
+The strict Mac lint gate remains open; this is not an overall PASS.
 
 The Mac execution request at
 `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-test-plan-20261003.md`
@@ -484,8 +493,10 @@ its physical result closes the Mac tray gate. Windows release login-start and
 physical tray/menu slices are now verified, and the earlier release run
 verified daemon replacement. Next, verify console-free visual behavior and
 renderer status/IPC on the rebuilt Windows release with an observed launch;
-the old CI package predates the fix. Complete the Mac compile/lint request
-without repeating its physical lifecycle suites. Then complete the real compatible
+the old CI package predates the fix. Resolve the recorded Mac debug-target
+dead-code failure in a separately authorized source change and rerun the
+strict compile/lint plan without repeating its physical lifecycle suites.
+Then complete the real compatible
 Desktop+daemon package update/rollback and canonical-data checks on both
 platforms. Keep ADR-0012 unaccepted until every required P0-2 proof passes.
 
