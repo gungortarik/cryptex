@@ -1,5 +1,27 @@
 # Windows login observation (M0 P0-2)
 
+## Headless package transaction candidate
+
+`package-transaction.mjs` is a separate, test-only serialized filesystem candidate.
+It never touches installed Desktop, startup registration or canonical storage.
+Run its 28 focused tests with:
+
+```sh
+node --test tools/m0-lifecycle-compare/scripts/package-transaction.test.mjs
+```
+
+`run-package-transaction-proof.mjs` retains eight scenarios with supplied binary
+copies; it requires a fresh outside-repository `--root` and absolute
+`--baseline-desktop`, `--baseline-daemon`, `--candidate-desktop`,
+`--candidate-daemon` paths. Health is injected, not actual Desktop/daemon execution.
+It declares protocol 1 for the positive experiment; incompatibility is a deliberate
+metadata negative control. Real runtime negotiation remains a separate gate.
+
+See `docs/adr/ADR-0012-update-orchestration-candidate.md` for the exact recovery
+contract and limits and the Mac candidate test plan in `evidence/m0/p0-2/`.
+Do not use this engine for concurrent or production installations. Power-loss
+durability, signed bundle resources and installed-app handover are not verified.
+
 These test-only scripts investigate daemon survival after an actual Windows
 sign-out/sign-in. They neither choose supervision for ADR-0012 nor restart the
 daemon. All runtime files stay under `%LOCALAPPDATA%\Cryptex-Dev\p0-2`.

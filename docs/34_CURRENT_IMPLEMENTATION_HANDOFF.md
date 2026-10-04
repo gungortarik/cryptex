@@ -538,9 +538,16 @@ the first baseline, Desktop `25436`, daemon `15340`, renderer protocol 1,
 clean exit 0 and no remaining processes. Login startup remains disabled.
 Evidence: `evidence/m0/p0-2/windows-native-package-rollback-20261003.md`.
 The final installation is stopped at `0.0.0`. The real package sequence passed
-its scoped install/replace/operator-rollback checks. Next work is the scoped
-update-orchestration proposal and explicit failure-path/data-preservation plan,
-before selecting or implementing package transaction behavior.
+its scoped install/replace/operator-rollback checks. A separate serialized
+filesystem transaction candidate now passes 28 Windows tests, including five
+actual updater-subprocess kill boundaries, plus 8 retained-binary-copy scenarios.
+It is not integrated with installed Desktop and its health is injected fixture
+behavior. Proposal: `docs/adr/ADR-0012-update-orchestration-candidate.md`.
+Windows evidence: `evidence/m0/p0-2/windows-package-transaction-candidate-20261003.md`.
+Next: Mac executes `evidence/m0/p0-2/macos-package-transaction-candidate-test-plan-20261003.md`,
+then review native helper/startup integration and failure/data-preservation gates
+before production architecture selection. No repeated physical Mac lifecycle
+suite or GitHub workflow is needed for this candidate.
 Canonical-data preservation and an operator-context post-exit lock query were
 not established by this baseline. The stock installer force-shutdown and sequential
 Desktop/daemon copy behavior does not prove safe atomic updates. Automatic
