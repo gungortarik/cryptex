@@ -524,9 +524,16 @@ with payload hashes outside Git under
 `%LOCALAPPDATA%\Cryptex-Dev\p0-2\native-package-proof-1003`.
 No version/dependency change was made in the repository and no workflow ran.
 Execution plan: `evidence/m0/p0-2/windows-native-package-replacement-plan-20261003.md`.
-Next operator action is baseline installation from the ordinary Windows session
-into the isolated folder in that plan, followed by installed-path/hash/IPC checks.
-No installer has run yet. The stock installer force-shutdown and sequential
+Baseline installation from the ordinary Windows session now passed its scoped
+identity/status/IPC/clean-exit checks: Desktop `26124`, daemon `9412`, protocol 1,
+exit 0 and no remaining processes. Evidence:
+`evidence/m0/p0-2/windows-native-package-baseline-20261003.md`.
+The installed Desktop differs from the retained loose binary only in Tauri's
+three-byte `UNK` to `NSS` bundle marker; the exact comparison reproduces its hash.
+Next operator action is candidate `0.0.1` installation into the same isolated
+directory, followed by payload/version/IPC checks and clean operator rollback.
+Canonical-data preservation and an operator-context post-exit lock query were
+not established by this baseline. The stock installer force-shutdown and sequential
 Desktop/daemon copy behavior does not prove safe atomic updates. Automatic
 rollback and incompatible-pair preflight remain unimplemented; keep these
 distinct from the planned operator-controlled replacement/rollback experiment.
