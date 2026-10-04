@@ -91,6 +91,7 @@ Comparison harness added:
 
 See:
 
+- `windows-console-visual-result-20261003.md` (PASS: operator-observed console-free release launch/query, renderer status/IPC and clean exit 0)
 - `windows-desktop-login-result-20261003.md` (scoped PASS: automatic hidden login, tray Open, IPC, registration removal and clean exit; daemon console allocation found and fixed in source, rebuilt physical proof pending)
 - `macos-background-command-check-plan-20261003.md` (revalidated at `808bb1c`; no repeated Mac physical tests)
 - `macos-background-command-check-evidence-20261003.md` (PASS at `808bb1c`: format/check/strict Clippy and 2/2 runtime tests; Mac lint gate closed, initial failure retained)

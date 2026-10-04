@@ -464,6 +464,12 @@ workflow ran. The rebuilt release launched locally, then was cleaned up; its
 physical no-terminal/flash observation remains inconclusive, and UI geometry
 errors prevented the new-release status/IPC check. Do not count that visual
 gate as passed. Product login is now disabled; test processes are gone.
+The later observed foreground launch at checkout `73263ca` closes that visual
+check: Desktop `14768` / daemon `8968`, renderer status held/active and IPC
+protocol 1 passed, and the operator watching the screen confirmed no terminal
+window/flash during launch and queries. Renderer Quit clean exited 0; processes
+and held lock were gone. No login/reboot, rebuild or workflow was repeated.
+Evidence: `evidence/m0/p0-2/windows-console-visual-result-20261003.md`.
 Mac compile/lint request:
 `evidence/m0/p0-2/macos-background-command-check-plan-20261003.md`.
 Executed on macOS 27.0.1 arm64 at `83a770a`, Rust 1.98.1: format PASS
@@ -504,11 +510,11 @@ The focused diagnostic procedure at
 `evidence/m0/p0-2/macos-tray-input-diagnostic-plan-20261003.md` is complete;
 its physical result closes the Mac tray gate. Windows release login-start and
 physical tray/menu slices are now verified, and the earlier release run
-verified daemon replacement. Next, verify console-free visual behavior and
-renderer status/IPC on the rebuilt Windows release with an observed launch;
-the old CI package predates the fix. The Mac debug-target lint failure is
-resolved and revalidated at `808bb1c`; do not repeat its passed compile/lint
-or physical lifecycle suites for this request. Then complete the real compatible
+verified daemon replacement. The rebuilt Windows release's observed console-free
+launch/query behavior and renderer status/IPC are now verified. The old CI
+package predates the fix. The Mac debug-target lint failure is resolved and
+revalidated at `808bb1c`; do not repeat its passed compile/lint or physical
+lifecycle suites for this request. Next, complete the real compatible
 Desktop+daemon package update/rollback and canonical-data checks on both
 platforms. Keep ADR-0012 unaccepted until every required P0-2 proof passes.
 
