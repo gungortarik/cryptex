@@ -74,6 +74,13 @@ renderer status/IPC, disable login startup through the renderer, verify the
 product Run value is removed, and cleanly Quit. Preserve evidence before
 cleanup. Do not trigger CI or repeat Mac checks for this procedure.
 
+That login procedure is now complete; its verified slices, registration removal,
+exit 0 and the separate console defect/fix are recorded in
+`windows-desktop-login-result-20261003.md`. The product login value is disabled
+and all Cryptex test processes are gone. The locally rebuilt console-fix release
+supersedes this CI artifact for the next visual check; do not request another
+CI build merely to repeat the login proof.
+
 This single scoped build is justified because the required current Windows
 package cannot be produced on the local host. An unsigned CI artifact does
 not establish trusted signing, local policy acceptance, physical Windows

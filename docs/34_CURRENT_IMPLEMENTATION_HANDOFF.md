@@ -447,11 +447,25 @@ and daemon `8052`; the renderer enabled startup and Windows' startup list
 verified the exact CI-artifact Desktop command with `--cryptex-background`.
 Preparation is outside Git at
 `%LOCALAPPDATA%\Cryptex-Dev\p0-2\windows-desktop-login-1003`.
-**Next required operator action: real sign-out/sign-in.** Inspect hidden launch,
-new process times/PIDs and held lock before tray Open; then check renderer IPC,
-disable product login registration and cleanly Quit. This login proof is
-PENDING, not PASS. The product startup value intentionally remains enabled
-for this experiment; do not confuse it with the retained legacy dispatch probe.
+The real sign-out/sign-in has now completed. Explorer launched Desktop `29872`
+with `--cryptex-background` and daemon `26588` in the new session. The main
+window was hidden, physical tray Open restored it, and renderer status/IPC
+confirmed the held lock, active daemon and protocol 1. The renderer disabled
+the product startup value; Windows startup-list removal was verified. Renderer
+Quit clean exited 0 and both processes disappeared. These login slices PASS;
+see `evidence/m0/p0-2/windows-desktop-login-result-20261003.md` for exact scope
+and the stale agent filesystem records excluded from this proof.
+
+The operator reported login-time consoles. A daemon-owned console host was
+observed; all Desktop status/preflight/hold commands now use a platform adapter
+with Windows `CREATE_NO_WINDOW`. Local check, all-target Clippy, 11 Desktop
+tests and release package-smoke PASS. No host policy was changed and no new
+workflow ran. The rebuilt release launched locally, then was cleaned up; its
+physical no-terminal/flash observation remains inconclusive, and UI geometry
+errors prevented the new-release status/IPC check. Do not count that visual
+gate as passed. Product login is now disabled; test processes are gone.
+Mac compile/lint request:
+`evidence/m0/p0-2/macos-background-command-check-plan-20261003.md`.
 
 The Mac execution request at
 `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-test-plan-20261003.md`
@@ -466,10 +480,12 @@ cleaned up. Do not repeat the passed steps merely to fix the document state.
 
 The focused diagnostic procedure at
 `evidence/m0/p0-2/macos-tray-input-diagnostic-plan-20261003.md` is complete;
-its physical result closes the Mac tray gate. On Windows, finish the remaining
-release login-start check using the retained, hash-verified CI artifact;
-physical tray/menu actions are now verified. The existing release run also
-verified daemon replacement. Then complete the real compatible
+its physical result closes the Mac tray gate. Windows release login-start and
+physical tray/menu slices are now verified, and the earlier release run
+verified daemon replacement. Next, verify console-free visual behavior and
+renderer status/IPC on the rebuilt Windows release with an observed launch;
+the old CI package predates the fix. Complete the Mac compile/lint request
+without repeating its physical lifecycle suites. Then complete the real compatible
 Desktop+daemon package update/rollback and canonical-data checks on both
 platforms. Keep ADR-0012 unaccepted until every required P0-2 proof passes.
 

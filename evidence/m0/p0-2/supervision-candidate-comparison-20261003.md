@@ -39,6 +39,15 @@ explicit.
 
 ## Remaining P0-2 gates
 
+Latest Windows follow-up: `windows-desktop-login-result-20261003.md` verifies
+automatic hidden Desktop login, tray Open, renderer IPC, product startup removal
+and clean exit 0. The console defect has a platform-adapter fix, 11 passing
+Desktop tests, clean Clippy and a successful local release build. Its rebuilt
+physical no-terminal/flash observation remains inconclusive; verify that visual
+gate before treating the Windows user experience as complete. The Mac needs
+only the scoped compile/lint check in
+`macos-background-command-check-plan-20261003.md` for this source change.
+
 The project owner approved **Mode B + per-user login startup launching Desktop**
 for implementation. The scoped proposal is recorded at
 `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`. The choice

@@ -91,6 +91,8 @@ Comparison harness added:
 
 See:
 
+- `windows-desktop-login-result-20261003.md` (scoped PASS: automatic hidden login, tray Open, IPC, registration removal and clean exit; daemon console allocation found and fixed in source, rebuilt physical proof pending)
+- `macos-background-command-check-plan-20261003.md` (pending compile/lint check for the Windows console adapter; no repeated Mac physical tests)
 - `windows-physical-release-tray-20261003.md` (PASS: native title-bar close, physical tray Open and active-daemon Quit exit 0; Desktop login remains open)
 - `windows-ci-package-build-20261003.md` (one manual Windows package/artifact job to unblock fresh build production; signing and physical-host acceptance remain open)
 - `macos-tray-input-diagnostic-plan-20261003.md` (completed physical-input diagnosis: tray left restore, Open and active-daemon Quit exit 0 verified at `dfbaded`)

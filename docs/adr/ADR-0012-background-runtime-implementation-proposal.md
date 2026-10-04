@@ -76,7 +76,9 @@ The detailed comparison is in
 4. Register per-user login startup for Desktop with least privilege and provide
    a reversible user-facing setting or documented control. The Mac setting was
    physically enabled, exercised through real sign-out/sign-in, and removed;
-   Windows physical release verification remains open.
+   Windows login enable, real hidden sign-in and registration removal also
+   passed; console-free visual behavior on the rebuilt Windows release remains
+   open. See `windows-desktop-login-result-20261003.md` for the scope.
 5. Prove actual login startup, crash/restart, duplicate rejection and shutdown
    on Windows and macOS using packaged builds. The Mac release-mode run passed
    these checks including tray Open/Quit; the Windows release-mode physical run
