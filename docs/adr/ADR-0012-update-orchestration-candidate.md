@@ -53,12 +53,16 @@ Tests force-kill owned updater subprocesses at five observed boundaries: staged,
 intent, selected, healthy and committed. This is actual process interruption,
 not a simulated exception, but it is not machine power loss.
 
-The candidate assumes one serialized experiment operator. It does not provide
-concurrent updater locking, same-user adversarial tamper resistance or immutable
-OS permissions for slots. SHA-256 is from Node's standard crypto library; no
-custom cryptography is introduced. Windows directory fsync is not implemented
-through Node, so power-loss durability is explicitly unverified. POSIX directory
-fsync must pass on Mac; failures are reported, never swallowed.
+The candidate has no OS-level process lock, same-user adversarial tamper
+resistance or immutable OS permissions for slots. Two deterministic Windows
+regressions now cover stale staging and the race between selection validation
+and pending-intent creation: the stale updater fails with a typed error and
+preserves the winner's selection. This is not stress testing or proof of native
+cross-platform serialization; Mac parity is pending. SHA-256 is from Node's
+standard crypto library; no custom cryptography is introduced. Windows directory
+fsync is not implemented through Node, so power-loss durability is explicitly
+unverified. POSIX directory fsync must pass on Mac; failures are reported, never
+swallowed.
 
 The original filesystem-only proof uses injected health outcomes. Retained binary copies
 are hashed/staged but not executed. Desktop is not connected to the selection
@@ -86,9 +90,11 @@ status. Mac real-health parity and the remaining native integration gates remain
    must not overwrite itself or become an additional canonical writer.
 4. Verify real signed package/resource integrity and actual Desktop/daemon IPC
    readiness. Pair metadata alone cannot establish runtime compatibility.
-5. Exercise partial I/O, recovery I/O failure, concurrent invocation, native
-   executable locks, restart/login during transition and relevant durability
-   boundaries. Define controlled errors when rollback cannot be completed.
+5. Exercise partial I/O, recovery I/O failure, cross-platform concurrent
+   invocation (including process races beyond the two deterministic Windows
+   cases), native executable locks, restart/login during transition and relevant
+   durability boundaries. Define controlled errors when rollback cannot be
+   completed.
 6. Verify unchanged immutable storage fixtures using the accepted P0-1 layout,
    without altering retained corpora; production data is not a test fixture.
 7. Measure real packaged flows on both targets and update the comparison before

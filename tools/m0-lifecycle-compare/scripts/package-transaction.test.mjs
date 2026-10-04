@@ -56,6 +56,51 @@ test('compatible pair commit retains complete previous pair', async t => {
   assert.deepEqual(await transition(root, candidate, sources, healthy), { schema: 1, active: 'candidate', previous: 'baseline' });
   assert.equal(recover(root).recovered, false);
 });
+test('stale concurrent transition fails closed after another candidate commits', async t => {
+  const { root, sources, candidate } = setup(t);
+  let releaseFirst;
+  let stagedFirst;
+  const firstIsStaged = new Promise(resolve => { stagedFirst = resolve; });
+  const firstMayContinue = new Promise(resolve => { releaseFirst = resolve; });
+  const first = transition(root, candidate, sources, {
+    health: healthy.health,
+    checkpoint: async point => {
+      if (point === 'staged') {
+        stagedFirst();
+        await firstMayContinue;
+      }
+    },
+  });
+  await firstIsStaged;
+  const second = await transition(root, { ...candidate, id: 'candidate-two' }, sources, healthy);
+  assert.deepEqual(second, { schema: 1, active: 'candidate-two', previous: 'baseline' });
+  releaseFirst();
+  await assert.rejects(first, code('CONCURRENT_TRANSITION'));
+  assert.deepEqual(selected(root), second);
+  assert.equal(fs.existsSync(path.join(root, 'pending.json')), false);
+});
+test('concurrent commit between selection check and intent is detected', async t => {
+  const { root, sources, candidate } = setup(t);
+  let releaseFirst;
+  let validatedFirst;
+  const firstIsValidated = new Promise(resolve => { validatedFirst = resolve; });
+  const firstMayContinue = new Promise(resolve => { releaseFirst = resolve; });
+  const first = transition(root, candidate, sources, {
+    health: healthy.health,
+    checkpoint: async point => {
+      if (point === 'selection-validated') {
+        validatedFirst();
+        await firstMayContinue;
+      }
+    },
+  });
+  await firstIsValidated;
+  const second = await transition(root, { ...candidate, id: 'candidate-two' }, sources, healthy);
+  releaseFirst();
+  await assert.rejects(first, code('CONCURRENT_TRANSITION'));
+  assert.deepEqual(selected(root), second);
+  assert.equal(fs.existsSync(path.join(root, 'pending.json')), false);
+});
 test('declared incompatible pair rejected before any staging', async t => {
   const { root, sources, candidate } = setup(t);
   candidate.desktop.protocol = 2;

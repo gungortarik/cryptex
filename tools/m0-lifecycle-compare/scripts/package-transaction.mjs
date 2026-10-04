@@ -160,8 +160,28 @@ export async function transition(root, value, sources, { checkpoint = async () =
   stage(root, value, sources);
   await checkpoint('staged');
   verifySlot(root, value.id);
+  // Another updater may have committed while this one staged its private slot.
+  // Revalidate after staging; the exclusive intent create below arbitrates
+  // overlapping transitions that still race past this read.
+  if (!same(selected(root), before)) fail('CONCURRENT_TRANSITION', 'Package selection changed while candidate was staged');
+  await checkpoint('selection-validated');
   const after = { schema: 1, active: value.id, previous: before.active };
-  writeNew(path.join(root, 'pending.json'), { schema: 1, before, after });
+  const intent = path.join(root, 'pending.json');
+  const journal = { schema: 1, before, after };
+  try { writeNew(intent, journal); }
+  catch (error) {
+    if (error?.code === 'EEXIST') fail('CONCURRENT_TRANSITION', 'Another transaction owns the pending intent');
+    throw error;
+  }
+  // Close the race where another invocation commits between our preflight read
+  // and exclusive intent creation. Keep unexpected/corrupt intent data for
+  // diagnosis; remove only the journal content we just created.
+  if (!same(selected(root), before)) {
+    if (JSON.stringify(readJson(intent)) !== JSON.stringify(journal)) fail('CORRUPT_JOURNAL', 'Concurrent transition changed the owned intent');
+    fs.unlinkSync(intent);
+    syncDirectory(root);
+    fail('CONCURRENT_TRANSITION', 'Package selection changed before transaction intent was secured');
+  }
   await checkpoint('intent');
   replaceState(root, after);
   await checkpoint('selected');

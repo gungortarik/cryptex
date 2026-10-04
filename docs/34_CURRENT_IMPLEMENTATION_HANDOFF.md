@@ -732,6 +732,30 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
+### Latest package-candidate concurrency slice — Windows PASS, Mac parity pending
+
+Review of the serialized filesystem candidate found a lost-selection race when
+one updater paused after staging and another committed. The candidate now
+revalidates the selected package before creating its intent, claims the intent
+exclusively, then verifies the selection again before activation. It removes
+only its content-identical owned intent when it detects that another package won;
+unexpected intent content is retained and reported as a typed error.
+Windows Node 24.19.0 ran the focused transaction suite: **31/31 passed**, zero
+failures/skips, including two deterministic races (commit during staging and
+commit between validation and intent creation), all five actual worker-kill
+boundaries, and synthetic fixture preservation. `node --check` for engine and
+tests plus `git diff --check` passed. Evidence:
+`evidence/m0/p0-2/windows-package-concurrent-transition-evidence-20261003.md`.
+Exact Mac parity request:
+`evidence/m0/p0-2/macos-package-concurrent-transition-test-plan-20261003.md`.
+
+This remains a test-only serialized selection candidate. It has no OS-level
+process lock, publisher signature validation, Desktop executable handover, or
+installed updater integration. Mac parity, recovery-I/O failures, stress
+concurrency, native executable locks, canonical-data acceptance, and the
+explicit ADR-0012 orchestration decision remain open. Do not accept ADR-0012;
+do not run Actions for this slice.
+
 - root cause of Windows HKCU Run post-login daemon exit
 - Windows crash-restart parity for a no-elevation/native candidate
 - Tauri renderer health/reconnect invocation is physically verified on both
