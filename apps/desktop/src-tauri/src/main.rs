@@ -10,7 +10,7 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -22,6 +22,8 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Manager, State, WindowEvent};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use tauri_plugin_autostart::ManagerExt as AutoStartManagerExt;
+
+mod background_process;
 
 #[derive(Clone)]
 struct ProbeState {
@@ -279,7 +281,7 @@ fn stop_supervised_daemon(state: &State<'_, ProbeState>) -> Result<(), String> {
         .clone();
     if let Some(runtime) = &runtime {
         let _ = fs::write(runtime.join("stop"), "stop\n");
-        write_supervisor_state(&runtime, "daemon_stop_requested", None, true)?;
+        write_supervisor_state(runtime, "daemon_stop_requested", None, true)?;
     }
     if let Some(mut child) = state.child.lock().map_err(|e| e.to_string())?.take() {
         let deadline = Instant::now() + Duration::from_secs(3);
@@ -304,7 +306,7 @@ fn stop_supervised_daemon(state: &State<'_, ProbeState>) -> Result<(), String> {
         let bin = daemon_binary(state).ok_or_else(|| "cryptexd path unknown".to_string())?;
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
-            let status = query_daemon_status(&bin, &runtime)?;
+            let status = query_daemon_status(&bin, runtime)?;
             if parse_live_daemon_pid(&status)?.is_none() {
                 *state.supervised_pid.lock().map_err(|e| e.to_string())? = None;
                 return Ok(());
@@ -403,7 +405,7 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             {
                 let app = tray.app_handle();
                 let state = app.state::<ProbeState>();
-                if let Err(error) = show_main_window(&app, "tray_left_click", &state)
+                if let Err(error) = show_main_window(app, "tray_left_click", &state)
                     && let Ok(runtime) = runtime_root_path()
                 {
                     let _ = fs::write(runtime.join("window.error"), format!("{error}\n"));
@@ -529,7 +531,7 @@ fn daemon_binary(state: &ProbeState) -> Option<PathBuf> {
 }
 
 fn query_daemon_status(cryptexd: &Path, runtime: &Path) -> Result<String, String> {
-    let output = Command::new(cryptexd)
+    let output = background_process::command(cryptexd)
         .args([
             "lifecycle",
             "status",
@@ -571,7 +573,7 @@ fn start_daemon_inner(cryptexd: &str, runtime: &Path) -> Result<(u32, Child), St
     let _ = fs::remove_file(&ready);
     let _ = fs::remove_file(&stop);
 
-    let preflight = Command::new(cryptexd)
+    let preflight = background_process::command(cryptexd)
         .args([
             "lifecycle",
             "status",
@@ -585,7 +587,7 @@ fn start_daemon_inner(cryptexd: &str, runtime: &Path) -> Result<(u32, Child), St
         return Err("runtime lock already held; refusing second daemon".into());
     }
 
-    let child = Command::new(cryptexd)
+    let child = background_process::command(cryptexd)
         .args([
             "lifecycle",
             "hold",
@@ -634,20 +636,21 @@ fn restart_exited_daemon(state: &ProbeState, runtime: &Path) -> Result<(), Strin
     }
     let child_is_supervised = state.child.lock().map_err(|e| e.to_string())?.is_some();
     let expected_pid = *state.supervised_pid.lock().map_err(|e| e.to_string())?;
-    if newly_exited.is_none() && !child_is_supervised {
-        if let Some(expected_pid) = expected_pid {
-            match current_daemon_pid(runtime, state) {
-                Ok(Some(actual_pid)) if actual_pid == expected_pid => return Ok(()),
-                Ok(Some(actual_pid)) => {
-                    *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(actual_pid);
-                    return Ok(());
-                }
-                Ok(None) => {
-                    *state.supervised_pid.lock().map_err(|e| e.to_string())? = None;
-                    *state.pending_exit_code.lock().map_err(|e| e.to_string())? = Some(1);
-                }
-                Err(error) => return Err(format!("failed to observe attached daemon: {error}")),
+    if newly_exited.is_none()
+        && !child_is_supervised
+        && let Some(expected_pid) = expected_pid
+    {
+        match current_daemon_pid(runtime, state) {
+            Ok(Some(actual_pid)) if actual_pid == expected_pid => return Ok(()),
+            Ok(Some(actual_pid)) => {
+                *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(actual_pid);
+                return Ok(());
             }
+            Ok(None) => {
+                *state.supervised_pid.lock().map_err(|e| e.to_string())? = None;
+                *state.pending_exit_code.lock().map_err(|e| e.to_string())? = Some(1);
+            }
+            Err(error) => return Err(format!("failed to observe attached daemon: {error}")),
         }
     }
     let exit_code = *state.pending_exit_code.lock().map_err(|e| e.to_string())?;
@@ -883,7 +886,7 @@ fn main() {
             }
         })
         .setup(move |app| {
-            build_tray(&app.handle())?;
+            build_tray(app.handle())?;
             #[cfg(not(debug_assertions))]
             if let Err(error) = start_daemon_for_desktop_launch(&probe_state) {
                 if let Ok(root) = runtime_root_path() {
