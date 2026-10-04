@@ -476,6 +476,13 @@ individual command run. Exact evidence:
 No application code, lint allowance, release package or Actions was changed.
 The strict Mac lint gate remains open; this is not an overall PASS.
 
+Source follow-up: `mac_product_runtime_root` is now compiled only for macOS
+release or test targets, matching its actual callers and the Windows helper
+pattern. No dead-code allowance was added. The Mac runtime tests also cover
+missing HOME. Windows format, Desktop strict Clippy and the 11-test Desktop
+suite were rerun locally; the Mac must rerun the updated compile/lint plan plus
+its two targeted runtime tests before the strict Mac lint gate can close.
+
 The Mac execution request at
 `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-test-plan-20261003.md`
 has been executed. The evidence at

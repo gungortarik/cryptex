@@ -15,6 +15,7 @@ Mac Codex should inspect the latest source and run:
 cargo fmt --all -- --check
 cargo check -p cryptex-desktop --locked
 cargo clippy -p cryptex-desktop --all-targets --locked -- -D warnings
+cargo test -p cryptex-desktop --bin cryptex-desktop --locked mac_runtime_path_tests
 ```
 
 Record source commit and exact results in a dated evidence file and the
@@ -22,3 +23,10 @@ handoff; commit/push evidence only. Do not run GitHub Actions or rebuild a
 release package for this compile check. If a command fails, retain its error
 and leave the relevant check open. Windows physical console suppression is
 separate and cannot be verified on the Mac.
+
+Follow-up after `643ddcc`: the helper's condition now matches its callers
+(`macos` plus release or test). The debug production binary no longer includes
+the release-only helper; debug tests still include it. The two targeted runtime
+tests check the product path and the missing-HOME error. Rerun the commands
+above on the new fix commit and append results to the existing evidence.
+No physical lifecycle suite or release package rebuild is requested.

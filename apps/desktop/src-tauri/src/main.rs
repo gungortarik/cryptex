@@ -60,7 +60,7 @@ fn runtime_root_path() -> Result<PathBuf, String> {
     mac_product_runtime_root(std::env::var_os("HOME").as_deref())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", any(not(debug_assertions), test)))]
 fn mac_product_runtime_root(home: Option<&std::ffi::OsStr>) -> Result<PathBuf, String> {
     Ok(PathBuf::from(home.ok_or("HOME unset")?)
         .join("Library")
@@ -1058,6 +1058,11 @@ mod mac_runtime_path_tests {
     use super::mac_product_runtime_root;
     use std::ffi::OsStr;
     use std::path::PathBuf;
+
+    #[test]
+    fn missing_home_is_reported_for_product_runtime() {
+        assert_eq!(mac_product_runtime_root(None).unwrap_err(), "HOME unset");
+    }
 
     #[test]
     fn release_runtime_root_uses_hidden_application_support() {
