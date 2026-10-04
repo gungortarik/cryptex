@@ -13,11 +13,19 @@ See the real-health evidence and Mac plan in `evidence/m0/p0-2/`.
 
 `package-transaction.mjs` is a separate, test-only serialized filesystem candidate.
 It never touches installed Desktop, startup registration or canonical storage.
-Run its 29 focused tests with:
+Run its 37 focused tests with:
 
 ```sh
 node --test tools/m0-lifecycle-compare/scripts/package-transaction.test.mjs
 ```
+
+Recovery mutation errors expose `RECOVERY_IO_FAILED` with the original cause
+and structured `phase`, `io_code`, and `intent_present` diagnostics. Test-only
+`recover` I/O and `transition` recovery-I/O adapters inject four pre-completion
+failures and two automatic rollback failures. Normal callers use native fs.
+These are deterministic injected failures, not real disk exhaustion or power
+loss. A final directory-flush failure after journal deletion cannot guarantee
+journal retention; callers must treat the reported recovery as incomplete.
 
 `run-package-transaction-proof.mjs` retains eight scenarios with supplied binary
 copies; it requires a fresh outside-repository `--root` and absolute

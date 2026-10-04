@@ -91,6 +91,9 @@ Comparison harness added:
 
 See:
 
+- `windows-package-recovery-io-evidence-20261003.md` (37/37 transaction + 4/4 health adapter tests PASS; six injected recovery faults, retry and explicit failure diagnostics)
+- `macos-package-recovery-io-test-plan-20261003.md` (focused parity request; no GUI, Rust rebuild or Actions)
+
 - `windows-package-real-health-20261003.md` (3 actual daemon/shared Desktop IPC scenarios PASS, Rust 10/10 and Node 4/4; installed Desktop updater integration remains open)
 - `macos-package-real-health-test-plan-20261003.md` (executed; no repeated filesystem/GUI suites or Actions)
 - `macos-package-real-health-evidence-20261003.md` (3/3 real daemon IPC health/recovery scenarios PASS using identical retained Mac release pair; full report retained outside Git; installed updater/canonical-data gates remain open)

@@ -8,7 +8,7 @@ const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
 const names = ['desktop.bin', 'daemon.bin'];
 const own = Object.hasOwn;
 export class PackageError extends Error {
-  constructor(code, message) { super(message); this.name = 'PackageError'; this.code = code; }
+  constructor(code, message, options) { super(message, options); this.name = 'PackageError'; this.code = code; }
 }
 function fail(code, message) { throw new PackageError(code, message); }
 export function digest(file) { return createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
@@ -40,23 +40,23 @@ function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
   catch (error) { if (error instanceof SyntaxError) fail('CORRUPT_METADATA', 'Malformed experiment metadata'); throw error; }
 }
-function syncDirectory(root) {
+function syncDirectory(root, io = fs) {
   // Windows directory fsync is not portable through Node. Never claim power-loss durability.
   if (process.platform === 'win32') return;
-  const fd = fs.openSync(root, 'r');
-  try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  const fd = io.openSync(root, 'r');
+  try { io.fsyncSync(fd); } finally { io.closeSync(fd); }
 }
-function writeNew(file, value) {
-  const fd = fs.openSync(file, 'wx');
-  try { fs.writeFileSync(fd, `${JSON.stringify(value)}\n`, 'utf8'); fs.fsyncSync(fd); }
-  finally { fs.closeSync(fd); }
-  syncDirectory(path.dirname(file));
+function writeNew(file, value, io = fs) {
+  const fd = io.openSync(file, 'wx');
+  try { io.writeFileSync(fd, `${JSON.stringify(value)}\n`, 'utf8'); io.fsyncSync(fd); }
+  finally { io.closeSync(fd); }
+  syncDirectory(path.dirname(file), io);
 }
-function replaceState(root, value) {
+function replaceState(root, value, io = fs) {
   const temporary = path.join(root, `selection-${randomUUID()}.tmp`);
-  writeNew(temporary, value);
-  fs.renameSync(temporary, path.join(root, 'selection.json'));
-  syncDirectory(root);
+  writeNew(temporary, value, io);
+  io.renameSync(temporary, path.join(root, 'selection.json'));
+  syncDirectory(root, io);
 }
 function manifest(value) {
   if (!value || value.schema !== 1) fail('UNSUPPORTED_SCHEMA', 'Unsupported package manifest schema');
@@ -134,7 +134,7 @@ export function initialize(root, value, sources) {
   writeNew(path.join(root, 'selection.json'), { schema: 1, active: value.id, previous: null });
   return selected(root);
 }
-export function recover(root) {
+export function recover(root, { io = fs } = {}) {
   validateRoot(root);
   const intent = path.join(root, 'pending.json');
   if (!fs.existsSync(intent)) return { recovered: false, selection: selected(root) };
@@ -148,11 +148,23 @@ export function recover(root) {
   // Never discard malformed state or silently launch a corrupt last-known-good.
   verifySlot(root, before.active);
   if (before.previous !== null) verifySlot(root, before.previous);
-  replaceState(root, before);
-  fs.unlinkSync(intent); syncDirectory(root);
+  // The optional I/O adapter is for deterministic fault injection in this
+  // test-only candidate; normal callers use the native filesystem operations.
+  let phase = 'restore-selection';
+  try {
+    replaceState(root, before, io);
+    phase = 'remove-intent';
+    io.unlinkSync(intent);
+    phase = 'flush-intent-removal';
+    syncDirectory(root, io);
+  } catch (cause) {
+    const error = new PackageError('RECOVERY_IO_FAILED', 'Package recovery I/O failed; completion was not established', { cause });
+    error.diagnostics = { phase, io_code: cause?.code ?? 'UNKNOWN', intent_present: fs.existsSync(intent) };
+    throw error;
+  }
   return { recovered: true, selection: selected(root) };
 }
-export async function transition(root, value, sources, { checkpoint = async () => {}, health } = {}) {
+export async function transition(root, value, sources, { checkpoint = async () => {}, health, recoveryIo = fs } = {}) {
   if (typeof health !== 'function') fail('HEALTH_REQUIRED', 'An explicit experiment health check is required');
   validateRoot(root);
   if (fs.existsSync(path.join(root, 'pending.json'))) fail('RECOVERY_REQUIRED', 'Recover pending transaction before retry');
@@ -188,12 +200,12 @@ export async function transition(root, value, sources, { checkpoint = async () =
   let healthy;
   try { healthy = await health(path.join(root, 'slots', value.id), manifest(value)); }
   catch (error) {
-    recover(root);
+    recover(root, { io: recoveryIo });
     throw new PackageError('HEALTH_FAILED', `Experiment health check threw (${error?.name ?? 'unknown'}); previous package restored`);
   }
-  if (healthy !== true) { recover(root); fail('HEALTH_FAILED', 'Experiment health rejected candidate; previous package restored'); }
+  if (healthy !== true) { recover(root, { io: recoveryIo }); fail('HEALTH_FAILED', 'Experiment health rejected candidate; previous package restored'); }
   try { verifySlot(root, value.id); }
-  catch (error) { recover(root); throw error; }
+  catch (error) { recover(root, { io: recoveryIo }); throw error; }
   await checkpoint('healthy');
   fs.unlinkSync(path.join(root, 'pending.json')); syncDirectory(root);
   await checkpoint('committed');

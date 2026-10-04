@@ -732,6 +732,24 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
+### Latest recovery-I/O slice — Windows scoped PASS, Mac parity pending
+
+The test-only transaction candidate now wraps recovery mutation failures in
+`RECOVERY_IO_FAILED`, retaining the underlying cause and structured phase,
+OS error code, and observed intent-presence diagnostics. Six new regressions
+inject write/flush/rename/unlink failures and automatic rollback failure after
+rejected/throwing health. The four direct faults preserve intent bytes and
+package slot inventories, then recover the baseline idempotently on retry.
+Automatic rollback faults do not report that restoration succeeded.
+Windows Node v24.19.0: **37/37 transaction tests + 4/4 health adapter tests PASS**,
+zero failures/skips; engine/test syntax and diff checks passed.
+Evidence: `evidence/m0/p0-2/windows-package-recovery-io-evidence-20261003.md`.
+Mac request: `evidence/m0/p0-2/macos-package-recovery-io-test-plan-20261003.md`.
+These are injected operation errors, not physical disk-full or ACL tests.
+Final directory-flush failure after unlink cannot promise journal retention;
+power-loss/native durability and cross-process serialization remain open.
+No installed app, GUI, startup registration, canonical data, or Actions changed.
+
 ### Latest package-candidate concurrency slice — Windows and Mac scoped PASS
 
 Review of the serialized filesystem candidate found a lost-selection race when

@@ -206,12 +206,62 @@ test('corrupt baseline during pending recovery fails closed and keeps journal', 
   assert.throws(() => recover(context.root), code('PAYLOAD_MISMATCH'));
   assert.equal(fs.existsSync(path.join(context.root, 'pending.json')), true);
 });
+for (const [operation, ioCode, expectedActive, phase] of [
+  ['writeFileSync', 'ENOSPC', 'candidate', 'restore-selection'],
+  ['fsyncSync', 'EIO', 'candidate', 'restore-selection'],
+  ['renameSync', 'EACCES', 'candidate', 'restore-selection'],
+  ['unlinkSync', 'EACCES', 'baseline', 'remove-intent'],
+]) {
+  test(`recovery ${operation} failure retains intent and allows safe retry`, async t => {
+    const context = setup(t);
+    await killAt(t, context, 'selected');
+    const intent = path.join(context.root, 'pending.json');
+    const journal = fs.readFileSync(intent);
+    const slotBytes = ['baseline', 'candidate'].map(slot => inventory(path.join(context.root, 'slots', slot)));
+    const injected = Object.assign(new Error('injected recovery I/O failure'), { code: ioCode });
+    const io = { ...fs, [operation]: () => { throw injected; } };
+    assert.throws(() => recover(context.root, { io }), error => {
+      assert.equal(error.code, 'RECOVERY_IO_FAILED');
+      assert.equal(error.cause, injected);
+      assert.deepEqual(error.diagnostics, { phase, io_code: ioCode, intent_present: true });
+      return true;
+    });
+    assert.deepEqual(fs.readFileSync(intent), journal, 'pending intent bytes retained');
+    assert.equal(selected(context.root).active, expectedActive);
+    assert.deepEqual(['baseline', 'candidate'].map(slot => inventory(path.join(context.root, 'slots', slot))), slotBytes);
+    assert.equal(recover(context.root).selection.active, 'baseline');
+    assert.equal(fs.existsSync(intent), false);
+    assert.equal(recover(context.root).recovered, false, 'retry is idempotent');
+  });
+}
 test('successive failed update restores most recent good pair', async t => {
   const { root, sources, candidate } = setup(t);
   await transition(root, candidate, sources, healthy);
   await assert.rejects(transition(root, { ...candidate, id: 'third' }, sources, { health: async () => false }), code('HEALTH_FAILED'));
   assert.deepEqual(selected(root), { schema: 1, active: 'candidate', previous: 'baseline' });
 });
+for (const healthFailure of ['rejected', 'throws']) {
+  test(`automatic rollback I/O failure after health ${healthFailure} never reports restoration`, async t => {
+    const { root, sources, candidate } = setup(t);
+    const recoveryIo = { ...fs, renameSync: () => { throw Object.assign(new Error('injected rename refusal'), { code: 'EACCES' }); } };
+    await assert.rejects(transition(root, candidate, sources, {
+      recoveryIo,
+      health: async () => {
+        if (healthFailure === 'throws') throw new Error('injected health failure');
+        return false;
+      },
+    }), error => {
+      assert.equal(error.code, 'RECOVERY_IO_FAILED');
+      assert.equal(error.diagnostics.io_code, 'EACCES');
+      assert.equal(error.diagnostics.intent_present, true);
+      assert.equal(error.message.includes('previous package restored'), false);
+      return true;
+    });
+    assert.equal(selected(root).active, 'candidate');
+    assert.equal(recover(root).selection.active, 'baseline');
+    assert.equal(recover(root).recovered, false);
+  });
+}
 test('unknown manifest protocol and missing component rejected', async t => {
   const { root, sources, candidate } = setup(t);
   await assert.rejects(transition(root, { ...candidate, desktop: { ...candidate.desktop, protocol: 0 } }, sources, healthy), code('INVALID_MANIFEST'));

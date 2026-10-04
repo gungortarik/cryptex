@@ -82,6 +82,18 @@ status. Mac real-health parity and the remaining native integration gates remain
 
 ## Gates before production integration or ADR acceptance
 
+Windows recovery-fault follow-up passes six deterministic injected cases:
+temporary selection write (`ENOSPC`), file flush (`EIO`), selection rename
+(`EACCES`), intent unlink (`EACCES`), and automatic rollback rename failure
+after rejected/throwing health. Mutation errors expose `RECOVERY_IO_FAILED`
+with phase, underlying OS code, and observed intent presence. The four direct
+faults retain the journal and permit an idempotent baseline recovery after the
+fault is removed; neither automatic rollback fault claims restoration. This
+does not establish actual disk-full/ACL behavior or power-loss durability.
+Directory-flush failure after successful unlink may leave no journal; completion
+is still reported as unestablished. Mac parity and later durability faults remain
+open. See `windows-package-recovery-io-evidence-20261003.md`.
+
 1. Mac filesystem/process-interruption parity using the exact test plan.
 2. Review this candidate and select the scoped orchestration explicitly; do not
    infer ADR acceptance from passing fixture tests.
