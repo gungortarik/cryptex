@@ -372,7 +372,7 @@ The reboot therefore stopped it. P0-1 is already complete. Do not restart it mer
 
 ## Current continuation
 
-### Windows implementation slice — committed; Mac physical run partial
+### Windows implementation slice — committed; Mac release lifecycle passed
 
 The project owner approved Mode B with per-user login startup launching
 Desktop. The proposal is recorded at

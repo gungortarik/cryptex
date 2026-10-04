@@ -17,7 +17,7 @@ and a justified hybrid. Test-only lifecycle, renderer reconnect, window-close,
 login and synthetic update proofs exist on Windows and macOS. A Mac release
 Desktop run now physically verifies Desktop-owned daemon startup/restart, login
 startup, renderer IPC, Stop without restart, registration removal and cleanup.
-Tray Open/Quit remain unverified; Windows release-mode physical verification,
+Physical Mac tray Open/Quit also passed in `7b32222`; Windows release-mode physical verification,
 signed packaging, compatible component updates, rollback and canonical-data
 preservation also remain open. See the run evidence for the exact scope.
 
@@ -49,8 +49,9 @@ to leave M0. Implementation must preserve the Master Spec and P0-2 contract.
 - **Desktop-owned supervision:** process-level crash restart, single instance,
   window lifecycle and renderer reconnect have test-harness evidence on both
   systems. The Mac release Desktop physically owned a synthetic daemon through
-  startup and crash/restart; tray Open/Quit remain unverified, and the equivalent
-  Windows release-mode physical flow remains open. This is partial evidence, not
+  startup and crash/restart; physical tray Open and active-daemon Quit also
+  passed. The equivalent Windows release-mode physical flow remains open.
+  This is release-executable evidence, not
   production acceptance.
 - **Hybrid:** no additional native daemon supervisor is proposed. Per-user OS
   startup launches Desktop; the Desktop supervisor owns the daemon lifecycle.
@@ -69,15 +70,15 @@ The detailed comparison is in
    verified this lifecycle with a synthetic daemon; Windows physical release
    verification remains open.
 3. Add native tray/menu actions for Open and Quit and verify close/hide behavior.
-   The actions are implemented, but neither Mac tray action was verified in the
-   latest run because the menu could not be exposed.
+   Both Mac tray actions are physically verified, including Quit exit 0 with
+   an active daemon. Windows physical tray verification remains open.
 4. Register per-user login startup for Desktop with least privilege and provide
    a reversible user-facing setting or documented control. The Mac setting was
    physically enabled, exercised through real sign-out/sign-in, and removed;
    Windows physical release verification remains open.
 5. Prove actual login startup, crash/restart, duplicate rejection and shutdown
    on Windows and macOS using packaged builds. The Mac release-mode run passed
-   these checks except tray Open/Quit; the Windows release-mode physical run
+   these checks including tray Open/Quit; the Windows release-mode physical run
    remains open.
 6. Prove a compatible Desktop+daemon package update and rollback with canonical
    data unchanged on both platforms.
@@ -99,7 +100,7 @@ PROPOSED and M0 remains open.
 ## Acceptance state
 
 **Not accepted.** The project owner approved this direction for implementation.
-The Mac release-mode lifecycle proof is partial; tray Open/Quit remain
-unverified. Windows release-mode physical proof, signed package integration,
+The Mac release-executable lifecycle proof now includes physical tray Open/Quit.
+Windows release-mode physical proof, signed package integration,
 compatible update/rollback and canonical-data preservation are still required
 before ADR-0012 can be marked ACCEPTED.

@@ -13,13 +13,17 @@ on:
         description: Run only the isolated Windows cross-account IPC test
         type: boolean
         default: false
+      windows_desktop_build_only:
+        description: Build only the unsigned Windows Desktop NSIS package and upload artifacts
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   readiness:
-    if: github.event_name != 'workflow_dispatch' || !inputs.ipc_acl_only
+    if: github.event_name != 'workflow_dispatch' || (!inputs.ipc_acl_only && !inputs.windows_desktop_build_only)
     name: Readiness (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -102,6 +106,7 @@ jobs:
       # checks as those targets exist.
 
   ipc-acl:
+    if: github.event_name != 'workflow_dispatch' || !inputs.windows_desktop_build_only
     name: IPC cross-account ACL (Windows)
     runs-on: windows-latest
     timeout-minutes: 10
@@ -119,3 +124,71 @@ jobs:
         run: |
           powershell.exe -NoProfile -NonInteractive -File tools/m0-ipc-spike/scripts/test-windows-ipc-acl-ci.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  windows-desktop-build:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_desktop_build_only
+    name: Windows Desktop package (unsigned, manual only)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check sidecar staging
+        run: pnpm --dir apps/desktop test:sidecar-build-script
+
+      - name: Build unsigned NSIS package
+        run: pnpm --filter @cryptex/desktop tauri:package --bundles nsis
+
+      - name: Test release Desktop path and status helpers
+        run: cargo test -p cryptex-desktop --bin cryptex-desktop --release --locked
+
+      - name: Stage artifacts with provenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'cryptex-windows-package'
+          New-Item -ItemType Directory -Path $artifactRoot | Out-Null
+          Copy-Item -LiteralPath 'target/release/cryptex-desktop.exe' -Destination $artifactRoot
+          Copy-Item -LiteralPath 'apps/desktop/src-tauri/binaries/cryptexd-x86_64-pc-windows-msvc.exe' -Destination (Join-Path $artifactRoot 'cryptexd.exe')
+          $installers = @(Get-ChildItem -LiteralPath 'target/release/bundle/nsis' -Filter '*.exe' -File)
+          if ($installers.Count -eq 0) { throw 'NSIS installer missing' }
+          foreach ($installer in $installers) {
+            Copy-Item -LiteralPath $installer.FullName -Destination $artifactRoot
+          }
+          $files = @(Get-ChildItem -LiteralPath $artifactRoot -File | ForEach-Object {
+            [ordered]@{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash; bytes = $_.Length }
+          })
+          [ordered]@{
+            source_commit = $env:GITHUB_SHA
+            run_id = $env:GITHUB_RUN_ID
+            target = 'x86_64-pc-windows-msvc'
+            signing = 'unsigned development artifact; not release acceptance'
+            files = $files
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $artifactRoot 'provenance.json') -Encoding utf8NoBOM
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptex-windows-package-${{ github.sha }}
+          path: ${{ runner.temp }}/cryptex-windows-package/
+          if-no-files-found: error
+          retention-days: 7
