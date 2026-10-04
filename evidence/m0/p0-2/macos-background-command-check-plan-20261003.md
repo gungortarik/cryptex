@@ -1,7 +1,8 @@
 # Mac compile check for Windows console suppression
 
-Executed on 2026-10-03 at `83a770a`: format and compile PASS; strict Clippy
-FAIL (unused `mac_product_runtime_root`). The lint gate remains open. See
+Revalidated on 2026-10-03 at `808bb1c`: format, compile, strict Clippy and
+2/2 targeted runtime tests PASS. The Mac lint gate is closed. The initial
+`83a770a` dead-code failure is retained as historical evidence. See
 `macos-background-command-check-evidence-20261003.md` for exact results.
 
 Scope: only the newly added `apps/desktop/src-tauri/src/background_process.rs`

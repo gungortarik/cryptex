@@ -474,14 +474,20 @@ release-only and its other use is test-only. The failure reproduced in an
 individual command run. Exact evidence:
 `evidence/m0/p0-2/macos-background-command-check-evidence-20261003.md`.
 No application code, lint allowance, release package or Actions was changed.
-The strict Mac lint gate remains open; this is not an overall PASS.
+That initial run did not close the strict Mac lint gate.
 
 Source follow-up: `mac_product_runtime_root` is now compiled only for macOS
 release or test targets, matching its actual callers and the Windows helper
 pattern. No dead-code allowance was added. The Mac runtime tests also cover
 missing HOME. Windows format, Desktop strict Clippy and the 11-test Desktop
-suite were rerun locally; the Mac must rerun the updated compile/lint plan plus
-its two targeted runtime tests before the strict Mac lint gate can close.
+suite were rerun locally. Mac revalidation has now completed at
+`808bb1c039ab3735e3a6a777fafa6eae49790b10` on macOS 27.0.1 arm64,
+Rust 1.98.1: format, Desktop check, strict all-target Clippy and targeted
+`mac_runtime_path_tests` all exit 0 (2 tests passed, 2 filtered out). Check
+and Clippy emit no warnings. The Mac compile/lint gate is now PASS/closed;
+the evidence above retains the initial failure and appends exact new results.
+No application code, physical lifecycle tests, release package rebuild,
+runtime configuration or GitHub Actions was changed/run in this revalidation.
 
 The Mac execution request at
 `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-test-plan-20261003.md`
@@ -500,10 +506,9 @@ its physical result closes the Mac tray gate. Windows release login-start and
 physical tray/menu slices are now verified, and the earlier release run
 verified daemon replacement. Next, verify console-free visual behavior and
 renderer status/IPC on the rebuilt Windows release with an observed launch;
-the old CI package predates the fix. Resolve the recorded Mac debug-target
-dead-code failure in a separately authorized source change and rerun the
-strict compile/lint plan without repeating its physical lifecycle suites.
-Then complete the real compatible
+the old CI package predates the fix. The Mac debug-target lint failure is
+resolved and revalidated at `808bb1c`; do not repeat its passed compile/lint
+or physical lifecycle suites for this request. Then complete the real compatible
 Desktop+daemon package update/rollback and canonical-data checks on both
 platforms. Keep ADR-0012 unaccepted until every required P0-2 proof passes.
 
