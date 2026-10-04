@@ -94,6 +94,7 @@ See:
 - `windows-native-package-replacement-plan-20261003.md` (local unsigned baseline/candidate installer builds PASS; ordinary-session install/replace/operator rollback pending, automatic update safety open)
 - `windows-native-package-baseline-20261003.md` (installed 0.0.0 identity/status/IPC and clean exit PASS; NSIS bundle marker hash difference explained; candidate replacement/rollback pending)
 - `windows-native-package-update-20261003.md` (real 0.0.0 to 0.0.1 installed replacement, payload/status/IPC and clean exit PASS; operator rollback pending, atomic update acceptance open)
+- `windows-native-package-rollback-20261003.md` (real 0.0.1 to 0.0.0 operator rollback PASS; original payload restored, status/IPC and clean exit verified; automatic rollback and canonical-data safety open)
 - `windows-console-visual-result-20261003.md` (PASS: operator-observed console-free release launch/query, renderer status/IPC and clean exit 0)
 - `windows-desktop-login-result-20261003.md` (scoped PASS: automatic hidden login, tray Open, IPC, registration removal and clean exit; daemon console allocation found and fixed in source, rebuilt physical proof pending)
 - `macos-background-command-check-plan-20261003.md` (revalidated at `808bb1c`; no repeated Mac physical tests)

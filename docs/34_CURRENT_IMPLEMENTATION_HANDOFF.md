@@ -533,8 +533,14 @@ three-byte `UNK` to `NSS` bundle marker; the exact comparison reproduces its has
 Candidate `0.0.1` replacement now passed installed version/payload/status/IPC
 checks: Desktop `9416`, daemon `28480`, protocol 1, clean exit 0 and no remaining
 processes. Evidence: `evidence/m0/p0-2/windows-native-package-update-20261003.md`.
-Next operator action is baseline `0.0.0` reinstallation with **Do not uninstall**
-into the same isolated directory, followed by rollback payload/version/IPC checks.
+Operator rollback to `0.0.0` also passed: installed Desktop/daemon hashes match
+the first baseline, Desktop `25436`, daemon `15340`, renderer protocol 1,
+clean exit 0 and no remaining processes. Login startup remains disabled.
+Evidence: `evidence/m0/p0-2/windows-native-package-rollback-20261003.md`.
+The final installation is stopped at `0.0.0`. The real package sequence passed
+its scoped install/replace/operator-rollback checks. Next work is the scoped
+update-orchestration proposal and explicit failure-path/data-preservation plan,
+before selecting or implementing package transaction behavior.
 Canonical-data preservation and an operator-context post-exit lock query were
 not established by this baseline. The stock installer force-shutdown and sequential
 Desktop/daemon copy behavior does not prove safe atomic updates. Automatic

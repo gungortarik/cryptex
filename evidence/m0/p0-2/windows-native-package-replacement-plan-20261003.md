@@ -3,6 +3,13 @@
 Scope: P0-2 native installer install/replace/operator rollback experiment.
 This does not select a production updater or accept ADR-0012.
 
+Execution update: baseline, candidate replacement and operator rollback now
+passed their scoped installed identity/status/IPC/clean-exit checks. See
+`windows-native-package-baseline-20261003.md`,
+`windows-native-package-update-20261003.md` and
+`windows-native-package-rollback-20261003.md`. Preparation observations below
+are historical; full atomic-update and canonical-data acceptance remains open.
+
 ## Prepared artifacts
 
 Both unsigned NSIS builds passed locally at source `5015ff1`:
