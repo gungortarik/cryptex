@@ -1,8 +1,16 @@
 # Mac task — actual isolated Desktop and bundled daemon session parity
 
 Read handoff and approved native-package-handover pilot plan. Use clean current
-`m0/p0-2-cursor` containing `dd5021bb04ccc698b66de51f739ab60053997534`.
+`m0/p0-2-cursor` containing the test compilation fix
+`49e4e5d2342a8714ea92554cbf3f5130235537f8`.
 Report full tested SHA, macOS/architecture and pinned tool versions.
+
+The initial attempt at `8152267bff436c3ec5ddeeb8066da7c32e3bffa3` stopped
+before tests ran with duplicate `_EMBED_INFO_PLIST` symbols. The config test now
+uses a plain two-window Config fixture; only main generates the Tauri context.
+Preserve that failed attempt in `macos-owned-desktop-session-evidence-20261005.md`.
+Restart this entire plan from the build checks on the updated clean source;
+the Windows 17/17 unit result does not close Mac verification.
 
 This plan builds and launches the current-source Desktop `.app` executable with
 an initially hidden window in fresh pilot runtimes. Use a host with an available

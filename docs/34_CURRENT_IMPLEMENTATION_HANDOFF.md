@@ -795,6 +795,17 @@ snapshot failures were preserved and the readiness event was corrected with a
 regression. Same package reopened; no selection activation or rollback yet.
 Evidence: `evidence/m0/p0-2/windows-owned-desktop-session-evidence-20261005.md`.
 Mac plan: `evidence/m0/p0-2/macos-owned-desktop-session-test-plan-20261005.md`.
+Mac owned-session attempt at `8152267` is **NOT YET VERIFIED**: Rust test build
+exited 101 before execution because main and the config test both generated a
+Tauri context, embedding duplicate `_EMBED_INFO_PLIST` symbols. Format/diff
+passed; Clippy, packaging, Node and live sessions were not attempted.
+Fix `49e4e5d` tests the config transform directly with two visible windows and
+preserves identity/window assertions; main is the sole context generator.
+Windows local Desktop **17/17**, format and strict all-target Clippy PASS on this
+fix without Actions or policy changes. This does not supersede the historical
+4551 result or verify Mac. Retry the full updated Mac plan before closing that
+gate. Failure evidence:
+`evidence/m0/p0-2/macos-owned-desktop-session-evidence-20261005.md`.
 Next implementation is complete-package selection/intent coordination and
 failed-candidate baseline restart using these owned sessions. Signing, canonical
 acceptance, interrupted handover and version-changing update remain open.
