@@ -67,4 +67,7 @@ Combined Windows Node **150/150** plus storage **5/5**, no failures/skips;
 managed subset **21/21**. Five changed-script syntax and diff checks PASS.
 Mac registers its extra POSIX mode test: updated managed expectation **22/22**.
 Re-run only managed Syncthing on the Mac; passed native recovery and changed
-package plans need no redundant repetition. Mac parity still pending. No Actions.
+package plans need no redundant repetition. Mac parity was pending at that point.
+The subsequent `501d11d` Mac rerun passed **22/22** and the live proof; see
+`macos-managed-syncthing-evidence-20261005.md`. Earlier failures remain retained.
+No Actions.

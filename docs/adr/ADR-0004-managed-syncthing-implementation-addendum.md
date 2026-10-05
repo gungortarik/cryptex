@@ -1,6 +1,6 @@
 # ADR-0004 implementation addendum — managed Syncthing
 
-**Status:** PROPOSED — Windows isolated spike verified; acceptance pending
+**Status:** PROPOSED — both-platform isolated spike verified; acceptance pending
 **Date:** 2026-10-05
 **Scope:** M0 P0-4 implementation choice; no replication semantics
 
@@ -55,7 +55,11 @@ The observed user-global config digest stayed unchanged.
 The staged-package follow-up runs a copied native binary with exact LICENSE/AUTHORS
 from its fresh package role and rechecks membership/digests afterward. Windows
 passes; this does not establish a signed/installed distribution or dependency
-notice completeness. Mac executable-mode/package parity remains pending.
+notice completeness. Mac executable-mode/package parity reported PASS at exact
+`501d11d64cb7d77e8b1c51ad453fdf15f326fc8d`: 22/22 tests and live runner exit 0,
+four clean monitor exits, no remaining PIDs and unchanged observed global config.
+See `evidence/m0/p0-4/macos-managed-syncthing-evidence-20261005.md` for the supplied
+artifact hash and provenance. Original notice failure remains preserved.
 
 Early restart shutdown needed about 10.1 seconds. Exact pinned source includes
 a 10-second connection close timeout and a 10-second database shutdown wait;
@@ -85,7 +89,7 @@ compatibility/rollback probe before its acceptance claim.
 
 ## Required acceptance evidence
 
-1. Equivalent Mac managed lifecycle against exact stable 2.1.5.
+1. Equivalent Mac managed lifecycle against exact stable 2.1.5: scoped PASS recorded.
 2. Target-matched staged/bundled package resolution and notice inclusion on both
    OSes; source/provenance/dependency-notice review before distribution.
 3. Explicit upgrade compatibility strategy and tested migration/failure boundaries;
@@ -93,5 +97,5 @@ compatibility/rollback probe before its acceptance claim.
 4. Review of proposed supervisor/secret boundary and residual M0 limitations.
 5. Human acceptance and evidence-backed P0-4 checklist.
 
-**Not accepted.** Windows scoped PASS does not complete P0-4 or M0, and does not
+**Not accepted.** Both-platform scoped PASS does not complete P0-4 or M0, and does not
 authorize M1 or product replication features.

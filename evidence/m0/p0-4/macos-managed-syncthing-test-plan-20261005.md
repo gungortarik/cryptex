@@ -1,5 +1,9 @@
 # Mac task — managed Syncthing parity
 
+**Status:** completed scoped PASS at `501d11d` (22/22 plus live runner).
+See `macos-managed-syncthing-evidence-20261005.md`. Instructions below are retained
+for reproduction; no new execution is requested by this completed plan.
+
 Use clean current `m0/p0-2-cursor` containing notice/observation fix `f17bcf7`;
 report full tested SHA. It must contain `syncthing-bundle.mjs` and its tests.
 Read handoff, accepted stack baseline, P0-4 contract and Windows scoped evidence.

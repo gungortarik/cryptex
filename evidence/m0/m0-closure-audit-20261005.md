@@ -11,10 +11,10 @@ No M1 work is authorized by this audit. Checkboxes must follow verified evidence
 | P0-1 | Accepted ADR-0013 and physical cross-platform benchmark evidence integrated via approved normal merge `cb9069e` from `6d4d10a` | Confirm integrated branch's required checks; no corpus regeneration |
 | P0-2 | Both OS lifecycle/IPC/tray/login, changed-byte native package selection/rollback and pre-successor updater-kill recovery with sealed-fixture preservation (Mac daemon bytes unchanged) | Remaining native interruption/controlled-error review; signing/installed updater and canonical fixture acceptance; ADR-0012 decision |
 | P0-3 | Accepted ADR-0007 implementation addendum; physical transport, negotiation, roles, malformed frames, ACL and reconnect evidence | Final integrated security/acceptance review; do not expand production APIs |
-| P0-4 | Windows pinned 2.1.5 managed lifecycle, auth/pairing/pause/status/history/conflict, restart/clean stop and staged native/LF notices; original Mac notice failure retained and corrected | Mac 22-test/live rerun, installed distribution/notice review, actual version-change compatibility, secret boundary and ADR-0004 addendum acceptance |
+| P0-4 | Both OS pinned 2.1.5 managed lifecycle, auth/pairing/pause/status/history/conflict, restart/clean stop and staged native/LF notices; Mac 22/22 plus live PASS, original notice failure retained | Installed distribution/notice review, actual version-change compatibility, secret boundary and ADR-0004 addendum acceptance |
 | Golden Brain | Deterministic synthetic sealed-pack foundation and preservation proof on both OSes | Review of fixture scope; production event schema is outside M0 |
 | Doctor | Actual daemon PID/IPC/lock health on both OSes, including recovered Mac baseline healthy | Review diagnostics; explicitly retain unimplemented canonical/Syncthing checks |
-| Quality/final gate | Windows integrated workspace 89 Rust and current 150 Node + 5 storage Node; Mac foundation 71 Rust, 123 Node + 5 storage Node; strict Clippy/build/format PASS | Updated managed Mac checks, final required CI at stable source, human review and final evidence-backed checklist |
+| Quality/final gate | Windows integrated workspace 89 Rust and current 150 Node + 5 storage Node; Mac foundation 71 Rust, 123 Node + 5 storage Node and updated managed 22/22; strict Clippy/build/format PASS | Final required CI at stable source, human review and final evidence-backed checklist |
 
 P0-1 transport measurements do not satisfy managed P0-4 integration. An unchecked
 item is not filled merely because similarly named code or an old config exists.
@@ -91,5 +91,14 @@ preserves exact-byte verification and explicit LF checkout. Corrected Windows
 managed proof passes four clean stops; combined Node **150/150**, storage **5/5**.
 See `p0-4/notice-byte-portability-failure-and-fix-20261005.md`, including two
 intermediate failed Windows observations and their bounded polling corrections.
-Only the managed Mac task needs rerun: **22/22** tests plus isolated native proof.
+The subsequent Mac rerun at `501d11d` reported **22/22** plus isolated native
+proof PASS, including four clean exits, unchanged global config digest and
+exact staged binary/notices/POSIX modes. See
+`p0-4/macos-managed-syncthing-evidence-20261005.md`. No passed Mac task needs rerun.
 No Actions run. ADR-0004/0012 remain PROPOSED and M0 remains IN PROGRESS.
+
+Next closure work: exercise actual changed-version Syncthing compatibility and
+failure/rollback boundaries in fresh isolated profiles, then finish notice and
+supervisor/secret-boundary review. Same-version restart is already proven and
+must not be repeated or relabeled upgrade. P0-2 signed/installed acceptance
+prerequisites, human ADR decisions and final required CI remain separate gates.

@@ -54,7 +54,9 @@ Integration update:
 
 The owner explicitly authorized completing the entire M0 milestone. Closure
 audit: `evidence/m0/m0-closure-audit-20261005.md`. P0-4 managed Syncthing and its
-ADR-0004 addendum remain unproved; P0-1 transport evidence does not close them.
+ADR-0004 addendum remain unaccepted; managed staged lifecycle now has both-OS
+proof, but version-changing compatibility and acceptance review remain open.
+P0-1 transport evidence alone does not close them.
 Do not declare M0 complete or start M1 based only on the P0-2 pilot.
 
 Native interruption `7d7a60e` adds schema-2 intent ownership, absent-child checks
@@ -130,7 +132,7 @@ protocol-rejected rollback with unchanged sealed fixtures. Mac Desktop changed;
 daemon bytes stayed identical. Report hash and exact scope are preserved in
 `evidence/m0/p0-2/macos-changed-native-package-evidence-20261005.md`.
 Native interruption/foundation subsequently reported PASS at `502abf4` as above.
-Managed Syncthing remains a separate failed/pending parity gate.
+Managed Syncthing subsequently reported scoped PASS at `501d11d` as below.
 ADR-0012 PROPOSED and M0 IN PROGRESS. No Actions or startup/install changes.
 
 Managed Syncthing Mac tests at `502abf4` stopped before live launch: **7 PASS,
@@ -145,8 +147,16 @@ other I/O errors still fail. Both failed runs remain recorded.
 Corrected Windows live proof passes all managed assertions and four clean stops;
 combined Node **150/150**, storage **5/5**, managed **21/21**, syntax/diff PASS.
 Evidence: `evidence/m0/p0-4/notice-byte-portability-failure-and-fix-20261005.md`.
-Mac must rerun only the updated managed plan (**22/22** plus live isolated proof),
-using its retained native 2.1.5 binary. Other passed Mac plans need no repetition.
+Mac rerun at exact `501d11d64cb7d77e8b1c51ad453fdf15f326fc8d` reported
+**22/22**, five syntax/diff checks and live isolated runner exit 0. LF notice
+checkout and staged binary/notice digests/POSIX modes passed. Incorrect API keys
+returned 403/403; pairing, pause/resume, idle, history, restart/new transfer and
+both divergent conflict contents passed. Global config observed digest unchanged.
+Four monitor PIDs `83988/84004/84014/83984` exited 0 in
+`36/10028/791/155` ms and were absent; no forced cleanup/database-stop failure.
+Exact report hash and limitations:
+`evidence/m0/p0-4/macos-managed-syncthing-evidence-20261005.md`.
+Managed Mac parity is closed; no passed Mac plan needs repetition.
 No Actions run; installed distribution/version-change/secret acceptance stays open.
 
 Read-only Windows signing readiness audit: SDK x64 SignTool is available, but
