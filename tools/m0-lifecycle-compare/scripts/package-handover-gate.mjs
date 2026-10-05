@@ -49,7 +49,7 @@ export async function acquireNativeHandoverGate(root, helper) {
   }
   try { assertHeld(); } catch (error) { await stopAbnormal(); throw error; }
   return {
-    pid: child.pid, signal: controller.signal, assertHeld,
+    root, pid: child.pid, signal: controller.signal, assertHeld,
     release() {
       if (releasePromise) return releasePromise;
       releasePromise = (async () => {

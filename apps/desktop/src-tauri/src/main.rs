@@ -24,6 +24,22 @@ use tauri::{AppHandle, Manager, State, WindowEvent};
 use tauri_plugin_autostart::ManagerExt as AutoStartManagerExt;
 
 mod background_process;
+mod pilot_runtime;
+
+fn runtime_root_path() -> Result<PathBuf, String> {
+    if let Some(root) = pilot_runtime::root() {
+        return Ok(root);
+    }
+    default_runtime_root_path()
+}
+
+fn daemon_override() -> Option<PathBuf> {
+    if pilot_runtime::root().is_some() {
+        None
+    } else {
+        std::env::var_os("CRYPTEXD_BIN").map(PathBuf::from)
+    }
+}
 
 #[derive(Clone)]
 struct ProbeState {
@@ -44,7 +60,7 @@ fn p0_2_runtime_root() -> Result<String, String> {
 }
 
 #[cfg(all(target_os = "macos", debug_assertions))]
-fn runtime_root_path() -> Result<PathBuf, String> {
+fn default_runtime_root_path() -> Result<PathBuf, String> {
     let home = std::env::var_os("HOME").ok_or("HOME unset")?;
     Ok(PathBuf::from(home)
         .join("Library")
@@ -56,7 +72,7 @@ fn runtime_root_path() -> Result<PathBuf, String> {
 }
 
 #[cfg(all(target_os = "macos", not(debug_assertions)))]
-fn runtime_root_path() -> Result<PathBuf, String> {
+fn default_runtime_root_path() -> Result<PathBuf, String> {
     mac_product_runtime_root(std::env::var_os("HOME").as_deref())
 }
 
@@ -71,12 +87,12 @@ fn mac_product_runtime_root(home: Option<&std::ffi::OsStr>) -> Result<PathBuf, S
 }
 
 #[cfg(all(target_os = "windows", debug_assertions))]
-fn runtime_root_path() -> Result<PathBuf, String> {
+fn default_runtime_root_path() -> Result<PathBuf, String> {
     windows_runtime_root(std::env::var_os("LOCALAPPDATA").as_deref())
 }
 
 #[cfg(all(target_os = "windows", not(debug_assertions)))]
-fn runtime_root_path() -> Result<PathBuf, String> {
+fn default_runtime_root_path() -> Result<PathBuf, String> {
     windows_product_runtime_root(std::env::var_os("LOCALAPPDATA").as_deref())
 }
 
@@ -98,13 +114,13 @@ fn windows_product_runtime_root(local_app_data: Option<&OsStr>) -> Result<PathBu
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn runtime_root_path() -> Result<PathBuf, String> {
+fn default_runtime_root_path() -> Result<PathBuf, String> {
     Err("Cryptex Desktop P0-2 runtime root is supported only on macOS and Windows".into())
 }
 
 #[tauri::command]
 fn p0_2_default_cryptexd() -> Result<String, String> {
-    let override_path = std::env::var_os("CRYPTEXD_BIN").map(PathBuf::from);
+    let override_path = daemon_override();
     resolve_cryptexd_binary(
         override_path,
         &std::env::current_exe().map_err(|e| e.to_string())?,
@@ -114,6 +130,9 @@ fn p0_2_default_cryptexd() -> Result<String, String> {
 
 #[tauri::command]
 fn p0_2_autostart_status(app: AppHandle) -> Result<bool, String> {
+    if pilot_runtime::root().is_some() {
+        return Ok(false);
+    }
     app.autolaunch()
         .is_enabled()
         .map_err(|error| error.to_string())
@@ -121,11 +140,17 @@ fn p0_2_autostart_status(app: AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 fn p0_2_autostart_enable(app: AppHandle) -> Result<(), String> {
+    if pilot_runtime::root().is_some() {
+        return Err("PILOT_AUTOSTART_FORBIDDEN".into());
+    }
     app.autolaunch().enable().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn p0_2_autostart_disable(app: AppHandle) -> Result<(), String> {
+    if pilot_runtime::root().is_some() {
+        return Err("PILOT_AUTOSTART_FORBIDDEN".into());
+    }
     app.autolaunch()
         .disable()
         .map_err(|error| error.to_string())
@@ -165,6 +190,17 @@ fn resolve_cryptexd_binary(
 
 #[tauri::command]
 fn p0_2_start_daemon(state: State<'_, ProbeState>, cryptexd: String) -> Result<u32, String> {
+    if pilot_runtime::root().is_some() {
+        let expected = resolve_cryptexd_binary(
+            None,
+            &std::env::current_exe().map_err(|error| error.to_string())?,
+        )?;
+        if fs::canonicalize(&cryptexd).map_err(|error| error.to_string())?
+            != fs::canonicalize(expected).map_err(|error| error.to_string())?
+        {
+            return Err("PILOT_SIDECAR_OVERRIDE_FORBIDDEN".into());
+        }
+    }
     {
         let existing = state.child.lock().map_err(|e| e.to_string())?;
         if existing.is_some() {
@@ -287,8 +323,11 @@ fn stop_supervised_daemon(state: &State<'_, ProbeState>) -> Result<(), String> {
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {
             match child.try_wait().map_err(|error| error.to_string())? {
-                Some(_) => {
+                Some(status) => {
                     *state.supervised_pid.lock().map_err(|e| e.to_string())? = None;
+                    if pilot_runtime::root().is_some() && !status.success() {
+                        return Err("PILOT_DAEMON_UNCLEAN_EXIT".into());
+                    }
                     return Ok(());
                 }
                 None if Instant::now() < deadline => thread::sleep(Duration::from_millis(25)),
@@ -325,10 +364,7 @@ fn start_daemon_for_desktop_launch(state: &ProbeState) -> Result<u32, String> {
     let runtime = runtime_root_path()?;
     fs::create_dir_all(&runtime).map_err(|error| error.to_string())?;
     let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-    let bin = resolve_cryptexd_binary(
-        std::env::var_os("CRYPTEXD_BIN").map(PathBuf::from),
-        &executable,
-    )?;
+    let bin = resolve_cryptexd_binary(daemon_override(), &executable)?;
 
     let status = query_daemon_status(&bin, &runtime)
         .map_err(|error| format!("failed to inspect existing daemon before startup: {error}"))?;
@@ -734,12 +770,16 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
                 let _ = fs::remove_file(&start);
                 let already = state.child.lock().ok().is_some_and(|g| g.is_some());
                 if !already {
-                    let bin = request_body
-                        .lines()
-                        .map(str::trim)
-                        .find(|line| !line.is_empty())
-                        .map(str::to_string)
-                        .or_else(|| std::env::var("CRYPTEXD_BIN").ok());
+                    let bin = if pilot_runtime::root().is_some() {
+                        p0_2_default_cryptexd().ok()
+                    } else {
+                        request_body
+                            .lines()
+                            .map(str::trim)
+                            .find(|line| !line.is_empty())
+                            .map(str::to_string)
+                            .or_else(|| std::env::var("CRYPTEXD_BIN").ok())
+                    };
                     match bin {
                         Some(bin) => match start_daemon_inner(&bin, &root) {
                             Ok((pid, child)) => {
@@ -800,6 +840,15 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
             }
 
             let quit = root.join("quit.request");
+            let pilot_quit = root.join("pilot-quit.request");
+            if pilot_runtime::root().is_some() && pilot_quit.exists() {
+                let _ = fs::remove_file(&pilot_quit);
+                if let Err(error) = p0_2_quit_clean(app.clone(), app.state::<ProbeState>()) {
+                    let _ = fs::write(root.join("pilot-quit.error"), format!("{error}\n"));
+                    app.exit(2);
+                }
+                break;
+            }
             if quit.exists() {
                 let _ = fs::remove_file(&quit);
                 let _ = fs::write(root.join("stop"), "stop\n");
@@ -824,6 +873,14 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
 }
 
 fn main() {
+    if let Err(error) = pilot_runtime::initialize() {
+        eprintln!("PILOT_RUNTIME_REJECTED: {error:?}");
+        std::process::exit(2);
+    }
+    let mut context = tauri::generate_context!();
+    if pilot_runtime::root().is_some() {
+        pilot_runtime::configure(context.config_mut());
+    }
     let probe_state = ProbeState {
         child: Arc::new(Mutex::new(None)),
         runtime_root: Arc::new(Mutex::new(None)),
@@ -897,7 +954,11 @@ fn main() {
             let _ = runtime_root_path().and_then(|root| {
                 fs::create_dir_all(&root).map_err(|e| e.to_string())?;
                 let observation = current_daemon_pid(&root, &probe_state);
-                write_snapshot(&root, "desktop_launched", true, observation)?;
+                let visible = app
+                    .get_webview_window("main")
+                    .and_then(|window| window.is_visible().ok())
+                    .unwrap_or(false);
+                write_snapshot(&root, "desktop_launched", visible, observation)?;
                 Ok(())
             });
             if std::env::args_os().any(|argument| argument == "--cryptex-background")
@@ -908,7 +969,7 @@ fn main() {
             spawn_control_file_watcher(app.handle().clone(), probe_state.clone());
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("failed to build Cryptex Desktop")
         .run(|app_handle, event| {
             #[cfg(target_os = "macos")]
