@@ -11,6 +11,32 @@ explicit.
 
 ## Candidate comparison
 
+### Continuation audit — 2026-10-05
+
+The matrix below retains the original experiment-time comparison. Current
+status supersedes its stale statements that Windows tray/login or the
+foreground console observation remain wholly unverified:
+
+- Windows physical tray Open/active-daemon Quit, real hidden login/startup removal
+  and console-free foreground launch/query have separate scoped PASS evidence.
+  Foreground console observation does not repeat login on the rebuilt binary.
+- Windows unsigned native installer replacement/operator rollback passed in an
+  isolated install directory; installer atomicity/signing remain unproved.
+- Changed native staged package commit and protocol-rejected actual rollback now
+  PASS on both OSes with unchanged synthetic sealed packs/manifest. Windows
+  changed both role hashes; Mac changed Desktop only and kept the daemon bytes.
+- Mac native interruption/Golden/Doctor parity is still pending. No production
+  canonical-schema, publisher authentication, installed-updater atomicity or
+  power-loss acceptance is implied. ADR-0012 stays PROPOSED.
+
+Current evidence: `windows-physical-release-tray-20261003.md`,
+`windows-desktop-login-result-20261003.md`, `windows-console-visual-result-20261003.md`,
+`windows-native-package-update-20261003.md`, `windows-native-package-rollback-20261003.md`,
+`windows-changed-native-package-evidence-20261005.md` and
+`macos-changed-native-package-evidence-20261005.md`.
+
+### Original comparison
+
 | Capability | Native per-user startup / supervision (Mode A) | Desktop process supervisor (Mode B) | Evidence consequence |
 |---|---|---|---|
 | Start at login | macOS test LaunchAgent physically survived login/reboot. Windows test HKCU Run started and survived two measured ten-minute post-login windows, including a second physical reboot; a separate earlier login dispatch failure still has no established cause. The temporary Windows registrations were cleaned after the repeat. | Does not start the Desktop at login by itself; needs an OS login registration or an always-open Desktop. | Native test startup has repeated evidence on both platforms, but Windows HKCU Run is login-only, launches the console test daemon directly, and its historical failure remains unexplained. This is not production Desktop startup proof. |

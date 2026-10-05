@@ -23,6 +23,28 @@ preservation also remain open. See the run evidence for the exact scope.
 
 ## Proposed decision
 
+### Evidence status update — 2026-10-05
+
+The original paragraphs/bullets retain their proposal-time historical scope.
+Later Windows title-bar/tray Open/Quit, real hidden login/startup removal and
+observed foreground console-free launch/query proofs are recorded in
+`windows-physical-release-tray-20261003.md`,
+`windows-desktop-login-result-20261003.md` and
+`windows-console-visual-result-20261003.md` under `evidence/m0/p0-2/`.
+The console-free foreground proof is not a repeated physical login proof.
+Windows unsigned installed operator replacement/rollback also exists separately.
+
+Changed native test-package selection and actual protocol-rejected rollback now
+PASS on both platforms, preserving synthetic sealed fixtures after each scenario:
+`windows-changed-native-package-evidence-20261005.md` and
+`macos-changed-native-package-evidence-20261005.md`. Windows changed both role
+hashes; Mac changed Desktop only. These results do not establish production
+canonical-schema acceptance, signed installed updater safety or power-loss
+durability. Mac native interruption/foundation parity remains pending separately.
+The proposal is still **PROPOSED**; no required acceptance proof is waived.
+
+### Selected implementation direction
+
 Use **Mode B with per-user login startup**:
 
 - Cryptex Desktop is the per-user login-start application and the runtime

@@ -9,7 +9,7 @@ No M1 work is authorized by this audit. Checkboxes must follow verified evidence
 | Gate | Verified foundation | Remaining closure work |
 | --- | --- | --- |
 | P0-1 | Accepted ADR-0013 and physical cross-platform benchmark evidence integrated via approved normal merge `cb9069e` from `6d4d10a` | Confirm integrated branch's required checks; no corpus regeneration |
-| P0-2 | Both OS lifecycle/IPC/tray/login and same-byte selection/rollback; Windows changed-byte native pair selection/rollback with sealed-fixture preservation | Mac native interruption/foundation and changed-package parity; remaining native interruption/controlled-error review; signing/installed updater and canonical fixture acceptance; ADR-0012 decision |
+| P0-2 | Both OS lifecycle/IPC/tray/login and changed-byte native package selection/rollback with sealed-fixture preservation (Mac daemon bytes unchanged) | Mac native interruption/foundation parity; remaining native interruption/controlled-error review; signing/installed updater and canonical fixture acceptance; ADR-0012 decision |
 | P0-3 | Accepted ADR-0007 implementation addendum; physical transport, negotiation, roles, malformed frames, ACL and reconnect evidence | Final integrated security/acceptance review; do not expand production APIs |
 | P0-4 | Windows pinned 2.1.5 managed lifecycle, two isolated native profiles, auth/pairing/pause/status/history/conflict, retained restart and clean stop; staged native role/notice preservation and proposed ADR-0004 addendum | Mac parity, installed distribution/notice review, actual version-change compatibility, secret boundary and addendum acceptance |
 | Golden Brain | Deterministic synthetic sealed-pack foundation and Windows preservation proof | Mac parity and review of fixture scope; production event schema is outside M0 |
@@ -65,3 +65,14 @@ rollback. Its Mac task is `p0-2/macos-changed-native-package-test-plan-20261005.
 Temporary candidate Desktop version metadata does not change the repository
 release version. Installed/signed upgrade and production canonical acceptance
 remain unclaimed. Current Node checks are **143/143** plus storage **5/5**.
+
+Mac changed-package task reported PASS at exact source `9a74b40`; evidence is
+`p0-2/macos-changed-native-package-evidence-20261005.md`. It closes only that
+scoped parity item; native interruption/Golden/Doctor and managed Syncthing Mac
+tasks still need their own results. No redundant Windows build/test rerun is
+needed for recording this report.
+
+Windows signing readiness (read-only): SDK x64 SignTool exists; CurrentUser My
+contains zero currently valid code-signing certificates with private keys.
+No external signing service was inspected and no key/export/security change was
+made. Production signing remains an explicit unmet acceptance prerequisite.

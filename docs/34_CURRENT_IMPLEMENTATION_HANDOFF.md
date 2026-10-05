@@ -113,9 +113,22 @@ release Desktop **17/17**, workspace format/strict Clippy/syntax/diff PASS.
 Evidence/task: `windows-changed-native-package-evidence-20261005.md` and
 `macos-changed-native-package-test-plan-20261005.md` under `evidence/m0/p0-2/`.
 Repo product version remains 0.0.0; no installed updater or semantic daemon
-version migration/signature/canonical-production acceptance is claimed. Mac
-changed-package parity remains pending alongside the other two Mac plans.
+version migration/signature/canonical-production acceptance is claimed.
+Mac changed-package parity was reported PASS at
+`9a74b40414fad7b34d6e038fbe95eff334820262`: 6/6 new tests, builds/format/strict
+Clippy/syntax/diff passed, five clean native sessions, committed candidate and
+protocol-rejected rollback with unchanged sealed fixtures. Mac Desktop changed;
+daemon bytes stayed identical. Report hash and exact scope are preserved in
+`evidence/m0/p0-2/macos-changed-native-package-evidence-20261005.md`.
+The other two Mac plans (native interruption/foundation and managed Syncthing)
+remain pending; this report does not substitute for them.
 ADR-0012 PROPOSED and M0 IN PROGRESS. No Actions or startup/install changes.
+
+Read-only Windows signing readiness audit: SDK x64 SignTool is available, but
+the current-user My store has **0 currently valid code-signing certificates with
+private keys**. No certificate export, purchase, policy change or signing attempt.
+This does not inspect external signing services or establish publisher trust;
+signed-package acceptance cannot be claimed from the existing unsigned proofs.
 
 ## P0-2 evidence status — verified slices; acceptance open
 

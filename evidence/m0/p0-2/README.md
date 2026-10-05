@@ -198,6 +198,7 @@ See:
 
 - [Windows changed-package evidence](windows-changed-native-package-evidence-20261005.md)
 - [Mac changed-package task](macos-changed-native-package-test-plan-20261005.md)
+- [Mac changed-package result](macos-changed-native-package-evidence-20261005.md)
 
 This follow-up uses different actual native payloads and sealed-fixture
 preservation; installed/signed updater and ADR-0012 acceptance remain open.
