@@ -93,7 +93,10 @@ theme/DPI/production design acceptance was not inferred.
 - **SCOPED PASS:** current renderer layout/read-only delta in the observed Windows-host browser.
 - **SCOPED PASS:** actual Windows native foundation visual review and clean
   owned-session cleanup, with populated long path/status and reachable controls.
-- **NOT YET VERIFIED:** equivalent explicit current Mac native visual review.
+- **FAIL / OPEN:** Mac operator confirms entirely blank renderer in subsequent
+  fallback. See `macos-native-foundation-ui-blank-failure-20261005.md` and new
+  `macos-embedded-frontend-revalidation-plan-20261005.md`. Proper package fix
+  must render before accepting Mac UI. Earlier automation-only result:
   Attempt at checkout9752798 with retained matching-source build7f5ab2b hit
   Computer Use `Invalid app`; health/clean shutdown succeeded but no images.
   See `macos-native-foundation-ui-attempt-20261005.md`; operator captures needed.

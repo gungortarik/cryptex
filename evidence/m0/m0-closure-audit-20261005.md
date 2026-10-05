@@ -6,6 +6,17 @@ No M1 work is authorized by this audit. Checkboxes must follow verified evidence
 
 ## Current gate inventory
 
+**Current blocking result:** Mac native visual review FAIL (blank renderer);
+see `macos-native-foundation-ui-blank-failure-20261005.md`. Corrective source
+`65ce7b9` has Windows debug 23/23, embedded release 24/24 and CLI 4/4 PASS,
+strict lint/format/package and targeted guard/hidden-session proof. Focused
+independent reviews PASS. Mac fresh embedded package/visual revalidation and
+new-source final CI remain pending. Use
+`macos-embedded-frontend-revalidation-plan-20261005.md` next. Historical checks
+below do not verify this behavior/workflow change. M0 is still IN PROGRESS.
+
+### Earlier candidate inventory
+
 Latest corrected CI result: **SUCCESS** at exact source `5c07411`, run
 `37377520994`: Windows/macOS readiness and actual Windows ACL all PASS.
 First missing-benchmark failure, cancellation and correction remain recorded in

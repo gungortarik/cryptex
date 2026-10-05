@@ -4,6 +4,14 @@
 `5c074115cd61ef7c1eb47e8ed2cf8c1105360679`. M0 remains IN PROGRESS.
 This packet itself changes no acceptance status or milestone authority.
 
+**Current blocker and superseding source:** Mac native visual review is FAIL
+(entirely blank window). Fix `65ce7b9` rejects release builds using the Tauri
+development-server mode and makes embedded frontend release checks explicit.
+Windows focused checks PASS; Mac revalidation and fresh final CI remain pending.
+Use `macos-embedded-frontend-revalidation-plan-20261005.md`. The earlier candidate
+and successful CI below remain historical evidence, not validation of this fix.
+Final human acceptance is not ready until these gates are reconciled.
+
 CI continuation: first run failed because the workflow omitted building the
 plain storage benchmark needed by Golden tests. Workflow-only correction builds
 both required native helpers; local focused tests 6/6 PASS. See
@@ -16,8 +24,8 @@ jobs and actual Windows cross-account ACL passed. Counts and first failure are
 retained in `m0-final-ci-attempt-20261005.md`. Independent verifier/security
 reviews now completed independently at `3de9d00`: see
 `m0-independent-review-results-20261005.md`. Human diff/ADR acceptance is still
-NOT APPROVED. A narrow remaining native UI review is requested; no old Mac
-lifecycle/test suite repetition or redundant Actions run.
+NOT APPROVED. The subsequent Mac visual failure now requires the focused fresh
+package plan above; no old Mac lifecycle/test suite repetition is requested.
 
 ## Reviewable decisions
 

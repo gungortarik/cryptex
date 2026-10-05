@@ -52,6 +52,28 @@ Integration update:
 
 ## M0 closure continuation (2026-10-05)
 
+**Current blocker: Mac native renderer FAIL**, entirely blank operator window
+at checkout `dee43e2` / retained raw Cargo release `7f5ab2b`; clean shutdown is not a
+visual pass. See `evidence/m0/macos-native-foundation-ui-blank-failure-20261005.md`.
+Pinned Tauri frontend mode depends on `tauri/custom-protocol`, not Rust release
+optimization. Raw release in the old plan omitted it and can use devUrl port 1420.
+Source `65ce7b9` adds typed pre-Tauri wrong-mode release rejection and explicit
+embedded-frontend CI build/test/lint (full release suite). Independent focused
+security/verifier review PASS, including release feature-omission sentinel.
+Windows 23 debug / 24 release / 4 CLI, strict lint/format/package build, wrong-mode exit 2
+and supported hidden session/clean exit 0 PASS. No new visible Windows UI or Actions.
+Evidence: `evidence/m0/windows-embedded-frontend-mode-evidence-20261005.md`.
+
+**Next Mac task:** `evidence/m0/macos-embedded-frontend-revalidation-plan-20261005.md`.
+Use new Tauri-built `.app`, not retained `7f5ab2b` raw Cargo executable. Mac 16 debug /
+17 release / 4 CLI, targeted rejection and one operator visual session required.
+Exact Mac cause/recovery still unconfirmed; if still blank, preserve FAIL.
+No old suites or security changes. Then batch required new-source final CI and
+human ADR/diff acceptance. Earlier cloud result below is historical and does not
+verify `65ce7b9`. M0 remains IN PROGRESS; no merge/M1/ADR acceptance inferred.
+
+### Earlier candidate CI and review state
+
 Corrected final CI **PASS** on `5c074115cd61ef7c1eb47e8ed2cf8c1105360679`,
 run `37377520994`: Windows readiness **93 debug Rust + 1 release resolver,
 160/160 + 8/8 Node**; Mac readiness **75 debug Rust + 1 release resolver,
@@ -59,9 +81,9 @@ run `37377520994`: Windows readiness **93 debug Rust + 1 release resolver,
 green; package-only installer intentionally skipped. Exact jobs/log provenance
 and first failed/cancelled attempt are retained in
 `evidence/m0/m0-final-ci-attempt-20261005.md`.
-No source behavior changed to fix CI; missing plain benchmark build prerequisite
-was added. Current result-recording changes are documentation only; newer doc
-SHAs are not falsely claimed to have the tested source's GitHub checks.
+At that earlier candidate, only missing plain benchmark build prerequisite was
+added. Subsequent result-recording commits were documentation only. New `65ce7b9`
+changes behavior/workflow and needs fresh final CI; do not reuse old status checks.
 Independent verifier and security audit completed at `3de9d00` after owner
 explicitly authorized both agents with "hemen basla". Results:
 `evidence/m0/m0-independent-review-results-20261005.md`. No new blocking M0

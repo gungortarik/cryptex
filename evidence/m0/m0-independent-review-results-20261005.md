@@ -76,3 +76,20 @@ read health/identity/cleanup report and checked absent recorded processes.
 remains NOT VERIFIED. Details/provenance: `m0-foundation-ui-review-20261005.md`.
 The report has no embedded source-SHA or native-gate-release field; source/build
 and gate-release claims retain their separate run transcript provenance.
+
+## Embedded frontend build correction follow-up
+
+At `65ce7b91fe500cfe751aa3d13b39010f6dcc935e`, focused verifier review PASS;
+security review of the same behavior delta also PASS. The typed release-mode
+guard runs after pilot-root validation and before Tauri context/runtime creation.
+Debug development mode remains supported; no CSP, capability or secret boundary
+was relaxed. A release-only assertion verifies embedded frontend mode, closing
+the risk of a release test suite silently passing without `tauri/custom-protocol`.
+CI now explicitly builds, fully tests and lints that supported release mode.
+
+These read-only reviews did not run tests, apps or workflows. Windows focused
+execution is recorded separately in
+`windows-embedded-frontend-mode-evidence-20261005.md`. Mac operator review
+subsequently established an actual blank-window FAIL; the older NOT VERIFIED
+attempt above is historical. Fresh Mac package/visual proof and new-source final
+CI are required; the proposed Mac cause/remediation is not yet verified there.

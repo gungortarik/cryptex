@@ -1,5 +1,10 @@
 # Remaining task: native M0 foundation visual review
 
+**Superseded continuation:** operator fallback atdee43e2 showed a fully blank
+Mac renderer (FAIL). Follow `macos-embedded-frontend-revalidation-plan-20261005.md`
+first; do not reuse retained7f5ab2b raw Cargo release. Screenshot review methods
+below remain applicable to the newly packaged, isolated session.
+
 Read handoff, M0 contract, DoD sections 9/11, UX design specification and
 `m0-foundation-ui-review-20261005.md`. Report exact source/build SHA and platform.
 This is a narrow visual review, not a new lifecycle/upgrade/login test.
