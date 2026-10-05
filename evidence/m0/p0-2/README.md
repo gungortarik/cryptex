@@ -25,6 +25,10 @@ Mac actual `.app` request: `macos-owned-desktop-session-test-plan-20261005.md`.
 Mac result: `macos-owned-desktop-session-evidence-20261005.md`
 (10 Desktop + 14 helper Rust tests, 97 Node tests, two actual same-package .app
 sessions PASS; initial duplicate Info.plist build failure preserved).
+Native selection/rollback: `windows-native-selection-evidence-20261005.md`
+(110 Node, 31 Rust; actual same-byte candidate commit and rejected-health
+baseline restart PASS). Mac parity request:
+`macos-native-selection-test-plan-20261005.md`; parity pending.
 
 - `docs/11_DAEMON_IPC_RUNTIME.md`
 - `docs/23_REQUIRED_TECHNICAL_SPIKES.md`

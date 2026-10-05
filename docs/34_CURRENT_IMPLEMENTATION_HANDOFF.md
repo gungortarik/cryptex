@@ -817,9 +817,24 @@ Mac changed no files or commits and ran no Actions. This closes only the
 same-package owned-session Mac gate, not update/rollback. Report path/hash and
 the initial failure are preserved in:
 `evidence/m0/p0-2/macos-owned-desktop-session-evidence-20261005.md`.
-Next implementation is complete-package selection/intent coordination and
-failed-candidate baseline restart using these owned sessions. Signing, canonical
-acceptance, interrupted handover and version-changing update remain open.
+Native selection slice `13b435d` now stages complete baseline/candidate slots,
+writes a separate flushed pending intent and replaces selection under the held
+native gate after proven baseline shutdown. Real candidate health failure with
+proven cleanup restores selection and restarts baseline before clearing intent.
+Uncertain cleanup/failed rollback retains diagnostics and reports failure;
+pending intent blocks startup/handover. No interrupted recovery is implemented.
+Windows **110/110 Node**, Desktop **17/17** and helper **14/14**, format/strict
+Clippy/four syntax/diff checks PASS. Actual compatible candidate commit and
+protocol-2-declared vs protocol-1-real rejection/baseline restart PASS, with
+clean exits 0, correct OS identities, lock release and endpoint absence.
+Both slots use the same prior pilot-enabled release bytes; this is selection
+and rollback evidence, not a version upgrade or installed updater.
+Evidence: `evidence/m0/p0-2/windows-native-selection-evidence-20261005.md`.
+Mac request: `evidence/m0/p0-2/macos-native-selection-test-plan-20261005.md`.
+Mac parity remains pending. No Actions or installed startup changes.
+Next implementation is interrupted native handover recovery with owned-child
+absence/ambiguous-state refusal. Signing, canonical acceptance, native
+interruption and version-changing update remain open; ADR-0012 stays PROPOSED.
 
 ### Latest native interrupted-claim cleanup — Windows and Mac scoped PASS
 
