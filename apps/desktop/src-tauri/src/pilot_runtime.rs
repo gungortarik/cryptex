@@ -191,16 +191,35 @@ mod tests {
 
     #[test]
     fn pilot_context_uses_separate_identity_and_no_visible_window() {
-        let mut context: tauri::Context<tauri::Wry> = tauri::generate_context!();
-        configure(context.config_mut());
-        assert_eq!(context.config().identifier, "com.cryptex.desktop.m0-pilot");
-        assert!(
-            context
-                .config()
+        // Context generation embeds a macOS Info.plist symbol. Main already
+        // generates that context; exercise the config transform directly here.
+        let mut config = tauri::utils::config::Config {
+            identifier: "com.cryptex.desktop".into(),
+            ..Default::default()
+        };
+        config.app.windows = ["main", "secondary"]
+            .into_iter()
+            .map(|label| tauri::utils::config::WindowConfig {
+                label: label.into(),
+                visible: true,
+                ..Default::default()
+            })
+            .collect();
+        assert_eq!(config.app.windows.len(), 2);
+        assert!(config.app.windows.iter().all(|window| window.visible));
+
+        configure(&mut config);
+
+        assert_eq!(config.identifier, "com.cryptex.desktop.m0-pilot");
+        assert_eq!(
+            config
                 .app
                 .windows
                 .iter()
-                .all(|window| !window.visible)
+                .map(|window| window.label.as_str())
+                .collect::<Vec<_>>(),
+            ["main", "secondary"]
         );
+        assert!(config.app.windows.iter().all(|window| !window.visible));
     }
 }
