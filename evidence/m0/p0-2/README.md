@@ -18,6 +18,7 @@ Mac tree parity result: `macos-native-package-tree-evidence-20261005.md` (79/79)
 Native gate primitive: `windows-native-handover-gate-evidence-20261005.md`
 (Rust 14/14, Node 86/86); parity request:
 `macos-native-handover-gate-test-plan-20261005.md`.
+Mac gate result: `macos-native-handover-gate-evidence-20261005.md` (14 Rust, 86 Node).
 
 - `docs/11_DAEMON_IPC_RUNTIME.md`
 - `docs/23_REQUIRED_TECHNICAL_SPIKES.md`

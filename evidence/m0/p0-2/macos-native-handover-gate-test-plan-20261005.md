@@ -1,5 +1,8 @@
 # Mac task — native handover OS gate parity
 
+**Result:** scoped PASS at `6a7d29481c19484bcacbdda17e8e3084c78b1af8`.
+See `macos-native-handover-gate-evidence-20261005.md`; instructions retained below.
+
 Read handoff and approved native-package-handover pilot plan. Use clean current
 `m0/p0-2-cursor` containing `80b727fdceab67ca4a9075371a07aca9cccf9654`;
 report exact tested SHA. Keep pinned Rust and Node v24.19.0.

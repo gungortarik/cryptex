@@ -772,6 +772,11 @@ locked build, format, two syntax and diff checks PASS. Earlier helper spawn
 `UNKNOWN` failure is retained in evidence, with no established cause or bypass.
 Evidence: `evidence/m0/p0-2/windows-native-handover-gate-evidence-20261005.md`.
 Mac plan: `evidence/m0/p0-2/macos-native-handover-gate-test-plan-20261005.md`.
+Mac gate parity: Rust **14/14**, Node **86/86 PASS**, no failures/skips, exit 0 at
+`6a7d294`, macOS 27.0.1 arm64, Rust/Cargo 1.98.1, Node v24.19.0. Format, strict
+Clippy, locked build, two syntax and diff checks passed; fixture/child/flush
+cleanup was error-free. Mac changed no files. Evidence:
+`evidence/m0/p0-2/macos-native-handover-gate-evidence-20261005.md`.
 Next implementation is isolated owned Desktop shutdown/successor startup using
 that gate. No actual handover, signing or canonical acceptance is claimed.
 
