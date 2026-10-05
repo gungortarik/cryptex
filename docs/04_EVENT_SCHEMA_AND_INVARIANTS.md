@@ -9,7 +9,7 @@ This document defines the event-level invariants that are already fixed by the C
 
 It intentionally does not invent exact field names, wire formats or serialization details that are not yet specified.
 
-The exact physical event packaging is resolved by the M0 P0-1 benchmark and ADR-0013 before M2 product implementation.
+The exact physical event packaging is accepted in ADR-0013 (immutable sealed per-device segment/pack files) before M2 product implementation.
 
 ## 2. Authority and scope
 
@@ -38,15 +38,15 @@ Corrections, supersession and later semantic changes are represented through add
 
 The logical event model is frozen.
 
-The physical packaging is not frozen before M0 P0-1.
+The physical packaging is accepted in ADR-0013: immutable sealed per-device segment/pack files. One-file-per-event is rejected. Hybrid is not selected.
 
-M0 must benchmark:
+M0 P0-1 benchmarked:
 
 - one immutable file per event
 - immutable sealed per-device segment/pack files
-- hybrid thresholded segments only if evidence justifies them
+- hybrid thresholded segments only if evidence justified them
 
-No event-schema implementation may assume that the final production architecture is one file per event before ADR-0013 is accepted.
+No event-schema implementation may assume one file per event. Production seal size and container filenames remain M2 parameters; `segment_events=1000` was the P0-1 benchmark profile only.
 
 ## 5. Attribution and integrity
 
@@ -200,7 +200,7 @@ M0 does not implement the full M2 event store.
 
 M0 may create only enough synthetic benchmark/proof code to evaluate physical packaging at realistic scale and to support required P0 evidence.
 
-The M0 event-layout result must be recorded in ADR-0013 before M2 uses the selected production layout.
+The M0 event-layout result is recorded in ADR-0013. M2 must productize sealed per-device segments and must not treat the P0-1 `segment_events=1000` profile as a frozen production constant unless a later accepted specification says so.
 
 ## 21. M2 boundary
 
@@ -226,7 +226,7 @@ This document does not select:
 - exact schema-version encoding
 - exact quarantine layout
 - final physical event file/segment naming
-- final per-device segment thresholds
+- production per-device segment thresholds / seal-roll policy
 
 Those choices require their applicable milestone/ADR/evidence.
 

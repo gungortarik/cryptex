@@ -9,7 +9,7 @@ Authoritative basis:
 - `docs/milestones/M0_FOUNDATION.md`
 - `docs/30_ADR_INDEX.md`
 
-It does **not** define the production event format, event schema, purge algorithm, replication semantics, or accepted physical layout. ADR-0013 remains pending until the required cross-platform measurements are complete and accepted.
+It does **not** define production event schema, purge algorithm, or replication semantics. Physical packaging is accepted in ADR-0013 (sealed per-device segments). This harness's `segment_events=1000` profile is a benchmark parameter, not a production constant. P0-4 remains separate.
 
 ## Candidate layouts represented
 
@@ -47,6 +47,10 @@ m0-storage-bench append files <events> <payload_bytes> <root>
 m0-storage-bench append segments <events> <payload_bytes> <root> <segment_events>
 m0-storage-bench scan <files|segments> <root>
 m0-storage-bench crash-probe <files|segments> <payload_bytes> <root>
+m0-storage-bench purge-probe files <payload_bytes> <root>
+m0-storage-bench purge-probe segments <payload_bytes> <root> <segment_events>
+m0-storage-bench corrupt-probe files <payload_bytes> <root>
+m0-storage-bench corrupt-probe segments <payload_bytes> <root> <segment_events>
 ```
 
 Example shape only; payload and segment sizes are experiment inputs and are not accepted defaults:
@@ -98,8 +102,25 @@ It currently measures:
 - physical object count
 - maximum events sharing one physical object
 - detection/recovery of a truncated active-segment tail
+- purge-complexity probe outputs for files and segments candidates
+- corruption blast-radius probe outputs for files and segments candidates
 
 `max_events_per_object` is an objective proxy useful when reasoning about purge complexity and corruption blast radius. It is not itself a purge policy.
+
+## Guarded Syncthing helpers
+
+Repository scripts under `tools/m0-storage-bench/scripts/` manage isolated P0-1 Syncthing experiments. They refuse non-`Cryptex-Dev` homes, repository paths, retained-corpus deletion, and silent reuse of consumed initial-sync folder IDs.
+
+Relevant helpers:
+
+- `configure-syncthing-p0-1.mjs` / `pair-syncthing-p0-1.mjs` / `verify-syncthing-p0-1-peer-connection.mjs`
+- `prepare-syncthing-p0-1-initial-sync.mjs`
+- `run-syncthing-p0-1-initial-sync.mjs`
+- `run-syncthing-p0-1-incremental-sync.mjs`
+- `capture-syncthing-p0-1-raw-result.mjs` — writes a guarded runtime capture under `syncthing-p0-1-runs/<folder-id>/`; `--raw-file` accepts UTF-8 and BOM-marked UTF-16LE (`FF FE`) only
+- `retire-syncthing-p0-1-folder.mjs`
+- `verify-retained-corpus.mjs`
+- `plan-syncthing-p0-1-matrix.mjs`
 
 ## Measurements that still require platform integration
 
@@ -110,10 +131,9 @@ The harness alone does **not** satisfy P0-1. The accepted spike also requires ev
 - real disk-allocation overhead, not only logical byte count
 - behavior with normal Windows/macOS antivirus/indexing conditions
 - crash behavior on both supported operating systems
-- purge complexity assessment
-- corruption blast-radius assessment
 
-Those measurements must be run on both macOS and Windows using the same declared experiment profile and preserved as M0 evidence before ADR-0013 can be accepted.
+Purge-complexity and corruption blast-radius probes are now implemented in the harness (`purge-probe`, `corrupt-probe`) and recorded under `evidence/m0/p0-1/`. Syncthing transport measurements remain separate and must still be completed on both platforms for the required matrix.
+
 
 ## CI scope
 

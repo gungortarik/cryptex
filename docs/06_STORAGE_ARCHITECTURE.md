@@ -16,7 +16,7 @@ It distinguishes:
 - writer authority
 - recovery requirements
 
-It intentionally does not select the physical immutable-event packaging that must be decided by the M0 P0-1 benchmark.
+It records the physical immutable-event packaging accepted in ADR-0013: canonical events are stored as immutable sealed per-device segment/pack files.
 
 ## 2. Authority and scope
 
@@ -138,37 +138,17 @@ A replication transport must not become the application database or semantic aut
 
 The logical event model is frozen.
 
-The physical packaging of immutable events is not yet frozen.
+The physical packaging of immutable canonical events is **accepted in ADR-0013**:
 
-M0 P0-1 must compare:
+- **Accepted:** immutable sealed per-device segment/pack files
+- **Rejected:** one immutable file per event (failed required 500k Syncthing practicality; worse local enumeration/rebuild/allocation at that scale)
+- **Not selected:** hybrid thresholded segments (A/B evidence is conclusive; hybrid is not the simplest option)
 
-1. one immutable file per event
-2. immutable sealed per-device segment/pack files
-3. a hybrid thresholded approach only if evidence justifies it
+M0 P0-1 compared those three candidates at 10k / 100k / 500k events on macOS and Windows, measuring append latency, directory enumeration, initial Syncthing scan/sync, incremental sync, rebuild speed, disk overhead, crash behavior, purge complexity and corruption blast radius.
 
-The benchmark must evaluate realistic scale at:
+`segment_events=1000` was the verified P0-1 **benchmark profile**. It is not a permanent production constant unless a later accepted ADR or M2 specification freezes it. Production seal size, directory structure and container filenames remain M2 implementation parameters within the accepted sealed-segment architecture.
 
-- 10k events
-- 100k events
-- 500k events
-
-Required measurements include:
-
-- event append latency
-- directory enumeration
-- initial Syncthing scan/sync
-- incremental sync
-- rebuild speed
-- disk overhead
-- crash behavior
-- purge complexity
-- corruption blast radius
-
-The selected design must be the simplest option that satisfies scale and recovery goals on both macOS and Windows.
-
-The result must be recorded in ADR-0013.
-
-Until that evidence exists, no implementation may treat one-file-per-event, sealed segments or a hybrid layout as the accepted production architecture.
+Syncthing remains transport only. P0-1 transport measurements do not complete P0-4 or define Cryptex replication semantics.
 
 ## 10. Search and projection relationship
 
@@ -196,7 +176,7 @@ Physical purge is best-effort across reachable Cryptex-controlled replicas, snap
 
 Cryptex must not claim deletion from inaccessible lost devices or provider-controlled historical versions it cannot control.
 
-Physical event packaging selected by M0 must therefore consider purge complexity as an explicit benchmark criterion.
+Physical event packaging selected by M0 (ADR-0013: sealed per-device segments) must therefore keep pack-scoped purge complexity explicit in later purge productization.
 
 ## 12. Cross-platform storage requirements
 
@@ -265,19 +245,20 @@ For storage, M0 must:
 - select the simplest option meeting scale and recovery requirements
 - record the accepted result in ADR-0013
 
+P0-1 is complete: ADR-0013 is ACCEPTED. M0 as a whole remains incomplete until P0-2, P0-3 and P0-4 (and their ADRs/addenda) are resolved.
+
 M0 must not opportunistically implement the full M2 immutable event store or M3 SQLite/search system.
 
-## 16. Explicitly unresolved until M0 evidence
+## 16. Explicitly unresolved after ADR-0013
 
-The following are intentionally not decided by this document:
+The following remain implementation parameters for M2 / later ADRs, not frozen by P0-1:
 
-- final physical event-file/segment packaging
-- segment thresholds, if any
+- production events-per-segment / seal-roll policy (`segment_events=1000` was benchmark-only)
 - final production on-disk event directory structure
 - final filenames for physical event containers
-- implementation details that depend on the P0-1 benchmark result
+- other M2 productization details inside the accepted sealed-segment architecture
 
-These must not be silently converted into implementation assumptions before ADR-0013 is accepted.
+One-file-per-event and hybrid packaging must not be reintroduced as production architecture without a new ADR.
 
 ## 17. Source basis
 
@@ -292,4 +273,4 @@ This document consolidates existing storage requirements from:
 - `docs/32_PRE_IMPLEMENTATION_AUDIT_REPORT.md`
 - `docs/milestones/M0_FOUNDATION.md`
 
-It does not independently select the unresolved physical event-storage architecture.
+Physical packaging of canonical events is accepted in ADR-0013. This document does not independently change that decision or freeze M2 seal-size/filename parameters.

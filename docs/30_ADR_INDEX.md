@@ -26,7 +26,7 @@ If an ADR record is referenced by authoritative documents but its source file is
 | ADR-0004 | Managed Syncthing integration | SOURCE RECORD MISSING / ADDENDUM REQUIRED | M0 P0-4 must prove managed Syncthing lifecycle/configuration. Record chosen packaging/supervision in the ADR addendum before the replication milestone. |
 | ADR-0007 | Local IPC transport | ORIGINAL SOURCE RECORD MISSING / IMPLEMENTATION ADDENDUM ACCEPTED | `docs/adr/ADR-0007-local-ipc-implementation-addendum.md` selects pinned `interprocess` 2.4.4 from M0 evidence. Production Desktop health/reconnect is physically verified on both OSes within recorded scope; broader Desktop/CLI/MCP APIs remain incomplete. Do not infer or reconstruct the missing original ADR. |
 | ADR-0012 | Background runtime / atomic update lifecycle | ORIGINAL SOURCE RECORD MISSING / IMPLEMENTATION PROPOSAL PROPOSED | `docs/adr/ADR-0012-background-runtime-implementation-proposal.md` records the project owner's approved Mode B + per-user Desktop startup direction. Production implementation and all P0-2 proofs remain required; do not accept ADR-0012 before M0 evidence is complete. |
-| ADR-0013 | Physical immutable event storage layout | SOURCE RECORD MISSING / PENDING M0 | M0 P0-1 must benchmark event packaging at realistic scale on both platforms. Accept ADR-0013 before M2. |
+| ADR-0013 | Physical immutable event storage layout | ACCEPTED | Source: `docs/adr/ADR-0013-physical-event-storage-layout.md`. Canonical packaging is immutable sealed per-device segment/pack files. One-file-per-event is rejected. Hybrid is not selected. `segment_events=1000` remains a P0-1 benchmark profile, not a frozen production constant. |
 
 ## 4. M0 gate
 
@@ -42,15 +42,18 @@ The M0 gate requires:
 
 ## 5. ADR source records
 
-The original canonical ADR source files are not currently present in the repository. An implementation addendum may be added when M0 evidence resolves an exact implementation detail; it does not reconstruct the missing original record.
+Some original ADR source records remain absent. An implementation addendum may
+record evidence for an exact implementation detail without reconstructing a
+missing original record. ADR-0007 has an accepted implementation addendum;
+ADR-0012 has an unaccepted implementation proposal.
 
-Do not infer or recreate their prior contents from ADR numbers alone.
+ADR-0013 is now **ACCEPTED** at `docs/adr/ADR-0013-physical-event-storage-layout.md`. Other referenced ADR source files remain missing until recovered or written through their spikes.
 
 The scoped ADR-0012 implementation proposal is not a reconstruction of the
 missing original source record. It records a new, evidence-scoped proposal and
 remains unaccepted until the P0-2 gate passes.
 
-If an original ADR source is recovered, add it to the repository and reconcile this index against it before changing status.
+If an original ADR source is recovered for other ADRs, add it to the repository and reconcile this index against it before changing status.
 
 If M0 evidence requires a new or revised decision, create an explicitly scoped addendum with:
 

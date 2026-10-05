@@ -83,7 +83,7 @@ The iMac may be the preferred always-on replication and scheduled-backup peer, b
 
 Syncthing is the V1 transport candidate and accepted architecture direction. It transports canonical files/blobs but does not define Cryptex semantics. Trust, schema validation, signatures, entity consolidation, purge semantics and recovery are Cryptex responsibilities.
 
-The **logical** event model is frozen. The **physical packaging** of events is not frozen until the M0 storage-layout benchmark decides between individual immutable files and immutable sealed segments/hybrid packaging.
+The **logical** event model is frozen. The **physical packaging** of canonical events is immutable sealed per-device segment/pack files (ADR-0013). One-file-per-event is rejected. Hybrid packaging is not used. Seal size and on-disk names are implementation parameters for M2, not frozen by the P0-1 benchmark profile.
 
 ## 9. Search
 

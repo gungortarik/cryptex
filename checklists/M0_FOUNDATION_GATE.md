@@ -48,26 +48,26 @@ Configuration presence, an implementation claim, compilation alone, or success o
 
 ## B. P0-1 — Physical Event Storage Layout
 
-- [ ] One-file-per-event layout was benchmarked at required realistic scales.
-  - Evidence:
+- [x] One-file-per-event layout was benchmarked at required realistic scales.
+  - Evidence: `evidence/m0/p0-1/macos-*`, `windows-*`; Syncthing 10k/100k files both directions; 500k files macOS→Windows r2 controlled timeout / impracticality (`syncthing-500k-files-macos-to-windows-r2-TIMED-FAILED.md`)
 
-- [ ] Immutable sealed segment/pack layout was benchmarked.
-  - Evidence:
+- [x] Immutable sealed segment/pack layout was benchmarked.
+  - Evidence: `evidence/m0/p0-1/macos-*`, `windows-*`; Syncthing 10k/100k/500k segments both directions, initial + incremental
 
-- [ ] Hybrid layout was evaluated only if evidence justified it.
-  - Evidence:
+- [x] Hybrid layout was evaluated only if evidence justified it.
+  - Evidence: not justified; A/B conclusive. ADR-0013 records hybrid as not selected.
 
-- [ ] Required measurements cover append latency, enumeration, initial sync/scan, incremental sync, rebuild performance, disk overhead, crash behavior, purge complexity and corruption blast radius.
-  - Evidence:
+- [x] Required measurements cover append latency, enumeration, initial sync/scan, incremental sync, rebuild performance, disk overhead, crash behavior, purge complexity and corruption blast radius.
+  - Evidence: local dated runs; `syncthing-initial-sync-protocol.md`; `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md`; `purge-complexity.md`; `corruption-blast-radius.md`
 
-- [ ] Relevant storage-layout behavior was evaluated on macOS and Windows.
-  - Evidence:
+- [x] Relevant storage-layout behavior was evaluated on macOS and Windows.
+  - Evidence: both-platform local FS matrix and both-direction Syncthing cells as indexed in `evidence/m0/p0-1/README.md`
 
-- [ ] Selected layout is supported by recorded evidence and recovery/scale considerations.
-  - Evidence:
+- [x] Selected layout is supported by recorded evidence and recovery/scale considerations.
+  - Evidence: `docs/adr/ADR-0013-physical-event-storage-layout.md`
 
-- [ ] ADR-0013 is ACCEPTED with the selected physical storage layout.
-  - Evidence:
+- [x] ADR-0013 is ACCEPTED with the selected physical storage layout.
+  - Evidence: `docs/adr/ADR-0013-physical-event-storage-layout.md`; `docs/30_ADR_INDEX.md`
 
 ## C. P0-2 — Background Runtime / Atomic Update Lifecycle
 
@@ -228,8 +228,8 @@ Configuration presence, an implementation claim, compilation alone, or success o
 - [ ] ADR-0012 is ACCEPTED.
   - Evidence:
 
-- [ ] ADR-0013 is ACCEPTED.
-  - Evidence:
+- [x] ADR-0013 is ACCEPTED.
+  - Evidence: `docs/adr/ADR-0013-physical-event-storage-layout.md`
 
 - [ ] ADR-0007 implementation addendum is complete.
   - Evidence:

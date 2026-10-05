@@ -1,0 +1,100 @@
+# M0 P0-1 — Valid Initial Syncthing Measurement (100k segments, macOS→Windows)
+
+**Status:** VERIFIED TIMED MEASUREMENT  
+**Scope:** P0-1 initial Syncthing scan/sync for sealed-segment packaging at 100k logical events, macOS source → Windows destination  
+**Architecture effect:** none; does not select a production layout or accept ADR-0013
+
+## Cell
+
+```text
+folder_id=p0-1-100k-segments-macos-to-windows
+layout=segments
+events=100000
+expected_files=100
+expected_bytes=103600000
+source_platform=macos
+destination_platform=windows
+syncthing_version=v2.1.5
+branch=m0/p0-1-cursor
+```
+
+## Timed runner output (raw)
+
+```text
+folder_id=p0-1-100k-segments-macos-to-windows
+layout=segments
+events=100000
+source_platform=macos
+destination_platform=windows
+syncthing_version=v2.1.5
+started_at_utc=2026-10-01T03:20:49.173Z
+scan_completed_at_utc=2026-10-01T03:20:49.453Z
+completed_at_utc=2026-10-01T03:21:05.533Z
+initial_scan_ms=280.887
+initial_sync_total_ms=16354.909
+source_local_files=100
+source_local_bytes=103600000
+source_global_files=100
+source_global_bytes=103600000
+peer_completion=100
+peer_global_items=101
+peer_need_items=0
+peer_need_bytes=0
+peer_need_deletes=0
+source_global_files_verified=100
+source_paused_after_completion=true
+transport_scope=explicit_direct_tcp_only
+scope=isolated_p0_1_initial_syncthing_scan_sync_measurement
+```
+
+Shell wrapper timestamps:
+
+```text
+START_TIMESTAMP_UTC=2026-10-01T03:20:48Z
+COMPLETION_TIMESTAMP_UTC=2026-10-01T03:21:05Z
+EXIT_CODE=0
+```
+
+Runtime raw capture (outside repository):
+
+```text
+~/Library/Application Support/Cryptex-Dev/syncthing-p0-1-runs/p0-1-100k-segments-macos-to-windows/timed-result-2026-10-01T032105632Z.txt
+```
+
+## Windows destination physical post-check
+
+Independent destination observation at `2026-10-01T03:45:55Z`:
+
+```text
+state=idle
+local_files=100
+local_bytes=103600000
+global_files=100
+global_bytes=103600000
+need_files=0
+need_bytes=0
+need_deletes=0
+errors=0
+pull_errors=0
+```
+
+## Post-conditions verified
+
+- success predicates satisfied (`source_local_files/bytes`, peer completion/needs, source re-paused)
+- peer need items/bytes/deletes all zero at completion
+- source global files verified at 100
+- source paused after completion
+- transport remained explicit direct TCP only
+- Windows destination independently idle with matching local/global counts and zero needs/errors
+
+## Retention
+
+Approved incremental measurement for this same cell is recorded separately in:
+
+- `evidence/m0/p0-1/syncthing-100k-segments-macos-to-windows-incremental.md`
+
+Do **not** retire or recreate this folder ID yet. Do not treat this file as incremental evidence.
+
+## Boundary
+
+This is one valid initial-sync matrix cell only (100k segments, macOS→Windows). Remaining 100k reverse cells, 500k matrix cells, layout selection, and ADR-0013 remain open. P0-1 remains IN PROGRESS. No production layout is inferred from this result.
