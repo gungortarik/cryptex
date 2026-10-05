@@ -102,8 +102,12 @@ export async function startOwnedDesktop({ lease, helper, payload, manifest, runt
     verifyNativeTree(payload, manifest);
     return { root, desktop_pid: child.pid, daemon_pid: daemonPid, health: response, desktop_identity: desktopIdentity, daemon_identity: daemonIdentity, stop };
   } catch (cause) {
-    try { await stop(); }
+    let cleanupResult;
+    try { cleanupResult = await stop(); }
     catch (cleanup) { throw new PackageError('DESKTOP_SESSION_CLEANUP_FAILED', 'Owned session start and cleanup failed', { cause: new AggregateError([cause, cleanup]) }); }
-    throw cause;
+    const failure = new PackageError('DESKTOP_SESSION_START_FAILED', 'Owned session failed after proven cleanup', { cause });
+    failure.diagnostics = { startup_code: typeof cause.code === 'string' ? cause.code : 'DESKTOP_COMMAND_FAILED',
+      startup_exit_code: typeof cause.code === 'number' ? cause.code : null, startup: cause.diagnostics ?? null, cleanup: cleanupResult };
+    throw failure;
   }
 }
