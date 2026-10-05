@@ -111,6 +111,9 @@ jobs:
       - name: Verify compiled release probe development namespace
         run: cargo test --locked --release -p cryptex-desktop default_probe_runtime_tests
 
+      - name: Lint release-only Desktop paths
+        run: cargo clippy --locked --release -p cryptex-desktop --all-targets -- -D warnings
+
       - name: Test Node foundation, recovery, packaging and Syncthing boundaries
         shell: pwsh
         run: |

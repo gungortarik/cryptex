@@ -959,11 +959,11 @@ fn main() {
         .setup(move |app| {
             build_tray(app.handle())?;
             #[cfg(not(debug_assertions))]
-            if let Err(error) = start_daemon_for_desktop_launch(&probe_state) {
-                if let Ok(root) = runtime_root_path() {
-                    let _ = fs::create_dir_all(&root);
-                    let _ = fs::write(root.join("start.error"), format!("{error}\n"));
-                }
+            if let Err(error) = start_daemon_for_desktop_launch(&probe_state)
+                && let Ok(root) = runtime_root_path()
+            {
+                let _ = fs::create_dir_all(&root);
+                let _ = fs::write(root.join("start.error"), format!("{error}\n"));
             }
             let _ = runtime_root_path().and_then(|root| {
                 fs::create_dir_all(&root).map_err(|e| e.to_string())?;
