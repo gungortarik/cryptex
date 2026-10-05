@@ -1,20 +1,20 @@
 # Native Desktop/daemon handover pilot — reviewable continuation plan
 
-**Status:** READY FOR SCOPED METHOD APPROVAL; implementation not started
+**Status:** SCOPED PILOT APPROVED; complete-tree staging slice implemented
 **Source reviewed:** `bb058d7`
 **Milestone:** M0 P0-2; ADR-0012 remains PROPOSED
 
 ## Decision requested
 
-Authorize a test-only native handover pilot for the complete-package slot
+The project owner explicitly approved this plan in the Windows conversation
+("onaylanmistir"). Approval covers a test-only native handover pilot for the complete-package slot
 candidate in `docs/adr/ADR-0012-update-orchestration-candidate.md`. This extends
 the measured filesystem experiment to actual Desktop ownership and native
 package resources. It does not select a shipped updater, change the installed
 application, accept ADR-0012 or authorize M1.
 
-The handoff requires explicit approval before selecting updater orchestration.
-Mode B supervision was approved; the update mechanism was not. Broad permission
-to continue work is not recorded here as that missing method decision.
+The scoped method approval satisfies the handoff's prerequisite for this pilot.
+It does not approve production orchestration or remove its acceptance gates.
 
 ## Evidence and recommendation
 

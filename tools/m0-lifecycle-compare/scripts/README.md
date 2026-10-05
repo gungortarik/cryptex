@@ -2,6 +2,21 @@
 
 ## Headless package transaction candidate
 
+The approved native handover pilot starts with a separate complete-tree inventory
+in `package-native-tree.mjs`. It preserves resource files, empty directories and
+POSIX modes, refuses unsafe paths/links and rechecks source and staged bytes.
+It does not launch Desktop, integrate selection, or authenticate the publisher.
+Run 18 tests with `node --test tools/m0-lifecycle-compare/scripts/package-native-tree.test.mjs`.
+The optional `io` copy adapter is for injected test faults only.
+
+`run-native-tree-proof.mjs --source <absolute-package-tree> --root <fresh-absolute-proof-root> --desktop <relative-executable> --daemon <relative-executable>`
+records a complete inventory and retained staged copy. Package paths must be
+outside Git; proof root must be new and disjoint from the source. On macOS supply
+the complete `.app` root and actual `Contents/...` role paths, not two loose
+binaries. Existing fixture schema remains unchanged. This establishes byte/mode
+correspondence only: no runtime health, installed updater, signing or power-loss
+durability result follows from staging.
+
 For actual copied-daemon health (without launching Desktop), build the lifecycle
 tool locally and use `run-package-real-health-proof.mjs` with a fresh outside-repo
 `--root`, absolute `--health-helper` and the four baseline/candidate component

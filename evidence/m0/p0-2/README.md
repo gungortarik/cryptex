@@ -11,8 +11,9 @@ The current cross-platform evidence comparison is in
 
 ## Authority
 
-Next scoped method review: `native-package-handover-plan-20261005.md`.
-Implementation awaits explicit approval; this is not a runnable Mac test plan.
+Approved scoped pilot: `native-package-handover-plan-20261005.md`.
+First slice: `windows-native-package-tree-evidence-20261005.md`.
+Runnable Mac parity plan: `macos-native-package-tree-test-plan-20261005.md`.
 
 - `docs/11_DAEMON_IPC_RUNTIME.md`
 - `docs/23_REQUIRED_TECHNICAL_SPIKES.md`

@@ -732,19 +732,33 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
-### Next continuation — native complete-package handover pilot needs method approval
+### Next continuation — approved native complete-package handover pilot
 
 Native recovery cleanup and Mac formatting parity are recorded below. The next
 concrete plan is `evidence/m0/p0-2/native-package-handover-plan-20261005.md`.
 It recommends extending the complete-package slot candidate to actual owned
 Desktop/daemon handover in fresh isolated roots, with native resource inventory,
 whole-handover exclusion, clean shutdown, real IPC readiness and baseline restart.
-This method has not been explicitly selected; obtain scoped approval before
-implementation under the existing working agreement. No production updater or
+The project owner explicitly approved this isolated pilot in the Windows
+conversation ("onaylanmistir"). No further method approval is needed within that
+scope. No production updater or
 ADR acceptance follows from pilot approval. Canonical fixture acceptance also
 requires the accepted P0-1 layout reference/integration; do not reconstruct the
 missing ADR-0013 decision or touch retained corpora. Mac gets an executable parity
 plan after the first implementation slice. Documentation review needs no Actions.
+
+First slice at `e5423f2`: separate native-tree inventory and staging preserve
+resources, empty directories and POSIX modes; target/schema/path validation
+refuses mismatches, links/junctions, case collisions and overlapping/reused roots.
+Copied trees and source bytes are reverified; partial staging retains a typed
+diagnostic. Windows Node v24.19.0: **79/79 PASS** (51 transaction + 4 health +
+6 native recovery + 18 native tree), no failures/skips, exit 0; three syntax
+checks and diff check passed. The retained Windows installed tree (three files)
+was copied into a fresh owned proof root and reverified without executing it.
+Evidence: `evidence/m0/p0-2/windows-native-package-tree-evidence-20261005.md`.
+Mac plan: `evidence/m0/p0-2/macos-native-package-tree-test-plan-20261005.md`.
+Next implementation is whole-handover OS exclusion and owned Desktop shutdown/
+successor startup. No actual handover, signing or canonical acceptance is claimed.
 
 ### Latest native interrupted-claim cleanup — Windows and Mac scoped PASS
 

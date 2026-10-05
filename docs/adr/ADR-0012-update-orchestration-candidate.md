@@ -83,9 +83,12 @@ status. Mac real-health parity and the remaining native integration gates remain
 ## Gates before production integration or ADR acceptance
 
 Current continuation plan: `native-package-handover-plan-20261005.md` in the
-P0-2 evidence directory. It requests explicit approval for an isolated native
-complete-package handover pilot. Mode B approval does not select this updater
-method. Later paragraphs preserve earlier slice limits; newer evidence closes
+P0-2 evidence directory. The project owner explicitly approved the isolated native
+complete-package handover pilot in the Windows conversation. The first complete
+tree staging slice passes 18 new Windows tests (79 combined) and copies/verifies
+the retained installed tree without running it; see
+`windows-native-package-tree-evidence-20261005.md`. This is scoped pilot approval,
+not production method selection or ADR acceptance. Later paragraphs preserve earlier slice limits; newer evidence closes
 the named test-only parity/claim cases, not the production gates. Real daemon
 health parity is recorded in `macos-package-real-health-evidence-20261003.md`;
 that Mac run used the same retained pair and did not prove a version upgrade.
