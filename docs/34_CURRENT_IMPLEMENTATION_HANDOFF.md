@@ -52,6 +52,20 @@ Integration update:
 
 ## M0 closure continuation (2026-10-05)
 
+Latest correction: `ad44e82` moves ordinary M0 release probe roots to
+Cryptex-Dev/runtime/p0-2 on both OSes; `fc79f25` fixes a discovered release-only
+strict Clippy warning without changing startup-error behavior. Windows final
+Desktop tests **21/21 debug + 21/21 release**, both strict all-target lint
+profiles, format/release build and negative CLI **4/4** PASS. No old runtime,
+installed binary, registration, global config or visible app changed.
+Evidence: `evidence/m0/p0-2/windows-release-probe-root-evidence-20261005.md`.
+New narrow Mac task: `evidence/m0/p0-2/macos-release-probe-root-test-plan-20261005.md`,
+expect **14/14 debug + 14/14 release + 4/4 CLI**. No previous plan rerun.
+Final CI now covers release resolver regression and release-only strict lint;
+do not dispatch until this new Mac parity and corrected-candidate review pass.
+Historical audit finding below is corrected in code, not yet cross-platform
+verified. Final checklist/ADR/human acceptance remain open.
+
 Final implementer gate audit at source `8437559`:
 `evidence/m0/m0-final-gate-audit-20261005.md`, **NOT READY for final CI**.
 Retained foundation/update/notice-documentation proofs now fill previously empty

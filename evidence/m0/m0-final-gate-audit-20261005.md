@@ -6,6 +6,15 @@ Authority: Master Spec, accepted ADR-0007/0013, M0 contract, Definition of Done.
 Owner authorized preparing scoped ADR-0012/0004 revisions; both remain PROPOSED.
 This is implementer review, not independent verifier or human diff acceptance.
 
+Continuation: namespace fix `ad44e82` and release-only Clippy fix `fc79f25`
+now PASS on Windows: Desktop **21/21 debug + 21/21 release**, both strict lint
+profiles, format/release build and CLI **4/4**. Code now uses Cryptex-Dev for
+ordinary release probes; historical path finding below is retained. Mac parity
+is still pending in `p0-2/macos-release-probe-root-test-plan-20261005.md`.
+No final CI, human/ADR acceptance or milestone completion follows from this
+Windows-only continuation. Exact evidence and initial Clippy failure:
+`p0-2/windows-release-probe-root-evidence-20261005.md`.
+
 ## Gate-by-gate mapping
 
 | Checklist area | Audit result | Evidence / remaining action |

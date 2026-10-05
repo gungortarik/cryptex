@@ -182,7 +182,7 @@ open; product distribution and production canonical safety are not inferred.
   - Evidence: both-OS native-interruption, changed-package and managed/upgrade reports retain fresh proof roots outside Git; source path guards reject in-repository fixture roots. Historical product-namespace runtimes are also outside Git.
 
 - [ ] Development runtime data uses Cryptex-Dev app-data roots.
-  - Evidence: debug, validated pilot, transaction and Syncthing fixtures use Cryptex-Dev; ordinary M0 release Desktop defaults to Cryptex/runtime/p0-2 on both OSes. Final audit requires correction; historical runs are not relabeled or deleted.
+  - Evidence: debug/pilot/transaction/Syncthing use Cryptex-Dev. `ad44e82` corrects ordinary release to Cryptex-Dev/runtime/p0-2; Windows 21/21 debug + 21/21 release and CLI 4/4 PASS at `fc79f25`. New narrow Mac parity remains pending; historical product-root runs are not relabeled or deleted. See `evidence/m0/p0-2/windows-release-probe-root-evidence-20261005.md`.
 
 - [x] Canonical writers remain within the permitted daemon boundary for implemented M0 behavior.
   - Evidence: health-only IPC and Desktop supervision/snapshots; Golden uses explicit synthetic benchmark codec and transport fixtures are synthetic only. No production canonical write API or direct client event writer introduced; final audit records limits.

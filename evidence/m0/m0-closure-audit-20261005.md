@@ -7,6 +7,13 @@ No M1 work is authorized by this audit. Checkboxes must follow verified evidence
 ## Current gate inventory
 
 Latest actionable audit: `m0-final-gate-audit-20261005.md` at source `8437559`.
+
+Namespace correction now implemented at `ad44e82`; final Windows source
+`fc79f25` also fixes release-only strict Clippy. Debug/release Desktop **21/21
+each**, both strict lint profiles, format/locked release build and CLI **4/4**
+PASS. New Mac task `p0-2/macos-release-probe-root-test-plan-20261005.md` needs
+**14/14 debug + 14/14 release + 4/4 CLI**; earlier PASS plans need no rerun.
+No Actions; final CI awaits this focused parity and corrected-candidate review.
 The retained inventory below is historical where it mentions production blockers;
 owner-authorized ADR revisions retain those as separate mandatory product gates.
 Current implementation blocker before final CI: ordinary release M0 Desktop

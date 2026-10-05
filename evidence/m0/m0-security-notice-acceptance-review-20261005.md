@@ -87,6 +87,13 @@ not been established. They remain explicit prerequisites before distribution.
    outside-repo synthetic product-root runs remain historical evidence; no
    data move/delete or login change is implied.
 
+   Correction continuation: `ad44e82` changes both-OS ordinary release paths
+   to Cryptex-Dev; `fc79f25` preserves release startup-error behavior while
+   correcting strict Clippy. Windows **21/21 debug + 21/21 release + 4/4 CLI**,
+   both strict lint profiles/format/release build PASS. Mac parity remains
+   pending; finding is not marked cross-platform complete. See
+   `p0-2/windows-release-probe-root-evidence-20261005.md` and its narrow Mac plan.
+
 No Actions run for this review. M0 remains **IN PROGRESS**; ADR-0004/0012 remain
 **PROPOSED**. Final CI waits for the remaining review decisions
 to avoid paying for a knowingly incomplete completion candidate.
