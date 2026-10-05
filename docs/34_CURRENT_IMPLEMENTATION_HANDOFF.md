@@ -76,6 +76,14 @@ Next: **Mac-only** narrow native foundation visual review under
 `evidence/m0/m0-native-foundation-ui-review-plan-20261005.md`; do not repeat old
 Windows/Mac login/tray/upgrade suites. Then explicit human diff/ADR acceptance
 and final-source CI/checklist reconciliation. Windows proof is not Mac visual proof.
+Mac attempt at `9752798` remains **NOT VERIFIED visually**: Computer Use
+`Invalid app`, no screenshot/layout/scrolling proof. Supplied retained build
+`7f5ab2b` has matching relevant application source; isolated Desktop/daemon
+94503/94513 health and clean exit0/lock/gate/IPC cleanup reported. Record:
+`evidence/m0/macos-native-foundation-ui-attempt-20261005.md` (Mac-local artifact
+not directly inspected on Windows). Continue the plan's **operator-screenshot
+fallback**, fresh owned pilot, two actual Mac window captures and image-file
+review. No old suite/build/Actions repetition or security setting changes.
 Existing PR #5 targets m0/foundation; do not change integration/base, merge,
 accept ADRs, complete M0 or start M1 without the required concrete approval.
 No redundant CI dispatch requested; avoid disturbing the owner's game.

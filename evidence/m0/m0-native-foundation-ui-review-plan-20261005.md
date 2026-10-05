@@ -50,3 +50,36 @@ findings, plus cleanup. Stop on security barrier or layout defect and report it;
 never weaken tests, silently accept architecture or change implementation.
 Mac executor: no source/evidence changes or commit/push; Windows implementer
 records the returned result. Final human ADR/M0 acceptance remains separate.
+
+## Mac operator-screenshot fallback after Invalid app
+
+Attempt at `9752798`: native health/cleanup proved, Computer Use `Invalid app`
+prevented visual verification. See `macos-native-foundation-ui-attempt-20261005.md`.
+Preserve NOT VERIFIED; do not repeatedly retry invalid app binding or change
+accessibility/security policy.
+
+1. Mac Codex confirms relevant application source still matches retained
+   `7f5ab2b` build. If equal, no rebuild/full suite needed. Use the existing
+   native gate/session helper with a **fresh** isolated runtime and known package
+   paths; show the window at an agreed moment. Keep its owned runner/lease alive
+   through review/cleanup. Do not reuse the already closed proof runtime.
+2. Ask the operator for two actual whole-window screenshots using macOS's normal
+   screenshot UI, supplied to Mac Codex as files:
+   - **Top/current state:** title/probe heading, actual status/runtime path,
+     populated Daemon sidecar and action controls. Click IPC health ping once
+     so the capture shows actual PID/protocol; correlate with this new session.
+   - **Bottom after scrolling:** complete lower action rows, Quit clean and
+     bottom instruction text. Ordinary scrolling suffices; no theme/permission
+     changes, new tray/login tests or edited/composed images.
+3. Mac Codex reads these files with its image viewer; app recognition is not
+   required for image-file inspection. Report readability, overlap/wrapping,
+   long path accessibility and control reachability. Retain absolute screenshot
+   paths/SHA-256, observed window size/theme and exact checkout/build SHAs.
+   Keep any unestablished item NOT VERIFIED.
+4. Cleanly stop only the owned session with the existing session helper/pilot
+   quit, release gate and check exit/PID/lock/IPC/error state. Return new session
+   report/digest and images/findings. Earlier PIDs/digest are not new proof.
+
+No source modification, dependency change, installation, old lifecycle tests,
+Actions or commit/push. If images cannot be supplied now, retain NOT VERIFIED
+and cleanly close the owned session; never leave test daemons running.

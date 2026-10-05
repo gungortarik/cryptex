@@ -94,6 +94,9 @@ theme/DPI/production design acceptance was not inferred.
 - **SCOPED PASS:** actual Windows native foundation visual review and clean
   owned-session cleanup, with populated long path/status and reachable controls.
 - **NOT YET VERIFIED:** equivalent explicit current Mac native visual review.
+  Attempt at checkout9752798 with retained matching-source build7f5ab2b hit
+  Computer Use `Invalid app`; health/clean shutdown succeeded but no images.
+  See `macos-native-foundation-ui-attempt-20261005.md`; operator captures needed.
 - **OUT OF SCOPE:** broad product visual design/P1 shell, theme/high-DPI/Retina
   matrix and production Health/Memory/navigation.
 
