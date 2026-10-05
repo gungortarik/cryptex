@@ -52,6 +52,16 @@ Integration update:
 
 ## M0 closure continuation (2026-10-05)
 
+Final CI attempt at `e337bd3`, run `37376952961`, found missing plain
+`m0-storage-bench` before Golden Node tests on a fresh Mac runner (ENOENT).
+Workflow now builds it alongside the lifecycle helper; Windows focused Golden/
+Doctor tests **6/6** and exact prerequisite build PASS. No assertions changed.
+Windows ACL job passed; Windows readiness cancellation was requested to avoid
+the same missing prerequisite. See `evidence/m0/m0-final-ci-attempt-20261005.md`.
+Final CI remains NOT VERIFIED until the corrected-source run completes.
+Independent verifier/security review and human diff/ADR acceptance remain open.
+Review packet: `evidence/m0/m0-human-acceptance-review-packet-20261005.md`.
+
 Latest Mac namespace parity reported **PASS** at
 `7f5ab2bdaa72e213f5cb16312bca0292c436db18`: macOS 27.0.1 arm64,
 Rust/Cargo 1.98.1, Node v24.19.0. Desktop **14/14 debug + 14/14 release**, CLI

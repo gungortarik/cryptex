@@ -102,8 +102,8 @@ jobs:
       - name: Test Desktop Rust foundation
         run: cargo test --locked -p cryptex-desktop
 
-      - name: Build native helper for Node failure-path tests
-        run: cargo build --locked -p m0-lifecycle-compare
+      - name: Build native helpers for Node failure-path and Golden tests
+        run: cargo build --locked -p m0-lifecycle-compare -p m0-storage-bench
 
       - name: Build release Desktop for negative pre-Tauri CLI tests
         run: cargo build --locked --release -p cryptex-desktop
