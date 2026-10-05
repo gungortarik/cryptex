@@ -142,11 +142,10 @@ export function App() {
           {autostartEnabled ? "Disable Desktop login start" : "Start Desktop at login"}
         </button>
         <label>
-          cryptexd path
+          Daemon sidecar
           <input
             value={cryptexd}
-            onChange={(event) => setCryptexd(event.target.value)}
-            placeholder="/path/to/cryptexd"
+            readOnly
           />
         </label>
         <div className="probe-actions">

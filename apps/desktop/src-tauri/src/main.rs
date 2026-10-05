@@ -190,17 +190,11 @@ fn resolve_cryptexd_binary(
 
 #[tauri::command]
 fn p0_2_start_daemon(state: State<'_, ProbeState>, cryptexd: String) -> Result<u32, String> {
-    if pilot_runtime::root().is_some() {
-        let expected = resolve_cryptexd_binary(
-            None,
-            &std::env::current_exe().map_err(|error| error.to_string())?,
-        )?;
-        if fs::canonicalize(&cryptexd).map_err(|error| error.to_string())?
-            != fs::canonicalize(expected).map_err(|error| error.to_string())?
-        {
-            return Err("PILOT_SIDECAR_OVERRIDE_FORBIDDEN".into());
-        }
-    }
+    let expected = resolve_cryptexd_binary(
+        daemon_override(),
+        &std::env::current_exe().map_err(|error| error.to_string())?,
+    )?;
+    let cryptexd = validate_sidecar_request(Path::new(&cryptexd), expected)?;
     {
         let existing = state.child.lock().map_err(|e| e.to_string())?;
         if existing.is_some() {
@@ -209,9 +203,9 @@ fn p0_2_start_daemon(state: State<'_, ProbeState>, cryptexd: String) -> Result<u
     }
 
     let runtime = PathBuf::from(p0_2_runtime_root()?);
-    let (pid, child) = start_daemon_inner(&cryptexd, &runtime)?;
+    let (pid, child) = start_daemon_inner(&cryptexd.display().to_string(), &runtime)?;
     *state.runtime_root.lock().map_err(|e| e.to_string())? = Some(runtime.clone());
-    *state.cryptexd_bin.lock().map_err(|e| e.to_string())? = Some(PathBuf::from(&cryptexd));
+    *state.cryptexd_bin.lock().map_err(|e| e.to_string())? = Some(cryptexd);
     *state.child.lock().map_err(|e| e.to_string())? = Some(child);
     *state.supervised_pid.lock().map_err(|e| e.to_string())? = Some(pid);
     *state.restart_attempts.lock().map_err(|e| e.to_string())? = 0;
@@ -220,6 +214,26 @@ fn p0_2_start_daemon(state: State<'_, ProbeState>, cryptexd: String) -> Result<u
     write_supervisor_state(&runtime, "active", Some(pid), true)?;
     write_snapshot(&runtime, "daemon_started", true, Ok(Some(pid)))?;
     Ok(pid)
+}
+
+// The renderer may select no executable. Resolve authority in the backend and
+// validate its displayed path before any runtime creation or process launch.
+fn validate_sidecar_request(requested: &Path, expected: PathBuf) -> Result<PathBuf, String> {
+    if !requested.is_absolute() || !expected.is_absolute() {
+        return Err("SIDECAR_REQUEST_INVALID".into());
+    }
+    for path in [requested, expected.as_path()] {
+        let metadata = fs::symlink_metadata(path).map_err(|_| "SIDECAR_REQUEST_INVALID")?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err("SIDECAR_REQUEST_INVALID".into());
+        }
+    }
+    if fs::canonicalize(requested).map_err(|_| "SIDECAR_REQUEST_INVALID")?
+        != fs::canonicalize(&expected).map_err(|_| "SIDECAR_REQUEST_INVALID")?
+    {
+        return Err("SIDECAR_REQUEST_MISMATCH".into());
+    }
+    Ok(expected)
 }
 
 #[tauri::command]
@@ -996,7 +1010,7 @@ fn main() {
 
 #[cfg(test)]
 mod sidecar_resolution_tests {
-    use super::resolve_cryptexd_binary;
+    use super::{resolve_cryptexd_binary, validate_sidecar_request};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1046,6 +1060,82 @@ mod sidecar_resolution_tests {
         );
         assert!(resolve_cryptexd_binary(Some(root.join("missing")), &desktop).is_err());
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn renderer_accepts_only_backend_selected_sidecar() {
+        let root = unique_root();
+        let expected = root.join(sidecar_name());
+        let other = root.join("other-executable");
+        fs::write(&expected, b"fixture").unwrap();
+        fs::write(&other, b"fixture").unwrap();
+        assert_eq!(
+            validate_sidecar_request(&expected, expected.clone()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            validate_sidecar_request(&other, expected.clone()).unwrap_err(),
+            "SIDECAR_REQUEST_MISMATCH"
+        );
+        assert_eq!(
+            validate_sidecar_request(std::path::Path::new("relative"), expected.clone())
+                .unwrap_err(),
+            "SIDECAR_REQUEST_INVALID"
+        );
+        assert_eq!(
+            validate_sidecar_request(&root, expected.clone()).unwrap_err(),
+            "SIDECAR_REQUEST_INVALID"
+        );
+        assert_eq!(
+            validate_sidecar_request(&root.join("missing"), expected).unwrap_err(),
+            "SIDECAR_REQUEST_INVALID"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn renderer_cannot_replace_backend_developer_override() {
+        let root = unique_root();
+        let desktop = root.join("desktop");
+        let sibling = root.join(sidecar_name());
+        let developer = root.join("backend-override");
+        fs::write(&sibling, b"fixture").unwrap();
+        fs::write(&developer, b"fixture").unwrap();
+        let expected = resolve_cryptexd_binary(Some(developer.clone()), &desktop).unwrap();
+        assert_eq!(
+            validate_sidecar_request(&sibling, expected.clone()).unwrap_err(),
+            "SIDECAR_REQUEST_MISMATCH"
+        );
+        assert_eq!(
+            validate_sidecar_request(&developer, expected).unwrap(),
+            developer
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn renderer_rejects_sidecar_alias() {
+        let root = unique_root();
+        let expected = root.join(sidecar_name());
+        fs::write(&expected, b"fixture").unwrap();
+        let linked = root.join("linked-executable");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&expected, &linked).unwrap();
+        // A file hard link needs no Windows symlink privilege. It still must
+        // not substitute another renderer-selected path for the selected role.
+        #[cfg(windows)]
+        std::fs::hard_link(&expected, &linked).unwrap();
+        #[cfg(unix)]
+        assert_eq!(
+            validate_sidecar_request(&linked, expected).unwrap_err(),
+            "SIDECAR_REQUEST_INVALID"
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            validate_sidecar_request(&linked, expected).unwrap_err(),
+            "SIDECAR_REQUEST_MISMATCH"
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 }
 
