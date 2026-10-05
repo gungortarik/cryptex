@@ -62,10 +62,22 @@ async function port() {
   const number = server.address().port; await new Promise(resolve => server.close(resolve)); return number;
 }
 export async function startSyncthingPilot(binary, home, reuse = false) {
+  return startOwnedPilot(binary, home, reuse, '2.1.5', 'm0-managed-syncthing-pilot', '2.1.5');
+}
+// Explicit test-only upgrade path; the ordinary managed pin remains 2.1.5.
+export function assertSyncthingUpgradeVersion(version, expected) {
+  if (!['2.1.2', '2.1.5'].includes(expected) || !version.startsWith(`syncthing v${expected} `)) throw new PackageError('SYNCTHING_UPGRADE_PIN_MISMATCH', 'Exact stable upgrade fixture version required');
+}
+export async function startSyncthingUpgradePilot(binary, home, expected, reuse = false) {
+  if (!['2.1.2', '2.1.5'].includes(expected) || (!reuse && expected !== '2.1.2')) throw new PackageError('SYNCTHING_UPGRADE_PIN_MISMATCH', 'Fresh historical fixture or explicit retained upgrade required');
+  return startOwnedPilot(binary, home, reuse, expected, 'm0-syncthing-upgrade-pilot', '2.1.2');
+}
+async function startOwnedPilot(binary, home, reuse, expected, markerScope, profilePin) {
   if (!path.isAbsolute(binary ?? '') || !path.isAbsolute(home ?? '')) throw new PackageError('INVALID_SYNCTHING_ARGS', 'Absolute binary/fresh home required');
   assertExperimentLocation(home);
   const version = (await execute(binary, ['--version'], { windowsHide: true, timeout: 5000 })).stdout.trim();
-  assertSyncthingVersion(version);
+  if (markerScope === 'm0-managed-syncthing-pilot') assertSyncthingVersion(version);
+  else assertSyncthingUpgradeVersion(version, expected);
   if (!reuse) fs.mkdirSync(home, { mode: 0o700 });
   const env = { ...process.env, STHOMEDIR: home, STNODEFAULTFOLDER: '1' };
   // Clear user overrides that could redirect config, data, API or logs.
@@ -83,13 +95,13 @@ export async function startSyncthingPilot(binary, home, reuse = false) {
     const info = fs.lstatSync(markerFile);
     if (info.isSymbolicLink() || !info.isFile()) throw new PackageError('UNOWNED_SYNCTHING_HOME', 'Ordinary pilot ownership marker required');
     const marker = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
-    if (marker.schema !== 1 || marker.scope !== 'm0-managed-syncthing-pilot' || marker.pin !== '2.1.5') throw new PackageError('UNOWNED_SYNCTHING_HOME', 'Pinned pilot ownership marker required');
+    if (marker.schema !== 1 || marker.scope !== markerScope || marker.pin !== profilePin) throw new PackageError('UNOWNED_SYNCTHING_HOME', 'Pinned pilot ownership marker required');
     ({ apiPort, syncPort } = marker);
     if (![apiPort, syncPort].every(value => Number.isInteger(value) && value > 1024 && value < 65536) || apiPort === syncPort) throw new PackageError('INVALID_SYNCTHING_PORT', 'Invalid retained ports');
   } else {
     apiPort = await port(); syncPort = await port(); while (syncPort === apiPort) syncPort = await port();
     fs.writeFileSync(configFile, isolateSyncthingXml(original, apiPort, syncPort));
-    fs.writeFileSync(path.join(home, 'pilot-owned.json'), JSON.stringify({ schema: 1, scope: 'm0-managed-syncthing-pilot', pin: '2.1.5', apiPort, syncPort }), { flag: 'wx' });
+    fs.writeFileSync(path.join(home, 'pilot-owned.json'), JSON.stringify({ schema: 1, scope: markerScope, pin: profilePin, apiPort, syncPort }), { flag: 'wx' });
   }
   const base = `http://127.0.0.1:${apiPort}`;
   const child = spawn(binary, ['serve', '--home', home, '--no-browser', '--no-restart', '--no-upgrade', '--no-port-probing', '--log-file', path.join(home, 'native.log')], { windowsHide: true, detached: process.platform !== 'win32', env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -132,7 +144,7 @@ export async function startSyncthingPilot(binary, home, reuse = false) {
         }
         const shutdownLog = fs.readFileSync(logFile).subarray(logOffset).toString('utf8');
         if (shutdownLog.includes('Database failed to stop within 10s')) throw new PackageError('SYNCTHING_DATABASE_STOP_FAILED', 'Native database stop failed despite exit status');
-        try { process.kill(child.pid, 0); } catch (cause) { if (cause.code === 'ESRCH') return { pid: child.pid, exit_code: 0, process_absent: true, clean_shutdown_ms: Date.now() - started }; throw cause; }
+        try { process.kill(child.pid, 0); } catch (cause) { if (cause.code === 'ESRCH') return { home, pid: child.pid, exit_code: 0, process_absent: true, clean_shutdown_ms: Date.now() - started }; throw cause; }
         throw new PackageError('SYNCTHING_PROCESS_REMAINS', 'Owned monitor PID remains or reused');
       } catch (cause) {
         if (outcome === null) {
@@ -153,6 +165,8 @@ export async function startSyncthingPilot(binary, home, reuse = false) {
     }
     if (!status?.myID) throw new PackageError('SYNCTHING_READY_TIMEOUT', 'Authenticated REST not ready');
     const config = await request('/rest/config');
+    const runningVersion = await request('/rest/system/version');
+    if (runningVersion?.version !== `v${expected}`) throw new PackageError('SYNCTHING_RUNNING_VERSION_MISMATCH', 'Owned REST engine version differs from explicit pin');
     if ((!reuse && config.folders.length !== 0) || config.folders.some(folder => folder.id !== 'm0-managed-fixture' || folder.path !== path.join(home, 'payload'))
       || config.options.globalAnnounceEnabled || config.options.localAnnounceEnabled || config.options.relaysEnabled || config.options.natEnabled
       || config.gui.address !== `127.0.0.1:${apiPort}` || config.gui.insecureAdminAccess
