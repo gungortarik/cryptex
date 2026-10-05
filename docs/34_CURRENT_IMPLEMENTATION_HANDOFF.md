@@ -52,6 +52,24 @@ Integration update:
 
 ## M0 closure continuation (2026-10-05)
 
+Latest Mac sidecar regression is scoped **PASS**, reported by the operator/Codex
+at `388e46a7e5f750d88e7fc786e0c108dcea5329e4`: macOS 27.0.1 arm64,
+Rust/Cargo 1.98.1, Node v24.19.0, pnpm 11.28.0. Desktop **13/13**, pre-Tauri
+CLI **4/4**, format/strict Clippy/frontend/locked release/diff all PASS; every
+command exit 0, no failures/skips/ignored, fixture cleanup error-free.
+Backend-selected path and developer override authority plus real POSIX symlink
+refusal passed. No visible app/daemon, edits, commits or Actions; repo clean.
+Evidence: `evidence/m0/p0-2/macos-sidecar-boundary-evidence-20261005.md`.
+This closes the new Mac validator regression, not physical renderer invocation.
+No passed Mac plan requires repetition.
+
+Next continuation: the explicit owner scope decision requested for
+`evidence/m0/m0-acceptance-scope-decision-proposal-20261005.md` remains unanswered.
+Do not infer that a Mac PASS approves revised ADR acceptance prerequisites.
+Record the owner's answer before preparing dependent ADR revisions; then finish
+review and run the required final CI once on the resulting stable candidate.
+ADR-0004/0012 remain PROPOSED; M0 remains IN PROGRESS and M1 is not authorized.
+
 The owner explicitly authorized completing the entire M0 milestone. Closure
 audit: `evidence/m0/m0-closure-audit-20261005.md`. P0-4 managed Syncthing and its
 ADR-0004 addendum remain unaccepted; managed staged lifecycle now has both-OS

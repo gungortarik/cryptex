@@ -124,6 +124,17 @@ Do not substitute an older readiness run or these local checks for final CI.
 
 ## Security and notice review continuation
 
+Mac sidecar validator regression subsequently reported scoped PASS at
+`388e46a7e5f750d88e7fc786e0c108dcea5329e4`: Desktop **13/13**, CLI **4/4**,
+all format/Clippy/frontend/locked release/diff checks and exits 0, no skipped or
+ignored tests, real POSIX symlink refusal and error-free fixture cleanup.
+Exact environment/provenance/scope:
+`p0-2/macos-sidecar-boundary-evidence-20261005.md`.
+The pending Mac check below is historical and is now closed; physical renderer
+invocation was not tested. The owner scope question remains unanswered, so no
+ADR prerequisites or milestone authority change. Final CI awaits the remaining
+review decision; no Actions were dispatched.
+
 `m0-security-notice-acceptance-review-20261005.md` records the implementer review
 and remaining exact prerequisites. Finding: normal Desktop sessions previously
 allowed a renderer-selected executable for daemon startup. Fix `82c4d32`

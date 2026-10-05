@@ -1,7 +1,7 @@
 # M0 security, notice and acceptance review
 
-Status: **PARTIAL — renderer launch issue corrected on Windows; Mac check and
-remaining acceptance decisions open**. Implementation source `82c4d32`.
+Status: **PARTIAL — renderer launch issue corrected with both-platform regression
+proof; remaining acceptance decisions open**. Implementation source `82c4d32`.
 Authority: Master Spec, accepted ADR-0007/0013, M0 contract and Definition of Done.
 This is implementer review, not human approval or a complete security certification.
 
@@ -9,7 +9,7 @@ This is implementer review, not human approval or a complete security certificat
 
 | Area | Observation | Scope/result |
 | --- | --- | --- |
-| Renderer executable selection | `p0_2_start_daemon` formerly checked requested sidecar only in pilot mode; normal sessions accepted a renderer-selected executable | Concrete finding corrected for all sessions; Mac regression pending |
+| Renderer executable selection | `p0_2_start_daemon` formerly checked requested sidecar only in pilot mode; normal sessions accepted a renderer-selected executable | Concrete finding corrected for all sessions; Windows and Mac regressions PASS |
 | Correction | Resolve approved sidecar in backend; require absolute ordinary request/expected files and canonical path equality before runtime creation or spawning; launch/store backend path; make displayed sidecar read-only | Windows three new Rust tests PASS; developer environment selection remains backend-controlled |
 | Renderer content | React renders probe log/path as text; no raw HTML rendering or shell/filesystem plugin is installed; CSP limits connection origins to local IPC | Reviewed narrow foundation surface; no imported memory rendering or production UI acceptance claim |
 | IPC | `services/cryptexd/src/ipc.rs` explicitly installs Windows current-user DACL and validates private Unix socket directory; bounded 64 KiB framing, version/role/capability and response correlation | Existing physical proofs and accepted ADR-0007 retained; roles are not cryptographic device identities |
@@ -50,9 +50,12 @@ not been established. They remain explicit prerequisites before distribution.
 
 ## Remaining acceptance decisions and limits
 
-1. **New Mac boundary check:** 13 Desktop Rust tests, format/strict Clippy,
-   frontend/release build and four negative pre-Tauri CLI tests. Passed unrelated
-   Syncthing/native plans need no repetition.
+1. **Mac boundary check closed:** operator/Codex reported PASS at full source
+   `388e46a7e5f750d88e7fc786e0c108dcea5329e4`: Desktop 13/13 and CLI 4/4,
+   no failures/skips/ignored; format/strict Clippy/frontend/locked release/diff
+   PASS, every exit 0, real POSIX symlink refusal and clean fixture cleanup.
+   Evidence: `p0-2/macos-sidecar-boundary-evidence-20261005.md`. This is
+   validator/pre-Tauri CLI proof, not physical renderer invocation.
 2. **ADR-0012:** both-platform lifecycle/selection/recovery with synthetic packs
    exists, but proposed acceptance still explicitly requires signed package
    integration and production canonical acceptance. Windows certificate readiness
@@ -76,5 +79,5 @@ not been established. They remain explicit prerequisites before distribution.
    but cannot supply signing, notice completeness or a human decision.
 
 No Actions run for this review. M0 remains **IN PROGRESS**; ADR-0004/0012 remain
-**PROPOSED**. Final CI waits for the new Mac check and remaining review decisions
+**PROPOSED**. Final CI waits for the remaining review decisions
 to avoid paying for a knowingly incomplete completion candidate.
