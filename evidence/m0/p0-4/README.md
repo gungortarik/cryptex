@@ -8,6 +8,7 @@ license/attribution preservation on Windows; Mac parity remains pending.
 
 - [Windows scoped evidence](windows-managed-syncthing-evidence-20261005.md)
 - [Mac parity task](macos-managed-syncthing-test-plan-20261005.md)
+- [Notice failure and correction](notice-byte-portability-failure-and-fix-20261005.md)
 - [Notice inventory](../../../third_party/syncthing/2.1.5/README.md)
 
 Reference interfaces: [REST configuration](https://docs.syncthing.net/rest/config.html),

@@ -196,6 +196,9 @@ See:
 
 ## Changed native package continuation
 
+Mac native interruption/Golden/Doctor also reported scoped PASS:
+[Mac recovery result](macos-native-interruption-evidence-20261005.md).
+
 - [Windows changed-package evidence](windows-changed-native-package-evidence-20261005.md)
 - [Mac changed-package task](macos-changed-native-package-test-plan-20261005.md)
 - [Mac changed-package result](macos-changed-native-package-evidence-20261005.md)

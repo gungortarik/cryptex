@@ -25,7 +25,9 @@ foreground console observation remain wholly unverified:
 - Changed native staged package commit and protocol-rejected actual rollback now
   PASS on both OSes with unchanged synthetic sealed packs/manifest. Windows
   changed both role hashes; Mac changed Desktop only and kept the daemon bytes.
-- Mac native interruption/Golden/Doctor parity is still pending. No production
+- Mac native interruption/Golden/Doctor parity reported PASS at `502abf4`:
+  pre-launch updater kill, healthy restored baseline and unchanged sealed fixtures.
+  See `macos-native-interruption-evidence-20261005.md`. No production
   canonical-schema, publisher authentication, installed-updater atomicity or
   power-loss acceptance is implied. ADR-0012 stays PROPOSED.
 

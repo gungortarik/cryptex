@@ -9,12 +9,12 @@ No M1 work is authorized by this audit. Checkboxes must follow verified evidence
 | Gate | Verified foundation | Remaining closure work |
 | --- | --- | --- |
 | P0-1 | Accepted ADR-0013 and physical cross-platform benchmark evidence integrated via approved normal merge `cb9069e` from `6d4d10a` | Confirm integrated branch's required checks; no corpus regeneration |
-| P0-2 | Both OS lifecycle/IPC/tray/login and changed-byte native package selection/rollback with sealed-fixture preservation (Mac daemon bytes unchanged) | Mac native interruption/foundation parity; remaining native interruption/controlled-error review; signing/installed updater and canonical fixture acceptance; ADR-0012 decision |
+| P0-2 | Both OS lifecycle/IPC/tray/login, changed-byte native package selection/rollback and pre-successor updater-kill recovery with sealed-fixture preservation (Mac daemon bytes unchanged) | Remaining native interruption/controlled-error review; signing/installed updater and canonical fixture acceptance; ADR-0012 decision |
 | P0-3 | Accepted ADR-0007 implementation addendum; physical transport, negotiation, roles, malformed frames, ACL and reconnect evidence | Final integrated security/acceptance review; do not expand production APIs |
-| P0-4 | Windows pinned 2.1.5 managed lifecycle, two isolated native profiles, auth/pairing/pause/status/history/conflict, retained restart and clean stop; staged native role/notice preservation and proposed ADR-0004 addendum | Mac parity, installed distribution/notice review, actual version-change compatibility, secret boundary and addendum acceptance |
-| Golden Brain | Deterministic synthetic sealed-pack foundation and Windows preservation proof | Mac parity and review of fixture scope; production event schema is outside M0 |
-| Doctor | Actual Windows daemon PID/IPC/lock health and absence/attention diagnostics | Mac parity; explicitly retain unimplemented canonical/Syncthing checks |
-| Quality/final gate | Windows integrated workspace 89 Rust, 123 lifecycle/foundation Node + 5 storage Node, strict Clippy/build/format PASS | Mac integrated checks, final required CI at stable source, human review and final evidence-backed checklist |
+| P0-4 | Windows pinned 2.1.5 managed lifecycle, auth/pairing/pause/status/history/conflict, restart/clean stop and staged native/LF notices; original Mac notice failure retained and corrected | Mac 22-test/live rerun, installed distribution/notice review, actual version-change compatibility, secret boundary and ADR-0004 addendum acceptance |
+| Golden Brain | Deterministic synthetic sealed-pack foundation and preservation proof on both OSes | Review of fixture scope; production event schema is outside M0 |
+| Doctor | Actual daemon PID/IPC/lock health on both OSes, including recovered Mac baseline healthy | Review diagnostics; explicitly retain unimplemented canonical/Syncthing checks |
+| Quality/final gate | Windows integrated workspace 89 Rust and current 150 Node + 5 storage Node; Mac foundation 71 Rust, 123 Node + 5 storage Node; strict Clippy/build/format PASS | Updated managed Mac checks, final required CI at stable source, human review and final evidence-backed checklist |
 
 P0-1 transport measurements do not satisfy managed P0-4 integration. An unchecked
 item is not filled merely because similarly named code or an old config exists.
@@ -76,3 +76,20 @@ Windows signing readiness (read-only): SDK x64 SignTool exists; CurrentUser My
 contains zero currently valid code-signing certificates with private keys.
 No external signing service was inspected and no key/export/security change was
 made. Production signing remains an explicit unmet acceptance prerequisite.
+
+## Native recovery parity and notice portability update
+
+Mac native interruption/Golden/Doctor reported PASS at `502abf4`: Rust **71/71**,
+Node **123/123** plus storage **5/5**, actual pre-launch updater kill, restored
+baseline health and complete cleanup with unchanged synthetic sealed fixtures.
+See `p0-2/macos-native-interruption-evidence-20261005.md`. This supersedes the
+earlier pending parity statements above, without expanding their acceptance scope.
+
+Mac managed Syncthing stopped before live launch with **7 PASS / 8 FAIL** because
+notice hashes pinned CRLF checkout bytes instead of Git LF bytes. Fix `f17bcf7`
+preserves exact-byte verification and explicit LF checkout. Corrected Windows
+managed proof passes four clean stops; combined Node **150/150**, storage **5/5**.
+See `p0-4/notice-byte-portability-failure-and-fix-20261005.md`, including two
+intermediate failed Windows observations and their bounded polling corrections.
+Only the managed Mac task needs rerun: **22/22** tests plus isolated native proof.
+No Actions run. ADR-0004/0012 remain PROPOSED and M0 remains IN PROGRESS.

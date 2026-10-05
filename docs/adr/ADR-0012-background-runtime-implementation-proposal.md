@@ -40,7 +40,11 @@ PASS on both platforms, preserving synthetic sealed fixtures after each scenario
 `macos-changed-native-package-evidence-20261005.md`. Windows changed both role
 hashes; Mac changed Desktop only. These results do not establish production
 canonical-schema acceptance, signed installed updater safety or power-loss
-durability. Mac native interruption/foundation parity remains pending separately.
+durability. Mac native interruption/foundation parity was subsequently reported
+PASS at `502abf4`; see
+`evidence/m0/p0-2/macos-native-interruption-evidence-20261005.md` for exact source,
+artifact hash, restored baseline health and cleanup. This scoped proof does not
+accept this ADR or establish installed/signed or production canonical acceptance.
 The proposal is still **PROPOSED**; no required acceptance proof is waived.
 
 ### Selected implementation direction

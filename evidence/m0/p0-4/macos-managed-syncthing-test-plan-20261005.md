@@ -1,10 +1,10 @@
 # Mac task — managed Syncthing parity
 
-Use clean current `m0/p0-2-cursor` containing staged Syncthing follow-up `7845ae1`;
+Use clean current `m0/p0-2-cursor` containing notice/observation fix `f17bcf7`;
 report full tested SHA. It must contain `syncthing-bundle.mjs` and its tests.
 Read handoff, accepted stack baseline, P0-4 contract and Windows scoped evidence.
-This is a separate task from the pending native interruption/Golden/Doctor plan.
-Both plans are required. Do not replace one with the other.
+Native interruption/Golden/Doctor already reported PASS at `502abf4`.
+Rerun only this managed task; do not repeat the passed native plans.
 
 No Actions, installer, startup, personal data, global Syncthing process/config
 changes or retained P0-1 profile use. Do not stop an unrelated process. On PASS
@@ -33,8 +33,11 @@ node --check tools/m0-lifecycle-compare/scripts/syncthing-bundle.test.mjs
 git diff --check
 ```
 
-Require **15/15 on Mac** (including POSIX executable mode), no failures/skips,
-all exits 0. Windows has 14 because its POSIX-only test is not registered.
+Require **22/22 on Mac** (including POSIX executable mode and notice/Git/observation
+regressions), no failures/skips, all exits 0. Windows has 21 because its
+POSIX-only test is not registered. Confirm
+`git ls-files --eol third_party/syncthing/2.1.5` reports LF index and LF working-tree notice files.
+Do not normalize notices manually or accept an alternative hash.
 Then run the repository runner
 with the resolved absolute pinned binary; Codex should fill that variable.
 
@@ -64,8 +67,18 @@ Global config's observed digest must be unchanged. No temporary child processes
 remain; retained private proof profiles/report are expected outside Git.
 
 Report full source SHA, platform/architecture, Node and Syncthing versions,
-resolved binary/hash, 15/15 and syntax/diff exits, report path/hash, actual assertions
+resolved binary/hash, 22/22 and syntax/diff exits, report path/hash, actual assertions
 and cleanup. Do not paste REST bodies/config files/logs containing credentials.
 This is two local native identities on one Mac, not cross-host replication,
 actual version upgrade, production secret storage or installed distribution.
 ADR-0004 acceptance/P0-4 completion remain separate.
+
+## Re-run after the reported failure
+
+The previous source `502abf4` failed **7 PASS / 8 FAIL** before live Syncthing
+because notice hashes represented Windows CRLF checkout bytes. Retain that
+failure and read `notice-byte-portability-failure-and-fix-20261005.md`.
+After pulling the fix, perform the complete managed plan above, using the
+already inventoried stable 2.1.5 arm64 input (recheck path/version/hash first).
+No acquisition/global upgrade is needed if that input is unchanged.
+Do not repeat the passed native recovery/Golden/Doctor or changed-package tests.

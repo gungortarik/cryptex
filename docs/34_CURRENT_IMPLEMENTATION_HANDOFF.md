@@ -76,7 +76,16 @@ healthy, clean exit 0, lock released and endpoint absent. Evidence:
 `evidence/m0/p0-2/windows-native-interruption-evidence-20261005.md`.
 Combined Mac plan:
 `evidence/m0/p0-2/macos-native-interruption-test-plan-20261005.md`.
-Mac parity pending. No Actions or global Syncthing/startup changes.
+Mac native interruption/Golden/Doctor parity was reported PASS at exact source
+`502abf409925b368ff1377380c719069207f0d61`: Rust **71/71**, Node **123/123**
+plus storage **5/5**, format/strict Clippy/build/package/syntax/diff PASS.
+Updater `82701` was killed before candidate launch; old pair `82711/82719`
+had exited cleanly. Recovery pair `82733/82740` used the correct baseline paths
+and parents, protocol-1 health and Doctor healthy. Final exit 0 released all
+locks/gates/IPC/intent/claim; synthetic sealed fixtures remained unchanged.
+User-reported artifact hash and scope:
+`evidence/m0/p0-2/macos-native-interruption-evidence-20261005.md`.
+No Actions or global Syncthing/startup changes.
 
 P0-4 continuation `7ff485d` adds an external pinned **2.1.5** native controller
 and actual two-profile Windows runner. Auth rejection 403/403, pairing, native
@@ -120,9 +129,25 @@ Clippy/syntax/diff passed, five clean native sessions, committed candidate and
 protocol-rejected rollback with unchanged sealed fixtures. Mac Desktop changed;
 daemon bytes stayed identical. Report hash and exact scope are preserved in
 `evidence/m0/p0-2/macos-changed-native-package-evidence-20261005.md`.
-The other two Mac plans (native interruption/foundation and managed Syncthing)
-remain pending; this report does not substitute for them.
+Native interruption/foundation subsequently reported PASS at `502abf4` as above.
+Managed Syncthing remains a separate failed/pending parity gate.
 ADR-0012 PROPOSED and M0 IN PROGRESS. No Actions or startup/install changes.
+
+Managed Syncthing Mac tests at `502abf4` stopped before live launch: **7 PASS,
+8 FAIL**, `SYNCTHING_BUNDLE_SOURCE_CHANGED`. Notice pins described Windows CRLF
+checkout bytes while Git/Mac files were LF. Fix `f17bcf7` pins the exact Git LF
+blobs and scopes `.gitattributes` to LF notice checkouts, without runtime
+normalization or alternate accepted hashes. Three regressions cover checkout,
+copied bytes and tampering. Windows validation exposed two native observation
+races: idle status now waits within the existing 45-second bound and synthetic
+fixture ENOENT is pending during replacement; malformed status, pull errors and
+other I/O errors still fail. Both failed runs remain recorded.
+Corrected Windows live proof passes all managed assertions and four clean stops;
+combined Node **150/150**, storage **5/5**, managed **21/21**, syntax/diff PASS.
+Evidence: `evidence/m0/p0-4/notice-byte-portability-failure-and-fix-20261005.md`.
+Mac must rerun only the updated managed plan (**22/22** plus live isolated proof),
+using its retained native 2.1.5 binary. Other passed Mac plans need no repetition.
+No Actions run; installed distribution/version-change/secret acceptance stays open.
 
 Read-only Windows signing readiness audit: SDK x64 SignTool is available, but
 the current-user My store has **0 currently valid code-signing certificates with
