@@ -75,7 +75,8 @@ Workflow now builds it alongside the lifecycle helper; Windows focused Golden/
 Doctor tests **6/6** and exact prerequisite build PASS. No assertions changed.
 Windows ACL job passed; Windows readiness cancellation was requested to avoid
 the same missing prerequisite. See `evidence/m0/m0-final-ci-attempt-20261005.md`.
-Final CI remains NOT VERIFIED until the corrected-source run completes.
+At that first attempt, final CI was NOT VERIFIED. The corrected-source run
+subsequently passed as recorded above; the earlier failure remains historical evidence.
 Independent verifier/security review and human diff/ADR acceptance remain open.
 Review packet: `evidence/m0/m0-human-acceptance-review-packet-20261005.md`.
 
