@@ -24,6 +24,7 @@ use tauri::{AppHandle, Manager, State, WindowEvent};
 use tauri_plugin_autostart::ManagerExt as AutoStartManagerExt;
 
 mod background_process;
+mod frontend_build_mode;
 mod pilot_runtime;
 
 fn runtime_root_path() -> Result<PathBuf, String> {
@@ -889,6 +890,12 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
 fn main() {
     if let Err(error) = pilot_runtime::initialize() {
         eprintln!("PILOT_RUNTIME_REJECTED: {error:?}");
+        std::process::exit(2);
+    }
+    if let Err(error) = frontend_build_mode::ensure_current() {
+        eprintln!(
+            "RELEASE_FRONTEND_MODE_REJECTED: {error:?}; use the Tauri packaging command or --features tauri/custom-protocol"
+        );
         std::process::exit(2);
     }
     let mut context = tauri::generate_context!();

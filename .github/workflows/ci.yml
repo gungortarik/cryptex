@@ -105,14 +105,14 @@ jobs:
       - name: Build native helpers for Node failure-path and Golden tests
         run: cargo build --locked -p m0-lifecycle-compare -p m0-storage-bench
 
-      - name: Build release Desktop for negative pre-Tauri CLI tests
-        run: cargo build --locked --release -p cryptex-desktop
+      - name: Build embedded-frontend release Desktop for negative pre-Tauri CLI tests
+        run: cargo build --locked --release -p cryptex-desktop --features tauri/custom-protocol
 
-      - name: Verify compiled release probe development namespace
-        run: cargo test --locked --release -p cryptex-desktop default_probe_runtime_tests
+      - name: Test release Desktop namespace and frontend build mode
+        run: cargo test --locked --release -p cryptex-desktop --features tauri/custom-protocol
 
       - name: Lint release-only Desktop paths
-        run: cargo clippy --locked --release -p cryptex-desktop --all-targets -- -D warnings
+        run: cargo clippy --locked --release -p cryptex-desktop --features tauri/custom-protocol --all-targets -- -D warnings
 
       - name: Test Node foundation, recovery, packaging and Syncthing boundaries
         shell: pwsh
