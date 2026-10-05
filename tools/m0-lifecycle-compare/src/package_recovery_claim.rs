@@ -35,6 +35,14 @@ fn ordinary(path: &Path, directory: bool) -> Result<()> {
 }
 
 fn validate_root(root: &Path) -> Result<()> {
+    validate_root_scope(root, "m0-package-filesystem-candidate")
+}
+
+pub(crate) fn validate_handover_root(root: &Path) -> std::result::Result<(), &'static str> {
+    validate_root_scope(root, "m0-native-handover-pilot").map_err(|error| error.0)
+}
+
+fn validate_root_scope(root: &Path, scope: &str) -> Result<()> {
     if !root.is_absolute()
         || root
             .components()
@@ -56,7 +64,7 @@ fn validate_root(root: &Path) -> Result<()> {
         &fs::read(root.join("experiment.json")).map_err(|_| ClaimError("CLAIM_IO_FAILED"))?,
     )
     .map_err(|_| ClaimError("UNOWNED_ROOT"))?;
-    if marker["schema"] != 1 || marker["scope"] != "m0-package-filesystem-candidate" {
+    if marker["schema"] != 1 || marker["scope"] != scope {
         return Err(ClaimError("UNOWNED_ROOT"));
     }
     Ok(())
