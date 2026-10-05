@@ -1,9 +1,9 @@
 # macOS native interrupted recovery cleanup — scoped PASS
 
-**Initial source:** `486d86c55ed5bd7e41ba23707619f7a129511124`  
-**Formatting commit and tested source:** `7011fc7b316c8abcaf3f761663f42d0e04bb5a68`  
-**Platform:** macOS 27.0.1 arm64  
-**Toolchain:** Rust/Cargo 1.98.1; Node v24.19.0  
+**Initial source:** `486d86c55ed5bd7e41ba23707619f7a129511124`
+**Formatting commit and tested source:** `7011fc7b316c8abcaf3f761663f42d0e04bb5a68`
+**Platform:** macOS 27.0.1 arm64
+**Toolchain:** Rust/Cargo 1.98.1; Node v24.19.0
 **Scope:** isolated M0 P0-2 candidate; ADR-0012 remains PROPOSED
 
 Recorded by the Windows implementer from the Mac operator's returned result for
