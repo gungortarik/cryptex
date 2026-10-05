@@ -82,6 +82,16 @@ status. Mac real-health parity and the remaining native integration gates remain
 
 ## Gates before production integration or ADR acceptance
 
+Current continuation plan: `native-package-handover-plan-20261005.md` in the
+P0-2 evidence directory. It requests explicit approval for an isolated native
+complete-package handover pilot. Mode B approval does not select this updater
+method. Later paragraphs preserve earlier slice limits; newer evidence closes
+the named test-only parity/claim cases, not the production gates. Real daemon
+health parity is recorded in `macos-package-real-health-evidence-20261003.md`;
+that Mac run used the same retained pair and did not prove a version upgrade.
+Native Desktop/resources handover, signed integrity and accepted-layout
+canonical preservation remain open.
+
 The latest test-only native cleanup candidate uses fs2 0.4.3 to serialize stale
 recovery-claim removal in a Rust command. It requires OS ESRCH for the recorded
 owner and unchanged claim bytes before removal; live/ambiguous owners remain
