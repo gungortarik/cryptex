@@ -777,8 +777,24 @@ Mac gate parity: Rust **14/14**, Node **86/86 PASS**, no failures/skips, exit 0 
 Clippy, locked build, two syntax and diff checks passed; fixture/child/flush
 cleanup was error-free. Mac changed no files. Evidence:
 `evidence/m0/p0-2/macos-native-handover-gate-evidence-20261005.md`.
-Next implementation is isolated owned Desktop shutdown/successor startup using
-that gate. No actual handover, signing or canonical acceptance is claimed.
+Isolated owned session slice at `dd5021b` adds pre-Tauri pilot runtime validation,
+separate instance identity, initially hidden windows, bundled sidecar binding,
+blocked pilot autostart changes and clean quit control. Windows Node **97/97**,
+format, strict Desktop Clippy, frontend/locked release build and five syntax
+checks PASS. Local Desktop debug unit execution is BLOCKED by Application Control
+4551; it is not counted as a PASS. One targeted Windows package/unit workflow
+37308202823 is running for this source; other workflow jobs are skipped.
+Real local loose release sessions PASS: Desktop/daemon `33552/3364`, then
+`460/10924`, matching OS parent/executable identities, protocol-1 IPC, clean exit
+0, gone daemon PID, released lock and absent endpoint. Completed launch snapshots
+are hidden; this is not physical no-flash confirmation. Early intermediate
+snapshot failures were preserved and the readiness event was corrected with a
+regression. Same package reopened; no selection activation or rollback yet.
+Evidence: `evidence/m0/p0-2/windows-owned-desktop-session-evidence-20261005.md`.
+Mac plan: `evidence/m0/p0-2/macos-owned-desktop-session-test-plan-20261005.md`.
+Next implementation is complete-package selection/intent coordination and
+failed-candidate baseline restart using these owned sessions. Signing, canonical
+acceptance, interrupted handover and version-changing update remain open.
 
 ### Latest native interrupted-claim cleanup — Windows and Mac scoped PASS
 

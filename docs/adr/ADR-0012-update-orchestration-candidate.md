@@ -87,7 +87,13 @@ callbacks (`80b727f`). Windows Rust 14/14 and Node 86/86 pass, with exception/EO
 SIGKILL release and live contender refusal. Mac gate parity is pending. This
 primitive does not yet gate existing Desktop/startup/update entry points or
 establish actual binary handover. See `windows-native-handover-gate-evidence-20261005.md`
-and `macos-native-handover-gate-test-plan-20261005.md`.
+and `macos-native-handover-gate-test-plan-20261005.md`. Mac gate parity subsequently
+passed at `6a7d294` (14 Rust, 86 Node); see its Mac evidence.
+The later `dd5021b` pilot launches actual isolated Windows loose release Desktop
+and its bundled daemon under that gate, proving two same-package clean sessions
+and real OS identity/IPC/cleanup. This does not activate a candidate selection or
+implement rollback. Actual `.app` session parity and targeted Windows Desktop
+unit CI are pending; see `windows-owned-desktop-session-evidence-20261005.md`.
 
 Current continuation plan: `native-package-handover-plan-20261005.md` in the
 P0-2 evidence directory. The project owner explicitly approved the isolated native

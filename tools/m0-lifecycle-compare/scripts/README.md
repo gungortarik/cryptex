@@ -2,6 +2,23 @@
 
 ## Headless package transaction candidate
 
+`run-desktop-session-proof.mjs` uses only newly built, pilot-enabled Desktop
+packages: `--source ABS_TREE --root FRESH_ABS_ROOT --helper ABS_HELPER --desktop
+RELATIVE_DESKTOP --daemon RELATIVE_DAEMON`. Copy current build output into a fresh
+outside-repository source tree first; supply the complete `.app` on Mac. Do not
+try legacy packages that ignore the new pilot argument. Keep the compiling source
+checkout available; this is not a relocatable product launcher.
+The runner stages the complete tree, holds the native gate, opens two initially
+hidden owned Desktop/bundled-daemon sessions in separate fresh runtimes and
+checks OS parent/executable identity, real IPC health and strict clean shutdown.
+It reopens the same package, without selection/intent/rollback integration.
+
+For its four actual CLI refusal tests set `CRYPTEX_PILOT_DESKTOP_TEST_BINARY` to
+the current-source release Desktop absolute path. The seven session adapter tests
+also check the platform process identity adapter without capturing command-line
+bodies. `pilot-quit.request` follows clean supervised shutdown; the older generic
+`quit.request` test control may force-stop a child and is not used as clean proof.
+
 The separate `package-handover-gate.mjs` adapter calls the new Rust
 `hold-native-handover-gate --root PATH` helper for owned
 `m0-native-handover-pilot` roots. Build the helper before running its seven process
