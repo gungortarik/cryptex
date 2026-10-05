@@ -1,6 +1,7 @@
 # Mac task — managed Syncthing parity
 
-Use clean current `m0/p0-2-cursor` containing `7ff485d`; report full tested SHA.
+Use clean current `m0/p0-2-cursor` containing staged Syncthing follow-up `7845ae1`;
+report full tested SHA. It must contain `syncthing-bundle.mjs` and its tests.
 Read handoff, accepted stack baseline, P0-4 contract and Windows scoped evidence.
 This is a separate task from the pending native interruption/Golden/Doctor plan.
 Both plans are required. Do not replace one with the other.
@@ -23,14 +24,18 @@ Do not print generated API keys, key/config contents or private certificates.
 ## Checks and actual proof
 
 ```sh
-node --test tools/m0-lifecycle-compare/scripts/syncthing-pilot.test.mjs
+node --test tools/m0-lifecycle-compare/scripts/syncthing-pilot.test.mjs tools/m0-lifecycle-compare/scripts/syncthing-bundle.test.mjs
 node --check tools/m0-lifecycle-compare/scripts/syncthing-pilot.mjs
 node --check tools/m0-lifecycle-compare/scripts/syncthing-pilot.test.mjs
 node --check tools/m0-lifecycle-compare/scripts/run-managed-syncthing-proof.mjs
+node --check tools/m0-lifecycle-compare/scripts/syncthing-bundle.mjs
+node --check tools/m0-lifecycle-compare/scripts/syncthing-bundle.test.mjs
 git diff --check
 ```
 
-Require **7/7**, no failures/skips, all exits 0. Then run the repository runner
+Require **15/15 on Mac** (including POSIX executable mode), no failures/skips,
+all exits 0. Windows has 14 because its POSIX-only test is not registered.
+Then run the repository runner
 with the resolved absolute pinned binary; Codex should fill that variable.
 
 ```sh
@@ -46,6 +51,11 @@ identities/homes, incorrect-key 401/403 rejection, loopback isolation, pairing,
 folder pause/resume, idle status, version history, retained identity/payload,
 immediate restart clean stop, actual new transfer after another restart, and
 native conflict visibility preserving **both exact divergent contents**.
+Require `staged_native_package_verified=true` and
+`staged_license_attribution_verified=true`: the native executable must run from
+the fresh proof's `native-package`, alongside exact pinned LICENSE/AUTHORS files.
+Its bundle membership/digests and POSIX modes are reverified after shutdown;
+this is staged package proof, not installed distribution or code signing.
 All four owned monitor exits must be 0 and PIDs absent; no forced cleanup.
 Report PID/timing array and whether native database-stop failure was detected.
 The 25-second shutdown budget covers pinned native 10-second connection close,
@@ -54,7 +64,7 @@ Global config's observed digest must be unchanged. No temporary child processes
 remain; retained private proof profiles/report are expected outside Git.
 
 Report full source SHA, platform/architecture, Node and Syncthing versions,
-resolved binary/hash, 7/7 and syntax/diff exits, report path/hash, actual assertions
+resolved binary/hash, 15/15 and syntax/diff exits, report path/hash, actual assertions
 and cleanup. Do not paste REST bodies/config files/logs containing credentials.
 This is two local native identities on one Mac, not cross-host replication,
 actual version upgrade, production secret storage or installed distribution.

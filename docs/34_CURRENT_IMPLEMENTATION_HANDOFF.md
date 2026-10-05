@@ -92,6 +92,15 @@ under `third_party/syncthing/2.1.5/`; actual bundled distribution, changed-versi
 compatibility and production secret storage are still unproved. No P0-4 or M0
 completion claim, unrelated/global process/config change or Actions run.
 
+Staged Syncthing follow-up copies the exact native binary plus pinned upstream
+LICENSE/AUTHORS to a fresh proof package, resolves only that role and rechecks
+membership/digests after the real run. Linked roots, corrupt metadata, tampered
+payload/notices and wrong roles fail closed. Windows actual packaged-role run
+passes all prior assertions and four clean stops (including 10.107s early stop).
+Combined Node **137/137**, managed **14/14**, syntax/diff PASS. Mac plan now expects
+**15/15** managed tests including its POSIX mode check. Installed distribution,
+publisher authentication and actual version-change compatibility remain open.
+
 ## P0-2 evidence status — verified slices; acceptance open
 
 ### macOS

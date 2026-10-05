@@ -68,3 +68,28 @@ acceptance is claimed. Native keys remain inside private synthetic profiles.
 Only synthetic bodies are transferred; Syncthing is transport, not the canonical
 writer. Upstream license/author inventory is retained separately; actual
 distribution and dependency notices still require review. No Actions ran.
+
+## Staged native package follow-up
+
+Source: `7845ae1`.
+
+The follow-up runner copies the explicit native input and exact pinned upstream
+LICENSE/AUTHORS into a fresh `native-package`; it runs that absolute role without
+PATH resolution. Membership, bytes, platform roles and notice digests are checked
+before and after execution. Executable mode is enforced on POSIX. Changed binary,
+changed notice, extra member, malformed role/metadata and linked root refuse
+resolution; source fixtures use only synthetic bytes.
+
+Actual root:
+`%LOCALAPPDATA%\Cryptex-Dev\p0-4\managed-bundle-proof-20261005-7fb8933dd3e94a15a4e40509f439b7da`.
+Report SHA-256:
+`35eabf2ce8633a70eb0ce60d2618586b1edf760dc58a4ef0ad52ccc9e406b04e`.
+All previous physical assertions passed again, plus staged native/notice fields.
+Owned PIDs **6092, 22360, 31912, 15264** all exited 0 and were absent;
+clean stop times **84, 10107, 588, 204 ms** respectively. Global config stayed
+unchanged; no native database-stop error or forced cleanup occurred.
+Windows combined Node **137/137**, including managed **14/14**; no failures/skips.
+Changed syntax/diff checks PASS. Mac registers one additional POSIX mode test.
+
+This proves a staged independent native package, not a Cryptex installer,
+publisher signature, complete dependency-notice review or version upgrade.

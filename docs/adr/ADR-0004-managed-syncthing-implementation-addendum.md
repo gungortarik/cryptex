@@ -52,6 +52,11 @@ pause/resume/status, native history/conflict preservation, retained same-version
 restart and clean shutdown. Four real monitor exits were 0 and their PIDs absent.
 The observed user-global config digest stayed unchanged.
 
+The staged-package follow-up runs a copied native binary with exact LICENSE/AUTHORS
+from its fresh package role and rechecks membership/digests afterward. Windows
+passes; this does not establish a signed/installed distribution or dependency
+notice completeness. Mac executable-mode/package parity remains pending.
+
 Early restart shutdown needed about 10.1 seconds. Exact pinned source includes
 a 10-second connection close timeout and a 10-second database shutdown wait;
 the controller uses 25 seconds with margin, rejects database-stop failure and

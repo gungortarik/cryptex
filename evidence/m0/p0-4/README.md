@@ -3,6 +3,8 @@
 Status: **IN PROGRESS**. `7ff485d` adds an isolated, test-only controller and
 physical Windows proof runner against the accepted **2.1.5** baseline.
 No production replication semantics or user-global configuration are changed.
+Staged package follow-up `7845ae1` also proves native-role resolution and exact
+license/attribution preservation on Windows; Mac parity remains pending.
 
 - [Windows scoped evidence](windows-managed-syncthing-evidence-20261005.md)
 - [Mac parity task](macos-managed-syncthing-test-plan-20261005.md)
