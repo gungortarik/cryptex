@@ -732,6 +732,25 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
+### Latest concurrent recovery slice — Windows PASS, Mac pending
+
+The test-only candidate exclusively creates `recovery-claim.json` before
+inspecting pending intent. A second recovery and updater activation while the
+claim exists fail with `RECOVERY_BUSY`. Normal release verifies claim contents.
+Three separate-process regressions pass: competing recovery/updater refusal;
+a prevalidated updater arriving after old-intent removal cannot activate and
+its new journal survives the older recovery; and killed recovery retains claim
+and journal, refusing automatic reclamation. Recovery no longer automatically
+continues after interruption inside this claim; retained claim needs inspection.
+Windows: **51 transaction + 4 health adapter = 55/55 PASS**, no failures/skips.
+Four syntax checks and diff check passed. Prior faults, owner checks, process
+races and five updater SIGKILL boundaries passed.
+Evidence: `evidence/m0/p0-2/windows-package-recovery-claim-evidence-20261004.md`.
+Mac plan: `evidence/m0/p0-2/macos-package-recovery-claim-test-plan-20261004.md`.
+This is fail-closed candidate exclusion, not an OS lock or production selection.
+Native automatic recovery after recovery-process crash, broad stress, publisher
+trust, handover, canonical-data and durability gates remain open.
+
 ### Latest live-updater recovery guard — Windows and Mac scoped PASS
 
 The filesystem candidate now writes schema-2 pending journals with process PID

@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import * as fs from 'node:fs';
+import path from 'node:path';
+import { setTimeout as pause } from 'node:timers/promises';
 
 async function within(promise, milliseconds) {
   let timer;
@@ -37,13 +40,22 @@ export function startContender(root, value, sources, boundary = '', operation = 
   closed.catch(() => {});
   return {
     pid: child.pid,
-    checkpoint: () => within(checkpoint, 10000),
+    checkpoint: () => operation === 'recover' && boundary ? within((async () => {
+      const marker = path.join(root, `recovery-checkpoint-${child.pid}`);
+      while (!fs.existsSync(marker)) {
+        if (child.exitCode !== null || child.signalCode !== null) throw new Error('Recovery exited before filesystem checkpoint');
+        await pause(10);
+      }
+      return { checkpoint: boundary, pid: child.pid };
+    })(), 10000) : within(checkpoint, 10000),
     result: () => within(closed, 10000),
-    release: () => child.send({ release: boundary }),
+    release: () => operation === 'recover' && boundary
+      ? fs.writeFileSync(path.join(root, `recovery-release-${child.pid}`), 'release\n', { flag: 'wx' })
+      : child.send({ release: boundary }),
     stop: async () => {
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
       await within(closed, 3000);
     },
   };
 }
-export function startRecovery(root) { return startContender(root, null, { desktop: '', daemon: '' }, '', 'recover'); }
+export function startRecovery(root, boundary = '') { return startContender(root, null, { desktop: '', daemon: '' }, boundary, 'recover'); }

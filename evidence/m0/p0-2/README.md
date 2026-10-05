@@ -91,6 +91,9 @@ Comparison harness added:
 
 See:
 
+- `windows-package-recovery-claim-evidence-20261004.md` (55/55 PASS; exclusive recovery claim, concurrent/late updater refusal and interrupted-claim retention)
+- `macos-package-recovery-claim-test-plan-20261004.md` (focused claim parity request; no GUI or Actions)
+
 - `windows-package-live-owner-evidence-20261004.md` (52/52 PASS; live-owner recovery refusal, post-exit rollback, journal ownership checks)
 - `macos-package-live-owner-test-plan-20261004.md` (schema-2 owner guard parity request; no GUI or Actions)
 - `macos-package-live-owner-evidence-20261004.md` (reported Mac PASS at `b05be5e`: 52/52, conservative owner guard and clean fixture/child cleanup)

@@ -138,6 +138,29 @@ export function initialize(root, value, sources) {
 export function recover(root, { io = fs } = {}) { return recoverTransaction(root, { io }); }
 function recoverTransaction(root, { io = fs, ownedJournal } = {}) {
   validateRoot(root);
+  const guard = path.join(root, 'recovery-claim.json');
+  const claim = { schema: 1, pid: process.pid, token: randomUUID() };
+  try { writeNew(guard, claim); }
+  catch (cause) {
+    if (cause?.code === 'EEXIST') fail('RECOVERY_BUSY', 'Recovery claim exists; concurrent or interrupted recovery requires inspection');
+    throw new PackageError('RECOVERY_CLAIM_IO_FAILED', 'Could not establish recovery claim', { cause });
+  }
+  let recoveryFailure;
+  try { return recoverClaimed(root, io, ownedJournal); }
+  catch (error) { recoveryFailure = error; throw error; }
+  finally {
+    try {
+      if (JSON.stringify(readJson(guard)) !== JSON.stringify(claim)) fail('RECOVERY_CLAIM_CHANGED', 'Recovery claim ownership changed; retained for diagnosis');
+      fs.unlinkSync(guard);
+      syncDirectory(root);
+    } catch (cause) {
+      const error = new PackageError('RECOVERY_CLAIM_RELEASE_FAILED', 'Recovery claim release was not established', { cause });
+      error.diagnostics = { recovery_code: recoveryFailure?.code ?? null, release_code: cause?.code ?? 'UNKNOWN' };
+      throw error;
+    }
+  }
+}
+function recoverClaimed(root, io, ownedJournal) {
   const intent = path.join(root, 'pending.json');
   if (!fs.existsSync(intent)) return { recovered: false, selection: selected(root) };
   const journal = readJson(intent);
@@ -189,6 +212,7 @@ function restorePending(root, before, intent, io) {
 export async function transition(root, value, sources, { checkpoint = async () => {}, health, recoveryIo = fs } = {}) {
   if (typeof health !== 'function') fail('HEALTH_REQUIRED', 'An explicit experiment health check is required');
   validateRoot(root);
+  if (fs.existsSync(path.join(root, 'recovery-claim.json'))) fail('RECOVERY_BUSY', 'Recovery claim exists; updater is refused');
   if (fs.existsSync(path.join(root, 'pending.json'))) fail('RECOVERY_REQUIRED', 'Recover pending transaction before retry');
   const before = selected(root);
   stage(root, value, sources);
@@ -207,6 +231,10 @@ export async function transition(root, value, sources, { checkpoint = async () =
     if (error?.code === 'EEXIST') fail('CONCURRENT_TRANSITION', 'Another transaction owns the pending intent');
     throw error;
   }
+  // A recovery may have removed the prior intent after our initial preflight.
+  // Do not activate while it still owns the recovery claim. Keep our own new
+  // intent for safe post-exit recovery rather than deleting someone else's state.
+  if (fs.existsSync(path.join(root, 'recovery-claim.json'))) fail('RECOVERY_BUSY', 'Recovery claim appeared before activation');
   // Close the race where another invocation commits between our preflight read
   // and exclusive intent creation. Keep unexpected/corrupt intent data for
   // diagnosis; remove only the journal content we just created.

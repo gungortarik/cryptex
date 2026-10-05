@@ -13,7 +13,7 @@ See the real-health evidence and Mac plan in `evidence/m0/p0-2/`.
 
 `package-transaction.mjs` is a separate, test-only serialized filesystem candidate.
 It never touches installed Desktop, startup registration or canonical storage.
-Run its 48 focused tests with:
+Run its 51 focused tests with:
 
 ```sh
 node --test tools/m0-lifecycle-compare/scripts/package-transaction.test.mjs
@@ -41,7 +41,13 @@ Internal automatic rollback requires the exact journal created by its current
 invocation. If rollback I/O fails while that process remains alive, external
 retry waits for process exit. PID reuse may conservatively block recovery.
 This is a candidate owner guard, not an OS lock or adversarial authentication;
-simultaneous recovery callers remain outside verified scope.
+Recovery now exclusively creates `recovery-claim.json` before inspecting intent.
+Concurrent recovery and updater activation are refused with `RECOVERY_BUSY`.
+Claim ownership is checked before normal removal. Interrupted claims are retained
+and never automatically reclaimed, even after PID exit; inspect the owning
+experiment rather than deleting a claim on a PID guess. Three process tests
+cover competing recovery, a prevalidated updater and an interrupted recovery.
+This fail-closed claim is not an OS lock or automatic crash-recovery mechanism.
 
 `run-package-transaction-proof.mjs` retains eight scenarios with supplied binary
 copies; it requires a fresh outside-repository `--root` and absolute

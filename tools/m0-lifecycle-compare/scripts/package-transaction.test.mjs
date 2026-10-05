@@ -433,3 +433,75 @@ test('automatic rollback refuses an intent whose owner token changed', async t =
   assert.equal(selected(root).active, 'candidate');
   assert.equal(fs.existsSync(path.join(root, 'pending.json')), true);
 });
+async function stopOwned(children) {
+  const cleanup = await Promise.allSettled(children.map(child => child.stop()));
+  const errors = cleanup.filter(result => result.status === 'rejected').map(result => result.reason);
+  if (errors.length) throw new AggregateError(errors, 'Owned recovery race cleanup failed');
+}
+test('separate recovery claim refuses concurrent recovery and updater', { timeout: 20000 }, async t => {
+  const context = setup(t);
+  await killAt(t, context, 'selected');
+  const children = [];
+  const first = startRecovery(context.root, 'restore-selection'); children.push(first);
+  try {
+    await first.checkpoint();
+    const journal = fs.readFileSync(path.join(context.root, 'pending.json'));
+    const selectionBytes = fs.readFileSync(path.join(context.root, 'selection.json'));
+    const second = startRecovery(context.root); children.push(second);
+    assert.equal((await second.result()).code, 'RECOVERY_BUSY');
+    const updater = startContender(context.root, { ...context.candidate, id: 'third' }, context.sources); children.push(updater);
+    assert.equal((await updater.result()).code, 'RECOVERY_BUSY');
+    assert.equal(fs.existsSync(path.join(context.root, 'slots', 'third')), false);
+    assert.deepEqual(fs.readFileSync(path.join(context.root, 'pending.json')), journal);
+    assert.deepEqual(fs.readFileSync(path.join(context.root, 'selection.json')), selectionBytes);
+    first.release();
+    const result = await first.result();
+    assert.equal(result.exit_code, 0);
+    assert.equal(result.selection.active, 'baseline');
+    assert.equal(fs.existsSync(path.join(context.root, 'recovery-claim.json')), false);
+    const successor = startContender(context.root, { ...context.candidate, id: 'third' }, context.sources); children.push(successor);
+    assert.equal((await successor.result()).exit_code, 0);
+    assert.equal(selected(context.root).active, 'third');
+  } finally { await stopOwned(children); }
+});
+test('recovery claim blocks a prevalidated updater after old intent removal', { timeout: 20000 }, async t => {
+  const context = setup(t);
+  const children = [];
+  const late = startContender(context.root, context.candidate, context.sources, 'selection-validated'); children.push(late);
+  try {
+    await late.checkpoint();
+    const other = startContender(context.root, { ...context.candidate, id: 'candidate-two' }, context.sources, 'selected'); children.push(other);
+    await other.checkpoint();
+    await other.stop();
+    const recovery = startRecovery(context.root, 'intent-removed'); children.push(recovery);
+    await recovery.checkpoint();
+    late.release();
+    const refused = await late.result();
+    assert.equal(refused.code, 'RECOVERY_BUSY');
+    assert.equal(refused.exit_code, 2);
+    const newIntent = fs.readFileSync(path.join(context.root, 'pending.json'));
+    assert.equal(JSON.parse(newIntent).owner.pid, late.pid);
+    recovery.release();
+    assert.equal((await recovery.result()).exit_code, 0);
+    assert.deepEqual(fs.readFileSync(path.join(context.root, 'pending.json')), newIntent, 'older recovery cannot delete newer intent');
+    assert.equal(recover(context.root).selection.active, 'baseline');
+    assert.equal(recover(context.root).recovered, false);
+  } finally { await stopOwned(children); }
+});
+test('interrupted recovery retains claim and refuses automatic reclamation', { timeout: 20000 }, async t => {
+  const context = setup(t);
+  await killAt(t, context, 'selected');
+  const children = [];
+  const first = startRecovery(context.root, 'restore-selection'); children.push(first);
+  try {
+    await first.checkpoint();
+    const journal = fs.readFileSync(path.join(context.root, 'pending.json'));
+    const claim = fs.readFileSync(path.join(context.root, 'recovery-claim.json'));
+    await first.stop();
+    const retry = startRecovery(context.root); children.push(retry);
+    assert.equal((await retry.result()).code, 'RECOVERY_BUSY');
+    assert.deepEqual(fs.readFileSync(path.join(context.root, 'pending.json')), journal);
+    assert.deepEqual(fs.readFileSync(path.join(context.root, 'recovery-claim.json')), claim);
+    await assert.rejects(transition(context.root, { ...context.candidate, id: 'third' }, context.sources, healthy), code('RECOVERY_BUSY'));
+  } finally { await stopOwned(children); }
+});

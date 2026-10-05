@@ -82,6 +82,16 @@ status. Mac real-health parity and the remaining native integration gates remain
 
 ## Gates before production integration or ADR acceptance
 
+Windows concurrent-recovery follow-up adds an exclusive filesystem recovery
+claim held until the recovery call ends. Recovery and updater activation refuse
+an existing claim. Three controlled separate-process cases pass (55/55 combined
+tests), including a late updater after old-intent removal and recovery-process
+termination. Claims left by interrupted recovery are retained; there is no
+automatic stale-claim reclamation. This deliberately trades availability for
+safe refusal in the experiment, not a shipped OS-lock strategy. Mac parity,
+native process locking, automatic recovery after recovery-process crash and
+broad stress remain open. See `windows-package-recovery-claim-evidence-20261004.md`.
+
 The candidate's Windows live-owner follow-up uses journal schema 2 (PID and
 transaction UUID). External recovery requires OS ESRCH; live or ambiguous
 owners and legacy ownerless journals fail closed. Automatic rollback requires
