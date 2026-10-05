@@ -89,9 +89,12 @@ refused. A Node adapter subsequently invokes ordinary guarded recovery.
 Six process tests pass on Windows, including killed native-lock holder release,
 killed recovery reclamation, two cleanup callers and preservation of live or
 malformed claims. This lock covers cleanup only, not every package operation.
-Mac parity and source format verification are pending because Windows Application
-Control blocked cargo-fmt; no security policy was bypassed. See
-`windows-package-native-recovery-evidence-20261004.md`. The prior direct recovery
+Mac parity and source format verification passed at `7011fc7` after the authorized
+formatter-only repair: Rust 13/13 and Node 61/61, strict Clippy, locked build,
+syntax and diff checks passed. Windows Application Control previously blocked
+cargo-fmt; no security policy was bypassed. See
+`windows-package-native-recovery-evidence-20261004.md` and
+`macos-package-native-recovery-evidence-20261004.md`. The prior direct recovery
 entry still refuses interrupted claims without this explicit adapter.
 
 Windows concurrent-recovery follow-up adds an exclusive filesystem recovery

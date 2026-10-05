@@ -1,5 +1,10 @@
 # Mac task — native interrupted-recovery cleanup and format verification
 
+**Result:** scoped PASS at `7011fc7b316c8abcaf3f761663f42d0e04bb5a68`.
+Initial source `486d86c55ed5bd7e41ba23707619f7a129511124` required the authorized
+formatting repair. See `macos-package-native-recovery-evidence-20261004.md` for
+the returned checks and remaining scope limits. Instructions below are retained.
+
 Read current handoff and ADR-0012 candidate proposal. Use the clean current
 `m0/p0-2-cursor` source containing this plan; report full source SHA.
 Preserve local changes and branch strategy. Use pinned Rust and Node v24.19.0.

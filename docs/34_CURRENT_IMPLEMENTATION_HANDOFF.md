@@ -732,7 +732,7 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
-### Latest native interrupted-claim cleanup — Windows functional PASS; format/Mac pending
+### Latest native interrupted-claim cleanup — Windows and Mac scoped PASS
 
 A test-only Rust command `clear-interrupted-recovery-claim` serializes claim
 cleanup with the already pinned fs2 0.4.3 OS lock. It validates an owned,
@@ -745,12 +745,18 @@ all updater operations or integrate an installed updater.
 Windows: Rust **13/13**, Node **51 transaction + 4 health adapter + 6 native
 recovery = 61/61 PASS**, no failures/skips. Strict Clippy, locked build, two new
 Node syntax checks and diff check passed. `cargo fmt --all` was blocked by
-Application Control (os error 4551); format verification remains pending and
-the policy was not bypassed. Mac must format the new Rust module if necessary
-and validate it. No dependency versions changed; Cargo.lock adds only the direct
+Application Control (os error 4551); the policy was not bypassed.
+Mac initially failed format at `486d86c`, applied the authorized formatter-only
+repair to `package_recovery_claim.rs` in `7011fc7`, then passed Rust **13/13**
+and Node **61/61**, zero failures/skips and test exit codes 0. Format, strict
+Clippy, locked build, both syntax checks and diff check passed on macOS 27.0.1
+arm64 with Rust/Cargo 1.98.1 and Node v24.19.0. No POSIX flush or child cleanup
+error was reported; no fixture remained. Windows reviewed the formatting commit.
+No dependency versions changed; Cargo.lock adds only the direct
 fs2 edge for the lifecycle tool. No Actions, GUI or installed runtime was used.
 Evidence: `evidence/m0/p0-2/windows-package-native-recovery-evidence-20261004.md`.
 Mac plan: `evidence/m0/p0-2/macos-package-native-recovery-test-plan-20261004.md`.
+Mac result: `evidence/m0/p0-2/macos-package-native-recovery-evidence-20261004.md`.
 Native cleaner SIGKILL releases its OS lock; dead recovery claim cleanup and
 baseline retry are verified. Broader stress, signing, native Desktop handover,
 canonical-data and power-loss durability remain open; ADR-0012 is PROPOSED.
