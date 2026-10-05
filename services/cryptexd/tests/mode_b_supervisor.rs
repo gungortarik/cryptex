@@ -4,11 +4,16 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cryptexd::instance::observe_instance;
 use cryptexd::paths::assert_outside_repository;
 use cryptexd::supervisor::DesktopSupervisor;
+
+// Both real daemon fixtures bind the same per-user IPC endpoint. Keep their
+// lifetimes separate while preserving each duplicate/restart assertion.
+static PROCESS_HARNESS_LOCK: Mutex<()> = Mutex::new(());
 
 fn unique_root(label: &str) -> PathBuf {
     let stamp = SystemTime::now()
@@ -27,6 +32,9 @@ fn cryptexd_bin() -> PathBuf {
 
 #[test]
 fn mode_b_rejects_duplicate_and_restarts_after_crash() {
+    let _guard = PROCESS_HARNESS_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = unique_root("supervise");
     let mut supervisor = DesktopSupervisor::new(&root, &cryptexd_bin()).expect("supervisor");
     let pid = supervisor.start_daemon().expect("start");
@@ -60,6 +68,9 @@ fn mode_b_rejects_duplicate_and_restarts_after_crash() {
 
 #[test]
 fn supervisor_detects_unexpected_exit_and_restarts_but_respects_clean_stop() {
+    let _guard = PROCESS_HARNESS_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = unique_root("automatic-restart");
     let mut supervisor = DesktopSupervisor::new(&root, &cryptexd_bin()).expect("supervisor");
     let first_pid = supervisor.start_daemon().expect("start");

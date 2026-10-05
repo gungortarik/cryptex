@@ -1,12 +1,15 @@
-// Isolated M0 pilot only. Pending journals refuse reuse; recovery is a later gate.
+// Isolated M0 pilot only. Recovery requires native gate and proven child absence.
 import * as fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { assertExperimentLocation, PackageError } from './package-transaction.mjs';
 import { stageNativeTree, verifyNativeTree } from './package-native-tree.mjs';
 import { startOwnedDesktop } from './package-desktop-session.mjs';
 
 const scope = 'm0-native-selection';
+const execute = promisify(execFile);
 function fail(code, cause) { throw new PackageError(code, 'Native pilot selection refused; retained state requires inspection', { cause }); }
 function id(value) { if (typeof value !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(value)) fail('INVALID_NATIVE_SLOT'); return value; }
 function read(file) {
@@ -40,9 +43,15 @@ function replace(lease, value) {
 }
 function selection(slot) { return { schema: 1, scope, slot: id(slot) }; }
 function noIntent(directory) {
+  noRecovery(directory);
   try { fs.lstatSync(path.join(directory, 'native-intent.json')); }
   catch (error) { if (error.code === 'ENOENT') return; throw error; }
   fail('NATIVE_RECOVERY_REQUIRED');
+}
+function noRecovery(directory) {
+  try { fs.lstatSync(path.join(directory, 'native-recovery.json')); }
+  catch (error) { if (error.code === 'ENOENT') return; throw error; }
+  fail('NATIVE_RECOVERY_CLAIM_PRESENT');
 }
 function slot(lease, name) {
   const directory = root(lease); id(name);
@@ -92,7 +101,7 @@ export async function handoverNativeSelected({ lease, helper, active, candidate 
   root(lease);
   if (readNativeSelection(lease).slot !== before.slot) fail('NATIVE_SELECTION_CHANGED');
   const intentFile = path.join(directory, 'native-intent.json');
-  const intent = { schema: 1, scope, before, after };
+  const intent = { schema: 2, scope, before, after, owner_pid: process.pid, runtime_prefix: runtimePrefix };
   try { writeNew(intentFile, intent); replace(lease, after); }
   catch (cause) { fail('NATIVE_ACTIVATION_IO_FAILED', cause); }
   let candidateSession; let rejection;
@@ -137,4 +146,70 @@ export async function handoverNativeSelected({ lease, helper, active, candidate 
     fail('NATIVE_COMMIT_FAILED', cause);
   }
   return { outcome: 'committed', selection: after, session: candidateSession, baseline_cleanup: baselineCleanup };
+}
+
+function dead(pid) {
+  if (!Number.isSafeInteger(pid) || pid < 1) fail('INVALID_NATIVE_OWNER');
+  try { process.kill(pid, 0); }
+  catch (cause) { if (cause.code === 'ESRCH') return; fail('NATIVE_PROCESS_AMBIGUOUS', cause); }
+  fail('NATIVE_PROCESS_LIVE');
+}
+async function runtimeAbsent(lease, helper, name, payload, manifest) {
+  const runtime = path.join(root(lease), name);
+  try { fs.lstatSync(runtime); }
+  catch (cause) { if (cause.code === 'ENOENT') return; throw cause; }
+  assertExperimentLocation(runtime);
+  const marker = path.join(runtime, 'pilot-runtime.marker');
+  if (!fs.lstatSync(marker).isFile() || fs.lstatSync(marker).isSymbolicLink()
+    || fs.readFileSync(marker, 'utf8') !== 'm0-native-desktop-runtime-v1\n') fail('UNOWNED_NATIVE_RUNTIME');
+  // A launch killed before PID evidence is ambiguous. Never assume no child.
+  const snapshotFile = path.join(runtime, 'gui-proof.snapshot');
+  const readyFile = path.join(runtime, 'ready');
+  for (const file of [snapshotFile, readyFile]) {
+    if (!fs.existsSync(file) || !fs.lstatSync(file).isFile() || fs.lstatSync(file).isSymbolicLink()) fail('NATIVE_CHILD_ABSENCE_UNPROVEN');
+  }
+  const snapshot = fs.readFileSync(snapshotFile, 'utf8');
+  if (!/^updated_unix_ms=\d+\r?$/m.test(snapshot) || !snapshot.endsWith('\n')) fail('NATIVE_CHILD_ABSENCE_UNPROVEN');
+  const desktopPid = Number(/^desktop_pid=(\d+)\r?$/m.exec(snapshot)?.[1]);
+  const daemonPid = Number(fs.readFileSync(readyFile, 'utf8').trim());
+  dead(desktopPid); dead(daemonPid); lease.assertHeld();
+  const daemon = path.join(payload, ...manifest.roles.daemon.split('/'));
+  const status = (await execute(daemon, ['lifecycle', 'status', '--runtime-root', runtime], { windowsHide: true, timeout: 4500, maxBuffer: 16384 })).stdout;
+  if (!/^instance=(stale|absent)\r?$/m.test(status)) fail('NATIVE_CHILD_LOCK_HELD');
+  lease.assertHeld(); dead(desktopPid); dead(daemonPid);
+}
+export async function recoverNativeSelected({ lease, helper, runtimeName, start = startOwnedDesktop }) {
+  const directory = root(lease); noRecovery(directory);
+  if (!path.isAbsolute(helper ?? '') || typeof runtimeName !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(runtimeName)) fail('INVALID_NATIVE_RECOVERY_ARGS');
+  const intentFile = path.join(directory, 'native-intent.json'); const intent = read(intentFile);
+  if (intent.schema !== 2 || intent.scope !== scope || intent.before?.schema !== 1 || intent.after?.schema !== 1
+    || intent.before?.scope !== scope || intent.after?.scope !== scope || intent.before.slot === intent.after.slot
+    || typeof intent.runtime_prefix !== 'string' || !/^[a-z][a-z0-9-]{0,47}$/.test(intent.runtime_prefix)) fail('UNSUPPORTED_NATIVE_INTENT');
+  id(intent.before.slot); id(intent.after.slot); dead(intent.owner_pid);
+  const baseline = slot(lease, intent.before.slot); const candidateSlot = slot(lease, intent.after.slot);
+  const current = readNativeSelection(lease);
+  if (![intent.before.slot, intent.after.slot].includes(current.slot)) fail('NATIVE_SELECTION_CHANGED');
+  await runtimeAbsent(lease, helper, `${intent.runtime_prefix}-candidate`, candidateSlot.payload, candidateSlot.manifest);
+  await runtimeAbsent(lease, helper, `${intent.runtime_prefix}-rollback`, baseline.payload, baseline.manifest);
+  const response = JSON.parse((await execute(helper, ['probe-package-health', '--expect-absent'], { windowsHide: true, timeout: 4500, maxBuffer: 16384 })).stdout);
+  if (response.endpoint_absent !== true) fail('NATIVE_ENDPOINT_BUSY');
+  root(lease); dead(intent.owner_pid); ownedIntent(intentFile, intent);
+  const claimFile = path.join(directory, 'native-recovery.json');
+  const claim = { schema: 1, scope, owner_pid: process.pid, runtime: runtimeName };
+  writeNew(claimFile, claim);
+  let session;
+  try {
+    replace(lease, intent.before);
+    session = await start({ lease, helper, runtimeName, ...baseline });
+    root(lease); ownedIntent(intentFile, intent); slot(lease, intent.before.slot);
+    fs.unlinkSync(intentFile); flush(directory);
+    root(lease); ownedIntent(claimFile, claim); fs.unlinkSync(claimFile); flush(directory);
+  } catch (cause) {
+    if (session) {
+      try { await session.stop(); }
+      catch (cleanup) { fail('NATIVE_RECOVERY_FAILED', new AggregateError([cause, cleanup])); }
+    }
+    fail('NATIVE_RECOVERY_FAILED', cause);
+  }
+  return { outcome: 'recovered-baseline', selection: intent.before, session };
 }
