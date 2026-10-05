@@ -52,6 +52,23 @@ Integration update:
 
 ## M0 closure continuation (2026-10-05)
 
+Corrected final CI **PASS** on `5c074115cd61ef7c1eb47e8ed2cf8c1105360679`,
+run `37377520994`: Windows readiness **93 debug Rust + 1 release resolver,
+160/160 + 8/8 Node**; Mac readiness **75 debug Rust + 1 release resolver,
+162/162 + 8/8 Node**; actual Windows cross-account ACL PASS. All required jobs
+green; package-only installer intentionally skipped. Exact jobs/log provenance
+and first failed/cancelled attempt are retained in
+`evidence/m0/m0-final-ci-attempt-20261005.md`.
+No source behavior changed to fix CI; missing plain benchmark build prerequisite
+was added. Current result-recording changes are documentation only; newer doc
+SHAs are not falsely claimed to have the tested source's GitHub checks.
+Next required work: independent verifier/security audit using
+`evidence/m0/m0-independent-review-plan-20261005.md`, then explicit human diff/
+ADR acceptance from the prepared review packet. The user has been asked whether
+to run two read-only review agents here or use Mac Codex/Cursor; no answer yet.
+Do not silently substitute implementer review, accept ADRs, complete M0, merge
+or start M1. No new physical Mac test or redundant CI dispatch requested.
+
 Final CI attempt at `e337bd3`, run `37376952961`, found missing plain
 `m0-storage-bench` before Golden Node tests on a fresh Mac runner (ENOENT).
 Workflow now builds it alongside the lifecycle helper; Windows focused Golden/

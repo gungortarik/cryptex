@@ -36,3 +36,36 @@ No repeated physical Mac plan is required for this workflow-only correction.
 The replacement run must verify both readiness jobs and current-source Windows
 ACL job; do not count an older targeted build or first failed run as final CI.
 This record does not accept ADRs, mark M0 complete or authorize M1.
+
+## Attempt 2 — corrected-source run
+
+Run: https://github.com/gungortarik/cryptex/actions/runs/37377520994
+Source: `5c074115cd61ef7c1eb47e8ed2cf8c1105360679`.
+Initial run is now completed/cancelled; its Mac failure and ACL success remain
+historical. This is a new-source run, not a rerun of the missing-build workflow.
+
+- macOS readiness job `111990481997`: **PASS**. Rust debug suites **75 tests**,
+  compiled release resolver **1 test** (13 intentionally filtered), lifecycle
+  Node **162/162**, storage/sidecar Node **8/8**. Format, workspace strict lint/
+  check, frontend build, native helpers, release build/strict lint and daemon
+  foundation command passed. No Node failures/skips.
+- Windows actual cross-account ACL job `111990481524`: **PASS**.
+- Windows readiness job `111990481811`: **PASS**. Rust debug suites **93 tests**,
+  compiled release resolver **1 test** (20 intentionally filtered), lifecycle
+  Node **160/160**, storage/sidecar Node **8/8**. Format, workspace strict lint/
+  check, frontend/native builds, release build/strict lint and daemon foundation
+  command passed. No Node failures/skips.
+- Package-only installer job intentionally skipped; not a required job in this run.
+
+Overall run **SUCCESS**, completed 2026-10-05 21:56:45 UTC (17:56:45 EDT).
+All three required jobs passed on the exact source above. Release test filters
+are intentional focused coverage, not skipped full debug suite tests. No test
+was weakened. This closes candidate CI verification; it does not approve human
+diff/ADR decisions or complete M0.
+
+Subsequent result/plan commits are documentation only and are not themselves
+claimed to have GitHub status checks at a newer SHA. Preserve this tested source
+when evaluating the final closure/PR gate; any implementation/workflow change
+requires applicable fresh CI. No further workflow was dispatched to record this
+result. Independent verifier/security review and explicit human acceptance remain
+open; plan: `m0-independent-review-plan-20261005.md`.

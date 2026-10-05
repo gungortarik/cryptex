@@ -31,7 +31,7 @@ open; product distribution and production canonical safety are not inferred.
 ## A. Repository and executable foundation
 
 - [ ] Repository state is clean and required CI checks are green.
-  - Evidence: source was clean before this audit; final candidate CI remains open. Historical targeted package/ACL runs do not substitute for it.
+  - Evidence: final candidate 5c07411 is green in run 37377520994 (both readiness plus Windows ACL). Result-recording commits are docs only; final closure/PR source and remaining acceptance still require reconciliation. Newer doc HEAD is not falsely labeled tested.
 
 - [x] Rust workspace builds successfully.
   - Evidence: `evidence/m0/windows-release-build-20261002.md` records the full Windows release workspace build. Cross-platform CI remains a separate gate.
@@ -214,7 +214,7 @@ open; product distribution and production canonical safety are not inferred.
   - Evidence: existing parity proofs PASS at exact sources; final path correction adds Mac 14/14 debug + release + 4/4 CLI at 7f5ab2b and Windows 21/21 debug + release + 4/4 CLI. Final integrated CI is a separate unchecked requirement.
 
 - [ ] Required CI checks are green at the M0 completion commit.
-  - Evidence:
+  - Evidence: candidate 5c074115cd61ef7c1eb47e8ed2cf8c1105360679 PASS in run 37377520994; full counts/jobs in `evidence/m0/m0-final-ci-attempt-20261005.md`. Completion commit is not yet established pending independent review/human ADR acceptance; do not claim a newer recording commit has these exact status checks.
 
 - [ ] Verifier reviewed M0 acceptance criteria against actual repository/runtime state.
   - Evidence: implementer audit in `evidence/m0/m0-final-gate-audit-20261005.md`, including two retained Windows report digest spot checks. This is not independent verifier/human acceptance.

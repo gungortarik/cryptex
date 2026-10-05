@@ -1,7 +1,7 @@
 # M0 human acceptance review packet
 
 **Status: PREPARED — NOT APPROVED.** Candidate implementation/docs source
-`e337bd38678875daed088ce32c3e83734bc966c7`. M0 remains IN PROGRESS.
+`5c074115cd61ef7c1eb47e8ed2cf8c1105360679`. M0 remains IN PROGRESS.
 This packet itself changes no acceptance status or milestone authority.
 
 CI continuation: first run failed because the workflow omitted building the
@@ -10,6 +10,12 @@ both required native helpers; local focused tests 6/6 PASS. See
 `m0-final-ci-attempt-20261005.md`; corrected-source cloud result remains required.
 The candidate above identifies the reviewed implementation; the newer workflow
 correction does not change application/runtime behavior or weaken any test.
+
+Corrected run `37377520994` at candidate `5c07411` is now SUCCESS: both readiness
+jobs and actual Windows cross-account ACL passed. Counts and first failure are
+retained in `m0-final-ci-attempt-20261005.md`. Independent verifier/security
+review remains open under `m0-independent-review-plan-20261005.md`; human
+diff/ADR acceptance is still NOT APPROVED. No extra physical Mac test requested.
 
 ## Reviewable decisions
 
@@ -48,7 +54,7 @@ proposals is recorded separately; it is not final ADR/human diff acceptance.
   implementer review and the complete known residual ledger.
 - `.github/workflows/ci.yml` covers both-OS readiness, real Windows cross-account
   ACL denial, release resolver/lint and all foundation Node tests. Final run:
-  https://github.com/gungortarik/cryptex/actions/runs/37376952961
+  https://github.com/gungortarik/cryptex/actions/runs/37377520994
   Its outcome must be observed and recorded, not assumed from this link.
 
 ## Required residuals to retain on acceptance

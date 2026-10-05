@@ -1,6 +1,6 @@
 # M0 final gate audit
 
-**Current result: READY for final CI; NOT COMPLETE.** Original audit below
+**Current result: candidate CI PASS; independent/human acceptance OPEN; NOT COMPLETE.** Original audit below
 was NOT READY at `8437559`; its namespace finding is corrected and now verified
 on both OSes. Mac PASS at `7f5ab2bdaa72e213f5cb16312bca0292c436db18` records
 14/14 debug + 14/14 release + 4/4 CLI, all lint/format/build/diff checks exit 0.
@@ -13,6 +13,15 @@ implementation blocker identified within the revised narrow M0 scope. Security
 residuals below remain mandatory product gates, not newly tested guarantees.
 Final CI and independent verifier/human diff/ADR acceptance are still open.
 The mapping below preserves original audit observations and provenance.
+
+Final CI continuation: corrected run `37377520994` at exact source `5c07411`
+is **SUCCESS** (both readiness jobs plus actual Windows ACL). Windows 93 debug
+Rust + 1 release resolver, Node 160/160 + 8/8; Mac 75 debug Rust + 1 release
+resolver, Node 162/162 + 8/8. Initial run's missing plain benchmark build was
+corrected without weakening tests. See `m0-final-ci-attempt-20261005.md`.
+Candidate CI is verified; independent verifier/security review and explicit
+human diff/ADR acceptance remain open. Newer documentation-only result commits
+are not claimed to have status checks at that newer SHA. M0 remains IN PROGRESS.
 Reviewed source: `8437559`; Windows implementer audit on 2026-10-05.
 Authority: Master Spec, accepted ADR-0007/0013, M0 contract, Definition of Done.
 Owner authorized preparing scoped ADR-0012/0004 revisions; both remain PROPOSED.
