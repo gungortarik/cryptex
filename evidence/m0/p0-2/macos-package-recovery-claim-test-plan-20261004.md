@@ -1,5 +1,8 @@
 # Mac task — concurrent recovery claim parity
 
+**Result:** scoped PASS at `0ce9c93f621dceedd2edb78d736eb526f760a817`,
+55/55 tests. Evidence: `macos-package-recovery-claim-evidence-20261004.md`.
+
 Read current handoff and ADR-0012 candidate proposal. Use the clean current
 `m0/p0-2-cursor` source containing this plan; report its full commit SHA.
 Preserve local changes and branch strategy. Use pinned Node v24.19.0.

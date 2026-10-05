@@ -732,7 +732,7 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
-### Latest concurrent recovery slice — Windows PASS, Mac pending
+### Latest concurrent recovery slice — Windows and Mac scoped PASS
 
 The test-only candidate exclusively creates `recovery-claim.json` before
 inspecting pending intent. A second recovery and updater activation while the
@@ -747,6 +747,14 @@ Four syntax checks and diff check passed. Prior faults, owner checks, process
 races and five updater SIGKILL boundaries passed.
 Evidence: `evidence/m0/p0-2/windows-package-recovery-claim-evidence-20261004.md`.
 Mac plan: `evidence/m0/p0-2/macos-package-recovery-claim-test-plan-20261004.md`.
+Mac operator/Codex reported PASS at
+`0ce9c93f621dceedd2edb78d736eb526f760a817`, macOS 27.0.1 arm64,
+Node v24.19.0: 51 transaction + 4 health adapter = 55/55, no failures/skips,
+exit 0. All three claim tests, previous faults/owner/process races and five
+updater SIGKILL boundaries passed. Four syntax checks and diff check passed;
+no fixture remained and owned-child cleanup was error-free. Mac changed no
+files and its branch was clean. Evidence:
+`evidence/m0/p0-2/macos-package-recovery-claim-evidence-20261004.md`.
 This is fail-closed candidate exclusion, not an OS lock or production selection.
 Native automatic recovery after recovery-process crash, broad stress, publisher
 trust, handover, canonical-data and durability gates remain open.

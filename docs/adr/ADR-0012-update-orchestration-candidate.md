@@ -88,8 +88,9 @@ an existing claim. Three controlled separate-process cases pass (55/55 combined
 tests), including a late updater after old-intent removal and recovery-process
 termination. Claims left by interrupted recovery are retained; there is no
 automatic stale-claim reclamation. This deliberately trades availability for
-safe refusal in the experiment, not a shipped OS-lock strategy. Mac parity,
-native process locking, automatic recovery after recovery-process crash and
+safe refusal in the experiment, not a shipped OS-lock strategy. Mac parity
+passed at `0ce9c93` (55/55); see `macos-package-recovery-claim-evidence-20261004.md`.
+Native process locking, automatic recovery after recovery-process crash and
 broad stress remain open. See `windows-package-recovery-claim-evidence-20261004.md`.
 
 The candidate's Windows live-owner follow-up uses journal schema 2 (PID and
