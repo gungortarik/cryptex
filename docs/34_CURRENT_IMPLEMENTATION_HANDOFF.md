@@ -159,6 +159,25 @@ Exact report hash and limitations:
 Managed Mac parity is closed; no passed Mac plan needs repetition.
 No Actions run; installed distribution/version-change/secret acceptance stays open.
 
+Changed-version Syncthing continuation `133428b` now proves Windows **2.1.2 ->
+2.1.5** against fresh synthetic profiles. Product pin remains 2.1.5; the old
+version is an explicit historical test fixture with a separate ownership scope.
+Both CLI and authenticated REST versions are pinned. Folders pause before cold
+profile snapshot; live/PID-ambiguous receipts, ownership/corruption, overlap,
+links and changed backup refuse copying/restoration. Compatible candidate
+transfer/restart/new transfer PASS. Injected version-health rejection stops the
+candidate, preserves its profile, restores the complete cold baseline and proves
+2.1.2 identity/key/payload plus a new transfer. No newer database is opened by
+the old binary. Eight monitor exits 0/PIDs absent; observed global config unchanged.
+Combined Node **160/160**, storage **5/5**, four syntax/diff checks PASS; existing
+managed 2.1.5 live regression also PASS with four clean stops. Evidence:
+`evidence/m0/p0-4/windows-syncthing-upgrade-evidence-20261005.md`.
+Next Mac task (only new work, **33/33** plus two live scenarios):
+`evidence/m0/p0-4/macos-syncthing-upgrade-test-plan-20261005.md`.
+Cold maintenance-window fixture rollback is not live canonical rollback,
+installed updater, crash atomicity or power-loss proof. ADR-0004 remains PROPOSED.
+No Actions, global installation/startup change or unrelated process termination.
+
 Read-only Windows signing readiness audit: SDK x64 SignTool is available, but
 the current-user My store has **0 currently valid code-signing certificates with
 private keys**. No certificate export, purchase, policy change or signing attempt.

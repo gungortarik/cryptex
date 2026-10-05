@@ -9,6 +9,8 @@ license/attribution preservation on both OSes; Mac parity reported PASS at `501d
 - [Windows scoped evidence](windows-managed-syncthing-evidence-20261005.md)
 - [Mac parity task](macos-managed-syncthing-test-plan-20261005.md)
 - [Mac scoped evidence](macos-managed-syncthing-evidence-20261005.md)
+- [Windows changed-version evidence](windows-syncthing-upgrade-evidence-20261005.md)
+- [Mac changed-version task](macos-syncthing-upgrade-test-plan-20261005.md)
 - [Notice failure and correction](notice-byte-portability-failure-and-fix-20261005.md)
 - [Notice inventory](../../../third_party/syncthing/2.1.5/README.md)
 
@@ -20,6 +22,11 @@ data. It generates distinct native identities, authenticates local REST and
 keeps discovery, relay, NAT, browser and automatic upgrades disabled.
 
 The production packaging/supervision decision still needs an ADR-0004 addendum.
-Actual version-changing compatibility, installer notice inclusion
+Mac version-changing compatibility, installer notice inclusion
 and production secret-storage integration remain unverified. This spike is not
 a completed P0-4 gate or permission to start M1.
+
+Windows actual 2.1.2 -> 2.1.5 fixture transition and controlled cold rollback
+reported scoped PASS at `133428b`. The product pin remains 2.1.5; Mac task expects
+33/33 relevant tests plus both actual scenarios. Production/live canonical rollback
+and crash atomicity are not claimed.
