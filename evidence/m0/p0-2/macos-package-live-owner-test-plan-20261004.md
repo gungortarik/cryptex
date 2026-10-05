@@ -1,5 +1,8 @@
 # Mac task — live-updater recovery owner guard
 
+**Result:** scoped PASS at `b05be5e07b8289c6eedfd2fc6303a213511e4839`,
+52/52 tests. Evidence: `macos-package-live-owner-evidence-20261004.md`.
+
 Read current handoff and ADR-0012 candidate proposal. Use the clean current
 `m0/p0-2-cursor` source containing this plan; report its full commit SHA.
 Preserve local changes and branch strategy. Use pinned Node v24.19.0.

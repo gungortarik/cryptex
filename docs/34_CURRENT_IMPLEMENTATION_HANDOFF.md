@@ -732,7 +732,7 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
-### Latest live-updater recovery guard — Windows PASS, Mac pending
+### Latest live-updater recovery guard — Windows and Mac scoped PASS
 
 The filesystem candidate now writes schema-2 pending journals with process PID
 and transaction UUID. External recovery permits rollback only after the OS
@@ -749,6 +749,14 @@ commit after refusal, legacy/malformed owner refusal and changed-token refusal.
 Four syntax checks and diff check passed.
 Evidence: `evidence/m0/p0-2/windows-package-live-owner-evidence-20261004.md`.
 Mac plan: `evidence/m0/p0-2/macos-package-live-owner-test-plan-20261004.md`.
+Mac operator/Codex reported PASS at
+`b05be5e07b8289c6eedfd2fc6303a213511e4839`, macOS 27.0.1 arm64,
+Node v24.19.0: 48 transaction + 4 health adapter = 52/52, no failures/skips,
+exit 0. All new owner-guard cases, prior races/I/O faults and five SIGKILL
+boundaries passed. Four syntax checks and diff check passed; no fixture remained
+and owned-child cleanup was error-free. Mac changed no files and its branch
+was clean. Evidence:
+`evidence/m0/p0-2/macos-package-live-owner-evidence-20261004.md`.
 Simultaneous recovery callers, broad stress, native handover/signing, durability
 and canonical-data acceptance remain open; ADR-0012 remains PROPOSED.
 

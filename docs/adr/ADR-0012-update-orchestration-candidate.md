@@ -91,7 +91,9 @@ uninterrupted owner commit after refusal. See
 `windows-package-live-owner-evidence-20261004.md`. This is not an OS lock or
 publisher authentication. PID reuse can block recovery conservatively; failed
 automatic rollback cannot be retried externally until its owner process exits.
-Mac parity and simultaneous recovery callers remain unverified.
+Mac parity passed at `b05be5e` (52/52); see
+`macos-package-live-owner-evidence-20261004.md`. Simultaneous recovery callers
+remain unverified.
 
 Windows follow-up now verifies four controlled races with actual separate Node
 updater subprocesses: competing commits during staging and after selection
