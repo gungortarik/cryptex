@@ -1,5 +1,9 @@
 # Mac task — actual Syncthing version transition and cold rollback
 
+**Status:** completed scoped PASS at `dec5fb1`, 33/33 plus both live scenarios.
+See `macos-syncthing-upgrade-evidence-20261005.md`. Instructions below are retained
+for reproduction; no new execution is requested by this completed plan.
+
 Use clean current `m0/p0-2-cursor` containing code `133428b`; report full tested
 SHA. Read handoff, Master Spec, accepted stack baseline, ADR-0004 addendum and
 `windows-syncthing-upgrade-evidence-20261005.md`.

@@ -99,8 +99,11 @@ writes. A shipped updater must keep canonical data outside its rollback state
 and establish its own atomicity, crash and secret boundaries.
 
 Both compatible transition and injected version-health rejection/cold restore
-PASS on Windows, including eight clean stops; Mac parity is requested separately.
+PASS on Windows, including eight clean stops. Mac parity reported PASS at exact
+`dec5fb19fb37b1199ac0f192c929a7113388cc0b`, 33/33 tests and both live scenarios;
+eight clean absent monitors, unchanged global config digest and staged notices/modes.
 Evidence: `evidence/m0/p0-4/windows-syncthing-upgrade-evidence-20261005.md`.
+Mac evidence: `evidence/m0/p0-4/macos-syncthing-upgrade-evidence-20261005.md`.
 This is one exact version pair, not a claim that arbitrary downgrades or native
 migration failures are safe. No product baseline change or ADR acceptance.
 
@@ -110,8 +113,8 @@ migration failures are safe. No product baseline change or ADR acceptance.
 2. Target-matched staged/bundled package resolution and notice inclusion on both
    OSes; source/provenance/dependency-notice review before distribution.
 3. Explicit upgrade compatibility strategy and tested migration/failure boundaries;
-   Windows changed-version/cold-rejection probe PASS; Mac parity and boundary
-   review remain. Same-version restart must not be relabeled version upgrade.
+   Both-platform changed-version/cold-rejection probe PASS; boundary review
+   remains. Same-version restart must not be relabeled version upgrade.
 4. Review of proposed supervisor/secret boundary and residual M0 limitations.
 5. Human acceptance and evidence-backed P0-4 checklist.
 

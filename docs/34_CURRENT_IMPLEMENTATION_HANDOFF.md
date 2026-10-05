@@ -55,7 +55,7 @@ Integration update:
 The owner explicitly authorized completing the entire M0 milestone. Closure
 audit: `evidence/m0/m0-closure-audit-20261005.md`. P0-4 managed Syncthing and its
 ADR-0004 addendum remain unaccepted; managed staged lifecycle now has both-OS
-proof, but version-changing compatibility and acceptance review remain open.
+proof, including the exact 2.1.2 -> 2.1.5 version pair; acceptance review remains open.
 P0-1 transport evidence alone does not close them.
 Do not declare M0 complete or start M1 based only on the P0-2 pilot.
 
@@ -172,11 +172,32 @@ the old binary. Eight monitor exits 0/PIDs absent; observed global config unchan
 Combined Node **160/160**, storage **5/5**, four syntax/diff checks PASS; existing
 managed 2.1.5 live regression also PASS with four clean stops. Evidence:
 `evidence/m0/p0-4/windows-syncthing-upgrade-evidence-20261005.md`.
-Next Mac task (only new work, **33/33** plus two live scenarios):
-`evidence/m0/p0-4/macos-syncthing-upgrade-test-plan-20261005.md`.
+Mac parity reported PASS at exact `dec5fb19fb37b1199ac0f192c929a7113388cc0b`:
+**33/33**, four syntax/diff checks, two live scenarios/runner exit 0. CLI and
+authenticated REST confirmed 2.1.2 -> 2.1.5. Compatible upgrade/restart/new transfer
+and controlled version-health rejection/cold baseline restore/new transfer passed.
+Original identity/key/payload and staged notices/hash/modes retained; global config
+observed digest unchanged. Eight monitors exited 0 and PIDs absent:
+`85878/85889/85894/85874/85906/85912/85922/85902`, shutdown
+`18/17/18/897/19/10020/883/1002` ms. No forced cleanup/database-stop error.
+Official historical archive checksum matched; exact input/report hashes and
+user-reported artifact provenance:
+`evidence/m0/p0-4/macos-syncthing-upgrade-evidence-20261005.md`.
+The corresponding Mac plan is complete; no passed plan needs repetition.
 Cold maintenance-window fixture rollback is not live canonical rollback,
 installed updater, crash atomicity or power-loss proof. ADR-0004 remains PROPOSED.
 No Actions, global installation/startup change or unrelated process termination.
+
+Final CI coverage preparation: `.github/workflows/ci.yml` readiness now includes
+Desktop Rust tests, explicit debug helper/release Desktop builds and all lifecycle
+Node tests plus storage capture/sidecar staging. Both OS jobs retain their
+existing selectors/triggers; readiness timeout is bounded at 35 minutes for the
+extra build. Local equivalent helper/release builds and Desktop **17/17**,
+lifecycle Node **160/160**, storage/sidecar **8/8** PASS. Static workflow review
+and diff check pass; a YAML parser is unavailable locally and cloud workflow
+execution remains NOT YET VERIFIED. No Actions dispatched; final CI still needs
+one stable-source run after outstanding acceptance/security/notice review.
+P0-4 Mac upgrade plan is closed; no new Mac request at this continuation.
 
 Read-only Windows signing readiness audit: SDK x64 SignTool is available, but
 the current-user My store has **0 currently valid code-signing certificates with
