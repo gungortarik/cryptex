@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import { assertExperimentLocation, digest, PackageError } from './package-transaction.mjs';
-import { startSyncthingPilot } from './syncthing-pilot.mjs';
+import { startSyncthingPilot, syncthingFolderIdle, readSyncthingFixture } from './syncthing-pilot.mjs';
 import { stageSyncthingBundle, verifySyncthingBundle } from './syncthing-bundle.mjs';
 
 async function until(check, code) {
@@ -53,14 +53,13 @@ async function main() {
     fs.writeFileSync(left, 'synthetic-one\n');
     for (const node of [first, second]) await node.request('/rest/config/folders/m0-managed-fixture', 'PATCH', { paused: false });
     await first.request('/rest/db/scan?folder=m0-managed-fixture', 'POST');
-    await until(async () => fs.existsSync(right) && fs.readFileSync(right, 'utf8') === 'synthetic-one\n', 'SYNCTHING_PAIR_TRANSFER_TIMEOUT');
+    await until(async () => readSyncthingFixture(right) === 'synthetic-one\n', 'SYNCTHING_PAIR_TRANSFER_TIMEOUT');
     fs.writeFileSync(left, 'synthetic-two-with-distinct-length\n');
     await first.request('/rest/db/scan?folder=m0-managed-fixture', 'POST');
-    await until(async () => fs.readFileSync(right, 'utf8') === 'synthetic-two-with-distinct-length\n', 'SYNCTHING_UPDATE_TRANSFER_TIMEOUT');
+    await until(async () => readSyncthingFixture(right) === 'synthetic-two-with-distinct-length\n', 'SYNCTHING_UPDATE_TRANSFER_TIMEOUT');
     const versionDir = path.join(second.home, 'payload', '.stversions');
     await until(async () => fs.existsSync(versionDir) && fs.readdirSync(versionDir).some(name => name.startsWith('synthetic~')), 'SYNCTHING_VERSIONING_UNPROVEN');
-    const status = await second.request('/rest/db/status?folder=m0-managed-fixture');
-    if (status.state !== 'idle' || status.needTotalItems !== 0) throw new PackageError('SYNCTHING_STATUS_UNPROVEN', 'Folder not fully synchronized');
+    await until(async () => syncthingFolderIdle(await second.request('/rest/db/status?folder=m0-managed-fixture')), 'SYNCTHING_STATUS_UNPROVEN');
     const firstId = first.id; const secondId = second.id; const oldSecondPid = second.pid;
     stopped.push(await second.stop()); second = null;
     console.log(JSON.stringify({ phase: 'paired-peer-stopped', result: stopped.at(-1) }));
@@ -70,7 +69,7 @@ async function main() {
     if (fs.readFileSync(right, 'utf8') !== 'synthetic-two-with-distinct-length\n') throw new PackageError('SYNCTHING_RESTART_PAYLOAD_CHANGED', 'Synthetic payload changed across restart');
     await until(async () => {
       const folderStatus = await second.request('/rest/db/status?folder=m0-managed-fixture');
-      return folderStatus.state === 'idle' && folderStatus.needTotalItems === 0;
+      return syncthingFolderIdle(folderStatus);
     }, 'SYNCTHING_RESTART_READY_TIMEOUT');
     const earlyRestartPid = second.pid;
     stopped.push(await second.stop()); second = null;
@@ -80,7 +79,7 @@ async function main() {
     await first.request('/rest/db/scan?folder=m0-managed-fixture', 'POST');
     await until(async () => {
       const restored = path.join(second.home, 'payload', 'after-restart.txt');
-      return fs.existsSync(restored) && fs.readFileSync(restored, 'utf8') === 'synthetic-after-restart\n';
+      return readSyncthingFixture(restored) === 'synthetic-after-restart\n';
     }, 'SYNCTHING_RESTART_TRANSFER_TIMEOUT');
     // Disconnect only the synthetic peer, so both local scanners can record
     // divergent versions before either peer receives the other's update.
@@ -108,7 +107,9 @@ async function main() {
       const payload = path.join(node.home, 'payload');
       const conflict = fs.readdirSync(payload).find(name => name.startsWith('after-restart.sync-conflict-') && name.endsWith('.txt'));
       if (!conflict) return false;
-      const preserved = [fs.readFileSync(path.join(payload, conflictName), 'utf8'), fs.readFileSync(path.join(payload, conflict), 'utf8')].sort();
+      const preserved = [readSyncthingFixture(path.join(payload, conflictName)), readSyncthingFixture(path.join(payload, conflict))];
+      if (preserved.includes(null)) return false;
+      preserved.sort();
       return JSON.stringify(preserved) === JSON.stringify([...divergent].sort());
     }), 'SYNCTHING_CONFLICT_VISIBILITY_TIMEOUT');
     measurements = { first_pid: first.pid, second_before_restart_pid: oldSecondPid, second_after_restart_pid: second.pid,

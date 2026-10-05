@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { PackageError, assertExperimentLocation, digest } from './package-transaction.mjs';
 
 const notices = {
-  'LICENSE.txt': '9221c2f936159b8446d329249fb4c0f25be510f447383a0f13336ac7985668a3',
-  'AUTHORS.txt': '2c197afd6113ec13ae134a20ce8f101d9812b078c3ef32c42c3bb4cdaf2b96a2',
+  // Exact repository LF blobs; Git attributes preserve these checkout bytes.
+  'LICENSE.txt': '3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04',
+  'AUTHORS.txt': '5a0044d13ddf6f013bdd5c2bc419bf45d6123c356567510237e82f304d113d48',
 };
 const noticeRoot = fileURLToPath(new URL('../../../third_party/syncthing/2.1.5/', import.meta.url));
 function ordinary(file) {

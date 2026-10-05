@@ -13,6 +13,25 @@ export const SYNCTHING_STOP_BUDGET_MS = 25000;
 export function assertSyncthingVersion(version) {
   if (!/^syncthing v2\.1\.5 /.test(version)) throw new PackageError('SYNCTHING_PIN_MISMATCH', 'Stable Syncthing 2.1.5 baseline required');
 }
+export function syncthingFolderIdle(status) {
+  if (!status || typeof status.state !== 'string' || !status.state || status.state.length > 64
+    || !Number.isSafeInteger(status.needTotalItems) || status.needTotalItems < 0
+    || !Number.isSafeInteger(status.pullErrors) || status.pullErrors < 0) throw new PackageError('INVALID_SYNCTHING_FOLDER_STATUS', 'Typed folder state/counters required');
+  if (status.state === 'error' || status.pullErrors !== 0) throw new PackageError('SYNCTHING_FOLDER_ERRORS', 'Native folder reports errors');
+  return status.state === 'idle' && status.needTotalItems === 0;
+}
+export function readSyncthingFixture(file) {
+  try {
+    const info = fs.lstatSync(file);
+    if (!info.isFile() || info.isSymbolicLink() || info.size > 65536) throw new PackageError('UNSAFE_SYNCTHING_FIXTURE', 'Small ordinary synthetic fixture required');
+    return fs.readFileSync(file, 'utf8');
+  } catch (cause) {
+    // The versioner may rename the old synthetic file before installing its
+    // successor. Only absence is a pending observation; other I/O errors fail.
+    if (cause.code === 'ENOENT') return null;
+    throw cause;
+  }
+}
 
 export function isolateSyncthingXml(xml, apiPort, syncPort) {
   if (![apiPort, syncPort].every(port => Number.isInteger(port) && port > 1024 && port < 65536) || apiPort === syncPort) throw new PackageError('INVALID_SYNCTHING_PORT', 'Distinct loopback ports required');
