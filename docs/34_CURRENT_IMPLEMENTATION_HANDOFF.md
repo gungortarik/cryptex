@@ -732,6 +732,24 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
+### Latest separate-process updater slice — Windows PASS, Mac pending
+
+Four new tests run two actual owned Node updater subprocesses against one fresh
+outside-repository package fixture. IPC barriers control staging and selection
+validation; both processes exit before cleanup. Competing commits preserve the
+winner and reject the stale caller, an existing pending intent refuses a second
+updater, and simultaneously released validated contenders produce exactly one
+successful commit plus one typed refusal. Post-exit recovery is idempotent and
+synthetic fixture inventory assertions pass.
+Windows: **41 transaction + 4 health adapter = 45/45 PASS**, no failures/skips.
+Syntax checks and diff checks passed. No engine behavior changed for this slice.
+Evidence: `evidence/m0/p0-2/windows-package-process-race-evidence-20261004.md`.
+Mac plan: `evidence/m0/p0-2/macos-package-process-race-test-plan-20261004.md`.
+These are four controlled process races, not broad stress or an OS process lock.
+Recovery competing with an active updater remains unverified. Native handover,
+signing, power-loss durability, canonical-data acceptance and ADR-0012 remain
+open. No GUI, installed runtime or Actions was used.
+
 ### Latest recovery-I/O slice — Windows and Mac scoped PASS
 
 The test-only transaction candidate now wraps recovery mutation failures in

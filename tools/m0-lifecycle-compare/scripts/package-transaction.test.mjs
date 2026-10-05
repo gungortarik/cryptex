@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describePackage, digest, initialize, PackageError, recover, selected, transition } from './package-transaction.mjs';
 import { killTransactionAt } from './package-transaction-crash.mjs';
 import { createFixtureRoot } from './package-transaction-fixtures.mjs';
+import { startContender } from './package-transaction-process.mjs';
 
 function setup(t) {
   const parent = createFixtureRoot();
@@ -100,6 +101,69 @@ test('concurrent commit between selection check and intent is detected', async t
   await assert.rejects(first, code('CONCURRENT_TRANSITION'));
   assert.deepEqual(selected(root), second);
   assert.equal(fs.existsSync(path.join(root, 'pending.json')), false);
+});
+for (const boundary of ['staged', 'selection-validated']) {
+  test(`separate updater processes: competing commit at ${boundary} preserves winner`, { timeout: 20000 }, async t => {
+    const { root, sources, candidate } = setup(t);
+    const first = startContender(root, candidate, sources, boundary);
+    let second;
+    try {
+      await first.checkpoint();
+      second = startContender(root, { ...candidate, id: 'candidate-two' }, sources);
+      assert.notEqual(first.pid, second.pid);
+      const winner = await second.result();
+      assert.equal(winner.ok, true);
+      assert.equal(winner.exit_code, 0);
+      first.release();
+      const loser = await first.result();
+      assert.equal(loser.code, 'CONCURRENT_TRANSITION');
+      assert.equal(loser.exit_code, 2);
+      assert.deepEqual(selected(root), winner.selection);
+      assert.equal(fs.existsSync(path.join(root, 'pending.json')), false);
+      assert.equal(recover(root).recovered, false);
+    } finally {
+      await first.stop();
+      if (second) await second.stop();
+    }
+  });
+}
+test('separate updater processes: pending intent refuses a second updater', { timeout: 20000 }, async t => {
+  const { root, sources, candidate } = setup(t);
+  const first = startContender(root, candidate, sources, 'intent');
+  let second;
+  try {
+    await first.checkpoint();
+    const intent = fs.readFileSync(path.join(root, 'pending.json'));
+    second = startContender(root, { ...candidate, id: 'candidate-two' }, sources);
+    const refused = await second.result();
+    assert.equal(refused.code, 'RECOVERY_REQUIRED');
+    assert.equal(refused.exit_code, 2);
+    assert.deepEqual(fs.readFileSync(path.join(root, 'pending.json')), intent);
+    first.release();
+    assert.equal((await first.result()).exit_code, 0);
+    assert.equal(selected(root).active, 'candidate');
+    assert.equal(recover(root).recovered, false);
+  } finally {
+    await first.stop();
+    if (second) await second.stop();
+  }
+});
+test('separate updater processes: simultaneous validated contenders yield one winner', { timeout: 20000 }, async t => {
+  const { root, sources, candidate } = setup(t);
+  const first = startContender(root, candidate, sources, 'selection-validated');
+  const second = startContender(root, { ...candidate, id: 'candidate-two' }, sources, 'selection-validated');
+  try {
+    await Promise.all([first.checkpoint(), second.checkpoint()]);
+    first.release();
+    second.release();
+    const results = await Promise.all([first.result(), second.result()]);
+    assert.equal(results.filter(result => result.ok === true && result.exit_code === 0).length, 1);
+    assert.equal(results.filter(result => result.code === 'CONCURRENT_TRANSITION' && result.exit_code === 2).length, 1);
+    const winner = results.find(result => result.ok === true);
+    assert.deepEqual(selected(root), winner.selection);
+    assert.equal(winner.selection.previous, 'baseline');
+    assert.equal(recover(root).recovered, false);
+  } finally { await Promise.all([first.stop(), second.stop()]); }
 });
 test('declared incompatible pair rejected before any staging', async t => {
   const { root, sources, candidate } = setup(t);

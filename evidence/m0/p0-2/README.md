@@ -91,6 +91,9 @@ Comparison harness added:
 
 See:
 
+- `windows-package-process-race-evidence-20261004.md` (45/45 tests PASS; four actual separate-process transaction races, controlled IPC barriers)
+- `macos-package-process-race-test-plan-20261004.md` (focused parity request for process races; no GUI or Actions)
+
 - `windows-package-recovery-io-evidence-20261003.md` (37/37 transaction + 4/4 health adapter tests PASS; six injected recovery faults, retry and explicit failure diagnostics)
 - `macos-package-recovery-io-test-plan-20261003.md` (focused parity request; no GUI, Rust rebuild or Actions)
 - `macos-package-recovery-io-evidence-20261004.md` (reported Mac PASS at `9d9159c`: 41/41 tests, six injected fault cases and retry checks; physical disk/ACL/durability gates remain open)

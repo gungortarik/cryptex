@@ -13,11 +13,17 @@ See the real-health evidence and Mac plan in `evidence/m0/p0-2/`.
 
 `package-transaction.mjs` is a separate, test-only serialized filesystem candidate.
 It never touches installed Desktop, startup registration or canonical storage.
-Run its 37 focused tests with:
+Run its 41 focused tests with:
 
 ```sh
 node --test tools/m0-lifecycle-compare/scripts/package-transaction.test.mjs
 ```
+
+Four cases launch two separate owned Node updater processes via
+`package-transaction-process.mjs` and its IPC-controlled contender worker.
+They measure competing commits at staging/selection validation, existing-intent
+refusal and simultaneous validated contenders. Workers run hidden on Windows
+and are awaited/cleaned before fixture removal. Health remains injected.
 
 Recovery mutation errors expose `RECOVERY_IO_FAILED` with the original cause
 and structured `phase`, `io_code`, and `intent_present` diagnostics. Test-only
