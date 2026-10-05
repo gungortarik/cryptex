@@ -1,14 +1,19 @@
 # Proposed M0 / production acceptance boundary decision
 
-**Status: DRAFT — requires explicit owner decision.** No ADR, milestone or
-acceptance prerequisite is changed by this document. M0 remains IN PROGRESS.
+**Status: OWNER APPROVED FOR PREPARING ADR REVISIONS — 2026-10-05.**
+The owner answered "kurallar dahilinde onayliyorum" to the concrete scope question
+after Mac parity was recorded. This authorizes preparing the proposed revisions;
+it does not accept ADRs, complete M0, authorize M1 or approve distribution.
+M0 remains IN PROGRESS. The recommendation below is retained as the reviewed
+proposal; revised ADR-0012/0004 remain PROPOSED pending review and required CI.
 Read alongside `m0-security-notice-acceptance-review-20261005.md`.
 
 ## Why a decision is needed
 
 Accepted M0 contract scopes executable foundation/P0 spikes and excludes production
 identity/event semantics. Roadmap M1 includes OS secure-store integration; M14
-includes signed/notarized packaging and updater productization. Proposed ADR-0012
+includes packaging/updater coordination; M17 includes signed/notarized release
+and final third-party notices. Proposed ADR-0012
 currently additionally makes signed package/production canonical acceptance
 prerequisites to its own acceptance. Handoff requires honoring those prerequisites.
 We cannot silently accept the proposal, remove a prerequisite or build later
@@ -41,8 +46,10 @@ open until corresponding signing/installed-update/production-schema evidence is
 available. Scope for work belonging to later milestones must be explicitly
 authorized before implementation; no automatic milestone expansion is inferred.
 
-## Required owner answer
+## Recorded owner answer and continuation
 
-Approve preparing the scoped ADR revisions above, or keep the existing stricter
-M0 prerequisites. AGENTS and handoff require clarification before changing an
-ambiguous milestone/workflow boundary; generic direction approval is not a waiver.
+The owner approved preparing the scoped revisions. The Mac boundary regression
+is now PASS at `388e46a7e5f750d88e7fc786e0c108dcea5329e4`; no rerun is required.
+Review revised ADR-0012/0004, complete remaining scoped review, then execute
+required final CI once on the stable candidate. Human diff/ADR acceptance and
+the full evidence-backed M0 checklist remain separate required steps.

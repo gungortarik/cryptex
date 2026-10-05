@@ -109,14 +109,50 @@ migration failures are safe. No product baseline change or ADR acceptance.
 
 ## Required acceptance evidence
 
+### Owner-authorized M0 boundary revision — 2026-10-05
+
+The owner answered "kurallar dahilinde onayliyorum" to
+`evidence/m0/m0-acceptance-scope-decision-proposal-20261005.md`, authorizing
+preparation of this revision only. M0 acceptance concerns the managed pinned
+native spike and the selected product implementation boundary. The Node
+controller remains test-only and is not shipped. This does not accept the ADR,
+complete M0, authorize later milestones or approve production distribution.
+
 1. Equivalent Mac managed lifecycle against exact stable 2.1.5: scoped PASS recorded.
-2. Target-matched staged/bundled package resolution and notice inclusion on both
-   OSes; source/provenance/dependency-notice review before distribution.
+2. Target-matched staged package resolution and exact upstream notice inclusion
+   on both OSes: scoped PASS. Document source/provenance and the remaining
+   dependency/source-access/installer notice obligations; full distribution
+   acceptance remains separately mandatory before shipment.
 3. Explicit upgrade compatibility strategy and tested migration/failure boundaries;
    Both-platform changed-version/cold-rejection probe PASS; boundary review
    remains. Same-version restart must not be relabeled version upgrade.
 4. Review of proposed supervisor/secret boundary and residual M0 limitations.
 5. Human acceptance and evidence-backed P0-4 checklist.
+
+6. Required final cross-platform CI and scoped security/failure review. Fixture
+   API/private files are not production OS-secure-store acceptance; inherited
+   Windows profile permissions were not independently proved by these runs.
+
+### Mandatory later product acceptance
+
+- M1 identity/OS secure storage and M8 production replication must establish the
+  backend-owned supervisor, generated private-file permission model, API-secret
+  boundary, explicit device trust and canonical validation. Renderer never receives
+  keys, raw config or arbitrary process launch capability. No test identity becomes
+  production identity; no device becomes master.
+- M14 installed update coordination must keep canonical data outside cold profile
+  rollback, verify actual migration/failure and crash boundaries and refuse unsafe
+  downgrade. The tested 2.1.2 -> 2.1.5 pair does not prove arbitrary compatibility,
+  native migration failures, live canonical rollback or power-loss durability.
+- Before distributing native binaries, deliver source-access information and all
+  required dependency/license notices, verify actual installer inclusion and
+  publisher provenance. M17 signed/notarized release and final third-party notices
+  remain release gates. Binary/LICENSE/AUTHORS fixture inclusion alone is not full
+  legal or signed-distribution acceptance.
+
+The security/notice review records each residual explicitly. These are mandatory
+product gates, not deleted requirements or claims of implementation. Later work
+requires its own milestone authorization; M0 remains synthetic-data only.
 
 **Not accepted.** Both-platform scoped PASS does not complete P0-4 or M0, and does not
 authorize M1 or product replication features.

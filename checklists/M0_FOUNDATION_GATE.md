@@ -186,7 +186,7 @@ Configuration presence, an implementation claim, compilation alone, or success o
   - Evidence:
 
 - [ ] Relevant security checks/review are complete.
-  - Evidence: partial implementer review in `evidence/m0/m0-security-notice-acceptance-review-20261005.md`; renderer executable selection corrected on Windows, new Mac check and residual boundary/acceptance decisions remain open.
+  - Evidence: partial implementer review in `evidence/m0/m0-security-notice-acceptance-review-20261005.md`; renderer executable selection corrected with Windows/Mac regressions PASS. Owner approved preparing boundary revisions; scoped review and human acceptance remain open. Production residuals are tracked separately, not labeled PASS.
 
 - [ ] No real personal/Cortex data was used for M0 testing.
   - Evidence:

@@ -25,7 +25,7 @@
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
 - Do not assume that moving between Cursor, Codex, and Work changes which tool is the write-capable implementer.
 - The user explicitly changed the implementation role to Codex in this conversation; Codex is the active implementation tool on Windows. Resume Mac-specific validation on the Mac host when needed.
-- The project owner explicitly approved Mode B with per-user login startup launching Desktop for implementation. The scoped proposal is at `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`; ADR-0012 remains unaccepted until the listed production proofs pass.
+- The project owner explicitly approved Mode B with per-user login startup launching Desktop for implementation. The scoped proposal is at `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`; ADR-0012 remains PROPOSED pending revised M0 review, required CI and human acceptance. Production gates remain mandatory separately under the owner-authorized 2026-10-05 revision scope.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks and
@@ -63,11 +63,16 @@ Evidence: `evidence/m0/p0-2/macos-sidecar-boundary-evidence-20261005.md`.
 This closes the new Mac validator regression, not physical renderer invocation.
 No passed Mac plan requires repetition.
 
-Next continuation: the explicit owner scope decision requested for
-`evidence/m0/m0-acceptance-scope-decision-proposal-20261005.md` remains unanswered.
-Do not infer that a Mac PASS approves revised ADR acceptance prerequisites.
-Record the owner's answer before preparing dependent ADR revisions; then finish
-review and run the required final CI once on the resulting stable candidate.
+Owner scope decision recorded: "kurallar dahilinde onayliyorum" authorizes
+preparing the scoped ADR-0012/0004 revisions in
+`evidence/m0/m0-acceptance-scope-decision-proposal-20261005.md`.
+Both proposals now separate M0 direction acceptance from mandatory production
+gates: M1 secure storage/identity, M2 event semantics, M8 replication, M14 installed
+updater coordination and M17 signed release/final notices. No production gate is
+reported verified; the Master Spec and accepted milestone contract are unchanged.
+Next: review these concrete revisions and the retained security/notice residuals,
+then run required final CI once on the resulting stable candidate. Human diff/ADR
+acceptance and the evidence-backed full M0 checklist remain required.
 ADR-0004/0012 remain PROPOSED; M0 remains IN PROGRESS and M1 is not authorized.
 
 The owner explicitly authorized completing the entire M0 milestone. Closure
@@ -1228,6 +1233,9 @@ do not run Actions for this slice.
 
 ## BLOCKED
 
-P0-2 cannot be considered complete and ADR-0012 must not be accepted until the remaining required proofs and comparison are resolved.
+P0-2 cannot be considered complete and ADR-0012 must not be accepted until the
+current revised M0 criteria, scoped review, required CI and human approval pass.
+Historical production prerequisites in earlier slices remain separate mandatory
+product gates under the owner-authorized revision; no production proof is waived.
 
 M1 is not authorized until all M0 P0 gates are complete.

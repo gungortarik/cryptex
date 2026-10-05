@@ -61,11 +61,12 @@ not been established. They remain explicit prerequisites before distribution.
    integration and production canonical acceptance. Windows certificate readiness
    found no available valid code-signing key. No certificate purchase/export or
    security-policy change is authorized/inferred from this review.
-3. **Milestone boundary review:** roadmap M1 includes OS secure storage; M14
-   includes signed/notarized packaging. These later product tasks must not be
-   implemented opportunistically in M0. The owner must explicitly resolve how
-   the proposed ADR's production prerequisites relate to M0 spike acceptance;
-   this review does not waive them or change the roadmap/ADR status.
+3. **Milestone boundary decision recorded:** the owner approved preparing the
+   concrete scoped ADR revisions on 2026-10-05. M1 includes OS secure storage;
+   M14 packaging/updater coordination; M17 signed/notarized release and final
+   notices. Revised ADR-0012/0004 remain PROPOSED. Production requirements are
+   retained as mandatory product gates; no accepted specification or milestone
+   is weakened and no later implementation is authorized.
 4. **Secret/permission boundary:** test-native config/private files are not
    production OS secure storage. Windows inherited profile ACLs were not
    independently verified here. Do not adopt fixture secrets as device identity.

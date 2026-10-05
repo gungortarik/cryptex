@@ -1,10 +1,24 @@
 # ADR-0012 implementation proposal — Desktop-owned runtime
 
-**Status:** PROPOSED — implementation direction approved by the project owner; M0 acceptance pending required production evidence
+**Status:** PROPOSED — implementation direction and revision scope approved; M0 acceptance pending scoped review, required CI and human ADR approval
 **Date:** 2026-10-03
 **Scope:** P0-2 background runtime and atomic update lifecycle
 
 ## Source-record note
+
+### Owner-authorized acceptance boundary revision — 2026-10-05
+
+The owner answered "kurallar dahilinde onayliyorum" to the concrete proposal in
+`evidence/m0/m0-acceptance-scope-decision-proposal-20261005.md`. This authorizes
+preparing scoped ADR revisions only; it does not accept this ADR, complete M0,
+authorize M1 or permit production distribution.
+
+This revision separates M0 implementation-direction acceptance from mandatory
+production acceptance. Earlier paragraphs and the original proof list below
+retain historical context; the current acceptance sections at the end govern
+this revised proposal. No accepted Master Spec or milestone criterion is removed.
+M0 still requires its lifecycle/update spike and immutable synthetic fixture
+safety, while production identity/event semantics remain M0 non-goals.
 
 The original ADR-0012 source is absent from this repository. This scoped
 proposal records the implementation direction selected from the P0-2 evidence;
@@ -85,7 +99,7 @@ to leave M0. Implementation must preserve the Master Spec and P0-2 contract.
 The detailed comparison is in
 `evidence/m0/p0-2/supervision-candidate-comparison-20261003.md`.
 
-## Required implementation and proof before acceptance
+## Original implementation/proof list — historical proposal context
 
 1. Bundle a target-matched `cryptexd` sidecar and resolve it without a developer
    environment variable. Release package-smoke builds stage and resolve the
@@ -112,8 +126,9 @@ The detailed comparison is in
 6. Prove a compatible Desktop+daemon package update and rollback with canonical
    data unchanged on both platforms.
 
-Until all proofs pass and the evidence comparison is updated, the ADR remains
-PROPOSED and M0 remains open.
+This original list predates the owner-approved boundary revision. Its production
+requirements remain mandatory in the separate production gates below. This
+document remains PROPOSED and M0 remains open.
 
 ## Security and recovery constraints
 
@@ -128,8 +143,45 @@ PROPOSED and M0 remains open.
 
 ## Acceptance state
 
-**Not accepted.** The project owner approved this direction for implementation.
-The Mac release-executable lifecycle proof now includes physical tray Open/Quit.
-Windows release-mode physical proof, signed package integration,
-compatible update/rollback and canonical-data preservation are still required
-before ADR-0012 can be marked ACCEPTED.
+### Current M0 criteria and evidence
+
+Evidence paths in this table are under `evidence/m0/p0-2/`.
+
+| Criterion | Retained proof and exact limit |
+| --- | --- |
+| Target-matched sidecar and backend launch authority | Both-OS package-smoke/changed-package runs; `macos-sidecar-boundary-evidence-20261005.md` plus `../m0-security-notice-acceptance-review-20261005.md`: Windows 20/20, Mac 13/13 validator tests; no physical renderer invocation claim |
+| Process ownership, crash restart, duplicate refusal, Stop and reconnect | `windows-release-desktop-owned-supervisor-20261003.md`, `macos-tauri-owned-supervisor-restart-evidence-20261003.md`, both-OS renderer reconnect evidence; combined dated slices, not one final installed build |
+| Physical window/tray Open and active-daemon Quit | `windows-physical-release-tray-20261003.md`, Mac owned-supervisor and physical traffic-light evidence; retained PID through restore, clean exit/lock release |
+| Real login and startup removal | `windows-desktop-login-result-20261003.md` and Mac owned-supervisor evidence; Windows login console defect retained separately from later correction |
+| Console correction | `windows-console-visual-result-20261003.md`: foreground launch/query observed without new terminal; final package console-free login remains a production gate |
+| Changed native package selection and protocol rejection/rollback | Both-OS `*-changed-native-package-evidence-20261005.md`; Desktop changed on both, daemon changed on Windows only; rejected candidate restored baseline |
+| Interrupted updater recovery | Both-OS `*-native-interruption-evidence-20261005.md`; actual kill after selection before successor launch, baseline health and owned-process/lock/IPC cleanup |
+| Immutable fixture safety | Changed-package/interruption reports preserve accepted-codec synthetic sealed packs/manifest; no real production event schema or personal data |
+
+Before M0 ADR acceptance: review this table against retained evidence, complete
+the scoped security/failure and notice-boundary review, obtain required final
+cross-platform CI and human diff/ADR approval. The M0 contract and gate checklist
+must independently pass before M1 begins. No unchecked production gate is PASS.
+
+### Mandatory production gates retained
+
+1. M1 OS secure storage/identity and M2 real event schema must preserve daemon-only
+   writing, signatures/validation and immutable canonical data. Synthetic packs
+   do not establish production canonical-data update/recovery safety.
+2. M14 installed updater coordination must verify final packaged lifecycle,
+   console-free login, compatible pair handover, explicit rollback and required
+   interruption/durability boundaries. Canonical storage remains outside package
+   rollback state. One SIGKILL boundary does not establish power-loss durability.
+3. Signed/notarized release, publisher verification and final distribution notices
+   remain mandatory before distribution under M17 release acceptance. M14
+   packaging work is not signed release acceptance.
+4. Before hardened production IPC APIs: resolve the synchronous whole-read
+   deadline/stalled-peer limitation in the security review. Framing bounds bytes,
+   not read latency. Accepted ADR-0007 retains its narrow health-only scope.
+5. Preserve private app-data roots, least-privilege removable startup, no public
+   endpoint and no arbitrary renderer shell/filesystem capability. Recovery/purge
+   never become autonomous AI tools. Later work requires milestone authorization.
+
+**Not accepted.** Owner approval covered implementation direction and preparing
+this revision. Required CI, scoped review and human ADR acceptance remain open.
+M0 remains IN PROGRESS; all production gates above remain mandatory and unverified.

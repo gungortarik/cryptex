@@ -124,6 +124,17 @@ Do not substitute an older readiness run or these local checks for final CI.
 
 ## Security and notice review continuation
 
+Latest owner decision: "kurallar dahilinde onayliyorum" approved preparing the
+concrete M0/production-boundary ADR revisions. ADR-0012/0004 now state scoped M0
+criteria and retain mandatory product secure storage, canonical safety, installed
+updater, signed release and distribution notices separately. The roadmap assigns
+packaging/updater coordination to M14 and signed/notarized release/final notices
+to M17. Master Spec, accepted ADRs and M0 contract were not modified.
+The earlier unanswered-question notes below are historical. Both proposals
+remain PROPOSED; scoped review, required final CI and human diff/ADR approval
+must pass before M0 closure. No code, tests, startup or installed state changed
+for this documentation revision, and no Actions was dispatched for it.
+
 Mac sidecar validator regression subsequently reported scoped PASS at
 `388e46a7e5f750d88e7fc786e0c108dcea5329e4`: Desktop **13/13**, CLI **4/4**,
 all format/Clippy/frontend/locked release/diff checks and exits 0, no skipped or
