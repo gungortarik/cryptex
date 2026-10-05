@@ -49,6 +49,17 @@ experiment rather than deleting a claim on a PID guess. Three process tests
 cover competing recovery, a prevalidated updater and an interrupted recovery.
 This fail-closed claim is not an OS lock or automatic crash-recovery mechanism.
 
+The separate test-only `package-native-recovery.mjs` adapter can clear an
+interrupted claim using the Rust helper, then invoke the existing recovery.
+Build `m0-lifecycle-compare` locally before running
+`package-native-recovery.test.mjs` (6 native-process tests). The helper uses
+already pinned fs2 0.4.3 to serialize only stale-claim cleanup; it proves the
+owner has exited, verifies unchanged claim bytes and removes the stale claim.
+The persistent `recovery-native.lock` file must never be deleted during use.
+Live/malformed/ambiguous owners remain refused. This is not an installed updater
+or a native lock around every package operation; recovery can still safely
+refuse if another caller wins the new filesystem claim.
+
 `run-package-transaction-proof.mjs` retains eight scenarios with supplied binary
 copies; it requires a fresh outside-repository `--root` and absolute
 `--baseline-desktop`, `--baseline-daemon`, `--candidate-desktop`,

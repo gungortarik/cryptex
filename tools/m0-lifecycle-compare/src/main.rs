@@ -20,6 +20,7 @@ use cryptexd::supervisor::DesktopSupervisor;
 use cryptexd::update::run_update_rollback_proof;
 
 mod package_health;
+mod package_recovery_claim;
 
 #[cfg(target_os = "windows")]
 mod mode_a_hkcu_windows;
@@ -80,6 +81,7 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
             run_update_rollback(opts)
         }
         "probe-package-health" => package_health::run(&args[1..]),
+        "clear-interrupted-recovery-claim" => package_recovery_claim::run(&args[1..]),
         other => Err(LifecycleError::Usage(format!(
             "unknown command '{other}'\n{}",
             usage()
@@ -852,6 +854,7 @@ fn usage() -> String {
         "  m0-lifecycle-compare run-mode-b [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C] [--pre-crash-hold-ms MS] [--post-restart-hold-ms MS]",
         "  m0-lifecycle-compare run-update-rollback [--experiment-id ID] [--runtime-root PATH] [--cryptexd PATH] [--branch B] [--commit C]",
         "  m0-lifecycle-compare probe-package-health --expect-absent | --expected-pid PID --expected-protocol N --runtime-root PATH",
+        "  m0-lifecycle-compare clear-interrupted-recovery-claim --root PATH --node PATH [--hold-ms N]",
         "  m0-lifecycle-compare status [--runtime-root PATH]",
         "  m0-lifecycle-compare cleanup [--runtime-root PATH] [--cryptexd PATH]",
         "",

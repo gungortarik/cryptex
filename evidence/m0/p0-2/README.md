@@ -91,6 +91,9 @@ Comparison harness added:
 
 See:
 
+- `windows-package-native-recovery-evidence-20261004.md` (Rust 13/13 and Node 61/61 functional PASS; native stale-claim cleanup; formatting blocked locally and pending on Mac)
+- `macos-package-native-recovery-test-plan-20261004.md` (focused native helper build/test and formatting request; no GUI or Actions)
+
 - `windows-package-recovery-claim-evidence-20261004.md` (55/55 PASS; exclusive recovery claim, concurrent/late updater refusal and interrupted-claim retention)
 - `macos-package-recovery-claim-test-plan-20261004.md` (focused claim parity request; no GUI or Actions)
 - `macos-package-recovery-claim-evidence-20261004.md` (reported Mac PASS at `0ce9c93`: 55/55, three claim cases and clean fixture/child cleanup; automatic interrupted-recovery repair remains open)

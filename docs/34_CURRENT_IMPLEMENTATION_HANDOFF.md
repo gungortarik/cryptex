@@ -732,6 +732,29 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
+### Latest native interrupted-claim cleanup — Windows functional PASS; format/Mac pending
+
+A test-only Rust command `clear-interrupted-recovery-claim` serializes claim
+cleanup with the already pinned fs2 0.4.3 OS lock. It validates an owned,
+outside-repository root without links/junctions, requires a valid claim and OS
+ESRCH for its owner, rechecks identical claim bytes and removes only that claim.
+The OS lock file is persistent and never unlinked. Node adapter
+`recoverAfterInterruption` calls the helper then existing guarded recovery;
+another caller winning the new claim causes safe refusal. This does not lock
+all updater operations or integrate an installed updater.
+Windows: Rust **13/13**, Node **51 transaction + 4 health adapter + 6 native
+recovery = 61/61 PASS**, no failures/skips. Strict Clippy, locked build, two new
+Node syntax checks and diff check passed. `cargo fmt --all` was blocked by
+Application Control (os error 4551); format verification remains pending and
+the policy was not bypassed. Mac must format the new Rust module if necessary
+and validate it. No dependency versions changed; Cargo.lock adds only the direct
+fs2 edge for the lifecycle tool. No Actions, GUI or installed runtime was used.
+Evidence: `evidence/m0/p0-2/windows-package-native-recovery-evidence-20261004.md`.
+Mac plan: `evidence/m0/p0-2/macos-package-native-recovery-test-plan-20261004.md`.
+Native cleaner SIGKILL releases its OS lock; dead recovery claim cleanup and
+baseline retry are verified. Broader stress, signing, native Desktop handover,
+canonical-data and power-loss durability remain open; ADR-0012 is PROPOSED.
+
 ### Latest concurrent recovery slice — Windows and Mac scoped PASS
 
 The test-only candidate exclusively creates `recovery-claim.json` before

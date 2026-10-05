@@ -82,6 +82,18 @@ status. Mac real-health parity and the remaining native integration gates remain
 
 ## Gates before production integration or ADR acceptance
 
+The latest test-only native cleanup candidate uses fs2 0.4.3 to serialize stale
+recovery-claim removal in a Rust command. It requires OS ESRCH for the recorded
+owner and unchanged claim bytes before removal; live/ambiguous owners remain
+refused. A Node adapter subsequently invokes ordinary guarded recovery.
+Six process tests pass on Windows, including killed native-lock holder release,
+killed recovery reclamation, two cleanup callers and preservation of live or
+malformed claims. This lock covers cleanup only, not every package operation.
+Mac parity and source format verification are pending because Windows Application
+Control blocked cargo-fmt; no security policy was bypassed. See
+`windows-package-native-recovery-evidence-20261004.md`. The prior direct recovery
+entry still refuses interrupted claims without this explicit adapter.
+
 Windows concurrent-recovery follow-up adds an exclusive filesystem recovery
 claim held until the recovery call ends. Recovery and updater activation refuse
 an existing claim. Three controlled separate-process cases pass (55/55 combined
