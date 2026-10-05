@@ -757,6 +757,11 @@ checks and diff check passed. The retained Windows installed tree (three files)
 was copied into a fresh owned proof root and reverified without executing it.
 Evidence: `evidence/m0/p0-2/windows-native-package-tree-evidence-20261005.md`.
 Mac plan: `evidence/m0/p0-2/macos-native-package-tree-test-plan-20261005.md`.
+Mac reported **79/79 PASS**, no failures/skips, exit 0 at `8296e66`, macOS 27.0.1
+arm64, Node v24.19.0 and Rust 1.98.1. Locked helper build, three syntax and diff
+checks passed, including POSIX modes and symlink refusal. No fixture/child/flush
+error was reported; Mac changed no files. Result:
+`evidence/m0/p0-2/macos-native-package-tree-evidence-20261005.md`.
 Next implementation is whole-handover OS exclusion and owned Desktop shutdown/
 successor startup. No actual handover, signing or canonical acceptance is claimed.
 

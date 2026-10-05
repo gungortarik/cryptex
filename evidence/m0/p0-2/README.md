@@ -14,6 +14,7 @@ The current cross-platform evidence comparison is in
 Approved scoped pilot: `native-package-handover-plan-20261005.md`.
 First slice: `windows-native-package-tree-evidence-20261005.md`.
 Runnable Mac parity plan: `macos-native-package-tree-test-plan-20261005.md`.
+Mac tree parity result: `macos-native-package-tree-evidence-20261005.md` (79/79).
 
 - `docs/11_DAEMON_IPC_RUNTIME.md`
 - `docs/23_REQUIRED_TECHNICAL_SPIKES.md`

@@ -1,5 +1,8 @@
 # Mac task — complete native package tree parity
 
+**Result:** scoped PASS at `8296e66154b7e123519ca08398e9e4bbccc2f7e8`;
+see `macos-native-package-tree-evidence-20261005.md`. Instructions retained below.
+
 Read handoff and the approved native-package-handover plan. Use clean current
 `m0/p0-2-cursor` containing implementation
 `e5423f201543ff6a11cea0274b4a69230b545f23`; report the full tested SHA.
