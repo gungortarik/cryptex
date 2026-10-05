@@ -40,11 +40,11 @@ Configuration presence, an implementation claim, compilation alone, or success o
 - [ ] `cryptexd` proof-of-concept runs as designed.
   - Evidence:
 
-- [ ] Golden Brain fixture foundation exists and is synthetic-only.
-  - Evidence:
+- [x] Golden Brain fixture foundation exists and is synthetic-only.
+  - Evidence: `evidence/m0/p0-2/windows-native-interruption-evidence-20261005.md` and `macos-native-interruption-evidence-20261005.md`; accepted-codec synthetic sealed packs/manifest preserved. Production event schema is outside this foundation.
 
-- [ ] Doctor foundation exists and reports actual implemented health state rather than configuration-only state.
-  - Evidence:
+- [x] Doctor foundation exists and reports actual implemented health state rather than configuration-only state.
+  - Evidence: both-platform native-interruption evidence above records actual PID/IPC/held-lock health. `m0-foundation.mjs` keeps canonical/Syncthing checks `not-implemented`.
 
 ## B. P0-1 — Physical Event Storage Layout
 
@@ -132,35 +132,35 @@ Configuration presence, an implementation claim, compilation alone, or success o
 
 ## E. P0-4 — Managed Syncthing Integration
 
-- [ ] Pinned Syncthing process/sidecar lifecycle is verified on macOS.
-  - Evidence:
+- [x] Pinned Syncthing process/sidecar lifecycle is verified on macOS.
+  - Evidence: `evidence/m0/p0-4/macos-managed-syncthing-evidence-20261005.md`; staged 2.1.5 native binary, four clean absent monitors. Installed distribution remains separate.
 
-- [ ] Pinned Syncthing process/sidecar lifecycle is verified on Windows.
-  - Evidence:
+- [x] Pinned Syncthing process/sidecar lifecycle is verified on Windows.
+  - Evidence: `evidence/m0/p0-4/windows-managed-syncthing-evidence-20261005.md` and `notice-byte-portability-failure-and-fix-20261005.md`; staged native role/notice proof and four clean absent monitors.
 
-- [ ] Cryptex uses an isolated Syncthing config/home.
-  - Evidence:
+- [x] Cryptex uses an isolated Syncthing config/home.
+  - Evidence: both-platform managed evidence uses two fresh synthetic owned homes under Cryptex-Dev app data; no shipped production controller claim.
 
-- [ ] No collision with user-global Syncthing configuration is verified.
-  - Evidence:
+- [x] No collision with user-global Syncthing configuration is verified.
+  - Evidence: both-platform managed/upgrade reports retain unchanged observed global config digests and isolated loopback profiles. This is scoped to those actual runs.
 
-- [ ] REST API authentication is verified.
-  - Evidence:
+- [x] REST API authentication is verified.
+  - Evidence: both-platform managed reports reject wrong API keys 403/403 and require authenticated readiness. Production secret storage is not claimed.
 
-- [ ] Folder/device pairing flow is verified.
-  - Evidence:
+- [x] Folder/device pairing flow is verified.
+  - Evidence: both-platform managed reports prove two local synthetic identities and actual transfer; cross-host device trust remains separate.
 
-- [ ] Pause/resume/status behavior is verified.
-  - Evidence:
+- [x] Pause/resume/status behavior is verified.
+  - Evidence: both-platform managed reports verify configured pause/resume and actual idle/zero-needed/no-pull-error state.
 
-- [ ] Conflict/versioning visibility is verified.
-  - Evidence:
+- [x] Conflict/versioning visibility is verified.
+  - Evidence: both-platform managed reports retain native history and both exact divergent conflict contents.
 
-- [ ] Upgrade-strategy compatibility has evidence.
-  - Evidence:
+- [x] Upgrade-strategy compatibility has evidence.
+  - Evidence: `evidence/m0/p0-4/windows-syncthing-upgrade-evidence-20261005.md` and `macos-syncthing-upgrade-evidence-20261005.md`; actual 2.1.2 -> 2.1.5 transition/restart/transfer and injected rejection/cold restore. No live canonical rollback, native migration-failure or power-loss claim.
 
 - [ ] Required third-party license/notices handling is documented.
-  - Evidence:
+  - Evidence: exact LICENSE/AUTHORS and upstream links are retained in `third_party/syncthing/2.1.5/`; both-OS staged membership proofs exist. Delivered source-access notice, dependency-notice inventory and installed distribution remain unverified; see `evidence/m0/m0-security-notice-acceptance-review-20261005.md`.
 
 - [ ] ADR-0004 implementation addendum records selected packaging/supervision.
   - Evidence:
@@ -186,7 +186,7 @@ Configuration presence, an implementation claim, compilation alone, or success o
   - Evidence:
 
 - [ ] Relevant security checks/review are complete.
-  - Evidence:
+  - Evidence: partial implementer review in `evidence/m0/m0-security-notice-acceptance-review-20261005.md`; renderer executable selection corrected on Windows, new Mac check and residual boundary/acceptance decisions remain open.
 
 - [ ] No real personal/Cortex data was used for M0 testing.
   - Evidence:
@@ -231,8 +231,8 @@ Configuration presence, an implementation claim, compilation alone, or success o
 - [x] ADR-0013 is ACCEPTED.
   - Evidence: `docs/adr/ADR-0013-physical-event-storage-layout.md`
 
-- [ ] ADR-0007 implementation addendum is complete.
-  - Evidence:
+- [x] ADR-0007 implementation addendum is complete.
+  - Evidence: accepted `docs/adr/ADR-0007-local-ipc-implementation-addendum.md`; narrow health-only implementation/evidence and stated limits, no broader production API acceptance.
 
 - [ ] ADR-0004 implementation addendum is complete.
   - Evidence:

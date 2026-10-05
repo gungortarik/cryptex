@@ -199,6 +199,26 @@ execution remains NOT YET VERIFIED. No Actions dispatched; final CI still needs
 one stable-source run after outstanding acceptance/security/notice review.
 P0-4 Mac upgrade plan is closed; no new Mac request at this continuation.
 
+Security/acceptance review continuation: `82c4d32` fixes a normal-session
+renderer executable-selection hole. `p0_2_start_daemon` now validates every
+request against the backend-selected ordinary absolute sidecar before runtime
+creation/launch; stores/launches the approved backend path. Displayed path is
+read-only. Backend-controlled developer override remains available; renderer
+cannot replace it. Windows Desktop **20/20**, format/strict Clippy/frontend and
+release build, lifecycle Node **160/160**, storage/sidecar **8/8** PASS.
+New Mac task: `evidence/m0/p0-2/macos-sidecar-boundary-test-plan-20261005.md`
+(Desktop **13/13**, CLI **4/4**, format/strict Clippy/frontend/release build).
+Passed Syncthing/login/tray/native recovery plans need no repetition.
+
+Review: `evidence/m0/m0-security-notice-acceptance-review-20261005.md`.
+Exact notice digests remain pinned, but delivered source-access notice,
+dependency inventory/installer inclusion, secret/permission boundary and proposed
+signed/canonical acceptance prerequisites are unresolved. IPC byte framing is
+bounded; whole-read deadlines are not established. Checklist now reflects
+both-OS Golden/Doctor and scoped Syncthing proofs; security/human/final gates
+remain unchecked. No ADR/roadmap prerequisite was waived. No Actions dispatched:
+new Mac boundary check and acceptance review precede the final paid CI run.
+
 Read-only Windows signing readiness audit: SDK x64 SignTool is available, but
 the current-user My store has **0 currently valid code-signing certificates with
 private keys**. No certificate export, purchase, policy change or signing attempt.

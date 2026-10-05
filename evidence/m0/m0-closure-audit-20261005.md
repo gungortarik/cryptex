@@ -121,3 +121,22 @@ unchanged. Local equivalent commands PASS (Desktop 17/17, Node 160/160 + 8/8).
 Workflow execution is still NOT YET VERIFIED; YAML parser unavailable locally,
 static review/diff and actual PowerShell test block pass. No Actions was run.
 Do not substitute an older readiness run or these local checks for final CI.
+
+## Security and notice review continuation
+
+`m0-security-notice-acceptance-review-20261005.md` records the implementer review
+and remaining exact prerequisites. Finding: normal Desktop sessions previously
+allowed a renderer-selected executable for daemon startup. Fix `82c4d32`
+constrains all requests to the backend-selected ordinary absolute sidecar before
+runtime creation/launch and makes the field read-only. Windows Desktop **20/20**,
+format/strict Clippy/frontend/release builds and Node **160/160 + 8/8** PASS.
+New narrow Mac task: `p0-2/macos-sidecar-boundary-test-plan-20261005.md`.
+This supersedes the earlier statement that no new Mac task was needed.
+
+Golden/Doctor and nine scoped managed Syncthing checklist requirements now carry
+both-platform evidence. Notice completeness/distribution, proposed secret/signed
+acceptance boundaries, whole-read IPC availability and human ADR review remain
+open; the security review is not marked complete. M1 secure storage/M14 signing
+scope must be explicitly reconciled with the proposal's prerequisites by the
+owner; no scope/authority change is inferred. No Actions run while this completion
+candidate has a new pending Mac check.
