@@ -9,6 +9,7 @@ import { PackageError, assertExperimentLocation } from './package-transaction.mj
 import { describeNativeTree } from './package-native-tree.mjs';
 import { acquireNativeHandoverGate } from './package-handover-gate.mjs';
 import { recoverNativeSelected } from './package-native-selection.mjs';
+import { createGoldenFoundation, inventoryGolden, doctorFoundation } from './m0-foundation.mjs';
 
 async function main() {
   const flags = ['--source', '--root', '--helper', '--desktop', '--daemon']; const args = process.argv.slice(2); const values = {};
@@ -24,6 +25,10 @@ async function main() {
     if (!relative || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) throw new PackageError('OVERLAPPING_NATIVE_ROOTS', 'Disjoint input/root required');
   }
   fs.mkdirSync(root); fs.writeFileSync(path.join(root, 'experiment.json'), JSON.stringify({ schema: 1, scope: 'm0-native-handover-pilot' }), { flag: 'wx' });
+  const goldenRoot = path.join(root, 'golden-brain');
+  const benchmark = path.join(path.dirname(helper), `m0-storage-bench${process.platform === 'win32' ? '.exe' : ''}`);
+  const golden = await createGoldenFoundation(goldenRoot, benchmark);
+  const goldenBefore = inventoryGolden(goldenRoot);
   const worker = fileURLToPath(new URL('./native-selection-interruption-worker.mjs', import.meta.url));
   const child = spawn(process.execPath, [worker, root, helper, source, values['--desktop'], values['--daemon']], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let closed = false; const exited = once(child, 'close').then(outcome => { closed = true; return outcome; });
@@ -57,15 +62,21 @@ async function main() {
     catch (cause) { if (cause.code !== 'HANDOVER_BUSY') throw cause; await pause(50); }
   }
   if (!lease) throw new PackageError('RECOVERY_GATE_BUSY', 'Killed updater gate did not release');
-  let result; let cleanup;
+  let result; let cleanup; let doctor;
   try {
     result = await recoverNativeSelected({ lease, helper, runtimeName: 'recovered-baseline' });
-    try { lease.assertHeld(); }
+    try {
+      lease.assertHeld();
+      doctor = await doctorFoundation({ helper, runtimeRoot: result.session.root });
+      if (doctor.state !== 'healthy') throw new PackageError('RECOVERY_DOCTOR_FAILED', 'Restored actual health not verified');
+    }
     finally { cleanup = await result.session.stop(); }
   } finally { await lease.release(); }
+  if (JSON.stringify(inventoryGolden(goldenRoot)) !== JSON.stringify(goldenBefore)) throw new PackageError('GOLDEN_FIXTURE_CHANGED', 'Synthetic sealed fixture changed across handover');
   const report = { schema: 1, scope: 'm0-native-recovery-proof', boundary, outcome: result.outcome, selection: result.selection,
     desktop_pid: result.session.desktop_pid, daemon_pid: result.session.daemon_pid, desktop_identity: result.session.desktop_identity,
-    daemon_identity: result.session.daemon_identity, health: result.session.health, cleanup,
+    daemon_identity: result.session.daemon_identity, health: result.session.health, cleanup, doctor, golden,
+    synthetic_sealed_fixture_preserved: true,
     actual_updater_killed: true, boundary_before_successor_launch: true, live_child_termination_verified: false,
     power_loss_verified: false, version_upgrade_verified: false, canonical_data_acceptance: false };
   fs.writeFileSync(path.join(root, 'native-recovery-report.json'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
