@@ -224,7 +224,7 @@ Fresh-source final CI and human/ADR acceptance remain open. See
   - Current `65ce7b9`: Windows 23 debug / 24 release / 4 CLI; Mac 16 debug / 17 release / 4 CLI; reported PASS, along with platform-specific format/lint/package checks. Fresh-source final CI is tracked separately below.
 
 - [ ] Required CI checks are green at the M0 completion commit.
-  - Evidence: candidate 5c074115cd61ef7c1eb47e8ed2cf8c1105360679 PASS in run 37377520994; full counts/jobs in `evidence/m0/m0-final-ci-attempt-20261005.md`. Independent review completed; completion commit remains unestablished pending native UI/human ADR acceptance. Do not claim a newer recording commit has these exact status checks.
+  - Evidence: the latest stable candidate `c7fa011672973101cb2a5519b5883b26c6909f90` passed all required jobs in run `37387323751`; full counts/jobs in `evidence/m0/m0-final-ci-attempt-20261005.md`. Keep this unchecked until a designated M0 completion commit is created and its required checks are verified.
 
 - [x] Verifier reviewed M0 acceptance criteria against actual repository/runtime state.
   - Evidence: separate read-only verifier at 3de9d00 in `evidence/m0/m0-independent-review-results-20261005.md`, independently queried exact CI and recomputed Windows recovery report digest. Mac raw artifacts remain owner-supplied and are recorded separately; human/completion gates remain open.

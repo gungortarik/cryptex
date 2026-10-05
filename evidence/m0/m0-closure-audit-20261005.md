@@ -13,9 +13,18 @@ evidence: `macos-embedded-frontend-visual-evidence-20261005.md`. Corrective sour
 `65ce7b9` has Windows debug 23/23, embedded release 24/24 and CLI 4/4 PASS,
 strict lint/format/package and targeted guard/hidden-session proof. Mac debug
 16/16, embedded release 17/17, CLI 4/4, focused lint/package and visual review
-reported PASS. Focused independent reviews PASS. Final CI at the updated source
-and human diff/ADR acceptance remain pending. Earlier checks below are historical
+reported PASS. Focused independent reviews PASS. Final CI **PASS** at source
+`c7fa011672973101cb2a5519b5883b26c6909f90`, run `37387323751`; see
+`m0-final-ci-attempt-20261005.md`. Human diff/ADR acceptance and completion
+checklist/ADR-index reconciliation remain pending. Earlier checks below are historical
 where they predate the behavior/workflow change. M0 is still IN PROGRESS.
+
+Final candidate CI run `37387323751` at `c7fa011672973101cb2a5519b5883b26c6909f90`
+is SUCCESS across Windows/macOS readiness and Windows cross-account ACL. Full
+counts and skipped manual package job are documented in
+`m0-final-ci-attempt-20261005.md`. The completion-commit CI checkbox remains
+open until the owner accepts the concrete ADR/diff packet and closure commit is
+prepared.
 
 ### Earlier candidate inventory
 

@@ -69,3 +69,29 @@ when evaluating the final closure/PR gate; any implementation/workflow change
 requires applicable fresh CI. No further workflow was dispatched to record this
 result. Independent verifier/security review and explicit human acceptance remain
 open; plan: `m0-independent-review-plan-20261005.md`.
+
+## Attempt 3 — embedded frontend correction and Mac visual pass
+
+Run: https://github.com/gungortarik/cryptex/actions/runs/37387323751
+Tested source: `c7fa011672973101cb2a5519b5883b26c6909f90` (includes code fix
+`65ce7b9` and Mac visual evidence commit `c7fa011`). Trigger: one deliberate
+`workflow_dispatch` after focused Mac parity and visual revalidation.
+
+- Windows readiness job `112023710665`: **PASS**, completed 2026-10-05 23:35:47
+  UTC. Rust debug suites total **95 tests**, release Desktop **24/24** including
+  embedded-assets sentinel, Node **160/160 + 8/8**. Format, workspace strict
+  lint/check, frontend build, native helpers, embedded release build, release
+  mode tests/lint and daemon foundation command all passed. No failed steps.
+- macOS readiness job `112023710918`: **PASS**, completed 2026-10-05 23:17:11
+  UTC. Rust debug suites total **77 tests**, release Desktop **17/17** including
+  embedded-assets sentinel, Node **162/162 + 8/8**. Format, workspace strict
+  lint/check, frontend build, native helpers, embedded release build, release
+  mode tests/lint and daemon foundation command all passed. No failed steps.
+- Windows actual cross-account IPC ACL job `112023711083`: **PASS**.
+- Windows unsigned Desktop package job was intentionally **SKIPPED**; it is
+  manual-only and not a required job for this run.
+
+Overall workflow **SUCCESS**. Required readiness and ACL jobs all passed on the
+exact pushed source SHA. This is the final-source CI evidence for the candidate;
+it does not itself accept ADR-0012/ADR-0004 or mark M0 complete. No tests were
+weakened. No additional workflow run is needed for the recorded evidence.

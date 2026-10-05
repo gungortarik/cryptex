@@ -68,10 +68,11 @@ Evidence: `evidence/m0/windows-embedded-frontend-mode-evidence-20261005.md`.
 
 Mac scoped plan completed: 16 debug / 17 release / 4 CLI, targeted rejection and
 fresh-package visual review reported PASS. Raw Mac artifacts were not copied for
-independent re-hashing. Next, run one required final CI on the clean current
-source, then reconcile checklist/ADR and request the remaining human acceptance.
-Earlier cloud result below is historical and does not verify `65ce7b9`. M0
-remains IN PROGRESS; no merge/M1/ADR acceptance inferred.
+independent re-hashing. Final CI **PASS** at
+`c7fa011672973101cb2a5519b5883b26c6909f90`, run `37387323751`; see
+`evidence/m0/m0-final-ci-attempt-20261005.md`. Remaining are human diff/ADR
+acceptance and final checklist/ADR-index reconciliation. M0 remains IN PROGRESS
+until those gates are resolved; no merge/M1 is inferred.
 
 ### Earlier candidate CI and review state
 
@@ -84,7 +85,7 @@ and first failed/cancelled attempt are retained in
 `evidence/m0/m0-final-ci-attempt-20261005.md`.
 At that earlier candidate, only missing plain benchmark build prerequisite was
 added. Subsequent result-recording commits were documentation only. New `65ce7b9`
-changes behavior/workflow and needs fresh final CI; do not reuse old status checks.
+changes behavior/workflow; the fresh final CI at `c7fa011` verifies that fix.
 Independent verifier and security audit completed at `3de9d00` after owner
 explicitly authorized both agents with "hemen basla". Results:
 `evidence/m0/m0-independent-review-results-20261005.md`. No new blocking M0

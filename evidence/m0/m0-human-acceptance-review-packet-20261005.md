@@ -8,7 +8,8 @@ This packet itself changes no acceptance status or milestone authority.
 is SCOPED PASS; Windows and Mac focused tests pass. Source `65ce7b9` rejects
 release builds using the Tauri development-server mode and makes embedded
 frontend release checks explicit. Original Mac blank failure remains preserved.
-One fresh final CI run is required before final human diff/ADR acceptance.
+Final CI is PASS at candidate `c7fa011672973101cb2a5519b5883b26c6909f90`, run
+`37387323751`; results are recorded in `m0-final-ci-attempt-20261005.md`.
 
 CI continuation: first run failed because the workflow omitted building the
 plain storage benchmark needed by Golden tests. Workflow-only correction builds
@@ -25,6 +26,9 @@ reviews now completed independently at `3de9d00`: see
 NOT APPROVED. The focused Mac plan is complete at
 `macos-embedded-frontend-visual-evidence-20261005.md`. No old Mac lifecycle/test
 suite repetition is requested.
+
+The newest run at `c7fa011` is the relevant CI for the frontend-mode fix. The
+older `5c07411` result below is retained only as historical evidence.
 
 ## Reviewable decisions
 
@@ -62,9 +66,10 @@ proposals is recorded separately; it is not final ADR/human diff acceptance.
 - `evidence/m0/m0-security-notice-acceptance-review-20261005.md` records scoped
   implementer review and the complete known residual ledger.
 - `.github/workflows/ci.yml` covers both-OS readiness, real Windows cross-account
-  ACL denial, release resolver/lint and all foundation Node tests. Final run:
-  https://github.com/gungortarik/cryptex/actions/runs/37377520994
-  Its outcome must be observed and recorded, not assumed from this link.
+  ACL denial, release resolver/lint and all foundation Node tests. New final run
+  at `c7fa011`: https://github.com/gungortarik/cryptex/actions/runs/37387323751
+  (SUCCESS); full job/test counts are recorded in
+  `m0-final-ci-attempt-20261005.md`.
 
 ## Required residuals to retain on acceptance
 
