@@ -91,8 +91,10 @@ faults retain the journal and permit an idempotent baseline recovery after the
 fault is removed; neither automatic rollback fault claims restoration. This
 does not establish actual disk-full/ACL behavior or power-loss durability.
 Directory-flush failure after successful unlink may leave no journal; completion
-is still reported as unestablished. Mac parity and later durability faults remain
-open. See `windows-package-recovery-io-evidence-20261003.md`.
+is still reported as unestablished. Mac parity passed at `9d9159c` (41/41 tests);
+later durability faults remain open. See
+`windows-package-recovery-io-evidence-20261003.md` and
+`macos-package-recovery-io-evidence-20261004.md`.
 
 1. Mac filesystem/process-interruption parity using the exact test plan.
 2. Review this candidate and select the scoped orchestration explicitly; do not

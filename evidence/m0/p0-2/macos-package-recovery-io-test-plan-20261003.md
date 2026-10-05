@@ -1,5 +1,8 @@
 # Mac task — package recovery I/O parity
 
+**Result:** scoped PASS at `9d9159c30af01b45af1c5c9f9994417f3beec611`;
+41/41 tests. Evidence: `macos-package-recovery-io-evidence-20261004.md`.
+
 Read the current handoff and ADR-0012 candidate proposal. Use the clean current
 `m0/p0-2-cursor` branch containing this plan, and report its full source SHA.
 Preserve local changes; do not merge/rebase or switch branches without approval.

@@ -93,6 +93,7 @@ See:
 
 - `windows-package-recovery-io-evidence-20261003.md` (37/37 transaction + 4/4 health adapter tests PASS; six injected recovery faults, retry and explicit failure diagnostics)
 - `macos-package-recovery-io-test-plan-20261003.md` (focused parity request; no GUI, Rust rebuild or Actions)
+- `macos-package-recovery-io-evidence-20261004.md` (reported Mac PASS at `9d9159c`: 41/41 tests, six injected fault cases and retry checks; physical disk/ACL/durability gates remain open)
 
 - `windows-package-real-health-20261003.md` (3 actual daemon/shared Desktop IPC scenarios PASS, Rust 10/10 and Node 4/4; installed Desktop updater integration remains open)
 - `macos-package-real-health-test-plan-20261003.md` (executed; no repeated filesystem/GUI suites or Actions)
