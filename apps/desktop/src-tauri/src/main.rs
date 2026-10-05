@@ -73,15 +73,15 @@ fn default_runtime_root_path() -> Result<PathBuf, String> {
 
 #[cfg(all(target_os = "macos", not(debug_assertions)))]
 fn default_runtime_root_path() -> Result<PathBuf, String> {
-    mac_product_runtime_root(std::env::var_os("HOME").as_deref())
+    mac_release_probe_runtime_root(std::env::var_os("HOME").as_deref())
 }
 
 #[cfg(all(target_os = "macos", any(not(debug_assertions), test)))]
-fn mac_product_runtime_root(home: Option<&std::ffi::OsStr>) -> Result<PathBuf, String> {
+fn mac_release_probe_runtime_root(home: Option<&std::ffi::OsStr>) -> Result<PathBuf, String> {
     Ok(PathBuf::from(home.ok_or("HOME unset")?)
         .join("Library")
         .join("Application Support")
-        .join("Cryptex")
+        .join("Cryptex-Dev")
         .join("runtime")
         .join("p0-2"))
 }
@@ -93,7 +93,7 @@ fn default_runtime_root_path() -> Result<PathBuf, String> {
 
 #[cfg(all(target_os = "windows", not(debug_assertions)))]
 fn default_runtime_root_path() -> Result<PathBuf, String> {
-    windows_product_runtime_root(std::env::var_os("LOCALAPPDATA").as_deref())
+    windows_release_probe_runtime_root(std::env::var_os("LOCALAPPDATA").as_deref())
 }
 
 #[cfg(all(target_os = "windows", any(debug_assertions, test)))]
@@ -106,9 +106,9 @@ fn windows_runtime_root(local_app_data: Option<&OsStr>) -> Result<PathBuf, Strin
 }
 
 #[cfg(all(target_os = "windows", any(not(debug_assertions), test)))]
-fn windows_product_runtime_root(local_app_data: Option<&OsStr>) -> Result<PathBuf, String> {
+fn windows_release_probe_runtime_root(local_app_data: Option<&OsStr>) -> Result<PathBuf, String> {
     Ok(PathBuf::from(local_app_data.ok_or("LOCALAPPDATA unset")?)
-        .join("Cryptex")
+        .join("Cryptex-Dev")
         .join("runtime")
         .join("p0-2"))
 }
@@ -1141,7 +1141,7 @@ mod sidecar_resolution_tests {
 
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
-    use super::{parse_live_daemon_pid, windows_product_runtime_root, windows_runtime_root};
+    use super::{parse_live_daemon_pid, windows_release_probe_runtime_root, windows_runtime_root};
     use std::ffi::OsStr;
     use std::path::PathBuf;
 
@@ -1162,14 +1162,15 @@ mod tests {
     }
 
     #[test]
-    fn release_runtime_root_uses_hidden_local_app_data() {
-        let root = windows_product_runtime_root(Some(OsStr::new(r"C:\Users\Tarik\AppData\Local")))
-            .expect("product runtime root");
+    fn release_runtime_root_uses_development_local_app_data() {
+        let root =
+            windows_release_probe_runtime_root(Some(OsStr::new(r"C:\Users\Tarik\AppData\Local")))
+                .expect("release probe runtime root");
 
         assert_eq!(
             root,
             PathBuf::from(r"C:\Users\Tarik\AppData\Local")
-                .join("Cryptex")
+                .join("Cryptex-Dev")
                 .join("runtime")
                 .join("p0-2")
         );
@@ -1179,6 +1180,10 @@ mod tests {
     fn missing_platform_runtime_root_is_a_typed_message() {
         assert_eq!(
             windows_runtime_root(None).unwrap_err(),
+            "LOCALAPPDATA unset"
+        );
+        assert_eq!(
+            windows_release_probe_runtime_root(None).unwrap_err(),
             "LOCALAPPDATA unset"
         );
     }
@@ -1206,26 +1211,52 @@ mod tests {
 
 #[cfg(all(test, target_os = "macos"))]
 mod mac_runtime_path_tests {
-    use super::mac_product_runtime_root;
+    use super::mac_release_probe_runtime_root;
     use std::ffi::OsStr;
     use std::path::PathBuf;
 
     #[test]
-    fn missing_home_is_reported_for_product_runtime() {
-        assert_eq!(mac_product_runtime_root(None).unwrap_err(), "HOME unset");
+    fn missing_home_is_reported_for_release_probe_runtime() {
+        assert_eq!(
+            mac_release_probe_runtime_root(None).unwrap_err(),
+            "HOME unset"
+        );
     }
 
     #[test]
-    fn release_runtime_root_uses_hidden_application_support() {
+    fn release_runtime_root_uses_development_application_support() {
         assert_eq!(
-            mac_product_runtime_root(Some(OsStr::new("/Users/tarik")))
-                .expect("product runtime root"),
+            mac_release_probe_runtime_root(Some(OsStr::new("/Users/tarik")))
+                .expect("release probe runtime root"),
             PathBuf::from("/Users/tarik")
                 .join("Library")
                 .join("Application Support")
-                .join("Cryptex")
+                .join("Cryptex-Dev")
                 .join("runtime")
                 .join("p0-2")
         );
+    }
+}
+
+#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
+mod default_probe_runtime_tests {
+    use super::default_runtime_root_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn compiled_default_uses_development_namespace_in_debug_and_release() {
+        // Resolve only: do not create a runtime or mutate the process environment.
+        #[cfg(target_os = "windows")]
+        let base = PathBuf::from(std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA"));
+        #[cfg(target_os = "macos")]
+        let base = PathBuf::from(std::env::var_os("HOME").expect("HOME"))
+            .join("Library")
+            .join("Application Support");
+        let expected = base.join("Cryptex-Dev");
+        #[cfg(debug_assertions)]
+        let expected = expected.join("p0-2").join("compare").join("mode-b-desktop");
+        #[cfg(not(debug_assertions))]
+        let expected = expected.join("runtime").join("p0-2");
+        assert_eq!(default_runtime_root_path().unwrap(), expected);
     }
 }
