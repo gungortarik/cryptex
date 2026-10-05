@@ -28,7 +28,9 @@ sessions PASS; initial duplicate Info.plist build failure preserved).
 Native selection/rollback: `windows-native-selection-evidence-20261005.md`
 (110 Node, 31 Rust; actual same-byte candidate commit and rejected-health
 baseline restart PASS). Mac parity request:
-`macos-native-selection-test-plan-20261005.md`; parity pending.
+`macos-native-selection-test-plan-20261005.md`. Mac result:
+`macos-native-selection-evidence-20261005.md` (24 Rust, 110 Node; compatible
+commit and rejected-health baseline restart PASS).
 
 - `docs/11_DAEMON_IPC_RUNTIME.md`
 - `docs/23_REQUIRED_TECHNICAL_SPIKES.md`

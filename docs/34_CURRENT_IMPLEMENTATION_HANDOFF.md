@@ -831,7 +831,21 @@ Both slots use the same prior pilot-enabled release bytes; this is selection
 and rollback evidence, not a version upgrade or installed updater.
 Evidence: `evidence/m0/p0-2/windows-native-selection-evidence-20261005.md`.
 Mac request: `evidence/m0/p0-2/macos-native-selection-test-plan-20261005.md`.
-Mac parity remains pending. No Actions or installed startup changes.
+Mac operator reported parity PASS at
+`b18c28b39428bd87b4117e4bc1b461dc0798ccee`: macOS 27.0.1 arm64,
+Node v24.19.0, Rust/Cargo 1.98.1, pnpm 11.28.0; Desktop **10/10**, helper
+**14/14**, Node **110/110**, no failures/skips. Format, strict Clippy, helper
+build, current arm64 .app packaging, four syntax and diff checks passed;
+all plan/runner exits 0. Compatible baseline/candidate pairs `73913/73921`
+and `73937/73947` committed candidate. Protocol-reject pairs `73959/73967`,
+`73977/73984`, then `73993/74000` rejected real protocol mismatch (helper exit
+2), cleaned candidate and restarted healthy baseline. Parent/executable
+identities matched runner 73910 and owning Desktops. All five clean exits 0,
+PIDs gone, locks/gates released, IPC absent and both intents removed.
+Hidden snapshots passed; physical flash/focus remains unverified. Mac changed
+no files or commits. Evidence:
+`evidence/m0/p0-2/macos-native-selection-evidence-20261005.md`.
+No Actions or installed startup changes on either host.
 Next implementation is interrupted native handover recovery with owned-child
 absence/ambiguous-state refusal. Signing, canonical acceptance, native
 interruption and version-changing update remain open; ADR-0012 stays PROPOSED.

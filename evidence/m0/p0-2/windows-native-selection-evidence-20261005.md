@@ -81,6 +81,7 @@ directory flush error after unlink cannot guarantee journal retention and never
 counts as successful commit/rollback.
 
 No Actions, installed app changes, login/tray interactions or policy changes.
-Mac parity is pending; see `macos-native-selection-test-plan-20261005.md`.
+Mac parity subsequently passed at `b18c28b`; see
+`macos-native-selection-evidence-20261005.md` for the operator report.
 Next slice is interrupted native handover recovery after owned-child absence,
 with structured refusal for ambiguous ownership/state.
