@@ -87,7 +87,9 @@ updater subprocesses: competing commits during staging and after selection
 validation, refusal while intent exists, and simultaneous validated contenders.
 Exactly one simultaneous contender commits; stale callers preserve its selection.
 See `windows-package-process-race-evidence-20261004.md` (45/45 combined tests).
-Mac parity, broad stress and recovery racing an active updater remain open;
+Mac parity passed at `6b8776c` (45/45); see
+`macos-package-process-race-evidence-20261004.md`.
+Broad stress and recovery racing an active updater remain open;
 this does not introduce a native process lock or installed updater.
 
 Windows recovery-fault follow-up passes six deterministic injected cases:

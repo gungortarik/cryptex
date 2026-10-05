@@ -1,5 +1,8 @@
 # Mac task — separate-process package race parity
 
+**Result:** scoped PASS at `6b8776c479efcb3091985a7c90f7987ba74d2e2e`,
+45/45 tests. Evidence: `macos-package-process-race-evidence-20261004.md`.
+
 Read the current handoff and ADR-0012 candidate proposal. Use the clean current
 `m0/p0-2-cursor` source containing this plan and report the full commit SHA.
 Preserve local changes; do not merge/rebase or switch branches without approval.

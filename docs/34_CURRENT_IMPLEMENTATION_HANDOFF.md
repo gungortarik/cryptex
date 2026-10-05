@@ -732,7 +732,7 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
-### Latest separate-process updater slice — Windows PASS, Mac pending
+### Latest separate-process updater slice — Windows and Mac scoped PASS
 
 Four new tests run two actual owned Node updater subprocesses against one fresh
 outside-repository package fixture. IPC barriers control staging and selection
@@ -745,6 +745,13 @@ Windows: **41 transaction + 4 health adapter = 45/45 PASS**, no failures/skips.
 Syntax checks and diff checks passed. No engine behavior changed for this slice.
 Evidence: `evidence/m0/p0-2/windows-package-process-race-evidence-20261004.md`.
 Mac plan: `evidence/m0/p0-2/macos-package-process-race-test-plan-20261004.md`.
+Mac operator/Codex reported PASS at
+`6b8776c479efcb3091985a7c90f7987ba74d2e2e`, macOS 27.0.1 arm64,
+Node v24.19.0: 41 transaction + 4 health adapter = 45/45, no failures/skips,
+exit 0. All four process races, previous recovery/concurrency tests and five
+SIGKILL boundaries passed; three syntax checks and diff check passed. No fixture
+remained, owned-child cleanup was error-free, and Mac changed no files.
+Evidence: `evidence/m0/p0-2/macos-package-process-race-evidence-20261004.md`.
 These are four controlled process races, not broad stress or an OS process lock.
 Recovery competing with an active updater remains unverified. Native handover,
 signing, power-loss durability, canonical-data acceptance and ADR-0012 remain
