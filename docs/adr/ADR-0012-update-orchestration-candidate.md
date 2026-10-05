@@ -82,6 +82,13 @@ status. Mac real-health parity and the remaining native integration gates remain
 
 ## Gates before production integration or ADR acceptance
 
+The approved pilot now has a separate persistent OS handover gate for cooperating
+callbacks (`80b727f`). Windows Rust 14/14 and Node 86/86 pass, with exception/EOF/
+SIGKILL release and live contender refusal. Mac gate parity is pending. This
+primitive does not yet gate existing Desktop/startup/update entry points or
+establish actual binary handover. See `windows-native-handover-gate-evidence-20261005.md`
+and `macos-native-handover-gate-test-plan-20261005.md`.
+
 Current continuation plan: `native-package-handover-plan-20261005.md` in the
 P0-2 evidence directory. The project owner explicitly approved the isolated native
 complete-package handover pilot in the Windows conversation. The first complete

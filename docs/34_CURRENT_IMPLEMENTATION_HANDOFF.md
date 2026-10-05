@@ -762,8 +762,18 @@ arm64, Node v24.19.0 and Rust 1.98.1. Locked helper build, three syntax and diff
 checks passed, including POSIX modes and symlink refusal. No fixture/child/flush
 error was reported; Mac changed no files. Result:
 `evidence/m0/p0-2/macos-native-package-tree-evidence-20261005.md`.
-Next implementation is whole-handover OS exclusion and owned Desktop shutdown/
-successor startup. No actual handover, signing or canonical acceptance is claimed.
+Native OS gate primitive at `80b727f` now holds a persistent fs2 lock across
+cooperating pilot callbacks; startup/handover contenders refuse it, callback
+exceptions release it, and killed helpers invalidate the lease. Existing Desktop
+startup/transaction paths are not integrated and arbitrary callbacks are not
+automatically canceled. Each later phase must honor abort and check `assertHeld`.
+Windows: Rust **14/14**, Node **86/86 PASS** twice on final source, strict Clippy,
+locked build, format, two syntax and diff checks PASS. Earlier helper spawn
+`UNKNOWN` failure is retained in evidence, with no established cause or bypass.
+Evidence: `evidence/m0/p0-2/windows-native-handover-gate-evidence-20261005.md`.
+Mac plan: `evidence/m0/p0-2/macos-native-handover-gate-test-plan-20261005.md`.
+Next implementation is isolated owned Desktop shutdown/successor startup using
+that gate. No actual handover, signing or canonical acceptance is claimed.
 
 ### Latest native interrupted-claim cleanup — Windows and Mac scoped PASS
 

@@ -2,6 +2,16 @@
 
 ## Headless package transaction candidate
 
+The separate `package-handover-gate.mjs` adapter calls the new Rust
+`hold-native-handover-gate --root PATH` helper for owned
+`m0-native-handover-pilot` roots. Build the helper before running its seven process
+tests. `withNativeHandoverGate` holds the persistent OS lock across a cooperating
+callback and releases on completion/error; a second caller gets `HANDOVER_BUSY`.
+Check the lease's `assertHeld()` before each phase and after awaits, and honor its
+abort signal. The adapter cannot cancel arbitrary callback code. Startup and
+transaction callers must explicitly adopt the same gate in the later handover
+slice; existing Desktop/login/update paths are not gated by this adapter.
+
 The approved native handover pilot starts with a separate complete-tree inventory
 in `package-native-tree.mjs`. It preserves resource files, empty directories and
 POSIX modes, refuses unsafe paths/links and rechecks source and staged bytes.
