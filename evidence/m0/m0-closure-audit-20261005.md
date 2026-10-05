@@ -6,6 +6,14 @@ No M1 work is authorized by this audit. Checkboxes must follow verified evidence
 
 ## Current gate inventory
 
+Current continuation: Mac final namespace parity PASS at `7f5ab2b`: **14/14
+debug + 14/14 release + 4/4 CLI**, all checks exit 0 and fixture cleanup clean.
+See `p0-2/macos-release-probe-root-evidence-20261005.md`. Corrected-candidate
+scoped implementer review completed, retaining the production residual ledger.
+Earlier namespace/partial-review blockers below are historical. Candidate is
+ready for one required final CI run; verifier/human diff/ADR acceptance and M0
+completion remain open. No new physical Mac task requested.
+
 Latest actionable audit: `m0-final-gate-audit-20261005.md` at source `8437559`.
 
 Namespace correction now implemented at `ad44e82`; final Windows source

@@ -100,8 +100,8 @@ open; product distribution and production canonical safety are not inferred.
 - [x] Lifecycle/update behavior does not damage canonical data.
   - Evidence: both-OS changed-package and native-interruption reports preserve accepted-codec synthetic immutable sealed packs/manifest after each scenario. Scoped M0 fixture safety under the revised proposal; production canonical schema/signatures remain outside M0 and unverified.
 
-- [ ] Required lifecycle behavior was verified on macOS and Windows.
-  - Evidence: dated both-OS lifecycle/tray/login/reconnect and native pair/recovery proofs exist. Ordinary release probe runtime still defaults to product namespace; development-root correction and its parity remain open in the final audit.
+- [x] Required lifecycle behavior was verified on macOS and Windows.
+  - Evidence: both-OS lifecycle/tray/login/reconnect and native pair/recovery proofs indexed in the final audit. Namespace correction now has Windows 21/21 debug + release and Mac 14/14 debug + release evidence; no final installed/signed lifecycle claim.
 
 - [ ] ADR-0012 is ACCEPTED with the selected supervision/update approach.
   - Evidence:
@@ -172,8 +172,8 @@ open; product distribution and production canonical safety are not inferred.
 
 ## F. Cross-platform, security and failure verification
 
-- [ ] Applicable M0 platform-sensitive behavior is verified on both macOS and Windows.
-  - Evidence: scoped existing proofs indexed in the final audit; release development-root correction/parity remains open. No new Mac rerun of previously passed behavior is required.
+- [x] Applicable M0 platform-sensitive behavior is verified on both macOS and Windows.
+  - Evidence: scoped proof matrix in final audit plus both-OS release-probe-root evidence; Mac final parity source 7f5ab2b. Final integrated CI and human acceptance remain separate.
 
 - [x] No device has been made canonical master.
   - Evidence: final audit reviews health-only daemon IPC, synthetic benchmark fixtures and equal isolated Syncthing identities. No production brain/identity or master-device behavior implemented.
@@ -181,8 +181,8 @@ open; product distribution and production canonical safety are not inferred.
 - [x] Runtime data remains outside the source repository.
   - Evidence: both-OS native-interruption, changed-package and managed/upgrade reports retain fresh proof roots outside Git; source path guards reject in-repository fixture roots. Historical product-namespace runtimes are also outside Git.
 
-- [ ] Development runtime data uses Cryptex-Dev app-data roots.
-  - Evidence: debug/pilot/transaction/Syncthing use Cryptex-Dev. `ad44e82` corrects ordinary release to Cryptex-Dev/runtime/p0-2; Windows 21/21 debug + 21/21 release and CLI 4/4 PASS at `fc79f25`. New narrow Mac parity remains pending; historical product-root runs are not relabeled or deleted. See `evidence/m0/p0-2/windows-release-probe-root-evidence-20261005.md`.
+- [x] Development runtime data uses Cryptex-Dev app-data roots.
+  - Evidence: debug/pilot/transaction/Syncthing use Cryptex-Dev. `ad44e82` corrects ordinary release to Cryptex-Dev/runtime/p0-2; Windows 21/21 debug + release, Mac 14/14 debug + release, both CLI 4/4 PASS. Both-OS release-probe-root evidence records paths; historical product-root runs remain explicit and were not moved/deleted.
 
 - [x] Canonical writers remain within the permitted daemon boundary for implemented M0 behavior.
   - Evidence: health-only IPC and Desktop supervision/snapshots; Golden uses explicit synthetic benchmark codec and transport fixtures are synthetic only. No production canonical write API or direct client event writer introduced; final audit records limits.
@@ -190,8 +190,8 @@ open; product distribution and production canonical safety are not inferred.
 - [x] Relevant failure paths have tests or reproducible verification.
   - Evidence: final audit indexes both-OS protocol rejection/native rollback, actual pre-successor updater kill, injected I/O/claim/owner/process race regressions and sidecar negative tests. No machine power-loss or production migration failure claim.
 
-- [ ] Relevant security checks/review are complete.
-  - Evidence: partial implementer review in `evidence/m0/m0-security-notice-acceptance-review-20261005.md`; renderer executable selection corrected with Windows/Mac regressions PASS. Owner approved preparing boundary revisions; scoped review and human acceptance remain open. Production residuals are tracked separately, not labeled PASS.
+- [x] Relevant security checks/review are complete.
+  - Evidence: scoped implementer review completion in `evidence/m0/m0-security-notice-acceptance-review-20261005.md`; both findings corrected with Windows/Mac regressions. Production residual ledger retained under revised proposals; independent verifier/human approval and final CI remain open.
 
 - [x] No real personal/Cortex data was used for M0 testing.
   - Evidence: P0-1 synthetic benchmark protocol plus both-OS Golden/native/managed Syncthing evidence explicitly restricts input to synthetic fixtures. No Cortex ingestion or personal memory API implemented; retained corpora not regenerated in this audit.
@@ -210,8 +210,8 @@ open; product distribution and production canonical safety are not inferred.
 - [x] Relevant integration tests pass.
   - Evidence: actual both-OS native pair selection/recovery and Syncthing managed/upgrade runners, current Windows Node 160/160 + 8/8 and Mac focused CLI 4/4 with prior full suites retained. Final CI remains open.
 
-- [ ] Required cross-platform tests pass.
-  - Evidence: existing parity proofs PASS at exact sources; release development-root correction needs new focused parity, then final integrated CI.
+- [x] Required cross-platform tests pass.
+  - Evidence: existing parity proofs PASS at exact sources; final path correction adds Mac 14/14 debug + release + 4/4 CLI at 7f5ab2b and Windows 21/21 debug + release + 4/4 CLI. Final integrated CI is a separate unchecked requirement.
 
 - [ ] Required CI checks are green at the M0 completion commit.
   - Evidence:
@@ -219,8 +219,8 @@ open; product distribution and production canonical safety are not inferred.
 - [ ] Verifier reviewed M0 acceptance criteria against actual repository/runtime state.
   - Evidence: implementer audit in `evidence/m0/m0-final-gate-audit-20261005.md`, including two retained Windows report digest spot checks. This is not independent verifier/human acceptance.
 
-- [ ] Security review is complete for security-sensitive M0 work.
-  - Evidence:
+- [x] Security review is complete for security-sensitive M0 work.
+  - Evidence: narrow implementer security/notice review completion above; original findings/failures and production obligations retained. This is not independent verifier, human approval or full production certification.
 
 - [ ] Human diff/review is complete.
   - Evidence:

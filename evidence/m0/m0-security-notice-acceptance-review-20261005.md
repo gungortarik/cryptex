@@ -1,7 +1,7 @@
 # M0 security, notice and acceptance review
 
-Status: **PARTIAL — renderer launch issue corrected with both-platform regression
-proof; release development-root finding and remaining acceptance gates open**.
+Status: **SCOPED M0 IMPLEMENTER REVIEW COMPLETE — findings corrected with
+both-platform regression proof; final CI and verifier/human acceptance open**.
 Implementation source `82c4d32`; final implementer audit at `8437559` in
 `m0-final-gate-audit-20261005.md` records the path finding and retained-report
 spot checks. No independent verifier or production security certification.
@@ -97,3 +97,20 @@ not been established. They remain explicit prerequisites before distribution.
 No Actions run for this review. M0 remains **IN PROGRESS**; ADR-0004/0012 remain
 **PROPOSED**. Final CI waits for the remaining review decisions
 to avoid paying for a knowingly incomplete completion candidate.
+
+## Corrected-candidate review completion
+
+Mac namespace parity at `7f5ab2bdaa72e213f5cb16312bca0292c436db18`:
+14/14 debug + 14/14 release + 4/4 CLI and format/both strict lint/release build/
+diff PASS; all exits 0, no skipped/ignored tests, error-free cleanup. Finding 7
+above is now closed for current-source M0 defaults. Finding 1 remains corrected.
+No migration/installed-state/physical-login claim is added.
+
+Implementer rechecked corrected path selection, backend executable authority,
+unchanged pilot isolation and release error recording. No new blocker identified
+for the narrow synthetic M0 surface. Whole-read IPC availability, production
+secret/permission review, publisher/distribution/notice completeness and real
+canonical safety remain explicit product requirements under the owner-authorized
+proposals, not waived or labeled PASS. Earlier PARTIAL statements are historical.
+This completes implementer security review only, not independent verifier/human
+approval or production certification. Final CI can now run on the stable candidate.

@@ -1,6 +1,18 @@
 # M0 final gate audit
 
-**Result: NOT READY for final CI/completion candidate.**
+**Current result: READY for final CI; NOT COMPLETE.** Original audit below
+was NOT READY at `8437559`; its namespace finding is corrected and now verified
+on both OSes. Mac PASS at `7f5ab2bdaa72e213f5cb16312bca0292c436db18` records
+14/14 debug + 14/14 release + 4/4 CLI, all lint/format/build/diff checks exit 0.
+See `p0-2/macos-release-probe-root-evidence-20261005.md`.
+
+Corrected-candidate implementer review rechecked the path diff, compiled-default
+tests, backend-selected sidecar validation, unchanged validated pilot authority,
+release-only error-recording condition and final CI job selectors. No new
+implementation blocker identified within the revised narrow M0 scope. Security
+residuals below remain mandatory product gates, not newly tested guarantees.
+Final CI and independent verifier/human diff/ADR acceptance are still open.
+The mapping below preserves original audit observations and provenance.
 Reviewed source: `8437559`; Windows implementer audit on 2026-10-05.
 Authority: Master Spec, accepted ADR-0007/0013, M0 contract, Definition of Done.
 Owner authorized preparing scoped ADR-0012/0004 revisions; both remain PROPOSED.

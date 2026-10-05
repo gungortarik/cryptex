@@ -52,6 +52,19 @@ Integration update:
 
 ## M0 closure continuation (2026-10-05)
 
+Latest Mac namespace parity reported **PASS** at
+`7f5ab2bdaa72e213f5cb16312bca0292c436db18`: macOS 27.0.1 arm64,
+Rust/Cargo 1.98.1, Node v24.19.0. Desktop **14/14 debug + 14/14 release**, CLI
+**4/4**, both strict Clippy profiles/format/locked release/diff PASS; all exits 0,
+no failures/skips/ignored, cleanup error-free. Compiled defaults use Cryptex-Dev
+in both profiles; no app/daemon, runtime/startup/config or repo changes.
+Evidence: `evidence/m0/p0-2/macos-release-probe-root-evidence-20261005.md`.
+This supersedes pending namespace parity below. Corrected-candidate implementer
+review is complete for the narrow M0 boundaries with production residuals retained.
+Next: one final CI run at the clean pushed candidate, then verifier/human diff
+review and explicit ADR acceptance. No new Mac physical plan is requested.
+ADR-0012/0004 remain PROPOSED and M0 IN PROGRESS.
+
 Latest correction: `ad44e82` moves ordinary M0 release probe roots to
 Cryptex-Dev/runtime/p0-2 on both OSes; `fc79f25` fixes a discovered release-only
 strict Clippy warning without changing startup-error behavior. Windows final
