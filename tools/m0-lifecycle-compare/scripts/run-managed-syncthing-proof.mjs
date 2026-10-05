@@ -4,6 +4,7 @@ import path from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import { assertExperimentLocation, digest, PackageError } from './package-transaction.mjs';
 import { startSyncthingPilot } from './syncthing-pilot.mjs';
+import { stageSyncthingBundle, verifySyncthingBundle } from './syncthing-bundle.mjs';
 
 async function until(check, code) {
   const deadline = Date.now() + 45000;
@@ -16,12 +17,16 @@ async function main() {
     if (!['--root', '--binary'].includes(args[index]) || !args[index + 1] || Object.hasOwn(values, args[index])) throw new PackageError('INVALID_MANAGED_PROOF_ARGS', 'Unique root/binary flags required');
     values[args[index]] = args[index + 1];
   }
-  const root = values['--root']; const binary = values['--binary'];
-  if (!path.isAbsolute(root ?? '') || !path.isAbsolute(binary ?? '')) throw new PackageError('INVALID_MANAGED_PROOF_ARGS', 'Absolute fresh app-data root/binary required');
+  const root = values['--root']; const inputBinary = values['--binary'];
+  if (!path.isAbsolute(root ?? '') || !path.isAbsolute(inputBinary ?? '')) throw new PackageError('INVALID_MANAGED_PROOF_ARGS', 'Absolute fresh app-data root/binary required');
   const base = process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA ?? '', 'Cryptex-Dev', 'p0-4')
     : path.join(process.env.HOME ?? '', 'Library', 'Application Support', 'Cryptex-Dev', 'p0-4');
   if (path.dirname(root) !== base) throw new PackageError('INVALID_MANAGED_PROOF_ROOT', 'Fresh direct child of Cryptex-Dev p0-4 required');
   assertExperimentLocation(root); fs.mkdirSync(root);
+  // Resolve an explicit operator-supplied OS package link once, then run only
+  // the exact copied package role. No PATH/developer environment resolution.
+  const bundle = stageSyncthingBundle(fs.realpathSync(inputBinary), path.join(root, 'native-package'));
+  const binary = bundle.binary;
   const globalConfig = process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA, 'Syncthing', 'config.xml')
     : path.join(process.env.HOME, 'Library', 'Application Support', 'Syncthing', 'config.xml');
   const globalBefore = fs.existsSync(globalConfig) ? digest(globalConfig) : null;
@@ -111,6 +116,7 @@ async function main() {
       folder_pause_resume: true, status_idle: true, versioning_visible: true, retained_config_same_version_restart: true,
       early_restart_shutdown_pid: earlyRestartPid, early_restart_clean_shutdown: true,
       restart_pairing_transfer: true, actual_version_upgrade_verified: false, conflict_visibility_verified: true, cross_host_verified: false, bundled_distribution_verified: false,
+      staged_native_package_verified: true, staged_license_attribution_verified: true,
       binary_sha256: digest(binary), version: first.version };
   } catch (cause) { workFailure = cause; throw cause; }
   finally {
@@ -123,9 +129,10 @@ async function main() {
     if (results.some(result => result.status === 'rejected')) throw new PackageError('MANAGED_SYNCTHING_CLEANUP_FAILED', 'Owned process clean shutdown failed', { cause: new AggregateError([...(workFailure ? [workFailure] : []), ...results.filter(result => result.status === 'rejected').map(result => result.reason)]) });
   }
   const globalAfter = fs.existsSync(globalConfig) ? digest(globalConfig) : null;
+  verifySyncthingBundle(bundle.root);
   if (globalBefore !== globalAfter) throw new PackageError('GLOBAL_SYNCTHING_CONFIG_CHANGED', 'Observed user-global config changed; cause requires inspection');
   const report = { schema: 1, scope: 'm0-managed-syncthing-pilot', platform: process.platform, arch: process.arch, node: process.version,
-    measurements, stopped, shutdown_transport: 'pinned-native-cli', global_config_unchanged: true, production_api_secret_storage_verified: false, canonical_data_acceptance: false };
+    measurements, stopped, staged_package: bundle.manifest, shutdown_transport: 'pinned-native-cli', global_config_unchanged: true, production_api_secret_storage_verified: false, canonical_data_acceptance: false };
   fs.writeFileSync(path.join(root, 'managed-syncthing-report.json'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
   console.log(JSON.stringify(report));
 }
