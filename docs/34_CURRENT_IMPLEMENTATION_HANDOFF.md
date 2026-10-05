@@ -78,6 +78,20 @@ Combined Mac plan:
 `evidence/m0/p0-2/macos-native-interruption-test-plan-20261005.md`.
 Mac parity pending. No Actions or global Syncthing/startup changes.
 
+P0-4 continuation `7ff485d` adds an external pinned **2.1.5** native controller
+and actual two-profile Windows runner. Auth rejection 403/403, pairing, native
+history, exact two-content conflict preservation, same-version restart/new
+transfer and four clean monitor exits PASS. An initial 8-second stop bound was
+shorter than upstream's native 10-second connection close; source-based 25-second
+budget now passes immediate restart shutdown at ~10.1 seconds without removing
+exit/PID/database checks. Historical forced-cleanup failures remain recorded.
+Combined Node **130/130** plus storage **5/5**, changed syntax/diff PASS.
+Evidence and explicit Mac task are under `evidence/m0/p0-4/`.
+ADR-0004 addendum is **PROPOSED**, not accepted. Notice inventory is retained
+under `third_party/syncthing/2.1.5/`; actual bundled distribution, changed-version
+compatibility and production secret storage are still unproved. No P0-4 or M0
+completion claim, unrelated/global process/config change or Actions run.
+
 ## P0-2 evidence status — verified slices; acceptance open
 
 ### macOS
