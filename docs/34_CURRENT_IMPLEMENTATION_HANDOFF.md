@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-**Snapshot date:** 2026-10-03
+**Snapshot date:** 2026-10-05
 **Current milestone:** M0 — Foundation / P0-2 Background Runtime & Atomic Update Lifecycle  
 **Current branch:** `m0/p0-2-cursor`  
 **Implementation base before this handoff:** `8d71044 docs: close macOS physical window proof`
@@ -44,10 +44,39 @@ Decision:
 - hybrid packaging was not selected
 - the benchmark profile's `segment_events=1000` is not a frozen production constant
 
-Important branch note:
-- the current P0-2 branch forked before final P0-1 acceptance landed
-- stale P0-1 references on this branch must not be silently "fixed" by inventing or recreating the P0-1 integration
-- integrate branches only through an explicit approved integration step
+Integration update:
+- the owner explicitly approved normal merge of `origin/m0/p0-1-cursor`
+- merge `cb9069e` integrates accepted P0-1 tip `6d4d10a`
+- ADR index conflict preserves accepted IPC, proposed lifecycle and accepted
+  ADR-0013 together; no retained corpus changed
+
+## M0 closure continuation (2026-10-05)
+
+The owner explicitly authorized completing the entire M0 milestone. Closure
+audit: `evidence/m0/m0-closure-audit-20261005.md`. P0-4 managed Syncthing and its
+ADR-0004 addendum remain unproved; P0-1 transport evidence does not close them.
+Do not declare M0 complete or start M1 based only on the P0-2 pilot.
+
+Native interruption `7d7a60e` adds schema-2 intent ownership, absent-child checks
+and exclusive recovery claim. Live/ambiguous PID, missing evidence and previous
+recovery claim refuse mutation/startup. A killed updater at the selected but
+pre-successor-launch boundary released the native gate; actual baseline restart
+and protocol-1 health PASS. Interrupted recovery claims remain inspection-only.
+Golden/Doctor foundation `7daadaa` generates deterministic synthetic sealed packs
+with the accepted P0-1 codec and checks actual IPC/PID/held-lock health, retaining
+`not-implemented` for canonical store/Syncthing checks. Fixture membership/hashes
+were unchanged across real recovery. No M2 semantics were added.
+
+Windows integrated checks: Rust **89/89**, lifecycle/foundation Node **123/123**,
+storage capture Node **5/5**, workspace format/strict Clippy/locked build PASS.
+The first workspace run found two parallel Mode B tests competing for the one
+user IPC endpoint; their lifetimes now serialize without removing assertions.
+Historical failure is preserved. Actual recovered pair `30972/29584`, Doctor
+healthy, clean exit 0, lock released and endpoint absent. Evidence:
+`evidence/m0/p0-2/windows-native-interruption-evidence-20261005.md`.
+Combined Mac plan:
+`evidence/m0/p0-2/macos-native-interruption-test-plan-20261005.md`.
+Mac parity pending. No Actions or global Syncthing/startup changes.
 
 ## P0-2 evidence status — verified slices; acceptance open
 

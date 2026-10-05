@@ -31,6 +31,12 @@ baseline restart PASS). Mac parity request:
 `macos-native-selection-test-plan-20261005.md`. Mac result:
 `macos-native-selection-evidence-20261005.md` (24 Rust, 110 Node; compatible
 commit and rejected-health baseline restart PASS).
+Native interrupted selection and Golden/Doctor foundation:
+`windows-native-interruption-evidence-20261005.md` (Windows 89 Rust,
+123 lifecycle/foundation Node + 5 storage Node; actual pre-launch updater kill,
+baseline restart and sealed synthetic fixture preservation PASS).
+Combined Mac request: `macos-native-interruption-test-plan-20261005.md`.
+Whole-M0 gate audit: `../m0-closure-audit-20261005.md`; M0 remains IN PROGRESS.
 
 - `docs/11_DAEMON_IPC_RUNTIME.md`
 - `docs/23_REQUIRED_TECHNICAL_SPIKES.md`
