@@ -101,6 +101,22 @@ Combined Node **137/137**, managed **14/14**, syntax/diff PASS. Mac plan now exp
 **15/15** managed tests including its POSIX mode check. Installed distribution,
 publisher authentication and actual version-change compatibility remain open.
 
+P0-2 changed-package follow-up `309bb66`: native runner accepts a separate,
+fully inventoried candidate and refuses unchanged/resource-only native proof.
+Windows actual baseline Desktop metadata 0.0.0 to trial 0.0.1 (temporary external
+config) passes complete pair selection and actual protocol-rejected rollback.
+Both Desktop and daemon payload hashes differ in this Windows retained pair.
+Five owned sessions clean exit 0 with correct slot/parent paths, protocol-1 health,
+released locks and absent IPC. Accepted-codec synthetic sealed packs/manifest
+remain unchanged after each scenario. Combined Node **143/143**, storage **5/5**,
+release Desktop **17/17**, workspace format/strict Clippy/syntax/diff PASS.
+Evidence/task: `windows-changed-native-package-evidence-20261005.md` and
+`macos-changed-native-package-test-plan-20261005.md` under `evidence/m0/p0-2/`.
+Repo product version remains 0.0.0; no installed updater or semantic daemon
+version migration/signature/canonical-production acceptance is claimed. Mac
+changed-package parity remains pending alongside the other two Mac plans.
+ADR-0012 PROPOSED and M0 IN PROGRESS. No Actions or startup/install changes.
+
 ## P0-2 evidence status — verified slices; acceptance open
 
 ### macOS

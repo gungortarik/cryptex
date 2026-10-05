@@ -193,3 +193,11 @@ See:
 - `windows-instrumented-login-preparation-20261002.md` (verified observer/preparation controls, compact Run command limit guard, and armed `wl-1002a` experiment; actual next login and exit cause remain pending)
 - `windows-instrumented-login-result-20261002.md` (regular Windows logon confirmed, but neither Cryptex Run value produced an observed start in 11.4 minutes; observer output absent; values cleaned; daemon exit cause remains open)
 - `windows-reboot-login-survival-repeat-20261003.md` (second physical reboot/login, 601-second daemon survival, visible test console cause, and exact registration/process cleanup)
+
+## Changed native package continuation
+
+- [Windows changed-package evidence](windows-changed-native-package-evidence-20261005.md)
+- [Mac changed-package task](macos-changed-native-package-test-plan-20261005.md)
+
+This follow-up uses different actual native payloads and sealed-fixture
+preservation; installed/signed updater and ADR-0012 acceptance remain open.

@@ -9,7 +9,7 @@ No M1 work is authorized by this audit. Checkboxes must follow verified evidence
 | Gate | Verified foundation | Remaining closure work |
 | --- | --- | --- |
 | P0-1 | Accepted ADR-0013 and physical cross-platform benchmark evidence integrated via approved normal merge `cb9069e` from `6d4d10a` | Confirm integrated branch's required checks; no corpus regeneration |
-| P0-2 | Both OS lifecycle/IPC/tray/login and complete native same-byte selection/rollback proofs | Mac native interruption/foundation parity; meaningful changed-package compatibility; remaining native interruption/controlled-error review; canonical fixture acceptance and ADR-0012 decision |
+| P0-2 | Both OS lifecycle/IPC/tray/login and same-byte selection/rollback; Windows changed-byte native pair selection/rollback with sealed-fixture preservation | Mac native interruption/foundation and changed-package parity; remaining native interruption/controlled-error review; signing/installed updater and canonical fixture acceptance; ADR-0012 decision |
 | P0-3 | Accepted ADR-0007 implementation addendum; physical transport, negotiation, roles, malformed frames, ACL and reconnect evidence | Final integrated security/acceptance review; do not expand production APIs |
 | P0-4 | Windows pinned 2.1.5 managed lifecycle, two isolated native profiles, auth/pairing/pause/status/history/conflict, retained restart and clean stop; staged native role/notice preservation and proposed ADR-0004 addendum | Mac parity, installed distribution/notice review, actual version-change compatibility, secret boundary and addendum acceptance |
 | Golden Brain | Deterministic synthetic sealed-pack foundation and Windows preservation proof | Mac parity and review of fixture scope; production event schema is outside M0 |
@@ -58,3 +58,10 @@ Windows managed spike is now recorded under `p0-4/`; global profile digest staye
 unchanged during successful runs. Source-based stop-budget correction preserves
 historical forced cleanup as failure. Its Mac task is independent of the still
 pending native interruption/Golden/Doctor parity plan; both are needed.
+
+Changed native package Windows proof now PASS at `309bb66`, with actual different
+Desktop/daemon hashes, compatible candidate commit and real protocol-rejected
+rollback. Its Mac task is `p0-2/macos-changed-native-package-test-plan-20261005.md`.
+Temporary candidate Desktop version metadata does not change the repository
+release version. Installed/signed upgrade and production canonical acceptance
+remain unclaimed. Current Node checks are **143/143** plus storage **5/5**.
