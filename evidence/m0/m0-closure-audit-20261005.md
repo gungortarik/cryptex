@@ -6,14 +6,16 @@ No M1 work is authorized by this audit. Checkboxes must follow verified evidence
 
 ## Current gate inventory
 
-**Current blocking result:** Mac native visual review FAIL (blank renderer);
-see `macos-native-foundation-ui-blank-failure-20261005.md`. Corrective source
+**Latest result:** the Mac blank-renderer failure is resolved for the fresh
+embedded Tauri `.app` package path; scoped visual PASS. Preserve the original
+failure at `macos-native-foundation-ui-blank-failure-20261005.md`; follow-up
+evidence: `macos-embedded-frontend-visual-evidence-20261005.md`. Corrective source
 `65ce7b9` has Windows debug 23/23, embedded release 24/24 and CLI 4/4 PASS,
-strict lint/format/package and targeted guard/hidden-session proof. Focused
-independent reviews PASS. Mac fresh embedded package/visual revalidation and
-new-source final CI remain pending. Use
-`macos-embedded-frontend-revalidation-plan-20261005.md` next. Historical checks
-below do not verify this behavior/workflow change. M0 is still IN PROGRESS.
+strict lint/format/package and targeted guard/hidden-session proof. Mac debug
+16/16, embedded release 17/17, CLI 4/4, focused lint/package and visual review
+reported PASS. Focused independent reviews PASS. Final CI at the updated source
+and human diff/ADR acceptance remain pending. Earlier checks below are historical
+where they predate the behavior/workflow change. M0 is still IN PROGRESS.
 
 ### Earlier candidate inventory
 
@@ -22,11 +24,11 @@ Latest corrected CI result: **SUCCESS** at exact source `5c07411`, run
 First missing-benchmark failure, cancellation and correction remain recorded in
 `m0-final-ci-attempt-20261005.md`. This supersedes pending-CI statements below.
 Independent verifier/security review subsequently completed at `3de9d00`; see
-`m0-independent-review-results-20261005.md`. Remaining: scoped native foundation
-UI visual review on Mac (actual Windows review now PASS), human diff/ADR acceptance and final
-completion/PR checklist reconciliation. No old physical lifecycle suite repetition
-is requested. Documentation-only recording HEAD is not misrepresented
-as the exact tested SHA. M0 remains IN PROGRESS; M1 remains unauthorized.
+`m0-independent-review-results-20261005.md`. Mac and Windows scoped native
+foundation UI visual reviews now PASS. Remaining: fresh final CI, human diff/ADR
+acceptance and final completion/PR checklist reconciliation. No old physical
+lifecycle suite repetition is requested. M0 remains IN PROGRESS; M1 remains
+unauthorized.
 
 Current continuation: Mac final namespace parity PASS at `7f5ab2b`: **14/14
 debug + 14/14 release + 4/4 CLI**, all checks exit 0 and fixture cleanup clean.

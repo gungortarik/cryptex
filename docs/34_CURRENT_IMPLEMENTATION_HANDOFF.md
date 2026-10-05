@@ -52,9 +52,11 @@ Integration update:
 
 ## M0 closure continuation (2026-10-05)
 
-**Current blocker: Mac native renderer FAIL**, entirely blank operator window
-at checkout `dee43e2` / retained raw Cargo release `7f5ab2b`; clean shutdown is not a
-visual pass. See `evidence/m0/macos-native-foundation-ui-blank-failure-20261005.md`.
+Mac native renderer was initially **FAIL**, entirely blank in checkout `dee43e2` /
+retained raw Cargo release `7f5ab2b`; that failure remains preserved. A fresh
+embedded Tauri `.app` at checkout `e755601` has now produced a **SCOPED PASS**:
+rendered operator captures and clean owned-session shutdown. See
+`evidence/m0/macos-embedded-frontend-visual-evidence-20261005.md`.
 Pinned Tauri frontend mode depends on `tauri/custom-protocol`, not Rust release
 optimization. Raw release in the old plan omitted it and can use devUrl port 1420.
 Source `65ce7b9` adds typed pre-Tauri wrong-mode release rejection and explicit
@@ -64,13 +66,12 @@ Windows 23 debug / 24 release / 4 CLI, strict lint/format/package build, wrong-m
 and supported hidden session/clean exit 0 PASS. No new visible Windows UI or Actions.
 Evidence: `evidence/m0/windows-embedded-frontend-mode-evidence-20261005.md`.
 
-**Next Mac task:** `evidence/m0/macos-embedded-frontend-revalidation-plan-20261005.md`.
-Use new Tauri-built `.app`, not retained `7f5ab2b` raw Cargo executable. Mac 16 debug /
-17 release / 4 CLI, targeted rejection and one operator visual session required.
-Exact Mac cause/recovery still unconfirmed; if still blank, preserve FAIL.
-No old suites or security changes. Then batch required new-source final CI and
-human ADR/diff acceptance. Earlier cloud result below is historical and does not
-verify `65ce7b9`. M0 remains IN PROGRESS; no merge/M1/ADR acceptance inferred.
+Mac scoped plan completed: 16 debug / 17 release / 4 CLI, targeted rejection and
+fresh-package visual review reported PASS. Raw Mac artifacts were not copied for
+independent re-hashing. Next, run one required final CI on the clean current
+source, then reconcile checklist/ADR and request the remaining human acceptance.
+Earlier cloud result below is historical and does not verify `65ce7b9`. M0
+remains IN PROGRESS; no merge/M1/ADR acceptance inferred.
 
 ### Earlier candidate CI and review state
 
@@ -94,7 +95,7 @@ Windows native foundation UI review now scoped PASS: actual PID19376/1116,
 matching renderer health.pong, readable wrapping/reachable controls and retained
 screenshots; real Quit clean exit0, processes/lock/IPC/gate clean. Owner coordinated
 left-display placement. See `evidence/m0/m0-foundation-ui-review-20261005.md`.
-Next: **Mac-only** narrow native foundation visual review under
+Historical before corrected package revalidation: **Mac-only** narrow native foundation visual review under
 `evidence/m0/m0-native-foundation-ui-review-plan-20261005.md`; do not repeat old
 Windows/Mac login/tray/upgrade suites. Then explicit human diff/ADR acceptance
 and final-source CI/checklist reconciliation. Windows proof is not Mac visual proof.

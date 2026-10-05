@@ -93,16 +93,19 @@ theme/DPI/production design acceptance was not inferred.
 - **SCOPED PASS:** current renderer layout/read-only delta in the observed Windows-host browser.
 - **SCOPED PASS:** actual Windows native foundation visual review and clean
   owned-session cleanup, with populated long path/status and reachable controls.
-- **FAIL / OPEN:** Mac operator confirms entirely blank renderer in subsequent
-  fallback. See `macos-native-foundation-ui-blank-failure-20261005.md` and new
-  `macos-embedded-frontend-revalidation-plan-20261005.md`. Proper package fix
-  must render before accepting Mac UI. Earlier automation-only result:
+- **SCOPED PASS:** Mac operator confirms the fresh `65ce7b9` Tauri `.app`
+  rendered and supplied top/health and scrolled-bottom captures, with owned
+  session cleanup. Package and capture hashes are reported in
+  `macos-embedded-frontend-visual-evidence-20261005.md`; raw Mac files were not
+  transferred here for independent re-hashing. The initial blank failure is
+  retained in `macos-native-foundation-ui-blank-failure-20261005.md`. Earlier
+  automation-only result:
   Attempt at checkout9752798 with retained matching-source build7f5ab2b hit
   Computer Use `Invalid app`; health/clean shutdown succeeded but no images.
   See `macos-native-foundation-ui-attempt-20261005.md`; operator captures needed.
 - **OUT OF SCOPE:** broad product visual design/P1 shell, theme/high-DPI/Retina
   matrix and production Health/Memory/navigation.
 
-Do not mark the both-platform UI-review gate complete before the Mac result.
-Continuation: `m0-native-foundation-ui-review-plan-20261005.md`. No full suite,
-old login/tray tests or Actions repetition is requested for this remaining review.
+Both-platform scoped foundation UI review is complete. This does not include a
+theme/DPI matrix or broad product shell review. No full suite or old login/tray
+tests are repeated for this gate.

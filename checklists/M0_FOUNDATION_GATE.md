@@ -17,11 +17,11 @@ Retained proofs are scoped to M0 synthetic foundation behavior. Candidate CI and
 both-OS release development-root correction PASS; native UI review, final
 completion-source reconciliation and human/ADR acceptance remain open. Product
 distribution and production canonical safety are not inferred.
-Current continuation: Mac native renderer **FAIL** with retained raw Cargo `7f5ab2b`
-build. New `65ce7b9` frontend-mode correction has focused independent review and
-Windows proof; Mac revalidation and new-source CI remain open. Earlier candidate
-PASS is historical, not current implementation verification. See
-`evidence/m0/windows-embedded-frontend-mode-evidence-20261005.md` and Mac plan.
+Current continuation: Mac native renderer **SCOPED PASS** with fresh embedded
+Tauri `.app`; initial raw Cargo `7f5ab2b` failure remains preserved. New `65ce7b9`
+frontend-mode correction has focused Windows/Mac proofs and independent review.
+Fresh-source final CI and human/ADR acceptance remain open. See
+`evidence/m0/macos-embedded-frontend-visual-evidence-20261005.md`.
 
 ## Governing documents
 
@@ -43,9 +43,9 @@ PASS is historical, not current implementation verification. See
 - [x] Rust workspace builds successfully.
   - Evidence: `evidence/m0/windows-release-build-20261002.md` records the full Windows release workspace build. Cross-platform CI remains a separate gate.
 
-- [ ] Blank Cryptex Desktop launches successfully on macOS.
+- [x] Blank Cryptex Desktop launches successfully on macOS.
   - Evidence: `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-evidence-20261003.md` and `macos-owned-desktop-session-evidence-20261005.md`; real foundation Tauri process, physical tray and later staged native executable sessions. No product UI acceptance claim.
-  - Current blocker: operator confirms entirely blank renderer in retained raw release; health-only launch is insufficient. `evidence/m0/macos-native-foundation-ui-blank-failure-20261005.md`. Revalidate proper `65ce7b9` Tauri package before closing.
+  - Initial raw release blank-window FAIL is preserved in `evidence/m0/macos-native-foundation-ui-blank-failure-20261005.md`. Fresh `65ce7b9` Tauri `.app` visibly rendered, with owned-session health and cleanup; see `evidence/m0/macos-embedded-frontend-visual-evidence-20261005.md`. Scoped visual check only; no theme/DPI matrix.
 
 - [x] Blank Cryptex Desktop launches successfully on Windows.
   - Evidence: `evidence/m0/p0-2/windows-physical-release-tray-20261003.md`, `windows-console-visual-result-20261003.md` and `windows-owned-desktop-session-evidence-20261005.md`; actual foundation Desktop process/renderer and staged native sessions.
@@ -180,9 +180,9 @@ PASS is historical, not current implementation verification. See
 
 ## F. Cross-platform, security and failure verification
 
-- [ ] Applicable M0 platform-sensitive behavior is verified on both macOS and Windows.
+- [x] Applicable M0 platform-sensitive behavior is verified on both macOS and Windows.
   - Evidence: scoped proof matrix in final audit plus both-OS release-probe-root evidence; candidate CI PASS at 5c07411. Completion-source CI reconciliation and human acceptance remain separate.
-  - New frontend-mode correction: Windows PASS; Mac focused parity/native render pending. Earlier proofs retained, not sufficient for new behavior.
+  - New frontend-mode correction: focused Windows and Mac parity/native render PASS at source `65ce7b9`; raw Mac artifact digests are operator-reported and not independently rehashed from this host. See platform-specific evidence.
 
 - [x] No device has been made canonical master.
   - Evidence: final audit reviews health-only daemon IPC, synthetic benchmark fixtures and equal isolated Syncthing identities. No production brain/identity or master-device behavior implemented.
@@ -219,22 +219,21 @@ PASS is historical, not current implementation verification. See
 - [x] Relevant integration tests pass.
   - Evidence: retained native pair/recovery and managed/upgrade runners plus candidate CI Windows Node 160/160 + 8/8 and Mac 162/162 + 8/8 at exact 5c07411. Completion-source reconciliation remains separate.
 
-- [ ] Required cross-platform tests pass.
+- [x] Required cross-platform tests pass.
   - Evidence: existing parity proofs PASS at exact sources; final path correction adds Mac 14/14 debug + release + 4/4 CLI at 7f5ab2b and Windows 21/21 debug + release + 4/4 CLI. Candidate integrated CI PASS; completion-source CI reconciliation remains unchecked.
-  - Current `65ce7b9` requires new Mac 16 debug / 17 release / 4 CLI and native visual revalidation; Windows 23 debug / 24 release / 4 CLI PASS. Do not claim old CI tests new code.
+  - Current `65ce7b9`: Windows 23 debug / 24 release / 4 CLI; Mac 16 debug / 17 release / 4 CLI; reported PASS, along with platform-specific format/lint/package checks. Fresh-source final CI is tracked separately below.
 
 - [ ] Required CI checks are green at the M0 completion commit.
   - Evidence: candidate 5c074115cd61ef7c1eb47e8ed2cf8c1105360679 PASS in run 37377520994; full counts/jobs in `evidence/m0/m0-final-ci-attempt-20261005.md`. Independent review completed; completion commit remains unestablished pending native UI/human ADR acceptance. Do not claim a newer recording commit has these exact status checks.
 
 - [x] Verifier reviewed M0 acceptance criteria against actual repository/runtime state.
-  - Evidence: separate read-only verifier at 3de9d00 in `evidence/m0/m0-independent-review-results-20261005.md`, independently queried exact CI and recomputed Windows recovery report digest. Mac raw artifacts remain owner-supplied; explicit UI/human/completion gates remain open.
+  - Evidence: separate read-only verifier at 3de9d00 in `evidence/m0/m0-independent-review-results-20261005.md`, independently queried exact CI and recomputed Windows recovery report digest. Mac raw artifacts remain owner-supplied and are recorded separately; human/completion gates remain open.
 
 - [x] Security review is complete for security-sensitive M0 work.
   - Evidence: independent security auditor at 3de9d00, recorded in `evidence/m0/m0-independent-review-results-20261005.md`; no new blocking synthetic M0 defect established. Five production residuals retained; not human approval or production certification.
 
-- [ ] Relevant foundation UI quality review is complete.
-  - Evidence: `evidence/m0/m0-foundation-ui-review-20261005.md` records actual Windows native visual/IPC display proof, screenshot hashes and clean exit 0. Equivalent current Mac native visual review FAIL; no old Windows test rerun required.
-  - Subsequent Mac operator fallback **FAIL** (blank renderer); correction/revalidation now takes priority over review bookkeeping.
+- [x] Relevant foundation UI quality review is complete.
+  - Evidence: `evidence/m0/m0-foundation-ui-review-20261005.md` records Windows native review; `evidence/m0/macos-embedded-frontend-visual-evidence-20261005.md` records Mac SCOPED PASS and hashes reported by the Mac operator. No broad theme/DPI review is claimed.
 
 - [ ] Human diff/review is complete.
   - Evidence:

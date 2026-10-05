@@ -69,3 +69,14 @@ not erase failure. Return exact SHAs, commands/features/counts/exits, artifact
 paths/hashes, visual verdict and cleanup. No source/evidence edits or commit/push.
 No old lifecycle/update/Syncthing suites, installation/startup/global changes or
 Actions. Corrected-source final CI will be batched after parity/review.
+
+## Reported outcome (2026-10-05)
+
+Operator reports **SCOPED PASS** on checkout `e755601a136e0231cbbbef279112cad0597b6f7a`.
+Debug 16/16, embedded release 17/17, CLI 4/4, lint/format/diff checks passed;
+the wrong-mode binary rejected before Tauri startup with expected exit 2. A
+fresh Tauri `Cryptex.app` rendered and supplied top/health and scrolled-bottom
+captures, with owned session cleanup. Details and hashes are in
+`macos-embedded-frontend-visual-evidence-20261005.md`. Raw Mac artifacts were
+not transferred to this checkout for independent re-hashing. This closes the
+scoped blank-renderer visual gate, not general theme/DPI or production gates.

@@ -4,13 +4,11 @@
 `5c074115cd61ef7c1eb47e8ed2cf8c1105360679`. M0 remains IN PROGRESS.
 This packet itself changes no acceptance status or milestone authority.
 
-**Current blocker and superseding source:** Mac native visual review is FAIL
-(entirely blank window). Fix `65ce7b9` rejects release builds using the Tauri
-development-server mode and makes embedded frontend release checks explicit.
-Windows focused checks PASS; Mac revalidation and fresh final CI remain pending.
-Use `macos-embedded-frontend-revalidation-plan-20261005.md`. The earlier candidate
-and successful CI below remain historical evidence, not validation of this fix.
-Final human acceptance is not ready until these gates are reconciled.
+**Current source and remaining gates:** Mac fresh Tauri `.app` visual revalidation
+is SCOPED PASS; Windows and Mac focused tests pass. Source `65ce7b9` rejects
+release builds using the Tauri development-server mode and makes embedded
+frontend release checks explicit. Original Mac blank failure remains preserved.
+One fresh final CI run is required before final human diff/ADR acceptance.
 
 CI continuation: first run failed because the workflow omitted building the
 plain storage benchmark needed by Golden tests. Workflow-only correction builds
@@ -24,8 +22,9 @@ jobs and actual Windows cross-account ACL passed. Counts and first failure are
 retained in `m0-final-ci-attempt-20261005.md`. Independent verifier/security
 reviews now completed independently at `3de9d00`: see
 `m0-independent-review-results-20261005.md`. Human diff/ADR acceptance is still
-NOT APPROVED. The subsequent Mac visual failure now requires the focused fresh
-package plan above; no old Mac lifecycle/test suite repetition is requested.
+NOT APPROVED. The focused Mac plan is complete at
+`macos-embedded-frontend-visual-evidence-20261005.md`. No old Mac lifecycle/test
+suite repetition is requested.
 
 ## Reviewable decisions
 
@@ -90,8 +89,9 @@ claims; the independent result records all five production residuals.
   auditor reviews findings; now recorded in the independent results. Preserve
   their scope and production residuals; implementer self-review was not substituted.
 - Complete the scoped native foundation UI-quality review. Windows actual
-  native proof now PASS; equivalent Mac review remains open. Static browser
-  observation alone does not prove native visuals.
+  native proof and Mac fresh-package scoped proof now PASS. Mac raw image bytes
+  were not transferred for independent re-hashing; broad theme/DPI review is not
+  claimed. Static browser observation alone does not prove native visuals.
 - Human reviews the concrete diff/decisions and explicitly accepts ADR-0012 and
   ADR-0004 within their revised M0 scopes, with residual product gates retained.
 - Reconcile final checklist, ADR index, milestone and handoff. Do not check

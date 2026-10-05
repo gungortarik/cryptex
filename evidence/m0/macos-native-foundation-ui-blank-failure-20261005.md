@@ -33,3 +33,13 @@ Correction `65ce7b91fe500cfe751aa3d13b39010f6dcc935e`: typed pre-Tauri release-m
 guard, CI embedded-frontend features and expanded full release test suite. Debug
 Vite development preserved, CSP unchanged. Original failure retained.
 Continuation: `macos-embedded-frontend-revalidation-plan-20261005.md`.
+
+## Superseding focused revalidation
+
+The failure was subsequently followed by a **SCOPED PASS** using a fresh Tauri
+`.app` on checkout `e755601a136e0231cbbbef279112cad0597b6f7a`. The renderer
+populated; visible contents, asset/package hashes, automated counts and clean
+shutdown are recorded in
+`macos-embedded-frontend-visual-evidence-20261005.md`. This resolves the blank
+renderer for that package path while preserving the initial failure. Raw Mac
+artifacts were not copied to Windows for independent hash verification.
