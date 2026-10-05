@@ -11,10 +11,12 @@ A checkbox may be marked complete only after the requirement has actual verified
 
 Configuration presence, an implementation claim, compilation alone, or success on only one required platform is not sufficient evidence.
 
-Latest audit: `evidence/m0/m0-final-gate-audit-20261005.md`, source `8437559`.
-Retained proofs below are scoped to M0 synthetic foundation behavior. Final CI,
-human/ADR acceptance and the release probe development-root correction remain
-open; product distribution and production canonical safety are not inferred.
+Latest independent review: `evidence/m0/m0-independent-review-results-20261005.md`,
+source `3de9d00`, following the earlier `8437559` implementer audit.
+Retained proofs are scoped to M0 synthetic foundation behavior. Candidate CI and
+both-OS release development-root correction PASS; native UI review, final
+completion-source reconciliation and human/ADR acceptance remain open. Product
+distribution and production canonical safety are not inferred.
 
 ## Governing documents
 
@@ -173,7 +175,7 @@ open; product distribution and production canonical safety are not inferred.
 ## F. Cross-platform, security and failure verification
 
 - [x] Applicable M0 platform-sensitive behavior is verified on both macOS and Windows.
-  - Evidence: scoped proof matrix in final audit plus both-OS release-probe-root evidence; Mac final parity source 7f5ab2b. Final integrated CI and human acceptance remain separate.
+  - Evidence: scoped proof matrix in final audit plus both-OS release-probe-root evidence; candidate CI PASS at 5c07411. Completion-source CI reconciliation and human acceptance remain separate.
 
 - [x] No device has been made canonical master.
   - Evidence: final audit reviews health-only daemon IPC, synthetic benchmark fixtures and equal isolated Syncthing identities. No production brain/identity or master-device behavior implemented.
@@ -191,7 +193,7 @@ open; product distribution and production canonical safety are not inferred.
   - Evidence: final audit indexes both-OS protocol rejection/native rollback, actual pre-successor updater kill, injected I/O/claim/owner/process race regressions and sidecar negative tests. No machine power-loss or production migration failure claim.
 
 - [x] Relevant security checks/review are complete.
-  - Evidence: scoped implementer review completion in `evidence/m0/m0-security-notice-acceptance-review-20261005.md`; both findings corrected with Windows/Mac regressions. Production residual ledger retained under revised proposals; independent verifier/human approval and final CI remain open.
+  - Evidence: implementer corrections/regressions and independent security review in `evidence/m0/m0-independent-review-results-20261005.md`. Narrow M0 verdict PASS; production residuals explicitly retained. Human acceptance and completion-source CI reconciliation remain separate.
 
 - [x] No real personal/Cortex data was used for M0 testing.
   - Evidence: P0-1 synthetic benchmark protocol plus both-OS Golden/native/managed Syncthing evidence explicitly restricts input to synthetic fixtures. No Cortex ingestion or personal memory API implemented; retained corpora not regenerated in this audit.
@@ -208,19 +210,22 @@ open; product distribution and production canonical safety are not inferred.
   - Evidence: dated workspace tests plus latest Windows Desktop 20/20, Mac 13/13 sidecar tests; full counts/sources in final audit. Incremental proof is not a latest-source full workspace claim.
 
 - [x] Relevant integration tests pass.
-  - Evidence: actual both-OS native pair selection/recovery and Syncthing managed/upgrade runners, current Windows Node 160/160 + 8/8 and Mac focused CLI 4/4 with prior full suites retained. Final CI remains open.
+  - Evidence: retained native pair/recovery and managed/upgrade runners plus candidate CI Windows Node 160/160 + 8/8 and Mac 162/162 + 8/8 at exact 5c07411. Completion-source reconciliation remains separate.
 
 - [x] Required cross-platform tests pass.
-  - Evidence: existing parity proofs PASS at exact sources; final path correction adds Mac 14/14 debug + release + 4/4 CLI at 7f5ab2b and Windows 21/21 debug + release + 4/4 CLI. Final integrated CI is a separate unchecked requirement.
+  - Evidence: existing parity proofs PASS at exact sources; final path correction adds Mac 14/14 debug + release + 4/4 CLI at 7f5ab2b and Windows 21/21 debug + release + 4/4 CLI. Candidate integrated CI PASS; completion-source CI reconciliation remains unchecked.
 
 - [ ] Required CI checks are green at the M0 completion commit.
-  - Evidence: candidate 5c074115cd61ef7c1eb47e8ed2cf8c1105360679 PASS in run 37377520994; full counts/jobs in `evidence/m0/m0-final-ci-attempt-20261005.md`. Completion commit is not yet established pending independent review/human ADR acceptance; do not claim a newer recording commit has these exact status checks.
+  - Evidence: candidate 5c074115cd61ef7c1eb47e8ed2cf8c1105360679 PASS in run 37377520994; full counts/jobs in `evidence/m0/m0-final-ci-attempt-20261005.md`. Independent review completed; completion commit remains unestablished pending native UI/human ADR acceptance. Do not claim a newer recording commit has these exact status checks.
 
-- [ ] Verifier reviewed M0 acceptance criteria against actual repository/runtime state.
-  - Evidence: implementer audit in `evidence/m0/m0-final-gate-audit-20261005.md`, including two retained Windows report digest spot checks. This is not independent verifier/human acceptance.
+- [x] Verifier reviewed M0 acceptance criteria against actual repository/runtime state.
+  - Evidence: separate read-only verifier at 3de9d00 in `evidence/m0/m0-independent-review-results-20261005.md`, independently queried exact CI and recomputed Windows recovery report digest. Mac raw artifacts remain owner-supplied; explicit UI/human/completion gates remain open.
 
 - [x] Security review is complete for security-sensitive M0 work.
-  - Evidence: narrow implementer security/notice review completion above; original findings/failures and production obligations retained. This is not independent verifier, human approval or full production certification.
+  - Evidence: independent security auditor at 3de9d00, recorded in `evidence/m0/m0-independent-review-results-20261005.md`; no new blocking synthetic M0 defect established. Five production residuals retained; not human approval or production certification.
+
+- [ ] Relevant foundation UI quality review is complete.
+  - Evidence: `evidence/m0/m0-foundation-ui-review-20261005.md` records actual Windows native visual/IPC display proof, screenshot hashes and clean exit 0. Equivalent current Mac native visual review remains NOT VERIFIED; no old Windows test rerun required.
 
 - [ ] Human diff/review is complete.
   - Evidence:

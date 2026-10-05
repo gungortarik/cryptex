@@ -1,6 +1,6 @@
 # ADR-0012 implementation proposal — Desktop-owned runtime
 
-**Status:** PROPOSED — implementation direction and revision scope approved; M0 acceptance pending scoped review, required CI and human ADR approval
+**Status:** PROPOSED — direction/revision scope approved; candidate CI and independent review complete; native UI, completion-source reconciliation and human ADR approval pending
 **Date:** 2026-10-03
 **Scope:** P0-2 background runtime and atomic update lifecycle
 
@@ -181,7 +181,13 @@ must independently pass before M1 begins. No unchecked production gate is PASS.
 5. Preserve private app-data roots, least-privilege removable startup, no public
    endpoint and no arbitrary renderer shell/filesystem capability. Recovery/purge
    never become autonomous AI tools. Later work requires milestone authorization.
+6. Independent security review at `3de9d00` also identifies the non-pilot
+   filesystem-authorized developer `start.request` executable override. Remove/
+   gate or constrain this test control before shipping product supervision.
+   Backend validation of renderer requests does not remove this separate local
+   test-control path. See `evidence/m0/m0-independent-review-results-20261005.md`.
 
 **Not accepted.** Owner approval covered implementation direction and preparing
-this revision. Required CI, scoped review and human ADR acceptance remain open.
+this revision. Candidate CI and independent review now complete; scoped native UI,
+completion-source reconciliation and human ADR acceptance remain open.
 M0 remains IN PROGRESS; all production gates above remain mandatory and unverified.

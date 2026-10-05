@@ -10,9 +10,11 @@ Latest corrected CI result: **SUCCESS** at exact source `5c07411`, run
 `37377520994`: Windows/macOS readiness and actual Windows ACL all PASS.
 First missing-benchmark failure, cancellation and correction remain recorded in
 `m0-final-ci-attempt-20261005.md`. This supersedes pending-CI statements below.
-Remaining: independent verifier/security review, explicit human diff/ADR
-acceptance and final completion/PR checklist reconciliation. No further physical
-Mac test is requested. Documentation-only recording HEAD is not misrepresented
+Independent verifier/security review subsequently completed at `3de9d00`; see
+`m0-independent-review-results-20261005.md`. Remaining: scoped native foundation
+UI visual review on Mac (actual Windows review now PASS), human diff/ADR acceptance and final
+completion/PR checklist reconciliation. No old physical lifecycle suite repetition
+is requested. Documentation-only recording HEAD is not misrepresented
 as the exact tested SHA. M0 remains IN PROGRESS; M1 remains unauthorized.
 
 Current continuation: Mac final namespace parity PASS at `7f5ab2b`: **14/14

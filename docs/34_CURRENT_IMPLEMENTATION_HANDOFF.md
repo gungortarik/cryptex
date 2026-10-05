@@ -62,12 +62,25 @@ and first failed/cancelled attempt are retained in
 No source behavior changed to fix CI; missing plain benchmark build prerequisite
 was added. Current result-recording changes are documentation only; newer doc
 SHAs are not falsely claimed to have the tested source's GitHub checks.
-Next required work: independent verifier/security audit using
-`evidence/m0/m0-independent-review-plan-20261005.md`, then explicit human diff/
-ADR acceptance from the prepared review packet. The user has been asked whether
-to run two read-only review agents here or use Mac Codex/Cursor; no answer yet.
-Do not silently substitute implementer review, accept ADRs, complete M0, merge
-or start M1. No new physical Mac test or redundant CI dispatch requested.
+Independent verifier and security audit completed at `3de9d00` after owner
+explicitly authorized both agents with "hemen basla". Results:
+`evidence/m0/m0-independent-review-results-20261005.md`. No new blocking M0
+implementation/security defect established; candidate CI independently verified.
+Stale pending-documentation finding is reconciled. Five production residuals
+remain mandatory, including file-controlled developer launch and buffered REST.
+Windows native foundation UI review now scoped PASS: actual PID19376/1116,
+matching renderer health.pong, readable wrapping/reachable controls and retained
+screenshots; real Quit clean exit0, processes/lock/IPC/gate clean. Owner coordinated
+left-display placement. See `evidence/m0/m0-foundation-ui-review-20261005.md`.
+Next: **Mac-only** narrow native foundation visual review under
+`evidence/m0/m0-native-foundation-ui-review-plan-20261005.md`; do not repeat old
+Windows/Mac login/tray/upgrade suites. Then explicit human diff/ADR acceptance
+and final-source CI/checklist reconciliation. Windows proof is not Mac visual proof.
+Existing PR #5 targets m0/foundation; do not change integration/base, merge,
+accept ADRs, complete M0 or start M1 without the required concrete approval.
+No redundant CI dispatch requested; avoid disturbing the owner's game.
+
+### Historical pre-review continuation
 
 Final CI attempt at `e337bd3`, run `37376952961`, found missing plain
 `m0-storage-bench` before Golden Node tests on a fresh Mac runner (ENOENT).
@@ -87,8 +100,8 @@ Rust/Cargo 1.98.1, Node v24.19.0. Desktop **14/14 debug + 14/14 release**, CLI
 no failures/skips/ignored, cleanup error-free. Compiled defaults use Cryptex-Dev
 in both profiles; no app/daemon, runtime/startup/config or repo changes.
 Evidence: `evidence/m0/p0-2/macos-release-probe-root-evidence-20261005.md`.
-This supersedes pending namespace parity below. Corrected-candidate implementer
-review is complete for the narrow M0 boundaries with production residuals retained.
+This superseded pending namespace parity below. Corrected-candidate implementer
+review completed for the narrow M0 boundaries with production residuals retained.
 Next: one final CI run at the clean pushed candidate, then verifier/human diff
 review and explicit ADR acceptance. No new Mac physical plan is requested.
 ADR-0012/0004 remain PROPOSED and M0 IN PROGRESS.

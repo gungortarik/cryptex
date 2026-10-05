@@ -149,10 +149,20 @@ complete M0, authorize later milestones or approve production distribution.
   publisher provenance. M17 signed/notarized release and final third-party notices
   remain release gates. Binary/LICENSE/AUTHORS fixture inclusion alone is not full
   legal or signed-distribution acceptance.
+- Independent security review at `3de9d00` notes the test REST adapter buffers
+  response text before checking size. If reused for production supervision,
+  enforce bounded bytes while streaming. See
+  `evidence/m0/m0-independent-review-results-20261005.md`; test adapter inventory
+  and authenticated loopback proof are not production resource-bound guarantees.
 
 The security/notice review records each residual explicitly. These are mandatory
 product gates, not deleted requirements or claims of implementation. Later work
 requires its own milestone authorization; M0 remains synthetic-data only.
+
+Candidate CI and independent security/verifier review now complete, recorded in
+`evidence/m0/m0-independent-review-results-20261005.md`. Earlier pending review/
+CI requirements above are historical where superseded by this result; native
+UI, completion-source reconciliation and human ADR approval remain open.
 
 **Not accepted.** Both-platform scoped PASS does not complete P0-4 or M0, and does not
 authorize M1 or product replication features.

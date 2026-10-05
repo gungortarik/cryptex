@@ -1,5 +1,13 @@
 # M0 security, notice and acceptance review
 
+Current continuation: independent verifier/security review completed at `3de9d00`,
+recorded in `m0-independent-review-results-20261005.md`; no new blocking synthetic
+M0 security defect. Candidate CI PASS at `5c07411`/run `37377520994`.
+Historical implementer notes below retain their original context. Scoped native
+UI review, human acceptance and completion-source reconciliation remain open.
+Independent residuals additionally cover file-controlled developer launch and
+buffer-before-limit REST; these remain mandatory before product reuse.
+
 Status: **SCOPED M0 IMPLEMENTER REVIEW COMPLETE — findings corrected with
 both-platform regression proof; final CI and verifier/human acceptance open**.
 Implementation source `82c4d32`; final implementer audit at `8437559` in

@@ -7,15 +7,17 @@ This packet itself changes no acceptance status or milestone authority.
 CI continuation: first run failed because the workflow omitted building the
 plain storage benchmark needed by Golden tests. Workflow-only correction builds
 both required native helpers; local focused tests 6/6 PASS. See
-`m0-final-ci-attempt-20261005.md`; corrected-source cloud result remains required.
+`m0-final-ci-attempt-20261005.md`; corrected-source candidate cloud CI subsequently PASS.
 The candidate above identifies the reviewed implementation; the newer workflow
 correction does not change application/runtime behavior or weaken any test.
 
 Corrected run `37377520994` at candidate `5c07411` is now SUCCESS: both readiness
 jobs and actual Windows cross-account ACL passed. Counts and first failure are
 retained in `m0-final-ci-attempt-20261005.md`. Independent verifier/security
-review remains open under `m0-independent-review-plan-20261005.md`; human
-diff/ADR acceptance is still NOT APPROVED. No extra physical Mac test requested.
+reviews now completed independently at `3de9d00`: see
+`m0-independent-review-results-20261005.md`. Human diff/ADR acceptance is still
+NOT APPROVED. A narrow remaining native UI review is requested; no old Mac
+lifecycle/test suite repetition or redundant Actions run.
 
 ## Reviewable decisions
 
@@ -66,13 +68,22 @@ publisher verification and full delivered dependency/source-access/installer
 notices remain mandatory product gates. The synchronous IPC whole-read/stalled
 peer limit must be addressed before hardened production APIs. No real personal
 or Cortex data or new public endpoint is authorized by M0 acceptance.
+Independent review additionally identifies non-pilot filesystem-authorized
+developer executable override and REST buffering before size enforcement. Remove/
+gate or constrain the former and stream bounded bytes if reusing the latter
+before product supervision. These are not renderer escape or shipped controller
+claims; the independent result records all five production residuals.
 
 ## Conditions before closing M0
 
 - Required CI jobs green for the recorded stable candidate; any newer behavior
   change needs applicable fresh verification.
 - Independent verifier checks actual gate/evidence/spec state and security
-  auditor reviews findings; implementer self-review is not a substitute.
+  auditor reviews findings; now recorded in the independent results. Preserve
+  their scope and production residuals; implementer self-review was not substituted.
+- Complete the scoped native foundation UI-quality review. Windows actual
+  native proof now PASS; equivalent Mac review remains open. Static browser
+  observation alone does not prove native visuals.
 - Human reviews the concrete diff/decisions and explicitly accepts ADR-0012 and
   ADR-0004 within their revised M0 scopes, with residual product gates retained.
 - Reconcile final checklist, ADR index, milestone and handoff. Do not check
