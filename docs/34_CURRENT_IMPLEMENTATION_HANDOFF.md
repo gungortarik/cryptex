@@ -783,7 +783,10 @@ blocked pilot autostart changes and clean quit control. Windows Node **97/97**,
 format, strict Desktop Clippy, frontend/locked release build and five syntax
 checks PASS. Local Desktop debug unit execution is BLOCKED by Application Control
 4551; it is not counted as a PASS. One targeted Windows package/unit workflow
-37308202823 is running for this source; other workflow jobs are skipped.
+37308202823 completed SUCCESS at `dd5021b`: release Desktop **17/17**, sidecar
+staging **3/3**, unsigned NSIS build and artifact upload PASS. Other workflow jobs
+were skipped. Artifact ID 11344842389 has source/file-hash provenance. Independent
+CI closes unit verification; the local debug policy block remains historical.
 Real local loose release sessions PASS: Desktop/daemon `33552/3364`, then
 `460/10924`, matching OS parent/executable identities, protocol-1 IPC, clean exit
 0, gone daemon PID, released lock and absent endpoint. Completed launch snapshots

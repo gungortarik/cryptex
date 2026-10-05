@@ -20,7 +20,7 @@ Native gate primitive: `windows-native-handover-gate-evidence-20261005.md`
 `macos-native-handover-gate-test-plan-20261005.md`.
 Mac gate result: `macos-native-handover-gate-evidence-20261005.md` (14 Rust, 86 Node).
 Owned session evidence: `windows-owned-desktop-session-evidence-20261005.md`
-(97 Node tests, two actual Windows same-package sessions; Desktop unit CI pending).
+(97 Node tests, two actual Windows same-package sessions; CI Desktop 17/17).
 Mac actual `.app` request: `macos-owned-desktop-session-test-plan-20261005.md`.
 
 - `docs/11_DAEMON_IPC_RUNTIME.md`

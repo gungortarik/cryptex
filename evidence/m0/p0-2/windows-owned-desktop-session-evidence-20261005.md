@@ -33,8 +33,18 @@ No installed application or existing login registration is changed.
   and no policy/blocked executable was modified or bypassed.
 - Required independent Windows release unit checks/package build were dispatched
   once with existing `windows_desktop_build_only=true`: run **37308202823**, source
-  `dd5021b`. Other workflow jobs were skipped. Result is pending until appended;
+  `dd5021b`. Other workflow jobs were skipped. The run completed **SUCCESS**:
+  sidecar staging **3/3**, release Desktop unit tests **17/17**, no failures or
+  ignored tests. Unsigned NSIS build and artifact upload passed;
   a CI unit result does not replace the physical-host session evidence below.
+
+CI run: https://github.com/gungortarik/cryptex/actions/runs/37308202823.
+Artifact: `cryptex-windows-package-dd5021bb04ccc698b66de51f739ab60053997534`,
+ID `11344842389`, size 5,247,983 bytes. Workflow records source SHA, run ID,
+target and file hashes in `provenance.json`; signing is explicitly unsigned.
+CI logs were retained outside Git at `%TEMP%\cryptex-owned-desktop-ci-37308202823.log`.
+This independent release check closes the Windows unit verification gap without
+executing or changing the locally blocked debug test file. No second workflow ran.
 
 ## Real Windows session proof
 
