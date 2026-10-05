@@ -82,6 +82,17 @@ status. Mac real-health parity and the remaining native integration gates remain
 
 ## Gates before production integration or ADR acceptance
 
+The candidate's Windows live-owner follow-up uses journal schema 2 (PID and
+transaction UUID). External recovery requires OS ESRCH; live or ambiguous
+owners and legacy ownerless journals fail closed. Automatic rollback requires
+the exact in-process journal. Seven regressions pass (52/52 combined tests),
+including separate-process refusal at three boundaries, post-exit recovery and
+uninterrupted owner commit after refusal. See
+`windows-package-live-owner-evidence-20261004.md`. This is not an OS lock or
+publisher authentication. PID reuse can block recovery conservatively; failed
+automatic rollback cannot be retried externally until its owner process exits.
+Mac parity and simultaneous recovery callers remain unverified.
+
 Windows follow-up now verifies four controlled races with actual separate Node
 updater subprocesses: competing commits during staging and after selection
 validation, refusal while intent exists, and simultaneous validated contenders.

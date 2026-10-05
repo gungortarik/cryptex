@@ -134,17 +134,39 @@ export function initialize(root, value, sources) {
   writeNew(path.join(root, 'selection.json'), { schema: 1, active: value.id, previous: null });
   return selected(root);
 }
-export function recover(root, { io = fs } = {}) {
+// External recovery never receives the in-process journal ownership capability.
+export function recover(root, { io = fs } = {}) { return recoverTransaction(root, { io }); }
+function recoverTransaction(root, { io = fs, ownedJournal } = {}) {
   validateRoot(root);
   const intent = path.join(root, 'pending.json');
   if (!fs.existsSync(intent)) return { recovered: false, selection: selected(root) };
   const journal = readJson(intent);
-  if (!journal || journal.schema !== 1) fail('CORRUPT_JOURNAL', 'Invalid transaction journal schema');
+  if (!journal || ![1, 2].includes(journal.schema)) fail('CORRUPT_JOURNAL', 'Invalid transaction journal schema');
   const before = selection(journal.before);
   const after = selection(journal.after);
   if (after.previous !== before.active || after.active === before.active) fail('CORRUPT_JOURNAL', 'Invalid transaction relationship');
   const current = selection(readJson(path.join(root, 'selection.json')));
   if (!same(current, before) && !same(current, after)) fail('CORRUPT_JOURNAL', 'Selection is not associated with pending transaction');
+  if (journal.schema === 1) fail('RECOVERY_OWNER_UNKNOWN', 'Legacy intent has no owner; automatic recovery is refused');
+  const owner = journal.owner;
+  if (!owner || !Number.isSafeInteger(owner.pid) || owner.pid < 1 || owner.pid > 0xffffffff ||
+      typeof owner.token !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(owner.token)) fail('CORRUPT_JOURNAL', 'Invalid transaction owner');
+  if (ownedJournal !== undefined) {
+    if (owner.pid !== process.pid || JSON.stringify(journal) !== JSON.stringify(ownedJournal)) fail('RECOVERY_OWNER_CHANGED', 'Automatic rollback no longer owns the pending intent');
+  } else {
+    // Only ESRCH establishes that the recorded process is gone. PID reuse
+    // conservatively refuses recovery; permission/other errors are ambiguous.
+    let ownerExists = true;
+    try { process.kill(owner.pid, 0); }
+    catch (cause) {
+      if (cause?.code !== 'ESRCH') throw new PackageError('RECOVERY_OWNER_UNKNOWN', 'Cannot establish that updater owner has exited', { cause });
+      ownerExists = false;
+    }
+    if (ownerExists) fail('RECOVERY_OWNER_ACTIVE', 'Pending intent owner is still running; recovery is refused');
+  }
+  return restorePending(root, before, intent, io);
+}
+function restorePending(root, before, intent, io) {
   // Never discard malformed state or silently launch a corrupt last-known-good.
   verifySlot(root, before.active);
   if (before.previous !== null) verifySlot(root, before.previous);
@@ -179,7 +201,7 @@ export async function transition(root, value, sources, { checkpoint = async () =
   await checkpoint('selection-validated');
   const after = { schema: 1, active: value.id, previous: before.active };
   const intent = path.join(root, 'pending.json');
-  const journal = { schema: 1, before, after };
+  const journal = { schema: 2, owner: { pid: process.pid, token: randomUUID() }, before, after };
   try { writeNew(intent, journal); }
   catch (error) {
     if (error?.code === 'EEXIST') fail('CONCURRENT_TRANSITION', 'Another transaction owns the pending intent');
@@ -200,12 +222,12 @@ export async function transition(root, value, sources, { checkpoint = async () =
   let healthy;
   try { healthy = await health(path.join(root, 'slots', value.id), manifest(value)); }
   catch (error) {
-    recover(root, { io: recoveryIo });
+    recoverTransaction(root, { io: recoveryIo, ownedJournal: journal });
     throw new PackageError('HEALTH_FAILED', `Experiment health check threw (${error?.name ?? 'unknown'}); previous package restored`);
   }
-  if (healthy !== true) { recover(root, { io: recoveryIo }); fail('HEALTH_FAILED', 'Experiment health rejected candidate; previous package restored'); }
+  if (healthy !== true) { recoverTransaction(root, { io: recoveryIo, ownedJournal: journal }); fail('HEALTH_FAILED', 'Experiment health rejected candidate; previous package restored'); }
   try { verifySlot(root, value.id); }
-  catch (error) { recover(root, { io: recoveryIo }); throw error; }
+  catch (error) { recoverTransaction(root, { io: recoveryIo, ownedJournal: journal }); throw error; }
   await checkpoint('healthy');
   fs.unlinkSync(path.join(root, 'pending.json')); syncDirectory(root);
   await checkpoint('committed');

@@ -732,6 +732,26 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
+### Latest live-updater recovery guard — Windows PASS, Mac pending
+
+The filesystem candidate now writes schema-2 pending journals with process PID
+and transaction UUID. External recovery permits rollback only after the OS
+reports ESRCH for the recorded owner. Live/ambiguous owners are refused without
+changing selection or intent. Legacy ownerless intents are retained for diagnosis.
+Internal automatic rollback requires exact matching of the current invocation's
+journal; changed owner content is rejected. An external retry after failed
+automatic rollback waits for owner process exit, even if its update call ended.
+PID reuse conservatively blocks recovery; no OS process lock is claimed.
+Windows: **48 transaction + 4 health adapter = 52/52 PASS**, zero failures/skips.
+Seven new cases cover recovery refusal at intent/selected/healthy, successful
+baseline restoration after owned updater termination, continued live-owner
+commit after refusal, legacy/malformed owner refusal and changed-token refusal.
+Four syntax checks and diff check passed.
+Evidence: `evidence/m0/p0-2/windows-package-live-owner-evidence-20261004.md`.
+Mac plan: `evidence/m0/p0-2/macos-package-live-owner-test-plan-20261004.md`.
+Simultaneous recovery callers, broad stress, native handover/signing, durability
+and canonical-data acceptance remain open; ADR-0012 remains PROPOSED.
+
 ### Latest separate-process updater slice — Windows and Mac scoped PASS
 
 Four new tests run two actual owned Node updater subprocesses against one fresh

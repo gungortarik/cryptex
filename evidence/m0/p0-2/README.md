@@ -91,6 +91,9 @@ Comparison harness added:
 
 See:
 
+- `windows-package-live-owner-evidence-20261004.md` (52/52 PASS; live-owner recovery refusal, post-exit rollback, journal ownership checks)
+- `macos-package-live-owner-test-plan-20261004.md` (schema-2 owner guard parity request; no GUI or Actions)
+
 - `windows-package-process-race-evidence-20261004.md` (45/45 tests PASS; four actual separate-process transaction races, controlled IPC barriers)
 - `macos-package-process-race-test-plan-20261004.md` (focused parity request for process races; no GUI or Actions)
 - `macos-package-process-race-evidence-20261004.md` (reported Mac PASS at `6b8776c`: 45/45 tests; four separate-process races and clean child/fixture cleanup)

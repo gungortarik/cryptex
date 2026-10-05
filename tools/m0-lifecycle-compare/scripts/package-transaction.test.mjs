@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describePackage, digest, initialize, PackageError, recover, selected, transition } from './package-transaction.mjs';
 import { killTransactionAt } from './package-transaction-crash.mjs';
 import { createFixtureRoot } from './package-transaction-fixtures.mjs';
-import { startContender } from './package-transaction-process.mjs';
+import { startContender, startRecovery } from './package-transaction-process.mjs';
 
 function setup(t) {
   const parent = createFixtureRoot();
@@ -322,8 +322,7 @@ for (const healthFailure of ['rejected', 'throws']) {
       return true;
     });
     assert.equal(selected(root).active, 'candidate');
-    assert.equal(recover(root).selection.active, 'baseline');
-    assert.equal(recover(root).recovered, false);
+    assert.throws(() => recover(root), code('RECOVERY_OWNER_ACTIVE'), 'external retry waits for owner process exit');
   });
 }
 test('unknown manifest protocol and missing component rejected', async t => {
@@ -346,4 +345,91 @@ test('new transition refuses unresolved intent', async t => {
   await killAt(t, context, 'intent');
   await assert.rejects(transition(context.root, context.candidate, context.sources, healthy), code('RECOVERY_REQUIRED'));
   assert.equal(recover(context.root).selection.active, 'baseline');
+});
+for (const boundary of ['intent', 'selected', 'healthy']) {
+  test(`separate recovery refuses live updater at ${boundary}; recovers after owner exit`, { timeout: 20000 }, async t => {
+    const { root, sources, candidate } = setup(t);
+    const updater = startContender(root, candidate, sources, boundary);
+    let activeRecovery;
+    let deadRecovery;
+    try {
+      await updater.checkpoint();
+      const journal = fs.readFileSync(path.join(root, 'pending.json'));
+      const selectionBytes = fs.readFileSync(path.join(root, 'selection.json'));
+      activeRecovery = startRecovery(root);
+      const refusal = await activeRecovery.result();
+      assert.equal(refusal.code, 'RECOVERY_OWNER_ACTIVE');
+      assert.equal(refusal.exit_code, 2);
+      assert.deepEqual(fs.readFileSync(path.join(root, 'pending.json')), journal);
+      assert.deepEqual(fs.readFileSync(path.join(root, 'selection.json')), selectionBytes);
+      await updater.stop();
+      deadRecovery = startRecovery(root);
+      const recovery = await deadRecovery.result();
+      assert.equal(recovery.ok, true);
+      assert.equal(recovery.exit_code, 0);
+      assert.equal(recovery.selection.active, 'baseline');
+      assert.equal(fs.existsSync(path.join(root, 'pending.json')), false);
+      assert.equal(recover(root).recovered, false);
+    } finally {
+      const cleanup = await Promise.allSettled([updater.stop(), activeRecovery?.stop(), deadRecovery?.stop()]);
+      const errors = cleanup.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (errors.length) throw new AggregateError(errors, 'Owned recovery subprocess cleanup failed');
+    }
+  });
+}
+test('legacy ownerless intent is retained and never recovered automatically', async t => {
+  const context = setup(t);
+  await killAt(t, context, 'selected');
+  const file = path.join(context.root, 'pending.json');
+  const journal = JSON.parse(fs.readFileSync(file, 'utf8'));
+  journal.schema = 1;
+  delete journal.owner;
+  fs.writeFileSync(file, JSON.stringify(journal));
+  const before = fs.readFileSync(file);
+  assert.throws(() => recover(context.root), code('RECOVERY_OWNER_UNKNOWN'));
+  assert.deepEqual(fs.readFileSync(file), before);
+  assert.equal(selected(context.root).active, 'candidate');
+});
+test('malformed updater owner fails closed and preserves intent', async t => {
+  const context = setup(t);
+  await killAt(t, context, 'selected');
+  const file = path.join(context.root, 'pending.json');
+  const journal = JSON.parse(fs.readFileSync(file, 'utf8'));
+  journal.owner.pid = 0;
+  fs.writeFileSync(file, JSON.stringify(journal));
+  assert.throws(() => recover(context.root), code('CORRUPT_JOURNAL'));
+  assert.equal(fs.existsSync(file), true);
+});
+test('refused recovery leaves live updater able to finish its commit', { timeout: 20000 }, async t => {
+  const { root, sources, candidate } = setup(t);
+  const updater = startContender(root, candidate, sources, 'selected');
+  let recovery;
+  try {
+    await updater.checkpoint();
+    recovery = startRecovery(root);
+    assert.equal((await recovery.result()).code, 'RECOVERY_OWNER_ACTIVE');
+    updater.release();
+    const committed = await updater.result();
+    assert.equal(committed.exit_code, 0);
+    assert.equal(committed.selection.active, 'candidate');
+    assert.equal(recover(root).recovered, false);
+  } finally {
+    const cleanup = await Promise.allSettled([updater.stop(), recovery?.stop()]);
+    const errors = cleanup.filter(result => result.status === 'rejected').map(result => result.reason);
+    if (errors.length) throw new AggregateError(errors, 'Owned updater/recovery cleanup failed');
+  }
+});
+test('automatic rollback refuses an intent whose owner token changed', async t => {
+  const { root, sources, candidate } = setup(t);
+  await assert.rejects(transition(root, candidate, sources, {
+    health: async () => {
+      const file = path.join(root, 'pending.json');
+      const journal = JSON.parse(fs.readFileSync(file, 'utf8'));
+      journal.owner.token = '00000000-0000-0000-0000-000000000000';
+      fs.writeFileSync(file, JSON.stringify(journal));
+      return false;
+    },
+  }), code('RECOVERY_OWNER_CHANGED'));
+  assert.equal(selected(root).active, 'candidate');
+  assert.equal(fs.existsSync(path.join(root, 'pending.json')), true);
 });

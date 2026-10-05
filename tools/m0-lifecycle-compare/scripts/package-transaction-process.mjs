@@ -11,9 +11,9 @@ async function within(promise, milliseconds) {
 }
 
 // Only the returned owned child can be released or killed. No process discovery.
-export function startContender(root, value, sources, boundary = '') {
+export function startContender(root, value, sources, boundary = '', operation = 'transition') {
   const worker = fileURLToPath(new URL('./package-transaction-contender.mjs', import.meta.url));
-  const child = spawn(process.execPath, [worker, root, JSON.stringify(value), sources.desktop, sources.daemon, boundary], {
+  const child = spawn(process.execPath, [worker, root, JSON.stringify(value), sources.desktop, sources.daemon, boundary, operation], {
     windowsHide: true, stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
   });
   let result;
@@ -46,3 +46,4 @@ export function startContender(root, value, sources, boundary = '') {
     },
   };
 }
+export function startRecovery(root) { return startContender(root, null, { desktop: '', daemon: '' }, '', 'recover'); }

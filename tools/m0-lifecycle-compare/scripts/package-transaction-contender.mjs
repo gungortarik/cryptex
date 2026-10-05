@@ -1,9 +1,9 @@
 // Test-only owned subprocess. IPC controls an observed transaction checkpoint.
-import { transition } from './package-transaction.mjs';
+import { recover, transition } from './package-transaction.mjs';
 
-const [root, encoded, desktop, daemon, boundary] = process.argv.slice(2);
+const [root, encoded, desktop, daemon, boundary, operation = 'transition'] = process.argv.slice(2);
 try {
-  const selection = await transition(root, JSON.parse(encoded), { desktop, daemon }, {
+  const selection = operation === 'recover' ? recover(root).selection : await transition(root, JSON.parse(encoded), { desktop, daemon }, {
     health: async () => true,
     checkpoint: async point => {
       if (point !== boundary) return;

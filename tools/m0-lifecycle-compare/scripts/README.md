@@ -13,7 +13,7 @@ See the real-health evidence and Mac plan in `evidence/m0/p0-2/`.
 
 `package-transaction.mjs` is a separate, test-only serialized filesystem candidate.
 It never touches installed Desktop, startup registration or canonical storage.
-Run its 41 focused tests with:
+Run its 48 focused tests with:
 
 ```sh
 node --test tools/m0-lifecycle-compare/scripts/package-transaction.test.mjs
@@ -32,6 +32,16 @@ failures and two automatic rollback failures. Normal callers use native fs.
 These are deterministic injected failures, not real disk exhaustion or power
 loss. A final directory-flush failure after journal deletion cannot guarantee
 journal retention; callers must treat the reported recovery as incomplete.
+
+New pending journals use schema 2 with owner PID and a per-transaction UUID.
+External recovery refuses a live owner or ambiguous liveness and requires OS
+`ESRCH` before restoring. Schema-1 ownerless intents are retained with
+`RECOVERY_OWNER_UNKNOWN`; do not rewrite retained experiments to bypass this.
+Internal automatic rollback requires the exact journal created by its current
+invocation. If rollback I/O fails while that process remains alive, external
+retry waits for process exit. PID reuse may conservatively block recovery.
+This is a candidate owner guard, not an OS lock or adversarial authentication;
+simultaneous recovery callers remain outside verified scope.
 
 `run-package-transaction-proof.mjs` retains eight scenarios with supplied binary
 copies; it requires a fresh outside-repository `--root` and absolute
