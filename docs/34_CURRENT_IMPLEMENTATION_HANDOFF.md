@@ -52,6 +52,18 @@ Integration update:
 
 ## M0 closure continuation (2026-10-05)
 
+Final implementer gate audit at source `8437559`:
+`evidence/m0/m0-final-gate-audit-20261005.md`, **NOT READY for final CI**.
+Retained foundation/update/notice-documentation proofs now fill previously empty
+checklist evidence; no ADR or final gate is accepted. Two retained Windows native
+report hashes still match. Genuine remaining implementation finding: ordinary
+M0 release Desktop defaults to product `Cryptex/runtime/p0-2` on both OSes,
+while development/pilot fixtures use Cryptex-Dev. Correct the ordinary M0 release
+namespace, add path regressions and collect narrow Mac parity before final CI.
+Do not mutate/delete old runtimes, login settings or historical evidence.
+Security/verifier review remains incomplete until this correction is reviewed.
+No previously passed Mac runtime/Syncthing plan needs repetition.
+
 Latest Mac sidecar regression is scoped **PASS**, reported by the operator/Codex
 at `388e46a7e5f750d88e7fc786e0c108dcea5329e4`: macOS 27.0.1 arm64,
 Rust/Cargo 1.98.1, Node v24.19.0, pnpm 11.28.0. Desktop **13/13**, pre-Tauri

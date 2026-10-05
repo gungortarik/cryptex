@@ -11,6 +11,11 @@ A checkbox may be marked complete only after the requirement has actual verified
 
 Configuration presence, an implementation claim, compilation alone, or success on only one required platform is not sufficient evidence.
 
+Latest audit: `evidence/m0/m0-final-gate-audit-20261005.md`, source `8437559`.
+Retained proofs below are scoped to M0 synthetic foundation behavior. Final CI,
+human/ADR acceptance and the release probe development-root correction remain
+open; product distribution and production canonical safety are not inferred.
+
 ## Governing documents
 
 - `AGENTS.md`
@@ -26,19 +31,19 @@ Configuration presence, an implementation claim, compilation alone, or success o
 ## A. Repository and executable foundation
 
 - [ ] Repository state is clean and required CI checks are green.
-  - Evidence:
+  - Evidence: source was clean before this audit; final candidate CI remains open. Historical targeted package/ACL runs do not substitute for it.
 
 - [x] Rust workspace builds successfully.
   - Evidence: `evidence/m0/windows-release-build-20261002.md` records the full Windows release workspace build. Cross-platform CI remains a separate gate.
 
-- [ ] Blank Cryptex Desktop launches successfully on macOS.
-  - Evidence:
+- [x] Blank Cryptex Desktop launches successfully on macOS.
+  - Evidence: `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-evidence-20261003.md` and `macos-owned-desktop-session-evidence-20261005.md`; real foundation Tauri process, physical tray and later staged native executable sessions. No product UI acceptance claim.
 
-- [ ] Blank Cryptex Desktop launches successfully on Windows.
-  - Evidence:
+- [x] Blank Cryptex Desktop launches successfully on Windows.
+  - Evidence: `evidence/m0/p0-2/windows-physical-release-tray-20261003.md`, `windows-console-visual-result-20261003.md` and `windows-owned-desktop-session-evidence-20261005.md`; actual foundation Desktop process/renderer and staged native sessions.
 
-- [ ] `cryptexd` proof-of-concept runs as designed.
-  - Evidence:
+- [x] `cryptexd` proof-of-concept runs as designed.
+  - Evidence: both-OS `evidence/m0/p0-2/*-native-interruption-evidence-20261005.md`; actual protocol-1 health, PID/parent/path correspondence, held daemon lock and clean exit/released lock/absent IPC.
 
 - [x] Golden Brain fixture foundation exists and is synthetic-only.
   - Evidence: `evidence/m0/p0-2/windows-native-interruption-evidence-20261005.md` and `macos-native-interruption-evidence-20261005.md`; accepted-codec synthetic sealed packs/manifest preserved. Production event schema is outside this foundation.
@@ -72,7 +77,7 @@ Configuration presence, an implementation claim, compilation alone, or success o
 ## C. P0-2 — Background Runtime / Atomic Update Lifecycle
 
 - [x] Main-window `CloseRequested` hide/restore behavior was verified on both platforms.
-  - Evidence: `evidence/m0/p0-2/windows-mode-b-gui-window-close-20261002.md` and `evidence/m0/p0-2/macos-mode-b-gui-window-close.md`. Both use a physical Tauri process and the application's `CloseRequested` path. Literal title-bar/traffic-light clicking remains unverified (macOS Accessibility blocked it).
+  - Evidence: earlier GUI event-path proofs plus `evidence/m0/p0-2/windows-physical-release-tray-20261003.md` and `macos-physical-traffic-light-close-evidence-20261003.md`; literal native close and restore retain the daemon PID. Later Mac owned-supervisor evidence includes physical tray Open/Quit. Earlier Accessibility failures remain historical.
 
 - [x] Reboot/login startup behavior was verified.
   - Evidence: `evidence/m0/p0-2/windows-reboot-login-survival-20261002.md` records a real Windows reboot/login, startup launch correlation and the complete 600-second daemon survival observation. `evidence/m0/p0-2/macos-native-supervision-evidence.md` records physical Mac LaunchAgent reboot/login. Both are test-only registrations; production installation remains open.
@@ -86,17 +91,17 @@ Configuration presence, an implementation claim, compilation alone, or success o
 - [x] Desktop IPC reconnect behavior was verified on both platforms.
   - Evidence: `evidence/m0/p0-2/windows-desktop-ipc-reconnect-20261002.md` and `evidence/m0/p0-2/macos-desktop-ipc-reconnect-20261003.md` cover the shared Desktop Rust client across supervised restart. `windows-tauri-renderer-ipc-reconnect-20261003.md` and `macos-tauri-renderer-ipc-reconnect-20261003.md` additionally verify renderer health/reconnect commands after clean daemon replacement.
 
-- [ ] Compatible Desktop + daemon update behavior was verified.
-  - Evidence:
+- [x] Compatible Desktop + daemon update behavior was verified.
+  - Evidence: both-OS `evidence/m0/p0-2/*-changed-native-package-evidence-20261005.md`; complete staged pair selection and actual healthy candidate. Windows both role hashes changed, Mac Desktop only. M0 spike proof, not installed updater or semantic migration acceptance.
 
 - [x] Synthetic rollback/error path was verified on both platforms.
   - Evidence: `evidence/m0/p0-2/windows-update-rollback-evidence-20261002.md` and `evidence/m0/p0-2/macos-update-rollback-evidence.md`. These are test-only staged binaries/markers, not installer/update UX.
 
-- [ ] Lifecycle/update behavior does not damage canonical data.
-  - Evidence:
+- [x] Lifecycle/update behavior does not damage canonical data.
+  - Evidence: both-OS changed-package and native-interruption reports preserve accepted-codec synthetic immutable sealed packs/manifest after each scenario. Scoped M0 fixture safety under the revised proposal; production canonical schema/signatures remain outside M0 and unverified.
 
 - [ ] Required lifecycle behavior was verified on macOS and Windows.
-  - Evidence:
+  - Evidence: dated both-OS lifecycle/tray/login/reconnect and native pair/recovery proofs exist. Ordinary release probe runtime still defaults to product namespace; development-root correction and its parity remain open in the final audit.
 
 - [ ] ADR-0012 is ACCEPTED with the selected supervision/update approach.
   - Evidence:
@@ -159,60 +164,60 @@ Configuration presence, an implementation claim, compilation alone, or success o
 - [x] Upgrade-strategy compatibility has evidence.
   - Evidence: `evidence/m0/p0-4/windows-syncthing-upgrade-evidence-20261005.md` and `macos-syncthing-upgrade-evidence-20261005.md`; actual 2.1.2 -> 2.1.5 transition/restart/transfer and injected rejection/cold restore. No live canonical rollback, native migration-failure or power-loss claim.
 
-- [ ] Required third-party license/notices handling is documented.
-  - Evidence: exact LICENSE/AUTHORS and upstream links are retained in `third_party/syncthing/2.1.5/`; both-OS staged membership proofs exist. Delivered source-access notice, dependency-notice inventory and installed distribution remain unverified; see `evidence/m0/m0-security-notice-acceptance-review-20261005.md`.
+- [x] Required third-party license/notices handling is documented.
+  - Evidence: exact LICENSE/AUTHORS and upstream source/release links in `third_party/syncthing/2.1.5/README.md`, both-OS staged membership/byte proofs, and explicit distribution obligations in the revised ADR-0004/security review. This satisfies M0 handling documentation; delivered source-access/dependency notices and installer inclusion remain mandatory before distribution, not verified here.
 
-- [ ] ADR-0004 implementation addendum records selected packaging/supervision.
-  - Evidence:
+- [x] ADR-0004 implementation addendum records selected packaging/supervision.
+  - Evidence: `docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md` records pinned native package/backend REST ownership, alternatives and both-OS evidence. PROPOSED status and human acceptance remain separate H gates.
 
 ## F. Cross-platform, security and failure verification
 
 - [ ] Applicable M0 platform-sensitive behavior is verified on both macOS and Windows.
-  - Evidence:
+  - Evidence: scoped existing proofs indexed in the final audit; release development-root correction/parity remains open. No new Mac rerun of previously passed behavior is required.
 
-- [ ] No device has been made canonical master.
-  - Evidence:
+- [x] No device has been made canonical master.
+  - Evidence: final audit reviews health-only daemon IPC, synthetic benchmark fixtures and equal isolated Syncthing identities. No production brain/identity or master-device behavior implemented.
 
-- [ ] Runtime data remains outside the source repository.
-  - Evidence:
+- [x] Runtime data remains outside the source repository.
+  - Evidence: both-OS native-interruption, changed-package and managed/upgrade reports retain fresh proof roots outside Git; source path guards reject in-repository fixture roots. Historical product-namespace runtimes are also outside Git.
 
 - [ ] Development runtime data uses Cryptex-Dev app-data roots.
-  - Evidence:
+  - Evidence: debug, validated pilot, transaction and Syncthing fixtures use Cryptex-Dev; ordinary M0 release Desktop defaults to Cryptex/runtime/p0-2 on both OSes. Final audit requires correction; historical runs are not relabeled or deleted.
 
-- [ ] Canonical writers remain within the permitted daemon boundary for implemented M0 behavior.
-  - Evidence:
+- [x] Canonical writers remain within the permitted daemon boundary for implemented M0 behavior.
+  - Evidence: health-only IPC and Desktop supervision/snapshots; Golden uses explicit synthetic benchmark codec and transport fixtures are synthetic only. No production canonical write API or direct client event writer introduced; final audit records limits.
 
-- [ ] Relevant failure paths have tests or reproducible verification.
-  - Evidence:
+- [x] Relevant failure paths have tests or reproducible verification.
+  - Evidence: final audit indexes both-OS protocol rejection/native rollback, actual pre-successor updater kill, injected I/O/claim/owner/process race regressions and sidecar negative tests. No machine power-loss or production migration failure claim.
 
 - [ ] Relevant security checks/review are complete.
   - Evidence: partial implementer review in `evidence/m0/m0-security-notice-acceptance-review-20261005.md`; renderer executable selection corrected with Windows/Mac regressions PASS. Owner approved preparing boundary revisions; scoped review and human acceptance remain open. Production residuals are tracked separately, not labeled PASS.
 
-- [ ] No real personal/Cortex data was used for M0 testing.
-  - Evidence:
+- [x] No real personal/Cortex data was used for M0 testing.
+  - Evidence: P0-1 synthetic benchmark protocol plus both-OS Golden/native/managed Syncthing evidence explicitly restricts input to synthetic fixtures. No Cortex ingestion or personal memory API implemented; retained corpora not regenerated in this audit.
 
 ## G. Quality and completion workflow
 
-- [ ] Relevant formatting checks pass.
-  - Evidence:
+- [x] Relevant formatting checks pass.
+  - Evidence: both-OS native-interruption workspace checks and latest sidecar boundary checks; current documentation diff check. Later behavior correction must rerun relevant checks.
 
-- [ ] Relevant lint checks pass.
-  - Evidence:
+- [x] Relevant lint checks pass.
+  - Evidence: both-OS strict workspace Clippy in native-interruption/changed-package evidence and latest strict Desktop Clippy in sidecar review. Final CI remains separate.
 
-- [ ] Relevant unit tests pass.
-  - Evidence:
+- [x] Relevant unit tests pass.
+  - Evidence: dated workspace tests plus latest Windows Desktop 20/20, Mac 13/13 sidecar tests; full counts/sources in final audit. Incremental proof is not a latest-source full workspace claim.
 
-- [ ] Relevant integration tests pass.
-  - Evidence:
+- [x] Relevant integration tests pass.
+  - Evidence: actual both-OS native pair selection/recovery and Syncthing managed/upgrade runners, current Windows Node 160/160 + 8/8 and Mac focused CLI 4/4 with prior full suites retained. Final CI remains open.
 
 - [ ] Required cross-platform tests pass.
-  - Evidence:
+  - Evidence: existing parity proofs PASS at exact sources; release development-root correction needs new focused parity, then final integrated CI.
 
 - [ ] Required CI checks are green at the M0 completion commit.
   - Evidence:
 
 - [ ] Verifier reviewed M0 acceptance criteria against actual repository/runtime state.
-  - Evidence:
+  - Evidence: implementer audit in `evidence/m0/m0-final-gate-audit-20261005.md`, including two retained Windows report digest spot checks. This is not independent verifier/human acceptance.
 
 - [ ] Security review is complete for security-sensitive M0 work.
   - Evidence:
@@ -240,14 +245,14 @@ Configuration presence, an implementation claim, compilation alone, or success o
 - [ ] `docs/30_ADR_INDEX.md` reflects final M0 ADR status.
   - Evidence:
 
-- [ ] Any architecture change discovered through M0 evidence has been recorded through the ADR process.
-  - Evidence:
+- [x] Any architecture change discovered through M0 evidence has been recorded through the ADR process.
+  - Evidence: accepted ADR-0013/0007 plus explicitly PROPOSED ADR-0012/0004 revisions and owner boundary authorization; no unrecorded acceptance inferred.
 
 - [ ] Master Spec has been updated if an accepted architecture decision changed.
-  - Evidence:
+  - Evidence: accepted sealed-pack layout already reflected in Master Spec section 8. No newly accepted architecture change in this audit; recheck upon final ADR acceptance.
 
-- [ ] No M1-or-later feature was implemented opportunistically.
-  - Evidence:
+- [x] No M1-or-later feature was implemented opportunistically.
+  - Evidence: final audit reviews explicit synthetic Golden/Doctor/native/Syncthing scopes; no production identity/event store, replication semantics, secret store or shipped updater claim. Product obligations retained in revised proposals.
 
 ## Final gate
 

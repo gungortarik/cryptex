@@ -6,6 +6,14 @@ No M1 work is authorized by this audit. Checkboxes must follow verified evidence
 
 ## Current gate inventory
 
+Latest actionable audit: `m0-final-gate-audit-20261005.md` at source `8437559`.
+The retained inventory below is historical where it mentions production blockers;
+owner-authorized ADR revisions retain those as separate mandatory product gates.
+Current implementation blocker before final CI: ordinary release M0 Desktop
+uses the product runtime namespace on both OSes. Correct to Cryptex-Dev and
+collect focused path parity; then finish review, final CI and human ADR gates.
+Checklist evidence was consolidated without accepting ADRs or completing M0.
+
 | Gate | Verified foundation | Remaining closure work |
 | --- | --- | --- |
 | P0-1 | Accepted ADR-0013 and physical cross-platform benchmark evidence integrated via approved normal merge `cb9069e` from `6d4d10a` | Confirm integrated branch's required checks; no corpus regeneration |

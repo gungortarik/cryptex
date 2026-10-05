@@ -1,7 +1,10 @@
 # M0 security, notice and acceptance review
 
 Status: **PARTIAL — renderer launch issue corrected with both-platform regression
-proof; remaining acceptance decisions open**. Implementation source `82c4d32`.
+proof; release development-root finding and remaining acceptance gates open**.
+Implementation source `82c4d32`; final implementer audit at `8437559` in
+`m0-final-gate-audit-20261005.md` records the path finding and retained-report
+spot checks. No independent verifier or production security certification.
 Authority: Master Spec, accepted ADR-0007/0013, M0 contract and Definition of Done.
 This is implementer review, not human approval or a complete security certification.
 
@@ -56,11 +59,11 @@ not been established. They remain explicit prerequisites before distribution.
    PASS, every exit 0, real POSIX symlink refusal and clean fixture cleanup.
    Evidence: `p0-2/macos-sidecar-boundary-evidence-20261005.md`. This is
    validator/pre-Tauri CLI proof, not physical renderer invocation.
-2. **ADR-0012:** both-platform lifecycle/selection/recovery with synthetic packs
-   exists, but proposed acceptance still explicitly requires signed package
-   integration and production canonical acceptance. Windows certificate readiness
-   found no available valid code-signing key. No certificate purchase/export or
-   security-policy change is authorized/inferred from this review.
+2. **ADR-0012:** both-platform scoped lifecycle/selection/recovery with synthetic
+   packs exists. Revised proposal separates its M0 review/CI/human acceptance
+   from mandatory signed installed update and production canonical gates.
+   Windows certificate readiness found no available valid code-signing key;
+   no certificate purchase/export or security-policy change is authorized.
 3. **Milestone boundary decision recorded:** the owner approved preparing the
    concrete scoped ADR revisions on 2026-10-05. M1 includes OS secure storage;
    M14 packaging/updater coordination; M17 signed/notarized release and final
@@ -78,6 +81,11 @@ not been established. They remain explicit prerequisites before distribution.
 6. **Final CI/human gate:** readiness coverage is prepared; cloud execution and
    human diff/ADR acceptance remain open. Final CI can verify build/test/ACL jobs
    but cannot supply signing, notice completeness or a human decision.
+7. **M0 development-root finding:** ordinary release Desktop defaults to the
+   product namespace on both OSes, despite being a development probe. Correct
+   this to Cryptex-Dev and verify both platforms before final CI. Existing
+   outside-repo synthetic product-root runs remain historical evidence; no
+   data move/delete or login change is implied.
 
 No Actions run for this review. M0 remains **IN PROGRESS**; ADR-0004/0012 remain
 **PROPOSED**. Final CI waits for the remaining review decisions

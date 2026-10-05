@@ -67,6 +67,19 @@ Current evidence: `windows-physical-release-tray-20261003.md`,
 
 ## Remaining P0-2 gates
 
+### Current continuation — 2026-10-05 final audit
+
+Owner authorized preparing the scoped M0/production-boundary revision of
+ADR-0012. Current evidence/criteria are in that revised proposal; the paragraphs
+below retain historical production-review context, not new M0 prerequisites.
+Both-OS native changed-package/recovery and foreground console proof supersede
+their earlier pending statements within recorded limits.
+Final audit: `../m0-final-gate-audit-20261005.md`. Correct ordinary release probe
+runtime to Cryptex-Dev and verify parity before final CI; scoped review, required
+CI and human ADR acceptance remain open. Production signed/installed updater,
+final console-free login and production canonical safety remain mandatory
+product gates; no blanket PASS is inferred from this comparison.
+
 Latest Windows follow-up: `windows-desktop-login-result-20261003.md` verifies
 automatic hidden Desktop login, tray Open, renderer IPC, product startup removal
 and clean exit 0. The console defect has a platform-adapter fix, 11 passing
