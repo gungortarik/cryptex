@@ -22,8 +22,9 @@ Mac gate result: `macos-native-handover-gate-evidence-20261005.md` (14 Rust, 86 
 Owned session evidence: `windows-owned-desktop-session-evidence-20261005.md`
 (97 Node tests, two actual Windows same-package sessions; CI Desktop 17/17).
 Mac actual `.app` request: `macos-owned-desktop-session-test-plan-20261005.md`.
-Initial Mac attempt: `macos-owned-desktop-session-evidence-20261005.md`
-(NOT YET VERIFIED; duplicate Info.plist symbol, corrected test awaits Mac retry).
+Mac result: `macos-owned-desktop-session-evidence-20261005.md`
+(10 Desktop + 14 helper Rust tests, 97 Node tests, two actual same-package .app
+sessions PASS; initial duplicate Info.plist build failure preserved).
 
 - `docs/11_DAEMON_IPC_RUNTIME.md`
 - `docs/23_REQUIRED_TECHNICAL_SPIKES.md`

@@ -795,7 +795,7 @@ snapshot failures were preserved and the readiness event was corrected with a
 regression. Same package reopened; no selection activation or rollback yet.
 Evidence: `evidence/m0/p0-2/windows-owned-desktop-session-evidence-20261005.md`.
 Mac plan: `evidence/m0/p0-2/macos-owned-desktop-session-test-plan-20261005.md`.
-Mac owned-session attempt at `8152267` is **NOT YET VERIFIED**: Rust test build
+Initial Mac owned-session attempt at `8152267` was **NOT YET VERIFIED**: Rust test build
 exited 101 before execution because main and the config test both generated a
 Tauri context, embedding duplicate `_EMBED_INFO_PLIST` symbols. Format/diff
 passed; Clippy, packaging, Node and live sessions were not attempted.
@@ -803,8 +803,19 @@ Fix `49e4e5d` tests the config transform directly with two visible windows and
 preserves identity/window assertions; main is the sole context generator.
 Windows local Desktop **17/17**, format and strict all-target Clippy PASS on this
 fix without Actions or policy changes. This does not supersede the historical
-4551 result or verify Mac. Retry the full updated Mac plan before closing that
-gate. Failure evidence:
+4551 result or independently verify Mac. The Mac operator subsequently reported
+the full updated plan **PASS** at `6712269b6fffe5d39df81d273bf3e46585a4e0dd`:
+macOS 27.0.1 arm64, Node v24.19.0, Rust/Cargo 1.98.1, pnpm 11.28.0;
+Desktop **10/10**, helper **14/14**, Node **97/97**, no failures/skips,
+format/strict Clippy/helper build/current arm64 .app packaging/five syntax/diff
+checks PASS, all exits 0. Owned Desktop/daemon pairs `72303/72313` and
+`72322/72330` had correct executable/parent identities (Desktop parent runner
+`72300`), protocol-1 health and held locks. Both clean exits were 0 with gone
+daemon PIDs, released locks and absent IPC endpoint; native gate cleanup passed.
+Snapshots were hidden; physical no-flash/focus observation remains unverified.
+Mac changed no files or commits and ran no Actions. This closes only the
+same-package owned-session Mac gate, not update/rollback. Report path/hash and
+the initial failure are preserved in:
 `evidence/m0/p0-2/macos-owned-desktop-session-evidence-20261005.md`.
 Next implementation is complete-package selection/intent coordination and
 failed-candidate baseline restart using these owned sessions. Signing, canonical

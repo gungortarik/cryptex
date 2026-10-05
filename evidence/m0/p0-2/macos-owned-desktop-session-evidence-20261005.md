@@ -1,6 +1,7 @@
-# macOS owned Desktop session — initial build failure and retry pending
+# macOS owned Desktop session — scoped PASS after build correction
 
-Status: **NOT YET VERIFIED**.
+Status: **SCOPED PASS** for same-package owned sessions. Initial failed attempt
+is preserved below; version-changing update and rollback remain unverified.
 
 ## Initial Mac operator report
 
@@ -38,11 +39,49 @@ The previous local Application Control 4551 failure is retained in Windows
 session evidence; this new local execution succeeded without policy changes.
 No Actions or GUI interaction was used for this correction.
 
-## Continuation
+## Mac retry — operator-reported PASS
 
-Run `macos-owned-desktop-session-test-plan-20261005.md` from the beginning on a
-clean current branch containing the fix. Report the exact tested SHA and all
-actual results, including a failure if any. Mac Rust tests, current `.app`
-packaging, Node suite and both owned live sessions remain unverified.
-ADR-0012 remains PROPOSED; this correction does not prove update/rollback,
-signing, canonical-data acceptance or interrupted native handover.
+Tested source: `6712269b6fffe5d39df81d273bf3e46585a4e0dd`.
+macOS 27.0.1 arm64; Node v24.19.0; Rust/Cargo 1.98.1; pnpm 11.28.0.
+The operator reported the following results; the retained Mac report was not
+independently read from the Windows host.
+
+| Check | Result |
+| --- | --- |
+| Format | PASS |
+| Desktop Rust tests | 10/10 |
+| Lifecycle helper tests | 14/14 |
+| Strict Clippy and locked helper build | PASS |
+| Current-source .app packaging | PASS; Desktop and daemon arm64 |
+| Node tests | 97/97; no failures/skips |
+| Five syntax checks and diff check | PASS |
+
+All commands exited 0.
+
+| Owned session | Desktop PID | Daemon PID | Desktop parent PID |
+| --- | ---: | ---: | ---: |
+| baseline-first | 72303 | 72313 | 72300 |
+| baseline-reopen | 72322 | 72330 | 72300 |
+
+Daemon parent PIDs matched their owning Desktops. Executable paths matched
+the staged `proof/payload/Contents/MacOS/` binaries. Both sessions returned
+protocol 1 `health.pong` with `lock_held=true`. Both stopped with exit 0,
+absent daemon PID, released daemon lock and absent IPC endpoint. Native gate
+was released cleanly. No fixture/child cleanup or flush error was reported.
+
+Retained report:
+`/Users/tarikgungor/Library/Application Support/Cryptex-Dev/p0-2/mac-owned-session-20261005-7E3551C1-50DC-48E3-8867-B0024C7E88CD/proof/desktop-session-report.json`.
+Reported SHA-256:
+`5d4e004a844f08fb7da2b1a6b43a7d8345badcb4fbe0fbba5fb4a4f917632883`.
+
+Snapshots recorded `window_visible=false`; physical window flash or focus
+changes were not separately observed. Mac repo remained clean; no source/evidence
+edits, commit/push or Actions were performed on Mac.
+
+## Continuation and limits
+
+The corrected Mac build and same-package owned-session gate now pass. Next is
+complete-package selection/intent coordination and failed-candidate baseline
+restart using these sessions under the approved isolated pilot.
+ADR-0012 remains PROPOSED. This result does not prove version-changing update,
+rollback, signing, canonical-data acceptance or interrupted native handover.
