@@ -32,8 +32,8 @@ high-level `keyring` are unselected. SecureStore product work proceeds under
 final appropriate M1 gate.
 
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). ADR-0014 ACCEPTED (2026-10-06, P1).
-Identity/sequence foundations are in place. Next implementation slices follow the
-M1 kickoff plan: SecureStore trait + fake store, then Windows/macOS P1 adapters,
+Identity/sequence foundations are in place. SecureStore trait + fake-store tests
+landed under `cryptexd` (daemon authority). Next: Windows/macOS P1 adapters, then
 daemon wiring, pairing-record persistence, Recovery Kit public metadata. Gate C
 product secure-store physical verification on both OS remains open (distinct from
 completed Gate A). Production pairing/revocation remains M8; Recovery Kit container
