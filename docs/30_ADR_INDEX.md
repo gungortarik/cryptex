@@ -27,18 +27,34 @@ If an ADR record is referenced by authoritative documents but its source file is
 | ADR-0007 | Local IPC transport | ORIGINAL SOURCE RECORD MISSING / IMPLEMENTATION ADDENDUM ACCEPTED | `docs/adr/ADR-0007-local-ipc-implementation-addendum.md` selects pinned `interprocess` 2.4.4 from M0 evidence. Production Desktop health/reconnect is physically verified on both OSes within recorded scope; broader Desktop/CLI/MCP APIs remain incomplete. Do not infer or reconstruct the missing original ADR. |
 | ADR-0012 | Background runtime / atomic update lifecycle | ORIGINAL SOURCE RECORD MISSING / M0 IMPLEMENTATION PROPOSAL ACCEPTED | `docs/adr/ADR-0012-background-runtime-implementation-proposal.md` records Mode B + per-user Desktop startup; closing the window hides, explicit Quit cleanly stops the daemon and exits Desktop. Owner accepted this scoped implementation direction on 2026-10-05. Developer file-control gating, signed installed updater and production canonical safety remain mandatory product gates. |
 | ADR-0013 | Physical immutable event storage layout | ACCEPTED | Source: `docs/adr/ADR-0013-physical-event-storage-layout.md`. Canonical packaging is immutable sealed per-device segment/pack files. One-file-per-event is rejected. Hybrid is not selected. `segment_events=1000` remains a P0-1 benchmark profile, not a frozen production constant. |
+| ADR-0014 | OS secure-store integration | PROPOSED | Source: `docs/adr/ADR-0014-os-secure-store-integration.md`. Proposes daemon-owned `SecureStore` targeting Credential Manager + Keychain. No library default/pin (compare `keyring-core`+explicit providers vs direct APIs; high-level `keyring` not default). Product code blocked until accepted; limited owner-authorized spike allowed while PROPOSED. Both-OS physical product verification is an M1 completion gate; macOS physical WAITING. |
+| ADR-0015 | Brain/device identity foundations | ACCEPTED | Source: `docs/adr/ADR-0015-brain-device-identity-foundations.md`. Accepted 2026-10-05. Brain/install/device identity; sequence first-issue `1`; durable write before return; same-`device_id` concurrent allocate atomicity including first-create race; missing/corrupt typed fail-closed; pairing records only; Recovery Kit public metadata. Pairing/revocation product remains M8; kit container remains M11. |
 
 ## 4. M0 gate
 
-M0 must complete all four P0 technical spikes before the project proceeds to M1.
+M0 completed the four P0 technical spikes and integrated at
+`8de3c8f91497cf21d503b9b1bdc5566716d88dc0` (`origin/m0/foundation`, PR #5).
 
-The M0 gate requires:
+The M0 gate required:
 
-- ADR-0012 accepted
+- ADR-0012 accepted (scoped implementation proposal)
 - ADR-0013 accepted
 - ADR-0007 implementation addendum completed
 - ADR-0004 implementation addendum completed
 - any architecture changes caused by spike evidence reflected in the Master Spec before implementation continues
+
+## 4.1 M1 gate
+
+M1 is in progress on `m1/brain-device-identity`.
+
+- ADR-0015 is **ACCEPTED** (2026-10-05); identity/sequence/pairing-record/RK-public-metadata implementation may proceed under that decision
+- ADR-0014 remains **PROPOSED**; product secure-store implementation and the limited evaluation spike stay blocked until acceptance and/or separate explicit spike authorization
+- Windows + macOS physical product secure-store verification is an M1 completion requirement; macOS physical evidence remains WAITING
+- pairing/revocation product behavior remains assigned to M8
+- Recovery Kit container/serialization remains assigned to M11
+- required GitHub Actions stay deferred until the final appropriate M1 gate
+
+This index accepts ADR-0015 by the status above. Listing ADR-0014 as PROPOSED does not accept it.
 
 ## 5. ADR source records
 

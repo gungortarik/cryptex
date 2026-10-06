@@ -1,9 +1,9 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-05
-**Current milestone:** M0 — Foundation / P0-2 Background Runtime & Atomic Update Lifecycle  
-**Current branch:** `m0/p0-2-cursor`  
-**Implementation base before this handoff:** `8d71044 docs: close macOS physical window proof`
+**Current milestone:** M1 — Brain + Device Identity
+**Current branch:** `m1/brain-device-identity`
+**Implementation base:** `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` (`origin/m0/foundation`, PR #5 merge)
 
 > This file is an operational status snapshot, not an architecture authority. If it conflicts with `docs/00_MASTER_SPEC.md`, accepted ADRs, the milestone contract, or other authoritative project documents, stop and report the conflict instead of silently reconciling it.
 
@@ -15,34 +15,36 @@
 4. `docs/20_MILESTONE_ROADMAP.md`
 5. `docs/23_REQUIRED_TECHNICAL_SPIKES.md`
 6. `docs/32_PRE_IMPLEMENTATION_AUDIT_REPORT.md`
-7. relevant `docs/adr/` records
-8. relevant `evidence/m0/p0-2/` evidence
+7. relevant `docs/adr/` records (ADR-0015 ACCEPTED; ADR-0014 PROPOSED)
+8. `evidence/m1/` kickoff plan when present; retained `evidence/m0/` for foundation context
 
 ## Working agreement
 
-**Full M0 contract recheck (2026-10-05):**
-`evidence/m0/m0-contract-closeout-recheck-20261005.md` maps the original M0
-requirements to retained evidence and independently rechecks final CI/source
-correspondence. Synthetic refers to the required test data, not simulated
-Windows/Mac applications. M0 acceptance is complete; PR #5 Git integration is
-still OPEN/UNMERGED and requires explicit merge authorization. Later product
-obligations remain assigned to the roadmap; M1 is not started.
+**Current status (2026-10-05):** M0 Foundation is COMPLETE and integrated at
+`8de3c8f91497cf21d503b9b1bdc5566716d88dc0` on `origin/m0/foundation` (PR #5).
+M1 — Brain + Device Identity is in progress on `m1/brain-device-identity`.
+Cursor is the write-capable implementer for all of M1. **ADR-0015 is ACCEPTED**;
+identity/sequence slices may proceed under that decision. **ADR-0014 remains
+PROPOSED** — no secure-store spike or ADR-0014-dependent product code without
+separate explicit owner authorization. GitHub Actions stay deferred until the
+final appropriate M1 gate.
 
-**Current closeout status (2026-10-05):** M0 is COMPLETE for the synthetic
-foundation scope. Final behavior-bearing source CI is green at `c7fa011` (run
-`37387323751`); Mac embedded `.app` visual review is scoped PASS. The owner
-accepted the scoped ADR-0012 and ADR-0004 M0 decisions and approved the concrete
-closeout diff. M1 remains unauthorized. Production residuals remain assigned to
-later milestones.
-Older continuation entries below are retained as dated history; use this current
-status and the ADR index for present-day decisions.
+**M1 status:** ADR-0015 ACCEPTED (2026-10-05). Implementing identity/sequence
+foundations (`last_issued=0`, first issue `1`, durable-before-return, concurrent
+atomicity). ADR-0014 PROPOSED; secure-store spike/code blocked pending separate
+authorization. Production pairing/revocation remains M8; Recovery Kit container
+remains M11. No custom cryptography. No Actions until final M1 gate.
 
-- Work only on the current milestone.
-- Do not redesign architecture or choose a new supervision strategy without explicit user approval.
+**Historical M0 closeout (retained):** Final behavior-bearing source CI was
+green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
+scoped PASS; scoped ADR-0012 and ADR-0004 accepted. Older continuation entries
+below remain dated history. Prefer this current status and the ADR index for
+present-day decisions.
+
+- Work only on the current milestone (M1).
+- Do not redesign architecture or choose a secure-store/identity representation without the applicable accepted ADR.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
-- Do not assume that moving between Cursor, Codex, and Work changes which tool is the write-capable implementer.
-- The user explicitly changed the implementation role to Codex in this conversation; Codex is the active implementation tool on Windows. Resume Mac-specific validation on the Mac host when needed.
-- The project owner explicitly approved Mode B with per-user login startup launching Desktop for implementation. The scoped M0 direction is ACCEPTED in `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`; production gates remain mandatory separately under the owner-authorized 2026-10-05 revision scope.
+- Cursor is the active write-capable implementer for M1. Resume Mac-specific physical validation on the Mac host when required evidence needs it.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks and
@@ -50,6 +52,7 @@ status and the ADR index for present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
+- ADR-0015-accepted identity/sequence work may proceed. Do not start ADR-0014 secure-store spike or product secure-store code without separate explicit owner authorization. No GitHub Actions until the final M1 gate.
 
 ## P0-1 status
 
@@ -202,7 +205,7 @@ reported verified; the Master Spec and accepted milestone contract are unchanged
 Next: review these concrete revisions and the retained security/notice residuals,
 then run required final CI once on the resulting stable candidate. Human diff/ADR
 acceptance and the evidence-backed full M0 checklist remain required.
-ADR-0004/0012 remain PROPOSED; M0 remains IN PROGRESS and M1 is not authorized.
+ADR-0004/0012 remain PROPOSED; M0 remains IN PROGRESS and M1 is not authorized. *(Historical M0-era note — superseded: M0 complete, M1 active, ADR-0015 ACCEPTED; see top.)*
 
 The owner explicitly authorized completing the entire M0 milestone. Closure
 audit: `evidence/m0/m0-closure-audit-20261005.md`. P0-4 managed Syncthing and its
@@ -1360,11 +1363,19 @@ do not run Actions for this slice.
 - production-backed Mode A vs Mode B vs justified hybrid comparison
 - ADR-0012 acceptance
 
-## BLOCKED
+## Historical M0 BLOCKED note (superseded)
 
-P0-2 cannot be considered complete and ADR-0012 must not be accepted until the
+> **Historical only.** The text below reflected M0 closeout constraints before
+> PR #5 merge and M1 authorization. It is retained for audit trail and must not
+> be read as current status.
+>
+> **Current status (see top of this handoff):** M0 Foundation is COMPLETE at
+> `8de3c8f`; M1 is active on `m1/brain-device-identity`; ADR-0015 is ACCEPTED;
+> ADR-0014 remains PROPOSED.
+
+~~P0-2 cannot be considered complete and ADR-0012 must not be accepted until the
 current revised M0 criteria, scoped review, required CI and human approval pass.
 Historical production prerequisites in earlier slices remain separate mandatory
 product gates under the owner-authorized revision; no production proof is waived.
 
-M1 is not authorized until all M0 P0 gates are complete.
+M1 is not authorized until all M0 P0 gates are complete.~~

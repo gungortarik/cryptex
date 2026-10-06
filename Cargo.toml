@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "apps/desktop/src-tauri",
+  "crates/core",
   "services/cryptexd",
   "tools/m0-ipc-spike",
   "tools/m0-storage-bench",
