@@ -1,8 +1,13 @@
 # M0 P0-1 — Physical Event Storage Benchmark Evidence
 
-**Status:** IN PROGRESS
+**Status:** COMPLETE (P0-1 resolved; M0 synthetic foundation scope COMPLETE)
 
-This directory records reproducible evidence for M0 P0-1 only. It does not select or freeze the production physical event layout.
+**Current-status note (2026-10-05):** This benchmark index includes dated
+contemporaneous notes. Any statement below that M0 was still in progress records
+the state at that time. Current M0 scope and limits are in
+`evidence/m0/m0-closure-audit-20261005.md`.
+
+This directory records reproducible evidence for M0 P0-1. The production physical packaging decision is recorded in ADR-0013 (ACCEPTED: sealed per-device segments). Individual measurement files do not themselves complete P0-4 or M0.
 
 ## Authority
 
@@ -95,10 +100,56 @@ The exact managed-Syncthing product integration remains P0-4 and must not be inf
 
 The harness reports logical stored bytes and physical object counts. macOS runner output also records `du` allocated KiB for each generated root.
 
-Windows real allocation/directory-metadata overhead must be captured as a separate platform measurement before P0-1 can be accepted; logical byte count alone is insufficient.
+Windows real allocation/directory-metadata overhead was captured as a separate platform measurement on the retained 500k files corpus; logical byte count alone is insufficient.
 
 ## Decision record
 
-No layout is accepted until all required macOS and Windows evidence has been reviewed. The final selected direction, rejected alternatives, scale/recovery implications, purge implications and corruption-blast-radius reasoning must be recorded in ADR-0013.
+ADR-0013 is **ACCEPTED**. Canonical packaging is immutable sealed per-device segment/pack files. One-file-per-event is rejected. Hybrid is not selected.
 
-Until then, ADR-0013 remains unresolved and M0 remains IN PROGRESS.
+`segment_events=1000` was the verified P0-1 benchmark profile and is **not** a frozen production constant.
+
+At the time of this dated decision note, M0 remained IN PROGRESS and P0-2–P0-4
+were still underway. The final M0 status is recorded in the current-status note
+above.
+
+## Current evidence index (non-exhaustive)
+
+Local filesystem scale matrix (macOS + Windows, 10k/100k/500k) is recorded in the dated `macos-*` and `windows-*` files in this directory.
+
+Additional P0-1 evidence files:
+
+- `syncthing-setup.md`, `syncthing-direct-tcp-isolation.md`, `syncthing-direct-tcp-reachability.md`, `syncthing-peer-pairing.md`
+- `syncthing-initial-sync-protocol.md` — includes consumed-cell Windows retirement and r2 Windows destination preparation
+- `syncthing-10k-files-macos-to-windows-TIMED-FAILED.md` — first timed initial-sync attempt failed because preparation was consumed; do not reuse that folder ID
+- `syncthing-10k-files-macos-to-windows-r2-TIMED-FAILED.md` — r2 timed attempt failed on paused-folder completion preflight before unpause; do not reuse r2
+- `syncthing-10k-files-macos-to-windows-r3.md` — **valid** 10k files macOS→Windows initial sync timing
+- `syncthing-10k-files-macos-to-windows-r3-incremental.md` — **valid** approved incremental sync on the r3 files cell
+- `syncthing-10k-segments-macos-to-windows.md` — **valid** 10k segments macOS→Windows initial sync timing
+- `syncthing-10k-segments-macos-to-windows-incremental.md` — **valid** approved incremental sync on the segments cell
+- `syncthing-10k-files-windows-to-macos.md` — **valid** 10k files Windows→macOS initial sync timing
+- `syncthing-10k-files-windows-to-macos-incremental.md` — **valid** approved incremental sync on the Windows→macOS files cell
+- `syncthing-10k-segments-windows-to-macos.md` — **valid** 10k segments Windows→macOS initial sync timing
+- `syncthing-10k-segments-windows-to-macos-incremental.md` — **valid** approved incremental sync on the Windows→macOS segments cell
+- `syncthing-100k-files-macos-to-windows-TIMED-FAILED.md` — 100k files macOS→Windows timed initial sync timed out at default 7200s (~75% peer completion); do not reuse that folder ID
+- `syncthing-100k-files-macos-to-windows-r2-TIMED-FAILED.md` — r2 timed runner disappeared before completion while Syncthing continued transferring; INVALID for timing; do not reuse r2; no confirmed root cause claimed
+- `syncthing-100k-files-macos-to-windows-r3.md` — **valid** 100k files macOS→Windows initial sync timing; retain cell (do not retire yet)
+- `syncthing-100k-files-macos-to-windows-r3-incremental.md` — **valid** approved incremental sync on the r3 100k files cell
+- `syncthing-100k-segments-macos-to-windows.md` — **valid** 100k segments macOS→Windows initial sync timing; retain cell (do not retire yet)
+- `syncthing-100k-segments-macos-to-windows-incremental.md` — **valid** approved incremental sync on the 100k segments cell
+- `syncthing-100k-files-windows-to-macos.md` — **valid** 100k files Windows→macOS initial sync timing; retain cell (do not retire yet)
+- `syncthing-100k-files-windows-to-macos-incremental.md` — **valid** approved incremental sync on the Windows→macOS 100k files cell
+- `syncthing-100k-segments-windows-to-macos.md` — **valid** 100k segments Windows→macOS initial sync timing; retain cell (do not retire yet)
+- `syncthing-100k-segments-windows-to-macos-incremental.md` — **valid** approved incremental sync on the Windows→macOS 100k segments cell
+- `syncthing-500k-files-macos-to-windows-TIMED-FAILED.md` — 500k files macOS→Windows timed initial sync interrupted by source low-power sleep/hibernate; FAILED/INVALID for timing; do not reuse that folder ID
+- `syncthing-500k-files-macos-to-windows-r2-TIMED-FAILED.md` — 500k files macOS→Windows r2 **completed controlled timeout / impracticality** at 21600s (~21.2% peer completion); not a Syncthing crash; not a timing result; no further 500k files retry; do not reuse r2
+- `syncthing-500k-segments-macos-to-windows.md` — **valid** 500k segments macOS→Windows initial sync timing; retain cell (do not retire yet)
+- `syncthing-500k-segments-macos-to-windows-incremental.md` — **valid** approved incremental sync on the 500k segments macOS→Windows cell
+- `syncthing-500k-segments-windows-to-macos.md` — **valid** 500k segments Windows→macOS initial sync timing; retain cell (do not retire yet)
+- `syncthing-500k-segments-windows-to-macos-incremental.md` — **valid** approved incremental sync on the 500k segments Windows→macOS cell
+- `syncthing-500k-segments-runbook.md` — runbook/checklist; Cell A and Cell B timed measurements VERIFIED; do not retire folders from this file
+- `docs/adr/ADR-0013-physical-event-storage-layout.md` — **ACCEPTED** (sealed per-device segments; files rejected; hybrid not selected)
+- `purge-complexity.md` — physical purge-complexity probes for both candidates, with macOS and Windows sections separated
+- `corruption-blast-radius.md` — physical corruption blast-radius probes for both candidates, with macOS and Windows sections separated
+- `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md` — incremental workload protocol; required cells executed; does not accept ADR-0013
+- `syncthing-incremental-workload-PROPOSED.md` — pointer to the approved measurement protocol
+

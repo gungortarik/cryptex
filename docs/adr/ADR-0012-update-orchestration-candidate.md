@@ -1,0 +1,201 @@
+# ADR-0012 update orchestration candidate
+
+> **Historical experiment:** This candidate is not the currently accepted M0
+> ADR-0012 direction. Its proposed filesystem transaction was tested as isolated
+> synthetic evidence; the scoped M0 acceptance and current production residuals
+> are recorded in `ADR-0012-background-runtime-implementation-proposal.md` and
+> `evidence/m0/m0-closure-audit-20261005.md`.
+
+**Status:** PROPOSED — isolated M0 experiment, not production selection
+**Date:** 2026-10-03
+**Authority:** Master Spec; accepted version/update spec; M0 P0-2 contract
+
+## Motivation and alternatives
+
+The approved runtime direction is Desktop-owned Mode B with per-user login
+startup. This does not determine updater orchestration. Native Windows NSIS
+installation/replacement/operator rollback passed, but the generated installer
+copies components sequentially and may force-stop Desktop. It does not establish
+interrupted pair replacement or automatic rollback safety.
+
+Candidates:
+
+1. Stock installer replacement: retained actual install evidence exists, but
+   interrupted copy can leave a mixed pair. Keep it as distribution evidence.
+2. Two independently replaced component files with a journal: requires recovery
+   for every partial combination and OS executable-lock behavior.
+3. Stage a complete verified pair in a separate slot, then replace one selection
+   record. This is the smallest filesystem candidate being measured here.
+
+No updater framework, network service, signing policy, production layout or
+compatibility support window is selected by this proposal. Node is the existing
+pinned development runtime; these scripts are test tools, not a shipped updater.
+
+## Candidate transaction
+
+- Each slot has exactly Desktop bytes, daemon bytes and a versioned experiment
+  manifest. Slot IDs are bounded ASCII identifiers; no paths come from metadata.
+- Validate declared positive protocol equality and SHA-256 payload digests before
+  staging. These digests establish correspondence with supplied experiment input,
+  not publisher authenticity. Runtime protocol negotiation is a separate gate.
+- Reject links/junctions, in-repository roots, unowned roots, reused slots,
+  incomplete pairs, unknown manifest schemas and malformed records.
+- Preserve the old slot. Write a flushed immutable pending intent containing
+  before/after selections, then replace the selection record using a same-root
+  rename. No pair is overwritten one file at a time.
+- Require explicit health acceptance. Negative/throwing health restores the
+  previous complete pair automatically. Reverify candidate bytes before commit.
+- Delete pending intent only at commit. On restart, a valid pending transaction
+  conservatively restores the old pair, even if the candidate was already healthy.
+  Recovery is idempotent. Corrupt last-known-good/metadata causes explicit failure
+  with diagnostic files retained; it is not silently treated as a successful rollback.
+- Package operations receive no canonical-data path. Fixture inventory compares
+  file membership and SHA-256 bytes before/after each failure scenario.
+
+## Measurement contract and limits
+
+The executable prototype is `tools/m0-lifecycle-compare/scripts/package-transaction.mjs`.
+Tests force-kill owned updater subprocesses at five observed boundaries: staged,
+intent, selected, healthy and committed. This is actual process interruption,
+not a simulated exception, but it is not machine power loss.
+
+The candidate has no OS-level process lock, same-user adversarial tamper
+resistance or immutable OS permissions for slots. Two deterministic Windows
+regressions now cover stale staging and the race between selection validation
+and pending-intent creation: the stale updater fails with a typed error and
+preserves the winner's selection. This is not stress testing or proof of native
+cross-platform serialization. Mac parity of these two controlled interleavings
+passed at `ad37989` (31/31 tests); see the Mac concurrency evidence. SHA-256 is from Node's
+standard crypto library; no custom cryptography is introduced. Windows directory
+fsync is not implemented through Node, so power-loss durability is explicitly
+unverified. POSIX directory fsync must pass on Mac; failures are reported, never
+swallowed.
+
+The original filesystem-only proof uses injected health outcomes. Retained binary copies
+are hashed/staged but not executed. Desktop is not connected to the selection
+record. `.app` resources, code signing, native package layouts, executable locking,
+installed startup references and successor launch remain outside this experiment.
+Synthetic data is not accepted canonical events. No P0-1 corpus or production
+data is used, and no M1/M2 event-store implementation is authorized here.
+
+A separate Windows headless follow-up now connects the transaction callback to
+actual copied daemon startup, the shared Rust Desktop IPC client, PID/held-lock
+matching, clean stop and lock release. Failed executable and declared-versus-real
+protocol mismatch restore the old selection; the experiment explicitly restarts
+and checks the restored daemon. See `windows-package-real-health-20261003.md`.
+This does not integrate installed Desktop/successor launch or change proposal
+status. Mac real-health parity and the remaining native integration gates remain open.
+
+## Gates before production integration or ADR acceptance
+
+The approved pilot now has a separate persistent OS handover gate for cooperating
+callbacks (`80b727f`). Windows Rust 14/14 and Node 86/86 pass, with exception/EOF/
+SIGKILL release and live contender refusal. Mac gate parity is pending. This
+primitive does not yet gate existing Desktop/startup/update entry points or
+establish actual binary handover. See `windows-native-handover-gate-evidence-20261005.md`
+and `macos-native-handover-gate-test-plan-20261005.md`. Mac gate parity subsequently
+passed at `6a7d294` (14 Rust, 86 Node); see its Mac evidence.
+The later `dd5021b` pilot launches actual isolated Windows loose release Desktop
+and its bundled daemon under that gate, proving two same-package clean sessions
+and real OS identity/IPC/cleanup. This does not activate a candidate selection or
+implement rollback. Targeted Windows CI run 37308202823 passed release Desktop
+17/17, sidecar staging 3/3 and unsigned NSIS build. Actual `.app` session parity
+remains pending; see `windows-owned-desktop-session-evidence-20261005.md`.
+
+Current continuation plan: `native-package-handover-plan-20261005.md` in the
+P0-2 evidence directory. The project owner explicitly approved the isolated native
+complete-package handover pilot in the Windows conversation. The first complete
+tree staging slice passes 18 new Windows tests (79 combined) and copies/verifies
+the retained installed tree without running it; see
+`windows-native-package-tree-evidence-20261005.md`. This is scoped pilot approval,
+not production method selection or ADR acceptance. Later paragraphs preserve earlier slice limits; newer evidence closes
+the named test-only parity/claim cases, not the production gates. Real daemon
+health parity is recorded in `macos-package-real-health-evidence-20261003.md`;
+that Mac run used the same retained pair and did not prove a version upgrade.
+Native Desktop/resources handover, signed integrity and accepted-layout
+canonical preservation remain open.
+
+The latest test-only native cleanup candidate uses fs2 0.4.3 to serialize stale
+recovery-claim removal in a Rust command. It requires OS ESRCH for the recorded
+owner and unchanged claim bytes before removal; live/ambiguous owners remain
+refused. A Node adapter subsequently invokes ordinary guarded recovery.
+Six process tests pass on Windows, including killed native-lock holder release,
+killed recovery reclamation, two cleanup callers and preservation of live or
+malformed claims. This lock covers cleanup only, not every package operation.
+Mac parity and source format verification passed at `7011fc7` after the authorized
+formatter-only repair: Rust 13/13 and Node 61/61, strict Clippy, locked build,
+syntax and diff checks passed. Windows Application Control previously blocked
+cargo-fmt; no security policy was bypassed. See
+`windows-package-native-recovery-evidence-20261004.md` and
+`macos-package-native-recovery-evidence-20261004.md`. The prior direct recovery
+entry still refuses interrupted claims without this explicit adapter.
+
+Windows concurrent-recovery follow-up adds an exclusive filesystem recovery
+claim held until the recovery call ends. Recovery and updater activation refuse
+an existing claim. Three controlled separate-process cases pass (55/55 combined
+tests), including a late updater after old-intent removal and recovery-process
+termination. Claims left by interrupted recovery are retained; there is no
+automatic stale-claim reclamation. This deliberately trades availability for
+safe refusal in the experiment, not a shipped OS-lock strategy. Mac parity
+passed at `0ce9c93` (55/55); see `macos-package-recovery-claim-evidence-20261004.md`.
+Native process locking, automatic recovery after recovery-process crash and
+broad stress remain open. See `windows-package-recovery-claim-evidence-20261004.md`.
+
+The candidate's Windows live-owner follow-up uses journal schema 2 (PID and
+transaction UUID). External recovery requires OS ESRCH; live or ambiguous
+owners and legacy ownerless journals fail closed. Automatic rollback requires
+the exact in-process journal. Seven regressions pass (52/52 combined tests),
+including separate-process refusal at three boundaries, post-exit recovery and
+uninterrupted owner commit after refusal. See
+`windows-package-live-owner-evidence-20261004.md`. This is not an OS lock or
+publisher authentication. PID reuse can block recovery conservatively; failed
+automatic rollback cannot be retried externally until its owner process exits.
+Mac parity passed at `b05be5e` (52/52); see
+`macos-package-live-owner-evidence-20261004.md`. Simultaneous recovery callers
+remain unverified.
+
+Windows follow-up now verifies four controlled races with actual separate Node
+updater subprocesses: competing commits during staging and after selection
+validation, refusal while intent exists, and simultaneous validated contenders.
+Exactly one simultaneous contender commits; stale callers preserve its selection.
+See `windows-package-process-race-evidence-20261004.md` (45/45 combined tests).
+Mac parity passed at `6b8776c` (45/45); see
+`macos-package-process-race-evidence-20261004.md`.
+Broad stress and recovery racing an active updater remain open;
+this does not introduce a native process lock or installed updater.
+
+Windows recovery-fault follow-up passes six deterministic injected cases:
+temporary selection write (`ENOSPC`), file flush (`EIO`), selection rename
+(`EACCES`), intent unlink (`EACCES`), and automatic rollback rename failure
+after rejected/throwing health. Mutation errors expose `RECOVERY_IO_FAILED`
+with phase, underlying OS code, and observed intent presence. The four direct
+faults retain the journal and permit an idempotent baseline recovery after the
+fault is removed; neither automatic rollback fault claims restoration. This
+does not establish actual disk-full/ACL behavior or power-loss durability.
+Directory-flush failure after successful unlink may leave no journal; completion
+is still reported as unestablished. Mac parity passed at `9d9159c` (41/41 tests);
+later durability faults remain open. See
+`windows-package-recovery-io-evidence-20261003.md` and
+`macos-package-recovery-io-evidence-20261004.md`.
+
+1. Mac filesystem/process-interruption parity using the exact test plan.
+2. Review this candidate and select the scoped orchestration explicitly; do not
+   infer ADR acceptance from passing fixture tests.
+3. Define a native helper/launcher handover behind platform adapters: prevent
+   competing transitions, quiesce daemon, prove lock release, protect verified
+   package identity, and launch the selected complete package. A running Desktop
+   must not overwrite itself or become an additional canonical writer.
+4. Verify real signed package/resource integrity and actual Desktop/daemon IPC
+   readiness. Pair metadata alone cannot establish runtime compatibility.
+5. Exercise partial I/O, recovery I/O failure, cross-platform concurrent
+   invocation (including process races beyond the two deterministic Windows
+   cases), native executable locks, restart/login during transition and relevant
+   durability boundaries. Define controlled errors when rollback cannot be
+   completed.
+6. Verify unchanged immutable storage fixtures using the accepted P0-1 layout,
+   without altering retained corpora; production data is not a test fixture.
+7. Measure real packaged flows on both targets and update the comparison before
+   accepting ADR-0012. M14 productizes the accepted mechanism later.
+
+No window manipulation is needed for this experiment. Actual GUI/native installer
+steps must be scheduled with the operator; the user's game must keep focus.

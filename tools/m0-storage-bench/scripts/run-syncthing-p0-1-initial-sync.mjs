@@ -169,6 +169,25 @@ async function main() {
     fail("intended benchmark peer is not connected over TCP before timed run");
   }
 
+  // Fail closed if the prepared initial-sync state was already consumed.
+  // Syncthing returns HTTP 404 "folder is paused" for completion while paused;
+  // that is the expected pre-unpause state and must not abort timing.
+  const preCompletion = await tryRequestJson(
+    `${baseUrl}/rest/db/completion?folder=${encodeURIComponent(args.folderId)}&device=${encodeURIComponent(args.peerId)}`,
+    apiKey,
+  );
+  if (
+    preCompletion &&
+    numeric(preCompletion.completion) >= 100 &&
+    numeric(preCompletion.needItems) === 0 &&
+    numeric(preCompletion.needBytes) === 0 &&
+    numeric(preCompletion.needDeletes) === 0
+  ) {
+    fail(
+      "peer already reports completion before timed unpause; initial-sync preparation was consumed and must not be remeasured on this folder ID",
+    );
+  }
+
   const startedAtUtc = new Date().toISOString();
   const started = performance.now();
 
@@ -214,13 +233,12 @@ async function main() {
         const needBytes = numeric(peerCompletion.needBytes);
         const needItems = numeric(peerCompletion.needItems);
         const needDeletes = numeric(peerCompletion.needDeletes);
-        const globalItems = numeric(peerCompletion.globalItems);
         if (
           completionPercent >= 100 &&
           needBytes === 0 &&
           needItems === 0 &&
           needDeletes === 0 &&
-          globalItems === args.expectedFiles
+          numeric(status?.globalFiles) === args.expectedFiles
         ) {
           completion = peerCompletion;
           finalStatus = status;
@@ -277,6 +295,7 @@ async function main() {
   console.log(`peer_need_items=${numeric(completion.needItems)}`);
   console.log(`peer_need_bytes=${numeric(completion.needBytes)}`);
   console.log(`peer_need_deletes=${numeric(completion.needDeletes)}`);
+  console.log(`source_global_files_verified=${numeric(finalStatus.globalFiles)}`);
   console.log(`source_paused_after_completion=${Boolean(pausedVerified.paused)}`);
   console.log("transport_scope=explicit_direct_tcp_only");
   console.log("scope=isolated_p0_1_initial_syncthing_scan_sync_measurement");
