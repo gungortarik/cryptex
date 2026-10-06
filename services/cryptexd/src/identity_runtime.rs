@@ -61,6 +61,16 @@ impl From<std::io::Error> for IdentityRuntimeError {
     }
 }
 
+impl IdentityRuntimeError {
+    /// Map into a lifecycle error for binary entrypoints.
+    pub fn into_lifecycle(self) -> LifecycleError {
+        match self {
+            Self::Lifecycle(inner) => inner,
+            other => LifecycleError::Attention(other.to_string()),
+        }
+    }
+}
+
 pub type IdentityRuntimeResult<T> = Result<T, IdentityRuntimeError>;
 
 pub fn identity_dir(runtime_root: &Path) -> PathBuf {

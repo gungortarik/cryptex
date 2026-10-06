@@ -50,3 +50,22 @@ Do **not** start M2 or declare M1 complete until the above are closed.
 - `cargo test -p cryptex-core` PASS
 - `cargo test -p cryptexd --lib` PASS (77)
 - `cargo clippy -p cryptex-core -p cryptexd --all-targets -- -D warnings` PASS
+
+## Follow-up security review (2026-10-06, tip after wiring)
+
+### Finding: test-only install/sequence call sites
+
+**Contract determination:**
+- **Install identity:** ADR-0015 section 2.2 defines `install_id` as local runtime binding (new install => new id). M1 therefore requires the **live cryptexd process** to bind/persist install identity when it holds a runtime root — not library tests alone.
+- **Sequence allocation:** ADR-0015 section 2.3 / acceptance criteria require a daemon-owned durable allocator foundation with tests. Kickoff slice 6 "Daemon wiring" lists Brain/SecureStore public metadata, not product IPC or event issuance. Sequence **allocate** has no M1 consumer (events are M2; cutoff productization is M8). Opening the daemon-owned sequence store directory at hold time is the M1 runtime bind; allocate remains a cryptexd library API for later milestones.
+
+**Resolution:**
+- `prepare_m1_runtime_foundation` ensures install identity + opens sequence store dir.
+- `cryptexd lifecycle hold` / `login-hold` call that helper after `ensure_runtime_root`.
+- Process harness `hold_binds_install_identity_and_sequence_store_dir` verifies binary wiring.
+- Limitation recorded: no M1 sequence allocate CLI/IPC; no overstated product integration.
+
+### Finding: RFC 3339 impossible values
+
+**Resolved:** `parse_rfc3339_str` now rejects impossible calendar/clock/offset values (schema shape unchanged).
+

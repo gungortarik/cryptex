@@ -388,3 +388,53 @@ fn path_has_runtime_residue(repo_root: &Path) -> bool {
     ];
     candidates.iter().any(|path| path.exists())
 }
+
+
+#[test]
+fn hold_binds_install_identity_and_sequence_store_dir() {
+    let _guard = serialize_process_harness();
+    let runtime = unique_runtime("hold-identity");
+    let ready = runtime.join("ready");
+    let stop = runtime.join("stop");
+
+    let mut holder = Command::new(cryptexd_bin())
+        .args([
+            "lifecycle",
+            "hold",
+            "--runtime-root",
+            runtime.to_str().unwrap(),
+            "--ready-file",
+            ready.to_str().unwrap(),
+            "--stop-file",
+            stop.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn holder");
+
+    assert!(
+        wait_until(Duration::from_secs(5), || ready.exists()),
+        "holder did not become ready"
+    );
+
+    let install_path = runtime.join("identity").join("install_identity.json");
+    let sequence_path = runtime.join("sequence");
+    assert!(
+        wait_until(Duration::from_secs(2), || install_path.is_file()),
+        "hold must persist install identity under runtime root"
+    );
+    assert!(
+        sequence_path.is_dir(),
+        "hold must open daemon-owned sequence store directory"
+    );
+    let text = fs::read_to_string(&install_path).expect("read install");
+    assert!(text.contains("install_id"));
+    assert!(text.contains("schema_version"));
+
+    fs::write(&stop, b"stop\n").expect("stop");
+    let exit = holder.wait().expect("holder exit");
+    assert_eq!(exit.code(), Some(0));
+    let _ = fs::remove_dir_all(&runtime);
+}
+

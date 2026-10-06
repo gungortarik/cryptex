@@ -10,6 +10,7 @@ use cryptexd::compat::{
     read_synthetic_marker, simulate_failed_update, simulate_rollback, write_synthetic_marker,
 };
 use cryptexd::error::LifecycleError;
+use cryptexd::install_runtime::prepare_m1_runtime_foundation;
 use cryptexd::instance::{observe_instance, try_acquire_instance};
 use cryptexd::paths::{assert_outside_repository, default_p0_2_runtime_root, ensure_runtime_root};
 use cryptexd::status::{LifecycleReport, write_status_file};
@@ -108,12 +109,16 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
                 parse_hold_opts(&args[1..])?
             };
             ensure_runtime_root(&opts.runtime_root)?;
+            let install = prepare_m1_runtime_foundation(&opts.runtime_root).map_err(|e| e.into_lifecycle())?;
             let lock = try_acquire_instance(&opts.runtime_root)?;
             cryptexd::ipc::spawn_health_server()?;
             let report = LifecycleReport::active_holder(
                 &opts.runtime_root,
                 lock.pid(),
-                "holding instance lock for harness",
+                format!(
+                    "holding instance lock for harness; install_id={}",
+                    install.install_id
+                ),
             );
             write_status_file(&opts.runtime_root, &report)?;
             print!("{}", report.render_kv());

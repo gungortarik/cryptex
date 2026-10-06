@@ -36,3 +36,4 @@ impl From<std::io::Error> for LifecycleError {
 }
 
 pub type LifecycleResult<T> = Result<T, LifecycleError>;
+

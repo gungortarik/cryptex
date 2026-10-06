@@ -48,8 +48,8 @@ No custom cryptography.
 
 **M1 audit (2026-10-06):** Sequence allocation and install identity are daemon-owned
 (`evidence/m1/m1-scope-security-audit-20261006.md`). Gate C Windows+macOS SecureStore remain
-VERIFIED via separate host evidence. M1 is **not** complete: security review, required CI/Actions,
-and human review remain open.
+VERIFIED via separate host evidence. M1 is **not** complete: security review continues (install/sequence hold wiring + RFC 3339
+validity addressed; see audit follow-up), required CI/Actions, and human review remain open.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
