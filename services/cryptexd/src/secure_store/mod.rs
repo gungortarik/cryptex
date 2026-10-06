@@ -6,8 +6,14 @@
 mod fake;
 mod naming;
 
+#[cfg(windows)]
+mod windows;
+
 pub use fake::FakeSecureStore;
 pub use naming::{AccountLabel, SecureStoreEnvironment, ServiceLabel};
+
+#[cfg(windows)]
+pub use windows::WindowsCredentialStore;
 
 use std::fmt;
 
@@ -81,7 +87,7 @@ pub fn payload_bytes_recoverable(secret: &[u8], text: &str) -> bool {
     false
 }
 
-fn validate_name_pair(service: &str, account: &str) -> SecureStoreResult<()> {
+pub(crate) fn validate_name_pair(service: &str, account: &str) -> SecureStoreResult<()> {
     if service.is_empty() {
         return Err(SecureStoreError::InvalidName("empty_service".into()));
     }

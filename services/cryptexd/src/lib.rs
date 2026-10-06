@@ -31,6 +31,9 @@ pub use paths::{
     assert_outside_repository, default_p0_2_runtime_root, ensure_runtime_root, lock_path,
     marker_path, status_path,
 };
+#[cfg(windows)]
+#[cfg(windows)]
+pub use secure_store::WindowsCredentialStore;
 pub use secure_store::{
     AccountLabel, FakeSecureStore, SecureStore, SecureStoreEnvironment, SecureStoreError,
     SecureStoreResult, ServiceLabel,
