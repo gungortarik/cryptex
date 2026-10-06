@@ -87,8 +87,8 @@ Ordered after ADR acceptance (and after any authorized spike that informed ADR-0
 
 ### 6.1 Required sequence crash/restart test (after ADR-0015 acceptance)
 
-Implemented by `sequence::tests::crash_restart_after_successful_allocate_does_not_reuse_sequence`
-in `crates/core` (local subprocess; portable Windows/macOS kill after successful return):
+Implemented by `sequence_store::tests::crash_restart_after_successful_allocate_does_not_reuse_sequence`
+in `services/cryptexd` (daemon-owned allocator per ADR-0015) (local subprocess; portable Windows/macOS kill after successful return):
 
 1. Worker initializes, allocates, records last returned value `n`, then holds.
 2. Parent forcibly stops the worker **after** the successful return is durable on disk.
