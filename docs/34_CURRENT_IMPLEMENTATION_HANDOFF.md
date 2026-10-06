@@ -22,33 +22,34 @@
 
 **Current status (2026-10-06):** M0 Foundation is COMPLETE and integrated at
 `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` on `origin/m0/foundation` (PR #5).
-M1 - Brain + Device Identity is on `m1/brain-device-identity` at tip
-`f40484dd6e4e8c9eee110eea68735cedf71410bb` (f40484d). Cursor is the write-capable implementer for all of M1.
+M1 - Brain + Device Identity is on `m1/brain-device-identity`; the prior final-CI source tip was
+`f40484dd6e4e8c9eee110eea68735cedf71410bb` (f40484d). Cursor was the write-capable M1 implementer; the owner has now directly authorized Codex to complete this closeout follow-up.
 **ADR-0015 is ACCEPTED**; **ADR-0014 is ACCEPTED** (2026-10-06) selecting **P1**
 (direct platform APIs) with product pins `windows-sys = 0.61.2`,
 `widestring = 1.2.1`, `security-framework = 3.7.0`. K2 and high-level `keyring`
 are unselected. Gate C **Windows** and **macOS** product SecureStore are VERIFIED
-(distinct host evidence under `evidence/m1/`). Final required CI **PASS** on tip
+(distinct host evidence under `evidence/m1/`). Prior required CI **PASS** on tip
 `f40484d`: run [37533023641](https://github.com/gungortarik/cryptex/actions/runs/37533023641) (Windows readiness, macOS readiness,
-Windows cross-account IPC ACL; unsigned Windows package job skipped by design).
-M1 is **not** complete: **human review remains open** (see audit DoD checklist).
+Windows cross-account IPC ACL; unsigned Windows package job skipped by design). The newer Brain identity persistence follow-up needs a fresh final CI run.
+M1 is **not** complete: **fresh final CI and human review remain open** (see audit DoD checklist).
 
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). ADR-0014 ACCEPTED (2026-10-06, P1).
 Identity/sequence, SecureStore (trait/fake + Windows/macOS P1 adapters), synthetic
 Brain daemon wiring, pairing-record persistence, and Recovery Kit public metadata
 persistence are in place under cryptexd. Gate C Windows and macOS product SecureStore
 are both VERIFIED (2026-10-06; distinct host evidence files under `evidence/m1/`).
-Gate A spike remains historical comparison only. Scoped security-review findings are
-resolved; final CI is PASS (run 37533023641). Human review + full M1 completion gate remain open.
+Gate A spike remains historical comparison only. Windows tests, strict Clippy and format
+for the Brain identity persistence follow-up pass locally; Unix-specific persistence tests
+and fresh final CI remain pending. Human review + full M1 completion gate remain open.
 Production pairing/revocation remains M8; Recovery Kit container remains M11.
 No custom cryptography.
 
 **M1 audit (2026-10-06):** Sequence allocation and install identity are daemon-owned
 (`evidence/m1/m1-scope-security-audit-20261006.md`). Brain public identity first-create is now
 exclusive/no-replace (same class of fix as install identity; see audit). Final CI PASS on tip
-`f40484d` remains recorded (run 37533023641); re-run Actions only if the final gate requires it
-after further code changes. Owner decisions still open before any startup Brain-bind or Brain
-metadata placement change (see audit). M1 is **not** complete until **human review** is recorded
+`f40484d` remains recorded (run 37533023641); fresh final Actions are required for the Brain
+persistence follow-up. The accepted M1 lifecycle and placement boundary is documented in
+ADR-0015 §2.1.1 and the audit. M1 is **not** complete until **human review** is recorded
 complete. Do not merge as M1 completion or start M2 while that gate is open.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
@@ -68,7 +69,7 @@ present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows and macOS product SecureStore both VERIFIED 2026-10-06 (separate host evidence). Final M1 CI PASS: run 37533023641 @ `f40484d`; human review still required before M1 complete.
+- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows and macOS product SecureStore both VERIFIED 2026-10-06 (separate host evidence). Prior CI PASS: run 37533023641 @ `f40484d`; fresh final CI and human review are required before M1 complete.
 
 ## P0-1 status
 

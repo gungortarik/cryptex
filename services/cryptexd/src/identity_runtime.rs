@@ -27,6 +27,12 @@ pub enum IdentityRuntimeError {
     Core(CoreError),
     SecureStore(SecureStoreError),
     AlreadyExists(String),
+    /// A failed persistence step could not remove its staging file cleanly.
+    /// The primary failure and staging cleanup failure are both retained.
+    PersistenceCleanupFailed {
+        primary: Box<IdentityRuntimeError>,
+        cleanup_error: String,
+    },
     /// Primary create/verify path failed and at least one compensating cleanup also failed.
     ///
     /// Explicit cleanup outcome flags are provided so callers can see which step
@@ -48,6 +54,13 @@ impl std::fmt::Display for IdentityRuntimeError {
             Self::Core(e) => write!(f, "{e}"),
             Self::SecureStore(e) => write!(f, "{e}"),
             Self::AlreadyExists(path) => write!(f, "identity already exists at {path}"),
+            Self::PersistenceCleanupFailed {
+                primary,
+                cleanup_error,
+            } => write!(
+                f,
+                "{primary}; staging-file cleanup also failed: {cleanup_error}; inspect the identity directory before retrying"
+            ),
             Self::CompensatingCleanupFailed {
                 primary,
                 public_rollback_succeeded,
@@ -118,14 +131,16 @@ impl IdentityRuntimeError {
 
     /// Whether retrying the entire Brain create is safe after this error.
     ///
-    /// Returns `Some(false)` for any [`Self::CompensatingCleanupFailed`] —
+    /// Returns `Some(false)` for errors that include a failed cleanup —
     /// that variant means at least one cleanup failed, so whole-operation
     /// retry must not be implied. Other variants return `None` (no cleanup
     /// outcome encoded; e.g. a clean SecureStore put failure after successful
     /// public rollback is just `SecureStore` and may be retried).
     pub fn whole_operation_retry_safe(&self) -> Option<bool> {
         match self {
-            Self::CompensatingCleanupFailed { .. } => Some(false),
+            Self::CompensatingCleanupFailed { .. } | Self::PersistenceCleanupFailed { .. } => {
+                Some(false)
+            }
             _ => None,
         }
     }
@@ -147,6 +162,37 @@ fn remove_file_if_present(path: &Path) -> io::Result<()> {
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),
     }
+}
+
+fn with_staging_cleanup(
+    primary: IdentityRuntimeError,
+    cleanup: io::Result<()>,
+) -> IdentityRuntimeError {
+    match cleanup {
+        Ok(()) => primary,
+        Err(cleanup_error) => IdentityRuntimeError::PersistenceCleanupFailed {
+            primary: Box::new(primary),
+            cleanup_error: cleanup_error.to_string(),
+        },
+    }
+}
+
+fn finish_staging_write<F, C>(
+    tmp: &Path,
+    mut file: fs::File,
+    bytes: &[u8],
+    write_and_sync: F,
+    cleanup: C,
+) -> IdentityRuntimeResult<()>
+where
+    F: FnOnce(&mut fs::File, &[u8]) -> io::Result<()>,
+    C: FnOnce(&Path) -> io::Result<()>,
+{
+    if let Err(primary) = write_and_sync(&mut file, bytes) {
+        drop(file);
+        return Err(with_staging_cleanup(primary.into(), cleanup(tmp)));
+    }
+    Ok(())
 }
 
 fn unique_brain_tmp(path: &Path) -> PathBuf {
@@ -178,9 +224,9 @@ fn remove_uncommitted_dest(dest: &Path) -> io::Result<()> {
 }
 
 #[cfg(any(unix, test))]
-fn sync_and_cleanup_error(sync_err: io::Error, cleanup_err: io::Error) -> io::Error {
+fn combine_io_errors(primary: io::Error, cleanup: io::Error, context: &str) -> io::Error {
     io::Error::other(format!(
-        "parent directory sync failed ({sync_err}); failed to remove uncommitted destination link ({cleanup_err})"
+        "{context}: {primary}; cleanup also failed: {cleanup}"
     ))
 }
 
@@ -212,7 +258,13 @@ fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> io::Result<()> {
 
     #[cfg(unix)]
     {
-        place_new_file_no_replace_unix(tmp, dest, sync_parent_directory, remove_uncommitted_dest)
+        place_new_file_no_replace_unix(
+            tmp,
+            dest,
+            sync_parent_directory,
+            remove_uncommitted_dest,
+            remove_file_if_present,
+        )
     }
 
     #[cfg(not(any(unix, windows)))]
@@ -226,28 +278,55 @@ fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> io::Result<()> {
 }
 
 #[cfg(unix)]
-fn place_new_file_no_replace_unix<S, R>(
+fn place_new_file_no_replace_unix<S, R, T>(
     tmp: &Path,
     dest: &Path,
-    sync_parent: S,
+    mut sync_parent: S,
     remove_dest: R,
+    remove_tmp: T,
 ) -> io::Result<()>
 where
-    S: FnOnce(&Path) -> io::Result<()>,
+    S: FnMut(&Path) -> io::Result<()>,
     R: FnOnce(&Path) -> io::Result<()>,
+    T: FnOnce(&Path) -> io::Result<()>,
 {
     fs::hard_link(tmp, dest)?;
-    if let Err(sync_err) = sync_parent(dest) {
-        return match remove_dest(dest) {
-            Ok(()) => Err(sync_err),
-            Err(cleanup_err) => Err(sync_and_cleanup_error(sync_err, cleanup_err)),
-        };
+
+    // Remove the staging link before committing the directory update. If this
+    // fails, remove the destination link and sync that rollback before failing.
+    if let Err(primary) = remove_tmp(tmp) {
+        let mut result = Err(primary);
+        if let Err(cleanup_err) = remove_dest(dest) {
+            result = result
+                .map_err(|err| combine_io_errors(err, cleanup_err, "staging-link cleanup failed"));
+        }
+        if let Err(sync_err) = sync_parent(dest) {
+            result = result.map_err(|err| {
+                combine_io_errors(err, sync_err, "staging-link rollback directory sync failed")
+            });
+        }
+        return result;
     }
-    match fs::remove_file(tmp) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e),
+
+    if let Err(primary) = sync_parent(dest) {
+        let mut result = Err(primary);
+        if let Err(cleanup_err) = remove_dest(dest) {
+            result = result.map_err(|err| {
+                combine_io_errors(
+                    err,
+                    cleanup_err,
+                    "parent sync failed; destination rollback failed",
+                )
+            });
+        }
+        if let Err(sync_err) = sync_parent(dest) {
+            result = result.map_err(|err| {
+                combine_io_errors(err, sync_err, "destination rollback directory sync failed")
+            });
+        }
+        return result;
     }
+    Ok(())
 }
 
 /// Remove a just-written brain identity (and staging tmp files) so a failed create can retry.
@@ -261,23 +340,35 @@ fn rollback_brain_identity(runtime_root: &Path) -> IdentityRuntimeResult<()> {
     }
     // Remove legacy `.json.tmp` and unique `.json.tmp.*` staging names.
     let dir = identity_dir(runtime_root);
-    if let Ok(entries) = fs::read_dir(&dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if (name == "brain_identity.json.tmp" || name.starts_with("brain_identity.json.tmp."))
-                && let Err(e) = remove_file_if_present(&entry.path())
-                && first_err.is_none()
-            {
-                first_err = Some(e);
+    match fs::read_dir(&dir) {
+        Ok(entries) => {
+            for entry in entries {
+                match entry {
+                    Ok(entry) => {
+                        let name = entry.file_name();
+                        let name = name.to_string_lossy();
+                        if (name == "brain_identity.json.tmp"
+                            || name.starts_with("brain_identity.json.tmp."))
+                            && let Err(e) = remove_file_if_present(&entry.path())
+                            && first_err.is_none()
+                        {
+                            first_err = Some(e);
+                        }
+                    }
+                    Err(e) => {
+                        if first_err.is_none() {
+                            first_err = Some(e);
+                        }
+                        break;
+                    }
+                }
             }
         }
-    } else {
-        let legacy = path.with_extension("json.tmp");
-        if let Err(e) = remove_file_if_present(&legacy)
-            && first_err.is_none()
-        {
-            first_err = Some(e);
+        Err(e) if e.kind() == ErrorKind::NotFound => {}
+        Err(e) => {
+            if first_err.is_none() {
+                first_err = Some(e);
+            }
         }
     }
     match first_err {
@@ -351,24 +442,25 @@ pub fn write_brain_identity(
 
     let json = identity.to_json_lf()?;
     let tmp = unique_brain_tmp(&path);
-    {
-        let mut file = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
-        file.write_all(json.as_bytes())?;
-        file.sync_all()?;
-    }
+    let file = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+    finish_staging_write(
+        &tmp,
+        file,
+        json.as_bytes(),
+        |file, bytes| {
+            file.write_all(bytes)?;
+            file.sync_all()
+        },
+        remove_file_if_present,
+    )?;
 
     match place_new_file_no_replace(&tmp, &path) {
         Ok(()) => Ok(()),
-        Err(e) if e.kind() == ErrorKind::AlreadyExists => {
-            let _ = fs::remove_file(&tmp);
-            Err(IdentityRuntimeError::AlreadyExists(
-                path.display().to_string(),
-            ))
-        }
-        Err(e) => {
-            let _ = fs::remove_file(&tmp);
-            Err(e.into())
-        }
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => Err(with_staging_cleanup(
+            IdentityRuntimeError::AlreadyExists(path.display().to_string()),
+            remove_file_if_present(&tmp),
+        )),
+        Err(e) => Err(with_staging_cleanup(e.into(), remove_file_if_present(&tmp))),
     }
 }
 
@@ -563,23 +655,91 @@ mod tests {
 
     #[test]
     fn sync_and_cleanup_error_reports_both_failures() {
-        let err = sync_and_cleanup_error(
+        let err = combine_io_errors(
             io::Error::other("injected parent sync failure"),
             io::Error::new(ErrorKind::PermissionDenied, "injected dest cleanup failure"),
+            "parent sync failed",
         );
         let msg = err.to_string();
         assert!(msg.contains("injected parent sync failure"), "{msg}");
         assert!(msg.contains("injected dest cleanup failure"), "{msg}");
-        assert!(
-            msg.contains("failed to remove uncommitted destination link"),
-            "{msg}"
-        );
+        assert!(msg.contains("cleanup also failed"), "{msg}");
     }
 
     #[test]
     fn sync_parent_directory_fails_without_parent() {
         let err = sync_parent_directory(Path::new("/")).expect_err("root has no parent");
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn staging_write_failure_removes_partial_temp_and_preserves_primary_error() {
+        let root = temp_root();
+        fs::create_dir_all(identity_dir(&root)).expect("dir");
+        let tmp = unique_brain_tmp(&brain_identity_path(&root));
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+            .expect("staging temp");
+
+        let err = finish_staging_write(
+            &tmp,
+            file,
+            b"partial identity",
+            |file, bytes| {
+                file.write_all(&bytes[..7])?;
+                Err(io::Error::other("injected staging sync failure"))
+            },
+            remove_file_if_present,
+        )
+        .expect_err("injected failure");
+
+        assert!(err.to_string().contains("injected staging sync failure"));
+        assert!(!tmp.exists(), "failed staging file must be removed");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn staging_cleanup_failure_preserves_both_errors_and_forbids_retry() {
+        let root = temp_root();
+        fs::create_dir_all(identity_dir(&root)).expect("dir");
+        let tmp = unique_brain_tmp(&brain_identity_path(&root));
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+            .expect("staging temp");
+
+        let err = finish_staging_write(
+            &tmp,
+            file,
+            b"partial identity",
+            |file, bytes| {
+                file.write_all(bytes)?;
+                Err(io::Error::other("injected staging write failure"))
+            },
+            |_| {
+                Err(io::Error::new(
+                    ErrorKind::PermissionDenied,
+                    "injected cleanup failure",
+                ))
+            },
+        )
+        .expect_err("injected failure");
+
+        let message = err.to_string();
+        assert!(
+            message.contains("injected staging write failure"),
+            "{message}"
+        );
+        assert!(message.contains("injected cleanup failure"), "{message}");
+        assert_eq!(err.whole_operation_retry_safe(), Some(false));
+        assert!(
+            tmp.exists(),
+            "fixture confirms cleanup failure was injected"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[cfg(unix)]
@@ -600,10 +760,46 @@ mod tests {
             &dest,
             |_| Err(io::Error::other("injected parent sync failure")),
             remove_uncommitted_dest,
+            remove_file_if_present,
         )
         .expect_err("sync fail");
         assert!(err.to_string().contains("injected parent sync failure"));
         assert!(!dest.exists(), "dest must be removed");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_staging_link_cleanup_failure_removes_destination_and_is_reported() {
+        let root = temp_root();
+        fs::create_dir_all(identity_dir(&root)).expect("dir");
+        let dest = brain_identity_path(&root);
+        let tmp = unique_brain_tmp(&dest);
+        fs::write(&tmp, b"identity").expect("tmp");
+
+        let err = place_new_file_no_replace_unix(
+            &tmp,
+            &dest,
+            sync_parent_directory,
+            remove_uncommitted_dest,
+            |_| {
+                Err(io::Error::new(
+                    ErrorKind::PermissionDenied,
+                    "injected temp cleanup",
+                ))
+            },
+        )
+        .expect_err("staging link removal fails");
+
+        assert!(err.to_string().contains("injected temp cleanup"));
+        assert!(
+            !dest.exists(),
+            "failed placement must remove destination link"
+        );
+        assert!(
+            tmp.exists(),
+            "the injected cleanup failure leaves the staging link"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 

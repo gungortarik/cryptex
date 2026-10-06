@@ -4,7 +4,7 @@
 
 **Date drafted:** 2026-10-05
 
-**Date revised:** 2026-10-05 (owner review revision; durable-before-return; concurrent allocate atomicity)
+**Date revised:** 2026-10-06 (M1 Brain persistence/lifecycle boundary; prior 2026-10-05 owner review revision, durable-before-return, and concurrent allocate atomicity)
 
 **Date accepted:** 2026-10-05
 
@@ -40,6 +40,12 @@ Minimal public UTF-8 JSON (LF) record, daemon-written only:
 | `created_at` | RFC 3339 timestamp for **display/timeline only** — never security authority |
 
 No device is master of the Brain. `brain_id` is not silently rewritten in place.
+
+#### 2.1.1 M1 persistence and lifecycle boundary
+
+- The M1 local canonical copy is stored by `cryptexd` at `<selected Cryptex app-data root>/identity/brain_identity.json`. Although the implementation receives this app-data root as `runtime_root`, the Brain identity file is **durable canonical metadata**, not a disposable lifecycle file, cache, or derived projection. Normal daemon stop, restart, and application upgrade must not delete or regenerate it.
+- `lifecycle hold` and `login-hold` do not create or require a Brain identity. Brain creation is an explicit daemon-owned setup operation; M1 establishes its persistence foundation but does not add a first-run UI or silently create a Brain as a startup side effect.
+- M1 does not implement the immutable event store, cross-device replication, or device-reinstall recovery. M2 event records must bind to this existing `brain_id`; M8 replication must transfer the identity metadata unchanged; M11 restore must preserve it. None may mint a replacement identity for an existing Brain.
 
 ### 2.2 Install identity vs device identity
 

@@ -107,7 +107,9 @@ Runtime data must remain outside the source repository.
 
 Cryptex must not create application/runtime folders in the user's visible home, Desktop or Documents by default.
 
-The exact internal directory structure beneath the application-data root is not frozen by this document and must not be invented merely for implementation convenience.
+The app-data path `identity/brain_identity.json` is the M1 local canonical Brain identity record, not disposable runtime-control state, a cache, or a derived projection. It must survive normal daemon stop/restart and application upgrades. M2 event records bind to this identity; M8 replication transfers it unchanged; M11 restore preserves it. These later behaviors are not claimed by M1.
+
+The exact internal directory structure beneath the application-data root is not frozen by this document and must not be invented merely for implementation convenience. The M1 Brain identity path is the scoped exception recorded in ADR-0015 §2.1.1; any later relocation must preserve the canonical identity bytes and `brain_id` through an explicit migration.
 
 ## 8. Replication boundary
 
