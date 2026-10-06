@@ -5,7 +5,7 @@
 **Gate:** A (product-separated evaluation spike)
 **Branch:** `m1/brain-device-identity`
 **Host:** Windows (local)
-**Mac host:** not executed — all Mac cells **WAITING**
+**Mac host:** Gate A later recorded in `evidence/m1/secure-store-spike-macos-20261006.md` (this Windows file retains its original WAITING matrix snapshot)
 **ADR-0014 status after this evidence:** remains **PROPOSED** (pending owner review)
 
 ## Scope and constraints

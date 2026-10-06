@@ -4,7 +4,7 @@
 
 **Date drafted:** 2026-10-05
 
-**Date revised:** 2026-10-05 (Gate A spike evidence + measurement correction; still PROPOSED)
+**Date revised:** 2026-10-06 (Gate A complete on Windows + macOS; provisional P1; still PROPOSED)
 
 **Milestone:** M1 — Brain + Device Identity
 
@@ -38,7 +38,7 @@ These gates are intentionally separate so acceptance cannot deadlock on unfinish
 |---|---|---|
 | **A — PROPOSED + limited evaluation spike** | Owner may authorize a **product-separated** spike (tools/evidence only) to exercise candidate OS APIs and candidate Rust bindings. Spike code must not become `cryptexd` product secure-store, must not pin workspace dependencies for production, and must not write secrets into the repo. | Spike may gather **evaluation evidence** on one or both OSes. Incomplete Mac cells stay **WAITING**, not “pass”. |
 | **B — ADR ACCEPTED** | Requires owner acceptance of the **decision** after spike comparison evidence is recorded (which candidates were tried, limitations, recommendation). An accepted revision or addendum then names the selected approach and exact pins. **Product secure-store implementation may start only after B.** | ADR acceptance requires enough spike evidence to choose among candidates **without treating unverified platforms as verified**. Both-OS **product** verification is **not** an ADR-acceptance prerequisite if the decision text and spike notes still mark unfinished platforms WAITING. |
-| **C — M1 completion gate** | M1 secure-store scope is done only when the **accepted** approach is implemented behind daemon authority and the required failure/security tests pass on **both** first-class platforms per DoD / M1 contract. | **Windows and macOS physical verification of the accepted product integration are M1 completion requirements**, not a substitute for gate B. macOS physical work remains **WAITING** until executed on a Mac host. |
+| **C — M1 completion gate** | M1 secure-store scope is done only when the **accepted** approach is implemented behind daemon authority and the required failure/security tests pass on **both** first-class platforms per DoD / M1 contract. | **Windows and macOS physical verification of the accepted product integration are M1 completion requirements**, not a substitute for gate B. Gate A spike evidence is complete on both OSes; **product** physical verification remains open until after acceptance. |
 
 Summary:
 
@@ -103,13 +103,13 @@ Equivalent guarantee: device private material lives in OS-protected secret stora
 |---|---|---|
 | Spec basis | Documented | — |
 | Candidate comparison table (K1/K2/P1) | Documentary in this ADR | Feeds A/B |
-| Limited evaluation spike (Windows) | **Started** — store/read/delete/missing PASS for K2+P1; K2 error-redaction **FAIL** (BadEncoding Debug exposes bytes); P1 error-redaction PASS; recorded in `evidence/m1/secure-store-spike-windows-20261005.md` | A |
-| Limited evaluation spike (macOS) | **WAITING** — not executed on a Mac host; instructions in spike README + evidence | A |
-| Spike recommendation (provisional) | Prefer **K2** only with mandatory product redaction wrappers (never surface BadEncoding/BadDataFormat payloads); P1 remains viable. Pending Mac + owner review. **No library pinned for product.** | Feeds B |
+| Limited evaluation spike (Windows) | **Complete for Gate A** — store/read/delete/missing PASS for K2+P1; K2 error-redaction **FAIL** (BadEncoding Debug); P1 error-redaction PASS; `evidence/m1/secure-store-spike-windows-20261005.md` | A |
+| Limited evaluation spike (macOS) | **Complete for Gate A** — same matrix pattern at SHA `4f4ba2784cbb3d305a8a462aa9b7286b9a8e770d` on macOS 27.0.1 (26A434) arm64; Keychain prompt not observed during that run; `evidence/m1/secure-store-spike-macos-20261006.md` | A |
+| Spike recommendation (provisional) | Prefer **P1** (direct platform APIs): P1 passed full matrices on Windows and macOS; K2 failed overall error-redaction on **both** platforms due to payload-bearing `BadEncoding` Debug exposure. **No library pinned for product.** Owner review required for gate B. | Feeds B |
 | Windows physical product verification | **Not VERIFIED** (spike ≠ product integration) | C (M1 completion) |
-| macOS physical product verification | **WAITING** (not performed on Mac host) | C (M1 completion) |
+| macOS physical product verification | **Not VERIFIED** (spike ≠ product integration; Gate A only) | C (M1 completion) |
 
-Windows Gate A shows K2 and P1 satisfy store/read/delete/missing-item. K2 overall error-redaction **FAIL**s because `BadEncoding` Debug recovers secret bytes; missing-item (`NoEntry`) surfaces are safe. P1 typed errors pass redaction checks. That is Gate A evidence only. It does **not** accept this ADR, does **not** verify product `cryptexd` integration, and does **not** claim macOS verification.
+Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/read/delete/missing-item on both hosts but fails overall error-redaction because `keyring_core::Error::BadEncoding` Debug recovers secret bytes; missing-item (`NoEntry`) surfaces are safe. P1 typed errors pass redaction checks on both hosts. That is Gate A evidence only. It does **not** accept this ADR, does **not** verify product `cryptexd` integration, and does **not** claim Gate C product verification.
 
 ## 7. Recovery / security implications
 
@@ -132,7 +132,7 @@ Windows Gate A shows K2 and P1 satisfy store/read/delete/missing-item. K2 overal
 
 1. ADR-0014 accepted (gate B) and product adapters implemented under `cryptexd` authority.
 2. Windows physical matrix: store / read / delete / missing-item / redacted errors.
-3. macOS physical matrix: same (currently **WAITING**).
+3. macOS physical **product** matrix: same as Windows (Gate A spike complete; product Gate C still open).
 4. Tests show secret bytes absent from log fixtures.
 
 ## 9. Acceptance status
@@ -141,10 +141,10 @@ Windows Gate A shows K2 and P1 satisfy store/read/delete/missing-item. K2 overal
 |---|---|
 | ADR-0014 | **PROPOSED** |
 | Product secure-store implementation | **Blocked** until ACCEPTED |
-| Limited evaluation spike | **Owner-authorized; Windows Gate A evidence recorded**; macOS spike **WAITING**; still product-separated |
+| Limited evaluation spike | **Owner-authorized; Gate A complete on Windows + macOS**; still product-separated; provisional **P1** |
 | Library/provider pin | **None** (no default `keyring`) |
 | Hardware-backed keys required | **No** |
-| Both-OS physical product verification | **M1 completion gate**; macOS **WAITING** |
+| Both-OS physical product verification | **M1 completion gate**; Gate A done; product verification still open on both OS |
 
 ## 10. References
 

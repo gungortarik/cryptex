@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-**Snapshot date:** 2026-10-05
+**Snapshot date:** 2026-10-06
 **Current milestone:** M1 — Brain + Device Identity
 **Current branch:** `m1/brain-device-identity`
 **Implementation base:** `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` (`origin/m0/foundation`, PR #5 merge)
@@ -20,22 +20,25 @@
 
 ## Working agreement
 
-**Current status (2026-10-05):** M0 Foundation is COMPLETE and integrated at
+**Current status (2026-10-06):** M0 Foundation is COMPLETE and integrated at
 `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` on `origin/m0/foundation` (PR #5).
 M1 — Brain + Device Identity is in progress on `m1/brain-device-identity`.
 Cursor is the write-capable implementer for all of M1. **ADR-0015 is ACCEPTED**;
 identity/sequence slices may proceed under that decision. **ADR-0014 remains
-PROPOSED** — owner-authorized Gate A secure-store spike has Windows evidence
-(`evidence/m1/secure-store-spike-windows-20261005.md`); macOS spike cells remain
-WAITING. Product secure-store code stays blocked until ADR acceptance. GitHub Actions stay deferred until the
+PROPOSED** — owner-authorized Gate A secure-store spike is complete on Windows and
+macOS (`evidence/m1/secure-store-spike-windows-20261005.md`,
+`evidence/m1/secure-store-spike-macos-20261006.md`) with provisional **P1**
+recommendation. Product secure-store code stays blocked until ADR acceptance. GitHub Actions stay deferred until the
 final appropriate M1 gate.
 
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). Identity/sequence foundations are
 in place (`last_issued=0`, first issue `1`, durable-before-return, concurrent
-atomicity). ADR-0014 remains PROPOSED. Owner-authorized Gate A secure-store spike
-recorded Windows Gate A matrix (`evidence/m1/secure-store-spike-windows-20261005.md`: store/read/delete/missing PASS; K2 error-redaction FAIL on BadEncoding Debug; P1 redaction PASS);
-macOS spike WAITING. Product secure-store implementation still blocked until
-ADR-0014 acceptance. Production pairing/revocation remains M8; Recovery Kit
+atomicity). ADR-0014 remains PROPOSED. Gate A secure-store spike complete on
+Windows and macOS at tested SHA `4f4ba2784cbb3d305a8a462aa9b7286b9a8e770d` for
+Mac evidence: K2 store/read/delete/missing PASS / error-redaction FAIL on both
+OS; P1 full matrix PASS on both OS; provisional recommendation **P1**. Product
+secure-store implementation still blocked until ADR-0014 acceptance (Gate C
+product verification open). Production pairing/revocation remains M8; Recovery Kit
 container remains M11. No custom cryptography. No Actions until final M1 gate.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
@@ -55,7 +58,7 @@ present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- ADR-0015-accepted identity/sequence work may proceed. ADR-0014 Gate A spike is owner-authorized and Windows evidence is recorded; do not start product secure-store code until ADR-0014 is accepted. Mac spike remains WAITING pending Mac-host execution (P1 macOS API fixed for security-framework 3.7.0 `generic_password`). No GitHub Actions until the final M1 gate.
+- ADR-0015-accepted identity/sequence work may proceed. ADR-0014 Gate A spike is complete on Windows and macOS with provisional P1; do not start product secure-store code until ADR-0014 is accepted. No GitHub Actions until the final M1 gate.
 
 ## P0-1 status
 
