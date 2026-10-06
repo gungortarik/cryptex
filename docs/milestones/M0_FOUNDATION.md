@@ -84,7 +84,7 @@ Select the simplest option that satisfies scale and recovery goals on both platf
 
 Record the decision in ADR-0013 and mark it ACCEPTED before the applicable downstream milestone gate.
 
-**Recorded 2026-10-02:** P0-1 is complete. ADR-0013 is ACCEPTED (sealed per-device segments). M0 remains IN PROGRESS until P0-2, P0-3 and P0-4 and the remaining M0 gate items are verified.
+**Historical status recorded 2026-10-02:** P0-1 was complete. ADR-0013 was ACCEPTED (sealed per-device segments). M0 remained IN PROGRESS until P0-2, P0-3, P0-4 and remaining M0 gate items were verified. **Superseded for current status** by the M0 closure audit and `checklists/M0_FOUNDATION_GATE.md`, which record M0 complete for its synthetic foundation scope; production readiness remains out of scope.
 
 **Recorded 2026-10-05:** Owner accepted ADR-0012's scoped M0 Mode B direction:
 per-user Desktop starts at login, closing the window hides the app, and explicit

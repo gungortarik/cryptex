@@ -125,7 +125,7 @@ Spike rule: simplest option that meets **scale and recovery** on both platforms.
 | Hybrid evaluated | **no** (not justified; not selected) |
 | `segment_events=1000` | **P0-1 benchmark profile only; not a production constant** |
 | P0-1 spike | **complete** |
-| P0-4 / M0 | **not complete** |
+| P0-4 / M0 | **not complete at the 2026-10-02 ADR snapshot; superseded for current status by `evidence/m0/m0-closure-audit-20261005.md` and `checklists/M0_FOUNDATION_GATE.md` (M0 complete for synthetic foundation scope)** |
 
 ## 8. References
 

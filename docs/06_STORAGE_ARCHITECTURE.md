@@ -245,7 +245,7 @@ For storage, M0 must:
 - select the simplest option meeting scale and recovery requirements
 - record the accepted result in ADR-0013
 
-P0-1 is complete: ADR-0013 is ACCEPTED. M0 as a whole remains incomplete until P0-2, P0-3 and P0-4 (and their ADRs/addenda) are resolved.
+**Historical status (2026-10-02):** P0-1 was complete and ADR-0013 was ACCEPTED; M0 was still in progress pending P0-2, P0-3 and P0-4. This dated status is superseded by the M0 closure audit and `checklists/M0_FOUNDATION_GATE.md`, which record M0 complete for its synthetic foundation scope. That closeout does not claim production updater, canonical replication, signing or distribution readiness.
 
 M0 must not opportunistically implement the full M2 immutable event store or M3 SQLite/search system.
 
