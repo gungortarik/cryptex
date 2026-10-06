@@ -95,3 +95,37 @@ Do **not** start M2 or declare M1 complete until the above are closed.
 - `git diff --check` PASS
 - GitHub Actions: not run (deferred)
 - M1 complete: **not declared**
+
+### Finding: install-identity first-create race / overwrite (RESOLVED)
+
+**Finding:** `write_install_identity` used exists-then-rename. On Windows, Rust `fs::rename` replaces an existing destination, so concurrent `ensure_install_identity` / `load_or_create_install_identity` callers could overwrite the winning `install_id`.
+
+**Resolution:**
+- Exclusive no-replace placement: Windows `MoveFileExW` without `MOVEFILE_REPLACE_EXISTING`; Unix `hard_link`.
+- Concurrent losers load the persisted winner; explicit duplicate `write_install_identity` still returns `AlreadyExists`.
+- Concurrent first-create regression asserts one shared ID and unchanged persisted bytes.
+
+### Finding: Unix install-identity parent directory not synced after hard_link (RESOLVED)
+
+**Finding:** After `hard_link(tmp, dest)`, success was returned without syncing the parent directory, so the new directory entry might not survive power loss. Dest cleanup on sync failure used discarded `remove_file` errors.
+
+**Resolution:**
+- Unix path syncs the parent directory after hard_link and only then returns success.
+- Sync failure removes the uncommitted destination link; cleanup failures are compounded into the returned error (never silently discarded); create is never reported committed on sync failure.
+- Injectable Unix hooks (`place_new_file_no_replace_unix`) cover sync-failure (dest removed, not committed) and sync+cleanup failure (both errors reported).
+- Windows placement path unchanged (`MOVEFILE_WRITE_THROUGH`, no replace).
+
+## M1 security-review closeout status (2026-10-06)
+
+Scoped security-review findings above are resolved in code on `m1/brain-device-identity`.
+
+| Gate | Status |
+|---|---|
+| Scoped security-review code findings | Resolved (see findings above) |
+| Gate C Windows + macOS SecureStore | VERIFIED (separate host evidence) |
+| Local Windows checks (install + identity + lib + Clippy) | PASS at tip after this follow-up |
+| Final GitHub Actions / required CI | **PENDING** — operator will run once against the final code SHA |
+| Human review / DoD checklist | Open until CI result is recorded |
+| M1 complete | **not declared** |
+
+Do not start M2 until CI pending is closed and DoD/human review are satisfied.
