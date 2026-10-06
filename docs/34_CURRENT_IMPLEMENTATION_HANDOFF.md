@@ -25,21 +25,19 @@
 M1 — Brain + Device Identity is in progress on `m1/brain-device-identity`.
 Cursor is the write-capable implementer for all of M1. **ADR-0015 is ACCEPTED**;
 identity/sequence slices may proceed under that decision. **ADR-0014 remains
-PROPOSED** — owner-authorized Gate A secure-store spike is complete on Windows and
-macOS (`evidence/m1/secure-store-spike-windows-20261005.md`,
-`evidence/m1/secure-store-spike-macos-20261006.md`) with provisional **P1**
-recommendation. Product secure-store code stays blocked until ADR acceptance. GitHub Actions stay deferred until the
+PROPOSED** — Gate A complete on Windows and macOS; owner-review decision addendum
+`docs/adr/ADR-0014-os-secure-store-decision-addendum.md` recommends **P1** (direct
+platform APIs). Product secure-store code stays blocked until ADR acceptance. GitHub Actions stay deferred until the
 final appropriate M1 gate.
 
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). Identity/sequence foundations are
 in place (`last_issued=0`, first issue `1`, durable-before-return, concurrent
 atomicity). ADR-0014 remains PROPOSED. Gate A secure-store spike complete on
-Windows and macOS at tested SHA `4f4ba2784cbb3d305a8a462aa9b7286b9a8e770d` for
-Mac evidence: K2 store/read/delete/missing PASS / error-redaction FAIL on both
-OS; P1 full matrix PASS on both OS; provisional recommendation **P1**. Product
-secure-store implementation still blocked until ADR-0014 acceptance (Gate C
-product verification open). Production pairing/revocation remains M8; Recovery Kit
-container remains M11. No custom cryptography. No Actions until final M1 gate.
+Windows and macOS; decision addendum recommends **P1** pending owner review
+(no product pins/backend; Gate C product verification not claimed). Product
+secure-store implementation still blocked until ADR-0014 acceptance. Production
+pairing/revocation remains M8; Recovery Kit container remains M11. No custom
+cryptography. No Actions until final M1 gate.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
@@ -58,7 +56,7 @@ present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- ADR-0015-accepted identity/sequence work may proceed. ADR-0014 Gate A spike is complete on Windows and macOS with provisional P1; do not start product secure-store code until ADR-0014 is accepted. No GitHub Actions until the final M1 gate.
+- ADR-0015-accepted identity/sequence work may proceed. ADR-0014 Gate A is complete; decision addendum recommends P1 and awaits owner review; do not start product secure-store code until ADR-0014 is accepted. No GitHub Actions until the final M1 gate.
 
 ## P0-1 status
 

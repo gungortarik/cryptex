@@ -4,7 +4,7 @@
 
 **Date drafted:** 2026-10-05
 
-**Date revised:** 2026-10-06 (Gate A complete on Windows + macOS; provisional P1; still PROPOSED)
+**Date revised:** 2026-10-06 (Gate A complete; owner-review decision addendum prepared — P1; still PROPOSED)
 
 **Milestone:** M1 — Brain + Device Identity
 
@@ -105,7 +105,7 @@ Equivalent guarantee: device private material lives in OS-protected secret stora
 | Candidate comparison table (K1/K2/P1) | Documentary in this ADR | Feeds A/B |
 | Limited evaluation spike (Windows) | **Complete for Gate A** — store/read/delete/missing PASS for K2+P1; K2 error-redaction **FAIL** (BadEncoding Debug); P1 error-redaction PASS; `evidence/m1/secure-store-spike-windows-20261005.md` | A |
 | Limited evaluation spike (macOS) | **Complete for Gate A** — same matrix pattern at SHA `4f4ba2784cbb3d305a8a462aa9b7286b9a8e770d` on macOS 27.0.1 (26A434) arm64; Keychain prompt not observed during that run; `evidence/m1/secure-store-spike-macos-20261006.md` | A |
-| Spike recommendation (provisional) | Prefer **P1** (direct platform APIs): P1 passed full matrices on Windows and macOS; K2 failed overall error-redaction on **both** platforms due to payload-bearing `BadEncoding` Debug exposure. **No library pinned for product.** Owner review required for gate B. | Feeds B |
+| Spike recommendation (provisional) | Prefer **P1** — see owner-review decision addendum `docs/adr/ADR-0014-os-secure-store-decision-addendum.md`. Evidence: P1 full matrices PASS on Windows + macOS; K2 error-redaction FAIL on both. **No product pin.** Owner review required for gate B. | Feeds B |
 | Windows physical product verification | **Not VERIFIED** (spike ≠ product integration) | C (M1 completion) |
 | macOS physical product verification | **Not VERIFIED** (spike ≠ product integration; Gate A only) | C (M1 completion) |
 
@@ -124,7 +124,7 @@ Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/
 
 1. Owner review of this revised proposal.
 2. Limited spike evidence comparing K2 and P1 at minimum (K1 optional), with limitations recorded.
-3. Selected approach named in this ADR or a dated addendum, including exact pins only when evidence supports them.
+3. Selected approach named in this ADR or a dated addendum, including exact pins only when evidence supports them. *(Decision addendum drafted 2026-10-06 recommending P1; awaiting owner acceptance before any product pin.)*
 4. Explicit confirmation that hardware-backed non-exportable keys are not required.
 5. Unfinished platform spike cells remain labeled WAITING — never silently marked verified.
 
@@ -141,8 +141,9 @@ Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/
 |---|---|
 | ADR-0014 | **PROPOSED** |
 | Product secure-store implementation | **Blocked** until ACCEPTED |
-| Limited evaluation spike | **Owner-authorized; Gate A complete on Windows + macOS**; still product-separated; provisional **P1** |
-| Library/provider pin | **None** (no default `keyring`) |
+| Limited evaluation spike | **Owner-authorized; Gate A complete on Windows + macOS**; still product-separated |
+| Decision addendum | **PROPOSED PENDING OWNER REVIEW** — `docs/adr/ADR-0014-os-secure-store-decision-addendum.md` (recommends **P1**) |
+| Library/provider pin | **None** in product workspace (spike-local versions only; see addendum) |
 | Hardware-backed keys required | **No** |
 | Both-OS physical product verification | **M1 completion gate**; Gate A done; product verification still open on both OS |
 
@@ -153,4 +154,6 @@ Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/
 - `docs/milestones/M1_BRAIN_DEVICE_IDENTITY.md`
 - `docs/adr/ADR-0007-local-ipc-implementation-addendum.md`
 - `evidence/m1/m1-kickoff-plan-20261005.md`
-
+- `docs/adr/ADR-0014-os-secure-store-decision-addendum.md`
+- `evidence/m1/secure-store-spike-windows-20261005.md`
+- `evidence/m1/secure-store-spike-macos-20261006.md`
