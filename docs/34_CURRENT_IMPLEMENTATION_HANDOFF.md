@@ -48,10 +48,10 @@ No custom cryptography.
 
 **M1 audit (2026-10-06):** Sequence allocation and install identity are daemon-owned
 (`evidence/m1/m1-scope-security-audit-20261006.md`). Gate C Windows+macOS SecureStore remain
-VERIFIED via separate host evidence. Compensating identity cleanup failures are now typed
-(`CompensatingCleanupFailed`; rollback/delete errors no longer discarded; retry never reported
-safe when public rollback failed — see audit follow-up). M1 is **not** complete: security review
-continues, required CI/Actions, and human review remain open.
+VERIFIED via separate host evidence. Compensating identity cleanup failures are typed with
+explicit public/private cleanup outcome fields; whole-operation retry is never implied after
+any compensating cleanup failure (including orphaned SecureStore credentials — see audit).
+M1 is **not** complete: security review continues, required CI/Actions, and human review remain open.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review

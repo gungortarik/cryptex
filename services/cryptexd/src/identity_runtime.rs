@@ -23,15 +23,17 @@ pub enum IdentityRuntimeError {
     Core(CoreError),
     SecureStore(SecureStoreError),
     AlreadyExists(String),
-    /// Primary create/verify path failed and compensating cleanup also failed.
+    /// Primary create/verify path failed and at least one compensating cleanup also failed.
     ///
-    /// `retry_safe` is true only when public identity rollback succeeded (so a
-    /// later create is not blocked by `AlreadyExists`). It must be false when
-    /// public rollback failed — callers must not treat that as safe to retry.
+    /// Explicit cleanup outcome flags are provided so callers can see which step
+    /// succeeded. Whole-operation retry is never safe for this variant: if this
+    /// error is returned, at least one cleanup failed.
     CompensatingCleanupFailed {
         primary: Box<IdentityRuntimeError>,
-        cleanup: Box<IdentityRuntimeError>,
-        retry_safe: bool,
+        public_rollback_succeeded: bool,
+        private_cleanup_succeeded: bool,
+        public_rollback_error: Option<Box<IdentityRuntimeError>>,
+        private_cleanup_error: Option<Box<IdentityRuntimeError>>,
     },
 }
 
@@ -44,21 +46,32 @@ impl std::fmt::Display for IdentityRuntimeError {
             Self::AlreadyExists(path) => write!(f, "identity already exists at {path}"),
             Self::CompensatingCleanupFailed {
                 primary,
-                cleanup,
-                retry_safe,
+                public_rollback_succeeded,
+                private_cleanup_succeeded,
+                public_rollback_error,
+                private_cleanup_error,
             } => {
-                write!(f, "{primary}; compensating cleanup also failed: {cleanup}")?;
-                if *retry_safe {
-                    write!(
-                        f,
-                        "; public identity was rolled back (private cleanup still needs attention)"
-                    )
-                } else {
-                    write!(
-                        f,
-                        "; retry is not safe until public identity rollback succeeds"
-                    )
+                write!(f, "{primary}")?;
+                if let Some(err) = public_rollback_error {
+                    write!(f, "; public identity rollback failed: {err}")?;
+                } else if *public_rollback_succeeded {
+                    write!(f, "; public identity rollback succeeded")?;
                 }
+                if let Some(err) = private_cleanup_error {
+                    write!(
+                        f,
+                        "; private SecureStore cleanup failed (orphaned credential may remain): {err}"
+                    )?;
+                } else if *private_cleanup_succeeded {
+                    write!(
+                        f,
+                        "; private SecureStore cleanup succeeded or was not required"
+                    )?;
+                }
+                write!(
+                    f,
+                    "; whole-operation retry is not safe after compensating cleanup failure"
+                )
             }
         }
     }
@@ -99,13 +112,16 @@ impl IdentityRuntimeError {
         }
     }
 
-    /// Whether a later `create_synthetic_brain` retry is safe w.r.t. public identity.
+    /// Whether retrying the entire Brain create is safe after this error.
     ///
-    /// Returns `false` for [`Self::CompensatingCleanupFailed`] when public
-    /// rollback failed. Other variants do not encode cleanup outcome.
-    pub fn retry_safe_after_cleanup(&self) -> Option<bool> {
+    /// Returns `Some(false)` for any [`Self::CompensatingCleanupFailed`] —
+    /// that variant means at least one cleanup failed, so whole-operation
+    /// retry must not be implied. Other variants return `None` (no cleanup
+    /// outcome encoded; e.g. a clean SecureStore put failure after successful
+    /// public rollback is just `SecureStore` and may be retried).
+    pub fn whole_operation_retry_safe(&self) -> Option<bool> {
         match self {
-            Self::CompensatingCleanupFailed { retry_safe, .. } => Some(*retry_safe),
+            Self::CompensatingCleanupFailed { .. } => Some(false),
             _ => None,
         }
     }
@@ -154,37 +170,36 @@ fn delete_device_private<S: SecureStore>(
     Ok(())
 }
 
-/// Attach cleanup outcome to a primary failure. Never claims retry is safe when rollback failed.
+/// Attach cleanup outcome to a primary failure.
+///
+/// Whole-operation retry is never implied when any compensating cleanup fails.
+/// Both public and private cleanup errors are preserved when present.
 fn with_cleanup_outcome(
     primary: IdentityRuntimeError,
     rollback: IdentityRuntimeResult<()>,
     private_delete: Option<IdentityRuntimeResult<()>>,
 ) -> IdentityRuntimeError {
-    let mut cleanup: Option<IdentityRuntimeError> = None;
-    let mut retry_safe = true;
+    let (public_rollback_succeeded, public_rollback_error) = match rollback {
+        Ok(()) => (true, None),
+        Err(e) => (false, Some(Box::new(e))),
+    };
+    // When private delete was not attempted (e.g. put never succeeded), treat
+    // private cleanup as succeeded/not-required — there is no orphaned put.
+    let (private_cleanup_succeeded, private_cleanup_error) = match private_delete {
+        None | Some(Ok(())) => (true, None),
+        Some(Err(e)) => (false, Some(Box::new(e))),
+    };
 
-    if let Err(e) = rollback {
-        retry_safe = false;
-        cleanup = Some(e);
-    }
-    if let Some(Err(e)) = private_delete {
-        cleanup = Some(match cleanup {
-            None => e,
-            Some(prev) => IdentityRuntimeError::CompensatingCleanupFailed {
-                primary: Box::new(prev),
-                cleanup: Box::new(e),
-                retry_safe: false,
-            },
-        });
+    if public_rollback_succeeded && private_cleanup_succeeded {
+        return primary;
     }
 
-    match cleanup {
-        None => primary,
-        Some(cleanup_err) => IdentityRuntimeError::CompensatingCleanupFailed {
-            primary: Box::new(primary),
-            cleanup: Box::new(cleanup_err),
-            retry_safe,
-        },
+    IdentityRuntimeError::CompensatingCleanupFailed {
+        primary: Box::new(primary),
+        public_rollback_succeeded,
+        private_cleanup_succeeded,
+        public_rollback_error,
+        private_cleanup_error,
     }
 }
 
@@ -244,8 +259,8 @@ pub fn load_device_private_material<S: SecureStore>(
 /// If SecureStore write fails after the public identity was persisted, the identity
 /// file is rolled back so a later retry is not blocked by `AlreadyExists`.
 /// Rollback and compensating SecureStore delete errors are surfaced as
-/// [`IdentityRuntimeError::CompensatingCleanupFailed`] and never claim retry is
-/// safe when public rollback failed.
+/// [`IdentityRuntimeError::CompensatingCleanupFailed`]. That variant never
+/// implies whole-operation retry is safe.
 pub fn create_synthetic_brain<S: SecureStore>(
     runtime_root: &Path,
     store: &S,
@@ -455,6 +470,10 @@ mod tests {
             })
         ));
         assert!(
+            err.whole_operation_retry_safe().is_none(),
+            "clean put failure after successful rollback is not CompensatingCleanupFailed"
+        );
+        assert!(
             !brain_identity_path(&root).exists(),
             "failed create must not leave brain identity that blocks retry"
         );
@@ -501,8 +520,10 @@ mod tests {
         match &err {
             IdentityRuntimeError::CompensatingCleanupFailed {
                 primary,
-                cleanup,
-                retry_safe,
+                public_rollback_succeeded,
+                private_cleanup_succeeded,
+                public_rollback_error,
+                private_cleanup_error,
             } => {
                 assert!(matches!(
                     primary.as_ref(),
@@ -511,22 +532,31 @@ mod tests {
                         code: 99
                     })
                 ));
-                assert!(matches!(
-                    cleanup.as_ref(),
-                    IdentityRuntimeError::Lifecycle(LifecycleError::Io(_))
-                ));
                 assert!(
-                    !*retry_safe,
-                    "rollback failure must not report retry as safe"
+                    !*public_rollback_succeeded,
+                    "public rollback must be reported as failed"
                 );
+                assert!(
+                    *private_cleanup_succeeded,
+                    "private cleanup was not required after put failure"
+                );
+                assert!(matches!(
+                    public_rollback_error.as_deref(),
+                    Some(IdentityRuntimeError::Lifecycle(LifecycleError::Io(_)))
+                ));
+                assert!(private_cleanup_error.is_none());
             }
             other => panic!("expected CompensatingCleanupFailed, got {other:?}"),
         }
-        assert_eq!(err.retry_safe_after_cleanup(), Some(false));
+        assert_eq!(err.whole_operation_retry_safe(), Some(false));
         let display = format!("{err}");
         assert!(
-            display.contains("retry is not safe"),
-            "display must not imply retry is safe: {display}"
+            display.contains("public identity rollback failed"),
+            "display must surface public rollback failure: {display}"
+        );
+        assert!(
+            display.contains("whole-operation retry is not safe"),
+            "display must not imply whole-operation retry is safe: {display}"
         );
         assert!(
             !display.to_lowercase().contains("retry is safe"),
@@ -537,7 +567,6 @@ mod tests {
             "blocking path should remain when rollback fails"
         );
 
-        // Cleanup test fixture (directory posing as identity file).
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -569,29 +598,42 @@ mod tests {
         match &err {
             IdentityRuntimeError::CompensatingCleanupFailed {
                 primary,
-                cleanup,
-                retry_safe,
+                public_rollback_succeeded,
+                private_cleanup_succeeded,
+                public_rollback_error,
+                private_cleanup_error,
             } => {
                 assert!(matches!(
                     primary.as_ref(),
                     IdentityRuntimeError::Lifecycle(LifecycleError::Attention(msg))
                         if msg.contains("must not contain device secret")
                 ));
-                assert!(matches!(
-                    cleanup.as_ref(),
-                    IdentityRuntimeError::SecureStore(SecureStoreError::Platform {
-                        op: "injected_delete_failure",
-                        code: 77
-                    })
-                ));
-                // Public rollback succeeded; private delete failed.
                 assert!(
-                    *retry_safe,
-                    "successful public rollback may mark retry_safe for AlreadyExists"
+                    *public_rollback_succeeded,
+                    "public rollback should succeed in this injection"
                 );
+                assert!(
+                    !*private_cleanup_succeeded,
+                    "private cleanup must be reported as failed"
+                );
+                assert!(public_rollback_error.is_none());
+                assert!(matches!(
+                    private_cleanup_error.as_deref(),
+                    Some(IdentityRuntimeError::SecureStore(
+                        SecureStoreError::Platform {
+                            op: "injected_delete_failure",
+                            code: 77
+                        }
+                    ))
+                ));
             }
             other => panic!("expected CompensatingCleanupFailed, got {other:?}"),
         }
+        assert_eq!(
+            err.whole_operation_retry_safe(),
+            Some(false),
+            "orphaned private credential must make whole-operation retry unsafe"
+        );
         assert!(
             !brain_identity_path(&root).exists(),
             "public identity must still be rolled back"
@@ -600,12 +642,21 @@ mod tests {
         assert_eq!(store.inner.len(), 1);
         let display = format!("{err}");
         assert!(
-            display.contains("compensating cleanup also failed"),
-            "display must surface cleanup: {display}"
+            display.contains("orphaned credential may remain"),
+            "display must clearly report orphaned credential: {display}"
         );
         assert!(
-            !display.contains("retry is not safe"),
-            "rollback succeeded; must not claim rollback blocked retry: {display}"
+            display.contains("injected_delete_failure")
+                || display.contains("private SecureStore cleanup failed"),
+            "display must surface private cleanup failure: {display}"
+        );
+        assert!(
+            display.contains("whole-operation retry is not safe"),
+            "display must not imply whole-operation retry is safe: {display}"
+        );
+        assert!(
+            !display.to_lowercase().contains("retry is safe"),
+            "must never claim retry is safe: {display}"
         );
 
         let _ = fs::remove_dir_all(&root);

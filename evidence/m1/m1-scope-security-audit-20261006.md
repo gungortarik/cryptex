@@ -75,15 +75,23 @@ Do **not** start M2 or declare M1 complete until the above are closed.
 
 **Resolution (M1-scoped):**
 - `rollback_brain_identity` returns `IdentityRuntimeResult` (NotFound is success; other IO errors surface).
-- New typed error `IdentityRuntimeError::CompensatingCleanupFailed { primary, cleanup, retry_safe }`.
-- `retry_safe` is false when public identity rollback failed; Display states retry is not safe until rollback succeeds and never claims retry is safe in that case.
-- Compensating SecureStore delete errors are attached the same way (primary preserved).
+- Typed error `IdentityRuntimeError::CompensatingCleanupFailed` preserves `primary` plus optional `public_rollback_error` / `private_cleanup_error`.
+- Explicit flags `public_rollback_succeeded` and `private_cleanup_succeeded` describe each cleanup step.
+- `whole_operation_retry_safe()` is always `Some(false)` for this variant — any compensating cleanup failure means whole-operation retry must not be implied.
+- Display reports orphaned private credentials when SecureStore delete fails and never claims whole-operation retry is safe.
 - `FakeSecureStore::fail_next_delete_with` supports delete-failure injection.
-- Focused tests: rollback failure is not retry-safe; verify-path delete failure preserves primary Attention and surfaces cleanup while public file is still removed.
+- Focused tests: public rollback failure is unsafe to retry; private cleanup failure surfaces orphaned credential and is unsafe to retry; clean put-failure after successful rollback still permits retry (plain `SecureStore` error).
+
+### Follow-up: retry_safe implied whole-operation retry after private cleanup failure (RESOLVED)
+
+**Finding:** The earlier `retry_safe` field was `true` whenever public Brain-file rollback succeeded, even if compensating `SecureStore::delete` failed and left an orphaned private credential. Callers could treat `retry_safe_after_cleanup() == Some(true)` as permission to retry the entire Brain creation.
+
+**Resolution:** Replaced `retry_safe` with explicit `public_rollback_succeeded` / `private_cleanup_succeeded` (and corresponding error fields). Whole-operation retry is never safe on `CompensatingCleanupFailed`.
 
 **Local checks (Windows, this follow-up):**
 - `cargo test -p cryptexd --lib identity_runtime` PASS (5)
 - `cargo test -p cryptexd --lib` PASS (84)
 - `cargo clippy -p cryptexd --all-targets -- -D warnings` PASS
+- `git diff --check` PASS
 - GitHub Actions: not run (deferred)
 - M1 complete: **not declared**
