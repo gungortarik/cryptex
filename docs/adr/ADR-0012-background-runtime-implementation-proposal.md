@@ -1,6 +1,6 @@
 # ADR-0012 implementation proposal — Desktop-owned runtime
 
-**Status:** PROPOSED — direction/revision scope approved; candidate CI and independent review complete; native UI, completion-source reconciliation and human ADR approval pending
+**Status:** ACCEPTED for the scoped M0 implementation direction; mandatory production gates remain open
 **Date:** 2026-10-03
 **Scope:** P0-2 background runtime and atomic update lifecycle
 
@@ -59,7 +59,8 @@ PASS at `502abf4`; see
 `evidence/m0/p0-2/macos-native-interruption-evidence-20261005.md` for exact source,
 artifact hash, restored baseline health and cleanup. This scoped proof does not
 accept this ADR or establish installed/signed or production canonical acceptance.
-The proposal is still **PROPOSED**; no required acceptance proof is waived.
+At that proposal-time evidence update the proposal remained PROPOSED; the scoped
+owner acceptance is recorded in the current acceptance section below.
 
 ### Selected implementation direction
 
@@ -128,7 +129,8 @@ The detailed comparison is in
 
 This original list predates the owner-approved boundary revision. Its production
 requirements remain mandatory in the separate production gates below. This
-document remains PROPOSED and M0 remains open.
+The proposal was PROPOSED at that point in its historical evidence record; the
+current scoped M0 status is ACCEPTED as recorded in the acceptance section.
 
 ## Security and recovery constraints
 
@@ -142,6 +144,21 @@ document remains PROPOSED and M0 remains open.
   service or public endpoint is introduced.
 
 ## Acceptance state
+
+### Owner acceptance — 2026-10-05
+
+The owner confirmed the intended window/quit behavior: “Quit ile temiz
+kapatalım. Çarpıya basınca tamamen kapanmasın app.” This selects the proposed
+Mode B behavior: closing the main window hides Desktop and leaves its owned
+supervisor running; explicit Quit cleanly stops the daemon and exits Desktop.
+The owner had previously approved Mode B with per-user Desktop login startup
+for implementation. This proposal is therefore **ACCEPTED for its scoped M0
+implementation direction**, subject to the evidence and limits below.
+
+This acceptance does not accept signed/installed production updates, canonical
+schema/signature safety, power-loss durability, production secret storage,
+distribution/notarization or the separate production residuals. Those remain
+mandatory gates in their assigned milestones.
 
 ### Current M0 criteria and evidence
 
@@ -187,7 +204,6 @@ must independently pass before M1 begins. No unchecked production gate is PASS.
    Backend validation of renderer requests does not remove this separate local
    test-control path. See `evidence/m0/m0-independent-review-results-20261005.md`.
 
-**Not accepted.** Owner approval covered implementation direction and preparing
-this revision. Candidate CI and independent review now complete; scoped native UI,
-completion-source reconciliation and human ADR acceptance remain open.
-M0 remains IN PROGRESS; all production gates above remain mandatory and unverified.
+M0 implementation direction accepted by the owner as recorded above. M0 overall
+completion is governed by the foundation checklist; production gates above remain
+mandatory and unverified until their assigned milestones.

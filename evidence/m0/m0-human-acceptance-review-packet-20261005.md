@@ -1,8 +1,16 @@
 # M0 human acceptance review packet
 
-**Status: PREPARED — NOT APPROVED.** Candidate implementation/docs source
-`5c074115cd61ef7c1eb47e8ed2cf8c1105360679`. M0 remains IN PROGRESS.
-This packet itself changes no acceptance status or milestone authority.
+**Status: M0 CLOSEOUT APPROVED — SYNTHETIC FOUNDATION SCOPE.** The original
+candidate source `5c074115cd61ef7c1eb47e8ed2cf8c1105360679` and its CI remain
+historical; current focused CI is recorded below. This packet does not authorize
+M1 or waive production gates.
+
+**Owner decision update (2026-10-05):** owner accepted the scoped Mode B window
+behavior and trusted the recommendation to follow the Master Spec's Syncthing
+requirements. ADR-0012 and ADR-0004 now record those scoped acceptances. This
+does not authorize M1 or accept the mandatory production gates listed below.
+The owner approved proceeding with the concrete closeout diff on 2026-10-05.
+M0 is complete within this synthetic foundation scope.
 
 **Current source and remaining gates:** Mac fresh Tauri `.app` visual revalidation
 is SCOPED PASS; Windows and Mac focused tests pass. Source `65ce7b9` rejects
@@ -22,8 +30,9 @@ Corrected run `37377520994` at candidate `5c07411` is now SUCCESS: both readines
 jobs and actual Windows cross-account ACL passed. Counts and first failure are
 retained in `m0-final-ci-attempt-20261005.md`. Independent verifier/security
 reviews now completed independently at `3de9d00`: see
-`m0-independent-review-results-20261005.md`. Human diff/ADR acceptance is still
-NOT APPROVED. The focused Mac plan is complete at
+`m0-independent-review-results-20261005.md`. At that historical point human
+diff/ADR acceptance was pending; the owner later approved the scoped decisions
+and closeout diff as recorded above. The focused Mac plan is complete at
 `macos-embedded-frontend-visual-evidence-20261005.md`. No old Mac lifecycle/test
 suite repetition is requested.
 
@@ -46,8 +55,9 @@ older `5c07411` result below is retained only as historical evidence.
    shipped and does not implement production replication semantics.
 
 Existing accepted ADR-0007 and ADR-0013 retain their scopes. Missing original
-source records are not reconstructed. Owner approval to prepare revised
-proposals is recorded separately; it is not final ADR/human diff acceptance.
+source records are not reconstructed. The owner accepted the scoped ADR-0012
+and ADR-0004 decisions and approved the closeout diff. Production gates below
+remain mandatory and unaccepted.
 
 ## Focused recent code and evidence
 
@@ -97,12 +107,12 @@ claims; the independent result records all five production residuals.
   native proof and Mac fresh-package scoped proof now PASS. Mac raw image bytes
   were not transferred for independent re-hashing; broad theme/DPI review is not
   claimed. Static browser observation alone does not prove native visuals.
-- Human reviews the concrete diff/decisions and explicitly accepts ADR-0012 and
-  ADR-0004 within their revised M0 scopes, with residual product gates retained.
-- Reconcile final checklist, ADR index, milestone and handoff. Do not check
-  unexecuted proof, silently waive an authoritative invariant or infer M1 work
-  authorization from an unaccepted proposal.
+- Owner accepted ADR-0012 and ADR-0004 within their revised M0 scopes and
+  approved the concrete closeout diff; residual product gates remain retained.
+- Final checklist, ADR index, milestone and handoff have been reconciled. No
+  unexecuted proof was checked, no authoritative invariant was waived, and M1
+  work was not inferred from ADR acceptance.
 
-Only after those conditions may an evidence-backed M0 completion record be
-prepared. No merge, rebase, main-branch update or distribution is authorized by
-this packet. No new Mac physical test is required merely to review it.
+Those conditions are now recorded as satisfied for the synthetic M0 foundation
+scope. No merge, rebase, main-branch update or distribution is authorized by
+this packet. No new Mac physical test was required for closeout.

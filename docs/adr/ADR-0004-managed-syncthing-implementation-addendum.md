@@ -1,6 +1,6 @@
 # ADR-0004 implementation addendum — managed Syncthing
 
-**Status:** PROPOSED — both-platform isolated spike verified; acceptance pending
+**Status:** ACCEPTED for the scoped M0 P0-4 implementation choice; productionization remains open
 **Date:** 2026-10-05
 **Scope:** M0 P0-4 implementation choice; no replication semantics
 
@@ -109,6 +109,24 @@ migration failures are safe. No product baseline change or ADR acceptance.
 
 ## Required acceptance evidence
 
+### Owner acceptance — 2026-10-05
+
+The owner asked that the Master Spec's Syncthing requirements govern, and
+delegated the implementation recommendation after those requirements were
+explained. This addendum is **ACCEPTED for the scoped M0 P0-4 implementation
+choice**: retain pinned, unmodified Syncthing 2.1.5 as a file transport; keep
+process supervision and authenticated loopback REST on the backend; isolate its
+profile from user-global Syncthing state. The renderer does not receive its API
+secret. Cryptex continues to own trust, canonical validation/signatures and
+writer authority.
+
+This aligns with Master Spec §8 and §13 and M0 P0-4's isolated profile,
+authenticated REST, pairing, pause/resume/status and no-global-collision
+requirements. It does not authorize production replication semantics, OS secure
+storage, a production supervisor/controller, installed upgrades, signing or
+distribution. The Node controller remains test-only; the listed production
+gates remain mandatory.
+
 ### Owner-authorized M0 boundary revision — 2026-10-05
 
 The owner answered "kurallar dahilinde onayliyorum" to
@@ -159,10 +177,11 @@ The security/notice review records each residual explicitly. These are mandatory
 product gates, not deleted requirements or claims of implementation. Later work
 requires its own milestone authorization; M0 remains synthetic-data only.
 
-Candidate CI and independent security/verifier review now complete, recorded in
-`evidence/m0/m0-independent-review-results-20261005.md`. Earlier pending review/
-CI requirements above are historical where superseded by this result; native
-UI, completion-source reconciliation and human ADR approval remain open.
+Candidate CI and independent security/verifier review completed and are recorded
+in `evidence/m0/m0-independent-review-results-20261005.md`. The owner accepted
+this scoped M0 implementation choice above. M0 closeout/checklist reconciliation
+remains distinct; production gates below remain mandatory.
 
-**Not accepted.** Both-platform scoped PASS does not complete P0-4 or M0, and does not
-authorize M1 or product replication features.
+This scoped implementation addendum is accepted. P0-4/M0 completion still
+requires the repository's remaining closeout checklist; acceptance authorizes
+no M1 work or product replication features by itself.

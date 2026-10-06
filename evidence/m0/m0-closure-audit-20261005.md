@@ -1,8 +1,13 @@
 # M0 closure audit and remaining work
 
-Status: **IN PROGRESS**. Scope: complete M0, authorized by project owner.
+Status: **COMPLETE — SYNTHETIC M0 FOUNDATION SCOPE**. Owner authorized M0 closeout and approved the concrete diff on 2026-10-05.
 Authority: Master Spec, accepted ADRs, M0 milestone and foundation gate checklist.
 No M1 work is authorized by this audit. Checkboxes must follow verified evidence.
+
+The dated continuation entries below preserve prior states and outcomes. Where
+they say CI, ADR acceptance, visual review or human review is pending, that is
+historical if superseded by the current gate inventory above. Production
+residuals remain explicitly outside this M0 completion and M1 is not authorized.
 
 ## Current gate inventory
 
@@ -15,16 +20,19 @@ strict lint/format/package and targeted guard/hidden-session proof. Mac debug
 16/16, embedded release 17/17, CLI 4/4, focused lint/package and visual review
 reported PASS. Focused independent reviews PASS. Final CI **PASS** at source
 `c7fa011672973101cb2a5519b5883b26c6909f90`, run `37387323751`; see
-`m0-final-ci-attempt-20261005.md`. Human diff/ADR acceptance and completion
-checklist/ADR-index reconciliation remain pending. Earlier checks below are historical
-where they predate the behavior/workflow change. M0 is still IN PROGRESS.
+`m0-final-ci-attempt-20261005.md`. Scoped ADR decisions and the human closeout
+review are recorded; the final checklist and ADR index reconcile those decisions.
+Earlier checks below are historical where they predate the behavior/workflow
+change. M0 is COMPLETE within the synthetic foundation scope.
 
 Final candidate CI run `37387323751` at `c7fa011672973101cb2a5519b5883b26c6909f90`
 is SUCCESS across Windows/macOS readiness and Windows cross-account ACL. Full
 counts and skipped manual package job are documented in
-`m0-final-ci-attempt-20261005.md`. The completion-commit CI checkbox remains
-open until the owner accepts the concrete ADR/diff packet and closure commit is
-prepared.
+`m0-final-ci-attempt-20261005.md`. The behavior-bearing candidate source
+`c7fa011` passed; subsequent changes are documentation/acceptance records only.
+The owner accepted the scoped ADR-0012 and ADR-0004 decisions and approved the
+closeout diff. M0 is complete for its synthetic foundation scope. M1 remains
+separately unauthorized; no production gates are waived.
 
 ### Earlier candidate inventory
 

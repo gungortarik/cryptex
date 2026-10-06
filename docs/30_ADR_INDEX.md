@@ -23,9 +23,9 @@ If an ADR record is referenced by authoritative documents but its source file is
 
 | ADR | Subject | Current status | Required action |
 |---|---|---|---|
-| ADR-0004 | Managed Syncthing integration | ORIGINAL SOURCE RECORD MISSING / IMPLEMENTATION ADDENDUM PROPOSED | `docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md` proposes pinned native distribution/backend REST supervision; both-OS staged lifecycle and changed-version/cold-restore proofs exist. Candidate CI and independent review complete; native UI, completion-source reconciliation and human acceptance remain open. Production secrets, bounded REST, installed distribution and delivered notices remain mandatory separate gates. |
+| ADR-0004 | Managed Syncthing integration | ORIGINAL SOURCE RECORD MISSING / M0 IMPLEMENTATION ADDENDUM ACCEPTED | `docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md` selects pinned native 2.1.5 file transport, isolated managed profile and backend-owned authenticated loopback REST for M0 P0-4. Both-OS staged lifecycle and changed-version/cold-restore evidence retained. Production secrets, bounded REST, installed distribution and delivered notices remain mandatory separate gates. |
 | ADR-0007 | Local IPC transport | ORIGINAL SOURCE RECORD MISSING / IMPLEMENTATION ADDENDUM ACCEPTED | `docs/adr/ADR-0007-local-ipc-implementation-addendum.md` selects pinned `interprocess` 2.4.4 from M0 evidence. Production Desktop health/reconnect is physically verified on both OSes within recorded scope; broader Desktop/CLI/MCP APIs remain incomplete. Do not infer or reconstruct the missing original ADR. |
-| ADR-0012 | Background runtime / atomic update lifecycle | ORIGINAL SOURCE RECORD MISSING / IMPLEMENTATION PROPOSAL PROPOSED | `docs/adr/ADR-0012-background-runtime-implementation-proposal.md` records approved Mode B + per-user Desktop startup. Owner authorized preparing the M0/production boundary revision on 2026-10-05. Candidate CI and independent review complete; native UI, completion-source reconciliation and human acceptance remain open. Developer file-control gating, signed installed updater and production canonical safety remain mandatory product gates. |
+| ADR-0012 | Background runtime / atomic update lifecycle | ORIGINAL SOURCE RECORD MISSING / M0 IMPLEMENTATION PROPOSAL ACCEPTED | `docs/adr/ADR-0012-background-runtime-implementation-proposal.md` records Mode B + per-user Desktop startup; closing the window hides, explicit Quit cleanly stops the daemon and exits Desktop. Owner accepted this scoped implementation direction on 2026-10-05. Developer file-control gating, signed installed updater and production canonical safety remain mandatory product gates. |
 | ADR-0013 | Physical immutable event storage layout | ACCEPTED | Source: `docs/adr/ADR-0013-physical-event-storage-layout.md`. Canonical packaging is immutable sealed per-device segment/pack files. One-file-per-event is rejected. Hybrid is not selected. `segment_events=1000` remains a P0-1 benchmark profile, not a frozen production constant. |
 
 ## 4. M0 gate
@@ -44,14 +44,19 @@ The M0 gate requires:
 
 Some original ADR source records remain absent. An implementation addendum may
 record evidence for an exact implementation detail without reconstructing a
-missing original record. ADR-0007 has an accepted implementation addendum;
-ADR-0012 has an unaccepted implementation proposal.
+missing original record. ADR-0007 has an accepted implementation addendum.
+ADR-0012 and ADR-0004 have accepted, evidence-scoped M0 implementation records;
+neither reconstructs its missing original source record.
 
-ADR-0013 is now **ACCEPTED** at `docs/adr/ADR-0013-physical-event-storage-layout.md`. Other referenced ADR source files remain missing until recovered or written through their spikes.
+ADR-0013 is **ACCEPTED** at `docs/adr/ADR-0013-physical-event-storage-layout.md`.
+ADR-0012's scoped implementation proposal and ADR-0004's scoped M0 P0-4
+implementation addendum are accepted; their original source records remain
+missing. Other referenced ADR source files remain missing until recovered or
+written through their spikes.
 
-The scoped ADR-0012 implementation proposal is not a reconstruction of the
-missing original source record. It records a new, evidence-scoped proposal and
-remains unaccepted until the P0-2 gate passes.
+The scoped ADR-0012 proposal and ADR-0004 addendum are not reconstructions of
+missing original source records. They record new, evidence-scoped decisions;
+their mandatory production gates remain open.
 
 If an original ADR source is recovered for other ADRs, add it to the repository and reconcile this index against it before changing status.
 

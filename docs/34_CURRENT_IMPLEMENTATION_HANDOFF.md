@@ -20,12 +20,21 @@
 
 ## Working agreement
 
+**Current closeout status (2026-10-05):** M0 is COMPLETE for the synthetic
+foundation scope. Final behavior-bearing source CI is green at `c7fa011` (run
+`37387323751`); Mac embedded `.app` visual review is scoped PASS. The owner
+accepted the scoped ADR-0012 and ADR-0004 M0 decisions and approved the concrete
+closeout diff. M1 remains unauthorized. Production residuals remain assigned to
+later milestones.
+Older continuation entries below are retained as dated history; use this current
+status and the ADR index for present-day decisions.
+
 - Work only on the current milestone.
 - Do not redesign architecture or choose a new supervision strategy without explicit user approval.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
 - Do not assume that moving between Cursor, Codex, and Work changes which tool is the write-capable implementer.
 - The user explicitly changed the implementation role to Codex in this conversation; Codex is the active implementation tool on Windows. Resume Mac-specific validation on the Mac host when needed.
-- The project owner explicitly approved Mode B with per-user login startup launching Desktop for implementation. The scoped proposal is at `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`; ADR-0012 remains PROPOSED pending revised M0 review, required CI and human acceptance. Production gates remain mandatory separately under the owner-authorized 2026-10-05 revision scope.
+- The project owner explicitly approved Mode B with per-user login startup launching Desktop for implementation. The scoped M0 direction is ACCEPTED in `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`; production gates remain mandatory separately under the owner-authorized 2026-10-05 revision scope.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks and
@@ -70,9 +79,9 @@ Mac scoped plan completed: 16 debug / 17 release / 4 CLI, targeted rejection and
 fresh-package visual review reported PASS. Raw Mac artifacts were not copied for
 independent re-hashing. Final CI **PASS** at
 `c7fa011672973101cb2a5519b5883b26c6909f90`, run `37387323751`; see
-`evidence/m0/m0-final-ci-attempt-20261005.md`. Remaining are human diff/ADR
-acceptance and final checklist/ADR-index reconciliation. M0 remains IN PROGRESS
-until those gates are resolved; no merge/M1 is inferred.
+`evidence/m0/m0-final-ci-attempt-20261005.md`. Scoped ADR decisions, human
+closeout review and final checklist reconciliation are complete. M0 is complete
+for the synthetic foundation scope; no merge/M1 is inferred.
 
 ### Earlier candidate CI and review state
 

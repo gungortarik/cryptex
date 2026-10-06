@@ -13,14 +13,14 @@ Configuration presence, an implementation claim, compilation alone, or success o
 
 Latest independent review: `evidence/m0/m0-independent-review-results-20261005.md`,
 source `3de9d00`, following the earlier `8437559` implementer audit.
-Retained proofs are scoped to M0 synthetic foundation behavior. Candidate CI and
-both-OS release development-root correction PASS; native UI review, final
-completion-source reconciliation and human/ADR acceptance remain open. Product
-distribution and production canonical safety are not inferred.
+Retained proofs are scoped to M0 synthetic foundation behavior. Both-platform
+visual review, focused correction checks, final candidate CI and scoped ADR
+acceptances are recorded. Product distribution and production canonical safety
+are not inferred.
 Current continuation: Mac native renderer **SCOPED PASS** with fresh embedded
 Tauri `.app`; initial raw Cargo `7f5ab2b` failure remains preserved. New `65ce7b9`
-frontend-mode correction has focused Windows/Mac proofs and independent review.
-Fresh-source final CI and human/ADR acceptance remain open. See
+frontend-mode correction has focused Windows/Mac proofs, independent review and
+final candidate CI. See
 `evidence/m0/macos-embedded-frontend-visual-evidence-20261005.md`.
 
 ## Governing documents
@@ -37,8 +37,8 @@ Fresh-source final CI and human/ADR acceptance remain open. See
 
 ## A. Repository and executable foundation
 
-- [ ] Repository state is clean and required CI checks are green.
-  - Evidence: final candidate 5c07411 is green in run 37377520994 (both readiness plus Windows ACL). Result-recording commits are docs only; final closure/PR source and remaining acceptance still require reconciliation. Newer doc HEAD is not falsely labeled tested.
+- [x] Repository state is clean and required CI checks are green for all M0 behavior-bearing changes.
+  - Evidence: run `37387323751` passed both readiness jobs and Windows cross-account ACL at code candidate `c7fa011672973101cb2a5519b5883b26c6909f90`; later closeout commits are documentation/acceptance records only. Manual installer was intentionally skipped. Full run details in `evidence/m0/m0-final-ci-attempt-20261005.md`.
 
 - [x] Rust workspace builds successfully.
   - Evidence: `evidence/m0/windows-release-build-20261002.md` records the full Windows release workspace build. Cross-platform CI remains a separate gate.
@@ -111,8 +111,8 @@ Fresh-source final CI and human/ADR acceptance remain open. See
 - [x] Required lifecycle behavior was verified on macOS and Windows.
   - Evidence: both-OS lifecycle/tray/login/reconnect and native pair/recovery proofs indexed in the final audit. Namespace correction now has Windows 21/21 debug + release and Mac 14/14 debug + release evidence; no final installed/signed lifecycle claim.
 
-- [ ] ADR-0012 is ACCEPTED with the selected supervision/update approach.
-  - Evidence:
+- [x] ADR-0012 is ACCEPTED with the selected supervision/update approach.
+  - Evidence: owner confirmed X hides Desktop and explicit Quit stops the daemon and exits. Scoped Mode B acceptance is recorded in `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`; production gates remain open.
 
 ## D. P0-3 — Local IPC Transport
 
@@ -176,12 +176,12 @@ Fresh-source final CI and human/ADR acceptance remain open. See
   - Evidence: exact LICENSE/AUTHORS and upstream source/release links in `third_party/syncthing/2.1.5/README.md`, both-OS staged membership/byte proofs, and explicit distribution obligations in the revised ADR-0004/security review. This satisfies M0 handling documentation; delivered source-access/dependency notices and installer inclusion remain mandatory before distribution, not verified here.
 
 - [x] ADR-0004 implementation addendum records selected packaging/supervision.
-  - Evidence: `docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md` records pinned native package/backend REST ownership, alternatives and both-OS evidence. PROPOSED status and human acceptance remain separate H gates.
+  - Evidence: `docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md` records the accepted scoped M0 P0-4 choice, alternatives and both-OS evidence. Productionization remains separate.
 
 ## F. Cross-platform, security and failure verification
 
 - [x] Applicable M0 platform-sensitive behavior is verified on both macOS and Windows.
-  - Evidence: scoped proof matrix in final audit plus both-OS release-probe-root evidence; candidate CI PASS at 5c07411. Completion-source CI reconciliation and human acceptance remain separate.
+  - Evidence: scoped proof matrix in final audit plus both-OS release-probe-root evidence and final candidate CI run `37387323751`.
   - New frontend-mode correction: focused Windows and Mac parity/native render PASS at source `65ce7b9`; raw Mac artifact digests are operator-reported and not independently rehashed from this host. See platform-specific evidence.
 
 - [x] No device has been made canonical master.
@@ -200,7 +200,7 @@ Fresh-source final CI and human/ADR acceptance remain open. See
   - Evidence: final audit indexes both-OS protocol rejection/native rollback, actual pre-successor updater kill, injected I/O/claim/owner/process race regressions and sidecar negative tests. No machine power-loss or production migration failure claim.
 
 - [x] Relevant security checks/review are complete.
-  - Evidence: implementer corrections/regressions and independent security review in `evidence/m0/m0-independent-review-results-20261005.md`. Narrow M0 verdict PASS; production residuals explicitly retained. Human acceptance and completion-source CI reconciliation remain separate.
+  - Evidence: implementer corrections/regressions and independent security review in `evidence/m0/m0-independent-review-results-20261005.md`. Narrow M0 verdict PASS; production residuals explicitly retained. Owner-approved closeout does not accept those residuals.
 
 - [x] No real personal/Cortex data was used for M0 testing.
   - Evidence: P0-1 synthetic benchmark protocol plus both-OS Golden/native/managed Syncthing evidence explicitly restricts input to synthetic fixtures. No Cortex ingestion or personal memory API implemented; retained corpora not regenerated in this audit.
@@ -211,23 +211,23 @@ Fresh-source final CI and human/ADR acceptance remain open. See
   - Evidence: both-OS native-interruption workspace checks and latest sidecar boundary checks; current documentation diff check. Later behavior correction must rerun relevant checks.
 
 - [x] Relevant lint checks pass.
-  - Evidence: both-OS strict workspace Clippy in native-interruption/changed-package evidence and latest strict Desktop Clippy in sidecar review. Final CI remains separate.
+  - Evidence: both-OS strict workspace Clippy in native-interruption/changed-package evidence and latest strict Desktop Clippy in sidecar review; required candidate CI is indexed below.
 
 - [x] Relevant unit tests pass.
   - Evidence: dated workspace tests plus latest Windows Desktop 20/20, Mac 13/13 sidecar tests; full counts/sources in final audit. Incremental proof is not a latest-source full workspace claim.
 
 - [x] Relevant integration tests pass.
-  - Evidence: retained native pair/recovery and managed/upgrade runners plus candidate CI Windows Node 160/160 + 8/8 and Mac 162/162 + 8/8 at exact 5c07411. Completion-source reconciliation remains separate.
+  - Evidence: retained native pair/recovery and managed/upgrade runners plus final CI Windows Node 160/160 + 8/8 and Mac 162/162 + 8/8 at code candidate `c7fa011`.
 
 - [x] Required cross-platform tests pass.
-  - Evidence: existing parity proofs PASS at exact sources; final path correction adds Mac 14/14 debug + release + 4/4 CLI at 7f5ab2b and Windows 21/21 debug + release + 4/4 CLI. Candidate integrated CI PASS; completion-source CI reconciliation remains unchecked.
-  - Current `65ce7b9`: Windows 23 debug / 24 release / 4 CLI; Mac 16 debug / 17 release / 4 CLI; reported PASS, along with platform-specific format/lint/package checks. Fresh-source final CI is tracked separately below.
+  - Evidence: existing parity proofs PASS at exact sources; final path correction adds Mac 14/14 debug + release + 4/4 CLI at 7f5ab2b and Windows 21/21 debug + release + 4/4 CLI. Integrated CI passes at `c7fa011`; its run is indexed below.
+  - Current `65ce7b9`: Windows 23 debug / 24 release / 4 CLI; Mac 16 debug / 17 release / 4 CLI; reported PASS, along with platform-specific format/lint/package checks. Later behavior-bearing CI passed at `c7fa011`.
 
-- [ ] Required CI checks are green at the M0 completion commit.
-  - Evidence: the latest stable candidate `c7fa011672973101cb2a5519b5883b26c6909f90` passed all required jobs in run `37387323751`; full counts/jobs in `evidence/m0/m0-final-ci-attempt-20261005.md`. Keep this unchecked until a designated M0 completion commit is created and its required checks are verified.
+- [x] Required CI checks are green for the M0 behavior-bearing source included in the closeout.
+  - Evidence: all source/workflow changes are at or before `c7fa011672973101cb2a5519b5883b26c6909f90`, passed in run `37387323751`; following commits only record the Mac result, owner decisions and closeout status. Full job/test counts: `evidence/m0/m0-final-ci-attempt-20261005.md`.
 
 - [x] Verifier reviewed M0 acceptance criteria against actual repository/runtime state.
-  - Evidence: separate read-only verifier at 3de9d00 in `evidence/m0/m0-independent-review-results-20261005.md`, independently queried exact CI and recomputed Windows recovery report digest. Mac raw artifacts remain owner-supplied and are recorded separately; human/completion gates remain open.
+  - Evidence: separate read-only verifier at 3de9d00 in `evidence/m0/m0-independent-review-results-20261005.md`, independently queried CI and recomputed Windows recovery report digest. Mac visual evidence is owner-reported and retained separately.
 
 - [x] Security review is complete for security-sensitive M0 work.
   - Evidence: independent security auditor at 3de9d00, recorded in `evidence/m0/m0-independent-review-results-20261005.md`; no new blocking synthetic M0 defect established. Five production residuals retained; not human approval or production certification.
@@ -235,16 +235,16 @@ Fresh-source final CI and human/ADR acceptance remain open. See
 - [x] Relevant foundation UI quality review is complete.
   - Evidence: `evidence/m0/m0-foundation-ui-review-20261005.md` records Windows native review; `evidence/m0/macos-embedded-frontend-visual-evidence-20261005.md` records Mac SCOPED PASS and hashes reported by the Mac operator. No broad theme/DPI review is claimed.
 
-- [ ] Human diff/review is complete.
-  - Evidence:
+- [x] Human diff/review is complete.
+  - Evidence: owner approved proceeding with the concrete closeout diff on 2026-10-05 after the scoped ADR-0012/0004 decisions and remaining M0/production boundaries were presented. The approval does not accept production residuals.
 
 ## H. Architecture and documentation gate
 
-- [ ] All four P0 spikes are resolved with retained evidence.
-  - Evidence:
+- [x] All four P0 spikes are resolved with retained evidence.
+  - Evidence: P0-1 sealed-pack ADR-0013, P0-2 accepted scoped ADR-0012 and both-platform lifecycle/recovery evidence, P0-3 accepted ADR-0007 addendum/ACL and IPC proofs, P0-4 accepted scoped ADR-0004 addendum and both-platform managed/upgrade evidence. Full index: `evidence/m0/m0-closure-audit-20261005.md`.
 
-- [ ] ADR-0012 is ACCEPTED.
-  - Evidence:
+- [x] ADR-0012 is ACCEPTED.
+  - Evidence: owner acceptance and scope limits in `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`.
 
 - [x] ADR-0013 is ACCEPTED.
   - Evidence: `docs/adr/ADR-0013-physical-event-storage-layout.md`
@@ -252,27 +252,29 @@ Fresh-source final CI and human/ADR acceptance remain open. See
 - [x] ADR-0007 implementation addendum is complete.
   - Evidence: accepted `docs/adr/ADR-0007-local-ipc-implementation-addendum.md`; narrow health-only implementation/evidence and stated limits, no broader production API acceptance.
 
-- [ ] ADR-0004 implementation addendum is complete.
-  - Evidence:
+- [x] ADR-0004 implementation addendum is complete.
+  - Evidence: owner accepted the Master-Spec-aligned M0 P0-4 choice; `docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md` retains production gates.
 
-- [ ] `docs/30_ADR_INDEX.md` reflects final M0 ADR status.
-  - Evidence:
+- [x] `docs/30_ADR_INDEX.md` reflects final M0 ADR status.
+  - Evidence: ADR-0012 and ADR-0004 now show accepted scoped implementation decisions; missing original source records and production residuals remain explicit.
 
 - [x] Any architecture change discovered through M0 evidence has been recorded through the ADR process.
-  - Evidence: accepted ADR-0013/0007 plus explicitly PROPOSED ADR-0012/0004 revisions and owner boundary authorization; no unrecorded acceptance inferred.
+  - Evidence: accepted ADR-0013/0007 and owner-accepted scoped ADR-0012/0004 decisions; no production acceptance inferred.
 
-- [ ] Master Spec has been updated if an accepted architecture decision changed.
-  - Evidence: accepted sealed-pack layout already reflected in Master Spec section 8. No newly accepted architecture change in this audit; recheck upon final ADR acceptance.
+- [x] Master Spec has been updated if an accepted architecture decision changed.
+  - Evidence: no Master Spec change was required. Accepted M0 choices implement the existing Syncthing transport direction and one-device daemon writer/Mode B constraints; they add implementation detail without changing canonical semantics or trust requirements.
 
 - [x] No M1-or-later feature was implemented opportunistically.
   - Evidence: final audit reviews explicit synthetic Golden/Doctor/native/Syncthing scopes; no production identity/event store, replication semantics, secret store or shipped updater claim. Product obligations retained in revised proposals.
 
 ## Final gate
 
-- [ ] Every applicable M0 checklist item above has verified evidence.
-- [ ] `docs/milestones/M0_FOUNDATION.md` completion criteria are satisfied.
-- [ ] `docs/21_DEFINITION_OF_DONE.md` is satisfied.
-- [ ] M0 may be reported COMPLETE.
-- [ ] M1 is authorized to begin.
+- [x] Every applicable M0 checklist item above has verified evidence.
+- [x] `docs/milestones/M0_FOUNDATION.md` completion criteria are satisfied.
+- [x] `docs/21_DEFINITION_OF_DONE.md` is satisfied.
+- [x] M0 may be reported COMPLETE.
+- [ ] M1 work is authorized to begin (separate from closing M0; do not start M1 without explicit scope authorization).
 
-Until all applicable final-gate items are verified, M0 remains IN PROGRESS.
+M0 is COMPLETE for the synthetic foundation scope recorded here. M1
+authorization remains a separate owner decision; this completion does not start
+M1 or accept production residuals.
