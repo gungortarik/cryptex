@@ -10,12 +10,13 @@ pub mod ids;
 pub mod pairing;
 pub mod recovery_meta;
 pub mod sequence;
+pub mod validate;
 
-pub use brain::{BRAIN_IDENTITY_SCHEMA_VERSION, BrainIdentity};
+pub use brain::{BrainIdentity, BRAIN_IDENTITY_SCHEMA_VERSION};
 pub use error::{CoreError, CoreResult};
 pub use ids::{DeviceId, InstallId};
-pub use pairing::{PairingRecord, PairingState};
+pub use pairing::{PairingRecord, PairingState, PAIRING_RECORD_SCHEMA_VERSION};
 pub use recovery_meta::{
-    RECOVERY_KIT_PUBLIC_SCHEMA_VERSION, RecoveryKitPublicMetadata, RecoveryPurpose,
+    RecoveryKitPublicMetadata, RecoveryPurpose, RECOVERY_KIT_PUBLIC_SCHEMA_VERSION,
 };
-pub use sequence::{COUNTER_SCHEMA_VERSION, DeviceSequenceCutoff, SequenceStore};
+pub use sequence::{DeviceSequenceCutoff, SequenceStore, COUNTER_SCHEMA_VERSION};

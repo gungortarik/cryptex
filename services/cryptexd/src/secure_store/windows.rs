@@ -1,11 +1,11 @@
 //! Windows Credential Manager P1 adapter (ADR-0014).
 
-use super::{SecureStore, SecureStoreError, SecureStoreResult, validate_name_pair};
+use super::{validate_name_pair, SecureStore, SecureStoreError, SecureStoreResult};
 use widestring::U16CString;
-use windows_sys::Win32::Foundation::{ERROR_NOT_FOUND, GetLastError};
+use windows_sys::Win32::Foundation::{GetLastError, ERROR_NOT_FOUND};
 use windows_sys::Win32::Security::Credentials::{
-    CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree, CredReadW,
-    CredWriteW,
+    CredDeleteW, CredFree, CredReadW, CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE,
+    CRED_TYPE_GENERIC,
 };
 
 /// Target name shape used by Gate A / product P1: `{service}/{account}`.
@@ -19,6 +19,52 @@ fn map_last_error(op: &'static str) -> SecureStoreError {
         SecureStoreError::Missing
     } else {
         SecureStoreError::Platform { op, code }
+    }
+}
+
+/// Copy credential blob bytes, rejecting inconsistent CredRead results.
+///
+/// `CredentialBlobSize > 0` with a null `CredentialBlob` is treated as a platform
+/// integrity failure (fail closed). Empty secrets (`size == 0`) are allowed.
+pub(crate) fn copy_credential_blob(size: u32, blob: *const u8) -> SecureStoreResult<Vec<u8>> {
+    let len = size as usize;
+    if len == 0 {
+        return Ok(Vec::new());
+    }
+    if blob.is_null() {
+        return Err(SecureStoreError::Platform {
+            op: "CredReadW_inconsistent_blob",
+            code: -3,
+        });
+    }
+    let mut buf = vec![0u8; len];
+    unsafe {
+        std::ptr::copy_nonoverlapping(blob, buf.as_mut_ptr(), len);
+    }
+    Ok(buf)
+}
+
+/// RAII guard: always `CredFree` a non-null credential pointer on drop.
+struct CredReadGuard(*mut CREDENTIALW);
+
+impl CredReadGuard {
+    fn new(ptr: *mut CREDENTIALW) -> Self {
+        Self(ptr)
+    }
+
+    fn as_ptr(&self) -> *mut CREDENTIALW {
+        self.0
+    }
+}
+
+impl Drop for CredReadGuard {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                CredFree(self.0 as *const _);
+            }
+            self.0 = std::ptr::null_mut();
+        }
     }
 }
 
@@ -68,25 +114,23 @@ impl SecureStore for WindowsCredentialStore {
         let mut cred_ptr: *mut CREDENTIALW = std::ptr::null_mut();
         let ok = unsafe { CredReadW(target_w.as_ptr(), CRED_TYPE_GENERIC, 0, &mut cred_ptr) };
         if ok == 0 {
+            // CredReadW failed: do not CredFree (pointer is not owned / null).
             return Err(map_last_error("CredReadW"));
         }
-        if cred_ptr.is_null() {
+        // Success path: own the pointer and free on every return (incl. errors).
+        let guard = CredReadGuard::new(cred_ptr);
+        if guard.as_ptr().is_null() {
             return Err(SecureStoreError::Platform {
-                op: "CredReadW",
+                op: "CredReadW_null_credential",
                 code: -2,
             });
         }
-        let out = unsafe {
-            let cred = &*cred_ptr;
-            let len = cred.CredentialBlobSize as usize;
-            let mut buf = vec![0u8; len];
-            if len > 0 && !cred.CredentialBlob.is_null() {
-                std::ptr::copy_nonoverlapping(cred.CredentialBlob, buf.as_mut_ptr(), len);
-            }
-            CredFree(cred_ptr as *const _);
-            buf
+        let (size, blob) = unsafe {
+            let cred = &*guard.as_ptr();
+            (cred.CredentialBlobSize, cred.CredentialBlob as *const u8)
         };
-        Ok(out)
+        copy_credential_blob(size, blob)
+        // CredFree via CredReadGuard Drop on all paths.
     }
 
     fn delete(&self, service: &str, account: &str) -> SecureStoreResult<()> {
@@ -106,7 +150,7 @@ impl SecureStore for WindowsCredentialStore {
 mod tests {
     use super::*;
     use crate::secure_store::{
-        AccountLabel, SecureStoreEnvironment, ServiceLabel, payload_bytes_recoverable,
+        payload_bytes_recoverable, AccountLabel, SecureStoreEnvironment, ServiceLabel,
     };
 
     #[test]
@@ -146,5 +190,30 @@ mod tests {
     fn map_not_found_is_missing_not_platform() {
         // ERROR_NOT_FOUND is 1168 on Windows.
         assert_eq!(ERROR_NOT_FOUND, 1168);
+    }
+
+    #[test]
+    fn copy_credential_blob_rejects_size_with_null_pointer() {
+        let err = copy_credential_blob(4, std::ptr::null()).unwrap_err();
+        assert!(matches!(
+            err,
+            SecureStoreError::Platform {
+                op: "CredReadW_inconsistent_blob",
+                code: -3
+            }
+        ));
+    }
+
+    #[test]
+    fn copy_credential_blob_allows_empty_and_copies_bytes() {
+        assert_eq!(
+            copy_credential_blob(0, std::ptr::null()).unwrap(),
+            Vec::<u8>::new()
+        );
+        let data = [1u8, 2, 3];
+        assert_eq!(
+            copy_credential_blob(3, data.as_ptr()).unwrap(),
+            vec![1, 2, 3]
+        );
     }
 }

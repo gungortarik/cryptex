@@ -1,4 +1,6 @@
-//! Recovery Kit **public** metadata persistence (ADR-0015). Offline secrets stay out of runtime.
+//! Recovery Kit **public** metadata persistence (ADR-0015 section 2.5).
+//!
+//! Offline signing / recovery secrets must never appear in these files.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -25,6 +27,7 @@ pub fn write_recovery_public_metadata(
     runtime_root: &Path,
     meta: &RecoveryKitPublicMetadata,
 ) -> Result<(), IdentityRuntimeError> {
+    meta.validate().map_err(IdentityRuntimeError::from)?;
     assert_outside_repository(runtime_root)?;
     ensure_runtime_root(runtime_root)?;
     let dir = recovery_dir(runtime_root);
@@ -48,10 +51,7 @@ pub fn load_recovery_public_metadata(
 ) -> Result<RecoveryKitPublicMetadata, IdentityRuntimeError> {
     let path = recovery_public_metadata_path(runtime_root);
     let text = fs::read_to_string(&path)?;
-    let meta: RecoveryKitPublicMetadata = serde_json::from_str(&text).map_err(|e| {
-        IdentityRuntimeError::Lifecycle(LifecycleError::Io(format!("parse recovery meta: {e}")))
-    })?;
-    Ok(meta)
+    Ok(RecoveryKitPublicMetadata::from_json(&text)?)
 }
 
 /// Guard helper for tests/callers: public metadata must not recover a given secret.
@@ -66,7 +66,7 @@ pub fn public_metadata_excludes_secret(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cryptex_core::RecoveryPurpose;
+    use cryptex_core::{CoreError, RecoveryPurpose};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root() -> PathBuf {
@@ -84,12 +84,13 @@ mod tests {
         let root = temp_root();
         let meta = RecoveryKitPublicMetadata::new(
             "kit-1",
-            "brain-1",
+            "11111111-1111-4111-8111-111111111111",
             vec![
                 RecoveryPurpose::BackupDecrypt,
                 RecoveryPurpose::TrustBootstrap,
             ],
-        );
+        )
+        .expect("meta");
         write_recovery_public_metadata(&root, &meta).expect("write");
         let loaded = load_recovery_public_metadata(&root).expect("load");
         assert_eq!(loaded, meta);
@@ -101,14 +102,56 @@ mod tests {
         let root = temp_root();
         let meta = RecoveryKitPublicMetadata::new(
             "kit-2",
-            "brain-2",
+            "22222222-2222-4222-8222-222222222222",
             vec![RecoveryPurpose::TrustBootstrap],
-        );
+        )
+        .expect("meta");
         write_recovery_public_metadata(&root, &meta).expect("write");
         let offline_secret = b"SYNTHETIC_OFFLINE_RECOVERY_SECRET_NOT_IN_RUNTIME";
         assert!(public_metadata_excludes_secret(&root, offline_secret).expect("check"));
         let text = fs::read_to_string(recovery_public_metadata_path(&root)).unwrap();
         assert!(!text.contains("SYNTHETIC_OFFLINE_RECOVERY_SECRET"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn load_fails_closed_on_future_schema_and_malformed_brain_id() {
+        let root = temp_root();
+        fs::create_dir_all(recovery_dir(&root)).unwrap();
+        let path = recovery_public_metadata_path(&root);
+        fs::write(
+            &path,
+            r#"{
+  "schema_version": 5,
+  "kit_id": "kit-x",
+  "brain_id": "11111111-1111-4111-8111-111111111111",
+  "purposes": ["backup_decrypt"]
+}
+"#,
+        )
+        .unwrap();
+        let err = load_recovery_public_metadata(&root).unwrap_err();
+        assert!(matches!(
+            err,
+            IdentityRuntimeError::Core(CoreError::UnsupportedSchema {
+                found: 5,
+                expected: 1,
+                ..
+            })
+        ));
+
+        fs::write(
+            &path,
+            r#"{
+  "schema_version": 1,
+  "kit_id": "kit-x",
+  "brain_id": "not-uuid",
+  "purposes": ["backup_decrypt"]
+}
+"#,
+        )
+        .unwrap();
+        assert!(load_recovery_public_metadata(&root).is_err());
         let _ = fs::remove_dir_all(&root);
     }
 }

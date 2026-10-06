@@ -4,13 +4,29 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CoreError {
     InvalidId(String),
-    SequenceStateMissing { device_id: String },
-    SequenceStateAlreadyExists { device_id: String },
-    SequenceStateCorrupt { device_id: String, detail: String },
-    SequenceOverflow { device_id: String },
-    SequenceNonMonotonic { device_id: String },
+    SequenceStateMissing {
+        device_id: String,
+    },
+    SequenceStateAlreadyExists {
+        device_id: String,
+    },
+    SequenceStateCorrupt {
+        device_id: String,
+        detail: String,
+    },
+    SequenceOverflow {
+        device_id: String,
+    },
+    SequenceNonMonotonic {
+        device_id: String,
+    },
     Durability(String),
     Io(String),
+    UnsupportedSchema {
+        kind: String,
+        found: u32,
+        expected: u32,
+    },
 }
 
 impl fmt::Display for CoreError {
@@ -34,6 +50,14 @@ impl fmt::Display for CoreError {
             }
             Self::Durability(message) => write!(f, "durability error: {message}"),
             Self::Io(message) => write!(f, "io error: {message}"),
+            Self::UnsupportedSchema {
+                kind,
+                found,
+                expected,
+            } => write!(
+                f,
+                "unsupported {kind} schema_version {found} (expected {expected})"
+            ),
         }
     }
 }

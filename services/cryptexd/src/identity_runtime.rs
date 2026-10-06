@@ -71,6 +71,14 @@ pub fn brain_identity_path(runtime_root: &Path) -> PathBuf {
     identity_dir(runtime_root).join(BRAIN_FILE)
 }
 
+/// Best-effort removal of a just-written brain identity so SecureStore failure can retry.
+fn rollback_brain_identity(runtime_root: &Path) {
+    let path = brain_identity_path(runtime_root);
+    let tmp = path.with_extension("json.tmp");
+    let _ = fs::remove_file(&path);
+    let _ = fs::remove_file(&tmp);
+}
+
 /// Write public brain identity JSON (LF) under app-data runtime root.
 pub fn write_brain_identity(
     runtime_root: &Path,
@@ -123,6 +131,9 @@ pub fn load_device_private_material<S: SecureStore>(
 }
 
 /// Create a synthetic Brain: public metadata on disk + private blob in SecureStore.
+///
+/// If SecureStore write fails after the public identity was persisted, the identity
+/// file is rolled back so a later retry is not blocked by `AlreadyExists`.
 pub fn create_synthetic_brain<S: SecureStore>(
     runtime_root: &Path,
     store: &S,
@@ -134,10 +145,28 @@ pub fn create_synthetic_brain<S: SecureStore>(
 ) -> IdentityRuntimeResult<BrainIdentity> {
     let identity = BrainIdentity::new(brain_id, created_at)?;
     write_brain_identity(runtime_root, &identity)?;
-    store_device_private_material(store, env, device_id, device_secret)?;
+    if let Err(err) = store_device_private_material(store, env, device_id, device_secret) {
+        rollback_brain_identity(runtime_root);
+        return Err(err);
+    }
     // Verify public file has no secret bytes.
-    let on_disk = fs::read_to_string(brain_identity_path(runtime_root))?;
+    let on_disk = match fs::read_to_string(brain_identity_path(runtime_root)) {
+        Ok(text) => text,
+        Err(e) => {
+            rollback_brain_identity(runtime_root);
+            let _ = store.delete(
+                ServiceLabel::device_credentials(env).as_str(),
+                AccountLabel::device_private(device_id).as_str(),
+            );
+            return Err(e.into());
+        }
+    };
     if crate::secure_store::payload_bytes_recoverable(device_secret, &on_disk) {
+        rollback_brain_identity(runtime_root);
+        let _ = store.delete(
+            ServiceLabel::device_credentials(env).as_str(),
+            AccountLabel::device_private(device_id).as_str(),
+        );
         return Err(IdentityRuntimeError::Lifecycle(LifecycleError::Attention(
             "public brain identity file must not contain device secret bytes".into(),
         )));
@@ -220,6 +249,53 @@ mod tests {
         )
         .expect_err("duplicate public file");
         assert!(matches!(err, IdentityRuntimeError::AlreadyExists(_)));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn secure_store_put_failure_rolls_back_brain_identity_for_retry() {
+        let root = temp_root();
+        let store = FakeSecureStore::new();
+        store.fail_next_put_with(SecureStoreError::Platform {
+            op: "injected_put_failure",
+            code: 99,
+        });
+        let secret = b"SYNTHETIC_BRAIN_DEVICE_SECRET_NOT_REAL::fail";
+        let err = create_synthetic_brain(
+            &root,
+            &store,
+            SecureStoreEnvironment::Dev,
+            "44444444-4444-4444-8444-444444444444",
+            "dev-device-fail",
+            "2026-10-06T00:00:00Z",
+            secret,
+        )
+        .expect_err("secure store failure");
+        assert!(matches!(
+            err,
+            IdentityRuntimeError::SecureStore(SecureStoreError::Platform {
+                op: "injected_put_failure",
+                code: 99
+            })
+        ));
+        assert!(
+            !brain_identity_path(&root).exists(),
+            "failed create must not leave brain identity that blocks retry"
+        );
+        assert!(store.is_empty());
+
+        // Retry succeeds after rollback.
+        let identity = create_synthetic_brain(
+            &root,
+            &store,
+            SecureStoreEnvironment::Dev,
+            "44444444-4444-4444-8444-444444444444",
+            "dev-device-fail",
+            "2026-10-06T00:00:00Z",
+            secret,
+        )
+        .expect("retry after rollback");
+        assert_eq!(identity.brain_id, "44444444-4444-4444-8444-444444444444");
         let _ = fs::remove_dir_all(&root);
     }
 }

@@ -1,4 +1,4 @@
-//! Pairing **record** persistence (ADR-0015 data only — no pairing UI / M8 flows).
+//! Pairing **record** persistence (ADR-0015 data only -- no pairing UI / M8 flows).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,6 +24,7 @@ pub fn write_pairing_record(
     runtime_root: &Path,
     record: &PairingRecord,
 ) -> Result<(), IdentityRuntimeError> {
+    record.validate().map_err(IdentityRuntimeError::from)?;
     assert_outside_repository(runtime_root)?;
     ensure_runtime_root(runtime_root)?;
     let dir = pairing_dir(runtime_root);
@@ -48,10 +49,7 @@ pub fn load_pairing_record(
 ) -> Result<PairingRecord, IdentityRuntimeError> {
     let path = record_path(runtime_root, peer);
     let text = fs::read_to_string(&path)?;
-    let record: PairingRecord = serde_json::from_str(&text).map_err(|e| {
-        IdentityRuntimeError::Lifecycle(LifecycleError::Io(format!("parse pairing: {e}")))
-    })?;
-    Ok(record)
+    Ok(PairingRecord::from_json(&text)?)
 }
 
 pub fn list_pairing_states(
@@ -69,9 +67,7 @@ pub fn list_pairing_states(
             continue;
         }
         let text = fs::read_to_string(&path)?;
-        let record: PairingRecord = serde_json::from_str(&text).map_err(|e| {
-            IdentityRuntimeError::Lifecycle(LifecycleError::Io(format!("parse pairing: {e}")))
-        })?;
+        let record = PairingRecord::from_json(&text)?;
         out.push((record.peer_device_id.to_string(), record.state));
     }
     out.sort_by(|a, b| a.0.cmp(&b.0));
@@ -81,7 +77,7 @@ pub fn list_pairing_states(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cryptex_core::DeviceId;
+    use cryptex_core::{CoreError, DeviceId};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root() -> PathBuf {
@@ -97,14 +93,14 @@ mod tests {
     #[test]
     fn write_load_pairing_record_round_trip() {
         let root = temp_root();
-        // 32 hex chars = 16 bytes for DeviceId
         let peer = DeviceId::new("peer-device-aabb").expect("id");
         let record = PairingRecord::new(
             peer.clone(),
             PairingState::Trusted,
-            "brain-1",
+            "11111111-1111-4111-8111-111111111111",
             "2026-10-06T00:00:00Z",
-        );
+        )
+        .expect("record");
         write_pairing_record(&root, &record).expect("write");
         let loaded = load_pairing_record(&root, &peer).expect("load");
         assert_eq!(loaded, record);
@@ -121,12 +117,57 @@ mod tests {
         let record = PairingRecord::new(
             peer,
             PairingState::Pending,
-            "brain-1",
+            "11111111-1111-4111-8111-111111111111",
             "2026-10-06T00:00:00Z",
-        );
+        )
+        .expect("record");
         write_pairing_record(&root, &record).expect("write");
         let text = fs::read_to_string(record_path(&root, &record.peer_device_id)).unwrap();
         assert!(!text.contains("SECRET"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn load_fails_closed_on_future_schema_and_malformed_fields() {
+        let root = temp_root();
+        let peer = DeviceId::new("peer-device-eeff").expect("id");
+        let path = record_path(&root, &peer);
+        fs::create_dir_all(pairing_dir(&root)).unwrap();
+        fs::write(
+            &path,
+            r#"{
+  "schema_version": 9,
+  "peer_device_id": "peer-device-eeff",
+  "state": "trusted",
+  "local_brain_id": "11111111-1111-4111-8111-111111111111",
+  "updated_at": "2026-10-06T00:00:00Z"
+}
+"#,
+        )
+        .unwrap();
+        let err = load_pairing_record(&root, &peer).unwrap_err();
+        assert!(matches!(
+            err,
+            IdentityRuntimeError::Core(CoreError::UnsupportedSchema {
+                found: 9,
+                expected: 1,
+                ..
+            })
+        ));
+
+        fs::write(
+            &path,
+            r#"{
+  "schema_version": 1,
+  "peer_device_id": "peer-device-eeff",
+  "state": "trusted",
+  "local_brain_id": "not-a-uuid",
+  "updated_at": "2026-10-06T00:00:00Z"
+}
+"#,
+        )
+        .unwrap();
+        assert!(load_pairing_record(&root, &peer).is_err());
         let _ = fs::remove_dir_all(&root);
     }
 }
