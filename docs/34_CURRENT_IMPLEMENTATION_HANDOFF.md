@@ -25,15 +25,18 @@
 M1 — Brain + Device Identity is in progress on `m1/brain-device-identity`.
 Cursor is the write-capable implementer for all of M1. **ADR-0015 is ACCEPTED**;
 identity/sequence slices may proceed under that decision. **ADR-0014 remains
-PROPOSED** — no secure-store spike or ADR-0014-dependent product code without
-separate explicit owner authorization. GitHub Actions stay deferred until the
+PROPOSED** — owner-authorized Gate A secure-store spike has Windows evidence
+(`evidence/m1/secure-store-spike-windows-20261005.md`); macOS spike cells remain
+WAITING. Product secure-store code stays blocked until ADR acceptance. GitHub Actions stay deferred until the
 final appropriate M1 gate.
 
-**M1 status:** ADR-0015 ACCEPTED (2026-10-05). Implementing identity/sequence
-foundations (`last_issued=0`, first issue `1`, durable-before-return, concurrent
-atomicity). ADR-0014 PROPOSED; secure-store spike/code blocked pending separate
-authorization. Production pairing/revocation remains M8; Recovery Kit container
-remains M11. No custom cryptography. No Actions until final M1 gate.
+**M1 status:** ADR-0015 ACCEPTED (2026-10-05). Identity/sequence foundations are
+in place (`last_issued=0`, first issue `1`, durable-before-return, concurrent
+atomicity). ADR-0014 remains PROPOSED. Owner-authorized Gate A secure-store spike
+recorded Windows K2+P1 PASS (`evidence/m1/secure-store-spike-windows-20261005.md`);
+macOS spike WAITING. Product secure-store implementation still blocked until
+ADR-0014 acceptance. Production pairing/revocation remains M8; Recovery Kit
+container remains M11. No custom cryptography. No Actions until final M1 gate.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
@@ -52,7 +55,7 @@ present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- ADR-0015-accepted identity/sequence work may proceed. Do not start ADR-0014 secure-store spike or product secure-store code without separate explicit owner authorization. No GitHub Actions until the final M1 gate.
+- ADR-0015-accepted identity/sequence work may proceed. ADR-0014 Gate A spike is owner-authorized and Windows evidence is recorded; do not start product secure-store code until ADR-0014 is accepted. Mac spike remains WAITING. No GitHub Actions until the final M1 gate.
 
 ## P0-1 status
 
@@ -1379,3 +1382,4 @@ Historical production prerequisites in earlier slices remain separate mandatory
 product gates under the owner-authorized revision; no production proof is waived.
 
 M1 is not authorized until all M0 P0 gates are complete.~~
+

@@ -4,7 +4,7 @@
 
 **Date drafted:** 2026-10-05
 
-**Date revised:** 2026-10-05 (owner review revision)
+**Date revised:** 2026-10-05 (owner-authorized Gate A spike evidence; still PROPOSED)
 
 **Milestone:** M1 — Brain + Device Identity
 
@@ -103,11 +103,13 @@ Equivalent guarantee: device private material lives in OS-protected secret stora
 |---|---|---|
 | Spec basis | Documented | — |
 | Candidate comparison table (K1/K2/P1) | Documentary in this ADR | Feeds A/B |
-| Limited evaluation spike | **Not started** (no spike code in this revision) | A |
-| Windows physical product verification | **Not VERIFIED** | C (M1 completion) |
+| Limited evaluation spike (Windows) | **Started** — Windows K2 and P1 matrix PASS; recorded in `evidence/m1/secure-store-spike-windows-20261005.md` | A |
+| Limited evaluation spike (macOS) | **WAITING** — not executed on a Mac host; instructions in spike README + evidence | A |
+| Spike recommendation (provisional) | Prefer **K2** pending Mac results and owner review; P1 remains viable. **No library pinned for product.** | Feeds B |
+| Windows physical product verification | **Not VERIFIED** (spike ≠ product integration) | C (M1 completion) |
 | macOS physical product verification | **WAITING** (not performed on Mac host) | C (M1 completion) |
 
-Do not treat this draft as proof that any candidate works on either OS.
+Windows spike evaluation shows K2 and P1 both satisfy store/read/delete/missing-item/error-redaction on this host. That is Gate A evidence only. It does **not** accept this ADR, does **not** verify product `cryptexd` integration, and does **not** claim macOS verification.
 
 ## 7. Recovery / security implications
 
@@ -139,7 +141,7 @@ Do not treat this draft as proof that any candidate works on either OS.
 |---|---|
 | ADR-0014 | **PROPOSED** |
 | Product secure-store implementation | **Blocked** until ACCEPTED |
-| Limited evaluation spike | **Allowed only with owner authorization**, product-separated |
+| Limited evaluation spike | **Owner-authorized; Windows Gate A evidence recorded**; macOS spike **WAITING**; still product-separated |
 | Library/provider pin | **None** (no default `keyring`) |
 | Hardware-backed keys required | **No** |
 | Both-OS physical product verification | **M1 completion gate**; macOS **WAITING** |
@@ -151,3 +153,4 @@ Do not treat this draft as proof that any candidate works on either OS.
 - `docs/milestones/M1_BRAIN_DEVICE_IDENTITY.md`
 - `docs/adr/ADR-0007-local-ipc-implementation-addendum.md`
 - `evidence/m1/m1-kickoff-plan-20261005.md`
+
