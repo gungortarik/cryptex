@@ -15,7 +15,7 @@
 | Role | SHA |
 |---|---|
 | Procedure + prior lib matrix baseline | `1a39431df6874a7e9d17fbe72a745846985c7250` |
-| Windows Gate C VERIFIED tip (adds never-written delete check + this evidence) | `VERIFIED_SHA_PLACEHOLDER` |
+| Windows Gate C VERIFIED tip (adds never-written delete check + this evidence) | `e7b83cfb95b565f5eb30d7e4a01c24485122f7b3` |
 
 Gate A spike evidence is not used as a substitute for this product verification.
 
@@ -74,7 +74,7 @@ exit 0
 
 ## Verdict
 
-**Gate C Windows product verification: VERIFIED** at `VERIFIED_SHA_PLACEHOLDER`.
+**Gate C Windows product verification: VERIFIED** at `e7b83cfb95b565f5eb30d7e4a01c24485122f7b3`.
 
 ## Explicit non-claims
 
