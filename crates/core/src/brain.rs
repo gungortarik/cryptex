@@ -114,4 +114,21 @@ mod tests {
             }
         ));
     }
+
+    #[test]
+    fn rejects_whitespace_wrapped_brain_id() {
+        assert!(
+            BrainIdentity::new(
+                " 11111111-1111-4111-8111-111111111111",
+                "2026-10-06T00:00:00Z",
+            )
+            .is_err()
+        );
+        let json = r#"{
+  "schema_version": 1,
+  "brain_id": "11111111-1111-4111-8111-111111111111 ",
+  "created_at": "2026-10-06T00:00:00Z"
+}"#;
+        assert!(BrainIdentity::from_json(json).is_err());
+    }
 }

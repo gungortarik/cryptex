@@ -4,7 +4,12 @@ use crate::error::{CoreError, CoreResult};
 
 /// Accepts canonical UUID text: 8-4-4-4-12 lowercase/uppercase hex with hyphens.
 pub fn parse_uuid_str(value: &str) -> CoreResult<String> {
-    let value = value.trim();
+    // Reject leading/trailing whitespace; do not silently normalize.
+    if value != value.trim() {
+        return Err(CoreError::InvalidId(
+            "brain_id must not have leading or trailing whitespace".into(),
+        ));
+    }
     if value.len() != 36 {
         return Err(CoreError::InvalidId(
             "brain_id must be a UUID string (8-4-4-4-12)".into(),
@@ -231,6 +236,14 @@ mod tests {
         assert!(parse_uuid_str("not-a-uuid").is_err());
         assert!(parse_rfc3339_str("2026-10-06").is_err());
         assert!(parse_rfc3339_str("2026-10-06T00:00:00").is_err());
+    }
+
+    #[test]
+    fn rejects_leading_or_trailing_whitespace_on_uuid() {
+        assert!(parse_uuid_str(" 11111111-1111-4111-8111-111111111111").is_err());
+        assert!(parse_uuid_str("11111111-1111-4111-8111-111111111111 ").is_err());
+        assert!(parse_uuid_str("\t11111111-1111-4111-8111-111111111111").is_err());
+        parse_uuid_str("11111111-1111-4111-8111-111111111111").unwrap();
     }
 
     #[test]

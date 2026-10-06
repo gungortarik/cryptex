@@ -82,12 +82,14 @@ mod tests {
 
     #[test]
     fn rejects_malformed_brain_id() {
-        assert!(RecoveryKitPublicMetadata::new(
-            "kit-1",
-            "brain-1",
-            vec![RecoveryPurpose::TrustBootstrap],
-        )
-        .is_err());
+        assert!(
+            RecoveryKitPublicMetadata::new(
+                "kit-1",
+                "brain-1",
+                vec![RecoveryPurpose::TrustBootstrap],
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -107,5 +109,24 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn rejects_whitespace_wrapped_brain_id() {
+        assert!(
+            RecoveryKitPublicMetadata::new(
+                "kit-1",
+                " 11111111-1111-4111-8111-111111111111",
+                vec![RecoveryPurpose::TrustBootstrap],
+            )
+            .is_err()
+        );
+        let json = r#"{
+  "schema_version": 1,
+  "kit_id": "kit-1",
+  "brain_id": "11111111-1111-4111-8111-111111111111 ",
+  "purposes": ["trust_bootstrap"]
+}"#;
+        assert!(RecoveryKitPublicMetadata::from_json(json).is_err());
     }
 }

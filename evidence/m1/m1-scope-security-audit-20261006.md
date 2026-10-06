@@ -1,8 +1,8 @@
 # M1 scope / security audit — 2026-10-06
 
-**Branch:** `m1/brain-device-identity`  
-**Authority:** `docs/00_MASTER_SPEC.md`, accepted ADR-0015, M1 completion gate / DoD  
-**Actions:** not run (deferred)  
+**Branch:** `m1/brain-device-identity`
+**Authority:** `docs/00_MASTER_SPEC.md`, accepted ADR-0015, M1 completion gate / DoD
+**Actions:** not run (deferred)
 **M1 complete:** **not declared**
 
 ## Findings and resolutions

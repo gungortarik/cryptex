@@ -1395,4 +1395,3 @@ Historical production prerequisites in earlier slices remain separate mandatory
 product gates under the owner-authorized revision; no production proof is waived.
 
 M1 is not authorized until all M0 P0 gates are complete.~~
-

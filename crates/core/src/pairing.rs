@@ -85,20 +85,24 @@ mod tests {
     #[test]
     fn rejects_malformed_brain_id_and_timestamp() {
         let peer = DeviceId::new("peer-device-aabb").unwrap();
-        assert!(PairingRecord::new(
-            peer.clone(),
-            PairingState::Pending,
-            "brain-1",
-            "2026-10-06T00:00:00Z",
-        )
-        .is_err());
-        assert!(PairingRecord::new(
-            peer,
-            PairingState::Pending,
-            "11111111-1111-4111-8111-111111111111",
-            "not-a-timestamp",
-        )
-        .is_err());
+        assert!(
+            PairingRecord::new(
+                peer.clone(),
+                PairingState::Pending,
+                "brain-1",
+                "2026-10-06T00:00:00Z",
+            )
+            .is_err()
+        );
+        assert!(
+            PairingRecord::new(
+                peer,
+                PairingState::Pending,
+                "11111111-1111-4111-8111-111111111111",
+                "not-a-timestamp",
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -119,5 +123,27 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn rejects_whitespace_wrapped_local_brain_id() {
+        let peer = DeviceId::new("peer-device-aabb").unwrap();
+        assert!(
+            PairingRecord::new(
+                peer,
+                PairingState::Pending,
+                " 11111111-1111-4111-8111-111111111111",
+                "2026-10-06T00:00:00Z",
+            )
+            .is_err()
+        );
+        let json = r#"{
+  "schema_version": 1,
+  "peer_device_id": "peer-device-aabb",
+  "state": "pending",
+  "local_brain_id": "11111111-1111-4111-8111-111111111111 ",
+  "updated_at": "2026-10-06T00:00:00Z"
+}"#;
+        assert!(PairingRecord::from_json(json).is_err());
     }
 }
