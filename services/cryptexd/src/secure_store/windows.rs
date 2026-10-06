@@ -1,11 +1,11 @@
 //! Windows Credential Manager P1 adapter (ADR-0014).
 
-use super::{validate_name_pair, SecureStore, SecureStoreError, SecureStoreResult};
+use super::{SecureStore, SecureStoreError, SecureStoreResult, validate_name_pair};
 use widestring::U16CString;
-use windows_sys::Win32::Foundation::{GetLastError, ERROR_NOT_FOUND};
+use windows_sys::Win32::Foundation::{ERROR_NOT_FOUND, GetLastError};
 use windows_sys::Win32::Security::Credentials::{
-    CredDeleteW, CredFree, CredReadW, CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE,
-    CRED_TYPE_GENERIC,
+    CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree, CredReadW,
+    CredWriteW,
 };
 
 /// Target name shape used by Gate A / product P1: `{service}/{account}`.
@@ -150,7 +150,7 @@ impl SecureStore for WindowsCredentialStore {
 mod tests {
     use super::*;
     use crate::secure_store::{
-        payload_bytes_recoverable, AccountLabel, SecureStoreEnvironment, ServiceLabel,
+        AccountLabel, SecureStoreEnvironment, ServiceLabel, payload_bytes_recoverable,
     };
 
     #[test]

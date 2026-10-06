@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use super::{validate_name_pair, SecureStore, SecureStoreError, SecureStoreResult};
+use super::{SecureStore, SecureStoreError, SecureStoreResult, validate_name_pair};
 
 /// Process-local fake store. Secrets are zeroed on overwrite/delete/drop of entries.
 #[derive(Default)]
@@ -11,6 +11,8 @@ pub struct FakeSecureStore {
     inner: Mutex<HashMap<(String, String), Vec<u8>>>,
     /// When set, the next `put` returns this error and clears the latch.
     fail_next_put: Mutex<Option<SecureStoreError>>,
+    /// When set, the next `delete` returns this error and clears the latch.
+    fail_next_delete: Mutex<Option<SecureStoreError>>,
 }
 
 impl FakeSecureStore {
@@ -29,6 +31,11 @@ impl FakeSecureStore {
     /// Arm a one-shot put failure for injection tests.
     pub fn fail_next_put_with(&self, err: SecureStoreError) {
         *self.fail_next_put.lock().expect("fail latch") = Some(err);
+    }
+
+    /// Arm a one-shot delete failure for injection tests.
+    pub fn fail_next_delete_with(&self, err: SecureStoreError) {
+        *self.fail_next_delete.lock().expect("fail latch") = Some(err);
     }
 }
 
@@ -63,6 +70,9 @@ impl SecureStore for FakeSecureStore {
 
     fn delete(&self, service: &str, account: &str) -> SecureStoreResult<()> {
         validate_name_pair(service, account)?;
+        if let Some(err) = self.fail_next_delete.lock().expect("fail latch").take() {
+            return Err(err);
+        }
         let mut map = self.inner.lock().expect("fake store lock");
         match map.remove(&(service.to_string(), account.to_string())) {
             Some(mut old) => {
@@ -89,7 +99,7 @@ impl Drop for FakeSecureStore {
 mod tests {
     use super::*;
     use crate::secure_store::{
-        payload_bytes_recoverable, AccountLabel, SecureStoreEnvironment, ServiceLabel,
+        AccountLabel, SecureStoreEnvironment, ServiceLabel, payload_bytes_recoverable,
     };
 
     #[test]
@@ -164,5 +174,25 @@ mod tests {
         store
             .put("Cryptex-Dev", "acct", b"x")
             .expect("second put ok");
+    }
+
+    #[test]
+    fn fail_next_delete_is_one_shot() {
+        let store = FakeSecureStore::new();
+        store.put("Cryptex-Dev", "acct", b"x").expect("put");
+        store.fail_next_delete_with(SecureStoreError::Platform {
+            op: "injected_delete",
+            code: 11,
+        });
+        assert!(matches!(
+            store.delete("Cryptex-Dev", "acct"),
+            Err(SecureStoreError::Platform {
+                op: "injected_delete",
+                code: 11
+            })
+        ));
+        store
+            .delete("Cryptex-Dev", "acct")
+            .expect("second delete ok");
     }
 }

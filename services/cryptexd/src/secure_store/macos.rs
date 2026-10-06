@@ -3,11 +3,11 @@
 //! Gate A spike verified these APIs. Gate C product physical verification on a
 //! Mac host remains a separate M1 completion requirement.
 
-use super::{validate_name_pair, SecureStore, SecureStoreError, SecureStoreResult};
+use super::{SecureStore, SecureStoreError, SecureStoreResult, validate_name_pair};
 use crate::secure_store::classify_keychain_status;
 use security_framework::base::Error as KeychainError;
 use security_framework::passwords::{
-    delete_generic_password, generic_password, set_generic_password, PasswordOptions,
+    PasswordOptions, delete_generic_password, generic_password, set_generic_password,
 };
 
 fn map_keychain_err(op: &'static str, err: KeychainError) -> SecureStoreError {
@@ -48,7 +48,7 @@ impl SecureStore for MacosKeychainStore {
 mod tests {
     use super::*;
     use crate::secure_store::{
-        payload_bytes_recoverable, AccountLabel, SecureStoreEnvironment, ServiceLabel,
+        AccountLabel, SecureStoreEnvironment, ServiceLabel, payload_bytes_recoverable,
     };
 
     #[test]

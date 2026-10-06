@@ -13,8 +13,8 @@ use crate::sequence_store::SequenceStore;
 
 const SEQUENCE_DIR: &str = "sequence";
 
-pub use crate::sequence_store::SequenceStore as DaemonSequenceStore;
 pub use crate::sequence_store::COUNTER_SCHEMA_VERSION;
+pub use crate::sequence_store::SequenceStore as DaemonSequenceStore;
 
 pub fn sequence_dir(runtime_root: &Path) -> PathBuf {
     runtime_root.join(SEQUENCE_DIR)

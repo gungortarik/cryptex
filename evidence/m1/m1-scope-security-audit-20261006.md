@@ -68,3 +68,22 @@ Do **not** start M2 or declare M1 complete until the above are closed.
 ### Finding: RFC 3339 impossible values
 
 **Resolved:** `parse_rfc3339_str` now rejects impossible calendar/clock/offset values (schema shape unchanged).
+
+### Finding: discarded compensating cleanup errors (RESOLVED)
+
+**Finding:** `rollback_brain_identity` discarded `remove_file` errors (`let _ = ...`), and verifying create paths ignored compensating `SecureStore::delete` failures after a primary create/verify failure. Callers could treat a failed create as cleanly rolled back (and safe to retry) even when public identity removal or private-material delete did not succeed.
+
+**Resolution (M1-scoped):**
+- `rollback_brain_identity` returns `IdentityRuntimeResult` (NotFound is success; other IO errors surface).
+- New typed error `IdentityRuntimeError::CompensatingCleanupFailed { primary, cleanup, retry_safe }`.
+- `retry_safe` is false when public identity rollback failed; Display states retry is not safe until rollback succeeds and never claims retry is safe in that case.
+- Compensating SecureStore delete errors are attached the same way (primary preserved).
+- `FakeSecureStore::fail_next_delete_with` supports delete-failure injection.
+- Focused tests: rollback failure is not retry-safe; verify-path delete failure preserves primary Attention and surfaces cleanup while public file is still removed.
+
+**Local checks (Windows, this follow-up):**
+- `cargo test -p cryptexd --lib identity_runtime` PASS (5)
+- `cargo test -p cryptexd --lib` PASS (84)
+- `cargo clippy -p cryptexd --all-targets -- -D warnings` PASS
+- GitHub Actions: not run (deferred)
+- M1 complete: **not declared**
