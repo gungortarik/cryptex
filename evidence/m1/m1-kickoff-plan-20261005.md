@@ -1,10 +1,15 @@
 # M1 Kickoff Plan — Brain + Device Identity
 
-**Date:** 2026-10-05  
+**Date:** 2026-10-05
+
 **Revised:** 2026-10-05 (durable-before-return; concurrent allocate atomicity)
-**Branch:** `m1/brain-device-identity`  
-**Base:** `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` (`origin/m0/foundation`, PR #5 merge)  
-**Implementer:** Cursor (entire M1)  
+
+**Branch:** `m1/brain-device-identity`
+
+**Base:** `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` (`origin/m0/foundation`, PR #5 merge)
+
+**Implementer:** Cursor (entire M1)
+
 **Phase:** 0 — revised ADR drafts + plan for re-review (no product code, no dependency pins, no GitHub Actions in this phase)
 
 ## 1. Authority
@@ -112,6 +117,9 @@ Planned verification (local first; not Actions in phase 0):
 ## 8. Continuation point
 
 **ADR-0015:** **ACCEPTED** (2026-10-05). Identity/sequence implementation slices 1–2 are authorized.
+
 **ADR-0014:** remains **PROPOSED**; secure-store spike and dependent code require separate explicit owner authorization — not started.
+
 **Actions:** deferred until the final appropriate M1 gate.
+
 **Now:** implement identity types + durable sequence allocator under ADR-0015; run local tests only.

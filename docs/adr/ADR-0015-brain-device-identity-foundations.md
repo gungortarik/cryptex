@@ -1,10 +1,15 @@
 # ADR-0015 — Brain / Device Identity, Sequence Foundation, and Recovery Public Metadata
 
-**Status:** ACCEPTED  
-**Date drafted:** 2026-10-05  
+**Status:** ACCEPTED
+
+**Date drafted:** 2026-10-05
+
 **Date revised:** 2026-10-05 (owner review revision; durable-before-return; concurrent allocate atomicity)
+
 **Date accepted:** 2026-10-05
-**Milestone:** M1 — Brain + Device Identity  
+
+**Milestone:** M1 — Brain + Device Identity
+
 **Authority:** `docs/00_MASTER_SPEC.md`, `docs/06_STORAGE_ARCHITECTURE.md`, `docs/07_SYNC_AND_CONFLICT_PROTOCOL.md`, `docs/08_SECURITY_DEVICE_TRUST_AND_RECOVERY_ROOT.md`, `docs/10_BACKUP_RESTORE.md`, `docs/milestones/M1_BRAIN_DEVICE_IDENTITY.md`, `docs/milestones/M8_DEVICE_TRUST_REPLICATION.md`, `docs/milestones/M11_BACKUP_DISASTER_RESTORE.md`, `AGENTS.md`
 
 This record proposes the **M1 identity and sequence data model**: immutable Brain identity metadata, install/device identity, sequence-allocation foundation, pairing **data structures only**, and Recovery Kit **public metadata** only.

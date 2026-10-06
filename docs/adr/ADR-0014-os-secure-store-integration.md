@@ -1,9 +1,13 @@
 # ADR-0014 — OS Secure-Store Integration
 
-**Status:** PROPOSED (not accepted)  
-**Date drafted:** 2026-10-05  
-**Date revised:** 2026-10-05 (owner review revision)  
-**Milestone:** M1 — Brain + Device Identity  
+**Status:** PROPOSED (not accepted)
+
+**Date drafted:** 2026-10-05
+
+**Date revised:** 2026-10-05 (owner review revision)
+
+**Milestone:** M1 — Brain + Device Identity
+
 **Authority:** `docs/00_MASTER_SPEC.md`, `docs/08_SECURITY_DEVICE_TRUST_AND_RECOVERY_ROOT.md`, `docs/15_PLATFORM_MACOS_WINDOWS.md`, `docs/milestones/M1_BRAIN_DEVICE_IDENTITY.md`, `docs/30_ADR_INDEX.md`, `AGENTS.md`
 
 This record proposes how Cryptex will integrate **OS secure storage** for device private material — the choice left unresolved by `docs/08` §21. It does not select event-signature/hash libraries (M2), Recovery Kit containers (M11), or pairing/revocation product UX (M8).
