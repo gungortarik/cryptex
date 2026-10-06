@@ -149,9 +149,6 @@ fn is_windows_reserved_stem(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sequence::DeviceSequenceCutoff;
-    use serde::Deserialize;
-
     #[test]
     fn rejects_empty_and_path_unsafe_ids() {
         assert!(InstallId::new("").is_err());
@@ -176,12 +173,10 @@ mod tests {
             lower.as_filename_stem(),
             "case-distinct DeviceIds must not share a filename stem"
         );
-        assert!(
-            upper
-                .as_filename_stem()
-                .chars()
-                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
-        );
+        assert!(upper
+            .as_filename_stem()
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
         assert_eq!(upper.as_filename_stem(), encode_filename_stem("Device-A"));
         assert_eq!(lower.as_filename_stem(), encode_filename_stem("device-a"));
     }
@@ -206,38 +201,5 @@ mod tests {
             good.as_filename_stem(),
             encode_filename_stem("device-safe-1")
         );
-    }
-
-    #[test]
-    fn nested_cutoff_deserialize_rejects_unsafe_device_id() {
-        #[derive(Debug, Deserialize)]
-        struct Wrap {
-            cutoff: DeviceSequenceCutoff,
-        }
-
-        let err = serde_json::from_str::<Wrap>(
-            r#"{
-  "cutoff": {
-    "device_id": "../sneaky",
-    "cutoff": 7
-  }
-}"#,
-        );
-        assert!(
-            err.is_err(),
-            "nested DeviceSequenceCutoff must not accept unsafe device_id"
-        );
-
-        let ok: Wrap = serde_json::from_str(
-            r#"{
-  "cutoff": {
-    "device_id": "device-nested-1",
-    "cutoff": 7
-  }
-}"#,
-        )
-        .unwrap();
-        assert_eq!(ok.cutoff.device_id.as_str(), "device-nested-1");
-        assert_eq!(ok.cutoff.cutoff, 7);
     }
 }

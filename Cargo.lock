@@ -589,10 +589,8 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 name = "cryptex-core"
 version = "0.0.0"
 dependencies = [
- "fs2",
  "serde",
  "serde_json",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
