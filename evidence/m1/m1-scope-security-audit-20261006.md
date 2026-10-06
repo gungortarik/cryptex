@@ -124,7 +124,7 @@ Scoped security-review findings above are resolved in code on `m1/brain-device-i
 | Scoped security-review code findings | Resolved (see findings above) |
 | Gate C Windows + macOS SecureStore | VERIFIED (separate host evidence) |
 | Local Windows checks (install + identity + lib + Clippy) | PASS at tip after this follow-up |
-| Final GitHub Actions / required CI | **PENDING** — operator will run once against the final code SHA |
+| Final GitHub Actions / required CI | **PENDING** - operator will run once against the final code SHA |
 | Human review / DoD checklist | Open until CI result is recorded |
 | M1 complete | **not declared** |
 

@@ -50,7 +50,7 @@ No custom cryptography.
 (`evidence/m1/m1-scope-security-audit-20261006.md`). Gate C Windows+macOS SecureStore remain
 VERIFIED via separate host evidence. Scoped security-review findings are resolved in code
 (compensating cleanup typing; install-identity exclusive no-replace create; Unix parent-dir
-sync after hard_link with reported cleanup failures — see audit closeout). Final required
+sync after hard_link with reported cleanup failures - see audit closeout). Final required
 GitHub Actions / CI is **PENDING** (operator will run once against the final code SHA).
 M1 is **not** complete until that CI result, human review, and DoD are closed.
 
