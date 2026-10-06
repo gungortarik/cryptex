@@ -28,14 +28,18 @@ identity/sequence slices may proceed under that decision. **ADR-0014 is ACCEPTED
 (2026-10-06) selecting **P1** (direct platform APIs) with product pins
 `windows-sys = 0.61.2`, `widestring = 1.2.1`, `security-framework = 3.7.0`. K2 and
 high-level `keyring` are unselected. SecureStore product work proceeds under
-`cryptexd`. Gate C both-OS product verification remains open. GitHub Actions stay deferred until the
+cryptexd. Gate C **Windows** product verification is VERIFIED (2026-10-06; see
+evidence/m1/gate-c-product-secure-store-windows-20261006.md). Gate C **macOS** product physical
+verification remains WAITING and must not be inferred from Windows. GitHub Actions stay deferred until the
 final appropriate M1 gate.
 
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). ADR-0014 ACCEPTED (2026-10-06, P1).
 Identity/sequence, SecureStore (trait/fake + Windows/macOS P1 adapters), synthetic
 Brain daemon wiring, pairing-record persistence, and Recovery Kit public metadata
-persistence are in place under `cryptexd`. Gate C Mac-host product physical
-secure-store verification remains WAITING (distinct from completed Gate A).
+persistence are in place under cryptexd. Gate C Windows product SecureStore is VERIFIED
+(2026-10-06). Gate C Mac-host product physical secure-store verification remains WAITING (distinct from
+completed Gate A and from Windows Gate C); resume on the Mac host per
+evidence/m1/gate-c-product-secure-store-macos-procedure.md.
 Security review + DoD / Actions remain deferred to the final appropriate M1 gate.
 Production pairing/revocation remains M8; Recovery Kit container remains M11.
 No custom cryptography.
@@ -57,7 +61,7 @@ present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Mac/Windows product physical verification remains distinct from Gate A. No GitHub Actions until the final M1 gate.
+- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows VERIFIED 2026-10-06; Gate C macOS remains WAITING (distinct from Gate A and from Windows). No GitHub Actions until the final M1 gate.
 
 ## P0-1 status
 

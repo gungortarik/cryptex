@@ -187,6 +187,41 @@ mod tests {
     }
 
     #[test]
+    fn windows_delete_never_written_account_is_typed_missing() {
+        let store = WindowsCredentialStore::new();
+        let service = ServiceLabel::device_credentials(SecureStoreEnvironment::Dev)
+            .as_str()
+            .to_string();
+        // Unique account that this test never puts, so CredDeleteW must miss.
+        let account = AccountLabel::device_private(&format!(
+            "win-never-written-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ))
+        .as_str()
+        .to_string();
+
+        match store.delete(&service, &account) {
+            Err(SecureStoreError::Missing) => {}
+            other => panic!("expected Missing on delete of never-written account, got {other:?}"),
+        }
+        match store.get(&service, &account) {
+            Err(SecureStoreError::Missing) => {}
+            other => panic!("expected Missing on get of never-written account, got {other:?}"),
+        }
+
+        let err = store.delete(&service, &account).unwrap_err();
+        let display = format!("{err}");
+        let debug = format!("{err:?}");
+        let probe = b"SYNTHETIC_WIN_NEVER_WRITTEN_PROBE_NOT_REAL";
+        assert!(!payload_bytes_recoverable(probe, &display));
+        assert!(!payload_bytes_recoverable(probe, &debug));
+    }
+
+    #[test]
     fn map_not_found_is_missing_not_platform() {
         // ERROR_NOT_FOUND is 1168 on Windows.
         assert_eq!(ERROR_NOT_FOUND, 1168);

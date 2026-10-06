@@ -108,7 +108,7 @@ Equivalent guarantee: device private material lives in OS-protected secret stora
 | Limited evaluation spike (Windows) | **Complete for Gate A** — store/read/delete/missing PASS for K2+P1; K2 error-redaction **FAIL** (BadEncoding Debug); P1 error-redaction PASS; `evidence/m1/secure-store-spike-windows-20261005.md` | A |
 | Limited evaluation spike (macOS) | **Complete for Gate A** — same matrix pattern at SHA `4f4ba2784cbb3d305a8a462aa9b7286b9a8e770d` on macOS 27.0.1 (26A434) arm64; Keychain prompt not observed during that run; `evidence/m1/secure-store-spike-macos-20261006.md` | A |
 | Selected approach | **P1 accepted** — `docs/adr/ADR-0014-os-secure-store-decision-addendum.md`. Product pins recorded below. K2 unselected. Gate C product verification still open. | B done; C open |
-| Windows physical product verification | **Not VERIFIED** (spike ≠ product integration) | C (M1 completion) |
+| Windows physical product verification | **VERIFIED** — evidence/m1/gate-c-product-secure-store-windows-20261006.md (product WindowsCredentialStore; macOS still open) | C (M1 completion) |
 | macOS physical product verification | **Not VERIFIED** (spike ≠ product integration; Gate A only) | C (M1 completion) |
 
 Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/read/delete/missing-item on both hosts but fails overall error-redaction because `keyring_core::Error::BadEncoding` Debug recovers secret bytes; missing-item (`NoEntry`) surfaces are safe. P1 typed errors pass redaction checks on both hosts. That is Gate A evidence only. It does **not** accept this ADR, does **not** verify product `cryptexd` integration, and does **not** claim Gate C product verification.
@@ -149,7 +149,7 @@ Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/
 | Limited evaluation spike | **Complete** (Gate A Windows + macOS); product-separated spike retained for history |
 | Hardware-backed keys required | **No** |
 | Keychain prompts | Run-specific caveat preserved: macOS Gate A prompt was **not observed during that run** — not proof prompts never occur |
-| Both-OS physical product verification | **Gate C / M1 completion**; **not** claimed by this acceptance |
+| Both-OS physical product verification | **Partial** — Windows Gate C VERIFIED 2026-10-06; macOS Gate C still open / not claimed |
 
 ## 10. References
 

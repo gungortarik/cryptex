@@ -2,7 +2,9 @@
 
 **Status:** WAITING — procedure only. Do **not** mark macOS Gate C VERIFIED until this matrix has been physically exercised against the **product** `cryptexd` adapter on a macOS host.
 
-**Authority:** ADR-0014 §8.2 (gate C); ADR-0014 decision addendum (P1 pins). Gate A spike evidence is **not** a substitute.
+**Coordination (2026-10-06):** Windows Gate C is recorded VERIFIED in `evidence/m1/gate-c-product-secure-store-windows-20261006.md`. That result must **not** be inferred as macOS verification. Resume this procedure on a physical Mac host at the current `m1/brain-device-identity` tip (or a later SHA that still contains `MacosKeychainStore`). GitHub Actions remain deferred.
+
+**Authority:** ADR-0014 section 8.2 (gate C); ADR-0014 decision addendum (P1 pins). Gate A spike evidence is **not** a substitute.
 
 **Distinct from Gate A:** Gate A compared K2 vs P1 in a product-separated spike (Keychain prompt not observed on that run — run-specific caveat). Gate C verifies the **accepted P1 product path** under `cryptexd` (`MacosKeychainStore`).
 
@@ -12,8 +14,9 @@
 - Product pin: `security-framework = 3.7.0`.
 - Runtime data outside the Git repository.
 - Synthetic secrets only; never real Recovery Kit material.
-- Physical macOS host (arm64 or x86_64 as available); Windows CI/host results do **not** count.
+- Physical macOS host (arm64 or x86_64 as available); Windows results do **not** count.
 - No GitHub Actions required for this procedure (local physical run).
+- Prefer `cargo test -p cryptexd --lib ...` filters.
 
 ## Adapter under test
 
@@ -27,25 +30,18 @@
 | 1 | Store | `put` synthetic bytes via product adapter | Keychain write succeeds; no panic |
 | 2 | Read | `get` same service/account | Exact byte equality with stored secret |
 | 3 | Delete | `delete` then `get` | `SecureStoreError::Missing` |
-| 4 | Missing-item | `get`/`delete` never-written account | Typed `Missing` |
+| 4 | Missing-item | `get` **and** `delete` never-written account | Typed `Missing` |
 | 5 | Redacted errors | Format `Display`/`Debug` of failures while secret known | `payload_bytes_recoverable(secret, surface)` is false |
 | 6 | Auth / interaction classification | If Keychain denies or prompts, surface stays typed `Platform` (or documented Missing) without secret bytes | No secret recovery in logs/fixtures; prompt observation recorded as run-specific |
 
 ## Suggested local commands (macOS)
 
-Record exact command lines and exit codes in the evidence file.
-
 ```text
-cargo test -p cryptexd --locked secure_store::macos -- --nocapture
-cargo test -p cryptexd --locked identity_runtime -- --nocapture
-cargo clippy -p cryptexd --all-targets --locked -- -D warnings
+cargo test -p cryptexd --lib --locked secure_store::macos -- --nocapture
+cargo test -p cryptexd --lib --locked identity_runtime -- --nocapture
 ```
 
-Optional focused filter:
-
-```text
-cargo test -p cryptexd --locked macos -- --nocapture
-```
+Add a focused never-written `delete`/`get` Missing check under `secure_store::macos` if not already present before claiming matrix row 4.
 
 ## Keychain UI note
 
@@ -67,4 +63,4 @@ Create `evidence/m1/gate-c-product-secure-store-macos-YYYYMMDD.md` with:
 
 - This procedure file does **not** verify macOS Gate C.
 - Gate A macOS spike does **not** satisfy Gate C.
-- Windows Gate C is a separate procedure and must not be inferred from macOS results.
+- Windows Gate C VERIFIED does **not** imply macOS Gate C.

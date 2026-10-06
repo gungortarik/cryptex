@@ -1,8 +1,8 @@
-# Gate C procedure — Windows product SecureStore (NOT VERIFIED)
+# Gate C procedure — Windows product SecureStore
 
-**Status:** WAITING — procedure only. Do **not** mark Windows Gate C VERIFIED until this matrix has been physically exercised against the **product** `cryptexd` adapter on a Windows host.
+**Status:** VERIFIED — see `evidence/m1/gate-c-product-secure-store-windows-20261006.md` (product `WindowsCredentialStore` on Windows host). macOS Gate C remains separate and WAITING.
 
-**Authority:** ADR-0014 §8.2 (gate C); ADR-0014 decision addendum (P1 pins). Gate A spike evidence is **not** a substitute.
+**Authority:** ADR-0014 section 8.2 (gate C); ADR-0014 decision addendum (P1 pins). Gate A spike evidence is **not** a substitute.
 
 **Distinct from Gate A:** Gate A compared K2 vs P1 in a product-separated spike. Gate C verifies the **accepted P1 product path** under `cryptexd` (`WindowsCredentialStore`).
 
@@ -13,6 +13,7 @@
 - Runtime data outside the Git repository (app-data / temp root per `cryptexd` path rules).
 - Synthetic secrets only; never real Recovery Kit material.
 - No GitHub Actions required for this procedure (local physical run).
+- Prefer `cargo test -p cryptexd --lib ...` so unrelated integration binaries are not required for the matrix.
 
 ## Adapter under test
 
@@ -27,40 +28,28 @@
 | 1 | Store | `put` synthetic bytes via product adapter | CredWrite succeeds; no panic |
 | 2 | Read | `get` same service/account | Exact byte equality with stored secret |
 | 3 | Delete | `delete` then `get` | `SecureStoreError::Missing` |
-| 4 | Missing-item | `get`/`delete` never-written account | Typed `Missing` (not opaque platform string with payload) |
+| 4 | Missing-item | `get` **and** `delete` never-written account (`windows_delete_never_written_account_is_typed_missing`) | Typed `Missing` (not opaque platform string with payload) |
 | 5 | Redacted errors | Format `Display`/`Debug` of failures while secret known | `payload_bytes_recoverable(secret, surface)` is false |
 | 6 | Inconsistent blob guard | Covered by unit test `copy_credential_blob_rejects_size_with_null_pointer` on this host | Test PASS (documents fail-closed CredRead integrity) |
 | 7 | CredFree discipline | Covered by product `get` RAII guard + integration `put/get/delete` | No leak of CredRead allocation on success or error paths exercised above |
 
 ## Suggested local commands (Windows)
 
-Record exact command lines and exit codes in the evidence file.
+Record exact command lines and exit codes in the evidence file. Use `--lib` filters:
 
 ```text
-cargo test -p cryptexd --locked secure_store::windows -- --nocapture
-cargo test -p cryptexd --locked identity_runtime -- --nocapture
-cargo clippy -p cryptexd --all-targets --locked -- -D warnings
+cargo test -p cryptexd --lib --locked secure_store::windows -- --nocapture
+cargo test -p cryptexd --lib --locked windows_delete_never_written_account_is_typed_missing -- --nocapture
+cargo test -p cryptexd --lib --locked identity_runtime -- --nocapture
 ```
 
-Optional focused filter:
+Do **not** treat a Smart App Control block of an unrelated binary (for example `mode_b_supervisor`, OS error 4551) as a Gate C pass.
 
-```text
-cargo test -p cryptexd --locked windows_store_read_delete_missing_redaction_matrix -- --nocapture
-```
+## Evidence artifact
 
-## Evidence artifact (fill only after physical run)
-
-Create `evidence/m1/gate-c-product-secure-store-windows-YYYYMMDD.md` with:
-
-- Host OS build, arch, date/time (local)
-- Git SHA tested
-- Command lines + exit codes
-- Matrix table with PASS/FAIL per row (no silent WAITING→PASS)
-- Explicit statement: **Gate C Windows product verification: VERIFIED** only if all required rows PASS
-- Any Cred Manager UI / policy notes
+Verified run: `evidence/m1/gate-c-product-secure-store-windows-20261006.md`.
 
 ## Explicit non-claims
 
-- This procedure file does **not** verify Windows Gate C.
-- Gate A Windows spike does **not** satisfy Gate C.
-- macOS Gate C is a separate procedure and must not be inferred from Windows results.
+- Windows VERIFIED does **not** imply macOS Gate C.
+- Gate A Windows spike does **not** satisfy Gate C by itself without the product matrix above.
