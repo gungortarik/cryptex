@@ -46,6 +46,11 @@ appropriate M1 gate.
 Production pairing/revocation remains M8; Recovery Kit container remains M11.
 No custom cryptography.
 
+**M1 audit (2026-10-06):** Sequence allocation and install identity are daemon-owned
+(`evidence/m1/m1-scope-security-audit-20261006.md`). Gate C Windows+macOS SecureStore remain
+VERIFIED via separate host evidence. M1 is **not** complete: security review, required CI/Actions,
+and human review remain open.
+
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
 scoped PASS; scoped ADR-0012 and ADR-0004 accepted. Older continuation entries
