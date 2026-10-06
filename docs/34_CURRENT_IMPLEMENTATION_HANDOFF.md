@@ -20,6 +20,14 @@
 
 ## Working agreement
 
+**Full M0 contract recheck (2026-10-05):**
+`evidence/m0/m0-contract-closeout-recheck-20261005.md` maps the original M0
+requirements to retained evidence and independently rechecks final CI/source
+correspondence. Synthetic refers to the required test data, not simulated
+Windows/Mac applications. M0 acceptance is complete; PR #5 Git integration is
+still OPEN/UNMERGED and requires explicit merge authorization. Later product
+obligations remain assigned to the roadmap; M1 is not started.
+
 **Current closeout status (2026-10-05):** M0 is COMPLETE for the synthetic
 foundation scope. Final behavior-bearing source CI is green at `c7fa011` (run
 `37387323751`); Mac embedded `.app` visual review is scoped PASS. The owner
