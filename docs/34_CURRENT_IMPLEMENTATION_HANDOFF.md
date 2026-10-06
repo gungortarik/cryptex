@@ -55,7 +55,7 @@ present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- ADR-0015-accepted identity/sequence work may proceed. ADR-0014 Gate A spike is owner-authorized and Windows evidence is recorded; do not start product secure-store code until ADR-0014 is accepted. Mac spike remains WAITING. No GitHub Actions until the final M1 gate.
+- ADR-0015-accepted identity/sequence work may proceed. ADR-0014 Gate A spike is owner-authorized and Windows evidence is recorded; do not start product secure-store code until ADR-0014 is accepted. Mac spike remains WAITING pending Mac-host execution (P1 macOS API fixed for security-framework 3.7.0 `generic_password`). No GitHub Actions until the final M1 gate.
 
 ## P0-1 status
 

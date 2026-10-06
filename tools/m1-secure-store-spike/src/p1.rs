@@ -244,11 +244,12 @@ fn report_windows(cells: Vec<MatrixCell>) -> MatrixReport {
 mod mac {
     use super::P1Error;
     use crate::classify::{KeychainClassified, classify_keychain_status};
+    use security_framework::base::Error as KeychainError;
     use security_framework::passwords::{
-        delete_generic_password, find_generic_password, set_generic_password,
+        PasswordOptions, delete_generic_password, generic_password, set_generic_password,
     };
 
-    fn map_keychain_err(op: &'static str, err: security_framework::Error) -> P1Error {
+    fn map_keychain_err(op: &'static str, err: KeychainError) -> P1Error {
         match classify_keychain_status(op, err.code()) {
             KeychainClassified::Missing => P1Error::Missing,
             KeychainClassified::Platform { op, status } => {
@@ -264,9 +265,9 @@ mod mac {
     }
 
     pub fn read(service: &str, account: &str) -> Result<Vec<u8>, P1Error> {
-        match find_generic_password(None, service, account) {
-            Ok((data, _)) => Ok(data.to_vec()),
-            Err(e) => Err(map_keychain_err("find_generic_password", e)),
+        match generic_password(PasswordOptions::new_generic_password(service, account)) {
+            Ok(data) => Ok(data),
+            Err(e) => Err(map_keychain_err("generic_password", e)),
         }
     }
 
@@ -312,9 +313,9 @@ fn run_macos() -> Result<MatrixReport, String> {
                     CellStatus::Fail
                 },
                 note: if ok {
-                    format!("find_generic_password round-trip ok ({} bytes)", got.len())
+                    format!("generic_password round-trip ok ({} bytes)", got.len())
                 } else {
-                    "find_generic_password round-trip mismatch".to_string()
+                    "generic_password round-trip mismatch".to_string()
                 },
             });
         }

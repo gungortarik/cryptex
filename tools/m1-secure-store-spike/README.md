@@ -64,4 +64,4 @@ Pinned only inside this spike package:
 - `windows-native-keyring-store = 1.1.0` (default features off)
 - `apple-native-keyring-store = 1.0.2` (`keychain` feature)
 - P1 Windows: `windows-sys` Cred* APIs
-- P1 macOS: `security-framework` Keychain generic-password APIs
+- P1 macOS: `security-framework` 3.7.0 `generic_password(PasswordOptions::new_generic_password(..))` + `set_generic_password` / `delete_generic_password`

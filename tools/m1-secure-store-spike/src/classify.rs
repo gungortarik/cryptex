@@ -18,6 +18,7 @@ pub enum KeychainClassified {
 }
 
 impl KeychainClassified {
+    #[allow(dead_code)] // covered by unit tests; useful for sanitized diagnostics
     pub fn code_label(&self) -> String {
         match self {
             KeychainClassified::Missing => "secure_store_missing_item".to_string(),
@@ -44,7 +45,7 @@ mod tests {
     #[test]
     fn item_not_found_maps_to_missing() {
         assert_eq!(
-            classify_keychain_status("find_generic_password", ERR_SEC_ITEM_NOT_FOUND),
+            classify_keychain_status("generic_password", ERR_SEC_ITEM_NOT_FOUND),
             KeychainClassified::Missing
         );
         assert_eq!(
@@ -56,7 +57,7 @@ mod tests {
     #[test]
     fn auth_failed_is_platform_not_missing() {
         // errSecAuthFailed
-        let c = classify_keychain_status("find_generic_password", -25293);
+        let c = classify_keychain_status("generic_password", -25293);
         assert!(matches!(
             c,
             KeychainClassified::Platform { status: -25293, .. }
@@ -67,14 +68,14 @@ mod tests {
     #[test]
     fn interaction_not_allowed_is_platform_not_missing() {
         // errSecInteractionNotAllowed
-        let c = classify_keychain_status("find_generic_password", -25308);
+        let c = classify_keychain_status("generic_password", -25308);
         assert!(matches!(c, KeychainClassified::Platform { .. }));
     }
 
     #[test]
     fn missing_entitlement_is_platform_not_missing() {
         // errSecMissingEntitlement
-        let c = classify_keychain_status("find_generic_password", -34018);
+        let c = classify_keychain_status("generic_password", -34018);
         assert!(matches!(
             c,
             KeychainClassified::Platform { status: -34018, .. }

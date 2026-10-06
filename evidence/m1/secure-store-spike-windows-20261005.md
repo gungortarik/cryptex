@@ -1,11 +1,11 @@
 # ADR-0014 secure-store evaluation spike — Windows results
 
-**Date:** 2026-10-05  
-**Revised:** 2026-10-05 (measurement correction: P1 Keychain classification + K2 byte-aware redaction)  
-**Gate:** A (product-separated evaluation spike)  
-**Branch:** `m1/brain-device-identity`  
-**Host:** Windows (local)  
-**Mac host:** not executed — all Mac cells **WAITING**  
+**Date:** 2026-10-05
+**Revised:** 2026-10-05 (measurement correction: P1 Keychain classification + K2 byte-aware redaction)
+**Gate:** A (product-separated evaluation spike)
+**Branch:** `m1/brain-device-identity`
+**Host:** Windows (local)
+**Mac host:** not executed — all Mac cells **WAITING**
 **ADR-0014 status after this evidence:** remains **PROPOSED** (pending owner review)
 
 ## Scope and constraints
