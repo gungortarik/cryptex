@@ -68,4 +68,3 @@ Do **not** start M2 or declare M1 complete until the above are closed.
 ### Finding: RFC 3339 impossible values
 
 **Resolved:** `parse_rfc3339_str` now rejects impossible calendar/clock/offset values (schema shape unchanged).
-

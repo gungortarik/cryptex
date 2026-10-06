@@ -52,9 +52,7 @@ fn days_in_month(year: u32, month: u32) -> Option<u32> {
 
 fn validate_calendar_date(year: u32, month: u32, day: u32) -> CoreResult<()> {
     let Some(dim) = days_in_month(year, month) else {
-        return Err(CoreError::InvalidId(
-            "timestamp month must be 01-12".into(),
-        ));
+        return Err(CoreError::InvalidId("timestamp month must be 01-12".into()));
     };
     if day == 0 || day > dim {
         return Err(CoreError::InvalidId(
@@ -66,9 +64,7 @@ fn validate_calendar_date(year: u32, month: u32, day: u32) -> CoreResult<()> {
 
 fn validate_clock(hour: u32, minute: u32, second: u32) -> CoreResult<()> {
     if hour > 23 {
-        return Err(CoreError::InvalidId(
-            "timestamp hour must be 00-23".into(),
-        ));
+        return Err(CoreError::InvalidId("timestamp hour must be 00-23".into()));
     }
     if minute > 59 {
         return Err(CoreError::InvalidId(
@@ -124,7 +120,12 @@ fn validate_offset(sign_and_rest: &str) -> CoreResult<()> {
 /// Accepts `YYYY-MM-DDTHH:MM:SS[.fff]Z` or `YYYY-MM-DDTHH:MM:SS[.fff]±HH:MM`.
 /// Rejects impossible calendar dates, clock fields, and timezone offsets.
 pub fn parse_rfc3339_str(value: &str) -> CoreResult<String> {
-    let value = value.trim();
+    // Reject leading/trailing whitespace; do not silently normalize.
+    if value != value.trim() {
+        return Err(CoreError::InvalidId(
+            "timestamp must not have leading or trailing whitespace".into(),
+        ));
+    }
     if value.len() < 20 {
         return Err(CoreError::InvalidId(
             "timestamp must be RFC 3339 (e.g. 2026-10-06T00:00:00Z)".into(),
@@ -149,24 +150,18 @@ pub fn parse_rfc3339_str(value: &str) -> CoreResult<String> {
         ));
     }
 
-    let year = parse_u32_digits(&value[0..4]).ok_or_else(|| {
-        CoreError::InvalidId("timestamp year is malformed".into())
-    })?;
-    let month = parse_u32_digits(&value[5..7]).ok_or_else(|| {
-        CoreError::InvalidId("timestamp month is malformed".into())
-    })?;
-    let day = parse_u32_digits(&value[8..10]).ok_or_else(|| {
-        CoreError::InvalidId("timestamp day is malformed".into())
-    })?;
-    let hour = parse_u32_digits(&value[11..13]).ok_or_else(|| {
-        CoreError::InvalidId("timestamp hour is malformed".into())
-    })?;
-    let minute = parse_u32_digits(&value[14..16]).ok_or_else(|| {
-        CoreError::InvalidId("timestamp minute is malformed".into())
-    })?;
-    let second = parse_u32_digits(&value[17..19]).ok_or_else(|| {
-        CoreError::InvalidId("timestamp second is malformed".into())
-    })?;
+    let year = parse_u32_digits(&value[0..4])
+        .ok_or_else(|| CoreError::InvalidId("timestamp year is malformed".into()))?;
+    let month = parse_u32_digits(&value[5..7])
+        .ok_or_else(|| CoreError::InvalidId("timestamp month is malformed".into()))?;
+    let day = parse_u32_digits(&value[8..10])
+        .ok_or_else(|| CoreError::InvalidId("timestamp day is malformed".into()))?;
+    let hour = parse_u32_digits(&value[11..13])
+        .ok_or_else(|| CoreError::InvalidId("timestamp hour is malformed".into()))?;
+    let minute = parse_u32_digits(&value[14..16])
+        .ok_or_else(|| CoreError::InvalidId("timestamp minute is malformed".into()))?;
+    let second = parse_u32_digits(&value[17..19])
+        .ok_or_else(|| CoreError::InvalidId("timestamp second is malformed".into()))?;
 
     validate_calendar_date(year, month, day)?;
     validate_clock(hour, minute, second)?;
@@ -236,6 +231,17 @@ mod tests {
         assert!(parse_uuid_str("not-a-uuid").is_err());
         assert!(parse_rfc3339_str("2026-10-06").is_err());
         assert!(parse_rfc3339_str("2026-10-06T00:00:00").is_err());
+    }
+
+    #[test]
+    fn rejects_leading_or_trailing_whitespace_on_rfc3339() {
+        assert!(parse_rfc3339_str(" 2026-10-06T00:00:00Z").is_err());
+        assert!(parse_rfc3339_str("2026-10-06T00:00:00Z ").is_err());
+        assert!(parse_rfc3339_str("\t2026-10-06T00:00:00Z").is_err());
+        assert!(parse_rfc3339_str("2026-10-06T00:00:00Z\n").is_err());
+        // Still accept canonical forms without surrounding whitespace.
+        parse_rfc3339_str("2026-10-06T00:00:00Z").unwrap();
+        parse_rfc3339_str("2026-10-06T00:00:00.123+00:00").unwrap();
     }
 
     #[test]

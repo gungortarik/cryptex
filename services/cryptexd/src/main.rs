@@ -109,8 +109,10 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
                 parse_hold_opts(&args[1..])?
             };
             ensure_runtime_root(&opts.runtime_root)?;
-            let install = prepare_m1_runtime_foundation(&opts.runtime_root).map_err(|e| e.into_lifecycle())?;
+            // Acquire the single-instance lock before any durable identity writes.
             let lock = try_acquire_instance(&opts.runtime_root)?;
+            let install = prepare_m1_runtime_foundation(&opts.runtime_root)
+                .map_err(|e| e.into_lifecycle())?;
             cryptexd::ipc::spawn_health_server()?;
             let report = LifecycleReport::active_holder(
                 &opts.runtime_root,
