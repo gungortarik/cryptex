@@ -2,9 +2,11 @@
 //!
 //! Public files never contain secret bytes. Private blobs go only through [`SecureStore`].
 
-use std::fs;
-use std::io;
+use std::fs::{self, OpenOptions};
+use std::io::{self, ErrorKind, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use cryptex_core::{BrainIdentity, CoreError};
 
@@ -16,6 +18,8 @@ use crate::secure_store::{
 
 const IDENTITY_DIR: &str = "identity";
 const BRAIN_FILE: &str = "brain_identity.json";
+
+static BRAIN_TMP_SEQ: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug)]
 pub enum IdentityRuntimeError {
@@ -140,22 +144,145 @@ pub fn brain_identity_path(runtime_root: &Path) -> PathBuf {
 fn remove_file_if_present(path: &Path) -> io::Result<()> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),
     }
 }
 
-/// Remove a just-written brain identity (and staging tmp) so a failed create can retry.
+fn unique_brain_tmp(path: &Path) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let seq = BRAIN_TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+    path.with_extension(format!("json.tmp.{}-{}-{}", std::process::id(), seq, nanos))
+}
+
+/// Sync the directory that contains `path` so a new directory entry is durable (Unix).
+#[cfg(any(unix, test))]
+fn sync_parent_directory(path: &Path) -> io::Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(
+            ErrorKind::InvalidInput,
+            "brain identity path has no parent directory",
+        )
+    })?;
+    let dir = fs::File::open(parent)?;
+    dir.sync_all()?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn remove_uncommitted_dest(dest: &Path) -> io::Result<()> {
+    remove_file_if_present(dest)
+}
+
+#[cfg(any(unix, test))]
+fn sync_and_cleanup_error(sync_err: io::Error, cleanup_err: io::Error) -> io::Error {
+    io::Error::other(format!(
+        "parent directory sync failed ({sync_err}); failed to remove uncommitted destination link ({cleanup_err})"
+    ))
+}
+
+/// Place `tmp` at `dest` only if `dest` does not already exist.
+///
+/// - Windows: `MoveFileExW` without `MOVEFILE_REPLACE_EXISTING`.
+/// - Unix: `hard_link` + parent-directory sync before success.
+fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+
+        const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
+        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
+        let to: Vec<u16> = dest.as_os_str().encode_wide().chain(Some(0)).collect();
+        // SAFETY: pointers are null-terminated wide strings from OsStr encoding.
+        let ok = unsafe {
+            windows_sys::Win32::Storage::FileSystem::MoveFileExW(
+                from.as_ptr(),
+                to.as_ptr(),
+                MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    {
+        place_new_file_no_replace_unix(tmp, dest, sync_parent_directory, remove_uncommitted_dest)
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (tmp, dest);
+        Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "exclusive brain-identity create is unsupported on this platform",
+        ))
+    }
+}
+
+#[cfg(unix)]
+fn place_new_file_no_replace_unix<S, R>(
+    tmp: &Path,
+    dest: &Path,
+    sync_parent: S,
+    remove_dest: R,
+) -> io::Result<()>
+where
+    S: FnOnce(&Path) -> io::Result<()>,
+    R: FnOnce(&Path) -> io::Result<()>,
+{
+    fs::hard_link(tmp, dest)?;
+    if let Err(sync_err) = sync_parent(dest) {
+        return match remove_dest(dest) {
+            Ok(()) => Err(sync_err),
+            Err(cleanup_err) => Err(sync_and_cleanup_error(sync_err, cleanup_err)),
+        };
+    }
+    match fs::remove_file(tmp) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Remove a just-written brain identity (and staging tmp files) so a failed create can retry.
 ///
 /// Missing files are success. Any other removal error is returned and must not be ignored.
 fn rollback_brain_identity(runtime_root: &Path) -> IdentityRuntimeResult<()> {
     let path = brain_identity_path(runtime_root);
-    let tmp = path.with_extension("json.tmp");
-    let path_result = remove_file_if_present(&path);
-    let tmp_result = remove_file_if_present(&tmp);
-    match (path_result, tmp_result) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(e), _) | (Ok(()), Err(e)) => Err(e.into()),
+    let mut first_err: Option<io::Error> = None;
+    if let Err(e) = remove_file_if_present(&path) {
+        first_err = Some(e);
+    }
+    // Remove legacy `.json.tmp` and unique `.json.tmp.*` staging names.
+    let dir = identity_dir(runtime_root);
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if (name == "brain_identity.json.tmp" || name.starts_with("brain_identity.json.tmp."))
+                && let Err(e) = remove_file_if_present(&entry.path())
+                && first_err.is_none()
+            {
+                first_err = Some(e);
+            }
+        }
+    } else {
+        let legacy = path.with_extension("json.tmp");
+        if let Err(e) = remove_file_if_present(&legacy)
+            && first_err.is_none()
+        {
+            first_err = Some(e);
+        }
+    }
+    match first_err {
+        Some(e) => Err(e.into()),
+        None => Ok(()),
     }
 }
 
@@ -184,7 +311,7 @@ fn with_cleanup_outcome(
         Err(e) => (false, Some(Box::new(e))),
     };
     // When private delete was not attempted (e.g. put never succeeded), treat
-    // private cleanup as succeeded/not-required — there is no orphaned put.
+    // private cleanup as succeeded/not-required - there is no orphaned put.
     let (private_cleanup_succeeded, private_cleanup_error) = match private_delete {
         None | Some(Ok(())) => (true, None),
         Some(Err(e)) => (false, Some(Box::new(e))),
@@ -204,6 +331,9 @@ fn with_cleanup_outcome(
 }
 
 /// Write public brain identity JSON (LF) under app-data runtime root.
+///
+/// First-create is exclusive/no-replace across Windows and Unix so concurrent
+/// writers cannot overwrite a winning `brain_id` (ADR-0015 section 2.1).
 pub fn write_brain_identity(
     runtime_root: &Path,
     identity: &BrainIdentity,
@@ -218,11 +348,28 @@ pub fn write_brain_identity(
             path.display().to_string(),
         ));
     }
+
     let json = identity.to_json_lf()?;
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, json.as_bytes())?;
-    fs::rename(&tmp, &path)?;
-    Ok(())
+    let tmp = unique_brain_tmp(&path);
+    {
+        let mut file = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        file.write_all(json.as_bytes())?;
+        file.sync_all()?;
+    }
+
+    match place_new_file_no_replace(&tmp, &path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+            let _ = fs::remove_file(&tmp);
+            Err(IdentityRuntimeError::AlreadyExists(
+                path.display().to_string(),
+            ))
+        }
+        Err(e) => {
+            let _ = fs::remove_file(&tmp);
+            Err(e.into())
+        }
+    }
 }
 
 pub fn load_brain_identity(runtime_root: &Path) -> IdentityRuntimeResult<BrainIdentity> {
@@ -306,8 +453,8 @@ pub fn create_synthetic_brain<S: SecureStore>(
 mod tests {
     use super::*;
     use crate::secure_store::{FakeSecureStore, SecureStoreResult};
-    use std::sync::Mutex;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::{Arc, Barrier, Mutex};
+    use std::thread;
 
     fn temp_root() -> PathBuf {
         let nanos = SystemTime::now()
@@ -410,6 +557,145 @@ mod tests {
         assert!(!crate::secure_store::payload_bytes_recoverable(
             secret, &public
         ));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn sync_and_cleanup_error_reports_both_failures() {
+        let err = sync_and_cleanup_error(
+            io::Error::other("injected parent sync failure"),
+            io::Error::new(ErrorKind::PermissionDenied, "injected dest cleanup failure"),
+        );
+        let msg = err.to_string();
+        assert!(msg.contains("injected parent sync failure"), "{msg}");
+        assert!(msg.contains("injected dest cleanup failure"), "{msg}");
+        assert!(
+            msg.contains("failed to remove uncommitted destination link"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn sync_parent_directory_fails_without_parent() {
+        let err = sync_parent_directory(Path::new("/")).expect_err("root has no parent");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_injected_parent_sync_failure_does_not_commit_brain() {
+        let root = temp_root();
+        fs::create_dir_all(identity_dir(&root)).expect("dir");
+        let dest = brain_identity_path(&root);
+        let tmp = unique_brain_tmp(&dest);
+        let identity = BrainIdentity::new(
+            "11111111-1111-4111-8111-111111111111",
+            "2026-10-06T00:00:00Z",
+        )
+        .unwrap();
+        fs::write(&tmp, identity.to_json_lf().unwrap().as_bytes()).expect("tmp");
+        let err = place_new_file_no_replace_unix(
+            &tmp,
+            &dest,
+            |_| Err(io::Error::other("injected parent sync failure")),
+            remove_uncommitted_dest,
+        )
+        .expect_err("sync fail");
+        assert!(err.to_string().contains("injected parent sync failure"));
+        assert!(!dest.exists(), "dest must be removed");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn concurrent_first_create_brain_identity_single_winner() {
+        let root = Arc::new(temp_root());
+        let n = 16;
+        let barrier = Arc::new(Barrier::new(n));
+        let mut handles = Vec::with_capacity(n);
+        for i in 0..n {
+            let root = Arc::clone(&root);
+            let barrier = Arc::clone(&barrier);
+            handles.push(thread::spawn(move || {
+                barrier.wait();
+                let brain_id = format!("11111111-1111-4111-8111-{:012x}", i);
+                let identity =
+                    BrainIdentity::new(brain_id, "2026-10-06T00:00:00Z").expect("identity");
+                write_brain_identity(&root, &identity)
+            }));
+        }
+
+        let mut wins = 0usize;
+        let mut already = 0usize;
+        for handle in handles {
+            match handle.join().expect("thread") {
+                Ok(()) => wins += 1,
+                Err(IdentityRuntimeError::AlreadyExists(_)) => already += 1,
+                Err(other) => panic!("unexpected error: {other:?}"),
+            }
+        }
+        assert_eq!(wins, 1, "exactly one first-create must win");
+        assert_eq!(already, n - 1, "losers must see AlreadyExists");
+
+        let persisted = load_brain_identity(&root).expect("load winner");
+        let path = brain_identity_path(&root);
+        let before = fs::read(&path).expect("read bytes");
+        let rogue = BrainIdentity::new(
+            "22222222-2222-4222-8222-222222222222",
+            "2026-10-06T00:00:01Z",
+        )
+        .unwrap();
+        let err = write_brain_identity(&root, &rogue).expect_err("dup");
+        assert!(matches!(err, IdentityRuntimeError::AlreadyExists(_)));
+        assert_eq!(
+            fs::read(&path).expect("re-read"),
+            before,
+            "failed concurrent/duplicate create must not change persisted brain identity"
+        );
+        assert_eq!(
+            load_brain_identity(&root).expect("reload").brain_id,
+            persisted.brain_id
+        );
+
+        let _ = fs::remove_dir_all(&*root);
+    }
+
+    #[test]
+    fn write_brain_identity_failure_path_leaves_no_partial_winner_bytes() {
+        let root = temp_root();
+        let first = BrainIdentity::new(
+            "33333333-3333-4333-8333-333333333333",
+            "2026-10-06T00:00:00Z",
+        )
+        .unwrap();
+        write_brain_identity(&root, &first).expect("first");
+        let before = fs::read(brain_identity_path(&root)).expect("bytes");
+
+        // Simulate a racing loser after winner exists: must fail closed without mutation.
+        let second = BrainIdentity::new(
+            "44444444-4444-4444-8444-444444444444",
+            "2026-10-06T00:00:01Z",
+        )
+        .unwrap();
+        let err = write_brain_identity(&root, &second).expect_err("second");
+        assert!(matches!(err, IdentityRuntimeError::AlreadyExists(_)));
+        assert_eq!(fs::read(brain_identity_path(&root)).expect("bytes"), before);
+        assert_eq!(
+            load_brain_identity(&root).expect("load").brain_id,
+            first.brain_id
+        );
+
+        // Staging leftovers must not remain after exclusive create attempts.
+        let dir = identity_dir(&root);
+        for entry in fs::read_dir(&dir).expect("read dir") {
+            let entry = entry.expect("entry");
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            assert!(
+                !name.contains(".tmp"),
+                "no staging tmp should remain: {name}"
+            );
+        }
 
         let _ = fs::remove_dir_all(&root);
     }

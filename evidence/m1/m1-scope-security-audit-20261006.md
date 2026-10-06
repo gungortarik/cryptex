@@ -115,6 +115,29 @@ Do **not** start M2 or declare M1 complete until human review is closed.
 - Injectable Unix hooks (`place_new_file_no_replace_unix`) cover sync-failure (dest removed, not committed) and sync+cleanup failure (both errors reported).
 - Windows placement path unchanged (`MOVEFILE_WRITE_THROUGH`, no replace).
 
+
+### Finding: Brain identity first-create race / overwrite (RESOLVED)
+
+**Finding:** `write_brain_identity` used exists-then-`fs::rename`. On Windows, Rust `fs::rename` replaces an existing destination, so concurrent first-create callers could overwrite the winning `brain_id`, violating ADR-0015 section 2.1 ("`brain_id` is not silently rewritten in place").
+
+**Resolution (M1-scoped; mirrors install-identity exclusivity):**
+- Exclusive no-replace placement: Windows `MoveFileExW` without `MOVEFILE_REPLACE_EXISTING`; Unix `hard_link` + parent-directory sync before success.
+- Unique synced staging temps; losers return `AlreadyExists` without mutating the winner.
+- Tests: concurrent first-create single winner; failure-path bytes unchanged / no tmp leftovers; Unix injectable parent-sync failure does not commit.
+
+**Not changed (requires owner decision in authoritative docs first):**
+- Daemon startup / `prepare_m1_runtime_foundation` still binds install identity + sequence store only; it does **not** auto-create Brain identity.
+- Brain public metadata remains under the runtime `identity/` path used by current M1 wiring; no relocation to a different canonical layout.
+
+### Owner decisions still required (do not invent)
+
+These are **not** implemented; resolve in Master Spec / ADR-0015 / M1 contract before code changes:
+
+1. **Daemon startup Brain bind:** Should `cryptexd` hold/login-hold create or require a Brain identity, or keep Brain creation as an explicit product/setup step (current behavior)?
+2. **Brain metadata placement:** Is runtime `identity/brain_identity.json` the accepted durable location for M1, or must public Brain metadata live under a different canonical path/layout?
+
+Until those are decided in authoritative docs, do not change startup or placement. M1 remains incomplete (human review still open).
+
 ## M1 security-review closeout status (2026-10-06)
 
 Scoped security-review findings above are resolved in code on `m1/brain-device-identity`.
@@ -160,6 +183,7 @@ Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_ID
 | Final CI readiness Win+Mac + Win IPC ACL | PASS | [37533023641](https://github.com/gungortarik/cryptex/actions/runs/37533023641) @ `f40484dd6e4e8c9eee110eea68735cedf71410bb` |
 | Unsigned Windows package job | Skipped by design | Same run (not required for this M1 CI closeout) |
 | Scoped security-review findings | RESOLVED | This audit |
+| Brain identity exclusive first-create | PASS | `identity_runtime` concurrent/failure tests |
 | Human review | **OPEN** | Not recorded as complete in repo |
 
 ### Remaining action (blocks M1 complete)
