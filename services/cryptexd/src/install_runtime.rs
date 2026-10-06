@@ -34,11 +34,31 @@ fn unique_install_tmp(path: &Path) -> PathBuf {
     path.with_extension(format!("json.tmp.{}-{}-{}", std::process::id(), seq, nanos))
 }
 
+/// Sync the directory that contains `path` so a new directory entry is durable.
+///
+/// Used on Unix/macOS after exclusive `hard_link` placement. Failures must be
+/// propagated — callers must not treat the install identity as committed.
+/// Compiled on Windows only for unit tests of the error path.
+#[cfg(any(unix, test))]
+fn sync_parent_directory(path: &Path) -> io::Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(
+            ErrorKind::InvalidInput,
+            "install identity path has no parent directory",
+        )
+    })?;
+    let dir = fs::File::open(parent)?;
+    dir.sync_all()?;
+    Ok(())
+}
+
 /// Place `tmp` at `dest` only if `dest` does not already exist.
 ///
 /// - Windows: `MoveFileExW` without `MOVEFILE_REPLACE_EXISTING` (Rust's
-///   `fs::rename` replaces on Windows and must not be used here).
-/// - Unix: `hard_link` fails when the destination exists; then remove `tmp`.
+///   `fs::rename` replaces on Windows and must not be used here). Unchanged
+///   Windows durability relies on `MOVEFILE_WRITE_THROUGH`.
+/// - Unix: `hard_link` fails when the destination exists; the parent directory
+///   is synced before success is returned so the new directory entry is durable.
 fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> io::Result<()> {
     #[cfg(windows)]
     {
@@ -65,13 +85,14 @@ fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> io::Result<()> {
 
     #[cfg(unix)]
     {
-        match fs::hard_link(tmp, dest) {
-            Ok(()) => {
-                let _ = fs::remove_file(tmp);
-                Ok(())
-            }
-            Err(e) => Err(e),
+        fs::hard_link(tmp, dest)?;
+        // Directory entry must be durable before create is treated as committed.
+        if let Err(sync_err) = sync_parent_directory(dest) {
+            let _ = fs::remove_file(dest);
+            return Err(sync_err);
         }
+        let _ = fs::remove_file(tmp);
+        Ok(())
     }
 
     #[cfg(not(any(unix, windows)))]
@@ -275,6 +296,43 @@ mod tests {
         let a = ensure_install_identity(&root).expect("a");
         let b = ensure_install_identity(&root).expect("b");
         assert_eq!(a.install_id, b.install_id);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sync_parent_directory_succeeds_for_existing_parent() {
+        let root = temp_root();
+        fs::create_dir_all(&root).expect("mkdir");
+        let child = root.join("install_identity.json");
+        fs::write(&child, b"{}\n").expect("touch");
+        sync_parent_directory(&child).expect("parent sync must succeed");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn sync_parent_directory_fails_without_parent() {
+        let err = sync_parent_directory(Path::new("/")).expect_err("root has no parent");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("no parent directory"),
+            "error must be actionable: {err}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_write_install_identity_requires_durable_directory_entry() {
+        let root = temp_root();
+        let identity =
+            InstallIdentity::new(InstallId::new("install-unix-durable-001").unwrap()).unwrap();
+        write_install_identity(&root, &identity).expect("create must sync parent then commit");
+        let loaded = load_install_identity(&root).expect("load committed identity");
+        assert_eq!(loaded.install_id, identity.install_id);
+        // Parent sync failure must not be reported as a successful create: a path
+        // with no parent cannot be used as a committed install identity location.
+        let err = sync_parent_directory(Path::new("/")).expect_err("unsyncable");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         let _ = fs::remove_dir_all(&root);
     }
 
