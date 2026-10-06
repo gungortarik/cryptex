@@ -87,13 +87,14 @@ Ordered after ADR acceptance (and after any authorized spike that informed ADR-0
 
 ### 6.1 Required sequence crash/restart test (after ADR-0015 acceptance)
 
-Planned verification (local first; not Actions in phase 0):
+Implemented by `sequence::tests::crash_restart_after_successful_allocate_does_not_reuse_sequence`
+in `crates/core` (local subprocess; portable Windows/macOS kill after successful return):
 
-1. Allocate one or more sequences and record the last returned value `n`.
-2. Kill/crash or hard-stop the allocator process **after** a successful return (and separately probe interrupted persist if feasible).
-3. Restart and allocate again.
-4. Assert the next returned value is **`> n`** (no reuse of any previously returned sequence).
-5. Assert allocate never returns a value whose durable `last_issued` update was not committed.
+1. Worker initializes, allocates, records last returned value `n`, then holds.
+2. Parent forcibly stops the worker **after** the successful return is durable on disk.
+3. Parent reopens the store and allocates again.
+4. Assert the next returned value is **`> n`** (no reuse).
+5. Assert durable `last_issued` matches `n` before the post-restart allocate and matches the new value after.
 
 ### 6.2 Required concurrent allocate test (after ADR-0015 acceptance)
 

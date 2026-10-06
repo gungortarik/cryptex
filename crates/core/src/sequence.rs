@@ -691,4 +691,98 @@ mod tests {
         let device = DeviceId::new("device-xproc").unwrap();
         assert_eq!(verify.last_issued(&device).unwrap(), 12);
     }
+    /// Plan §6.1: after a successful allocate return, forcibly stop the process,
+    /// reopen, and ensure the next allocate is strictly greater with matching durable state.
+    #[test]
+    fn crash_restart_after_successful_allocate_does_not_reuse_sequence() {
+        use std::process::Command;
+        use std::time::{Duration, Instant};
+
+        const WORKER_ENV: &str = "CRYPTEX_CORE_SEQ_CRASH_WORKER";
+        const ROOT_ENV: &str = "CRYPTEX_CORE_SEQ_CRASH_ROOT";
+        const RESULT_NAME: &str = "crash-allocate-result.txt";
+        const READY_NAME: &str = "crash-allocate-ready.txt";
+
+        if std::env::var_os(WORKER_ENV).is_some() {
+            let root = PathBuf::from(std::env::var(ROOT_ENV).expect("root env"));
+            let device = DeviceId::new("device-crash-1").expect("device");
+            let store = SequenceStore::open(&root).expect("open");
+            store.initialize(&device).expect("initialize");
+            let first = store.allocate(&device).expect("allocate 1");
+            let second = store.allocate(&device).expect("allocate 2");
+            assert_eq!(first, 1);
+            assert_eq!(second, 2);
+            // Durable state must be visible before we report success to the parent.
+            assert_eq!(store.last_issued(&device).expect("last_issued"), second);
+            fs::write(root.join(RESULT_NAME), second.to_string()).expect("write result");
+            fs::write(root.join(READY_NAME), "ready").expect("write ready");
+            // Hold until the parent forcibly stops this process.
+            loop {
+                std::thread::sleep(Duration::from_secs(60));
+            }
+        }
+
+        let root =
+            std::env::temp_dir().join(format!("cryptex-m1-seq-crash-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        let exe = std::env::current_exe().expect("current_exe");
+        let mut child = Command::new(&exe)
+            .env(WORKER_ENV, "1")
+            .env(ROOT_ENV, &root)
+            .env("RUST_TEST_THREADS", "1")
+            .args([
+                "--exact",
+                "sequence::tests::crash_restart_after_successful_allocate_does_not_reuse_sequence",
+                "--nocapture",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn crash worker");
+
+        let ready_path = root.join(READY_NAME);
+        let result_path = root.join(RESULT_NAME);
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            if ready_path.exists() && result_path.exists() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            ready_path.exists() && result_path.exists(),
+            "worker did not report a successful allocate before timeout"
+        );
+
+        let n: u64 = fs::read_to_string(&result_path)
+            .unwrap()
+            .trim()
+            .parse()
+            .expect("parse n");
+        assert_eq!(
+            n, 2,
+            "worker should have returned last allocated sequence 2"
+        );
+
+        // Forcible stop after successful return (portable kill).
+        child.kill().expect("forcibly stop worker");
+        let _ = child.wait();
+
+        let store = SequenceStore::open(&root).expect("reopen after crash");
+        let device = DeviceId::new("device-crash-1").unwrap();
+        assert_eq!(
+            store.last_issued(&device).expect("durable last_issued"),
+            n,
+            "durable state must match the last successfully returned sequence"
+        );
+        let next = store.allocate(&device).expect("allocate after restart");
+        assert!(
+            next > n,
+            "next allocate must be strictly greater than {n}, got {next}"
+        );
+        assert_eq!(next, n + 1);
+        assert_eq!(store.last_issued(&device).unwrap(), next);
+    }
 }
