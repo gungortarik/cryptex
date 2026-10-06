@@ -1,5 +1,7 @@
 # M0 P0-1 — Valid Initial Syncthing Measurement (100k files, Windows→macOS)
 
+> **Historical status note (2026-10-05):** This dated benchmark/protocol records the state before the P0-1 decision. ADR-0013 is now ACCEPTED with sealed per-device segment/pack files, and M0 is COMPLETE for the synthetic foundation scope. This note does not revise the measurements or make `segment_events=1000` a production constant. See `docs/adr/ADR-0013-physical-event-storage-layout.md` and `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Status:** VERIFIED TIMED MEASUREMENT  
 **Scope:** P0-1 initial Syncthing scan/sync for one-file-per-event at 100k, Windows source → macOS destination  
 **Architecture effect:** none; does not select a production layout or accept ADR-0013

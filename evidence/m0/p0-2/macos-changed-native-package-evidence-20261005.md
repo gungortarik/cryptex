@@ -1,5 +1,7 @@
 # macOS changed native package handover — 2026-10-05
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Result: scoped PASS**, reported by the Mac validation executor via the project
 owner. Tested SHA: `9a74b40414fad7b34d6e038fbe95eff334820262`, containing `309bb66`.
 Windows implementer checked that SHA against repository history and records the

@@ -1,6 +1,11 @@
 # M0 P0-1 — Physical Event Storage Benchmark Evidence
 
-**Status:** COMPLETE (P0-1 spike resolved; M0 remains IN PROGRESS)
+**Status:** COMPLETE (P0-1 resolved; M0 synthetic foundation scope COMPLETE)
+
+**Current-status note (2026-10-05):** This benchmark index includes dated
+contemporaneous notes. Any statement below that M0 was still in progress records
+the state at that time. Current M0 scope and limits are in
+`evidence/m0/m0-closure-audit-20261005.md`.
 
 This directory records reproducible evidence for M0 P0-1. The production physical packaging decision is recorded in ADR-0013 (ACCEPTED: sealed per-device segments). Individual measurement files do not themselves complete P0-4 or M0.
 
@@ -103,7 +108,9 @@ ADR-0013 is **ACCEPTED**. Canonical packaging is immutable sealed per-device seg
 
 `segment_events=1000` was the verified P0-1 benchmark profile and is **not** a frozen production constant.
 
-M0 remains IN PROGRESS. P0-2, P0-3 and P0-4 are unchanged.
+At the time of this dated decision note, M0 remained IN PROGRESS and P0-2–P0-4
+were still underway. The final M0 status is recorded in the current-status note
+above.
 
 ## Current evidence index (non-exhaustive)
 

@@ -1,12 +1,13 @@
 # M0 security, notice and acceptance review
 
-Current continuation: independent verifier/security review completed at `3de9d00`,
-recorded in `m0-independent-review-results-20261005.md`; no new blocking synthetic
-M0 security defect. Candidate CI PASS at `5c07411`/run `37377520994`.
-Historical implementer notes below retain their original context. Scoped native
-UI review, human acceptance and completion-source reconciliation remain open.
-Independent residuals additionally cover file-controlled developer launch and
-buffer-before-limit REST; these remain mandatory before product reuse.
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
+Current status: the independent verifier/security review, required candidate CI,
+scoped native UI review, owner decisions and M0 closeout are recorded in the
+closure audit. M0 is complete for the synthetic foundation scope. Historical
+implementer notes below retain their original context. File-controlled developer
+launch and buffer-before-limit REST remain production residuals before product
+reuse.
 
 Status: **SCOPED M0 IMPLEMENTER REVIEW COMPLETE — findings corrected with
 both-platform regression proof; final CI and verifier/human acceptance open**.

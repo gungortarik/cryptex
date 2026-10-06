@@ -1,5 +1,7 @@
 # M0 P0-1 — Timed Initial Sync COMPLETED CONTROLLED TIMEOUT (500k files macOS→Windows r2)
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Status:** COMPLETED CONTROLLED TIMEOUT / IMPRACTICALITY EVIDENCE — do not reuse this folder ID  
 **Scope:** replacement 500k one-file-per-event macOS→Windows initial Syncthing measurement  
 **Architecture effect:** none; no layout selected; ADR-0013 remains PROPOSED / PENDING

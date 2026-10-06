@@ -1,5 +1,7 @@
 # P0-2 Mode B — Windows Tauri GUI close/hide proof
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Date (local):** 2026-10-02 15:11–15:12 America/New_York  
 **Host:** Windows physical machine / x86_64  
 **Branch:** `m0/p0-2-cursor`  

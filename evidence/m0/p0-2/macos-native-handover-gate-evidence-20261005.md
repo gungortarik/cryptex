@@ -1,5 +1,7 @@
 # Mac native handover OS gate parity — scoped PASS
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 Recorded from the Mac operator's returned plan result by the Windows implementer.
 Source: `6a7d29481c19484bcacbdda17e8e3084c78b1af8`.
 macOS 27.0.1 arm64; Rust/Cargo 1.98.1; Node v24.19.0.

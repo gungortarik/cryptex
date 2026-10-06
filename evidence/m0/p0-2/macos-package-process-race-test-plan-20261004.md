@@ -1,5 +1,7 @@
 # Mac task — separate-process package race parity
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Result:** scoped PASS at `6b8776c479efcb3091985a7c90f7987ba74d2e2e`,
 45/45 tests. Evidence: `macos-package-process-race-evidence-20261004.md`.
 

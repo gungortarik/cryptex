@@ -1,5 +1,7 @@
 # M0 independent verifier and security audit
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 Reviewed source: `3de9d000f131cecf5d816f8dd16937eb101fcee8`.
 Owner authorized both independent read-only reviewers with "hemen basla" after
 the explicit two-reviewer proposal. Separate verifier and security agents applied
@@ -8,9 +10,11 @@ launched processes or changed runtime/startup/global configuration.
 
 ## Verifier outcome
 
-No new M0 implementation defect or accepted-authority conflict identified in
-reviewed slices. Ready for scoped human review after documentation consistency
-and relevant UI review; **M0 is not COMPLETE**.
+No new M0 implementation defect or accepted-authority conflict was identified
+in the reviewed slices. At that review snapshot, human/documentation and UI
+gates were pending; they were later completed as recorded in the M0 closure
+audit. The review remains scoped to its stated code slices and production
+residuals.
 
 | Area | Result and limit |
 | --- | --- |

@@ -1,5 +1,7 @@
 # macOS native recovery and Golden/Doctor — 2026-10-05
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Result: scoped PASS**, supplied by the Mac validation executor through the
 project owner. Tested SHA: `502abf409925b368ff1377380c719069207f0d61`.
 The Windows implementer records that report; the Mac-local artifact was not

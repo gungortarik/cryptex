@@ -1,5 +1,10 @@
 # M0 independent verifier and security review plan
 
+> **Historical plan:** This review was executed at source `3de9d00`; the result
+> is recorded in `evidence/m0/m0-independent-review-results-20261005.md`.
+> References below to pending ADR revisions or review work describe the state
+> when this plan was prepared, not the current M0 status.
+
 Use clean branch `m0/p0-2-cursor` containing `5c07411`; report full SHA.
 This is a read-only review task for an executor independent of the implementer.
 It may be performed on either OS; no repeated physical Mac test is requested.

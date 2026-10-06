@@ -1,5 +1,7 @@
 # P0-2 Windows HKCU Run — post-login exit audit
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Date:** 2026-10-02
 **Platform:** Windows x86_64 physical workstation
 **Branch under audit:** `m0/p0-2-cursor` at `34073a6`

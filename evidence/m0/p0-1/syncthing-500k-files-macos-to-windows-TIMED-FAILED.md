@@ -1,5 +1,7 @@
 # M0 P0-1 — Timed Initial Sync Attempt FAILED (500k files macOS→Windows sleep interruption)
 
+> **Historical status note (2026-10-05):** This dated benchmark/protocol records the state before the P0-1 decision. ADR-0013 is now ACCEPTED with sealed per-device segment/pack files, and M0 is COMPLETE for the synthetic foundation scope. This note does not revise the measurements or make `segment_events=1000` a production constant. See `docs/adr/ADR-0013-physical-event-storage-layout.md` and `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Status:** FAILED / INVALID FOR TIMING — do not reuse this folder ID  
 **Scope:** 500k one-file-per-event macOS→Windows initial Syncthing measurement  
 **Architecture effect:** none; no layout selected; ADR-0013 remains unresolved

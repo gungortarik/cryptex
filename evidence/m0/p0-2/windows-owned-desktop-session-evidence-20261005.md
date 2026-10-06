@@ -1,5 +1,7 @@
 # Windows owned Desktop session pilot — runtime scoped PASS
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 Implementation: `dd5021bb04ccc698b66de51f739ab60053997534`.
 Windows x64; Node v24.19.0; existing pinned Rust toolchain.
 ADR-0012 remains PROPOSED. This is same-package baseline reopen, not an update.

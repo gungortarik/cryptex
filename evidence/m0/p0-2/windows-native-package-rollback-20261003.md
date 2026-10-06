@@ -1,5 +1,7 @@
 # Windows native package operator rollback — scoped PASS
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 Build source `5015ff1`; prior installed baseline and update results are recorded
 at `cb8e935` and `1e2be11`. The operator completed retained baseline `0.0.0`
 reinstallation after the candidate's clean exit. The instructed maintenance

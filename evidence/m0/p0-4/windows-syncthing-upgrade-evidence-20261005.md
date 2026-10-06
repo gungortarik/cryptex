@@ -1,5 +1,7 @@
 # Windows Syncthing changed-version compatibility — scoped PASS
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 Source: `133428b222e0549c7ee4ccd1e37b9b069513dd61` (the exact implementation
 bytes used in the final run). Windows x64, Node **v24.19.0**.
 This is an isolated M0 test tool; the product baseline remains **2.1.5**.

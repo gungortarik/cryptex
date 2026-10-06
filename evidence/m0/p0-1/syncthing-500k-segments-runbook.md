@@ -1,5 +1,7 @@
 # M0 P0-1 — Runbook: 500k Segments Syncthing Cells
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Status:** COMPLETE FOR TIMED CELLS — Cell A and Cell B VERIFIED; ADR-0013 ACCEPTED; folders not retired by this file  
 **Architecture effect:** packaging architecture is recorded in ADR-0013; this runbook does not complete P0-4 or M0
 

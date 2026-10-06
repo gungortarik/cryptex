@@ -1,5 +1,7 @@
 # Windows package-candidate concurrent transition regressions
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Result:** PASS, scoped to the test-only filesystem selection candidate  
 **Host:** Windows, Node `v24.19.0`  
 **Starting source:** `854ac16`  

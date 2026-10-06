@@ -1,5 +1,7 @@
 # macOS Update / Rollback Protocol (P0-2 test-only)
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Status:** VERIFIED for synthetic fixtures (see `macos-update-rollback-evidence.md`)  
 **ADR-0012:** UNRESOLVED (do not accept from this protocol)
 

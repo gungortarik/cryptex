@@ -1,5 +1,7 @@
 # macOS native interrupted recovery cleanup — scoped PASS
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Initial source:** `486d86c55ed5bd7e41ba23707619f7a129511124`
 **Formatting commit and tested source:** `7011fc7b316c8abcaf3f761663f42d0e04bb5a68`
 **Platform:** macOS 27.0.1 arm64

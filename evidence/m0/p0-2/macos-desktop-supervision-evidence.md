@@ -1,5 +1,7 @@
 # P0-2 Mode B — Desktop/sidecar supervision evidence
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Date (UTC):** 2026-09-30T23:41:00Z  
 **Host:** macOS 27.0.1 / aarch64  
 **Branch:** `m0/p0-2-cursor`  

@@ -1,5 +1,7 @@
 # Windows native handover OS gate — scoped PASS
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 Source: `80b727fdceab67ca4a9075371a07aca9cccf9654`.
 Windows x64; pinned existing Rust toolchain and Node v24.19.0.
 Approved isolated M0 pilot; ADR-0012 remains PROPOSED.

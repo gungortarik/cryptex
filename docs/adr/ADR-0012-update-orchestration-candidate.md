@@ -1,5 +1,11 @@
 # ADR-0012 update orchestration candidate
 
+> **Historical experiment:** This candidate is not the currently accepted M0
+> ADR-0012 direction. Its proposed filesystem transaction was tested as isolated
+> synthetic evidence; the scoped M0 acceptance and current production residuals
+> are recorded in `ADR-0012-background-runtime-implementation-proposal.md` and
+> `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Status:** PROPOSED — isolated M0 experiment, not production selection
 **Date:** 2026-10-03
 **Authority:** Master Spec; accepted version/update spec; M0 P0-2 contract

@@ -1,5 +1,11 @@
 # macOS native foundation UI attempt — NOT VERIFIED
 
+> **Historical attempt:** This pilot could not produce a visual capture. It was
+> superseded for the scoped M0 visual gate by the fresh Tauri `.app` PASS in
+> `evidence/m0/macos-embedded-frontend-visual-evidence-20261005.md`. The failure
+> below remains valid evidence for this specific raw Cargo/pilot attempt; Mac
+> artifacts were not independently re-hashed on Windows.
+
 Checkout: `9752798d577e937f784b8ff21c546850aee58193`.
 Retained build: `7f5ab2bdaa72e213f5cb16312bca0292c436db18`.
 Mac executor reports relevant application source identical to current checkout.

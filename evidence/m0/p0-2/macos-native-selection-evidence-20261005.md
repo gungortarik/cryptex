@@ -1,5 +1,7 @@
 # macOS complete native selection and owned rollback — scoped PASS
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 Tested source: `b18c28b39428bd87b4117e4bc1b461dc0798ccee`.
 Plan: `macos-native-selection-test-plan-20261005.md`.
 Scope: approved isolated M0 P0-2 pilot; ADR-0012 remains PROPOSED.

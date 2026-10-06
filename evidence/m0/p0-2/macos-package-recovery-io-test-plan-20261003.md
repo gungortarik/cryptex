@@ -1,5 +1,7 @@
 # Mac task — package recovery I/O parity
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Result:** scoped PASS at `9d9159c30af01b45af1c5c9f9994417f3beec611`;
 41/41 tests. Evidence: `macos-package-recovery-io-evidence-20261004.md`.
 

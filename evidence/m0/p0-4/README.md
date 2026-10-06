@@ -1,10 +1,13 @@
 # M0 P0-4 — managed Syncthing
 
-Status: **IN PROGRESS**. `7ff485d` adds an isolated, test-only controller and
-physical Windows proof runner against the accepted **2.1.5** baseline.
-No production replication semantics or user-global configuration are changed.
-Staged package follow-up `7845ae1` also proves native-role resolution and exact
-license/attribution preservation on both OSes; Mac parity reported PASS at `501d11d`.
+Status: **COMPLETE for the synthetic M0 P0-4 gate**. The owner accepted the
+scoped ADR-0004 implementation addendum: pinned **2.1.5** file transport,
+isolated managed profile and authenticated backend-owned loopback REST.
+`7ff485d` adds the isolated, test-only controller and physical Windows proof
+runner; staged package follow-up `7845ae1` proves native-role resolution and
+license/attribution preservation on both OSes. Mac parity passed at `501d11d`.
+Production replication semantics and user-global configuration remain outside
+this scope.
 
 - [Windows scoped evidence](windows-managed-syncthing-evidence-20261005.md)
 - [Mac parity task](macos-managed-syncthing-test-plan-20261005.md)
@@ -22,10 +25,10 @@ The controller only creates fresh synthetic test profiles under application
 data. It generates distinct native identities, authenticates local REST and
 keeps discovery, relay, NAT, browser and automatic upgrades disabled.
 
-The production packaging/supervision decision still needs an ADR-0004 addendum.
-Installer notice inclusion
-and production secret-storage integration remain unverified. This spike is not
-a completed P0-4 gate or permission to start M1.
+The scoped M0 packaging/supervision choice is now accepted in
+`docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md`. Installer
+notice inclusion and production secret-storage integration remain unverified
+production gates. Completion of P0-4 does not authorize M1.
 
 Windows actual 2.1.2 -> 2.1.5 fixture transition and controlled cold rollback
 reported scoped PASS at `133428b`. Mac parity at `dec5fb1` passed 33/33 and both

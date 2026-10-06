@@ -1,5 +1,7 @@
 # P0-2 Windows supervision comparison protocol (Mode A harness)
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Status:** ACTIVE (comparison / reassessment)  
 **ADR-0012:** UNRESOLVED (no winner)  
 **Latest Mode A physical:** `windows-mode-a-r1-20261002T052751Z` — **FAILED CANDIDATE / PERMISSION** (`schtasks /Create` Access denied). See `windows-mode-a-task-scheduler-permission-20261002.md`.

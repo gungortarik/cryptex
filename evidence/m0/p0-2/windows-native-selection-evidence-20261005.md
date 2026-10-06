@@ -1,5 +1,7 @@
 # Windows complete native selection and owned rollback — scoped PASS
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 Source: `13b435d35ac905dd3ffb94bcd29978d36133bc95`.
 Scope: approved isolated M0 P0-2 pilot; ADR-0012 remains PROPOSED.
 Windows x64, Node v24.19.0. Desktop/helper Rust source unchanged in this slice.

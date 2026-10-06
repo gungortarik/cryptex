@@ -1,7 +1,17 @@
 # M0 P0-2 — Background Runtime / Atomic Update Lifecycle Evidence
 
-**Status:** IN PROGRESS  
-**ADR-0012:** UNRESOLVED (do not accept yet)
+**Status:** COMPLETE for the synthetic M0 foundation scope
+
+**ADR-0012:** ACCEPTED for the scoped M0 implementation direction
+
+**Current-status note (2026-10-05):** This index contains dated test plans and
+evidence written while P0-2/ADR-0012 were still open. Those pending/PROPOSED
+statements are historical and preserve each run's original scope. Current
+acceptance and M0 completion are recorded in
+`docs/adr/ADR-0012-background-runtime-implementation-proposal.md`,
+`checklists/M0_FOUNDATION_GATE.md` and
+`evidence/m0/m0-closure-audit-20261005.md`. Production updater, canonical-data,
+signing and other residual gates remain open; M1 is not authorized.
 
 This directory records reproducible evidence for M0 P0-2 only. It does not
 select or freeze the production supervision/update architecture.
@@ -36,7 +46,8 @@ Native interrupted selection and Golden/Doctor foundation:
 123 lifecycle/foundation Node + 5 storage Node; actual pre-launch updater kill,
 baseline restart and sealed synthetic fixture preservation PASS).
 Combined Mac request: `macos-native-interruption-test-plan-20261005.md`.
-Whole-M0 gate audit: `../m0-closure-audit-20261005.md`; M0 remains IN PROGRESS.
+Whole-M0 gate audit: `../m0-closure-audit-20261005.md`; M0 is COMPLETE for its
+synthetic foundation scope.
 
 - `docs/11_DAEMON_IPC_RUNTIME.md`
 - `docs/23_REQUIRED_TECHNICAL_SPIKES.md`
@@ -47,21 +58,21 @@ Whole-M0 gate audit: `../m0-closure-audit-20261005.md`; M0 remains IN PROGRESS.
 If evidence conflicts with an accepted architectural decision, stop and use the
 ADR/specification process.
 
-## Options under comparison (final decision still OPEN)
+## Historical options comparison (scoped M0 direction accepted)
 
 Current Mac Desktop-owned run: `macos-tauri-owned-supervisor-restart-evidence-20261003.md`
 (local checks, release crash/restart, physical login, IPC, Stop and cleanup passed; physical tray Open and active-daemon Quit exit 0 also verified at `dfbaded`).
 
-The project owner approved Mode B with per-user login startup as the
-implementation direction. The cross-platform comparison and ADR-0012 acceptance
-remain open; this approval does not close the P0-2 gate.
+At the time this comparison was recorded, the cross-platform decision and
+ADR-0012 acceptance were open. The owner later accepted the scoped Mode B
+direction, as recorded in ADR-0012; the production gates remain separate.
 
 1. native per-user background registration (macOS LaunchAgent + Windows per-user startup)
 2. Tauri/tray supervisor spawning `cryptexd` sidecar
 3. hybrid only if evidence justifies it
 
-The implementation direction is selected for the current slice; no final
-architecture decision has been recorded or accepted in ADR-0012.
+The scoped M0 implementation direction is now recorded and accepted in ADR-0012.
+This does not accept the missing original ADR source record or production gates.
 
 ## Safety and isolation rules
 
@@ -73,14 +84,14 @@ architecture decision has been recorded or accepted in ADR-0012.
 - Create per-user test startup entries only through the reversible procedure in
   the active test plan, and verify their removal during cleanup. Do not treat a
   test registration as approval to ship production startup integration.
-- Do not mark P0-2 complete and do not accept ADR-0012 from foundation-slice work alone.
+- Do not infer P0-2 completion from any single foundation slice; the current
+  completion record is based on the full cross-platform gate checklist.
 - Test-only native login/reboot startup proofs are verified on both platforms:
   `windows-reboot-login-survival-20261002.md` and
   `macos-native-supervision-evidence.md`. The separate Mac release Desktop run
-  also has partial physical evidence for Desktop login startup, supervision,
-  renderer IPC and Stop behavior; physical tray Open/Quit passed in the focused
-  diagnosis at `dfbaded`. Windows
-  release-mode physical lifecycle proof, signed packaging and production
+  also has physical evidence for Desktop login startup, supervision, renderer
+  IPC, Stop and tray Open/Quit. Current scoped Windows and Mac lifecycle proof
+  is recorded in the M0 checklist. Signed packaging and production
   update/canonical-data gates remain open. Renderer reconnect during external
   Mode B crash/restart is verified on both platforms.
 - Windows' second physical reboot/login and ten-minute survival repeat is

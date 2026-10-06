@@ -1,5 +1,7 @@
 # P0-2 supervision candidate comparison — 2026-10-03
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 **Status:** Evidence comparison with implementation direction selected; production verification open
 **ADR-0012:** PROPOSED, NOT ACCEPTED
 **Scope:** Current repository evidence for Windows and macOS lifecycle candidates

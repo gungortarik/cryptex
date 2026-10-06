@@ -1,5 +1,7 @@
 # Mac task — changed native package handover and rollback
 
+> **Historical status note (2026-10-05):** Status statements below reflect the state when this dated plan/result was recorded, before M0 closeout. Current M0 status is COMPLETE for the synthetic foundation scope; scoped ADR-0012/0004 are ACCEPTED. This note does not expand this artifact's evidence, satisfy production residuals, or authorize M1. See `evidence/m0/m0-closure-audit-20261005.md`.
+
 Use clean current `m0/p0-2-cursor` containing `309bb66`; report full tested SHA.
 Read handoff, M0/P0-2 contract and Windows changed-package evidence. This is an
 additional scope to native interruption/Golden/Doctor and managed Syncthing plans;
