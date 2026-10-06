@@ -10,6 +10,7 @@
 pub mod compare;
 pub mod compat;
 pub mod error;
+pub mod identity_runtime;
 pub mod instance;
 pub mod ipc;
 pub mod paths;

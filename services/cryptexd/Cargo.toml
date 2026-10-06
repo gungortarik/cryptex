@@ -10,6 +10,7 @@ name = "cryptexd"
 path = "src/main.rs"
 
 [dependencies]
+cryptex-core = { path = "../../crates/core" }
 fs2 = "0.4.3"
 interprocess = "=2.4.4"
 serde = { version = "=1.0.229", features = ["derive"] }

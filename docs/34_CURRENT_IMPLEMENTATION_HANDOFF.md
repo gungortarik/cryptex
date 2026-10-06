@@ -32,13 +32,13 @@ high-level `keyring` are unselected. SecureStore product work proceeds under
 final appropriate M1 gate.
 
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). ADR-0014 ACCEPTED (2026-10-06, P1).
-Identity/sequence foundations and SecureStore trait/fake-store are in place under
-`cryptexd`. Windows P1 Credential Manager adapter landed with local matrix tests.
-Next: macOS P1 Keychain adapter, then daemon wiring, pairing-record persistence,
-Recovery Kit public metadata. Gate C product secure-store physical verification on
-both OS remains open (distinct from completed Gate A). Production pairing/revocation
-remains M8; Recovery Kit container remains M11. No custom cryptography. No Actions
-until final M1 gate.
+Identity/sequence foundations, SecureStore (trait/fake + Windows/macOS P1 adapters),
+and synthetic Brain daemon wiring (public metadata under app-data; private material
+only via SecureStore) are in place under `cryptexd`. Next: pairing-record
+persistence and Recovery Kit public metadata. Gate C Mac-host product physical
+secure-store verification remains WAITING (distinct from Gate A). Production
+pairing/revocation remains M8; Recovery Kit container remains M11. No custom
+cryptography. No Actions until final M1 gate.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
