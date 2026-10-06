@@ -15,7 +15,7 @@
 4. `docs/20_MILESTONE_ROADMAP.md`
 5. `docs/23_REQUIRED_TECHNICAL_SPIKES.md`
 6. `docs/32_PRE_IMPLEMENTATION_AUDIT_REPORT.md`
-7. relevant `docs/adr/` records (ADR-0015 ACCEPTED; ADR-0014 PROPOSED)
+7. relevant `docs/adr/` records (ADR-0015 ACCEPTED; ADR-0014 ACCEPTED — P1)
 8. `evidence/m1/` kickoff plan when present; retained `evidence/m0/` for foundation context
 
 ## Working agreement
@@ -24,20 +24,20 @@
 `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` on `origin/m0/foundation` (PR #5).
 M1 — Brain + Device Identity is in progress on `m1/brain-device-identity`.
 Cursor is the write-capable implementer for all of M1. **ADR-0015 is ACCEPTED**;
-identity/sequence slices may proceed under that decision. **ADR-0014 remains
-PROPOSED** — Gate A complete on Windows and macOS; owner-review decision addendum
-`docs/adr/ADR-0014-os-secure-store-decision-addendum.md` recommends **P1** (direct
-platform APIs). Product secure-store code stays blocked until ADR acceptance. GitHub Actions stay deferred until the
+identity/sequence slices may proceed under that decision. **ADR-0014 is ACCEPTED**
+(2026-10-06) selecting **P1** (direct platform APIs) with product pins
+`windows-sys = 0.61.2`, `widestring = 1.2.1`, `security-framework = 3.7.0`. K2 and
+high-level `keyring` are unselected. SecureStore product work proceeds under
+`cryptexd`. Gate C both-OS product verification remains open. GitHub Actions stay deferred until the
 final appropriate M1 gate.
 
-**M1 status:** ADR-0015 ACCEPTED (2026-10-05). Identity/sequence foundations are
-in place (`last_issued=0`, first issue `1`, durable-before-return, concurrent
-atomicity). ADR-0014 remains PROPOSED. Gate A secure-store spike complete on
-Windows and macOS; decision addendum recommends **P1** pending owner review
-(no product pins/backend; Gate C product verification not claimed). Product
-secure-store implementation still blocked until ADR-0014 acceptance. Production
-pairing/revocation remains M8; Recovery Kit container remains M11. No custom
-cryptography. No Actions until final M1 gate.
+**M1 status:** ADR-0015 ACCEPTED (2026-10-05). ADR-0014 ACCEPTED (2026-10-06, P1).
+Identity/sequence foundations are in place. Next implementation slices follow the
+M1 kickoff plan: SecureStore trait + fake store, then Windows/macOS P1 adapters,
+daemon wiring, pairing-record persistence, Recovery Kit public metadata. Gate C
+product secure-store physical verification on both OS remains open (distinct from
+completed Gate A). Production pairing/revocation remains M8; Recovery Kit container
+remains M11. No custom cryptography. No Actions until final M1 gate.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
@@ -56,7 +56,7 @@ present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- ADR-0015-accepted identity/sequence work may proceed. ADR-0014 Gate A is complete; decision addendum recommends P1 and awaits owner review; do not start product secure-store code until ADR-0014 is accepted. No GitHub Actions until the final M1 gate.
+- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Mac/Windows product physical verification remains distinct from Gate A. No GitHub Actions until the final M1 gate.
 
 ## P0-1 status
 

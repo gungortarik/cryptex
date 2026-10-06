@@ -1,20 +1,22 @@
 # ADR-0014 — OS secure-store decision addendum
 
-**Status:** PROPOSED PENDING OWNER REVIEW (not accepted)
+**Status:** ACCEPTED
 
 **Date drafted:** 2026-10-06
 
-**Parent:** `docs/adr/ADR-0014-os-secure-store-integration.md` (remains **PROPOSED**)
+**Date accepted:** 2026-10-06
+
+**Parent:** `docs/adr/ADR-0014-os-secure-store-integration.md` (**ACCEPTED**)
 
 **Milestone:** M1 — Brain + Device Identity
 
 **Authority:** Gate A evidence in `evidence/m1/secure-store-spike-windows-20261005.md` and `evidence/m1/secure-store-spike-macos-20261006.md`; parent ADR §§2, 4, 6, 8
 
-This addendum is the owner-review packet for **gate B**. It names the recommended approach and the evidence-backed spike-local bindings. It does **not** accept ADR-0014, does **not** authorize product `cryptexd` SecureStore implementation, does **not** pin product workspace dependencies, and does **not** claim Gate C product verification.
+This addendum records the **accepted** gate B decision: **P1 (direct platform APIs)**. It authorizes product `cryptexd` SecureStore implementation under the parent ADR. Product pins below are authoritative. **K2 remains unselected.** This acceptance does **not** claim Gate C product verification. Keychain UI prompts were **not observed during the macOS Gate A run**; that caveat remains run-specific.
 
-## 1. Recommendation
+## 1. Decision
 
-**Select candidate P1 — direct platform APIs** behind a daemon-owned Cryptex `SecureStore` trait.
+**Accepted: candidate P1 — direct platform APIs** behind a daemon-owned Cryptex `SecureStore` trait.
 
 ### Why P1 (evidence-backed)
 
@@ -69,18 +71,17 @@ Product adapters (when authorized) must classify platform failures without attac
 
 Gate A unit tests cover Keychain classification (missing vs auth-failed / interaction-not-allowed / missing-entitlement) and byte-aware redaction detection in the standalone spike package.
 
-## 4. Evidence-backed spike-local versions (not product pins)
+## 4. Evidence-backed product pins
 
-These versions were exercised in the product-separated spike at tested SHA `4f4ba2784cbb3d305a8a462aa9b7286b9a8e770d` (macOS evidence) and the Windows Gate A runs. **They are not workspace pins and must not be copied into the product workspace until ADR acceptance.**
+These versions were exercised in the product-separated spike at tested SHA `4f4ba2784cbb3d305a8a462aa9b7286b9a8e770d` (macOS evidence) and the Windows Gate A runs. **On acceptance they become the product pins for P1 adapters under `cryptexd`.**
 
-| Role | Spike-local version / note |
+| Role | Product pin |
 |---|---|
 | P1 Windows bindings | `windows-sys = 0.61.2`, `widestring = 1.2.1` |
 | P1 macOS bindings | `security-framework = 3.7.0` |
-| K2 comparison only | `keyring-core = 1.0.0`, `windows-native-keyring-store = 1.1.0` (default-features off), `apple-native-keyring-store = 1.0.2` (`keychain`) — **not recommended for product** |
-| Spike location | `tools/m1-secure-store-spike/` (standalone `[workspace]`) |
-
-Exact product Cargo pins, if any, are deferred to the acceptance revision after owner review.
+| K2 | **Unselected** — spike comparison only (`keyring-core` / native keyring stores must not be added to product) |
+| High-level `keyring` | **Unselected** |
+| Spike location (historical) | `tools/m1-secure-store-spike/` (standalone; not a product member) |
 
 ## 5. Alternatives not selected
 
@@ -92,18 +93,13 @@ Exact product Cargo pins, if any, are deferred to the acceptance revision after 
 
 ## 6. Explicit non-claims
 
-- ADR-0014 remains **PROPOSED** until the owner accepts gate B.
-- No product SecureStore backend, no `cryptexd` integration, no product dependency pins in this packet.
-- Gate A ≠ Gate C: both-OS **product** physical verification remains an M1 completion requirement after acceptance.
-- Absence of a Keychain prompt in one Mac spike run does not prove prompts never occur.
+- Gate A ≠ Gate C: both-OS **product** physical verification remains an M1 completion requirement and is **not** claimed by this acceptance.
+- Absence of a Keychain prompt in one Mac spike run does not prove prompts never occur under other codesign/ACL/headless conditions.
+- K2 and high-level `keyring` must not be introduced as product dependencies.
 
-## 7. Owner review ask
+## 7. Acceptance
 
-Please review and either:
-
-1. **Accept** ADR-0014 + this addendum (gate B), authorizing product P1 adapters under `cryptexd` with pins named at acceptance time; or
-2. **Request changes** (alternate candidate, narrower pins, extra evidence); or
-3. **Defer** with ADR-0014 left PROPOSED and product secure-store still blocked.
+The owner accepted ADR-0014 and this addendum on **2026-10-06**, selecting **P1** with the product pins in §4. Product SecureStore work may proceed under `cryptexd`. Gate C both-OS product physical verification remains a separate M1 completion requirement.
 
 ## 8. References
 

@@ -19,9 +19,9 @@ It deliberately does **not**:
 - productize pairing UI, revoke/retire/compromise workflows, or sequence-cutoff enforcement product behavior (**M8**)
 - select Recovery Kit serialization/container or first-device bootstrap product flows (**M11**)
 - select event hash/signature algorithms or full event-store semantics (**M2**)
-- select the OS secure-store library (**ADR-0014**)
+- select the OS secure-store approach (**ADR-0014**, now ACCEPTED as P1)
 
-**Accepted.** Identity/sequence product slices may proceed under this decision. Secure-store selection remains ADR-0014 (PROPOSED).
+**Accepted.** Identity/sequence product slices may proceed under this decision. Secure-store selection is ADR-0014 (ACCEPTED — P1).
 
 ## 1. Context
 

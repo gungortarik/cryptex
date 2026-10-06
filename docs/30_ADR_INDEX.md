@@ -27,7 +27,7 @@ If an ADR record is referenced by authoritative documents but its source file is
 | ADR-0007 | Local IPC transport | ORIGINAL SOURCE RECORD MISSING / IMPLEMENTATION ADDENDUM ACCEPTED | `docs/adr/ADR-0007-local-ipc-implementation-addendum.md` selects pinned `interprocess` 2.4.4 from M0 evidence. Production Desktop health/reconnect is physically verified on both OSes within recorded scope; broader Desktop/CLI/MCP APIs remain incomplete. Do not infer or reconstruct the missing original ADR. |
 | ADR-0012 | Background runtime / atomic update lifecycle | ORIGINAL SOURCE RECORD MISSING / M0 IMPLEMENTATION PROPOSAL ACCEPTED | `docs/adr/ADR-0012-background-runtime-implementation-proposal.md` records Mode B + per-user Desktop startup; closing the window hides, explicit Quit cleanly stops the daemon and exits Desktop. Owner accepted this scoped implementation direction on 2026-10-05. Developer file-control gating, signed installed updater and production canonical safety remain mandatory product gates. |
 | ADR-0013 | Physical immutable event storage layout | ACCEPTED | Source: `docs/adr/ADR-0013-physical-event-storage-layout.md`. Canonical packaging is immutable sealed per-device segment/pack files. One-file-per-event is rejected. Hybrid is not selected. `segment_events=1000` remains a P0-1 benchmark profile, not a frozen production constant. |
-| ADR-0014 | OS secure-store integration | PROPOSED | Source: `docs/adr/ADR-0014-os-secure-store-integration.md`. Owner-review decision addendum: `docs/adr/ADR-0014-os-secure-store-decision-addendum.md` (recommends **P1** direct Cred*/Keychain APIs; still PROPOSED). Gate A complete on Windows + macOS. No product pin/backend. Product code blocked until acceptance. Gate C product verification remains open. |
+| ADR-0014 | OS secure-store integration | ACCEPTED | Source: `docs/adr/ADR-0014-os-secure-store-integration.md`. Decision addendum: `docs/adr/ADR-0014-os-secure-store-decision-addendum.md`. Accepted 2026-10-06: **P1** direct platform APIs under `cryptexd`. Product pins: Windows `windows-sys = 0.61.2` + `widestring = 1.2.1`; macOS `security-framework = 3.7.0`. K2 and high-level `keyring` unselected. Gate A complete; Gate C product verification remains open. |
 | ADR-0015 | Brain/device identity foundations | ACCEPTED | Source: `docs/adr/ADR-0015-brain-device-identity-foundations.md`. Accepted 2026-10-05. Brain/install/device identity; sequence first-issue `1`; durable write before return; same-`device_id` concurrent allocate atomicity including first-create race; missing/corrupt typed fail-closed; pairing records only; Recovery Kit public metadata. Pairing/revocation product remains M8; kit container remains M11. |
 
 ## 4. M0 gate
@@ -48,13 +48,13 @@ The M0 gate required:
 M1 is in progress on `m1/brain-device-identity`.
 
 - ADR-0015 is **ACCEPTED** (2026-10-05); identity/sequence/pairing-record/RK-public-metadata implementation may proceed under that decision
-- ADR-0014 remains **PROPOSED**; Gate A complete; decision addendum recommends **P1** and awaits owner review; product secure-store implementation stays blocked until acceptance
+- ADR-0014 is **ACCEPTED** (2026-10-06) with **P1** and the recorded product pins; SecureStore implementation may proceed under `cryptexd`; K2/`keyring` unselected
 - Windows + macOS physical **product** secure-store verification remains an M1 completion requirement (Gate C); Gate A spike is not product verification
 - pairing/revocation product behavior remains assigned to M8
 - Recovery Kit container/serialization remains assigned to M11
 - required GitHub Actions stay deferred until the final appropriate M1 gate
 
-This index accepts ADR-0015 by the status above. Listing ADR-0014 as PROPOSED does not accept it.
+This index accepts ADR-0015 and ADR-0014 by the statuses above.
 
 ## 5. ADR source records
 

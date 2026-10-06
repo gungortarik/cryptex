@@ -1,10 +1,12 @@
 # ADR-0014 — OS Secure-Store Integration
 
-**Status:** PROPOSED (not accepted)
+**Status:** ACCEPTED
 
 **Date drafted:** 2026-10-05
 
-**Date revised:** 2026-10-06 (Gate A complete; owner-review decision addendum prepared — P1; still PROPOSED)
+**Date revised:** 2026-10-06 (owner acceptance — P1 direct platform APIs)
+
+**Date accepted:** 2026-10-06
 
 **Milestone:** M1 — Brain + Device Identity
 
@@ -12,7 +14,7 @@
 
 This record proposes how Cryptex will integrate **OS secure storage** for device private material — the choice left unresolved by `docs/08` §21. It does not select event-signature/hash libraries (M2), Recovery Kit containers (M11), or pairing/revocation product UX (M8).
 
-**No library or provider is selected by this draft.** Selection requires recorded spike evidence and owner acceptance of this ADR (or an evidence addendum that this ADR then cites).
+**Accepted.** Cryptex selects **P1 (direct platform APIs)** per `docs/adr/ADR-0014-os-secure-store-decision-addendum.md` and Gate A evidence. Product SecureStore implementation may proceed under `cryptexd` authority. K2 and high-level `keyring` remain unselected. Gate C both-OS product verification remains open and distinct from this acceptance.
 
 ## 1. Context
 
@@ -46,7 +48,7 @@ Summary:
 - **Limited spike** may run while PROPOSED when the owner authorizes it (gate A).
 - **Both-OS physical product verification** = **M1 completion gate** (gate C), distinct from ADR acceptance.
 
-## 3. Proposed architectural direction (library not pinned)
+## 3. Architectural direction (accepted: P1)
 
 Integrate OS credential storage through a thin daemon-owned Cryptex `SecureStore` trait whose backends target:
 
@@ -64,7 +66,7 @@ Integrate OS credential storage through a thin daemon-owned Cryptex `SecureStore
 5. In-memory / fake store is allowed for unit tests; CI must not depend on interactive keychain prompts.
 6. Hardware-backed / non-exportable attributes are optional future hardening, not a V1 requirement.
 
-## 4. Candidates to compare (no default winner)
+## 4. Candidates compared (P1 selected)
 
 Current public guidance for the Rust `keyring` ecosystem recommends that applications which need to audit the repository and control platform behavior prefer **`keyring-core` plus explicitly selected platform providers**, rather than treating the high-level `keyring` facade as an unaudited default. Cryptex therefore **does not** treat high-level `keyring` as the default selection.
 
@@ -77,7 +79,7 @@ Current public guidance for the Rust `keyring` ecosystem recommends that applica
 | X2 | Require TPM / Secure Enclave non-exportable keys | Hardware-bound keys | Rejected for V1 | Not required by repo; not an M1 bar. |
 | X3 | Private keys in replicated canonical files | Files in sync set | Rejected | Violates secure-storage and trust boundaries. |
 
-**Spike rule:** compare **K1 (optional baseline)**, **K2**, and **P1** on the same store/read/delete/missing/redaction matrix. Record evidence. **Do not pin or accept a library in product code without that evidence.** This ADR stays PROPOSED until the owner accepts a spike-backed selection (or an addendum).
+**Selection:** Gate A compared K2 and P1 on Windows and macOS. **P1 is accepted.** K2 is not selected (error-redaction FAIL on both platforms due to payload-bearing `BadEncoding` Debug). K1 remains non-default / unselected.
 
 ## 5. Platform API comparison and limitations
 
@@ -105,7 +107,7 @@ Equivalent guarantee: device private material lives in OS-protected secret stora
 | Candidate comparison table (K1/K2/P1) | Documentary in this ADR | Feeds A/B |
 | Limited evaluation spike (Windows) | **Complete for Gate A** — store/read/delete/missing PASS for K2+P1; K2 error-redaction **FAIL** (BadEncoding Debug); P1 error-redaction PASS; `evidence/m1/secure-store-spike-windows-20261005.md` | A |
 | Limited evaluation spike (macOS) | **Complete for Gate A** — same matrix pattern at SHA `4f4ba2784cbb3d305a8a462aa9b7286b9a8e770d` on macOS 27.0.1 (26A434) arm64; Keychain prompt not observed during that run; `evidence/m1/secure-store-spike-macos-20261006.md` | A |
-| Spike recommendation (provisional) | Prefer **P1** — see owner-review decision addendum `docs/adr/ADR-0014-os-secure-store-decision-addendum.md`. Evidence: P1 full matrices PASS on Windows + macOS; K2 error-redaction FAIL on both. **No product pin.** Owner review required for gate B. | Feeds B |
+| Selected approach | **P1 accepted** — `docs/adr/ADR-0014-os-secure-store-decision-addendum.md`. Product pins recorded below. K2 unselected. Gate C product verification still open. | B done; C open |
 | Windows physical product verification | **Not VERIFIED** (spike ≠ product integration) | C (M1 completion) |
 | macOS physical product verification | **Not VERIFIED** (spike ≠ product integration; Gate A only) | C (M1 completion) |
 
@@ -124,7 +126,7 @@ Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/
 
 1. Owner review of this revised proposal.
 2. Limited spike evidence comparing K2 and P1 at minimum (K1 optional), with limitations recorded.
-3. Selected approach named in this ADR or a dated addendum, including exact pins only when evidence supports them. *(Decision addendum drafted 2026-10-06 recommending P1; awaiting owner acceptance before any product pin.)*
+3. Selected approach named in this ADR or a dated addendum, including exact pins only when evidence supports them. **Done:** P1 accepted 2026-10-06 with product pins below.
 4. Explicit confirmation that hardware-backed non-exportable keys are not required.
 5. Unfinished platform spike cells remain labeled WAITING — never silently marked verified.
 
@@ -139,13 +141,15 @@ Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/
 
 | Field | Value |
 |---|---|
-| ADR-0014 | **PROPOSED** |
-| Product secure-store implementation | **Blocked** until ACCEPTED |
-| Limited evaluation spike | **Owner-authorized; Gate A complete on Windows + macOS**; still product-separated |
-| Decision addendum | **PROPOSED PENDING OWNER REVIEW** — `docs/adr/ADR-0014-os-secure-store-decision-addendum.md` (recommends **P1**) |
-| Library/provider pin | **None** in product workspace (spike-local versions only; see addendum) |
+| ADR-0014 | **ACCEPTED** (2026-10-06) |
+| Selected candidate | **P1** (direct platform APIs); **K2 unselected**; high-level `keyring` unselected |
+| Decision addendum | **ACCEPTED** — `docs/adr/ADR-0014-os-secure-store-decision-addendum.md` |
+| Product secure-store implementation | **Authorized** under `cryptexd` only (trait/adapters/wiring per M1 plan) |
+| Product pins (evidence-backed) | Windows: `windows-sys = 0.61.2`, `widestring = 1.2.1`; macOS: `security-framework = 3.7.0` |
+| Limited evaluation spike | **Complete** (Gate A Windows + macOS); product-separated spike retained for history |
 | Hardware-backed keys required | **No** |
-| Both-OS physical product verification | **M1 completion gate**; Gate A done; product verification still open on both OS |
+| Keychain prompts | Run-specific caveat preserved: macOS Gate A prompt was **not observed during that run** — not proof prompts never occur |
+| Both-OS physical product verification | **Gate C / M1 completion**; **not** claimed by this acceptance |
 
 ## 10. References
 

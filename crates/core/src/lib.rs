@@ -1,8 +1,8 @@
 //! Cryptex shared domain foundations.
 //!
 //! M1 identity / sequence work follows accepted ADR-0015.
-//! OS secure-store selection remains ADR-0014 (PROPOSED) and is intentionally
-//! absent from this crate until that ADR is accepted / spike-authorized.
+//! OS secure-store (ADR-0014 ACCEPTED — P1) lives under cryptexd authority,
+//! not in this shared domain crate.
 
 pub mod brain;
 pub mod error;

@@ -119,7 +119,7 @@ Planned verification (local first; not Actions in phase 0):
 
 **ADR-0015:** **ACCEPTED** (2026-10-05). Identity/sequence implementation slices 1–2 are authorized.
 
-**ADR-0014:** remains **PROPOSED**; secure-store spike and dependent code require separate explicit owner authorization — not started.
+**ADR-0014:** **ACCEPTED** 2026-10-06 (P1). Gate A complete; Gate C product verification open. SecureStore slices proceed under cryptexd.
 
 **Actions:** deferred until the final appropriate M1 gate.
 
