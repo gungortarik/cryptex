@@ -2,8 +2,8 @@
 
 **Branch:** `m1/brain-device-identity`
 **Authority:** `docs/00_MASTER_SPEC.md`, accepted ADR-0015, M1 completion gate / DoD
-**Actions:** prior final CI **PASS** - run [37533023641](https://github.com/gungortarik/cryptex/actions/runs/37533023641) @ `f40484dd6e4e8c9eee110eea68735cedf71410bb`; new Brain persistence code requires a fresh final run before M1 completion.
-**M1 complete:** **not declared** (fresh final CI and human review open)
+**Actions:** current implementation candidate CI **PASS** - run [37542107413](https://github.com/gungortarik/cryptex/actions/runs/37542107413) @ `bcc2673dd92d1568d1a5da60816afd4bf041decf`.
+**M1 complete:** **not declared** (human review open)
 
 ## Findings and resolutions
 
@@ -34,16 +34,14 @@
 
 ADR-0014 / ADR index / handoff point at these files. Neither host’s Gate C result is inferred from the other. Screenshot-only WAITING notes remain historical context where present; VERIFIED claims are the dated host-run matrices.
 
-## Remaining M1 DoD / CI gaps (block completion)
+## M1 DoD status after current-candidate CI
 
-Prior CI PASS is recorded on source tip `f40484d` (run 37533023641). The Brain identity persistence follow-up is newer and awaits its final CI. Per M1 completion gate and `docs/21_DEFINITION_OF_DONE.md`:
-
-1. **Security review** for identity/trust handling - scoped findings **RESOLVED** (see findings + closeout below).
-2. **Required CI / GitHub Actions** - prior candidate PASS on tip `f40484d` (run 37533023641); **fresh final run pending** for the Brain identity persistence follow-up. Unsigned Windows package job is skipped by design.
-3. **Human review** of M1 - **still open** (not recorded complete in repository evidence).
-4. **DoD checklist** as a whole - **OPEN** until current-candidate final CI and human review are recorded (concise checklist in closeout).
-
-Do **not** start M2 or declare M1 complete until fresh final CI and human review are closed.
+The initial audit identified security-review and current-candidate CI as open. Scoped
+security findings have been resolved and the required Windows/macOS readiness + Windows
+IPC ACL workflow passed on candidate `bcc2673` (run 37542107413). The unsigned Windows
+package job is skipped by design. **Human review remains open**, so the DoD table below
+and M1 completion gate remain open. Do **not** start M2 or declare M1 complete until the
+owner review is recorded.
 
 ## Local checks for this audit fix (Windows)
 
@@ -93,7 +91,7 @@ Do **not** start M2 or declare M1 complete until fresh final CI and human review
 - `cargo test -p cryptexd --lib` PASS (84)
 - `cargo clippy -p cryptexd --all-targets -- -D warnings` PASS
 - `git diff --check` PASS
-- GitHub Actions: see final CI PASS below (run 37533023641)
+- GitHub Actions: current-candidate final CI PASS (run 37542107413)
 - M1 complete: **not declared** (human review still open)
 
 ### Finding: install-identity first-create race / overwrite (RESOLVED)
@@ -143,7 +141,7 @@ Staging write/flush and placement failures now attempt temp cleanup; cleanup fai
 
 Scoped security-review findings above are resolved in code on `m1/brain-device-identity`.
 
-### Prior required CI on earlier source candidate (recorded)
+### Prior required CI on earlier source candidate (historical; superseded below)
 
 | Field | Value |
 |---|---|
@@ -154,7 +152,7 @@ Scoped security-review findings above are resolved in code on `m1/brain-device-i
 | Jobs PASS | Readiness (windows-latest); Readiness (macos-latest); IPC cross-account ACL (Windows) |
 | Jobs skipped by design | Windows Desktop package (unsigned, manual only) |
 
-This records the final-Actions gate as PASS for M1. Historical Gate C host evidence files may still say Actions were not run for those host procedures; that is host-run context, not this final CI result.
+This earlier CI result was PASS, but it covered the earlier source SHA only. The current-candidate CI result is recorded in the DoD table and platform gate table below. Historical Gate C host evidence files may still say Actions were not run for those host procedures; that is host-run context, not the CI result.
 
 ### Concise DoD evidence checklist (M1)
 
@@ -163,12 +161,12 @@ Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_ID
 | DoD / completion item | Status | Evidence |
 |---|---|---|
 | M1 scope implemented (Brain/install/device identity, SecureStore, sequence foundation, pairing records, RK public metadata) | PASS | Milestone scope in cryptexd/core; handoff M1 status |
-| Unit / failure-path tests for identity, SecureStore, sequence, install create-once | PASS | `cargo test -p cryptexd --lib` (local); readiness jobs in run 37533023641 |
-| Format + lint | PASS | Readiness jobs (fmt + Clippy) on Windows and macOS in run 37533023641 |
-| Cross-platform verification (macOS + Windows first-class) | **PENDING fresh final CI** | Gate C SecureStore is VERIFIED on both OS; current Brain identity Unix/macOS failure-path tests still need the fresh Mac readiness run |
+| Unit / failure-path tests for identity, SecureStore, sequence, install create-once | PASS | Local focused tests + Windows/macOS readiness jobs in run 37542107413 |
+| Format + lint | PASS | Readiness jobs (fmt + Clippy) on Windows and macOS in run 37542107413 |
+| Cross-platform verification (macOS + Windows first-class) | PASS | Gate C SecureStore is VERIFIED on both OS; current Brain identity Unix/macOS failure-path tests passed in run 37542107413 |
 | Secrets in OS secure storage; no secret bytes in public files/logs (scoped) | PASS | SecureStore adapters + redaction/payload tests; Gate C matrices |
-| Security review for identity/trust handling (scoped findings) | **PENDING fresh Mac test** | Windows source review/local failure tests pass; Unix parent-sync/staging-link tests await current-candidate CI |
-| Relevant tests/CI green | **PENDING fresh final CI** | Local Windows tests/lint/format pass at current candidate; run 37533023641 covers earlier source tip `f40484d` only |
+| Security review for identity/trust handling (scoped findings) | PASS (scoped) | Windows source review/local failure tests and Unix parent-sync/staging-link tests passed on current candidate |
+| Relevant tests/CI green | PASS | Run 37542107413 passed Windows/macOS readiness + Windows IPC ACL on implementation candidate `bcc2673`; unsigned package skipped by design |
 | Human review complete | **OPEN** | No repository artifact records owner/human M1 review as complete |
 | Definition of Done / M1 completion gate fully satisfied | **OPEN** | Blocked on human review |
 | M1 complete / merge / start M2 | **not declared** | Remaining action below |
@@ -181,12 +179,12 @@ Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_ID
 | ADR-0014 SecureStore P1 | ACCEPTED | ADR + pins |
 | Gate C Windows product SecureStore | VERIFIED | `evidence/m1/gate-c-product-secure-store-windows-20261006.md` |
 | Gate C macOS product SecureStore | VERIFIED | `evidence/m1/gate-c-product-secure-store-macos-20261006.md` |
-| Prior final CI readiness Win+Mac + Win IPC ACL | PASS on earlier source tip | [37533023641](https://github.com/gungortarik/cryptex/actions/runs/37533023641) @ `f40484dd6e4e8c9eee110eea68735cedf71410bb`; fresh run on this candidate pending |
+| Final CI readiness Win+Mac + Win IPC ACL | PASS | [37542107413](https://github.com/gungortarik/cryptex/actions/runs/37542107413) @ `bcc2673dd92d1568d1a5da60816afd4bf041decf` |
 | Unsigned Windows package job | Skipped by design | Same run (not required for this M1 CI closeout) |
-| Scoped security-review findings | **Windows PASS; Mac CI pending** | This audit |
-| Brain identity exclusive first-create and staging cleanup | PASS locally on Windows | `cargo test -p cryptexd --locked` (93 tests), `cargo test -p cryptex-core --locked` (28 tests, isolated target due Smart App Control), strict Clippy, rustfmt; Unix-specific tests require final macOS CI |
+| Scoped security-review findings | PASS (scoped) | Windows local checks + current-candidate Windows/macOS CI |
+| Brain identity exclusive first-create and staging cleanup | PASS | `cargo test -p cryptexd --locked` (93 tests), `cargo test -p cryptex-core --locked` (28 tests, isolated target due Smart App Control), strict Clippy, rustfmt; Unix-specific tests passed in macOS CI 37542107413 |
 | Human review | **OPEN** | Not recorded as complete in repo |
 
 ### Remaining action (blocks M1 complete)
 
-**Fresh final CI for the updated candidate and owner/human review of M1 must be completed and recorded** (milestone completion gates). Until both are documented in repository evidence, do **not** declare M1 complete, do **not** merge `m1/brain-device-identity` as an M1 completion merge, and do **not** start M2.
+**Owner/human review of M1 must be completed and recorded** (milestone completion gate). CI is green on candidate `bcc2673`; until the owner review is documented in repository evidence, do **not** declare M1 complete, do **not** merge `m1/brain-device-identity` as an M1 completion merge, and do **not** start M2.
