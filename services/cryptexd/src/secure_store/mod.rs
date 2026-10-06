@@ -9,11 +9,17 @@ mod naming;
 #[cfg(windows)]
 mod windows;
 
+#[cfg(target_os = "macos")]
+mod macos;
+
 pub use fake::FakeSecureStore;
 pub use naming::{AccountLabel, SecureStoreEnvironment, ServiceLabel};
 
 #[cfg(windows)]
 pub use windows::WindowsCredentialStore;
+
+#[cfg(target_os = "macos")]
+pub use macos::MacosKeychainStore;
 
 use std::fmt;
 
@@ -87,6 +93,21 @@ pub fn payload_bytes_recoverable(secret: &[u8], text: &str) -> bool {
     false
 }
 
+/// Apple `errSecItemNotFound`.
+pub const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+
+/// Map a Keychain OSStatus: only item-not-found becomes [`SecureStoreError::Missing`].
+pub fn classify_keychain_status(op: &'static str, status: i32) -> SecureStoreError {
+    if status == ERR_SEC_ITEM_NOT_FOUND {
+        SecureStoreError::Missing
+    } else {
+        SecureStoreError::Platform {
+            op,
+            code: i64::from(status),
+        }
+    }
+}
+
 pub(crate) fn validate_name_pair(service: &str, account: &str) -> SecureStoreResult<()> {
     if service.is_empty() {
         return Err(SecureStoreError::InvalidName("empty_service".into()));
@@ -127,6 +148,26 @@ mod tests {
                 "Debug leaked for {debug}"
             );
         }
+    }
+
+    #[test]
+    fn item_not_found_maps_to_missing() {
+        assert_eq!(
+            classify_keychain_status("generic_password", ERR_SEC_ITEM_NOT_FOUND),
+            SecureStoreError::Missing
+        );
+    }
+
+    #[test]
+    fn auth_failed_stays_platform() {
+        // errSecAuthFailed
+        assert_eq!(
+            classify_keychain_status("generic_password", -25293),
+            SecureStoreError::Platform {
+                op: "generic_password",
+                code: -25293
+            }
+        );
     }
 
     #[test]
