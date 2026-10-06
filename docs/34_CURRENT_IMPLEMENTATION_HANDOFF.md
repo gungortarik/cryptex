@@ -22,37 +22,32 @@
 
 **Current status (2026-10-06):** M0 Foundation is COMPLETE and integrated at
 `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` on `origin/m0/foundation` (PR #5).
-M1 — Brain + Device Identity is in progress on `m1/brain-device-identity`.
-Cursor is the write-capable implementer for all of M1. **ADR-0015 is ACCEPTED**;
-identity/sequence slices may proceed under that decision. **ADR-0014 is ACCEPTED**
-(2026-10-06) selecting **P1** (direct platform APIs) with product pins
-`windows-sys = 0.61.2`, `widestring = 1.2.1`, `security-framework = 3.7.0`. K2 and
-high-level `keyring` are unselected. SecureStore product work proceeds under
-cryptexd. Gate C **Windows** product verification is VERIFIED (2026-10-06; see
-evidence/m1/gate-c-product-secure-store-windows-20261006.md). Gate C **macOS** product physical
-verification is VERIFIED (2026-10-06; host-run at SHA
-`610733f8f911c67f341694c4333e34070b706d50`; see
-evidence/m1/gate-c-product-secure-store-macos-20261006.md). Neither host’s Gate C result may be
-inferred from the other. Keychain prompt was not observed on that short Mac run (not proof prompts
-never occur). GitHub Actions stay deferred until the final appropriate M1 gate.
+M1 - Brain + Device Identity is on `m1/brain-device-identity` at tip
+`f40484dd6e4e8c9eee110eea68735cedf71410bb` (f40484d). Cursor is the write-capable implementer for all of M1.
+**ADR-0015 is ACCEPTED**; **ADR-0014 is ACCEPTED** (2026-10-06) selecting **P1**
+(direct platform APIs) with product pins `windows-sys = 0.61.2`,
+`widestring = 1.2.1`, `security-framework = 3.7.0`. K2 and high-level `keyring`
+are unselected. Gate C **Windows** and **macOS** product SecureStore are VERIFIED
+(distinct host evidence under `evidence/m1/`). Final required CI **PASS** on tip
+`f40484d`: run [37533023641](https://github.com/gungortarik/cryptex/actions/runs/37533023641) (Windows readiness, macOS readiness,
+Windows cross-account IPC ACL; unsigned Windows package job skipped by design).
+M1 is **not** complete: **human review remains open** (see audit DoD checklist).
 
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). ADR-0014 ACCEPTED (2026-10-06, P1).
 Identity/sequence, SecureStore (trait/fake + Windows/macOS P1 adapters), synthetic
 Brain daemon wiring, pairing-record persistence, and Recovery Kit public metadata
-persistence are in place under cryptexd. Gate C Windows and macOS product SecureStore are both
-VERIFIED (2026-10-06; distinct host evidence files under evidence/m1/). Gate A spike remains
-historical comparison only. Security review + DoD / Actions remain deferred to the final
-appropriate M1 gate.
+persistence are in place under cryptexd. Gate C Windows and macOS product SecureStore
+are both VERIFIED (2026-10-06; distinct host evidence files under `evidence/m1/`).
+Gate A spike remains historical comparison only. Scoped security-review findings are
+resolved; final CI is PASS (run 37533023641). Human review + full M1 completion gate remain open.
 Production pairing/revocation remains M8; Recovery Kit container remains M11.
 No custom cryptography.
 
 **M1 audit (2026-10-06):** Sequence allocation and install identity are daemon-owned
-(`evidence/m1/m1-scope-security-audit-20261006.md`). Gate C Windows+macOS SecureStore remain
-VERIFIED via separate host evidence. Scoped security-review findings are resolved in code
-(compensating cleanup typing; install-identity exclusive no-replace create; Unix parent-dir
-sync after hard_link with reported cleanup failures - see audit closeout). Final required
-GitHub Actions / CI is **PENDING** (operator will run once against the final code SHA).
-M1 is **not** complete until that CI result, human review, and DoD are closed.
+(`evidence/m1/m1-scope-security-audit-20261006.md`). Final CI PASS on `f40484dd6e4e8c9eee110eea68735cedf71410bb`:
+[37533023641](https://github.com/gungortarik/cryptex/actions/runs/37533023641). DoD evidence checklist and gate table are in that audit.
+M1 is **not** complete until **human review** is recorded complete. Do not merge as
+M1 completion or start M2 while that gate is open.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
@@ -71,7 +66,7 @@ present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows and macOS product SecureStore both VERIFIED 2026-10-06 (separate host evidence). No GitHub Actions until the final M1 gate.
+- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows and macOS product SecureStore both VERIFIED 2026-10-06 (separate host evidence). Final M1 CI PASS: run 37533023641 @ `f40484d`; human review still required before M1 complete.
 
 ## P0-1 status
 

@@ -2,8 +2,8 @@
 
 **Branch:** `m1/brain-device-identity`
 **Authority:** `docs/00_MASTER_SPEC.md`, accepted ADR-0015, M1 completion gate / DoD
-**Actions:** not run (deferred)
-**M1 complete:** **not declared**
+**Actions:** final CI **PASS** - run [37533023641](https://github.com/gungortarik/cryptex/actions/runs/37533023641) @ `f40484dd6e4e8c9eee110eea68735cedf71410bb`
+**M1 complete:** **not declared** (human review open)
 
 ## Findings and resolutions
 
@@ -36,14 +36,14 @@ ADR-0014 / ADR index / handoff point at these files. Neither host’s Gate C res
 
 ## Remaining M1 DoD / CI gaps (block completion)
 
-Per M1 completion gate and `docs/21_DEFINITION_OF_DONE.md`, still open:
+Updated after final CI PASS (run 37533023641). Per M1 completion gate and `docs/21_DEFINITION_OF_DONE.md`:
 
-1. **Security review** for identity/trust handling — not complete.
-2. **Required CI / GitHub Actions** — intentionally deferred; not green as a gate.
-3. **Human review** of M1 — not complete.
-4. **DoD checklist** as a whole — not claimed satisfied.
+1. **Security review** for identity/trust handling - scoped findings **RESOLVED** (see findings + closeout below).
+2. **Required CI / GitHub Actions** - **PASS** on tip `f40484d` (run 37533023641); unsigned Windows package job skipped by design.
+3. **Human review** of M1 - **still open** (not recorded complete in repository evidence).
+4. **DoD checklist** as a whole - **OPEN** until human review is recorded (concise checklist in closeout).
 
-Do **not** start M2 or declare M1 complete until the above are closed.
+Do **not** start M2 or declare M1 complete until human review is closed.
 
 ## Local checks for this audit fix (Windows)
 
@@ -93,8 +93,8 @@ Do **not** start M2 or declare M1 complete until the above are closed.
 - `cargo test -p cryptexd --lib` PASS (84)
 - `cargo clippy -p cryptexd --all-targets -- -D warnings` PASS
 - `git diff --check` PASS
-- GitHub Actions: not run (deferred)
-- M1 complete: **not declared**
+- GitHub Actions: see final CI PASS below (run 37533023641)
+- M1 complete: **not declared** (human review still open)
 
 ### Finding: install-identity first-create race / overwrite (RESOLVED)
 
@@ -119,13 +119,49 @@ Do **not** start M2 or declare M1 complete until the above are closed.
 
 Scoped security-review findings above are resolved in code on `m1/brain-device-identity`.
 
-| Gate | Status |
-|---|---|
-| Scoped security-review code findings | Resolved (see findings above) |
-| Gate C Windows + macOS SecureStore | VERIFIED (separate host evidence) |
-| Local Windows checks (install + identity + lib + Clippy) | PASS at tip after this follow-up |
-| Final GitHub Actions / required CI | **PENDING** - operator will run once against the final code SHA |
-| Human review / DoD checklist | Open until CI result is recorded |
-| M1 complete | **not declared** |
+### Final required CI (recorded)
 
-Do not start M2 until CI pending is closed and DoD/human review are satisfied.
+| Field | Value |
+|---|---|
+| Result | **PASS** (workflow conclusion `success`) |
+| Run | [37533023641](https://github.com/gungortarik/cryptex/actions/runs/37533023641) |
+| Workflow | CI (`workflow_dispatch`) |
+| Head SHA | `f40484dd6e4e8c9eee110eea68735cedf71410bb` |
+| Jobs PASS | Readiness (windows-latest); Readiness (macos-latest); IPC cross-account ACL (Windows) |
+| Jobs skipped by design | Windows Desktop package (unsigned, manual only) |
+
+This records the final-Actions gate as PASS for M1. Historical Gate C host evidence files may still say Actions were not run for those host procedures; that is host-run context, not this final CI result.
+
+### Concise DoD evidence checklist (M1)
+
+Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_IDENTITY.md` completion gate.
+
+| DoD / completion item | Status | Evidence |
+|---|---|---|
+| M1 scope implemented (Brain/install/device identity, SecureStore, sequence foundation, pairing records, RK public metadata) | PASS | Milestone scope in cryptexd/core; handoff M1 status |
+| Unit / failure-path tests for identity, SecureStore, sequence, install create-once | PASS | `cargo test -p cryptexd --lib` (local); readiness jobs in run 37533023641 |
+| Format + lint | PASS | Readiness jobs (fmt + Clippy) on Windows and macOS in run 37533023641 |
+| Cross-platform verification (macOS + Windows first-class) | PASS | Gate C Windows + macOS SecureStore VERIFIED (separate host evidence); readiness both OS in run 37533023641; Windows IPC ACL job PASS |
+| Secrets in OS secure storage; no secret bytes in public files/logs (scoped) | PASS | SecureStore adapters + redaction/payload tests; Gate C matrices |
+| Security review for identity/trust handling (scoped findings) | PASS | Findings in this audit marked RESOLVED (cleanup errors, install exclusivity, Unix parent sync) |
+| Relevant tests/CI green | PASS | Run 37533023641 on `f40484d` |
+| Human review complete | **OPEN** | No repository artifact records owner/human M1 review as complete |
+| Definition of Done / M1 completion gate fully satisfied | **OPEN** | Blocked on human review |
+| M1 complete / merge / start M2 | **not declared** | Remaining action below |
+
+### Platform / security / acceptance gates (from repository evidence)
+
+| Gate | Status | Evidence |
+|---|---|---|
+| ADR-0015 Brain/device identity foundations | ACCEPTED | ADR + ADR index |
+| ADR-0014 SecureStore P1 | ACCEPTED | ADR + pins |
+| Gate C Windows product SecureStore | VERIFIED | `evidence/m1/gate-c-product-secure-store-windows-20261006.md` |
+| Gate C macOS product SecureStore | VERIFIED | `evidence/m1/gate-c-product-secure-store-macos-20261006.md` |
+| Final CI readiness Win+Mac + Win IPC ACL | PASS | [37533023641](https://github.com/gungortarik/cryptex/actions/runs/37533023641) @ `f40484dd6e4e8c9eee110eea68735cedf71410bb` |
+| Unsigned Windows package job | Skipped by design | Same run (not required for this M1 CI closeout) |
+| Scoped security-review findings | RESOLVED | This audit |
+| Human review | **OPEN** | Not recorded as complete in repo |
+
+### Remaining action (blocks M1 complete)
+
+**Owner/human review of M1 must be completed and recorded** (milestone completion gate: "human review is complete"). Until that is documented in repository evidence, do **not** declare M1 complete, do **not** merge `m1/brain-device-identity` as an M1 completion merge, and do **not** start M2.
