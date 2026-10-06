@@ -93,13 +93,13 @@ These versions were exercised in the product-separated spike at tested SHA `4f4b
 
 ## 6. Explicit non-claims
 
-- Gate A ≠ Gate C: both-OS **product** physical verification remains an M1 completion requirement and is **not** claimed by this acceptance.
-- Absence of a Keychain prompt in one Mac spike run does not prove prompts never occur under other codesign/ACL/headless conditions.
+- Gate A ≠ Gate C: both-OS **product** physical verification is an M1 completion requirement and is **not** claimed by this acceptance alone. Separate Gate C evidence later recorded Windows and macOS product adapters VERIFIED (2026-10-06).
+- Absence of a Keychain prompt in one Mac spike or product run does not prove prompts never occur under other codesign/ACL/headless conditions.
 - K2 and high-level `keyring` must not be introduced as product dependencies.
 
 ## 7. Acceptance
 
-The owner accepted ADR-0014 and this addendum on **2026-10-06**, selecting **P1** with the product pins in §4. Product SecureStore work may proceed under `cryptexd`. Gate C both-OS product physical verification remains a separate M1 completion requirement.
+The owner accepted ADR-0014 and this addendum on **2026-10-06**, selecting **P1** with the product pins in §4. Product SecureStore work may proceed under `cryptexd`. Gate C both-OS product physical verification is a separate M1 completion requirement and is recorded VERIFIED for the Windows and macOS product adapters (2026-10-06; see parent ADR status table and `evidence/m1/gate-c-product-secure-store-*-20261006.md`).
 
 ## 8. References
 

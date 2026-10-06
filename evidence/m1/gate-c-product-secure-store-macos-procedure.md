@@ -1,8 +1,8 @@
-# Gate C procedure — macOS product SecureStore (NOT VERIFIED)
+# Gate C procedure — macOS product SecureStore
 
-**Status:** WAITING — incomplete. Owner screenshot evidence of filtered product lib tests is recorded in `evidence/m1/gate-c-product-secure-store-macos-20261006.md`, but tested Git SHA, macOS version/build, architecture, Keychain prompt observation, and cleanup for that run are **NOT RECORDED**. Do **not** mark macOS Gate C VERIFIED until those fields are recorded and the full matrix closes against a known SHA.
+**Status:** VERIFIED — see `evidence/m1/gate-c-product-secure-store-macos-20261006.md` (product `MacosKeychainStore` on macOS host at SHA `610733f8f911c67f341694c4333e34070b706d50`). Windows Gate C remains separate evidence.
 
-**Coordination (2026-10-06):** Windows Gate C is recorded VERIFIED in `evidence/m1/gate-c-product-secure-store-windows-20261006.md`. That result must **not** be inferred as macOS verification. Resume this procedure on a physical Mac host at the current `m1/brain-device-identity` tip (or a later SHA that still contains `MacosKeychainStore`). GitHub Actions remain deferred.
+**Coordination (2026-10-06):** Windows Gate C is recorded VERIFIED in `evidence/m1/gate-c-product-secure-store-windows-20261006.md`. macOS Gate C is recorded VERIFIED in `evidence/m1/gate-c-product-secure-store-macos-20261006.md`. Neither host’s result may be inferred from the other. GitHub Actions remain deferred.
 
 **Authority:** ADR-0014 section 8.2 (gate C); ADR-0014 decision addendum (P1 pins). Gate A spike evidence is **not** a substitute.
 
@@ -48,19 +48,12 @@ Add a focused never-written `delete`/`get` Missing check under `secure_store::ma
 - Record whether a Keychain access prompt appeared during **this** Gate C run.
 - Absence of a prompt is **not** proof prompts never occur under other codesign/ACL/headless conditions (same caveat as Gate A).
 
-## Evidence artifact (fill only after physical run)
+## Evidence artifact
 
-Create `evidence/m1/gate-c-product-secure-store-macos-YYYYMMDD.md` with:
-
-- Host macOS version, build, arch, date/time (local)
-- Git SHA tested
-- Command lines + exit codes
-- Matrix table with PASS/FAIL per row (no silent WAITING→PASS)
-- Keychain prompt observed: yes/no (run-specific)
-- Explicit statement: **Gate C macOS product verification: VERIFIED** only if all required rows PASS
+Recorded: `evidence/m1/gate-c-product-secure-store-macos-20261006.md` with host version/build/arch, tested SHA, commands, matrix, Keychain prompt observation, cleanup, and **Gate C macOS product verification: VERIFIED** for this adapter/run.
 
 ## Explicit non-claims
 
-- This procedure file does **not** verify macOS Gate C.
-- Gate A macOS spike does **not** satisfy Gate C.
-- Windows Gate C VERIFIED does **not** imply macOS Gate C.
+- Gate A macOS spike does **not** satisfy Gate C by itself.
+- Windows Gate C VERIFIED does **not** imply macOS Gate C (and the reverse is also true).
+- No Keychain prompt in one short Mac product run does not prove prompts never occur.

@@ -1,6 +1,6 @@
 # Gate C procedure — Windows product SecureStore
 
-**Status:** VERIFIED — see `evidence/m1/gate-c-product-secure-store-windows-20261006.md` (product `WindowsCredentialStore` on Windows host). macOS Gate C remains separate and WAITING.
+**Status:** VERIFIED — see `evidence/m1/gate-c-product-secure-store-windows-20261006.md` (product `WindowsCredentialStore` on Windows host). macOS Gate C is separate and VERIFIED in `evidence/m1/gate-c-product-secure-store-macos-20261006.md`.
 
 **Authority:** ADR-0014 section 8.2 (gate C); ADR-0014 decision addendum (P1 pins). Gate A spike evidence is **not** a substitute.
 

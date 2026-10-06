@@ -2,12 +2,18 @@
 
 **Status: VERIFIED** (Windows product adapter only)
 
-**Date/time (local):** 2026-10-06T10:22-04:00 (procedure run); never-written delete check completed same session  
-**Host:** Microsoft Windows NT 10.0.26300.0, AMD64  
-**Branch:** `m1/brain-device-identity`  
-**Authority:** ADR-0014 §8.2 gate C; procedure `evidence/m1/gate-c-product-secure-store-windows-procedure.md`  
-**Adapter:** `cryptexd::WindowsCredentialStore` (P1 Cred*)  
-**Product pins:** `windows-sys = 0.61.2`, `widestring = 1.2.1`  
+**Date/time (local):** 2026-10-06T10:22-04:00 (procedure run); never-written delete check completed same session
+
+**Host:** Microsoft Windows NT 10.0.26300.0, AMD64
+
+**Branch:** `m1/brain-device-identity`
+
+**Authority:** ADR-0014 §8.2 gate C; procedure `evidence/m1/gate-c-product-secure-store-windows-procedure.md`
+
+**Adapter:** `cryptexd::WindowsCredentialStore` (P1 Cred*)
+
+**Product pins:** `windows-sys = 0.61.2`, `widestring = 1.2.1`
+
 **GitHub Actions:** not run (deferred)
 
 ## SHAs
@@ -78,6 +84,6 @@ exit 0
 
 ## Explicit non-claims
 
-- macOS Gate C is **not** verified by this evidence.
+- macOS Gate C is **not** verified by this Windows evidence (see separate `evidence/m1/gate-c-product-secure-store-macos-20261006.md`).
 - Gate A Windows spike is not this verification.
 - Unrelated Cargo binaries blocked by Smart App Control are not treated as test failures or passes for Gate C.

@@ -14,7 +14,7 @@
 
 This record proposes how Cryptex will integrate **OS secure storage** for device private material — the choice left unresolved by `docs/08` §21. It does not select event-signature/hash libraries (M2), Recovery Kit containers (M11), or pairing/revocation product UX (M8).
 
-**Accepted.** Cryptex selects **P1 (direct platform APIs)** per `docs/adr/ADR-0014-os-secure-store-decision-addendum.md` and Gate A evidence. Product SecureStore implementation may proceed under `cryptexd` authority. K2 and high-level `keyring` remain unselected. Gate C both-OS product verification remains open and distinct from this acceptance.
+**Accepted.** Cryptex selects **P1 (direct platform APIs)** per `docs/adr/ADR-0014-os-secure-store-decision-addendum.md` and Gate A evidence. Product SecureStore implementation may proceed under `cryptexd` authority. K2 and high-level `keyring` remain unselected. Gate C both-OS product verification is recorded VERIFIED 2026-10-06 (separate Windows and macOS evidence) and remains distinct from this ADR acceptance.
 
 ## 1. Context
 
@@ -40,7 +40,7 @@ These gates are intentionally separate so acceptance cannot deadlock on unfinish
 |---|---|---|
 | **A — PROPOSED + limited evaluation spike** | Owner may authorize a **product-separated** spike (tools/evidence only) to exercise candidate OS APIs and candidate Rust bindings. Spike code must not become `cryptexd` product secure-store, must not pin workspace dependencies for production, and must not write secrets into the repo. | Spike may gather **evaluation evidence** on one or both OSes. Incomplete Mac cells stay **WAITING**, not “pass”. |
 | **B — ADR ACCEPTED** | Requires owner acceptance of the **decision** after spike comparison evidence is recorded (which candidates were tried, limitations, recommendation). An accepted revision or addendum then names the selected approach and exact pins. **Product secure-store implementation may start only after B.** | ADR acceptance requires enough spike evidence to choose among candidates **without treating unverified platforms as verified**. Both-OS **product** verification is **not** an ADR-acceptance prerequisite if the decision text and spike notes still mark unfinished platforms WAITING. |
-| **C — M1 completion gate** | M1 secure-store scope is done only when the **accepted** approach is implemented behind daemon authority and the required failure/security tests pass on **both** first-class platforms per DoD / M1 contract. | **Windows and macOS physical verification of the accepted product integration are M1 completion requirements**, not a substitute for gate B. Gate A spike evidence is complete on both OSes; **product** physical verification remains open until after acceptance. |
+| **C — M1 completion gate** | M1 secure-store scope is done only when the **accepted** approach is implemented behind daemon authority and the required failure/security tests pass on **both** first-class platforms per DoD / M1 contract. | **Windows and macOS physical verification of the accepted product integration are M1 completion requirements**, not a substitute for gate B. Gate A spike evidence is complete on both OSes; **product** physical Gate C is recorded VERIFIED on Windows and macOS (2026-10-06). |
 
 Summary:
 
@@ -107,9 +107,9 @@ Equivalent guarantee: device private material lives in OS-protected secret stora
 | Candidate comparison table (K1/K2/P1) | Documentary in this ADR | Feeds A/B |
 | Limited evaluation spike (Windows) | **Complete for Gate A** — store/read/delete/missing PASS for K2+P1; K2 error-redaction **FAIL** (BadEncoding Debug); P1 error-redaction PASS; `evidence/m1/secure-store-spike-windows-20261005.md` | A |
 | Limited evaluation spike (macOS) | **Complete for Gate A** — same matrix pattern at SHA `4f4ba2784cbb3d305a8a462aa9b7286b9a8e770d` on macOS 27.0.1 (26A434) arm64; Keychain prompt not observed during that run; `evidence/m1/secure-store-spike-macos-20261006.md` | A |
-| Selected approach | **P1 accepted** — `docs/adr/ADR-0014-os-secure-store-decision-addendum.md`. Product pins recorded below. K2 unselected. Gate C product verification still open. | B done; C open |
-| Windows physical product verification | **VERIFIED** — evidence/m1/gate-c-product-secure-store-windows-20261006.md (product WindowsCredentialStore; macOS still open) | C (M1 completion) |
-| macOS physical product verification | **Not VERIFIED** (spike ≠ product integration; Gate A only) | C (M1 completion) |
+| Selected approach | **P1 accepted** — `docs/adr/ADR-0014-os-secure-store-decision-addendum.md`. Product pins recorded below. K2 unselected. Gate C product verification recorded on both OSes. | B done; C done (product adapters) |
+| Windows physical product verification | **VERIFIED** — evidence/m1/gate-c-product-secure-store-windows-20261006.md (product WindowsCredentialStore) | C (M1 completion) |
+| macOS physical product verification | **VERIFIED** — evidence/m1/gate-c-product-secure-store-macos-20261006.md (product MacosKeychainStore at SHA `610733f8f911c67f341694c4333e34070b706d50`) | C (M1 completion) |
 
 Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/read/delete/missing-item on both hosts but fails overall error-redaction because `keyring_core::Error::BadEncoding` Debug recovers secret bytes; missing-item (`NoEntry`) surfaces are safe. P1 typed errors pass redaction checks on both hosts. That is Gate A evidence only. It does **not** accept this ADR, does **not** verify product `cryptexd` integration, and does **not** claim Gate C product verification.
 
@@ -134,7 +134,7 @@ Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/
 
 1. ADR-0014 accepted (gate B) and product adapters implemented under `cryptexd` authority.
 2. Windows physical matrix: store / read / delete / missing-item / redacted errors.
-3. macOS physical **product** matrix: same as Windows (Gate A spike complete; product Gate C still open).
+3. macOS physical **product** matrix: same as Windows (Gate A spike complete; product Gate C VERIFIED 2026-10-06).
 4. Tests show secret bytes absent from log fixtures.
 
 ## 9. Acceptance status
@@ -148,8 +148,8 @@ Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/
 | Product pins (evidence-backed) | Windows: `windows-sys = 0.61.2`, `widestring = 1.2.1`; macOS: `security-framework = 3.7.0` |
 | Limited evaluation spike | **Complete** (Gate A Windows + macOS); product-separated spike retained for history |
 | Hardware-backed keys required | **No** |
-| Keychain prompts | Run-specific caveat preserved: macOS Gate A prompt was **not observed during that run** — not proof prompts never occur |
-| Both-OS physical product verification | **Partial** — Windows Gate C VERIFIED 2026-10-06; macOS Gate C WAITING (partial screenshot command evidence 2026-10-06; SHA/host/prompt/cleanup NOT RECORDED; not claimed VERIFIED) |
+| Keychain prompts | Run-specific caveat preserved: macOS Gate A and Gate C product prompts were **not observed during those short runs** — not proof prompts never occur |
+| Both-OS physical product verification | **Complete for Gate C product adapters** — Windows VERIFIED 2026-10-06; macOS VERIFIED 2026-10-06 at SHA `610733f8f911c67f341694c4333e34070b706d50` |
 
 ## 10. References
 

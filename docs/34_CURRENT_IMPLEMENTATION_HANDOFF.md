@@ -30,22 +30,19 @@ identity/sequence slices may proceed under that decision. **ADR-0014 is ACCEPTED
 high-level `keyring` are unselected. SecureStore product work proceeds under
 cryptexd. Gate C **Windows** product verification is VERIFIED (2026-10-06; see
 evidence/m1/gate-c-product-secure-store-windows-20261006.md). Gate C **macOS** product physical
-verification remains WAITING: owner screenshot evidence of `secure_store::macos` (2 passed) and
-`identity_runtime` (3 passed) is recorded in
-`evidence/m1/gate-c-product-secure-store-macos-20261006.md`, but tested Git SHA, macOS
-version/build, architecture, Keychain prompt, and cleanup are NOT RECORDED — do not infer VERIFIED
-from Windows or from the recording-session HEAD alone. GitHub Actions stay deferred until the
-final appropriate M1 gate.
+verification is VERIFIED (2026-10-06; host-run at SHA
+`610733f8f911c67f341694c4333e34070b706d50`; see
+evidence/m1/gate-c-product-secure-store-macos-20261006.md). Neither host’s Gate C result may be
+inferred from the other. Keychain prompt was not observed on that short Mac run (not proof prompts
+never occur). GitHub Actions stay deferred until the final appropriate M1 gate.
 
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). ADR-0014 ACCEPTED (2026-10-06, P1).
 Identity/sequence, SecureStore (trait/fake + Windows/macOS P1 adapters), synthetic
 Brain daemon wiring, pairing-record persistence, and Recovery Kit public metadata
-persistence are in place under cryptexd. Gate C Windows product SecureStore is VERIFIED
-(2026-10-06). Gate C Mac-host product physical secure-store verification remains WAITING (distinct from
-completed Gate A and from Windows Gate C); partial owner-screenshot command outcomes are in
-evidence/m1/gate-c-product-secure-store-macos-20261006.md — close remaining NOT RECORDED fields per
-evidence/m1/gate-c-product-secure-store-macos-procedure.md.
-Security review + DoD / Actions remain deferred to the final appropriate M1 gate.
+persistence are in place under cryptexd. Gate C Windows and macOS product SecureStore are both
+VERIFIED (2026-10-06; distinct host evidence files under evidence/m1/). Gate A spike remains
+historical comparison only. Security review + DoD / Actions remain deferred to the final
+appropriate M1 gate.
 Production pairing/revocation remains M8; Recovery Kit container remains M11.
 No custom cryptography.
 
@@ -66,7 +63,7 @@ present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows VERIFIED 2026-10-06; Gate C macOS remains WAITING with partial screenshot evidence only (SHA/host/prompt/cleanup NOT RECORDED). No GitHub Actions until the final M1 gate.
+- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows and macOS product SecureStore both VERIFIED 2026-10-06 (separate host evidence). No GitHub Actions until the final M1 gate.
 
 ## P0-1 status
 
