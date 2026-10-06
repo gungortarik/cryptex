@@ -149,7 +149,7 @@ Gate A evaluation is recorded on both first-class platforms. K2 satisfies store/
 | Limited evaluation spike | **Complete** (Gate A Windows + macOS); product-separated spike retained for history |
 | Hardware-backed keys required | **No** |
 | Keychain prompts | Run-specific caveat preserved: macOS Gate A prompt was **not observed during that run** — not proof prompts never occur |
-| Both-OS physical product verification | **Partial** — Windows Gate C VERIFIED 2026-10-06; macOS Gate C still open / not claimed |
+| Both-OS physical product verification | **Partial** — Windows Gate C VERIFIED 2026-10-06; macOS Gate C WAITING (partial screenshot command evidence 2026-10-06; SHA/host/prompt/cleanup NOT RECORDED; not claimed VERIFIED) |
 
 ## 10. References
 

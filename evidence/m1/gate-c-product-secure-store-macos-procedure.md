@@ -1,6 +1,6 @@
 # Gate C procedure — macOS product SecureStore (NOT VERIFIED)
 
-**Status:** WAITING — procedure only. Do **not** mark macOS Gate C VERIFIED until this matrix has been physically exercised against the **product** `cryptexd` adapter on a macOS host.
+**Status:** WAITING — incomplete. Owner screenshot evidence of filtered product lib tests is recorded in `evidence/m1/gate-c-product-secure-store-macos-20261006.md`, but tested Git SHA, macOS version/build, architecture, Keychain prompt observation, and cleanup for that run are **NOT RECORDED**. Do **not** mark macOS Gate C VERIFIED until those fields are recorded and the full matrix closes against a known SHA.
 
 **Coordination (2026-10-06):** Windows Gate C is recorded VERIFIED in `evidence/m1/gate-c-product-secure-store-windows-20261006.md`. That result must **not** be inferred as macOS verification. Resume this procedure on a physical Mac host at the current `m1/brain-device-identity` tip (or a later SHA that still contains `MacosKeychainStore`). GitHub Actions remain deferred.
 
