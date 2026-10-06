@@ -173,10 +173,12 @@ mod tests {
             lower.as_filename_stem(),
             "case-distinct DeviceIds must not share a filename stem"
         );
-        assert!(upper
-            .as_filename_stem()
-            .chars()
-            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(
+            upper
+                .as_filename_stem()
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        );
         assert_eq!(upper.as_filename_stem(), encode_filename_stem("Device-A"));
         assert_eq!(lower.as_filename_stem(), encode_filename_stem("device-a"));
     }
