@@ -222,7 +222,7 @@ fn run_windows() -> Result<MatrixReport, String> {
         note: if leaked {
             "P1 error Display/Debug contained synthetic secret".to_string()
         } else {
-            "typed P1 errors omit secret payloads".to_string()
+            "typed P1 errors omit secret payloads (UTF-8 and Debug/hex forms checked)".to_string()
         },
     });
 
@@ -243,26 +243,37 @@ fn report_windows(cells: Vec<MatrixCell>) -> MatrixReport {
 #[cfg(target_os = "macos")]
 mod mac {
     use super::P1Error;
+    use crate::classify::{KeychainClassified, classify_keychain_status};
     use security_framework::passwords::{
         delete_generic_password, find_generic_password, set_generic_password,
     };
 
+    fn map_keychain_err(op: &'static str, err: security_framework::Error) -> P1Error {
+        match classify_keychain_status(op, err.code()) {
+            KeychainClassified::Missing => P1Error::Missing,
+            KeychainClassified::Platform { op, status } => {
+                // Sanitized numeric status only — never attach secret-bearing strings.
+                P1Error::Platform(format!("{op}_status={status}"))
+            }
+        }
+    }
+
     pub fn store(service: &str, account: &str, secret: &[u8]) -> Result<(), P1Error> {
         set_generic_password(service, account, secret)
-            .map_err(|_| P1Error::Platform("set_generic_password_failed".into()))
+            .map_err(|e| map_keychain_err("set_generic_password", e))
     }
 
     pub fn read(service: &str, account: &str) -> Result<Vec<u8>, P1Error> {
         match find_generic_password(None, service, account) {
             Ok((data, _)) => Ok(data.to_vec()),
-            Err(_) => Err(P1Error::Missing),
+            Err(e) => Err(map_keychain_err("find_generic_password", e)),
         }
     }
 
     pub fn delete(service: &str, account: &str) -> Result<(), P1Error> {
         match delete_generic_password(service, account) {
             Ok(()) => Ok(()),
-            Err(_) => Err(P1Error::Missing),
+            Err(e) => Err(map_keychain_err("delete_generic_password", e)),
         }
     }
 }
@@ -359,7 +370,7 @@ fn run_macos() -> Result<MatrixReport, String> {
         note: if leaked {
             "P1 error Display/Debug contained synthetic secret".to_string()
         } else {
-            "typed P1 errors omit secret payloads".to_string()
+            "typed P1 errors omit secret payloads (UTF-8 and Debug/hex forms checked)".to_string()
         },
     });
 

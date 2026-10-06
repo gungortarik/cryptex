@@ -3,9 +3,12 @@
 //! Prints only PASS/FAIL/WAITING and structural diagnostics.
 //! Never prints secret payload bytes.
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod classify;
 mod k2;
 mod matrix;
 mod p1;
+mod redaction;
 
 use matrix::{CandidateId, CellStatus, MatrixCell, MatrixReport, Platform};
 

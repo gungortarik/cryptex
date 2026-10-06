@@ -51,6 +51,11 @@ Cleanup: the binary deletes its spike items on success and on failure paths it c
 
 Record Mac results under `evidence/m1/` and keep unfinished cells labeled **WAITING**.
 
+## Measurement rules (Gate A accuracy)
+
+- P1 macOS maps **only** Keychain errSecItemNotFound (-25300) to missing-item; other statuses (auth failed, interaction not allowed, missing entitlement, etc.) stay sanitized platform errors so missing-item cannot PASS on access-denied.
+- K2 error-redaction distinguishes safe missing-item (NoEntry) from payload-bearing upstream variants (BadEncoding). Debug decimal/hex byte recovery counts as exposure; overall redaction PASS requires both surfaces safe.
+
 ## Versions under evaluation
 
 Pinned only inside this spike package:

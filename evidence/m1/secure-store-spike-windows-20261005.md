@@ -1,6 +1,7 @@
 # ADR-0014 secure-store evaluation spike — Windows results
 
 **Date:** 2026-10-05  
+**Revised:** 2026-10-05 (measurement correction: P1 Keychain classification + K2 byte-aware redaction)  
 **Gate:** A (product-separated evaluation spike)  
 **Branch:** `m1/brain-device-identity`  
 **Host:** Windows (local)  
@@ -25,13 +26,18 @@
 | P1 Windows | `windows-sys = 0.61.2` CredWriteW / CredReadW / CredDeleteW |
 | P1 macOS | `security-framework = 3.7.0` generic-password helpers — Mac only; not executed here |
 
+## Measurement corrections (this revision)
+
+1. **P1 macOS classification:** only Keychain `errSecItemNotFound` (-25300) maps to missing-item; auth-failed / interaction-not-allowed / missing-entitlement and other statuses remain sanitized platform errors. Unit tests cover this classification on every host.
+2. **K2 error-redaction:** detects recoverable secret bytes in UTF-8 text **and** Debug/hex forms (e.g. `BadEncoding([..decimal bytes..])`). Matrix notes separate `missing_item_errors` from `payload_bearing_upstream`. Overall redaction PASS requires both safe.
+
 ## Matrix results
 
-Legend: **PASS** = physically verified on this host · **WAITING** = not run on required host · never treat WAITING as pass.
+Legend: **PASS** / **FAIL** = physically measured on this host · **WAITING** = not run on required host · never treat WAITING as pass.
 
 | Candidate | Platform | store | read | delete | missing-item | error-redaction |
 |---|---|---|---|---|---|---|
-| K2 | Windows | PASS | PASS | PASS | PASS | PASS |
+| K2 | Windows | PASS | PASS | PASS | PASS | **FAIL** |
 | P1 | Windows | PASS | PASS | PASS | PASS | PASS |
 | K2 | macOS | WAITING | WAITING | WAITING | WAITING | WAITING |
 | P1 | macOS | WAITING | WAITING | WAITING | WAITING | WAITING |
@@ -42,12 +48,12 @@ Legend: **PASS** = physically verified on this host · **WAITING** = not run on 
 - API used: `set_secret` / `get_secret` / `delete_credential`; missing item returns `keyring_core::Error::NoEntry`.
 - Default Windows target naming: `{user}.{service}` (provider default delimiter `.`).
 - Provider docs warn same-entry multi-thread access is not reliably ordered.
-- Error redaction: `NoEntry` Display/Debug did not embed the synthetic secret text. `Error::BadEncoding(Vec<u8>)` exists as a typed carrier for password bytes; product wrappers must never log raw `BadEncoding` / `BadDataFormat` payloads even if Display appears safe in this probe.
+- **Error redaction (corrected):** `NoEntry` Display/Debug are SAFE (no recoverable secret bytes). `Error::BadEncoding(Vec<u8>)` Display is SAFE, but **Debug exposes the full secret as a decimal byte list** → `payload_bearing_upstream=EXPOSED` → overall error-redaction **FAIL**. Product wrappers must never log/`Debug` raw `BadEncoding` / `BadDataFormat` values.
 
 ### Windows P1 observations
 
-- Direct Cred\* generic credentials with target `{service}/{account}` and `CRED_PERSIST_LOCAL_MACHINE`.
-- Missing item maps to `ERROR_NOT_FOUND` → typed `secure_store_missing_item` (no secret in Display/Debug).
+- Direct Cred* generic credentials with target `{service}/{account}` and `CRED_PERSIST_LOCAL_MACHINE`.
+- Missing item maps to `ERROR_NOT_FOUND` → typed `secure_store_missing_item` (no secret in Display/Debug; UTF-8 and Debug/hex forms checked).
 - Full control of error surface and naming; more adapter code to maintain per OS.
 
 ## Cleanup
@@ -58,30 +64,32 @@ Legend: **PASS** = physically verified on this host · **WAITING** = not run on 
 
 ## Mac host instructions (precise)
 
-Do **not** mark Mac verified from this Windows evidence. On a Mac host:
+Do **not** mark Mac verified from this Windows evidence. On a Mac host **after this measurement-correction commit is present**:
 
 ```bash
 cd tools/m1-secure-store-spike
+cargo test
 cargo run --release
 ```
 
-Expect the same five cells for K2 and P1. Record a dated `evidence/m1/` addendum. Keep any unfinished cell **WAITING**. Keychain may prompt depending on codesign/ACL; note prompt behavior without writing secret bytes.
+Expect the same five cells for K2 and P1. Record a dated `evidence/m1/` addendum. Keep any unfinished cell **WAITING**. Keychain may prompt depending on codesign/ACL; note prompt behavior without writing secret bytes. Confirm P1 missing-item PASS only occurs with `errSecItemNotFound`, not access-denied.
 
 Manual leftover cleanup if needed: Keychain Access → search `Cryptex-Dev-M1-Spike` / `synthetic-` and delete spike items only.
 
 ## Recommendation (spike, not acceptance)
 
-**Provisional preference: K2** (`keyring-core` + explicit Windows/macOS provider crates), contingent on:
+**Provisional preference: still K2** for explicit provider wiring, **only if** product `SecureStore` errors never surface `BadEncoding`/`BadDataFormat` payloads in Display/Debug/logs/IPC. Windows Gate A now records that upstream K2 error Debug is unsafe without that wrapper.
 
-1. Mac matrix completing with PASS (currently WAITING).
-2. Product `SecureStore` errors never exposing `BadEncoding`/`BadDataFormat` byte payloads in logs or IPC.
-3. Explicit provider pins in product Cargo.toml only after ADR-0014 acceptance (gate B).
-4. Daemon-only access and `Cryptex` / `Cryptex-Dev` naming policy as drafted in ADR-0014.
+P1 remains viable where maximum error-surface control is preferred (Windows redaction PASS without upstream payload-bearing variants). **Do not accept ADR-0014 or start product secure-store implementation from this Windows-only slice alone.** Mac matrix remains WAITING.
 
-P1 remains a viable alternative if owner prefers maximum explicitness over shared keyring-core API surface. **Do not accept ADR-0014 or start product secure-store implementation from this Windows-only slice alone.**
+## Local checks run (this revision)
+
+- `cargo test --manifest-path tools/m1-secure-store-spike/Cargo.toml` — 12 passed (classify + redaction)
+- `cargo run --manifest-path tools/m1-secure-store-spike/Cargo.toml --release` — Windows matrix as tabulated above
 
 ## Non-claims
 
 - No Mac verification claimed.
 - No product backend selected or merged.
 - No GitHub Actions run for this spike.
+- No ADR acceptance.

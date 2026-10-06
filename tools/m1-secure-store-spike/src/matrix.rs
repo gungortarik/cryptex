@@ -118,12 +118,9 @@ impl SyntheticItem {
         self.secret.len()
     }
 
-    /// Returns true if `text` contains the raw secret bytes as UTF-8 (leak).
+    /// Returns true if `text` exposes secret payload bytes (UTF-8 and Debug/hex forms).
     pub fn appears_in(&self, text: &str) -> bool {
-        let Ok(secret_utf8) = std::str::from_utf8(&self.secret) else {
-            return false;
-        };
-        text.contains(secret_utf8)
+        crate::redaction::payload_bytes_recoverable(&self.secret, text)
     }
 }
 

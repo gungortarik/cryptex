@@ -121,29 +121,23 @@ fn run_windows() -> Result<MatrixReport, String> {
         }),
     }
 
-    let err = entry.get_secret().err().unwrap_or(Error::NoEntry);
-    let display = format!("{err}");
-    let debug = format!("{err:?}");
-    let leaked = item.appears_in(&display) || item.appears_in(&debug);
-    let bad_encoding = Error::BadEncoding(item.secret.clone());
-    let be_display = format!("{bad_encoding}");
-    let be_debug = format!("{bad_encoding:?}");
-    let be_leaked = item.appears_in(&be_display) || item.appears_in(&be_debug);
-
+    let missing_err = entry.get_secret().err().unwrap_or(Error::NoEntry);
+    let payload_err = Error::BadEncoding(item.secret.clone());
+    let assessment = crate::redaction::assess_k2_error_surfaces(
+        &item.secret,
+        &format!("{missing_err}"),
+        &format!("{missing_err:?}"),
+        &format!("{payload_err}"),
+        &format!("{payload_err:?}"),
+    );
     cells.push(MatrixCell {
         name: "error-redaction",
-        status: if leaked {
-            CellStatus::Fail
-        } else {
+        status: if assessment.overall_pass() {
             CellStatus::Pass
-        },
-        note: if leaked {
-            "NoEntry Display/Debug contained synthetic secret".to_string()
-        } else if be_leaked {
-            "NoEntry safe; WARNING BadEncoding Display/Debug can embed secret bytes — product wrappers must not surface raw BadEncoding payloads".to_string()
         } else {
-            "NoEntry and BadEncoding Display/Debug did not embed synthetic secret text".to_string()
+            CellStatus::Fail
         },
+        note: assessment.matrix_note(),
     });
 
     let _ = entry.delete_credential();
@@ -249,26 +243,23 @@ fn run_macos() -> Result<MatrixReport, String> {
         }),
     }
 
-    let err = entry.get_secret().err().unwrap_or(Error::NoEntry);
-    let leaked = item.appears_in(&format!("{err}")) || item.appears_in(&format!("{err:?}"));
-    let bad_encoding = Error::BadEncoding(item.secret.clone());
-    let be_leaked = item.appears_in(&format!("{bad_encoding}"))
-        || item.appears_in(&format!("{bad_encoding:?}"));
-
+    let missing_err = entry.get_secret().err().unwrap_or(Error::NoEntry);
+    let payload_err = Error::BadEncoding(item.secret.clone());
+    let assessment = crate::redaction::assess_k2_error_surfaces(
+        &item.secret,
+        &format!("{missing_err}"),
+        &format!("{missing_err:?}"),
+        &format!("{payload_err}"),
+        &format!("{payload_err:?}"),
+    );
     cells.push(MatrixCell {
         name: "error-redaction",
-        status: if leaked {
-            CellStatus::Fail
-        } else {
+        status: if assessment.overall_pass() {
             CellStatus::Pass
-        },
-        note: if leaked {
-            "NoEntry Display/Debug contained synthetic secret".to_string()
-        } else if be_leaked {
-            "NoEntry safe; WARNING BadEncoding Display/Debug can embed secret bytes — product wrappers must not surface raw BadEncoding payloads".to_string()
         } else {
-            "NoEntry and BadEncoding Display/Debug did not embed synthetic secret text".to_string()
+            CellStatus::Fail
         },
+        note: assessment.matrix_note(),
     });
 
     let _ = entry.delete_credential();

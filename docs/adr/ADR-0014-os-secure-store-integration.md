@@ -4,7 +4,7 @@
 
 **Date drafted:** 2026-10-05
 
-**Date revised:** 2026-10-05 (owner-authorized Gate A spike evidence; still PROPOSED)
+**Date revised:** 2026-10-05 (Gate A spike evidence + measurement correction; still PROPOSED)
 
 **Milestone:** M1 — Brain + Device Identity
 
@@ -103,13 +103,13 @@ Equivalent guarantee: device private material lives in OS-protected secret stora
 |---|---|---|
 | Spec basis | Documented | — |
 | Candidate comparison table (K1/K2/P1) | Documentary in this ADR | Feeds A/B |
-| Limited evaluation spike (Windows) | **Started** — Windows K2 and P1 matrix PASS; recorded in `evidence/m1/secure-store-spike-windows-20261005.md` | A |
+| Limited evaluation spike (Windows) | **Started** — store/read/delete/missing PASS for K2+P1; K2 error-redaction **FAIL** (BadEncoding Debug exposes bytes); P1 error-redaction PASS; recorded in `evidence/m1/secure-store-spike-windows-20261005.md` | A |
 | Limited evaluation spike (macOS) | **WAITING** — not executed on a Mac host; instructions in spike README + evidence | A |
-| Spike recommendation (provisional) | Prefer **K2** pending Mac results and owner review; P1 remains viable. **No library pinned for product.** | Feeds B |
+| Spike recommendation (provisional) | Prefer **K2** only with mandatory product redaction wrappers (never surface BadEncoding/BadDataFormat payloads); P1 remains viable. Pending Mac + owner review. **No library pinned for product.** | Feeds B |
 | Windows physical product verification | **Not VERIFIED** (spike ≠ product integration) | C (M1 completion) |
 | macOS physical product verification | **WAITING** (not performed on Mac host) | C (M1 completion) |
 
-Windows spike evaluation shows K2 and P1 both satisfy store/read/delete/missing-item/error-redaction on this host. That is Gate A evidence only. It does **not** accept this ADR, does **not** verify product `cryptexd` integration, and does **not** claim macOS verification.
+Windows Gate A shows K2 and P1 satisfy store/read/delete/missing-item. K2 overall error-redaction **FAIL**s because `BadEncoding` Debug recovers secret bytes; missing-item (`NoEntry`) surfaces are safe. P1 typed errors pass redaction checks. That is Gate A evidence only. It does **not** accept this ADR, does **not** verify product `cryptexd` integration, and does **not** claim macOS verification.
 
 ## 7. Recovery / security implications
 

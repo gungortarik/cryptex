@@ -33,7 +33,7 @@ final appropriate M1 gate.
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). Identity/sequence foundations are
 in place (`last_issued=0`, first issue `1`, durable-before-return, concurrent
 atomicity). ADR-0014 remains PROPOSED. Owner-authorized Gate A secure-store spike
-recorded Windows K2+P1 PASS (`evidence/m1/secure-store-spike-windows-20261005.md`);
+recorded Windows Gate A matrix (`evidence/m1/secure-store-spike-windows-20261005.md`: store/read/delete/missing PASS; K2 error-redaction FAIL on BadEncoding Debug; P1 redaction PASS);
 macOS spike WAITING. Product secure-store implementation still blocked until
 ADR-0014 acceptance. Production pairing/revocation remains M8; Recovery Kit
 container remains M11. No custom cryptography. No Actions until final M1 gate.
