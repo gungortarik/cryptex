@@ -119,7 +119,7 @@ Ordered after ADR-0016 acceptance. Each slice: behavior + tests + local format/l
 
 ## 7. Continuation point
 
-**Now:** ADR-0016 **ACCEPTED**. Slices 1–8d landed. Run 37653004440: macOS readiness PASS; Windows failed only process-identity Node harness lifetime race (CIM after PID exit). Harness holds a live child until assertions finish. Next: owner review, then **one** more dual-OS Actions readiness run for the final green gate.
+**Now:** ADR-0016 **ACCEPTED**. Slices 1–8e landed. Run 37656380940 finished: Windows readiness + IPC ACL PASS; macOS failed only `pilot_runtime` fixture `create_dir` AlreadyExists under concurrent tests. Fixture now uses exclusive create + sequence. Do **not** dispatch Actions until this tip is reviewed; then **one** dual-OS readiness run only if still required as the final green gate.
 
 
 **Historical note:** Operational handoff previously retained contradictory M1 “review open / merge pending” wording after PR #6 merged. That residue is labeled historical/superseded in `docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md`. M1 remains COMPLETE at `c2168f3` / docs closeout `0c84c5c`.

@@ -106,21 +106,32 @@ pub(crate) fn configure(config: &mut tauri::utils::config::Config) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
     fn fixture() -> PathBuf {
         let temporary = fs::canonicalize(std::env::temp_dir()).unwrap();
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = temporary.join(format!(
-            "cryptex-pilot-runtime-{}-{stamp}",
-            std::process::id()
-        ));
-        fs::create_dir(&root).unwrap();
-        fs::write(root.join("pilot-runtime.marker"), MARKER).unwrap();
-        root
+        loop {
+            let stamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let sequence = FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let root = temporary.join(format!(
+                "cryptex-pilot-runtime-{}-{sequence}-{stamp}",
+                std::process::id()
+            ));
+            match fs::create_dir(&root) {
+                Ok(()) => {
+                    fs::write(root.join("pilot-runtime.marker"), MARKER).unwrap();
+                    return root;
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(err) => panic!("fixture create_dir failed: {err}"),
+            }
+        }
     }
 
     #[test]
