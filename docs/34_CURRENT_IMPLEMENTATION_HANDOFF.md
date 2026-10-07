@@ -5,7 +5,7 @@
 **Active branch:** `m2/immutable-event-store` (M2 IN PROGRESS; owner review pending; base remains `0c84c5c`)
 **Final CI behavior SHA:** `16f09a3` (`16f09a3830e743694d8dba52c16a816c93d46a16`) — dual-OS CI green in run [37681630801](https://github.com/gungortarik/cryptex/actions/runs/37681630801)
 **CI documentation closeout:** `7a84bdd` (`7a84bdd9a113c562177cc47cef3283d70aa25bde`) — documentation commit that recorded the final CI gate (distinct from behavior SHA `16f09a3`)
-**Closeout audit tip (L1/L2/F4–F6 + staging ownership):** behavior `b5c9d69`, docs tip `e2c2f55` — `evidence/m2/m2-staging-cleanup-ownership-20261007.md`. Prior dual-OS run 37681630801 @ `16f09a3` does **not** cover this tip. Mac four-check + one new dual-OS Actions gate required; do not merge / do not declare M2 complete.
+**Closeout audit tip (L1/L2/F4–F6 + staging ownership):** behavior `b5c9d69`, tip `1a26493` — `evidence/m2/m2-staging-cleanup-ownership-20261007.md`. Windows four-check PASS. **macOS four-check PENDING** (no Darwin host in agent path; Actions gate not started). Do not merge / do not declare M2 complete.
 **Base:** `origin/m0/foundation` @ `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75` (M1 documentation closeout)
 **M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) — integrated ancestor
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`

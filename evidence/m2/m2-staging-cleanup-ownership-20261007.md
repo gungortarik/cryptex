@@ -46,3 +46,20 @@ cargo clippy --locked -p cryptex-storage -p cryptexd --all-targets -- -D warning
 ## macOS / final CI
 
 Shared-code tip requires the same four checks on macOS, then **one** dual-OS Actions gate. M2 remains IN PROGRESS; do not merge.
+
+### macOS four-check status (2026-10-07)
+
+- Local agent host: Windows_NT — cannot run Darwin checks here.
+- Cloud verify attempt at tip `1a26493`: **Linux** (`MAC_CHECKS: SKIPPED_NOT_MACOS`).
+- Dual-OS GitHub Actions gate: **not started** (blocked until real macOS four-check PASS).
+
+Please run on a Mac at `1a26493` (or later tip containing `b5c9d69`):
+
+```
+cargo test --locked -p cryptex-storage quarantine
+cargo test --locked -p cryptexd --lib
+cargo fmt --all -- --check
+cargo clippy --locked -p cryptex-storage -p cryptexd --all-targets -- -D warnings
+```
+
+After Mac PASS, run the single dual-OS Actions workflow on this tip.
