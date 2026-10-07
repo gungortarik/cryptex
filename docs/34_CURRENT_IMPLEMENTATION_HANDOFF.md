@@ -5,7 +5,7 @@
 **Active branch:** `m2/immutable-event-store` (M2 IN PROGRESS; owner review pending; base remains `0c84c5c`)
 **Final CI behavior SHA:** `16f09a3` (`16f09a3830e743694d8dba52c16a816c93d46a16`) — dual-OS CI green in run [37681630801](https://github.com/gungortarik/cryptex/actions/runs/37681630801)
 **CI documentation closeout:** `7a84bdd` (`7a84bdd9a113c562177cc47cef3283d70aa25bde`) — documentation commit that recorded the final CI gate (distinct from behavior SHA `16f09a3`)
-**Closeout audit tip (L1/L2/F4–F6):** behavior `908e0d6` (sealed isolation) + `7381abd` (staging cleanup); dispositions in `evidence/m2/m2-closeout-l1-l2-f4-f6-20261007.md`. Prior dual-OS run 37681630801 @ `16f09a3` does **not** cover this tip. One new dual-OS Actions gate required after macOS verify; do not merge / do not declare M2 complete.
+**Closeout audit tip (L1/L2/F4–F6 + staging ownership):** tip pending docs commit; staging-ownership behavior b5c9d69 — evidence/m2/m2-staging-cleanup-ownership-20261007.md. Prior dual-OS run 37681630801 @ 16f09a3 does **not** cover this tip. Mac four-check + one new dual-OS Actions gate required; do not merge / do not declare M2 complete.
 **Base:** `origin/m0/foundation` @ `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75` (M1 documentation closeout)
 **M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) — integrated ancestor
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
@@ -40,6 +40,9 @@ Source re-audit of previously deferred Low findings (see `evidence/m2/m2-closeou
 - **F6:** staging orphan cleanup FIXED; canonical `\\?\` remains addendum non-goal NON-BLOCKER.
 
 Windows: `cryptex-storage` quarantine 22 ok; `cryptexd --lib` 126 ok; fmt check ok; clippy `-D warnings` on storage+cryptexd ok. **macOS verify required.** New final dual-OS Actions planned once (not started). M2 still IN PROGRESS; owner review pending.
+
+**Staging ownership fix (2026-10-07):** Arm `StagingCleanup` only after exclusive `create_new`; surface cleanup failures as `QuarantineCleanupFailed` without dropping the primary. Evidence: `evidence/m2/m2-staging-cleanup-ownership-20261007.md`. Windows quarantine **24** ok; cryptexd lib **126** ok; fmt/clippy ok. Mac four-check pending; then one Actions gate.
+
 
 
 
