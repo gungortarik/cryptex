@@ -1,15 +1,20 @@
 //! Active `.open` recovery: quarantine-before-truncate (ADR-0016 §7.2).
+//!
+//! Streams verified frames with per-frame body allocation capped by the ADR
+//! maximum; copies the untrusted suffix into quarantine without loading the
+//! whole pack into memory.
 
-use std::fs::{self, OpenOptions};
-use std::io::{Seek, SeekFrom, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use cryptex_core::ids::DeviceId;
 use cryptex_events::framing::{FRAME_HEADER_BYTES, decode_frame_header};
+use cryptex_events::limits::MAX_ACCEPTED_RECORD_BYTES;
 
+use crate::durability::{sync_file, sync_parent_directory};
 use crate::layout::active_segment_path;
-use crate::quarantine::{QuarantineEntry, QuarantineSourceKind, quarantine_bytes};
-use crate::segment_io::scan_complete_frames;
+use crate::quarantine::{QuarantineEntry, QuarantineSourceKind, quarantine_file_range};
 use crate::{StorageError, StorageResult};
 
 /// Validates a complete frame body after framing/limit checks succeed.
@@ -35,9 +40,6 @@ pub struct RecoveryReport {
 }
 
 /// Recover an active `.open` pack: quarantine untrusted suffix, then truncate.
-///
-/// Fail closed: on any quarantine/truncate/sync failure, leave the file unchanged
-/// and refuse to report success.
 pub fn recover_active_open<V: FrameBodyValidator>(
     app_data_root: &Path,
     device_id: &DeviceId,
@@ -62,105 +64,105 @@ pub fn recover_active_open<V: FrameBodyValidator>(
         .open(&lock_path)?;
     fs2::FileExt::lock_exclusive(&lock)?;
 
-    let bytes = fs::read(&path)?;
-    let verified_len = verified_prefix_length(&bytes, validator)?;
-    if verified_len == bytes.len() {
+    let mut file = OpenOptions::new().read(true).write(true).open(&path)?;
+    let file_len = file.metadata()?.len();
+    let (verified_len, reason) = stream_verified_prefix_length(&mut file, file_len, validator)?;
+    if verified_len == file_len {
         return Ok(RecoveryReport {
-            verified_prefix_len: verified_len as u64,
+            verified_prefix_len: verified_len,
             quarantined: None,
             truncated: false,
         });
     }
 
-    let suffix = &bytes[verified_len..];
-    let reason = classify_suffix_reason(&bytes, verified_len);
     let source_relative = format!(
         "canonical/events/{}/{:020}.open",
         device_id.as_filename_stem(),
         segment_index
     );
-    let entry = quarantine_bytes(
+    let entry = quarantine_file_range(
         app_data_root,
         Some(device_id),
         reason,
         QuarantineSourceKind::ActiveOpen,
         &source_relative,
-        Some(verified_len as u64),
-        suffix,
+        verified_len,
+        file_len,
+        &mut file,
     )?;
 
-    // Only after durable quarantine: truncate and sync.
-    {
-        let mut file = OpenOptions::new().write(true).open(&path)?;
-        file.set_len(verified_len as u64)?;
-        file.sync_all()?;
-        let _ = file.seek(SeekFrom::Start(0));
-        let _ = file.flush();
-    }
-    #[cfg(unix)]
-    {
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::File::open(parent).and_then(|d| d.sync_all());
-        }
-    }
+    file.set_len(verified_len)?;
+    sync_file(&file)?;
+    sync_parent_directory(&path)?;
 
-    // Confirm truncate succeeded.
-    let after = fs::metadata(&path)?.len();
-    if after != verified_len as u64 {
+    let after = file.metadata()?.len();
+    if after != verified_len {
         return Err(StorageError::Recovery(format!(
             "truncate confirmation failed: expected {verified_len} got {after}"
         )));
     }
 
     Ok(RecoveryReport {
-        verified_prefix_len: verified_len as u64,
+        verified_prefix_len: verified_len,
         quarantined: Some(entry),
         truncated: true,
     })
 }
 
-fn verified_prefix_length<V: FrameBodyValidator>(
-    bytes: &[u8],
+fn stream_verified_prefix_length<V: FrameBodyValidator>(
+    file: &mut File,
+    file_len: u64,
     validator: &V,
-) -> StorageResult<usize> {
-    let mut offset = 0usize;
-    while offset + FRAME_HEADER_BYTES <= bytes.len() {
-        let header = &bytes[offset..offset + FRAME_HEADER_BYTES];
-        let (_ver, body_len) = match decode_frame_header(header) {
+) -> StorageResult<(u64, &'static str)> {
+    let mut offset = 0u64;
+    let mut header = [0u8; FRAME_HEADER_BYTES];
+    while offset + FRAME_HEADER_BYTES as u64 <= file_len {
+        file.seek(SeekFrom::Start(offset))?;
+        read_exact(file, &mut header)?;
+        let (_ver, body_len) = match decode_frame_header(&header) {
             Ok(v) => v,
-            Err(_) => return Ok(offset),
+            Err(_) => return Ok((offset, "truncated_tail")),
         };
-        let body_end = offset + FRAME_HEADER_BYTES + body_len as usize;
-        if body_end > bytes.len() {
-            return Ok(offset);
+        // decode_frame_header already enforces MAX_ACCEPTED_RECORD_BYTES.
+        debug_assert!(body_len <= MAX_ACCEPTED_RECORD_BYTES);
+        let body_end = offset
+            .checked_add(FRAME_HEADER_BYTES as u64)
+            .and_then(|h| h.checked_add(u64::from(body_len)))
+            .ok_or_else(|| StorageError::Framing("frame length overflow".into()))?;
+        if body_end > file_len {
+            return Ok((offset, "truncated_tail"));
         }
-        let body = &bytes[offset + FRAME_HEADER_BYTES..body_end];
-        if let Err(err) = validator.validate_frame_body(body) {
-            let _ = err;
-            return Ok(offset);
+        let mut body = vec![0u8; body_len as usize];
+        read_exact(file, &mut body)?;
+        if let Err(_err) = validator.validate_frame_body(&body) {
+            let reason = if body_end <= file_len {
+                "corrupt_frame"
+            } else {
+                "truncated_tail"
+            };
+            return Ok((offset, reason));
         }
         offset = body_end;
     }
-    let _ = scan_complete_frames; // keep helper linked for callers
-    Ok(offset)
+    if offset < file_len {
+        return Ok((offset, "truncated_tail"));
+    }
+    Ok((offset, "truncated_tail"))
 }
 
-fn classify_suffix_reason(bytes: &[u8], verified_len: usize) -> &'static str {
-    let rem = &bytes[verified_len..];
-    if rem.len() < FRAME_HEADER_BYTES {
-        return "truncated_tail";
-    }
-    match decode_frame_header(&rem[..FRAME_HEADER_BYTES]) {
-        Ok((_, body_len)) => {
-            let need = FRAME_HEADER_BYTES + body_len as usize;
-            if rem.len() < need {
-                "truncated_tail"
-            } else {
-                "corrupt_frame"
+fn read_exact(file: &mut File, buf: &mut [u8]) -> StorageResult<()> {
+    let mut filled = 0usize;
+    while filled < buf.len() {
+        match file.read(&mut buf[filled..])? {
+            0 => {
+                return Err(StorageError::Framing(
+                    "unexpected EOF while reading frame".into(),
+                ));
             }
+            n => filled += n,
         }
-        Err(_) => "truncated_tail",
     }
+    Ok(())
 }
 
 /// Test helper: validate bodies equal to an allowed set.
@@ -183,6 +185,7 @@ impl FrameBodyValidator for AllowListedBodies {
 mod tests {
     use super::*;
     use crate::segment_io::{append_frame, read_active_pack_bytes};
+    use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root(label: &str) -> std::path::PathBuf {
@@ -236,7 +239,6 @@ mod tests {
         let entry = report.quarantined.unwrap();
         assert_eq!(entry.metadata.reason_code, "corrupt_frame");
         let object = fs::read(entry.directory.join("object.bin")).unwrap();
-        // Suffix starts at the corrupt frame through EOF.
         assert!(object.len() < bytes.len());
         assert!(!object.is_empty());
         let after = read_active_pack_bytes(&root, &device, 0).unwrap();
@@ -255,7 +257,6 @@ mod tests {
         let path = active_segment_path(&root, &device, 0);
         fs::write(&path, &bytes).unwrap();
 
-        // Poison quarantine root as a file so create_dir_all fails.
         let qroot = crate::layout::quarantine_events_root(&root);
         fs::create_dir_all(qroot.parent().unwrap()).unwrap();
         fs::write(&qroot, b"not-a-dir").unwrap();
@@ -263,11 +264,55 @@ mod tests {
         let err = recover_active_open(&root, &device, 0, &AcceptAllBodies).unwrap_err();
         assert!(matches!(
             err,
-            StorageError::Io(_) | StorageError::Quarantine(_)
+            StorageError::Io(_) | StorageError::Quarantine(_) | StorageError::Durability(_)
         ));
-        // Open file must remain unchanged.
         let after = fs::read(&path).unwrap();
         assert_eq!(after.len(), original_len + 4);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn streaming_recovery_handles_multi_megabyte_suffix() {
+        let root = temp_root("big-suffix");
+        let device = DeviceId::new("device-u").unwrap();
+        append_frame(&root, &device, 0, b"keep").unwrap();
+        let path = active_segment_path(&root, &device, 0);
+        let good_len = fs::metadata(&path).unwrap().len();
+        {
+            use std::io::Write;
+            let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+            let chunk = vec![b'X'; 1024 * 256];
+            for _ in 0..8 {
+                file.write_all(&chunk).unwrap();
+            }
+            // ~2 MiB suffix without forming a valid frame header.
+        }
+        let report = recover_active_open(&root, &device, 0, &AcceptAllBodies).unwrap();
+        assert!(report.truncated);
+        assert_eq!(report.verified_prefix_len, good_len);
+        assert_eq!(fs::metadata(&path).unwrap().len(), good_len);
+        let entry = report.quarantined.unwrap();
+        assert_eq!(entry.metadata.byte_length, 1024 * 256 * 8);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn recovery_propagates_directory_sync_failure_without_truncate() {
+        let root = temp_root("rec-sync");
+        let device = DeviceId::new("device-v").unwrap();
+        append_frame(&root, &device, 0, b"good").unwrap();
+        let path = active_segment_path(&root, &device, 0);
+        let mut bytes = fs::read(&path).unwrap();
+        let original = bytes.len();
+        bytes.extend_from_slice(b"TAIL");
+        fs::write(&path, &bytes).unwrap();
+
+        // Fail the first directory sync inside quarantine so recovery aborts before truncate.
+        crate::durability::fail_next_directory_sync();
+        let err = recover_active_open(&root, &device, 0, &AcceptAllBodies).unwrap_err();
+        assert!(matches!(err, StorageError::Durability(_)), "{err}");
+        let after = fs::read(&path).unwrap();
+        assert_eq!(after.len(), original + 4);
         let _ = fs::remove_dir_all(&root);
     }
 }

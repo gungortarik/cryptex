@@ -3,18 +3,23 @@
 //! Authority: accepted ADR-0016. Runtime fixtures must stay outside the Git repository.
 //! Append/seal/quarantine helpers are intended for cryptexd-only callers.
 
+pub mod durability;
 pub mod error;
 pub mod layout;
 pub mod quarantine;
 pub mod recovery;
 pub mod segment_io;
+pub mod timefmt;
 
 pub use error::{StorageError, StorageResult};
 pub use layout::{
     SegmentKind, active_segment_path, canonical_events_device_dir, event_signing_key_path,
     quarantine_events_root, sealed_segment_path,
 };
-pub use quarantine::{QuarantineEntry, QuarantineMetadata, QuarantineSourceKind, quarantine_bytes};
+pub use quarantine::{
+    QuarantineEntry, QuarantineMetadata, QuarantineSourceKind, quarantine_bytes,
+    quarantine_file_range,
+};
 pub use recovery::{
     AcceptAllBodies, AllowListedBodies, FrameBodyValidator, RecoveryReport, recover_active_open,
 };

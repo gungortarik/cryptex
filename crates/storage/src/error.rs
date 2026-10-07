@@ -13,6 +13,7 @@ pub enum StorageError {
     Integrity(String),
     Recovery(String),
     Quarantine(String),
+    Durability(String),
     Io(io::Error),
     Event(EventError),
 }
@@ -28,6 +29,7 @@ impl fmt::Display for StorageError {
             Self::Integrity(message) => write!(f, "segment integrity error: {message}"),
             Self::Recovery(message) => write!(f, "segment recovery error: {message}"),
             Self::Quarantine(message) => write!(f, "quarantine error: {message}"),
+            Self::Durability(message) => write!(f, "storage durability error: {message}"),
             Self::Io(error) => write!(f, "storage io: {error}"),
             Self::Event(error) => write!(f, "{error}"),
         }
@@ -53,7 +55,8 @@ impl PartialEq for StorageError {
             | (Framing(a), Framing(b))
             | (Integrity(a), Integrity(b))
             | (Recovery(a), Recovery(b))
-            | (Quarantine(a), Quarantine(b)) => a == b,
+            | (Quarantine(a), Quarantine(b))
+            | (Durability(a), Durability(b)) => a == b,
             (Event(a), Event(b)) => a == b,
             (Io(a), Io(b)) => a.kind() == b.kind() && a.to_string() == b.to_string(),
             _ => false,

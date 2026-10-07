@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cryptex_core::ids::DeviceId;
+use cryptex_core::validate::parse_rfc3339_str;
 use cryptex_events::hex::SigningKeyId;
 use cryptex_events::integrity::signing_key_id_from_verifying_key;
 use cryptex_storage::event_signing_key_path;
@@ -192,7 +193,7 @@ fn fresh_create<S: SecureStore>(
     getrandom::getrandom(&mut seed)
         .map_err(|e| EventSigningKeyError::Io(format!("getrandom failed: {e}")))?;
     let signing_key = SigningKey::from_bytes(&seed);
-    let public = public_from_signing_key(device_id, &signing_key, now_rfc3339())?;
+    let public = public_from_signing_key(device_id, &signing_key, now_rfc3339()?)?;
 
     store.put(service.as_str(), account.as_str(), &seed)?;
 
@@ -227,7 +228,7 @@ fn complete_metadata_from_seed(
     events_exist: bool,
 ) -> EventSigningKeyResult<ReadyEventSigningKey> {
     let signing_key = signing_key_from_seed(seed)?;
-    let public = public_from_signing_key(device_id, &signing_key, now_rfc3339())?;
+    let public = public_from_signing_key(device_id, &signing_key, now_rfc3339()?)?;
     let derived_id = SigningKeyId::parse(&public.signing_key_id)?;
 
     if events_exist {
@@ -258,6 +259,9 @@ fn ready_from_seed_and_meta(
             meta.schema_version
         )));
     }
+    parse_rfc3339_str(&meta.created_at).map_err(|e| {
+        EventSigningKeyError::InvalidPublicMetadata(format!("created_at must be RFC 3339 UTC: {e}"))
+    })?;
     if meta.device_id != device_id.as_str() {
         return Err(EventSigningKeyError::FailClosed(
             "metadata device_id does not match requested device".into(),
@@ -327,6 +331,11 @@ fn load_public_metadata_if_present(
         Ok(text) => {
             let meta: EventSigningKeyPublic = serde_json::from_str(&text)
                 .map_err(|e| EventSigningKeyError::InvalidPublicMetadata(e.to_string()))?;
+            parse_rfc3339_str(&meta.created_at).map_err(|e| {
+                EventSigningKeyError::InvalidPublicMetadata(format!(
+                    "created_at must be RFC 3339 UTC: {e}"
+                ))
+            })?;
             Ok(Some(meta))
         }
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
@@ -435,10 +444,21 @@ fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> EventSigningKeyResult<(
                 EventSigningKeyError::Io(err.to_string())
             }
         })?;
-        if let Some(parent) = dest.parent() {
-            let _ = fs::File::open(parent).and_then(|d| d.sync_all());
-        }
-        let _ = fs::remove_file(tmp);
+        let parent = dest.parent().ok_or_else(|| {
+            EventSigningKeyError::Io("metadata path has no parent for directory sync".into())
+        })?;
+        fs::File::open(parent)
+            .and_then(|d| d.sync_all())
+            .map_err(|err| {
+                EventSigningKeyError::Io(format!(
+                    "directory sync failed after metadata placement: {err}"
+                ))
+            })?;
+        fs::remove_file(tmp).map_err(|err| {
+            EventSigningKeyError::Io(format!(
+                "failed to remove metadata staging file after durable placement: {err}"
+            ))
+        })?;
         Ok(())
     }
     #[cfg(not(any(unix, windows)))]
@@ -460,13 +480,39 @@ fn lowercase_hex(bytes: &[u8]) -> String {
     out
 }
 
-fn now_rfc3339() -> String {
+fn now_rfc3339() -> EventSigningKeyResult<String> {
     // Display-only field for public metadata; wall-clock never authorizes acceptance.
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    format!("{secs}Z")
+    let formatted = format_unix_secs_rfc3339_utc(secs);
+    parse_rfc3339_str(&formatted)
+        .map_err(|e| EventSigningKeyError::InvalidPublicMetadata(e.to_string()))
+}
+
+/// Format Unix seconds as `YYYY-MM-DDTHH:MM:SSZ` (UTC).
+fn format_unix_secs_rfc3339_utc(secs: u64) -> String {
+    let days = (secs / 86_400) as i64;
+    let tod = (secs % 86_400) as u32;
+    let hour = tod / 3_600;
+    let minute = (tod % 3_600) / 60;
+    let second = tod % 60;
+    let (year, month, day) = civil_from_days(days + 719_468);
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
+}
+
+fn civil_from_days(z: i64) -> (i32, u32, u32) {
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y as i32, m as u32, d as u32)
 }
 
 /// Test helper: persist only the seed (simulate crash before metadata).
@@ -501,6 +547,23 @@ mod tests {
             std::process::id(),
             nanos
         ))
+    }
+
+    #[test]
+    fn fresh_create_emits_valid_rfc3339_created_at() {
+        let root = temp_root("rfc3339");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("device-rfc").unwrap();
+        let ready =
+            ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
+                .unwrap();
+        parse_rfc3339_str(&ready.public.created_at).unwrap();
+        assert!(
+            ready.public.created_at.ends_with('Z')
+                || ready.public.created_at.contains('+')
+                || ready.public.created_at.contains('-')
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -549,7 +612,7 @@ mod tests {
             device_id: device.as_str().into(),
             signing_key_id: "aa".repeat(16),
             public_key: "bb".repeat(32),
-            created_at: "1Z".into(),
+            created_at: "2026-10-07T00:00:00Z".into(),
         };
         write_public_metadata_exclusive(&path, &fake).unwrap();
         match ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[]) {
@@ -573,7 +636,7 @@ mod tests {
             device_id: device.as_str().into(),
             signing_key_id: "aa".repeat(16),
             public_key: "bb".repeat(32),
-            created_at: "1Z".into(),
+            created_at: "2026-10-07T00:00:00Z".into(),
         };
         write_public_metadata_exclusive(&path, &wrong).unwrap();
         let err =
@@ -655,6 +718,38 @@ mod tests {
             .map(|h| h.join().unwrap().expect("ensure"))
             .collect();
         assert!(ids.iter().all(|id| id == &ids[0]));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_invalid_created_at_on_load_without_replacing_key() {
+        let root = temp_root("bad-ts");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("device-ts").unwrap();
+        let seed = [0x33u8; 32];
+        put_seed_only_for_test(&store, SecureStoreEnvironment::Dev, &device, &seed).unwrap();
+        let path = event_signing_key_path(&root, &device);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let bad = EventSigningKeyPublic {
+            schema_version: 1,
+            device_id: device.as_str().into(),
+            signing_key_id: "aa".repeat(16),
+            public_key: "bb".repeat(32),
+            created_at: "not-rfc3339".into(),
+        };
+        // Bypass writer validation by writing raw JSON.
+        fs::write(&path, serde_json::to_string(&bad).unwrap() + "\n").unwrap();
+        let err =
+            ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
+                .unwrap_err();
+        assert!(
+            matches!(err, EventSigningKeyError::InvalidPublicMetadata(_)),
+            "{err}"
+        );
+        // Seed must remain; no silent replace.
+        let service = ServiceLabel::device_credentials(SecureStoreEnvironment::Dev);
+        let account = AccountLabel::device_event_signing_seed(device.as_str());
+        assert_eq!(store.get(service.as_str(), account.as_str()).unwrap(), seed);
         let _ = fs::remove_dir_all(&root);
     }
 

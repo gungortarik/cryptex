@@ -1,9 +1,10 @@
 //! Quarantine for untrusted canonical-event bytes (ADR-0016 §8).
+//!
+//! Streaming entry creation hashes and copies rejected bytes without requiring
+//! the full suffix to be held in memory by the caller.
 
-#[cfg(unix)]
-use std::fs::File;
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -11,10 +12,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use cryptex_core::ids::DeviceId;
 use serde::{Deserialize, Serialize};
 
+use crate::durability::{sync_directory, sync_file, sync_parent_directory};
 use crate::layout::quarantine_events_root;
 use crate::{StorageError, StorageResult};
 
 static ENTRY_SUFFIX: AtomicU64 = AtomicU64::new(1);
+const COPY_BUF: usize = 65_536;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -44,7 +47,7 @@ pub struct QuarantineEntry {
     pub metadata: QuarantineMetadata,
 }
 
-/// Quarantine exact rejected bytes with exclusive no-replace directory create.
+/// Quarantine a byte slice (small helpers/tests). Prefer [`quarantine_file_range`] for packs.
 pub fn quarantine_bytes(
     app_data_root: &Path,
     device_id: Option<&DeviceId>,
@@ -60,56 +63,105 @@ pub fn quarantine_bytes(
         ));
     }
     let entry_id = lowercase_hex(blake3::hash(bytes).as_bytes());
-    let attribution_dir = match device_id {
-        Some(id) => format!("device-{}", id.as_filename_stem()),
-        None => "unattributed".to_string(),
-    };
-    let utc_compact = utc_compact_now();
-    let base = quarantine_events_root(app_data_root)
-        .join(&attribution_dir)
-        .join(format!("{utc_compact}_{reason_code}_{entry_id}"));
+    finish_quarantine_entry(
+        app_data_root,
+        device_id,
+        reason_code,
+        source_kind,
+        source_relative,
+        byte_offset,
+        entry_id,
+        bytes.len() as u64,
+        |object| {
+            object.write_all(bytes)?;
+            Ok(())
+        },
+    )
+}
 
-    let dir = exclusive_create_dir(&base)?;
-    let object_path = dir.join("object.bin");
-    let meta_path = dir.join("quarantine.json");
+/// Stream-copy `[start, end)` from `source` into quarantine while hashing.
+///
+/// Does not require the caller to hold the rejected range in memory.
+pub fn quarantine_file_range(
+    app_data_root: &Path,
+    device_id: Option<&DeviceId>,
+    reason_code: &str,
+    source_kind: QuarantineSourceKind,
+    source_relative: &str,
+    start: u64,
+    end: u64,
+    source: &mut File,
+) -> StorageResult<QuarantineEntry> {
+    if end <= start {
+        return Err(StorageError::Quarantine(
+            "refusing to quarantine empty suffix".into(),
+        ));
+    }
+    let byte_length = end - start;
+    let q_parent = attribution_parent(app_data_root, device_id)?;
+    fs::create_dir_all(&q_parent)?;
+    sync_directory(&q_parent)?;
 
+    let staging = q_parent.join(format!(
+        ".staging-{}-{}-{}",
+        std::process::id(),
+        ENTRY_SUFFIX.fetch_add(1, Ordering::Relaxed),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|t| t.as_nanos())
+            .unwrap_or(0)
+    ));
+
+    let mut hasher = blake3::Hasher::new();
     {
-        let mut file = OpenOptions::new()
+        let mut out = OpenOptions::new()
             .write(true)
             .create_new(true)
+            .open(&staging)?;
+        source.seek(SeekFrom::Start(start))?;
+        let mut remaining = byte_length;
+        let mut buf = vec![0u8; COPY_BUF];
+        while remaining > 0 {
+            let chunk = core::cmp::min(COPY_BUF as u64, remaining) as usize;
+            read_exact_some(source, &mut buf[..chunk])?;
+            hasher.update(&buf[..chunk]);
+            out.write_all(&buf[..chunk])?;
+            remaining -= chunk as u64;
+        }
+        sync_file(&out)?;
+    }
+
+    let entry_id = lowercase_hex(hasher.finalize().as_bytes());
+    let utc_compact = utc_compact_now();
+    let base = q_parent.join(format!("{utc_compact}_{reason_code}_{entry_id}"));
+    let dir = exclusive_create_dir(&base)?;
+    sync_parent_directory(&dir.join("object.bin"))?;
+
+    let object_path = dir.join("object.bin");
+    place_staging_as_object(&staging, &object_path)?;
+    // Re-open and sync destination object for platforms where rename does not imply durability.
+    {
+        let object = OpenOptions::new()
+            .read(true)
+            .write(true)
             .open(&object_path)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
+        sync_file(&object)?;
     }
 
     let metadata = QuarantineMetadata {
         schema_version: 1,
         reason_code: reason_code.to_string(),
-        detected_at: format!("{utc_compact}Z"),
+        detected_at: format_detected_at(&utc_compact),
         attribution: device_id.map(|d| d.as_str().to_string()),
         entry_id: entry_id.clone(),
-        byte_length: bytes.len() as u64,
+        byte_length,
         source_kind,
         source_relative: source_relative.to_string(),
-        byte_offset,
+        byte_offset: Some(start),
     };
-    let mut json = serde_json::to_string_pretty(&metadata)
-        .map_err(|e| StorageError::Quarantine(e.to_string()))?;
-    json.push('\n');
-    {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&meta_path)?;
-        file.write_all(json.as_bytes())?;
-        file.sync_all()?;
-    }
-    #[cfg(unix)]
-    {
-        if let Some(parent) = dir.parent() {
-            let _ = File::open(parent).and_then(|d| d.sync_all());
-        }
-    }
+    write_metadata_file(&dir, &metadata)?;
+    sync_directory(&dir)?;
+    sync_parent_directory(&dir.join("object.bin"))?;
 
     Ok(QuarantineEntry {
         directory: dir,
@@ -117,9 +169,130 @@ pub fn quarantine_bytes(
     })
 }
 
+fn finish_quarantine_entry<F>(
+    app_data_root: &Path,
+    device_id: Option<&DeviceId>,
+    reason_code: &str,
+    source_kind: QuarantineSourceKind,
+    source_relative: &str,
+    byte_offset: Option<u64>,
+    entry_id: String,
+    byte_length: u64,
+    write_object: F,
+) -> StorageResult<QuarantineEntry>
+where
+    F: FnOnce(&mut File) -> std::io::Result<()>,
+{
+    let q_parent = attribution_parent(app_data_root, device_id)?;
+    fs::create_dir_all(&q_parent)?;
+    sync_directory(&q_parent)?;
+
+    let utc_compact = utc_compact_now();
+    let base = q_parent.join(format!("{utc_compact}_{reason_code}_{entry_id}"));
+    let dir = exclusive_create_dir(&base)?;
+    sync_parent_directory(&dir.join("object.bin"))?;
+
+    let object_path = dir.join("object.bin");
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&object_path)?;
+        write_object(&mut file)?;
+        sync_file(&file)?;
+    }
+
+    let metadata = QuarantineMetadata {
+        schema_version: 1,
+        reason_code: reason_code.to_string(),
+        detected_at: format_detected_at(&utc_compact),
+        attribution: device_id.map(|d| d.as_str().to_string()),
+        entry_id,
+        byte_length,
+        source_kind,
+        source_relative: source_relative.to_string(),
+        byte_offset,
+    };
+    write_metadata_file(&dir, &metadata)?;
+    sync_directory(&dir)?;
+    sync_parent_directory(&dir.join("object.bin"))?;
+
+    Ok(QuarantineEntry {
+        directory: dir,
+        metadata,
+    })
+}
+
+fn write_metadata_file(dir: &Path, metadata: &QuarantineMetadata) -> StorageResult<()> {
+    let meta_path = dir.join("quarantine.json");
+    let mut json = serde_json::to_string_pretty(metadata)
+        .map_err(|e| StorageError::Quarantine(e.to_string()))?;
+    json.push('\n');
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&meta_path)?;
+    file.write_all(json.as_bytes())?;
+    sync_file(&file)?;
+    Ok(())
+}
+
+fn attribution_parent(
+    app_data_root: &Path,
+    device_id: Option<&DeviceId>,
+) -> StorageResult<PathBuf> {
+    let attribution_dir = match device_id {
+        Some(id) => format!("device-{}", id.as_filename_stem()),
+        None => "unattributed".to_string(),
+    };
+    Ok(quarantine_events_root(app_data_root).join(attribution_dir))
+}
+
+fn place_staging_as_object(staging: &Path, object_path: &Path) -> StorageResult<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
+        let from: Vec<u16> = staging.as_os_str().encode_wide().chain(Some(0)).collect();
+        let to: Vec<u16> = object_path
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        let ok = unsafe {
+            windows_sys::Win32::Storage::FileSystem::MoveFileExW(
+                from.as_ptr(),
+                to.as_ptr(),
+                MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        if ok == 0 {
+            let err = std::io::Error::last_os_error();
+            let _ = fs::remove_file(staging);
+            return Err(StorageError::Io(err));
+        }
+        Ok(())
+    }
+    #[cfg(unix)]
+    {
+        fs::rename(staging, object_path).map_err(|err| {
+            let _ = fs::remove_file(staging);
+            StorageError::Io(err)
+        })
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (staging, object_path);
+        Err(StorageError::Quarantine(
+            "quarantine object placement unsupported on this platform".into(),
+        ))
+    }
+}
+
 fn exclusive_create_dir(base: &Path) -> StorageResult<PathBuf> {
     if let Some(parent) = base.parent() {
         fs::create_dir_all(parent)?;
+        sync_directory(parent)?;
     }
     match fs::create_dir(base) {
         Ok(()) => Ok(base.to_path_buf()),
@@ -130,11 +303,26 @@ fn exclusive_create_dir(base: &Path) -> StorageResult<PathBuf> {
                 .map(|t| t.as_nanos())
                 .unwrap_or(0);
             let alt = PathBuf::from(format!("{}-{}-{}", base.display(), suffix, nanos));
-            fs::create_dir(&alt).map_err(StorageError::from)?;
+            fs::create_dir(&alt)?;
             Ok(alt)
         }
         Err(err) => Err(StorageError::Io(err)),
     }
+}
+
+fn read_exact_some(file: &mut File, buf: &mut [u8]) -> StorageResult<()> {
+    let mut filled = 0usize;
+    while filled < buf.len() {
+        match file.read(&mut buf[filled..])? {
+            0 => {
+                return Err(StorageError::Quarantine(
+                    "unexpected EOF while streaming quarantine range".into(),
+                ));
+            }
+            n => filled += n,
+        }
+    }
+    Ok(())
 }
 
 fn utc_compact_now() -> String {
@@ -143,6 +331,15 @@ fn utc_compact_now() -> String {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     format!("{secs}")
+}
+
+fn format_detected_at(utc_compact: &str) -> String {
+    // Compact seconds since epoch rendered as RFC 3339-ish diagnostic timestamp.
+    // Operators use this for ordering; protocol acceptance never trusts wall-clock.
+    match utc_compact.parse::<u64>() {
+        Ok(secs) => crate::timefmt::format_unix_secs_rfc3339_utc(secs),
+        Err(_) => format!("{utc_compact}Z"),
+    }
 }
 
 fn lowercase_hex(bytes: &[u8]) -> String {
@@ -196,6 +393,34 @@ mod tests {
     }
 
     #[test]
+    fn quarantine_file_range_streams_without_caller_buffer() {
+        let root = temp_root("range");
+        let device = DeviceId::new("device-b").unwrap();
+        let pack = root.join("pack.bin");
+        fs::create_dir_all(&root).unwrap();
+        let mut data = Vec::new();
+        data.extend_from_slice(b"PREFIX");
+        data.extend_from_slice(b"REJECTED-SUFFIX-BYTES");
+        fs::write(&pack, &data).unwrap();
+        let mut file = File::open(&pack).unwrap();
+        let entry = quarantine_file_range(
+            &root,
+            Some(&device),
+            "truncated_tail",
+            QuarantineSourceKind::ActiveOpen,
+            "canonical/events/x/0.open",
+            6,
+            data.len() as u64,
+            &mut file,
+        )
+        .unwrap();
+        let object = fs::read(entry.directory.join("object.bin")).unwrap();
+        assert_eq!(object, b"REJECTED-SUFFIX-BYTES");
+        assert_eq!(entry.metadata.byte_offset, Some(6));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn quarantine_collision_uses_suffix_without_overwrite() {
         let root = temp_root("collide");
         let payload = b"same-bytes";
@@ -209,8 +434,6 @@ mod tests {
             payload,
         )
         .unwrap();
-        // Force same base name by calling again quickly with same hash/reason —
-        // exclusive_create_dir suffixes on AlreadyExists.
         let b = quarantine_bytes(
             &root,
             None,
@@ -224,6 +447,24 @@ mod tests {
         assert_ne!(a.directory, b.directory);
         assert!(a.directory.join("object.bin").is_file());
         assert!(b.directory.join("object.bin").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn directory_sync_failure_is_typed_and_not_success() {
+        let root = temp_root("syncfail");
+        crate::durability::fail_next_directory_sync();
+        let err = quarantine_bytes(
+            &root,
+            None,
+            "truncated_tail",
+            QuarantineSourceKind::Other,
+            "unresolved",
+            None,
+            b"x",
+        )
+        .unwrap_err();
+        assert!(matches!(err, StorageError::Durability(_)), "{err}");
         let _ = fs::remove_dir_all(&root);
     }
 }
