@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-07
 **Branch:** `m2/immutable-event-store`
-**Tip:** *(filled after commit)*
+**Tip:** `e5568bd0a0e4ebd21caa8be33c19e6c2e106370d`
 **Prior tip:** `1f9d7a4` / behavior `942569d`
 
 ## CI failure (macOS)
