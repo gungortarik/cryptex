@@ -32,7 +32,7 @@
 
 ## Correction (2026-10-07) — ADR-0016 §8.1 directory format restored
 
-**Behavior tip (this correction):** `PENDING`
+**Behavior tip (this correction):** `e098e8a431504e34a4659ee48546f7b1041a2315`
 
 Accepted ADR-0016 §8.1 directory format is restored in `crates/storage/src/quarantine.rs`:
 
