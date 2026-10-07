@@ -40,6 +40,15 @@ pub fn quarantine_events_root(app_data_root: &Path) -> PathBuf {
     app_data_root.join("quarantine").join("canonical-events")
 }
 
+/// `<app-data-root>/identity/devices/<device_id_hex>/event_signing_key.json`
+pub fn event_signing_key_path(app_data_root: &Path, device_id: &DeviceId) -> PathBuf {
+    app_data_root
+        .join("identity")
+        .join("devices")
+        .join(device_id.as_filename_stem())
+        .join("event_signing_key.json")
+}
+
 /// Active `.open` pack path for `segment_index`.
 pub fn active_segment_path(
     app_data_root: &Path,
@@ -103,5 +112,14 @@ mod tests {
     fn rejects_path_unsafe_device_ids() {
         let err = device_id_from_str("../etc-passwd").unwrap_err();
         assert!(matches!(err, StorageError::InvalidDeviceId(_)));
+    }
+
+    #[test]
+    fn event_signing_key_path_is_under_identity_devices() {
+        let device = DeviceId::new("device-a").unwrap();
+        let root = Path::new("/var/tmp/cryptex-app-data");
+        let path = event_signing_key_path(root, &device);
+        let stem = device.as_filename_stem();
+        assert!(path.ends_with(format!("identity/devices/{stem}/event_signing_key.json")));
     }
 }

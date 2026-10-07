@@ -119,7 +119,7 @@ Ordered after ADR-0016 acceptance. Each slice: behavior + tests + local format/l
 
 ## 7. Continuation point
 
-**Now:** ADR-0016 **ACCEPTED**. Slices 1–3 landed (scaffolding, framing limits, event types + schema/TS, integrity primitives). Next: remaining M2 product slices per kickoff order (signing-key lifecycle / segment write path). No GitHub Actions until the final required M2 CI gate.
+**Now:** ADR-0016 **ACCEPTED**. Slices 1–4 landed (through signing-key lifecycle). Next: sealed segment append/seal + recovery/quarantine I/O. No GitHub Actions until the final required M2 CI gate.
 
 
 **Historical note:** Operational handoff previously retained contradictory M1 “review open / merge pending” wording after PR #6 merged. That residue is labeled historical/superseded in `docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md`. M1 remains COMPLETE at `c2168f3` / docs closeout `0c84c5c`.

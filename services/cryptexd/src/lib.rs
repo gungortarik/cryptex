@@ -10,6 +10,7 @@
 pub mod compare;
 pub mod compat;
 pub mod error;
+pub mod event_signing_key;
 pub mod identity_runtime;
 pub mod install_runtime;
 pub mod instance;

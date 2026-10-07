@@ -11,6 +11,6 @@ pub mod layout;
 
 pub use error::{StorageError, StorageResult};
 pub use layout::{
-    SegmentKind, active_segment_path, canonical_events_device_dir, quarantine_events_root,
-    sealed_segment_path,
+    SegmentKind, active_segment_path, canonical_events_device_dir, event_signing_key_path,
+    quarantine_events_root, sealed_segment_path,
 };

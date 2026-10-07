@@ -49,6 +49,11 @@ impl AccountLabel {
         Self(format!("device-private:{device_id}"))
     }
 
+    /// ADR-0016 event-signing seed (distinct from pre-M2 synthetic `device-private:` blobs).
+    pub fn device_event_signing_seed(device_id: &str) -> Self {
+        Self(format!("device-event-signing-seed:{device_id}"))
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -78,5 +83,8 @@ mod tests {
         let label = AccountLabel::device_private("abc123");
         assert_eq!(label.as_str(), "device-private:abc123");
         assert!(!label.as_str().contains("SECRET"));
+        let seed = AccountLabel::device_event_signing_seed("abc123");
+        assert_eq!(seed.as_str(), "device-event-signing-seed:abc123");
+        assert_ne!(label, seed);
     }
 }
