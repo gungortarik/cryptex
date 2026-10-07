@@ -16,6 +16,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
@@ -23,6 +25,8 @@ use serde::{Deserialize, Serialize};
 use cryptex_core::{CoreError, CoreResult, DeviceId};
 
 pub const COUNTER_SCHEMA_VERSION: u32 = 1;
+
+static INIT_MARKER_TMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct CounterState {
@@ -64,6 +68,11 @@ impl SequenceStore {
                     device_id: device_id.as_str().to_string(),
                 });
             }
+            // Record that this device's sequence state has existed before
+            // creating its counter. The marker is committed first so a crash
+            // between these two writes fails closed instead of allowing a
+            // later initialize to restart at zero.
+            self.create_initialization_marker(device_id)?;
             let initial = CounterState {
                 schema_version: COUNTER_SCHEMA_VERSION,
                 device_id: device_id.as_str().to_string(),
@@ -151,6 +160,20 @@ impl SequenceStore {
 
         let result = (|| {
             let state = self.read_state(device_id, &counter_path)?;
+            match (state.as_ref(), self.read_initialization_marker(device_id)?) {
+                (Some(_), None) => {
+                    // Upgrade an existing counter from before marker support.
+                    // Persist the marker before any subsequent operation can
+                    // mutate or issue from this state.
+                    self.create_initialization_marker(device_id)?;
+                }
+                (None, Some(())) => {
+                    return Err(CoreError::SequenceStateMissing {
+                        device_id: device_id.as_str().to_string(),
+                    });
+                }
+                _ => {}
+            }
             body(state)
         })();
 
@@ -202,6 +225,75 @@ impl SequenceStore {
         Ok(Some(parsed))
     }
 
+    fn initialization_marker_path(&self, device_id: &DeviceId) -> PathBuf {
+        self.root
+            .join(format!("{}.initialized", device_id.as_filename_stem()))
+    }
+
+    fn read_initialization_marker(&self, device_id: &DeviceId) -> CoreResult<Option<()>> {
+        let path = self.initialization_marker_path(device_id);
+        let mut file = match File::open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)?;
+        let marker: CounterState =
+            serde_json::from_slice(&bytes).map_err(|error| CoreError::SequenceStateCorrupt {
+                device_id: device_id.as_str().to_string(),
+                detail: format!("invalid initialization marker: {error}"),
+            })?;
+        if marker.schema_version != COUNTER_SCHEMA_VERSION
+            || marker.device_id != device_id.as_str()
+            || marker.last_issued != 0
+        {
+            return Err(CoreError::SequenceStateCorrupt {
+                device_id: device_id.as_str().to_string(),
+                detail: "initialization marker does not match device/schema".to_string(),
+            });
+        }
+        Ok(Some(()))
+    }
+
+    fn create_initialization_marker(&self, device_id: &DeviceId) -> CoreResult<()> {
+        let path = self.initialization_marker_path(device_id);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|time| time.as_nanos())
+            .unwrap_or(0);
+        let sequence = INIT_MARKER_TMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let tmp = path.with_extension(format!(
+            "initialized.tmp.{}-{sequence}-{nanos}",
+            std::process::id()
+        ));
+        let marker = CounterState {
+            schema_version: COUNTER_SCHEMA_VERSION,
+            device_id: device_id.as_str().to_string(),
+            last_issued: 0,
+        };
+        let bytes = serde_json::to_vec(&marker)
+            .map_err(|error| CoreError::Durability(format!("serialize init marker: {error}")))?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+            .map_err(|error| {
+                CoreError::Durability(format!(
+                    "create sequence initialization marker temp: {error}"
+                ))
+            })?;
+        let staged = file.write_all(&bytes).and_then(|()| file.sync_all());
+        drop(file);
+        if let Err(error) = staged {
+            return Err(cleanup_marker_temp(&tmp, error));
+        }
+        if let Err(error) = place_initialization_marker(&tmp, &path) {
+            return Err(cleanup_marker_temp(&tmp, error));
+        }
+        Ok(())
+    }
+
     fn persist_synced(&self, device_id: &DeviceId, state: &CounterState) -> CoreResult<()> {
         let path = self.counter_path(device_id);
         let tmp = path.with_extension("json.tmp");
@@ -244,6 +336,58 @@ impl SequenceStore {
     fn lock_path(&self, device_id: &DeviceId) -> PathBuf {
         self.root
             .join(format!("{}.lock", device_id.as_filename_stem()))
+    }
+}
+
+fn cleanup_marker_temp(tmp: &Path, primary: std::io::Error) -> CoreError {
+    match fs::remove_file(tmp) {
+        Ok(()) => CoreError::Durability(primary.to_string()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            CoreError::Durability(primary.to_string())
+        }
+        Err(cleanup) => CoreError::Durability(format!(
+            "{primary}; initialization marker temp cleanup failed: {cleanup}"
+        )),
+    }
+}
+
+fn place_initialization_marker(tmp: &Path, path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        fs::hard_link(tmp, path)?;
+        fs::remove_file(tmp)?;
+        let parent = path.parent().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "sequence initialization marker has no parent",
+            )
+        })?;
+        File::open(parent)?.sync_all()
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::{MOVEFILE_WRITE_THROUGH, MoveFileExW};
+
+        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
+        let to: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        // SAFETY: both pointers refer to valid null-terminated UTF-16 paths.
+        let result = unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), MOVEFILE_WRITE_THROUGH) };
+        if result == 0 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (tmp, path);
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "durable sequence initialization markers are unsupported on this platform",
+        ))
     }
 }
 
@@ -378,6 +522,53 @@ mod tests {
         let device = DeviceId::new("device-c").unwrap();
         let err = store.allocate(&device).unwrap_err();
         assert!(matches!(err, CoreError::SequenceStateMissing { .. }));
+    }
+
+    #[test]
+    fn deleted_counter_cannot_be_reinitialized_from_zero() {
+        let store = temp_store("deleted-counter");
+        let device = DeviceId::new("device-counter-deleted").unwrap();
+        store.initialize(&device).unwrap();
+        assert_eq!(store.allocate(&device).unwrap(), 1);
+        fs::remove_file(store.counter_path(&device)).unwrap();
+
+        assert!(matches!(
+            store.allocate(&device),
+            Err(CoreError::SequenceStateMissing { .. })
+        ));
+        assert!(matches!(
+            store.initialize(&device),
+            Err(CoreError::SequenceStateMissing { .. })
+        ));
+        assert!(!store.counter_path(&device).exists());
+        assert!(store.initialization_marker_path(&device).exists());
+        fs::remove_dir_all(store.root()).unwrap();
+    }
+
+    #[test]
+    fn existing_counter_without_marker_is_protected_before_use() {
+        let store = temp_store("legacy-counter");
+        let device = DeviceId::new("device-counter-legacy").unwrap();
+        let legacy_state = CounterState {
+            schema_version: COUNTER_SCHEMA_VERSION,
+            device_id: device.as_str().to_string(),
+            last_issued: 7,
+        };
+        fs::write(
+            store.counter_path(&device),
+            serde_json::to_vec(&legacy_state).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(store.last_issued(&device).unwrap(), 7);
+        assert!(store.initialization_marker_path(&device).exists());
+        fs::remove_file(store.counter_path(&device)).unwrap();
+        assert!(matches!(
+            store.initialize(&device),
+            Err(CoreError::SequenceStateMissing { .. })
+        ));
+        assert!(!store.counter_path(&device).exists());
+        fs::remove_dir_all(store.root()).unwrap();
     }
 
     #[test]
