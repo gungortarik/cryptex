@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-07
 **Branch:** `m2/immutable-event-store`
-**Tip:** `PENDING`
+**Tip:** `1069cf1bf90d78dae1f18c4c93c2c512982180a9`
 
 ## Prior CI (near-final)
 
