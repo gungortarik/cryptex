@@ -246,6 +246,43 @@ mod tests {
         Classification, EVENT_SCHEMA_VERSION, EventPayload, EventType, MemoryNotePayload,
     };
 
+    /// Fixed seed for cross-platform known-answer vectors (not a production secret).
+    const KAT_SEED: [u8; 32] = [0x11; 32];
+    const KAT_SIGNING_KEY_ID: &str = "10ba682c8ad13513971e8b56881aab8b";
+    const KAT_PUBLIC_KEY_HEX: &str =
+        "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737";
+    const KAT_JCS: &str = concat!(
+        r#"{"brain_id":"22222222-2222-4222-8222-222222222222","classification":"internal","created_at":"2026-10-07T00:00:00Z","device_id":"device-a","device_seq":"1","event_id":"11111111-1111-4111-8111-111111111111","event_type":"memory.note","payload":{"text":"kat-hello"},"prev_content_hash":"0000000000000000000000000000000000000000000000000000000000000000","schema_version":1,"signing_key_id":"10ba682c8ad13513971e8b56881aab8b"}"#
+    );
+    const KAT_CONTENT_HASH: &str =
+        "45dc225413467451623b09445ace22de02255184faeb114421a2df68c17e1be0";
+    const KAT_SIGNATURE: &str = concat!(
+        "955eae9c88d8e1d34a75511a4734fbc18d83fd0fd978e907206cb507767958aa",
+        "d95f9352d243de0cc3e0f8804429ca865ef499cbac8cf760058a55644c599900"
+    );
+
+    fn kat_key() -> SigningKey {
+        SigningKey::from_bytes(&KAT_SEED)
+    }
+
+    fn kat_signable() -> SignableEvent {
+        let key = kat_key();
+        let key_id = signing_key_id_from_verifying_key(&key.verifying_key()).unwrap();
+        SignableEvent {
+            schema_version: EVENT_SCHEMA_VERSION,
+            event_id: "11111111-1111-4111-8111-111111111111".into(),
+            brain_id: "22222222-2222-4222-8222-222222222222".into(),
+            device_id: "device-a".into(),
+            device_seq: DeviceSeq::from_u64(1).unwrap(),
+            created_at: "2026-10-07T00:00:00Z".into(),
+            event_type: EventType::MemoryNote,
+            classification: Classification::Internal,
+            signing_key_id: key_id,
+            payload: EventPayload::MemoryNote(MemoryNotePayload::new("kat-hello").unwrap()),
+            prev_content_hash: ContentHashHex::zero(),
+        }
+    }
+
     fn sample_key() -> SigningKey {
         SigningKey::from_bytes(&[7u8; 32])
     }
@@ -265,6 +302,45 @@ mod tests {
             payload: EventPayload::MemoryNote(MemoryNotePayload::new("hello").unwrap()),
             prev_content_hash: ContentHashHex::zero(),
         }
+    }
+
+    #[test]
+    fn known_answer_jcs_bytes_are_exact() {
+        let j = canonicalize_signable(&kat_signable()).unwrap();
+        assert_eq!(String::from_utf8(j).unwrap(), KAT_JCS);
+    }
+
+    #[test]
+    fn known_answer_content_hash_is_exact() {
+        let key = kat_key();
+        assert_eq!(
+            signing_key_id_from_verifying_key(&key.verifying_key())
+                .unwrap()
+                .as_str(),
+            KAT_SIGNING_KEY_ID
+        );
+        let verifying = key.verifying_key();
+        let pk = verifying.as_bytes();
+        let mut pk_hex = String::with_capacity(64);
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        for b in pk {
+            pk_hex.push(HEX[(b >> 4) as usize] as char);
+            pk_hex.push(HEX[(b & 0x0f) as usize] as char);
+        }
+        assert_eq!(pk_hex, KAT_PUBLIC_KEY_HEX);
+        assert_eq!(
+            content_hash(&kat_signable()).unwrap().as_str(),
+            KAT_CONTENT_HASH
+        );
+    }
+
+    #[test]
+    fn known_answer_ed25519_signature_is_exact() {
+        let key = kat_key();
+        let hash_raw = content_hash_raw(&kat_signable()).unwrap();
+        let sig = sign_content_hash(&key, &hash_raw).unwrap();
+        assert_eq!(sig.as_str(), KAT_SIGNATURE);
+        verify_content_hash_signature(&key.verifying_key(), &hash_raw, &sig).unwrap();
     }
 
     #[test]

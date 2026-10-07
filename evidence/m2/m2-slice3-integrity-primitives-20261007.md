@@ -26,3 +26,8 @@
 - `cargo fmt -p cryptex-events -p cryptex-storage` — applied
 - `cargo test -p cryptex-events -p cryptex-storage --locked` — PASS (29 events + 3 storage)
 - Clippy still blocked locally by Smart App Control (4551); required at final CI gate
+
+## Follow-up: known-answer vectors
+
+Fixed seed `0x11` repeated 32 times; asserts exact JCS bytes, BLAKE3 content hash, and Ed25519 signature so protocol bytes cannot drift across platforms.
+

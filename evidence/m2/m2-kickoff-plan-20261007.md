@@ -32,10 +32,10 @@
 | Check | Result |
 |---|---|
 | Active branch | `m2/immutable-event-store` |
-| HEAD | `0c84c5c` — Record M1 integration closeout |
+| HEAD | `5b76d8f` — M2 integrity primitives (base `0c84c5c`) |
 | Tracks remote | `origin/m2/immutable-event-store` @ same tip; clean tree at kickoff |
 | `c2168f3` ancestor of HEAD | yes (M1 merge integrated) |
-| `0c84c5c` is HEAD / M1 docs closeout | yes |
+| Base tip `0c84c5c` (M1 docs closeout); branch tip advances with M2 slices | yes |
 | Working tree at verification | clean |
 
 ## 3. Repository audit — reusable foundations
