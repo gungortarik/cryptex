@@ -2,7 +2,7 @@
 
 **Snapshot date:** 2026-10-07
 **Current milestone:** M2 — Immutable Event Store (IN PROGRESS)
-**Active branch:** `m2/immutable-event-store` @ `92d9c6b` (schema validation + quarantine matrix; base remains `0c84c5c`)
+**Active branch:** `m2/immutable-event-store` @ `05caec0` (seq-gap/streaming-quarantine/framing; base remains `0c84c5c`)
 **Base:** `origin/m0/foundation` @ `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75` (M1 documentation closeout)
 **M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) — integrated ancestor
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
