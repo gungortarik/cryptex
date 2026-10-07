@@ -193,6 +193,12 @@ impl SequenceStore {
             });
         }
 
+        if parsed.device_id != device_id.as_str() {
+            return Err(CoreError::SequenceStateCorrupt {
+                device_id: device_id.as_str().to_string(),
+                detail: "device_id mismatch in durable counter".to_string(),
+            });
+        }
         Ok(Some(parsed))
     }
 
@@ -320,6 +326,33 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
     use std::thread;
+
+    #[test]
+    fn mismatched_device_counter_is_rejected_by_every_operation() {
+        let store = temp_store("device-mismatch");
+        let device = DeviceId::new("requested-device").unwrap();
+        let path = store.counter_path(&device);
+        let bytes = br#"{"schema_version":1,"device_id":"other-device","last_issued":42}"#;
+        fs::write(&path, bytes).unwrap();
+        assert!(matches!(
+            store.last_issued(&device),
+            Err(CoreError::SequenceStateCorrupt { .. })
+        ));
+        assert!(matches!(
+            store.allocate(&device),
+            Err(CoreError::SequenceStateCorrupt { .. })
+        ));
+        assert!(matches!(
+            store.initialize(&device),
+            Err(CoreError::SequenceStateCorrupt { .. })
+        ));
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            bytes,
+            "corrupt state must remain unchanged"
+        );
+        fs::remove_dir_all(store.root()).unwrap();
+    }
 
     fn temp_store(label: &str) -> SequenceStore {
         let root =

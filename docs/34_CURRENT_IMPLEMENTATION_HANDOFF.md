@@ -22,7 +22,8 @@
 
 **Latest follow-up (2026-10-07):** Codex final review found fixed-temp races in
 pairing and Recovery Kit public metadata persistence and corrected them with
-serialized, synced atomic replacement. Windows tests/format PASS; local Clippy
+serialized, synced atomic replacement. Sequence counter device-id validation now
+also covers reads/initialization, not only allocation. Windows tests/format PASS; local Clippy
 was blocked by Smart App Control (4551). Current-source cross-platform CI is
 PENDING; the prior CI below does not cover this code change. See
 `evidence/m1/m1-public-metadata-final-review-20261007.md`. Human review remains OPEN.

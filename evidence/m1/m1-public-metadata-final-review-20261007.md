@@ -26,6 +26,12 @@ No event, pairing product workflow, recovery container, schema or dependency
 decision changed. Brain identity remains immutable and is not replaced by this
 helper.
 
+The final read-boundary review also found device-id mismatch validation only in
+sequence allocate. Validation now lives in read_state, so last_issued and
+initialize also reject a counter belonging to another device as typed corruption.
+The regression checks all three operations and unchanged corrupt bytes; Windows
+sequence suite 14/14 PASS. Allocation's existing defense remains intact.
+
 ## Windows verification
 
 - Full `cargo test --locked -p cryptexd`: 97 unit + 9 lifecycle + 3 Mode B + 2 update
@@ -46,4 +52,6 @@ helper.
 
 Prior implementation CI 37564521336 @ 7619cae remains historical evidence.
 This follow-up changes product code and needs its own current-source CI result.
+Run 37567278814 @ 25328ac was cancelled before final validation to include the
+sequence read-boundary correction in one final implementation-candidate run.
 M1 completion, owner review, and completion merge remain OPEN.
