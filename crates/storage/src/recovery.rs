@@ -123,10 +123,16 @@ fn stream_verified_prefix_length<V: FrameBodyValidator>(
     while offset + FRAME_HEADER_BYTES as u64 <= file_len {
         file.seek(SeekFrom::Start(offset))?;
         read_exact(file, &mut header)?;
+        // Full header bytes are present (loop invariant). Invalid magic/version/length
+        // is framing/incompatible corruption, not a truncated tail.
         let (_ver, body_len) = match decode_frame_header(&header) {
             Ok(v) => v,
             Err(_) => {
-                return Ok((offset, "truncated_tail".into(), QuarantineExtras::default()));
+                return Ok((
+                    offset,
+                    "corrupt_frame_header".into(),
+                    QuarantineExtras::default(),
+                ));
             }
         };
         // decode_frame_header already enforces MAX_ACCEPTED_RECORD_BYTES.
@@ -136,6 +142,7 @@ fn stream_verified_prefix_length<V: FrameBodyValidator>(
             .and_then(|h| h.checked_add(u64::from(body_len)))
             .ok_or_else(|| StorageError::Framing("frame length overflow".into()))?;
         if body_end > file_len {
+            // Complete header, but body bytes do not reach EOF — truncated tail.
             return Ok((offset, "truncated_tail".into(), QuarantineExtras::default()));
         }
         let mut body = vec![0u8; body_len as usize];
@@ -301,6 +308,76 @@ mod tests {
         assert_eq!(entry.metadata.schema_version_if_parsed, Some(99));
         let meta = fs::read_to_string(entry.directory.join("quarantine.json")).unwrap();
         assert!(!meta.contains(root.to_string_lossy().as_ref()));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn short_incomplete_body_quarantines_as_truncated_tail() {
+        let root = temp_root("trunc-body");
+        let device = DeviceId::new("device-trunc-body").unwrap();
+        append_frame(&root, &device, 0, b"good").unwrap();
+        let mut bytes = read_active_pack_bytes(&root, &device, 0).unwrap();
+        let good_len = bytes.len();
+        // Valid magic/version but body_len claims 8 bytes while only 3 follow.
+        bytes.extend_from_slice(b"CXE1");
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        bytes.extend_from_slice(b"abc");
+        let path = active_segment_path(&root, &device, 0);
+        fs::write(&path, &bytes).unwrap();
+
+        let report = recover_active_open(&root, &device, 0, &AcceptAllBodies).unwrap();
+        assert!(report.truncated);
+        assert_eq!(report.verified_prefix_len, good_len as u64);
+        let entry = report.quarantined.unwrap();
+        assert_eq!(entry.metadata.reason_code, "truncated_tail");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn short_incomplete_header_quarantines_as_truncated_tail() {
+        let root = temp_root("trunc-hdr");
+        let device = DeviceId::new("device-trunc-hdr").unwrap();
+        append_frame(&root, &device, 0, b"good").unwrap();
+        let mut bytes = read_active_pack_bytes(&root, &device, 0).unwrap();
+        let good_len = bytes.len();
+        // Fewer than FRAME_HEADER_BYTES trailing bytes => truncated_tail.
+        bytes.extend_from_slice(b"CXE");
+        let path = active_segment_path(&root, &device, 0);
+        fs::write(&path, &bytes).unwrap();
+
+        let report = recover_active_open(&root, &device, 0, &AcceptAllBodies).unwrap();
+        assert!(report.truncated);
+        assert_eq!(report.verified_prefix_len, good_len as u64);
+        let entry = report.quarantined.unwrap();
+        assert_eq!(entry.metadata.reason_code, "truncated_tail");
+        let object = fs::read(entry.directory.join("object.bin")).unwrap();
+        assert_eq!(object, b"CXE");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn complete_invalid_magic_header_quarantines_as_corrupt_frame_header() {
+        let root = temp_root("bad-magic");
+        let device = DeviceId::new("device-bad-magic").unwrap();
+        append_frame(&root, &device, 0, b"good").unwrap();
+        let mut bytes = read_active_pack_bytes(&root, &device, 0).unwrap();
+        let good_len = bytes.len();
+        // Complete 10-byte header with wrong magic => corrupt_frame_header.
+        bytes.extend_from_slice(b"BAD1");
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&4u32.to_le_bytes());
+        bytes.extend_from_slice(b"dead");
+        let path = active_segment_path(&root, &device, 0);
+        fs::write(&path, &bytes).unwrap();
+
+        let report = recover_active_open(&root, &device, 0, &AcceptAllBodies).unwrap();
+        assert!(report.truncated);
+        assert_eq!(report.verified_prefix_len, good_len as u64);
+        let entry = report.quarantined.unwrap();
+        assert_eq!(entry.metadata.reason_code, "corrupt_frame_header");
+        let object = fs::read(entry.directory.join("object.bin")).unwrap();
+        assert_eq!(&object[..4], b"BAD1");
         let _ = fs::remove_dir_all(&root);
     }
 

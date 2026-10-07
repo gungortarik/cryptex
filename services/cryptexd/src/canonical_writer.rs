@@ -23,7 +23,7 @@ use cryptex_events::validate_accepted_record_bytes;
 use cryptex_storage::layout::{
     active_segment_path, canonical_events_device_dir, sealed_segment_path,
 };
-use cryptex_storage::quarantine::{QuarantineExtras, QuarantineSourceKind, quarantine_bytes};
+use cryptex_storage::quarantine::{QuarantineExtras, QuarantineSourceKind, quarantine_file_range};
 use cryptex_storage::recovery::{FrameBodyValidator, recover_active_open};
 use cryptex_storage::stream_frames::fold_verified_frames;
 use cryptex_storage::{StorageError, append_frame, seal_active_segment};
@@ -480,12 +480,11 @@ fn scan_pack_events(
                 *expected_seq = Some(seq);
             }
             Some(prev_seq) => {
-                let want = prev_seq
-                    .checked_add(1)
-                    .ok_or_else(|| CanonicalWriterError::Sequence("device_seq overflow".into()))?;
-                if seq != want {
+                // ADR-0015: unique and strictly increasing; contiguity is not required.
+                // Durable allocate-before-append may leave gaps after a crashed append.
+                if seq <= *prev_seq {
                     return Err(CanonicalWriterError::Integrity(format!(
-                        "device_seq gap or disorder: expected {want} found {seq}"
+                        "device_seq not strictly increasing: previous {prev_seq} found {seq}"
                     )));
                 }
                 check_chain_link(expected_prev, &accepted.prev_content_hash)
@@ -504,8 +503,15 @@ fn quarantine_sealed_pack(
     index: u64,
     path: &Path,
 ) -> CanonicalWriterResult<()> {
-    let bytes = fs::read(path).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
-    if bytes.is_empty() {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .open(path)
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let len = file
+        .metadata()
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?
+        .len();
+    if len == 0 {
         return Err(CanonicalWriterError::Integrity(format!(
             "refusing to quarantine empty sealed pack {}",
             path.display()
@@ -516,14 +522,16 @@ fn quarantine_sealed_pack(
         device_id.as_filename_stem(),
         index
     );
-    quarantine_bytes(
+    // Stream exact sealed bytes into quarantine before returning the validation failure.
+    quarantine_file_range(
         runtime_root,
         Some(device_id),
         "corrupt_sealed_pack",
         QuarantineSourceKind::SealedSeg,
         &source_relative,
-        Some(0),
-        &bytes,
+        0,
+        len,
+        &mut file,
         QuarantineExtras::default(),
     )
     .map_err(CanonicalWriterError::from)?;
@@ -1316,6 +1324,58 @@ mod tests {
             }
         }
         assert!(found, "expected sealed pack quarantine");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn sequence_gap_after_allocate_without_append_preserves_hash_chain() {
+        let root = temp_root("seq-gap");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("writer-seq-gap").unwrap();
+        let brain = "88888888-8888-4888-8888-888888888888";
+        let cfg = CanonicalWriterConfig {
+            seal_event_threshold: 1000,
+        };
+        let first = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            brain,
+            &device,
+            Classification::Internal,
+            "first",
+            &cfg,
+        )
+        .unwrap();
+        assert_eq!(first.accepted.device_seq.to_u64().unwrap(), 1);
+
+        // Consume a sequence durably without appending (simulates crash after allocate).
+        let burned = allocate_device_sequence(&root, &device).unwrap();
+        assert_eq!(burned, 2);
+
+        let second = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            brain,
+            &device,
+            Classification::Internal,
+            "after-gap",
+            &cfg,
+        )
+        .unwrap();
+        assert_eq!(second.accepted.device_seq.to_u64().unwrap(), 3);
+        assert_eq!(
+            second.accepted.prev_content_hash.as_str(),
+            first.accepted.content_hash.as_str()
+        );
+
+        let events =
+            load_verified_events(&store, SecureStoreEnvironment::Dev, &root, &device).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].device_seq.to_u64().unwrap(), 1);
+        assert_eq!(events[1].device_seq.to_u64().unwrap(), 3);
+        assert_eq!(events[1].prev_content_hash, events[0].content_hash);
         let _ = fs::remove_dir_all(&root);
     }
 }
