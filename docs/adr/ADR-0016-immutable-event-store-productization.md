@@ -339,13 +339,13 @@ Fixture-only constructs stay in Rust tests and must not be emitted into `package
 | Master Spec: immutable events; cryptexd sole writer; offline-capable; no device master | §3, §11; no master device assumed |
 | Master Spec / `docs/04`: attributable, tamper-evident; failures not swallowed | §4–§5, §7–§8 |
 | ADR-0013: sealed per-device segments; not one-file-per-event; `segment_events=1000` not frozen | §4.4, §9 |
-| ADR-0015: full u64 sequence contract; first usable 1; fail-closed missing/corrupt counters | device_seq decimal string with strict u64 parse (Â§3.1.1); no 2^53-1 cap |
-| ADR-0014/0015: SecureStore private material; fail-closed missing/corrupt | Crash-safe key init + partial-state matrix (Â§6); never silent key replace when events exist |
-| Quarantine / no silent data loss of rejected bytes | Ordered .open recovery quarantines suffix before truncate (Â§7.2, Â§8) |
+| ADR-0015: full u64 sequence contract; first usable 1; fail-closed missing/corrupt counters | device_seq decimal string with strict u64 parse (§3.1.1); no 2^53-1 cap |
+| ADR-0014/0015: SecureStore private material; fail-closed missing/corrupt | Crash-safe key init + partial-state matrix (§6); never silent key replace when events exist |
+| Quarantine / no silent data loss of rejected bytes | Ordered .open recovery quarantines suffix before truncate (§7.2, §8) |
 | M2 milestone scope / non-goals | No M3/M8/M10 product behavior |
-| Platform: UTF-8; no symlink canonical data; Win/macOS first-class | Â§4, Â§8âÂ§9 |
-| Schema drift architecture (docs/19, docs/26) | Â§10 single path + drift check; device_seq as string |
-| docs/08 unresolved key-rotation policy | Â§6.4 leaves full rotation unanswered |
+| Platform: UTF-8; no symlink canonical data; Win/macOS first-class | §4, §8–§9 |
+| Schema drift architecture (docs/19, docs/26) | §10 single path + drift check; device_seq as string |
+| docs/08 unresolved key-rotation policy | §6.4 leaves full rotation unanswered |
 
 ## 13. Remaining unanswered decisions (not invented)
 
