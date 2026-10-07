@@ -65,3 +65,9 @@ Realistic production-like roots succeed with the accepted layout. Max-length Dev
 - Dual-OS Actions still deferred until final gate is required after tip review
 - Max-length DeviceId × classic MAX_PATH: open for separate ADR (see table)
 
+### Follow-up measurement (slice 8f)
+
+Actual Windows FS quarantine ops (not only character counts) for UUID-length and
+max DeviceId under production-like LocalAppData are recorded in
+`evidence/m2/m2-slice8f-windows-path-ops-and-device-binding-20261007.md`. Historical
+character-count notes above remain; do not treat them as the final path-ops evidence.

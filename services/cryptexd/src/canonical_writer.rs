@@ -21,7 +21,7 @@ use cryptex_events::hex::ZERO_CONTENT_HASH_HEX;
 use cryptex_events::hex::{ContentHashHex, SigningKeyId};
 use cryptex_events::integrity::{accept_event, check_chain_link, check_first_event_prev_hash};
 use cryptex_events::limits::DEFAULT_SEAL_EVENT_THRESHOLD_HINT;
-use cryptex_events::validate_accepted_record_bytes;
+use cryptex_events::{ValidationReasonCode, validate_accepted_record_bytes};
 use cryptex_storage::layout::{
     active_segment_path, canonical_events_device_dir, sealed_segment_path,
 };
@@ -149,17 +149,31 @@ struct ChainState {
 
 struct VerifyingBodyValidator {
     verifying_key: VerifyingKey,
+    /// Device directory being scanned/recovered; every AcceptedEvent must match.
+    expected_device_id: DeviceId,
 }
 
 impl FrameBodyValidator for VerifyingBodyValidator {
     fn validate_frame_body(&self, body: &[u8]) -> cryptex_storage::StorageResult<()> {
-        validate_accepted_record_bytes(body, &self.verifying_key).map_err(|failure| {
-            StorageError::Validation {
-                reason_code: failure.reason.as_str().to_string(),
-                detail: failure.detail,
-                schema_version_if_parsed: failure.schema_version_if_parsed,
-            }
-        })?;
+        let accepted =
+            validate_accepted_record_bytes(body, &self.verifying_key).map_err(|failure| {
+                StorageError::Validation {
+                    reason_code: failure.reason.as_str().to_string(),
+                    detail: failure.detail,
+                    schema_version_if_parsed: failure.schema_version_if_parsed,
+                }
+            })?;
+        if accepted.device_id != self.expected_device_id.as_str() {
+            return Err(StorageError::Validation {
+                reason_code: ValidationReasonCode::IntegrityFailure.as_str().to_string(),
+                detail: format!(
+                    "accepted event device_id '{}' does not match segment device '{}'",
+                    accepted.device_id,
+                    self.expected_device_id.as_str()
+                ),
+                schema_version_if_parsed: Some(EVENT_SCHEMA_VERSION),
+            });
+        }
         Ok(())
     }
 }
@@ -216,6 +230,7 @@ pub fn append_memory_note<S: SecureStore>(
     let verifying = bootstrap.signing_key.verifying_key();
     let validator = VerifyingBodyValidator {
         verifying_key: verifying,
+        expected_device_id: device_id.clone(),
     };
 
     let mut state = rebuild_chain_state(runtime_root, device_id, &validator)?;
@@ -380,7 +395,13 @@ fn rebuild_chain_state(
 
     for index in &sealed_indexes {
         let path = sealed_segment_path(runtime_root, device_id, *index);
-        let scan = scan_pack_events(&path, validator, &mut expected_prev, &mut expected_seq);
+        let scan = scan_pack_events(
+            &path,
+            device_id,
+            validator,
+            &mut expected_prev,
+            &mut expected_seq,
+        );
         match scan {
             Ok(events) => {
                 // Sealed packs must be fully consumed (no truncated tail / failed frames).
@@ -419,8 +440,13 @@ fn rebuild_chain_state(
             recover_active_open(runtime_root, device_id, idx, validator)?;
             let path = active_segment_path(runtime_root, device_id, idx);
             if path.exists() {
-                let events =
-                    scan_pack_events(&path, validator, &mut expected_prev, &mut expected_seq)?;
+                let events = scan_pack_events(
+                    &path,
+                    device_id,
+                    validator,
+                    &mut expected_prev,
+                    &mut expected_seq,
+                )?;
                 events_in_active = events.len() as u64;
                 for ev in &events {
                     absorb_event(
@@ -470,6 +496,7 @@ fn absorb_event(
 
 fn scan_pack_events(
     path: &Path,
+    device_id: &DeviceId,
     validator: &VerifyingBodyValidator,
     expected_prev: &mut ContentHashHex,
     expected_seq: &mut Option<u64>,
@@ -486,6 +513,13 @@ fn scan_pack_events(
         })?;
 
     for accepted in &events {
+        if accepted.device_id != device_id.as_str() {
+            return Err(CanonicalWriterError::Integrity(format!(
+                "accepted event device_id '{}' does not match segment device '{}'",
+                accepted.device_id,
+                device_id.as_str()
+            )));
+        }
         let seq = accepted.device_seq.to_u64()?;
         match expected_seq {
             None => {
@@ -801,6 +835,7 @@ pub fn load_verified_events<S: SecureStore>(
     let ready = ensure_event_signing_key(store, env, runtime_root, device_id, &[])?;
     let validator = VerifyingBodyValidator {
         verifying_key: ready.signing_key.verifying_key(),
+        expected_device_id: device_id.clone(),
     };
     let (sealed, open) = discover_segments(runtime_root, device_id)?;
     let mut expected_prev = ContentHashHex::zero();
@@ -808,16 +843,26 @@ pub fn load_verified_events<S: SecureStore>(
     let mut all = Vec::new();
     for index in sealed {
         let path = sealed_segment_path(runtime_root, device_id, index);
-        let mut events =
-            scan_pack_events(&path, &validator, &mut expected_prev, &mut expected_seq)?;
+        let mut events = scan_pack_events(
+            &path,
+            device_id,
+            &validator,
+            &mut expected_prev,
+            &mut expected_seq,
+        )?;
         all.append(&mut events);
     }
     if let Some(idx) = open {
         recover_active_open(runtime_root, device_id, idx, &validator)?;
         let path = active_segment_path(runtime_root, device_id, idx);
         if path.exists() {
-            let mut events =
-                scan_pack_events(&path, &validator, &mut expected_prev, &mut expected_seq)?;
+            let mut events = scan_pack_events(
+                &path,
+                device_id,
+                &validator,
+                &mut expected_prev,
+                &mut expected_seq,
+            )?;
             all.append(&mut events);
         }
     }
@@ -835,17 +880,39 @@ mod tests {
     use std::sync::{Arc, Barrier};
     use std::thread;
 
+    static TEST_ROOT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
     fn temp_root(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|t| t.as_nanos())
-            .unwrap_or(0);
-        std::env::temp_dir().join(format!(
-            "cryptex-m2-writer-{}-{}-{}",
-            label,
-            std::process::id(),
-            nanos
-        ))
+        use std::sync::atomic::Ordering;
+        let seq = TEST_ROOT_SEQ.fetch_add(1, Ordering::Relaxed);
+        let base = {
+            #[cfg(windows)]
+            {
+                let local = std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA");
+                PathBuf::from(local)
+                    .join("Cryptex-Dev")
+                    .join("p0-2")
+                    .join("m2-tests")
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let home = std::env::var_os("HOME").expect("HOME");
+                PathBuf::from(home)
+                    .join("Library")
+                    .join("Application Support")
+                    .join("Cryptex-Dev")
+                    .join("p0-2")
+                    .join("m2-tests")
+            }
+            #[cfg(not(any(windows, target_os = "macos")))]
+            {
+                std::env::temp_dir()
+                    .join("Cryptex-Dev")
+                    .join("p0-2")
+                    .join("m2-tests")
+            }
+        };
+        base.join(format!("m2-t-w-{label}-{}-{seq}", std::process::id()))
     }
 
     #[test]
@@ -1166,6 +1233,184 @@ mod tests {
         file.write_all(&header).unwrap();
         file.write_all(body).unwrap();
         file.sync_all().unwrap();
+    }
+
+    fn craft_signed_mismatched_device_body(
+        store: &FakeSecureStore,
+        root: &Path,
+        directory_device: &DeviceId,
+        claimed_device_id: &str,
+        prev_content_hash: &ContentHashHex,
+        device_seq: u64,
+        brain: &str,
+    ) -> Vec<u8> {
+        let ready = ensure_event_signing_key(
+            store,
+            SecureStoreEnvironment::Dev,
+            root,
+            directory_device,
+            &[],
+        )
+        .unwrap();
+        let signable = SignableEvent {
+            schema_version: EVENT_SCHEMA_VERSION,
+            event_id: new_event_id().unwrap(),
+            brain_id: brain.to_string(),
+            device_id: claimed_device_id.to_string(),
+            device_seq: DeviceSeq::from_u64(device_seq).unwrap(),
+            created_at: now_rfc3339().unwrap(),
+            event_type: EventType::MemoryNote,
+            classification: Classification::Internal,
+            signing_key_id: SigningKeyId::parse(&ready.public.signing_key_id).unwrap(),
+            payload: EventPayload::MemoryNote(MemoryNotePayload::new("device-mismatch").unwrap()),
+            prev_content_hash: prev_content_hash.clone(),
+        };
+        let accepted = accept_event(signable, &ready.signing_key).unwrap();
+        serde_json_canonicalizer::to_vec(&accepted).unwrap()
+    }
+
+    #[test]
+    fn mismatched_device_id_in_active_open_is_quarantined_and_prefix_kept() {
+        let root = temp_root("dev-mismatch-open");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("wd-open").unwrap();
+        let brain = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        let cfg = CanonicalWriterConfig {
+            seal_event_threshold: 1000,
+        };
+        let first = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "prefix-ok",
+                config: &cfg,
+            },
+        )
+        .unwrap();
+
+        let bad = craft_signed_mismatched_device_body(
+            &store,
+            &root,
+            &device,
+            "other-device-id",
+            &first.accepted.content_hash,
+            2,
+            brain,
+        );
+        write_crafted_body_frame(&root, &device, &bad);
+
+        let second = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "after-recovery",
+                config: &cfg,
+            },
+        )
+        .unwrap();
+        assert_eq!(second.accepted.device_id, device.as_str());
+        assert_eq!(
+            second.accepted.prev_content_hash.as_str(),
+            first.accepted.content_hash.as_str()
+        );
+
+        let qroot = quarantine_events_root(&root);
+        let mut found = false;
+        for entry in walkdir_quarantine(&qroot) {
+            let meta = fs::read_to_string(entry.join("quarantine.json")).unwrap();
+            if meta.contains("integrity_failure") {
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "expected integrity_failure quarantine for device_id mismatch"
+        );
+
+        let events =
+            load_verified_events(&store, SecureStoreEnvironment::Dev, &root, &device).unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|e| e.device_id == device.as_str()));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn mismatched_device_id_in_sealed_pack_fails_closed_and_quarantines() {
+        let root = temp_root("dev-mismatch-seal");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("wd-seal").unwrap();
+        let brain = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+        let cfg = CanonicalWriterConfig {
+            seal_event_threshold: 1000,
+        };
+        let first = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Public,
+                text: "seal-prefix",
+                config: &cfg,
+            },
+        )
+        .unwrap();
+
+        let bad = craft_signed_mismatched_device_body(
+            &store,
+            &root,
+            &device,
+            "other-device-id",
+            &first.accepted.content_hash,
+            2,
+            brain,
+        );
+        write_crafted_body_frame(&root, &device, &bad);
+        seal_active_segment(&root, &device, 0).unwrap();
+        assert!(sealed_segment_path(&root, &device, 0).is_file());
+
+        let err = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Public,
+                text: "must-fail-closed",
+                config: &cfg,
+            },
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, CanonicalWriterError::Integrity(_)),
+            "got {err:?}"
+        );
+
+        let qroot = quarantine_events_root(&root);
+        let mut found = false;
+        for entry in walkdir_quarantine(&qroot) {
+            let meta = fs::read_to_string(entry.join("quarantine.json")).unwrap();
+            if meta.contains("integrity_failure") || meta.contains("corrupt_sealed_pack") {
+                found = true;
+                break;
+            }
+        }
+        assert!(
+            found,
+            "expected sealed pack quarantine after device_id mismatch"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     fn walkdir_quarantine(root: &Path) -> Vec<PathBuf> {

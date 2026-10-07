@@ -119,7 +119,7 @@ Ordered after ADR-0016 acceptance. Each slice: behavior + tests + local format/l
 
 ## 7. Continuation point
 
-**Now:** ADR-0016 **ACCEPTED**. Slices 1–8e landed; §8.1 quarantine directory format restored with typed `reason_code` path tokens after owner “geç”. Windows production-like path-length regression under LocalAppData PASS for realistic DeviceIds; max-length DeviceId vs classic MAX_PATH is an open ADR question (layout not unilaterally changed). Do **not** dispatch Actions until this tip is reviewed; then **one** dual-OS readiness run only if still required as the final green gate.
+**Now:** ADR-0016 **ACCEPTED**. Slices 1–8f landed. Per-device AcceptedEvent DeviceId binding enforced on scan/recovery. Windows FS path-ops under LocalAppData: short/UUID/max DeviceId quarantines OK on host with LongPathsEnabled=1; no app `longPathAware` manifest — portable >260 support needs owner ADR option. Do **not** dispatch Actions until this tip is reviewed.
 
 
 **Historical note:** Operational handoff previously retained contradictory M1 “review open / merge pending” wording after PR #6 merged. That residue is labeled historical/superseded in `docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md`. M1 remains COMPLETE at `c2168f3` / docs closeout `0c84c5c`.

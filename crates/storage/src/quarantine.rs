@@ -712,76 +712,132 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn adr_layout_succeeds_under_production_like_app_data_root() {
-        let root = temp_root("pathlen");
-        let device = DeviceId::new("device-safe-1").unwrap();
+    fn adr_layout_windows_path_ops_under_production_like_app_data_root() {
         let longest = QuarantineReasonCode::CorruptFrameHeader;
-        let entry = quarantine_bytes(
-            QuarantineRequest {
-                app_data_root: &root,
-                device_id: Some(&device),
-                reason_code: longest,
-                source_kind: QuarantineSourceKind::ActiveOpen,
-                source_relative: "canonical/events/x/00000000000000000000.open",
-                byte_offset: Some(0),
-                extras: QuarantineExtras::default(),
-            },
-            b"path-length-regression-payload",
-        )
-        .unwrap();
+        let max64 = "a".repeat(64);
+        let cases: [(&str, String); 3] = [
+            ("short", "device-safe-1".to_string()),
+            ("uuid36", "550e8400-e29b-41d4-a716-446655440000".to_string()),
+            ("max64", max64),
+        ];
 
-        let object = entry.directory.join("object.bin");
-        let root_len = root.to_string_lossy().chars().count();
-        let dir_len = entry.directory.to_string_lossy().chars().count();
-        let object_len = object.to_string_lossy().chars().count();
-        let leaf = entry.directory.file_name().unwrap().to_string_lossy();
-        let leaf_len = leaf.chars().count();
+        let long_paths_enabled = windows_long_paths_enabled_policy();
+        eprintln!("windows LongPathsEnabled policy (HKLM FileSystem) = {long_paths_enabled:?}");
 
-        assert!(
-            object.is_file(),
-            "object missing under production-like root {}",
-            root.display()
-        );
-        assert!(
-            leaf.contains(&format!("_{}_", longest.as_str())),
-            "leaf {leaf} missing reason_code"
-        );
-        // Classic Win32 MAX_PATH is 260. Document measured lengths for the ADR layout.
-        assert!(
-            object_len < 260,
-            "object path length {object_len} (root {root_len}, dir {dir_len}, leaf {leaf_len}) must stay under classic MAX_PATH=260 for production-like LocalAppData root {}",
-            root.display()
-        );
-        eprintln!(
-            "m2 quarantine path lengths: root={root_len} dir={dir_len} leaf={leaf_len} object={object_len} path={}",
-            object.display()
-        );
-
-        // Measure worst-case ADR-0015 device id (64 chars -> 128 hex stem). Do not
-        // silently shorten §8.1; if this exceeds classic MAX_PATH, record for ADR.
-        let max_device = DeviceId::new("a".repeat(64)).unwrap();
-        let attribution = format!("device-{}", max_device.as_filename_stem());
-        let worst_leaf = entry_directory_name("1728312345", longest, &"b".repeat(64));
-        let worst_object = root
-            .join("quarantine")
-            .join("canonical-events")
-            .join(&attribution)
-            .join(&worst_leaf)
-            .join("object.bin");
-        let worst_len = worst_object.to_string_lossy().chars().count();
-        eprintln!(
-            "m2 quarantine worst-case max DeviceId object path length={worst_len} (MAX_PATH=260) exceeds={} path={}",
-            worst_len >= 260,
-            worst_object.display()
-        );
-        // Realistic device ids must fit. Max-length DeviceId budget is reported, not
-        // papered over by changing the accepted directory format.
-        if worst_len >= 260 {
-            eprintln!(
-                "ADR-0016 §8.1 + max-length DeviceId exceeds classic Windows MAX_PATH under LocalAppData; separate ADR decision required (layout not altered)."
+        for (label, device_raw) in &cases {
+            let root = temp_root(&format!("pathlen-{label}"));
+            let device = DeviceId::new(device_raw.clone()).unwrap();
+            let projected = projected_object_path_len(&root, &device, longest);
+            let result = quarantine_bytes(
+                QuarantineRequest {
+                    app_data_root: &root,
+                    device_id: Some(&device),
+                    reason_code: longest,
+                    source_kind: QuarantineSourceKind::ActiveOpen,
+                    source_relative: "canonical/events/x/00000000000000000000.open",
+                    byte_offset: Some(0),
+                    extras: QuarantineExtras::default(),
+                },
+                format!("path-length-regression-{label}").as_bytes(),
             );
-        }
 
-        let _ = fs::remove_dir_all(&root);
+            match result {
+                Ok(entry) => {
+                    let object = entry.directory.join("object.bin");
+                    let root_len = root.to_string_lossy().chars().count();
+                    let dir_len = entry.directory.to_string_lossy().chars().count();
+                    let object_len = object.to_string_lossy().chars().count();
+                    let leaf = entry.directory.file_name().unwrap().to_string_lossy();
+                    assert!(
+                        object.is_file(),
+                        "{label}: object missing after Ok quarantine"
+                    );
+                    assert!(
+                        leaf.contains(&format!("_{}_", longest.as_str())),
+                        "{label}: leaf {leaf} missing ADR reason_code"
+                    );
+                    eprintln!(
+                        "m2 quarantine FS OK label={label} id_len={} projected={projected} root={root_len} dir={dir_len} leaf={} object={object_len} path={}",
+                        device_raw.len(),
+                        leaf.chars().count(),
+                        object.display()
+                    );
+                    if *label == "short" {
+                        assert!(
+                            object_len < 260,
+                            "short DeviceId object path {object_len} exceeded MAX_PATH under {}",
+                            root.display()
+                        );
+                    }
+                    let removed = fs::remove_dir_all(&root);
+                    eprintln!(
+                        "m2 quarantine cleanup label={label} remove_dir_all={removed:?} root_exists={}",
+                        root.exists()
+                    );
+                    assert!(removed.is_ok(), "{label}: cleanup failed: {removed:?}");
+                    assert!(!root.exists(), "{label}: root remained after cleanup");
+                }
+                Err(err) => {
+                    eprintln!(
+                        "m2 quarantine FS FAIL label={label} id_len={} projected_object_len={projected} err={err} root={}",
+                        device_raw.len(),
+                        root.display()
+                    );
+                    assert!(
+                        *label != "short",
+                        "short DeviceId must succeed under production-like root; got {err}"
+                    );
+                    assert!(
+                        projected >= 260,
+                        "{label}: FS failed with projected_len={projected} (<260); unexpected: {err}"
+                    );
+                    let _ = fs::remove_dir_all(&root);
+                    eprintln!(
+                        "m2 quarantine cleanup-after-fail label={label} root_exists={}",
+                        root.exists()
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    fn projected_object_path_len(
+        root: &Path,
+        device: &DeviceId,
+        reason: QuarantineReasonCode,
+    ) -> usize {
+        let leaf = entry_directory_name("1728312345", reason, &"b".repeat(64));
+        root.join("quarantine")
+            .join("canonical-events")
+            .join(format!("device-{}", device.as_filename_stem()))
+            .join(leaf)
+            .join("object.bin")
+            .to_string_lossy()
+            .chars()
+            .count()
+    }
+
+    #[cfg(windows)]
+    fn windows_long_paths_enabled_policy() -> Option<u32> {
+        // Read-only query; do not modify registry.
+        let output = std::process::Command::new("reg")
+            .args([
+                "query",
+                r"HKLM\SYSTEM\CurrentControlSet\Control\FileSystem",
+                "/v",
+                "LongPathsEnabled",
+            ])
+            .output()
+            .ok()?;
+        let text = String::from_utf8_lossy(&output.stdout);
+        for token in text.split_whitespace() {
+            if let Some(rest) = token.strip_prefix("0x")
+                && let Ok(v) = u32::from_str_radix(rest, 16)
+            {
+                return Some(v);
+            }
+        }
+        Some(0)
     }
 }
