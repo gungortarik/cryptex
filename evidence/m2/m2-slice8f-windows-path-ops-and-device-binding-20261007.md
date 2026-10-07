@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-07
 **Branch:** `m2/immutable-event-store`
-**Tip:** `PENDING`
+**Tip:** `ec9b8b7bab6da31dffbbebd86f31abc6c5a55b86`
 **Prior tip under review:** `602aff451959c7a95fcc706dfa08903f8a112960` / behavior `e098e8a431504e34a4659ee48546f7b1041a2315`
 
 ## 1. Windows quarantine path behavior (actual FS ops)
