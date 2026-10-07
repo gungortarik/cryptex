@@ -32,7 +32,7 @@
 | Check | Result |
 |---|---|
 | Active branch | `m2/immutable-event-store` |
-| HEAD | `5b76d8f` — M2 integrity primitives (base `0c84c5c`) |
+| HEAD | `92652fc` — M2 signing-key lifecycle (base `0c84c5c`) |
 | Tracks remote | `origin/m2/immutable-event-store` @ same tip; clean tree at kickoff |
 | `c2168f3` ancestor of HEAD | yes (M1 merge integrated) |
 | Base tip `0c84c5c` (M1 docs closeout); branch tip advances with M2 slices | yes |
