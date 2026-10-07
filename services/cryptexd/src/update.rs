@@ -565,16 +565,9 @@ fn assert_no_lock(runtime_root: &Path) -> LifecycleResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root(label: &str) -> PathBuf {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let root = std::env::temp_dir().join(format!("cryptex-update-{label}-{stamp}"));
-        fs::create_dir_all(&root).expect("root");
-        root
+        crate::test_temp::exclusive_temp_dir(&format!("cryptex-update-{label}"))
     }
 
     fn fake_bin(dir: &Path, name: &str) -> PathBuf {

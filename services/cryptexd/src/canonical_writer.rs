@@ -898,11 +898,7 @@ mod tests {
     use std::sync::{Arc, Barrier};
     use std::thread;
 
-    static TEST_ROOT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-
     fn temp_root(label: &str) -> PathBuf {
-        use std::sync::atomic::Ordering;
-        let seq = TEST_ROOT_SEQ.fetch_add(1, Ordering::Relaxed);
         let base = {
             #[cfg(windows)]
             {
@@ -930,7 +926,7 @@ mod tests {
                     .join("m2-tests")
             }
         };
-        base.join(format!("m2-t-w-{label}-{}-{seq}", std::process::id()))
+        crate::test_temp::exclusive_temp_dir_in(&base, &format!("m2-t-w-{label}"))
     }
 
     #[test]

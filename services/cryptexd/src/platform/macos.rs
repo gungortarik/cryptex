@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn plist_contains_test_only_label_and_keepalive_policy() {
-        let root = std::env::temp_dir().join("cryptex-launchagent-plist");
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-launchagent-plist");
         let spec = LaunchAgentSpec::for_runtime(&root, Path::new("/tmp/cryptexd")).expect("spec");
         let body = spec.plist_body();
         assert!(body.contains(TEST_LAUNCH_AGENT_LABEL));
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn persistent_plist_path_uses_user_launchagents_directory() {
-        let root = std::env::temp_dir().join("cryptex-launchagent-persistent-path");
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-launchagent-persistent-path");
         let spec = LaunchAgentSpec::for_runtime(&root, Path::new("/tmp/cryptexd")).expect("spec");
         let path = spec.persistent_plist_path().expect("persistent path");
         assert!(path.ends_with("Library/LaunchAgents/com.cryptex.dev.p0-2.compare.plist"));

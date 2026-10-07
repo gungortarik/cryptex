@@ -135,13 +135,7 @@ mod tests {
     use std::sync::{Arc, Barrier};
 
     fn fixture() -> std::path::PathBuf {
-        let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
-            "cryptex-m1-metadata-{}-{sequence}",
-            std::process::id()
-        ));
-        fs::create_dir(&root).expect("fixture root");
-        root
+        crate::test_temp::exclusive_temp_dir("cryptex-m1-metadata")
     }
 
     #[test]

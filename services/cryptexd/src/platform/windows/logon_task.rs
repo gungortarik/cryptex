@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn xml_contains_test_only_task_policy_and_logon_trigger() {
-        let root = std::env::temp_dir().join("cryptex-logon-task-xml");
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-logon-task-xml");
         let spec =
             LogonTaskSpec::for_runtime(&root, Path::new("C:\\Cryptex-Dev\\bin\\cryptexd.exe"))
                 .expect("spec");
@@ -304,23 +304,25 @@ mod tests {
 
     #[test]
     fn hold_arguments_quote_paths_with_spaces() {
-        let root = std::env::temp_dir().join("cryptex logon task");
+        let parent = crate::test_temp::exclusive_temp_dir("cryptex-logon-task-parent");
+        let root = parent.join("cryptex logon task");
+        fs::create_dir(&root).expect("spaced fixture dir");
         let spec = LogonTaskSpec::for_runtime(&root, Path::new("C:\\Program Files\\cryptexd.exe"))
             .expect("spec");
         let args = spec.hold_arguments();
         assert!(args.contains("lifecycle"));
         assert!(args.contains("--runtime-root"));
+        let _ = fs::remove_dir_all(&parent);
     }
 
     #[test]
     fn schtasks_xml_starts_with_utf16_bom() {
-        let root = std::env::temp_dir().join("cryptex-logon-task-bom");
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-logon-task-bom");
         let spec = LogonTaskSpec::for_runtime(
             &root,
             Path::new("C:\\\\Cryptex-Dev\\\\bin\\\\cryptexd.exe"),
         )
         .expect("spec");
-        fs::create_dir_all(&root).expect("dir");
         write_schtasks_xml(&spec.xml_path, &spec.task_xml_body()).expect("write");
         let bytes = fs::read(&spec.xml_path).expect("read");
         assert_eq!(&bytes[0..2], &[0xFF, 0xFE]);

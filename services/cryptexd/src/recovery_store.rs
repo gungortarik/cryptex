@@ -65,16 +65,9 @@ pub fn public_metadata_excludes_secret(
 mod tests {
     use super::*;
     use cryptex_core::{CoreError, RecoveryPurpose};
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root() -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let root = std::env::temp_dir().join(format!("cryptexd-recovery-{}", nanos));
-        let _ = fs::remove_dir_all(&root);
-        root
+        crate::test_temp::exclusive_temp_dir("cryptexd-recovery")
     }
 
     #[test]

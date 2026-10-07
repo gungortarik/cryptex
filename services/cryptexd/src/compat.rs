@@ -103,14 +103,9 @@ pub fn simulate_rollback(runtime_root: &Path, backup_contents: &str) -> Lifecycl
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_runtime() -> std::path::PathBuf {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        std::env::temp_dir().join(format!("cryptexd-compat-{stamp}"))
+        crate::test_temp::exclusive_temp_dir("cryptexd-compat")
     }
 
     #[test]

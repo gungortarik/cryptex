@@ -555,16 +555,7 @@ mod tests {
     use std::thread;
 
     fn temp_root(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|t| t.as_nanos())
-            .unwrap_or(0);
-        std::env::temp_dir().join(format!(
-            "cryptex-m2-signing-{}-{}-{}",
-            label,
-            std::process::id(),
-            nanos
-        ))
+        crate::test_temp::exclusive_temp_dir(&format!("cryptex-m2-signing-{label}"))
     }
 
     #[test]

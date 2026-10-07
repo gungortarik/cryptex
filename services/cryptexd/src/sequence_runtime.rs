@@ -57,16 +57,9 @@ mod tests {
     use super::*;
     use crate::identity_runtime::IdentityRuntimeError;
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root() -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let root = std::env::temp_dir().join(format!("cryptexd-seq-rt-{}", nanos));
-        let _ = fs::remove_dir_all(&root);
-        root
+        crate::test_temp::exclusive_temp_dir("cryptexd-seq-rt")
     }
 
     #[test]

@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn renders_required_measurement_keys() {
-        let root = std::env::temp_dir().join("cryptex-measure-render");
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-measure-render");
         let m = ComparisonMeasurement::blank("exp-1", SupervisorMode::NativeLaunchAgent, &root);
         let kv = m.render_kv();
         for key in [

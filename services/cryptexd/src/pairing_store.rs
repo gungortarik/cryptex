@@ -100,18 +100,11 @@ mod tests {
     use super::*;
     use crate::identity_runtime::write_brain_identity;
     use cryptex_core::{BrainIdentity, DeviceId};
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     const BRAIN: &str = "11111111-1111-4111-8111-111111111111";
 
     fn temp_root() -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let root = std::env::temp_dir().join(format!("cryptexd-pairing-{}", nanos));
-        let _ = fs::remove_dir_all(&root);
-        root
+        crate::test_temp::exclusive_temp_dir("cryptexd-pairing")
     }
 
     fn seed_brain(root: &Path, brain_id: &str) {

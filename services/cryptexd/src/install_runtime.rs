@@ -388,20 +388,7 @@ mod tests {
     use std::thread;
 
     fn temp_root() -> PathBuf {
-        // Exclusive fixture roots: PID + atomic counter, create_dir (no pre-delete).
-        // Timestamp-only paths raced under --test-threads>1 on macOS CI.
-        static TEST_ROOT_SEQ: AtomicU64 = AtomicU64::new(1);
-        for _ in 0..10_000 {
-            let seq = TEST_ROOT_SEQ.fetch_add(1, Ordering::Relaxed);
-            let root =
-                std::env::temp_dir().join(format!("cryptexd-install-{}-{seq}", std::process::id()));
-            match fs::create_dir(&root) {
-                Ok(()) => return root,
-                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(err) => panic!("temp_root create_dir failed for {}: {err}", root.display()),
-            }
-        }
-        panic!("temp_root exhausted unique directory candidates");
+        crate::test_temp::exclusive_temp_dir("cryptexd-install")
     }
 
     #[test]
