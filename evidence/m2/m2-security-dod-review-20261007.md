@@ -3,7 +3,7 @@
 **Date:** 2026-10-07
 **Branch:** `m2/immutable-event-store`
 **Reviewed tip (pre-fix):** `7fe206730f11d319ed9e690be7fa1f5d27a2fe7c`
-**Fix tip:** *(filled after commit)*
+**Fix tip:** `942569d7a5d27afc5864794a985e976353d81242`
 
 ## 1. Reviews performed
 
