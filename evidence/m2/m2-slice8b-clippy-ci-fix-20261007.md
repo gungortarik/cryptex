@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-07
 **Branch:** `m2/immutable-event-store`
-**Tip:** `PENDING`
+**Tip:** `1f27e035a421824d2a86c3918ad80bb3afe2401d`
 
 ## Failed final CI (before fix)
 
