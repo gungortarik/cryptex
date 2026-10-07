@@ -5,6 +5,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{EventError, EventResult};
 
+pub const CONTENT_HASH_HEX_LEN: usize = 64;
+pub const SIGNING_KEY_ID_HEX_LEN: usize = 32;
+pub const SIGNATURE_HEX_LEN: usize = 128;
+
+pub const CONTENT_HASH_HEX_PATTERN: &str = r"^[0-9a-f]{64}$";
+pub const SIGNING_KEY_ID_HEX_PATTERN: &str = r"^[0-9a-f]{32}$";
+pub const SIGNATURE_HEX_PATTERN: &str = r"^[0-9a-f]{128}$";
+
 fn parse_lowercase_hex(raw: &str, expected_chars: usize, label: &str) -> EventResult<String> {
     if raw.len() != expected_chars {
         return Err(EventError::Invalid(format!(
@@ -22,21 +30,87 @@ fn parse_lowercase_hex(raw: &str, expected_chars: usize, label: &str) -> EventRe
     Ok(raw.to_string())
 }
 
-macro_rules! hex_newtype {
-    ($name:ident, $chars:expr, $label:expr) => {
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
-        pub struct $name(String);
+/// 64-char lowercase hex content hash.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
+#[schemars(transparent)]
+pub struct ContentHashHex(
+    #[schemars(
+        regex(pattern = CONTENT_HASH_HEX_PATTERN),
+        length(equal = 64)
+    )]
+    String,
+);
 
-        impl $name {
-            pub fn parse(raw: &str) -> EventResult<Self> {
-                Ok(Self(parse_lowercase_hex(raw, $chars, $label)?))
-            }
+/// 32-char lowercase hex signing key id.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
+#[schemars(transparent)]
+pub struct SigningKeyId(
+    #[schemars(
+        regex(pattern = SIGNING_KEY_ID_HEX_PATTERN),
+        length(equal = 32)
+    )]
+    String,
+);
 
-            pub fn as_str(&self) -> &str {
-                &self.0
-            }
-        }
+/// 128-char lowercase hex Ed25519 signature.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
+#[schemars(transparent)]
+pub struct SignatureHex(
+    #[schemars(
+        regex(pattern = SIGNATURE_HEX_PATTERN),
+        length(equal = 128)
+    )]
+    String,
+);
 
+impl ContentHashHex {
+    pub fn parse(raw: &str) -> EventResult<Self> {
+        Ok(Self(parse_lowercase_hex(
+            raw,
+            CONTENT_HASH_HEX_LEN,
+            "content hash",
+        )?))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn zero() -> Self {
+        Self::parse(ZERO_CONTENT_HASH_HEX).expect("zero hash constant is valid")
+    }
+}
+
+impl SigningKeyId {
+    pub fn parse(raw: &str) -> EventResult<Self> {
+        Ok(Self(parse_lowercase_hex(
+            raw,
+            SIGNING_KEY_ID_HEX_LEN,
+            "signing_key_id",
+        )?))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl SignatureHex {
+    pub fn parse(raw: &str) -> EventResult<Self> {
+        Ok(Self(parse_lowercase_hex(
+            raw,
+            SIGNATURE_HEX_LEN,
+            "signature",
+        )?))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+macro_rules! impl_serde_hex {
+    ($name:ident) => {
         impl Serialize for $name {
             fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                 serializer.serialize_str(&self.0)
@@ -52,19 +126,13 @@ macro_rules! hex_newtype {
     };
 }
 
-hex_newtype!(ContentHashHex, 64, "content hash");
-hex_newtype!(SigningKeyId, 32, "signing_key_id");
-hex_newtype!(SignatureHex, 128, "signature");
+impl_serde_hex!(ContentHashHex);
+impl_serde_hex!(SigningKeyId);
+impl_serde_hex!(SignatureHex);
 
 /// First-event `prev_content_hash` sentinel (64 zero nibbles).
 pub const ZERO_CONTENT_HASH_HEX: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
-
-impl ContentHashHex {
-    pub fn zero() -> Self {
-        Self::parse(ZERO_CONTENT_HASH_HEX).expect("zero hash constant is valid")
-    }
-}
 
 #[cfg(test)]
 mod tests {

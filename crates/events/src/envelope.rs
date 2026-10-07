@@ -42,6 +42,7 @@ impl EventType {
 
 /// Payload for `memory.note`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryNotePayload {
     pub text: String,
 }
@@ -67,7 +68,9 @@ pub enum EventPayload {
 
 /// Signable event fields (excludes `content_hash` and `signature`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SignableEvent {
+    #[schemars(range(min = 1, max = 1))]
     pub schema_version: u32,
     pub event_id: String,
     pub brain_id: String,
@@ -83,7 +86,9 @@ pub struct SignableEvent {
 
 /// Accepted on-disk record: signable fields plus integrity fields.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AcceptedEvent {
+    #[schemars(range(min = 1, max = 1))]
     pub schema_version: u32,
     pub event_id: String,
     pub brain_id: String,
@@ -164,7 +169,6 @@ impl AcceptedEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hex::ContentHashHex;
 
     fn sample_signable() -> SignableEvent {
         SignableEvent {
@@ -220,5 +224,37 @@ mod tests {
         let json = serde_json::to_value(&accepted).unwrap();
         assert!(json["content_hash"].is_string());
         assert!(json["signature"].is_string());
+    }
+
+    #[test]
+    fn serde_rejects_unknown_fields_on_accepted_event() {
+        let mut value = serde_json::to_value(
+            AcceptedEvent::from_parts(
+                sample_signable(),
+                ContentHashHex::parse(&"11".repeat(32)).unwrap(),
+                SignatureHex::parse(&"22".repeat(64)).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("unexpected".into(), serde_json::json!("x"));
+        let err = serde_json::from_value::<AcceptedEvent>(value).unwrap_err();
+        assert!(
+            err.to_string().contains("unexpected") || err.to_string().contains("unknown"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn serde_rejects_unknown_fields_on_memory_note_payload() {
+        let err =
+            serde_json::from_str::<MemoryNotePayload>(r#"{"text":"hi","extra":1}"#).unwrap_err();
+        assert!(
+            err.to_string().contains("extra") || err.to_string().contains("unknown"),
+            "unexpected error: {err}"
+        );
     }
 }

@@ -15,13 +15,17 @@ const banner =
   " * Generated from cryptex-event-v1.schema.json. Do not edit by hand.\n" +
   " * Regenerate: cargo run -p cryptex-events --bin cryptex-events-schema-gen\n" +
   " *             pnpm --filter @cryptex/schemas generate:ts\n" +
+  " * Unknown-field rejection comes from schema additionalProperties:false.\n" +
   " */\n\n";
 
-const ts = banner + (await compileFromFile(schemaPath, {
-  additionalProperties: false,
-  bannerComment: "",
-  style: { singleQuote: false, semi: true },
-}));
+// Do not pass additionalProperties here: unknown-field policy must come from the
+// JSON Schema itself (ADR-0016 / packages/schemas/cryptex-event-v1.schema.json).
+const ts =
+  banner +
+  (await compileFromFile(schemaPath, {
+    bannerComment: "",
+    style: { singleQuote: false, semi: true },
+  }));
 
 const normalized = ts.replace(/\r\n/g, "\n");
 if (check) {

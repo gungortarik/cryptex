@@ -3,15 +3,19 @@
  * Generated from cryptex-event-v1.schema.json. Do not edit by hand.
  * Regenerate: cargo run -p cryptex-events --bin cryptex-events-schema-gen
  *             pnpm --filter @cryptex/schemas generate:ts
+ * Unknown-field rejection comes from schema additionalProperties:false.
  */
 
 /**
  * Production classification values.
  */
 export type Classification = "public" | "internal" | "private" | "restricted";
+/**
+ * 64-char lowercase hex content hash.
+ */
 export type ContentHashHex = string;
 /**
- * Canonical decimal string of a u64 device sequence in [1, 2^64-1]
+ * Per-device sequence encoded as a canonical decimal JSON string covering full `u64`.
  */
 export type DeviceSeq = string;
 /**
@@ -22,7 +26,13 @@ export type EventType = "memory.note";
  * Type-specific payload object. Production M2 includes only `memory.note`.
  */
 export type EventPayload = MemoryNotePayload;
+/**
+ * 128-char lowercase hex Ed25519 signature.
+ */
 export type SignatureHex = string;
+/**
+ * 32-char lowercase hex signing key id.
+ */
 export type SigningKeyId = string;
 
 /**

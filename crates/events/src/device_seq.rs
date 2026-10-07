@@ -5,10 +5,20 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{EventError, EventResult};
 
+/// Canonical decimal form: no sign/whitespace/exponent/leading zeros; fits in `u64`.
+pub const DEVICE_SEQ_PATTERN: &str = r"^[1-9][0-9]{0,19}$";
+
 /// Per-device sequence encoded as a canonical decimal JSON string covering full `u64`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
-#[schemars(description = "Canonical decimal string of a u64 device sequence in [1, 2^64-1]")]
-pub struct DeviceSeq(String);
+#[schemars(transparent)]
+pub struct DeviceSeq(
+    #[schemars(
+        description = "Canonical decimal string of a u64 device sequence in [1, 2^64-1]",
+        regex(pattern = DEVICE_SEQ_PATTERN),
+        length(min = 1, max = 20)
+    )]
+    String,
+);
 
 impl DeviceSeq {
     /// Construct from an allocated ADR-0015 sequence value (`>= 1`).
@@ -31,6 +41,11 @@ impl DeviceSeq {
         if raw.as_bytes()[0] == b'0' {
             return Err(EventError::Invalid(
                 "device_seq must not have leading zeros and must be >= 1".into(),
+            ));
+        }
+        if raw.len() > 20 {
+            return Err(EventError::Invalid(
+                "device_seq exceeds maximum decimal length for u64".into(),
             ));
         }
         let value: u64 = raw

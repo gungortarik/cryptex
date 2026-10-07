@@ -10,7 +10,7 @@ pub mod hex;
 pub mod limits;
 pub mod schema;
 
-pub use device_seq::DeviceSeq;
+pub use device_seq::{DEVICE_SEQ_PATTERN, DeviceSeq};
 pub use envelope::{
     AcceptedEvent, Classification, EVENT_SCHEMA_VERSION, EventPayload, EventType,
     MemoryNotePayload, SignableEvent,
