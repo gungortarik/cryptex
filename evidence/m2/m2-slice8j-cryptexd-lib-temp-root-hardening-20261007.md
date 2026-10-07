@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-07
 **Branch:** `m2/immutable-event-store`
-**Tip:** *(filled after commit)*
+**Tip:** `fc86276e63bf5041b317b0e9b23908be315dfe60`
 **Prior tip:** `1c77ab9` / behavior `e5568bd` (install_runtime-only exclusive temp_root)
 
 ## CI failure that triggered this slice
