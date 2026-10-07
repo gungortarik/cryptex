@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-07
 **Branch:** `m2/immutable-event-store`
-**Tip:** *(filled after commit)*
+**Tip:** `408a55838ca3cd45463d83aee73c55718d26d285`
 **Prior tip:** `478e35d` / behavior `fa9436c` (slice 8g adapter + ADR addendum)
 
 ## Change
