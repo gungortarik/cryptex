@@ -4,7 +4,7 @@
 //! only in SecureStore; public metadata is exclusive-create JSON under app-data.
 
 use std::fs::{self, OpenOptions};
-use std::io::{self, ErrorKind, Write};
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -416,7 +416,7 @@ fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> EventSigningKeyResult<(
             )
         };
         if ok == 0 {
-            let err = io::Error::last_os_error();
+            let err = std::io::Error::last_os_error();
             if err.kind() == ErrorKind::AlreadyExists {
                 return Err(EventSigningKeyError::AlreadyExists(
                     dest.display().to_string(),
