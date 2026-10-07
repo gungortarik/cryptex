@@ -119,7 +119,7 @@ Ordered after ADR-0016 acceptance. Each slice: behavior + tests + local format/l
 
 ## 7. Continuation point
 
-**Now:** ADR-0016 **ACCEPTED**. Slices 1–6 landed (through cryptexd canonical writer). Next: broader validation/quarantine/schema-version + cross-platform failure matrix; final CI once at candidate. No GitHub Actions until the final required M2 CI gate.
+**Now:** ADR-0016 **ACCEPTED**. Slices 1–6 + writer transaction hardening landed. Next: schema-version/validation/quarantine + cross-platform failure matrix; final CI once at candidate. No GitHub Actions until the final required M2 CI gate.
 
 
 **Historical note:** Operational handoff previously retained contradictory M1 “review open / merge pending” wording after PR #6 merged. That residue is labeled historical/superseded in `docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md`. M1 remains COMPLETE at `c2168f3` / docs closeout `0c84c5c`.
