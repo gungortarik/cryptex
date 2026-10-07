@@ -223,18 +223,83 @@ fn remove_uncommitted_dest(dest: &Path) -> io::Result<()> {
     remove_file_if_present(dest)
 }
 
-#[cfg(any(unix, test))]
-fn combine_io_errors(primary: io::Error, cleanup: io::Error, context: &str) -> io::Error {
-    io::Error::other(format!(
-        "{context}: {primary}; cleanup also failed: {cleanup}"
-    ))
+#[derive(Debug)]
+enum PlacementError {
+    Io(io::Error),
+    AlreadyExists(String),
+    #[cfg(unix)]
+    CleanupFailed {
+        primary: io::Error,
+        cleanup_errors: Vec<io::Error>,
+    },
+}
+
+impl PlacementError {
+    fn from_io(error: io::Error, dest: &Path) -> Self {
+        if error.kind() == ErrorKind::AlreadyExists {
+            Self::AlreadyExists(dest.display().to_string())
+        } else {
+            Self::Io(error)
+        }
+    }
+}
+
+impl std::fmt::Display for PlacementError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(error) => write!(f, "{error}"),
+            Self::AlreadyExists(path) => write!(f, "identity already exists at {path}"),
+            #[cfg(unix)]
+            Self::CleanupFailed {
+                primary,
+                cleanup_errors,
+            } => write!(
+                f,
+                "{primary}; placement rollback cleanup failed: {}",
+                cleanup_errors
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+        }
+    }
+}
+
+fn placement_error_to_identity_error(error: PlacementError, tmp: &Path) -> IdentityRuntimeError {
+    match error {
+        PlacementError::AlreadyExists(path) => with_staging_cleanup(
+            IdentityRuntimeError::AlreadyExists(path),
+            remove_file_if_present(tmp),
+        ),
+        PlacementError::Io(primary) => {
+            with_staging_cleanup(primary.into(), remove_file_if_present(tmp))
+        }
+        #[cfg(unix)]
+        PlacementError::CleanupFailed {
+            primary,
+            cleanup_errors,
+        } => {
+            let mut cleanup_messages: Vec<String> = cleanup_errors
+                .into_iter()
+                .map(|error| error.to_string())
+                .collect();
+            if let Err(error) = remove_file_if_present(tmp) {
+                cleanup_messages.push(format!("staging-file cleanup failed: {error}"));
+            }
+            IdentityRuntimeError::PersistenceCleanupFailed {
+                primary: Box::new(primary.into()),
+                cleanup_error: cleanup_messages.join("; "),
+            }
+        }
+    }
 }
 
 /// Place `tmp` at `dest` only if `dest` does not already exist.
 ///
 /// - Windows: `MoveFileExW` without `MOVEFILE_REPLACE_EXISTING`.
 /// - Unix: `hard_link` + parent-directory sync before success.
-fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> io::Result<()> {
+fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> Result<(), PlacementError> {
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
@@ -251,7 +316,7 @@ fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> io::Result<()> {
             )
         };
         if ok == 0 {
-            return Err(io::Error::last_os_error());
+            return Err(PlacementError::from_io(io::Error::last_os_error(), dest));
         }
         Ok(())
     }
@@ -270,9 +335,12 @@ fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> io::Result<()> {
     #[cfg(not(any(unix, windows)))]
     {
         let _ = (tmp, dest);
-        Err(io::Error::new(
-            ErrorKind::Unsupported,
-            "exclusive brain-identity create is unsupported on this platform",
+        Err(PlacementError::from_io(
+            io::Error::new(
+                ErrorKind::Unsupported,
+                "exclusive brain-identity create is unsupported on this platform",
+            ),
+            dest,
         ))
     }
 }
@@ -284,47 +352,50 @@ fn place_new_file_no_replace_unix<S, R, T>(
     mut sync_parent: S,
     remove_dest: R,
     remove_tmp: T,
-) -> io::Result<()>
+) -> Result<(), PlacementError>
 where
     S: FnMut(&Path) -> io::Result<()>,
     R: FnOnce(&Path) -> io::Result<()>,
     T: FnOnce(&Path) -> io::Result<()>,
 {
-    fs::hard_link(tmp, dest)?;
+    fs::hard_link(tmp, dest).map_err(|error| PlacementError::from_io(error, dest))?;
 
     // Remove the staging link before committing the directory update. If this
     // fails, remove the destination link and sync that rollback before failing.
     if let Err(primary) = remove_tmp(tmp) {
-        let mut result = Err(primary);
+        let mut cleanup_errors = Vec::new();
         if let Err(cleanup_err) = remove_dest(dest) {
-            result = result
-                .map_err(|err| combine_io_errors(err, cleanup_err, "staging-link cleanup failed"));
+            cleanup_errors.push(cleanup_err);
         }
         if let Err(sync_err) = sync_parent(dest) {
-            result = result.map_err(|err| {
-                combine_io_errors(err, sync_err, "staging-link rollback directory sync failed")
-            });
+            cleanup_errors.push(sync_err);
         }
-        return result;
+        return if cleanup_errors.is_empty() {
+            Err(PlacementError::Io(primary))
+        } else {
+            Err(PlacementError::CleanupFailed {
+                primary,
+                cleanup_errors,
+            })
+        };
     }
 
     if let Err(primary) = sync_parent(dest) {
-        let mut result = Err(primary);
+        let mut cleanup_errors = Vec::new();
         if let Err(cleanup_err) = remove_dest(dest) {
-            result = result.map_err(|err| {
-                combine_io_errors(
-                    err,
-                    cleanup_err,
-                    "parent sync failed; destination rollback failed",
-                )
-            });
+            cleanup_errors.push(cleanup_err);
         }
         if let Err(sync_err) = sync_parent(dest) {
-            result = result.map_err(|err| {
-                combine_io_errors(err, sync_err, "destination rollback directory sync failed")
-            });
+            cleanup_errors.push(sync_err);
         }
-        return result;
+        return if cleanup_errors.is_empty() {
+            Err(PlacementError::Io(primary))
+        } else {
+            Err(PlacementError::CleanupFailed {
+                primary,
+                cleanup_errors,
+            })
+        };
     }
     Ok(())
 }
@@ -456,11 +527,7 @@ pub fn write_brain_identity(
 
     match place_new_file_no_replace(&tmp, &path) {
         Ok(()) => Ok(()),
-        Err(e) if e.kind() == ErrorKind::AlreadyExists => Err(with_staging_cleanup(
-            IdentityRuntimeError::AlreadyExists(path.display().to_string()),
-            remove_file_if_present(&tmp),
-        )),
-        Err(e) => Err(with_staging_cleanup(e.into(), remove_file_if_present(&tmp))),
+        Err(error) => Err(placement_error_to_identity_error(error, &tmp)),
     }
 }
 
@@ -654,19 +721,6 @@ mod tests {
     }
 
     #[test]
-    fn sync_and_cleanup_error_reports_both_failures() {
-        let err = combine_io_errors(
-            io::Error::other("injected parent sync failure"),
-            io::Error::new(ErrorKind::PermissionDenied, "injected dest cleanup failure"),
-            "parent sync failed",
-        );
-        let msg = err.to_string();
-        assert!(msg.contains("injected parent sync failure"), "{msg}");
-        assert!(msg.contains("injected dest cleanup failure"), "{msg}");
-        assert!(msg.contains("cleanup also failed"), "{msg}");
-    }
-
-    #[test]
     fn sync_parent_directory_fails_without_parent() {
         let err = sync_parent_directory(Path::new("/")).expect_err("root has no parent");
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
@@ -800,6 +854,54 @@ mod tests {
             tmp.exists(),
             "the injected cleanup failure leaves the staging link"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_destination_rollback_failure_is_typed_non_retryable() {
+        use std::cell::Cell;
+
+        let root = temp_root();
+        fs::create_dir_all(identity_dir(&root)).expect("dir");
+        let dest = brain_identity_path(&root);
+        let tmp = unique_brain_tmp(&dest);
+        fs::write(&tmp, b"identity").expect("tmp");
+        let sync_count = Cell::new(0);
+
+        let placement_error = place_new_file_no_replace_unix(
+            &tmp,
+            &dest,
+            |_| {
+                sync_count.set(sync_count.get() + 1);
+                if sync_count.get() == 1 {
+                    Err(io::Error::other("injected parent sync failure"))
+                } else {
+                    Ok(())
+                }
+            },
+            |_| {
+                Err(io::Error::new(
+                    ErrorKind::PermissionDenied,
+                    "injected destination rollback failure",
+                ))
+            },
+            remove_file_if_present,
+        )
+        .expect_err("destination rollback failure");
+
+        let err = placement_error_to_identity_error(placement_error, &tmp);
+        let message = err.to_string();
+        assert!(
+            message.contains("injected parent sync failure"),
+            "{message}"
+        );
+        assert!(
+            message.contains("injected destination rollback failure"),
+            "{message}"
+        );
+        assert_eq!(err.whole_operation_retry_safe(), Some(false));
+        assert!(dest.exists(), "fixture confirms rollback failure");
         let _ = fs::remove_dir_all(&root);
     }
 

@@ -1,7 +1,7 @@
 //! macOS Keychain P1 adapter (ADR-0014).
 //!
-//! Gate A spike verified these APIs. Gate C product physical verification on a
-//! Mac host remains a separate M1 completion requirement.
+//! Gate A spike verified these APIs. Gate C product physical verification is
+//! recorded separately in `evidence/m1/gate-c-product-secure-store-macos-20261006.md`.
 
 use super::{SecureStore, SecureStoreError, SecureStoreResult, validate_name_pair};
 use crate::secure_store::classify_keychain_status;
