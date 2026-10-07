@@ -32,7 +32,7 @@
 | Check | Result |
 |---|---|
 | Active branch | `m2/immutable-event-store` |
-| HEAD | `c1af573` — M2 canonical writer (base `0c84c5c`) |
+| HEAD | `e291e9a` — M2 writer transaction hardening (base `0c84c5c`) |
 | Tracks remote | `origin/m2/immutable-event-store` @ same tip; clean tree at kickoff |
 | `c2168f3` ancestor of HEAD | yes (M1 merge integrated) |
 | Base tip `0c84c5c` (M1 docs closeout); branch tip advances with M2 slices | yes |
