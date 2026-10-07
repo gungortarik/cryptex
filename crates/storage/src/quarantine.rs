@@ -7,6 +7,8 @@
 //! per ADR-0016 Windows quarantine extended-path addendum. Logical §8.1 layout
 //! names are unchanged.
 
+#[cfg(test)]
+use std::cell::{Cell, RefCell};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
@@ -165,20 +167,88 @@ pub fn quarantine_bytes(
 /// Stream-copy `[start, end)` from `source` into quarantine while hashing.
 ///
 /// Does not require the caller to hold the rejected range in memory.
-struct StagingCleanup(Option<PathBuf>);
+struct StagingCleanup {
+    path: Option<PathBuf>,
+}
+
+impl StagingCleanup {
+    fn unarmed() -> Self {
+        Self { path: None }
+    }
+
+    fn arm(&mut self, path: PathBuf) {
+        debug_assert!(self.path.is_none(), "staging cleanup guard armed twice");
+        self.path = Some(path);
+    }
+
+    fn disarm(mut self) {
+        self.path = None;
+    }
+
+    /// Remove owned staging now. Clears the path so [`Drop`] will not retry.
+    fn cleanup_now(mut self) -> StorageResult<()> {
+        match self.path.take() {
+            Some(path) => q_remove_file(&path),
+            None => Ok(()),
+        }
+    }
+}
 
 impl Drop for StagingCleanup {
     fn drop(&mut self) {
-        if let Some(path) = self.0.take() {
+        // Best-effort only for unwinding / forgotten cleanup paths.
+        if let Some(path) = self.path.take() {
             let _ = q_remove_file(&path);
         }
     }
 }
 
-impl StagingCleanup {
-    fn disarm(mut self) {
-        self.0 = None;
+fn with_staging_cleanup(primary: StorageError, cleanup: StorageResult<()>) -> StorageError {
+    match cleanup {
+        Ok(()) => primary,
+        Err(cleanup_err) => StorageError::QuarantineCleanupFailed {
+            primary: Box::new(primary),
+            cleanup: Box::new(cleanup_err),
+        },
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    static FORCE_STAGING_LEAF: RefCell<Option<String>> = const { RefCell::new(None) };
+    static FAIL_STAGING_REMOVE_REMAINING: Cell<u32> = const { Cell::new(0) };
+}
+
+/// Test-only: force the next staging leaf name under the attribution parent.
+#[cfg(test)]
+fn force_next_staging_leaf(leaf: impl Into<String>) {
+    FORCE_STAGING_LEAF.with(|slot| {
+        *slot.borrow_mut() = Some(leaf.into());
+    });
+}
+
+/// Test-only: next `count` staging removals fail on this thread.
+#[cfg(test)]
+fn fail_next_staging_removes(count: u32) {
+    FAIL_STAGING_REMOVE_REMAINING.with(|flag| flag.set(count));
+}
+
+fn staging_leaf_name() -> String {
+    #[cfg(test)]
+    {
+        if let Some(leaf) = FORCE_STAGING_LEAF.with(|slot| slot.borrow_mut().take()) {
+            return leaf;
+        }
+    }
+    format!(
+        ".staging-{}-{}-{}",
+        std::process::id(),
+        ENTRY_SUFFIX.fetch_add(1, Ordering::Relaxed),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|t| t.as_nanos())
+            .unwrap_or(0)
+    )
 }
 
 pub fn quarantine_file_range(
@@ -198,32 +268,31 @@ pub fn quarantine_file_range(
     q_create_dir_all(&q_parent)?;
     q_sync_directory(&q_parent)?;
 
-    let staging = q_parent.join(format!(
-        ".staging-{}-{}-{}",
-        std::process::id(),
-        ENTRY_SUFFIX.fetch_add(1, Ordering::Relaxed),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|t| t.as_nanos())
-            .unwrap_or(0)
-    ));
-    // Remove incomplete staging on any failure before successful placement.
-    let staging_guard = StagingCleanup(Some(staging.clone()));
+    let staging = q_parent.join(staging_leaf_name());
+    // Arm only after exclusive create succeeds — Never delete a foreign staging path.
+    let mut staging_guard = StagingCleanup::unarmed();
 
     let mut hasher = blake3::Hasher::new();
     {
         let mut out = q_open_create_new_write(&staging)?;
-        source.seek(SeekFrom::Start(start))?;
-        let mut remaining = byte_length;
-        let mut buf = vec![0u8; COPY_BUF];
-        while remaining > 0 {
-            let chunk = core::cmp::min(COPY_BUF as u64, remaining) as usize;
-            read_exact_some(source, &mut buf[..chunk])?;
-            hasher.update(&buf[..chunk]);
-            out.write_all(&buf[..chunk])?;
-            remaining -= chunk as u64;
+        staging_guard.arm(staging.clone());
+        let copy_result = (|| -> StorageResult<()> {
+            source.seek(SeekFrom::Start(start))?;
+            let mut remaining = byte_length;
+            let mut buf = vec![0u8; COPY_BUF];
+            while remaining > 0 {
+                let chunk = core::cmp::min(COPY_BUF as u64, remaining) as usize;
+                read_exact_some(source, &mut buf[..chunk])?;
+                hasher.update(&buf[..chunk]);
+                out.write_all(&buf[..chunk])?;
+                remaining -= chunk as u64;
+            }
+            sync_file(&out)?;
+            Ok(())
+        })();
+        if let Err(primary) = copy_result {
+            return Err(with_staging_cleanup(primary, staging_guard.cleanup_now()));
         }
-        sync_file(&out)?;
     }
 
     let entry_id = lowercase_hex(hasher.finalize().as_bytes());
@@ -233,11 +302,20 @@ pub fn quarantine_file_range(
         request.reason_code,
         &entry_id,
     ));
-    let dir = exclusive_create_dir(&base)?;
-    q_sync_parent_directory(&dir.join("object.bin"))?;
+    let dir = match exclusive_create_dir(&base) {
+        Ok(dir) => dir,
+        Err(primary) => {
+            return Err(with_staging_cleanup(primary, staging_guard.cleanup_now()));
+        }
+    };
+    if let Err(primary) = q_sync_parent_directory(&dir.join("object.bin")) {
+        return Err(with_staging_cleanup(primary, staging_guard.cleanup_now()));
+    }
 
     let object_path = dir.join("object.bin");
-    place_staging_as_object(&staging, &object_path)?;
+    if let Err(primary) = place_staging_as_object(&staging, &object_path) {
+        return Err(with_staging_cleanup(primary, staging_guard.cleanup_now()));
+    }
     staging_guard.disarm();
     // Re-open and sync destination object for platforms where rename does not imply durability.
     {
@@ -501,6 +579,23 @@ fn q_open_read_write(path: &Path) -> StorageResult<File> {
 }
 
 fn q_remove_file(path: &Path) -> StorageResult<()> {
+    #[cfg(test)]
+    {
+        let inject = FAIL_STAGING_REMOVE_REMAINING.with(|flag| {
+            let remaining = flag.get();
+            if remaining > 0 {
+                flag.set(remaining - 1);
+                true
+            } else {
+                false
+            }
+        });
+        if inject {
+            return Err(StorageError::Io(std::io::Error::other(
+                "injected staging remove failure",
+            )));
+        }
+    }
     fs::remove_file(quarantine_fs_path(path)?)?;
     Ok(())
 }
@@ -556,18 +651,14 @@ fn place_staging_as_object(staging: &Path, object_path: &Path) -> StorageResult<
             )
         };
         if ok == 0 {
-            let err = std::io::Error::last_os_error();
-            let _ = q_remove_file(staging);
-            return Err(StorageError::Io(err));
+            // Caller owns staging cleanup (and reports cleanup failures).
+            return Err(StorageError::Io(std::io::Error::last_os_error()));
         }
         Ok(())
     }
     #[cfg(unix)]
     {
-        fs::rename(&staging_fs, &object_fs).map_err(|err| {
-            let _ = q_remove_file(staging);
-            StorageError::Io(err)
-        })
+        fs::rename(&staging_fs, &object_fs).map_err(StorageError::Io)
     }
     #[cfg(not(any(unix, windows)))]
     {
@@ -1010,6 +1101,116 @@ mod tests {
                     path.display()
                 );
             }
+        }
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn staging_create_collision_preserves_foreign_bytes() {
+        let root = temp_root("staging-collide");
+        let device = DeviceId::new("device-collide").unwrap();
+        let q_parent =
+            quarantine_events_root(&root).join(format!("device-{}", device.as_filename_stem()));
+        fs::create_dir_all(&q_parent).unwrap();
+        let leaf = ".staging-foreign-owned-fixture";
+        let foreign = q_parent.join(leaf);
+        let payload = b"FOREIGN-STAGING-BYTES-DO-NOT-DELETE";
+        fs::write(&foreign, payload).unwrap();
+        force_next_staging_leaf(leaf);
+
+        let pack = root.join("pack.bin");
+        fs::write(&pack, b"payload").unwrap();
+        let mut file = File::open(&pack).unwrap();
+        let err = quarantine_file_range(
+            QuarantineRequest {
+                app_data_root: &root,
+                device_id: Some(&device),
+                reason_code: QuarantineReasonCode::TruncatedTail,
+                source_kind: QuarantineSourceKind::ActiveOpen,
+                source_relative: "unresolved",
+                byte_offset: Some(0),
+                extras: QuarantineExtras::default(),
+            },
+            0,
+            7,
+            &mut file,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                StorageError::Io(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists
+            ),
+            "exclusive create must fail with AlreadyExists, got {err}"
+        );
+        assert!(
+            !matches!(err, StorageError::QuarantineCleanupFailed { .. }),
+            "collision must not attempt owned-staging cleanup: {err}"
+        );
+        assert_eq!(
+            fs::read(&foreign).unwrap(),
+            payload,
+            "foreign staging bytes must be preserved byte-for-byte"
+        );
+        assert!(
+            foreign.is_file(),
+            "foreign staging path must not be removed"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn staging_cleanup_failure_preserves_primary_error() {
+        let root = temp_root("staging-cleanup-fail");
+        let device = DeviceId::new("device-staging-cleanup").unwrap();
+        fs::create_dir_all(&root).unwrap();
+        let pack = root.join("pack.bin");
+        fs::write(&pack, b"short").unwrap();
+        let mut file = File::open(&pack).unwrap();
+        fail_next_staging_removes(1);
+        let err = quarantine_file_range(
+            QuarantineRequest {
+                app_data_root: &root,
+                device_id: Some(&device),
+                reason_code: QuarantineReasonCode::TruncatedTail,
+                source_kind: QuarantineSourceKind::ActiveOpen,
+                source_relative: "unresolved",
+                byte_offset: Some(0),
+                extras: QuarantineExtras::default(),
+            },
+            0,
+            1024,
+            &mut file,
+        )
+        .unwrap_err();
+        let combined = err.to_string();
+        match err {
+            StorageError::QuarantineCleanupFailed { primary, cleanup } => {
+                let primary_text = primary.to_string();
+                assert!(
+                    primary_text.contains("unexpected EOF")
+                        || matches!(primary.as_ref(), StorageError::Io(_)),
+                    "primary should be the short-read failure, got {primary}"
+                );
+                let cleanup_text = cleanup.to_string();
+                assert!(
+                    cleanup_text.contains("injected staging remove failure"),
+                    "cleanup failure must be retained, got {cleanup_text}"
+                );
+                assert!(
+                    combined.contains("injected staging remove failure"),
+                    "Display must retain cleanup: {combined}"
+                );
+                assert!(
+                    combined.contains("unexpected EOF") || combined.contains("storage io:"),
+                    "Display must retain primary: {combined}"
+                );
+                assert!(
+                    combined.contains("quarantine staging cleanup also failed"),
+                    "Display must use combined shape: {combined}"
+                );
+            }
+            other => panic!("expected QuarantineCleanupFailed, got {other}"),
         }
         let _ = fs::remove_dir_all(&root);
     }

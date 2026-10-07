@@ -18,6 +18,11 @@ pub enum StorageError {
     },
     Recovery(String),
     Quarantine(String),
+    /// Primary quarantine failure retained; staging cleanup also failed.
+    QuarantineCleanupFailed {
+        primary: Box<StorageError>,
+        cleanup: Box<StorageError>,
+    },
     Durability(String),
     Io(io::Error),
     Event(EventError),
@@ -39,6 +44,10 @@ impl fmt::Display for StorageError {
             } => write!(f, "segment validation error ({reason_code}): {detail}"),
             Self::Recovery(message) => write!(f, "segment recovery error: {message}"),
             Self::Quarantine(message) => write!(f, "quarantine error: {message}"),
+            Self::QuarantineCleanupFailed { primary, cleanup } => write!(
+                f,
+                "{primary}; quarantine staging cleanup also failed: {cleanup}"
+            ),
             Self::Durability(message) => write!(f, "storage durability error: {message}"),
             Self::Io(error) => write!(f, "storage io: {error}"),
             Self::Event(error) => write!(f, "{error}"),
@@ -51,6 +60,7 @@ impl std::error::Error for StorageError {
         match self {
             Self::Io(error) => Some(error),
             Self::Event(error) => Some(error),
+            Self::QuarantineCleanupFailed { primary, .. } => Some(primary.as_ref()),
             _ => None,
         }
     }
@@ -67,6 +77,16 @@ impl PartialEq for StorageError {
             | (Recovery(a), Recovery(b))
             | (Quarantine(a), Quarantine(b))
             | (Durability(a), Durability(b)) => a == b,
+            (
+                QuarantineCleanupFailed {
+                    primary: a,
+                    cleanup: ac,
+                },
+                QuarantineCleanupFailed {
+                    primary: b,
+                    cleanup: bc,
+                },
+            ) => a == b && ac == bc,
             (
                 Validation {
                     reason_code: a,
