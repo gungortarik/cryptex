@@ -10,6 +10,7 @@ pub mod hex;
 pub mod integrity;
 pub mod limits;
 pub mod schema;
+pub mod validate_record;
 
 pub use device_seq::{DEVICE_SEQ_PATTERN, DeviceSeq};
 pub use envelope::{
@@ -31,4 +32,7 @@ pub use limits::{
     DEFAULT_SEAL_EVENT_THRESHOLD_HINT, MAX_ACCEPTED_RECORD_BYTES, MAX_JSON_CONTAINER_ELEMENTS,
     MAX_JSON_NESTING_DEPTH, MAX_JSON_STRING_BYTES_PER_RECORD, MAX_MEMORY_NOTE_TEXT_BYTES,
     check_body_len,
+};
+pub use validate_record::{
+    ValidationFailure, ValidationReasonCode, validate_accepted_record_bytes,
 };

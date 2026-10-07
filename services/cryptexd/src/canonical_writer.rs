@@ -17,14 +17,13 @@ use cryptex_events::envelope::{
     MemoryNotePayload, SignableEvent,
 };
 use cryptex_events::hex::{ContentHashHex, SigningKeyId, ZERO_CONTENT_HASH_HEX};
-use cryptex_events::integrity::{
-    accept_event, check_chain_link, check_first_event_prev_hash, verify_accepted_event,
-};
+use cryptex_events::integrity::{accept_event, check_chain_link, check_first_event_prev_hash};
 use cryptex_events::limits::DEFAULT_SEAL_EVENT_THRESHOLD_HINT;
+use cryptex_events::validate_accepted_record_bytes;
 use cryptex_storage::layout::{
     active_segment_path, canonical_events_device_dir, sealed_segment_path,
 };
-use cryptex_storage::quarantine::{QuarantineSourceKind, quarantine_file_range};
+use cryptex_storage::quarantine::{QuarantineExtras, QuarantineSourceKind, quarantine_bytes};
 use cryptex_storage::recovery::{FrameBodyValidator, recover_active_open};
 use cryptex_storage::stream_frames::fold_verified_frames;
 use cryptex_storage::{StorageError, append_frame, seal_active_segment};
@@ -149,11 +148,12 @@ struct VerifyingBodyValidator {
 
 impl FrameBodyValidator for VerifyingBodyValidator {
     fn validate_frame_body(&self, body: &[u8]) -> cryptex_storage::StorageResult<()> {
-        let accepted: AcceptedEvent = serde_json::from_slice(body).map_err(|err| {
-            StorageError::Integrity(format!("accepted event JSON parse failed: {err}"))
-        })?;
-        verify_accepted_event(&accepted, &self.verifying_key).map_err(|err| {
-            StorageError::Integrity(format!("accepted event verification failed: {err}"))
+        validate_accepted_record_bytes(body, &self.verifying_key).map_err(|failure| {
+            StorageError::Validation {
+                reason_code: failure.reason.as_str().to_string(),
+                detail: failure.detail,
+                schema_version_if_parsed: failure.schema_version_if_parsed,
+            }
         })?;
         Ok(())
     }
@@ -364,22 +364,17 @@ fn rebuild_chain_state(
         let scan = scan_pack_events(&path, validator, &mut expected_prev, &mut expected_seq);
         match scan {
             Ok(events) => {
-                if events.is_empty() {
-                    return Err(CanonicalWriterError::Integrity(format!(
-                        "sealed pack {} is empty after verification",
-                        path.display()
-                    )));
-                }
-                // Sealed packs must be fully consumed (no truncated tail).
+                // Sealed packs must be fully consumed (no truncated tail / failed frames).
                 let file_len = fs::metadata(&path)
                     .map_err(|e| CanonicalWriterError::Path(e.to_string()))?
                     .len();
                 let (_, verified_len) = fold_verified_frames(&path, validator, (), |_, _| Ok(()))?;
-                if verified_len != file_len {
+                if events.is_empty() || verified_len != file_len {
                     quarantine_sealed_pack(runtime_root, device_id, *index, &path)?;
                     return Err(CanonicalWriterError::Integrity(format!(
-                        "sealed pack {} has unverified trailing bytes; quarantined",
-                        path.display()
+                        "sealed pack {} failed verification (verified_len={verified_len}, file_len={file_len}, events={}); quarantined",
+                        path.display(),
+                        events.len()
                     )));
                 }
                 for ev in &events {
@@ -509,29 +504,29 @@ fn quarantine_sealed_pack(
     index: u64,
     path: &Path,
 ) -> CanonicalWriterResult<()> {
-    let mut file = OpenOptions::new()
-        .read(true)
-        .open(path)
-        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
-    let len = file
-        .metadata()
-        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?
-        .len();
+    let bytes = fs::read(path).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    if bytes.is_empty() {
+        return Err(CanonicalWriterError::Integrity(format!(
+            "refusing to quarantine empty sealed pack {}",
+            path.display()
+        )));
+    }
     let source_relative = format!(
         "canonical/events/{}/{:020}.seg",
         device_id.as_filename_stem(),
         index
     );
-    quarantine_file_range(
+    quarantine_bytes(
         runtime_root,
         Some(device_id),
         "corrupt_sealed_pack",
         QuarantineSourceKind::SealedSeg,
         &source_relative,
-        0,
-        len,
-        &mut file,
-    )?;
+        Some(0),
+        &bytes,
+        QuarantineExtras::default(),
+    )
+    .map_err(CanonicalWriterError::from)?;
     Ok(())
 }
 
@@ -803,7 +798,10 @@ pub fn load_verified_events<S: SecureStore>(
 mod tests {
     use super::*;
     use crate::secure_store::FakeSecureStore;
+    use cryptex_events::framing::encode_frame_header;
+    use cryptex_storage::layout::quarantine_events_root;
     use cryptex_storage::{read_active_pack_bytes, sealed_segment_path};
+    use std::io::Write;
     use std::sync::{Arc, Barrier};
     use std::thread;
 
@@ -1096,6 +1094,228 @@ mod tests {
                 window[1].device_seq.to_u64().unwrap() > window[0].device_seq.to_u64().unwrap()
             );
         }
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn write_crafted_body_frame(root: &Path, device: &DeviceId, body: &[u8]) {
+        let path = active_segment_path(root, device, 0);
+        assert!(
+            path.is_file(),
+            "active segment must exist before crafting corrupt frame: {}",
+            path.display()
+        );
+        let header = encode_frame_header(body.len() as u32).unwrap();
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap();
+        file.write_all(&header).unwrap();
+        file.write_all(body).unwrap();
+        file.sync_all().unwrap();
+    }
+
+    fn walkdir_quarantine(root: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        if !root.exists() {
+            return out;
+        }
+        fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+            for entry in fs::read_dir(dir).unwrap() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if path.is_dir() {
+                    if path.join("quarantine.json").is_file() {
+                        out.push(path);
+                    } else {
+                        walk(&path, out);
+                    }
+                }
+            }
+        }
+        walk(root, &mut out);
+        out
+    }
+
+    #[test]
+    fn unsupported_schema_frame_is_quarantined_and_does_not_fork_chain() {
+        let root = temp_root("schema-m");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("writer-schema-m").unwrap();
+        let brain = "55555555-5555-4555-8555-555555555555";
+        let cfg = CanonicalWriterConfig {
+            seal_event_threshold: 1000,
+        };
+        let first = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            brain,
+            &device,
+            Classification::Internal,
+            "before-bad-schema",
+            &cfg,
+        )
+        .unwrap();
+
+        let mut value = serde_json::to_value(&first.accepted).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("schema_version".into(), serde_json::json!(99));
+        let bad = serde_json::to_vec(&value).unwrap();
+        write_crafted_body_frame(&root, &device, &bad);
+
+        let second = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            brain,
+            &device,
+            Classification::Internal,
+            "after-quarantine",
+            &cfg,
+        )
+        .unwrap();
+        assert_eq!(second.accepted.device_seq.to_u64().unwrap(), 2);
+        assert_eq!(
+            second.accepted.prev_content_hash.as_str(),
+            first.accepted.content_hash.as_str()
+        );
+
+        let qroot = quarantine_events_root(&root);
+        let mut found = false;
+        for entry in walkdir_quarantine(&qroot) {
+            let meta = fs::read_to_string(entry.join("quarantine.json")).unwrap();
+            if meta.contains("unsupported_schema") {
+                found = true;
+                assert!(meta.contains(r#""schema_version_if_parsed": 99"#));
+                assert!(!meta.contains(root.to_string_lossy().as_ref()));
+            }
+        }
+        assert!(found, "expected unsupported_schema quarantine entry");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn integrity_failure_frame_is_quarantined_with_reason_code() {
+        let root = temp_root("int-m");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("writer-int-m").unwrap();
+        let brain = "66666666-6666-4666-8666-666666666666";
+        let cfg = CanonicalWriterConfig {
+            seal_event_threshold: 1000,
+        };
+        let first = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            brain,
+            &device,
+            Classification::Internal,
+            "before-tamper",
+            &cfg,
+        )
+        .unwrap();
+
+        let mut hash = first.accepted.content_hash.as_str().to_string();
+        let flip = if hash.as_bytes()[0] == b'0' { '1' } else { '0' };
+        hash.replace_range(0..1, &flip.to_string());
+        let mut value = serde_json::to_value(&first.accepted).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("content_hash".into(), serde_json::json!(hash));
+        let bad = serde_json::to_vec(&value).unwrap();
+        write_crafted_body_frame(&root, &device, &bad);
+
+        let second = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            brain,
+            &device,
+            Classification::Internal,
+            "after-integrity-quarantine",
+            &cfg,
+        )
+        .unwrap();
+        assert_eq!(second.accepted.device_seq.to_u64().unwrap(), 2);
+        assert_eq!(
+            second.accepted.prev_content_hash.as_str(),
+            first.accepted.content_hash.as_str()
+        );
+
+        let qroot = quarantine_events_root(&root);
+        let mut found = false;
+        for entry in walkdir_quarantine(&qroot) {
+            let meta = fs::read_to_string(entry.join("quarantine.json")).unwrap();
+            if meta.contains("integrity_failure") {
+                found = true;
+                assert!(!meta.contains(root.to_string_lossy().as_ref()));
+            }
+        }
+        assert!(found, "expected integrity_failure quarantine entry");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn sealed_pack_corruption_fails_closed_and_quarantines() {
+        let root = temp_root("seal-m");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("writer-sealed-m").unwrap();
+        let brain = "77777777-7777-4777-8777-777777777777";
+        let cfg = CanonicalWriterConfig {
+            seal_event_threshold: 1,
+        };
+        let _ = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            brain,
+            &device,
+            Classification::Public,
+            "seal-me",
+            &cfg,
+        )
+        .unwrap();
+        let seg = sealed_segment_path(&root, &device, 0);
+        assert!(seg.is_file());
+        let mut bytes = fs::read(&seg).unwrap();
+        if bytes.len() > 20 {
+            bytes[20] ^= 0x5a;
+        }
+        fs::write(&seg, &bytes).unwrap();
+
+        let err = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            brain,
+            &device,
+            Classification::Public,
+            "should-fail-closed",
+            &cfg,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, CanonicalWriterError::Integrity(_)),
+            "got {err:?}"
+        );
+
+        let qroot = quarantine_events_root(&root);
+        let mut found = false;
+        for entry in walkdir_quarantine(&qroot) {
+            let meta = fs::read_to_string(entry.join("quarantine.json")).unwrap();
+            if meta.contains("corrupt_sealed_pack")
+                || meta.contains("integrity_failure")
+                || meta.contains("invalid_record")
+            {
+                found = true;
+                assert!(!meta.contains(root.to_string_lossy().as_ref()));
+            }
+        }
+        assert!(found, "expected sealed pack quarantine");
         let _ = fs::remove_dir_all(&root);
     }
 }

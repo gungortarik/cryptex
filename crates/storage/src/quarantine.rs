@@ -16,6 +16,13 @@ use crate::durability::{sync_directory, sync_file, sync_parent_directory};
 use crate::layout::quarantine_events_root;
 use crate::{StorageError, StorageResult};
 
+/// Optional diagnostic fields for quarantine.json (ADR-0016 §8).
+#[derive(Debug, Clone, Default)]
+pub struct QuarantineExtras {
+    pub schema_version_if_parsed: Option<u32>,
+    pub content_hash_if_computed: Option<String>,
+}
+
 static ENTRY_SUFFIX: AtomicU64 = AtomicU64::new(1);
 const COPY_BUF: usize = 65_536;
 
@@ -39,6 +46,10 @@ pub struct QuarantineMetadata {
     pub source_kind: QuarantineSourceKind,
     pub source_relative: String,
     pub byte_offset: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_version_if_parsed: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_hash_if_computed: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +67,7 @@ pub fn quarantine_bytes(
     source_relative: &str,
     byte_offset: Option<u64>,
     bytes: &[u8],
+    extras: QuarantineExtras,
 ) -> StorageResult<QuarantineEntry> {
     if bytes.is_empty() {
         return Err(StorageError::Quarantine(
@@ -72,6 +84,7 @@ pub fn quarantine_bytes(
         byte_offset,
         entry_id,
         bytes.len() as u64,
+        extras,
         |object| {
             object.write_all(bytes)?;
             Ok(())
@@ -91,6 +104,7 @@ pub fn quarantine_file_range(
     start: u64,
     end: u64,
     source: &mut File,
+    extras: QuarantineExtras,
 ) -> StorageResult<QuarantineEntry> {
     if end <= start {
         return Err(StorageError::Quarantine(
@@ -133,7 +147,7 @@ pub fn quarantine_file_range(
 
     let entry_id = lowercase_hex(hasher.finalize().as_bytes());
     let utc_compact = utc_compact_now();
-    let base = q_parent.join(format!("{utc_compact}_{reason_code}_{entry_id}"));
+    let base = q_parent.join(format!("{utc_compact}_{entry_id}"));
     let dir = exclusive_create_dir(&base)?;
     sync_parent_directory(&dir.join("object.bin"))?;
 
@@ -158,6 +172,8 @@ pub fn quarantine_file_range(
         source_kind,
         source_relative: source_relative.to_string(),
         byte_offset: Some(start),
+        schema_version_if_parsed: extras.schema_version_if_parsed,
+        content_hash_if_computed: extras.content_hash_if_computed,
     };
     write_metadata_file(&dir, &metadata)?;
     sync_directory(&dir)?;
@@ -178,6 +194,7 @@ fn finish_quarantine_entry<F>(
     byte_offset: Option<u64>,
     entry_id: String,
     byte_length: u64,
+    extras: QuarantineExtras,
     write_object: F,
 ) -> StorageResult<QuarantineEntry>
 where
@@ -188,7 +205,7 @@ where
     sync_directory(&q_parent)?;
 
     let utc_compact = utc_compact_now();
-    let base = q_parent.join(format!("{utc_compact}_{reason_code}_{entry_id}"));
+    let base = q_parent.join(format!("{utc_compact}_{entry_id}"));
     let dir = exclusive_create_dir(&base)?;
     sync_parent_directory(&dir.join("object.bin"))?;
 
@@ -212,6 +229,8 @@ where
         source_kind,
         source_relative: source_relative.to_string(),
         byte_offset,
+        schema_version_if_parsed: extras.schema_version_if_parsed,
+        content_hash_if_computed: extras.content_hash_if_computed,
     };
     write_metadata_file(&dir, &metadata)?;
     sync_directory(&dir)?;
@@ -382,6 +401,7 @@ mod tests {
             "canonical/events/x/00000000000000000000.open",
             Some(10),
             payload,
+            QuarantineExtras::default(),
         )
         .unwrap();
         let object = fs::read(entry.directory.join("object.bin")).unwrap();
@@ -412,6 +432,7 @@ mod tests {
             6,
             data.len() as u64,
             &mut file,
+            QuarantineExtras::default(),
         )
         .unwrap();
         let object = fs::read(entry.directory.join("object.bin")).unwrap();
@@ -432,6 +453,7 @@ mod tests {
             "unresolved",
             None,
             payload,
+            QuarantineExtras::default(),
         )
         .unwrap();
         let b = quarantine_bytes(
@@ -442,11 +464,36 @@ mod tests {
             "unresolved",
             None,
             payload,
+            QuarantineExtras::default(),
         )
         .unwrap();
         assert_ne!(a.directory, b.directory);
         assert!(a.directory.join("object.bin").is_file());
         assert!(b.directory.join("object.bin").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn extras_schema_version_round_trips() {
+        let root = temp_root("extras");
+        let entry = quarantine_bytes(
+            &root,
+            None,
+            "unsupported_schema",
+            QuarantineSourceKind::ActiveOpen,
+            "canonical/events/x/0.open",
+            Some(0),
+            b"bad-schema-bytes",
+            QuarantineExtras {
+                schema_version_if_parsed: Some(99),
+                content_hash_if_computed: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(entry.metadata.schema_version_if_parsed, Some(99));
+        let meta_text = fs::read_to_string(entry.directory.join("quarantine.json")).unwrap();
+        assert!(meta_text.contains("\"schema_version_if_parsed\": 99"));
+        assert!(!meta_text.contains(root.to_string_lossy().as_ref()));
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -462,6 +509,7 @@ mod tests {
             "unresolved",
             None,
             b"x",
+            QuarantineExtras::default(),
         )
         .unwrap_err();
         assert!(matches!(err, StorageError::Durability(_)), "{err}");

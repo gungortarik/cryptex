@@ -11,6 +11,11 @@ pub enum StorageError {
     InvalidLayout(String),
     Framing(String),
     Integrity(String),
+    Validation {
+        reason_code: String,
+        detail: String,
+        schema_version_if_parsed: Option<u32>,
+    },
     Recovery(String),
     Quarantine(String),
     Durability(String),
@@ -27,6 +32,11 @@ impl fmt::Display for StorageError {
             Self::InvalidLayout(message) => write!(f, "invalid storage layout: {message}"),
             Self::Framing(message) => write!(f, "segment framing error: {message}"),
             Self::Integrity(message) => write!(f, "segment integrity error: {message}"),
+            Self::Validation {
+                reason_code,
+                detail,
+                ..
+            } => write!(f, "segment validation error ({reason_code}): {detail}"),
             Self::Recovery(message) => write!(f, "segment recovery error: {message}"),
             Self::Quarantine(message) => write!(f, "quarantine error: {message}"),
             Self::Durability(message) => write!(f, "storage durability error: {message}"),
@@ -57,6 +67,18 @@ impl PartialEq for StorageError {
             | (Recovery(a), Recovery(b))
             | (Quarantine(a), Quarantine(b))
             | (Durability(a), Durability(b)) => a == b,
+            (
+                Validation {
+                    reason_code: a,
+                    detail: ad,
+                    schema_version_if_parsed: asv,
+                },
+                Validation {
+                    reason_code: b,
+                    detail: bd,
+                    schema_version_if_parsed: bsv,
+                },
+            ) => a == b && ad == bd && asv == bsv,
             (Event(a), Event(b)) => a == b,
             (Io(a), Io(b)) => a.kind() == b.kind() && a.to_string() == b.to_string(),
             _ => false,

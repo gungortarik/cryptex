@@ -18,7 +18,7 @@ pub use layout::{
     quarantine_events_root, sealed_segment_path,
 };
 pub use quarantine::{
-    QuarantineEntry, QuarantineMetadata, QuarantineSourceKind, quarantine_bytes,
+    QuarantineEntry, QuarantineExtras, QuarantineMetadata, QuarantineSourceKind, quarantine_bytes,
     quarantine_file_range,
 };
 pub use recovery::{

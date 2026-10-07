@@ -2,7 +2,7 @@
 
 **Snapshot date:** 2026-10-07
 **Current milestone:** M2 — Immutable Event Store (IN PROGRESS)
-**Active branch:** `m2/immutable-event-store` @ `e291e9a2529b653f73fd67f81828737a6ec6d9e7` (writer transaction hardening; base remains `0c84c5c`)
+**Active branch:** `m2/immutable-event-store` @ `PENDING_PUSH` (schema validation + quarantine matrix; prior writer hardening `3eae530`; base remains `0c84c5c`)
 **Base:** `origin/m0/foundation` @ `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75` (M1 documentation closeout)
 **M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) — integrated ancestor
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
@@ -90,7 +90,7 @@ merged. M1 is complete; M2 has not started.
 documentation closeout). M1 merge `c2168f3` is an ancestor of this tip. Cursor is
 the sole write-capable M2 implementer. ADR-0016 is **ACCEPTED** (2026-10-07) at
 `5cc89b709dcf236698c3253b8582c873de7c7f0f`. Slice 1 scaffolding and framing body_len enforcement are complete. Slice 2 event domain types +
-schema/TS generation is recorded under `evidence/m2/m2-slice2-event-types-schema-20261007.md`; integrity primitives under `evidence/m2/m2-slice3-integrity-primitives-20261007.md` signing-key lifecycle under `evidence/m2/m2-slice4-signing-key-lifecycle-20261007.md` ; segment I/O under `evidence/m2/m2-slice5-segment-io-quarantine-20261007.md` ; durability hardening under `evidence/m2/m2-slice5b-storage-signing-hardening-20261007.md` ; canonical writer under `evidence/m2/m2-slice6-canonical-writer-20261007.md` ; writer transaction hardening under `evidence/m2/m2-slice6b-writer-transaction-hardening-20261007.md` (next: schema-version/validation/quarantine matrix + final gates).
+schema/TS generation is recorded under `evidence/m2/m2-slice2-event-types-schema-20261007.md`; integrity primitives under `evidence/m2/m2-slice3-integrity-primitives-20261007.md` signing-key lifecycle under `evidence/m2/m2-slice4-signing-key-lifecycle-20261007.md` ; segment I/O under `evidence/m2/m2-slice5-segment-io-quarantine-20261007.md` ; durability hardening under `evidence/m2/m2-slice5b-storage-signing-hardening-20261007.md` ; canonical writer under `evidence/m2/m2-slice6-canonical-writer-20261007.md` ; writer transaction hardening under `evidence/m2/m2-slice6b-writer-transaction-hardening-20261007.md` ; schema validation/quarantine matrix under `evidence/m2/m2-slice7-schema-validation-quarantine-matrix-20261007.md` (next: remaining cross-platform matrix gaps + final gates).
 Do not freeze `segment_events=1000` as a production constant. Do not expand into
 M3/M8/M10 product behavior. Conserve Actions: no workflow runs until the final
 required M2 CI gate. Do not merge the M2 branch or claim M2 complete without

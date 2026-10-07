@@ -14,7 +14,9 @@ use cryptex_events::limits::MAX_ACCEPTED_RECORD_BYTES;
 
 use crate::durability::{sync_file, sync_parent_directory};
 use crate::layout::active_segment_path;
-use crate::quarantine::{QuarantineEntry, QuarantineSourceKind, quarantine_file_range};
+use crate::quarantine::{
+    QuarantineEntry, QuarantineExtras, QuarantineSourceKind, quarantine_file_range,
+};
 use crate::{StorageError, StorageResult};
 
 /// Validates a complete frame body after framing/limit checks succeed.
@@ -66,7 +68,8 @@ pub fn recover_active_open<V: FrameBodyValidator>(
 
     let mut file = OpenOptions::new().read(true).write(true).open(&path)?;
     let file_len = file.metadata()?.len();
-    let (verified_len, reason) = stream_verified_prefix_length(&mut file, file_len, validator)?;
+    let (verified_len, reason, extras) =
+        stream_verified_prefix_length(&mut file, file_len, validator)?;
     if verified_len == file_len {
         return Ok(RecoveryReport {
             verified_prefix_len: verified_len,
@@ -83,12 +86,13 @@ pub fn recover_active_open<V: FrameBodyValidator>(
     let entry = quarantine_file_range(
         app_data_root,
         Some(device_id),
-        reason,
+        &reason,
         QuarantineSourceKind::ActiveOpen,
         &source_relative,
         verified_len,
         file_len,
         &mut file,
+        extras,
     )?;
 
     file.set_len(verified_len)?;
@@ -113,7 +117,7 @@ fn stream_verified_prefix_length<V: FrameBodyValidator>(
     file: &mut File,
     file_len: u64,
     validator: &V,
-) -> StorageResult<(u64, &'static str)> {
+) -> StorageResult<(u64, String, QuarantineExtras)> {
     let mut offset = 0u64;
     let mut header = [0u8; FRAME_HEADER_BYTES];
     while offset + FRAME_HEADER_BYTES as u64 <= file_len {
@@ -121,7 +125,9 @@ fn stream_verified_prefix_length<V: FrameBodyValidator>(
         read_exact(file, &mut header)?;
         let (_ver, body_len) = match decode_frame_header(&header) {
             Ok(v) => v,
-            Err(_) => return Ok((offset, "truncated_tail")),
+            Err(_) => {
+                return Ok((offset, "truncated_tail".into(), QuarantineExtras::default()));
+            }
         };
         // decode_frame_header already enforces MAX_ACCEPTED_RECORD_BYTES.
         debug_assert!(body_len <= MAX_ACCEPTED_RECORD_BYTES);
@@ -130,24 +136,33 @@ fn stream_verified_prefix_length<V: FrameBodyValidator>(
             .and_then(|h| h.checked_add(u64::from(body_len)))
             .ok_or_else(|| StorageError::Framing("frame length overflow".into()))?;
         if body_end > file_len {
-            return Ok((offset, "truncated_tail"));
+            return Ok((offset, "truncated_tail".into(), QuarantineExtras::default()));
         }
         let mut body = vec![0u8; body_len as usize];
         read_exact(file, &mut body)?;
-        if let Err(_err) = validator.validate_frame_body(&body) {
-            let reason = if body_end <= file_len {
-                "corrupt_frame"
-            } else {
-                "truncated_tail"
+        if let Err(err) = validator.validate_frame_body(&body) {
+            let (reason, extras) = match err {
+                StorageError::Validation {
+                    reason_code,
+                    schema_version_if_parsed,
+                    ..
+                } => (
+                    reason_code,
+                    QuarantineExtras {
+                        schema_version_if_parsed,
+                        content_hash_if_computed: None,
+                    },
+                ),
+                _ => ("corrupt_frame".into(), QuarantineExtras::default()),
             };
-            return Ok((offset, reason));
+            return Ok((offset, reason, extras));
         }
         offset = body_end;
     }
     if offset < file_len {
-        return Ok((offset, "truncated_tail"));
+        return Ok((offset, "truncated_tail".into(), QuarantineExtras::default()));
     }
-    Ok((offset, "truncated_tail"))
+    Ok((offset, "truncated_tail".into(), QuarantineExtras::default()))
 }
 
 fn read_exact(file: &mut File, buf: &mut [u8]) -> StorageResult<()> {
@@ -243,6 +258,49 @@ mod tests {
         assert!(!object.is_empty());
         let after = read_active_pack_bytes(&root, &device, 0).unwrap();
         assert_eq!(after.len() as u64, report.verified_prefix_len);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    struct RejectBody {
+        bad: Vec<u8>,
+    }
+    impl FrameBodyValidator for RejectBody {
+        fn validate_frame_body(&self, body: &[u8]) -> StorageResult<()> {
+            if body == self.bad.as_slice() {
+                Err(StorageError::Validation {
+                    reason_code: "unsupported_schema".into(),
+                    detail: "schema_version 99".into(),
+                    schema_version_if_parsed: Some(99),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[test]
+    fn validation_reason_code_propagates_to_quarantine() {
+        let root = temp_root("schema-rej");
+        let device = DeviceId::new("device-schema").unwrap();
+        append_frame(&root, &device, 0, b"good").unwrap();
+        let good_len = read_active_pack_bytes(&root, &device, 0).unwrap().len() as u64;
+        append_frame(&root, &device, 0, b"bad-schema-body").unwrap();
+        let report = recover_active_open(
+            &root,
+            &device,
+            0,
+            &RejectBody {
+                bad: b"bad-schema-body".to_vec(),
+            },
+        )
+        .unwrap();
+        assert!(report.truncated);
+        assert_eq!(report.verified_prefix_len, good_len);
+        let entry = report.quarantined.unwrap();
+        assert_eq!(entry.metadata.reason_code, "unsupported_schema");
+        assert_eq!(entry.metadata.schema_version_if_parsed, Some(99));
+        let meta = fs::read_to_string(entry.directory.join("quarantine.json")).unwrap();
+        assert!(!meta.contains(root.to_string_lossy().as_ref()));
         let _ = fs::remove_dir_all(&root);
     }
 
