@@ -2,10 +2,14 @@
 //!
 //! Streaming entry creation hashes and copies rejected bytes without requiring
 //! the full suffix to be held in memory by the caller.
+//!
+//! On Windows, quarantine filesystem I/O uses extended-length paths (`\\?\`)
+//! per ADR-0016 Windows quarantine extended-path addendum. Logical §8.1 layout
+//! names are unchanged.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -173,8 +177,8 @@ pub fn quarantine_file_range(
     }
     let byte_length = end - start;
     let q_parent = attribution_parent(request.app_data_root, request.device_id)?;
-    fs::create_dir_all(&q_parent)?;
-    sync_directory(&q_parent)?;
+    q_create_dir_all(&q_parent)?;
+    q_sync_directory(&q_parent)?;
 
     let staging = q_parent.join(format!(
         ".staging-{}-{}-{}",
@@ -188,10 +192,7 @@ pub fn quarantine_file_range(
 
     let mut hasher = blake3::Hasher::new();
     {
-        let mut out = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&staging)?;
+        let mut out = q_open_create_new_write(&staging)?;
         source.seek(SeekFrom::Start(start))?;
         let mut remaining = byte_length;
         let mut buf = vec![0u8; COPY_BUF];
@@ -213,16 +214,13 @@ pub fn quarantine_file_range(
         &entry_id,
     ));
     let dir = exclusive_create_dir(&base)?;
-    sync_parent_directory(&dir.join("object.bin"))?;
+    q_sync_parent_directory(&dir.join("object.bin"))?;
 
     let object_path = dir.join("object.bin");
     place_staging_as_object(&staging, &object_path)?;
     // Re-open and sync destination object for platforms where rename does not imply durability.
     {
-        let object = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&object_path)?;
+        let object = q_open_read_write(&object_path)?;
         sync_file(&object)?;
     }
 
@@ -240,8 +238,8 @@ pub fn quarantine_file_range(
         content_hash_if_computed: request.extras.content_hash_if_computed,
     };
     write_metadata_file(&dir, &metadata)?;
-    sync_directory(&dir)?;
-    sync_parent_directory(&dir.join("object.bin"))?;
+    q_sync_directory(&dir)?;
+    q_sync_parent_directory(&dir.join("object.bin"))?;
 
     Ok(QuarantineEntry {
         directory: dir,
@@ -259,8 +257,8 @@ where
     F: FnOnce(&mut File) -> std::io::Result<()>,
 {
     let q_parent = attribution_parent(request.app_data_root, request.device_id)?;
-    fs::create_dir_all(&q_parent)?;
-    sync_directory(&q_parent)?;
+    q_create_dir_all(&q_parent)?;
+    q_sync_directory(&q_parent)?;
 
     let utc_compact = utc_compact_now();
     let base = q_parent.join(entry_directory_name(
@@ -269,14 +267,11 @@ where
         &entry_id,
     ));
     let dir = exclusive_create_dir(&base)?;
-    sync_parent_directory(&dir.join("object.bin"))?;
+    q_sync_parent_directory(&dir.join("object.bin"))?;
 
     let object_path = dir.join("object.bin");
     {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&object_path)?;
+        let mut file = q_open_create_new_write(&object_path)?;
         write_object(&mut file)?;
         sync_file(&file)?;
     }
@@ -295,8 +290,8 @@ where
         content_hash_if_computed: request.extras.content_hash_if_computed,
     };
     write_metadata_file(&dir, &metadata)?;
-    sync_directory(&dir)?;
-    sync_parent_directory(&dir.join("object.bin"))?;
+    q_sync_directory(&dir)?;
+    q_sync_parent_directory(&dir.join("object.bin"))?;
 
     Ok(QuarantineEntry {
         directory: dir,
@@ -304,15 +299,129 @@ where
     })
 }
 
+/// Reject path escape / separator smuggling before any quarantine FS I/O.
+fn reject_unsafe_path_components(path: &Path) -> StorageResult<()> {
+    for component in path.components() {
+        match component {
+            Component::ParentDir | Component::CurDir => {
+                return Err(StorageError::Quarantine(
+                    "refusing '.' or '..' path component in quarantine filesystem path".into(),
+                ));
+            }
+            Component::Normal(name) => {
+                let name = name.to_string_lossy();
+                // Windows may surface "." / ".." as Normal rather than CurDir/ParentDir
+                // (especially under verbatim / extended-length prefixes).
+                if name == "." || name == ".." {
+                    return Err(StorageError::Quarantine(
+                        "refusing '.' or '..' path component in quarantine filesystem path".into(),
+                    ));
+                }
+                if name.contains('/') || name.contains('\\') || name.contains('\0') {
+                    return Err(StorageError::Quarantine(
+                        "refusing separator or NUL inside quarantine path component".into(),
+                    ));
+                }
+            }
+            Component::Prefix(_) | Component::RootDir => {}
+        }
+    }
+    // String-level guard: some Windows path forms keep "\." / "\.." in the
+    // display text even when components() omits CurDir (e.g. `C:\\safe\.\x`).
+    let normalized = path.to_string_lossy().replace('/', "\\");
+    let padded = format!("\\{normalized}\\");
+    if padded.contains("\\.\\") || padded.contains("\\..\\") {
+        return Err(StorageError::Quarantine(
+            "refusing '.' or '..' path segment in quarantine filesystem path".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Logical quarantine path → OS path used for I/O (Windows: `\\?\` extended-length).
+fn quarantine_fs_path(path: &Path) -> StorageResult<PathBuf> {
+    reject_unsafe_path_components(path)?;
+    #[cfg(windows)]
+    {
+        windows_extended_length_path(path)
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(path.to_path_buf())
+    }
+}
+
+#[cfg(windows)]
+fn windows_extended_length_path(path: &Path) -> StorageResult<PathBuf> {
+    let as_text = path.to_string_lossy();
+    if as_text.starts_with(r"\\?\") {
+        reject_unsafe_path_components(path)?;
+        return Ok(path.to_path_buf());
+    }
+
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::path::absolute(path).map_err(StorageError::Io)?
+    };
+    reject_unsafe_path_components(&absolute)?;
+
+    let normalized = absolute.to_string_lossy().replace('/', "\\");
+    if normalized.starts_with(r"\\?\") {
+        return Ok(PathBuf::from(normalized));
+    }
+    if normalized.starts_with(r"\\") {
+        // UNC \\server\share\... → \\?\UNC\server\share\...
+        let rest = normalized.trim_start_matches('\\');
+        Ok(PathBuf::from(format!(r"\\?\UNC\{rest}")))
+    } else {
+        Ok(PathBuf::from(format!(r"\\?\{normalized}")))
+    }
+}
+
+fn q_create_dir_all(path: &Path) -> StorageResult<()> {
+    fs::create_dir_all(quarantine_fs_path(path)?)?;
+    Ok(())
+}
+
+fn q_create_dir(path: &Path) -> StorageResult<()> {
+    fs::create_dir(quarantine_fs_path(path)?)?;
+    Ok(())
+}
+
+fn q_open_create_new_write(path: &Path) -> StorageResult<File> {
+    Ok(OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(quarantine_fs_path(path)?)?)
+}
+
+fn q_open_read_write(path: &Path) -> StorageResult<File> {
+    Ok(OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(quarantine_fs_path(path)?)?)
+}
+
+fn q_remove_file(path: &Path) -> StorageResult<()> {
+    fs::remove_file(quarantine_fs_path(path)?)?;
+    Ok(())
+}
+
+fn q_sync_directory(path: &Path) -> StorageResult<()> {
+    sync_directory(&quarantine_fs_path(path)?)
+}
+
+fn q_sync_parent_directory(path: &Path) -> StorageResult<()> {
+    sync_parent_directory(&quarantine_fs_path(path)?)
+}
+
 fn write_metadata_file(dir: &Path, metadata: &QuarantineMetadata) -> StorageResult<()> {
     let meta_path = dir.join("quarantine.json");
     let mut json = serde_json::to_string_pretty(metadata)
         .map_err(|e| StorageError::Quarantine(e.to_string()))?;
     json.push('\n');
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&meta_path)?;
+    let mut file = q_open_create_new_write(&meta_path)?;
     file.write_all(json.as_bytes())?;
     sync_file(&file)?;
     Ok(())
@@ -330,16 +439,18 @@ fn attribution_parent(
 }
 
 fn place_staging_as_object(staging: &Path, object_path: &Path) -> StorageResult<()> {
+    let staging_fs = quarantine_fs_path(staging)?;
+    let object_fs = quarantine_fs_path(object_path)?;
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
         const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
-        let from: Vec<u16> = staging.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = object_path
+        let from: Vec<u16> = staging_fs
             .as_os_str()
             .encode_wide()
             .chain(Some(0))
             .collect();
+        let to: Vec<u16> = object_fs.as_os_str().encode_wide().chain(Some(0)).collect();
         let ok = unsafe {
             windows_sys::Win32::Storage::FileSystem::MoveFileExW(
                 from.as_ptr(),
@@ -349,21 +460,21 @@ fn place_staging_as_object(staging: &Path, object_path: &Path) -> StorageResult<
         };
         if ok == 0 {
             let err = std::io::Error::last_os_error();
-            let _ = fs::remove_file(staging);
+            let _ = q_remove_file(staging);
             return Err(StorageError::Io(err));
         }
         Ok(())
     }
     #[cfg(unix)]
     {
-        fs::rename(staging, object_path).map_err(|err| {
-            let _ = fs::remove_file(staging);
+        fs::rename(&staging_fs, &object_fs).map_err(|err| {
+            let _ = q_remove_file(staging);
             StorageError::Io(err)
         })
     }
     #[cfg(not(any(unix, windows)))]
     {
-        let _ = (staging, object_path);
+        let _ = (staging_fs, object_fs);
         Err(StorageError::Quarantine(
             "quarantine object placement unsupported on this platform".into(),
         ))
@@ -383,13 +494,13 @@ fn exclusive_create_dir(base: &Path) -> StorageResult<PathBuf> {
     let parent = base
         .parent()
         .ok_or_else(|| StorageError::Quarantine("quarantine entry path missing parent".into()))?;
-    fs::create_dir_all(parent)?;
-    sync_directory(parent)?;
+    q_create_dir_all(parent)?;
+    q_sync_directory(parent)?;
 
-    match fs::create_dir(base) {
+    match q_create_dir(base) {
         Ok(()) => return Ok(base.to_path_buf()),
-        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(err) => return Err(StorageError::Io(err)),
+        Err(StorageError::Io(err)) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(err) => return Err(err),
     }
 
     let leaf = base
@@ -404,10 +515,12 @@ fn exclusive_create_dir(base: &Path) -> StorageResult<PathBuf> {
             .map(|t| t.as_nanos())
             .unwrap_or(0);
         let alt = parent.join(format!("{leaf}-{suffix}-{nanos}"));
-        match fs::create_dir(&alt) {
+        match q_create_dir(&alt) {
             Ok(()) => return Ok(alt),
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(err) => return Err(StorageError::Io(err)),
+            Err(StorageError::Io(err)) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                continue;
+            }
+            Err(err) => return Err(err),
         }
     }
     Err(StorageError::Quarantine(
@@ -710,6 +823,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn quarantine_fs_path_rejects_parent_and_curdir_components() {
+        let with_parent = PathBuf::from(r"C:\\safe").join("..").join("escape");
+        let err = quarantine_fs_path(&with_parent).unwrap_err();
+        assert!(matches!(err, StorageError::Quarantine(_)), "{err}");
+        let with_cur = PathBuf::from(r"C:\\safe").join(".").join("nested");
+        let err = quarantine_fs_path(&with_cur).unwrap_err();
+        assert!(matches!(err, StorageError::Quarantine(_)), "{err}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn quarantine_fs_path_prefixes_absolute_windows_paths() {
+        let logical =
+            PathBuf::from(r"C:\Users\example\AppData\Local\Cryptex-Dev\p0-2\m2-tests\example");
+        let io_path = quarantine_fs_path(&logical).unwrap();
+        let text = io_path.to_string_lossy();
+        assert!(
+            text.starts_with(r"\\?\"),
+            "expected extended-length prefix, got {text}"
+        );
+        assert!(
+            !text.starts_with("\\\\?\\\\?\\"),
+            "must not double-prefix: {text}"
+        );
+        let again = quarantine_fs_path(&io_path).unwrap();
+        assert_eq!(again, io_path);
+    }
+
     #[cfg(windows)]
     #[test]
     fn adr_layout_windows_path_ops_under_production_like_app_data_root() {
@@ -721,8 +863,11 @@ mod tests {
             ("max64", max64),
         ];
 
+        // Observed for diagnostics only. Adapter uses \\?\ and must not rely on this.
         let long_paths_enabled = windows_long_paths_enabled_policy();
-        eprintln!("windows LongPathsEnabled policy (HKLM FileSystem) = {long_paths_enabled:?}");
+        eprintln!(
+            "windows LongPathsEnabled policy (HKLM FileSystem) = {long_paths_enabled:?} (observed; not required by adapter)"
+        );
 
         for (label, device_raw) in &cases {
             let root = temp_root(&format!("pathlen-{label}"));
@@ -752,9 +897,46 @@ mod tests {
                         object.is_file(),
                         "{label}: object missing after Ok quarantine"
                     );
+                    let expected = format!("path-length-regression-{label}");
+                    let read_back = fs::read(&object).unwrap_or_default();
+                    // Prefer adapter open for long paths; logical read may fail without \?\.
+                    let via_adapter = {
+                        use std::io::Read;
+                        let mut f = q_open_read_write(&object).expect("adapter read open");
+                        let mut buf = Vec::new();
+                        f.read_to_end(&mut buf).expect("adapter read");
+                        buf
+                    };
+                    assert_eq!(
+                        via_adapter,
+                        expected.as_bytes(),
+                        "{label}: adapter read mismatch"
+                    );
+                    if read_back == expected.as_bytes() {
+                        eprintln!(
+                            "{label}: logical fs::read also succeeded (len={})",
+                            read_back.len()
+                        );
+                    } else {
+                        eprintln!(
+                            "{label}: logical fs::read len={} (may fail without OS long-path policy); adapter read OK",
+                            read_back.len()
+                        );
+                    }
                     assert!(
                         leaf.contains(&format!("_{}_", longest.as_str())),
                         "{label}: leaf {leaf} missing ADR reason_code"
+                    );
+                    let io_object = quarantine_fs_path(&object).unwrap();
+                    let io_text = io_object.to_string_lossy();
+                    assert!(
+                        io_text.starts_with(r"\\?\"),
+                        "{label}: quarantine I/O path must use extended-length prefix: {io_text}"
+                    );
+                    // Returned entry directory stays logical (no \\?\ in public path).
+                    assert!(
+                        !entry.directory.to_string_lossy().starts_with(r"\\?\"),
+                        "{label}: public directory must remain logical layout path"
                     );
                     eprintln!(
                         "m2 quarantine FS OK label={label} id_len={} projected={projected} root={root_len} dir={dir_len} leaf={} object={object_len} path={}",
@@ -778,23 +960,10 @@ mod tests {
                     assert!(!root.exists(), "{label}: root remained after cleanup");
                 }
                 Err(err) => {
-                    eprintln!(
-                        "m2 quarantine FS FAIL label={label} id_len={} projected_object_len={projected} err={err} root={}",
-                        device_raw.len(),
-                        root.display()
-                    );
-                    assert!(
-                        *label != "short",
-                        "short DeviceId must succeed under production-like root; got {err}"
-                    );
-                    assert!(
-                        projected >= 260,
-                        "{label}: FS failed with projected_len={projected} (<260); unexpected: {err}"
-                    );
                     let _ = fs::remove_dir_all(&root);
-                    eprintln!(
-                        "m2 quarantine cleanup-after-fail label={label} root_exists={}",
-                        root.exists()
+                    panic!(
+                        "{label}: quarantine must succeed with extended-length adapter                          (id_len={} projected_object_len={projected}): {err}",
+                        device_raw.len()
                     );
                 }
             }

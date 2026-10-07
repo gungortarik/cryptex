@@ -6,7 +6,7 @@
 
 **Date accepted:** 2026-10-07 (owner acceptance of record `5cc89b709dcf236698c3253b8582c873de7c7f0f`)
 
-**Date revised:** 2026-10-07 (canonicalization, signing-key lifecycle, resource limits, quarantine safety, single schema→TS path; full-`u64` `device_seq` decimal string; crash-safe key init; ordered `.open` recovery)
+**Date revised:** 2026-10-07 (prior revision retained; Windows quarantine extended-path I/O addendum accepted — `docs/adr/ADR-0016-windows-quarantine-extended-path-addendum.md`; §8.1 layout and DeviceId policy unchanged)
 
 **Milestone:** M2 — Immutable Event Store
 
@@ -294,6 +294,8 @@ Existing sealed bytes are never edited in place. Verified prefix frames already 
 - Otherwise (missing, malformed, path-unsafe, or unparsed): `unattributed`
 
 `entry_id_hex`: lowercase hex of BLAKE3-256 over `object.bin` (or over available rejected bytes). Directory creation must use **exclusive create / no-replace**. If the target exists, append a monotonic suffix derived from a daemon counter or nanoseconds **without overwriting** existing quarantine entries.
+
+**Windows I/O adaptation (addendum):** Directory **names** remain as specified above. On Windows, quarantine filesystem I/O uses extended-length paths (`\\?\`) per `docs/adr/ADR-0016-windows-quarantine-extended-path-addendum.md`. This does not alter layout names, DeviceId policy, or metadata redaction rules.
 
 ### 8.2 Retained bytes and metadata
 
