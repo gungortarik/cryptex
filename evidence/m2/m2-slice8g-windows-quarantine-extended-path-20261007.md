@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-07
 **Branch:** `m2/immutable-event-store`
-**Tip:** *(filled after commit)*
+**Tip:** `fa9436c73070e6d0b784247894103c58aa1897c6`
 **Prior tip:** `15bbcc0` / behavior predecessor `ec9b8b7` (slice 8f measurements + DeviceId binding)
 
 ## 1. Owner decision (ADR)
