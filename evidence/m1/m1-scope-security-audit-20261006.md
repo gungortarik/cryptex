@@ -2,15 +2,15 @@
 
 **Branch:** `m1/brain-device-identity`
 **Authority:** `docs/00_MASTER_SPEC.md`, accepted ADR-0015, M1 completion gate / DoD
-**Actions:** current implementation candidate CI **PASS** - run [37564521336](https://github.com/gungortarik/cryptex/actions/runs/37564521336) @ `7619caeb26d58853fcf93e08ff90cd2cbf1d9e7f`.
+**Actions:** current implementation candidate CI **PASS** - run [37567388625](https://github.com/gungortarik/cryptex/actions/runs/37567388625) @ `afd760fc3dcaa27ec3d7050289291568fe69a8cc`.
 **M1 complete:** **not declared** (human review open)
 
 ## Findings and resolutions
 
 **Superseding follow-up (2026-10-07):** The public-metadata concurrency correction
-in `m1-public-metadata-final-review-20261007.md` changes code after `7619cae`.
-Current-source cross-platform CI is PENDING. The prior PASS tables below cover
-their recorded source only; human review remains OPEN.
+and sequence read-boundary correction in `m1-public-metadata-final-review-20261007.md`
+are verified by current-source CI PASS at `afd760f`, run 37567388625. The gate
+tables below now reference this implementation candidate; human review remains OPEN.
 
 ### 1. SequenceStore daemon authority (RESOLVED)
 
@@ -43,7 +43,7 @@ ADR-0014 / ADR index / handoff point at these files. Neither host’s Gate C res
 
 The initial audit identified security-review and current-candidate CI as open. Scoped
 security findings have been resolved and the required Windows/macOS readiness + Windows
-IPC ACL workflow passed on candidate `7619cae` (run 37564521336). The unsigned Windows
+IPC ACL workflow passed on candidate `afd760f` (run 37567388625). The unsigned Windows
 package job is skipped by design. **Human review remains open**, so the DoD table below
 and M1 completion gate remain open. Do **not** start M2 or declare M1 complete until the
 owner review is recorded.
@@ -96,7 +96,7 @@ owner review is recorded.
 - `cargo test -p cryptexd --lib` PASS (84)
 - `cargo clippy -p cryptexd --all-targets -- -D warnings` PASS
 - `git diff --check` PASS
-- GitHub Actions: current-candidate final CI PASS (run 37564521336)
+- GitHub Actions: current-candidate final CI PASS (run 37567388625)
 - M1 complete: **not declared** (human review still open)
 
 ### Finding: install-identity first-create race / overwrite (RESOLVED)
@@ -185,12 +185,12 @@ Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_ID
 | DoD / completion item | Status | Evidence |
 |---|---|---|
 | M1 scope implemented (Brain/install/device identity, SecureStore, sequence foundation, pairing records, RK public metadata) | PASS | Milestone scope in cryptexd/core; handoff M1 status |
-| Unit / failure-path tests for identity, SecureStore, sequence, install create-once | PASS | Local focused tests + Windows/macOS readiness jobs in run 37564521336 |
-| Format + lint | PASS | Readiness jobs (fmt + Clippy) on Windows and macOS in run 37564521336 |
-| Cross-platform verification (macOS + Windows first-class) | PASS | Gate C SecureStore is VERIFIED on both OS; current Brain identity Unix/macOS failure-path tests passed in run 37564521336 |
+| Unit / failure-path tests for identity, SecureStore, sequence, install create-once | PASS | Local focused tests + Windows/macOS readiness jobs in run 37567388625 |
+| Format + lint | PASS | Readiness jobs (fmt + Clippy) on Windows and macOS in run 37567388625 |
+| Cross-platform verification (macOS + Windows first-class) | PASS | Gate C SecureStore is VERIFIED on both OS; current Brain identity Unix/macOS failure-path tests passed in run 37567388625 |
 | Secrets in OS secure storage; no secret bytes in public files/logs (scoped) | PASS | SecureStore adapters + redaction/payload tests; Gate C matrices |
 | Security review for identity/trust handling (scoped findings) | PASS (scoped) | Windows source review/local failure tests and Unix parent-sync/staging-link tests passed on current candidate |
-| Relevant tests/CI green | PASS | Run 37564521336 passed Windows/macOS readiness + Windows IPC ACL on implementation candidate `7619cae`; unsigned package skipped by design |
+| Relevant tests/CI green | PASS | Run 37567388625 passed Windows/macOS readiness + Windows IPC ACL on implementation candidate `afd760f`; unsigned package skipped by design |
 | Human review complete | **OPEN** | No repository artifact records owner/human M1 review as complete |
 | Definition of Done / M1 completion gate fully satisfied | **OPEN** | Blocked on human review |
 | M1 complete / merge / start M2 | **not declared** | Remaining action below |
@@ -203,13 +203,14 @@ Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_ID
 | ADR-0014 SecureStore P1 | ACCEPTED | ADR + pins |
 | Gate C Windows product SecureStore | VERIFIED | `evidence/m1/gate-c-product-secure-store-windows-20261006.md` |
 | Gate C macOS product SecureStore | VERIFIED | `evidence/m1/gate-c-product-secure-store-macos-20261006.md` |
-| Final CI readiness Win+Mac + Win IPC ACL | PASS | [37564521336](https://github.com/gungortarik/cryptex/actions/runs/37564521336) @ `7619caeb26d58853fcf93e08ff90cd2cbf1d9e7f` |
+| Final CI readiness Win+Mac + Win IPC ACL | PASS | [37567388625](https://github.com/gungortarik/cryptex/actions/runs/37567388625) @ `afd760fc3dcaa27ec3d7050289291568fe69a8cc` |
 | Unsigned Windows package job | Skipped by design | Same run (not required for this M1 CI closeout) |
 | Scoped security-review findings | PASS (scoped) | Windows local checks + current-candidate Windows/macOS CI |
-| Brain identity exclusive first-create and staging cleanup | PASS | Prior candidate evidence retained; Unix/macOS failure-path tests continue to pass in CI 37564521336 |
-| Install-identity staging cleanup and Unix rollback durability | PASS | `cargo test --locked -p cryptexd` (94 unit + integration) + strict Clippy/rustfmt on Windows; Unix rollback-sync injected tests passed in macOS CI 37564521336 @ `7619caeb26d58853fcf93e08ff90cd2cbf1d9e7f` |
+| Brain identity exclusive first-create and staging cleanup | PASS | Prior candidate evidence retained; Unix/macOS failure-path tests continue to pass in CI 37567388625 |
+| Install-identity staging cleanup and Unix rollback durability | PASS | Prior Windows local install follow-up: 94 unit + integration tests, strict Clippy/rustfmt; current Unix rollback-sync tests passed in macOS CI 37567388625 @ `afd760fc3dcaa27ec3d7050289291568fe69a8cc` |
+| Mutable public-metadata concurrency and sequence read-boundary validation | PASS | Final review evidence `m1-public-metadata-final-review-20261007.md`; all five new regression tests explicitly PASS in Windows/macOS CI 37567388625 |
 | Human review | **OPEN** | Not recorded as complete in repo |
 
 ### Remaining action (blocks M1 complete)
 
-**Owner/human review of M1 must be completed and recorded** (milestone completion gate). CI is green on candidate `7619cae`; until the owner review is documented in repository evidence, do **not** declare M1 complete, do **not** merge `m1/brain-device-identity` as an M1 completion merge, and do **not** start M2.
+**Owner/human review of M1 must be completed and recorded** (milestone completion gate). CI is green on candidate `afd760f`; until the owner review is documented in repository evidence, do **not** declare M1 complete, do **not** merge `m1/brain-device-identity` as an M1 completion merge, and do **not** start M2.

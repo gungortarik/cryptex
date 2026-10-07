@@ -1,6 +1,12 @@
 # M1 final follow-up: mutable public metadata persistence
 
-Status: Windows verification PASS; current-source cross-platform CI PENDING.
+Status: Windows verification PASS; current-source cross-platform CI PASS.
+
+Tested source: `afd760fc3dcaa27ec3d7050289291568fe69a8cc`.
+Final CI: [37567388625](https://github.com/gungortarik/cryptex/actions/runs/37567388625).
+Windows readiness, macOS readiness, and Windows cross-account IPC ACL all PASS;
+unsigned Windows package job skipped by design. Both readiness logs explicitly
+show all four metadata regressions and the sequence mismatch test passing.
 
 Authority: Master Spec single canonical writer; accepted ADR-0015 pairing records
 and Recovery Kit public metadata; Definition of Done failure and platform checks.
@@ -39,7 +45,7 @@ sequence suite 14/14 PASS. Allocation's existing defense remains intact.
   focused suites PASS: metadata persistence 4/4, pairing 5/5, recovery 3/3.
 - Format and git diff checks PASS.
 - Strict local Clippy was blocked by Smart App Control, OS error 4551; no local
-  lint PASS is claimed. Required CI will supply lint and Mac verification.
+  lint PASS is claimed. The final CI supplied strict lint and Mac verification.
 - First concurrency regression failed with Windows access-denied during parallel
   destination replacement. Per-target OS locking fixed this without relaxing the
   test: all sixteen writers must succeed and final bytes equal a complete input.
@@ -51,7 +57,7 @@ sequence suite 14/14 PASS. Allocation's existing defense remains intact.
 ## Acceptance
 
 Prior implementation CI 37564521336 @ 7619cae remains historical evidence.
-This follow-up changes product code and needs its own current-source CI result.
+This follow-up changes product code; its final current-source CI result is PASS.
 Run 37567278814 @ 25328ac was cancelled before final validation to include the
 sequence read-boundary correction in one final implementation-candidate run.
 M1 completion, owner review, and completion merge remain OPEN.

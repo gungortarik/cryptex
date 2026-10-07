@@ -52,7 +52,7 @@ M1 is in progress on `m1/brain-device-identity`.
 - Windows and macOS physical **product** secure-store Gate C both VERIFIED 2026-10-06 (evidence/m1/gate-c-product-secure-store-windows-20261006.md, evidence/m1/gate-c-product-secure-store-macos-20261006.md); Gate A spike is not product verification
 - pairing/revocation product behavior remains assigned to M8
 - Recovery Kit container/serialization remains assigned to M11
-- required GitHub Actions PASS on current implementation candidate `7619cae`: run [37564521336](https://github.com/gungortarik/cryptex/actions/runs/37564521336) (Windows/macOS readiness + Windows IPC ACL; unsigned package skipped by design); human review remains open, so M1 completion/merge/M2 stay blocked
+- required GitHub Actions PASS on current implementation candidate `afd760f`: run [37567388625](https://github.com/gungortarik/cryptex/actions/runs/37567388625) (Windows/macOS readiness + Windows IPC ACL; unsigned package skipped by design); human review remains open, so M1 completion/merge/M2 stay blocked
 
 This index accepts ADR-0015 and ADR-0014 by the statuses above.
 
