@@ -689,6 +689,7 @@ dependencies = [
  "security-framework",
  "serde",
  "serde_json",
+ "serde_json_canonicalizer",
  "widestring",
  "windows-sys 0.61.2",
  "winreg 0.55.0",
