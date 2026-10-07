@@ -7,6 +7,7 @@
 //!
 //! Secure-store (ADR-0014 ACCEPTED — P1) is owned by this daemon crate.
 
+pub mod canonical_writer;
 pub mod compare;
 pub mod compat;
 pub mod error;
