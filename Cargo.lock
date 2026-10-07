@@ -665,8 +665,13 @@ dependencies = [
 name = "cryptex-storage"
 version = "0.0.0"
 dependencies = [
+ "blake3",
  "cryptex-core",
  "cryptex-events",
+ "fs2",
+ "serde",
+ "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

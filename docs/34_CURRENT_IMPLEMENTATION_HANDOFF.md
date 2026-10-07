@@ -90,7 +90,7 @@ merged. M1 is complete; M2 has not started.
 documentation closeout). M1 merge `c2168f3` is an ancestor of this tip. Cursor is
 the sole write-capable M2 implementer. ADR-0016 is **ACCEPTED** (2026-10-07) at
 `5cc89b709dcf236698c3253b8582c873de7c7f0f`. Slice 1 scaffolding and framing body_len enforcement are complete. Slice 2 event domain types +
-schema/TS generation is recorded under `evidence/m2/m2-slice2-event-types-schema-20261007.md`; integrity primitives under `evidence/m2/m2-slice3-integrity-primitives-20261007.md` signing-key lifecycle under `evidence/m2/m2-slice4-signing-key-lifecycle-20261007.md` (next: segment append/seal + quarantine I/O).
+schema/TS generation is recorded under `evidence/m2/m2-slice2-event-types-schema-20261007.md`; integrity primitives under `evidence/m2/m2-slice3-integrity-primitives-20261007.md` signing-key lifecycle under `evidence/m2/m2-slice4-signing-key-lifecycle-20261007.md` ; segment I/O under `evidence/m2/m2-slice5-segment-io-quarantine-20261007.md` (next: cryptexd canonical writer API).
 Do not freeze `segment_events=1000` as a production constant. Do not expand into
 M3/M8/M10 product behavior. Conserve Actions: no workflow runs until the final
 required M2 CI gate. Do not merge the M2 branch or claim M2 complete without
