@@ -2,7 +2,7 @@
 
 **Branch:** `m1/brain-device-identity`
 **Authority:** `docs/00_MASTER_SPEC.md`, accepted ADR-0015, M1 completion gate / DoD
-**Actions:** current implementation candidate CI **PASS** - run [37542107413](https://github.com/gungortarik/cryptex/actions/runs/37542107413) @ `bcc2673dd92d1568d1a5da60816afd4bf041decf`.
+**Actions:** current implementation candidate CI **PASS** - run [37564521336](https://github.com/gungortarik/cryptex/actions/runs/37564521336) @ `7619caeb26d58853fcf93e08ff90cd2cbf1d9e7f`.
 **M1 complete:** **not declared** (human review open)
 
 ## Findings and resolutions
@@ -38,7 +38,7 @@ ADR-0014 / ADR index / handoff point at these files. Neither host’s Gate C res
 
 The initial audit identified security-review and current-candidate CI as open. Scoped
 security findings have been resolved and the required Windows/macOS readiness + Windows
-IPC ACL workflow passed on candidate `bcc2673` (run 37542107413). The unsigned Windows
+IPC ACL workflow passed on candidate `7619cae` (run 37564521336). The unsigned Windows
 package job is skipped by design. **Human review remains open**, so the DoD table below
 and M1 completion gate remain open. Do **not** start M2 or declare M1 complete until the
 owner review is recorded.
@@ -91,7 +91,7 @@ owner review is recorded.
 - `cargo test -p cryptexd --lib` PASS (84)
 - `cargo clippy -p cryptexd --all-targets -- -D warnings` PASS
 - `git diff --check` PASS
-- GitHub Actions: current-candidate final CI PASS (run 37542107413)
+- GitHub Actions: current-candidate final CI PASS (run 37564521336)
 - M1 complete: **not declared** (human review still open)
 
 ### Finding: install-identity first-create race / overwrite (RESOLVED)
@@ -133,6 +133,25 @@ The M1 kickoff specifies synthetic Brain creation through daemon wiring with pub
 
 This clarifies current accepted scope; it does not implement startup creation, replication, or recovery.
 
+### Finding: install-identity staging cleanup and Unix rollback durability (RESOLVED)
+
+**Finding:** Install-identity staging write/sync failures and placement cleanup discarded
+`remove_file` errors (`let _ = ...`). On Unix, parent-directory sync failure after
+`hard_link(tmp, dest)` removed the uncommitted destination but did not re-sync the parent
+directory, so rollback durability was not confirmed. Callers could lose cleanup errors or
+treat a failed create as retry-safe when rollback durability was incomplete.
+
+**Resolution (mirrors hardened Brain-identity path):**
+- Staging write/sync failures attempt temp cleanup; cleanup failures become
+  `IdentityRuntimeError::PersistenceCleanupFailed` (whole-operation retry unsafe).
+- Placement failures preserve staging cleanup errors the same way.
+- Unix placement removes the staging link before commit sync; sync failure removes the
+  uncommitted destination and syncs the parent again. Primary sync error plus every
+  rollback/cleanup error are retained; success or retry-safe failure is never reported when
+  rollback durability cannot be confirmed.
+- Injected tests cover staging write/sync/cleanup failures and Unix successful rollback sync,
+  rollback-sync failure, and destination-cleanup failure.
+
 ### Brain identity persistence cleanup (RESOLVED)
 
 Staging write/flush and placement failures now attempt temp cleanup; cleanup failures are returned with the primary failure and mark whole-operation retry unsafe. Rollback directory enumeration and individual entry errors are surfaced rather than ignored. Unit tests inject staging write and cleanup failures; Unix tests cover staging-link cleanup and parent-sync behavior.
@@ -161,12 +180,12 @@ Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_ID
 | DoD / completion item | Status | Evidence |
 |---|---|---|
 | M1 scope implemented (Brain/install/device identity, SecureStore, sequence foundation, pairing records, RK public metadata) | PASS | Milestone scope in cryptexd/core; handoff M1 status |
-| Unit / failure-path tests for identity, SecureStore, sequence, install create-once | PASS | Local focused tests + Windows/macOS readiness jobs in run 37542107413 |
-| Format + lint | PASS | Readiness jobs (fmt + Clippy) on Windows and macOS in run 37542107413 |
-| Cross-platform verification (macOS + Windows first-class) | PASS | Gate C SecureStore is VERIFIED on both OS; current Brain identity Unix/macOS failure-path tests passed in run 37542107413 |
+| Unit / failure-path tests for identity, SecureStore, sequence, install create-once | PASS | Local focused tests + Windows/macOS readiness jobs in run 37564521336 |
+| Format + lint | PASS | Readiness jobs (fmt + Clippy) on Windows and macOS in run 37564521336 |
+| Cross-platform verification (macOS + Windows first-class) | PASS | Gate C SecureStore is VERIFIED on both OS; current Brain identity Unix/macOS failure-path tests passed in run 37564521336 |
 | Secrets in OS secure storage; no secret bytes in public files/logs (scoped) | PASS | SecureStore adapters + redaction/payload tests; Gate C matrices |
 | Security review for identity/trust handling (scoped findings) | PASS (scoped) | Windows source review/local failure tests and Unix parent-sync/staging-link tests passed on current candidate |
-| Relevant tests/CI green | PASS | Run 37542107413 passed Windows/macOS readiness + Windows IPC ACL on implementation candidate `bcc2673`; unsigned package skipped by design |
+| Relevant tests/CI green | PASS | Run 37564521336 passed Windows/macOS readiness + Windows IPC ACL on implementation candidate `7619cae`; unsigned package skipped by design |
 | Human review complete | **OPEN** | No repository artifact records owner/human M1 review as complete |
 | Definition of Done / M1 completion gate fully satisfied | **OPEN** | Blocked on human review |
 | M1 complete / merge / start M2 | **not declared** | Remaining action below |
@@ -179,12 +198,13 @@ Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_ID
 | ADR-0014 SecureStore P1 | ACCEPTED | ADR + pins |
 | Gate C Windows product SecureStore | VERIFIED | `evidence/m1/gate-c-product-secure-store-windows-20261006.md` |
 | Gate C macOS product SecureStore | VERIFIED | `evidence/m1/gate-c-product-secure-store-macos-20261006.md` |
-| Final CI readiness Win+Mac + Win IPC ACL | PASS | [37542107413](https://github.com/gungortarik/cryptex/actions/runs/37542107413) @ `bcc2673dd92d1568d1a5da60816afd4bf041decf` |
+| Final CI readiness Win+Mac + Win IPC ACL | PASS | [37564521336](https://github.com/gungortarik/cryptex/actions/runs/37564521336) @ `7619caeb26d58853fcf93e08ff90cd2cbf1d9e7f` |
 | Unsigned Windows package job | Skipped by design | Same run (not required for this M1 CI closeout) |
 | Scoped security-review findings | PASS (scoped) | Windows local checks + current-candidate Windows/macOS CI |
-| Brain identity exclusive first-create and staging cleanup | PASS | `cargo test -p cryptexd --locked` (93 tests), `cargo test -p cryptex-core --locked` (28 tests, isolated target due Smart App Control), strict Clippy, rustfmt; Unix-specific tests passed in macOS CI 37542107413 |
+| Brain identity exclusive first-create and staging cleanup | PASS | Prior candidate evidence retained; Unix/macOS failure-path tests continue to pass in CI 37564521336 |
+| Install-identity staging cleanup and Unix rollback durability | PASS | `cargo test --locked -p cryptexd` (94 unit + integration) + strict Clippy/rustfmt on Windows; Unix rollback-sync injected tests passed in macOS CI 37564521336 @ `7619caeb26d58853fcf93e08ff90cd2cbf1d9e7f` |
 | Human review | **OPEN** | Not recorded as complete in repo |
 
 ### Remaining action (blocks M1 complete)
 
-**Owner/human review of M1 must be completed and recorded** (milestone completion gate). CI is green on candidate `bcc2673`; until the owner review is documented in repository evidence, do **not** declare M1 complete, do **not** merge `m1/brain-device-identity` as an M1 completion merge, and do **not** start M2.
+**Owner/human review of M1 must be completed and recorded** (milestone completion gate). CI is green on candidate `7619cae`; until the owner review is documented in repository evidence, do **not** declare M1 complete, do **not** merge `m1/brain-device-identity` as an M1 completion merge, and do **not** start M2.
