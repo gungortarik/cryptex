@@ -1,9 +1,11 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-07
-**Current milestone:** M1 — Brain + Device Identity
-**Current branch:** `m1/brain-device-identity`
-**Implementation base:** `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` (`origin/m0/foundation`, PR #5 merge)
+**Current milestone:** M1 — Brain + Device Identity (COMPLETE)
+**Integrated branch:** `m0/foundation`
+**M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6)
+**M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
+**Next milestone:** M2 — not started
 
 > This file is an operational status snapshot, not an architecture authority. If it conflicts with `docs/00_MASTER_SPEC.md`, accepted ADRs, the milestone contract, or other authoritative project documents, stop and report the conflict instead of silently reconciling it.
 
@@ -37,14 +39,17 @@ a durable per-device initialization marker before the initial counter; marker pl
 missing counter now fails closed. Current-source final CI run
 [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071) is
 PASS (Windows/macOS readiness + Windows IPC ACL; unsigned package skipped by design).
-Review record: `evidence/m1/m1-final-review-20261007.md`. Owner acknowledgment of
-the delegated review was accepted on 2026-10-07. M1 completion gates are green; PR #6
-remains to be normally merged into `m0/foundation` before M1 is recorded integrated.
+Review record: `evidence/m1/m1-final-review-20261007.md`. The owner accepted the
+delegated review on 2026-10-07; PR #6 was normally merged into `m0/foundation` as
+`c2168f3`. M1 is complete within its defined scope. M2 has not started.
 
-**Current status (2026-10-07):** M0 Foundation is COMPLETE and integrated at
-`8de3c8f91497cf21d503b9b1bdc5566716d88dc0` on `origin/m0/foundation` (PR #5).
-M1 - Brain + Device Identity is on `m1/brain-device-identity`; current CI candidate is
-`a39920564561f75ada08cba8a47244bec9074345`. Cursor was the write-capable M1 implementer; the owner has directly authorized Codex to complete this closeout follow-up.
+**Current status (2026-10-07):** M0 Foundation is COMPLETE (PR #5). M1 — Brain +
+Device Identity is COMPLETE and integrated into `m0/foundation` at merge commit
+`c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6). The behavior-bearing source
+candidate `a39920564561f75ada08cba8a47244bec9074345` passed required Windows/macOS CI;
+subsequent M1 commits were documentation-only review/acceptance records. Cursor was
+the write-capable M1 implementer; the owner accepted Codex's delegated final technical
+review on 2026-10-07.
 **ADR-0015 is ACCEPTED**; **ADR-0014 is ACCEPTED** (2026-10-06) selecting **P1**
 (direct platform APIs) with product pins `windows-sys = 0.61.2`,
 `widestring = 1.2.1`, `security-framework = 3.7.0`. K2 and high-level `keyring`
@@ -53,8 +58,8 @@ are unselected. Gate C **Windows** and **macOS** product SecureStore are VERIFIE
 candidate `a399205`: run [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071)
 (Windows readiness, macOS readiness, Windows cross-account IPC ACL; unsigned Windows
 package job skipped by design). The owner accepted Codex's delegated technical review
-on 2026-10-07; all M1 gates are satisfied. PR #6 is approved for normal merge; record
-M1 integrated after the merge lands (see audit DoD checklist).
+on 2026-10-07; all M1 gates are satisfied and PR #6 is merged. The unsigned Windows
+package was intentionally not part of the M1 gate.
 
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). ADR-0014 ACCEPTED (2026-10-06, P1).
 Identity/sequence, SecureStore (trait/fake + Windows/macOS P1 adapters), synthetic
@@ -65,7 +70,7 @@ Gate A spike remains historical comparison only. Prior Windows tests, strict Cli
 for the install-identity staging/rollback follow-up pass locally (94 cryptexd tests);
 The latest metadata and sequence corrections are verified by both-OS CI; Unix-specific
 install rollback-sync tests and Windows/macOS readiness passed in CI run
-37569756071. Codex final review and owner acceptance are recorded; normal integration of PR #6 remains.
+37569756071. Codex final review and owner acceptance are recorded; PR #6 is integrated.
 Production pairing/revocation remains M8; Recovery Kit container remains M11.
 No custom cryptography.
 
@@ -73,8 +78,8 @@ No custom cryptography.
 (`evidence/m1/m1-scope-security-audit-20261006.md`). Brain public identity first-create is exclusive/no-replace; install-identity staging
 cleanup and Unix rollback durability now match that hardened path (see audit). Final CI
 PASS on candidate `a399205` is recorded (run 37569756071). The accepted M1 lifecycle and placement boundary is documented in
-ADR-0015 §2.1.1 and the audit. The owner accepted the delegated Codex review; merge PR #6
-normally before recording M1 integrated or starting M2.
+ADR-0015 §2.1.1 and the audit. The owner accepted the delegated Codex review; PR #6 is
+merged. M1 is complete; M2 has not started.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review

@@ -69,6 +69,6 @@ owner's acceptance of the delegated review; it does not claim the owner independ
 inspected every source line. No review can guarantee that future defects will never
 occur. The recommendation is limited to the accepted M1 scope and its recorded gates.
 
-**Integration status:** approved for normal merge by PR #6 into `m0/foundation`; M1 is
-complete only after that merge lands. Later-milestone work listed above remains out of
-M1 scope.
+**Integration status:** PR #6 was merged normally into `m0/foundation` at
+`c2168f3edbd4deb00d5e16f5f35643948028b0ca` on 2026-10-07. M1 is complete within its
+defined scope. Later-milestone work listed above remains out of M1 scope.

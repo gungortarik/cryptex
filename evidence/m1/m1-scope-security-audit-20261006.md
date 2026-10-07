@@ -3,7 +3,7 @@
 **Branch:** `m1/brain-device-identity`
 **Authority:** `docs/00_MASTER_SPEC.md`, accepted ADR-0015, M1 completion gate / DoD
 **Actions:** current implementation candidate CI **PASS** - run [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071) @ `a39920564561f75ada08cba8a47244bec9074345`.
-**M1 complete:** pending approved normal merge of PR #6
+**M1 complete:** YES — merged by PR #6 as `c2168f3edbd4deb00d5e16f5f35643948028b0ca`
 
 ## Findings and resolutions
 
@@ -102,7 +102,8 @@ integrated; do not start M2 before the merge lands.
 - GitHub Actions: current-candidate final CI PASS (run 37569756071 @ `a39920564561f75ada08cba8a47244bec9074345`)
 - Codex final review: recorded in `m1-final-review-20261007.md`
 - Owner acceptance of delegated Codex review: **recorded** 2026-10-07
-- M1 complete: **pending normal merge of PR #6**
+- M1 complete: **YES**, integrated by PR #6 merge commit `c2168f3`
+- M2: **not started**
 
 ### Finding: install-identity first-create race / overwrite (RESOLVED)
 
@@ -199,7 +200,8 @@ Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_ID
 | Codex final review | PASS (recorded) | `m1-final-review-20261007.md`; source SHA `a399205…` |
 | Owner acceptance of delegated technical review | PASS | Owner accepted the recorded Codex review summary on 2026-10-07 |
 | Definition of Done / M1 completion gate | PASS | All implementation, verification, security review, CI, and delegated review gates satisfied |
-| M1 complete / start M2 | Pending integration | Normal merge of PR #6 remains |
+| M1 completion / integration | PASS | PR #6 merged to `m0/foundation` as `c2168f3edbd4deb00d5e16f5f35643948028b0ca` |
+| M2 started | NO | M2 remains a separate milestone and has not started |
 
 ### Platform / security / acceptance gates (from repository evidence)
 
@@ -221,12 +223,13 @@ Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_ID
 
 ### Remaining action
 
-All M1 completion gates are satisfied. The only remaining step is normal integration of PR #6 into `m0/foundation`; after it lands, M1 may be recorded complete and M2 may begin.
+All M1 completion gates are satisfied, and PR #6 has been normally merged into `m0/foundation` as `c2168f3edbd4deb00d5e16f5f35643948028b0ca`. M1 is complete within its defined scope. M2 remains separate and has not started.
 
 ## Final review follow-up (2026-10-07)
 
 Codex performed the final review at the owner's request; the owner accepted the review
-summary on 2026-10-07. A counter-loss/reinitialization
+summary on 2026-10-07. PR #6 was subsequently merged normally into `m0/foundation` at
+`c2168f3edbd4deb00d5e16f5f35643948028b0ca`; M1 is complete within its scope. A counter-loss/reinitialization
 bug was found and fixed at `a39920564561f75ada08cba8a47244bec9074345`; the source fix and
 current-source CI are recorded in `m1-final-review-20261007.md`. The record distinguishes
 the delegated technical review from independent line-by-line owner inspection; it makes
