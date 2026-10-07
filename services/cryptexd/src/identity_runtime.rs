@@ -27,8 +27,8 @@ pub enum IdentityRuntimeError {
     Core(CoreError),
     SecureStore(SecureStoreError),
     AlreadyExists(String),
-    /// A failed persistence step could not remove its staging file cleanly.
-    /// The primary failure and staging cleanup failure are both retained.
+    /// A failed persistence step could not complete its cleanup cleanly.
+    /// The primary failure and cleanup failure are both retained.
     PersistenceCleanupFailed {
         primary: Box<IdentityRuntimeError>,
         cleanup_error: String,
@@ -59,7 +59,7 @@ impl std::fmt::Display for IdentityRuntimeError {
                 cleanup_error,
             } => write!(
                 f,
-                "{primary}; staging-file cleanup also failed: {cleanup_error}; inspect the identity directory before retrying"
+                "{primary}; persistence cleanup also failed: {cleanup_error}; inspect the metadata location before retrying"
             ),
             Self::CompensatingCleanupFailed {
                 primary,

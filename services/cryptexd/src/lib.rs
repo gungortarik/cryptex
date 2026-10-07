@@ -14,6 +14,7 @@ pub mod identity_runtime;
 pub mod install_runtime;
 pub mod instance;
 pub mod ipc;
+mod metadata_persistence;
 pub mod pairing_store;
 pub mod paths;
 pub mod platform;

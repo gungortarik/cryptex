@@ -20,6 +20,13 @@
 
 ## Working agreement
 
+**Latest follow-up (2026-10-07):** Codex final review found fixed-temp races in
+pairing and Recovery Kit public metadata persistence and corrected them with
+serialized, synced atomic replacement. Windows tests/format PASS; local Clippy
+was blocked by Smart App Control (4551). Current-source cross-platform CI is
+PENDING; the prior CI below does not cover this code change. See
+`evidence/m1/m1-public-metadata-final-review-20261007.md`. Human review remains OPEN.
+
 **Current status (2026-10-07):** M0 Foundation is COMPLETE and integrated at
 `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` on `origin/m0/foundation` (PR #5).
 M1 - Brain + Device Identity is on `m1/brain-device-identity`; current CI candidate is
@@ -62,7 +69,7 @@ present-day decisions.
 - Work only on the current milestone (M1).
 - Do not redesign architecture or choose a secure-store/identity representation without the applicable accepted ADR.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
-- Cursor is the active write-capable implementer for M1. Resume Mac-specific physical validation on the Mac host when required evidence needs it.
+- Cursor implemented M1. The owner authorized Codex to perform the final review and necessary focused corrections. Resume Mac-specific physical validation on the Mac host when required evidence needs it.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks and

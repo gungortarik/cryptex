@@ -7,6 +7,7 @@ use cryptex_core::{CoreError, PairingRecord, PairingState};
 
 use crate::error::LifecycleError;
 use crate::identity_runtime::{IdentityRuntimeError, brain_identity_path, load_brain_identity};
+use crate::metadata_persistence::write_public_metadata;
 use crate::paths::{assert_outside_repository, ensure_runtime_root};
 
 const PAIRING_DIR: &str = "pairing";
@@ -57,10 +58,7 @@ pub fn write_pairing_record(
     if !json.ends_with('\n') {
         json.push('\n');
     }
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, json.as_bytes())?;
-    fs::rename(&tmp, &path)?;
-    Ok(())
+    write_public_metadata(&path, json.as_bytes())
 }
 
 pub fn load_pairing_record(
@@ -139,6 +137,14 @@ mod tests {
         let states = list_pairing_states(&root).expect("list");
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].1, PairingState::Trusted);
+        let mut updated = record.clone();
+        updated.state = PairingState::Retired;
+        write_pairing_record(&root, &updated).expect("replace existing record");
+        assert_eq!(load_pairing_record(&root, &peer).unwrap(), updated);
+        assert_eq!(
+            list_pairing_states(&root).unwrap(),
+            vec![(peer.to_string(), PairingState::Retired)]
+        );
         let _ = fs::remove_dir_all(&root);
     }
 

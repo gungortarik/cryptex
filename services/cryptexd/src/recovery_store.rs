@@ -9,6 +9,7 @@ use cryptex_core::RecoveryKitPublicMetadata;
 
 use crate::error::LifecycleError;
 use crate::identity_runtime::IdentityRuntimeError;
+use crate::metadata_persistence::write_public_metadata;
 use crate::paths::{assert_outside_repository, ensure_runtime_root};
 use crate::secure_store::payload_bytes_recoverable;
 
@@ -40,10 +41,7 @@ pub fn write_recovery_public_metadata(
     if !json.ends_with('\n') {
         json.push('\n');
     }
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, json.as_bytes())?;
-    fs::rename(&tmp, &path)?;
-    Ok(())
+    write_public_metadata(&path, json.as_bytes())
 }
 
 pub fn load_recovery_public_metadata(
@@ -94,6 +92,10 @@ mod tests {
         write_recovery_public_metadata(&root, &meta).expect("write");
         let loaded = load_recovery_public_metadata(&root).expect("load");
         assert_eq!(loaded, meta);
+        let mut updated = meta.clone();
+        updated.kit_id = "kit-replacement".into();
+        write_recovery_public_metadata(&root, &updated).expect("replace existing metadata");
+        assert_eq!(load_recovery_public_metadata(&root).unwrap(), updated);
         let _ = fs::remove_dir_all(&root);
     }
 

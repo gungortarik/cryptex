@@ -7,6 +7,11 @@
 
 ## Findings and resolutions
 
+**Superseding follow-up (2026-10-07):** The public-metadata concurrency correction
+in `m1-public-metadata-final-review-20261007.md` changes code after `7619cae`.
+Current-source cross-platform CI is PENDING. The prior PASS tables below cover
+their recorded source only; human review remains OPEN.
+
 ### 1. SequenceStore daemon authority (RESOLVED)
 
 **Finding:** `SequenceStore` lived in `cryptex-core`, was publicly exported, performed durable disk writes, and had **no** `cryptexd` call site, while ADR-0015 §2.3 requires sequence allocation only by local `cryptexd` and §4 requires canonical identity metadata writes through the daemon.
