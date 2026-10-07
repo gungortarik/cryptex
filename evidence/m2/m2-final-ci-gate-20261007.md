@@ -2,11 +2,11 @@
 
 **Status:** CI gate PASS (overall success). M2 remains **IN PROGRESS** — owner review pending. Do **not** claim M2 complete or merge from this record alone.
 
-**Branch:** `m2/immutable-event-store`  
-**Tested SHA:** `16f09a3830e743694d8dba52c16a816c93d46a16`  
-**Workflow:** CI (`ci.yml`)  
-**Run:** [37681630801](https://github.com/gungortarik/cryptex/actions/runs/37681630801)  
-**Overall conclusion:** `success`  
+**Branch:** `m2/immutable-event-store`
+**Tested SHA:** `16f09a3830e743694d8dba52c16a816c93d46a16`
+**Workflow:** CI (`ci.yml`)
+**Run:** [37681630801](https://github.com/gungortarik/cryptex/actions/runs/37681630801)
+**Overall conclusion:** `success`
 **Completed:** 2026-10-07T20:47:07Z (created 2026-10-07T20:23:29Z)
 
 ## Job outcomes (exact)
