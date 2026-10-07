@@ -95,16 +95,14 @@ pub fn validate_accepted_record_bytes(
     })?;
 
     let schema_version = peek_schema_version(&value);
-    if let Some(found) = schema_version {
-        if found != EVENT_SCHEMA_VERSION {
-            return Err(ValidationFailure {
-                reason: ValidationReasonCode::UnsupportedSchema,
-                detail: format!(
-                    "unsupported event schema_version {found} (expected {EVENT_SCHEMA_VERSION})"
-                ),
-                schema_version_if_parsed: Some(found),
-            });
-        }
+    if let Some(found) = schema_version.filter(|&v| v != EVENT_SCHEMA_VERSION) {
+        return Err(ValidationFailure {
+            reason: ValidationReasonCode::UnsupportedSchema,
+            detail: format!(
+                "unsupported event schema_version {found} (expected {EVENT_SCHEMA_VERSION})"
+            ),
+            schema_version_if_parsed: Some(found),
+        });
     }
 
     let accepted: AcceptedEvent = serde_json::from_value(value.clone()).map_err(|err| {

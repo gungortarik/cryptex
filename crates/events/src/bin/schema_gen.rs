@@ -12,11 +12,11 @@ fn main() {
     root.pop();
     root.pop();
     let out = root.join(CHECKED_IN_SCHEMA_REL_PATH);
-    if let Some(parent) = out.parent() {
-        if let Err(error) = fs::create_dir_all(parent) {
-            eprintln!("cryptex-events-schema-gen: create dir: {error}");
-            process::exit(2);
-        }
+    if let Some(parent) = out.parent()
+        && let Err(error) = fs::create_dir_all(parent)
+    {
+        eprintln!("cryptex-events-schema-gen: create dir: {error}");
+        process::exit(2);
     }
     let json = render_accepted_event_schema_json();
     if let Err(error) = fs::write(&out, json) {

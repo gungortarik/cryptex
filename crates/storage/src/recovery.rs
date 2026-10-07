@@ -15,7 +15,8 @@ use cryptex_events::limits::MAX_ACCEPTED_RECORD_BYTES;
 use crate::durability::{sync_file, sync_parent_directory};
 use crate::layout::active_segment_path;
 use crate::quarantine::{
-    QuarantineEntry, QuarantineExtras, QuarantineSourceKind, quarantine_file_range,
+    QuarantineEntry, QuarantineExtras, QuarantineRequest, QuarantineSourceKind,
+    quarantine_file_range,
 };
 use crate::{StorageError, StorageResult};
 
@@ -84,15 +85,18 @@ pub fn recover_active_open<V: FrameBodyValidator>(
         segment_index
     );
     let entry = quarantine_file_range(
-        app_data_root,
-        Some(device_id),
-        &reason,
-        QuarantineSourceKind::ActiveOpen,
-        &source_relative,
+        QuarantineRequest {
+            app_data_root,
+            device_id: Some(device_id),
+            reason_code: &reason,
+            source_kind: QuarantineSourceKind::ActiveOpen,
+            source_relative: &source_relative,
+            byte_offset: Some(verified_len),
+            extras,
+        },
         verified_len,
         file_len,
         &mut file,
-        extras,
     )?;
 
     file.set_len(verified_len)?;

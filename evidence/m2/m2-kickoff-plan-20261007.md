@@ -119,7 +119,7 @@ Ordered after ADR-0016 acceptance. Each slice: behavior + tests + local format/l
 
 ## 7. Continuation point
 
-**Now:** ADR-0016 **ACCEPTED**. Slices 1–8 landed (framing reason matrix reconciled; platform-sensitive tests; CI readiness wired for events/storage + schema drift). Next: Mac-host Unix confirmation if desired; candidate review; **one** final dual-OS Actions readiness run. Do not dispatch Actions until that review.
+**Now:** ADR-0016 **ACCEPTED**. Slices 1–8b landed. Final CI run 37648931640 failed Clippy on both OS; strict Clippy fixes landed locally (workspace Clippy PASS). Next: owner-dispatched **one** final dual-OS Actions readiness run on the corrected tip. Do not dispatch until review.
 
 
 **Historical note:** Operational handoff previously retained contradictory M1 “review open / merge pending” wording after PR #6 merged. That residue is labeled historical/superseded in `docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md`. M1 remains COMPLETE at `c2168f3` / docs closeout `0c84c5c`.

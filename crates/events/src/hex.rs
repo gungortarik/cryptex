@@ -13,7 +13,7 @@ pub const CONTENT_HASH_HEX_PATTERN: &str = r"^[0-9a-f]{64}$";
 pub const SIGNING_KEY_ID_HEX_PATTERN: &str = r"^[0-9a-f]{32}$";
 pub const SIGNATURE_HEX_PATTERN: &str = r"^[0-9a-f]{128}$";
 
-mod hex {
+mod codec {
     pub fn encode(bytes: &[u8]) -> String {
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut out = String::with_capacity(bytes.len() * 2);
@@ -25,7 +25,7 @@ mod hex {
     }
 
     pub fn decode(raw: &str) -> crate::EventResult<Vec<u8>> {
-        if raw.len() % 2 != 0 {
+        if !raw.len().is_multiple_of(2) {
             return Err(crate::EventError::Invalid(
                 "hex string must have even length".into(),
             ));
@@ -123,11 +123,11 @@ impl ContentHashHex {
                 bytes.len()
             )));
         }
-        Self::parse(&hex::encode(bytes))
+        Self::parse(&codec::encode(bytes))
     }
 
     pub fn to_bytes(&self) -> EventResult<[u8; 32]> {
-        let raw = hex::decode(&self.0)?;
+        let raw = codec::decode(&self.0)?;
         let mut out = [0u8; 32];
         out.copy_from_slice(&raw);
         Ok(out)
@@ -158,7 +158,7 @@ impl SigningKeyId {
                 bytes.len()
             )));
         }
-        Self::parse(&hex::encode(bytes))
+        Self::parse(&codec::encode(bytes))
     }
 }
 
@@ -182,11 +182,11 @@ impl SignatureHex {
                 bytes.len()
             )));
         }
-        Self::parse(&hex::encode(bytes))
+        Self::parse(&codec::encode(bytes))
     }
 
     pub fn to_bytes(&self) -> EventResult<[u8; 64]> {
-        let raw = hex::decode(&self.0)?;
+        let raw = codec::decode(&self.0)?;
         let mut out = [0u8; 64];
         out.copy_from_slice(&raw);
         Ok(out)

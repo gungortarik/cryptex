@@ -251,9 +251,7 @@ mod tests {
     const KAT_SIGNING_KEY_ID: &str = "10ba682c8ad13513971e8b56881aab8b";
     const KAT_PUBLIC_KEY_HEX: &str =
         "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737";
-    const KAT_JCS: &str = concat!(
-        r#"{"brain_id":"22222222-2222-4222-8222-222222222222","classification":"internal","created_at":"2026-10-07T00:00:00Z","device_id":"device-a","device_seq":"1","event_id":"11111111-1111-4111-8111-111111111111","event_type":"memory.note","payload":{"text":"kat-hello"},"prev_content_hash":"0000000000000000000000000000000000000000000000000000000000000000","schema_version":1,"signing_key_id":"10ba682c8ad13513971e8b56881aab8b"}"#
-    );
+    const KAT_JCS: &str = r#"{"brain_id":"22222222-2222-4222-8222-222222222222","classification":"internal","created_at":"2026-10-07T00:00:00Z","device_id":"device-a","device_seq":"1","event_id":"11111111-1111-4111-8111-111111111111","event_type":"memory.note","payload":{"text":"kat-hello"},"prev_content_hash":"0000000000000000000000000000000000000000000000000000000000000000","schema_version":1,"signing_key_id":"10ba682c8ad13513971e8b56881aab8b"}"#;
     const KAT_CONTENT_HASH: &str =
         "45dc225413467451623b09445ace22de02255184faeb114421a2df68c17e1be0";
     const KAT_SIGNATURE: &str = concat!(

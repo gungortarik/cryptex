@@ -23,6 +23,18 @@ pub struct QuarantineExtras {
     pub content_hash_if_computed: Option<String>,
 }
 
+/// Common quarantine attribution/metadata inputs (keeps public helpers under Clippy arity limits).
+#[derive(Debug, Clone)]
+pub struct QuarantineRequest<'a> {
+    pub app_data_root: &'a Path,
+    pub device_id: Option<&'a DeviceId>,
+    pub reason_code: &'a str,
+    pub source_kind: QuarantineSourceKind,
+    pub source_relative: &'a str,
+    pub byte_offset: Option<u64>,
+    pub extras: QuarantineExtras,
+}
+
 static ENTRY_SUFFIX: AtomicU64 = AtomicU64::new(1);
 const COPY_BUF: usize = 65_536;
 
@@ -60,14 +72,8 @@ pub struct QuarantineEntry {
 
 /// Quarantine a byte slice (small helpers/tests). Prefer [`quarantine_file_range`] for packs.
 pub fn quarantine_bytes(
-    app_data_root: &Path,
-    device_id: Option<&DeviceId>,
-    reason_code: &str,
-    source_kind: QuarantineSourceKind,
-    source_relative: &str,
-    byte_offset: Option<u64>,
+    request: QuarantineRequest<'_>,
     bytes: &[u8],
-    extras: QuarantineExtras,
 ) -> StorageResult<QuarantineEntry> {
     if bytes.is_empty() {
         return Err(StorageError::Quarantine(
@@ -75,36 +81,21 @@ pub fn quarantine_bytes(
         ));
     }
     let entry_id = lowercase_hex(blake3::hash(bytes).as_bytes());
-    finish_quarantine_entry(
-        app_data_root,
-        device_id,
-        reason_code,
-        source_kind,
-        source_relative,
-        byte_offset,
-        entry_id,
-        bytes.len() as u64,
-        extras,
-        |object| {
-            object.write_all(bytes)?;
-            Ok(())
-        },
-    )
+    let byte_length = bytes.len() as u64;
+    finish_quarantine_entry(request, entry_id, byte_length, |object| {
+        object.write_all(bytes)?;
+        Ok(())
+    })
 }
 
 /// Stream-copy `[start, end)` from `source` into quarantine while hashing.
 ///
 /// Does not require the caller to hold the rejected range in memory.
 pub fn quarantine_file_range(
-    app_data_root: &Path,
-    device_id: Option<&DeviceId>,
-    reason_code: &str,
-    source_kind: QuarantineSourceKind,
-    source_relative: &str,
+    request: QuarantineRequest<'_>,
     start: u64,
     end: u64,
     source: &mut File,
-    extras: QuarantineExtras,
 ) -> StorageResult<QuarantineEntry> {
     if end <= start {
         return Err(StorageError::Quarantine(
@@ -112,7 +103,7 @@ pub fn quarantine_file_range(
         ));
     }
     let byte_length = end - start;
-    let q_parent = attribution_parent(app_data_root, device_id)?;
+    let q_parent = attribution_parent(request.app_data_root, request.device_id)?;
     fs::create_dir_all(&q_parent)?;
     sync_directory(&q_parent)?;
 
@@ -164,16 +155,16 @@ pub fn quarantine_file_range(
 
     let metadata = QuarantineMetadata {
         schema_version: 1,
-        reason_code: reason_code.to_string(),
+        reason_code: request.reason_code.to_string(),
         detected_at: format_detected_at(&utc_compact),
-        attribution: device_id.map(|d| d.as_str().to_string()),
+        attribution: request.device_id.map(|d| d.as_str().to_string()),
         entry_id: entry_id.clone(),
         byte_length,
-        source_kind,
-        source_relative: source_relative.to_string(),
+        source_kind: request.source_kind,
+        source_relative: request.source_relative.to_string(),
         byte_offset: Some(start),
-        schema_version_if_parsed: extras.schema_version_if_parsed,
-        content_hash_if_computed: extras.content_hash_if_computed,
+        schema_version_if_parsed: request.extras.schema_version_if_parsed,
+        content_hash_if_computed: request.extras.content_hash_if_computed,
     };
     write_metadata_file(&dir, &metadata)?;
     sync_directory(&dir)?;
@@ -186,21 +177,15 @@ pub fn quarantine_file_range(
 }
 
 fn finish_quarantine_entry<F>(
-    app_data_root: &Path,
-    device_id: Option<&DeviceId>,
-    reason_code: &str,
-    source_kind: QuarantineSourceKind,
-    source_relative: &str,
-    byte_offset: Option<u64>,
+    request: QuarantineRequest<'_>,
     entry_id: String,
     byte_length: u64,
-    extras: QuarantineExtras,
     write_object: F,
 ) -> StorageResult<QuarantineEntry>
 where
     F: FnOnce(&mut File) -> std::io::Result<()>,
 {
-    let q_parent = attribution_parent(app_data_root, device_id)?;
+    let q_parent = attribution_parent(request.app_data_root, request.device_id)?;
     fs::create_dir_all(&q_parent)?;
     sync_directory(&q_parent)?;
 
@@ -221,16 +206,16 @@ where
 
     let metadata = QuarantineMetadata {
         schema_version: 1,
-        reason_code: reason_code.to_string(),
+        reason_code: request.reason_code.to_string(),
         detected_at: format_detected_at(&utc_compact),
-        attribution: device_id.map(|d| d.as_str().to_string()),
+        attribution: request.device_id.map(|d| d.as_str().to_string()),
         entry_id,
         byte_length,
-        source_kind,
-        source_relative: source_relative.to_string(),
-        byte_offset,
-        schema_version_if_parsed: extras.schema_version_if_parsed,
-        content_hash_if_computed: extras.content_hash_if_computed,
+        source_kind: request.source_kind,
+        source_relative: request.source_relative.to_string(),
+        byte_offset: request.byte_offset,
+        schema_version_if_parsed: request.extras.schema_version_if_parsed,
+        content_hash_if_computed: request.extras.content_hash_if_computed,
     };
     write_metadata_file(&dir, &metadata)?;
     sync_directory(&dir)?;
@@ -394,14 +379,16 @@ mod tests {
         let device = DeviceId::new("device-a").unwrap();
         let payload = b"rejected-bytes-exact";
         let entry = quarantine_bytes(
-            &root,
-            Some(&device),
-            "truncated_tail",
-            QuarantineSourceKind::ActiveOpen,
-            "canonical/events/x/00000000000000000000.open",
-            Some(10),
+            QuarantineRequest {
+                app_data_root: &root,
+                device_id: Some(&device),
+                reason_code: "truncated_tail",
+                source_kind: QuarantineSourceKind::ActiveOpen,
+                source_relative: "canonical/events/x/00000000000000000000.open",
+                byte_offset: Some(10),
+                extras: QuarantineExtras::default(),
+            },
             payload,
-            QuarantineExtras::default(),
         )
         .unwrap();
         let object = fs::read(entry.directory.join("object.bin")).unwrap();
@@ -424,15 +411,18 @@ mod tests {
         fs::write(&pack, &data).unwrap();
         let mut file = File::open(&pack).unwrap();
         let entry = quarantine_file_range(
-            &root,
-            Some(&device),
-            "truncated_tail",
-            QuarantineSourceKind::ActiveOpen,
-            "canonical/events/x/0.open",
+            QuarantineRequest {
+                app_data_root: &root,
+                device_id: Some(&device),
+                reason_code: "truncated_tail",
+                source_kind: QuarantineSourceKind::ActiveOpen,
+                source_relative: "canonical/events/x/0.open",
+                byte_offset: Some(6),
+                extras: QuarantineExtras::default(),
+            },
             6,
             data.len() as u64,
             &mut file,
-            QuarantineExtras::default(),
         )
         .unwrap();
         let object = fs::read(entry.directory.join("object.bin")).unwrap();
@@ -446,25 +436,29 @@ mod tests {
         let root = temp_root("collide");
         let payload = b"same-bytes";
         let a = quarantine_bytes(
-            &root,
-            None,
-            "corrupt_frame",
-            QuarantineSourceKind::Other,
-            "unresolved",
-            None,
+            QuarantineRequest {
+                app_data_root: &root,
+                device_id: None,
+                reason_code: "corrupt_frame",
+                source_kind: QuarantineSourceKind::Other,
+                source_relative: "unresolved",
+                byte_offset: None,
+                extras: QuarantineExtras::default(),
+            },
             payload,
-            QuarantineExtras::default(),
         )
         .unwrap();
         let b = quarantine_bytes(
-            &root,
-            None,
-            "corrupt_frame",
-            QuarantineSourceKind::Other,
-            "unresolved",
-            None,
+            QuarantineRequest {
+                app_data_root: &root,
+                device_id: None,
+                reason_code: "corrupt_frame",
+                source_kind: QuarantineSourceKind::Other,
+                source_relative: "unresolved",
+                byte_offset: None,
+                extras: QuarantineExtras::default(),
+            },
             payload,
-            QuarantineExtras::default(),
         )
         .unwrap();
         assert_ne!(a.directory, b.directory);
@@ -477,17 +471,19 @@ mod tests {
     fn extras_schema_version_round_trips() {
         let root = temp_root("extras");
         let entry = quarantine_bytes(
-            &root,
-            None,
-            "unsupported_schema",
-            QuarantineSourceKind::ActiveOpen,
-            "canonical/events/x/0.open",
-            Some(0),
-            b"bad-schema-bytes",
-            QuarantineExtras {
-                schema_version_if_parsed: Some(99),
-                content_hash_if_computed: None,
+            QuarantineRequest {
+                app_data_root: &root,
+                device_id: None,
+                reason_code: "unsupported_schema",
+                source_kind: QuarantineSourceKind::ActiveOpen,
+                source_relative: "canonical/events/x/0.open",
+                byte_offset: Some(0),
+                extras: QuarantineExtras {
+                    schema_version_if_parsed: Some(99),
+                    content_hash_if_computed: None,
+                },
             },
+            b"bad-schema-bytes",
         )
         .unwrap();
         assert_eq!(entry.metadata.schema_version_if_parsed, Some(99));
@@ -502,14 +498,16 @@ mod tests {
         let root = temp_root("syncfail");
         crate::durability::fail_next_directory_sync();
         let err = quarantine_bytes(
-            &root,
-            None,
-            "truncated_tail",
-            QuarantineSourceKind::Other,
-            "unresolved",
-            None,
+            QuarantineRequest {
+                app_data_root: &root,
+                device_id: None,
+                reason_code: "truncated_tail",
+                source_kind: QuarantineSourceKind::Other,
+                source_relative: "unresolved",
+                byte_offset: None,
+                extras: QuarantineExtras::default(),
+            },
             b"x",
-            QuarantineExtras::default(),
         )
         .unwrap_err();
         assert!(matches!(err, StorageError::Durability(_)), "{err}");

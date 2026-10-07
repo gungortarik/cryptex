@@ -16,14 +16,18 @@ use cryptex_events::envelope::{
     AcceptedEvent, Classification, EVENT_SCHEMA_VERSION, EventPayload, EventType,
     MemoryNotePayload, SignableEvent,
 };
-use cryptex_events::hex::{ContentHashHex, SigningKeyId, ZERO_CONTENT_HASH_HEX};
+#[cfg(test)]
+use cryptex_events::hex::ZERO_CONTENT_HASH_HEX;
+use cryptex_events::hex::{ContentHashHex, SigningKeyId};
 use cryptex_events::integrity::{accept_event, check_chain_link, check_first_event_prev_hash};
 use cryptex_events::limits::DEFAULT_SEAL_EVENT_THRESHOLD_HINT;
 use cryptex_events::validate_accepted_record_bytes;
 use cryptex_storage::layout::{
     active_segment_path, canonical_events_device_dir, sealed_segment_path,
 };
-use cryptex_storage::quarantine::{QuarantineExtras, QuarantineSourceKind, quarantine_file_range};
+use cryptex_storage::quarantine::{
+    QuarantineExtras, QuarantineRequest, QuarantineSourceKind, quarantine_file_range,
+};
 use cryptex_storage::recovery::{FrameBodyValidator, recover_active_open};
 use cryptex_storage::stream_frames::fold_verified_frames;
 use cryptex_storage::{StorageError, append_frame, seal_active_segment};
@@ -159,17 +163,31 @@ impl FrameBodyValidator for VerifyingBodyValidator {
     }
 }
 
+/// Inputs for [`append_memory_note`] (grouped to satisfy Clippy arity limits).
+#[derive(Debug, Clone, Copy)]
+pub struct AppendMemoryNoteArgs<'a> {
+    pub runtime_root: &'a Path,
+    pub brain_id: &'a str,
+    pub device_id: &'a DeviceId,
+    pub classification: Classification,
+    pub text: &'a str,
+    pub config: &'a CanonicalWriterConfig,
+}
+
 /// Append a signed `memory.note` event through the daemon-owned writer path.
 pub fn append_memory_note<S: SecureStore>(
     store: &S,
     env: SecureStoreEnvironment,
-    runtime_root: &Path,
-    brain_id: &str,
-    device_id: &DeviceId,
-    classification: Classification,
-    text: &str,
-    config: &CanonicalWriterConfig,
+    args: AppendMemoryNoteArgs<'_>,
 ) -> CanonicalWriterResult<AppendOutcome> {
+    let AppendMemoryNoteArgs {
+        runtime_root,
+        brain_id,
+        device_id,
+        classification,
+        text,
+        config,
+    } = args;
     assert_outside_repository(runtime_root)
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
     ensure_runtime_root(runtime_root).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
@@ -473,9 +491,9 @@ fn scan_pack_events(
                 check_first_event_prev_hash(&accepted.prev_content_hash)
                     .map_err(|e| CanonicalWriterError::Integrity(e.to_string()))?;
                 if accepted.prev_content_hash != *expected_prev {
-                    return Err(CanonicalWriterError::Integrity(format!(
-                        "first event prev_content_hash mismatch"
-                    )));
+                    return Err(CanonicalWriterError::Integrity(
+                        "first event prev_content_hash mismatch".into(),
+                    ));
                 }
                 *expected_seq = Some(seq);
             }
@@ -524,15 +542,18 @@ fn quarantine_sealed_pack(
     );
     // Stream exact sealed bytes into quarantine before returning the validation failure.
     quarantine_file_range(
-        runtime_root,
-        Some(device_id),
-        "corrupt_sealed_pack",
-        QuarantineSourceKind::SealedSeg,
-        &source_relative,
+        QuarantineRequest {
+            app_data_root: runtime_root,
+            device_id: Some(device_id),
+            reason_code: "corrupt_sealed_pack",
+            source_kind: QuarantineSourceKind::SealedSeg,
+            source_relative: &source_relative,
+            byte_offset: Some(0),
+            extras: QuarantineExtras::default(),
+        },
         0,
         len,
         &mut file,
-        QuarantineExtras::default(),
     )
     .map_err(CanonicalWriterError::from)?;
     Ok(())
@@ -573,7 +594,7 @@ fn discover_segments(
         }
     }
     if let Some(open_idx) = open {
-        if sealed.iter().any(|s| *s == open_idx) {
+        if sealed.contains(&open_idx) {
             // Both .open and .seg for same index: only OK if seal reconcile can heal.
             // Attempt seal reconcile path by calling seal_active_segment which reconciles
             // identical pairs; if divergent, fail closed.
@@ -839,12 +860,14 @@ mod tests {
         let first = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Internal,
-            "hello-one",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "hello-one",
+                config: &cfg,
+            },
         )
         .unwrap();
         assert_eq!(first.accepted.device_seq.to_u64().unwrap(), 1);
@@ -856,12 +879,14 @@ mod tests {
         let second = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Internal,
-            "hello-two",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "hello-two",
+                config: &cfg,
+            },
         )
         .unwrap();
         assert_eq!(second.accepted.device_seq.to_u64().unwrap(), 2);
@@ -888,23 +913,27 @@ mod tests {
         let _ = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Public,
-            "a",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Public,
+                text: "a",
+                config: &cfg,
+            },
         )
         .unwrap();
         let second = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Public,
-            "b",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Public,
+                text: "b",
+                config: &cfg,
+            },
         )
         .unwrap();
         assert!(second.sealed);
@@ -918,15 +947,18 @@ mod tests {
         let store = FakeSecureStore::new();
         let device = DeviceId::new("writer-device-c").unwrap();
         let repoish = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("would-be-writer-runtime");
+        let cfg = CanonicalWriterConfig::default();
         let err = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &repoish,
-            "55555555-5555-4555-8555-555555555555",
-            &device,
-            Classification::Private,
-            "nope",
-            &CanonicalWriterConfig::default(),
+            AppendMemoryNoteArgs {
+                runtime_root: &repoish,
+                brain_id: "55555555-5555-4555-8555-555555555555",
+                device_id: &device,
+                classification: Classification::Private,
+                text: "nope",
+                config: &cfg,
+            },
         )
         .unwrap_err();
         assert!(matches!(err, CanonicalWriterError::Path(_)), "{err}");
@@ -945,12 +977,14 @@ mod tests {
         let first = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Internal,
-            "durable-one",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "durable-one",
+                config: &cfg,
+            },
         )
         .unwrap();
 
@@ -958,12 +992,14 @@ mod tests {
         let err = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Internal,
-            "durable-two",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "durable-two",
+                config: &cfg,
+            },
         )
         .unwrap_err();
         assert!(matches!(err, CanonicalWriterError::Path(_)), "{err}");
@@ -975,12 +1011,14 @@ mod tests {
         let retry = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Internal,
-            "durable-three-retry",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "durable-three-retry",
+                config: &cfg,
+            },
         )
         .unwrap();
 
@@ -1012,12 +1050,14 @@ mod tests {
         let err = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Public,
-            "seal-me",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Public,
+                text: "seal-me",
+                config: &cfg,
+            },
         )
         .unwrap_err();
         assert!(matches!(err, CanonicalWriterError::Path(_)), "{err}");
@@ -1031,12 +1071,14 @@ mod tests {
         let second = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Public,
-            "after-seal-retry",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Public,
+                text: "after-seal-retry",
+                config: &cfg,
+            },
         )
         .unwrap();
         assert!(second.sealed);
@@ -1069,12 +1111,14 @@ mod tests {
                 append_memory_note(
                     store.as_ref(),
                     SecureStoreEnvironment::Dev,
-                    &root,
-                    brain,
-                    &device,
-                    Classification::Internal,
-                    &format!("concurrent-{i}"),
-                    &cfg,
+                    AppendMemoryNoteArgs {
+                        runtime_root: &root,
+                        brain_id: brain,
+                        device_id: &device,
+                        classification: Classification::Internal,
+                        text: &format!("concurrent-{i}"),
+                        config: &cfg,
+                    },
                 )
             }));
         }
@@ -1157,12 +1201,14 @@ mod tests {
         let first = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Internal,
-            "before-bad-schema",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "before-bad-schema",
+                config: &cfg,
+            },
         )
         .unwrap();
 
@@ -1177,12 +1223,14 @@ mod tests {
         let second = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Internal,
-            "after-quarantine",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "after-quarantine",
+                config: &cfg,
+            },
         )
         .unwrap();
         assert_eq!(second.accepted.device_seq.to_u64().unwrap(), 2);
@@ -1217,12 +1265,14 @@ mod tests {
         let first = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Internal,
-            "before-tamper",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "before-tamper",
+                config: &cfg,
+            },
         )
         .unwrap();
 
@@ -1240,12 +1290,14 @@ mod tests {
         let second = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Internal,
-            "after-integrity-quarantine",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "after-integrity-quarantine",
+                config: &cfg,
+            },
         )
         .unwrap();
         assert_eq!(second.accepted.device_seq.to_u64().unwrap(), 2);
@@ -1279,12 +1331,14 @@ mod tests {
         let _ = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Public,
-            "seal-me",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Public,
+                text: "seal-me",
+                config: &cfg,
+            },
         )
         .unwrap();
         let seg = sealed_segment_path(&root, &device, 0);
@@ -1298,12 +1352,14 @@ mod tests {
         let err = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Public,
-            "should-fail-closed",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Public,
+                text: "should-fail-closed",
+                config: &cfg,
+            },
         )
         .unwrap_err();
         assert!(
@@ -1339,12 +1395,14 @@ mod tests {
         let first = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Internal,
-            "first",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "first",
+                config: &cfg,
+            },
         )
         .unwrap();
         assert_eq!(first.accepted.device_seq.to_u64().unwrap(), 1);
@@ -1356,12 +1414,14 @@ mod tests {
         let second = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
-            &root,
-            brain,
-            &device,
-            Classification::Internal,
-            "after-gap",
-            &cfg,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "after-gap",
+                config: &cfg,
+            },
         )
         .unwrap();
         assert_eq!(second.accepted.device_seq.to_u64().unwrap(), 3);

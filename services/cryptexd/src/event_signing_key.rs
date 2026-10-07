@@ -135,10 +135,7 @@ pub fn ensure_event_signing_key<S: SecureStore>(
         Err(SecureStoreError::Missing) => None,
         Err(err) => return Err(err.into()),
     };
-    let meta_state = match load_public_metadata_if_present(&meta_path)? {
-        Some(meta) => Some(meta),
-        None => None,
-    };
+    let meta_state = load_public_metadata_if_present(&meta_path)?;
 
     let events_exist = !observed_signing_key_ids.is_empty();
 
