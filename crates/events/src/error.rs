@@ -11,6 +11,8 @@ pub enum EventError {
     LimitExceeded(String),
     /// Unsupported or incompatible schema version.
     UnsupportedSchema { found: u32, expected: u32 },
+    /// Hash, signature, JCS, or integrity-chain failure.
+    Integrity(String),
     /// Catch-all for later validation wiring; must remain typed and visible.
     Invalid(String),
 }
@@ -26,6 +28,7 @@ impl fmt::Display for EventError {
                 f,
                 "unsupported event schema_version {found} (expected {expected})"
             ),
+            Self::Integrity(message) => write!(f, "event integrity error: {message}"),
             Self::Invalid(message) => write!(f, "invalid event: {message}"),
         }
     }

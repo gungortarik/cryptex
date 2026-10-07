@@ -13,6 +13,46 @@ pub const CONTENT_HASH_HEX_PATTERN: &str = r"^[0-9a-f]{64}$";
 pub const SIGNING_KEY_ID_HEX_PATTERN: &str = r"^[0-9a-f]{32}$";
 pub const SIGNATURE_HEX_PATTERN: &str = r"^[0-9a-f]{128}$";
 
+mod hex {
+    pub fn encode(bytes: &[u8]) -> String {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut out = String::with_capacity(bytes.len() * 2);
+        for b in bytes {
+            out.push(HEX[(b >> 4) as usize] as char);
+            out.push(HEX[(b & 0x0f) as usize] as char);
+        }
+        out
+    }
+
+    pub fn decode(raw: &str) -> crate::EventResult<Vec<u8>> {
+        if raw.len() % 2 != 0 {
+            return Err(crate::EventError::Invalid(
+                "hex string must have even length".into(),
+            ));
+        }
+        let mut out = Vec::with_capacity(raw.len() / 2);
+        let bytes = raw.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            let hi = from_nibble(bytes[i])?;
+            let lo = from_nibble(bytes[i + 1])?;
+            out.push((hi << 4) | lo);
+            i += 2;
+        }
+        Ok(out)
+    }
+
+    fn from_nibble(b: u8) -> crate::EventResult<u8> {
+        match b {
+            b'0'..=b'9' => Ok(b - b'0'),
+            b'a'..=b'f' => Ok(b - b'a' + 10),
+            _ => Err(crate::EventError::Invalid(
+                "hex string must be lowercase hexadecimal".into(),
+            )),
+        }
+    }
+}
+
 fn parse_lowercase_hex(raw: &str, expected_chars: usize, label: &str) -> EventResult<String> {
     if raw.len() != expected_chars {
         return Err(EventError::Invalid(format!(
@@ -76,6 +116,23 @@ impl ContentHashHex {
         &self.0
     }
 
+    pub fn from_bytes(bytes: &[u8]) -> EventResult<Self> {
+        if bytes.len() != 32 {
+            return Err(EventError::Invalid(format!(
+                "content hash must be 32 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        Self::parse(&hex::encode(bytes))
+    }
+
+    pub fn to_bytes(&self) -> EventResult<[u8; 32]> {
+        let raw = hex::decode(&self.0)?;
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&raw);
+        Ok(out)
+    }
+
     pub fn zero() -> Self {
         Self::parse(ZERO_CONTENT_HASH_HEX).expect("zero hash constant is valid")
     }
@@ -93,6 +150,16 @@ impl SigningKeyId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub fn from_bytes(bytes: &[u8]) -> EventResult<Self> {
+        if bytes.len() != 16 {
+            return Err(EventError::Invalid(format!(
+                "signing_key_id must be 16 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        Self::parse(&hex::encode(bytes))
+    }
 }
 
 impl SignatureHex {
@@ -106,6 +173,23 @@ impl SignatureHex {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> EventResult<Self> {
+        if bytes.len() != 64 {
+            return Err(EventError::Invalid(format!(
+                "signature must be 64 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        Self::parse(&hex::encode(bytes))
+    }
+
+    pub fn to_bytes(&self) -> EventResult<[u8; 64]> {
+        let raw = hex::decode(&self.0)?;
+        let mut out = [0u8; 64];
+        out.copy_from_slice(&raw);
+        Ok(out)
     }
 }
 
