@@ -7,3 +7,12 @@ publish = false
 description = "Cryptex immutable event domain foundations (M2; ADR-0016)"
 
 [dependencies]
+cryptex-core = { path = "../core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+
+[[bin]]
+name = "cryptex-events-schema-gen"
+path = "src/bin/schema_gen.rs"
+required-features = []

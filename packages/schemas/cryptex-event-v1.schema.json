@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "Classification": {
+      "description": "Production classification values.",
+      "enum": [
+        "public",
+        "internal",
+        "private",
+        "restricted"
+      ],
+      "type": "string"
+    },
+    "ContentHashHex": {
+      "type": "string"
+    },
+    "DeviceSeq": {
+      "description": "Canonical decimal string of a u64 device sequence in [1, 2^64-1]",
+      "type": "string"
+    },
+    "EventPayload": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MemoryNotePayload"
+        }
+      ],
+      "description": "Type-specific payload object. Production M2 includes only `memory.note`."
+    },
+    "EventType": {
+      "description": "Production `event_type` values for M2 (fixture-only types are not included).",
+      "enum": [
+        "memory.note"
+      ],
+      "type": "string"
+    },
+    "MemoryNotePayload": {
+      "description": "Payload for `memory.note`.",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
+    "SignatureHex": {
+      "type": "string"
+    },
+    "SigningKeyId": {
+      "type": "string"
+    }
+  },
+  "$id": "https://cryptex.local/schemas/cryptex-event-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Accepted on-disk record: signable fields plus integrity fields.",
+  "properties": {
+    "brain_id": {
+      "type": "string"
+    },
+    "classification": {
+      "$ref": "#/$defs/Classification"
+    },
+    "content_hash": {
+      "$ref": "#/$defs/ContentHashHex"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "device_id": {
+      "type": "string"
+    },
+    "device_seq": {
+      "$ref": "#/$defs/DeviceSeq"
+    },
+    "event_id": {
+      "type": "string"
+    },
+    "event_type": {
+      "$ref": "#/$defs/EventType"
+    },
+    "payload": {
+      "$ref": "#/$defs/EventPayload"
+    },
+    "prev_content_hash": {
+      "$ref": "#/$defs/ContentHashHex"
+    },
+    "schema_version": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "signature": {
+      "$ref": "#/$defs/SignatureHex"
+    },
+    "signing_key_id": {
+      "$ref": "#/$defs/SigningKeyId"
+    }
+  },
+  "required": [
+    "schema_version",
+    "event_id",
+    "brain_id",
+    "device_id",
+    "device_seq",
+    "created_at",
+    "event_type",
+    "classification",
+    "signing_key_id",
+    "payload",
+    "prev_content_hash",
+    "content_hash",
+    "signature"
+  ],
+  "title": "CryptexAcceptedEventV1",
+  "type": "object"
+}

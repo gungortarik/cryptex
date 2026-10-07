@@ -1,9 +1,8 @@
 use std::fmt;
 
+use cryptex_core::CoreError;
+
 /// Typed failures for the event domain (ADR-0016).
-///
-/// Variants are intentionally broad in slice 1 so later integrity/store slices
-/// can refine without silent failure swallowing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventError {
     /// Frame magic/version/length rules failed.
@@ -33,3 +32,16 @@ impl fmt::Display for EventError {
 }
 
 impl std::error::Error for EventError {}
+
+impl From<CoreError> for EventError {
+    fn from(value: CoreError) -> Self {
+        match value {
+            CoreError::UnsupportedSchema {
+                kind: _,
+                found,
+                expected,
+            } => Self::UnsupportedSchema { found, expected },
+            other => Self::Invalid(other.to_string()),
+        }
+    }
+}

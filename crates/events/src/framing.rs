@@ -1,6 +1,6 @@
 //! Versioned segment record framing constants (ADR-0016 §4.4).
 
-use crate::limits::{MAX_ACCEPTED_RECORD_BYTES, check_body_len};
+use crate::limits::check_body_len;
 use crate::{EventError, EventResult};
 
 /// On-disk magic for production event frames.
@@ -49,6 +49,7 @@ pub fn decode_frame_header(bytes: &[u8]) -> EventResult<(u16, u32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::limits::MAX_ACCEPTED_RECORD_BYTES;
 
     #[test]
     fn round_trips_header_and_rejects_bad_magic() {
