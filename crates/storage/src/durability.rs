@@ -129,3 +129,47 @@ pub fn files_byte_identical(a: &Path, b: &Path) -> StorageResult<bool> {
 pub fn io_as_durability(context: &str, err: io::Error) -> StorageError {
     StorageError::Durability(format!("{context}: {err}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(label: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|t| t.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "cryptex-m2-dur-{}-{}-{}",
+            label,
+            std::process::id(),
+            nanos
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn sync_directory_succeeds_on_existing_directory() {
+        let dir = temp_dir("sync-ok");
+        sync_directory(&dir).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_sync_directory_fails_closed_for_missing_path() {
+        let missing = std::env::temp_dir().join(format!(
+            "cryptex-m2-dur-missing-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|t| t.as_nanos())
+                .unwrap_or(0)
+        ));
+        let err = sync_directory(&missing).unwrap_err();
+        assert!(matches!(err, StorageError::Durability(_)), "{err}");
+    }
+}

@@ -382,6 +382,60 @@ mod tests {
     }
 
     #[test]
+    fn complete_invalid_version_header_quarantines_as_corrupt_frame_header() {
+        use cryptex_events::framing::FRAME_HEADER_BYTES;
+        let root = temp_root("bad-ver");
+        let device = DeviceId::new("device-bad-ver").unwrap();
+        append_frame(&root, &device, 0, b"good").unwrap();
+        let mut bytes = read_active_pack_bytes(&root, &device, 0).unwrap();
+        let good_len = bytes.len();
+        // Complete header: valid magic, unsupported frame_ver.
+        bytes.extend_from_slice(b"CXE1");
+        bytes.extend_from_slice(&99u16.to_le_bytes());
+        bytes.extend_from_slice(&4u32.to_le_bytes());
+        bytes.extend_from_slice(b"dead");
+        assert_eq!(bytes.len(), good_len + FRAME_HEADER_BYTES + 4);
+        let path = active_segment_path(&root, &device, 0);
+        fs::write(&path, &bytes).unwrap();
+
+        let report = recover_active_open(&root, &device, 0, &AcceptAllBodies).unwrap();
+        assert!(report.truncated);
+        assert_eq!(report.verified_prefix_len, good_len as u64);
+        let entry = report.quarantined.unwrap();
+        assert_eq!(entry.metadata.reason_code, "corrupt_frame_header");
+        let object = fs::read(entry.directory.join("object.bin")).unwrap();
+        assert_eq!(&object[..4], b"CXE1");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn complete_invalid_length_header_quarantines_as_corrupt_frame_header() {
+        use cryptex_events::limits::MAX_ACCEPTED_RECORD_BYTES;
+        let root = temp_root("bad-len");
+        let device = DeviceId::new("device-bad-len").unwrap();
+        append_frame(&root, &device, 0, b"good").unwrap();
+        let mut bytes = read_active_pack_bytes(&root, &device, 0).unwrap();
+        let good_len = bytes.len();
+        // Complete header: valid magic/version, body_len above ADR max.
+        let oversized = MAX_ACCEPTED_RECORD_BYTES.saturating_add(1);
+        bytes.extend_from_slice(b"CXE1");
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&oversized.to_le_bytes());
+        let path = active_segment_path(&root, &device, 0);
+        fs::write(&path, &bytes).unwrap();
+
+        let report = recover_active_open(&root, &device, 0, &AcceptAllBodies).unwrap();
+        assert!(report.truncated);
+        assert_eq!(report.verified_prefix_len, good_len as u64);
+        let entry = report.quarantined.unwrap();
+        assert_eq!(entry.metadata.reason_code, "corrupt_frame_header");
+        let object = fs::read(entry.directory.join("object.bin")).unwrap();
+        assert_eq!(&object[..4], b"CXE1");
+        assert_eq!(object.len(), 10);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn fails_closed_if_quarantine_cannot_be_created() {
         let root = temp_root("fail-q");
         let device = DeviceId::new("device-t").unwrap();

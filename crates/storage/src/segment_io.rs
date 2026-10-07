@@ -335,4 +335,37 @@ mod tests {
         assert!(matches!(err, StorageError::Durability(_)), "{err}");
         let _ = fs::remove_dir_all(&root);
     }
+
+    /// Unix seal places via hard_link then removes `.open`; sealed must remain readable.
+    #[cfg(unix)]
+    #[test]
+    fn unix_seal_leaves_readable_sealed_pack_after_open_removal() {
+        let root = temp_root("unix-seal");
+        let device = DeviceId::new("device-unix-seal").unwrap();
+        append_frame(&root, &device, 0, b"unix-payload").unwrap();
+        let before = read_active_pack_bytes(&root, &device, 0).unwrap();
+        seal_active_segment(&root, &device, 0).unwrap();
+        assert!(!active_segment_path(&root, &device, 0).exists());
+        let sealed = sealed_segment_path(&root, &device, 0);
+        assert!(sealed.is_file());
+        let after = fs::read(&sealed).unwrap();
+        assert_eq!(after, before);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// Windows seal uses MoveFileEx; after success `.open` is gone and `.seg` retains bytes.
+    #[cfg(windows)]
+    #[test]
+    fn windows_seal_moves_open_to_sealed_pack() {
+        let root = temp_root("win-seal");
+        let device = DeviceId::new("device-win-seal").unwrap();
+        append_frame(&root, &device, 0, b"win-payload").unwrap();
+        let before = read_active_pack_bytes(&root, &device, 0).unwrap();
+        seal_active_segment(&root, &device, 0).unwrap();
+        assert!(!active_segment_path(&root, &device, 0).exists());
+        let sealed = sealed_segment_path(&root, &device, 0);
+        assert!(sealed.is_file());
+        assert_eq!(fs::read(&sealed).unwrap(), before);
+        let _ = fs::remove_dir_all(&root);
+    }
 }
