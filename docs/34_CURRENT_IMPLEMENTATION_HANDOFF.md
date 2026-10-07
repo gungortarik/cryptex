@@ -85,18 +85,16 @@ PASS on candidate `a399205` is recorded (run 37569756071). The accepted M1 lifec
 ADR-0015 §2.1.1 and the audit. The owner accepted the delegated Codex review; PR #6 is
 merged. M1 is complete; M2 has not started.
 
-**M2 status (2026-10-07):** M2 implementation has started on branch
+**M2 status (2026-10-07):** M2 Phase 0 continues on branch
 `m2/immutable-event-store`, based on `origin/m0/foundation` at `0c84c5c` (M1
 documentation closeout). M1 merge `c2168f3` is an ancestor of this tip. Cursor is
-the sole write-capable M2 implementer. Product event-store implementation is
-**blocked** on owner review of PROPOSED `docs/adr/ADR-0016-immutable-event-store-productization.md`
-for unsettled serialization, integrity, quarantine, naming, and seal-policy choices
-explicitly left open by `docs/04`, `docs/06`, and `docs/08`. Independent Phase-0
-artifacts: handoff reconciliation, repository audit, kickoff plan
-(`evidence/m2/m2-kickoff-plan-20261007.md`), and ADR-0016. Do not freeze
-`segment_events=1000` as a production constant. Do not expand into M3/M8/M10 product
-behavior. Do not merge the M2 branch or claim M2 complete without required final
-evidence, CI, security review, and owner review.
+the sole write-capable M2 implementer. ADR-0016 remains **PROPOSED** (revised
+2026-10-07) and is **awaiting owner review** — not accepted. Product event-store
+implementation, dependency pins, and GitHub Actions for M2 product slices stay
+**blocked** until acceptance. Kickoff/audit: `evidence/m2/m2-kickoff-plan-20261007.md`.
+Do not freeze `segment_events=1000` as a production constant. Do not expand into
+M3/M8/M10 product behavior. Do not merge the M2 branch or claim M2 complete without
+required final evidence, CI, security review, and owner review.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
@@ -117,7 +115,7 @@ present-day decisions.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
 - Do not freeze the P0-1 benchmark profile value `segment_events=1000` as a production constant.
 - **Historical M1 working-agreement residue (superseded):** earlier text said "Work only on the current milestone (M1)" and "normal PR #6 merge remains before recording M1 integrated." M1 is complete and merged at `c2168f3`; documentation closeout is `0c84c5c`. Owner acceptance of the delegated M1 review is recorded at `evidence/m1/m1-final-review-20261007.md`.
-- ADR-0013, ADR-0014 (P1), and ADR-0015 remain ACCEPTED. ADR-0016 is PROPOSED and blocks dependent M2 product implementation until accepted.
+- ADR-0013, ADR-0014 (P1), and ADR-0015 remain ACCEPTED. ADR-0016 is PROPOSED (revised; awaiting owner review) and blocks dependent M2 product implementation until accepted.
 
 ## P0-1 status
 

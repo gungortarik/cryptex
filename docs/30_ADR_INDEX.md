@@ -29,7 +29,7 @@ If an ADR record is referenced by authoritative documents but its source file is
 | ADR-0013 | Physical immutable event storage layout | ACCEPTED | Source: `docs/adr/ADR-0013-physical-event-storage-layout.md`. Canonical packaging is immutable sealed per-device segment/pack files. One-file-per-event is rejected. Hybrid is not selected. `segment_events=1000` remains a P0-1 benchmark profile, not a frozen production constant. |
 | ADR-0014 | OS secure-store integration | ACCEPTED | Source: `docs/adr/ADR-0014-os-secure-store-integration.md`. Decision addendum: `docs/adr/ADR-0014-os-secure-store-decision-addendum.md`. Accepted 2026-10-06: **P1** direct platform APIs under `cryptexd`. Product pins: Windows `windows-sys = 0.61.2` + `widestring = 1.2.1`; macOS `security-framework = 3.7.0`. K2 and high-level `keyring` unselected. Gate A complete; Gate C Windows and macOS product verification both VERIFIED 2026-10-06 (evidence/m1/gate-c-product-secure-store-windows-20261006.md, evidence/m1/gate-c-product-secure-store-macos-20261006.md). |
 | ADR-0015 | Brain/device identity foundations | ACCEPTED | Source: `docs/adr/ADR-0015-brain-device-identity-foundations.md`. Accepted 2026-10-05. Brain/install/device identity; sequence first-issue `1`; durable write before return; same-`device_id` concurrent allocate atomicity including first-create race; missing/corrupt typed fail-closed; pairing records only; Recovery Kit public metadata. Pairing/revocation product remains M8; kit container remains M11. |
-| ADR-0016 | Immutable event store productization | PROPOSED | Source: `docs/adr/ADR-0016-immutable-event-store-productization.md`. Drafted 2026-10-07. Proposes M2 event envelope, versioned segment framing, BLAKE3+Ed25519 integrity, quarantine layout, per-device `.open`/`.seg` naming, configurable seal default, and Rust→JSON Schema/TS generation. **Not accepted.** Dependent M2 product implementation is blocked until acceptance (or an accepted narrower successor covering the blocking choices).
+| ADR-0016 | Immutable event store productization | PROPOSED | Source: `docs/adr/ADR-0016-immutable-event-store-productization.md`. Revised 2026-10-07; **awaiting owner review** (not accepted). Proposes RFC 8785 JCS canonicalization, domain-separated BLAKE3+Ed25519, daemon signing-key lifecycle with immutable device binding, explicit resource limits, safe no-replace quarantine, per-device `.open`/`.seg`, configurable seal default, and single Rust→schemars JSON Schema→TypeScript path with drift check. Dependent M2 product implementation remains blocked until acceptance.
 
 ## 4. M0 gate
 
@@ -63,7 +63,7 @@ This index accepts ADR-0015 and ADR-0014 by the statuses above.
 M2 work is IN PROGRESS on `m2/immutable-event-store` (base `0c84c5c`, M1 merge ancestor `c2168f3`).
 
 - ADR-0013 remains **ACCEPTED** (sealed per-device segments; `segment_events=1000` not a frozen production constant)
-- ADR-0016 is **PROPOSED** (2026-10-07) and must be accepted or revised before dependent event-store product implementation
+- ADR-0016 is **PROPOSED** (revised 2026-10-07) and is **awaiting owner review**; not accepted. Dependent event-store product implementation remains blocked
 - M3 must not begin until the M2 completion gate is satisfied
 
 ## 5. ADR source records
