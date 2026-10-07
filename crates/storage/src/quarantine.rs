@@ -165,6 +165,22 @@ pub fn quarantine_bytes(
 /// Stream-copy `[start, end)` from `source` into quarantine while hashing.
 ///
 /// Does not require the caller to hold the rejected range in memory.
+struct StagingCleanup(Option<PathBuf>);
+
+impl Drop for StagingCleanup {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = q_remove_file(&path);
+        }
+    }
+}
+
+impl StagingCleanup {
+    fn disarm(mut self) {
+        self.0 = None;
+    }
+}
+
 pub fn quarantine_file_range(
     request: QuarantineRequest<'_>,
     start: u64,
@@ -191,6 +207,8 @@ pub fn quarantine_file_range(
             .map(|t| t.as_nanos())
             .unwrap_or(0)
     ));
+    // Remove incomplete staging on any failure before successful placement.
+    let staging_guard = StagingCleanup(Some(staging.clone()));
 
     let mut hasher = blake3::Hasher::new();
     {
@@ -220,6 +238,7 @@ pub fn quarantine_file_range(
 
     let object_path = dir.join("object.bin");
     place_staging_as_object(&staging, &object_path)?;
+    staging_guard.disarm();
     // Re-open and sync destination object for platforms where rename does not imply durability.
     {
         let object = q_open_read_write(&object_path)?;
@@ -693,6 +712,26 @@ mod tests {
         }
     }
 
+    fn walk_paths(root: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+            let Ok(entries) = fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                }
+                out.push(path);
+            }
+        }
+        if root.exists() {
+            walk(root, &mut out);
+        }
+        out
+    }
+
     #[test]
     fn quarantine_retains_exact_bytes_and_metadata() {
         let root = temp_root("basic");
@@ -929,6 +968,48 @@ mod tests {
                 matches!(err, StorageError::Quarantine(_)),
                 "expected Quarantine for {bad:?}, got {err}"
             );
+        }
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn staging_removed_when_source_range_read_fails() {
+        let root = temp_root("staging-fail");
+        let device = DeviceId::new("device-staging-fail").unwrap();
+        fs::create_dir_all(&root).unwrap();
+        let pack = root.join("pack.bin");
+        fs::write(&pack, b"short").unwrap();
+        let mut file = File::open(&pack).unwrap();
+        // Request more bytes than the file contains so the staging copy fails mid-read.
+        let err = quarantine_file_range(
+            QuarantineRequest {
+                app_data_root: &root,
+                device_id: Some(&device),
+                reason_code: QuarantineReasonCode::TruncatedTail,
+                source_kind: QuarantineSourceKind::ActiveOpen,
+                source_relative: "unresolved",
+                byte_offset: Some(0),
+                extras: QuarantineExtras::default(),
+            },
+            0,
+            1024,
+            &mut file,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, StorageError::Io(_) | StorageError::Quarantine(_)),
+            "expected read/quarantine failure, got {err}"
+        );
+        let qroot = quarantine_events_root(&root);
+        if qroot.exists() {
+            for path in walk_paths(&qroot) {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                assert!(
+                    !name.starts_with(".staging-"),
+                    "staging orphan must not remain after failed quarantine: {}",
+                    path.display()
+                );
+            }
         }
         let _ = fs::remove_dir_all(&root);
     }
