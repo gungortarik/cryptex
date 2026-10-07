@@ -82,3 +82,19 @@ cargo clippy --locked -p cryptex-storage -p cryptexd --all-targets -- -D warning
 - **M2 complete:** NO
 - **Ready for single final dual-OS Actions gate:** YES from security/DoD review disposition (Critical/High in-scope items fixed; Actions still required)
 - **Owner review:** still required after Actions
+
+---
+
+## 6. Closeout re-audit (2026-10-07) — L1 / L2 / F4–F6
+
+See `evidence/m2/m2-closeout-l1-l2-f4-f6-20261007.md` for full source verification and dispositions.
+
+| ID | Prior | Closeout disposition |
+|---|---|---|
+| L1 | Deferred Low | **FIXED** — isolate `.seg` after durable quarantine; regressions added |
+| L2 | Deferred Low | **NON-BLOCKER (evidenced)** — health IPC + sidecar process boundary; Cargo feature split is not a real guarantee under workspace unification |
+| F4 | Deferred Low | **Partial fix** — sealed integrity uses `source_relative`; residual lifecycle absolute paths NON-BLOCKER |
+| F5 | Deferred Low | **NON-BLOCKER (evidenced)** — quarantine root containment by construction |
+| F6 | Deferred Low | **Staging FIXED**; canonical `\\?\` remains addendum non-goal NON-BLOCKER |
+
+**M2 complete:** still NO. Behavior tip after this closeout requires a **new** single dual-OS Actions gate (prior 37681630801 @ `16f09a3` does not cover these fixes).

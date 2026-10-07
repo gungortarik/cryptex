@@ -5,6 +5,7 @@
 **Active branch:** `m2/immutable-event-store` (M2 IN PROGRESS; owner review pending; base remains `0c84c5c`)
 **Final CI behavior SHA:** `16f09a3` (`16f09a3830e743694d8dba52c16a816c93d46a16`) — dual-OS CI green in run [37681630801](https://github.com/gungortarik/cryptex/actions/runs/37681630801)
 **CI documentation closeout:** `7a84bdd` (`7a84bdd9a113c562177cc47cef3283d70aa25bde`) — documentation commit that recorded the final CI gate (distinct from behavior SHA `16f09a3`)
+**Closeout audit tip (L1/L2/F4–F6):** behavior `908e0d6` (sealed isolation) + `7381abd` (staging cleanup); dispositions in `evidence/m2/m2-closeout-l1-l2-f4-f6-20261007.md`. Prior dual-OS run 37681630801 @ `16f09a3` does **not** cover this tip. One new dual-OS Actions gate required after macOS verify; do not merge / do not declare M2 complete.
 **Base:** `origin/m0/foundation` @ `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75` (M1 documentation closeout)
 **M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) — integrated ancestor
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
@@ -24,9 +25,23 @@
 7. `docs/17_TEST_AND_FAILURE_MATRIX.md`
 8. `docs/21_DEFINITION_OF_DONE.md`
 9. relevant `docs/adr/` records (ADR-0013 ACCEPTED; ADR-0014 ACCEPTED — P1; ADR-0015 ACCEPTED; ADR-0016 ACCEPTED + Windows quarantine extended-path addendum ACCEPTED)
-10. `evidence/m2/m2-kickoff-plan-20261007.md`; `evidence/m2/m2-final-ci-gate-20261007.md` (final dual-OS CI); retained `evidence/m1/` and `evidence/m0/` for foundation context
+10. `evidence/m2/m2-kickoff-plan-20261007.md`; `evidence/m2/m2-final-ci-gate-20261007.md` (final dual-OS CI @ `16f09a3`); `evidence/m2/m2-closeout-l1-l2-f4-f6-20261007.md` (L1/L2/F4–F6 dispositions); retained `evidence/m1/` and `evidence/m0/` for foundation context
 
 ## Working agreement
+
+### M2 closeout audit (L1/L2/F4–F6) — 2026-10-07
+
+Source re-audit of previously deferred Low findings (see `evidence/m2/m2-closeout-l1-l2-f4-f6-20261007.md`):
+
+- **L1 FIXED:** corrupt sealed `.seg` isolated from canonical tree only after durable quarantine; repeated load does not re-quarantine.
+- **L2 NON-BLOCKER:** Desktop links `cryptexd` but only health IPC + sidecar process; Cargo features cannot guarantee isolation under workspace unification; Master Spec single-writer preserved by process/IPC/call sites.
+- **F4 partial:** sealed integrity errors use `source_relative`; residual lifecycle absolute paths NON-BLOCKER.
+- **F5 NON-BLOCKER:** quarantine containment by construction under `quarantine/canonical-events/`.
+- **F6:** staging orphan cleanup FIXED; canonical `\\?\` remains addendum non-goal NON-BLOCKER.
+
+Windows: `cryptex-storage` quarantine 22 ok; `cryptexd --lib` 126 ok; fmt check ok; clippy `-D warnings` on storage+cryptexd ok. **macOS verify required.** New final dual-OS Actions planned once (not started). M2 still IN PROGRESS; owner review pending.
+
+
 
 **Historical M1 follow-up note (2026-10-07; superseded for owner-acceptance status):** Codex final review found fixed-temp races in
 pairing and Recovery Kit public metadata persistence and corrected them with
