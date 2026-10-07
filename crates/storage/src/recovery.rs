@@ -15,8 +15,8 @@ use cryptex_events::limits::MAX_ACCEPTED_RECORD_BYTES;
 use crate::durability::{sync_file, sync_parent_directory};
 use crate::layout::active_segment_path;
 use crate::quarantine::{
-    QuarantineEntry, QuarantineExtras, QuarantineRequest, QuarantineSourceKind,
-    quarantine_file_range,
+    QuarantineEntry, QuarantineExtras, QuarantineReasonCode, QuarantineRequest,
+    QuarantineSourceKind, quarantine_file_range,
 };
 use crate::{StorageError, StorageResult};
 
@@ -88,7 +88,7 @@ pub fn recover_active_open<V: FrameBodyValidator>(
         QuarantineRequest {
             app_data_root,
             device_id: Some(device_id),
-            reason_code: &reason,
+            reason_code: reason,
             source_kind: QuarantineSourceKind::ActiveOpen,
             source_relative: &source_relative,
             byte_offset: Some(verified_len),
@@ -121,7 +121,7 @@ fn stream_verified_prefix_length<V: FrameBodyValidator>(
     file: &mut File,
     file_len: u64,
     validator: &V,
-) -> StorageResult<(u64, String, QuarantineExtras)> {
+) -> StorageResult<(u64, QuarantineReasonCode, QuarantineExtras)> {
     let mut offset = 0u64;
     let mut header = [0u8; FRAME_HEADER_BYTES];
     while offset + FRAME_HEADER_BYTES as u64 <= file_len {
@@ -134,7 +134,7 @@ fn stream_verified_prefix_length<V: FrameBodyValidator>(
             Err(_) => {
                 return Ok((
                     offset,
-                    "corrupt_frame_header".into(),
+                    QuarantineReasonCode::CorruptFrameHeader,
                     QuarantineExtras::default(),
                 ));
             }
@@ -147,7 +147,11 @@ fn stream_verified_prefix_length<V: FrameBodyValidator>(
             .ok_or_else(|| StorageError::Framing("frame length overflow".into()))?;
         if body_end > file_len {
             // Complete header, but body bytes do not reach EOF — truncated tail.
-            return Ok((offset, "truncated_tail".into(), QuarantineExtras::default()));
+            return Ok((
+                offset,
+                QuarantineReasonCode::TruncatedTail,
+                QuarantineExtras::default(),
+            ));
         }
         let mut body = vec![0u8; body_len as usize];
         read_exact(file, &mut body)?;
@@ -158,22 +162,33 @@ fn stream_verified_prefix_length<V: FrameBodyValidator>(
                     schema_version_if_parsed,
                     ..
                 } => (
-                    reason_code,
+                    QuarantineReasonCode::parse(&reason_code)?,
                     QuarantineExtras {
                         schema_version_if_parsed,
                         content_hash_if_computed: None,
                     },
                 ),
-                _ => ("corrupt_frame".into(), QuarantineExtras::default()),
+                _ => (
+                    QuarantineReasonCode::CorruptFrame,
+                    QuarantineExtras::default(),
+                ),
             };
             return Ok((offset, reason, extras));
         }
         offset = body_end;
     }
     if offset < file_len {
-        return Ok((offset, "truncated_tail".into(), QuarantineExtras::default()));
+        return Ok((
+            offset,
+            QuarantineReasonCode::TruncatedTail,
+            QuarantineExtras::default(),
+        ));
     }
-    Ok((offset, "truncated_tail".into(), QuarantineExtras::default()))
+    Ok((
+        offset,
+        QuarantineReasonCode::TruncatedTail,
+        QuarantineExtras::default(),
+    ))
 }
 
 fn read_exact(file: &mut File, buf: &mut [u8]) -> StorageResult<()> {
@@ -212,19 +227,39 @@ mod tests {
     use super::*;
     use crate::segment_io::{append_frame, read_active_pack_bytes};
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static TEST_ROOT_SEQ: AtomicU64 = AtomicU64::new(1);
 
     fn temp_root(label: &str) -> std::path::PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|t| t.as_nanos())
-            .unwrap_or(0);
-        std::env::temp_dir().join(format!(
-            "cryptex-m2-rec-{}-{}-{}",
-            label,
-            std::process::id(),
-            nanos
-        ))
+        let seq = TEST_ROOT_SEQ.fetch_add(1, Ordering::Relaxed);
+        let base = {
+            #[cfg(windows)]
+            {
+                let local = std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA");
+                std::path::PathBuf::from(local)
+                    .join("Cryptex-Dev")
+                    .join("p0-2")
+                    .join("m2-tests")
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let home = std::env::var_os("HOME").expect("HOME");
+                std::path::PathBuf::from(home)
+                    .join("Library")
+                    .join("Application Support")
+                    .join("Cryptex-Dev")
+                    .join("p0-2")
+                    .join("m2-tests")
+            }
+            #[cfg(not(any(windows, target_os = "macos")))]
+            {
+                std::env::temp_dir()
+                    .join("Cryptex-Dev")
+                    .join("p0-2")
+                    .join("m2-tests")
+            }
+        };
+        base.join(format!("m2-t-rec-{label}-{}-{seq}", std::process::id()))
     }
 
     #[test]

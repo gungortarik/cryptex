@@ -18,8 +18,8 @@ pub use layout::{
     quarantine_events_root, sealed_segment_path,
 };
 pub use quarantine::{
-    QuarantineEntry, QuarantineExtras, QuarantineMetadata, QuarantineRequest, QuarantineSourceKind,
-    quarantine_bytes, quarantine_file_range,
+    QuarantineEntry, QuarantineExtras, QuarantineMetadata, QuarantineReasonCode, QuarantineRequest,
+    QuarantineSourceKind, quarantine_bytes, quarantine_file_range,
 };
 pub use recovery::{
     AcceptAllBodies, AllowListedBodies, FrameBodyValidator, RecoveryReport, recover_active_open,

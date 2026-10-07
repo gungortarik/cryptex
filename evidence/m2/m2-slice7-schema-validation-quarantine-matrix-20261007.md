@@ -10,7 +10,8 @@
 - Writer `VerifyingBodyValidator` uses full accepted-record validation (not parse+verify only).
 - `StorageError::Validation` carries reason codes into `.open` recovery quarantine metadata (`schema_version_if_parsed` optional field).
 - Sealed packs that fail verification are quarantined whole and fail closed (including empty verified prefix).
-- Quarantine entry directories use `{utc}_{entry_id}` (reason_code retained in `quarantine.json` only) to avoid Windows `MAX_PATH` failures under deep temp roots; metadata still records full `reason_code` per ADR-0016 section 8.
+- Quarantine entry directories use ADR-0016 §8.1 `{utc_compact}_{reason_code}_{entry_id_hex}` with allow-listed `QuarantineReasonCode` path tokens (metadata still records `reason_code`).
+- **Historical interim (superseded):** slice-7 initially shortened directories to `{utc}_{entry_id}` (reason only in `quarantine.json`) to dodge Windows `MAX_PATH` under deep TEMP fixtures. That was out of contract with accepted ADR-0016 §8.1 and was restored; see correction below.
 - Failure-matrix coverage in cryptexd: unsupported schema, integrity failure, sealed corruption; storage: reason-code propagation.
 
 ## Local verification (Windows)
@@ -28,3 +29,39 @@
 ## Next
 
 - Remaining cross-platform / docs-17 matrix gaps as needed, then final M2 candidate CI once.
+
+## Correction (2026-10-07) — ADR-0016 §8.1 directory format restored
+
+**Behavior tip (this correction):** `PENDING`
+
+Accepted ADR-0016 §8.1 directory format is restored in `crates/storage/src/quarantine.rs`:
+
+`{utc_compact}_{reason_code}_{entry_id_hex}`
+
+- `reason_code` is a typed allow-list (`QuarantineReasonCode`): fixed snake_case tokens, no separators or arbitrary path text.
+- Collision handling appends a monotonic suffix to the leaf name under the same parent (no-replace).
+- Windows path-length regression uses a production-like `%LOCALAPPDATA%\Cryptex-Dev\p0-2\m2-tests\...` root (not deep TEMP).
+
+### Measured Windows path lengths (host LocalAppData)
+
+| Case | Object path length (chars) | Classic MAX_PATH (260) |
+|---|---:|---|
+| Realistic `device-safe-1` + longest reason `corrupt_frame_header` | 247 | under budget |
+| Worst-case max-length DeviceId (64 → 128 hex stem) + same leaf | 349 | **exceeds** |
+
+Realistic production-like roots succeed with the accepted layout. Max-length DeviceId under §8.1 attribution `device-<device_id_hex>` exceeds classic Win32 MAX_PATH; layout was **not** shortened again. That edge case needs a **separate ADR decision** (e.g. long-path APIs vs attribution/name policy)—not an implementer unilateral format change.
+
+### Local verification (Windows, this correction)
+
+- `cargo test --locked -p cryptex-storage quarantine -- --test-threads=8` — PASS
+- `cargo test --locked -p cryptex-storage -- --test-threads=8` — PASS (32)
+- `cargo test --locked -p cryptexd --lib canonical_writer -- --test-threads=8` — PASS (10)
+- `cargo fmt --all -- --check` — PASS
+- `cargo clippy --locked -p cryptex-storage --all-targets -- -D warnings` — PASS
+
+### Remaining verification
+
+- Owner review of this tip
+- Dual-OS Actions still deferred until final gate is required after tip review
+- Max-length DeviceId × classic MAX_PATH: open for separate ADR (see table)
+

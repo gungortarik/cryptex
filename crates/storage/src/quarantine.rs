@@ -23,12 +23,81 @@ pub struct QuarantineExtras {
     pub content_hash_if_computed: Option<String>,
 }
 
+/// Allow-listed quarantine reason codes used in directory names and metadata (ADR-0016 §8.1).
+///
+/// Values are fixed snake_case tokens safe as a single path component: ASCII
+/// `[a-z0-9_]`, no separators, no host/path text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuarantineReasonCode {
+    TruncatedTail,
+    CorruptFrame,
+    CorruptFrameHeader,
+    CorruptSealedPack,
+    UnsupportedSchema,
+    DuplicateJsonKey,
+    UnknownField,
+    LimitExceeded,
+    IntegrityFailure,
+    InvalidRecord,
+}
+
+impl QuarantineReasonCode {
+    /// Stable snake_case token for directory names and `quarantine.json`.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TruncatedTail => "truncated_tail",
+            Self::CorruptFrame => "corrupt_frame",
+            Self::CorruptFrameHeader => "corrupt_frame_header",
+            Self::CorruptSealedPack => "corrupt_sealed_pack",
+            Self::UnsupportedSchema => "unsupported_schema",
+            Self::DuplicateJsonKey => "duplicate_json_key",
+            Self::UnknownField => "unknown_field",
+            Self::LimitExceeded => "limit_exceeded",
+            Self::IntegrityFailure => "integrity_failure",
+            Self::InvalidRecord => "invalid_record",
+        }
+    }
+
+    /// Parse only allow-listed tokens. Rejects separators and arbitrary path text.
+    pub fn parse(token: &str) -> StorageResult<Self> {
+        match token {
+            "truncated_tail" => Ok(Self::TruncatedTail),
+            "corrupt_frame" => Ok(Self::CorruptFrame),
+            "corrupt_frame_header" => Ok(Self::CorruptFrameHeader),
+            "corrupt_sealed_pack" => Ok(Self::CorruptSealedPack),
+            "unsupported_schema" => Ok(Self::UnsupportedSchema),
+            "duplicate_json_key" => Ok(Self::DuplicateJsonKey),
+            "unknown_field" => Ok(Self::UnknownField),
+            "limit_exceeded" => Ok(Self::LimitExceeded),
+            "integrity_failure" => Ok(Self::IntegrityFailure),
+            "invalid_record" => Ok(Self::InvalidRecord),
+            _ => Err(StorageError::Quarantine(format!(
+                "unsupported quarantine reason_code path token: {token}"
+            ))),
+        }
+    }
+}
+
+impl From<cryptex_events::ValidationReasonCode> for QuarantineReasonCode {
+    fn from(value: cryptex_events::ValidationReasonCode) -> Self {
+        use cryptex_events::ValidationReasonCode as V;
+        match value {
+            V::UnsupportedSchema => Self::UnsupportedSchema,
+            V::DuplicateJsonKey => Self::DuplicateJsonKey,
+            V::UnknownField => Self::UnknownField,
+            V::LimitExceeded => Self::LimitExceeded,
+            V::IntegrityFailure => Self::IntegrityFailure,
+            V::InvalidRecord => Self::InvalidRecord,
+        }
+    }
+}
+
 /// Common quarantine attribution/metadata inputs (keeps public helpers under Clippy arity limits).
 #[derive(Debug, Clone)]
 pub struct QuarantineRequest<'a> {
     pub app_data_root: &'a Path,
     pub device_id: Option<&'a DeviceId>,
-    pub reason_code: &'a str,
+    pub reason_code: QuarantineReasonCode,
     pub source_kind: QuarantineSourceKind,
     pub source_relative: &'a str,
     pub byte_offset: Option<u64>,
@@ -138,7 +207,11 @@ pub fn quarantine_file_range(
 
     let entry_id = lowercase_hex(hasher.finalize().as_bytes());
     let utc_compact = utc_compact_now();
-    let base = q_parent.join(format!("{utc_compact}_{entry_id}"));
+    let base = q_parent.join(entry_directory_name(
+        &utc_compact,
+        request.reason_code,
+        &entry_id,
+    ));
     let dir = exclusive_create_dir(&base)?;
     sync_parent_directory(&dir.join("object.bin"))?;
 
@@ -155,7 +228,7 @@ pub fn quarantine_file_range(
 
     let metadata = QuarantineMetadata {
         schema_version: 1,
-        reason_code: request.reason_code.to_string(),
+        reason_code: request.reason_code.as_str().to_string(),
         detected_at: format_detected_at(&utc_compact),
         attribution: request.device_id.map(|d| d.as_str().to_string()),
         entry_id: entry_id.clone(),
@@ -190,7 +263,11 @@ where
     sync_directory(&q_parent)?;
 
     let utc_compact = utc_compact_now();
-    let base = q_parent.join(format!("{utc_compact}_{entry_id}"));
+    let base = q_parent.join(entry_directory_name(
+        &utc_compact,
+        request.reason_code,
+        &entry_id,
+    ));
     let dir = exclusive_create_dir(&base)?;
     sync_parent_directory(&dir.join("object.bin"))?;
 
@@ -206,7 +283,7 @@ where
 
     let metadata = QuarantineMetadata {
         schema_version: 1,
-        reason_code: request.reason_code.to_string(),
+        reason_code: request.reason_code.as_str().to_string(),
         detected_at: format_detected_at(&utc_compact),
         attribution: request.device_id.map(|d| d.as_str().to_string()),
         entry_id,
@@ -293,25 +370,49 @@ fn place_staging_as_object(staging: &Path, object_path: &Path) -> StorageResult<
     }
 }
 
+fn entry_directory_name(
+    utc_compact: &str,
+    reason: QuarantineReasonCode,
+    entry_id_hex: &str,
+) -> String {
+    // ADR-0016 §8.1: {utc_compact}_{reason_code}_{entry_id_hex}
+    format!("{utc_compact}_{}_{entry_id_hex}", reason.as_str())
+}
+
 fn exclusive_create_dir(base: &Path) -> StorageResult<PathBuf> {
-    if let Some(parent) = base.parent() {
-        fs::create_dir_all(parent)?;
-        sync_directory(parent)?;
-    }
+    let parent = base
+        .parent()
+        .ok_or_else(|| StorageError::Quarantine("quarantine entry path missing parent".into()))?;
+    fs::create_dir_all(parent)?;
+    sync_directory(parent)?;
+
     match fs::create_dir(base) {
-        Ok(()) => Ok(base.to_path_buf()),
-        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-            let suffix = ENTRY_SUFFIX.fetch_add(1, Ordering::Relaxed);
-            let nanos = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|t| t.as_nanos())
-                .unwrap_or(0);
-            let alt = PathBuf::from(format!("{}-{}-{}", base.display(), suffix, nanos));
-            fs::create_dir(&alt)?;
-            Ok(alt)
-        }
-        Err(err) => Err(StorageError::Io(err)),
+        Ok(()) => return Ok(base.to_path_buf()),
+        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(err) => return Err(StorageError::Io(err)),
     }
+
+    let leaf = base
+        .file_name()
+        .ok_or_else(|| StorageError::Quarantine("quarantine entry path missing name".into()))?
+        .to_string_lossy()
+        .into_owned();
+    for _ in 0..64 {
+        let suffix = ENTRY_SUFFIX.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|t| t.as_nanos())
+            .unwrap_or(0);
+        let alt = parent.join(format!("{leaf}-{suffix}-{nanos}"));
+        match fs::create_dir(&alt) {
+            Ok(()) => return Ok(alt),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(StorageError::Io(err)),
+        }
+    }
+    Err(StorageError::Quarantine(
+        "exhausted exclusive quarantine directory create attempts".into(),
+    ))
 }
 
 fn read_exact_some(file: &mut File, buf: &mut [u8]) -> StorageResult<()> {
@@ -360,17 +461,45 @@ fn lowercase_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    static TEST_ROOT_SEQ: AtomicU64 = AtomicU64::new(1);
+
+    /// Production-like app-data root for tests (ADR runtime placement).
+    ///
+    /// Uses a short unique suffix so ADR §8.1 directory names remain under classic
+    /// Windows MAX_PATH for typical DeviceIds. Avoids deep TEMP/cargo paths that
+    /// previously motivated the out-of-contract `{utc}_{entry_id}` shortening.
     fn temp_root(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|t| t.as_nanos())
-            .unwrap_or(0);
-        std::env::temp_dir().join(format!(
-            "cryptex-m2-q-{}-{}-{}",
-            label,
-            std::process::id(),
-            nanos
-        ))
+        let seq = TEST_ROOT_SEQ.fetch_add(1, Ordering::Relaxed);
+        let base = production_like_app_data_root();
+        base.join(format!("m2-t-q-{label}-{}-{seq}", std::process::id()))
+    }
+
+    fn production_like_app_data_root() -> PathBuf {
+        #[cfg(windows)]
+        {
+            let local = std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA");
+            PathBuf::from(local)
+                .join("Cryptex-Dev")
+                .join("p0-2")
+                .join("m2-tests")
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let home = std::env::var_os("HOME").expect("HOME");
+            PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("Cryptex-Dev")
+                .join("p0-2")
+                .join("m2-tests")
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        {
+            std::env::temp_dir()
+                .join("Cryptex-Dev")
+                .join("p0-2")
+                .join("m2-tests")
+        }
     }
 
     #[test]
@@ -382,7 +511,7 @@ mod tests {
             QuarantineRequest {
                 app_data_root: &root,
                 device_id: Some(&device),
-                reason_code: "truncated_tail",
+                reason_code: QuarantineReasonCode::TruncatedTail,
                 source_kind: QuarantineSourceKind::ActiveOpen,
                 source_relative: "canonical/events/x/00000000000000000000.open",
                 byte_offset: Some(10),
@@ -414,7 +543,7 @@ mod tests {
             QuarantineRequest {
                 app_data_root: &root,
                 device_id: Some(&device),
-                reason_code: "truncated_tail",
+                reason_code: QuarantineReasonCode::TruncatedTail,
                 source_kind: QuarantineSourceKind::ActiveOpen,
                 source_relative: "canonical/events/x/0.open",
                 byte_offset: Some(6),
@@ -439,7 +568,7 @@ mod tests {
             QuarantineRequest {
                 app_data_root: &root,
                 device_id: None,
-                reason_code: "corrupt_frame",
+                reason_code: QuarantineReasonCode::CorruptFrame,
                 source_kind: QuarantineSourceKind::Other,
                 source_relative: "unresolved",
                 byte_offset: None,
@@ -452,7 +581,7 @@ mod tests {
             QuarantineRequest {
                 app_data_root: &root,
                 device_id: None,
-                reason_code: "corrupt_frame",
+                reason_code: QuarantineReasonCode::CorruptFrame,
                 source_kind: QuarantineSourceKind::Other,
                 source_relative: "unresolved",
                 byte_offset: None,
@@ -474,7 +603,7 @@ mod tests {
             QuarantineRequest {
                 app_data_root: &root,
                 device_id: None,
-                reason_code: "unsupported_schema",
+                reason_code: QuarantineReasonCode::UnsupportedSchema,
                 source_kind: QuarantineSourceKind::ActiveOpen,
                 source_relative: "canonical/events/x/0.open",
                 byte_offset: Some(0),
@@ -501,7 +630,7 @@ mod tests {
             QuarantineRequest {
                 app_data_root: &root,
                 device_id: None,
-                reason_code: "truncated_tail",
+                reason_code: QuarantineReasonCode::TruncatedTail,
                 source_kind: QuarantineSourceKind::Other,
                 source_relative: "unresolved",
                 byte_offset: None,
@@ -511,6 +640,148 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, StorageError::Durability(_)), "{err}");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn directory_name_uses_adr_reason_code_format() {
+        let root = temp_root("adr-name");
+        let entry = quarantine_bytes(
+            QuarantineRequest {
+                app_data_root: &root,
+                device_id: None,
+                reason_code: QuarantineReasonCode::CorruptFrameHeader,
+                source_kind: QuarantineSourceKind::Other,
+                source_relative: "unresolved",
+                byte_offset: None,
+                extras: QuarantineExtras::default(),
+            },
+            b"adr-format-bytes",
+        )
+        .unwrap();
+        let name = entry
+            .directory
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let expected = format!(
+            "_{}_{}",
+            QuarantineReasonCode::CorruptFrameHeader.as_str(),
+            entry.metadata.entry_id
+        );
+        assert!(
+            name.contains(&expected),
+            "directory {name} missing ADR reason/entry segment {expected}"
+        );
+        assert!(
+            name.chars().next().unwrap().is_ascii_digit(),
+            "directory {name} should start with utc_compact digits"
+        );
+        assert!(!name.contains('/') && !name.contains('\\'));
+        assert_eq!(
+            entry.metadata.reason_code,
+            QuarantineReasonCode::CorruptFrameHeader.as_str()
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn reason_code_parse_rejects_separators_and_unknown_tokens() {
+        for token in [
+            "truncated_tail/../x",
+            "a\\b",
+            "a/b",
+            "..",
+            "truncated_tail ",
+            "TRUNCATED_TAIL",
+            "not_a_reason",
+            "",
+        ] {
+            let err = QuarantineReasonCode::parse(token).unwrap_err();
+            assert!(
+                matches!(err, StorageError::Quarantine(_)),
+                "token {token:?} => {err}"
+            );
+        }
+        assert_eq!(
+            QuarantineReasonCode::parse("truncated_tail").unwrap(),
+            QuarantineReasonCode::TruncatedTail
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn adr_layout_succeeds_under_production_like_app_data_root() {
+        let root = temp_root("pathlen");
+        let device = DeviceId::new("device-safe-1").unwrap();
+        let longest = QuarantineReasonCode::CorruptFrameHeader;
+        let entry = quarantine_bytes(
+            QuarantineRequest {
+                app_data_root: &root,
+                device_id: Some(&device),
+                reason_code: longest,
+                source_kind: QuarantineSourceKind::ActiveOpen,
+                source_relative: "canonical/events/x/00000000000000000000.open",
+                byte_offset: Some(0),
+                extras: QuarantineExtras::default(),
+            },
+            b"path-length-regression-payload",
+        )
+        .unwrap();
+
+        let object = entry.directory.join("object.bin");
+        let root_len = root.to_string_lossy().chars().count();
+        let dir_len = entry.directory.to_string_lossy().chars().count();
+        let object_len = object.to_string_lossy().chars().count();
+        let leaf = entry.directory.file_name().unwrap().to_string_lossy();
+        let leaf_len = leaf.chars().count();
+
+        assert!(
+            object.is_file(),
+            "object missing under production-like root {}",
+            root.display()
+        );
+        assert!(
+            leaf.contains(&format!("_{}_", longest.as_str())),
+            "leaf {leaf} missing reason_code"
+        );
+        // Classic Win32 MAX_PATH is 260. Document measured lengths for the ADR layout.
+        assert!(
+            object_len < 260,
+            "object path length {object_len} (root {root_len}, dir {dir_len}, leaf {leaf_len}) must stay under classic MAX_PATH=260 for production-like LocalAppData root {}",
+            root.display()
+        );
+        eprintln!(
+            "m2 quarantine path lengths: root={root_len} dir={dir_len} leaf={leaf_len} object={object_len} path={}",
+            object.display()
+        );
+
+        // Measure worst-case ADR-0015 device id (64 chars -> 128 hex stem). Do not
+        // silently shorten §8.1; if this exceeds classic MAX_PATH, record for ADR.
+        let max_device = DeviceId::new("a".repeat(64)).unwrap();
+        let attribution = format!("device-{}", max_device.as_filename_stem());
+        let worst_leaf = entry_directory_name("1728312345", longest, &"b".repeat(64));
+        let worst_object = root
+            .join("quarantine")
+            .join("canonical-events")
+            .join(&attribution)
+            .join(&worst_leaf)
+            .join("object.bin");
+        let worst_len = worst_object.to_string_lossy().chars().count();
+        eprintln!(
+            "m2 quarantine worst-case max DeviceId object path length={worst_len} (MAX_PATH=260) exceeds={} path={}",
+            worst_len >= 260,
+            worst_object.display()
+        );
+        // Realistic device ids must fit. Max-length DeviceId budget is reported, not
+        // papered over by changing the accepted directory format.
+        if worst_len >= 260 {
+            eprintln!(
+                "ADR-0016 §8.1 + max-length DeviceId exceeds classic Windows MAX_PATH under LocalAppData; separate ADR decision required (layout not altered)."
+            );
+        }
+
         let _ = fs::remove_dir_all(&root);
     }
 }

@@ -26,7 +26,8 @@ use cryptex_storage::layout::{
     active_segment_path, canonical_events_device_dir, sealed_segment_path,
 };
 use cryptex_storage::quarantine::{
-    QuarantineExtras, QuarantineRequest, QuarantineSourceKind, quarantine_file_range,
+    QuarantineExtras, QuarantineReasonCode, QuarantineRequest, QuarantineSourceKind,
+    quarantine_file_range,
 };
 use cryptex_storage::recovery::{FrameBodyValidator, recover_active_open};
 use cryptex_storage::stream_frames::fold_verified_frames;
@@ -545,7 +546,7 @@ fn quarantine_sealed_pack(
         QuarantineRequest {
             app_data_root: runtime_root,
             device_id: Some(device_id),
-            reason_code: "corrupt_sealed_pack",
+            reason_code: QuarantineReasonCode::CorruptSealedPack,
             source_kind: QuarantineSourceKind::SealedSeg,
             source_relative: &source_relative,
             byte_offset: Some(0),
