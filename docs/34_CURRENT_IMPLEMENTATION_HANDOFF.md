@@ -38,7 +38,8 @@ missing counter now fails closed. Current-source final CI run
 [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071) is
 PASS (Windows/macOS readiness + Windows IPC ACL; unsigned package skipped by design).
 Review record: `evidence/m1/m1-final-review-20261007.md`. Owner acknowledgment of
-the review remains OPEN; M1 is not complete or merged.
+the delegated review was accepted on 2026-10-07. M1 completion gates are green; PR #6
+remains to be normally merged into `m0/foundation` before M1 is recorded integrated.
 
 **Current status (2026-10-07):** M0 Foundation is COMPLETE and integrated at
 `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` on `origin/m0/foundation` (PR #5).
@@ -51,8 +52,9 @@ are unselected. Gate C **Windows** and **macOS** product SecureStore are VERIFIE
 (distinct host evidence under `evidence/m1/`). Required CI **PASS** on implementation
 candidate `a399205`: run [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071)
 (Windows readiness, macOS readiness, Windows cross-account IPC ACL; unsigned Windows
-package job skipped by design). M1 is **not** complete: **owner acknowledgment remains open**
-(see audit DoD checklist).
+package job skipped by design). The owner accepted Codex's delegated technical review
+on 2026-10-07; all M1 gates are satisfied. PR #6 is approved for normal merge; record
+M1 integrated after the merge lands (see audit DoD checklist).
 
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). ADR-0014 ACCEPTED (2026-10-06, P1).
 Identity/sequence, SecureStore (trait/fake + Windows/macOS P1 adapters), synthetic
@@ -63,7 +65,7 @@ Gate A spike remains historical comparison only. Prior Windows tests, strict Cli
 for the install-identity staging/rollback follow-up pass locally (94 cryptexd tests);
 The latest metadata and sequence corrections are verified by both-OS CI; Unix-specific
 install rollback-sync tests and Windows/macOS readiness passed in CI run
-37569756071. Codex final review is recorded; owner acknowledgment + full M1 completion gate remain open.
+37569756071. Codex final review and owner acceptance are recorded; normal integration of PR #6 remains.
 Production pairing/revocation remains M8; Recovery Kit container remains M11.
 No custom cryptography.
 
@@ -71,8 +73,8 @@ No custom cryptography.
 (`evidence/m1/m1-scope-security-audit-20261006.md`). Brain public identity first-create is exclusive/no-replace; install-identity staging
 cleanup and Unix rollback durability now match that hardened path (see audit). Final CI
 PASS on candidate `a399205` is recorded (run 37569756071). The accepted M1 lifecycle and placement boundary is documented in
-ADR-0015 §2.1.1 and the audit. Codex's final review is recorded, but owner acknowledgment
-remains open. Do not declare M1 complete or start M2 while that gate is open.
+ADR-0015 §2.1.1 and the audit. The owner accepted the delegated Codex review; merge PR #6
+normally before recording M1 integrated or starting M2.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
@@ -91,8 +93,8 @@ present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- Codex final review is recorded at `evidence/m1/m1-final-review-20261007.md`; do not label it owner/human review until the owner acknowledges the review summary.
-- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows and macOS product SecureStore both VERIFIED 2026-10-06 (separate host evidence). Current candidate CI PASS: run 37569756071 @ `a399205`; owner acknowledgment is required before M1 complete.
+- Codex final review and owner acceptance are recorded at `evidence/m1/m1-final-review-20261007.md`; do not claim the owner independently inspected every line of source.
+- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows and macOS product SecureStore both VERIFIED 2026-10-06 (separate host evidence). Current candidate CI PASS: run 37569756071 @ `a399205`; owner accepted the delegated review, and normal PR #6 merge remains before recording M1 integrated.
 
 ## P0-1 status
 

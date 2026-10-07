@@ -62,6 +62,13 @@ Required current-source workflow result:
 to `m0/foundation`; the discovered sequence-reuse issue is fixed and required CI is
 green.
 
-**Owner acknowledgment:** OPEN. This record is an agent review and does not claim the
-owner personally inspected the diff or accepted this recommendation. Per the M1 DoD,
-do not mark M1 complete or start M2 until the owner acknowledges the review summary.
+**Owner acknowledgment:** ACCEPTED on 2026-10-07. The owner authorized Codex to perform
+the technical diff review and accepted this review summary after confirming that it
+follows the repository rules and that the M1 evidence is complete. This records the
+owner's acceptance of the delegated review; it does not claim the owner independently
+inspected every source line. No review can guarantee that future defects will never
+occur. The recommendation is limited to the accepted M1 scope and its recorded gates.
+
+**Integration status:** approved for normal merge by PR #6 into `m0/foundation`; M1 is
+complete only after that merge lands. Later-milestone work listed above remains out of
+M1 scope.

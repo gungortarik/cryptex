@@ -3,7 +3,7 @@
 **Branch:** `m1/brain-device-identity`
 **Authority:** `docs/00_MASTER_SPEC.md`, accepted ADR-0015, M1 completion gate / DoD
 **Actions:** current implementation candidate CI **PASS** - run [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071) @ `a39920564561f75ada08cba8a47244bec9074345`.
-**M1 complete:** **not declared** (owner acknowledgment of final review open)
+**M1 complete:** pending approved normal merge of PR #6
 
 ## Findings and resolutions
 
@@ -11,7 +11,8 @@
 and sequence read-boundary correction in `m1-public-metadata-final-review-20261007.md`
 are verified by current-source CI PASS at `a3992056`, run 37569756071. The final
 counter-loss correction is detailed in `m1-final-review-20261007.md`. The gate
-tables below reference this implementation candidate; owner acknowledgment remains OPEN.
+tables below reference this implementation candidate. The owner accepted the delegated
+Codex review summary on 2026-10-07; see `m1-final-review-20261007.md`.
 
 ### 1. SequenceStore daemon authority (RESOLVED)
 
@@ -46,9 +47,9 @@ The initial audit identified security-review and current-candidate CI as open. S
 security findings have been resolved and the required Windows/macOS readiness + Windows
 IPC ACL workflow passed on candidate `a399205` (run 37569756071). The unsigned Windows
 package job is skipped by design. Codex final review is recorded in
-`m1-final-review-20261007.md`; owner acknowledgment remains open, so the DoD table below
-and M1 completion gate remain open. Do **not** start M2 or declare M1 complete until the
-owner acknowledges the review summary.
+`m1-final-review-20261007.md`; the owner accepted the delegated review summary. All M1
+completion gates are satisfied subject to normal integration of PR #6. M1 is not yet
+integrated; do not start M2 before the merge lands.
 
 ## Local checks for this audit fix (Windows)
 
@@ -100,7 +101,8 @@ owner acknowledges the review summary.
 - `git diff --check` PASS
 - GitHub Actions: current-candidate final CI PASS (run 37569756071 @ `a39920564561f75ada08cba8a47244bec9074345`)
 - Codex final review: recorded in `m1-final-review-20261007.md`
-- M1 complete: **not declared** (owner acknowledgment still open)
+- Owner acceptance of delegated Codex review: **recorded** 2026-10-07
+- M1 complete: **pending normal merge of PR #6**
 
 ### Finding: install-identity first-create race / overwrite (RESOLVED)
 
@@ -195,9 +197,9 @@ Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_ID
 | Security review for identity/trust handling (scoped findings) | PASS (scoped) | Windows source review/local failure tests and Unix parent-sync/staging-link tests passed on current candidate |
 | Relevant tests/CI green | PASS | Run 37569756071 passed Windows/macOS readiness + Windows IPC ACL on implementation candidate `a399205`; unsigned package skipped by design |
 | Codex final review | PASS (recorded) | `m1-final-review-20261007.md`; source SHA `a399205…` |
-| Owner acknowledgment of review summary | **OPEN** | Awaiting owner confirmation after findings and recommendation are presented |
-| Definition of Done / M1 completion gate fully satisfied | **OPEN** | Blocked on owner acknowledgment |
-| M1 complete / merge / start M2 | **not declared** | Remaining action below |
+| Owner acceptance of delegated technical review | PASS | Owner accepted the recorded Codex review summary on 2026-10-07 |
+| Definition of Done / M1 completion gate | PASS | All implementation, verification, security review, CI, and delegated review gates satisfied |
+| M1 complete / start M2 | Pending integration | Normal merge of PR #6 remains |
 
 ### Platform / security / acceptance gates (from repository evidence)
 
@@ -215,16 +217,17 @@ Authority: `docs/21_DEFINITION_OF_DONE.md` + `docs/milestones/M1_BRAIN_DEVICE_ID
 | Mutable public-metadata concurrency and sequence read-boundary validation | PASS | `m1-public-metadata-final-review-20261007.md` and Windows/macOS CI 37569756071 |
 | Sequence counter loss must not permit reuse | PASS | `m1-final-review-20261007.md`; missing initialized counter now fails closed; Windows/macOS CI 37569756071 |
 | Codex final review | PASS (recorded) | `m1-final-review-20261007.md` |
-| Owner acknowledgment | **OPEN** | Awaiting owner acknowledgment of review summary |
+| Owner acceptance of delegated review | PASS | `m1-final-review-20261007.md` |
 
-### Remaining action (blocks M1 complete)
+### Remaining action
 
-**Owner acknowledgment of the final M1 review must be recorded** (milestone completion gate). CI is green on candidate `a399205`. The detailed Codex review is in `m1-final-review-20261007.md`; until the owner acknowledges its summary, do **not** declare M1 complete or start M2.
+All M1 completion gates are satisfied. The only remaining step is normal integration of PR #6 into `m0/foundation`; after it lands, M1 may be recorded complete and M2 may begin.
 
 ## Final review follow-up (2026-10-07)
 
-Codex performed the final review at the owner's request. A counter-loss/reinitialization
+Codex performed the final review at the owner's request; the owner accepted the review
+summary on 2026-10-07. A counter-loss/reinitialization
 bug was found and fixed at `a39920564561f75ada08cba8a47244bec9074345`; the source fix and
-current-source CI are recorded in `m1-final-review-20261007.md`. This records the agent
-review only. It does not claim that the owner personally inspected the diff or has
-acknowledged the review summary.
+current-source CI are recorded in `m1-final-review-20261007.md`. The record distinguishes
+the delegated technical review from independent line-by-line owner inspection; it makes
+no guarantee that future defects cannot occur.
