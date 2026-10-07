@@ -119,7 +119,7 @@ Ordered after ADR-0016 acceptance. Each slice: behavior + tests + local format/l
 
 ## 7. Continuation point
 
-**Now:** ADR-0016 **ACCEPTED** (2026-10-07) at `5cc89b709dcf236698c3253b8582c873de7c7f0f`. Begin product slice 1 — workspace scaffolding for `crates/events` and `crates/storage`. No GitHub Actions until the final required M2 CI gate.
+**Now:** ADR-0016 **ACCEPTED**. Slice 1 scaffolding landed (cryptex-events, cryptex-storage). Next: slice 2 — Rust event domain types + schema generation. No GitHub Actions until the final required M2 CI gate.
 
 
 **Historical note:** Operational handoff previously retained contradictory M1 “review open / merge pending” wording after PR #6 merged. That residue is labeled historical/superseded in `docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md`. M1 remains COMPLETE at `c2168f3` / docs closeout `0c84c5c`.

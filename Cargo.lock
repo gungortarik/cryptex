@@ -605,6 +605,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cryptex-events"
+version = "0.0.0"
+
+[[package]]
+name = "cryptex-storage"
+version = "0.0.0"
+dependencies = [
+ "cryptex-core",
+ "cryptex-events",
+]
+
+[[package]]
 name = "cryptexd"
 version = "0.0.0"
 dependencies = [

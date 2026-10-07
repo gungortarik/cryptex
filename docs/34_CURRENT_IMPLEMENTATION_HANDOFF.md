@@ -89,8 +89,8 @@ merged. M1 is complete; M2 has not started.
 `m2/immutable-event-store`, based on `origin/m0/foundation` at `0c84c5c` (M1
 documentation closeout). M1 merge `c2168f3` is an ancestor of this tip. Cursor is
 the sole write-capable M2 implementer. ADR-0016 is **ACCEPTED** (2026-10-07) at
-`5cc89b709dcf236698c3253b8582c873de7c7f0f`. First authorized product slice is workspace scaffolding
-(`crates/events`, `crates/storage`) per `evidence/m2/m2-kickoff-plan-20261007.md`.
+`5cc89b709dcf236698c3253b8582c873de7c7f0f`. Slice 1 workspace scaffolding for `crates/events` / `crates/storage` is recorded under
+`evidence/m2/m2-slice1-workspace-scaffolding-20261007.md` (next: domain types + schema generation).
 Do not freeze `segment_events=1000` as a production constant. Do not expand into
 M3/M8/M10 product behavior. Conserve Actions: no workflow runs until the final
 required M2 CI gate. Do not merge the M2 branch or claim M2 complete without

@@ -1,0 +1,9 @@
+[package]
+name = "cryptex-events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Cryptex immutable event domain foundations (M2; ADR-0016)"
+
+[dependencies]

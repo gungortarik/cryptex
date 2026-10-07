@@ -1,0 +1,11 @@
+[package]
+name = "cryptex-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Cryptex canonical event storage layout helpers (M2; ADR-0016)"
+
+[dependencies]
+cryptex-core = { path = "../core" }
+cryptex-events = { path = "../events" }
