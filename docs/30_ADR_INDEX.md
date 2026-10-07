@@ -45,14 +45,15 @@ The M0 gate required:
 
 ## 4.1 M1 gate
 
-M1 is in progress on `m1/brain-device-identity`.
+M1 was completed and integrated into `m0/foundation` by merge commit
+`c2168f3edbd4deb00d5e16f5f35643948028b0ca` on 2026-10-07 (PR #6).
 
 - ADR-0015 is **ACCEPTED** (2026-10-05); identity/sequence/pairing-record/RK-public-metadata implementation may proceed under that decision
 - ADR-0014 is **ACCEPTED** (2026-10-06) with **P1** and the recorded product pins; SecureStore implementation may proceed under `cryptexd`; K2/`keyring` unselected
 - Windows and macOS physical **product** secure-store Gate C both VERIFIED 2026-10-06 (evidence/m1/gate-c-product-secure-store-windows-20261006.md, evidence/m1/gate-c-product-secure-store-macos-20261006.md); Gate A spike is not product verification
 - pairing/revocation product behavior remains assigned to M8
 - Recovery Kit container/serialization remains assigned to M11
-- required GitHub Actions PASS on implementation source `a399205`: run [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071) (Windows/macOS readiness + Windows IPC ACL; unsigned package skipped by design); owner accepted the delegated Codex technical review recorded at `evidence/m1/m1-final-review-20261007.md`; all M1 gates are satisfied, pending normal merge of PR #6 before M2
+- required GitHub Actions PASS on implementation source `a399205`: run [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071) (Windows/macOS readiness + Windows IPC ACL; unsigned package skipped by design); owner accepted the delegated Codex technical review recorded at `evidence/m1/m1-final-review-20261007.md`; M1 gates are satisfied and PR #6 is merged. M2 has not started.
 
 This index accepts ADR-0015 and ADR-0014 by the statuses above.
 
