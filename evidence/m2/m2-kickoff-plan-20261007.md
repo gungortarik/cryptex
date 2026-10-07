@@ -10,7 +10,7 @@
 
 **Implementer:** Cursor (sole write-capable M2 agent)
 
-**Phase:** 0 — audit, handoff reconciliation, ADR proposal, implementation plan (no dependent product code until ADR-0016 accepted)
+**Phase:** 1 — ADR-0016 ACCEPTED; product slices authorized
 
 ## 1. Authority
 
@@ -119,6 +119,7 @@ Ordered after ADR-0016 acceptance. Each slice: behavior + tests + local format/l
 
 ## 7. Continuation point
 
-**Now:** Phase 0 complete for kickoff artifacts. **Await owner review of ADR-0016.** Do not start dependent product slices until acceptance (or an explicit owner instruction that narrows/accepts the blocking choices).
+**Now:** ADR-0016 **ACCEPTED** (2026-10-07) at `5cc89b709dcf236698c3253b8582c873de7c7f0f`. Begin product slice 1 — workspace scaffolding for `crates/events` and `crates/storage`. No GitHub Actions until the final required M2 CI gate.
+
 
 **Historical note:** Operational handoff previously retained contradictory M1 “review open / merge pending” wording after PR #6 merged. That residue is labeled historical/superseded in `docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md`. M1 remains COMPLETE at `c2168f3` / docs closeout `0c84c5c`.

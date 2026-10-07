@@ -1,8 +1,10 @@
 # ADR-0016 — Immutable Event Store Productization
 
-**Status:** PROPOSED (revised; awaiting owner review)
+**Status:** ACCEPTED
 
 **Date drafted:** 2026-10-07
+
+**Date accepted:** 2026-10-07 (owner acceptance of record `5cc89b709dcf236698c3253b8582c873de7c7f0f`)
 
 **Date revised:** 2026-10-07 (canonicalization, signing-key lifecycle, resource limits, quarantine safety, single schema→TS path; full-`u64` `device_seq` decimal string; crash-safe key init; ordered `.open` recovery)
 
@@ -20,7 +22,7 @@ It deliberately does **not**:
 - invent custom cryptography
 - select exact Cargo/npm dependency pins (pins belong to the implementing slice after acceptance)
 
-**Not accepted.** Status remains **PROPOSED**. Dependent product implementation must not proceed until this ADR (or an accepted narrower successor covering the blocking choices) is ACCEPTED by the owner.
+**Accepted.** Owner accepted this ADR as recorded at `5cc89b709dcf236698c3253b8582c873de7c7f0f` on 2026-10-07. M2 product slices may proceed under this decision. Exact crate/npm version pins remain an implementing-slice concern (see §13).
 
 ## 1. Context
 
@@ -373,17 +375,16 @@ Resolved by this revision (no longer open): `device_seq` full-`u64` encoding via
 
 ## 15. Acceptance consequences
 
-If ACCEPTED later:
+**ACCEPTED** on 2026-10-07 against git record `5cc89b709dcf236698c3253b8582c873de7c7f0f`.
 
-1. M2 product slices become authorized under this decision.
-2. Dependency pins are added in implementing commits (not by this ADR alone).
-3. ADR index status moves to ACCEPTED.
+1. M2 product slices in `evidence/m2/m2-kickoff-plan-20261007.md` §5 are authorized under this decision.
+2. Dependency pins for selected crates are added in implementing commits (not by this ADR text alone).
+3. ADR index status is ACCEPTED.
 
-Until then: **PROPOSED — awaiting owner review.** Dependent product code, dependency pins, and GitHub Actions for M2 product slices remain out of scope for this revision.
 
-## 16. Owner review asks
+## 16. Owner review asks (historical; accepted)
 
-Please accept, revise, or reject the decision table in §2, especially:
+The owner accepted the decision table in §2 on 2026-10-07. The review asks that were decided were:
 
 1. RFC 8785 JCS + duplicate-key rejection + numeric/Unicode rules (§4)
 2. Exact hash/signature preimages and domain separation labels (§4.2)

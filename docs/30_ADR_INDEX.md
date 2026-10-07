@@ -29,7 +29,7 @@ If an ADR record is referenced by authoritative documents but its source file is
 | ADR-0013 | Physical immutable event storage layout | ACCEPTED | Source: `docs/adr/ADR-0013-physical-event-storage-layout.md`. Canonical packaging is immutable sealed per-device segment/pack files. One-file-per-event is rejected. Hybrid is not selected. `segment_events=1000` remains a P0-1 benchmark profile, not a frozen production constant. |
 | ADR-0014 | OS secure-store integration | ACCEPTED | Source: `docs/adr/ADR-0014-os-secure-store-integration.md`. Decision addendum: `docs/adr/ADR-0014-os-secure-store-decision-addendum.md`. Accepted 2026-10-06: **P1** direct platform APIs under `cryptexd`. Product pins: Windows `windows-sys = 0.61.2` + `widestring = 1.2.1`; macOS `security-framework = 3.7.0`. K2 and high-level `keyring` unselected. Gate A complete; Gate C Windows and macOS product verification both VERIFIED 2026-10-06 (evidence/m1/gate-c-product-secure-store-windows-20261006.md, evidence/m1/gate-c-product-secure-store-macos-20261006.md). |
 | ADR-0015 | Brain/device identity foundations | ACCEPTED | Source: `docs/adr/ADR-0015-brain-device-identity-foundations.md`. Accepted 2026-10-05. Brain/install/device identity; sequence first-issue `1`; durable write before return; same-`device_id` concurrent allocate atomicity including first-create race; missing/corrupt typed fail-closed; pairing records only; Recovery Kit public metadata. Pairing/revocation product remains M8; kit container remains M11. |
-| ADR-0016 | Immutable event store productization | PROPOSED | Source: docs/adr/ADR-0016-immutable-event-store-productization.md. Revised 2026-10-07 (final review gaps); **awaiting owner review** (not accepted). Adds full-u64 device_seq decimal string, crash-safe signing-key init, and ordered .open quarantine-before-truncate recovery on top of JCS/BLAKE3/Ed25519/quarantine/single schema→TS path. Dependent M2 product implementation remains blocked until acceptance.
+| ADR-0016 | Immutable event store productization | ACCEPTED | Source: `docs/adr/ADR-0016-immutable-event-store-productization.md`. Accepted 2026-10-07 at `5cc89b709dcf236698c3253b8582c873de7c7f0f`. RFC 8785 JCS; domain-separated BLAKE3+Ed25519; full-`u64` `device_seq` decimal string; crash-safe signing-key init; ordered `.open` quarantine-before-truncate recovery; safe quarantine; single Rust→schemars JSON Schema→TS path; per-device `.open`/`.seg` with configurable seal default (not a frozen protocol constant).
 
 ## 4. M0 gate
 
@@ -54,7 +54,7 @@ M1 was completed and integrated into `m0/foundation` by merge commit
 - Windows and macOS physical **product** secure-store Gate C both VERIFIED 2026-10-06 (evidence/m1/gate-c-product-secure-store-windows-20261006.md, evidence/m1/gate-c-product-secure-store-macos-20261006.md); Gate A spike is not product verification
 - pairing/revocation product behavior remains assigned to M8
 - Recovery Kit container/serialization remains assigned to M11
-- required GitHub Actions PASS on implementation source `a399205`: run [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071) (Windows/macOS readiness + Windows IPC ACL; unsigned package skipped by design); owner accepted the delegated Codex technical review recorded at `evidence/m1/m1-final-review-20261007.md`; M1 gates are satisfied and PR #6 is merged. M2 started 2026-10-07 on `m2/immutable-event-store`; product slices are blocked on ADR-0016 acceptance.
+- required GitHub Actions PASS on implementation source `a399205`: run [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071) (Windows/macOS readiness + Windows IPC ACL; unsigned package skipped by design); owner accepted the delegated Codex technical review recorded at `evidence/m1/m1-final-review-20261007.md`; M1 gates are satisfied and PR #6 is merged. M2 started 2026-10-07 on `m2/immutable-event-store`; ADR-0016 accepted 2026-10-07; product slices may proceed under that decision.
 
 This index accepts ADR-0015 and ADR-0014 by the statuses above.
 
@@ -63,7 +63,7 @@ This index accepts ADR-0015 and ADR-0014 by the statuses above.
 M2 work is IN PROGRESS on `m2/immutable-event-store` (base `0c84c5c`, M1 merge ancestor `c2168f3`).
 
 - ADR-0013 remains **ACCEPTED** (sealed per-device segments; `segment_events=1000` not a frozen production constant)
-- ADR-0016 is **PROPOSED** (revised 2026-10-07, final review-gap pass) and is **awaiting owner review**; not accepted. Dependent event-store product implementation remains blocked
+- ADR-0016 is **ACCEPTED** (2026-10-07) at `5cc89b709dcf236698c3253b8582c873de7c7f0f`; M2 product slices may proceed under that decision
 - M3 must not begin until the M2 completion gate is satisfied
 
 ## 5. ADR source records

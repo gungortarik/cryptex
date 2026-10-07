@@ -21,7 +21,7 @@
 6. `docs/08_SECURITY_DEVICE_TRUST_AND_RECOVERY_ROOT.md`
 7. `docs/17_TEST_AND_FAILURE_MATRIX.md`
 8. `docs/21_DEFINITION_OF_DONE.md`
-9. relevant `docs/adr/` records (ADR-0013 ACCEPTED; ADR-0014 ACCEPTED — P1; ADR-0015 ACCEPTED; ADR-0016 PROPOSED)
+9. relevant `docs/adr/` records (ADR-0013 ACCEPTED; ADR-0014 ACCEPTED — P1; ADR-0015 ACCEPTED; ADR-0016 ACCEPTED)
 10. `evidence/m2/m2-kickoff-plan-20261007.md`; retained `evidence/m1/` and `evidence/m0/` for foundation context
 
 ## Working agreement
@@ -85,16 +85,17 @@ PASS on candidate `a399205` is recorded (run 37569756071). The accepted M1 lifec
 ADR-0015 §2.1.1 and the audit. The owner accepted the delegated Codex review; PR #6 is
 merged. M1 is complete; M2 has not started.
 
-**M2 status (2026-10-07):** M2 Phase 0 continues on branch
+**M2 status (2026-10-07):** M2 productization is IN PROGRESS on branch
 `m2/immutable-event-store`, based on `origin/m0/foundation` at `0c84c5c` (M1
 documentation closeout). M1 merge `c2168f3` is an ancestor of this tip. Cursor is
-the sole write-capable M2 implementer. ADR-0016 remains **PROPOSED** (revised
-2026-10-07, final review-gap pass) and is **awaiting owner review** — not accepted. Product event-store
-implementation, dependency pins, and GitHub Actions for M2 product slices stay
-**blocked** until acceptance. Kickoff/audit: `evidence/m2/m2-kickoff-plan-20261007.md`.
+the sole write-capable M2 implementer. ADR-0016 is **ACCEPTED** (2026-10-07) at
+`5cc89b709dcf236698c3253b8582c873de7c7f0f`. First authorized product slice is workspace scaffolding
+(`crates/events`, `crates/storage`) per `evidence/m2/m2-kickoff-plan-20261007.md`.
 Do not freeze `segment_events=1000` as a production constant. Do not expand into
-M3/M8/M10 product behavior. Do not merge the M2 branch or claim M2 complete without
+M3/M8/M10 product behavior. Conserve Actions: no workflow runs until the final
+required M2 CI gate. Do not merge the M2 branch or claim M2 complete without
 required final evidence, CI, security review, and owner review.
+
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
@@ -103,7 +104,7 @@ below remain dated history. Prefer this current status and the ADR index for
 present-day decisions.
 
 - Work only on the current milestone (M2). Do not opportunistically implement M3 SQLite/search, M8 replication product behavior, or M10 purge product workflows.
-- Do not invent cryptographic or serialization policy. Product event-store slices that depend on unsettled choices proceed only after ADR-0016 (or a narrower successor) is ACCEPTED.
+- Follow accepted ADR-0016 for event-store productization. Do not invent policy beyond that ADR and other authoritative docs.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
 - Cursor is the sole write-capable M2 implementer. Stay on `m2/immutable-event-store`; do not switch branches or merge this branch without explicit owner approval.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
@@ -115,7 +116,7 @@ present-day decisions.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
 - Do not freeze the P0-1 benchmark profile value `segment_events=1000` as a production constant.
 - **Historical M1 working-agreement residue (superseded):** earlier text said "Work only on the current milestone (M1)" and "normal PR #6 merge remains before recording M1 integrated." M1 is complete and merged at `c2168f3`; documentation closeout is `0c84c5c`. Owner acceptance of the delegated M1 review is recorded at `evidence/m1/m1-final-review-20261007.md`.
-- ADR-0013, ADR-0014 (P1), and ADR-0015 remain ACCEPTED. ADR-0016 is PROPOSED (revised final review-gap pass; awaiting owner review) and blocks dependent M2 product implementation until accepted.
+- ADR-0013, ADR-0014 (P1), ADR-0015, and ADR-0016 remain ACCEPTED (ADR-0016 at `5cc89b709dcf236698c3253b8582c873de7c7f0f`). M2 product slices proceed under ADR-0016.
 
 ## P0-1 status
 
