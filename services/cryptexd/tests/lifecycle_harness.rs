@@ -388,3 +388,138 @@ fn path_has_runtime_residue(repo_root: &Path) -> bool {
     ];
     candidates.iter().any(|path| path.exists())
 }
+
+#[test]
+fn hold_binds_install_identity_and_sequence_store_dir() {
+    let _guard = serialize_process_harness();
+    let runtime = unique_runtime("hold-identity");
+    let ready = runtime.join("ready");
+    let stop = runtime.join("stop");
+
+    let mut holder = Command::new(cryptexd_bin())
+        .args([
+            "lifecycle",
+            "hold",
+            "--runtime-root",
+            runtime.to_str().unwrap(),
+            "--ready-file",
+            ready.to_str().unwrap(),
+            "--stop-file",
+            stop.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn holder");
+
+    assert!(
+        wait_until(Duration::from_secs(5), || ready.exists()),
+        "holder did not become ready"
+    );
+
+    let install_path = runtime.join("identity").join("install_identity.json");
+    let sequence_path = runtime.join("sequence");
+    assert!(
+        wait_until(Duration::from_secs(2), || install_path.is_file()),
+        "hold must persist install identity under runtime root"
+    );
+    assert!(
+        sequence_path.is_dir(),
+        "hold must open daemon-owned sequence store directory"
+    );
+    let text = fs::read_to_string(&install_path).expect("read install");
+    assert!(text.contains("install_id"));
+    assert!(text.contains("schema_version"));
+
+    fs::write(&stop, b"stop\n").expect("stop");
+    let exit = holder.wait().expect("holder exit");
+    assert_eq!(exit.code(), Some(0));
+    let _ = fs::remove_dir_all(&runtime);
+}
+
+#[test]
+fn contender_fails_lock_without_creating_or_altering_install_identity() {
+    let _guard = serialize_process_harness();
+    let runtime = unique_runtime("hold-lock-before-identity");
+    let ready = runtime.join("ready");
+    let stop = runtime.join("stop");
+    let install_path = runtime.join("identity").join("install_identity.json");
+
+    let mut holder = Command::new(cryptexd_bin())
+        .args([
+            "lifecycle",
+            "hold",
+            "--runtime-root",
+            runtime.to_str().unwrap(),
+            "--ready-file",
+            ready.to_str().unwrap(),
+            "--stop-file",
+            stop.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn holder");
+
+    assert!(
+        wait_until(Duration::from_secs(5), || ready.exists()
+            && install_path.is_file()),
+        "holder did not become ready with install identity"
+    );
+    let original = fs::read_to_string(&install_path).expect("read install");
+
+    let contender_alter = Command::new(cryptexd_bin())
+        .args([
+            "lifecycle",
+            "hold",
+            "--runtime-root",
+            runtime.to_str().unwrap(),
+            "--ready-file",
+            runtime.join("ready-contender-alter").to_str().unwrap(),
+            "--stop-file",
+            runtime.join("stop-contender-alter").to_str().unwrap(),
+        ])
+        .output()
+        .expect("run alter contender");
+    assert!(
+        !contender_alter.status.success(),
+        "contender must fail while holder owns the lock"
+    );
+    assert_eq!(contender_alter.status.code(), Some(1));
+    let after_alter = fs::read_to_string(&install_path).expect("install still present");
+    assert_eq!(
+        after_alter, original,
+        "contender must not alter existing install identity before failing lock"
+    );
+
+    // Remove install while holder still owns the lock. A contender that wrote
+    // identity before failing lock acquisition would recreate the file.
+    fs::remove_file(&install_path).expect("remove install under locked holder");
+    assert!(!install_path.exists());
+
+    let contender_create = Command::new(cryptexd_bin())
+        .args([
+            "lifecycle",
+            "hold",
+            "--runtime-root",
+            runtime.to_str().unwrap(),
+            "--ready-file",
+            runtime.join("ready-contender-create").to_str().unwrap(),
+            "--stop-file",
+            runtime.join("stop-contender-create").to_str().unwrap(),
+        ])
+        .output()
+        .expect("run create contender");
+    assert!(!contender_create.status.success());
+    assert_eq!(contender_create.status.code(), Some(1));
+    assert!(
+        !install_path.exists(),
+        "contender must not create install identity before failing lock acquisition"
+    );
+
+    fs::write(&stop, b"stop\n").expect("stop");
+    let exit = holder.wait().expect("holder exit");
+    assert_eq!(exit.code(), Some(0));
+    assert!(!original.is_empty());
+    let _ = fs::remove_dir_all(&runtime);
+}

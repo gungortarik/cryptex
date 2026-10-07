@@ -5,16 +5,23 @@
 //! version-compatibility fixtures, Mode A/B supervision comparison helpers,
 //! and a test-only binary update/rollback harness.
 //!
-//! Supervision architecture (LaunchAgent vs tray sidecar vs hybrid) remains
-//! intentionally unresolved until ADR-0012 evidence is complete.
+//! Secure-store (ADR-0014 ACCEPTED — P1) is owned by this daemon crate.
 
 pub mod compare;
 pub mod compat;
 pub mod error;
+pub mod identity_runtime;
+pub mod install_runtime;
 pub mod instance;
 pub mod ipc;
+mod metadata_persistence;
+pub mod pairing_store;
 pub mod paths;
 pub mod platform;
+pub mod recovery_store;
+pub mod secure_store;
+pub mod sequence_runtime;
+pub mod sequence_store;
 pub mod status;
 pub mod supervision;
 pub mod supervisor;
@@ -30,6 +37,15 @@ pub use instance::{InstanceLock, InstanceObservation, observe_instance, try_acqu
 pub use paths::{
     assert_outside_repository, default_p0_2_runtime_root, ensure_runtime_root, lock_path,
     marker_path, status_path,
+};
+#[cfg(target_os = "macos")]
+pub use secure_store::MacosKeychainStore;
+#[cfg(windows)]
+#[cfg(windows)]
+pub use secure_store::WindowsCredentialStore;
+pub use secure_store::{
+    AccountLabel, FakeSecureStore, SecureStore, SecureStoreEnvironment, SecureStoreError,
+    SecureStoreResult, ServiceLabel,
 };
 pub use status::{HealthState, InstanceState, LifecycleReport, write_status_file};
 pub use supervision::{RegistrationStatus, SupervisionStrategy, selected_supervision};

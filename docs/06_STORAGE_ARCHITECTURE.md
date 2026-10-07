@@ -107,7 +107,9 @@ Runtime data must remain outside the source repository.
 
 Cryptex must not create application/runtime folders in the user's visible home, Desktop or Documents by default.
 
-The exact internal directory structure beneath the application-data root is not frozen by this document and must not be invented merely for implementation convenience.
+The app-data path `identity/brain_identity.json` is the M1 local canonical Brain identity record, not disposable runtime-control state, a cache, or a derived projection. It must survive normal daemon stop/restart and application upgrades. M2 event records bind to this identity; M8 replication transfers it unchanged; M11 restore preserves it. These later behaviors are not claimed by M1.
+
+The exact internal directory structure beneath the application-data root is not frozen by this document and must not be invented merely for implementation convenience. The M1 Brain identity path is the scoped exception recorded in ADR-0015 §2.1.1; any later relocation must preserve the canonical identity bytes and `brain_id` through an explicit migration.
 
 ## 8. Replication boundary
 
@@ -245,7 +247,7 @@ For storage, M0 must:
 - select the simplest option meeting scale and recovery requirements
 - record the accepted result in ADR-0013
 
-P0-1 is complete: ADR-0013 is ACCEPTED. M0 as a whole remains incomplete until P0-2, P0-3 and P0-4 (and their ADRs/addenda) are resolved.
+**Historical status (2026-10-02):** P0-1 was complete and ADR-0013 was ACCEPTED; M0 was still in progress pending P0-2, P0-3 and P0-4. This dated status is superseded by the M0 closure audit and `checklists/M0_FOUNDATION_GATE.md`, which record M0 complete for its synthetic foundation scope. That closeout does not claim production updater, canonical replication, signing or distribution readiness.
 
 M0 must not opportunistically implement the full M2 immutable event store or M3 SQLite/search system.
 

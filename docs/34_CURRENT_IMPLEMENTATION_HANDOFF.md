@@ -1,9 +1,9 @@
 # 34 — Current Implementation Handoff
 
-**Snapshot date:** 2026-10-05
-**Current milestone:** M0 — Foundation / P0-2 Background Runtime & Atomic Update Lifecycle  
-**Current branch:** `m0/p0-2-cursor`  
-**Implementation base before this handoff:** `8d71044 docs: close macOS physical window proof`
+**Snapshot date:** 2026-10-07
+**Current milestone:** M1 — Brain + Device Identity
+**Current branch:** `m1/brain-device-identity`
+**Implementation base:** `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` (`origin/m0/foundation`, PR #5 merge)
 
 > This file is an operational status snapshot, not an architecture authority. If it conflicts with `docs/00_MASTER_SPEC.md`, accepted ADRs, the milestone contract, or other authoritative project documents, stop and report the conflict instead of silently reconciling it.
 
@@ -15,34 +15,77 @@
 4. `docs/20_MILESTONE_ROADMAP.md`
 5. `docs/23_REQUIRED_TECHNICAL_SPIKES.md`
 6. `docs/32_PRE_IMPLEMENTATION_AUDIT_REPORT.md`
-7. relevant `docs/adr/` records
-8. relevant `evidence/m0/p0-2/` evidence
+7. relevant `docs/adr/` records (ADR-0015 ACCEPTED; ADR-0014 ACCEPTED — P1)
+8. `evidence/m1/` kickoff plan when present; retained `evidence/m0/` for foundation context
 
 ## Working agreement
 
-**Full M0 contract recheck (2026-10-05):**
-`evidence/m0/m0-contract-closeout-recheck-20261005.md` maps the original M0
-requirements to retained evidence and independently rechecks final CI/source
-correspondence. Synthetic refers to the required test data, not simulated
-Windows/Mac applications. M0 acceptance is complete; PR #5 Git integration is
-still OPEN/UNMERGED and requires explicit merge authorization. Later product
-obligations remain assigned to the roadmap; M1 is not started.
+**Latest follow-up (2026-10-07):** Codex final review found fixed-temp races in
+pairing and Recovery Kit public metadata persistence and corrected them with
+serialized, synced atomic replacement. Sequence counter device-id validation now
+also covers reads/initialization, not only allocation. Windows tests/format PASS; local Clippy
+was blocked by Smart App Control (4551). Current-source cross-platform CI is
+PASS at `a39920564561f75ada08cba8a47244bec9074345`, run 37569756071, including
+strict workspace Clippy on both OSes. See
+`evidence/m1/m1-public-metadata-final-review-20261007.md` and the newer
+`evidence/m1/m1-final-review-20261007.md`. Owner acknowledgment remains OPEN.
 
-**Current closeout status (2026-10-05):** M0 is COMPLETE for the synthetic
-foundation scope. Final behavior-bearing source CI is green at `c7fa011` (run
-`37387323751`); Mac embedded `.app` visual review is scoped PASS. The owner
-accepted the scoped ADR-0012 and ADR-0004 M0 decisions and approved the concrete
-closeout diff. M1 remains unauthorized. Production residuals remain assigned to
-later milestones.
-Older continuation entries below are retained as dated history; use this current
-status and the ADR index for present-day decisions.
+**Latest M1 review update (2026-10-07):** A final Codex review found that loss of
+an initialized sequence counter could permit reuse after `initialize()` recreated
+it at zero. Fixed at source `a39920564561f75ada08cba8a47244bec9074345` by committing
+a durable per-device initialization marker before the initial counter; marker plus
+missing counter now fails closed. Current-source final CI run
+[37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071) is
+PASS (Windows/macOS readiness + Windows IPC ACL; unsigned package skipped by design).
+Review record: `evidence/m1/m1-final-review-20261007.md`. Owner acknowledgment of
+the delegated review was accepted on 2026-10-07. M1 completion gates are green; PR #6
+remains to be normally merged into `m0/foundation` before M1 is recorded integrated.
 
-- Work only on the current milestone.
-- Do not redesign architecture or choose a new supervision strategy without explicit user approval.
+**Current status (2026-10-07):** M0 Foundation is COMPLETE and integrated at
+`8de3c8f91497cf21d503b9b1bdc5566716d88dc0` on `origin/m0/foundation` (PR #5).
+M1 - Brain + Device Identity is on `m1/brain-device-identity`; current CI candidate is
+`a39920564561f75ada08cba8a47244bec9074345`. Cursor was the write-capable M1 implementer; the owner has directly authorized Codex to complete this closeout follow-up.
+**ADR-0015 is ACCEPTED**; **ADR-0014 is ACCEPTED** (2026-10-06) selecting **P1**
+(direct platform APIs) with product pins `windows-sys = 0.61.2`,
+`widestring = 1.2.1`, `security-framework = 3.7.0`. K2 and high-level `keyring`
+are unselected. Gate C **Windows** and **macOS** product SecureStore are VERIFIED
+(distinct host evidence under `evidence/m1/`). Required CI **PASS** on implementation
+candidate `a399205`: run [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071)
+(Windows readiness, macOS readiness, Windows cross-account IPC ACL; unsigned Windows
+package job skipped by design). The owner accepted Codex's delegated technical review
+on 2026-10-07; all M1 gates are satisfied. PR #6 is approved for normal merge; record
+M1 integrated after the merge lands (see audit DoD checklist).
+
+**M1 status:** ADR-0015 ACCEPTED (2026-10-05). ADR-0014 ACCEPTED (2026-10-06, P1).
+Identity/sequence, SecureStore (trait/fake + Windows/macOS P1 adapters), synthetic
+Brain daemon wiring, pairing-record persistence, and Recovery Kit public metadata
+persistence are in place under cryptexd. Gate C Windows and macOS product SecureStore
+are both VERIFIED (2026-10-06; distinct host evidence files under `evidence/m1/`).
+Gate A spike remains historical comparison only. Prior Windows tests, strict Clippy and format
+for the install-identity staging/rollback follow-up pass locally (94 cryptexd tests);
+The latest metadata and sequence corrections are verified by both-OS CI; Unix-specific
+install rollback-sync tests and Windows/macOS readiness passed in CI run
+37569756071. Codex final review and owner acceptance are recorded; normal integration of PR #6 remains.
+Production pairing/revocation remains M8; Recovery Kit container remains M11.
+No custom cryptography.
+
+**M1 audit (2026-10-06):** Sequence allocation and install identity are daemon-owned
+(`evidence/m1/m1-scope-security-audit-20261006.md`). Brain public identity first-create is exclusive/no-replace; install-identity staging
+cleanup and Unix rollback durability now match that hardened path (see audit). Final CI
+PASS on candidate `a399205` is recorded (run 37569756071). The accepted M1 lifecycle and placement boundary is documented in
+ADR-0015 §2.1.1 and the audit. The owner accepted the delegated Codex review; merge PR #6
+normally before recording M1 integrated or starting M2.
+
+**Historical M0 closeout (retained):** Final behavior-bearing source CI was
+green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
+scoped PASS; scoped ADR-0012 and ADR-0004 accepted. Older continuation entries
+below remain dated history. Prefer this current status and the ADR index for
+present-day decisions.
+
+- Work only on the current milestone (M1).
+- Do not redesign architecture or choose a secure-store/identity representation without the applicable accepted ADR.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
-- Do not assume that moving between Cursor, Codex, and Work changes which tool is the write-capable implementer.
-- The user explicitly changed the implementation role to Codex in this conversation; Codex is the active implementation tool on Windows. Resume Mac-specific validation on the Mac host when needed.
-- The project owner explicitly approved Mode B with per-user login startup launching Desktop for implementation. The scoped M0 direction is ACCEPTED in `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`; production gates remain mandatory separately under the owner-authorized 2026-10-05 revision scope.
+- Cursor implemented M1. The owner authorized Codex to perform the final review and necessary focused corrections. Resume Mac-specific physical validation on the Mac host when required evidence needs it.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks and
@@ -50,6 +93,8 @@ status and the ADR index for present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
+- Codex final review and owner acceptance are recorded at `evidence/m1/m1-final-review-20261007.md`; do not claim the owner independently inspected every line of source.
+- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows and macOS product SecureStore both VERIFIED 2026-10-06 (separate host evidence). Current candidate CI PASS: run 37569756071 @ `a399205`; owner accepted the delegated review, and normal PR #6 merge remains before recording M1 integrated.
 
 ## P0-1 status
 
@@ -202,7 +247,7 @@ reported verified; the Master Spec and accepted milestone contract are unchanged
 Next: review these concrete revisions and the retained security/notice residuals,
 then run required final CI once on the resulting stable candidate. Human diff/ADR
 acceptance and the evidence-backed full M0 checklist remain required.
-ADR-0004/0012 remain PROPOSED; M0 remains IN PROGRESS and M1 is not authorized.
+ADR-0004/0012 remain PROPOSED; M0 remains IN PROGRESS and M1 is not authorized. *(Historical M0-era note — superseded: M0 complete, M1 active, ADR-0015 ACCEPTED; see top.)*
 
 The owner explicitly authorized completing the entire M0 milestone. Closure
 audit: `evidence/m0/m0-closure-audit-20261005.md`. P0-4 managed Syncthing and its
@@ -1360,11 +1405,19 @@ do not run Actions for this slice.
 - production-backed Mode A vs Mode B vs justified hybrid comparison
 - ADR-0012 acceptance
 
-## BLOCKED
+## Historical M0 BLOCKED note (superseded)
 
-P0-2 cannot be considered complete and ADR-0012 must not be accepted until the
+> **Historical only.** The text below reflected M0 closeout constraints before
+> PR #5 merge and M1 authorization. It is retained for audit trail and must not
+> be read as current status.
+>
+> **Current status (see top of this handoff):** M0 Foundation is COMPLETE at
+> `8de3c8f`; M1 is active on `m1/brain-device-identity`; ADR-0015 is ACCEPTED;
+> ADR-0014 remains PROPOSED.
+
+~~P0-2 cannot be considered complete and ADR-0012 must not be accepted until the
 current revised M0 criteria, scoped review, required CI and human approval pass.
 Historical production prerequisites in earlier slices remain separate mandatory
 product gates under the owner-authorized revision; no production proof is waived.
 
-M1 is not authorized until all M0 P0 gates are complete.
+M1 is not authorized until all M0 P0 gates are complete.~~
