@@ -893,13 +893,33 @@ mod tests {
                     let dir_len = entry.directory.to_string_lossy().chars().count();
                     let object_len = object.to_string_lossy().chars().count();
                     let leaf = entry.directory.file_name().unwrap().to_string_lossy();
+
+                    // Public API path remains logical (no \\?\ leak).
                     assert!(
-                        object.is_file(),
-                        "{label}: object missing after Ok quarantine"
+                        !entry.directory.to_string_lossy().starts_with(r"\\?\"),
+                        "{label}: public QuarantineEntry.directory must remain logical"
                     );
+                    assert!(
+                        leaf.contains(&format!("_{}_", longest.as_str())),
+                        "{label}: leaf {leaf} missing ADR reason_code"
+                    );
+
+                    // All existence / read / cleanup on >MAX_PATH fixtures must use
+                    // the extended-path adapter. Use it for every case so required
+                    // assertions never depend on unprefixed Win32 MAX_PATH behavior.
+                    let io_object = quarantine_fs_path(&object).expect("prefix object");
+                    let io_root = quarantine_fs_path(&root).expect("prefix fixture root");
+                    let io_object_text = io_object.to_string_lossy();
+                    assert!(
+                        io_object_text.starts_with(r"\\?\"),
+                        "{label}: I/O path must use extended-length prefix: {io_object_text}"
+                    );
+                    assert!(
+                        io_object.is_file(),
+                        "{label}: object missing via extended-path adapter ({io_object_text})"
+                    );
+
                     let expected = format!("path-length-regression-{label}");
-                    let read_back = fs::read(&object).unwrap_or_default();
-                    // Prefer adapter open for long paths; logical read may fail without \?\.
                     let via_adapter = {
                         use std::io::Read;
                         let mut f = q_open_read_write(&object).expect("adapter read open");
@@ -912,32 +932,16 @@ mod tests {
                         expected.as_bytes(),
                         "{label}: adapter read mismatch"
                     );
-                    if read_back == expected.as_bytes() {
-                        eprintln!(
-                            "{label}: logical fs::read also succeeded (len={})",
-                            read_back.len()
-                        );
-                    } else {
-                        eprintln!(
-                            "{label}: logical fs::read len={} (may fail without OS long-path policy); adapter read OK",
-                            read_back.len()
-                        );
-                    }
-                    assert!(
-                        leaf.contains(&format!("_{}_", longest.as_str())),
-                        "{label}: leaf {leaf} missing ADR reason_code"
+                    // Prefixed fs::read also exercises extended-path open without
+                    // going through the unprefixed logical object path.
+                    let via_prefixed_fs =
+                        fs::read(&io_object).expect("prefixed fs::read of object");
+                    assert_eq!(
+                        via_prefixed_fs,
+                        expected.as_bytes(),
+                        "{label}: prefixed fs::read mismatch"
                     );
-                    let io_object = quarantine_fs_path(&object).unwrap();
-                    let io_text = io_object.to_string_lossy();
-                    assert!(
-                        io_text.starts_with(r"\\?\"),
-                        "{label}: quarantine I/O path must use extended-length prefix: {io_text}"
-                    );
-                    // Returned entry directory stays logical (no \\?\ in public path).
-                    assert!(
-                        !entry.directory.to_string_lossy().starts_with(r"\\?\"),
-                        "{label}: public directory must remain logical layout path"
-                    );
+
                     eprintln!(
                         "m2 quarantine FS OK label={label} id_len={} projected={projected} root={root_len} dir={dir_len} leaf={} object={object_len} path={}",
                         device_raw.len(),
@@ -950,19 +954,31 @@ mod tests {
                             "short DeviceId object path {object_len} exceeded MAX_PATH under {}",
                             root.display()
                         );
+                    } else {
+                        assert!(
+                            object_len > 260,
+                            "{label}: expected projected/object path > MAX_PATH, got {object_len}"
+                        );
                     }
-                    let removed = fs::remove_dir_all(&root);
+
+                    let removed = fs::remove_dir_all(&io_root);
+                    let root_gone = !io_root.exists();
                     eprintln!(
-                        "m2 quarantine cleanup label={label} remove_dir_all={removed:?} root_exists={}",
-                        root.exists()
+                        "m2 quarantine cleanup label={label} prefixed_remove_dir_all={removed:?} prefixed_root_exists={}",
+                        io_root.exists()
                     );
-                    assert!(removed.is_ok(), "{label}: cleanup failed: {removed:?}");
-                    assert!(!root.exists(), "{label}: root remained after cleanup");
+                    assert!(
+                        removed.is_ok(),
+                        "{label}: prefixed cleanup failed: {removed:?}"
+                    );
+                    assert!(root_gone, "{label}: prefixed root remained after cleanup");
                 }
                 Err(err) => {
-                    let _ = fs::remove_dir_all(&root);
+                    let io_root = quarantine_fs_path(&root).expect("prefix fixture root on err");
+                    let _ = fs::remove_dir_all(&io_root);
                     panic!(
-                        "{label}: quarantine must succeed with extended-length adapter                          (id_len={} projected_object_len={projected}): {err}",
+                        "{label}: quarantine must succeed with extended-length adapter \
+                         (id_len={} projected_object_len={projected}): {err}",
                         device_raw.len()
                     );
                 }
