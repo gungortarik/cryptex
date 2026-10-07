@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-07
 **Branch:** `m2/immutable-event-store`
-**Tip:** `eb66027d5bcfce6b5a406cd7fb6a06174d584e51`
+**Tip:** `92d9c6b6930b4363c1705bb559de61c49907e124`
 
 ## Scope
 
