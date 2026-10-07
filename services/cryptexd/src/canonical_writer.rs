@@ -22,6 +22,7 @@ use cryptex_events::hex::{ContentHashHex, SigningKeyId};
 use cryptex_events::integrity::{accept_event, check_chain_link, check_first_event_prev_hash};
 use cryptex_events::limits::DEFAULT_SEAL_EVENT_THRESHOLD_HINT;
 use cryptex_events::{ValidationReasonCode, validate_accepted_record_bytes};
+use cryptex_storage::durability::sync_parent_directory;
 use cryptex_storage::layout::{
     active_segment_path, canonical_events_device_dir, sealed_segment_path,
 };
@@ -415,9 +416,13 @@ fn rebuild_chain_state(
                 let (_, verified_len) = fold_verified_frames(&path, validator, (), |_, _| Ok(()))?;
                 if events.is_empty() || verified_len != file_len {
                     quarantine_sealed_pack(runtime_root, device_id, *index, &path)?;
+                    let source_relative = format!(
+                        "canonical/events/{}/{:020}.seg",
+                        device_id.as_filename_stem(),
+                        *index
+                    );
                     return Err(CanonicalWriterError::Integrity(format!(
-                        "sealed pack {} failed verification (verified_len={verified_len}, file_len={file_len}, events={}); quarantined",
-                        path.display(),
+                        "sealed pack {source_relative} failed verification (verified_len={verified_len}, file_len={file_len}, events={}); quarantined",
                         events.len()
                     )));
                 }
@@ -568,18 +573,20 @@ fn quarantine_sealed_pack(
         .metadata()
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?
         .len();
-    if len == 0 {
-        return Err(CanonicalWriterError::Integrity(format!(
-            "refusing to quarantine empty sealed pack {}",
-            path.display()
-        )));
-    }
     let source_relative = format!(
         "canonical/events/{}/{:020}.seg",
         device_id.as_filename_stem(),
         index
     );
-    // Stream exact sealed bytes into quarantine before returning the validation failure.
+    if len == 0 {
+        return Err(CanonicalWriterError::Integrity(format!(
+            "refusing to quarantine empty sealed pack {source_relative}"
+        )));
+    }
+    // Stream exact sealed bytes into quarantine before isolating the canonical object.
+    // ADR-0016 §7.2: quarantine the whole sealed object (no in-place edit). Durability of
+    // the quarantine entry is confirmed by quarantine_file_range (object + metadata sync)
+    // before the canonical .seg is removed from the discoverable pack set.
     quarantine_file_range(
         QuarantineRequest {
             app_data_root: runtime_root,
@@ -595,6 +602,10 @@ fn quarantine_sealed_pack(
         &mut file,
     )
     .map_err(CanonicalWriterError::from)?;
+    // Release the read handle before unlink (required on Windows).
+    drop(file);
+    fs::remove_file(path).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    sync_parent_directory(path).map_err(CanonicalWriterError::from)?;
     Ok(())
 }
 
@@ -862,9 +873,13 @@ pub fn load_verified_events<S: SecureStore>(
         let (_, verified_len) = fold_verified_frames(&path, &validator, (), |_, _| Ok(()))?;
         if events.is_empty() || verified_len != file_len {
             quarantine_sealed_pack(runtime_root, device_id, index, &path)?;
+            let source_relative = format!(
+                "canonical/events/{}/{:020}.seg",
+                device_id.as_filename_stem(),
+                index
+            );
             return Err(CanonicalWriterError::Integrity(format!(
-                "sealed pack {} failed verification (verified_len={verified_len}, file_len={file_len}, events={}); quarantined",
-                path.display(),
+                "sealed pack {source_relative} failed verification (verified_len={verified_len}, file_len={file_len}, events={}); quarantined",
                 events.len()
             )));
         }
@@ -1641,6 +1656,10 @@ mod tests {
             }
         }
         assert!(found, "expected sealed pack quarantine");
+        assert!(
+            !seg.exists(),
+            "corrupt sealed .seg must be removed from canonical tree after durable quarantine"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -1749,8 +1768,45 @@ mod tests {
             matches!(err, CanonicalWriterError::Integrity(_)),
             "expected Integrity fail-closed, got {err:?}"
         );
+        let err_text = err.to_string();
+        assert!(
+            err_text.contains("canonical/events/"),
+            "integrity error should use source_relative, got {err_text}"
+        );
+        assert!(
+            !err_text.contains(root.to_string_lossy().as_ref()),
+            "integrity error must not embed absolute runtime root: {err_text}"
+        );
         let qroot = quarantine_events_root(&root);
         assert!(qroot.exists(), "corrupt sealed pack must be quarantined");
+        let q_entries_after_first = walkdir_quarantine(&qroot)
+            .into_iter()
+            .filter(|p| p.join("quarantine.json").is_file())
+            .count();
+        assert_eq!(
+            q_entries_after_first, 1,
+            "exactly one quarantine entry after first failure"
+        );
+        assert!(
+            !seg.exists(),
+            "ADR-0016 §7.2: corrupt sealed .seg must be isolated from canonical tree after durable quarantine"
+        );
+
+        // Repeated load must not re-quarantine (canonical object already isolated).
+        let second = load_verified_events(&store, SecureStoreEnvironment::Dev, &root, &device)
+            .expect("after isolation, empty history loads");
+        assert!(
+            second.is_empty(),
+            "no sealed packs remain after quarantine isolation"
+        );
+        let q_entries_after_second = walkdir_quarantine(&qroot)
+            .into_iter()
+            .filter(|p| p.join("quarantine.json").is_file())
+            .count();
+        assert_eq!(
+            q_entries_after_second, 1,
+            "repeated load must not create additional sealed-pack quarantine entries"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
