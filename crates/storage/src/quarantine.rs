@@ -148,6 +148,7 @@ pub fn quarantine_bytes(
     request: QuarantineRequest<'_>,
     bytes: &[u8],
 ) -> StorageResult<QuarantineEntry> {
+    validate_source_relative(request.source_relative)?;
     if bytes.is_empty() {
         return Err(StorageError::Quarantine(
             "refusing to quarantine empty suffix".into(),
@@ -170,6 +171,7 @@ pub fn quarantine_file_range(
     end: u64,
     source: &mut File,
 ) -> StorageResult<QuarantineEntry> {
+    validate_source_relative(request.source_relative)?;
     if end <= start {
         return Err(StorageError::Quarantine(
             "refusing to quarantine empty suffix".into(),
@@ -297,6 +299,82 @@ where
         directory: dir,
         metadata,
     })
+}
+
+fn validate_source_relative(source_relative: &str) -> StorageResult<()> {
+    // ADR-0016 §8.2: pack-relative / unresolved only; never absolute host paths.
+    if source_relative.is_empty() {
+        return Err(StorageError::Quarantine(
+            "quarantine source_relative must not be empty".into(),
+        ));
+    }
+    if source_relative.contains('\0') {
+        return Err(StorageError::Quarantine(
+            "quarantine source_relative must not contain NUL".into(),
+        ));
+    }
+    if source_relative == "unresolved" {
+        return Ok(());
+    }
+    let normalized = source_relative.replace('\\', "/");
+    if normalized.starts_with('/')
+        || normalized.starts_with("//")
+        || (normalized.len() >= 2 && normalized.as_bytes()[1] == b':')
+    {
+        return Err(StorageError::Quarantine(
+            "quarantine source_relative must not be an absolute host path".into(),
+        ));
+    }
+    let parts: Vec<&str> = normalized.split('/').collect();
+    if parts.len() != 4
+        || parts[0] != "canonical"
+        || parts[1] != "events"
+        || parts[2].is_empty()
+        || parts[3].is_empty()
+    {
+        return Err(StorageError::Quarantine(
+            "quarantine source_relative must be 'unresolved' or 'canonical/events/<stem>/<pack>'"
+                .into(),
+        ));
+    }
+    for part in &parts {
+        if *part == "." || *part == ".." || part.is_empty() {
+            return Err(StorageError::Quarantine(
+                "quarantine source_relative rejects '.' / '..' / empty segments".into(),
+            ));
+        }
+        if part.contains('\\') {
+            return Err(StorageError::Quarantine(
+                "quarantine source_relative rejects mixed separators inside a segment".into(),
+            ));
+        }
+    }
+    let stem = parts[2];
+    let pack = parts[3];
+    if !stem
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(StorageError::Quarantine(
+            "quarantine source_relative stem contains unsupported characters".into(),
+        ));
+    }
+    let (index, ext) = pack.rsplit_once('.').ok_or_else(|| {
+        StorageError::Quarantine(
+            "quarantine source_relative pack name must end in .open or .seg".into(),
+        )
+    })?;
+    if ext != "open" && ext != "seg" {
+        return Err(StorageError::Quarantine(
+            "quarantine source_relative pack extension must be .open or .seg".into(),
+        ));
+    }
+    if index.is_empty() || !index.chars().all(|c| c.is_ascii_digit()) {
+        return Err(StorageError::Quarantine(
+            "quarantine source_relative pack index must be decimal digits".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// Reject path escape / separator smuggling before any quarantine FS I/O.
@@ -821,6 +899,38 @@ mod tests {
             QuarantineReasonCode::parse("truncated_tail").unwrap(),
             QuarantineReasonCode::TruncatedTail
         );
+    }
+
+    #[test]
+    fn source_relative_rejects_absolute_and_parent_paths() {
+        let root = temp_root("src-rel");
+        let device = DeviceId::new("device-src").unwrap();
+        for bad in [
+            r"C:\Users\secret\file.open",
+            "/var/evil",
+            "canonical/events/../escape/0.open",
+            "canonical/events/x/0.txt",
+            "",
+        ] {
+            let err = quarantine_bytes(
+                QuarantineRequest {
+                    app_data_root: &root,
+                    device_id: Some(&device),
+                    reason_code: QuarantineReasonCode::TruncatedTail,
+                    source_kind: QuarantineSourceKind::Other,
+                    source_relative: bad,
+                    byte_offset: None,
+                    extras: QuarantineExtras::default(),
+                },
+                b"x",
+            )
+            .unwrap_err();
+            assert!(
+                matches!(err, StorageError::Quarantine(_)),
+                "expected Quarantine for {bad:?}, got {err}"
+            );
+        }
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

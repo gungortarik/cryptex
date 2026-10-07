@@ -100,14 +100,19 @@ pub type EventSigningKeyResult<T> = Result<T, EventSigningKeyError>;
 /// Ensure a device event-signing key is ready (crash-safe, idempotent).
 ///
 /// `observed_signing_key_ids` lists `signing_key_id` values already referenced by
-/// local accepted events for this device (empty when none exist). Callers supply
-/// this until segment scan wiring lands.
+/// local accepted events for this device (empty when none exist yet).
+///
+/// `canonical_packs_present` must be true when any `.open` / `.seg` exists for the
+/// device even if signing_key_ids have not been scraped yet. This prevents minting
+/// a fresh key over existing packs when SecureStore seed and public metadata are
+/// both missing (ADR-0016 §6.3).
 pub fn ensure_event_signing_key<S: SecureStore>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
     device_id: &DeviceId,
     observed_signing_key_ids: &[SigningKeyId],
+    canonical_packs_present: bool,
 ) -> EventSigningKeyResult<ReadyEventSigningKey> {
     assert_outside_repository(runtime_root).map_err(|e| EventSigningKeyError::Io(e.to_string()))?;
     ensure_runtime_root(runtime_root).map_err(|e| EventSigningKeyError::Io(e.to_string()))?;
@@ -137,7 +142,23 @@ pub fn ensure_event_signing_key<S: SecureStore>(
     };
     let meta_state = load_public_metadata_if_present(&meta_path)?;
 
-    let events_exist = !observed_signing_key_ids.is_empty();
+    let events_exist = !observed_signing_key_ids.is_empty() || canonical_packs_present;
+    if events_exist && observed_signing_key_ids.is_empty() && canonical_packs_present {
+        // Packs exist but caller could not supply observed key ids (e.g. keys missing
+        // so frames cannot be verified yet). Refuse mint/completion that cannot bind
+        // to existing history — never treat this as a green-field device.
+        match (seed_state.as_deref(), meta_state.as_ref()) {
+            (Some(_), Some(_)) => {
+                // Seed+meta present: proceed; single-active-key enforced after ready.
+            }
+            _ => {
+                return Err(EventSigningKeyError::FailClosed(
+                    "canonical event packs exist but signing seed/metadata are incomplete                      and no observed signing_key_id values were supplied; refusing silent                      key mint or unbound metadata completion"
+                        .into(),
+                ));
+            }
+        }
+    }
 
     match (seed_state.as_deref(), meta_state.as_ref()) {
         (Some(seed), Some(meta)) => {
@@ -529,7 +550,7 @@ fn put_seed_only_for_test<S: SecureStore>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::secure_store::FakeSecureStore;
+    use crate::secure_store::{FakeSecureStore, SecureStoreError};
     use std::sync::{Arc, Barrier};
     use std::thread;
 
@@ -551,9 +572,15 @@ mod tests {
         let root = temp_root("rfc3339");
         let store = FakeSecureStore::new();
         let device = DeviceId::new("device-rfc").unwrap();
-        let ready =
-            ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
-                .unwrap();
+        let ready = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .unwrap();
         parse_rfc3339_str(&ready.public.created_at).unwrap();
         assert!(
             ready.public.created_at.ends_with('Z')
@@ -568,12 +595,24 @@ mod tests {
         let root = temp_root("fresh");
         let store = FakeSecureStore::new();
         let device = DeviceId::new("device-a").unwrap();
-        let first =
-            ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
-                .expect("create");
-        let second =
-            ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
-                .expect("idempotent");
+        let first = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .expect("create");
+        let second = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .expect("idempotent");
         assert_eq!(first.public.signing_key_id, second.public.signing_key_id);
         assert_eq!(first.public.public_key, second.public.public_key);
         assert_eq!(first.public.public_key.len(), 64);
@@ -587,9 +626,15 @@ mod tests {
         let device = DeviceId::new("device-b").unwrap();
         let seed = [0x42u8; 32];
         put_seed_only_for_test(&store, SecureStoreEnvironment::Dev, &device, &seed).unwrap();
-        let ready =
-            ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
-                .expect("complete");
+        let ready = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .expect("complete");
         let expected = SigningKey::from_bytes(&seed);
         let expected_id = signing_key_id_from_verifying_key(&expected.verifying_key()).unwrap();
         assert_eq!(ready.public.signing_key_id, expected_id.as_str());
@@ -612,7 +657,14 @@ mod tests {
             created_at: "2026-10-07T00:00:00Z".into(),
         };
         write_public_metadata_exclusive(&path, &fake).unwrap();
-        match ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[]) {
+        match ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        ) {
             Err(EventSigningKeyError::FailClosed(_)) => {}
             other => panic!("expected FailClosed, got {other:?}"),
         }
@@ -636,9 +688,15 @@ mod tests {
             created_at: "2026-10-07T00:00:00Z".into(),
         };
         write_public_metadata_exclusive(&path, &wrong).unwrap();
-        let err =
-            ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
-                .unwrap_err();
+        let err = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .unwrap_err();
         assert!(matches!(err, EventSigningKeyError::FailClosed(_)));
         let _ = fs::remove_dir_all(&root);
     }
@@ -648,9 +706,15 @@ mod tests {
         let root = temp_root("foreign");
         let store = FakeSecureStore::new();
         let device = DeviceId::new("device-e").unwrap();
-        let ready =
-            ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
-                .unwrap();
+        let ready = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .unwrap();
         let foreign = SigningKeyId::parse(&"cd".repeat(16)).unwrap();
         let err = ensure_event_signing_key(
             &store,
@@ -658,6 +722,7 @@ mod tests {
             &root,
             &device,
             &[foreign],
+            false,
         )
         .unwrap_err();
         assert!(matches!(err, EventSigningKeyError::FailClosed(_)));
@@ -671,18 +736,61 @@ mod tests {
         let device = DeviceId::new("device-f").unwrap();
         let store = FakeSecureStore::new();
         FAIL_NEXT_METADATA_WRITE.with(|flag| flag.set(true));
-        let err =
-            ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
-                .unwrap_err();
+        let err = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .unwrap_err();
         assert!(matches!(err, EventSigningKeyError::IncompleteInit(_)));
         let service = ServiceLabel::device_credentials(SecureStoreEnvironment::Dev);
         let account = AccountLabel::device_event_signing_seed(device.as_str());
         assert!(store.get(service.as_str(), account.as_str()).is_ok());
         // Retry completes from existing seed without generating a new one.
-        let ready =
-            ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
-                .expect("complete after crash");
+        let ready = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .expect("complete after crash");
         assert_eq!(ready.public.public_key.len(), 64);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fail_closed_when_packs_present_without_keys_and_empty_observed() {
+        let root = temp_root("packs-no-keys");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("device-packs").unwrap();
+        // No seed, no metadata, but caller reports canonical packs exist.
+        let err = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            true,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, EventSigningKeyError::FailClosed(_)),
+            "expected FailClosed, got {err:?}"
+        );
+        let service = ServiceLabel::device_credentials(SecureStoreEnvironment::Dev);
+        let account = AccountLabel::device_event_signing_seed(device.as_str());
+        assert!(
+            matches!(
+                store.get(service.as_str(), account.as_str()),
+                Err(SecureStoreError::Missing)
+            ),
+            "must not mint a seed when packs exist without keys"
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -706,6 +814,7 @@ mod tests {
                     &root,
                     &device,
                     &[],
+                    false,
                 )
                 .map(|r| r.public.signing_key_id)
             }));
@@ -736,9 +845,15 @@ mod tests {
         };
         // Bypass writer validation by writing raw JSON.
         fs::write(&path, serde_json::to_string(&bad).unwrap() + "\n").unwrap();
-        let err =
-            ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
-                .unwrap_err();
+        let err = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, EventSigningKeyError::InvalidPublicMetadata(_)),
             "{err}"
@@ -758,8 +873,15 @@ mod tests {
         let seed = [0x7eu8; 32];
         // Force known seed via put then complete.
         put_seed_only_for_test(&store, SecureStoreEnvironment::Dev, &device, &seed).unwrap();
-        let _ = ensure_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device, &[])
-            .unwrap();
+        let _ = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .unwrap();
         let text = fs::read_to_string(event_signing_key_path(&root, &device)).unwrap();
         assert!(!crate::secure_store::payload_bytes_recoverable(
             &seed, &text

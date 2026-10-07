@@ -224,9 +224,12 @@ pub fn append_memory_note<S: SecureStore>(
     fs2::FileExt::lock_exclusive(&lock)
         .map_err(|e| CanonicalWriterError::Path(format!("writer lock failed: {e}")))?;
 
-    // Bootstrap signing key with empty observed set first if no packs yet; rebuild may
-    // refine observed ids after key is available for verification.
-    let bootstrap = ensure_event_signing_key(store, env, runtime_root, device_id, &[])?;
+    // Discover packs before any key mint so missing seed+metadata cannot mint over
+    // existing history (ADR-0016 §6.3).
+    let (sealed_indexes, open_index) = discover_segments(runtime_root, device_id)?;
+    let packs_present = !sealed_indexes.is_empty() || open_index.is_some();
+    let bootstrap =
+        ensure_event_signing_key(store, env, runtime_root, device_id, &[], packs_present)?;
     let verifying = bootstrap.signing_key.verifying_key();
     let validator = VerifyingBodyValidator {
         verifying_key: verifying,
@@ -241,6 +244,7 @@ pub fn append_memory_note<S: SecureStore>(
         runtime_root,
         device_id,
         &state.observed_signing_key_ids,
+        !state.observed_signing_key_ids.is_empty() || packs_present,
     )?;
     // Rebuild again only if key identity unchanged (it must be).
     if ready.public.signing_key_id != signing_key_id_string(&bootstrap.public.signing_key_id) {
@@ -832,12 +836,13 @@ pub fn load_verified_events<S: SecureStore>(
     runtime_root: &Path,
     device_id: &DeviceId,
 ) -> CanonicalWriterResult<Vec<AcceptedEvent>> {
-    let ready = ensure_event_signing_key(store, env, runtime_root, device_id, &[])?;
+    let (sealed, open) = discover_segments(runtime_root, device_id)?;
+    let packs_present = !sealed.is_empty() || open.is_some();
+    let ready = ensure_event_signing_key(store, env, runtime_root, device_id, &[], packs_present)?;
     let validator = VerifyingBodyValidator {
         verifying_key: ready.signing_key.verifying_key(),
         expected_device_id: device_id.clone(),
     };
-    let (sealed, open) = discover_segments(runtime_root, device_id)?;
     let mut expected_prev = ContentHashHex::zero();
     let mut expected_seq: Option<u64> = None;
     let mut all = Vec::new();
@@ -850,6 +855,19 @@ pub fn load_verified_events<S: SecureStore>(
             &mut expected_prev,
             &mut expected_seq,
         )?;
+        // Sealed packs must be fully consumed (same fail-closed rule as writer rebuild).
+        let file_len = fs::metadata(&path)
+            .map_err(|e| CanonicalWriterError::Path(e.to_string()))?
+            .len();
+        let (_, verified_len) = fold_verified_frames(&path, &validator, (), |_, _| Ok(()))?;
+        if events.is_empty() || verified_len != file_len {
+            quarantine_sealed_pack(runtime_root, device_id, index, &path)?;
+            return Err(CanonicalWriterError::Integrity(format!(
+                "sealed pack {} failed verification (verified_len={verified_len}, file_len={file_len}, events={}); quarantined",
+                path.display(),
+                events.len()
+            )));
+        }
         all.append(&mut events);
     }
     if let Some(idx) = open {
@@ -875,7 +893,7 @@ mod tests {
     use crate::secure_store::FakeSecureStore;
     use cryptex_events::framing::encode_frame_header;
     use cryptex_storage::layout::quarantine_events_root;
-    use cryptex_storage::{read_active_pack_bytes, sealed_segment_path};
+    use cryptex_storage::{event_signing_key_path, read_active_pack_bytes, sealed_segment_path};
     use std::io::Write;
     use std::sync::{Arc, Barrier};
     use std::thread;
@@ -1250,6 +1268,7 @@ mod tests {
             root,
             directory_device,
             &[],
+            false,
         )
         .unwrap();
         let signable = SignableEvent {
@@ -1626,6 +1645,116 @@ mod tests {
             }
         }
         assert!(found, "expected sealed pack quarantine");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fail_closed_when_packs_exist_but_signing_keys_missing_does_not_mint() {
+        let root = temp_root("packs-no-keys");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("writer-no-keys").unwrap();
+        let brain = "77777777-7777-4777-8777-777777777777";
+        let cfg = CanonicalWriterConfig {
+            seal_event_threshold: 1000,
+        };
+        append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "before key loss",
+                config: &cfg,
+            },
+        )
+        .expect("seed history");
+
+        // Wipe SecureStore seed and public metadata.
+        let service =
+            crate::secure_store::ServiceLabel::device_credentials(SecureStoreEnvironment::Dev);
+        let account = crate::secure_store::AccountLabel::device_event_signing_seed(device.as_str());
+        store
+            .delete(service.as_str(), account.as_str())
+            .expect("delete seed");
+        let meta = event_signing_key_path(&root, &device);
+        fs::remove_file(&meta).expect("remove metadata");
+
+        let err = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "must not mint",
+                config: &cfg,
+            },
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, CanonicalWriterError::Signing(_)),
+            "expected SigningKey fail-closed, got {err:?}"
+        );
+        // Must not have minted a replacement seed.
+        assert!(
+            matches!(
+                store.get(service.as_str(), account.as_str()),
+                Err(crate::secure_store::SecureStoreError::Missing)
+            ),
+            "must not mint seed over existing packs"
+        );
+        // Existing open pack must still be present (no destructive quarantine of valid history
+        // under a freshly minted wrong key).
+        let (sealed, open) = discover_segments(&root, &device).expect("discover");
+        assert!(
+            open.is_some() || !sealed.is_empty(),
+            "history packs must remain"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn load_verified_events_fail_closes_and_quarantines_corrupt_sealed_pack() {
+        let root = temp_root("load-sealed-corrupt");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("writer-load-corrupt").unwrap();
+        let brain = "66666666-6666-4666-8666-666666666666";
+        let cfg = CanonicalWriterConfig {
+            seal_event_threshold: 1,
+        };
+        append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "seal-me",
+                config: &cfg,
+            },
+        )
+        .expect("append+seal");
+
+        let seg = sealed_segment_path(&root, &device, 0);
+        assert!(seg.is_file(), "expected sealed pack");
+        {
+            let mut f = OpenOptions::new().append(true).open(&seg).unwrap();
+            f.write_all(b"TRAILING-CORRUPT-BYTES").unwrap();
+            f.sync_all().unwrap();
+        }
+
+        let err =
+            load_verified_events(&store, SecureStoreEnvironment::Dev, &root, &device).unwrap_err();
+        assert!(
+            matches!(err, CanonicalWriterError::Integrity(_)),
+            "expected Integrity fail-closed, got {err:?}"
+        );
+        let qroot = quarantine_events_root(&root);
+        assert!(qroot.exists(), "corrupt sealed pack must be quarantined");
         let _ = fs::remove_dir_all(&root);
     }
 
