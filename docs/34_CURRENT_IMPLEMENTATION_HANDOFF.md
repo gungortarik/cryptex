@@ -25,22 +25,33 @@ pairing and Recovery Kit public metadata persistence and corrected them with
 serialized, synced atomic replacement. Sequence counter device-id validation now
 also covers reads/initialization, not only allocation. Windows tests/format PASS; local Clippy
 was blocked by Smart App Control (4551). Current-source cross-platform CI is
-PASS at `afd760fc3dcaa27ec3d7050289291568fe69a8cc`, run 37567388625, including
+PASS at `a39920564561f75ada08cba8a47244bec9074345`, run 37569756071, including
 strict workspace Clippy on both OSes. See
-`evidence/m1/m1-public-metadata-final-review-20261007.md`. Human review remains OPEN.
+`evidence/m1/m1-public-metadata-final-review-20261007.md` and the newer
+`evidence/m1/m1-final-review-20261007.md`. Owner acknowledgment remains OPEN.
+
+**Latest M1 review update (2026-10-07):** A final Codex review found that loss of
+an initialized sequence counter could permit reuse after `initialize()` recreated
+it at zero. Fixed at source `a39920564561f75ada08cba8a47244bec9074345` by committing
+a durable per-device initialization marker before the initial counter; marker plus
+missing counter now fails closed. Current-source final CI run
+[37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071) is
+PASS (Windows/macOS readiness + Windows IPC ACL; unsigned package skipped by design).
+Review record: `evidence/m1/m1-final-review-20261007.md`. Owner acknowledgment of
+the review remains OPEN; M1 is not complete or merged.
 
 **Current status (2026-10-07):** M0 Foundation is COMPLETE and integrated at
 `8de3c8f91497cf21d503b9b1bdc5566716d88dc0` on `origin/m0/foundation` (PR #5).
 M1 - Brain + Device Identity is on `m1/brain-device-identity`; current CI candidate is
-`afd760fc3dcaa27ec3d7050289291568fe69a8cc`. Cursor was the write-capable M1 implementer; the owner has directly authorized Codex to complete this closeout follow-up.
+`a39920564561f75ada08cba8a47244bec9074345`. Cursor was the write-capable M1 implementer; the owner has directly authorized Codex to complete this closeout follow-up.
 **ADR-0015 is ACCEPTED**; **ADR-0014 is ACCEPTED** (2026-10-06) selecting **P1**
 (direct platform APIs) with product pins `windows-sys = 0.61.2`,
 `widestring = 1.2.1`, `security-framework = 3.7.0`. K2 and high-level `keyring`
 are unselected. Gate C **Windows** and **macOS** product SecureStore are VERIFIED
 (distinct host evidence under `evidence/m1/`). Required CI **PASS** on implementation
-candidate `afd760f`: run [37567388625](https://github.com/gungortarik/cryptex/actions/runs/37567388625)
+candidate `a399205`: run [37569756071](https://github.com/gungortarik/cryptex/actions/runs/37569756071)
 (Windows readiness, macOS readiness, Windows cross-account IPC ACL; unsigned Windows
-package job skipped by design). M1 is **not** complete: **human review remains open**
+package job skipped by design). M1 is **not** complete: **owner acknowledgment remains open**
 (see audit DoD checklist).
 
 **M1 status:** ADR-0015 ACCEPTED (2026-10-05). ADR-0014 ACCEPTED (2026-10-06, P1).
@@ -52,16 +63,16 @@ Gate A spike remains historical comparison only. Prior Windows tests, strict Cli
 for the install-identity staging/rollback follow-up pass locally (94 cryptexd tests);
 The latest metadata and sequence corrections are verified by both-OS CI; Unix-specific
 install rollback-sync tests and Windows/macOS readiness passed in CI run
-37567388625. Human review + full M1 completion gate remain open.
+37569756071. Codex final review is recorded; owner acknowledgment + full M1 completion gate remain open.
 Production pairing/revocation remains M8; Recovery Kit container remains M11.
 No custom cryptography.
 
 **M1 audit (2026-10-06):** Sequence allocation and install identity are daemon-owned
 (`evidence/m1/m1-scope-security-audit-20261006.md`). Brain public identity first-create is exclusive/no-replace; install-identity staging
 cleanup and Unix rollback durability now match that hardened path (see audit). Final CI
-PASS on candidate `afd760f` is recorded (run 37567388625). The accepted M1 lifecycle and placement boundary is documented in
-ADR-0015 §2.1.1 and the audit. M1 is **not** complete until **human review** is recorded
-complete. Do not merge as M1 completion or start M2 while that gate is open.
+PASS on candidate `a399205` is recorded (run 37569756071). The accepted M1 lifecycle and placement boundary is documented in
+ADR-0015 §2.1.1 and the audit. Codex's final review is recorded, but owner acknowledgment
+remains open. Do not declare M1 complete or start M2 while that gate is open.
 
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
@@ -80,7 +91,8 @@ present-day decisions.
   cannot be produced locally; avoid redundant progress runs.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows and macOS product SecureStore both VERIFIED 2026-10-06 (separate host evidence). Current candidate CI PASS: run 37567388625 @ `afd760f`; human review is required before M1 complete.
+- Codex final review is recorded at `evidence/m1/m1-final-review-20261007.md`; do not label it owner/human review until the owner acknowledges the review summary.
+- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows and macOS product SecureStore both VERIFIED 2026-10-06 (separate host evidence). Current candidate CI PASS: run 37569756071 @ `a399205`; owner acknowledgment is required before M1 complete.
 
 ## P0-1 status
 
