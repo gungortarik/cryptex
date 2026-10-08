@@ -63,6 +63,32 @@ pub fn fail_after_seal_before_tip() {
     FAIL_AFTER_SEAL_BEFORE_TIP.with(|f| f.set(true));
 }
 
+#[cfg(test)]
+struct BeforeDeviceLockHook {
+    thread_id: std::thread::ThreadId,
+    hook: std::sync::Arc<dyn Fn() + Send + Sync>,
+}
+
+#[cfg(test)]
+static BEFORE_DEVICE_LOCK_EXCLUSIVE: std::sync::Mutex<Option<BeforeDeviceLockHook>> =
+    std::sync::Mutex::new(None);
+
+/// Test-only: run `hook` on `thread_id` after opening `writer.lock`, before `lock_exclusive`.
+/// Scoped to one thread so parallel tests are not blocked.
+#[cfg(test)]
+pub(crate) fn set_before_device_lock_exclusive_hook(
+    thread_id: Option<std::thread::ThreadId>,
+    hook: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
+) {
+    let mut slot = BEFORE_DEVICE_LOCK_EXCLUSIVE
+        .lock()
+        .expect("lock hook mutex");
+    *slot = match (thread_id, hook) {
+        (Some(thread_id), Some(hook)) => Some(BeforeDeviceLockHook { thread_id, hook }),
+        _ => None,
+    };
+}
+
 #[derive(Debug, Clone)]
 pub struct CanonicalWriterConfig {
     /// Tunable seal threshold (not a protocol constant).
@@ -197,19 +223,30 @@ pub struct AppendMemoryNoteArgs<'a> {
 ///
 /// Held across reconcile/recover/append on the writer path and across discovery,
 /// active-open recovery, and verified scan/callback on the reader path.
+/// Crate-private: not a supported external API surface.
 #[derive(Debug)]
-pub struct DeviceCanonicalLock {
+pub(crate) struct DeviceCanonicalLock {
+    device_id: DeviceId,
     _file: File,
+}
+
+impl DeviceCanonicalLock {
+    pub(crate) fn device_id(&self) -> &DeviceId {
+        &self.device_id
+    }
 }
 
 /// Acquire the per-device exclusive canonical lock.
 ///
-/// Always creates the device directory and `writer.lock` first so a reader cannot
-/// skip locking merely because packs do not exist yet (first-create race).
-pub fn acquire_device_canonical_lock(
+/// Enforces the repository-boundary check before any filesystem mutation.
+/// Then creates the device directory and `writer.lock` so a reader cannot skip
+/// locking merely because packs do not exist yet (first-create race).
+pub(crate) fn acquire_device_canonical_lock(
     runtime_root: &Path,
     device_id: &DeviceId,
 ) -> CanonicalWriterResult<DeviceCanonicalLock> {
+    assert_outside_repository(runtime_root)
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
     let device_dir = canonical_events_device_dir(runtime_root, device_id);
     fs::create_dir_all(&device_dir).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
     let lock_path = device_dir.join("writer.lock");
@@ -220,9 +257,29 @@ pub fn acquire_device_canonical_lock(
         .write(true)
         .open(&lock_path)
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    #[cfg(test)]
+    {
+        let hook = BEFORE_DEVICE_LOCK_EXCLUSIVE
+            .lock()
+            .expect("lock hook mutex")
+            .as_ref()
+            .and_then(|entry| {
+                if entry.thread_id == std::thread::current().id() {
+                    Some(std::sync::Arc::clone(&entry.hook))
+                } else {
+                    None
+                }
+            });
+        if let Some(hook) = hook {
+            hook();
+        }
+    }
     fs2::FileExt::lock_exclusive(&file)
         .map_err(|e| CanonicalWriterError::Path(format!("device canonical lock failed: {e}")))?;
-    Ok(DeviceCanonicalLock { _file: file })
+    Ok(DeviceCanonicalLock {
+        device_id: device_id.clone(),
+        _file: file,
+    })
 }
 
 pub fn append_memory_note<S: SecureStore>(
@@ -240,10 +297,10 @@ pub fn append_memory_note<S: SecureStore>(
 }
 
 /// Append a `memory.note` while `lock` is already held for `args.device_id`.
-pub fn append_memory_note_with_lock<S: SecureStore>(
+pub(crate) fn append_memory_note_with_lock<S: SecureStore>(
     store: &S,
     env: SecureStoreEnvironment,
-    _lock: &DeviceCanonicalLock,
+    lock: &DeviceCanonicalLock,
     args: AppendMemoryNoteArgs<'_>,
 ) -> CanonicalWriterResult<AppendOutcome> {
     let AppendMemoryNoteArgs {
@@ -254,6 +311,11 @@ pub fn append_memory_note_with_lock<S: SecureStore>(
         text,
         config,
     } = args;
+    if lock.device_id() != device_id {
+        return Err(CanonicalWriterError::Invalid(
+            "device canonical lock does not match append device_id".into(),
+        ));
+    }
     parse_uuid_str(brain_id).map_err(|e| CanonicalWriterError::Invalid(e.to_string()))?;
     let payload = MemoryNotePayload::new(text)?;
 
@@ -896,18 +958,23 @@ where
 ///
 /// Callers that also open a SQLite transaction must acquire the device lock
 /// *before* beginning that transaction (lock order: device → SQLite).
-pub fn for_each_verified_event_with_lock<S, F>(
+pub(crate) fn for_each_verified_event_with_lock<S, F>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
     device_id: &DeviceId,
-    _lock: &DeviceCanonicalLock,
+    lock: &DeviceCanonicalLock,
     mut on_event: F,
 ) -> CanonicalWriterResult<()>
 where
     S: SecureStore,
     F: FnMut(&AcceptedEvent) -> CanonicalWriterResult<()>,
 {
+    if lock.device_id() != device_id {
+        return Err(CanonicalWriterError::Invalid(
+            "device canonical lock does not match verified-reader device_id".into(),
+        ));
+    }
     let (sealed, open) = discover_segments(runtime_root, device_id)?;
     let packs_present = !sealed.is_empty() || open.is_some();
     let ready = ensure_event_signing_key(store, env, runtime_root, device_id, &[], packs_present)?;
@@ -1141,6 +1208,77 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, CanonicalWriterError::Path(_)), "{err}");
+        assert!(
+            !repoish.exists(),
+            "rejected runtime root must not create directories"
+        );
+        assert!(
+            !canonical_events_device_dir(&repoish, &device).exists(),
+            "rejected root must leave no canonical device directory"
+        );
+    }
+
+    #[test]
+    fn verified_reader_rejects_repo_root_without_creating_device_dir() {
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("writer-device-repo-read").unwrap();
+        let repoish = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("would-be-reader-runtime");
+        let err = for_each_verified_event(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &repoish,
+            &device,
+            |_| Ok(()),
+        )
+        .unwrap_err();
+        assert!(matches!(err, CanonicalWriterError::Path(_)), "{err}");
+        assert!(!repoish.exists());
+        assert!(!canonical_events_device_dir(&repoish, &device).exists());
+        assert!(
+            !acquire_device_canonical_lock(&repoish, &device).is_ok(),
+            "direct acquire must also refuse"
+        );
+        assert!(!canonical_events_device_dir(&repoish, &device).exists());
+    }
+
+    #[test]
+    fn locked_helpers_reject_device_id_mismatch() {
+        let root = temp_root("lock-mismatch");
+        let store = FakeSecureStore::new();
+        let device_a = DeviceId::new("writer-device-a-lock").unwrap();
+        let device_b = DeviceId::new("writer-device-b-lock").unwrap();
+        let brain = "55555555-5555-4555-8555-555555555555";
+        let cfg = CanonicalWriterConfig {
+            seal_event_threshold: 1000,
+        };
+        let lock_a = acquire_device_canonical_lock(&root, &device_a).unwrap();
+        let err = append_memory_note_with_lock(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &lock_a,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device_b,
+                classification: Classification::Internal,
+                text: "wrong-device",
+                config: &cfg,
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(err, CanonicalWriterError::Invalid(_)), "{err}");
+        let err = for_each_verified_event_with_lock(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device_b,
+            &lock_a,
+            |_| Ok(()),
+        )
+        .unwrap_err();
+        assert!(matches!(err, CanonicalWriterError::Invalid(_)), "{err}");
+        drop(lock_a);
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -1313,19 +1451,25 @@ mod tests {
         assert!(open_path.is_file());
         let before_len = fs::metadata(&open_path).unwrap().len();
 
-        let gate = Arc::new(Barrier::new(3));
-        let release = Arc::new(Barrier::new(2));
+        // Ordering handshakes:
+        // 1) writer_holding: writer owns lock + incomplete trailing bytes
+        // 2) reader_start: main allows reader to enter for_each/acquire
+        // 3) reader_at_lock: test hook fires after open(lock file), before lock_exclusive
+        // 4) writer_release: writer may finish append and drop the lock
+        let writer_holding = Arc::new(Barrier::new(2));
+        let reader_start = Arc::new(Barrier::new(2));
+        let reader_at_lock = Arc::new(Barrier::new(2));
+        let writer_release = Arc::new(Barrier::new(2));
         let reader_finished = Arc::new(AtomicBool::new(false));
 
         let writer_root = root.clone();
         let writer_device = device.clone();
         let writer_store = Arc::clone(&store);
-        let writer_gate = Arc::clone(&gate);
-        let writer_release = Arc::clone(&release);
+        let writer_holding_b = Arc::clone(&writer_holding);
+        let writer_release_b = Arc::clone(&writer_release);
         let writer_open_path = open_path.clone();
         let writer = thread::spawn(move || {
             let lock = acquire_device_canonical_lock(&writer_root, &writer_device).unwrap();
-            // Simulate an in-progress append: trailing incomplete bytes.
             {
                 let mut file = OpenOptions::new()
                     .append(true)
@@ -1334,14 +1478,11 @@ mod tests {
                 file.write_all(&[0xA5; 19]).unwrap();
                 file.sync_all().unwrap();
             }
-            let mid_len = fs::metadata(&writer_open_path).unwrap().len();
-            assert!(mid_len > before_len);
+            assert!(fs::metadata(&writer_open_path).unwrap().len() > before_len);
 
-            writer_gate.wait();
-            writer_release.wait();
+            writer_holding_b.wait();
+            writer_release_b.wait();
 
-            // Finish the append under the same exclusive lock: restore a consistent
-            // prefix, then write the completed note before releasing.
             {
                 let file = OpenOptions::new()
                     .write(true)
@@ -1370,10 +1511,10 @@ mod tests {
         let reader_root = root.clone();
         let reader_device = device.clone();
         let reader_store = Arc::clone(&store);
-        let reader_gate = Arc::clone(&gate);
+        let reader_start_b = Arc::clone(&reader_start);
         let reader_finished_flag = Arc::clone(&reader_finished);
         let reader = thread::spawn(move || {
-            reader_gate.wait();
+            reader_start_b.wait();
             for_each_verified_event(
                 reader_store.as_ref(),
                 SecureStoreEnvironment::Dev,
@@ -1385,18 +1526,28 @@ mod tests {
             reader_finished_flag.store(true, Ordering::SeqCst);
         });
 
-        gate.wait();
-        // Writer holds the device lock with incomplete trailing bytes; reader must block.
-        assert!(
-            !reader_finished.load(Ordering::SeqCst),
-            "reader must not finish while writer holds the device lock"
-        );
+        // Writer holds exclusive lock with in-progress trailing bytes.
+        writer_holding.wait();
         let mid_len = fs::metadata(&open_path).unwrap().len();
-        assert!(
-            mid_len > before_len,
-            "in-progress append bytes must still be present"
+        assert!(mid_len > before_len);
+
+        // Install a thread-scoped handshake only after the writer owns the lock.
+        // Scoped to the reader thread so parallel tests are unaffected.
+        let at_lock = Arc::clone(&reader_at_lock);
+        set_before_device_lock_exclusive_hook(
+            Some(reader.thread().id()),
+            Some(Arc::new(move || {
+                at_lock.wait();
+            })),
         );
 
+        // Allow reader to enter for_each/acquire; barrier proves it reached the lock site.
+        reader_start.wait();
+        reader_at_lock.wait();
+        assert!(
+            !reader_finished.load(Ordering::SeqCst),
+            "reader must still be blocked on the shared device lock"
+        );
         let lock_path = canonical_events_device_dir(&root, &device).join("writer.lock");
         let probe = OpenOptions::new()
             .create(false)
@@ -1404,26 +1555,25 @@ mod tests {
             .write(true)
             .open(&lock_path)
             .unwrap();
-        let probe_err = fs2::FileExt::try_lock_exclusive(&probe);
         assert!(
-            probe_err.is_err(),
-            "device lock must still be held exclusively by the writer"
+            fs2::FileExt::try_lock_exclusive(&probe).is_err(),
+            "device lock must remain held by the writer while the reader waits"
         );
         assert_eq!(
             fs::metadata(&open_path).unwrap().len(),
             mid_len,
-            "verified reader must not recover/truncate while the writer holds the lock"
+            "verified reader must not recover/truncate while blocked on the lock"
         );
-        assert!(!reader_finished.load(Ordering::SeqCst));
 
-        release.wait();
+        writer_release.wait();
         writer.join().expect("writer thread");
         reader.join().expect("reader thread");
+        set_before_device_lock_exclusive_hook(None, None);
         assert!(reader_finished.load(Ordering::SeqCst));
 
         let events =
             load_verified_events(store.as_ref(), SecureStoreEnvironment::Dev, &root, &device)
-                .expect("append must remain verifiable");
+                .expect("completed append must remain verifiable");
         assert_eq!(events.len(), 2);
         match &events[1].payload {
             cryptex_events::envelope::EventPayload::MemoryNote(p) => {

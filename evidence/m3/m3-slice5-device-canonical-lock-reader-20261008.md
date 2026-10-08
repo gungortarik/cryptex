@@ -40,3 +40,7 @@ macOS projection/feed/rebuild/lock smoke remains **pending** until actually run 
 ## Continuation
 
 Do not start Slice 6 until this blocking fix is reviewed.
+
+## Follow-up
+
+Visibility/boundary/handshake hardening: `evidence/m3/m3-slice5-device-lock-visibility-boundary-handshake-20261008.md`.
