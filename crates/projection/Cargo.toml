@@ -7,3 +7,4 @@ publish = false
 description = "Cryptex disposable local SQLite/FTS projection helpers (M3; derived state only)"
 
 [dependencies]
+rusqlite = { workspace = true }

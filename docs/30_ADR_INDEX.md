@@ -69,7 +69,7 @@ M2 — Immutable Event Store is **COMPLETE within its accepted scope** and integ
 
 ## 4.3 M3 gate
 
-M3 - Local Projection + Search has a completed Phase 0 plan on `m3/local-projection-search`, based on the M2 merge commit above. Accepted scope: `docs/milestones/M3_LOCAL_PROJECTION_SEARCH.md`. Kickoff: `evidence/m3/m3-kickoff-plan-20261008.md`. Phase 0 plan: `evidence/m3/m3-phase0-implementation-plan-20261008.md` (ADR verdict: no new ADR required if stated boundaries hold). Product implementation has not started. Slice 1 scaffolding is recorded at `evidence/m3/m3-slice1-workspace-scaffolding-20261008.md` (`cryptex-projection` paths only; no SQLite pin). M3 code must preserve canonical-event authority and keep SQLite/FTS rebuildable and disposable.
+M3 - Local Projection + Search is in progress on `m3/local-projection-search`, based on the M2 merge commit above. Accepted scope: `docs/milestones/M3_LOCAL_PROJECTION_SEARCH.md`. Kickoff: `evidence/m3/m3-kickoff-plan-20261008.md`. Phase 0 plan: `evidence/m3/m3-phase0-implementation-plan-20261008.md` (ADR verdict: no new ADR required if stated boundaries hold). Slice 1 scaffolding is complete (`evidence/m3/m3-slice1-workspace-scaffolding-20261008.md`). Slice 2 SQLite/FTS5 pin + smoke is complete (`evidence/m3/m3-slice2-sqlite-fts5-pin-20261008.md`; `rusqlite =0.40.2` bundled). Projection schema/ingest/search APIs are not started. M3 code must preserve canonical-event authority and keep SQLite/FTS rebuildable and disposable.
 
 ## 5. ADR source records
 
