@@ -186,6 +186,8 @@ Do not merge or declare M3 complete until this finding is closed and final human
 
 ## Follow-up (corruption class codes only)
 
+**Corruption-class tip:** `6b61882dce0814abd51fbf063c69d7775c483e37`
+
 Closed the post-gate finding: `map_fts_integrity_sqlite_error` and `map_open_sqlite_error` classify replaceable `CorruptDb` only from SQLite error/extended-code classes (`DatabaseCorrupt`, `NotADatabase`, and `SQLITE_CORRUPT_VTAB` extended code `267`). Diagnostic message substrings (`malformed`, `corrupt`, `integrity-check`, `not a database`) are ignored.
 
 Regressions:
