@@ -1,6 +1,6 @@
 # M4 Slice 1 — Strict V2 Reader and Compatibility Boundary
 
-**Status:** IMPLEMENTED; local Windows verification PASS; cross-platform final gate pending
+**Status:** IMPLEMENTED; Windows and macOS local verification PASS; final dual-OS Actions gate pending
 **Branch:** `m4/knowledge-engine`
 **Code commit:** `2a382eb876d5646ff3e504dc3918423fa1594735`
 **Base:** ADR-0017 documentation acceptance commit `ee7e173b903574e914a1471edb37398446efef81`
@@ -45,6 +45,21 @@ All commands below ran on Windows using
 | `cargo clippy --locked -p cryptex-events -p cryptex-storage -p cryptexd --all-targets -- -D warnings` | PASS |
 | `git diff --check` | PASS |
 
+Owner-reported macOS verification was completed on the exact branch tip
+`f8008e37fe5927d61ca63ca10f5977a8d2418a53` (macOS 27.0.1 / build 26A434 /
+arm64; clean working tree):
+
+| Command | Result |
+|---|---|
+| `cargo fmt --all -- --check` | PASS |
+| `cargo test --locked -p cryptex-events` | PASS — 45/45 |
+| `cargo test --locked -p cryptex-storage` | PASS — 38/38 |
+| `cargo test --locked -p cryptexd --lib canonical_writer:: -- --test-threads=8` | PASS — 21/21 |
+| Strict Clippy for events/storage/cryptexd | PASS |
+
+The Windows storage suite reported 39 tests and macOS reported 38; both full
+platform runs passed. Platform-specific test inventory differs.
+
 The focused regressions cover v1 golden compatibility and strict v1 rejection
 of v2 fields; v2 signature tampering; known-pending, verified-unsupported, and
 unverifiable classification; v1→v2→v1 chain links with sequence gaps; unknown
@@ -59,9 +74,9 @@ continuation; retrieval blocking; and append-after-verified-unsupported.
 - Direct M3 SQLite/FTS and Desktop retrieval do not yet consume a shared
   `RetrievalSafetyState`. M4 Slice 5 must enforce it before M4 completion; a
   Brain-wide hold must override ordinary search.
-- This is Windows-local evidence only. macOS parity and the required single
-  dual-OS Actions run remain for the reviewed final M4 candidate; Actions were
-  not run for this slice.
+- Windows and macOS local slice checks passed. The required single dual-OS
+  Actions run remains for the reviewed final M4 candidate; Actions were not run
+  for this slice.
 - No M4 SQLite changes, M8/M10/M14 behavior, real user memory, or retained
   personal/Cortex data was used.
 
