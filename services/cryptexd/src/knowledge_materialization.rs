@@ -145,7 +145,18 @@ pub fn rebuild_knowledge_from_canonical<R: TrustedDaemonKeyResolver>(
             ))
         },
     )?;
-    let progress = build_progress(&devices, history.records(), &frames, &state.pending);
+    let progress = build_progress(
+        &devices,
+        history.records(),
+        &frames,
+        &state.pending,
+        &history
+            .assertions()
+            .iter()
+            .map(|assertion| assertion.event().event_id.clone())
+            .collect::<Vec<_>>(),
+        &state.materialized_event_ids,
+    );
     // Migrate only after the complete canonical set verified, so an unknown or
     // unverifiable envelope leaves both canonical packs and M3/M4 DB untouched.
     migrate_knowledge_schema(db.connection_mut())?;
@@ -458,15 +469,34 @@ fn build_progress(
     records: &[VersionedRecord],
     frames: &[RawFrame],
     pending: &[cryptex_knowledge::PendingDependency],
+    supported_event_ids: &[String],
+    materialized_event_ids: &[String],
 ) -> Vec<DeviceMaterializationProgress> {
-    let pending_ids: std::collections::BTreeSet<&str> =
-        pending.iter().map(|item| item.event_id.as_str()).collect();
-    let unsupported_ids: std::collections::BTreeSet<&str> = records
+    let pending_ids: std::collections::BTreeSet<String> = pending
+        .iter()
+        .map(|item| item.event_id.to_ascii_lowercase())
+        .collect();
+    let materialized_ids: std::collections::BTreeSet<String> = materialized_event_ids
+        .iter()
+        .map(|event_id| event_id.to_ascii_lowercase())
+        .collect();
+    let unsupported_ids: std::collections::BTreeSet<String> = records
         .iter()
         .filter_map(|record| match record {
-            VersionedRecord::VerifiedUnsupported(event) => Some(event.event_id.as_str()),
+            VersionedRecord::VerifiedUnsupported(event) => {
+                Some(event.event_id.to_ascii_lowercase())
+            }
             _ => None,
         })
+        .collect();
+    // Supported v2 records omitted by the reducer are not safe progress. This
+    // includes semantically invalid records retained as reviewable conflicts;
+    // conservatively stop the contiguous watermark instead of implying that
+    // their semantics were successfully materialized.
+    let unmaterialized_supported_ids: std::collections::BTreeSet<String> = supported_event_ids
+        .iter()
+        .map(|event_id| event_id.to_ascii_lowercase())
+        .filter(|event_id| !materialized_ids.contains(event_id))
         .collect();
     let mut output = Vec::with_capacity(devices.len());
     for device in devices {
@@ -479,8 +509,10 @@ fn build_progress(
             .collect();
         let integrity_position = indexes.last().map(|index| frames[*index].position.clone());
         let first_blocker = indexes.iter().position(|index| {
-            let event_id = frames[*index].position.event_id.as_str();
-            pending_ids.contains(event_id) || unsupported_ids.contains(event_id)
+            let event_id = frames[*index].position.event_id.to_ascii_lowercase();
+            pending_ids.contains(&event_id)
+                || unsupported_ids.contains(&event_id)
+                || unmaterialized_supported_ids.contains(&event_id)
         });
         let safe_index = first_blocker.unwrap_or(indexes.len());
         let safe_position = safe_index
@@ -488,9 +520,14 @@ fn build_progress(
             .and_then(|last| indexes.get(last))
             .map(|index| frames[*index].position.clone());
         let blocking_reason = first_blocker.map(|position| {
-            let event_id = frames[indexes[position]].position.event_id.as_str();
-            if unsupported_ids.contains(event_id) {
+            let event_id = frames[indexes[position]]
+                .position
+                .event_id
+                .to_ascii_lowercase();
+            if unsupported_ids.contains(&event_id) {
                 "verified_unsupported_event".to_owned()
+            } else if unmaterialized_supported_ids.contains(&event_id) {
+                "unmaterialized_supported_event".to_owned()
             } else {
                 "pending_dependency".to_owned()
             }
@@ -608,7 +645,7 @@ mod tests {
             target_id: "missing-event".into(),
             reason: "missing_assertion",
         };
-        let progress = build_progress(&[device], &[], &frames, &[pending]);
+        let progress = build_progress(&[device], &[], &frames, &[pending], &[], &[]);
         assert_eq!(
             progress[0].integrity_position,
             Some(frames[2].position.clone())
@@ -617,6 +654,42 @@ mod tests {
         assert_eq!(
             progress[0].blocking_reason.as_deref(),
             Some("pending_dependency")
+        );
+    }
+
+    #[test]
+    fn supported_event_omitted_by_reducer_blocks_safe_watermark() {
+        let device = DeviceId::new("invalid-semantics-device").unwrap();
+        let frames = [1, 2, 3].map(|index| RawFrame {
+            position: CanonicalFramePosition {
+                event_id: format!("event-{index}"),
+                device_id: device.as_str().to_owned(),
+                pack_index: 0,
+                frame_offset: (index - 1) * 100,
+                content_hash: format!("hash-{index}"),
+            },
+            bytes: Vec::new(),
+        });
+
+        // `event-2` is a supported signed v2 record whose semantics were not
+        // accepted by the reducer (for example, a wrong-kind reference).
+        let progress = build_progress(
+            &[device],
+            &[],
+            &frames,
+            &[],
+            &["event-2".into()],
+            &["event-1".into()],
+        );
+
+        assert_eq!(
+            progress[0].integrity_position,
+            Some(frames[2].position.clone())
+        );
+        assert_eq!(progress[0].safe_position, Some(frames[0].position.clone()));
+        assert_eq!(
+            progress[0].blocking_reason.as_deref(),
+            Some("unmaterialized_supported_event")
         );
     }
 
@@ -657,7 +730,7 @@ mod tests {
                 content_hash: cryptex_events::ContentHashHex::parse(&"22".repeat(32)).unwrap(),
                 raw_record: b"verified unsupported synthetic record".to_vec(),
             });
-        let progress = build_progress(&[device], &[unsupported], &frames, &[]);
+        let progress = build_progress(&[device], &[unsupported], &frames, &[], &[], &[]);
         assert_eq!(
             progress[0].integrity_position,
             Some(frames[2].position.clone())
