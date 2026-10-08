@@ -496,7 +496,7 @@ mod tests {
         fs::write(
             local_device_identity_path(&root),
             format!(
-                "{{\"schema_version\":1,\"brain_id\":\"{}\",\"device_id\":\"../bad\"}}\\n",
+                "{{\"schema_version\":1,\"brain_id\":\"{}\",\"device_id\":\"../bad\"}}\n",
                 enrolled.brain_id
             ),
         )
