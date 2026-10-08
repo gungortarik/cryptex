@@ -18,7 +18,7 @@
 **M3 Slice 6:** `evidence/m3/m3-slice6-search-api-20261008.md` - `search_events` FTS + conjunction metadata filters; UTC `created_at` ranges; `InvalidQuery` for bad FTS/bounds.
 **M3 Slice 6 follow-up:** `evidence/m3/m3-slice6-fractional-instant-precision-20261008.md` - exact UTC instants (incl. fractional seconds) for search range + ordering via `rfc3339_utc_instant`; no new stored column.
 **M3 Slice 7:** `evidence/m3/m3-slice7-cross-platform-ci-wire-20261008.md` - CI readiness wires `cryptex-projection` + `cryptexd` `projection::`; sealed/open + multi-device + idempotent rebuild matrix coverage; Windows-local PASS; macOS owner commands prepared; **no Actions dispatched**.
-**M3 Slice 7 tip (Windows-local; macOS pending):** `176195af4e70f734ab465a09589c000201d785a0`
+**M3 Slice 7 tip (Windows-local; macOS pending):** `0db76c2097d9c5e843fe2d3d60a21a8b8061afe3`
 **Latest verified candidate SHA:** `9ade9f7db18ec0e383594c19e592809e3b194531` (`9ade9f7`), on `m2/immutable-event-store`.
 **Final dual-OS CI:** PASS in run [37706283147](https://github.com/gungortarik/cryptex/actions/runs/37706283147) against the exact candidate SHA above. macOS and Windows readiness plus Windows IPC ACL succeeded; unsigned Windows package skipped by design. Record: `evidence/m2/m2-final-ci-gate-20261008.md`.
 **Closeout audit tip (L1/L2/F4–F6 + staging ownership):** behavior `b5c9d69`, tip `1a26493` — `evidence/m2/m2-staging-cleanup-ownership-20261007.md`. Windows checks PASS; owner-reported macOS four-check PASS at `9ade9f7` is recorded in the final-gate evidence. Owner-delegated closeout review PASS is recorded at `evidence/m2/m2-owner-delegated-review-20261008.md`; PR #8 integration completed at `817b6a1`. `LongPathsEnabled=0` is not claimed.
