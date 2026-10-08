@@ -1,13 +1,19 @@
-//! cryptexd-owned projection of verified canonical events (M3 Slice 4).
+//! cryptexd-owned projection of verified canonical events (M3 Slice 4/5).
 //!
 //! Reads only through [`crate::canonical_writer::for_each_verified_event`].
 //! Never parses `.open`/`.seg` outside that path and never mutates canonical packs
-//! for projection purposes.
+//! for projection purposes. Checkpoints advance in the same SQLite transaction as
+//! projected rows.
 
+use std::fs;
 use std::path::Path;
 
 use cryptex_core::ids::DeviceId;
-use cryptex_projection::{ProjectionDb, ProjectionError, project_memory_note};
+use cryptex_projection::{
+    DeviceCheckpoint, ProjectionDb, ProjectionError, ProjectionOpenKind, clear_device_projection,
+    project_memory_note, read_device_checkpoint, upsert_device_checkpoint,
+};
+use cryptex_storage::layout::{active_segment_path, canonical_events_device_dir};
 
 use crate::canonical_writer::{CanonicalWriterError, for_each_verified_event};
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
@@ -51,10 +57,38 @@ impl From<ProjectionError> for ProjectionFeedError {
 
 pub type ProjectionFeedResult<T> = Result<T, ProjectionFeedError>;
 
+/// Why a device projection was fully rebuilt instead of incremented.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectionRebuildReason {
+    /// No checkpoint row yet (first catch-up / empty DB).
+    MissingCheckpoint,
+    /// Checkpoint tip not found in verified packs (ahead / unknown hash/seq).
+    CheckpointUnknownOrAhead,
+    /// Caller requested a full rebuild.
+    Forced,
+}
+
+/// Outcome of syncing one device's projection to the verified tip.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceProjectionSync {
+    pub projected_events: u64,
+    pub rebuilt: bool,
+    pub rebuild_reason: Option<ProjectionRebuildReason>,
+}
+
+/// Open the disposable projection DB, replacing corrupt/stale/unsupported files.
+///
+/// Canonical packs are never modified by this function.
+pub fn open_projection_db(
+    runtime_root: &Path,
+) -> ProjectionFeedResult<(ProjectionDb, ProjectionOpenKind)> {
+    Ok(ProjectionDb::open_replacing_unusable(runtime_root)?)
+}
+
 /// Project one device's verified `memory.note` events into `db` in a single transaction.
 ///
-/// Canonical packs remain read-only aside from M2 recover/quarantine performed by
-/// the verified reader. Checkpoint advancement is deferred to a later slice.
+/// Projects the full verified feed (idempotent inserts) and advances the device
+/// checkpoint to the verified tip in the same transaction.
 pub fn project_verified_device_events<S: SecureStore>(
     store: &S,
     env: SecureStoreEnvironment,
@@ -62,17 +96,177 @@ pub fn project_verified_device_events<S: SecureStore>(
     device_id: &DeviceId,
     db: &ProjectionDb,
 ) -> ProjectionFeedResult<u64> {
+    let report = run_device_projection(
+        store,
+        env,
+        runtime_root,
+        device_id,
+        db,
+        DeviceProjectMode::FullIdempotent,
+    )?;
+    Ok(report.projected_events)
+}
+
+/// Full rebuild for one device: clear disposable rows, project verified feed, checkpoint.
+pub fn rebuild_device_projection<S: SecureStore>(
+    store: &S,
+    env: SecureStoreEnvironment,
+    runtime_root: &Path,
+    device_id: &DeviceId,
+    db: &ProjectionDb,
+) -> ProjectionFeedResult<DeviceProjectionSync> {
+    run_device_projection(
+        store,
+        env,
+        runtime_root,
+        device_id,
+        db,
+        DeviceProjectMode::Rebuild {
+            reason: ProjectionRebuildReason::Forced,
+        },
+    )
+}
+
+/// Incremental catch-up from checkpoint; rebuilds disposable state if the checkpoint
+/// is missing, unknown, or ahead of verified packs.
+pub fn catch_up_device_projection<S: SecureStore>(
+    store: &S,
+    env: SecureStoreEnvironment,
+    runtime_root: &Path,
+    device_id: &DeviceId,
+    db: &ProjectionDb,
+) -> ProjectionFeedResult<DeviceProjectionSync> {
+    let checkpoint = read_device_checkpoint(db.connection(), device_id.as_str())
+        .map_err(ProjectionFeedError::Projection)?;
+    match checkpoint {
+        None => run_device_projection(
+            store,
+            env,
+            runtime_root,
+            device_id,
+            db,
+            DeviceProjectMode::Rebuild {
+                reason: ProjectionRebuildReason::MissingCheckpoint,
+            },
+        ),
+        Some(cp) => {
+            match run_device_projection(
+                store,
+                env,
+                runtime_root,
+                device_id,
+                db,
+                DeviceProjectMode::Incremental { checkpoint: cp },
+            ) {
+                Err(ProjectionFeedError::Projection(ProjectionError::SchemaInconsistent {
+                    detail,
+                })) if detail == CHECKPOINT_REBUILD_SIGNAL => run_device_projection(
+                    store,
+                    env,
+                    runtime_root,
+                    device_id,
+                    db,
+                    DeviceProjectMode::Rebuild {
+                        reason: ProjectionRebuildReason::CheckpointUnknownOrAhead,
+                    },
+                ),
+                other => other,
+            }
+        }
+    }
+}
+
+const CHECKPOINT_REBUILD_SIGNAL: &str = "checkpoint unknown or ahead of verified packs";
+
+enum DeviceProjectMode {
+    Rebuild {
+        reason: ProjectionRebuildReason,
+    },
+    Incremental {
+        checkpoint: DeviceCheckpoint,
+    },
+    /// Project the full verified feed with idempotent inserts (no row clear).
+    FullIdempotent,
+}
+
+fn run_device_projection<S: SecureStore>(
+    store: &S,
+    env: SecureStoreEnvironment,
+    runtime_root: &Path,
+    device_id: &DeviceId,
+    db: &ProjectionDb,
+    mode: DeviceProjectMode,
+) -> ProjectionFeedResult<DeviceProjectionSync> {
     let conn = db.connection();
     let tx = conn
         .unchecked_transaction()
         .map_err(ProjectionError::from)?;
+
+    let (rebuild_reason, start_checkpoint, force_full) = match &mode {
+        DeviceProjectMode::Rebuild { reason } => {
+            clear_device_projection(&tx, device_id.as_str())?;
+            (Some(reason.clone()), None, true)
+        }
+        DeviceProjectMode::Incremental { checkpoint } => (None, Some(checkpoint.clone()), false),
+        DeviceProjectMode::FullIdempotent => (None, None, true),
+    };
+
     let mut projected = 0u64;
-    // Stash typed projection failures so they are not re-labeled as canonical.
+    let mut tip_seq: Option<String> = start_checkpoint
+        .as_ref()
+        .and_then(|c| c.last_device_seq.clone());
+    let mut tip_hash: Option<String> = start_checkpoint
+        .as_ref()
+        .and_then(|c| c.last_content_hash.clone());
+    let mut past_checkpoint = force_full || start_checkpoint.is_none();
+    let mut found_checkpoint = force_full || start_checkpoint.is_none();
+    let mut checkpoint_invalid = false;
     let mut projection_err: Option<ProjectionError> = None;
+
+    let expected_seq = start_checkpoint
+        .as_ref()
+        .and_then(|c| c.last_device_seq.as_deref())
+        .and_then(|s| s.parse::<u64>().ok());
+    let expected_hash = start_checkpoint
+        .as_ref()
+        .and_then(|c| c.last_content_hash.clone());
+
     let feed_result = for_each_verified_event(store, env, runtime_root, device_id, |event| {
+        if !past_checkpoint {
+            let seq = event.device_seq.to_u64().map_err(|err| {
+                CanonicalWriterError::Invalid(format!("device_seq parse failed: {err}"))
+            })?;
+            let hash = event.content_hash.as_str();
+            let seq_matches = expected_seq == Some(seq);
+            let hash_matches = expected_hash.as_deref() == Some(hash);
+            if seq_matches && hash_matches {
+                found_checkpoint = true;
+                past_checkpoint = true;
+                tip_seq = Some(event.device_seq.as_str().to_string());
+                tip_hash = Some(hash.to_string());
+                return Ok(());
+            }
+            if seq_matches && !hash_matches {
+                checkpoint_invalid = true;
+                return Err(CanonicalWriterError::Invalid(
+                    "projection checkpoint invalid".into(),
+                ));
+            }
+            if expected_seq.is_some_and(|exp| seq > exp) {
+                checkpoint_invalid = true;
+                return Err(CanonicalWriterError::Invalid(
+                    "projection checkpoint invalid".into(),
+                ));
+            }
+            // Still before the checkpoint tip: already projected; skip.
+            return Ok(());
+        }
+
         match project_memory_note(&tx, event) {
             Ok(()) => {
                 projected = projected.saturating_add(1);
+                tip_seq = Some(event.device_seq.as_str().to_string());
+                tip_hash = Some(event.content_hash.as_str().to_string());
                 Ok(())
             }
             Err(err) => {
@@ -83,25 +277,91 @@ pub fn project_verified_device_events<S: SecureStore>(
             }
         }
     });
-    match (feed_result, projection_err.take()) {
-        (Ok(()), None) => {
+
+    if let Some(err) = projection_err.take() {
+        drop(tx);
+        return Err(ProjectionFeedError::Projection(err));
+    }
+
+    if checkpoint_invalid || (start_checkpoint.is_some() && !found_checkpoint) {
+        drop(tx);
+        return Err(ProjectionFeedError::Projection(
+            ProjectionError::SchemaInconsistent {
+                detail: CHECKPOINT_REBUILD_SIGNAL.into(),
+            },
+        ));
+    }
+
+    match feed_result {
+        Ok(()) => {
+            let (last_sealed_index, open_verified_prefix_len) =
+                pack_cursor(runtime_root, device_id).map_err(ProjectionFeedError::Canonical)?;
+            let checkpoint = DeviceCheckpoint {
+                device_id: device_id.as_str().to_string(),
+                last_device_seq: tip_seq,
+                last_content_hash: tip_hash,
+                last_sealed_index,
+                open_verified_prefix_len,
+            };
+            upsert_device_checkpoint(&tx, &checkpoint)?;
             tx.commit().map_err(ProjectionError::from)?;
-            Ok(projected)
+            Ok(DeviceProjectionSync {
+                projected_events: projected,
+                rebuilt: rebuild_reason.is_some(),
+                rebuild_reason,
+            })
         }
-        (_, Some(err)) => {
-            // Dropping `tx` without commit rolls back projected rows.
-            drop(tx);
-            Err(ProjectionFeedError::Projection(err))
-        }
-        (Err(err), None) => {
+        Err(err) => {
             drop(tx);
             Err(ProjectionFeedError::Canonical(err))
         }
     }
 }
 
+/// Best-effort pack cursor after a successful verified feed (sealed max index + open len).
+fn pack_cursor(
+    runtime_root: &Path,
+    device_id: &DeviceId,
+) -> Result<(Option<i64>, Option<i64>), CanonicalWriterError> {
+    let dir = canonical_events_device_dir(runtime_root, device_id);
+    if !dir.exists() {
+        return Ok((None, None));
+    }
+    let mut last_sealed: Option<u64> = None;
+    let mut open_idx: Option<u64> = None;
+    for entry in fs::read_dir(&dir).map_err(|e| CanonicalWriterError::Path(e.to_string()))? {
+        let entry = entry.map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if let Some(rest) = name.strip_suffix(".seg")
+            && let Ok(idx) = rest.parse::<u64>()
+        {
+            last_sealed = Some(last_sealed.map_or(idx, |cur| cur.max(idx)));
+        } else if let Some(rest) = name.strip_suffix(".open")
+            && let Ok(idx) = rest.parse::<u64>()
+        {
+            open_idx = Some(idx);
+        }
+    }
+    let open_len = if let Some(idx) = open_idx {
+        let path = active_segment_path(runtime_root, device_id, idx);
+        if path.exists() {
+            let len = fs::metadata(&path)
+                .map_err(|e| CanonicalWriterError::Path(e.to_string()))?
+                .len();
+            Some(len as i64)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    Ok((last_sealed.map(|v| v as i64), open_len))
+}
+
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::canonical_writer::{
         AppendMemoryNoteArgs, CanonicalWriterConfig, append_memory_note, load_verified_events,
@@ -109,6 +369,10 @@ mod tests {
     use crate::secure_store::FakeSecureStore;
     use crate::test_temp::exclusive_temp_dir_in;
     use cryptex_events::Classification;
+    use cryptex_projection::{
+        ProjectionReplaceReason, projection_sqlite_path, read_device_checkpoint,
+        remove_projection_files,
+    };
     use cryptex_storage::layout::quarantine_events_root;
     use std::fs;
     use std::io::Write;
@@ -122,7 +386,7 @@ mod tests {
                 PathBuf::from(local)
                     .join("Cryptex-Dev")
                     .join("p0-2")
-                    .join("m3-projection-feed-tests")
+                    .join("m3-tests")
             }
             #[cfg(target_os = "macos")]
             {
@@ -132,54 +396,84 @@ mod tests {
                     .join("Application Support")
                     .join("Cryptex-Dev")
                     .join("p0-2")
-                    .join("m3-projection-feed-tests")
+                    .join("m3-tests")
             }
             #[cfg(not(any(windows, target_os = "macos")))]
             {
                 std::env::temp_dir()
                     .join("Cryptex-Dev")
                     .join("p0-2")
-                    .join("m3-projection-feed-tests")
+                    .join("m3-tests")
             }
         };
-        exclusive_temp_dir_in(&base, &format!("m3-feed-{label}"))
+        exclusive_temp_dir_in(&base, &format!("m3-proj-{label}"))
+    }
+
+    fn append_note(
+        store: &FakeSecureStore,
+        root: &Path,
+        device: &DeviceId,
+        brain: &str,
+        text: &str,
+        seal_threshold: u64,
+    ) -> crate::canonical_writer::AppendOutcome {
+        append_memory_note(
+            store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: root,
+                brain_id: brain,
+                device_id: device,
+                classification: Classification::Internal,
+                text,
+                config: &CanonicalWriterConfig {
+                    seal_event_threshold: seal_threshold,
+                },
+            },
+        )
+        .unwrap()
+    }
+
+    fn event_count(db: &ProjectionDb) -> i64 {
+        db.connection()
+            .query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    fn snapshot_canonical_packs(root: &Path, device: &DeviceId) -> Vec<(PathBuf, u64, [u8; 32])> {
+        let dir = canonical_events_device_dir(root, device);
+        let mut out = Vec::new();
+        if !dir.exists() {
+            return out;
+        }
+        for entry in fs::read_dir(&dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let name = path.file_name().unwrap().to_string_lossy();
+            if !(name.ends_with(".seg") || name.ends_with(".open")) {
+                continue;
+            }
+            let bytes = fs::read(&path).unwrap();
+            let mut hash = [0u8; 32];
+            // cheap stable fingerprint without extra deps: XOR-fold
+            for (i, b) in bytes.iter().enumerate() {
+                hash[i % 32] ^= *b;
+                hash[(i + 7) % 32] = hash[(i + 7) % 32].wrapping_add(*b);
+            }
+            out.push((path, bytes.len() as u64, hash));
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
     }
 
     #[test]
     fn projects_verified_memory_notes_from_canonical_writer() {
-        let root = temp_root("ok");
+        let root = temp_root("feed");
         let store = FakeSecureStore::new();
         let device = DeviceId::new("proj-device-a").unwrap();
         let brain = "55555555-5555-4555-8555-555555555555";
-        let cfg = CanonicalWriterConfig {
-            seal_event_threshold: 1000,
-        };
-        append_memory_note(
-            &store,
-            SecureStoreEnvironment::Dev,
-            AppendMemoryNoteArgs {
-                runtime_root: &root,
-                brain_id: brain,
-                device_id: &device,
-                classification: Classification::Internal,
-                text: "alpha note",
-                config: &cfg,
-            },
-        )
-        .unwrap();
-        append_memory_note(
-            &store,
-            SecureStoreEnvironment::Dev,
-            AppendMemoryNoteArgs {
-                runtime_root: &root,
-                brain_id: brain,
-                device_id: &device,
-                classification: Classification::Public,
-                text: "beta searchable",
-                config: &cfg,
-            },
-        )
-        .unwrap();
+        append_note(&store, &root, &device, brain, "alpha searchable", 1000);
+        append_note(&store, &root, &device, brain, "beta other", 1000);
 
         let db = ProjectionDb::open_or_create(&root).expect("projection db");
         let n = project_verified_device_events(
@@ -191,25 +485,261 @@ mod tests {
         )
         .expect("project");
         assert_eq!(n, 2);
+        assert_eq!(event_count(&db), 2);
+        let cp = read_device_checkpoint(db.connection(), device.as_str())
+            .unwrap()
+            .expect("checkpoint");
+        assert_eq!(cp.last_device_seq.as_deref(), Some("2"));
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
 
-        let verified =
-            load_verified_events(&store, SecureStoreEnvironment::Dev, &root, &device).unwrap();
-        assert_eq!(verified.len(), 2);
+    #[test]
+    fn clean_rebuild_projects_all_verified_events_and_checkpoint() {
+        let root = temp_root("rebuild-clean");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-rebuild").unwrap();
+        let brain = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        append_note(&store, &root, &device, brain, "one", 1000);
+        append_note(&store, &root, &device, brain, "two", 1000);
+        append_note(&store, &root, &device, brain, "three", 1000);
+        let before = snapshot_canonical_packs(&root, &device);
 
-        let count: i64 = db
+        let (db, kind) = open_projection_db(&root).expect("open");
+        assert!(matches!(
+            kind,
+            ProjectionOpenKind::Created | ProjectionOpenKind::OpenedExisting
+        ));
+        let sync =
+            rebuild_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .expect("rebuild");
+        assert!(sync.rebuilt);
+        assert_eq!(sync.projected_events, 3);
+        assert_eq!(event_count(&db), 3);
+        let cp = read_device_checkpoint(db.connection(), device.as_str())
+            .unwrap()
+            .expect("cp");
+        assert_eq!(cp.last_device_seq.as_deref(), Some("3"));
+        assert_eq!(before, snapshot_canonical_packs(&root, &device));
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn restart_catch_up_projects_only_new_events_without_duplicates() {
+        let root = temp_root("catchup");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-catchup").unwrap();
+        let brain = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+        append_note(&store, &root, &device, brain, "first", 1000);
+        append_note(&store, &root, &device, brain, "second", 1000);
+
+        let (db, _) = open_projection_db(&root).unwrap();
+        let first =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .unwrap();
+        assert_eq!(first.projected_events, 2);
+        assert!(first.rebuilt);
+        drop(db);
+
+        append_note(&store, &root, &device, brain, "third", 1000);
+        let (db, kind) = open_projection_db(&root).unwrap();
+        assert!(matches!(kind, ProjectionOpenKind::OpenedExisting));
+        let second =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .unwrap();
+        assert!(!second.rebuilt);
+        assert_eq!(second.projected_events, 1);
+        assert_eq!(event_count(&db), 3);
+        let ids: i64 = db
             .connection()
-            .query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))
+            .query_row("SELECT COUNT(DISTINCT event_id) FROM events", [], |row| {
+                row.get(0)
+            })
             .unwrap();
-        assert_eq!(count, 2);
-        let hit: i64 = db
-            .connection()
-            .query_row(
-                "SELECT COUNT(*) FROM events_fts WHERE events_fts MATCH 'searchable'",
+        assert_eq!(ids, 3);
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn missing_db_rebuild_restores_rows_and_leaves_canonical_unchanged() {
+        let root = temp_root("missing-db");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-missing").unwrap();
+        let brain = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+        append_note(&store, &root, &device, brain, "keep-me", 1000);
+        let (db, _) = open_projection_db(&root).unwrap();
+        catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+            .unwrap();
+        assert_eq!(event_count(&db), 1);
+        drop(db);
+
+        let before = snapshot_canonical_packs(&root, &device);
+        remove_projection_files(&root).unwrap();
+        assert!(!projection_sqlite_path(&root).exists());
+
+        let (db, kind) = open_projection_db(&root).unwrap();
+        assert!(matches!(kind, ProjectionOpenKind::Created));
+        let sync =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .unwrap();
+        assert_eq!(sync.projected_events, 1);
+        assert_eq!(event_count(&db), 1);
+        assert_eq!(before, snapshot_canonical_packs(&root, &device));
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn corrupt_db_rebuild_restores_rows_and_leaves_canonical_unchanged() {
+        let root = temp_root("corrupt-db");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-corrupt").unwrap();
+        let brain = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+        append_note(&store, &root, &device, brain, "recoverable", 1000);
+        let (db, _) = open_projection_db(&root).unwrap();
+        catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+            .unwrap();
+        drop(db);
+
+        let before = snapshot_canonical_packs(&root, &device);
+        let path = projection_sqlite_path(&root);
+        fs::write(&path, b"garbage-not-sqlite").unwrap();
+
+        let (db, kind) = open_projection_db(&root).unwrap();
+        match kind {
+            ProjectionOpenKind::Replaced {
+                reason: ProjectionReplaceReason::Corrupt { .. },
+            } => {}
+            other => panic!("expected corrupt replace, got {other:?}"),
+        }
+        let sync =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .unwrap();
+        assert_eq!(sync.projected_events, 1);
+        assert_eq!(event_count(&db), 1);
+        assert_eq!(before, snapshot_canonical_packs(&root, &device));
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn unsupported_schema_replaces_disposable_db_then_catch_up() {
+        let root = temp_root("unsup-schema");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-unsup").unwrap();
+        let brain = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+        append_note(&store, &root, &device, brain, "schema", 1000);
+        let db = ProjectionDb::open_or_create(&root).unwrap();
+        db.connection()
+            .execute(
+                "UPDATE projection_meta SET schema_version = 77 WHERE id = 1",
                 [],
-                |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(hit, 1);
+        drop(db);
+        let before = snapshot_canonical_packs(&root, &device);
+        let (db, kind) = open_projection_db(&root).unwrap();
+        match kind {
+            ProjectionOpenKind::Replaced {
+                reason: ProjectionReplaceReason::UnsupportedSchema { found: 77 },
+            } => {}
+            other => panic!("unexpected {other:?}"),
+        }
+        catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+            .unwrap();
+        assert_eq!(event_count(&db), 1);
+        assert_eq!(before, snapshot_canonical_packs(&root, &device));
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn checkpoint_unknown_hash_triggers_rebuild_without_duplicates() {
+        let root = temp_root("ckpt-hash");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-ckhash").unwrap();
+        let brain = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+        append_note(&store, &root, &device, brain, "a", 1000);
+        append_note(&store, &root, &device, brain, "b", 1000);
+        let (db, _) = open_projection_db(&root).unwrap();
+        catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+            .unwrap();
+        // Poison checkpoint hash while keeping seq=2.
+        db.connection()
+            .execute(
+                "UPDATE device_checkpoint SET last_content_hash = ?1 WHERE device_id = ?2",
+                ("aa".repeat(32), device.as_str()),
+            )
+            .unwrap();
+        let sync =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .unwrap();
+        assert!(sync.rebuilt);
+        assert_eq!(
+            sync.rebuild_reason,
+            Some(ProjectionRebuildReason::CheckpointUnknownOrAhead)
+        );
+        assert_eq!(event_count(&db), 2);
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn checkpoint_ahead_of_packs_triggers_rebuild() {
+        let root = temp_root("ckpt-ahead");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-ckahead").unwrap();
+        let brain = "12121212-1212-4121-8121-121212121212";
+        append_note(&store, &root, &device, brain, "only", 1000);
+        let (db, _) = open_projection_db(&root).unwrap();
+        catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+            .unwrap();
+        db.connection()
+            .execute(
+                "UPDATE device_checkpoint
+                 SET last_device_seq = '99', last_content_hash = ?1
+                 WHERE device_id = ?2",
+                ("bb".repeat(32), device.as_str()),
+            )
+            .unwrap();
+        let sync =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .unwrap();
+        assert!(sync.rebuilt);
+        assert_eq!(event_count(&db), 1);
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn interrupted_transaction_rolls_back_and_retry_catch_up_succeeds() {
+        let root = temp_root("interrupted");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-int").unwrap();
+        let brain = "34343434-3434-4343-8343-343434343434";
+        let first = append_note(&store, &root, &device, brain, "durable", 1000);
+        let (db, _) = open_projection_db(&root).unwrap();
+        {
+            let tx = db.connection().unchecked_transaction().unwrap();
+            // Simulate crash mid-projection: insert without checkpoint / commit.
+            let verified =
+                load_verified_events(&store, SecureStoreEnvironment::Dev, &root, &device).unwrap();
+            project_memory_note(&tx, &verified[0]).unwrap();
+            drop(tx); // rollback
+        }
+        assert_eq!(event_count(&db), 0);
+        let sync =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .unwrap();
+        assert_eq!(sync.projected_events, 1);
+        assert_eq!(event_count(&db), 1);
+        let stored: String = db
+            .connection()
+            .query_row("SELECT event_id FROM events", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(stored, first.accepted.event_id);
         drop(db);
         let _ = fs::remove_dir_all(&root);
     }
@@ -251,8 +781,6 @@ mod tests {
         .unwrap();
 
         let db = ProjectionDb::open_or_create(&root).expect("projection db");
-        // Pre-seed a conflicting row for the *second* event so the feed inserts
-        // the first event in-txn, then fails on reconcile — proving rollback.
         let bad_hash = "aa".repeat(32);
         db.connection()
             .execute(
@@ -348,7 +876,6 @@ mod tests {
         )
         .unwrap();
 
-        // Corrupt the sealed pack bytes after a successful seal.
         let sealed = cryptex_storage::sealed_segment_path(&root, &device, 0);
         assert!(sealed.exists(), "expected sealed pack");
         {

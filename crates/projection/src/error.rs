@@ -18,6 +18,8 @@ pub enum ProjectionError {
     UnsupportedSchema { found: u32, expected: u32 },
     /// Required projection tables/FTS objects are missing or misconfigured.
     SchemaInconsistent { detail: String },
+    /// On-disk file is not a usable SQLite database (or `quick_check` failed).
+    CorruptDb { detail: String },
     /// An existing `event_id` row disagrees with the verified event's M2 fields.
     ///
     /// `differing_fields` lists column names only. Values (including note text)
@@ -47,6 +49,9 @@ impl fmt::Display for ProjectionError {
             Self::SchemaInconsistent { detail } => {
                 write!(f, "projection schema inconsistent: {detail}")
             }
+            Self::CorruptDb { detail } => {
+                write!(f, "projection database corrupt: {detail}")
+            }
             Self::EventConflict {
                 event_id,
                 differing_fields,
@@ -69,6 +74,7 @@ impl std::error::Error for ProjectionError {
             Self::Fts5Unavailable { .. }
             | Self::UnsupportedSchema { .. }
             | Self::SchemaInconsistent { .. }
+            | Self::CorruptDb { .. }
             | Self::EventConflict { .. } => None,
         }
     }
@@ -103,6 +109,7 @@ impl PartialEq for ProjectionError {
             (Self::SchemaInconsistent { detail: a }, Self::SchemaInconsistent { detail: b }) => {
                 a == b
             }
+            (Self::CorruptDb { detail: a }, Self::CorruptDb { detail: b }) => a == b,
             (
                 Self::EventConflict {
                     event_id: a_id,
