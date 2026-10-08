@@ -662,6 +662,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cryptex-projection"
+version = "0.0.0"
+
+[[package]]
 name = "cryptex-storage"
 version = "0.0.0"
 dependencies = [
