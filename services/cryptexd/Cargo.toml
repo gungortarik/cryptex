@@ -11,6 +11,11 @@ path = "src/main.rs"
 
 [dependencies]
 cryptex-core = { path = "../../crates/core" }
+cryptex-events = { path = "../../crates/events" }
+cryptex-storage = { path = "../../crates/storage" }
+ed25519-dalek = { workspace = true }
+getrandom = "=0.2.16"
+serde_json_canonicalizer = { workspace = true }
 fs2 = "0.4.3"
 interprocess = "=2.4.4"
 serde = { version = "=1.0.229", features = ["derive"] }

@@ -388,13 +388,7 @@ mod tests {
     use std::thread;
 
     fn temp_root() -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let root = std::env::temp_dir().join(format!("cryptexd-install-{}", nanos));
-        let _ = fs::remove_dir_all(&root);
-        root
+        crate::test_temp::exclusive_temp_dir("cryptexd-install")
     }
 
     #[test]

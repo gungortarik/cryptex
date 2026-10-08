@@ -1,0 +1,13 @@
+{
+  "name": "@cryptex/schemas",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "generate:ts": "node ./scripts/generate-ts.mjs",
+    "check:drift": "node ./scripts/generate-ts.mjs --check"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "16.0.0"
+  }
+}

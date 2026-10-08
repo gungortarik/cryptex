@@ -224,7 +224,6 @@ impl Drop for DesktopSupervisor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn cryptexd_bin() -> PathBuf {
         // Unit tests in this module do not spawn the binary; integration tests cover that.
@@ -233,11 +232,7 @@ mod tests {
 
     #[test]
     fn window_close_event_is_recorded_without_killing_paths() {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let root = std::env::temp_dir().join(format!("cryptex-mode-b-{stamp}"));
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-mode-b");
         let supervisor = DesktopSupervisor::new(&root, &cryptexd_bin()).expect("supervisor");
         supervisor
             .simulate_window_close_keep_running()

@@ -261,16 +261,10 @@ fn read_test_value(value_name: &str) -> LifecycleResult<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_root(label: &str) -> PathBuf {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let root = std::env::temp_dir().join(format!("cryptexd-hkcu-{label}-{stamp}"));
+        let root = crate::test_temp::exclusive_temp_dir(&format!("cryptexd-hkcu-{label}"));
         assert_outside_repository(&root).expect("outside repo");
-        std::fs::create_dir_all(&root).expect("mkdir");
         root
     }
 

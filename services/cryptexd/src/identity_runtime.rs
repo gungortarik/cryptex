@@ -616,13 +616,7 @@ mod tests {
     use std::thread;
 
     fn temp_root() -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let root = std::env::temp_dir().join(format!("cryptexd-identity-{}", nanos));
-        let _ = fs::remove_dir_all(&root);
-        root
+        crate::test_temp::exclusive_temp_dir("cryptexd-identity")
     }
 
     /// On put: replace the public brain file with a directory so rollback cannot remove it.

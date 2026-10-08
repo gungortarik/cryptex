@@ -145,16 +145,10 @@ mod tests {
     use crate::paths::assert_outside_repository;
     use crate::status::{LifecycleReport, write_status_file};
     use std::io;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_root(label: &str) -> PathBuf {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let root = std::env::temp_dir().join(format!("cryptexd-instance-{label}-{stamp}"));
+        let root = crate::test_temp::exclusive_temp_dir(&format!("cryptexd-instance-{label}"));
         assert_outside_repository(&root).expect("temp runtime must be outside repository");
-        fs::create_dir_all(&root).expect("create runtime");
         root
     }
 

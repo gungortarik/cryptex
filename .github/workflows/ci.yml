@@ -93,6 +93,12 @@ jobs:
       - name: Test M0 cryptexd lifecycle harness
         run: cargo test --locked -p cryptexd
 
+      - name: Test M2 event and storage crates
+        run: cargo test --locked -p cryptex-events -p cryptex-storage
+
+      - name: Check M2 schema TypeScript drift
+        run: pnpm --filter @cryptex/schemas check:drift
+
       - name: Test M0 lifecycle compare harness
         run: cargo test --locked -p m0-lifecycle-compare
 

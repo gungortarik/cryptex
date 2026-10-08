@@ -1,11 +1,16 @@
 # 34 — Current Implementation Handoff
 
-**Snapshot date:** 2026-10-07
-**Current milestone:** M1 — Brain + Device Identity (COMPLETE)
-**Integrated branch:** `m0/foundation`
-**M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6)
+**Snapshot date:** 2026-10-08
+**Current milestone:** M2 — Immutable Event Store (IN PROGRESS)
+**Active branch:** `m2/immutable-event-store` (M2 closeout review PASS; normal integration to `m0/foundation` pending; base remains `0c84c5c`)
+**Latest verified candidate SHA:** `9ade9f7db18ec0e383594c19e592809e3b194531` (`9ade9f7`), on `m2/immutable-event-store`.
+**Final dual-OS CI:** PASS in run [37706283147](https://github.com/gungortarik/cryptex/actions/runs/37706283147) against the exact candidate SHA above. macOS and Windows readiness plus Windows IPC ACL succeeded; unsigned Windows package skipped by design. Record: `evidence/m2/m2-final-ci-gate-20261008.md`.
+**Closeout audit tip (L1/L2/F4–F6 + staging ownership):** behavior `b5c9d69`, tip `1a26493` — `evidence/m2/m2-staging-cleanup-ownership-20261007.md`. Windows checks PASS; owner-reported macOS four-check PASS at `9ade9f7` is recorded in the new final-gate evidence. Owner-delegated closeout review PASS is recorded at `evidence/m2/m2-owner-delegated-review-20261008.md`; normal integration is pending. `LongPathsEnabled=0` is not claimed.
+**Base:** `origin/m0/foundation` @ `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75` (M1 documentation closeout)
+**M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) — integrated ancestor
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
-**Next milestone:** M2 — not started
+**M1 documentation closeout:** `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75`
+**Next milestone:** M3 — blocked until M2 completion gate
 
 > This file is an operational status snapshot, not an architecture authority. If it conflicts with `docs/00_MASTER_SPEC.md`, accepted ADRs, the milestone contract, or other authoritative project documents, stop and report the conflict instead of silently reconciling it.
 
@@ -13,16 +18,35 @@
 
 1. `AGENTS.md`
 2. `docs/00_MASTER_SPEC.md`
-3. `docs/18_IMPLEMENTATION_READINESS_PLAN.md`
-4. `docs/20_MILESTONE_ROADMAP.md`
-5. `docs/23_REQUIRED_TECHNICAL_SPIKES.md`
-6. `docs/32_PRE_IMPLEMENTATION_AUDIT_REPORT.md`
-7. relevant `docs/adr/` records (ADR-0015 ACCEPTED; ADR-0014 ACCEPTED — P1)
-8. `evidence/m1/` kickoff plan when present; retained `evidence/m0/` for foundation context
+3. `docs/milestones/M2_IMMUTABLE_EVENT_STORE.md`
+4. `docs/04_EVENT_SCHEMA_AND_INVARIANTS.md`
+5. `docs/06_STORAGE_ARCHITECTURE.md`
+6. `docs/08_SECURITY_DEVICE_TRUST_AND_RECOVERY_ROOT.md`
+7. `docs/17_TEST_AND_FAILURE_MATRIX.md`
+8. `docs/21_DEFINITION_OF_DONE.md`
+9. relevant `docs/adr/` records (ADR-0013 ACCEPTED; ADR-0014 ACCEPTED — P1; ADR-0015 ACCEPTED; ADR-0016 ACCEPTED + Windows quarantine extended-path addendum ACCEPTED)
+10. `evidence/m2/m2-kickoff-plan-20261007.md`; `evidence/m2/m2-final-ci-gate-20261008.md` (latest Mac verification and final dual-OS CI @ `9ade9f7`); `evidence/m2/m2-owner-delegated-review-20261008.md` (closeout review and integration disposition); `evidence/m2/m2-closeout-l1-l2-f4-f6-20261007.md` (L1/L2/F4–F6 dispositions); retained `evidence/m1/` and `evidence/m0/` for foundation context
 
 ## Working agreement
 
-**Latest follow-up (2026-10-07):** Codex final review found fixed-temp races in
+### M2 closeout audit (L1/L2/F4–F6) — 2026-10-07
+
+Source re-audit of previously deferred Low findings (see `evidence/m2/m2-closeout-l1-l2-f4-f6-20261007.md`):
+
+- **L1 FIXED:** corrupt sealed `.seg` isolated from canonical tree only after durable quarantine; repeated load does not re-quarantine.
+- **L2 NON-BLOCKER:** Desktop links `cryptexd` but only health IPC + sidecar process; Cargo features cannot guarantee isolation under workspace unification; Master Spec single-writer preserved by process/IPC/call sites.
+- **F4 partial:** sealed integrity errors use `source_relative`; residual lifecycle absolute paths NON-BLOCKER.
+- **F5 NON-BLOCKER:** quarantine containment by construction under `quarantine/canonical-events/`.
+- **F6:** staging orphan cleanup FIXED; canonical `\\?\` remains addendum non-goal NON-BLOCKER.
+
+Windows: `cryptex-storage` quarantine 24 ok; `cryptexd --lib` 126 ok; fmt check ok; clippy `-D warnings` on storage+cryptexd ok. **macOS four-check PASS** at source `9ade9f7`: quarantine 22, cryptexd lib 121, fmt and strict Clippy all passed on macOS 27.0.1 arm64. Final dual-OS CI run [37706283147](https://github.com/gungortarik/cryptex/actions/runs/37706283147) also PASS at exact SHA `9ade9f7`; see `evidence/m2/m2-final-ci-gate-20261008.md`. Owner-delegated closeout review PASS; M2 awaits normal PR integration.
+
+**Staging ownership fix (2026-10-07):** Arm `StagingCleanup` only after exclusive `create_new`; surface cleanup failures as `QuarantineCleanupFailed` without dropping the primary. Evidence: `evidence/m2/m2-staging-cleanup-ownership-20261007.md`. Windows quarantine **24** ok; cryptexd lib **126** ok; fmt/clippy ok. Mac four-check PASS and final dual-OS CI PASS are recorded in `evidence/m2/m2-final-ci-gate-20261008.md`.
+
+
+
+
+**Historical M1 follow-up note (2026-10-07; superseded for owner-acceptance status):** Codex final review found fixed-temp races in
 pairing and Recovery Kit public metadata persistence and corrected them with
 serialized, synced atomic replacement. Sequence counter device-id validation now
 also covers reads/initialization, not only allocation. Windows tests/format PASS; local Clippy
@@ -30,7 +54,7 @@ was blocked by Smart App Control (4551). Current-source cross-platform CI is
 PASS at `a39920564561f75ada08cba8a47244bec9074345`, run 37569756071, including
 strict workspace Clippy on both OSes. See
 `evidence/m1/m1-public-metadata-final-review-20261007.md` and the newer
-`evidence/m1/m1-final-review-20261007.md`. Owner acknowledgment remains OPEN.
+`evidence/m1/m1-final-review-20261007.md`. **Historical wording (superseded):** this paragraph originally said "Owner acknowledgment remains OPEN." That status is obsolete: the owner accepted the delegated Codex review on 2026-10-07; see the later M1 review update and `evidence/m1/m1-final-review-20261007.md`.
 
 **Latest M1 review update (2026-10-07):** A final Codex review found that loss of
 an initialized sequence counter could permit reuse after `initialize()` recreated
@@ -81,25 +105,36 @@ PASS on candidate `a399205` is recorded (run 37569756071). The accepted M1 lifec
 ADR-0015 §2.1.1 and the audit. The owner accepted the delegated Codex review; PR #6 is
 merged. M1 is complete; M2 has not started.
 
+**M2 status (updated 2026-10-08):** M2 productization is IN PROGRESS on branch
+`m2/immutable-event-store`, based on `origin/m0/foundation` at `0c84c5c` (M1
+documentation closeout). M1 merge `c2168f3` is an ancestor of the latest final-CI behavior tip `9ade9f7`. Earlier final-CI behavior tip `16f09a3` and its documentation closeout `7a84bdd` are historical; the latest gate is recorded in `evidence/m2/m2-final-ci-gate-20261008.md`. Owner-delegated closeout review PASS; M2 awaits normal integration. Cursor is
+the sole write-capable M2 implementer. ADR-0016 is **ACCEPTED** (2026-10-07) at
+`5cc89b709dcf236698c3253b8582c873de7c7f0f`. Slice 1 scaffolding and framing body_len enforcement are complete. Slice 2 event domain types +
+schema/TS generation is recorded under `evidence/m2/m2-slice2-event-types-schema-20261007.md`; integrity primitives under `evidence/m2/m2-slice3-integrity-primitives-20261007.md` signing-key lifecycle under `evidence/m2/m2-slice4-signing-key-lifecycle-20261007.md` ; segment I/O under `evidence/m2/m2-slice5-segment-io-quarantine-20261007.md` ; durability hardening under `evidence/m2/m2-slice5b-storage-signing-hardening-20261007.md` ; canonical writer under `evidence/m2/m2-slice6-canonical-writer-20261007.md` ; writer transaction hardening under `evidence/m2/m2-slice6b-writer-transaction-hardening-20261007.md` ; schema validation/quarantine matrix under `evidence/m2/m2-slice7-schema-validation-quarantine-matrix-20261007.md` ; seq-gap/streaming-quarantine/framing reasons under `evidence/m2/m2-slice7b-seq-gap-streaming-quarantine-framing-20261007.md` ; cross-platform matrix + CI wiring under `evidence/m2/m2-slice8-cross-platform-matrix-ci-wiring-20261007.md` ; Clippy CI fix after failed run 37648931640 under `evidence/m2/m2-slice8b-clippy-ci-fix-20261007.md` ; macOS unused-`io` fix after partial-green run 37650566598 under `evidence/m2/m2-slice8c-macos-clippy-unused-io-20261007.md` ; Windows process-identity lifetime sync after near-final run 37653004440 under `evidence/m2/m2-slice8d-windows-process-identity-sync-20261007.md` ; pilot-runtime fixture uniqueness after macOS fail on run 37656380940 under `evidence/m2/m2-slice8e-pilot-runtime-fixture-uniqueness-20261007.md` ; ADR-0016 §8.1 quarantine directory format restored; Windows FS path-ops + per-device AcceptedEvent DeviceId binding under `evidence/m2/m2-slice8f-windows-path-ops-and-device-binding-20261007.md`; owner-approved Windows quarantine extended-path adapter (`\\?\` I/O only; no registry/`LongPathsEnabled` dependence; §8.1 names + DeviceId policy unchanged) under `docs/adr/ADR-0016-windows-quarantine-extended-path-addendum.md` (ACCEPTED) and `evidence/m2/m2-slice8g-windows-quarantine-extended-path-20261007.md`; regression tightened so >MAX_PATH existence/read/cleanup required checks use prefixed adapter paths only under `evidence/m2/m2-slice8h-extended-path-regression-tighten-20261007.md`; pre-Actions security/DoD review + in-scope fixes under `evidence/m2/m2-security-dod-review-20261007.md`; macOS CI `prepare_m1_runtime_foundation_*` fixture race fixed under `evidence/m2/m2-slice8i-install-runtime-temp-root-race-20261007.md`; full cryptexd `--lib` temp-root hardening under `evidence/m2/m2-slice8j-cryptexd-lib-temp-root-hardening-20261007.md` (shared `test_temp` exclusive allocator across identity/pairing/recovery/sequence/etc.). **Latest final dual-OS CI gate PASS** on tested SHA `9ade9f7db18ec0e383594c19e592809e3b194531`: run [37706283147](https://github.com/gungortarik/cryptex/actions/runs/37706283147) — macOS readiness **success**, Windows readiness **success**, Windows IPC ACL **success**, unsigned Windows package **skipped** by workflow design. Mac host four-check PASS at the same SHA is documented in `evidence/m2/m2-final-ci-gate-20261008.md`; run 37681630801 is historical. Owner-delegated closeout review PASS is recorded in `evidence/m2/m2-owner-delegated-review-20261008.md`; normal PR integration to `m0/foundation` is next. Security/DoD dispositions remain documented in the existing audit records. `LongPathsEnabled=0` is not claimed. M2 remains IN PROGRESS until merged; do not claim M2 complete or start M3 before integration.
+Do not freeze `segment_events=1000` as a production constant. Do not expand into
+M3/M8/M10 product behavior. Do not dispatch further Actions unless the owner requests them.
+
+
 **Historical M0 closeout (retained):** Final behavior-bearing source CI was
 green at `c7fa011` (run `37387323751`); Mac embedded `.app` visual review
 scoped PASS; scoped ADR-0012 and ADR-0004 accepted. Older continuation entries
 below remain dated history. Prefer this current status and the ADR index for
 present-day decisions.
 
-- Work only on the current milestone (M1).
-- Do not redesign architecture or choose a secure-store/identity representation without the applicable accepted ADR.
+- Work only on the current milestone (M2). Do not opportunistically implement M3 SQLite/search, M8 replication product behavior, or M10 purge product workflows.
+- Follow accepted ADR-0016 for event-store productization. Do not invent policy beyond that ADR and other authoritative docs.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
-- Cursor implemented M1. The owner authorized Codex to perform the final review and necessary focused corrections. Resume Mac-specific physical validation on the Mac host when required evidence needs it.
+- Cursor is the sole write-capable M2 implementer. Stay on `m2/immutable-event-store`; do not switch branches or merge this branch without explicit owner approval.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks and
-  retained physical-host evidence. Run workflows only when required evidence
-  cannot be produced locally; avoid redundant progress runs.
+  retained physical-host evidence. Run the required workflow once for the final
+  M2 candidate (or when authoritative checks require it); avoid routine per-slice Actions.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
-- Codex final review and owner acceptance are recorded at `evidence/m1/m1-final-review-20261007.md`; do not claim the owner independently inspected every line of source.
-- ADR-0015 and ADR-0014 are accepted; SecureStore product work proceeds under cryptexd with P1 pins only (no K2/keyring). Gate C Windows and macOS product SecureStore both VERIFIED 2026-10-06 (separate host evidence). Current candidate CI PASS: run 37569756071 @ `a399205`; owner accepted the delegated review, and normal PR #6 merge remains before recording M1 integrated.
+- Do not freeze the P0-1 benchmark profile value `segment_events=1000` as a production constant.
+- **Historical M1 working-agreement residue (superseded):** earlier text said "Work only on the current milestone (M1)" and "normal PR #6 merge remains before recording M1 integrated." M1 is complete and merged at `c2168f3`; documentation closeout is `0c84c5c`. Owner acceptance of the delegated M1 review is recorded at `evidence/m1/m1-final-review-20261007.md`.
+- ADR-0013, ADR-0014 (P1), ADR-0015, and ADR-0016 remain ACCEPTED (ADR-0016 at `5cc89b709dcf236698c3253b8582c873de7c7f0f`). M2 product slices proceed under ADR-0016.
 
 ## P0-1 status
 

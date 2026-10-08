@@ -499,9 +499,7 @@ mod tests {
     }
 
     fn temp_store(label: &str) -> SequenceStore {
-        let root =
-            std::env::temp_dir().join(format!("cryptex-m1-seq-{}-{}", label, std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        let root = crate::test_temp::exclusive_temp_dir(&format!("cryptex-m1-seq-{label}"));
         SequenceStore::open(root).expect("open store")
     }
 
@@ -582,9 +580,7 @@ mod tests {
 
     #[test]
     fn durable_before_return_survives_reopen() {
-        let root =
-            std::env::temp_dir().join(format!("cryptex-m1-seq-reopen-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-m1-seq-reopen");
         let device = DeviceId::new("device-b").unwrap();
 
         {
@@ -640,8 +636,7 @@ mod tests {
 
     #[test]
     fn concurrent_allocates_are_unique_and_increasing() {
-        let root = std::env::temp_dir().join(format!("cryptex-m1-seq-conc-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-m1-seq-conc");
         let store = Arc::new(SequenceStore::open(&root).unwrap());
         let device = DeviceId::new("device-e").unwrap();
         store.initialize(&device).unwrap();
@@ -667,9 +662,7 @@ mod tests {
 
     #[test]
     fn concurrent_initialize_has_single_winner() {
-        let root =
-            std::env::temp_dir().join(format!("cryptex-m1-seq-initrace-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-m1-seq-initrace");
         let store = Arc::new(SequenceStore::open(&root).unwrap());
         let device = DeviceId::new("device-f").unwrap();
 
@@ -697,12 +690,7 @@ mod tests {
 
     #[test]
     fn concurrent_allocates_across_separate_store_instances() {
-        let root = std::env::temp_dir().join(format!(
-            "cryptex-m1-seq-multistore-alloc-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-m1-seq-multistore-alloc");
 
         {
             let bootstrap = SequenceStore::open(&root).unwrap();
@@ -737,12 +725,7 @@ mod tests {
 
     #[test]
     fn concurrent_initialize_across_separate_store_instances() {
-        let root = std::env::temp_dir().join(format!(
-            "cryptex-m1-seq-multistore-init-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-m1-seq-multistore-init");
         let device = DeviceId::new("device-ms-b").unwrap();
 
         let mut handles = Vec::new();
@@ -822,10 +805,7 @@ mod tests {
             }
         }
 
-        let root =
-            std::env::temp_dir().join(format!("cryptex-m1-seq-xproc-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-m1-seq-xproc");
 
         let exe = std::env::current_exe().expect("current_exe");
         let test_args = [
@@ -939,10 +919,7 @@ mod tests {
             }
         }
 
-        let root =
-            std::env::temp_dir().join(format!("cryptex-m1-seq-crash-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
+        let root = crate::test_temp::exclusive_temp_dir("cryptex-m1-seq-crash");
 
         let exe = std::env::current_exe().expect("current_exe");
         let mut child = Command::new(&exe)
