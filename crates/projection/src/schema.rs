@@ -256,9 +256,10 @@ pub fn validate_schema_v1(conn: &Connection) -> ProjectionResult<()> {
     require_table_ddl_constraints(
         conn,
         "projection_meta",
-        &["primary key", "check (id = 1)"],
-        "projection_meta must keep PRIMARY KEY id with CHECK (id = 1)",
+        &["primary key"],
+        "projection_meta.id must be PRIMARY KEY",
     )?;
+    require_projection_meta_id_singleton_constraint(conn)?;
     require_fts_events(conn)?;
     Ok(())
 }
@@ -414,6 +415,51 @@ fn require_exact_columns(
         });
     }
     Ok(())
+}
+
+/// Semantically verify `projection_meta` rejects every `id` other than `1`.
+///
+/// Substring checks on `sqlite_master.sql` are insufficient: a permissive
+/// constraint such as `CHECK (id = 1 OR 1=1)` still contains `id = 1` text.
+/// Probe with a rolled-back INSERT of `id = 2`.
+fn require_projection_meta_id_singleton_constraint(conn: &Connection) -> ProjectionResult<()> {
+    conn.execute_batch("SAVEPOINT cryptex_meta_id_check")?;
+    let insert = conn.execute(
+        "INSERT INTO projection_meta (id, schema_version, built_at, build_id)
+         VALUES (2, 1, 'probe', 'probe')",
+        [],
+    );
+    // Always roll back the probe row / failed insert attempt.
+    let _ = conn.execute_batch("ROLLBACK TO cryptex_meta_id_check; RELEASE cryptex_meta_id_check;");
+    match insert {
+        Ok(_) => Err(ProjectionError::SchemaInconsistent {
+            detail: "projection_meta must reject id != 1 (required CHECK (id = 1))".into(),
+        }),
+        Err(_) => {
+            // Constraint (or equivalent) rejected id=2.
+            // Confirm the singleton row is still exactly id=1.
+            let id: i64 =
+                conn.query_row("SELECT id FROM projection_meta WHERE id = 1", [], |row| {
+                    row.get(0)
+                })?;
+            if id != 1 {
+                return Err(ProjectionError::SchemaInconsistent {
+                    detail: "projection_meta singleton id must remain 1 after CHECK probe".into(),
+                });
+            }
+            let extras: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM projection_meta WHERE id != 1",
+                [],
+                |row| row.get(0),
+            )?;
+            if extras != 0 {
+                return Err(ProjectionError::SchemaInconsistent {
+                    detail: "projection_meta must not retain rows with id != 1".into(),
+                });
+            }
+            Ok(())
+        }
+    }
 }
 
 fn require_table_ddl_constraints(
@@ -615,7 +661,40 @@ mod tests {
             ProjectionError::SchemaInconsistent { detail } => {
                 assert!(
                     detail.to_ascii_lowercase().contains("check")
-                        || detail.contains("projection_meta"),
+                        || detail.contains("projection_meta")
+                        || detail.contains("id != 1"),
+                    "{detail}"
+                );
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+
+    #[test]
+    fn rejects_projection_meta_permissive_id_check_despite_misleading_comment() {
+        let db = ProjectionDb::open_in_memory().expect("memory");
+        // Substring `id = 1` appears in both the permissive OR-clause and a comment.
+        // Semantic probe must still fail closed.
+        db.connection()
+            .execute_batch(
+                "
+                DROP TABLE projection_meta;
+                CREATE TABLE projection_meta (
+                    id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1 OR 1=1 /* intended: id = 1 */),
+                    schema_version INTEGER NOT NULL,
+                    built_at TEXT NOT NULL,
+                    build_id TEXT NOT NULL
+                );
+                INSERT INTO projection_meta (id, schema_version, built_at, build_id)
+                VALUES (1, 1, '2026-10-08T00:00:00Z', 'cryptex-projection-schema-v1');
+                ",
+            )
+            .unwrap();
+        let err = validate_schema_v1(db.connection()).expect_err("must refuse permissive CHECK");
+        match err {
+            ProjectionError::SchemaInconsistent { detail } => {
+                assert!(
+                    detail.contains("id != 1") || detail.to_ascii_lowercase().contains("check"),
                     "{detail}"
                 );
             }

@@ -22,6 +22,7 @@
 **M3 Slice 7 tip (both-OS local PASS):** `428b03f33eda8fbf645678220dbd3ce3d88d108e` (behavior through CI redundancy cleanup; Windows + macOS local four-checks recorded)
 **M3 final dual-OS CI:** PASS in run [37720627242](https://github.com/gungortarik/cryptex/actions/runs/37720627242) at exact branch tip `51e6dc772757510e08c14ef565a87534a8a9478b` (documentation-only after tested behavior SHA `428b03f`). Windows and macOS readiness plus Windows IPC ACL PASS; unsigned package skipped by design. Record: `evidence/m3/m3-final-ci-gate-20261008.md`.
 **M3 Slice 8 tip (Windows-local; macOS pending):** `10a11c82b0e07e09fd7ef97c2384e9a385991adc`
+**M3 Slice 8 follow-up:** FTS integrity-check maps only confirmed corruption to replaceable `CorruptDb`; semantic `projection_meta` id CHECK probe rejects permissive constraints. See evidence follow-up section.
 **M3 Slice 8 (security/DoD findings):** `evidence/m3/m3-slice8-security-dod-findings-20261008.md` — FTS5 external-content `integrity-check` (rank=1) on open; empty-device checkpoint incremental catch-up; schema v1 type/PK/CHECK validation; bounded clear + limited search. Windows-local PASS; **macOS + new Actions pending** (prior run 37720627242 covers `51e6dc7` only).
 **Latest verified candidate SHA:** `9ade9f7db18ec0e383594c19e592809e3b194531` (`9ade9f7`), on `m2/immutable-event-store`.
 **Final dual-OS CI:** PASS in run [37706283147](https://github.com/gungortarik/cryptex/actions/runs/37706283147) against the exact candidate SHA above. macOS and Windows readiness plus Windows IPC ACL succeeded; unsigned Windows package skipped by design. Record: `evidence/m2/m2-final-ci-gate-20261008.md`.
@@ -30,7 +31,7 @@
 **M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) — integrated ancestor
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
 **M1 documentation closeout:** `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75`
-**Next gate:** Owner macOS four-check on the Slice 8 code tip, then tip review, then a **new** required dual-OS Actions readiness run (prior PASS at `51e6dc7` does not cover these fixes). Finish Slice 8 DoD/security/owner review. Do not claim M3 complete, merge, or start M4 until all gates pass.
+**Next gate:** Review this Slice 8 follow-up tip; owner runs documented macOS four-check on that exact tip; only then dispatch **one new** dual-OS Actions readiness run (37720627242 / `51e6dc7` does not cover these fixes). Do not claim M3 complete, merge, or start M4 until Slice 8 review and required gates pass.
 
 > This file is an operational status snapshot, not an architecture authority. If it conflicts with `docs/00_MASTER_SPEC.md`, accepted ADRs, the milestone contract, or other authoritative project documents, stop and report the conflict instead of silently reconciling it.
 

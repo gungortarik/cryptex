@@ -71,4 +71,25 @@ Do **not** claim M3 complete, merge, or start M4 until Slice 8 review + required
 
 - Architecture changes, Desktop/MCP surfaces, semantic search  
 - Dispatching Actions from this commit  
-- Declaring M3 complete  
+- Declaring M3 complete
+
+
+## Follow-up (integrity-check error class + semantic CHECK)
+
+Review blockers fixed on tip after `eee344f`:
+
+1. **FTS integrity-check error mapping:** `map_fts_integrity_sqlite_error` maps only confirmed corruption / FTS integrity mismatch signals to `CorruptDb`. Busy/locked, I/O, permission, and other ordinary SQLite failures remain `ProjectionError::Sqlite` (non-replaceable). Regressions: mapper unit coverage; transient integrity inject preserves main DB bytes and planted `-journal` sidecar; genuine FTS inconsistency still replaces/rebuilds.
+2. **projection_meta CHECK:** Replaced `sqlite_master.sql` substring `check (id = 1)` with a semantic savepoint probe inserting `id = 2` (must fail). Permissive `CHECK (id = 1 OR 1=1 /* intended: id = 1 */)` fails closed.
+
+### Windows re-check (this follow-up)
+
+Host target dir: `%LOCALAPPDATA%\Cryptex-Dev\cargo-target-m3-s8b`
+
+| Command | Result |
+|---------|--------|
+| `cargo fmt --all -- --check` | PASS |
+| `cargo test --locked -p cryptex-projection --lib` | PASS (42) |
+| `cargo test --locked -p cryptexd --lib projection::` | PASS (17) |
+| `cargo clippy --locked -p cryptex-core -p cryptex-projection -p cryptexd --all-targets -- -D warnings` | PASS |
+
+No Actions dispatched. macOS four-check + new dual-OS Actions still required before any CI PASS claim for this tip (run 37720627242 covers `51e6dc7` only).
