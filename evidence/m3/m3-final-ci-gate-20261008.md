@@ -79,6 +79,7 @@ Windows-local results for the corruption-class fix are recorded in
 
 This closes the post-gate SQLite error-message classification finding and
 completes the local-platform and final CI verification gates for this
-candidate. M3 remains **IN PROGRESS** until the final security/DoD disposition
-and human owner review are recorded. This run does not authorize a merge or
-M4 start.
+candidate. The scoped final security/DoD review is recorded in
+`evidence/m3/m3-final-review-20261008.md`. M3 remains **IN PROGRESS** until
+human owner review is recorded. This run does not authorize a merge or M4
+start.

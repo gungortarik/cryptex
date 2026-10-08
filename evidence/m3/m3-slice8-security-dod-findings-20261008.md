@@ -227,6 +227,7 @@ the unsigned Windows package job was skipped by design. See
 
 The post-gate error-message classification finding is closed for this
 candidate. Its local Windows verification, owner-reported Mac verification,
-and final dual-OS CI are recorded above. This does not by itself complete M3:
-the final security/DoD disposition and human owner review remain to be
-recorded. Do not merge or start M4 before the M3 completion gate is satisfied.
+and final dual-OS CI are recorded above. The scoped final security/DoD review
+is recorded in `evidence/m3/m3-final-review-20261008.md`. Human owner review
+remains before M3 can be completed. Do not merge or start M4 before the M3
+completion gate is satisfied.
