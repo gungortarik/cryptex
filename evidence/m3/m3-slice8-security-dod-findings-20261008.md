@@ -95,3 +95,40 @@ Host target dir: `%LOCALAPPDATA%\Cryptex-Dev\cargo-target-m3-s8b`
 | `cargo clippy --locked -p cryptex-core -p cryptex-projection -p cryptexd --all-targets -- -D warnings` | PASS |
 
 No Actions dispatched. macOS four-check + new dual-OS Actions still required before any CI PASS claim for this tip (run 37720627242 covers `51e6dc7` only).
+
+
+## Follow-up (meta id CHECK probe hardening)
+
+Hardened `require_projection_meta_id_singleton_constraint` after tip `d54ef4f`:
+
+1. Only SQLite **constraint** rejection counts as a successful non-1 id probe; busy/locked/I/O/readonly and other errors propagate as non-replaceable `ProjectionError::Sqlite`.
+2. Savepoint `ROLLBACK TO` / `RELEASE` errors are never discarded; probe + cleanup failures are both preserved in the returned error; connection left without an open savepoint.
+3. Structural parse (comment-stripped) requires CHECK expression normalize to exactly `id=1`; semantic probes cover ids `{0,2,3,-1,100}` so `CHECK (id = 1 OR id = 3)` fails closed.
+4. Injected non-constraint probe busy error: validation fails closed as `Sqlite`, `is_autocommit()` remains true, connection still readable.
+
+### Windows re-check
+
+| Command | Result |
+|---------|--------|
+| `cargo fmt --all -- --check` | PASS |
+| `cargo test --locked -p cryptex-projection --lib` | PASS (44) |
+| `cargo test --locked -p cryptexd --lib projection::` | PASS (17) |
+| `cargo clippy --locked -p cryptex-core -p cryptex-projection -p cryptexd --all-targets -- -D warnings` | PASS |
+
+No Actions dispatched.
+
+### macOS four-check (owner — required before Actions)
+
+```bash
+cd /path/to/cryptex
+git fetch origin && git checkout m3/local-projection-search
+git pull --ff-only origin m3/local-projection-search
+# Confirm HEAD equals the follow-up tip recorded below.
+
+cargo fmt --all -- --check
+cargo test --locked -p cryptex-projection --lib
+cargo test --locked -p cryptexd --lib projection::
+cargo clippy --locked -p cryptex-core -p cryptex-projection -p cryptexd --all-targets -- -D warnings
+```
+
+Only after tip review **and** macOS PASS: dispatch one new dual-OS Actions run. Prior run 37720627242 covers `51e6dc7` only. Do not merge or claim M3 complete.

@@ -4,10 +4,20 @@
 //! fields. This module creates empty disposable tables only; ingestion and
 //! search belong to later slices.
 
-use rusqlite::Connection;
+#[cfg(test)]
+use std::cell::RefCell;
+
+use rusqlite::{Connection, ErrorCode};
 
 use crate::fts::ensure_fts5_available;
 use crate::{ProjectionError, ProjectionResult};
+
+#[cfg(test)]
+thread_local! {
+    /// Injected in place of the real INSERT during meta id CHECK probes.
+    static INJECT_META_ID_PROBE_ERROR: RefCell<Option<rusqlite::Error>> =
+        const { RefCell::new(None) };
+}
 
 /// Derived projection schema version owned by this crate (not event schema_version).
 pub const PROJECTION_SCHEMA_VERSION: u32 = 1;
@@ -417,47 +427,230 @@ fn require_exact_columns(
     Ok(())
 }
 
-/// Semantically verify `projection_meta` rejects every `id` other than `1`.
+/// Verify `projection_meta` enforces exactly `CHECK (id = 1)`.
 ///
-/// Substring checks on `sqlite_master.sql` are insufficient: a permissive
-/// constraint such as `CHECK (id = 1 OR 1=1)` still contains `id = 1` text.
-/// Probe with a rolled-back INSERT of `id = 2`.
+/// Combines:
+/// 1. Structural parse of CREATE sql (comments stripped) requiring the accepted
+///    expression `id = 1` (not a permissive OR / extra disjunct).
+/// 2. Semantic probes of several non-1 ids; only SQLite constraint rejection
+///    counts as success for each probe. Busy/locked/I/O/readonly propagate as
+///    non-replaceable [`ProjectionError::Sqlite`].
+/// 3. Savepoint cleanup that never swallows `ROLLBACK TO` / `RELEASE` errors.
 fn require_projection_meta_id_singleton_constraint(conn: &Connection) -> ProjectionResult<()> {
-    conn.execute_batch("SAVEPOINT cryptex_meta_id_check")?;
-    let insert = conn.execute(
-        "INSERT INTO projection_meta (id, schema_version, built_at, build_id)
-         VALUES (2, 1, 'probe', 'probe')",
+    require_projection_meta_check_expression_is_id_eq_1(conn)?;
+
+    // Probe multiple non-1 values so CHECK (id = 1 OR id = 3) cannot pass.
+    const PROBE_IDS: [i64; 5] = [0, 2, 3, -1, 100];
+    for id in PROBE_IDS {
+        probe_projection_meta_id_rejected(conn, id)?;
+    }
+
+    let id: i64 = conn.query_row("SELECT id FROM projection_meta WHERE id = 1", [], |row| {
+        row.get(0)
+    })?;
+    if id != 1 {
+        return Err(ProjectionError::SchemaInconsistent {
+            detail: "projection_meta singleton id must remain 1 after CHECK probes".into(),
+        });
+    }
+    let extras: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM projection_meta WHERE id != 1",
         [],
-    );
-    // Always roll back the probe row / failed insert attempt.
-    let _ = conn.execute_batch("ROLLBACK TO cryptex_meta_id_check; RELEASE cryptex_meta_id_check;");
-    match insert {
-        Ok(_) => Err(ProjectionError::SchemaInconsistent {
-            detail: "projection_meta must reject id != 1 (required CHECK (id = 1))".into(),
+        |row| row.get(0),
+    )?;
+    if extras != 0 {
+        return Err(ProjectionError::SchemaInconsistent {
+            detail: "projection_meta must not retain rows with id != 1".into(),
+        });
+    }
+    Ok(())
+}
+
+/// Accepted v1 expression after comment-strip + whitespace normalize: `id=1`.
+fn require_projection_meta_check_expression_is_id_eq_1(conn: &Connection) -> ProjectionResult<()> {
+    let sql: Option<String> = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='projection_meta'",
+            [],
+            |row| row.get(0),
+        )
+        .optional_sql()?;
+    let Some(sql) = sql else {
+        return Err(ProjectionError::SchemaInconsistent {
+            detail: "projection_meta has no CREATE sql in sqlite_master".into(),
+        });
+    };
+    let stripped = strip_sql_comments(&sql);
+    let checks = extract_check_expressions(&stripped);
+    if checks.is_empty() {
+        return Err(ProjectionError::SchemaInconsistent {
+            detail: "projection_meta must declare CHECK (id = 1)".into(),
+        });
+    }
+    let normalized: Vec<String> = checks.iter().map(|c| normalize_check_expr(c)).collect();
+    if !normalized.iter().any(|c| c == "id=1") {
+        return Err(ProjectionError::SchemaInconsistent {
+            detail: format!("projection_meta CHECK must be exactly (id = 1); found {normalized:?}"),
+        });
+    }
+    // Reject additional permissive CHECKs or disjunctive companions.
+    if normalized.iter().any(|c| c != "id=1") {
+        return Err(ProjectionError::SchemaInconsistent {
+            detail: format!(
+                "projection_meta must not declare CHECK expressions other than (id = 1); found {normalized:?}"
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn strip_sql_comments(sql: &str) -> String {
+    let mut out = String::with_capacity(sql.len());
+    let bytes = sql.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if i + 1 < bytes.len() && bytes[i] == b'-' && bytes[i + 1] == b'-' {
+            i += 2;
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = (i + 2).min(bytes.len());
+            continue;
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
+fn extract_check_expressions(sql: &str) -> Vec<String> {
+    let lower = sql.to_ascii_lowercase();
+    let mut out = Vec::new();
+    let mut search_from = 0usize;
+    while let Some(rel) = lower[search_from..].find("check") {
+        let start = search_from + rel;
+        let after = start + "check".len();
+        let rest = sql[after..].trim_start();
+        if !rest.starts_with('(') {
+            search_from = after;
+            continue;
+        }
+        let chars: Vec<char> = rest.chars().collect();
+        let mut depth = 0i32;
+        let mut end = None;
+        for (idx, ch) in chars.iter().enumerate() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(idx);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(end) = end else {
+            break;
+        };
+        // Exclude surrounding parentheses.
+        let inner: String = chars[1..end].iter().collect();
+        out.push(inner);
+        search_from = after + rest[..end + 1].len();
+    }
+    out
+}
+
+fn normalize_check_expr(expr: &str) -> String {
+    expr.chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+fn is_constraint_rejection(err: &rusqlite::Error) -> bool {
+    match err {
+        rusqlite::Error::SqliteFailure(efi, message) => {
+            if efi.code == ErrorCode::ConstraintViolation {
+                return true;
+            }
+            let message = message.as_deref().unwrap_or("").to_ascii_lowercase();
+            message.contains("constraint")
+        }
+        _ => false,
+    }
+}
+
+fn compound_probe_cleanup_error(
+    probe: &dyn std::fmt::Display,
+    cleanup: rusqlite::Error,
+) -> ProjectionError {
+    // Non-replaceable: must not become SchemaInconsistent/CorruptDb.
+    ProjectionError::Sqlite(rusqlite::Error::ToSqlConversionFailure(Box::new(
+        std::io::Error::other(format!(
+            "projection_meta id probe: {probe}; savepoint cleanup failed: {cleanup}"
+        )),
+    )))
+}
+
+fn release_meta_id_savepoint(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch("ROLLBACK TO cryptex_meta_id_check; RELEASE cryptex_meta_id_check;")
+}
+
+fn probe_projection_meta_id_rejected(conn: &Connection, id: i64) -> ProjectionResult<()> {
+    conn.execute_batch("SAVEPOINT cryptex_meta_id_check")?;
+
+    #[cfg(test)]
+    let insert = if let Some(err) = INJECT_META_ID_PROBE_ERROR.with(|slot| slot.borrow_mut().take())
+    {
+        Err(err)
+    } else {
+        conn.execute(
+            "INSERT INTO projection_meta (id, schema_version, built_at, build_id)
+             VALUES (?1, 1, 'probe', 'probe')",
+            [id],
+        )
+        .map(|_| ())
+    };
+
+    #[cfg(not(test))]
+    let insert = conn
+        .execute(
+            "INSERT INTO projection_meta (id, schema_version, built_at, build_id)
+             VALUES (?1, 1, 'probe', 'probe')",
+            [id],
+        )
+        .map(|_| ());
+
+    let cleanup = release_meta_id_savepoint(conn);
+
+    match (insert, cleanup) {
+        (Ok(()), Ok(())) => Err(ProjectionError::SchemaInconsistent {
+            detail: format!(
+                "projection_meta must reject id != 1 (accepted probe id={id}); required CHECK (id = 1)"
+            ),
         }),
-        Err(_) => {
-            // Constraint (or equivalent) rejected id=2.
-            // Confirm the singleton row is still exactly id=1.
-            let id: i64 =
-                conn.query_row("SELECT id FROM projection_meta WHERE id = 1", [], |row| {
-                    row.get(0)
-                })?;
-            if id != 1 {
-                return Err(ProjectionError::SchemaInconsistent {
-                    detail: "projection_meta singleton id must remain 1 after CHECK probe".into(),
-                });
+        (Ok(()), Err(cleanup_err)) => Err(compound_probe_cleanup_error(
+            &format!("INSERT id={id} was accepted (constraint missing/permissive)"),
+            cleanup_err,
+        )),
+        (Err(probe_err), Ok(())) => {
+            if is_constraint_rejection(&probe_err) {
+                Ok(())
+            } else {
+                Err(ProjectionError::Sqlite(probe_err))
             }
-            let extras: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM projection_meta WHERE id != 1",
-                [],
-                |row| row.get(0),
-            )?;
-            if extras != 0 {
-                return Err(ProjectionError::SchemaInconsistent {
-                    detail: "projection_meta must not retain rows with id != 1".into(),
-                });
-            }
-            Ok(())
+        }
+        (Err(probe_err), Err(cleanup_err)) => {
+            Err(compound_probe_cleanup_error(&probe_err, cleanup_err))
         }
     }
 }
@@ -694,11 +887,83 @@ mod tests {
         match err {
             ProjectionError::SchemaInconsistent { detail } => {
                 assert!(
-                    detail.contains("id != 1") || detail.to_ascii_lowercase().contains("check"),
+                    detail.contains("id != 1")
+                        || detail.to_ascii_lowercase().contains("check")
+                        || detail.contains("id=1"),
                     "{detail}"
                 );
             }
             other => panic!("unexpected error: {other}"),
         }
+    }
+
+    #[test]
+    fn rejects_projection_meta_check_allowing_id_1_or_3() {
+        let db = ProjectionDb::open_in_memory().expect("memory");
+        db.connection()
+            .execute_batch(
+                "
+                DROP TABLE projection_meta;
+                CREATE TABLE projection_meta (
+                    id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1 OR id = 3),
+                    schema_version INTEGER NOT NULL,
+                    built_at TEXT NOT NULL,
+                    build_id TEXT NOT NULL
+                );
+                INSERT INTO projection_meta (id, schema_version, built_at, build_id)
+                VALUES (1, 1, '2026-10-08T00:00:00Z', 'cryptex-projection-schema-v1');
+                ",
+            )
+            .unwrap();
+        let err = validate_schema_v1(db.connection()).expect_err("must refuse OR id=3");
+        match err {
+            ProjectionError::SchemaInconsistent { detail } => {
+                assert!(
+                    detail.to_ascii_lowercase().contains("check")
+                        || detail.contains("id=1")
+                        || detail.contains("id != 1")
+                        || detail.contains("id=3"),
+                    "{detail}"
+                );
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+    }
+
+    #[test]
+    fn meta_id_probe_non_constraint_error_is_non_replaceable_and_leaves_autocommit() {
+        let db = ProjectionDb::open_in_memory().expect("memory");
+        assert!(db.connection().is_autocommit());
+
+        let busy = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::DatabaseBusy,
+                extended_code: 5,
+            },
+            Some("database is locked".into()),
+        );
+        INJECT_META_ID_PROBE_ERROR.with(|slot| {
+            *slot.borrow_mut() = Some(busy);
+        });
+
+        let err = validate_schema_v1(db.connection()).expect_err("busy must fail closed");
+        assert!(
+            matches!(err, ProjectionError::Sqlite(_)),
+            "non-constraint probe errors must stay Sqlite (non-replaceable), got {err}"
+        );
+        assert!(
+            db.connection().is_autocommit(),
+            "savepoint cleanup must leave connection in autocommit"
+        );
+        // Connection remains usable for ordinary reads.
+        let version: i64 = db
+            .connection()
+            .query_row(
+                "SELECT schema_version FROM projection_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, 1);
     }
 }
