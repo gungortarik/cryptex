@@ -14,7 +14,7 @@ use cryptex_core::validate::parse_rfc3339_str;
 use cryptex_events::hex::SigningKeyId;
 use cryptex_events::integrity::signing_key_id_from_verifying_key;
 use cryptex_storage::event_signing_key_path;
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
 use crate::paths::{assert_outside_repository, ensure_runtime_root};
@@ -197,6 +197,41 @@ pub fn ensure_event_signing_key<S: SecureStore>(
             ))
         }
     }
+}
+
+/// Load the already enrolled event-verification key without creating runtime
+/// directories, lock files, SecureStore items, or public metadata.
+///
+/// The existing key lock is opened without `create`; a shared lock prevents a
+/// concurrent key initializer from exposing a partially read seed/metadata pair.
+pub fn load_existing_event_verifying_key<S: SecureStore>(
+    store: &S,
+    env: SecureStoreEnvironment,
+    runtime_root: &Path,
+    device_id: &DeviceId,
+) -> EventSigningKeyResult<(EventSigningKeyPublic, VerifyingKey)> {
+    assert_outside_repository(runtime_root)
+        .map_err(|error| EventSigningKeyError::Io(error.to_string()))?;
+
+    let meta_path = event_signing_key_path(runtime_root, device_id);
+    let lock_path = meta_path.with_extension("json.lock");
+    let lock = OpenOptions::new()
+        .read(true)
+        .open(&lock_path)
+        .map_err(|error| EventSigningKeyError::Io(error.to_string()))?;
+    fs2::FileExt::lock_shared(&lock)
+        .map_err(|error| EventSigningKeyError::Io(error.to_string()))?;
+
+    let metadata = load_public_metadata_if_present(&meta_path)?.ok_or_else(|| {
+        EventSigningKeyError::FailClosed("event-signing public metadata is missing".into())
+    })?;
+    let service = ServiceLabel::device_credentials(env);
+    let account = AccountLabel::device_event_signing_seed(device_id.as_str());
+    let seed = store.get(service.as_str(), account.as_str())?;
+    let ready = ready_from_seed_and_meta(&seed, &metadata, device_id)?;
+    let verifying_key = ready.signing_key.verifying_key();
+    drop(lock);
+    Ok((metadata, verifying_key))
 }
 
 fn fresh_create<S: SecureStore>(

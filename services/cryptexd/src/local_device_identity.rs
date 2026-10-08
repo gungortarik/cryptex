@@ -11,9 +11,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cryptex_core::ids::DeviceId;
 use cryptex_core::validate::{parse_uuid_str, require_exact_schema};
+use cryptex_events::TrustedDaemonKeyResolver;
+use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
 
-use crate::event_signing_key::{EventSigningKeyError, ensure_event_signing_key};
+use crate::event_signing_key::{
+    EventSigningKeyError, ensure_event_signing_key, load_existing_event_verifying_key,
+};
 use crate::identity_runtime::{IdentityRuntimeError, load_brain_identity};
 use crate::paths::{assert_outside_repository, ensure_runtime_root};
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
@@ -85,6 +89,43 @@ impl std::fmt::Display for LocalDeviceIdentityError {
 impl std::error::Error for LocalDeviceIdentityError {}
 
 pub type LocalDeviceIdentityResult<T> = Result<T, LocalDeviceIdentityError>;
+
+/// Read-only resolver for this installation's enrolled daemon key.
+///
+/// It intentionally recognizes only the single local DeviceId/key binding;
+/// discovered peers are not trusted by this M4 boundary.
+pub struct LocalDeviceKeyResolver {
+    device_id: String,
+    signing_key_id: String,
+    verifying_key: VerifyingKey,
+}
+
+impl LocalDeviceKeyResolver {
+    pub fn load<S: SecureStore>(
+        runtime_root: &Path,
+        expected_brain_id: &str,
+        store: &S,
+        env: SecureStoreEnvironment,
+    ) -> LocalDeviceIdentityResult<Self> {
+        let identity = load_local_device_identity(runtime_root, expected_brain_id)?;
+        let device_id = DeviceId::new(identity.device_id)
+            .map_err(|error| LocalDeviceIdentityError::InvalidMetadata(error.to_string()))?;
+        let (metadata, verifying_key) =
+            load_existing_event_verifying_key(store, env, runtime_root, &device_id)
+                .map_err(LocalDeviceIdentityError::EventSigningKey)?;
+        Ok(Self {
+            device_id: device_id.as_str().to_owned(),
+            signing_key_id: metadata.signing_key_id,
+            verifying_key,
+        })
+    }
+}
+
+impl TrustedDaemonKeyResolver for LocalDeviceKeyResolver {
+    fn trusted_daemon_key(&mut self, device_id: &str, key_id: &str) -> Option<VerifyingKey> {
+        (device_id == self.device_id && key_id == self.signing_key_id).then_some(self.verifying_key)
+    }
+}
 
 pub fn local_device_identity_path(runtime_root: &Path) -> PathBuf {
     runtime_root
@@ -522,6 +563,34 @@ mod tests {
         ));
         assert!(!local_device_identity_path(&root).exists());
         assert!(store.is_empty());
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn local_resolver_trusts_only_the_enrolled_device_and_key() {
+        let root = prepared_root();
+        let store = FakeSecureStore::new();
+        let identity =
+            enroll_local_device(&root, &store, SecureStoreEnvironment::Dev).expect("enrollment");
+        let mut resolver =
+            LocalDeviceKeyResolver::load(&root, BRAIN_ID, &store, SecureStoreEnvironment::Dev)
+                .expect("existing key resolver");
+
+        assert!(
+            resolver
+                .trusted_daemon_key(&identity.device_id, &resolver.signing_key_id.clone())
+                .is_some()
+        );
+        assert!(
+            resolver
+                .trusted_daemon_key("another-device", &resolver.signing_key_id.clone())
+                .is_none()
+        );
+        assert!(
+            resolver
+                .trusted_daemon_key(&identity.device_id, "unknown-key")
+                .is_none()
+        );
         fs::remove_dir_all(root).expect("cleanup");
     }
 }
