@@ -2,7 +2,8 @@
 
 **Date:** 2026-10-08  
 **Branch:** `m3/local-projection-search`  
-**Base tip before slice:** `676f46bb146cc2a5cd8705d5b7f1a1fea1067380`  
+**Base tip before slice:** `676f46bb146cc2a5cd8705d5b7f1a1fea1067380`
+**Slice 8 tip:** `10a11c82b0e07e09fd7ef97c2384e9a385991adc`  
 **Plan:** Phase 0 §9 Slice 8 (DoD / security / owner review) — focused findings only; no architecture change.
 
 ## Scope
