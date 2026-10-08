@@ -23,6 +23,7 @@
 **M3 final dual-OS CI:** PASS in run [37720627242](https://github.com/gungortarik/cryptex/actions/runs/37720627242) at exact branch tip `51e6dc772757510e08c14ef565a87534a8a9478b` (documentation-only after tested behavior SHA `428b03f`). Windows and macOS readiness plus Windows IPC ACL PASS; unsigned package skipped by design. Record: `evidence/m3/m3-final-ci-gate-20261008.md`.
 **M3 Slice 8 tip (Windows-local; macOS pending):** `10a11c82b0e07e09fd7ef97c2384e9a385991adc`
 **M3 Slice 8 follow-up tip (Windows-local; macOS pending):** 04c794f907704455cea2463f13cbce83635940ff
+**M3 Slice 8 constraint-class tip (Windows-local; macOS pending):** `7043c1f8633beebe5f43dfc313e7d72a8c682366`
 **M3 Slice 8 constraint-class fix:** `is_constraint_rejection` is ConstraintViolation-only (no message substring).
 **M3 Slice 8 meta-CHECK tip (Windows-local; macOS pending):** 52fe953ecdb29db1f1730148921f1af07be5f50c
 **M3 Slice 8 meta-CHECK hardening:** structural `id=1` parse + multi-id constraint-only probes; non-constraint probe errors non-replaceable; savepoint cleanup errors preserved. See evidence follow-up.

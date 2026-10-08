@@ -138,6 +138,8 @@ Only after tip review **and** macOS PASS: dispatch one new dual-OS Actions run. 
 
 ## Follow-up (constraint-class only)
 
+**Constraint-class tip:** `7043c1f8633beebe5f43dfc313e7d72a8c682366`
+
 `is_constraint_rejection` now accepts only `ErrorCode::ConstraintViolation`. The previous fallback that treated any error message containing `"constraint"` as success was removed — error text is not proof of the SQLite result class.
 
 Regression: inject `SystemIoFailure` whose message contains `"constraint"`; schema validation must fail closed as non-replaceable `Sqlite` (not treated as a successful non-1 id rejection). Existing true-constraint and busy-inject coverage retained.
