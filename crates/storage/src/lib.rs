@@ -28,4 +28,4 @@ pub use segment_io::{
     append_frame, ensure_device_events_dir, read_active_pack_bytes, scan_complete_frames,
     seal_active_segment,
 };
-pub use stream_frames::fold_verified_frames;
+pub use stream_frames::{fold_verified_frames, fold_verified_frames_with_offsets};
