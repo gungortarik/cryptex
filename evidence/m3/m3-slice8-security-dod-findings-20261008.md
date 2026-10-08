@@ -52,7 +52,7 @@ Host target dir: `%LOCALAPPDATA%\Cryptex-Dev\cargo-target-m3-s8`
 
 No GitHub Actions dispatched.
 
-## macOS / final CI — PENDING
+## macOS / final CI — historically pending at the initial Slice 8 review
 
 Code changed after CI PASS run [37720627242](https://github.com/gungortarik/cryptex/actions/runs/37720627242) (SHA `51e6dc7`). That Actions result does **not** cover this tip.
 
@@ -94,7 +94,7 @@ Host target dir: `%LOCALAPPDATA%\Cryptex-Dev\cargo-target-m3-s8b`
 | `cargo test --locked -p cryptexd --lib projection::` | PASS (17) |
 | `cargo clippy --locked -p cryptex-core -p cryptex-projection -p cryptexd --all-targets -- -D warnings` | PASS |
 
-No Actions dispatched. macOS four-check + new dual-OS Actions still required before any CI PASS claim for this tip (run 37720627242 covers `51e6dc7` only).
+Historical status at this point: no Actions had been dispatched. This was superseded by the final candidate verification below; run 37720627242 covered only `51e6dc7`.
 
 
 ## Follow-up (meta id CHECK probe hardening)
@@ -152,4 +152,14 @@ Regression: inject `SystemIoFailure` whose message contains `"constraint"`; sche
 | `cargo test --locked -p cryptex-projection --lib` | PASS |
 | `cargo clippy --locked -p cryptex-core -p cryptex-projection -p cryptexd --all-targets -- -D warnings` | PASS |
 
-No Actions. Owner macOS four-check only after tip review of this follow-up.
+Historical status at this point: Actions and owner macOS verification were pending for this intermediate follow-up tip.
+
+## Final candidate verification
+
+**Candidate SHA:** `275fb7acf0c2c7b4d7c050acb54670e81520377f`
+
+- Windows local checks: fmt, projection tests (45), projection integration tests (17), and strict Clippy PASS; see branch change record.
+- Owner macOS four-check: PASS on macOS 27.0.1 (26A434) arm64 at this exact SHA; see `evidence/m3/m3-slice8-macos-four-check-20261008.md`.
+- Final dual-OS Actions: PASS in [run 37725223487](https://github.com/gungortarik/cryptex/actions/runs/37725223487) at this exact SHA; see `evidence/m3/m3-final-ci-gate-20261008.md`.
+
+These results close the candidate's local platform and CI verification. They do not themselves close M3: final security/DoD disposition and human owner review are still required. No merge or M4 start is recorded here.
