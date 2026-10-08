@@ -17,22 +17,23 @@ the callback path.
 
 This gives M4 trustworthy provenance and a deterministic byte-level source,
 but does **not** provide typed entity, alias, fact, relation, confidence, or
-correction assertions. Arbitrary natural-language `text` does not by itself
-specify how those assertions are extracted. AI output is untrusted under the
-accepted model and cannot silently become accepted knowledge or protected
-policy.
+correction assertions. The accepted M4 contract already identifies the input
+source as accepted canonical event history; the unresolved design question is
+how the current free-form `memory.note` text is interpreted deterministically.
+AI output is untrusted under the accepted model and cannot silently become
+accepted knowledge or protected policy.
 
-**Blocking design question:** define what accepted source representation M4
-consolidates before implementing an extractor/materializer. Adding canonical
-event kinds or fields would change the accepted M2 event/schema boundary and
-must go through the ADR/specification process. Silently treating heuristic or
-AI extraction as authoritative would violate determinism/trust requirements.
+The specs do **not** require adding new canonical event kinds before M4 can
+start. If a proposed design expands the accepted M2 event/schema boundary, that
+expansion must go through the ADR/specification process. Otherwise, document
+and review the extraction semantics as M4 implementation evidence before
+coding them.
 
 ## 2. Options requiring owner selection
 
 | Decision | Option A | Option B | Option C / consequence |
 |---|---|---|---|
-| Knowledge assertions as input | Extend canonical events with explicit typed assertion/correction events (requires proposed ADR/schema compatibility decision) | Keep `memory.note` unchanged and define a strictly deterministic, conservative parser over its text as M4 evidence | Defer semantic assertions until a later accepted input contract; M4 scope may need revision because no meaningful general extraction is available |
+| Interpretation of canonical input | Keep M2 `memory.note` unchanged and define a deterministic, conservative interpretation policy over its text as M4 evidence | Restrict extraction to explicitly structured declarations in note text | Propose typed canonical assertion/correction events only if the M4 design demonstrates that current events cannot meet scope; this would require ADR/schema review |
 | AI-assisted extraction | AI may only create untrusted proposals, with a separate explicit acceptance path | No AI extraction in M4 | Making AI output directly authoritative is disallowed |
 | Derived store boundary | New isolated rebuildable M4 store | Separate M4 tables/schema in the existing M3 projection DB, with strict ownership/versioning | M3 search state must never become canonical; any shared DB choice needs explicit failure/rebuild and locking analysis |
 | Entity identity | Deterministic ID derived from stable accepted provenance | Deterministic IDs assigned by replay order | Either must define collisions and cross-device union behavior; random IDs are not replay-deterministic |
@@ -74,6 +75,7 @@ daemon-owned; loss of M4 derived state must be recoverable from canonical data.
 ## 5. Gate
 
 M4 preparation has begun, but product implementation remains **NOT STARTED**.
-Owner review must resolve the input contract and store boundary, or authorize a
-scoped ADR proposal, before Slice 1. No dependencies are pinned and no Actions
-were run for this discovery pass.
+Owner review must resolve the note interpretation policy and derived-store
+boundary before dependent product code; an ADR is needed only if the reviewed
+design changes an accepted architecture/schema decision. No dependencies are
+pinned and no Actions were run for this discovery pass.

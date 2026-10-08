@@ -92,8 +92,11 @@ is reviewed.
 Discovery update: source-envelope and verified-reader audit plus the initial
 owner decision table are recorded in
 `evidence/m4/m4-phase0-input-and-semantic-decision-review-20261008.md`.
-The source audit identified a blocking input-contract question: schema v1 only
-contains free-form `memory.note` text, not typed knowledge assertions.
+The accepted source is canonical event history; current schema v1 contains
+free-form `memory.note` text, not typed knowledge assertions. The open decision
+is its deterministic interpretation policy. New event types are not required
+unless a reviewed design establishes that need and the ADR/schema process
+accepts it.
 
 Do not start product slices, change accepted ADRs/specs, or run Actions as part
 of Phase 0. A final workflow should be reserved for a reviewed implementation
