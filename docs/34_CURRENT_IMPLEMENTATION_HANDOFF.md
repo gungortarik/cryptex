@@ -22,6 +22,7 @@
 **M3 Slice 7 tip (both-OS local PASS):** `428b03f33eda8fbf645678220dbd3ce3d88d108e` (behavior through CI redundancy cleanup; Windows + macOS local four-checks recorded)
 **M3 final dual-OS CI:** PASS in run [37720627242](https://github.com/gungortarik/cryptex/actions/runs/37720627242) at exact branch tip `51e6dc772757510e08c14ef565a87534a8a9478b` (documentation-only after tested behavior SHA `428b03f`). Windows and macOS readiness plus Windows IPC ACL PASS; unsigned package skipped by design. Record: `evidence/m3/m3-final-ci-gate-20261008.md`.
 **M3 Slice 8 tip (Windows-local; macOS pending):** `10a11c82b0e07e09fd7ef97c2384e9a385991adc`
+**M3 Slice 8 follow-up tip (Windows-local; macOS pending):** 04c794f907704455cea2463f13cbce83635940ff
 **M3 Slice 8 follow-up:** FTS integrity-check maps only confirmed corruption to replaceable `CorruptDb`; semantic `projection_meta` id CHECK probe rejects permissive constraints. See evidence follow-up section.
 **M3 Slice 8 (security/DoD findings):** `evidence/m3/m3-slice8-security-dod-findings-20261008.md` — FTS5 external-content `integrity-check` (rank=1) on open; empty-device checkpoint incremental catch-up; schema v1 type/PK/CHECK validation; bounded clear + limited search. Windows-local PASS; **macOS + new Actions pending** (prior run 37720627242 covers `51e6dc7` only).
 **Latest verified candidate SHA:** `9ade9f7db18ec0e383594c19e592809e3b194531` (`9ade9f7`), on `m2/immutable-event-store`.

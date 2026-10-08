@@ -76,6 +76,8 @@ Do **not** claim M3 complete, merge, or start M4 until Slice 8 review + required
 
 ## Follow-up (integrity-check error class + semantic CHECK)
 
+**Follow-up tip:** 04c794f907704455cea2463f13cbce83635940ff
+
 Review blockers fixed on tip after `eee344f`:
 
 1. **FTS integrity-check error mapping:** `map_fts_integrity_sqlite_error` maps only confirmed corruption / FTS integrity mismatch signals to `CorruptDb`. Busy/locked, I/O, permission, and other ordinary SQLite failures remain `ProjectionError::Sqlite` (non-replaceable). Regressions: mapper unit coverage; transient integrity inject preserves main DB bytes and planted `-journal` sidecar; genuine FTS inconsistency still replaces/rebuilds.
