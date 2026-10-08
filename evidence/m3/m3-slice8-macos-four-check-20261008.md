@@ -1,9 +1,9 @@
 # M3 Slice 8 — Owner macOS four-check PASS
 
-**Date:** 2026-10-08  
-**Branch:** `m3/local-projection-search`  
-**Tested HEAD:** `275fb7acf0c2c7b4d7c050acb54670e81520377f`  
-**Host:** macOS 27.0.1 (26A434), arm64  
+**Date:** 2026-10-08
+**Branch:** `m3/local-projection-search`
+**Tested HEAD:** `275fb7acf0c2c7b4d7c050acb54670e81520377f`
+**Host:** macOS 27.0.1 (26A434), arm64
 **Working tree:** clean
 
 Owner-provided results for this exact SHA:
