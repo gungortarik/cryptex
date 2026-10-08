@@ -96,6 +96,12 @@ jobs:
       - name: Test M2 event and storage crates
         run: cargo test --locked -p cryptex-events -p cryptex-storage
 
+      - name: Test M3 projection crate
+        run: cargo test --locked -p cryptex-projection
+
+      - name: Test M3 cryptexd projection module
+        run: cargo test --locked -p cryptexd --lib projection::
+
       - name: Check M2 schema TypeScript drift
         run: pnpm --filter @cryptex/schemas check:drift
 

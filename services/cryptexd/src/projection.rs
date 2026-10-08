@@ -382,10 +382,10 @@ mod tests {
     use crate::test_temp::exclusive_temp_dir_in;
     use cryptex_events::Classification;
     use cryptex_projection::{
-        ProjectionReplaceReason, projection_sqlite_path, read_device_checkpoint,
-        remove_projection_files,
+        ProjectionReplaceReason, SearchQuery, projection_sqlite_path, read_device_checkpoint,
+        remove_projection_files, search_events,
     };
-    use cryptex_storage::layout::quarantine_events_root;
+    use cryptex_storage::layout::{active_segment_path, quarantine_events_root};
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
@@ -916,6 +916,182 @@ mod tests {
         assert!(
             quarantine_events_root(&root).exists(),
             "M2 quarantine path should exist after sealed corruption"
+        );
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn sealed_and_open_events_project_truncated_open_tail_excluded() {
+        let root = temp_root("sealed-open");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-seal-open").unwrap();
+        let brain = "77777777-7777-4777-8777-777777777777";
+
+        // Seal the first event into *.seg.
+        append_note(&store, &root, &device, brain, "sealed_alpha unique", 1);
+        // Keep subsequent events in the active *.open pack.
+        append_note(&store, &root, &device, brain, "open_beta unique", 1000);
+        append_note(&store, &root, &device, brain, "open_gamma unique", 1000);
+
+        let sealed = cryptex_storage::sealed_segment_path(&root, &device, 0);
+        let open = active_segment_path(&root, &device, 1);
+        assert!(sealed.exists(), "expected sealed pack for first event");
+        assert!(open.exists(), "expected active open pack for later events");
+
+        // Trailing garbage must be recovered away and must not become projected rows.
+        {
+            let mut file = fs::OpenOptions::new().append(true).open(&open).unwrap();
+            file.write_all(b"NOT-A-FRAME-TAIL-GARBAGE").unwrap();
+        }
+
+        let before = snapshot_canonical_packs(&root, &device);
+        let db = ProjectionDb::open_or_create(&root).expect("projection db");
+        catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+            .expect("project sealed+open");
+
+        assert_eq!(event_count(&db), 3);
+        let hits = search_events(db.connection(), &SearchQuery::default()).unwrap();
+        let texts: Vec<_> = hits.iter().map(|h| h.text.as_str()).collect();
+        assert!(texts.iter().any(|t| t.contains("sealed_alpha")));
+        assert!(texts.iter().any(|t| t.contains("open_beta")));
+        assert!(texts.iter().any(|t| t.contains("open_gamma")));
+        assert_eq!(
+            hits.len(),
+            3,
+            "truncated open tail must not invent extra projected rows"
+        );
+
+        let fts = search_events(
+            db.connection(),
+            &SearchQuery {
+                text: Some("open_beta".into()),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(fts.len(), 1);
+        assert!(fts[0].text.contains("open_beta"));
+
+        // Verified sealed bytes must be unchanged; open may shrink after recovery truncate.
+        let after = snapshot_canonical_packs(&root, &device);
+        let sealed_before: Vec<_> = before
+            .iter()
+            .filter(|(p, _, _)| p.extension().and_then(|e| e.to_str()) == Some("seg"))
+            .collect();
+        let sealed_after: Vec<_> = after
+            .iter()
+            .filter(|(p, _, _)| p.extension().and_then(|e| e.to_str()) == Some("seg"))
+            .collect();
+        assert_eq!(
+            sealed_before, sealed_after,
+            "sealed packs must remain unchanged by projection/search"
+        );
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn multi_device_union_search_filters_and_leaves_canonical_unchanged() {
+        let root = temp_root("multi-device");
+        let store = FakeSecureStore::new();
+        let device_a = DeviceId::new("proj-md-a").unwrap();
+        let device_b = DeviceId::new("proj-md-b").unwrap();
+        let brain = "88888888-8888-4888-8888-888888888888";
+
+        append_note(
+            &store,
+            &root,
+            &device_a,
+            brain,
+            "alpha_from_device_a token",
+            1000,
+        );
+        append_note(
+            &store,
+            &root,
+            &device_b,
+            brain,
+            "beta_from_device_b token",
+            1000,
+        );
+
+        let before_a = snapshot_canonical_packs(&root, &device_a);
+        let before_b = snapshot_canonical_packs(&root, &device_b);
+
+        let db = ProjectionDb::open_or_create(&root).expect("projection db");
+        catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device_a, &db)
+            .expect("catch up a");
+        catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device_b, &db)
+            .expect("catch up b");
+
+        assert_eq!(event_count(&db), 2);
+        let union = search_events(db.connection(), &SearchQuery::default()).unwrap();
+        assert_eq!(union.len(), 2);
+
+        let only_a = search_events(
+            db.connection(),
+            &SearchQuery {
+                device_id: Some(device_a.as_str().into()),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(only_a.len(), 1);
+        assert!(only_a[0].text.contains("alpha_from_device_a"));
+        assert_eq!(only_a[0].device_id, device_a.as_str());
+
+        let only_b = search_events(
+            db.connection(),
+            &SearchQuery {
+                device_id: Some(device_b.as_str().into()),
+                text: Some("beta_from_device_b".into()),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(only_b.len(), 1);
+        assert_eq!(only_b[0].device_id, device_b.as_str());
+
+        assert_eq!(
+            before_a,
+            snapshot_canonical_packs(&root, &device_a),
+            "device-a canonical packs must be unchanged"
+        );
+        assert_eq!(
+            before_b,
+            snapshot_canonical_packs(&root, &device_b),
+            "device-b canonical packs must be unchanged"
+        );
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn idempotent_double_rebuild_stable_counts_and_canonical_unchanged() {
+        let root = temp_root("rebuild-idempotent");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-rebuild-2x").unwrap();
+        let brain = "99999999-9999-4999-8999-999999999999";
+        append_note(&store, &root, &device, brain, "rebuild-once", 1000);
+        append_note(&store, &root, &device, brain, "rebuild-twice", 1000);
+
+        let before = snapshot_canonical_packs(&root, &device);
+        let db = ProjectionDb::open_or_create(&root).expect("projection db");
+        rebuild_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+            .expect("first rebuild");
+        let count_after_first = event_count(&db);
+        assert_eq!(count_after_first, 2);
+
+        rebuild_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+            .expect("second rebuild");
+        assert_eq!(event_count(&db), count_after_first);
+        let hits = search_events(db.connection(), &SearchQuery::default()).unwrap();
+        assert_eq!(hits.len(), 2);
+        assert_eq!(
+            before,
+            snapshot_canonical_packs(&root, &device),
+            "canonical packs must remain unchanged across idempotent rebuilds"
         );
         drop(db);
         let _ = fs::remove_dir_all(&root);
