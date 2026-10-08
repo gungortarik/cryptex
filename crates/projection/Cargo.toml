@@ -7,5 +7,6 @@ publish = false
 description = "Cryptex disposable local SQLite/FTS projection helpers (M3; derived state only)"
 
 [dependencies]
+cryptex-core = { path = "../core" }
 cryptex-events = { path = "../events" }
 rusqlite = { workspace = true }

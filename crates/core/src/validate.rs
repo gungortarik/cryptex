@@ -125,6 +125,38 @@ fn validate_offset(sign_and_rest: &str) -> CoreResult<()> {
 /// Accepts `YYYY-MM-DDTHH:MM:SS[.fff]Z` or `YYYY-MM-DDTHH:MM:SS[.fff]±HH:MM`.
 /// Rejects impossible calendar dates, clock fields, and timezone offsets.
 pub fn parse_rfc3339_str(value: &str) -> CoreResult<String> {
+    let _ = parse_rfc3339_components(value)?;
+    Ok(value.to_string())
+}
+
+/// Convert a validated M2 RFC 3339 timestamp to Unix seconds (UTC).
+///
+/// Accepts the same forms as [`parse_rfc3339_str`], including numeric offsets.
+/// Equivalent instants with different offset spellings compare equal.
+/// Leap seconds (`:60`) are clamped to `:59` for the Unix timeline.
+pub fn rfc3339_unix_seconds(value: &str) -> CoreResult<i64> {
+    let parsed = parse_rfc3339_components(value)?;
+    let day_seconds = i64::from(parsed.hour) * 3600
+        + i64::from(parsed.minute) * 60
+        + i64::from(parsed.second.min(59));
+    let days = days_from_civil(parsed.year as i32, parsed.month, parsed.day);
+    // Local civil time as if UTC, then subtract the RFC3339 offset to reach UTC.
+    Ok(days * 86_400 + day_seconds - parsed.offset_secs)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Rfc3339Components {
+    year: u32,
+    month: u32,
+    day: u32,
+    hour: u32,
+    minute: u32,
+    second: u32,
+    /// Seconds east of UTC (`+01:00` => +3600, `-05:00` => -18000, `Z` => 0).
+    offset_secs: i64,
+}
+
+fn parse_rfc3339_components(value: &str) -> CoreResult<Rfc3339Components> {
     // Reject leading/trailing whitespace; do not silently normalize.
     if value != value.trim() {
         return Err(CoreError::InvalidId(
@@ -195,16 +227,50 @@ pub fn parse_rfc3339_str(value: &str) -> CoreResult<String> {
             "timestamp must include timezone offset or Z".into(),
         ));
     }
-    match rest_bytes[i] {
-        b'Z' | b'z' if i + 1 == rest_bytes.len() => Ok(value.to_string()),
+    let offset_secs = match rest_bytes[i] {
+        b'Z' | b'z' if i + 1 == rest_bytes.len() => 0,
         b'+' | b'-' => {
-            validate_offset(&rest[i..])?;
-            Ok(value.to_string())
+            let offset = &rest[i..];
+            validate_offset(offset)?;
+            let sign = if offset.as_bytes()[0] == b'+' {
+                1i64
+            } else {
+                -1i64
+            };
+            let oh = parse_u32_digits(&offset[1..3]).expect("offset hours validated");
+            let om = parse_u32_digits(&offset[4..6]).expect("offset minutes validated");
+            sign * (i64::from(oh) * 3600 + i64::from(om) * 60)
         }
-        _ => Err(CoreError::InvalidId(
-            "timestamp must include timezone offset or Z".into(),
-        )),
-    }
+        _ => {
+            return Err(CoreError::InvalidId(
+                "timestamp must include timezone offset or Z".into(),
+            ));
+        }
+    };
+
+    Ok(Rfc3339Components {
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        offset_secs,
+    })
+}
+
+/// Howard Hinnant days-from-civil (proleptic Gregorian) → days since Unix epoch.
+fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+    let mut y = year;
+    let m = month as i32;
+    let d = day as i32;
+    y -= if m <= 2 { 1 } else { 0 };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u64;
+    let mp = if m > 2 { m - 3 } else { m + 9 };
+    let doy = (153 * mp as u64 + 2) / 5 + d as u64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    (era as i64) * 146_097 + doe as i64 - 719_468
 }
 
 pub fn require_exact_schema(kind: &str, found: u32, expected: u32) -> CoreResult<()> {
@@ -221,6 +287,15 @@ pub fn require_exact_schema(kind: &str, found: u32, expected: u32) -> CoreResult
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rfc3339_unix_seconds_equates_offset_spellings() {
+        let z = rfc3339_unix_seconds("2026-10-06T17:30:45Z").unwrap();
+        let offset = rfc3339_unix_seconds("2026-10-06T12:30:45-05:00").unwrap();
+        assert_eq!(z, offset);
+        let plus = rfc3339_unix_seconds("2026-10-06T18:30:45+01:00").unwrap();
+        assert_eq!(z, plus);
+    }
 
     #[test]
     fn accepts_uuid_and_rfc3339() {

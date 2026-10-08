@@ -28,6 +28,10 @@ pub enum ProjectionError {
         event_id: String,
         differing_fields: Vec<&'static str>,
     },
+    /// Search query is invalid or unsupported (malformed FTS, bad RFC3339 bounds, etc.).
+    ///
+    /// Must not be collapsed into an empty hit list.
+    InvalidQuery { detail: String },
     /// Filesystem failure while creating disposable projection paths.
     Io(io::Error),
     /// Underlying SQLite API failure while probing disposable state.
@@ -60,6 +64,7 @@ impl fmt::Display for ProjectionError {
                 "projection event_id {event_id} conflicts with stored row (fields: {})",
                 differing_fields.join(",")
             ),
+            Self::InvalidQuery { detail } => write!(f, "projection search query invalid: {detail}"),
             Self::Io(err) => write!(f, "projection path io error: {err}"),
             Self::Sqlite(err) => write!(f, "projection sqlite error: {err}"),
         }
@@ -75,7 +80,8 @@ impl std::error::Error for ProjectionError {
             | Self::UnsupportedSchema { .. }
             | Self::SchemaInconsistent { .. }
             | Self::CorruptDb { .. }
-            | Self::EventConflict { .. } => None,
+            | Self::EventConflict { .. }
+            | Self::InvalidQuery { .. } => None,
         }
     }
 }
@@ -120,6 +126,7 @@ impl PartialEq for ProjectionError {
                     differing_fields: b_fields,
                 },
             ) => a_id == b_id && a_fields == b_fields,
+            (Self::InvalidQuery { detail: a }, Self::InvalidQuery { detail: b }) => a == b,
             (Self::Io(a), Self::Io(b)) => a.kind() == b.kind() && a.to_string() == b.to_string(),
             (Self::Sqlite(a), Self::Sqlite(b)) => a == b,
             _ => false,

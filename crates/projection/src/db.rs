@@ -232,7 +232,8 @@ fn replaceable_unusable_reason(err: &ProjectionError) -> Option<ProjectionReplac
         ProjectionError::Io(_)
         | ProjectionError::Sqlite(_)
         | ProjectionError::Fts5Unavailable { .. }
-        | ProjectionError::EventConflict { .. } => None,
+        | ProjectionError::EventConflict { .. }
+        | ProjectionError::InvalidQuery { .. } => None,
     }
 }
 

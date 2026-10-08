@@ -7,7 +7,7 @@
 //! packs remain authoritative. This crate must not write `.open`/`.seg` files.
 //!
 //! Slice 4/5 insert verified `memory.note` rows and rebuild/catch-up checkpoints via
-//! cryptexd. Search APIs remain deferred.
+//! cryptexd. Slice 6 exposes library search over disposable projection rows.
 
 pub mod checkpoint;
 pub mod db;
@@ -16,6 +16,7 @@ pub mod fts;
 pub mod ingest;
 pub mod layout;
 pub mod schema;
+pub mod search;
 
 pub use checkpoint::{
     DeviceCheckpoint, clear_all_projection_rows, clear_device_projection, read_device_checkpoint,
@@ -33,3 +34,4 @@ pub use schema::{
     PROJECTION_BUILD_ID_V1, PROJECTION_SCHEMA_VERSION, apply_schema_v1, read_schema_version,
     validate_schema_v1,
 };
+pub use search::{SearchHit, SearchQuery, search_events};
