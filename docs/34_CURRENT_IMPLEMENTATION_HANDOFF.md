@@ -1,7 +1,7 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-08
-**Current milestone:** M3 - Local Projection + Search (Slice 7 both-OS local PASS at `428b03f`; Actions pending review; no Desktop/MCP surfaces yet)
+**Current milestone:** M3 - Local Projection + Search (Slice 7 both-OS local PASS; final dual-OS CI PASS at `51e6dc7`; Slice 8 DoD/security/owner review remains; no Desktop/MCP surfaces yet)
 **Active branch:** `m3/local-projection-search`, based on `m0/foundation` at M2 merge commit `817b6a126cf6e9cd3e8a27b1348ec977bdc9dcdd` (PR #8)
 **M2 status:** COMPLETE within M2 scope after owner-delegated review and required verification; normal merge PR #8 integrated `m2/immutable-event-store` into `m0/foundation` at `817b6a1`.
 **M3 kickoff:** `evidence/m3/m3-kickoff-plan-20261008.md`. **Phase 0 plan:** `evidence/m3/m3-phase0-implementation-plan-20261008.md`. Cursor owns M3 product code; Phase 0 complete; Slices 1-4 landed on `m3/local-projection-search`.
@@ -17,9 +17,10 @@
 **M3 Slice 5 lock follow-up:** `evidence/m3/m3-slice5-device-lock-visibility-boundary-handshake-20261008.md` - lock helpers `pub(crate)` + device-bound; boundary check before FS mutate; thread-scoped reader-at-lock handshake.
 **M3 Slice 6:** `evidence/m3/m3-slice6-search-api-20261008.md` - `search_events` FTS + conjunction metadata filters; UTC `created_at` ranges; `InvalidQuery` for bad FTS/bounds.
 **M3 Slice 6 follow-up:** `evidence/m3/m3-slice6-fractional-instant-precision-20261008.md` - exact UTC instants (incl. fractional seconds) for search range + ordering via `rfc3339_utc_instant`; no new stored column.
-**M3 Slice 7:** `evidence/m3/m3-slice7-cross-platform-ci-wire-20261008.md` - CI readiness wires `cryptex-projection` only; `cryptexd` `projection::` covered by existing full `cargo test -p cryptexd` (duplicate filtered step removed); sealed/open + multi-device + idempotent rebuild matrix coverage; Windows-local PASS; **no Actions dispatched**.
-**M3 Slice 7 macOS four-check:** `evidence/m3/m3-slice7-macos-four-check-20261008.md` - owner macOS 27.0.1 arm64 four-check PASS at exact HEAD `428b03f33eda8fbf645678220dbd3ce3d88d108e` (fmt; projection 35; cryptexd `projection::` 14; Clippy `-D warnings`). Both OS **local** checks PASS at that tip. Actions/CI PASS and M3 complete are **not** claimed.
+**M3 Slice 7:** `evidence/m3/m3-slice7-cross-platform-ci-wire-20261008.md` - CI readiness wires `cryptex-projection` only; `cryptexd` `projection::` covered by existing full `cargo test -p cryptexd` (duplicate filtered step removed); sealed/open + multi-device + idempotent rebuild matrix coverage; Windows-local PASS.
+**M3 Slice 7 macOS four-check:** `evidence/m3/m3-slice7-macos-four-check-20261008.md` - owner macOS 27.0.1 arm64 four-check PASS at exact HEAD `428b03f33eda8fbf645678220dbd3ce3d88d108e` (fmt; projection 35; cryptexd `projection::` 14; Clippy `-D warnings`). Both OS local checks PASS at that tip.
 **M3 Slice 7 tip (both-OS local PASS):** `428b03f33eda8fbf645678220dbd3ce3d88d108e` (behavior through CI redundancy cleanup; Windows + macOS local four-checks recorded)
+**M3 final dual-OS CI:** PASS in run [37720627242](https://github.com/gungortarik/cryptex/actions/runs/37720627242) at exact branch tip `51e6dc772757510e08c14ef565a87534a8a9478b` (documentation-only after tested behavior SHA `428b03f`). Windows and macOS readiness plus Windows IPC ACL PASS; unsigned package skipped by design. Record: `evidence/m3/m3-final-ci-gate-20261008.md`.
 **Latest verified candidate SHA:** `9ade9f7db18ec0e383594c19e592809e3b194531` (`9ade9f7`), on `m2/immutable-event-store`.
 **Final dual-OS CI:** PASS in run [37706283147](https://github.com/gungortarik/cryptex/actions/runs/37706283147) against the exact candidate SHA above. macOS and Windows readiness plus Windows IPC ACL succeeded; unsigned Windows package skipped by design. Record: `evidence/m2/m2-final-ci-gate-20261008.md`.
 **Closeout audit tip (L1/L2/F4–F6 + staging ownership):** behavior `b5c9d69`, tip `1a26493` — `evidence/m2/m2-staging-cleanup-ownership-20261007.md`. Windows checks PASS; owner-reported macOS four-check PASS at `9ade9f7` is recorded in the final-gate evidence. Owner-delegated closeout review PASS is recorded at `evidence/m2/m2-owner-delegated-review-20261008.md`; PR #8 integration completed at `817b6a1`. `LongPathsEnabled=0` is not claimed.
@@ -27,7 +28,7 @@
 **M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) — integrated ancestor
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
 **M1 documentation closeout:** `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75`
-**Next gate:** Review Slice 7 tip `428b03f` (both-OS **local** PASS recorded: Windows in Slice 7 evidence; macOS in `evidence/m3/m3-slice7-macos-four-check-20261008.md`). Do **not** claim Actions/CI PASS or M3 complete yet. Only after tip review may the single required readiness workflow be dispatched. Slice 8 (DoD / security / owner review) follows a green dual-OS CI candidate. Do not start M4.
+**Next gate:** Slice 8 — review M3 acceptance criteria against implementation and evidence, perform security review, resolve any findings, then complete owner review. Slice 7 local verification and required CI are PASS. Do not claim M3 complete or start M4 until Slice 8 and all completion gates are satisfied.
 
 > This file is an operational status snapshot, not an architecture authority. If it conflicts with `docs/00_MASTER_SPEC.md`, accepted ADRs, the milestone contract, or other authoritative project documents, stop and report the conflict instead of silently reconciling it.
 
