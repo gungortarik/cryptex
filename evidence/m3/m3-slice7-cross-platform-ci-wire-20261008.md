@@ -58,9 +58,11 @@ Host target dir: `%LOCALAPPDATA%\Cryptex-Dev\cargo-target-m3-s7`
 
 No GitHub Actions dispatched.
 
-## macOS verification — PENDING (owner Mac)
+## macOS verification — PASS (owner follow-up)
 
-Do **not** claim cross-platform PASS until the following succeeds on macOS against the same tip SHA as this evidence tip.
+Owner macOS four-check PASS at exact HEAD `428b03f33eda8fbf645678220dbd3ce3d88d108e` is recorded in `evidence/m3/m3-slice7-macos-four-check-20261008.md`. Windows-local PASS above is preserved. Both OS **local** checks pass at that tip. Commands below remain the reference checklist; they have been executed on the Mac.
+
+Historical note — original Slice 7 write-up left macOS pending with these commands:
 
 ```bash
 cd /path/to/cryptex
@@ -90,7 +92,7 @@ cargo test --locked -p cryptexd --lib projection::tests::restart_catch_up_projec
 
 Record macOS host, date, tip SHA, and pass/fail in a follow-up evidence note before any Actions dispatch.
 
-## Final CI (after both-OS verification + review only — do not run yet)
+## Final CI (both-OS local PASS recorded; after tip review only — do not run yet)
 
 ```bash
 gh workflow run ci.yml --ref m3/local-projection-search
@@ -112,4 +114,10 @@ Before the final M3 Actions run, removed the readiness step
 `cargo test --locked -p cryptexd --lib projection::` because it duplicated tests already
 executed by `cargo test --locked -p cryptexd`. Kept `cargo test --locked -p cryptex-projection`.
 Local Windows matrix commands that filter `projection::` remain valid focused verification; they
-are not duplicated in CI. No product behavior change. macOS verification still pending; Actions still not dispatched.
+are not duplicated in CI. No product behavior change. Owner macOS four-check later PASS at `428b03f` is recorded in `evidence/m3/m3-slice7-macos-four-check-20261008.md`; Actions still not dispatched.
+
+
+## Follow-up (macOS four-check)
+
+Owner macOS four-check PASS at `428b03f33eda8fbf645678220dbd3ce3d88d108e`: `evidence/m3/m3-slice7-macos-four-check-20261008.md`.
+Both OS local verification now PASS at that tip. Actions still not dispatched; M3 not complete.
