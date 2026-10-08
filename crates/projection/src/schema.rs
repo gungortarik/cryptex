@@ -578,13 +578,7 @@ fn normalize_check_expr(expr: &str) -> String {
 
 fn is_constraint_rejection(err: &rusqlite::Error) -> bool {
     match err {
-        rusqlite::Error::SqliteFailure(efi, message) => {
-            if efi.code == ErrorCode::ConstraintViolation {
-                return true;
-            }
-            let message = message.as_deref().unwrap_or("").to_ascii_lowercase();
-            message.contains("constraint")
-        }
+        rusqlite::Error::SqliteFailure(efi, _) => efi.code == ErrorCode::ConstraintViolation,
         _ => false,
     }
 }
@@ -956,6 +950,42 @@ mod tests {
             "savepoint cleanup must leave connection in autocommit"
         );
         // Connection remains usable for ordinary reads.
+        let version: i64 = db
+            .connection()
+            .query_row(
+                "SELECT schema_version FROM projection_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, 1);
+    }
+
+    #[test]
+    fn meta_id_probe_io_error_mentioning_constraint_is_not_accepted_as_rejection() {
+        let db = ProjectionDb::open_in_memory().expect("memory");
+
+        let misleading = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::SystemIoFailure,
+                extended_code: 10,
+            },
+            Some("disk I/O error while checking constraint".into()),
+        );
+        INJECT_META_ID_PROBE_ERROR.with(|slot| {
+            *slot.borrow_mut() = Some(misleading);
+        });
+
+        let err = validate_schema_v1(db.connection())
+            .expect_err("non-ConstraintViolation must fail closed");
+        assert!(
+            matches!(err, ProjectionError::Sqlite(_)),
+            "message containing 'constraint' must not count as ConstraintViolation, got {err}"
+        );
+        assert!(
+            db.connection().is_autocommit(),
+            "savepoint cleanup must leave connection in autocommit"
+        );
         let version: i64 = db
             .connection()
             .query_row(

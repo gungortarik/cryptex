@@ -134,3 +134,20 @@ cargo clippy --locked -p cryptex-core -p cryptex-projection -p cryptexd --all-ta
 ```
 
 Only after tip review **and** macOS PASS: dispatch one new dual-OS Actions run. Prior run 37720627242 covers `51e6dc7` only. Do not merge or claim M3 complete.
+
+
+## Follow-up (constraint-class only)
+
+`is_constraint_rejection` now accepts only `ErrorCode::ConstraintViolation`. The previous fallback that treated any error message containing `"constraint"` as success was removed — error text is not proof of the SQLite result class.
+
+Regression: inject `SystemIoFailure` whose message contains `"constraint"`; schema validation must fail closed as non-replaceable `Sqlite` (not treated as a successful non-1 id rejection). Existing true-constraint and busy-inject coverage retained.
+
+### Windows re-check
+
+| Command | Result |
+|---------|--------|
+| `cargo fmt --all -- --check` | PASS |
+| `cargo test --locked -p cryptex-projection --lib` | PASS |
+| `cargo clippy --locked -p cryptex-core -p cryptex-projection -p cryptexd --all-targets -- -D warnings` | PASS |
+
+No Actions. Owner macOS four-check only after tip review of this follow-up.
