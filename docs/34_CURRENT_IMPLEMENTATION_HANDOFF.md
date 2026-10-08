@@ -37,6 +37,7 @@
 **M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) — integrated ancestor
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
 **M1 documentation closeout:** `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75`
+**M3 Slice 8 corruption-class tip (Windows-local; macOS pending):** `6b61882dce0814abd51fbf063c69d7775c483e37`
 **Next gate:** Review corruption-class tip; owner macOS four-check on that exact tip; only then one final dual-OS Actions. Do not merge or claim M3 complete.
 
 > This file is an operational status snapshot, not an architecture authority. If it conflicts with `docs/00_MASTER_SPEC.md`, accepted ADRs, the milestone contract, or other authoritative project documents, stop and report the conflict instead of silently reconciling it.
