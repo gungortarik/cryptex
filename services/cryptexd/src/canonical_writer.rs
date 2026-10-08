@@ -195,8 +195,8 @@ impl FrameBodyValidator for VerifyingBodyValidator {
             VersionedRecord::VerifiedV1(event) => {
                 (Some(event.device_id.as_str()), Some(EVENT_SCHEMA_VERSION))
             }
-            VersionedRecord::VerifiedV2PayloadPending(event) => {
-                (Some(event.device_id.as_str()), Some(2))
+            VersionedRecord::VerifiedV2Supported(event) => {
+                (Some(event.event.device_id.as_str()), Some(2))
             }
             VersionedRecord::VerifiedUnsupported(event) => {
                 (Some(event.device_id.as_str()), Some(2))
@@ -212,8 +212,7 @@ impl FrameBodyValidator for VerifyingBodyValidator {
         }
         let accepted = match record {
             VersionedRecord::VerifiedV1(accepted) => accepted,
-            VersionedRecord::VerifiedV2PayloadPending(_)
-            | VersionedRecord::VerifiedUnsupported(_) => {
+            VersionedRecord::VerifiedV2Supported(_) | VersionedRecord::VerifiedUnsupported(_) => {
                 // Integrity is verified. Preserve the record in the chain and
                 // leave materialization to a reader that supports its payload.
                 return Ok(());
@@ -629,9 +628,11 @@ fn absorb_event(
 ) -> CanonicalWriterResult<()> {
     let (hash, key, seq) = match ev {
         VersionedRecord::VerifiedV1(ev) => (&ev.content_hash, &ev.signing_key_id, &ev.device_seq),
-        VersionedRecord::VerifiedV2PayloadPending(ev) => {
-            (&ev.content_hash, &ev.signing_key_id, &ev.device_seq)
-        }
+        VersionedRecord::VerifiedV2Supported(ev) => (
+            &ev.event.content_hash,
+            &ev.event.signing_key_id,
+            &ev.event.device_seq,
+        ),
         VersionedRecord::VerifiedUnsupported(ev) => {
             (&ev.content_hash, &ev.signing_key_id, &ev.device_seq)
         }
@@ -679,11 +680,11 @@ fn scan_pack_events(
                 &event.prev_content_hash,
                 &event.content_hash,
             ),
-            VersionedRecord::VerifiedV2PayloadPending(event) => (
-                event.device_id.as_str(),
-                event.device_seq.to_u64()?,
-                &event.prev_content_hash,
-                &event.content_hash,
+            VersionedRecord::VerifiedV2Supported(event) => (
+                event.event.device_id.as_str(),
+                event.event.device_seq.to_u64()?,
+                &event.event.prev_content_hash,
+                &event.event.content_hash,
             ),
             VersionedRecord::VerifiedUnsupported(event) => (
                 event.device_id.as_str(),
@@ -1096,7 +1097,7 @@ where
         for record in &events {
             match record {
                 VersionedRecord::VerifiedV1(ev) => on_event(ev)?,
-                VersionedRecord::VerifiedV2PayloadPending(_)
+                VersionedRecord::VerifiedV2Supported(_)
                 | VersionedRecord::VerifiedUnsupported(_) => {
                     return Err(CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(
                         "verified v2 records require M4 retrieval-safety and materialization support".into(),
@@ -1126,7 +1127,7 @@ where
             for record in &events {
                 match record {
                     VersionedRecord::VerifiedV1(ev) => on_event(ev)?,
-                    VersionedRecord::VerifiedV2PayloadPending(_)
+                    VersionedRecord::VerifiedV2Supported(_)
                     | VersionedRecord::VerifiedUnsupported(_) => {
                         return Err(CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(
                             "verified v2 records require M4 retrieval-safety and materialization support".into(),

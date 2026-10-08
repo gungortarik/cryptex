@@ -4,6 +4,7 @@ use schemars::schema_for;
 use serde_json::{Value, json};
 
 use crate::envelope::AcceptedEvent;
+use crate::v2_payload::V2KnowledgeAssertionEvent;
 
 /// Render the checked-in production AcceptedEvent schema document as pretty JSON + LF.
 pub fn render_accepted_event_schema_json() -> String {
@@ -26,6 +27,27 @@ pub fn render_accepted_event_schema_json() -> String {
 
 /// Relative path from the repository root to the checked-in schema artifact.
 pub const CHECKED_IN_SCHEMA_REL_PATH: &str = "packages/schemas/cryptex-event-v1.schema.json";
+
+/// Render the ADR-0017 v2 structured-assertion schema as pretty JSON + LF.
+pub fn render_v2_knowledge_assertion_schema_json() -> String {
+    let schema = schema_for!(V2KnowledgeAssertionEvent);
+    let mut value = serde_json::to_value(&schema).expect("schema value");
+    if let Value::Object(ref mut map) = value {
+        map.insert(
+            "$id".into(),
+            json!("https://cryptex.local/schemas/cryptex-event-v2.schema.json"),
+        );
+        map.insert("title".into(), json!("CryptexKnowledgeAssertionEventV2"));
+    }
+    let mut text = serde_json::to_string_pretty(&value).expect("schema json");
+    text = text.replace("\r\n", "\n");
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text
+}
+
+pub const CHECKED_IN_V2_SCHEMA_REL_PATH: &str = "packages/schemas/cryptex-event-v2.schema.json";
 
 #[cfg(test)]
 mod tests {
@@ -109,5 +131,47 @@ mod tests {
             rendered,
             "schema drift detected; run cryptex-events-schema-gen and commit packages/schemas"
         );
+    }
+
+    #[test]
+    fn v2_schema_is_separate_strict_and_contains_all_payload_kinds() {
+        let text = render_v2_knowledge_assertion_schema_json();
+        let root: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(root["title"], "CryptexKnowledgeAssertionEventV2");
+        assert_eq!(root["properties"]["schema_version"]["minimum"], 2);
+        assert_eq!(root["properties"]["schema_version"]["maximum"], 2);
+        assert_eq!(root["properties"]["payload_schema_version"]["minimum"], 1);
+        assert_eq!(root["properties"]["payload_schema_version"]["maximum"], 1);
+        assert_eq!(
+            root["$defs"]["KnowledgeAssertionEventType"]["enum"][0],
+            "knowledge.assertion"
+        );
+        for kind in [
+            "entity.declare",
+            "entity.alias",
+            "fact.assert",
+            "relation.assert",
+            "assertion.correct",
+            "entity.merge",
+            "entity.merge_revoke",
+            "assertion.resolve_conflict",
+        ] {
+            assert!(text.contains(kind), "missing schema payload kind {kind}");
+        }
+        assert!(text.contains("confirmed"));
+        assert!(text.contains("inferred"));
+        assert!(text.contains("uncertain"));
+    }
+
+    #[test]
+    fn checked_in_v2_schema_matches_rendered_output() {
+        let rendered = render_v2_knowledge_assertion_schema_json();
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.pop();
+        path.pop();
+        path.push(CHECKED_IN_V2_SCHEMA_REL_PATH);
+        let on_disk = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        assert_eq!(on_disk.replace("\r\n", "\n"), rendered);
     }
 }

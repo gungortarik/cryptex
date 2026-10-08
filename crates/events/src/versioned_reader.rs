@@ -18,28 +18,18 @@ use crate::limits::{
     MAX_ACCEPTED_RECORD_BYTES, MAX_JSON_CONTAINER_ELEMENTS, MAX_JSON_NESTING_DEPTH,
     MAX_JSON_STRING_BYTES_PER_RECORD,
 };
+use crate::v2_payload::{KnowledgeAssertionPayload, V2KnowledgeAssertionEvent};
 use crate::validate_record::{ValidationFailure, validate_accepted_record_bytes};
 
 pub const EVENT_SCHEMA_VERSION_V2: u32 = 2;
 pub const V2_CONTENT_HASH_DOMAIN: &[u8] = b"cryptex-event-content-v2";
 pub const V2_SIGNATURE_DOMAIN: &[u8] = b"cryptex-event-sig-v2";
 
-/// A record whose cryptography is verified but whose known payload validator
-/// is deliberately not part of Slice 1 yet. Callers must not materialize it.
+/// A known and fully validated v2 knowledge assertion. M3 consumers still may
+/// not apply it; M4 materialization owns its semantics.
 #[derive(Debug, Clone, PartialEq)]
-pub struct VerifiedV2PayloadPending {
-    pub event_id: String,
-    pub brain_id: String,
-    pub device_id: String,
-    pub device_seq: DeviceSeq,
-    pub created_at: String,
-    pub event_type: String,
-    pub payload_schema_version: u32,
-    pub classification: Classification,
-    pub signing_key_id: SigningKeyId,
-    pub payload: Value,
-    pub prev_content_hash: ContentHashHex,
-    pub content_hash: ContentHashHex,
+pub struct VerifiedV2KnowledgeAssertion {
+    pub event: V2KnowledgeAssertionEvent,
     pub raw_record: Vec<u8>,
 }
 
@@ -63,12 +53,12 @@ pub struct UnverifiableEnvelope {
     pub raw_record: Vec<u8>,
 }
 
-/// Read classification. `VerifiedV2PayloadPending` is a transitional M4
-/// implementation state, not an authorization to apply the payload.
+/// Read classification. Verified payload integrity is not factual truth and
+/// is not publication authorization; consumers still apply their own policy.
 #[derive(Debug, Clone, PartialEq)]
 pub enum VersionedRecord {
     VerifiedV1(AcceptedEvent),
-    VerifiedV2PayloadPending(VerifiedV2PayloadPending),
+    VerifiedV2Supported(VerifiedV2KnowledgeAssertion),
     VerifiedUnsupported(VerifiedUnsupportedV2),
     Unverifiable(UnverifiableEnvelope),
 }
@@ -105,14 +95,15 @@ impl VersionedChainVerifier {
                 &event.content_hash,
                 1,
             ),
-            VersionedRecord::VerifiedV2PayloadPending(event) => (
-                event.device_id.as_str(),
-                event
+            VersionedRecord::VerifiedV2Supported(record) => (
+                record.event.device_id.as_str(),
+                record
+                    .event
                     .device_seq
                     .to_u64()
                     .map_err(|_| failure("invalid_record", "device_seq is invalid", Some(2)))?,
-                &event.prev_content_hash,
-                &event.content_hash,
+                &record.event.prev_content_hash,
+                &record.event.content_hash,
                 2,
             ),
             VersionedRecord::VerifiedUnsupported(event) => (
@@ -365,23 +356,41 @@ fn read_v2(
             )
         })?;
 
-    // Slice 1 has no typed payload validator. Do not label the known schema as
-    // unsupported or apply it; Slice 2 will supply the exact validator.
     if envelope.event_type == "knowledge.assertion" && envelope.payload_schema_version == 1 {
-        return Ok(VersionedRecord::VerifiedV2PayloadPending(
-            VerifiedV2PayloadPending {
-                event_id: envelope.event_id,
-                brain_id: envelope.brain_id,
-                device_id: envelope.device_id,
-                device_seq: envelope.device_seq,
-                created_at: envelope.created_at,
-                event_type: envelope.event_type,
-                payload_schema_version: envelope.payload_schema_version,
-                classification: envelope.classification,
-                signing_key_id: envelope.signing_key_id,
-                payload: envelope.payload,
-                prev_content_hash: envelope.prev_content_hash,
-                content_hash: envelope.content_hash,
+        let payload =
+            KnowledgeAssertionPayload::parse_and_validate(envelope.payload).map_err(|_| {
+                failure(
+                    "invalid_record",
+                    "known v2 payload failed strict validation",
+                    Some(2),
+                )
+            })?;
+        let event = V2KnowledgeAssertionEvent {
+            schema_version: envelope.schema_version,
+            event_id: envelope.event_id,
+            brain_id: envelope.brain_id,
+            device_id: envelope.device_id,
+            device_seq: envelope.device_seq,
+            created_at: envelope.created_at,
+            event_type: crate::v2_payload::KnowledgeAssertionEventType::KnowledgeAssertion,
+            payload_schema_version: envelope.payload_schema_version,
+            classification: envelope.classification,
+            signing_key_id: envelope.signing_key_id,
+            payload,
+            prev_content_hash: envelope.prev_content_hash,
+            content_hash: envelope.content_hash,
+            signature: envelope.signature,
+        };
+        event.validate().map_err(|_| {
+            failure(
+                "invalid_record",
+                "known v2 event failed strict validation",
+                Some(2),
+            )
+        })?;
+        return Ok(VersionedRecord::VerifiedV2Supported(
+            VerifiedV2KnowledgeAssertion {
+                event,
                 raw_record: bytes.to_vec(),
             },
         ));
@@ -494,7 +503,20 @@ mod tests {
             "payload_schema_version": payload_schema_version,
             "classification": "internal",
             "signing_key_id": key_id.as_str(),
-            "payload": {"kind": "test", "value": "synthetic"},
+            "payload": if event_type == "knowledge.assertion" && payload_schema_version == 1 {
+                serde_json::json!({
+                    "kind":"entity.declare",
+                    "entity_id":"33333333-3333-4333-8333-333333333333",
+                    "entity_kind":"person",
+                    "label":"Synthetic",
+                    "publication_authorization":{
+                        "basis":"direct_user",
+                        "receipt_id":"44444444-4444-4444-8444-444444444444"
+                    }
+                })
+            } else {
+                serde_json::json!({"kind": "test", "value": "synthetic"})
+            },
             "prev_content_hash": prev_content_hash,
             "content_hash": "00".repeat(32),
             "signature": "00".repeat(64),
@@ -531,15 +553,94 @@ mod tests {
         (bytes, key)
     }
 
+    fn resign_v2_record(record: &mut Value, key: &SigningKey) {
+        let object = record.as_object_mut().unwrap();
+        object.remove("content_hash");
+        object.remove("signature");
+        let canonical = serde_json_canonicalizer::to_vec(record).unwrap();
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(V2_CONTENT_HASH_DOMAIN);
+        hasher.update(&[0]);
+        hasher.update(&canonical);
+        let hash = *hasher.finalize().as_bytes();
+        let signature = key.sign(&[V2_SIGNATURE_DOMAIN, &[0], hash.as_slice()].concat());
+        let object = record.as_object_mut().unwrap();
+        object.insert(
+            "content_hash".into(),
+            Value::String(ContentHashHex::from_bytes(&hash).unwrap().as_str().into()),
+        );
+        object.insert(
+            "signature".into(),
+            Value::String(
+                SignatureHex::from_bytes(&signature.to_bytes())
+                    .unwrap()
+                    .as_str()
+                    .into(),
+            ),
+        );
+    }
+
     #[test]
-    fn known_v2_common_envelope_is_crypto_verified_but_not_yet_materializable() {
+    fn known_v2_payload_is_strictly_validated_and_preserved() {
         let (bytes, key) = make_v2("knowledge.assertion", 1);
         let result = read_versioned_record(&bytes, &key.verifying_key()).unwrap();
-        let VersionedRecord::VerifiedV2PayloadPending(record) = result else {
-            panic!("expected typed-payload validation boundary");
+        let VersionedRecord::VerifiedV2Supported(record) = result else {
+            panic!("expected validated v2 knowledge assertion");
         };
         assert_eq!(record.raw_record, bytes);
-        assert_eq!(record.event_type, "knowledge.assertion");
+        assert_eq!(
+            record.event.event_id,
+            "11111111-1111-4111-8111-111111111111"
+        );
+        assert!(matches!(
+            record.event.payload,
+            KnowledgeAssertionPayload::EntityDeclare { .. }
+        ));
+        let typed: V2KnowledgeAssertionEvent = serde_json::from_slice(&bytes).unwrap();
+        typed.validate().unwrap();
+    }
+
+    #[test]
+    fn malformed_known_v2_payload_is_invalid_not_verified_unsupported() {
+        let (mut bytes, key) = make_v2("knowledge.assertion", 1);
+        let mut record: Value = serde_json::from_slice(&bytes).unwrap();
+        record["payload"] = serde_json::json!({
+            "kind":"entity.declare",
+            "entity_id":"33333333-3333-4333-8333-333333333333",
+            "entity_kind":"person",
+            "label":"Synthetic",
+            "unknown":true,
+            "publication_authorization":{
+                "basis":"direct_user",
+                "receipt_id":"44444444-4444-4444-8444-444444444444"
+            }
+        });
+        resign_v2_record(&mut record, &key);
+        bytes = serde_json_canonicalizer::to_vec(&record).unwrap();
+        let error = read_versioned_record(&bytes, &key.verifying_key()).unwrap_err();
+        assert_eq!(error.reason, crate::ValidationReasonCode::InvalidRecord);
+        assert!(!error.detail.contains("Synthetic"));
+        assert!(!error.detail.contains("unknown"));
+    }
+
+    #[test]
+    fn known_v2_event_type_and_payload_schema_are_exact() {
+        let (bytes, key) = make_v2("Knowledge.assertion", 1);
+        assert!(matches!(
+            read_versioned_record(&bytes, &key.verifying_key()).unwrap(),
+            VersionedRecord::VerifiedUnsupported(_)
+        ));
+        let (bytes, key) = make_v2("knowledge.assertion", 0);
+        assert!(read_versioned_record(&bytes, &key.verifying_key()).is_err());
+        let (bytes, key) = make_v2("knowledge.assertion", 1);
+        let mut raw: Value = serde_json::from_slice(&bytes).unwrap();
+        raw["payload_schema_version"] = Value::from(2);
+        resign_v2_record(&mut raw, &key);
+        let future = serde_json_canonicalizer::to_vec(&raw).unwrap();
+        assert!(matches!(
+            read_versioned_record(&future, &key.verifying_key()).unwrap(),
+            VersionedRecord::VerifiedUnsupported(_)
+        ));
     }
 
     #[test]

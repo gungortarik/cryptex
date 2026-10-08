@@ -1,6 +1,7 @@
 # @cryptex/schemas
 
-Generated JSON Schema and TypeScript bindings for Cryptex production events (ADR-0016).
+Generated JSON Schema and TypeScript bindings for Cryptex events. V1 remains the
+frozen ADR-0016 contract; v2 is the separate ADR-0017 typed reader schema.
 
 ## Regenerate
 
