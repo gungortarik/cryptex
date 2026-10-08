@@ -706,6 +706,7 @@ dependencies = [
  "blake3",
  "cryptex-core",
  "cryptex-events",
+ "cryptex-knowledge",
  "cryptex-projection",
  "cryptex-storage",
  "ed25519-dalek",

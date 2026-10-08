@@ -16,6 +16,7 @@ pub mod identity_runtime;
 pub mod install_runtime;
 pub mod instance;
 pub mod ipc;
+pub mod knowledge_materialization;
 mod metadata_persistence;
 pub mod pairing_store;
 pub mod paths;
