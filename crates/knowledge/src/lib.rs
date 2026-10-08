@@ -1462,6 +1462,71 @@ mod tests {
     }
 
     #[test]
+    fn sqlite_rebuild_rejects_frame_positions_not_bound_to_verified_records() {
+        let raw = event('1', 1, declare(PERSON_A, "Ada"));
+        let history = verified_history(&[raw]);
+        let VersionedRecord::VerifiedV2Supported(record) = &history.records()[0] else {
+            panic!("expected supported verified v2 event");
+        };
+        let event = record.event();
+        let position = sqlite::CanonicalFramePosition {
+            event_id: event.event_id.clone(),
+            device_id: event.device_id.clone(),
+            pack_index: 0,
+            frame_offset: 0,
+            content_hash: event.content_hash.as_str().to_owned(),
+        };
+        let progress = sqlite::DeviceMaterializationProgress {
+            device_id: event.device_id.clone(),
+            integrity_position: Some(position.clone()),
+            safe_position: Some(position.clone()),
+            blocking_reason: None,
+        };
+        let mut db = cryptex_projection::ProjectionDb::open_in_memory().unwrap();
+        sqlite::migrate_knowledge_schema(db.connection_mut()).unwrap();
+        let mut mismatched = position.clone();
+        mismatched.content_hash = "0".repeat(64);
+        let result = sqlite::rebuild_from_verified_history(
+            db.connection_mut(),
+            BRAIN,
+            &history,
+            &[mismatched],
+            std::slice::from_ref(&progress),
+        );
+        assert!(matches!(
+            result,
+            Err(sqlite::KnowledgeStoreError::Schema(_))
+        ));
+        let status: String = db
+            .connection()
+            .query_row(
+                "SELECT rebuild_status FROM knowledge_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "not_built");
+
+        sqlite::rebuild_from_verified_history(
+            db.connection_mut(),
+            BRAIN,
+            &history,
+            &[position],
+            &[progress],
+        )
+        .unwrap();
+        let status: String = db
+            .connection()
+            .query_row(
+                "SELECT rebuild_status FROM knowledge_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(status, "ready");
+    }
+
+    #[test]
     fn birth_date_disagreement_conflicts_but_unknown_predicates_are_multivalued() {
         let records = vec![
             event('1', 1, declare(PERSON_A, "Ada")),

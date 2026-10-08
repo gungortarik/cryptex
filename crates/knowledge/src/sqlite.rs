@@ -73,9 +73,69 @@ pub fn rebuild_from_verified_history(
     frame_positions: &[CanonicalFramePosition],
     progress: &[DeviceMaterializationProgress],
 ) -> KnowledgeStoreResult<()> {
+    validate_history_positions(history, frame_positions)?;
     let state = crate::reduce_verified_events(expected_brain_id, history)
         .map_err(KnowledgeStoreError::Reducer)?;
     replace_reduced_knowledge_materialization(conn, &state, frame_positions, progress)
+}
+
+fn validate_history_positions(
+    history: &VerifiedV2History,
+    positions: &[CanonicalFramePosition],
+) -> KnowledgeStoreResult<()> {
+    use cryptex_events::VersionedRecord;
+
+    if history.records().len() != positions.len() {
+        return Err(KnowledgeStoreError::Schema(
+            "canonical frame positions do not cover the verified history".into(),
+        ));
+    }
+    let mut by_event = std::collections::BTreeMap::new();
+    for position in positions {
+        let event_id = position.event_id.to_ascii_lowercase();
+        if by_event.insert(event_id, position).is_some() {
+            return Err(KnowledgeStoreError::Schema(
+                "duplicate event frame position".into(),
+            ));
+        }
+    }
+    for record in history.records() {
+        let (event_id, device_id, content_hash) = match record {
+            VersionedRecord::VerifiedV1(event) => (
+                event.event_id.as_str(),
+                event.device_id.as_str(),
+                event.content_hash.as_str(),
+            ),
+            VersionedRecord::VerifiedV2Supported(event) => (
+                event.event().event_id.as_str(),
+                event.event().device_id.as_str(),
+                event.event().content_hash.as_str(),
+            ),
+            VersionedRecord::VerifiedUnsupported(event) => (
+                event.event_id.as_str(),
+                event.device_id.as_str(),
+                event.content_hash.as_str(),
+            ),
+            VersionedRecord::Unverifiable(_) => {
+                return Err(KnowledgeStoreError::Schema(
+                    "verified history contains an unverifiable envelope".into(),
+                ));
+            }
+        };
+        let position = by_event
+            .get(&event_id.to_ascii_lowercase())
+            .ok_or_else(|| {
+                KnowledgeStoreError::Schema(
+                    "verified event is missing its canonical frame position".into(),
+                )
+            })?;
+        if position.device_id != device_id || position.content_hash != content_hash {
+            return Err(KnowledgeStoreError::Schema(
+                "canonical frame position does not match verified event identity".into(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn replace_reduced_knowledge_materialization(
