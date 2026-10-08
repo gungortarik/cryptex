@@ -50,4 +50,5 @@ Windows/macOS verification, and final dual-OS Actions result recorded above.
 **M3 completion gate: PASS (within the accepted M3 scope).** All M3 scope and
 verification items are recorded as passing. This closes M3; it does not claim
 production readiness, add a Desktop search UI, or start M4. Branch integration
-is a separate Git operation and is not performed by this review record.
+was completed through normal merge PR #9 into `m0/foundation` at
+`35538c144434e1dbfb97b47f89d2536b7646046a`.

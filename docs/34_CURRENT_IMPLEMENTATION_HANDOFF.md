@@ -1,10 +1,11 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-08
-**Current milestone:** M3 - Local Projection + Search — COMPLETE within accepted scope. Windows and owner-reported macOS four-checks and final dual-OS CI PASS at `4a2ea56`; scoped security/DoD review and owner-delegated final review PASS. No Desktop/MCP surfaces were added (outside M3 scope); M4 has not started.
-**Active branch:** `m3/local-projection-search`, based on `m0/foundation` at M2 merge commit `817b6a126cf6e9cd3e8a27b1348ec977bdc9dcdd` (PR #8)
+**Current milestone:** M4 - Knowledge Engine (Phase 0 preparation only; no product implementation or ADR-dependent decisions started)
+**Active branch:** `m4/knowledge-engine`, based on M3 merge commit `35538c144434e1dbfb97b47f89d2536b7646046a` (PR #9)
 **M2 status:** COMPLETE within M2 scope after owner-delegated review and required verification; normal merge PR #8 integrated `m2/immutable-event-store` into `m0/foundation` at `817b6a1`.
-**M3 kickoff:** `evidence/m3/m3-kickoff-plan-20261008.md`. **Phase 0 plan:** `evidence/m3/m3-phase0-implementation-plan-20261008.md`. Cursor owns M3 product code; Phase 0 complete; Slices 1-4 landed on `m3/local-projection-search`.
+**M3 closeout:** Complete within accepted scope; normal merge PR #9 integrated `m3/local-projection-search` into `m0/foundation` at `35538c1`. Final review: `evidence/m3/m3-final-review-20261008.md`.
+**M4 preparation:** `evidence/m4/m4-phase0-kickoff-plan-20261008.md`. Planning only; product slices, dependency pins, and unresolved semantic choices have not started.
 **M3 Slice 1:** `evidence/m3/m3-slice1-workspace-scaffolding-20261008.md` - `cryptex-projection` path scaffolding + focused layout tests; no SQLite deps.
 **M3 Slice 2:** `evidence/m3/m3-slice2-sqlite-fts5-pin-20261008.md` - `rusqlite =0.40.2` `default-features=false` + `bundled`; FTS5 fail-closed smoke; no schema/ingest.
 **M3 Slice 3:** `evidence/m3/m3-slice3-projection-schema-v1-20261008.md` - empty schema v1 (`events` + text-only FTS5 + meta/checkpoint); open/create + schema-version validation; no ingest/search.
@@ -38,7 +39,8 @@
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
 **M1 documentation closeout:** `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75`
 **M3 Slice 8 corruption-class candidate:** code SHA `6b61882dce0814abd51fbf063c69d7775c483e37`; exact branch HEAD with docs stamps `4a2ea56aa2ddc4024d82599f8dc671472179cbe8`. Windows local checks PASS; owner macOS four-check PASS at exact HEAD; final dual-OS Actions PASS in [run 37780668640](https://github.com/gungortarik/cryptex/actions/runs/37780668640). Evidence: `evidence/m3/m3-slice8-security-dod-findings-20261008.md`, `evidence/m3/m3-slice8-macos-four-check-20261008.md`, and `evidence/m3/m3-final-ci-gate-20261008.md`.
-**M3 closeout:** Completion gate PASS, recorded in `evidence/m3/m3-final-review-20261008.md`. M3 is complete on its milestone branch. It has not been merged; no merge was performed as part of this closeout. M4 has not started.
+**M3 closeout:** Completion gate PASS within accepted scope, recorded in `evidence/m3/m3-final-review-20261008.md`. Normal merge PR #9 integrated M3 into `m0/foundation` at `35538c1`.
+**M4 kickoff:** `evidence/m4/m4-phase0-kickoff-plan-20261008.md`. Planning only. Product implementation is not authorized by this prep record; exact semantics/schema/algorithms remain unresolved by accepted specs and require review before dependent implementation.
 
 > This file is an operational status snapshot, not an architecture authority. If it conflicts with `docs/00_MASTER_SPEC.md`, accepted ADRs, the milestone contract, or other authoritative project documents, stop and report the conflict instead of silently reconciling it.
 
@@ -149,18 +151,19 @@ scoped PASS; scoped ADR-0012 and ADR-0004 accepted. Older continuation entries
 below remain dated history. Prefer this current status and the ADR index for
 present-day decisions.
 
-- Work only on the current milestone (M3). Do not opportunistically implement M4 knowledge consolidation, M8 replication product behavior, M10 purge product workflows, or M13 broad Desktop search UX.
-- Follow the accepted M3 contract and authoritative memory/storage specs. Do not turn derived SQLite/FTS state into canonical data or invent semantic/M4 fields.
+- Work only on the current milestone (M4). Do not opportunistically implement M5 Quick Capture, M6/M7 Obsidian behavior, M8 replication, M10 purge, or M13 broad Desktop product UI.
+- Follow the accepted M4 contract and authoritative memory/entity specifications. Knowledge materialization must remain derived/rebuildable; canonical history stays immutable and authoritative.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
-- **Historical M3 implementation record:** Cursor implemented the slices on `m3/local-projection-search`; Phase 0 through Slice 8 evidence is linked above. Final candidate `4a2ea56` has Windows-local checks PASS, owner-reported macOS four-check PASS, and final dual-OS Actions PASS in run `37780668640`. The post-gate SQLite message-substring classification finding is closed. M3 is now COMPLETE within scope following the owner-delegated security/DoD review; see `evidence/m3/m3-final-review-20261008.md`. This branch remains unmerged and M4 has not started.
+- M3 final candidate `4a2ea56` has Windows-local checks PASS, owner-reported macOS four-check PASS, and final dual-OS Actions PASS in run `37780668640`; normal PR #9 merge is `35538c1`.
+- M4 is Phase 0 preparation only. Do not implement unresolved entity IDs, alias matching, fact/relation taxonomy, confidence rules, conflict precedence, provenance schema, or materialized-store schema until the decision/review gates in the M4 plan are satisfied.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
-- GitHub Actions minutes are constrained. Prefer relevant local checks; run only the required final M3 workflow after its candidate is reviewed.
+- GitHub Actions minutes are constrained. Prefer relevant local checks; run only the required final M4 workflow after its implementation candidate is reviewed.
 - Do not touch retained P0-1 corpora unless the current approved test requires it.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
 - Do not freeze the P0-1 benchmark profile value `segment_events=1000` as a production constant.
 - **Historical M1 working-agreement residue (superseded):** earlier text said "Work only on the current milestone (M1)" and "normal PR #6 merge remains before recording M1 integrated." M1 is complete and merged at `c2168f3`; documentation closeout is `0c84c5c`. Owner acceptance of the delegated M1 review is recorded at `evidence/m1/m1-final-review-20261007.md`.
-- ADR-0013, ADR-0014 (P1), ADR-0015, and ADR-0016 remain ACCEPTED (ADR-0016 at `5cc89b709dcf236698c3253b8582c873de7c7f0f`). M2 is complete; M3 proceeds under its accepted milestone contract.
+- ADR-0013, ADR-0014 (P1), ADR-0015, and ADR-0016 remain ACCEPTED (ADR-0016 at `5cc89b709dcf236698c3253b8582c873de7c7f0f`). M2 and M3 are complete; M4 proceeds under its accepted milestone contract and the Phase 0 plan.
 
 ## P0-1 status
 
