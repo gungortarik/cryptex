@@ -1,11 +1,11 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-08
-**Current milestone:** M4 - Knowledge Engine (Phase 0 discovery active; product implementation not started; owner review required for deterministic `memory.note` interpretation and derived-store boundary)
+**Current milestone:** M4 - Knowledge Engine (ADR-0017 accepted; documentation acceptance change prepared and consistency-checked; production implementation awaits explicit owner authorization)
 **Active branch:** `m4/knowledge-engine`, based on M3 merge commit `35538c144434e1dbfb97b47f89d2536b7646046a` (PR #9)
 **M2 status:** COMPLETE within M2 scope after owner-delegated review and required verification; normal merge PR #8 integrated `m2/immutable-event-store` into `m0/foundation` at `817b6a1`.
 **M3 closeout:** Complete within accepted scope; normal merge PR #9 integrated `m3/local-projection-search` into `m0/foundation` at `35538c1`. Final review: `evidence/m3/m3-final-review-20261008.md`.
-**M4 preparation:** `evidence/m4/m4-phase0-kickoff-plan-20261008.md`; input audit and decision table: `evidence/m4/m4-phase0-input-and-semantic-decision-review-20261008.md`. No product slice, dependency pin, canonical schema change, or Actions run. M4 reads accepted canonical history; current M2 schema supplies free-form `memory.note` text. Slice 1 waits on review of deterministic interpretation and derived-store boundary. A new event type/ADR is conditional, not a prerequisite.
+**M4 architecture:** ADR-0017 `docs/adr/ADR-0017-structured-event-evolution-and-knowledge-materialization.md` was accepted by the owner on 2026-10-08. It preserves the strict ADR-0016 v1 contract and `memory.note` bytes; defines the v2 reader/payload, deterministic reducer, additive tables in M3 `projection.sqlite`, retrieval safety, and separate M4-completion / v2-production-activation gates. The coordinated documentation acceptance change is prepared and its consistency checks pass. No production code, dependency pin, schema artifact, Actions, or v2 writing is authorized by ADR acceptance alone. The owner must separately authorize M4 implementation. Phase-0 alternatives are superseded; records remain for audit in `evidence/m4/m4-phase0-kickoff-plan-20261008.md` and `evidence/m4/m4-phase0-input-and-semantic-decision-review-20261008.md`.
 **M3 Slice 1:** `evidence/m3/m3-slice1-workspace-scaffolding-20261008.md` - `cryptex-projection` path scaffolding + focused layout tests; no SQLite deps.
 **M3 Slice 2:** `evidence/m3/m3-slice2-sqlite-fts5-pin-20261008.md` - `rusqlite =0.40.2` `default-features=false` + `bundled`; FTS5 fail-closed smoke; no schema/ingest.
 **M3 Slice 3:** `evidence/m3/m3-slice3-projection-schema-v1-20261008.md` - empty schema v1 (`events` + text-only FTS5 + meta/checkpoint); open/create + schema-version validation; no ingest/search.
@@ -40,7 +40,7 @@
 **M1 documentation closeout:** `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75`
 **M3 Slice 8 corruption-class candidate:** code SHA `6b61882dce0814abd51fbf063c69d7775c483e37`; exact branch HEAD with docs stamps `4a2ea56aa2ddc4024d82599f8dc671472179cbe8`. Windows local checks PASS; owner macOS four-check PASS at exact HEAD; final dual-OS Actions PASS in [run 37780668640](https://github.com/gungortarik/cryptex/actions/runs/37780668640). Evidence: `evidence/m3/m3-slice8-security-dod-findings-20261008.md`, `evidence/m3/m3-slice8-macos-four-check-20261008.md`, and `evidence/m3/m3-final-ci-gate-20261008.md`.
 **M3 closeout:** Completion gate PASS within accepted scope, recorded in `evidence/m3/m3-final-review-20261008.md`. Normal merge PR #9 integrated M3 into `m0/foundation` at `35538c1`.
-**M4 kickoff:** `evidence/m4/m4-phase0-kickoff-plan-20261008.md`. Planning only. Product implementation is not authorized by this prep record; exact semantics/schema/algorithms remain unresolved by accepted specs and require review before dependent implementation.
+**Historical M4 Phase 0 records:** `evidence/m4/m4-phase0-kickoff-plan-20261008.md` and `evidence/m4/m4-phase0-input-and-semantic-decision-review-20261008.md`. Their open alternatives are superseded by accepted ADR-0017; see their supersession notices.
 
 > This file is an operational status snapshot, not an architecture authority. If it conflicts with `docs/00_MASTER_SPEC.md`, accepted ADRs, the milestone contract, or other authoritative project documents, stop and report the conflict instead of silently reconciling it.
 
@@ -54,7 +54,7 @@
 6. `docs/06_STORAGE_ARCHITECTURE.md`
 7. `docs/17_TEST_AND_FAILURE_MATRIX.md`
 8. `docs/21_DEFINITION_OF_DONE.md`
-9. relevant accepted ADRs, including ADR-0013 and ADR-0016 for canonical-event reads
+9. relevant accepted ADRs, including ADR-0013, ADR-0016, and ADR-0017 for canonical-event reads and M4 materialization
 10. `evidence/m3/m3-kickoff-plan-20261008.md` and M2 closeout records under `evidence/m2/`
 
 ## Working agreement
@@ -155,7 +155,7 @@ present-day decisions.
 - Follow the accepted M4 contract and authoritative memory/entity specifications. Knowledge materialization must remain derived/rebuildable; canonical history stays immutable and authoritative.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
 - M3 final candidate `4a2ea56` has Windows-local checks PASS, owner-reported macOS four-check PASS, and final dual-OS Actions PASS in run `37780668640`; normal PR #9 merge is `35538c1`.
-- M4 is in Phase 0 discovery. Do not implement unresolved entity IDs, alias matching, fact/relation taxonomy, confidence rules, conflict precedence, provenance schema, or materialized-store schema until the decision/review gates in the M4 plan are satisfied.
+- M4 architecture is accepted by ADR-0017. Implement only after the documentation acceptance change is verified and the owner explicitly authorizes the M4 implementation phase. Follow `docs/milestones/M4_KNOWLEDGE_ENGINE.md`; do not enable v2 production writing or implement M8/M10/M14 opportunistically.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks; run only the required final M4 workflow after its implementation candidate is reviewed.
@@ -163,7 +163,7 @@ present-day decisions.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
 - Do not freeze the P0-1 benchmark profile value `segment_events=1000` as a production constant.
 - **Historical M1 working-agreement residue (superseded):** earlier text said "Work only on the current milestone (M1)" and "normal PR #6 merge remains before recording M1 integrated." M1 is complete and merged at `c2168f3`; documentation closeout is `0c84c5c`. Owner acceptance of the delegated M1 review is recorded at `evidence/m1/m1-final-review-20261007.md`.
-- ADR-0013, ADR-0014 (P1), ADR-0015, and ADR-0016 remain ACCEPTED (ADR-0016 at `5cc89b709dcf236698c3253b8582c873de7c7f0f`). M2 and M3 are complete; M4 proceeds under its accepted milestone contract and the Phase 0 plan.
+- ADR-0013, ADR-0014 (P1), ADR-0015, ADR-0016, and ADR-0017 remain ACCEPTED (ADR-0016 at `5cc89b709dcf236698c3253b8582c873de7c7f0f`; ADR-0017 accepted 2026-10-08). M2 and M3 are complete. M4 implementation waits for verified documentation closeout and explicit owner authorization; the v2 production writer has a separate closed activation gate.
 
 ## P0-1 status
 

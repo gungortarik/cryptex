@@ -1,9 +1,19 @@
 # M4 Phase 0 — Input audit and semantic decision review
 
-**Status:** Discovery complete; owner decision review required before dependent product code  
+**Status:** HISTORICAL — discovery and decision table superseded by accepted ADR-0017 (2026-10-08)
 **Branch:** `m4/knowledge-engine`  
 **Base:** M3 merge `35538c1`  
 **Scope:** Read-only source audit and proposed decision framing; no product code, schema/pin change, runtime data, or Actions.
+
+> **Superseded decision framing.** The alternatives below are retained as an
+> audit trail only. In particular, deterministic interpretation of free-form
+> `memory.note` text and the former claim that new event kinds were not
+> required are no longer current decisions. Accepted ADR-0017 preserves v1
+> `memory.note` unchanged and defines structured v2 assertions, deterministic
+> materialization, the existing M3 database boundary, and the separate
+> production-v2 activation gate. Product implementation remains unauthorized
+> until the documentation acceptance change is verified and the owner
+> explicitly authorizes the implementation phase.
 
 ## 1. What the current canonical input can support
 
@@ -79,3 +89,14 @@ Owner review must resolve the note interpretation policy and derived-store
 boundary before dependent product code; an ADR is needed only if the reviewed
 design changes an accepted architecture/schema decision. No dependencies are
 pinned and no Actions were run for this discovery pass.
+
+## 6. Supersession record — 2026-10-08
+
+The owner accepted ADR-0017 after this read-only discovery review. The options
+and gate text above are retained only as historical audit context. They are
+superseded by ADR-0017 and the updated
+`docs/milestones/M4_KNOWLEDGE_ENGINE.md`: preserve v1 `memory.note` unchanged,
+use explicitly structured v2 assertions, and materialize additively in M3's
+existing `projection.sqlite`. The documentation acceptance change must be
+verified before the owner separately authorizes implementation. Production v2
+writing remains disabled until ADR-0017 §8.2 passes.

@@ -1,9 +1,18 @@
 # M4 Phase 0 — Knowledge Engine preparation
 
-**Status:** Phase 0 discovery underway; input/semantic decision review prepared; product slices await owner decision
+**Status:** HISTORICAL — Phase 0 discovery superseded by accepted ADR-0017 (2026-10-08)
 **Branch:** `m4/knowledge-engine`  
 **Base:** `m0/foundation` at M3 merge commit `35538c144434e1dbfb97b47f89d2536b7646046a` (PR #9)  
 **Scope of this change:** documentation and planning only; no product code, pins, runtime data, or Actions.
+
+> **Superseded planning record.** Its open choices about free-text
+> interpretation, event schema, reducer rules, storage boundary, and owner
+> decisions are resolved by accepted ADR-0017. Do not use its former
+> recommendation that M4 could interpret `memory.note` text as current
+> authority. ADR-0017 governs. Product implementation remains blocked until
+> the documentation acceptance change is verified and the owner explicitly
+> authorizes the M4 implementation phase; production v2 writing remains behind
+> ADR-0017 §8.2.
 
 ## 1. Authority reviewed
 
@@ -108,3 +117,13 @@ M4 is not complete until deterministic rebuild, entity/alias consolidation,
 fact/relation state, correction/supersede reconstruction, confidence/state,
 failure cases, relevant tests, required CI, DoD, and human review all pass.
 Only then may M5 begin.
+
+## 7. Supersession record — 2026-10-08
+
+The owner accepted ADR-0017 after this Phase 0 record was prepared. Its
+proposed semantics, payload, M3 database boundary, compatibility behavior and
+acceptance sequence are historical alternatives, not current authority.
+Current scope and implementation sequencing are in
+`docs/milestones/M4_KNOWLEDGE_ENGINE.md`. Implementation still waits for
+verification of the coordinated documentation acceptance change and explicit
+owner authorization; production v2 writing remains behind ADR-0017 §8.2.
