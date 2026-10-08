@@ -52,4 +52,3 @@ Choose one of these scope paths before adding a Desktop content API:
 
 No production code or accepted ADR was changed to make this choice. Production
 v2 writing remains disabled.
-
