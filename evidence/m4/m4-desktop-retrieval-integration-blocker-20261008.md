@@ -1,7 +1,8 @@
 # M4 Desktop retrieval integration — architecture blocker
 
-**Status:** implementation intentionally stopped at the daemon safety API. No
-Desktop memory retrieval operation or UI was added.
+**Status:** implementation was stopped at the daemon safety API; the owner has
+since accepted the narrow M4 resolution in ADR-0018. Desktop memory retrieval
+operation/UI implementation is now the next M4 task.
 
 ## M4 requirement
 
@@ -35,7 +36,7 @@ operation without daemon-side runtime identity, verified-key provenance,
 bounded query/response framing, and an explicit capability policy. Until those
 inputs exist, the only safe product result is a Brain-wide hold.
 
-## Decision needed to resume this integration
+## Historical decision point (superseded by ADR-0018)
 
 Choose one of these scope paths before adding a Desktop content API:
 
@@ -50,5 +51,13 @@ Choose one of these scope paths before adding a Desktop content API:
    provisioning. This changes an accepted milestone gate and needs owner
    approval.
 
-No production code or accepted ADR was changed to make this choice. Production
+No production code was changed during the original blocker review. Production
 v2 writing remains disabled.
+
+## Follow-up decision
+
+The owner accepted the narrow local-only identity binding and guarded Desktop
+search IPC in `docs/adr/ADR-0018-local-device-retrieval-identity.md` on
+2026-10-08. Implementation may proceed only within that decision: unknown peer
+streams remain fail-closed; M8 trust management and production v2 writing stay
+out of scope.

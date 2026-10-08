@@ -6,8 +6,10 @@
 ## Purpose
 
 M4 builds deterministic, rebuildable knowledge materialization from explicitly
-structured canonical events. The governing architecture is
-`docs/adr/ADR-0017-structured-event-evolution-and-knowledge-materialization.md`.
+structured canonical events. The governing architecture is ADR-0017
+(`docs/adr/ADR-0017-structured-event-evolution-and-knowledge-materialization.md`)
+and its narrowly scoped Desktop retrieval supplement, ADR-0018
+(`docs/adr/ADR-0018-local-device-retrieval-identity.md`).
 
 ## Authority
 
@@ -15,8 +17,10 @@ Follow `AGENTS.md`, `docs/00_MASTER_SPEC.md`, `docs/03_MEMORY_MODEL.md`,
 `docs/04_EVENT_SCHEMA_AND_INVARIANTS.md`,
 `docs/05_ENTITY_FACT_RELATION_MODEL.md`, `docs/06_STORAGE_ARCHITECTURE.md`,
 `docs/17_TEST_AND_FAILURE_MATRIX.md`, `docs/21_DEFINITION_OF_DONE.md`, and
-accepted ADR-0013, ADR-0015, ADR-0016, and ADR-0017. If they conflict, stop and
-report the conflict before implementation.
+accepted ADR-0013, ADR-0015, ADR-0016, ADR-0017, and ADR-0018. If they conflict, stop and
+report the conflict before implementation. ADR-0018 authorizes only local
+DeviceId/key binding and the bounded, read-only guarded Desktop search IPC;
+unknown peer streams remain fail-closed and remote trust remains M8.
 
 ## Scope
 
@@ -78,9 +82,11 @@ report the conflict before implementation.
    table, pending dependencies, and full idempotent M4-only rebuild without
    modifying M3 schema v1 or canonical packs.
 5. **Daemon integration and safety:** connect verified canonical input to the
-   M4 reducer and enforce RetrievalSafetyState on M3 search/snippets and Desktop
-   results. Expose the shared hold decision for future adapters; do not
-   implement later milestone UI or product behavior.
+   M4 reducer; enroll the local DeviceId explicitly and bind it to the existing
+   daemon signing key; add the bounded read-only Desktop search IPC; and enforce
+   RetrievalSafetyState on M3 search/snippets and Desktop results. Unknown peer
+   streams fail closed. Expose the shared hold decision for future adapters;
+   do not implement later milestone UI or product behavior.
 6. **Verification/review:** complete the tests below, Windows/macOS parity,
    security review, required CI once on the reviewed candidate, Definition of
    Done, and human review. Record results before any merge/completion claim.
@@ -111,6 +117,10 @@ report the conflict before implementation.
   and snippets plus Desktop retrieval; Brain-wide hold overrides normal
   search. Verify the shared hold decision for future adapters and document the
   OS-accessible prior-plaintext limitation.
+- Local DeviceId enrollment/key binding and guarded Desktop IPC: first create,
+  restart, concurrent create, corrupt/partial/mismatched identity, unknown peer
+  stream fail-closed, bounded request/response, unauthorized operation, and no
+  content disclosure under hold/error; verify on Windows and macOS.
 - Cross-platform format, tests, strict lint, security/failure/recovery checks,
   required final CI, and DoD evidence.
 
