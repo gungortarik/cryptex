@@ -45,3 +45,7 @@ macOS projection/feed/rebuild smoke remains **pending** until actually run on a 
 ## Continuation
 
 Do not start Slice 6 until this follow-up tip is reviewed.
+
+## Follow-up
+
+Device canonical lock for verified reader: `evidence/m3/m3-slice5-device-canonical-lock-reader-20261008.md`.

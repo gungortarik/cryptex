@@ -15,7 +15,9 @@ use cryptex_projection::{
 };
 use cryptex_storage::layout::{active_segment_path, canonical_events_device_dir};
 
-use crate::canonical_writer::{CanonicalWriterError, for_each_verified_event};
+use crate::canonical_writer::{
+    CanonicalWriterError, acquire_device_canonical_lock, for_each_verified_event_with_lock,
+};
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 
 /// Errors from verified-feed projection into disposable SQLite.
@@ -197,6 +199,9 @@ fn run_device_projection<S: SecureStore>(
     db: &ProjectionDb,
     mode: DeviceProjectMode,
 ) -> ProjectionFeedResult<DeviceProjectionSync> {
+    // Lock order: device canonical lock, then SQLite transaction (never reverse).
+    let device_lock = acquire_device_canonical_lock(runtime_root, device_id)?;
+
     let conn = db.connection();
     let tx = conn
         .unchecked_transaction()
@@ -231,52 +236,59 @@ fn run_device_projection<S: SecureStore>(
         .as_ref()
         .and_then(|c| c.last_content_hash.clone());
 
-    let feed_result = for_each_verified_event(store, env, runtime_root, device_id, |event| {
-        if !past_checkpoint {
-            let seq = event.device_seq.to_u64().map_err(|err| {
-                CanonicalWriterError::Invalid(format!("device_seq parse failed: {err}"))
-            })?;
-            let hash = event.content_hash.as_str();
-            let seq_matches = expected_seq == Some(seq);
-            let hash_matches = expected_hash.as_deref() == Some(hash);
-            if seq_matches && hash_matches {
-                found_checkpoint = true;
-                past_checkpoint = true;
-                tip_seq = Some(event.device_seq.as_str().to_string());
-                tip_hash = Some(hash.to_string());
+    let feed_result = for_each_verified_event_with_lock(
+        store,
+        env,
+        runtime_root,
+        device_id,
+        &device_lock,
+        |event| {
+            if !past_checkpoint {
+                let seq = event.device_seq.to_u64().map_err(|err| {
+                    CanonicalWriterError::Invalid(format!("device_seq parse failed: {err}"))
+                })?;
+                let hash = event.content_hash.as_str();
+                let seq_matches = expected_seq == Some(seq);
+                let hash_matches = expected_hash.as_deref() == Some(hash);
+                if seq_matches && hash_matches {
+                    found_checkpoint = true;
+                    past_checkpoint = true;
+                    tip_seq = Some(event.device_seq.as_str().to_string());
+                    tip_hash = Some(hash.to_string());
+                    return Ok(());
+                }
+                if seq_matches && !hash_matches {
+                    checkpoint_invalid = true;
+                    return Err(CanonicalWriterError::Invalid(
+                        "projection checkpoint invalid".into(),
+                    ));
+                }
+                if expected_seq.is_some_and(|exp| seq > exp) {
+                    checkpoint_invalid = true;
+                    return Err(CanonicalWriterError::Invalid(
+                        "projection checkpoint invalid".into(),
+                    ));
+                }
+                // Still before the checkpoint tip: already projected; skip.
                 return Ok(());
             }
-            if seq_matches && !hash_matches {
-                checkpoint_invalid = true;
-                return Err(CanonicalWriterError::Invalid(
-                    "projection checkpoint invalid".into(),
-                ));
-            }
-            if expected_seq.is_some_and(|exp| seq > exp) {
-                checkpoint_invalid = true;
-                return Err(CanonicalWriterError::Invalid(
-                    "projection checkpoint invalid".into(),
-                ));
-            }
-            // Still before the checkpoint tip: already projected; skip.
-            return Ok(());
-        }
 
-        match project_memory_note(&tx, event) {
-            Ok(()) => {
-                projected = projected.saturating_add(1);
-                tip_seq = Some(event.device_seq.as_str().to_string());
-                tip_hash = Some(event.content_hash.as_str().to_string());
-                Ok(())
+            match project_memory_note(&tx, event) {
+                Ok(()) => {
+                    projected = projected.saturating_add(1);
+                    tip_seq = Some(event.device_seq.as_str().to_string());
+                    tip_hash = Some(event.content_hash.as_str().to_string());
+                    Ok(())
+                }
+                Err(err) => {
+                    projection_err = Some(err);
+                    Err(CanonicalWriterError::Invalid(
+                        "projection insert failed".into(),
+                    ))
+                }
             }
-            Err(err) => {
-                projection_err = Some(err);
-                Err(CanonicalWriterError::Invalid(
-                    "projection insert failed".into(),
-                ))
-            }
-        }
-    });
+        },
+    );
 
     if let Some(err) = projection_err.take() {
         drop(tx);
