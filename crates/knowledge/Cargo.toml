@@ -9,7 +9,9 @@ description = "Deterministic, rebuildable M4 knowledge reduction"
 [dependencies]
 cryptex-core = { path = "../core" }
 cryptex-events = { path = "../events" }
+cryptex-projection = { path = "../projection" }
 blake3 = { workspace = true }
+rusqlite = { workspace = true }
 serde_json = { workspace = true }
 serde_json_canonicalizer = { workspace = true }
 unicode-normalization = { workspace = true }

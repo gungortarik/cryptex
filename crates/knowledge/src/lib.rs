@@ -14,6 +14,7 @@ use cryptex_events::{
 use serde_json::json;
 use unicode_normalization::UnicodeNormalization;
 
+pub mod sqlite;
 mod unicode16_casefold;
 
 pub const CARDINALITY_POLICY_VERSION: u32 = 1;
