@@ -46,3 +46,10 @@ This closes the candidate's cross-platform local and required CI verification
 gates. M3 is still not complete: the final security/DoD disposition and human
 owner review must be recorded before any completion or M4 claim. This run does
 not authorize a merge by itself.
+
+**Post-run review update:** A subsequent security review found an untested
+message-substring classification path in the SQLite corruption mappers; see the
+blocking finding in `evidence/m3/m3-slice8-security-dod-findings-20261008.md`.
+The run remains a PASS for SHA `275fb7a`, but does not cover the required fix.
+M3 closeout is reopened until the corrected candidate passes local platform
+checks and a new final dual-OS run.

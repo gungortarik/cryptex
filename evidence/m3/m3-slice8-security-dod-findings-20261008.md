@@ -1,19 +1,19 @@
 # M3 Slice 8 - Security/DoD review findings (partial)
 
-**Date:** 2026-10-08  
-**Branch:** `m3/local-projection-search`  
+**Date:** 2026-10-08
+**Branch:** `m3/local-projection-search`
 **Base tip before slice:** `676f46bb146cc2a5cd8705d5b7f1a1fea1067380`
-**Slice 8 tip:** `10a11c82b0e07e09fd7ef97c2384e9a385991adc`  
+**Slice 8 tip:** `10a11c82b0e07e09fd7ef97c2384e9a385991adc`
 **Plan:** Phase 0 §9 Slice 8 (DoD / security / owner review) — focused findings only; no architecture change.
 
 ## Scope
 
 Addressed security/DoD review findings without weakening tests or expanding into Desktop/MCP/M4:
 
-1. FTS5 external-content integrity on open  
-2. Empty-device checkpoint incremental catch-up  
-3. Schema v1 type/constraint validation  
-4. Bounded-memory review for clear/search  
+1. FTS5 external-content integrity on open
+2. Empty-device checkpoint incremental catch-up
+3. Schema v1 type/constraint validation
+4. Bounded-memory review for clear/search
 
 ## Fixes
 
@@ -69,8 +69,8 @@ Do **not** claim M3 complete, merge, or start M4 until Slice 8 review + required
 
 ## Non-goals
 
-- Architecture changes, Desktop/MCP surfaces, semantic search  
-- Dispatching Actions from this commit  
+- Architecture changes, Desktop/MCP surfaces, semantic search
+- Dispatching Actions from this commit
 - Declaring M3 complete
 
 
@@ -163,3 +163,22 @@ Historical status at this point: Actions and owner macOS verification were pendi
 - Final dual-OS Actions: PASS in [run 37725223487](https://github.com/gungortarik/cryptex/actions/runs/37725223487) at this exact SHA; see `evidence/m3/m3-final-ci-gate-20261008.md`.
 
 These results close the candidate's local platform and CI verification. They do not themselves close M3: final security/DoD disposition and human owner review are still required. No merge or M4 start is recorded here.
+
+## Post-gate review finding — error text can still trigger replacement
+
+**Affected candidate:** `275fb7acf0c2c7b4d7c050acb54670e81520377f`
+**Status:** BLOCKING Slice 8 closeout; code fix and re-verification required.
+
+Review of `crates/projection/src/db.rs` found that both `map_fts_integrity_sqlite_error` and `map_open_sqlite_error` classify an error as replaceable `CorruptDb` if its message contains words such as `corrupt`, `integrity-check`, `malformed`, or `not a database`, even when SQLite's primary `ErrorCode` is `SystemIoFailure` or another transient/non-corruption class. `open_replacing_unusable` then removes the projection database and its sidecars for `CorruptDb`.
+
+This is an untested error-classification path, not a report that the normal Windows/macOS runs experienced data loss. Existing injected transient tests use messages such as `disk I/O error`, so they do not exercise an I/O error whose diagnostic text contains a corruption keyword. The previous `ConstraintViolation` fix established that message substrings must not substitute for the typed SQLite result class; apply the same fail-closed rule to both corruption mappers.
+
+Required follow-up for the M3 product-code implementer:
+
+1. Make replaceability depend on SQLite error/extended-code classes that identify corruption, not diagnostic-message substrings. Preserve explicitly supported FTS virtual-table corruption codes.
+2. Add injected `SystemIoFailure` regressions with messages containing `malformed`, `corrupt`, `integrity-check`, and `not a database` for both mappers.
+3. Assert each remains non-replaceable `ProjectionError::Sqlite` and that main DB bytes plus `-wal`/`-shm`/`-journal` sidecars remain unchanged.
+4. Retain regression coverage proving real `DatabaseCorrupt` / FTS5 inconsistency is replaceable and rebuildable.
+5. Re-run Windows local checks, the exact-tip macOS four-check, then one final dual-OS Actions run. The current PASS at `275fb7a` does not cover the fix.
+
+Do not merge or declare M3 complete until this finding is closed and final human owner review is recorded.
