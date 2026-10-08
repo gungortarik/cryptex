@@ -1,6 +1,7 @@
 # M4 Slice 4 — Additive SQLite Migration
 
-**Status:** Partial implementation; Slice 4 remains in progress.
+**Status:** Slice 4 PASS on Windows and owner-reported macOS; code SHA
+`7bf844bb54da5daf9fab257e3338aeeb03f88ade`.
 
 The M4 Slice 3 macOS verification report was checked at exact source SHA
 `c4e692c2d335a3abdf8fa6edbe70dc38661e97dd`; its results are recorded in
@@ -50,12 +51,20 @@ Using `CARGO_TARGET_DIR=%LOCALAPPDATA%\Cryptex-Dev\cargo-target-m4`:
 
 GitHub Actions were not dispatched.
 
-## Still required for Slice 4
+## Owner-reported macOS verification
 
-Slice 4 remains in progress. Remaining work: integrate the verified canonical
-scanner with this rebuild boundary; prove late cross-device dependencies
-resolve incrementally to the same output as a full rebuild; verify recovery
-from a disposable M4 database replacement; and complete the required M4
-verification matrix. Do not call Slice 4 complete before those checks. M3
-schema v1 and canonical packs remain unchanged; production v2 writing remains
-disabled.
+Exact tested HEAD: `7bf844bb54da5daf9fab257e3338aeeb03f88ade` on
+`m4/knowledge-engine`; macOS 27.0.1 (26A434), arm64; clean detached checkout.
+
+- `cargo fmt -p cryptex-knowledge -- --check`: PASS
+- `cargo test --locked -p cryptex-knowledge -p cryptex-projection`: PASS —
+  knowledge 28, projection 47
+- Strict Clippy for both crates: PASS
+- `git diff --check`: PASS
+
+This closes the Slice 4 migration/rebuild sub-scope on both platforms. The
+next milestone slice is daemon integration: feed the verified canonical
+scanner into the rebuild boundary, then test late cross-device dependency
+resolution against full rebuild and M3 disposable-database replacement.
+Actions were not dispatched. M3 schema v1 and canonical packs remain
+unchanged; production v2 writing remains disabled.
