@@ -34,3 +34,7 @@ Reviewed against:
 ## Decision
 
 M2's explicit completion gate is satisfied on the reviewed candidate. The owner authorized proceeding conditionally if review found no problem; this record therefore authorizes a normal merge PR into `m0/foundation`. M3 may start only after that integration succeeds. No Actions rerun is required because the behavior SHA tested by CI is unchanged by the documentation-only closeout commits.
+
+## Integration result
+
+PR #8 was normally merged into `m0/foundation` on 2026-10-08 as merge commit `817b6a126cf6e9cd3e8a27b1348ec977bdc9dcdd`. No Actions workflow was triggered by the merge. M2 is complete within scope; M3 Phase 0 begins from that merge commit.

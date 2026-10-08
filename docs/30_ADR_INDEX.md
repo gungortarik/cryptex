@@ -60,11 +60,16 @@ This index accepts ADR-0015 and ADR-0014 by the statuses above.
 
 ## 4.2 M2 gate
 
-M2 work is IN PROGRESS on `m2/immutable-event-store` (base `0c84c5c`, M1 merge ancestor `c2168f3`).
+M2 — Immutable Event Store is **COMPLETE within its accepted scope** and integrated into `m0/foundation` by PR #8 at merge commit `817b6a126cf6e9cd3e8a27b1348ec977bdc9dcdd` (2026-10-08).
 
-- ADR-0013 remains **ACCEPTED** (sealed per-device segments; `segment_events=1000` not a frozen production constant)
-- ADR-0016 is **ACCEPTED** (2026-10-07) at `5cc89b709dcf236698c3253b8582c873de7c7f0f`; M2 product slices may proceed under that decision
-- M3 must not begin until the M2 completion gate is satisfied
+- ADR-0013 remains **ACCEPTED** (sealed per-device segments; `segment_events=1000` is not a frozen production constant)
+- ADR-0016 is **ACCEPTED** (2026-10-07) at `5cc89b709dcf236698c3253b8582c873de7c7f0f`
+- Final macOS verification and dual-OS CI PASS are recorded in `evidence/m2/m2-final-ci-gate-20261008.md`; owner-delegated closeout review and residual dispositions are in `evidence/m2/m2-owner-delegated-review-20261008.md`
+- `LongPathsEnabled=0` is not claimed; this remains a documented verification limitation, not an M2 gate failure under the accepted addendum
+
+## 4.3 M3 gate
+
+M3 — Local Projection + Search is active in **Phase 0 planning** on `m3/local-projection-search`, based on the M2 merge commit above. The accepted scope is in `docs/milestones/M3_LOCAL_PROJECTION_SEARCH.md`; kickoff plan: `evidence/m3/m3-kickoff-plan-20261008.md`. Product implementation has not started. M3 code must preserve canonical-event authority and keep SQLite/FTS rebuildable and disposable.
 
 ## 5. ADR source records
 
