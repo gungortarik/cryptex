@@ -31,6 +31,7 @@ pub struct Provenance {
     pub event_id: String,
     pub device_id: String,
     pub device_seq: u64,
+    pub signing_key_id: String,
     pub confidence: Option<Confidence>,
     pub authorization_receipt_id: String,
     pub classification: Classification,
@@ -93,6 +94,15 @@ pub struct Withdrawal {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorrectionRecord {
+    pub correction_event_id: String,
+    pub target_event_id: String,
+    pub replacement: Option<SemanticAssertion>,
+    pub resolution_status: &'static str,
+    pub provenance: Provenance,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityMergeRecord {
     pub event_id: String,
     pub entity_ids: Vec<String>,
@@ -117,6 +127,7 @@ pub struct KnowledgeState {
     pub conflicts: Vec<Conflict>,
     pub pending: Vec<PendingDependency>,
     pub withdrawals: Vec<Withdrawal>,
+    pub corrections: Vec<CorrectionRecord>,
     pub entity_merges: Vec<EntityMergeRecord>,
     /// Events whose semantics were applied or safely retained as a no-op.
     pub materialized_event_ids: Vec<String>,
@@ -736,6 +747,19 @@ pub fn reduce_verified_events(
                 decisions
             };
         if let Some((correction_id, replacement, _provenance)) = selected.first().cloned() {
+            for (event_id, replacement, provenance) in &selected {
+                state.corrections.push(CorrectionRecord {
+                    correction_event_id: event_id.clone(),
+                    target_event_id: target.clone(),
+                    replacement: replacement.clone(),
+                    resolution_status: if replacement.is_some() {
+                        "applied"
+                    } else {
+                        "withdrawn"
+                    },
+                    provenance: provenance.clone(),
+                });
+            }
             let mut sources: Vec<_> = selected
                 .iter()
                 .map(|(_, _, source)| source.clone())
@@ -1025,6 +1049,9 @@ pub fn reduce_verified_events(
             .then(a.event_id.cmp(&b.event_id))
             .then(a.reason.cmp(b.reason))
     });
+    state
+        .corrections
+        .sort_by(|a, b| a.correction_event_id.cmp(&b.correction_event_id));
     let unresolved: BTreeSet<_> = state
         .pending
         .iter()
@@ -1080,6 +1107,7 @@ fn provenance(event: &cryptex_events::V2KnowledgeAssertionEvent) -> Provenance {
         event_id: canonical_uuid(&event.event_id),
         device_id: event.device_id.clone(),
         device_seq: event.device_seq.to_u64().unwrap_or_default(),
+        signing_key_id: event.signing_key_id.as_str().to_owned(),
         confidence,
         authorization_receipt_id: canonical_uuid(&authorization.receipt_id),
         classification: event.classification,

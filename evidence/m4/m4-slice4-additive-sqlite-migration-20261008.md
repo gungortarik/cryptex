@@ -22,14 +22,28 @@ verification therefore agree on Slice 3 before this Slice 4 work began.
 - Regression tests prove idempotent migration, preservation of an existing
   M3 event row and schema version, rollback on an incompatible table, and
   rejection of a permissive metadata singleton constraint.
+- Added one-transaction M4-only rebuild from reducer state produced by the
+  trusted `VerifiedV2History` boundary. It persists entities, aliases,
+  assertions, provenance (including signing-key id and authorization receipt
+  reference), conflicts, corrections, merge records, pending dependencies,
+  and per-device integrity/safe watermarks. Rebuild is idempotent and leaves
+  M3 rows/schema intact.
+- Rebuild input validation prevents a safe watermark from crossing an
+  unresolved dependency, prevents watermarks from exceeding verified
+  integrity progress, and requires supplied frame positions to match device,
+  event, and content hash. Pending dependency rows retain the referenced
+  semantic ID without mislabeling it as an event ID.
+- Added regressions for transactional rollback preserving the prior M4
+  generation, pending dependency persistence with the safe watermark held
+  before it, and signing-key provenance persistence.
 
 ## Windows local verification
 
 Using `CARGO_TARGET_DIR=%LOCALAPPDATA%\Cryptex-Dev\cargo-target-m4`:
 
-- `cargo fmt -p cryptex-knowledge -p cryptex-projection`: PASS
+- `cargo fmt -p cryptex-knowledge`: PASS
 - `cargo test --locked -p cryptex-knowledge -p cryptex-projection`: PASS —
-  knowledge 24, projection 47
+  knowledge 28, projection 47
 - `cargo clippy --locked -p cryptex-knowledge -p cryptex-projection
   --all-targets -- -D warnings`: PASS
 - `git diff --check`: PASS
@@ -38,9 +52,10 @@ GitHub Actions were not dispatched.
 
 ## Still required for Slice 4
 
-Transactional persistence of reducer output and provenance, pending dependency
-rows with canonical frame positions, distinct integrity/safe-materialization
-watermarks, and full idempotent M4-only rebuild are not implemented yet. Do not
-call Slice 4 complete or integrate daemon materialization until these are
-implemented and tested. M3 schema v1 and canonical packs remain unchanged;
-production v2 writing remains disabled.
+Slice 4 remains in progress. Remaining work: integrate the verified canonical
+scanner with this rebuild boundary; prove late cross-device dependencies
+resolve incrementally to the same output as a full rebuild; verify recovery
+from a disposable M4 database replacement; and complete the required M4
+verification matrix. Do not call Slice 4 complete before those checks. M3
+schema v1 and canonical packs remain unchanged; production v2 writing remains
+disabled.
