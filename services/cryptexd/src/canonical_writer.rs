@@ -840,13 +840,22 @@ fn now_rfc3339() -> CanonicalWriterResult<String> {
     parse_rfc3339_str(&formatted).map_err(|e| CanonicalWriterError::Invalid(e.to_string()))
 }
 
-/// Load all verified accepted events for a device (test / diagnostics).
-pub fn load_verified_events<S: SecureStore>(
+/// Visit verified accepted events for a device without retaining the full history Vec.
+///
+/// Uses the same discover / validate / sealed fail-closed quarantine / active-open
+/// recover-then-prefix rules as [`load_verified_events`]. Events are yielded one pack
+/// at a time so large histories need not be fully buffered.
+pub fn for_each_verified_event<S, F>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
     device_id: &DeviceId,
-) -> CanonicalWriterResult<Vec<AcceptedEvent>> {
+    mut on_event: F,
+) -> CanonicalWriterResult<()>
+where
+    S: SecureStore,
+    F: FnMut(&AcceptedEvent) -> CanonicalWriterResult<()>,
+{
     let (sealed, open) = discover_segments(runtime_root, device_id)?;
     let packs_present = !sealed.is_empty() || open.is_some();
     let ready = ensure_event_signing_key(store, env, runtime_root, device_id, &[], packs_present)?;
@@ -856,10 +865,9 @@ pub fn load_verified_events<S: SecureStore>(
     };
     let mut expected_prev = ContentHashHex::zero();
     let mut expected_seq: Option<u64> = None;
-    let mut all = Vec::new();
     for index in sealed {
         let path = sealed_segment_path(runtime_root, device_id, index);
-        let mut events = scan_pack_events(
+        let events = scan_pack_events(
             &path,
             device_id,
             &validator,
@@ -883,22 +891,43 @@ pub fn load_verified_events<S: SecureStore>(
                 events.len()
             )));
         }
-        all.append(&mut events);
+        for ev in &events {
+            on_event(ev)?;
+        }
     }
     if let Some(idx) = open {
         recover_active_open(runtime_root, device_id, idx, &validator)?;
         let path = active_segment_path(runtime_root, device_id, idx);
         if path.exists() {
-            let mut events = scan_pack_events(
+            let events = scan_pack_events(
                 &path,
                 device_id,
                 &validator,
                 &mut expected_prev,
                 &mut expected_seq,
             )?;
-            all.append(&mut events);
+            for ev in &events {
+                on_event(ev)?;
+            }
         }
     }
+    Ok(())
+}
+
+/// Load all verified accepted events for a device (test / diagnostics).
+///
+/// Prefer [`for_each_verified_event`] when projecting large histories.
+pub fn load_verified_events<S: SecureStore>(
+    store: &S,
+    env: SecureStoreEnvironment,
+    runtime_root: &Path,
+    device_id: &DeviceId,
+) -> CanonicalWriterResult<Vec<AcceptedEvent>> {
+    let mut all = Vec::new();
+    for_each_verified_event(store, env, runtime_root, device_id, |ev| {
+        all.push(ev.clone());
+        Ok(())
+    })?;
     Ok(all)
 }
 

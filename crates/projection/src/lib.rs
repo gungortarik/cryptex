@@ -6,18 +6,20 @@
 //! SQLite/FTS state under these paths is derived and rebuildable. Canonical event
 //! packs remain authoritative. This crate must not write `.open`/`.seg` files.
 //!
-//! Slice 3 provides empty schema v1 open/create and schema-version validation.
-//! Event ingestion, rebuild/checkpoint advancement, and search APIs are deferred.
+//! Slice 4 inserts verified `memory.note` rows supplied by cryptexd's verified
+//! reader. Rebuild/checkpoint advancement and search APIs remain deferred.
 
 pub mod db;
 pub mod error;
 pub mod fts;
+pub mod ingest;
 pub mod layout;
 pub mod schema;
 
 pub use db::ProjectionDb;
 pub use error::{ProjectionError, ProjectionResult};
 pub use fts::{ensure_fts5_available, probe_bundled_fts5};
+pub use ingest::{project_memory_note, project_memory_notes};
 pub use layout::{PROJECTION_DB_FILE_NAME, derived_projection_dir, projection_sqlite_path};
 pub use schema::{
     PROJECTION_BUILD_ID_V1, PROJECTION_SCHEMA_VERSION, apply_schema_v1, read_schema_version,

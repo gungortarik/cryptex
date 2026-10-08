@@ -665,6 +665,7 @@ dependencies = [
 name = "cryptex-projection"
 version = "0.0.0"
 dependencies = [
+ "cryptex-events",
  "rusqlite",
 ]
 
@@ -687,6 +688,7 @@ version = "0.0.0"
 dependencies = [
  "cryptex-core",
  "cryptex-events",
+ "cryptex-projection",
  "cryptex-storage",
  "ed25519-dalek",
  "fs2",

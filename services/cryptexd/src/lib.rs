@@ -20,6 +20,7 @@ mod metadata_persistence;
 pub mod pairing_store;
 pub mod paths;
 pub mod platform;
+pub mod projection;
 pub mod recovery_store;
 pub mod secure_store;
 pub mod sequence_runtime;
