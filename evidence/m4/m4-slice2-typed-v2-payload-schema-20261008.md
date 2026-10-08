@@ -1,13 +1,14 @@
 # M4 Slice 2 — Typed v2 payload and schema candidate
 
-**Status:** Windows verification PASS; exact-tip macOS verification pending. This
-is not a cross-platform slice PASS and does not enable production v2 writing.
+**Status:** Windows + macOS local verification PASS on the same code commit.
+This does not enable production v2 writing or complete M4.
 
 | Field | Value |
 |---|---|
 | Branch | `m4/knowledge-engine` |
 | Code commit | `70dba01ff8fdb4018f6eb9be55d41943d300e90e` |
 | Windows host | x86_64; Cargo target under `%LOCALAPPDATA%\Cryptex-Dev\cargo-target-m4` |
+| macOS host | 27.0.1 (26A434) / arm64; detached HEAD, clean |
 | Actions | Not dispatched |
 
 ## Delivered
@@ -46,30 +47,26 @@ The independent read-only test runner repeated events 56/56, canonical writer
 21/21, formatting, and TypeScript drift successfully. The security reviewer
 reported no blocking findings for this slice. No GitHub Actions workflow ran.
 
-## Required macOS verification
+## macOS checks
 
-Run on the Mac host after syncing the branch. Confirm the printed HEAD exactly
-matches the code commit above, then run:
+The owner ran the checks at the exact code commit above; recorded HEAD was
+`70dba01ff8fdb4018f6eb9be55d41943d300e90e`.
 
-```bash
-git checkout m4/knowledge-engine
-git pull --ff-only origin m4/knowledge-engine
-git rev-parse HEAD
-cargo fmt --all -- --check
-cargo test --locked -p cryptex-events
-cargo test --locked -p cryptex-storage
-cargo test --locked -p cryptexd --lib canonical_writer:: -- --test-threads=8
-cargo clippy --locked -p cryptex-events -p cryptex-storage -p cryptexd --all-targets -- -D warnings
-pnpm --filter @cryptex/schemas check:drift
-```
+| Command | Result |
+|---|---|
+| `cargo fmt --all -- --check` | **PASS**, exit 0 |
+| `cargo test --locked -p cryptex-events` | **56/56 PASS**, exit 0 |
+| `cargo test --locked -p cryptex-storage` | **38/38 PASS**, exit 0 |
+| `cargo test --locked -p cryptexd --lib canonical_writer:: -- --test-threads=8` | **21/21 PASS**, exit 0 |
+| `cargo clippy --locked -p cryptex-events -p cryptex-storage -p cryptexd --all-targets -- -D warnings` | **PASS**, exit 0 |
+| `pnpm --filter @cryptex/schemas check:drift` | **PASS**, v1 + v2 match, exit 0 |
 
-Record macOS version/build, architecture, exact HEAD and each command exit/result
-before calling Slice 2 cross-platform verified. GitHub Actions remain reserved
-for the single required final reviewed M4 candidate run.
+Thus Slice 2's Windows/macOS local verification is complete for this code SHA.
+GitHub Actions remain reserved for the single required final reviewed M4
+candidate run.
 
 ## Remaining gates
 
-- Exact-tip macOS verification for Slice 2.
 - Future M4 slices: deterministic reducer, derived SQLite migration/rebuild,
   daemon/retrieval safety enforcement, and final verification/security/DoD.
 - Production v2 activation remains a separate closed gate. Unsupported event
