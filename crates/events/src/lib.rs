@@ -44,7 +44,8 @@ pub use validate_record::{
     ValidationFailure, ValidationReasonCode, validate_accepted_record_bytes,
 };
 pub use versioned_reader::{
-    EVENT_SCHEMA_VERSION_V2, UnverifiableEnvelope, V2_CONTENT_HASH_DOMAIN, V2_SIGNATURE_DOMAIN,
-    VerifiedUnsupportedV2, VerifiedV2KnowledgeAssertion, VersionedChainVerifier, VersionedRecord,
-    read_versioned_record,
+    EVENT_SCHEMA_VERSION_V2, TrustedDaemonKeyResolver, UnverifiableEnvelope,
+    V2_CONTENT_HASH_DOMAIN, V2_SIGNATURE_DOMAIN, VerifiedUnsupportedV2, VerifiedV2History,
+    VerifiedV2KnowledgeAssertion, VersionedChainVerifier, VersionedRecord, read_versioned_record,
+    verify_v2_history,
 };

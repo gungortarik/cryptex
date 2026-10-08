@@ -663,6 +663,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cryptex-knowledge"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "cryptex-core",
+ "cryptex-events",
+ "ed25519-dalek",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "unicode-normalization",
+]
+
+[[package]]
 name = "cryptex-projection"
 version = "0.0.0"
 dependencies = [

@@ -196,7 +196,7 @@ impl FrameBodyValidator for VerifyingBodyValidator {
                 (Some(event.device_id.as_str()), Some(EVENT_SCHEMA_VERSION))
             }
             VersionedRecord::VerifiedV2Supported(event) => {
-                (Some(event.event.device_id.as_str()), Some(2))
+                (Some(event.event().device_id.as_str()), Some(2))
             }
             VersionedRecord::VerifiedUnsupported(event) => {
                 (Some(event.device_id.as_str()), Some(2))
@@ -629,9 +629,9 @@ fn absorb_event(
     let (hash, key, seq) = match ev {
         VersionedRecord::VerifiedV1(ev) => (&ev.content_hash, &ev.signing_key_id, &ev.device_seq),
         VersionedRecord::VerifiedV2Supported(ev) => (
-            &ev.event.content_hash,
-            &ev.event.signing_key_id,
-            &ev.event.device_seq,
+            &ev.event().content_hash,
+            &ev.event().signing_key_id,
+            &ev.event().device_seq,
         ),
         VersionedRecord::VerifiedUnsupported(ev) => {
             (&ev.content_hash, &ev.signing_key_id, &ev.device_seq)
@@ -681,10 +681,10 @@ fn scan_pack_events(
                 &event.content_hash,
             ),
             VersionedRecord::VerifiedV2Supported(event) => (
-                event.event.device_id.as_str(),
-                event.event.device_seq.to_u64()?,
-                &event.event.prev_content_hash,
-                &event.event.content_hash,
+                event.event().device_id.as_str(),
+                event.event().device_seq.to_u64()?,
+                &event.event().prev_content_hash,
+                &event.event().content_hash,
             ),
             VersionedRecord::VerifiedUnsupported(event) => (
                 event.device_id.as_str(),

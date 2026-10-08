@@ -29,8 +29,55 @@ pub const V2_SIGNATURE_DOMAIN: &[u8] = b"cryptex-event-sig-v2";
 /// not apply it; M4 materialization owns its semantics.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VerifiedV2KnowledgeAssertion {
-    pub event: V2KnowledgeAssertionEvent,
-    pub raw_record: Vec<u8>,
+    event: V2KnowledgeAssertionEvent,
+    raw_record: Vec<u8>,
+}
+
+impl VerifiedV2KnowledgeAssertion {
+    /// Return the typed event that was validated against `raw_record`.
+    #[must_use]
+    pub const fn event(&self) -> &V2KnowledgeAssertionEvent {
+        &self.event
+    }
+
+    /// Return the exact canonical JCS bytes that passed hash/signature checks.
+    #[must_use]
+    pub fn raw_record(&self) -> &[u8] {
+        &self.raw_record
+    }
+}
+
+/// Complete event history whose records passed signature/content verification
+/// and per-device cross-version chain verification using keys resolved by a
+/// trusted-daemon key resolver.
+///
+/// A publication receipt UUID is retained as provenance; it does not itself
+/// prove human intent. The trusted-daemon key resolver is the trust boundary:
+/// it must return a key only when the device/key binding is trusted as a
+/// Cryptex daemon attestation under the caller's enrolled-device policy.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VerifiedV2History {
+    records: Vec<VersionedRecord>,
+    assertions: Vec<VerifiedV2KnowledgeAssertion>,
+}
+
+/// Supplies only public keys trusted to attest canonical events on behalf of
+/// an enrolled Cryptex daemon. Implementations must not trust keys merely
+/// because they were embedded in or requested by an event.
+pub trait TrustedDaemonKeyResolver {
+    fn trusted_daemon_key(&mut self, device_id: &str, key_id: &str) -> Option<VerifyingKey>;
+}
+
+impl VerifiedV2History {
+    #[must_use]
+    pub fn records(&self) -> &[VersionedRecord] {
+        &self.records
+    }
+
+    #[must_use]
+    pub fn assertions(&self) -> &[VerifiedV2KnowledgeAssertion] {
+        &self.assertions
+    }
 }
 
 /// A known v2 envelope with unknown event type or payload schema. The original
@@ -152,6 +199,113 @@ impl VersionedChainVerifier {
         self.last_hash = content_hash.clone();
         Ok(())
     }
+}
+
+/// Verify a complete set of canonical record bytes in per-device stream order.
+/// The resolver must bind each key to a trusted Cryptex daemon for that device.
+/// This establishes daemon attestation only: the receipt UUID remains a
+/// reference and is not independent proof that a human performed the action.
+/// An unverifiable record, conflicting event ID, or broken link rejects the
+/// whole history; verified unsupported records remain present in the result.
+pub fn verify_v2_history<R>(
+    raw_records: &[&[u8]],
+    mut key_resolver: R,
+) -> Result<VerifiedV2History, ValidationFailure>
+where
+    R: TrustedDaemonKeyResolver,
+{
+    let mut verifiers = std::collections::BTreeMap::<String, VersionedChainVerifier>::new();
+    let mut seen_event_bytes = std::collections::BTreeMap::<String, Vec<u8>>::new();
+    let mut records = Vec::with_capacity(raw_records.len());
+    let mut assertions = Vec::new();
+    for bytes in raw_records {
+        let value: serde_json::Value = serde_json::from_slice(bytes)
+            .map_err(|_| failure("invalid_record", "record JSON is malformed", None))?;
+        // Event IDs are UUIDs and therefore case-insensitive identifiers.
+        // Exact replica bytes may be skipped; differing bytes are compared
+        // only after both records have passed signature and chain checks.
+        let canonical_event_id = value
+            .get("event_id")
+            .and_then(serde_json::Value::as_str)
+            .map(|event_id| {
+                parse_uuid_str(event_id)
+                    .map(|uuid| uuid.to_ascii_lowercase())
+                    .map_err(|_| {
+                        failure(
+                            "invalid_record",
+                            "record event_id is invalid",
+                            peek_version(&value),
+                        )
+                    })
+            })
+            .transpose()?;
+        if let Some(event_id) = &canonical_event_id
+            && seen_event_bytes
+                .get(event_id)
+                .is_some_and(|previous| previous.as_slice() == *bytes)
+        {
+            continue;
+        }
+        let device_id = value
+            .get("device_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| failure("invalid_record", "record device_id is unavailable", None))?;
+        let key_id = value
+            .get("signing_key_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| failure("invalid_record", "record key id is unavailable", None))?;
+        let verifying_key = key_resolver
+            .trusted_daemon_key(device_id, key_id)
+            .ok_or_else(|| {
+                failure(
+                    "integrity_failure",
+                    "trusted daemon signing key is unavailable for the record",
+                    peek_version(&value),
+                )
+            })?;
+        let record = read_versioned_record(bytes, &verifying_key)?;
+        let actual_device_id = match &record {
+            VersionedRecord::VerifiedV1(event) => event.device_id.as_str(),
+            VersionedRecord::VerifiedV2Supported(record) => record.event.device_id.as_str(),
+            VersionedRecord::VerifiedUnsupported(record) => record.device_id.as_str(),
+            VersionedRecord::Unverifiable(_) => {
+                return Err(failure(
+                    "invalid_record",
+                    "unverifiable envelope blocks complete history verification",
+                    peek_version(&value),
+                ));
+            }
+        };
+        if actual_device_id != device_id {
+            return Err(failure(
+                "integrity_failure",
+                "record device_id changed during verification",
+                peek_version(&value),
+            ));
+        }
+        let verifier = verifiers
+            .entry(actual_device_id.to_owned())
+            .or_insert_with(|| VersionedChainVerifier::new(actual_device_id));
+        verifier.verify_next(&record)?;
+        if let Some(canonical_event_id) = canonical_event_id {
+            if seen_event_bytes.contains_key(&canonical_event_id) {
+                return Err(failure(
+                    "integrity_failure",
+                    "different verified records share the same event_id",
+                    peek_version(&value),
+                ));
+            }
+            seen_event_bytes.insert(canonical_event_id, bytes.to_vec());
+        }
+        if let VersionedRecord::VerifiedV2Supported(assertion) = &record {
+            assertions.push(assertion.clone());
+        }
+        records.push(record);
+    }
+    Ok(VerifiedV2History {
+        records,
+        assertions,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -475,6 +629,14 @@ mod tests {
 
     const SEED: [u8; 32] = [0x42; 32];
 
+    struct TestTrustedDaemonKeyResolver(VerifyingKey);
+
+    impl TrustedDaemonKeyResolver for TestTrustedDaemonKeyResolver {
+        fn trusted_daemon_key(&mut self, _device_id: &str, _key_id: &str) -> Option<VerifyingKey> {
+            Some(self.0)
+        }
+    }
+
     fn make_v2(event_type: &str, payload_schema_version: u32) -> (Vec<u8>, SigningKey) {
         make_v2_with(
             event_type,
@@ -490,11 +652,27 @@ mod tests {
         device_seq: u64,
         prev_content_hash: &str,
     ) -> (Vec<u8>, SigningKey) {
+        make_v2_with_id(
+            "11111111-1111-4111-8111-111111111111",
+            event_type,
+            payload_schema_version,
+            device_seq,
+            prev_content_hash,
+        )
+    }
+
+    fn make_v2_with_id(
+        event_id: &str,
+        event_type: &str,
+        payload_schema_version: u32,
+        device_seq: u64,
+        prev_content_hash: &str,
+    ) -> (Vec<u8>, SigningKey) {
         let key = SigningKey::from_bytes(&SEED);
         let key_id = signing_key_id_from_verifying_key(&key.verifying_key()).unwrap();
         let mut record = serde_json::json!({
             "schema_version": 2,
-            "event_id": "11111111-1111-4111-8111-111111111111",
+            "event_id": event_id,
             "brain_id": "22222222-2222-4222-8222-222222222222",
             "device_id": "device-reader-test",
             "device_seq": device_seq.to_string(),
@@ -578,6 +756,13 @@ mod tests {
                     .into(),
             ),
         );
+    }
+
+    fn change_v2_device_id(bytes: &[u8], device_id: &str, key: &SigningKey) -> Vec<u8> {
+        let mut record: Value = serde_json::from_slice(bytes).unwrap();
+        record["device_id"] = Value::String(device_id.to_owned());
+        resign_v2_record(&mut record, key);
+        serde_json_canonicalizer::to_vec(&record).unwrap()
     }
 
     #[test]
@@ -816,5 +1001,114 @@ mod tests {
         chain.verify_next(&second).unwrap();
         assert_eq!(chain.last_seq, Some(5));
         assert_eq!(chain.last_hash, second_v1.content_hash);
+    }
+
+    #[test]
+    fn verified_history_requires_genesis_link_and_deduplicates_exact_replica_bytes() {
+        let (first, key) = make_v2_with(
+            "knowledge.assertion",
+            1,
+            1,
+            crate::hex::ZERO_CONTENT_HASH_HEX,
+        );
+        let first_record = read_versioned_record(&first, &key.verifying_key()).unwrap();
+        let VersionedRecord::VerifiedV2Supported(first_event) = first_record else {
+            panic!("expected supported first v2 record");
+        };
+        let (second, _) = make_v2_with_id(
+            "55555555-5555-4555-8555-555555555555",
+            "knowledge.assertion",
+            1,
+            3,
+            first_event.event.content_hash.as_str(),
+        );
+        let history = verify_v2_history(
+            &[&first, &first, &second],
+            TestTrustedDaemonKeyResolver(key.verifying_key()),
+        )
+        .unwrap();
+        assert_eq!(history.records().len(), 2);
+        assert_eq!(history.assertions().len(), 2);
+
+        let truncated = verify_v2_history(
+            &[&second],
+            TestTrustedDaemonKeyResolver(key.verifying_key()),
+        );
+        assert_eq!(
+            truncated.unwrap_err().reason,
+            crate::ValidationReasonCode::IntegrityFailure
+        );
+    }
+
+    #[test]
+    fn differing_supported_and_unsupported_v2_records_with_same_id_fail_closed() {
+        let (unsupported, key) = make_v2("future.event", 1);
+        let (supported, _) = make_v2("knowledge.assertion", 1);
+        let supported = change_v2_device_id(&supported, "device-other", &key);
+
+        let error = verify_v2_history(
+            &[&unsupported, &supported],
+            TestTrustedDaemonKeyResolver(key.verifying_key()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.reason, crate::ValidationReasonCode::IntegrityFailure);
+        assert!(error.detail.contains("different verified records"));
+    }
+
+    #[test]
+    fn differing_v1_and_v2_records_with_same_id_fail_before_reducer_filtering() {
+        let key = SigningKey::from_bytes(&SEED);
+        let key_id = signing_key_id_from_verifying_key(&key.verifying_key()).unwrap();
+        let v1 = accept_event(
+            SignableEvent {
+                schema_version: EVENT_SCHEMA_VERSION,
+                event_id: "11111111-1111-4111-8111-111111111111".into(),
+                brain_id: "22222222-2222-4222-8222-222222222222".into(),
+                device_id: "device-reader-test".into(),
+                device_seq: DeviceSeq::from_u64(1).unwrap(),
+                created_at: "2026-10-08T00:00:00Z".into(),
+                event_type: EventType::MemoryNote,
+                classification: Classification::Internal,
+                signing_key_id: key_id,
+                payload: EventPayload::MemoryNote(MemoryNotePayload::new("synthetic v1").unwrap()),
+                prev_content_hash: ContentHashHex::zero(),
+            },
+            &key,
+        )
+        .unwrap();
+        let v1 = serde_json_canonicalizer::to_vec(&v1).unwrap();
+        let (v2, _) = make_v2("knowledge.assertion", 1);
+        let v2 = change_v2_device_id(&v2, "device-other", &key);
+
+        let error = verify_v2_history(
+            &[&v1, &v2],
+            TestTrustedDaemonKeyResolver(key.verifying_key()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.reason, crate::ValidationReasonCode::IntegrityFailure);
+        assert!(error.detail.contains("different verified records"));
+    }
+
+    #[test]
+    fn trusted_daemon_signature_does_not_claim_receipt_proves_human_action() {
+        let (bytes, key) = make_v2("knowledge.assertion", 1);
+        let history =
+            verify_v2_history(&[&bytes], TestTrustedDaemonKeyResolver(key.verifying_key()))
+                .unwrap();
+
+        assert_eq!(history.assertions().len(), 1);
+        let KnowledgeAssertionPayload::EntityDeclare {
+            publication_authorization,
+            ..
+        } = &history.assertions()[0].event().payload
+        else {
+            panic!("expected synthetic entity declaration");
+        };
+        assert_eq!(
+            publication_authorization.receipt_id,
+            "44444444-4444-4444-8444-444444444444"
+        );
     }
 }
