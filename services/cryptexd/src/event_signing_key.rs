@@ -204,7 +204,7 @@ pub fn ensure_event_signing_key<S: SecureStore>(
 ///
 /// The existing key lock is opened without `create`; a shared lock prevents a
 /// concurrent key initializer from exposing a partially read seed/metadata pair.
-pub fn load_existing_event_verifying_key<S: SecureStore>(
+pub fn load_existing_event_verifying_key<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,

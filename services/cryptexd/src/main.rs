@@ -220,7 +220,7 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             let lock = try_acquire_instance(&opts.runtime_root)?;
             let install = prepare_m1_runtime_foundation(&opts.runtime_root)
                 .map_err(|e| e.into_lifecycle())?;
-            cryptexd::ipc::spawn_health_server()?;
+            spawn_platform_ipc_server(&opts.runtime_root)?;
             let report = LifecycleReport::active_holder(
                 &opts.runtime_root,
                 lock.pid(),
@@ -305,6 +305,29 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             usage_text()
         ))),
     }
+}
+
+#[cfg(windows)]
+fn spawn_platform_ipc_server(runtime_root: &Path) -> std::io::Result<()> {
+    cryptexd::ipc::spawn_retrieval_server(
+        runtime_root,
+        std::sync::Arc::new(cryptexd::WindowsCredentialStore::new()),
+        SecureStoreEnvironment::Dev,
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn spawn_platform_ipc_server(runtime_root: &Path) -> std::io::Result<()> {
+    cryptexd::ipc::spawn_retrieval_server(
+        runtime_root,
+        std::sync::Arc::new(cryptexd::MacosKeychainStore::new()),
+        SecureStoreEnvironment::Dev,
+    )
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn spawn_platform_ipc_server(_runtime_root: &Path) -> std::io::Result<()> {
+    cryptexd::ipc::spawn_health_server()
 }
 
 #[derive(Debug)]

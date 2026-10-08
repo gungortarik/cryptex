@@ -101,7 +101,7 @@ pub struct LocalDeviceKeyResolver {
 }
 
 impl LocalDeviceKeyResolver {
-    pub fn load<S: SecureStore>(
+    pub fn load<S: SecureStore + ?Sized>(
         runtime_root: &Path,
         expected_brain_id: &str,
         store: &S,
