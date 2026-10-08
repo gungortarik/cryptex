@@ -28,6 +28,7 @@ const PROTOCOL_VERSION: u32 = DAEMON_PROTOCOL_VERSION;
 const MAX_FRAME_BYTES: usize = 64 * 1024;
 const CAPABILITY_STATUS_READ: &str = "status.read";
 const CAPABILITY_CONTENT_SEARCH: &str = "content.search";
+const CAPABILITY_IDENTITY_SETUP: &str = "identity.setup";
 const MAX_SEARCH_TEXT_BYTES: usize = 1024;
 const MAX_SEARCH_FILTER_BYTES: usize = 128;
 const MAX_SEARCH_RESPONSE_BYTES: usize = 1024 * 1024;
@@ -144,6 +145,18 @@ pub struct DesktopSearchResponse {
     pub daemon_pid: u32,
     pub hits: Option<Vec<DesktopSearchHit>>,
     pub hold_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopEnrollmentResponse {
+    pub protocol_version: u32,
+    pub request_id: Option<String>,
+    pub accepted: bool,
+    pub error: Option<String>,
+    pub operation: Option<String>,
+    pub daemon_pid: u32,
+    pub device_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -297,6 +310,48 @@ pub fn desktop_search(
     {
         return Err(invalid_data(
             "IPC search response did not match the request",
+        ));
+    }
+    Ok(response)
+}
+
+/// Explicit user-invoked local identity enrollment. This is never called as a
+/// side effect of starting the Desktop, searching, or loading a window.
+pub fn desktop_enroll_local_device(timeout: Duration) -> io::Result<DesktopEnrollmentResponse> {
+    let name = socket_name()?;
+    let started = Instant::now();
+    let mut last_error = None;
+    let mut stream = loop {
+        match Stream::connect(name.clone()) {
+            Ok(stream) => break stream,
+            Err(error) if started.elapsed() < timeout => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(last_error.unwrap_or(error)),
+        }
+    };
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let request_id = format!("{}-{nonce}", process::id());
+    let request = Request {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_IDENTITY_SETUP.into()],
+        operation: "identity.enroll_local".into(),
+        query: None,
+    };
+    let frame = exchange(&mut stream, &request, MAX_RESPONSE_BYTES)?;
+    let response: DesktopEnrollmentResponse = serde_json::from_slice(&frame)?;
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(&request_id)
+        || (response.accepted && response.operation.as_deref() != Some("identity.enrollment_ready"))
+    {
+        return Err(invalid_data(
+            "IPC enrollment response did not match the request",
         ));
     }
     Ok(response)
@@ -472,6 +527,8 @@ fn handle_connection(stream: &mut Stream, search: Option<&SearchContext>) -> io:
                     } else {
                         bytes
                     }
+                } else if request.operation == "identity.enroll_local" {
+                    serde_json::to_vec(&handle_enrollment(request, search))?
                 } else {
                     serde_json::to_vec(&authorize(request))?
                 }
@@ -482,6 +539,78 @@ fn handle_connection(stream: &mut Stream, search: Option<&SearchContext>) -> io:
     reader.get_mut().write_all(&response)?;
     reader.get_mut().write_all(b"\n")?;
     reader.get_mut().flush()
+}
+
+fn handle_enrollment(
+    request: Request,
+    context: Option<&SearchContext>,
+) -> DesktopEnrollmentResponse {
+    let request_id = request.request_id.clone();
+    let authorization_error = if request.protocol_version != PROTOCOL_VERSION {
+        Some("incompatible_protocol_version")
+    } else if request.request_id.is_empty() || request.request_id.len() > 128 {
+        Some("invalid_request_id")
+    } else if request.client_role != "desktop" {
+        Some("unauthorized_client_role")
+    } else if request.capabilities.as_slice() != [CAPABILITY_IDENTITY_SETUP] {
+        Some("unauthorized_capability")
+    } else if request.query.is_some() {
+        Some("unexpected_request_payload")
+    } else {
+        None
+    };
+    if let Some(error) = authorization_error {
+        return enrollment_rejected(Some(request_id), error);
+    }
+    let Some(context) = context else {
+        return enrollment_rejected(Some(request_id), "enrollment_unavailable");
+    };
+    match crate::local_device_identity::enroll_local_device(
+        &context.runtime_root,
+        context.store.as_ref(),
+        context.environment,
+    ) {
+        Ok(identity) => DesktopEnrollmentResponse {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: Some(request_id),
+            accepted: true,
+            error: None,
+            operation: Some("identity.enrollment_ready".into()),
+            daemon_pid: process::id(),
+            device_id: Some(identity.device_id),
+        },
+        Err(error) => {
+            let code = match error {
+                crate::local_device_identity::LocalDeviceIdentityError::Brain(_) => {
+                    "brain_identity_unavailable"
+                }
+                crate::local_device_identity::LocalDeviceIdentityError::ExistingDeviceState => {
+                    "unbound_existing_device_state"
+                }
+                crate::local_device_identity::LocalDeviceIdentityError::BrainMismatch
+                | crate::local_device_identity::LocalDeviceIdentityError::InvalidMetadata(_) => {
+                    "local_identity_invalid"
+                }
+                crate::local_device_identity::LocalDeviceIdentityError::EventSigningKey(_) => {
+                    "secure_store_unavailable"
+                }
+                _ => "enrollment_failed",
+            };
+            enrollment_rejected(Some(request_id), code)
+        }
+    }
+}
+
+fn enrollment_rejected(request_id: Option<String>, error: &str) -> DesktopEnrollmentResponse {
+    DesktopEnrollmentResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: false,
+        error: Some(error.into()),
+        operation: None,
+        daemon_pid: process::id(),
+        device_id: None,
+    }
 }
 
 fn handle_search(request: Request, context: Option<&SearchContext>) -> DesktopSearchResponse {
@@ -656,7 +785,10 @@ fn invalid_data(message: &str) -> io::Error {
 mod tests {
     use std::fs;
 
+    use cryptex_core::BrainIdentity;
+
     use super::*;
+    use crate::identity_runtime::write_brain_identity;
     use crate::secure_store::FakeSecureStore;
     use crate::test_temp::exclusive_temp_dir;
 
@@ -761,6 +893,54 @@ mod tests {
         assert_eq!(
             response.hold_reason.as_deref(),
             Some("canonical_verification_unavailable")
+        );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn explicit_enrollment_operation_requires_desktop_and_returns_stable_device_id() {
+        let root = exclusive_temp_dir("cryptex-ipc-enrollment");
+        let brain = BrainIdentity::new(
+            "11111111-1111-4111-8111-111111111111",
+            "2026-10-08T00:00:00Z",
+        )
+        .expect("Brain");
+        write_brain_identity(&root, &brain).expect("write Brain identity");
+        let store = Arc::new(FakeSecureStore::new());
+        let context = SearchContext {
+            runtime_root: root.clone(),
+            store,
+            environment: SecureStoreEnvironment::Dev,
+        };
+        let request = || Request {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "setup-test".into(),
+            client_role: "desktop".into(),
+            capabilities: vec![CAPABILITY_IDENTITY_SETUP.into()],
+            operation: "identity.enroll_local".into(),
+            query: None,
+        };
+
+        let first = handle_enrollment(request(), Some(&context));
+        let second = handle_enrollment(request(), Some(&context));
+        assert!(first.accepted);
+        assert_eq!(first.device_id, second.device_id);
+        assert_eq!(
+            first.operation.as_deref(),
+            Some("identity.enrollment_ready")
+        );
+
+        let unauthorized = handle_enrollment(
+            Request {
+                client_role: "cli".into(),
+                ..request()
+            },
+            Some(&context),
+        );
+        assert!(!unauthorized.accepted);
+        assert_eq!(
+            unauthorized.error.as_deref(),
+            Some("unauthorized_client_role")
         );
         fs::remove_dir_all(root).expect("cleanup");
     }

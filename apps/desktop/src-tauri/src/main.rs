@@ -269,6 +269,18 @@ fn p0_4_guarded_search(
 }
 
 #[tauri::command]
+fn p0_4_enroll_local_device() -> Result<cryptexd::ipc::DesktopEnrollmentResponse, String> {
+    let response = cryptexd::ipc::desktop_enroll_local_device(Duration::from_secs(2))
+        .map_err(|error| error.to_string())?;
+    if !response.accepted {
+        return Err(response
+            .error
+            .unwrap_or_else(|| "daemon rejected local device enrollment".into()));
+    }
+    Ok(response)
+}
+
+#[tauri::command]
 fn p0_3_wait_for_daemon_restart(
     previous_pid: u32,
     timeout_seconds: u64,
@@ -964,6 +976,7 @@ fn main() {
             p0_2_daemon_status,
             p0_3_ipc_health,
             p0_4_guarded_search,
+            p0_4_enroll_local_device,
             p0_3_wait_for_daemon_restart,
             p0_2_stop_daemon,
             p0_2_show_main_window,

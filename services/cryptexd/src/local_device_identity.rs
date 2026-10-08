@@ -140,7 +140,7 @@ pub fn local_device_identity_path(runtime_root: &Path) -> PathBuf {
 /// refuses pre-existing canonical streams or device-key metadata; this avoids
 /// guessing which identity owns old data. The local identity file is committed
 /// before key initialization so a crash retries with the same DeviceId.
-pub fn enroll_local_device<S: SecureStore>(
+pub fn enroll_local_device<S: SecureStore + ?Sized>(
     runtime_root: &Path,
     store: &S,
     env: SecureStoreEnvironment,

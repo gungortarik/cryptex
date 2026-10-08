@@ -106,7 +106,7 @@ pub type EventSigningKeyResult<T> = Result<T, EventSigningKeyError>;
 /// device even if signing_key_ids have not been scraped yet. This prevents minting
 /// a fresh key over existing packs when SecureStore seed and public metadata are
 /// both missing (ADR-0016 §6.3).
-pub fn ensure_event_signing_key<S: SecureStore>(
+pub fn ensure_event_signing_key<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
@@ -234,7 +234,7 @@ pub fn load_existing_event_verifying_key<S: SecureStore + ?Sized>(
     Ok((metadata, verifying_key))
 }
 
-fn fresh_create<S: SecureStore>(
+fn fresh_create<S: SecureStore + ?Sized>(
     store: &S,
     service: &ServiceLabel,
     account: &AccountLabel,
