@@ -119,14 +119,46 @@ fn civil_from_days(z: i64) -> (i32, u32, u32) {
 mod tests {
     use super::*;
     use crate::schema::PROJECTION_SCHEMA_VERSION;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::atomic::{AtomicU64, Ordering};
 
-    fn exclusive_temp_root(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let base = {
+    static TEMP_ROOT_SEQ: AtomicU64 = AtomicU64::new(1);
+
+    /// RAII exclusive fixture root under Cryptex-Dev (or temp) that removes itself.
+    struct TempRoot {
+        path: PathBuf,
+    }
+
+    impl TempRoot {
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            match fs::remove_dir_all(&self.path) {
+                Ok(()) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => {
+                    let msg = format!(
+                        "failed to clean projection test root {}: {err}",
+                        self.path.display()
+                    );
+                    if std::thread::panicking() {
+                        eprintln!("{msg}");
+                    } else {
+                        panic!("{msg}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Create a unique directory with exclusive `create_dir` (never pre-delete).
+    ///
+    /// Mirrors `cryptexd::test_temp`: `{prefix}-{pid}-{seq}` + retry on AlreadyExists.
+    fn exclusive_temp_root(prefix: &str) -> TempRoot {
+        let parent = {
             #[cfg(windows)]
             {
                 let local = std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA");
@@ -150,21 +182,46 @@ mod tests {
                     .join("m3-projection-tests")
             }
         };
-        let dir = base.join(format!("{label}-{}-{}", std::process::id(), nanos));
-        fs::create_dir_all(&dir).expect("temp root");
-        dir
+        fs::create_dir_all(&parent).unwrap_or_else(|err| {
+            panic!(
+                "exclusive_temp_root: create_dir_all failed for {}: {err}",
+                parent.display()
+            )
+        });
+        for _ in 0..10_000 {
+            let seq = TEMP_ROOT_SEQ.fetch_add(1, Ordering::Relaxed);
+            let path = parent.join(format!("{prefix}-{}-{seq}", std::process::id()));
+            match fs::create_dir(&path) {
+                Ok(()) => return TempRoot { path },
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(err) => panic!(
+                    "exclusive_temp_root: create_dir failed for {}: {err}",
+                    path.display()
+                ),
+            }
+        }
+        panic!("exclusive_temp_root: exhausted unique candidates for prefix {prefix}");
+    }
+
+    #[test]
+    fn exclusive_temp_roots_are_distinct() {
+        let a = exclusive_temp_root("distinct");
+        let b = exclusive_temp_root("distinct");
+        assert_ne!(a.path(), b.path());
+        assert!(a.path().is_dir());
+        assert!(b.path().is_dir());
     }
 
     #[test]
     fn fresh_create_writes_v1_schema_under_derived_projection() {
         let root = exclusive_temp_root("fresh");
-        let db = ProjectionDb::open_or_create(&root).expect("create");
+        let db = ProjectionDb::open_or_create(root.path()).expect("create");
         assert_eq!(db.schema_version().unwrap(), PROJECTION_SCHEMA_VERSION);
         assert!(
             db.path().ends_with("derived/projection/projection.sqlite")
                 || db.path().ends_with(r"derived\projection\projection.sqlite")
         );
-        assert!(db.path().starts_with(&root));
+        assert!(db.path().starts_with(root.path()));
 
         let count: i64 = db
             .connection()
@@ -178,12 +235,14 @@ mod tests {
             })
             .unwrap();
         assert_eq!(checkpoints, 0);
+        // Close DB before TempRoot cleanup removes the directory (Windows file locks).
+        drop(db);
     }
 
     #[test]
     fn repeated_open_is_idempotent_for_v1() {
         let root = exclusive_temp_root("reopen");
-        let first = ProjectionDb::open_or_create(&root).expect("first");
+        let first = ProjectionDb::open_or_create(root.path()).expect("first");
         let built_at: String = first
             .connection()
             .query_row(
@@ -194,7 +253,7 @@ mod tests {
             .unwrap();
         drop(first);
 
-        let second = ProjectionDb::open_or_create(&root).expect("second");
+        let second = ProjectionDb::open_or_create(root.path()).expect("second");
         assert_eq!(second.schema_version().unwrap(), PROJECTION_SCHEMA_VERSION);
         let built_at2: String = second
             .connection()
@@ -205,6 +264,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(built_at, built_at2);
+        drop(second);
     }
 
     #[test]
@@ -230,7 +290,7 @@ mod tests {
     #[test]
     fn unsupported_projection_schema_version_fails_closed() {
         let root = exclusive_temp_root("badver");
-        let db = ProjectionDb::open_or_create(&root).expect("create v1");
+        let db = ProjectionDb::open_or_create(root.path()).expect("create v1");
         db.connection()
             .execute(
                 "UPDATE projection_meta SET schema_version = 99 WHERE id = 1",
@@ -239,7 +299,7 @@ mod tests {
             .unwrap();
         drop(db);
 
-        let err = ProjectionDb::open_or_create(&root).expect_err("must refuse");
+        let err = ProjectionDb::open_or_create(root.path()).expect_err("must refuse");
         assert_eq!(
             err,
             ProjectionError::UnsupportedSchema {

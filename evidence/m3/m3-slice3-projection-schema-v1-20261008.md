@@ -58,3 +58,7 @@ macOS FTS5 / schema smoke (`fmt --check`, `test --locked`, `clippy -D warnings` 
 ## Continuation
 
 Next: Slice 4 (verified feed integration) after this tip is reviewed.
+
+## Follow-up
+
+Fixture exclusivity + exact schema-shape hardening: `evidence/m3/m3-slice3-fixture-schema-hardening-20261008.md`.
