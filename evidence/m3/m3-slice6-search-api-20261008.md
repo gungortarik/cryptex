@@ -60,3 +60,10 @@ macOS FTS5/feed/rebuild/search smoke remains **pending** until actually run on a
 ## Continuation
 
 Next: Slice 7 (cross-platform + CI wire) after this tip is reviewed. Do not start Slice 7 opportunistically.
+
+
+## Follow-up (fractional-second precision)
+
+Review found that `rfc3339_unix_seconds()` discarded fractions accepted by the M2 parser.
+Fixed in `evidence/m3/m3-slice6-fractional-instant-precision-20261008.md` by comparing exact UTC
+instants via `rfc3339_utc_instant` for both range filters and ordering (no new SQLite column).

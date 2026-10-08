@@ -129,22 +129,94 @@ pub fn parse_rfc3339_str(value: &str) -> CoreResult<String> {
     Ok(value.to_string())
 }
 
-/// Convert a validated M2 RFC 3339 timestamp to Unix seconds (UTC).
+/// Exact UTC instant from a validated M2 RFC 3339 timestamp.
 ///
-/// Accepts the same forms as [`parse_rfc3339_str`], including numeric offsets.
-/// Equivalent instants with different offset spellings compare equal.
+/// Whole seconds use the same leap-second clamp as [`rfc3339_unix_seconds`].
+/// The fractional component preserves every accepted digit so same-second
+/// instants remain distinguishable without adding a stored projection column.
+/// Fractional digits are normalized by stripping trailing zeros (`.1` == `.10`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rfc3339UtcInstant {
+    /// Unix seconds (UTC), leap seconds (`:60`) clamped to `:59`.
+    pub unix_seconds: i64,
+    /// Digits after the decimal point (ASCII only); empty when absent.
+    frac_digits: String,
+}
+
+impl Rfc3339UtcInstant {
+    /// Fractional-second digits as accepted by the RFC3339 parser (may be empty).
+    pub fn frac_digits(&self) -> &str {
+        &self.frac_digits
+    }
+}
+
+impl PartialOrd for Rfc3339UtcInstant {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Rfc3339UtcInstant {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.unix_seconds
+            .cmp(&other.unix_seconds)
+            .then_with(|| cmp_frac_digits(&self.frac_digits, &other.frac_digits))
+    }
+}
+
+fn normalize_frac_digits(digits: &str) -> String {
+    digits.trim_end_matches('0').to_string()
+}
+
+fn cmp_frac_digits(a: &str, b: &str) -> std::cmp::Ordering {
+    let len = a.len().max(b.len());
+    for i in 0..len {
+        let da = a.as_bytes().get(i).copied().unwrap_or(b'0');
+        let db = b.as_bytes().get(i).copied().unwrap_or(b'0');
+        match da.cmp(&db) {
+            std::cmp::Ordering::Equal => {}
+            other => return other,
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
+/// Convert a validated M2 RFC 3339 timestamp to an exact UTC instant.
+///
+/// Accepts the same forms as [`parse_rfc3339_str`], including numeric offsets
+/// and fractional seconds. Equivalent offset spellings that name the same
+/// instant (including matching fractions) compare equal.
 /// Leap seconds (`:60`) are clamped to `:59` for the Unix timeline.
-pub fn rfc3339_unix_seconds(value: &str) -> CoreResult<i64> {
+pub fn rfc3339_utc_instant(value: &str) -> CoreResult<Rfc3339UtcInstant> {
     let parsed = parse_rfc3339_components(value)?;
     let day_seconds = i64::from(parsed.hour) * 3600
         + i64::from(parsed.minute) * 60
         + i64::from(parsed.second.min(59));
     let days = days_from_civil(parsed.year as i32, parsed.month, parsed.day);
     // Local civil time as if UTC, then subtract the RFC3339 offset to reach UTC.
-    Ok(days * 86_400 + day_seconds - parsed.offset_secs)
+    let unix_seconds = days
+        .checked_mul(86_400)
+        .and_then(|d| d.checked_add(day_seconds))
+        .and_then(|t| t.checked_sub(parsed.offset_secs))
+        .ok_or_else(|| CoreError::InvalidId("timestamp instant overflows i64".into()))?;
+    Ok(Rfc3339UtcInstant {
+        unix_seconds,
+        frac_digits: normalize_frac_digits(&parsed.frac_digits),
+    })
 }
 
-#[derive(Debug, Clone, Copy)]
+/// Convert a validated M2 RFC 3339 timestamp to Unix seconds (UTC).
+///
+/// Accepts the same forms as [`parse_rfc3339_str`], including numeric offsets.
+/// Equivalent instants with different offset spellings compare equal.
+/// Leap seconds (`:60`) are clamped to `:59` for the Unix timeline.
+/// Fractional seconds are discarded; prefer [`rfc3339_utc_instant`] when
+/// sub-second ordering or inclusive bounds matter.
+pub fn rfc3339_unix_seconds(value: &str) -> CoreResult<i64> {
+    Ok(rfc3339_utc_instant(value)?.unix_seconds)
+}
+
+#[derive(Debug, Clone)]
 struct Rfc3339Components {
     year: u32,
     month: u32,
@@ -152,6 +224,8 @@ struct Rfc3339Components {
     hour: u32,
     minute: u32,
     second: u32,
+    /// Digits after `.` when present; empty when the timestamp has no fraction.
+    frac_digits: String,
     /// Seconds east of UTC (`+01:00` => +3600, `-05:00` => -18000, `Z` => 0).
     offset_secs: i64,
 }
@@ -211,6 +285,7 @@ fn parse_rfc3339_components(value: &str) -> CoreResult<Rfc3339Components> {
     }
     let rest_bytes = rest.as_bytes();
     let mut i = 0usize;
+    let mut frac_digits = String::new();
     if rest_bytes[0] == b'.' {
         i = 1;
         if i >= rest_bytes.len() || !rest_bytes[i].is_ascii_digit() {
@@ -218,9 +293,11 @@ fn parse_rfc3339_components(value: &str) -> CoreResult<Rfc3339Components> {
                 "timestamp fractional seconds are malformed".into(),
             ));
         }
+        let frac_start = i;
         while i < rest_bytes.len() && rest_bytes[i].is_ascii_digit() {
             i += 1;
         }
+        frac_digits = rest[frac_start..i].to_string();
     }
     if i >= rest_bytes.len() {
         return Err(CoreError::InvalidId(
@@ -255,6 +332,7 @@ fn parse_rfc3339_components(value: &str) -> CoreResult<Rfc3339Components> {
         hour,
         minute,
         second,
+        frac_digits,
         offset_secs,
     })
 }
@@ -295,6 +373,36 @@ mod tests {
         assert_eq!(z, offset);
         let plus = rfc3339_unix_seconds("2026-10-06T18:30:45+01:00").unwrap();
         assert_eq!(z, plus);
+    }
+
+    #[test]
+    fn rfc3339_utc_instant_preserves_fractional_ordering_and_offsets() {
+        let early = rfc3339_utc_instant("2026-10-06T12:00:00.100Z").unwrap();
+        let mid = rfc3339_utc_instant("2026-10-06T12:00:00.2Z").unwrap();
+        let late = rfc3339_utc_instant("2026-10-06T12:00:00.2001Z").unwrap();
+        assert!(early < mid);
+        assert!(mid < late);
+        assert_eq!(early.unix_seconds, mid.unix_seconds);
+
+        // Equivalent offset spellings with matching fractions.
+        let z = rfc3339_utc_instant("2026-10-06T17:30:45.123Z").unwrap();
+        let offset = rfc3339_utc_instant("2026-10-06T12:30:45.123-05:00").unwrap();
+        assert_eq!(z, offset);
+
+        // Trailing-zero padding: .1 == .10 == .100
+        let a = rfc3339_utc_instant("2026-10-06T00:00:00.1Z").unwrap();
+        let b = rfc3339_utc_instant("2026-10-06T00:00:00.10Z").unwrap();
+        let c = rfc3339_utc_instant("2026-10-06T00:00:00.100Z").unwrap();
+        assert_eq!(a, b);
+        assert_eq!(b, c);
+
+        // Whole-second form has empty fraction and sorts before any positive fraction.
+        let whole = rfc3339_utc_instant("2026-10-06T12:00:00Z").unwrap();
+        assert!(whole < early);
+        assert_eq!(
+            rfc3339_unix_seconds("2026-10-06T12:00:00.999Z").unwrap(),
+            whole.unix_seconds
+        );
     }
 
     #[test]

@@ -1,10 +1,11 @@
 //! Library search over disposable projection rows (M3 Slice 6).
 //!
 //! Optional FTS5 text query plus conjunction filters. All bound values use
-//! parameterized SQL. `created_at` ranges compare UTC instants per M2 RFC3339
-//! rules (including offsets); lexical string ordering is never used for ranges.
+//! parameterized SQL. `created_at` ranges compare exact UTC instants per M2
+//! RFC3339 rules (including offsets and fractional seconds); lexical string
+//! ordering is never used for ranges.
 
-use cryptex_core::validate::rfc3339_unix_seconds;
+use cryptex_core::validate::rfc3339_utc_instant;
 use rusqlite::{Connection, params_from_iter};
 
 use crate::{ProjectionError, ProjectionResult};
@@ -44,8 +45,8 @@ pub struct SearchHit {
 /// Search projected events.
 ///
 /// Result order is deterministic:
-/// 1. `created_at` ascending by UTC instant (oldest first)
-/// 2. `event_id` ascending (lexicographic UUID string) as a stable tie-break
+/// 1. `created_at` ascending by exact UTC instant, including fractional seconds
+/// 2. `event_id` ascending (lexicographic UUID string) only when instants are equal
 ///
 /// Invalid/unsupported FTS queries and invalid RFC3339 bounds return
 /// [`ProjectionError::InvalidQuery`] rather than an empty hit list.
@@ -58,27 +59,27 @@ pub fn search_events(conn: &Connection, query: &SearchQuery) -> ProjectionResult
         });
     }
 
-    let from_unix = match &query.created_at_from {
+    let from_instant = match &query.created_at_from {
         Some(raw) => {
             Some(
-                rfc3339_unix_seconds(raw).map_err(|err| ProjectionError::InvalidQuery {
+                rfc3339_utc_instant(raw).map_err(|err| ProjectionError::InvalidQuery {
                     detail: format!("created_at_from is not valid M2 RFC3339: {err}"),
                 })?,
             )
         }
         None => None,
     };
-    let to_unix = match &query.created_at_to {
+    let to_instant = match &query.created_at_to {
         Some(raw) => {
             Some(
-                rfc3339_unix_seconds(raw).map_err(|err| ProjectionError::InvalidQuery {
+                rfc3339_utc_instant(raw).map_err(|err| ProjectionError::InvalidQuery {
                     detail: format!("created_at_to is not valid M2 RFC3339: {err}"),
                 })?,
             )
         }
         None => None,
     };
-    if let (Some(from), Some(to)) = (from_unix, to_unix)
+    if let (Some(from), Some(to)) = (&from_instant, &to_instant)
         && from > to
     {
         return Err(ProjectionError::InvalidQuery {
@@ -140,7 +141,7 @@ pub fn search_events(conn: &Connection, query: &SearchQuery) -> ProjectionResult
     let mut hits = Vec::new();
     for row in rows {
         let hit = row.map_err(map_err)?;
-        let instant = rfc3339_unix_seconds(&hit.created_at).map_err(|err| {
+        let instant = rfc3339_utc_instant(&hit.created_at).map_err(|err| {
             ProjectionError::SchemaInconsistent {
                 detail: format!(
                     "projected created_at failed M2 RFC3339 parse for event_id {}: {err}",
@@ -148,13 +149,13 @@ pub fn search_events(conn: &Connection, query: &SearchQuery) -> ProjectionResult
                 ),
             }
         })?;
-        if let Some(from) = from_unix
-            && instant < from
+        if let Some(from) = &from_instant
+            && &instant < from
         {
             continue;
         }
-        if let Some(to) = to_unix
-            && instant > to
+        if let Some(to) = &to_instant
+            && &instant > to
         {
             continue;
         }
@@ -500,5 +501,160 @@ mod tests {
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].event_id, "11111111-1111-4111-8111-111111111111");
         assert_eq!(hits[1].event_id, "22222222-2222-4222-8222-222222222222");
+    }
+
+    fn seed_fractional_db() -> ProjectionDb {
+        let db = ProjectionDb::open_in_memory().unwrap();
+        let brain = "22222222-2222-4222-8222-222222222222";
+        let rows = [
+            note(
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "device-a",
+                1,
+                "2026-10-06T12:00:00.100Z",
+                Classification::Public,
+                "frac early",
+                &"aa".repeat(32),
+                brain,
+            ),
+            note(
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                "device-a",
+                2,
+                "2026-10-06T12:00:00.200Z",
+                Classification::Public,
+                "frac mid",
+                &"bb".repeat(32),
+                brain,
+            ),
+            note(
+                "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                "device-a",
+                3,
+                "2026-10-06T07:00:00.200-05:00", // == 12:00:00.200Z
+                Classification::Public,
+                "frac mid offset twin",
+                &"cc".repeat(32),
+                brain,
+            ),
+            note(
+                "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                "device-a",
+                4,
+                "2026-10-06T12:00:00.250Z",
+                Classification::Public,
+                "frac late",
+                &"dd".repeat(32),
+                brain,
+            ),
+            note(
+                "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                "device-a",
+                5,
+                "2026-10-06T12:00:00Z",
+                Classification::Public,
+                "frac whole second",
+                &"ee".repeat(32),
+                brain,
+            ),
+        ];
+        for row in &rows {
+            project_memory_note(db.connection(), row).unwrap();
+        }
+        db
+    }
+
+    #[test]
+    fn fractional_inclusive_bounds_and_same_second_ordering() {
+        let db = seed_fractional_db();
+
+        // Inclusive lower/upper within the same second.
+        let hits = search_events(
+            db.connection(),
+            &SearchQuery {
+                created_at_from: Some("2026-10-06T12:00:00.100Z".into()),
+                created_at_to: Some("2026-10-06T12:00:00.200Z".into()),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        let ids: Vec<_> = hits.iter().map(|h| h.event_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", // .100Z
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", // .200Z
+                "cccccccc-cccc-4ccc-8ccc-cccccccccccc", // offset twin of .200Z
+            ]
+        );
+
+        // Strictly inside: exclude inclusive edges by using tighter bounds.
+        let interior = search_events(
+            db.connection(),
+            &SearchQuery {
+                created_at_from: Some("2026-10-06T12:00:00.101Z".into()),
+                created_at_to: Some("2026-10-06T12:00:00.199Z".into()),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        assert!(interior.is_empty());
+
+        // Offset-form fractional bound equivalent to .200Z.
+        let offset_bound = search_events(
+            db.connection(),
+            &SearchQuery {
+                created_at_from: Some("2026-10-06T07:00:00.200-05:00".into()),
+                created_at_to: Some("2026-10-06T07:00:00.200-05:00".into()),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(offset_bound.len(), 2);
+        assert_eq!(
+            offset_bound[0].event_id,
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        );
+        assert_eq!(
+            offset_bound[1].event_id,
+            "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+        );
+    }
+
+    #[test]
+    fn fractional_ordering_then_event_id_tiebreak_and_limit() {
+        let db = seed_fractional_db();
+        let hits = search_events(db.connection(), &SearchQuery::default()).unwrap();
+        let ids: Vec<_> = hits.iter().map(|h| h.event_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", // 12:00:00Z
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", // .100Z
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", // .200Z
+                "cccccccc-cccc-4ccc-8ccc-cccccccccccc", // .200Z offset twin, higher event_id
+                "dddddddd-dddd-4ddd-8ddd-dddddddddddd", // .250Z
+            ]
+        );
+
+        let limited = search_events(
+            db.connection(),
+            &SearchQuery {
+                limit: Some(3),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            limited
+                .iter()
+                .map(|h| h.event_id.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            ]
+        );
     }
 }
