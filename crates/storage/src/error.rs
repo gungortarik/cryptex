@@ -16,6 +16,9 @@ pub enum StorageError {
         detail: String,
         schema_version_if_parsed: Option<u32>,
     },
+    /// A future/unsupported but intact canonical record. Preserve the source
+    /// pack exactly and stop legacy interpretation instead of quarantining it.
+    CompatibilityBoundary(String),
     Recovery(String),
     Quarantine(String),
     /// Primary quarantine failure retained; staging cleanup also failed.
@@ -42,6 +45,9 @@ impl fmt::Display for StorageError {
                 detail,
                 ..
             } => write!(f, "segment validation error ({reason_code}): {detail}"),
+            Self::CompatibilityBoundary(message) => {
+                write!(f, "canonical compatibility boundary: {message}")
+            }
             Self::Recovery(message) => write!(f, "segment recovery error: {message}"),
             Self::Quarantine(message) => write!(f, "quarantine error: {message}"),
             Self::QuarantineCleanupFailed { primary, cleanup } => write!(
@@ -77,6 +83,7 @@ impl PartialEq for StorageError {
             | (Recovery(a), Recovery(b))
             | (Quarantine(a), Quarantine(b))
             | (Durability(a), Durability(b)) => a == b,
+            (CompatibilityBoundary(a), CompatibilityBoundary(b)) => a == b,
             (
                 QuarantineCleanupFailed {
                     primary: a,

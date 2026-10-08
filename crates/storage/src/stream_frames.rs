@@ -48,7 +48,10 @@ where
         }
         let mut body = vec![0u8; body_len as usize];
         read_exact(&mut file, &mut body)?;
-        if let Err(_err) = validator.validate_frame_body(&body) {
+        if let Err(err) = validator.validate_frame_body(&body) {
+            if matches!(&err, StorageError::CompatibilityBoundary(_)) {
+                return Err(err);
+            }
             return Ok((acc, offset));
         }
         visit(&mut acc, &body)?;

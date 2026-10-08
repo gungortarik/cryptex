@@ -687,6 +687,7 @@ dependencies = [
 name = "cryptexd"
 version = "0.0.0"
 dependencies = [
+ "blake3",
  "cryptex-core",
  "cryptex-events",
  "cryptex-projection",

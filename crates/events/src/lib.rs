@@ -11,6 +11,7 @@ pub mod integrity;
 pub mod limits;
 pub mod schema;
 pub mod validate_record;
+pub mod versioned_reader;
 
 pub use device_seq::{DEVICE_SEQ_PATTERN, DeviceSeq};
 pub use envelope::{
@@ -35,4 +36,9 @@ pub use limits::{
 };
 pub use validate_record::{
     ValidationFailure, ValidationReasonCode, validate_accepted_record_bytes,
+};
+pub use versioned_reader::{
+    EVENT_SCHEMA_VERSION_V2, UnverifiableEnvelope, V2_CONTENT_HASH_DOMAIN, V2_SIGNATURE_DOMAIN,
+    VerifiedUnsupportedV2, VerifiedV2PayloadPending, VersionedChainVerifier, VersionedRecord,
+    read_versioned_record,
 };
