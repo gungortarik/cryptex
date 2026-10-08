@@ -584,6 +584,9 @@ fn handle_enrollment(
                 crate::local_device_identity::LocalDeviceIdentityError::Brain(_) => {
                     "brain_identity_unavailable"
                 }
+                crate::local_device_identity::LocalDeviceIdentityError::EnrollmentRequired => {
+                    "local_enrollment_required"
+                }
                 crate::local_device_identity::LocalDeviceIdentityError::ExistingDeviceState => {
                     "unbound_existing_device_state"
                 }
@@ -647,6 +650,9 @@ fn handle_search(request: Request, context: Option<&SearchContext>) -> DesktopSe
     };
     let local_identity = match load_local_device_identity(&context.runtime_root, &brain.brain_id) {
         Ok(identity) => identity,
+        Err(crate::local_device_identity::LocalDeviceIdentityError::EnrollmentRequired) => {
+            return search_held(Some(request_id), "local_enrollment_required");
+        }
         Err(_) => return search_held(Some(request_id), "canonical_verification_unavailable"),
     };
     let device = match DeviceId::new(local_identity.device_id) {
@@ -894,6 +900,36 @@ mod tests {
             response.hold_reason.as_deref(),
             Some("canonical_verification_unavailable")
         );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn unenrolled_brain_returns_enrollment_hold_without_search_content() {
+        let root = exclusive_temp_dir("cryptex-ipc-search-unenrolled");
+        let brain = BrainIdentity::new(
+            "11111111-1111-4111-8111-111111111111",
+            "2026-10-08T00:00:00Z",
+        )
+        .expect("Brain");
+        write_brain_identity(&root, &brain).expect("write Brain identity");
+        let store: Arc<dyn SecureStore> = Arc::new(FakeSecureStore::new());
+        let context = SearchContext {
+            runtime_root: root.clone(),
+            store,
+            environment: SecureStoreEnvironment::Dev,
+        };
+        let response = handle_search(
+            search_request("desktop", vec![CAPABILITY_CONTENT_SEARCH.into()]),
+            Some(&context),
+        );
+
+        assert!(response.accepted);
+        assert!(response.hits.is_none());
+        assert_eq!(
+            response.hold_reason.as_deref(),
+            Some("local_enrollment_required")
+        );
+        assert!(!crate::local_device_identity::local_device_identity_path(&root).exists());
         fs::remove_dir_all(root).expect("cleanup");
     }
 

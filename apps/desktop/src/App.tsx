@@ -20,6 +20,8 @@ type LocalEnrollmentResponse = {
 type ConnectionState = "checking" | "active" | "attention";
 
 const HOLD_COPY: Record<string, string> = {
+  local_enrollment_required:
+    "This installation has not been enrolled as a local device yet. Set it up to verify and search this Brain's memory.",
   canonical_verification_unavailable:
     "Cryptex could not verify the complete local event history. Search is paused to protect your memory.",
   unsupported_semantics:
@@ -184,7 +186,7 @@ export function App() {
               <div>
                 <p className="panel-kicker">Retrieval paused</p>
                 <p>{holdCopy}</p>
-                {holdReason === "canonical_verification_unavailable" ? (
+                {holdReason === "local_enrollment_required" ? (
                   <button
                     className="text-button"
                     type="button"

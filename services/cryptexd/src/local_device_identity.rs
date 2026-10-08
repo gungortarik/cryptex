@@ -55,6 +55,7 @@ impl LocalDeviceIdentity {
 
 #[derive(Debug)]
 pub enum LocalDeviceIdentityError {
+    EnrollmentRequired,
     Io(String),
     Brain(IdentityRuntimeError),
     InvalidMetadata(String),
@@ -67,6 +68,7 @@ pub enum LocalDeviceIdentityError {
 impl std::fmt::Display for LocalDeviceIdentityError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::EnrollmentRequired => write!(f, "local device enrollment is required"),
             Self::Io(error) => write!(f, "local device identity I/O failed: {error}"),
             Self::Brain(error) => write!(f, "local Brain identity unavailable: {error}"),
             Self::InvalidMetadata(error) => write!(f, "local device identity is invalid: {error}"),
@@ -205,9 +207,8 @@ pub fn load_local_device_identity(
     parse_uuid_str(expected_brain_id)
         .map_err(|error| LocalDeviceIdentityError::InvalidMetadata(error.to_string()))?;
     let path = local_device_identity_path(runtime_root);
-    let identity = read_local_device_identity(&path)?.ok_or_else(|| {
-        LocalDeviceIdentityError::Io("local device enrollment is required".into())
-    })?;
+    let identity =
+        read_local_device_identity(&path)?.ok_or(LocalDeviceIdentityError::EnrollmentRequired)?;
     if identity.brain_id != expected_brain_id {
         return Err(LocalDeviceIdentityError::BrainMismatch);
     }
@@ -517,7 +518,10 @@ mod tests {
         let root = exclusive_temp_dir("cryptex-local-device-unenrolled");
         let error = load_local_device_identity(&root, BRAIN_ID).expect_err("not enrolled");
 
-        assert!(matches!(error, LocalDeviceIdentityError::Io(_)));
+        assert!(matches!(
+            error,
+            LocalDeviceIdentityError::EnrollmentRequired
+        ));
         assert!(!local_device_identity_path(&root).exists());
         fs::remove_dir_all(root).expect("cleanup");
     }
