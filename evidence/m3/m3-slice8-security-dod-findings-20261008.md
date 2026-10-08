@@ -99,6 +99,8 @@ No Actions dispatched. macOS four-check + new dual-OS Actions still required bef
 
 ## Follow-up (meta id CHECK probe hardening)
 
+**Meta-CHECK hardening tip:** 52fe953ecdb29db1f1730148921f1af07be5f50c
+
 Hardened `require_projection_meta_id_singleton_constraint` after tip `d54ef4f`:
 
 1. Only SQLite **constraint** rejection counts as a successful non-1 id probe; busy/locked/I/O/readonly and other errors propagate as non-replaceable `ProjectionError::Sqlite`.
