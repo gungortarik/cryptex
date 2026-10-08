@@ -36,9 +36,19 @@ Using `CARGO_TARGET_DIR=%LOCALAPPDATA%\Cryptex-Dev\cargo-target-m4`:
 - `git diff --check`: PASS
 - An initial focused test launch was blocked by Smart App Control (4551). A
   subsequent launch succeeded without policy changes; all focused tests passed.
-- `cargo test --locked -p cryptexd --lib -- --test-threads=16`: PASS — 155 tests
+- `cargo test --locked -p cryptexd --lib -- --test-threads=16`: PASS — 157 tests
 - `cargo test --locked -p cryptex-knowledge`: PASS — 29 tests
 - `cargo test --locked -p cryptex-storage`: PASS — 41 tests
+
+## Security review follow-up
+
+A read-only audit found two issues in the first candidate: an incomplete active
+tail could be omitted, and malformed pack-like names could be ignored. Both
+are fixed. An active `.open` pack whose verified frame length differs from its
+file length now blocks before migration or M4 writes; malformed pack filenames
+and unexpected directory entries also fail closed. Regressions prove the
+canonical bytes and preexisting SQLite state remain unchanged. Focused daemon
+materialization tests: 7/7 PASS; full daemon library suite: 157/157 PASS.
 - macOS focused execution: pending.
 - GitHub Actions: not run.
 

@@ -194,16 +194,42 @@ fn scan_device_read_only(
     let mut open = None;
     for entry in fs::read_dir(&directory).map_err(StorageError::Io)? {
         let entry = entry.map_err(StorageError::Io)?;
+        if !entry.file_type().map_err(StorageError::Io)?.is_file() {
+            return Err(KnowledgeMaterializationError::Storage(
+                StorageError::Integrity(
+                    "canonical device directory contains a non-file entry".into(),
+                ),
+            ));
+        }
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if let Some(index) = parse_pack_index(&name, "seg") {
-            sealed.push(index);
-        } else if let Some(index) = parse_pack_index(&name, "open")
-            && open.replace(index).is_some()
-        {
-            return Err(KnowledgeMaterializationError::Storage(
-                StorageError::Integrity("multiple active packs for one device".into()),
-            ));
+        match (
+            parse_pack_index(&name, "seg"),
+            parse_pack_index(&name, "open"),
+        ) {
+            (Some(index), _) => sealed.push(index),
+            (None, Some(index)) => {
+                if open.replace(index).is_some() {
+                    return Err(KnowledgeMaterializationError::Storage(
+                        StorageError::Integrity("multiple active packs for one device".into()),
+                    ));
+                }
+            }
+            (None, None) if is_known_housekeeping_file(&name) => {}
+            (None, None) if name.ends_with(".seg") || name.ends_with(".open") => {
+                return Err(KnowledgeMaterializationError::Storage(
+                    StorageError::Integrity(
+                        "canonical directory contains a malformed pack filename".into(),
+                    ),
+                ));
+            }
+            (None, None) => {
+                return Err(KnowledgeMaterializationError::Storage(
+                    StorageError::Integrity(
+                        "canonical device directory contains an unexpected entry".into(),
+                    ),
+                ));
+            }
         }
     }
     sealed.sort_unstable();
@@ -239,9 +265,31 @@ fn scan_device_read_only(
     }
     if let Some(index) = open {
         let path = active_segment_path(runtime_root, device_id, index);
-        fold_pack(&path, device_id, index, output)?;
+        let file_len = fs::metadata(&path).map_err(StorageError::Io)?.len();
+        let verified_len = fold_pack(&path, device_id, index, output)?;
+        if verified_len != file_len {
+            return Err(KnowledgeMaterializationError::Storage(
+                StorageError::CompatibilityBoundary(
+                    "active pack has an incomplete or unverified suffix; M4 rebuild stopped without modifying canonical bytes".into(),
+                ),
+            ));
+        }
     }
     Ok(())
+}
+
+fn is_known_housekeeping_file(name: &str) -> bool {
+    if matches!(name, "writer.lock" | "writer_tip.json") {
+        return true;
+    }
+    if let Some(suffix) = name.strip_prefix("writer_tip.json.tmp.") {
+        return !suffix.is_empty()
+            && suffix
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || byte == b'-');
+    }
+    name.strip_suffix(".open.lock")
+        .is_some_and(|stem| stem.len() == 20 && stem.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 /// A full rebuild must not silently omit a canonical device stream. The
@@ -468,6 +516,7 @@ mod tests {
     use cryptex_projection::ProjectionDb;
     use ed25519_dalek::VerifyingKey;
     use std::fs;
+    use std::io::Write;
 
     struct OneTrustedDevice {
         device: String,
@@ -700,6 +749,102 @@ mod tests {
             )
             .unwrap();
         assert_eq!(m4_tables, 0);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn incomplete_active_suffix_stops_rebuild_before_migration_and_keeps_bytes() {
+        let root = exclusive_temp_dir("m4-incomplete-open");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("m4-incomplete-open-device").unwrap();
+        let brain = "33333333-3333-4333-8333-333333333333";
+        let config = crate::canonical_writer::CanonicalWriterConfig::default();
+        append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "synthetic note",
+                config: &config,
+            },
+        )
+        .unwrap();
+        let ready = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            true,
+        )
+        .unwrap();
+        let mut resolver = OneTrustedDevice {
+            device: device.as_str().to_owned(),
+            key_id: ready.public.signing_key_id,
+            key: ready.signing_key.verifying_key(),
+        };
+        let pack = active_segment_path(&root, &device, 0);
+        let mut file = fs::OpenOptions::new().append(true).open(&pack).unwrap();
+        file.write_all(&[0x43, 0x58]).unwrap();
+        file.sync_all().unwrap();
+        let before = fs::read(&pack).unwrap();
+        let mut db = ProjectionDb::open_in_memory().unwrap();
+        db.connection()
+            .execute_batch(
+                "CREATE TABLE rebuild_sentinel (value TEXT NOT NULL);
+                 INSERT INTO rebuild_sentinel VALUES ('keep');",
+            )
+            .unwrap();
+
+        let result = rebuild_knowledge_from_canonical(
+            &root,
+            brain,
+            std::slice::from_ref(&device),
+            &mut resolver,
+            &mut db,
+        );
+
+        assert!(matches!(
+            result,
+            Err(KnowledgeMaterializationError::Storage(
+                StorageError::CompatibilityBoundary(_)
+            ))
+        ));
+        assert_eq!(fs::read(&pack).unwrap(), before);
+        let sentinel: String = db
+            .connection()
+            .query_row("SELECT value FROM rebuild_sentinel", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(sentinel, "keep");
+        let m4_tables: i64 = db
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='knowledge_meta'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(m4_tables, 0);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn malformed_pack_name_blocks_full_rebuild_instead_of_being_ignored() {
+        let root = exclusive_temp_dir("m4-malformed-pack-name");
+        let device = DeviceId::new("m4-malformed-name-device").unwrap();
+        let directory = canonical_events_device_dir(&root, &device);
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("not-an-index.seg"), b"must not be omitted").unwrap();
+        let result = scan_device_read_only(&root, &device, &mut Vec::new());
+        assert!(matches!(
+            result,
+            Err(KnowledgeMaterializationError::Storage(
+                StorageError::Integrity(_)
+            ))
+        ));
         fs::remove_dir_all(root).unwrap();
     }
 }
