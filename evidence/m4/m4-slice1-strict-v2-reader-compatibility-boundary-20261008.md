@@ -1,10 +1,10 @@
 # M4 Slice 1 — Strict V2 Reader and Compatibility Boundary
 
-**Status:** IMPLEMENTED; local Windows verification PASS; cross-platform final gate pending  
-**Branch:** `m4/knowledge-engine`  
-**Code commit:** `2a382eb876d5646ff3e504dc3918423fa1594735`  
-**Base:** ADR-0017 documentation acceptance commit `ee7e173b903574e914a1471edb37398446efef81`  
-**Host:** Windows 11, AMD64  
+**Status:** IMPLEMENTED; local Windows verification PASS; cross-platform final gate pending
+**Branch:** `m4/knowledge-engine`
+**Code commit:** `2a382eb876d5646ff3e504dc3918423fa1594735`
+**Base:** ADR-0017 documentation acceptance commit `ee7e173b903574e914a1471edb37398446efef81`
+**Host:** Windows 11, AMD64
 **Toolchain:** rustc/cargo 1.98.1
 
 ## Scope delivered
