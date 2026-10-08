@@ -53,12 +53,23 @@ ID collisions, terminal resolution completeness, wrong-kind references, and
 safe materialization progress. Findings were fixed and re-reviewed; no blocker
 remains in this scoped review.
 
-## macOS status
+## macOS verification
 
-The owner-provided report at `evidence/m4/m4-slice2-typed-v2-payload-schema-20261008.md`
-confirms Slice 2 checks at exact code SHA `70dba01`. It does not cover Slice 3.
-Mac verification of the current candidate tip `07f3729` is **WAITING**. Do not
-start Slice 4 until the Mac checks pass on this candidate.
+Owner-provided report: `M4 Slice 3 macOS verification — PASS.txt`.
+Exact tested SHA `c4e692c2d335a3abdf8fa6edbe70dc38661e97dd` matches the
+Windows-verified candidate above. Host: macOS 27.0.1 (Build 26A434), arm64;
+clean detached checkout.
+
+- `cargo fmt --all -- --check`: PASS (exit 0)
+- Locked tests for core, events, storage, projection, knowledge, and cryptexd
+  with 8 test threads: PASS (core 30, events 60, knowledge 20, projection 47,
+  storage 38, cryptexd lib 145, plus lifecycle/supervisor/rollback suites)
+- Strict Clippy: PASS (exit 0)
+- `git diff --check`: PASS (exit 0)
+
+The Mac run made no repository changes and dispatched no Actions. Combined
+with the Windows verification above, Slice 3 has local verification on both
+supported operating systems at the same source SHA. Slice 4 may begin.
 
 No GitHub Actions were dispatched. M4 is not complete, production v2 writing
 is not enabled, and no M5/M8/M10/M14 functionality was added.
