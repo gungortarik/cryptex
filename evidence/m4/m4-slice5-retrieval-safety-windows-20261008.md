@@ -1,6 +1,6 @@
 # M4 Slice 5 — Retrieval safety gate (Windows local)
 
-**Status:** backend/library gate implemented; macOS verification pending; Desktop retrieval integration remains open.
+**Status:** backend/library gate verified on Windows and macOS; Desktop retrieval integration remains open.
 
 ## Change
 
@@ -28,6 +28,19 @@ Environment: Windows, isolated target directory under `%LOCALAPPDATA%`.
 - `cargo clippy --locked -p cryptexd --all-targets -- -D warnings` — PASS
 - `git diff --check` — PASS
 
+## macOS verification
+
+Owner-reported exact-source run:
+
+- SHA: `5d5ad11af8de3996cab831207b343c48431755f2`
+- Host: macOS 27.0.1 (26A434), arm64; branch `m4/knowledge-engine`, clean
+- `cargo fmt --all -- --check` — exit 0
+- `cargo test --locked -p cryptexd --lib` — **155/155 PASS**
+- `cargo clippy --locked -p cryptexd --all-targets -- -D warnings` — exit 0
+
+The lower macOS test count is due to platform-specific test gating; Windows-only
+tests account for the difference from the 160-test Windows run.
+
 ## Boundaries / remaining work
 
 - Production v2 writing remains disabled.
@@ -40,5 +53,6 @@ Environment: Windows, isolated target directory under `%LOCALAPPDATA%`.
   filesystem sync/import actor must join the same lock protocol; inventory is
   also rechecked after locks and after scans, but arbitrary external filesystem
   mutation cannot be serialized by this daemon lock alone.
-- macOS checks must be run on the exact pushed source tip. No Actions were run.
+- No Actions were run; this local dual-OS verification does not replace M4's
+  final reviewed-candidate CI gate.
 
