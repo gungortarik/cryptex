@@ -1,7 +1,7 @@
 # M4 ADR-0018 — Guarded Desktop search IPC
 
 **Status:** Windows/macOS local verification PASS; visual and final M4 gates pending
-**Code SHA:** `ecbbaf7e41e3e851d6f7fbd8ce98c10af7208fa7`
+**Code SHA:** `652b4def1b71e9ba47323d3e51955cd3d777091a`
 **Branch:** `m4/knowledge-engine`
 
 ## Delivered
@@ -31,6 +31,16 @@
   query is issued or retrieval is held; rendered note text remains escaped by
   React.
 - Product v2 event writing remains disabled.
+
+## Search UI hardening (`652b4de`)
+
+- Whitespace-only searches are rejected in the renderer; the UI no longer
+  converts an empty phrase into an unfiltered list request.
+- A request-generation gate prevents a response for an older query from
+  replacing the screen after the user edits the query. Prior plaintext is
+  cleared immediately, and stale responses are ignored.
+- `pnpm --filter @cryptex/desktop test:search-policy` — **2/2 PASS**;
+  frontend `tsc` + Vite build — PASS on Windows.
 
 ## Windows verification
 
@@ -64,11 +74,15 @@ behavior changes after code SHA `ecbbaf7`.
 
 The lib test count differs from Windows (168 vs 173) due to platform-specific
 tests; both full commands exited 0. No app launch, visual review, lockfile
-change, or Actions run occurred.
+change, or Actions run occurred. The UI-only hardening at `652b4de` postdates
+this Mac verification; the two frontend checks below remain pending on macOS.
 
 ## Remaining work
 
-Physical visual review and final security/DoD review remain open; backend hold
-coverage exists, but this record does not claim every hold reason was manually
-exercised in the UI. No Actions were run. This slice is not M4 completion and
-does not enable production v2 writing.
+On current code SHA `652b4de`, macOS still needs
+`pnpm --filter @cryptex/desktop test:search-policy` and
+`pnpm --filter @cryptex/desktop build`. Physical visual review and final
+security/DoD review remain open; backend hold coverage exists, but this record
+does not claim every hold reason was manually exercised in the UI. No Actions
+were run. This slice is not M4 completion and does not enable production v2
+writing.
