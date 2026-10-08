@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { createSearchRequestGate, normalizeSearchText } from "./search-policy.mjs";
 
 type SearchHit = {
   eventId: string;
@@ -54,6 +55,7 @@ export function App() {
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const searchRequestGate = useRef(createSearchRequestGate()).current;
 
   useEffect(() => {
     void invoke("p0_3_ipc_health")
@@ -72,16 +74,22 @@ export function App() {
 
   async function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const text = normalizeSearchText(query);
+    const generation = searchRequestGate.begin();
+    setHits([]);
+    setHoldReason(null);
+    if (!text) {
+      setSearching(false);
+      setNotice("Enter a phrase to search your local notes.");
+      return;
+    }
     setSearching(true);
     setNotice(null);
-    setHoldReason(null);
-    // Never leave older plaintext visible while a new retrieval decision runs.
-    setHits([]);
     try {
-      const text = query.trim();
       const response = await invoke<GuardedSearchResponse>("p0_4_guarded_search", {
-        query: { text: text || null, limit: 20 },
+        query: { text, limit: 20 },
       });
+      if (!searchRequestGate.isCurrent(generation)) return;
       if (response.holdReason) {
         setConnection("attention");
         setHoldReason(response.holdReason);
@@ -90,10 +98,11 @@ export function App() {
       setConnection("active");
       setHits(response.hits ?? []);
     } catch {
+      if (!searchRequestGate.isCurrent(generation)) return;
       setConnection("attention");
       setNotice("Cryptex could not complete a guarded search. No results were kept on screen.");
     } finally {
-      setSearching(false);
+      if (searchRequestGate.isCurrent(generation)) setSearching(false);
     }
   }
 
@@ -165,6 +174,8 @@ export function App() {
               ref={searchRef}
               value={query}
               onChange={(event) => {
+                searchRequestGate.invalidate();
+                setSearching(false);
                 setQuery(event.target.value);
                 setHits([]);
                 setHoldReason(null);
