@@ -1,11 +1,12 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-08
-**Current milestone:** M4 - Knowledge Engine (ADR-0017 accepted; documentation acceptance change prepared and consistency-checked; production implementation awaits explicit owner authorization)
+**Current milestone:** M4 - Knowledge Engine (ADR-0017 documentation acceptance integrated at `ee7e173`; owner authorized implementation; Slice 1 implementation is in progress)
 **Active branch:** `m4/knowledge-engine`, based on M3 merge commit `35538c144434e1dbfb97b47f89d2536b7646046a` (PR #9)
 **M2 status:** COMPLETE within M2 scope after owner-delegated review and required verification; normal merge PR #8 integrated `m2/immutable-event-store` into `m0/foundation` at `817b6a1`.
 **M3 closeout:** Complete within accepted scope; normal merge PR #9 integrated `m3/local-projection-search` into `m0/foundation` at `35538c1`. Final review: `evidence/m3/m3-final-review-20261008.md`.
-**M4 architecture:** ADR-0017 `docs/adr/ADR-0017-structured-event-evolution-and-knowledge-materialization.md` was accepted by the owner on 2026-10-08. It preserves the strict ADR-0016 v1 contract and `memory.note` bytes; defines the v2 reader/payload, deterministic reducer, additive tables in M3 `projection.sqlite`, retrieval safety, and separate M4-completion / v2-production-activation gates. The coordinated documentation acceptance change is prepared and its consistency checks pass. No production code, dependency pin, schema artifact, Actions, or v2 writing is authorized by ADR acceptance alone. The owner must separately authorize M4 implementation. Phase-0 alternatives are superseded; records remain for audit in `evidence/m4/m4-phase0-kickoff-plan-20261008.md` and `evidence/m4/m4-phase0-input-and-semantic-decision-review-20261008.md`.
+**M4 architecture:** ADR-0017 `docs/adr/ADR-0017-structured-event-evolution-and-knowledge-materialization.md` was accepted by the owner on 2026-10-08 and the documentation acceptance change is integrated at `ee7e173`. The owner explicitly authorized M4 implementation on 2026-10-08. Implement in the exact order in `docs/milestones/M4_KNOWLEDGE_ENGINE.md`, beginning with Slice 1 only; do not enable production v2 writing. Phase-0 alternatives are superseded; records remain for audit in `evidence/m4/m4-phase0-kickoff-plan-20261008.md` and `evidence/m4/m4-phase0-input-and-semantic-decision-review-20261008.md`.
+**M4 Slice 1:** code commit `2a382eb876d5646ff3e504dc3918423fa1594735` adds a strict versioned reader and compatibility boundary. Windows local tests, format, and strict Clippy pass; see `evidence/m4/m4-slice1-strict-v2-reader-compatibility-boundary-20261008.md`. Production v2 writing remains disabled. Direct M3 FTS/Desktop `RetrievalSafetyState` enforcement is still open for the later daemon/safety slice; do not claim M4 complete.
 **M3 Slice 1:** `evidence/m3/m3-slice1-workspace-scaffolding-20261008.md` - `cryptex-projection` path scaffolding + focused layout tests; no SQLite deps.
 **M3 Slice 2:** `evidence/m3/m3-slice2-sqlite-fts5-pin-20261008.md` - `rusqlite =0.40.2` `default-features=false` + `bundled`; FTS5 fail-closed smoke; no schema/ingest.
 **M3 Slice 3:** `evidence/m3/m3-slice3-projection-schema-v1-20261008.md` - empty schema v1 (`events` + text-only FTS5 + meta/checkpoint); open/create + schema-version validation; no ingest/search.
@@ -155,7 +156,7 @@ present-day decisions.
 - Follow the accepted M4 contract and authoritative memory/entity specifications. Knowledge materialization must remain derived/rebuildable; canonical history stays immutable and authoritative.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
 - M3 final candidate `4a2ea56` has Windows-local checks PASS, owner-reported macOS four-check PASS, and final dual-OS Actions PASS in run `37780668640`; normal PR #9 merge is `35538c1`.
-- M4 architecture is accepted by ADR-0017. Implement only after the documentation acceptance change is verified and the owner explicitly authorizes the M4 implementation phase. Follow `docs/milestones/M4_KNOWLEDGE_ENGINE.md`; do not enable v2 production writing or implement M8/M10/M14 opportunistically.
+- M4 implementation is explicitly authorized after the ADR-0017 documentation acceptance change at `ee7e173`. Follow `docs/milestones/M4_KNOWLEDGE_ENGINE.md` slice order; current authorized slice is Slice 1 only. Do not enable v2 production writing or implement M8/M10/M14 opportunistically.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks; run only the required final M4 workflow after its implementation candidate is reviewed.
@@ -163,7 +164,7 @@ present-day decisions.
 - Never label behavior VERIFIED unless it was actually physically/test verified.
 - Do not freeze the P0-1 benchmark profile value `segment_events=1000` as a production constant.
 - **Historical M1 working-agreement residue (superseded):** earlier text said "Work only on the current milestone (M1)" and "normal PR #6 merge remains before recording M1 integrated." M1 is complete and merged at `c2168f3`; documentation closeout is `0c84c5c`. Owner acceptance of the delegated M1 review is recorded at `evidence/m1/m1-final-review-20261007.md`.
-- ADR-0013, ADR-0014 (P1), ADR-0015, ADR-0016, and ADR-0017 remain ACCEPTED (ADR-0016 at `5cc89b709dcf236698c3253b8582c873de7c7f0f`; ADR-0017 accepted 2026-10-08). M2 and M3 are complete. M4 implementation waits for verified documentation closeout and explicit owner authorization; the v2 production writer has a separate closed activation gate.
+- ADR-0013, ADR-0014 (P1), ADR-0015, ADR-0016, and ADR-0017 remain ACCEPTED (ADR-0016 at `5cc89b709dcf236698c3253b8582c873de7c7f0f`; ADR-0017 accepted 2026-10-08). M2 and M3 are complete. M4 implementation is underway only on the authorized branch/slice; the v2 production writer has a separate closed activation gate.
 
 ## P0-1 status
 
