@@ -1,6 +1,6 @@
 # M3 Phase 0 kickoff — Local Projection + Search
 
-**Status:** Phase 0 planning; product implementation not started.  
+**Status:** Phase 0 planning complete; see `evidence/m3/m3-phase0-implementation-plan-20261008.md`. Product implementation not started.
 **Branch:** `m3/local-projection-search`  
 **Base:** `m0/foundation` at M2 merge `817b6a126cf6e9cd3e8a27b1348ec977bdc9dcdd` (PR #8)  
 **Implementer:** Cursor for M3 product code, continuing the owner's established Cursor implementation workflow.
