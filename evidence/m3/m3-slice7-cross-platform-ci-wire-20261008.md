@@ -2,7 +2,8 @@
 
 **Date:** 2026-10-08  
 **Branch:** `m3/local-projection-search`  
-**Base tip before slice:** `243eec0ff21c6e83c30fcbd420ea5b8bb7cdcf0f`  
+**Base tip before slice:** `243eec0ff21c6e83c30fcbd420ea5b8bb7cdcf0f`
+**Slice 7 tip:** `176195af4e70f734ab465a09589c000201d785a0`  
 **Plan:** `evidence/m3/m3-phase0-implementation-plan-20261008.md` §8.1–8.2 / §9 Slice 7
 
 ## Scope
