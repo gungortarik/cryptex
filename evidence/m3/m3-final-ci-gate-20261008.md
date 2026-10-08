@@ -53,3 +53,32 @@ blocking finding in `evidence/m3/m3-slice8-security-dod-findings-20261008.md`.
 The run remains a PASS for SHA `275fb7a`, but does not cover the required fix.
 M3 closeout is reopened until the corrected candidate passes local platform
 checks and a new final dual-OS run.
+
+## Corruption-class fix candidate — PASS
+
+**Workflow:** [37780668640](https://github.com/gungortarik/cryptex/actions/runs/37780668640)
+
+**Branch:** `m3/local-projection-search`
+
+**Tested SHA:** `4a2ea56aa2ddc4024d82599f8dc671472179cbe8`
+
+**Result:** completed successfully
+
+| Job | Result |
+|---|---|
+| Readiness (`windows-latest`) | PASS (24m27s) |
+| Readiness (`macos-latest`) | PASS (3m49s) |
+| IPC cross-account ACL (Windows) | PASS (54s) |
+| Windows Desktop package (unsigned, manual only) | SKIPPED by design |
+
+The readiness jobs ran workspace formatting, lint/check, M2 and M3 tests, and
+the existing foundation suites. The owner-reported Mac four-check at this same
+HEAD is recorded in `evidence/m3/m3-slice8-macos-four-check-20261008.md`.
+Windows-local results for the corruption-class fix are recorded in
+`evidence/m3/m3-slice8-security-dod-findings-20261008.md`.
+
+This closes the post-gate SQLite error-message classification finding and
+completes the local-platform and final CI verification gates for this
+candidate. M3 remains **IN PROGRESS** until the final security/DoD disposition
+and human owner review are recorded. This run does not authorize a merge or
+M4 start.

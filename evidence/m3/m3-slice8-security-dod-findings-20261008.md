@@ -204,4 +204,29 @@ Regressions:
 | `cargo test --locked -p cryptexd --lib projection::` | PASS (17) |
 | `cargo clippy --locked -p cryptex-core -p cryptex-projection -p cryptexd --all-targets -- -D warnings` | PASS |
 
-No Actions dispatched. Owner tip review, then macOS four-check, then one final dual-OS Actions run.
+### macOS four-check (owner report — PASS)
+
+**Tested HEAD:** `4a2ea56aa2ddc4024d82599f8dc671472179cbe8`
+
+**Host:** macOS 27.0.1 (26A434) / arm64; working tree clean.
+
+| Command | Result |
+|---|---|
+| `cargo fmt --all -- --check` | PASS (exit 0) |
+| `cargo test --locked -p cryptex-projection --lib` | PASS (47; exit 0) |
+| `cargo test --locked -p cryptexd --lib projection::` | PASS (17; exit 0) |
+| `cargo clippy --locked -p cryptex-core -p cryptex-projection -p cryptexd --all-targets -- -D warnings` | PASS (exit 0) |
+
+### Final dual-OS Actions (PASS)
+
+Run [37780668640](https://github.com/gungortarik/cryptex/actions/runs/37780668640)
+completed successfully at exact branch HEAD `4a2ea56aa2ddc4024d82599f8dc671472179cbe8`.
+Windows readiness, macOS readiness, and Windows IPC cross-account ACL passed;
+the unsigned Windows package job was skipped by design. See
+`evidence/m3/m3-final-ci-gate-20261008.md` for job details.
+
+The post-gate error-message classification finding is closed for this
+candidate. Its local Windows verification, owner-reported Mac verification,
+and final dual-OS CI are recorded above. This does not by itself complete M3:
+the final security/DoD disposition and human owner review remain to be
+recorded. Do not merge or start M4 before the M3 completion gate is satisfied.
