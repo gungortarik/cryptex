@@ -21,10 +21,14 @@ use crate::{ProjectionError, ProjectionResult};
 #[cfg(test)]
 thread_local! {
     static INJECT_TRY_OPEN_ERROR: RefCell<Option<ProjectionError>> = const { RefCell::new(None) };
-    /// Injected after schema init, replacing the real FTS integrity-check result.
-    static INJECT_FTS_INTEGRITY_ERROR: RefCell<Option<ProjectionError>> =
+    /// Injected after schema init; mapped via [`map_fts_integrity_sqlite_error`].
+    static INJECT_FTS_INTEGRITY_ERROR: RefCell<Option<rusqlite::Error>> =
         const { RefCell::new(None) };
-    /// Optional sidecar marker written at integrity-check time (after Connection::open).
+    /// Injected raw open/quick_check failure; mapped via [`map_open_sqlite_error`].
+    static INJECT_OPEN_SQLITE_ERROR: RefCell<Option<rusqlite::Error>> =
+        const { RefCell::new(None) };
+    /// Optional -journal marker written at integrity-check time (after Connection::open).
+    /// Only `-journal` is planted here: on Windows an open WAL connection maps `-wal`/`-shm`.
     static FTS_INTEGRITY_SIDECAR_MARKER: RefCell<Option<(PathBuf, Vec<u8>)>> =
         const { RefCell::new(None) };
 }
@@ -178,6 +182,10 @@ fn try_open_existing(path: &Path) -> ProjectionResult<ProjectionDb> {
     if let Some(err) = INJECT_TRY_OPEN_ERROR.with(|slot| slot.borrow_mut().take()) {
         return Err(err);
     }
+    #[cfg(test)]
+    if let Some(err) = INJECT_OPEN_SQLITE_ERROR.with(|slot| slot.borrow_mut().take()) {
+        return Err(map_open_sqlite_error(err));
+    }
     let conn = Connection::open(path).map_err(map_open_sqlite_error)?;
     let check: String = conn
         .query_row("PRAGMA quick_check", [], |row| row.get(0))
@@ -211,7 +219,7 @@ fn check_fts5_external_content_integrity(conn: &Connection) -> ProjectionResult<
     }
     #[cfg(test)]
     if let Some(err) = INJECT_FTS_INTEGRITY_ERROR.with(|slot| slot.borrow_mut().take()) {
-        return Err(err);
+        return Err(map_fts_integrity_sqlite_error(err));
     }
     match conn.execute(
         "INSERT INTO events_fts(events_fts, rank) VALUES('integrity-check', 1)",
@@ -222,29 +230,25 @@ fn check_fts5_external_content_integrity(conn: &Connection) -> ProjectionResult<
     }
 }
 
+/// SQLITE_CORRUPT_VTAB = SQLITE_CORRUPT | (1 << 8). FTS5 integrity-check uses this.
+const SQLITE_CORRUPT_VTAB: i32 = 267;
+
+/// True only for SQLite corruption / non-database result classes — never from message text.
+fn is_sqlite_corruption_class(efi: &rusqlite::ffi::Error) -> bool {
+    matches!(
+        efi.code,
+        rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase
+    ) || efi.extended_code == SQLITE_CORRUPT_VTAB
+}
+
 /// Map FTS5 integrity-check failures: only confirmed corruption is replaceable.
 fn map_fts_integrity_sqlite_error(err: rusqlite::Error) -> ProjectionError {
     match &err {
-        rusqlite::Error::SqliteFailure(efi, message) => {
-            let code = efi.code;
-            let message = message.as_deref().unwrap_or("").to_ascii_lowercase();
-            // FTS5 integrity-check reports SQLITE_CORRUPT_VTAB / corrupt on mismatch.
-            let looks_corrupt = matches!(
-                code,
-                rusqlite::ErrorCode::NotADatabase | rusqlite::ErrorCode::DatabaseCorrupt
-            ) || message.contains("not a database")
-                || message.contains("file is encrypted")
-                || message.contains("malformed")
-                || message.contains("database disk image is malformed")
-                || message.contains("corrupt")
-                || message.contains("integrity check")
-                || message.contains("integrity-check");
-            if looks_corrupt {
-                return ProjectionError::CorruptDb {
-                    detail: format!("events_fts external-content integrity-check failed: {err}"),
-                };
+        rusqlite::Error::SqliteFailure(efi, _) if is_sqlite_corruption_class(efi) => {
+            // Includes SQLITE_CORRUPT / SQLITE_NOTADB / SQLITE_CORRUPT_VTAB (FTS virtual table).
+            ProjectionError::CorruptDb {
+                detail: format!("events_fts external-content integrity-check failed: {err}"),
             }
-            ProjectionError::Sqlite(err)
         }
         _ => ProjectionError::Sqlite(err),
     }
@@ -253,25 +257,13 @@ fn map_fts_integrity_sqlite_error(err: rusqlite::Error) -> ProjectionError {
 /// Map only clear on-disk corruption signals to [`ProjectionError::CorruptDb`].
 ///
 /// Busy/locked/permission and other ordinary SQLite failures stay
-/// [`ProjectionError::Sqlite`].
+/// [`ProjectionError::Sqlite`]. Classification uses SQLite error/extended codes only.
 fn map_open_sqlite_error(err: rusqlite::Error) -> ProjectionError {
     match &err {
-        rusqlite::Error::SqliteFailure(efi, message) => {
-            let code = efi.code;
-            let message = message.as_deref().unwrap_or("").to_ascii_lowercase();
-            let looks_corrupt = matches!(
-                code,
-                rusqlite::ErrorCode::NotADatabase | rusqlite::ErrorCode::DatabaseCorrupt
-            ) || message.contains("not a database")
-                || message.contains("file is encrypted")
-                || message.contains("malformed")
-                || message.contains("database disk image is malformed");
-            if looks_corrupt {
-                return ProjectionError::CorruptDb {
-                    detail: "sqlite reported a corrupt or non-database file".into(),
-                };
+        rusqlite::Error::SqliteFailure(efi, _) if is_sqlite_corruption_class(efi) => {
+            ProjectionError::CorruptDb {
+                detail: "sqlite reported a corrupt or non-database file".into(),
             }
-            ProjectionError::Sqlite(err)
         }
         _ => ProjectionError::Sqlite(err),
     }
@@ -714,6 +706,23 @@ mod tests {
         }
     }
 
+    fn system_io_failure_with_message(message: &str) -> rusqlite::Error {
+        rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::SystemIoFailure,
+                extended_code: 10,
+            },
+            Some(message.into()),
+        )
+    }
+
+    const MISLEADING_CORRUPTION_MESSAGES: [&str; 4] = [
+        "database disk image is malformed",
+        "file appears corrupt on read",
+        "fts5: integrity-check reported a problem",
+        "file is not a database",
+    ];
+
     #[test]
     fn map_fts_integrity_sqlite_error_classifies_corrupt_vs_transient() {
         let busy = rusqlite::Error::SqliteFailure(
@@ -740,13 +749,7 @@ mod tests {
             ProjectionError::Sqlite(_)
         ));
 
-        let io = rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error {
-                code: rusqlite::ErrorCode::SystemIoFailure,
-                extended_code: 10,
-            },
-            Some("disk I/O error".into()),
-        );
+        let io = system_io_failure_with_message("disk I/O error");
         assert!(matches!(
             map_fts_integrity_sqlite_error(io),
             ProjectionError::Sqlite(_)
@@ -764,6 +767,17 @@ mod tests {
             ProjectionError::Sqlite(_)
         ));
 
+        for message in MISLEADING_CORRUPTION_MESSAGES {
+            let err = system_io_failure_with_message(message);
+            assert!(
+                matches!(
+                    map_fts_integrity_sqlite_error(err),
+                    ProjectionError::Sqlite(_)
+                ),
+                "SystemIoFailure message must not become CorruptDb: {message}"
+            );
+        }
+
         let corrupt = rusqlite::Error::SqliteFailure(
             rusqlite::ffi::Error {
                 code: rusqlite::ErrorCode::DatabaseCorrupt,
@@ -776,10 +790,22 @@ mod tests {
             ProjectionError::CorruptDb { .. }
         ));
 
+        let not_a_db = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::NotADatabase,
+                extended_code: 26,
+            },
+            Some("file is not a database".into()),
+        );
+        assert!(matches!(
+            map_fts_integrity_sqlite_error(not_a_db),
+            ProjectionError::CorruptDb { .. }
+        ));
+
         let fts_mismatch = rusqlite::Error::SqliteFailure(
             rusqlite::ffi::Error {
                 code: rusqlite::ErrorCode::DatabaseCorrupt,
-                extended_code: 267, // SQLITE_CORRUPT_VTAB family
+                extended_code: SQLITE_CORRUPT_VTAB,
             },
             Some("fts5: integrity-check failed for table events_fts".into()),
         );
@@ -788,6 +814,120 @@ mod tests {
                 assert!(detail.to_ascii_lowercase().contains("integrity-check"));
             }
             other => panic!("expected CorruptDb, got {other}"),
+        }
+    }
+
+    #[test]
+    fn map_open_sqlite_error_classifies_corrupt_vs_transient() {
+        for message in MISLEADING_CORRUPTION_MESSAGES {
+            let err = system_io_failure_with_message(message);
+            assert!(
+                matches!(map_open_sqlite_error(err), ProjectionError::Sqlite(_)),
+                "SystemIoFailure message must not become CorruptDb: {message}"
+            );
+        }
+
+        let corrupt = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::DatabaseCorrupt,
+                extended_code: 11,
+            },
+            Some("ignored malformed text".into()),
+        );
+        assert!(matches!(
+            map_open_sqlite_error(corrupt),
+            ProjectionError::CorruptDb { .. }
+        ));
+
+        let not_a_db = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::NotADatabase,
+                extended_code: 26,
+            },
+            Some("ignored".into()),
+        );
+        assert!(matches!(
+            map_open_sqlite_error(not_a_db),
+            ProjectionError::CorruptDb { .. }
+        ));
+    }
+
+    #[test]
+    fn injected_io_messages_mentioning_corruption_preserve_db_and_sidecars() {
+        for message in MISLEADING_CORRUPTION_MESSAGES {
+            // Via FTS integrity-check mapper: plant -journal after open (WAL maps -wal/-shm).
+            let root = exclusive_temp_root("io-msg-fts");
+            let (path, built_at, sidecars, marker) = seed_db_with_sidecar_markers(&root);
+            let before_bytes = fs::read(&path).unwrap();
+            let journal = sidecars[2].clone();
+            FTS_INTEGRITY_SIDECAR_MARKER.with(|slot| {
+                *slot.borrow_mut() = Some((journal.clone(), marker.to_vec()));
+            });
+            INJECT_FTS_INTEGRITY_ERROR.with(|slot| {
+                *slot.borrow_mut() = Some(system_io_failure_with_message(message));
+            });
+            let err = ProjectionDb::open_replacing_unusable(root.path())
+                .expect_err("misleading I/O must not replace");
+            assert!(
+                matches!(err, ProjectionError::Sqlite(_)),
+                "expected Sqlite for FTS path message {message:?}, got {err}"
+            );
+            assert_eq!(
+                fs::read(&path).unwrap(),
+                before_bytes,
+                "main DB bytes must be unchanged for {message}"
+            );
+            assert_eq!(
+                fs::read(&journal).expect("journal sidecar must remain"),
+                marker,
+                "journal must remain for {message}"
+            );
+            let (reopen, kind) =
+                ProjectionDb::open_replacing_unusable(root.path()).expect("reopen");
+            assert!(matches!(kind, ProjectionOpenKind::OpenedExisting));
+            let built_at2: String = reopen
+                .connection()
+                .query_row(
+                    "SELECT built_at FROM projection_meta WHERE id = 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(built_at, built_at2);
+            drop(reopen);
+
+            // Via open mapper: inject before Connection::open so all planted sidecars remain.
+            let root = exclusive_temp_root("io-msg-open");
+            let (path, built_at, sidecars, marker) = seed_db_with_sidecar_markers(&root);
+            let before_bytes = fs::read(&path).unwrap();
+            INJECT_OPEN_SQLITE_ERROR.with(|slot| {
+                *slot.borrow_mut() = Some(system_io_failure_with_message(message));
+            });
+            let err = ProjectionDb::open_replacing_unusable(root.path())
+                .expect_err("misleading I/O must not replace");
+            assert!(
+                matches!(err, ProjectionError::Sqlite(_)),
+                "expected Sqlite for open path message {message:?}, got {err}"
+            );
+            assert_eq!(
+                fs::read(&path).unwrap(),
+                before_bytes,
+                "main DB bytes must be unchanged for {message}"
+            );
+            assert_sidecars_untouched(&sidecars, marker);
+            let (reopen, kind) =
+                ProjectionDb::open_replacing_unusable(root.path()).expect("reopen");
+            assert!(matches!(kind, ProjectionOpenKind::OpenedExisting));
+            let built_at2: String = reopen
+                .connection()
+                .query_row(
+                    "SELECT built_at FROM projection_meta WHERE id = 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(built_at, built_at2);
+            drop(reopen);
         }
     }
 
@@ -812,7 +952,7 @@ mod tests {
             Some("database is locked".into()),
         );
         INJECT_FTS_INTEGRITY_ERROR.with(|slot| {
-            *slot.borrow_mut() = Some(ProjectionError::Sqlite(busy));
+            *slot.borrow_mut() = Some(busy);
         });
 
         let err = ProjectionDb::open_replacing_unusable(root.path())

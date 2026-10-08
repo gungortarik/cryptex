@@ -167,7 +167,7 @@ These results close the candidate's local platform and CI verification. They do 
 ## Post-gate review finding — error text can still trigger replacement
 
 **Affected candidate:** `275fb7acf0c2c7b4d7c050acb54670e81520377f`
-**Status:** BLOCKING Slice 8 closeout; code fix and re-verification required.
+**Status:** Code fixed on branch tip (see follow-up below); Windows-local re-check PASS; macOS four-check + final dual-OS Actions still required before closeout.
 
 Review of `crates/projection/src/db.rs` found that both `map_fts_integrity_sqlite_error` and `map_open_sqlite_error` classify an error as replaceable `CorruptDb` if its message contains words such as `corrupt`, `integrity-check`, `malformed`, or `not a database`, even when SQLite's primary `ErrorCode` is `SystemIoFailure` or another transient/non-corruption class. `open_replacing_unusable` then removes the projection database and its sidecars for `CorruptDb`.
 
@@ -182,3 +182,24 @@ Required follow-up for the M3 product-code implementer:
 5. Re-run Windows local checks, the exact-tip macOS four-check, then one final dual-OS Actions run. The current PASS at `275fb7a` does not cover the fix.
 
 Do not merge or declare M3 complete until this finding is closed and final human owner review is recorded.
+
+
+## Follow-up (corruption class codes only)
+
+Closed the post-gate finding: `map_fts_integrity_sqlite_error` and `map_open_sqlite_error` classify replaceable `CorruptDb` only from SQLite error/extended-code classes (`DatabaseCorrupt`, `NotADatabase`, and `SQLITE_CORRUPT_VTAB` extended code `267`). Diagnostic message substrings (`malformed`, `corrupt`, `integrity-check`, `not a database`) are ignored.
+
+Regressions:
+- Mapper unit coverage: `SystemIoFailure` with each misleading message stays `ProjectionError::Sqlite`.
+- Injected open + FTS integrity paths: same messages fail closed as non-replaceable `Sqlite`; main DB bytes preserved; open-path keeps `-wal`/`-shm`/`-journal`; FTS-path plants `-journal` after open (Windows WAL maps `-wal`/`-shm`).
+- Genuine `DatabaseCorrupt` / `NotADatabase` / FTS external-content inconsistency remain replaceable and rebuildable.
+
+### Windows re-check
+
+| Command | Result |
+|---------|--------|
+| `cargo fmt --all -- --check` | PASS |
+| `cargo test --locked -p cryptex-projection --lib` | PASS (47) |
+| `cargo test --locked -p cryptexd --lib projection::` | PASS (17) |
+| `cargo clippy --locked -p cryptex-core -p cryptex-projection -p cryptexd --all-targets -- -D warnings` | PASS |
+
+No Actions dispatched. Owner tip review, then macOS four-check, then one final dual-OS Actions run.
