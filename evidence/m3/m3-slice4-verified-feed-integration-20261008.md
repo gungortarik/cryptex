@@ -59,3 +59,7 @@ macOS fmt/test/clippy for projection + cryptexd feed path remains **pending** un
 ## Continuation
 
 Next: Slice 5 (rebuild + incremental + corruption / checkpoint semantics) after this tip is reviewed.
+
+## Follow-up
+
+Review follow-up for idempotent/conflict insert semantics and `ProjectionFeedError` categories: `evidence/m3/m3-slice4-idempotent-conflict-feed-errors-20261008.md`.

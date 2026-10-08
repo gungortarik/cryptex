@@ -1,7 +1,7 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-08
-**Current milestone:** M3 - Local Projection + Search (Slice 4 verified feed integration complete; no search/checkpoint advancement yet)
+**Current milestone:** M3 - Local Projection + Search (Slice 4 follow-up: idempotent replay + typed conflict + Projection feed errors; no search/checkpoint advancement yet)
 **Active branch:** `m3/local-projection-search`, based on `m0/foundation` at M2 merge commit `817b6a126cf6e9cd3e8a27b1348ec977bdc9dcdd` (PR #8)
 **M2 status:** COMPLETE within M2 scope after owner-delegated review and required verification; normal merge PR #8 integrated `m2/immutable-event-store` into `m0/foundation` at `817b6a1`.
 **M3 kickoff:** `evidence/m3/m3-kickoff-plan-20261008.md`. **Phase 0 plan:** `evidence/m3/m3-phase0-implementation-plan-20261008.md`. Cursor owns M3 product code; Phase 0 complete; Slices 1-4 landed on `m3/local-projection-search`.
@@ -10,6 +10,7 @@
 **M3 Slice 3:** `evidence/m3/m3-slice3-projection-schema-v1-20261008.md` - empty schema v1 (`events` + text-only FTS5 + meta/checkpoint); open/create + schema-version validation; no ingest/search.
 **M3 Slice 3 follow-up:** `evidence/m3/m3-slice3-fixture-schema-hardening-20261008.md` - exclusive temp fixtures + exact column/FTS shape validation; no ingest/search.
 **M3 Slice 4:** `evidence/m3/m3-slice4-verified-feed-integration-20261008.md` - `for_each_verified_event` + transactional `project_verified_device_events`; no search/checkpoint advancement.
+**M3 Slice 4 follow-up:** `evidence/m3/m3-slice4-idempotent-conflict-feed-errors-20261008.md` - identical replay idempotent; `EventConflict` on field mismatch; `ProjectionFeedError::Projection` preserved for insert failures.
 **Latest verified candidate SHA:** `9ade9f7db18ec0e383594c19e592809e3b194531` (`9ade9f7`), on `m2/immutable-event-store`.
 **Final dual-OS CI:** PASS in run [37706283147](https://github.com/gungortarik/cryptex/actions/runs/37706283147) against the exact candidate SHA above. macOS and Windows readiness plus Windows IPC ACL succeeded; unsigned Windows package skipped by design. Record: `evidence/m2/m2-final-ci-gate-20261008.md`.
 **Closeout audit tip (L1/L2/F4–F6 + staging ownership):** behavior `b5c9d69`, tip `1a26493` — `evidence/m2/m2-staging-cleanup-ownership-20261007.md`. Windows checks PASS; owner-reported macOS four-check PASS at `9ade9f7` is recorded in the final-gate evidence. Owner-delegated closeout review PASS is recorded at `evidence/m2/m2-owner-delegated-review-20261008.md`; PR #8 integration completed at `817b6a1`. `LongPathsEnabled=0` is not claimed.
@@ -17,7 +18,7 @@
 **M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) — integrated ancestor
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
 **M1 documentation closeout:** `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75`
-**Next gate:** Review Slice 4 tip; then Slice 5 (rebuild/checkpoint/corruption) per `evidence/m3/m3-phase0-implementation-plan-20261008.md`. macOS projection/feed smoke still pending until actually run. Do not run GitHub Actions until a reviewed M3 candidate.
+**Next gate:** Review Slice 4 follow-up tip; then Slice 5 (rebuild/checkpoint/corruption) per `evidence/m3/m3-phase0-implementation-plan-20261008.md`. macOS projection/feed smoke still pending until actually run. Do not run GitHub Actions until a reviewed M3 candidate.
 
 > This file is an operational status snapshot, not an architecture authority. If it conflicts with `docs/00_MASTER_SPEC.md`, accepted ADRs, the milestone contract, or other authoritative project documents, stop and report the conflict instead of silently reconciling it.
 
@@ -131,7 +132,7 @@ present-day decisions.
 - Work only on the current milestone (M3). Do not opportunistically implement M4 knowledge consolidation, M8 replication product behavior, M10 purge product workflows, or M13 broad Desktop search UX.
 - Follow the accepted M3 contract and authoritative memory/storage specs. Do not turn derived SQLite/FTS state into canonical data or invent semantic/M4 fields.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
-- Cursor is the M3 product-code implementer. Stay on `m3/local-projection-search`. Phase 0 plan: `evidence/m3/m3-phase0-implementation-plan-20261008.md`. Slice 1: `evidence/m3/m3-slice1-workspace-scaffolding-20261008.md`. Slice 2: `evidence/m3/m3-slice2-sqlite-fts5-pin-20261008.md`. Slice 3: `evidence/m3/m3-slice3-projection-schema-v1-20261008.md` (+ follow-up `evidence/m3/m3-slice3-fixture-schema-hardening-20261008.md`). Slice 4: `evidence/m3/m3-slice4-verified-feed-integration-20261008.md`. Next is Slice 5 after review; no Actions until a reviewed M3 candidate.
+- Cursor is the M3 product-code implementer. Stay on `m3/local-projection-search`. Phase 0 plan: `evidence/m3/m3-phase0-implementation-plan-20261008.md`. Slice 1: `evidence/m3/m3-slice1-workspace-scaffolding-20261008.md`. Slice 2: `evidence/m3/m3-slice2-sqlite-fts5-pin-20261008.md`. Slice 3: `evidence/m3/m3-slice3-projection-schema-v1-20261008.md` (+ follow-up `evidence/m3/m3-slice3-fixture-schema-hardening-20261008.md`). Slice 4: `evidence/m3/m3-slice4-verified-feed-integration-20261008.md` (+ follow-up `evidence/m3/m3-slice4-idempotent-conflict-feed-errors-20261008.md`). Next is Slice 5 after review; no Actions until a reviewed M3 candidate.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks; run only the required final M3 workflow after its candidate is reviewed.

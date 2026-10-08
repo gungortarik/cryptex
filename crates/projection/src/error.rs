@@ -18,6 +18,14 @@ pub enum ProjectionError {
     UnsupportedSchema { found: u32, expected: u32 },
     /// Required projection tables/FTS objects are missing or misconfigured.
     SchemaInconsistent { detail: String },
+    /// An existing `event_id` row disagrees with the verified event's M2 fields.
+    ///
+    /// `differing_fields` lists column names only. Values (including note text)
+    /// must never be included.
+    EventConflict {
+        event_id: String,
+        differing_fields: Vec<&'static str>,
+    },
     /// Filesystem failure while creating disposable projection paths.
     Io(io::Error),
     /// Underlying SQLite API failure while probing disposable state.
@@ -39,6 +47,14 @@ impl fmt::Display for ProjectionError {
             Self::SchemaInconsistent { detail } => {
                 write!(f, "projection schema inconsistent: {detail}")
             }
+            Self::EventConflict {
+                event_id,
+                differing_fields,
+            } => write!(
+                f,
+                "projection event_id {event_id} conflicts with stored row (fields: {})",
+                differing_fields.join(",")
+            ),
             Self::Io(err) => write!(f, "projection path io error: {err}"),
             Self::Sqlite(err) => write!(f, "projection sqlite error: {err}"),
         }
@@ -52,7 +68,8 @@ impl std::error::Error for ProjectionError {
             Self::Io(err) => Some(err),
             Self::Fts5Unavailable { .. }
             | Self::UnsupportedSchema { .. }
-            | Self::SchemaInconsistent { .. } => None,
+            | Self::SchemaInconsistent { .. }
+            | Self::EventConflict { .. } => None,
         }
     }
 }
@@ -86,6 +103,16 @@ impl PartialEq for ProjectionError {
             (Self::SchemaInconsistent { detail: a }, Self::SchemaInconsistent { detail: b }) => {
                 a == b
             }
+            (
+                Self::EventConflict {
+                    event_id: a_id,
+                    differing_fields: a_fields,
+                },
+                Self::EventConflict {
+                    event_id: b_id,
+                    differing_fields: b_fields,
+                },
+            ) => a_id == b_id && a_fields == b_fields,
             (Self::Io(a), Self::Io(b)) => a.kind() == b.kind() && a.to_string() == b.to_string(),
             (Self::Sqlite(a), Self::Sqlite(b)) => a == b,
             _ => false,

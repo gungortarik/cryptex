@@ -67,22 +67,35 @@ pub fn project_verified_device_events<S: SecureStore>(
         .unchecked_transaction()
         .map_err(ProjectionError::from)?;
     let mut projected = 0u64;
+    // Stash typed projection failures so they are not re-labeled as canonical.
+    let mut projection_err: Option<ProjectionError> = None;
     let feed_result = for_each_verified_event(store, env, runtime_root, device_id, |event| {
-        project_memory_note(&tx, event).map_err(|err| {
-            CanonicalWriterError::Invalid(format!("projection insert failed: {err}"))
-        })?;
-        projected = projected.saturating_add(1);
-        Ok(())
+        match project_memory_note(&tx, event) {
+            Ok(()) => {
+                projected = projected.saturating_add(1);
+                Ok(())
+            }
+            Err(err) => {
+                projection_err = Some(err);
+                Err(CanonicalWriterError::Invalid(
+                    "projection insert failed".into(),
+                ))
+            }
+        }
     });
-    match feed_result {
-        Ok(()) => {
+    match (feed_result, projection_err.take()) {
+        (Ok(()), None) => {
             tx.commit().map_err(ProjectionError::from)?;
             Ok(projected)
         }
-        Err(err) => {
+        (_, Some(err)) => {
             // Dropping `tx` without commit rolls back projected rows.
             drop(tx);
-            Err(err.into())
+            Err(ProjectionFeedError::Projection(err))
+        }
+        (Err(err), None) => {
+            drop(tx);
+            Err(ProjectionFeedError::Canonical(err))
         }
     }
 }
@@ -197,6 +210,117 @@ mod tests {
             )
             .unwrap();
         assert_eq!(hit, 1);
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn projection_conflict_is_surfaced_as_projection_error_and_rolls_back() {
+        let root = temp_root("conflict");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-device-c").unwrap();
+        let brain = "77777777-7777-4777-8777-777777777777";
+        let cfg = CanonicalWriterConfig {
+            seal_event_threshold: 1000,
+        };
+        let first = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "stable-text",
+                config: &cfg,
+            },
+        )
+        .unwrap();
+        let second = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Public,
+                text: "second-note",
+                config: &cfg,
+            },
+        )
+        .unwrap();
+
+        let db = ProjectionDb::open_or_create(&root).expect("projection db");
+        // Pre-seed a conflicting row for the *second* event so the feed inserts
+        // the first event in-txn, then fails on reconcile — proving rollback.
+        let bad_hash = "aa".repeat(32);
+        db.connection()
+            .execute(
+                "INSERT INTO events (
+                    event_id, brain_id, device_id, device_seq, created_at,
+                    event_type, classification, content_hash, signing_key_id, text
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                (
+                    second.accepted.event_id.as_str(),
+                    second.accepted.brain_id.as_str(),
+                    second.accepted.device_id.as_str(),
+                    second.accepted.device_seq.as_str(),
+                    second.accepted.created_at.as_str(),
+                    "memory.note",
+                    "public",
+                    bad_hash.as_str(),
+                    second.accepted.signing_key_id.as_str(),
+                    "second-note",
+                ),
+            )
+            .unwrap();
+
+        let err = project_verified_device_events(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &db,
+        )
+        .expect_err("conflicting replay must fail");
+        let msg = err.to_string();
+        match &err {
+            ProjectionFeedError::Projection(ProjectionError::EventConflict {
+                event_id,
+                differing_fields,
+            }) => {
+                assert_eq!(event_id, second.accepted.event_id.as_str());
+                assert!(differing_fields.contains(&"content_hash"));
+                assert!(!msg.contains("second-note"));
+                assert!(!msg.contains(first.accepted.content_hash.as_str()));
+            }
+            other => panic!("expected Projection EventConflict, got {other}"),
+        }
+
+        let first_present: i64 = db
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM events WHERE event_id = ?1",
+                [first.accepted.event_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            first_present, 0,
+            "successful insert earlier in the failed txn must roll back"
+        );
+        let stored_hash: String = db
+            .connection()
+            .query_row(
+                "SELECT content_hash FROM events WHERE event_id = ?1",
+                [second.accepted.event_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            stored_hash, bad_hash,
+            "pre-seeded conflicting row must stay"
+        );
         drop(db);
         let _ = fs::remove_dir_all(&root);
     }
