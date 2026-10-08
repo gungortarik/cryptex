@@ -1,7 +1,7 @@
 # M4 Slice 5 — Materialization Input Binding
 
-**Status:** Partial Slice 5 implementation; daemon feed/retrieval integration
-remains open.
+**Status:** Partial Slice 5 implementation; Windows and owner-reported macOS
+checks PASS on exact code SHA `4909013c5d9098db9391757a9caa2ca6f4c4c455`.
 
 ## Change
 
@@ -29,5 +29,16 @@ Using `CARGO_TARGET_DIR=%LOCALAPPDATA%\Cryptex-Dev\cargo-target-m4`:
   --all-targets -- -D warnings`: PASS
 - `git diff --check`: PASS
 
-macOS verification and GitHub Actions have not been run for this Slice 5
-change. No canonical data or M3 schema behavior was modified.
+## Owner-reported macOS verification
+
+Exact tested HEAD: `4909013c5d9098db9391757a9caa2ca6f4c4c455` on
+`m4/knowledge-engine`; macOS 27.0.1 (26A434), arm64; clean working tree.
+
+- `cargo fmt -p cryptex-knowledge -- --check`: PASS
+- `cargo test --locked -p cryptex-knowledge -p cryptex-projection`: PASS —
+  knowledge 29, projection 47
+- Strict Clippy for both crates: PASS
+- `git diff --check`: PASS
+
+Daemon scanner/retrieval integration remains open. GitHub Actions were not
+dispatched. No canonical data or M3 schema behavior was modified.
