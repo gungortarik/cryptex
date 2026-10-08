@@ -18,9 +18,10 @@ at `evidence/m3/m3-slice7-macos-four-check-20261008.md` for source
 `428b03f33eda8fbf645678220dbd3ce3d88d108e`; this workflow tested the later
 documentation-only branch tip above.
 
-This closes the Slice 7 cross-platform verification gate. It does not by itself
-complete M3. Slice 8 Definition of Done, security review, and owner review remain
-required. No additional Actions run is needed for this gate.
+At the time this Slice 7 run was recorded, it closed only the cross-platform
+verification gate; Slice 8, security review, and owner review were still open.
+That status was superseded by the later Slice 8 candidate and final review below.
+No additional Actions run was needed for this gate.
 
 ## Slice 8 final candidate — PASS
 
@@ -42,10 +43,10 @@ recorded in `evidence/m3/m3-slice8-macos-four-check-20261008.md`. Windows-local
 verification for the candidate is recorded in the Slice 8 security/DoD evidence
 and the branch change record.
 
-This closes the candidate's cross-platform local and required CI verification
-gates. M3 is still not complete: the final security/DoD disposition and human
-owner review must be recorded before any completion or M4 claim. This run does
-not authorize a merge by itself.
+At the time this candidate was recorded, it closed its cross-platform local and
+required CI gates, while final security/DoD disposition and owner review were
+still open. That status was superseded by the later corruption-class candidate
+and final review below. This run did not independently authorize a merge.
 
 **Post-run review update:** A subsequent security review found an untested
 message-substring classification path in the SQLite corruption mappers; see the
@@ -79,7 +80,7 @@ Windows-local results for the corruption-class fix are recorded in
 
 This closes the post-gate SQLite error-message classification finding and
 completes the local-platform and final CI verification gates for this
-candidate. The scoped final security/DoD review is recorded in
-`evidence/m3/m3-final-review-20261008.md`. M3 remains **IN PROGRESS** until
-human owner review is recorded. This run does not authorize a merge or M4
-start.
+candidate. The scoped security/DoD review and owner-delegated final review are
+recorded in `evidence/m3/m3-final-review-20261008.md`. M3 completion is recorded
+there as PASS within the accepted M3 scope. This CI run alone does not authorize
+a merge or start M4.

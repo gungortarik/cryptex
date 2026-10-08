@@ -2,8 +2,8 @@
 
 **Date:** 2026-10-08  
 **Branch:** `m3/local-projection-search`  
-**Candidate HEAD reviewed:** `ecf58fb` (documentation closeout; behavior code `6b61882`)  
-**Review result:** PASS for M3 implementation scope; pending human owner review
+**Candidate HEAD reviewed:** `11072e3` (documentation closeout; behavior code `6b61882`)
+**Review result:** PASS for M3 implementation scope; owner-delegated review complete
 
 ## Authority reviewed
 
@@ -42,6 +42,12 @@ No remaining blocking security or M3 DoD finding was identified in this
 scoped review. This is an implementation/security review against repository
 requirements, not a penetration test or a claim of production readiness.
 
-**Human owner review: PENDING.** M3 remains IN PROGRESS and is not merged.
-Do not begin M4 until the owner review is recorded and the M3 completion gate
-is explicitly closed.
+**Owner-delegated review: PASS (2026-10-08).** The owner explicitly delegated
+the final M3 review and closeout to Codex. This review evaluated the accepted
+M3 contract, Master Spec/DoD boundaries, the scoped security review, exact-tip
+Windows/macOS verification, and final dual-OS Actions result recorded above.
+
+**M3 completion gate: PASS (within the accepted M3 scope).** All M3 scope and
+verification items are recorded as passing. This closes M3; it does not claim
+production readiness, add a Desktop search UI, or start M4. Branch integration
+is a separate Git operation and is not performed by this review record.
