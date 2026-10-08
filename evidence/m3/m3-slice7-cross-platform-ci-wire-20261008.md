@@ -8,7 +8,7 @@
 
 ## Scope
 
-- Wire `cryptex-projection` and `cryptexd` `projection::` checks into `.github/workflows/ci.yml` readiness jobs (both `windows-latest` and `macos-latest`).
+- Wire `cryptex-projection` into `.github/workflows/ci.yml` readiness jobs (both `windows-latest` and `macos-latest`). Rely on the existing full `cargo test --locked -p cryptexd` step for `projection::` coverage (no duplicate filtered cryptexd step).
 - Close remaining §8.1 matrix gaps: sealed+open projection with truncated open-tail exclusion, multi-device union search + `device_id` filter, idempotent double rebuild.
 - Run and record Windows-local verification.
 - Prepare exact matching macOS owner commands.
@@ -17,15 +17,14 @@
 
 ## CI wiring
 
-Added readiness steps after the M2 events/storage tests:
+Added one readiness step after the M2 events/storage tests:
 
 ```yaml
 - name: Test M3 projection crate
   run: cargo test --locked -p cryptex-projection
-
-- name: Test M3 cryptexd projection module
-  run: cargo test --locked -p cryptexd --lib projection::
 ```
+
+`cryptexd` `projection::` coverage is provided by the existing readiness step `cargo test --locked -p cryptexd` (full package tests already include the library `projection::` module). A separate `cargo test --locked -p cryptexd --lib projection::` step was removed before the final Actions run to avoid duplicating those tests on both OS jobs.
 
 Existing readiness already runs workspace `fmt`, `clippy -D warnings`, and full `cargo test -p cryptexd`. No Actions dispatched from this slice.
 
@@ -98,7 +97,7 @@ gh workflow run ci.yml --ref m3/local-projection-search
 # or open a PR into the agreed base and rely on pull_request readiness jobs
 ```
 
-Confirm readiness on **windows-latest** and **macos-latest** each execute the new M3 projection steps. Record the Actions run URL only after green.
+Confirm readiness on **windows-latest** and **macos-latest** each execute the M3 `cryptex-projection` step, and that cryptexd projection coverage comes only from the existing full `cryptexd` test (no duplicate `projection::` filter step). Record the Actions run URL only after green.
 
 ## Non-goals / out of scope
 
@@ -106,3 +105,11 @@ Confirm readiness on **windows-latest** and **macos-latest** each execute the ne
 - Claiming dual-OS / CI PASS
 - Desktop Cmd/Ctrl+K, MCP tools, semantic/vector search, M4+, Syncthing of DB
 - Slice 8 DoD/security/owner review gate
+
+## Follow-up (redundant cryptexd CI step removed)
+
+Before the final M3 Actions run, removed the readiness step
+`cargo test --locked -p cryptexd --lib projection::` because it duplicated tests already
+executed by `cargo test --locked -p cryptexd`. Kept `cargo test --locked -p cryptex-projection`.
+Local Windows matrix commands that filter `projection::` remain valid focused verification; they
+are not duplicated in CI. No product behavior change. macOS verification still pending; Actions still not dispatched.
