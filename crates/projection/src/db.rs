@@ -4,6 +4,8 @@
 //! canonical events. Slice 5 may delete/replace this file when unusable; that
 //! must never touch canonical packs.
 
+#[cfg(test)]
+use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,6 +17,11 @@ use crate::schema::{
     PROJECTION_SCHEMA_VERSION, apply_schema_v1, read_schema_version, validate_schema_v1,
 };
 use crate::{ProjectionError, ProjectionResult};
+
+#[cfg(test)]
+thread_local! {
+    static INJECT_TRY_OPEN_ERROR: RefCell<Option<ProjectionError>> = const { RefCell::new(None) };
+}
 
 /// Why an on-disk projection DB was deleted and recreated.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,7 +71,13 @@ impl ProjectionDb {
         Ok(Self { conn, path })
     }
 
-    /// Open the projection DB, replacing corrupt/stale/unsupported disposable files.
+    /// Open the projection DB, replacing only explicitly unusable disposable files.
+    ///
+    /// Replacement runs solely for [`ProjectionError::CorruptDb`],
+    /// [`ProjectionError::UnsupportedSchema`], or
+    /// [`ProjectionError::SchemaInconsistent`]. Transient I/O, ordinary SQLite
+    /// errors (busy/locked/permission), and [`ProjectionError::Fts5Unavailable`]
+    /// propagate without deleting the DB or sidecars.
     ///
     /// Never modifies canonical event packs. Sidecars (`-wal`/`-shm`/`-journal`) are
     /// removed together with the main DB file when replacing.
@@ -82,12 +95,14 @@ impl ProjectionDb {
 
         match try_open_existing(&path) {
             Ok(db) => Ok((db, ProjectionOpenKind::OpenedExisting)),
-            Err(err) => {
-                let reason = replace_reason_from_error(&err);
-                remove_projection_files(app_data_root)?;
-                let db = Self::open_or_create(app_data_root)?;
-                Ok((db, ProjectionOpenKind::Replaced { reason }))
-            }
+            Err(err) => match replaceable_unusable_reason(&err) {
+                Some(reason) => {
+                    remove_projection_files(app_data_root)?;
+                    let db = Self::open_or_create(app_data_root)?;
+                    Ok((db, ProjectionOpenKind::Replaced { reason }))
+                }
+                None => Err(err),
+            },
         }
     }
 
@@ -119,15 +134,30 @@ impl ProjectionDb {
     }
 }
 
+/// Sidecar paths for a projection DB, built without lossy Unicode conversion.
+///
+/// SQLite uses the main DB path bytes/OS string plus `-wal`, `-shm`, or `-journal`.
+pub fn projection_sidecar_paths(db_path: &Path) -> [PathBuf; 3] {
+    [
+        append_os_suffix(db_path, "-wal"),
+        append_os_suffix(db_path, "-shm"),
+        append_os_suffix(db_path, "-journal"),
+    ]
+}
+
+fn append_os_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut os = path.as_os_str().to_owned();
+    os.push(suffix);
+    PathBuf::from(os)
+}
+
 /// Delete disposable projection DB files under `derived/projection/` (not canonical).
 pub fn remove_projection_files(app_data_root: &Path) -> ProjectionResult<()> {
     let path = projection_sqlite_path(app_data_root);
-    for candidate in [
-        path.clone(),
-        PathBuf::from(format!("{}-wal", path.display())),
-        PathBuf::from(format!("{}-shm", path.display())),
-        PathBuf::from(format!("{}-journal", path.display())),
-    ] {
+    let mut candidates = Vec::with_capacity(4);
+    candidates.push(path.clone());
+    candidates.extend(projection_sidecar_paths(&path));
+    for candidate in candidates {
         match fs::remove_file(&candidate) {
             Ok(()) => {}
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
@@ -138,6 +168,10 @@ pub fn remove_projection_files(app_data_root: &Path) -> ProjectionResult<()> {
 }
 
 fn try_open_existing(path: &Path) -> ProjectionResult<ProjectionDb> {
+    #[cfg(test)]
+    if let Some(err) = INJECT_TRY_OPEN_ERROR.with(|slot| slot.borrow_mut().take()) {
+        return Err(err);
+    }
     let conn = Connection::open(path).map_err(map_open_sqlite_error)?;
     let check: String = conn
         .query_row("PRAGMA quick_check", [], |row| row.get(0))
@@ -154,35 +188,51 @@ fn try_open_existing(path: &Path) -> ProjectionResult<ProjectionDb> {
     })
 }
 
+/// Map only clear on-disk corruption signals to [`ProjectionError::CorruptDb`].
+///
+/// Busy/locked/permission and other ordinary SQLite failures stay
+/// [`ProjectionError::Sqlite`].
 fn map_open_sqlite_error(err: rusqlite::Error) -> ProjectionError {
-    let message = err.to_string().to_ascii_lowercase();
-    if message.contains("not a database")
-        || message.contains("file is encrypted")
-        || message.contains("malformed")
-    {
-        return ProjectionError::CorruptDb {
-            detail: "sqlite open/integrity failed".into(),
-        };
+    match &err {
+        rusqlite::Error::SqliteFailure(efi, message) => {
+            let code = efi.code;
+            let message = message.as_deref().unwrap_or("").to_ascii_lowercase();
+            let looks_corrupt = matches!(
+                code,
+                rusqlite::ErrorCode::NotADatabase | rusqlite::ErrorCode::DatabaseCorrupt
+            ) || message.contains("not a database")
+                || message.contains("file is encrypted")
+                || message.contains("malformed")
+                || message.contains("database disk image is malformed");
+            if looks_corrupt {
+                return ProjectionError::CorruptDb {
+                    detail: "sqlite reported a corrupt or non-database file".into(),
+                };
+            }
+            ProjectionError::Sqlite(err)
+        }
+        _ => ProjectionError::Sqlite(err),
     }
-    ProjectionError::from(err)
 }
 
-fn replace_reason_from_error(err: &ProjectionError) -> ProjectionReplaceReason {
+/// Returns a replace reason only for explicitly unusable disposable state.
+fn replaceable_unusable_reason(err: &ProjectionError) -> Option<ProjectionReplaceReason> {
     match err {
         ProjectionError::UnsupportedSchema { found, .. } => {
-            ProjectionReplaceReason::UnsupportedSchema { found: *found }
+            Some(ProjectionReplaceReason::UnsupportedSchema { found: *found })
         }
         ProjectionError::SchemaInconsistent { detail } => {
-            ProjectionReplaceReason::SchemaInconsistent {
+            Some(ProjectionReplaceReason::SchemaInconsistent {
                 detail: detail.clone(),
-            }
+            })
         }
-        ProjectionError::CorruptDb { detail } => ProjectionReplaceReason::Corrupt {
+        ProjectionError::CorruptDb { detail } => Some(ProjectionReplaceReason::Corrupt {
             detail: detail.clone(),
-        },
-        other => ProjectionReplaceReason::Corrupt {
-            detail: other.to_string(),
-        },
+        }),
+        ProjectionError::Io(_)
+        | ProjectionError::Sqlite(_)
+        | ProjectionError::Fts5Unavailable { .. }
+        | ProjectionError::EventConflict { .. } => None,
     }
 }
 
@@ -242,6 +292,7 @@ mod tests {
     use super::*;
     use crate::layout::projection_sqlite_path;
     use crate::schema::PROJECTION_SCHEMA_VERSION;
+    use rusqlite::Connection;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -448,6 +499,201 @@ mod tests {
         }
         assert_eq!(db.schema_version().unwrap(), PROJECTION_SCHEMA_VERSION);
         drop(db);
+    }
+
+    #[test]
+    fn projection_sidecar_paths_append_without_lossy_display() {
+        let db = PathBuf::from("derived")
+            .join("projection")
+            .join("projection.sqlite");
+        let [wal, shm, journal] = projection_sidecar_paths(&db);
+        assert!(
+            wal.as_os_str()
+                .to_string_lossy()
+                .ends_with("projection.sqlite-wal")
+        );
+        assert!(
+            shm.as_os_str()
+                .to_string_lossy()
+                .ends_with("projection.sqlite-shm")
+        );
+        assert!(
+            journal
+                .as_os_str()
+                .to_string_lossy()
+                .ends_with("projection.sqlite-journal")
+        );
+        // Parent path is preserved as OsStr concatenation, not re-parsed via Display.
+        assert_eq!(wal.parent(), db.parent());
+    }
+
+    #[test]
+    fn replaceable_unusable_reason_ignores_transient_and_fts_errors() {
+        assert!(
+            replaceable_unusable_reason(&ProjectionError::Fts5Unavailable {
+                detail: "simulated".into(),
+            })
+            .is_none()
+        );
+        assert!(
+            replaceable_unusable_reason(&ProjectionError::Io(std::io::Error::other(
+                "simulated io"
+            )))
+            .is_none()
+        );
+        let sqlite_err = Connection::open_in_memory()
+            .unwrap()
+            .execute_batch("this is not sql")
+            .expect_err("sql");
+        assert!(replaceable_unusable_reason(&ProjectionError::Sqlite(sqlite_err)).is_none());
+        assert!(matches!(
+            replaceable_unusable_reason(&ProjectionError::CorruptDb { detail: "x".into() }),
+            Some(ProjectionReplaceReason::Corrupt { .. })
+        ));
+        assert!(matches!(
+            replaceable_unusable_reason(&ProjectionError::UnsupportedSchema {
+                found: 9,
+                expected: PROJECTION_SCHEMA_VERSION,
+            }),
+            Some(ProjectionReplaceReason::UnsupportedSchema { found: 9 })
+        ));
+        assert!(matches!(
+            replaceable_unusable_reason(&ProjectionError::SchemaInconsistent {
+                detail: "missing".into(),
+            }),
+            Some(ProjectionReplaceReason::SchemaInconsistent { .. })
+        ));
+    }
+
+    fn seed_db_with_sidecar_markers(
+        root: &TempRoot,
+    ) -> (PathBuf, String, [PathBuf; 3], &'static [u8]) {
+        let db = ProjectionDb::open_or_create(root.path()).expect("create");
+        let path = db.path().to_path_buf();
+        let built_at: String = db
+            .connection()
+            .query_row(
+                "SELECT built_at FROM projection_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(db);
+        let marker: &'static [u8] = b"cryptex-sidecar-marker";
+        let sidecars = projection_sidecar_paths(&path);
+        for side in &sidecars {
+            fs::write(side, marker).unwrap();
+        }
+        (path, built_at, sidecars, marker)
+    }
+
+    fn assert_sidecars_untouched(sidecars: &[PathBuf; 3], marker: &[u8]) {
+        for side in sidecars {
+            assert_eq!(
+                fs::read(side).expect("sidecar"),
+                marker,
+                "sidecar must remain untouched: {}",
+                side.display()
+            );
+        }
+    }
+
+    #[test]
+    fn open_replacing_unusable_preserves_files_on_injected_non_corrupt_errors() {
+        let cases = [
+            ProjectionError::Fts5Unavailable {
+                detail: "injected fts unavailable".into(),
+            },
+            ProjectionError::Io(std::io::Error::other("injected io")),
+            ProjectionError::Sqlite(
+                Connection::open_in_memory()
+                    .unwrap()
+                    .execute_batch("not valid sql ;;;")
+                    .expect_err("sqlite"),
+            ),
+        ];
+
+        for injected in cases {
+            let root = exclusive_temp_root("inject-preserve");
+            let (path, built_at, sidecars, marker) = seed_db_with_sidecar_markers(&root);
+            INJECT_TRY_OPEN_ERROR.with(|slot| {
+                *slot.borrow_mut() = Some(injected);
+            });
+            let err = ProjectionDb::open_replacing_unusable(root.path())
+                .expect_err("non-replaceable error must propagate");
+            assert!(
+                matches!(
+                    err,
+                    ProjectionError::Fts5Unavailable { .. }
+                        | ProjectionError::Io(_)
+                        | ProjectionError::Sqlite(_)
+                ),
+                "unexpected error: {err}"
+            );
+            assert!(path.is_file(), "main DB must remain");
+            assert_sidecars_untouched(&sidecars, marker);
+
+            let (reopen, kind) =
+                ProjectionDb::open_replacing_unusable(root.path()).expect("reopen healthy");
+            assert!(matches!(kind, ProjectionOpenKind::OpenedExisting));
+            let built_at2: String = reopen
+                .connection()
+                .query_row(
+                    "SELECT built_at FROM projection_meta WHERE id = 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(built_at, built_at2);
+            drop(reopen);
+        }
+    }
+
+    #[test]
+    fn open_replacing_unusable_preserves_files_on_io_open_failure() {
+        let root = exclusive_temp_root("io-preserve");
+        let db = ProjectionDb::open_or_create(root.path()).expect("create");
+        let path = db.path().to_path_buf();
+        let built_at: String = db
+            .connection()
+            .query_row(
+                "SELECT built_at FROM projection_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(db);
+
+        let marker = b"cryptex-io-sidecar-marker";
+        let sidecars = projection_sidecar_paths(&path);
+        for side in &sidecars {
+            fs::write(side, marker).unwrap();
+        }
+
+        // Replace the DB file with a directory so open fails without corruption
+        // classification; disposable files must not be deleted.
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+
+        let err = ProjectionDb::open_replacing_unusable(root.path())
+            .expect_err("directory-as-db must not replace");
+        assert!(
+            matches!(err, ProjectionError::Sqlite(_) | ProjectionError::Io(_)),
+            "unexpected error: {err}"
+        );
+        assert!(path.is_dir(), "path must remain a directory (not deleted)");
+        for side in &sidecars {
+            assert_eq!(fs::read(side).unwrap(), marker);
+        }
+
+        // Restore a real DB beside preserved sidecars and confirm open does not
+        // require prior destructive cleanup of markers for success path.
+        fs::remove_dir(&path).unwrap();
+        let (recreate, kind) =
+            ProjectionDb::open_replacing_unusable(root.path()).expect("create after restore");
+        assert!(matches!(kind, ProjectionOpenKind::Created));
+        let _ = built_at;
+        drop(recreate);
     }
 
     #[test]

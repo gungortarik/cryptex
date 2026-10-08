@@ -72,3 +72,7 @@ macOS FTS5/feed/rebuild smoke remains **pending** until actually run on a Mac.
 ## Continuation
 
 Next: Slice 6 (search API + metadata filters) after this tip is reviewed. Do not start Slice 6 opportunistically.
+
+## Follow-up
+
+Replace-only-unusable open hardening: `evidence/m3/m3-slice5-replace-only-unusable-20261008.md`.
