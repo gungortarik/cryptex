@@ -1,7 +1,7 @@
 # M4 ADR-0018 — Explicit local device enrollment
 
-**Status:** Windows local verification PASS; macOS parity pending  
-**Code commit:** `8241fbf3ac5c00a8617bea3632245ed9b71b118d`  
+**Status:** Windows local verification PASS; macOS parity pending
+**Code commit:** `8241fbf3ac5c00a8617bea3632245ed9b71b118d`
 **Branch:** `m4/knowledge-engine`
 
 ## Scope
