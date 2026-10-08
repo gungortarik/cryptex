@@ -8,19 +8,25 @@ use std::fs;
 use std::path::Path;
 
 use cryptex_core::DeviceId;
-use cryptex_events::{TrustedDaemonKeyResolver, VersionedRecord, verify_v2_history};
+use cryptex_events::{
+    TrustedDaemonKeyResolver, VerifiedV2History, VersionedRecord, verify_v2_history,
+};
 use cryptex_knowledge::sqlite::{
-    CanonicalFramePosition, DeviceMaterializationProgress, KnowledgeStoreError,
+    CanonicalFramePosition, DeviceMaterializationProgress, KNOWLEDGE_BUILD_ID_V1,
+    KNOWLEDGE_REDUCER_VERSION, KNOWLEDGE_SCHEMA_VERSION, KnowledgeStoreError,
     migrate_knowledge_schema, rebuild_from_verified_history,
 };
-use cryptex_projection::ProjectionDb;
+use cryptex_projection::{
+    ProjectionDb, ProjectionError, SearchHit, SearchQuery, search_events, validate_schema_v1,
+};
 use cryptex_storage::layout::{
     active_segment_path, canonical_events_device_dir, sealed_segment_path,
 };
 use cryptex_storage::{AcceptAllBodies, StorageError, fold_verified_frames_with_offsets};
 
 use crate::canonical_writer::{
-    CanonicalWriterError, DeviceCanonicalLock, acquire_device_canonical_lock,
+    CanonicalInventoryLock, CanonicalWriterError, DeviceCanonicalLock,
+    acquire_canonical_inventory_lock, acquire_existing_device_canonical_lock,
 };
 
 #[derive(Debug)]
@@ -74,10 +80,88 @@ pub struct KnowledgeRebuildReport {
     pub device_count: usize,
 }
 
+/// A stable, non-sensitive reason why content retrieval was withheld.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetrievalSafetyHold {
+    CanonicalVerificationUnavailable,
+    UnsupportedSemantics,
+    V2SemanticsNotIntegrated,
+    UnresolvedDependency,
+    MaterializationStateMissingOrStale,
+    ProjectionDoesNotMatchCanonical,
+}
+
+/// Daemon-issued, lock-scoped decision shared by all content-returning
+/// adapters. Its private fields prevent callers from manufacturing an allow.
+pub struct RetrievalSafetyState {
+    hold: Option<RetrievalSafetyHold>,
+    snapshot: Option<VerifiedCanonicalSnapshot>,
+}
+
+impl RetrievalSafetyState {
+    #[must_use]
+    pub fn allows_content(&self) -> bool {
+        self.hold.is_none() && self.snapshot.is_some()
+    }
+
+    #[must_use]
+    pub const fn hold_reason(&self) -> Option<RetrievalSafetyHold> {
+        self.hold
+    }
+
+    fn held(reason: RetrievalSafetyHold) -> Self {
+        Self {
+            hold: Some(reason),
+            snapshot: None,
+        }
+    }
+
+    fn allowed(snapshot: VerifiedCanonicalSnapshot) -> Self {
+        Self {
+            hold: None,
+            snapshot: Some(snapshot),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum GuardedSearchError {
+    BrainWideHold(RetrievalSafetyHold),
+    Query(ProjectionError),
+}
+
+impl std::fmt::Display for GuardedSearchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BrainWideHold(reason) => {
+                write!(
+                    f,
+                    "retrieval withheld by Brain-wide safety hold: {reason:?}"
+                )
+            }
+            Self::Query(error) => write!(f, "projection search failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for GuardedSearchError {}
+
 #[derive(Debug)]
 struct RawFrame {
     position: CanonicalFramePosition,
     bytes: Vec<u8>,
+}
+
+struct VerifiedCanonicalSnapshot {
+    devices: Vec<DeviceId>,
+    frames: Vec<RawFrame>,
+    history: VerifiedV2History,
+    state: cryptex_knowledge::KnowledgeState,
+    progress: Vec<DeviceMaterializationProgress>,
+    // Keep inventory and canonical writer locks held through the subsequent
+    // SQLite safety comparison and content query.
+    _inventory_lock: CanonicalInventoryLock,
+    _locks: Vec<DeviceCanonicalLock>,
 }
 
 /// Rebuild all M4-derived rows from an explicit set of trusted device streams.
@@ -93,6 +177,41 @@ pub fn rebuild_knowledge_from_canonical<R: TrustedDaemonKeyResolver>(
     key_resolver: &mut R,
     db: &mut ProjectionDb,
 ) -> KnowledgeMaterializationResult<KnowledgeRebuildReport> {
+    let snapshot = scan_verified_canonical(
+        runtime_root,
+        expected_brain_id,
+        trusted_devices,
+        key_resolver,
+    )?;
+    // Migrate only after the complete canonical set verified, so an unknown or
+    // unverifiable envelope leaves both canonical packs and M3/M4 DB untouched.
+    migrate_knowledge_schema(db.connection_mut())?;
+    rebuild_from_verified_history(
+        db.connection_mut(),
+        expected_brain_id,
+        &snapshot.history,
+        &snapshot
+            .frames
+            .iter()
+            .map(|frame| frame.position.clone())
+            .collect::<Vec<_>>(),
+        &snapshot.progress,
+    )?;
+
+    Ok(KnowledgeRebuildReport {
+        verified_records: snapshot.history.records().len(),
+        materialized_assertions: snapshot.history.assertions().len(),
+        pending_dependencies: snapshot.state.pending.len(),
+        device_count: snapshot.devices.len(),
+    })
+}
+
+fn scan_verified_canonical<R: TrustedDaemonKeyResolver>(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    trusted_devices: &[DeviceId],
+    key_resolver: &mut R,
+) -> KnowledgeMaterializationResult<VerifiedCanonicalSnapshot> {
     crate::paths::assert_outside_repository(runtime_root)
         .map_err(|error| KnowledgeMaterializationError::InvalidInput(error.to_string()))?;
     let mut devices = trusted_devices.to_vec();
@@ -102,17 +221,31 @@ pub fn rebuild_knowledge_from_canonical<R: TrustedDaemonKeyResolver>(
             "trusted device list contains duplicates".into(),
         ));
     }
+    // First-create writers must take this same lock before adding a device
+    // directory. This makes inventory enumeration stable for daemon-owned
+    // writers while all per-device locks are acquired and scans run.
+    let inventory_lock = acquire_canonical_inventory_lock(runtime_root)?;
     require_complete_device_inventory(runtime_root, &devices)?;
 
     let mut locks: Vec<DeviceCanonicalLock> = Vec::with_capacity(devices.len());
     for device in &devices {
-        locks.push(acquire_device_canonical_lock(runtime_root, device)?);
+        if let Some(lock) = acquire_existing_device_canonical_lock(runtime_root, device)? {
+            locks.push(lock);
+        }
     }
+    // Re-check after per-device locks: this catches any unexpected inventory
+    // mutation outside the daemon lock protocol before accepting the snapshot.
+    require_complete_device_inventory(runtime_root, &devices)?;
 
     let mut frames = Vec::<RawFrame>::new();
     for device in &devices {
         scan_device_read_only(runtime_root, device, &mut frames)?;
     }
+    // Detect inventory changes by actors outside the daemon lock protocol
+    // (for example a not-yet-integrated sync importer) before accepting this
+    // verified snapshot. Such actors must eventually join the same lock
+    // protocol for a race-free production guarantee.
+    require_complete_device_inventory(runtime_root, &devices)?;
 
     let raw_refs: Vec<&[u8]> = frames.iter().map(|frame| frame.bytes.as_slice()).collect();
     let history = verify_v2_history(&raw_refs, BorrowedResolver(key_resolver))
@@ -157,28 +290,272 @@ pub fn rebuild_knowledge_from_canonical<R: TrustedDaemonKeyResolver>(
             .collect::<Vec<_>>(),
         &state.materialized_event_ids,
     );
-    // Migrate only after the complete canonical set verified, so an unknown or
-    // unverifiable envelope leaves both canonical packs and M3/M4 DB untouched.
-    migrate_knowledge_schema(db.connection_mut())?;
-    rebuild_from_verified_history(
-        db.connection_mut(),
-        expected_brain_id,
-        &history,
-        &frames
-            .iter()
-            .map(|frame| frame.position.clone())
-            .collect::<Vec<_>>(),
-        &progress,
-    )?;
-
-    // Keep locks alive through the end of the SQLite rebuild above.
-    drop(locks);
-    Ok(KnowledgeRebuildReport {
-        verified_records: history.records().len(),
-        materialized_assertions: history.assertions().len(),
-        pending_dependencies: state.pending.len(),
-        device_count: devices.len(),
+    Ok(VerifiedCanonicalSnapshot {
+        devices,
+        frames,
+        history,
+        state,
+        progress,
+        _inventory_lock: inventory_lock,
+        _locks: locks,
     })
+}
+
+/// Search current M3 rows only after a fresh trusted-history verification,
+/// exact M4 per-device tip check, and byte-derived M3 row comparison. Any
+/// missing, corrupt, stale, unsupported, or unresolved boundary withholds the
+/// entire Brain. Canonical locks remain held through the SQLite query.
+pub fn search_events_with_retrieval_safety<R: TrustedDaemonKeyResolver>(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    trusted_devices: &[DeviceId],
+    key_resolver: &mut R,
+    db: &ProjectionDb,
+    query: &SearchQuery,
+) -> Result<Vec<SearchHit>, GuardedSearchError> {
+    let safety = evaluate_retrieval_safety(
+        runtime_root,
+        expected_brain_id,
+        trusted_devices,
+        key_resolver,
+        db,
+    );
+    if safety.snapshot.is_none() {
+        return Err(GuardedSearchError::BrainWideHold(
+            safety
+                .hold_reason()
+                .unwrap_or(RetrievalSafetyHold::CanonicalVerificationUnavailable),
+        ));
+    }
+    let result = {
+        // Keep the verified snapshot borrowed throughout the query. The state
+        // owns its RAII locks and is dropped only after this scope completes.
+        let _snapshot = safety.snapshot.as_ref().expect("checked above");
+        let mut guarded_query = query.clone();
+        guarded_query.brain_id = Some(expected_brain_id.to_owned());
+        search_events(db.connection(), &guarded_query).map_err(GuardedSearchError::Query)
+    };
+    // Make the lock lifetime explicit: both canonical locks and inventory
+    // lock remain held until the query has completed.
+    drop(safety);
+    result
+}
+
+/// Evaluate the Brain-wide retrieval gate once for any content-returning
+/// adapter. A successful state retains inventory/device locks until dropped;
+/// callers must keep it alive for the complete retrieval operation.
+pub fn evaluate_retrieval_safety<R: TrustedDaemonKeyResolver>(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    trusted_devices: &[DeviceId],
+    key_resolver: &mut R,
+    db: &ProjectionDb,
+) -> RetrievalSafetyState {
+    let Ok(snapshot) = scan_verified_canonical(
+        runtime_root,
+        expected_brain_id,
+        trusted_devices,
+        key_resolver,
+    ) else {
+        return RetrievalSafetyState::held(RetrievalSafetyHold::CanonicalVerificationUnavailable);
+    };
+
+    // M3 indexes only v1 memory.note. Until v2 privacy/classification effects
+    // are integrated across retrieval, any v2 or verified-unsupported record
+    // conservatively holds all retrieval.
+    for record in snapshot.history.records() {
+        let hold = match record {
+            VersionedRecord::VerifiedV1(_) => continue,
+            VersionedRecord::VerifiedUnsupported(_) => RetrievalSafetyHold::UnsupportedSemantics,
+            VersionedRecord::VerifiedV2Supported(_) => {
+                RetrievalSafetyHold::V2SemanticsNotIntegrated
+            }
+            VersionedRecord::Unverifiable(_) => {
+                RetrievalSafetyHold::CanonicalVerificationUnavailable
+            }
+        };
+        return RetrievalSafetyState::held(hold);
+    }
+    if !snapshot.state.pending.is_empty()
+        || snapshot.state.materialized_event_ids.len() != snapshot.history.assertions().len()
+    {
+        return RetrievalSafetyState::held(RetrievalSafetyHold::UnresolvedDependency);
+    }
+
+    if validate_schema_v1(db.connection()).is_err() {
+        return RetrievalSafetyState::held(RetrievalSafetyHold::MaterializationStateMissingOrStale);
+    }
+    if !m4_materialization_state_matches(db, &snapshot) {
+        return RetrievalSafetyState::held(RetrievalSafetyHold::MaterializationStateMissingOrStale);
+    }
+    if !m3_projection_matches_history(db, expected_brain_id, &snapshot.history) {
+        return RetrievalSafetyState::held(RetrievalSafetyHold::ProjectionDoesNotMatchCanonical);
+    }
+    RetrievalSafetyState::allowed(snapshot)
+}
+
+fn m4_materialization_state_matches(
+    db: &ProjectionDb,
+    snapshot: &VerifiedCanonicalSnapshot,
+) -> bool {
+    let meta = db.connection().query_row(
+        "SELECT schema_version, reducer_version, cardinality_policy_version,
+                normalization_version, build_id, rebuild_status
+         FROM knowledge_meta WHERE id = 1",
+        [],
+        |row| {
+            Ok((
+                row.get::<_, u32>(0)?,
+                row.get::<_, u32>(1)?,
+                row.get::<_, u32>(2)?,
+                row.get::<_, u32>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+            ))
+        },
+    );
+    let Ok((schema, reducer, cardinality, normalization, build, status)) = meta else {
+        return false;
+    };
+    if schema != KNOWLEDGE_SCHEMA_VERSION
+        || reducer != KNOWLEDGE_REDUCER_VERSION
+        || cardinality != cryptex_knowledge::CARDINALITY_POLICY_VERSION
+        || normalization != 1
+        || build != KNOWLEDGE_BUILD_ID_V1
+        || status != "ready"
+    {
+        return false;
+    }
+
+    let pending_count = db.connection().query_row(
+        "SELECT COUNT(*) FROM knowledge_pending_dependencies",
+        [],
+        |row| row.get::<_, i64>(0),
+    );
+    if !matches!(pending_count, Ok(0)) {
+        return false;
+    }
+
+    let mut rows = match db.connection().prepare(
+        "SELECT device_id, integrity_pack_index, integrity_frame_offset,
+                integrity_content_hash, safe_pack_index, safe_frame_offset,
+                safe_content_hash, blocking_reason
+         FROM knowledge_materialization_state ORDER BY device_id",
+    ) {
+        Ok(statement) => statement,
+        Err(_) => return false,
+    };
+    let loaded = rows.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<i64>>(1)?,
+            row.get::<_, Option<i64>>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<i64>>(4)?,
+            row.get::<_, Option<i64>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, Option<String>>(7)?,
+        ))
+    });
+    let Ok(loaded) = loaded else {
+        return false;
+    };
+    let actual: Result<Vec<_>, _> = loaded.collect();
+    let Ok(actual) = actual else {
+        return false;
+    };
+    if actual.len() != snapshot.progress.len() {
+        return false;
+    }
+    snapshot
+        .progress
+        .iter()
+        .zip(actual)
+        .all(|(expected, actual)| {
+            let integrity = expected.integrity_position.as_ref();
+            let safe = expected.safe_position.as_ref();
+            actual.0 == expected.device_id
+                && actual.1 == integrity.and_then(|p| i64::try_from(p.pack_index).ok())
+                && actual.2 == integrity.and_then(|p| i64::try_from(p.frame_offset).ok())
+                && actual.3.as_deref() == integrity.map(|p| p.content_hash.as_str())
+                && actual.4 == safe.and_then(|p| i64::try_from(p.pack_index).ok())
+                && actual.5 == safe.and_then(|p| i64::try_from(p.frame_offset).ok())
+                && actual.6.as_deref() == safe.map(|p| p.content_hash.as_str())
+                && actual.7.is_none()
+                && expected.blocking_reason.is_none()
+                && expected.safe_position == expected.integrity_position
+        })
+}
+
+fn m3_projection_matches_history(
+    db: &ProjectionDb,
+    expected_brain_id: &str,
+    history: &VerifiedV2History,
+) -> bool {
+    let mut expected = std::collections::BTreeMap::new();
+    for record in history.records() {
+        let VersionedRecord::VerifiedV1(event) = record else {
+            return false;
+        };
+        let cryptex_events::EventPayload::MemoryNote(payload) = &event.payload;
+        let classification = match event.classification {
+            cryptex_events::Classification::Public => "public",
+            cryptex_events::Classification::Internal => "internal",
+            cryptex_events::Classification::Private => "private",
+            cryptex_events::Classification::Restricted => "restricted",
+        };
+        let hit = SearchHit {
+            event_id: event.event_id.clone(),
+            brain_id: event.brain_id.clone(),
+            device_id: event.device_id.clone(),
+            device_seq: event.device_seq.as_str().to_owned(),
+            created_at: event.created_at.clone(),
+            event_type: event.event_type.as_str().to_owned(),
+            classification: classification.to_owned(),
+            content_hash: event.content_hash.as_str().to_owned(),
+            signing_key_id: event.signing_key_id.as_str().to_owned(),
+            text: payload.text.clone(),
+        };
+        if expected.insert(event.event_id.clone(), hit).is_some() {
+            return false;
+        }
+    }
+    if expected
+        .values()
+        .any(|hit| hit.brain_id != expected_brain_id)
+    {
+        return false;
+    }
+
+    let mut statement = match db.connection().prepare(
+        "SELECT event_id, brain_id, device_id, device_seq, created_at, event_type,
+                classification, content_hash, signing_key_id, text
+         FROM events WHERE brain_id = ?1 ORDER BY event_id",
+    ) {
+        Ok(statement) => statement,
+        Err(_) => return false,
+    };
+    let rows = statement.query_map([expected_brain_id], |row| {
+        Ok(SearchHit {
+            event_id: row.get(0)?,
+            brain_id: row.get(1)?,
+            device_id: row.get(2)?,
+            device_seq: row.get(3)?,
+            created_at: row.get(4)?,
+            event_type: row.get(5)?,
+            classification: row.get(6)?,
+            content_hash: row.get(7)?,
+            signing_key_id: row.get(8)?,
+            text: row.get(9)?,
+        })
+    });
+    let Ok(rows) = rows else {
+        return false;
+    };
+    let actual: Result<std::collections::BTreeMap<_, _>, _> = rows
+        .map(|row| row.map(|hit| (hit.event_id.clone(), hit)))
+        .collect();
+    matches!(actual, Ok(actual) if actual == expected)
 }
 
 struct BorrowedResolver<'a, R>(&'a mut R);
@@ -318,6 +695,9 @@ fn require_complete_device_inventory(
     for entry in fs::read_dir(&events_root).map_err(StorageError::Io)? {
         let entry = entry.map_err(StorageError::Io)?;
         let file_type = entry.file_type().map_err(StorageError::Io)?;
+        if file_type.is_file() && entry.file_name().to_string_lossy() == "inventory.lock" {
+            continue;
+        }
         if !file_type.is_dir() {
             return Err(KnowledgeMaterializationError::Storage(
                 StorageError::Integrity(
@@ -547,6 +927,7 @@ mod tests {
     use super::*;
     use crate::canonical_writer::{AppendMemoryNoteArgs, append_memory_note};
     use crate::event_signing_key::ensure_event_signing_key;
+    use crate::projection::rebuild_device_projection;
     use crate::secure_store::{FakeSecureStore, SecureStoreEnvironment};
     use crate::test_temp::exclusive_temp_dir;
     use cryptex_events::{Classification, TrustedDaemonKeyResolver};
@@ -624,6 +1005,131 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM knowledge_meta", [], |row| row.get(0))
             .unwrap();
         assert_eq!(row_count, 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn guarded_search_allows_only_current_verified_and_materialized_v1_projection() {
+        let root = exclusive_temp_dir("m4-safe-search");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("m4-safe-search-device").unwrap();
+        let brain = "33333333-3333-4333-8333-333333333333";
+        append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "synthetic safe search note",
+                config: &crate::canonical_writer::CanonicalWriterConfig::default(),
+            },
+        )
+        .unwrap();
+        let ready = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            true,
+        )
+        .unwrap();
+        let mut resolver = OneTrustedDevice {
+            device: device.as_str().to_owned(),
+            key_id: ready.public.signing_key_id,
+            key: ready.signing_key.verifying_key(),
+        };
+        let mut db = ProjectionDb::open_in_memory().unwrap();
+
+        let held = search_events_with_retrieval_safety(
+            &root,
+            brain,
+            std::slice::from_ref(&device),
+            &mut resolver,
+            &db,
+            &SearchQuery::default(),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            held,
+            GuardedSearchError::BrainWideHold(
+                RetrievalSafetyHold::MaterializationStateMissingOrStale
+            )
+        ));
+
+        rebuild_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+            .unwrap();
+        rebuild_knowledge_from_canonical(
+            &root,
+            brain,
+            std::slice::from_ref(&device),
+            &mut resolver,
+            &mut db,
+        )
+        .unwrap();
+
+        let hits = search_events_with_retrieval_safety(
+            &root,
+            brain,
+            std::slice::from_ref(&device),
+            &mut resolver,
+            &db,
+            &SearchQuery::default(),
+        )
+        .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].text, "synthetic safe search note");
+
+        db.connection()
+            .execute(
+                "UPDATE events SET text = 'tampered projection text' WHERE brain_id = ?1",
+                [brain],
+            )
+            .unwrap();
+        let held = search_events_with_retrieval_safety(
+            &root,
+            brain,
+            std::slice::from_ref(&device),
+            &mut resolver,
+            &db,
+            &SearchQuery::default(),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            held,
+            GuardedSearchError::BrainWideHold(RetrievalSafetyHold::ProjectionDoesNotMatchCanonical)
+        ));
+
+        append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "new note makes safety snapshot stale",
+                config: &crate::canonical_writer::CanonicalWriterConfig::default(),
+            },
+        )
+        .unwrap();
+        let held = search_events_with_retrieval_safety(
+            &root,
+            brain,
+            std::slice::from_ref(&device),
+            &mut resolver,
+            &db,
+            &SearchQuery::default(),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            held,
+            GuardedSearchError::BrainWideHold(
+                RetrievalSafetyHold::MaterializationStateMissingOrStale
+            )
+        ));
         fs::remove_dir_all(root).unwrap();
     }
 

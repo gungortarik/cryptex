@@ -262,6 +262,33 @@ pub(crate) struct DeviceCanonicalLock {
     _file: File,
 }
 
+/// Serializes creation of first-time device stream directories against readers
+/// that enumerate the canonical device inventory. Existing-device appends do
+/// not take this lock, so independent devices remain concurrent.
+#[derive(Debug)]
+pub(crate) struct CanonicalInventoryLock {
+    _file: File,
+}
+
+pub(crate) fn acquire_canonical_inventory_lock(
+    runtime_root: &Path,
+) -> CanonicalWriterResult<CanonicalInventoryLock> {
+    assert_outside_repository(runtime_root)
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let events_root = runtime_root.join("canonical").join("events");
+    fs::create_dir_all(&events_root).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(events_root.join("inventory.lock"))
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    fs2::FileExt::lock_exclusive(&file)
+        .map_err(|e| CanonicalWriterError::Path(format!("canonical inventory lock failed: {e}")))?;
+    Ok(CanonicalInventoryLock { _file: file })
+}
+
 impl DeviceCanonicalLock {
     pub(crate) fn device_id(&self) -> &DeviceId {
         &self.device_id
@@ -280,7 +307,36 @@ pub(crate) fn acquire_device_canonical_lock(
     assert_outside_repository(runtime_root)
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
     let device_dir = canonical_events_device_dir(runtime_root, device_id);
+    // A missing directory is a new inventory entry. Serialize its first
+    // creation with full-inventory readers, then acquire its writer lock
+    // before releasing the inventory lock.
+    let _inventory = if device_dir.exists() {
+        None
+    } else {
+        Some(acquire_canonical_inventory_lock(runtime_root)?)
+    };
     fs::create_dir_all(&device_dir).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    acquire_device_lock_in_existing_dir(device_id, &device_dir)
+}
+
+/// Acquire a device lock without creating inventory. Callers must hold the
+/// canonical inventory lock so a missing device directory cannot appear while
+/// they enumerate and scan trusted streams.
+pub(crate) fn acquire_existing_device_canonical_lock(
+    runtime_root: &Path,
+    device_id: &DeviceId,
+) -> CanonicalWriterResult<Option<DeviceCanonicalLock>> {
+    let device_dir = canonical_events_device_dir(runtime_root, device_id);
+    if !device_dir.exists() {
+        return Ok(None);
+    }
+    acquire_device_lock_in_existing_dir(device_id, &device_dir).map(Some)
+}
+
+fn acquire_device_lock_in_existing_dir(
+    device_id: &DeviceId,
+    device_dir: &Path,
+) -> CanonicalWriterResult<DeviceCanonicalLock> {
     let lock_path = device_dir.join("writer.lock");
     let file = OpenOptions::new()
         .create(true)
@@ -1446,6 +1502,43 @@ mod tests {
             "direct acquire must also refuse"
         );
         assert!(!canonical_events_device_dir(&repoish, &device).exists());
+    }
+
+    #[test]
+    fn first_device_directory_creation_waits_for_inventory_reader() {
+        let root = temp_root("inventory-lock-first-device");
+        let device = DeviceId::new("inventory-first-device").unwrap();
+        let device_dir = canonical_events_device_dir(&root, &device);
+        let inventory = acquire_canonical_inventory_lock(&root).unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let writer_root = root.clone();
+        let writer_device = device.clone();
+        let writer = thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let result = acquire_device_canonical_lock(&writer_root, &writer_device);
+            finished_tx.send(result.is_ok()).unwrap();
+            result
+        });
+
+        started_rx.recv().unwrap();
+        assert!(
+            finished_rx
+                .recv_timeout(std::time::Duration::from_millis(100))
+                .is_err(),
+            "first-device writer must wait while inventory is being read"
+        );
+        assert!(
+            !device_dir.exists(),
+            "writer must not publish a device directory before the inventory lock"
+        );
+
+        drop(inventory);
+        assert!(finished_rx.recv().unwrap());
+        let device_lock = writer.join().unwrap().unwrap();
+        assert!(device_dir.is_dir());
+        drop(device_lock);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # M4 — Knowledge Engine
 
-**Status:** ACCEPTED — architecture by ADR-0017; implementation not yet authorized
+**Status:** ACCEPTED — architecture by ADR-0017; implementation authorized and in progress
 **Baseline:** 2026-09-28; scope updated 2026-10-08
 
 ## Purpose
