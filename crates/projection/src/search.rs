@@ -5,7 +5,10 @@
 //! RFC3339 rules (including offsets and fractional seconds); lexical string
 //! ordering is never used for ranges.
 
-use cryptex_core::validate::rfc3339_utc_instant;
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
+
+use cryptex_core::validate::{Rfc3339UtcInstant, rfc3339_utc_instant};
 use rusqlite::{Connection, params_from_iter};
 
 use crate::{ProjectionError, ProjectionResult};
@@ -23,7 +26,10 @@ pub struct SearchQuery {
     pub created_at_from: Option<String>,
     /// Inclusive upper bound (RFC3339). Compared as UTC instant.
     pub created_at_to: Option<String>,
-    /// Optional maximum hits after ordering.
+    /// Optional maximum hits after exact-instant ordering.
+    ///
+    /// When set, matching rows are selected with O(limit) retained memory.
+    /// When unset, all matches are collected (callers should bound large stores).
     pub limit: Option<u32>,
 }
 
@@ -138,7 +144,17 @@ pub fn search_events(conn: &Connection, query: &SearchQuery) -> ProjectionResult
         })
         .map_err(map_err)?;
 
-    let mut hits = Vec::new();
+    // When `limit` is set, keep only the best `limit` hits in a bounded max-heap
+    // (exact UTC instant, then event_id). Unlimited queries still collect all
+    // matches — callers should pass `limit` for large local stores.
+    let limit = query.limit.map(|n| n as usize);
+    if limit == Some(0) {
+        return Ok(Vec::new());
+    }
+
+    let mut unlimited: Vec<(Rfc3339UtcInstant, SearchHit)> = Vec::new();
+    let mut bounded: BinaryHeap<RankedHit> = BinaryHeap::new();
+
     for row in rows {
         let hit = row.map_err(map_err)?;
         let instant = rfc3339_utc_instant(&hit.created_at).map_err(|err| {
@@ -159,16 +175,65 @@ pub fn search_events(conn: &Connection, query: &SearchQuery) -> ProjectionResult
         {
             continue;
         }
-        hits.push((instant, hit));
+
+        if let Some(max_keep) = limit {
+            let ranked = RankedHit { instant, hit };
+            if bounded.len() < max_keep {
+                bounded.push(ranked);
+            } else if let Some(worst) = bounded.peek() {
+                // Max-heap peek is the largest (worst) among kept smallest hits.
+                if ranked.cmp(worst) == Ordering::Less {
+                    bounded.pop();
+                    bounded.push(ranked);
+                }
+            }
+        } else {
+            unlimited.push((instant, hit));
+        }
     }
 
-    hits.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.event_id.cmp(&b.1.event_id)));
-
-    let mut out: Vec<SearchHit> = hits.into_iter().map(|(_, h)| h).collect();
-    if let Some(limit) = query.limit {
-        out.truncate(limit as usize);
-    }
+    let out = if limit.is_some() {
+        // into_sorted_vec yields ascending order for BinaryHeap.
+        bounded
+            .into_sorted_vec()
+            .into_iter()
+            .map(|ranked| ranked.hit)
+            .collect()
+    } else {
+        unlimited.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.event_id.cmp(&b.1.event_id)));
+        unlimited.into_iter().map(|(_, h)| h).collect()
+    };
     Ok(out)
+}
+
+/// Max-heap element: larger (instant, event_id) sorts greater so the worst kept
+/// hit sits at the heap peak when bounding by `limit`.
+#[derive(Debug)]
+struct RankedHit {
+    instant: Rfc3339UtcInstant,
+    hit: SearchHit,
+}
+
+impl PartialEq for RankedHit {
+    fn eq(&self, other: &Self) -> bool {
+        self.instant == other.instant && self.hit.event_id == other.hit.event_id
+    }
+}
+
+impl Eq for RankedHit {}
+
+impl PartialOrd for RankedHit {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RankedHit {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.instant
+            .cmp(&other.instant)
+            .then_with(|| self.hit.event_id.cmp(&other.hit.event_id))
+    }
 }
 
 fn map_search_sqlite_error(err: rusqlite::Error, fts_active: bool) -> ProjectionError {

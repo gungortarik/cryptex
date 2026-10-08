@@ -223,8 +223,15 @@ fn run_device_projection<S: SecureStore>(
     let mut tip_hash: Option<String> = start_checkpoint
         .as_ref()
         .and_then(|c| c.last_content_hash.clone());
-    let mut past_checkpoint = force_full || start_checkpoint.is_none();
-    let mut found_checkpoint = force_full || start_checkpoint.is_none();
+    // Empty tip (both null) means a prior successful catch-up on a device with no
+    // verified events yet. Treat it as already at the start of the feed so a
+    // second catch-up does not spuriously rebuild, and the first later append
+    // projects incrementally.
+    let empty_checkpoint_tip = start_checkpoint
+        .as_ref()
+        .is_some_and(|c| c.last_device_seq.is_none() && c.last_content_hash.is_none());
+    let mut past_checkpoint = force_full || start_checkpoint.is_none() || empty_checkpoint_tip;
+    let mut found_checkpoint = force_full || start_checkpoint.is_none() || empty_checkpoint_tip;
     let mut checkpoint_invalid = false;
     let mut projection_err: Option<ProjectionError> = None;
 
@@ -382,8 +389,8 @@ mod tests {
     use crate::test_temp::exclusive_temp_dir_in;
     use cryptex_events::Classification;
     use cryptex_projection::{
-        ProjectionReplaceReason, SearchQuery, projection_sqlite_path, read_device_checkpoint,
-        remove_projection_files, search_events,
+        ProjectionOpenKind, ProjectionReplaceReason, SearchQuery, projection_sqlite_path,
+        read_device_checkpoint, remove_projection_files, search_events,
     };
     use cryptex_storage::layout::{active_segment_path, quarantine_events_root};
     use std::fs;
@@ -1092,6 +1099,134 @@ mod tests {
             before,
             snapshot_canonical_packs(&root, &device),
             "canonical packs must remain unchanged across idempotent rebuilds"
+        );
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn empty_device_catch_up_twice_does_not_rebuild_again() {
+        let root = temp_root("empty-ckpt");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-empty-a").unwrap();
+        let db = ProjectionDb::open_or_create(&root).expect("projection db");
+
+        let first =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .expect("first empty catch-up");
+        assert_eq!(first.projected_events, 0);
+        assert!(first.rebuilt, "first catch-up without checkpoint rebuilds");
+        let cp = read_device_checkpoint(db.connection(), device.as_str())
+            .unwrap()
+            .expect("empty checkpoint written");
+        assert!(cp.last_device_seq.is_none());
+        assert!(cp.last_content_hash.is_none());
+
+        let second =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .expect("second empty catch-up");
+        assert_eq!(second.projected_events, 0);
+        assert!(
+            !second.rebuilt,
+            "valid empty checkpoint must not trigger another rebuild"
+        );
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn empty_checkpoint_then_first_append_projects_without_full_rebuild() {
+        let root = temp_root("empty-then-append");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-empty-b").unwrap();
+        let brain = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        let db = ProjectionDb::open_or_create(&root).expect("projection db");
+
+        let empty =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .expect("empty catch-up");
+        assert!(empty.rebuilt);
+        assert_eq!(empty.projected_events, 0);
+
+        append_note(&store, &root, &device, brain, "first_after_empty", 1000);
+        let before = snapshot_canonical_packs(&root, &device);
+
+        let sync =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .expect("catch-up after first append");
+        assert_eq!(sync.projected_events, 1);
+        assert!(
+            !sync.rebuilt,
+            "first append after empty checkpoint must be incremental"
+        );
+        assert_eq!(event_count(&db), 1);
+        let hits = search_events(
+            db.connection(),
+            &SearchQuery {
+                text: Some("first_after_empty".into()),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(
+            before,
+            snapshot_canonical_packs(&root, &device),
+            "canonical packs unchanged"
+        );
+        drop(db);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fts_index_corruption_triggers_replace_rebuild_search_and_leaves_canonical() {
+        let root = temp_root("fts-corrupt");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("proj-fts-c").unwrap();
+        let brain = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+        append_note(&store, &root, &device, brain, "fts_corrupt_token", 1000);
+        let before = snapshot_canonical_packs(&root, &device);
+
+        let db = ProjectionDb::open_or_create(&root).expect("projection db");
+        catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+            .expect("initial project");
+        assert_eq!(event_count(&db), 1);
+        db.connection()
+            .execute(
+                "INSERT INTO events_fts(events_fts) VALUES('delete-all')",
+                [],
+            )
+            .unwrap();
+        drop(db);
+
+        let (db, kind) = open_projection_db(&root).expect("open replacing");
+        assert!(
+            matches!(
+                kind,
+                ProjectionOpenKind::Replaced {
+                    reason: ProjectionReplaceReason::Corrupt { .. }
+                }
+            ),
+            "inconsistent FTS must replace disposable DB, got {kind:?}"
+        );
+        let sync =
+            catch_up_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+                .expect("rebuild after FTS replace");
+        assert!(sync.rebuilt);
+        assert_eq!(sync.projected_events, 1);
+        let hits = search_events(
+            db.connection(),
+            &SearchQuery {
+                text: Some("fts_corrupt_token".into()),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(
+            before,
+            snapshot_canonical_packs(&root, &device),
+            "canonical packs must remain unchanged"
         );
         drop(db);
         let _ = fs::remove_dir_all(&root);

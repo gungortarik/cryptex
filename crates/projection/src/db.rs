@@ -182,10 +182,30 @@ fn try_open_existing(path: &Path) -> ProjectionResult<ProjectionDb> {
         });
     }
     initialize_connection(&conn)?;
+    // FTS5 external-content consistency (rank=1 compares index to `events`).
+    check_fts5_external_content_integrity(&conn)?;
     Ok(ProjectionDb {
         conn,
         path: path.to_path_buf(),
     })
+}
+
+/// Fail closed when the disposable FTS5 index disagrees with `events` content.
+///
+/// Uses FTS5 `integrity-check` with `rank=1` so external-content tables are
+/// compared against the content table. Inconsistent indexes are treated as
+/// unusable disposable state ([`ProjectionError::CorruptDb`]) so
+/// [`ProjectionDb::open_replacing_unusable`] can rebuild.
+fn check_fts5_external_content_integrity(conn: &Connection) -> ProjectionResult<()> {
+    match conn.execute(
+        "INSERT INTO events_fts(events_fts, rank) VALUES('integrity-check', 1)",
+        [],
+    ) {
+        Ok(_) => Ok(()),
+        Err(err) => Err(ProjectionError::CorruptDb {
+            detail: format!("events_fts external-content integrity-check failed: {err}"),
+        }),
+    }
 }
 
 /// Map only clear on-disk corruption signals to [`ProjectionError::CorruptDb`].
@@ -291,8 +311,10 @@ fn civil_from_days(z: i64) -> (i32, u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ingest::project_memory_note;
     use crate::layout::projection_sqlite_path;
     use crate::schema::PROJECTION_SCHEMA_VERSION;
+    use crate::search::{SearchQuery, search_events};
     use rusqlite::Connection;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -717,5 +739,106 @@ mod tests {
                 expected: PROJECTION_SCHEMA_VERSION,
             }
         );
+    }
+
+    #[test]
+    fn fts_external_content_inconsistency_is_replaced_and_search_restorable() {
+        use cryptex_events::device_seq::DeviceSeq;
+        use cryptex_events::envelope::{
+            AcceptedEvent, Classification, EVENT_SCHEMA_VERSION, EventPayload, EventType,
+            MemoryNotePayload,
+        };
+        use cryptex_events::hex::{ContentHashHex, SignatureHex, SigningKeyId};
+
+        let root = exclusive_temp_root("fts-integrity");
+        let db = ProjectionDb::open_or_create(root.path()).expect("create");
+        let note = AcceptedEvent {
+            schema_version: EVENT_SCHEMA_VERSION,
+            event_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
+            brain_id: "22222222-2222-4222-8222-222222222222".into(),
+            device_id: "fts-device".into(),
+            device_seq: DeviceSeq::from_u64(1).unwrap(),
+            created_at: "2026-10-08T00:00:00Z".into(),
+            event_type: EventType::MemoryNote,
+            classification: Classification::Public,
+            signing_key_id: SigningKeyId::parse(&"ab".repeat(16)).unwrap(),
+            payload: EventPayload::MemoryNote(
+                MemoryNotePayload::new("fts_integrity_token unique").unwrap(),
+            ),
+            prev_content_hash: ContentHashHex::zero(),
+            content_hash: ContentHashHex::parse(&"11".repeat(32)).unwrap(),
+            signature: SignatureHex::parse(&"ef".repeat(64)).unwrap(),
+        };
+        project_memory_note(db.connection(), &note).unwrap();
+        let before = search_events(
+            db.connection(),
+            &SearchQuery {
+                text: Some("fts_integrity_token".into()),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(before.len(), 1);
+        drop(db);
+
+        // Corrupt the external-content FTS index while leaving `events` rows intact.
+        {
+            let path = projection_sqlite_path(root.path());
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute(
+                "INSERT INTO events_fts(events_fts) VALUES('delete-all')",
+                [],
+            )
+            .unwrap();
+            let broken = search_events(
+                &conn,
+                &SearchQuery {
+                    text: Some("fts_integrity_token".into()),
+                    ..SearchQuery::default()
+                },
+            )
+            .unwrap();
+            assert!(
+                broken.is_empty(),
+                "delete-all must clear FTS hits while events rows remain"
+            );
+            let events: i64 = conn
+                .query_row("SELECT COUNT(*) FROM events", [], |r| r.get::<_, i64>(0))
+                .unwrap();
+            assert_eq!(events, 1);
+        }
+
+        let (db, kind) = ProjectionDb::open_replacing_unusable(root.path()).expect("replace");
+        match kind {
+            ProjectionOpenKind::Replaced {
+                reason: ProjectionReplaceReason::Corrupt { detail },
+            } => {
+                assert!(
+                    detail.to_ascii_lowercase().contains("integrity-check")
+                        || detail.to_ascii_lowercase().contains("fts"),
+                    "detail={detail}"
+                );
+            }
+            other => panic!("expected Replaced Corrupt for inconsistent FTS, got {other:?}"),
+        }
+        // Replacement yields an empty disposable DB; callers rebuild from canonical.
+        assert_eq!(
+            db.connection()
+                .query_row("SELECT COUNT(*) FROM events", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0i64
+        );
+        project_memory_note(db.connection(), &note).unwrap();
+        let restored = search_events(
+            db.connection(),
+            &SearchQuery {
+                text: Some("fts_integrity_token".into()),
+                ..SearchQuery::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].event_id, note.event_id);
+        drop(db);
     }
 }

@@ -73,20 +73,11 @@ pub fn upsert_device_checkpoint(
 
 /// Remove projected rows and FTS entries for one device (keeps other devices).
 pub fn clear_device_projection(conn: &Connection, device_id: &str) -> ProjectionResult<()> {
-    let mut stmt = conn.prepare("SELECT rowid, text FROM events WHERE device_id = ?1")?;
-    let rows = stmt
-        .query_map([device_id], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-    drop(stmt);
-    for (rowid, text) in rows {
-        conn.execute(
-            "INSERT INTO events_fts(events_fts, rowid, text) VALUES('delete', ?1, ?2)",
-            (rowid, text),
-        )?;
-    }
+    // Delete content rows first, then rebuild the external-content FTS index from
+    // remaining `events`. Avoids materializing every (rowid, text) pair in memory
+    // and keeps the disposable FTS index consistent afterward.
     conn.execute("DELETE FROM events WHERE device_id = ?1", [device_id])?;
+    conn.execute("INSERT INTO events_fts(events_fts) VALUES('rebuild')", [])?;
     conn.execute(
         "DELETE FROM device_checkpoint WHERE device_id = ?1",
         [device_id],
