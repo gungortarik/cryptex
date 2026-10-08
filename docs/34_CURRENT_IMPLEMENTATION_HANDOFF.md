@@ -1,11 +1,11 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-08
-**Current milestone:** M4 - Knowledge Engine (Phase 0 preparation only; no product implementation or ADR-dependent decisions started)
+**Current milestone:** M4 - Knowledge Engine (Phase 0 discovery active; product implementation not started; owner decision required on the canonical knowledge-input contract and derived-store boundary)
 **Active branch:** `m4/knowledge-engine`, based on M3 merge commit `35538c144434e1dbfb97b47f89d2536b7646046a` (PR #9)
 **M2 status:** COMPLETE within M2 scope after owner-delegated review and required verification; normal merge PR #8 integrated `m2/immutable-event-store` into `m0/foundation` at `817b6a1`.
 **M3 closeout:** Complete within accepted scope; normal merge PR #9 integrated `m3/local-projection-search` into `m0/foundation` at `35538c1`. Final review: `evidence/m3/m3-final-review-20261008.md`.
-**M4 preparation:** `evidence/m4/m4-phase0-kickoff-plan-20261008.md`. Planning only; product slices, dependency pins, and unresolved semantic choices have not started.
+**M4 preparation:** `evidence/m4/m4-phase0-kickoff-plan-20261008.md`; input audit and decision table: `evidence/m4/m4-phase0-input-and-semantic-decision-review-20261008.md`. No product slice, dependency pin, canonical schema change, or Actions run. Slice 1 waits on owner resolution of the input contract/store boundary or a scoped ADR proposal.
 **M3 Slice 1:** `evidence/m3/m3-slice1-workspace-scaffolding-20261008.md` - `cryptex-projection` path scaffolding + focused layout tests; no SQLite deps.
 **M3 Slice 2:** `evidence/m3/m3-slice2-sqlite-fts5-pin-20261008.md` - `rusqlite =0.40.2` `default-features=false` + `bundled`; FTS5 fail-closed smoke; no schema/ingest.
 **M3 Slice 3:** `evidence/m3/m3-slice3-projection-schema-v1-20261008.md` - empty schema v1 (`events` + text-only FTS5 + meta/checkpoint); open/create + schema-version validation; no ingest/search.
@@ -155,7 +155,7 @@ present-day decisions.
 - Follow the accepted M4 contract and authoritative memory/entity specifications. Knowledge materialization must remain derived/rebuildable; canonical history stays immutable and authoritative.
 - If the user's intent about tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask before changing direction.
 - M3 final candidate `4a2ea56` has Windows-local checks PASS, owner-reported macOS four-check PASS, and final dual-OS Actions PASS in run `37780668640`; normal PR #9 merge is `35538c1`.
-- M4 is Phase 0 preparation only. Do not implement unresolved entity IDs, alias matching, fact/relation taxonomy, confidence rules, conflict precedence, provenance schema, or materialized-store schema until the decision/review gates in the M4 plan are satisfied.
+- M4 is in Phase 0 discovery. Do not implement unresolved entity IDs, alias matching, fact/relation taxonomy, confidence rules, conflict precedence, provenance schema, or materialized-store schema until the decision/review gates in the M4 plan are satisfied.
 - Do not merge, rebase, switch branches, amend, force-push, or rewrite history without explicit approval.
 - Runtime data must remain outside the source repository.
 - GitHub Actions minutes are constrained. Prefer relevant local checks; run only the required final M4 workflow after its implementation candidate is reviewed.

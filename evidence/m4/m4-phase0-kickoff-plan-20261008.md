@@ -1,6 +1,6 @@
 # M4 Phase 0 — Knowledge Engine preparation
 
-**Status:** Planning packet prepared; awaiting review before product slices  
+**Status:** Phase 0 discovery underway; input/semantic decision review prepared; product slices await owner decision
 **Branch:** `m4/knowledge-engine`  
 **Base:** `m0/foundation` at M3 merge commit `35538c144434e1dbfb97b47f89d2536b7646046a` (PR #9)  
 **Scope of this change:** documentation and planning only; no product code, pins, runtime data, or Actions.
@@ -88,6 +88,12 @@ is reviewed.
 4. Draft acceptance matrix and failure/rebuild tests from the M4 contract and
    `docs/17_TEST_AND_FAILURE_MATRIX.md`.
 5. Review the Phase 0 packet and resolve any ADR gates before Slice 1.
+
+Discovery update: source-envelope and verified-reader audit plus the initial
+owner decision table are recorded in
+`evidence/m4/m4-phase0-input-and-semantic-decision-review-20261008.md`.
+The source audit identified a blocking input-contract question: schema v1 only
+contains free-form `memory.note` text, not typed knowledge assertions.
 
 Do not start product slices, change accepted ADRs/specs, or run Actions as part
 of Phase 0. A final workflow should be reserved for a reviewed implementation
