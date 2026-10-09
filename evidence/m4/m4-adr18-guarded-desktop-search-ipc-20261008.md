@@ -1,7 +1,8 @@
 # M4 ADR-0018 — Guarded Desktop search IPC
 
-**Status:** bounded full-history search and non-Desktop health-only startup are Windows-verified at `b6d652d`; exact-tip macOS parity, visual review and final M4 gates pending
-**Code SHA:** `652b4def1b71e9ba47323d3e51955cd3d777091a`
+**Status:** bounded full-history search and non-Desktop health-only startup are locally verified on Windows/macOS at `b6d652d`; visual review and final M4 gates pending
+**Initial code SHA:** `652b4def1b71e9ba47323d3e51955cd3d777091a`
+**Latest verified code SHA:** `b6d652da07c175d086c625bfb498cf370dfc5fe2`
 **Branch:** `m4/knowledge-engine`
 
 ## Delivered
@@ -75,7 +76,7 @@ behavior changes after code SHA `ecbbaf7`.
 The lib test count differs from Windows (168 vs 173) due to platform-specific
 tests; both full commands exited 0. No app launch, visual review, lockfile
 change, or Actions run occurred. The UI-only hardening at `652b4de` postdates
-this Mac verification; the two frontend checks below remain pending on macOS.
+this Mac verification; its frontend checks were later verified at `9eea611`.
 
 ## Later bounded full-history search follow-up (`3792485`)
 
@@ -129,15 +130,37 @@ Windows at `b6d652da07c175d086c625bfb498cf370dfc5fe2`:
 - `cargo check --locked -p cryptex-desktop` — PASS
 - `git diff --check` — PASS
 
-Exact-tip Mac parity for `b6d652d` remains required. The report at
-`946642a` is earlier and does not verify this follow-up. No Actions were run.
+The earlier report at `946642a` did not verify this follow-up; the exact-tip
+macOS verification below closes that gap. No Actions were run.
+
+## Exact-tip macOS verification (`b6d652d`)
+
+Owner-reported run at exact code SHA `b6d652da07c175d086c625bfb498cf370dfc5fe2`;
+macOS 27.0.1 (26A434), arm64, detached HEAD, clean working tree:
+
+- `cargo fmt --all -- --check` — PASS
+- `cargo test --locked -p cryptex-events` — **61/61 PASS**
+- `cargo test --locked -p cryptex-storage` — **40/40 PASS** (platform-specific
+  Windows-only test is absent)
+- `cargo test --locked -p cryptex-projection` — **48/48 PASS**
+- `cargo test --locked -p cryptex-knowledge` — **31/31 PASS**
+- `cargo test --locked -p cryptexd` — **193 PASS** (lib 177, bin 2,
+  lifecycle 9, Mode B supervisor 3, update rollback 2)
+- Strict Clippy for events, storage, projection, knowledge, and cryptexd
+  `--all-targets -- -D warnings` — PASS
+- `cargo check --locked -p cryptex-desktop` — PASS
+- `git diff --check` — PASS
+
+The full daemon package run included lifecycle integration coverage. Health-only
+availability and fail-closed search authorization tests passed. No files were
+modified and no Actions were run.
 
 ## Remaining work
 
 macOS frontend checks (`test:search-policy` and Desktop build) passed at
 `9eea611` as recorded in `evidence/m4/m4-search-ui-macos-recheck-20261008.md`.
-The follow-up's Rust behavior still needs exact-tip Mac checks. Physical visual
-review and final security/DoD review remain open; backend hold coverage exists,
+The follow-up's Rust behavior is now verified on both OSes at `b6d652d`.
+Physical visual review and final security/DoD review remain open; backend hold coverage exists,
 but this record does not claim every hold reason was manually exercised in the
 UI. No Actions were run. This slice is not M4 completion and does not enable
 production v2 writing.
