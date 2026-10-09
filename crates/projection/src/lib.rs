@@ -34,4 +34,4 @@ pub use schema::{
     PROJECTION_BUILD_ID_V1, PROJECTION_SCHEMA_VERSION, apply_schema_v1, read_schema_version,
     validate_schema_v1,
 };
-pub use search::{SearchHit, SearchQuery, search_events};
+pub use search::{SearchHit, SearchQuery, search_events, search_events_until};

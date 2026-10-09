@@ -24,6 +24,7 @@ pub enum ReducerError {
     InvalidEvent(String),
     ConflictingEventId(String),
     CanonicalizationFailed,
+    Cancelled,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,6 +143,27 @@ pub fn reduce_verified_events(
     expected_brain_id: &str,
     input: &VerifiedV2History,
 ) -> Result<KnowledgeState, ReducerError> {
+    reduce_verified_events_cancellable(expected_brain_id, input, || false)
+}
+
+/// Reduce a complete verified history with cooperative cancellation points.
+/// A cancelled reduction returns no partial state.
+pub fn reduce_verified_events_cancellable<C>(
+    expected_brain_id: &str,
+    input: &VerifiedV2History,
+    mut cancelled: C,
+) -> Result<KnowledgeState, ReducerError>
+where
+    C: FnMut() -> bool,
+{
+    let check_cancelled = |cancelled: &mut C| {
+        if cancelled() {
+            Err(ReducerError::Cancelled)
+        } else {
+            Ok(())
+        }
+    };
+    check_cancelled(&mut cancelled)?;
     cryptex_core::validate::parse_uuid_str(expected_brain_id)
         .map_err(|_| ReducerError::InvalidEvent(expected_brain_id.to_owned()))?;
     let known_event_ids: BTreeSet<_> = input
@@ -152,6 +174,7 @@ pub fn reduce_verified_events(
         .collect();
     let mut by_id = BTreeMap::<String, VerifiedV2KnowledgeAssertion>::new();
     for record in input.assertions() {
+        check_cancelled(&mut cancelled)?;
         let event = record.event();
         event
             .validate()
@@ -173,6 +196,7 @@ pub fn reduce_verified_events(
 
     let mut records: Vec<_> = by_id.into_values().collect();
     records.sort_by(|left, right| stable_event_cmp(left.event(), right.event()));
+    check_cancelled(&mut cancelled)?;
     let mut state = KnowledgeState::default();
     let mut invalid_event_ids = BTreeSet::<String>::new();
     let mut entities = BTreeMap::<String, Entity>::new();
@@ -187,6 +211,7 @@ pub fn reduce_verified_events(
     let mut handled_resolution_ids = BTreeSet::new();
 
     for record in &records {
+        check_cancelled(&mut cancelled)?;
         let event = record.event();
         let payload = &event.payload;
         let provenance = provenance(event);
@@ -344,6 +369,7 @@ pub fn reduce_verified_events(
         .collect();
     let mut active_merges = Vec::new();
     for (merge_id, ids, _provenance) in &merges {
+        check_cancelled(&mut cancelled)?;
         if revoked_targets.contains(merge_id) {
             continue;
         }
@@ -363,6 +389,7 @@ pub fn reduce_verified_events(
         active_merges.push(merge_id.clone());
     }
     for (revoke_event_id, target_merge_id, _) in &revoked_merges {
+        check_cancelled(&mut cancelled)?;
         if !merges
             .iter()
             .any(|(id, _, _)| canonical_uuid(id) == *target_merge_id)
@@ -384,6 +411,7 @@ pub fn reduce_verified_events(
         }
     }
     for (merge_id, ids, merge_provenance) in &merges {
+        check_cancelled(&mut cancelled)?;
         let status = if state
             .pending
             .iter()
@@ -434,6 +462,7 @@ pub fn reduce_verified_events(
             .then(a.0.cmp(&b.0))
     });
     for alias in aliases {
+        check_cancelled(&mut cancelled)?;
         let key = normalize_alias(&alias.1);
         if let Some(group) = alias_classes
             .iter_mut()
@@ -499,6 +528,7 @@ pub fn reduce_verified_events(
 
     let mut active = BTreeMap::<String, (SemanticAssertion, Vec<Provenance>)>::new();
     for (target, mut decisions) in corrections {
+        check_cancelled(&mut cancelled)?;
         decisions.sort_by(|a, b| a.0.cmp(&b.0));
         let Some((base, base_provenance)) = assertions.remove(&target) else {
             let correction_ids: Vec<_> = decisions
@@ -784,6 +814,7 @@ pub fn reduce_verified_events(
     // materialized. Keep its dependency pending until the complete event set
     // contains a resolvable target and competing decisions.
     for (resolution_id, target, decision_ids, _outcome, _source) in &resolutions {
+        check_cancelled(&mut cancelled)?;
         if handled_resolution_ids.contains(resolution_id) {
             continue;
         }
@@ -826,6 +857,7 @@ pub fn reduce_verified_events(
     let mut fact_candidates = Vec::<(String, String, FactValue, Vec<Provenance>)>::new();
     let mut relation_candidates = Vec::<(String, String, String, Vec<Provenance>)>::new();
     for (event_id, (assertion, provenance)) in active {
+        check_cancelled(&mut cancelled)?;
         match assertion {
             SemanticAssertion::Fact {
                 subject_entity_id,
@@ -911,6 +943,7 @@ pub fn reduce_verified_events(
         BTreeMap::<String, BTreeMap<String, Vec<(FactValue, Vec<Provenance>)>>>::new();
     let mut by_multi = BTreeMap::<String, Vec<(String, String, FactValue, Vec<Provenance>)>>::new();
     for (subject, predicate, value, provenance) in fact_candidates {
+        check_cancelled(&mut cancelled)?;
         if predicate == "person.birth_date" {
             let value_key = semantic_key("", "", &value)?;
             by_single
@@ -928,6 +961,7 @@ pub fn reduce_verified_events(
         }
     }
     for (key, values) in by_single {
+        check_cancelled(&mut cancelled)?;
         if values.len() > 1 {
             let event_ids = values
                 .values()
@@ -964,6 +998,7 @@ pub fn reduce_verified_events(
         }
     }
     for entries in by_multi.into_values() {
+        check_cancelled(&mut cancelled)?;
         let (subject_entity_id, predicate, value, _) = entries[0].clone();
         state.facts.push(Fact {
             semantic_id: derived_id(
@@ -987,6 +1022,7 @@ pub fn reduce_verified_events(
     let mut relation_groups =
         BTreeMap::<String, Vec<(String, String, String, Vec<Provenance>)>>::new();
     for (subject, predicate, object, provenance) in relation_candidates {
+        check_cancelled(&mut cancelled)?;
         let key = format!("{subject}|{predicate}|{object}");
         relation_groups
             .entry(key)
@@ -1850,6 +1886,208 @@ mod tests {
         assert_eq!(after, permuted);
         assert_eq!(after.facts.len(), 1);
         assert!(after.pending.is_empty());
+    }
+
+    #[test]
+    fn cancelled_reduction_returns_no_partial_knowledge_state() {
+        let raw = event('1', 1, declare(PERSON_A, "Synthetic"));
+        let key = ed25519_dalek::SigningKey::from_bytes(&[0x42; 32]).verifying_key();
+        let history = cryptex_events::verify_v2_history(&[&raw], SyntheticTrustedDaemonKey(key))
+            .expect("synthetic fixture verifies");
+        assert_eq!(
+            reduce_verified_events_cancellable(BRAIN, &history, || true),
+            Err(ReducerError::Cancelled),
+        );
+    }
+
+    #[test]
+    fn persisted_late_cross_device_dependency_matches_fresh_full_rebuild() {
+        use crate::sqlite::{
+            DeviceMaterializationProgress, migrate_knowledge_schema, rebuild_from_verified_history,
+        };
+
+        let entity_id = "33333333-3333-4333-8333-333333333333";
+        let pending_fact = event_on_device(
+            '1',
+            1,
+            fact(
+                entity_id,
+                "project.role",
+                json!({"kind":"text","value":"owner"}),
+                "inferred",
+            ),
+            "device-a",
+        );
+        let late_entity = event_on_device('2', 1, declare(entity_id, "Project X"), "device-b");
+        let key = ed25519_dalek::SigningKey::from_bytes(&[0x42; 32]).verifying_key();
+        let mut db_incremental = cryptex_projection::ProjectionDb::open_in_memory().unwrap();
+        migrate_knowledge_schema(db_incremental.connection_mut()).unwrap();
+
+        let before =
+            cryptex_events::verify_v2_history(&[&pending_fact], SyntheticTrustedDaemonKey(key))
+                .unwrap();
+        let before_record = &before.records()[0];
+        let fact_position = canonical_position(before_record, 32);
+        let before_progress = [
+            DeviceMaterializationProgress {
+                device_id: "device-a".into(),
+                integrity_position: Some(fact_position.clone()),
+                safe_position: None,
+                blocking_reason: Some("pending_dependency".into()),
+            },
+            DeviceMaterializationProgress {
+                device_id: "device-b".into(),
+                integrity_position: None,
+                safe_position: None,
+                blocking_reason: None,
+            },
+        ];
+        rebuild_from_verified_history(
+            db_incremental.connection_mut(),
+            BRAIN,
+            &before,
+            std::slice::from_ref(&fact_position),
+            &before_progress,
+        )
+        .unwrap();
+        assert_eq!(
+            db_incremental
+                .connection()
+                .query_row(
+                    "SELECT COUNT(*) FROM knowledge_pending_dependencies",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            db_incremental.connection().query_row(
+                "SELECT safe_frame_offset FROM knowledge_materialization_state WHERE device_id = 'device-a'",
+                [],
+                |row| row.get::<_, Option<i64>>(0),
+            ).unwrap(),
+            None,
+            "the unresolved source event must not advance the safe watermark"
+        );
+
+        let after = cryptex_events::verify_v2_history(
+            &[&pending_fact, &late_entity],
+            SyntheticTrustedDaemonKey(key),
+        )
+        .unwrap();
+        let positions = after
+            .records()
+            .iter()
+            .map(|record| canonical_position(record, 32))
+            .collect::<Vec<_>>();
+        let after_progress = [
+            DeviceMaterializationProgress {
+                device_id: "device-a".into(),
+                integrity_position: Some(positions[0].clone()),
+                safe_position: Some(positions[0].clone()),
+                blocking_reason: None,
+            },
+            DeviceMaterializationProgress {
+                device_id: "device-b".into(),
+                integrity_position: Some(positions[1].clone()),
+                safe_position: Some(positions[1].clone()),
+                blocking_reason: None,
+            },
+        ];
+        rebuild_from_verified_history(
+            db_incremental.connection_mut(),
+            BRAIN,
+            &after,
+            &positions,
+            &after_progress,
+        )
+        .unwrap();
+
+        let mut db_full = cryptex_projection::ProjectionDb::open_in_memory().unwrap();
+        migrate_knowledge_schema(db_full.connection_mut()).unwrap();
+        rebuild_from_verified_history(
+            db_full.connection_mut(),
+            BRAIN,
+            &after,
+            &positions,
+            &after_progress,
+        )
+        .unwrap();
+        assert_eq!(
+            knowledge_rows(db_incremental.connection()),
+            knowledge_rows(db_full.connection()),
+            "late dependency replay must converge to the fresh full rebuild"
+        );
+        assert_eq!(
+            db_incremental
+                .connection()
+                .query_row(
+                    "SELECT COUNT(*) FROM knowledge_pending_dependencies",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            db_incremental
+                .connection()
+                .query_row(
+                    "SELECT COUNT(*) FROM knowledge_assertions WHERE predicate = 'project.role'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1,
+            "the formerly pending fact is now materialized"
+        );
+    }
+
+    fn canonical_position(
+        record: &cryptex_events::VersionedRecord,
+        frame_offset: u64,
+    ) -> crate::sqlite::CanonicalFramePosition {
+        let (event_id, device_id, content_hash) = match record {
+            cryptex_events::VersionedRecord::VerifiedV2Supported(record) => (
+                record.event().event_id.clone(),
+                record.event().device_id.as_str().to_owned(),
+                record.event().content_hash.as_str().to_owned(),
+            ),
+            _ => panic!("expected supported synthetic v2 record"),
+        };
+        crate::sqlite::CanonicalFramePosition {
+            event_id,
+            device_id,
+            pack_index: 0,
+            frame_offset,
+            content_hash,
+        }
+    }
+
+    type KnowledgeRows = (Vec<(String, String)>, Vec<(String, String)>, i64);
+
+    fn knowledge_rows(connection: &rusqlite::Connection) -> KnowledgeRows {
+        let entities = connection
+            .prepare("SELECT entity_id, record_json FROM knowledge_entities ORDER BY entity_id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let assertions = connection
+            .prepare("SELECT assertion_key, record_json FROM knowledge_assertions ORDER BY assertion_key")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let provenance = connection
+            .query_row("SELECT COUNT(*) FROM knowledge_provenance", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        (entities, assertions, provenance)
     }
 
     #[test]

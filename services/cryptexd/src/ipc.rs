@@ -10,9 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::compat::DAEMON_PROTOCOL_VERSION;
-use crate::knowledge_materialization::{
-    GuardedSearchError, RetrievalSafetyHold, search_events_with_retrieval_safety,
-};
+use crate::knowledge_materialization::{GuardedSearchError, RetrievalSafetyHold};
 use crate::local_device_identity::LocalDeviceKeyResolver;
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 use crate::{
@@ -37,6 +35,10 @@ const MAX_RESPONSE_BYTES: usize = MAX_SEARCH_RESPONSE_BYTES;
 const IPC_REQUEST_DEADLINE: Duration = Duration::from_secs(2);
 const IPC_RESPONSE_DEADLINE: Duration = Duration::from_secs(15);
 const MAX_UNAUTHENTICATED_IPC_WORKERS: usize = 4;
+const MAX_AUTHENTICATED_DESKTOP_CONNECTIONS: usize = 8;
+// Full-history verification/search is bounded independently from the Desktop
+// connection pool, leaving capacity for Desktop health/enrollment requests.
+const MAX_DESKTOP_SEARCH_WORKERS: usize = 2;
 #[cfg(windows)]
 const ENDPOINT_ID: &str = "cryptexd-v1";
 
@@ -233,6 +235,8 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
     let listener = create_listener()?;
     let context = context.map(Arc::new);
     let unauthenticated_workers = Arc::new(AtomicUsize::new(0));
+    let desktop_connections = Arc::new(AtomicUsize::new(0));
+    let desktop_search_workers = Arc::new(AtomicUsize::new(0));
     thread::Builder::new()
         .name("cryptex-ipc".into())
         .spawn(move || {
@@ -244,10 +248,37 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
                                 .ok()
                                 .is_some_and(|pid| context.expected_desktop.matches_peer(pid))
                         });
-                        if context.is_some() && !is_desktop {
-                            let Some(reservation) =
-                                try_reserve_ipc_worker(&unauthenticated_workers)
-                            else {
+                        if is_desktop {
+                            let Some(connection_reservation) = try_reserve_ipc_worker(
+                                &desktop_connections,
+                                MAX_AUTHENTICATED_DESKTOP_CONNECTIONS,
+                            ) else {
+                                // Keep the listener and health worker pools
+                                // responsive when Desktop opens excess streams.
+                                continue;
+                            };
+                            let worker_context = context.clone();
+                            let search_workers = Arc::clone(&desktop_search_workers);
+                            if let Err(error) = thread::Builder::new()
+                                .name("cryptex-ipc-desktop".into())
+                                .spawn(move || {
+                                    let _reservation = connection_reservation;
+                                    if let Err(error) = handle_connection(
+                                        &mut stream,
+                                        worker_context.as_deref(),
+                                        Some(&search_workers),
+                                    ) {
+                                        eprintln!("cryptexd Desktop IPC failed: {error}");
+                                    }
+                                })
+                            {
+                                eprintln!("cryptexd IPC search worker failed to start: {error}");
+                            }
+                        } else if context.is_some() {
+                            let Some(reservation) = try_reserve_ipc_worker(
+                                &unauthenticated_workers,
+                                MAX_UNAUTHENTICATED_IPC_WORKERS,
+                            ) else {
                                 continue;
                             };
                             let worker_context = context.clone();
@@ -255,9 +286,11 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
                                 .name("cryptex-ipc-health".into())
                                 .spawn(move || {
                                     let _reservation = reservation;
-                                    if let Err(error) =
-                                        handle_connection(&mut stream, worker_context.as_deref())
-                                    {
+                                    if let Err(error) = handle_connection(
+                                        &mut stream,
+                                        worker_context.as_deref(),
+                                        None,
+                                    ) {
                                         eprintln!("cryptexd IPC connection failed: {error}");
                                     }
                                 })
@@ -265,7 +298,7 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
                                 eprintln!("cryptexd IPC worker failed to start: {error}");
                             }
                         } else if let Err(error) =
-                            handle_connection(&mut stream, context.as_deref())
+                            handle_connection(&mut stream, context.as_deref(), None)
                         {
                             eprintln!("cryptexd IPC connection failed: {error}");
                         }
@@ -277,10 +310,13 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
     Ok(())
 }
 
-fn try_reserve_ipc_worker(active: &Arc<AtomicUsize>) -> Option<IpcWorkerReservation> {
+fn try_reserve_ipc_worker(
+    active: &Arc<AtomicUsize>,
+    maximum: usize,
+) -> Option<IpcWorkerReservation> {
     active
         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-            (current < MAX_UNAUTHENTICATED_IPC_WORKERS).then_some(current + 1)
+            (current < maximum).then_some(current + 1)
         })
         .ok()
         .map(|_| IpcWorkerReservation(Arc::clone(active)))
@@ -574,7 +610,11 @@ fn socket_parent() -> std::path::PathBuf {
     std::path::PathBuf::from("/tmp").join(format!("cpx-cryptex-{uid}"))
 }
 
-fn handle_connection(stream: &mut Stream, search: Option<&SearchContext>) -> io::Result<()> {
+fn handle_connection(
+    stream: &mut Stream,
+    search: Option<&SearchContext>,
+    desktop_search_workers: Option<&Arc<AtomicUsize>>,
+) -> io::Result<()> {
     let peer_is_desktop = search
         .and_then(|context| {
             peer_process_id(stream)
@@ -599,7 +639,21 @@ fn handle_connection(stream: &mut Stream, search: Option<&SearchContext>) -> io:
         match serde_json::from_slice::<Request>(&frame) {
             Ok(request) => {
                 if request.operation == "content.search" {
-                    let response = handle_search(request, search, peer_is_desktop);
+                    let response_deadline = Instant::now() + IPC_RESPONSE_DEADLINE;
+                    let reservation = desktop_search_workers.and_then(|workers| {
+                        try_reserve_ipc_worker(workers, MAX_DESKTOP_SEARCH_WORKERS)
+                    });
+                    let response = if desktop_search_workers.is_some() && reservation.is_none() {
+                        search_rejected(Some(request.request_id), "search_busy")
+                    } else {
+                        let _reservation = reservation;
+                        handle_search_until(
+                            request,
+                            search,
+                            peer_is_desktop,
+                            Some(response_deadline),
+                        )
+                    };
                     let bytes = serde_json::to_vec(&response)?;
                     if bytes.len() + 1 > MAX_SEARCH_RESPONSE_BYTES {
                         serde_json::to_vec(&search_rejected(
@@ -1017,10 +1071,20 @@ fn enrollment_rejected(request_id: Option<String>, error: &str) -> DesktopEnroll
     }
 }
 
+#[cfg(test)]
 fn handle_search(
     request: Request,
     context: Option<&SearchContext>,
     peer_is_desktop: bool,
+) -> DesktopSearchResponse {
+    handle_search_until(request, context, peer_is_desktop, None)
+}
+
+fn handle_search_until(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+    deadline: Option<Instant>,
 ) -> DesktopSearchResponse {
     let request_id = request.request_id.clone();
     let authorization_error = if request.protocol_version != PROTOCOL_VERSION {
@@ -1079,13 +1143,14 @@ fn handle_search(
         Ok(db) => db,
         Err(_) => return search_held(Some(request_id), "materialization_state_missing_or_stale"),
     };
-    match search_events_with_retrieval_safety(
+    match crate::knowledge_materialization::search_events_with_retrieval_safety_deadline(
         &context.runtime_root,
         &brain.brain_id,
         &[device],
         &mut resolver,
         &db,
         &query,
+        deadline,
     ) {
         Ok(hits) => search_results(Some(request_id), hits),
         Err(GuardedSearchError::BrainWideHold(reason)) => {
@@ -1100,6 +1165,7 @@ fn hold_reason_code(reason: RetrievalSafetyHold) -> &'static str {
         RetrievalSafetyHold::CanonicalVerificationUnavailable => {
             "canonical_verification_unavailable"
         }
+        RetrievalSafetyHold::OperationDeadlineExceeded => "operation_deadline_exceeded",
         RetrievalSafetyHold::UnsupportedSemantics => "unsupported_semantics",
         RetrievalSafetyHold::V2SemanticsNotIntegrated => "v2_semantics_not_integrated",
         RetrievalSafetyHold::UnresolvedDependency => "unresolved_dependency",
@@ -1443,16 +1509,46 @@ mod tests {
     fn unauthenticated_ipc_workers_are_bounded_and_release_capacity() {
         let active = Arc::new(AtomicUsize::new(0));
         let reservations = (0..MAX_UNAUTHENTICATED_IPC_WORKERS)
-            .map(|_| try_reserve_ipc_worker(&active).expect("available worker slot"))
+            .map(|_| {
+                try_reserve_ipc_worker(&active, MAX_UNAUTHENTICATED_IPC_WORKERS)
+                    .expect("available worker slot")
+            })
             .collect::<Vec<_>>();
-        assert!(try_reserve_ipc_worker(&active).is_none());
+        assert!(try_reserve_ipc_worker(&active, MAX_UNAUTHENTICATED_IPC_WORKERS).is_none());
         assert_eq!(
             active.load(Ordering::Acquire),
             MAX_UNAUTHENTICATED_IPC_WORKERS
         );
         drop(reservations);
         assert_eq!(active.load(Ordering::Acquire), 0);
-        assert!(try_reserve_ipc_worker(&active).is_some());
+        assert!(try_reserve_ipc_worker(&active, MAX_UNAUTHENTICATED_IPC_WORKERS).is_some());
+    }
+
+    #[test]
+    fn desktop_search_capacity_is_bounded_separately_from_health_workers() {
+        let desktop_connections = Arc::new(AtomicUsize::new(0));
+        let search = Arc::new(AtomicUsize::new(0));
+        let health = Arc::new(AtomicUsize::new(0));
+        let connections = (0..MAX_DESKTOP_SEARCH_WORKERS + 1)
+            .map(|_| {
+                try_reserve_ipc_worker(&desktop_connections, MAX_AUTHENTICATED_DESKTOP_CONNECTIONS)
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let searches = (0..MAX_DESKTOP_SEARCH_WORKERS)
+            .map(|_| try_reserve_ipc_worker(&search, MAX_DESKTOP_SEARCH_WORKERS).unwrap())
+            .collect::<Vec<_>>();
+        assert!(try_reserve_ipc_worker(&search, MAX_DESKTOP_SEARCH_WORKERS).is_none());
+        let health_slot = try_reserve_ipc_worker(&health, MAX_UNAUTHENTICATED_IPC_WORKERS);
+        assert!(
+            health_slot.is_some(),
+            "search load must not consume health capacity"
+        );
+        drop(searches);
+        drop(connections);
+        assert_eq!(search.load(Ordering::Acquire), 0);
+        assert_eq!(desktop_connections.load(Ordering::Acquire), 0);
+        assert_eq!(health.load(Ordering::Acquire), 1);
     }
 
     #[test]

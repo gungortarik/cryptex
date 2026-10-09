@@ -6,11 +6,10 @@
 
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 
 use cryptex_core::DeviceId;
-use cryptex_events::{
-    TrustedDaemonKeyResolver, VerifiedV2History, VersionedRecord, verify_v2_history,
-};
+use cryptex_events::{TrustedDaemonKeyResolver, VerifiedV2History, VersionedRecord};
 use cryptex_knowledge::sqlite::{
     CanonicalFramePosition, DeviceMaterializationProgress, KNOWLEDGE_BUILD_ID_V1,
     KNOWLEDGE_REDUCER_VERSION, KNOWLEDGE_SCHEMA_VERSION, KnowledgeStoreError,
@@ -26,7 +25,8 @@ use cryptex_storage::{AcceptAllBodies, StorageError, fold_verified_frames_with_o
 
 use crate::canonical_writer::{
     CanonicalInventoryLock, CanonicalWriterError, DeviceCanonicalLock,
-    acquire_canonical_inventory_lock, acquire_existing_device_canonical_lock,
+    acquire_canonical_inventory_lock, acquire_canonical_inventory_lock_until,
+    acquire_existing_device_canonical_lock, acquire_existing_device_canonical_lock_until,
 };
 
 #[derive(Debug)]
@@ -36,6 +36,7 @@ pub enum KnowledgeMaterializationError {
     Verification(String),
     Knowledge(KnowledgeStoreError),
     InvalidInput(String),
+    DeadlineExceeded,
 }
 
 impl std::fmt::Display for KnowledgeMaterializationError {
@@ -48,6 +49,7 @@ impl std::fmt::Display for KnowledgeMaterializationError {
             }
             Self::Knowledge(error) => write!(f, "knowledge rebuild failed: {error}"),
             Self::InvalidInput(error) => write!(f, "invalid M4 rebuild input: {error}"),
+            Self::DeadlineExceeded => write!(f, "retrieval operation deadline exceeded"),
         }
     }
 }
@@ -83,6 +85,7 @@ pub struct KnowledgeRebuildReport {
 /// A stable, non-sensitive reason why content retrieval was withheld.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetrievalSafetyHold {
+    OperationDeadlineExceeded,
     CanonicalVerificationUnavailable,
     UnsupportedSemantics,
     V2SemanticsNotIntegrated,
@@ -212,6 +215,23 @@ fn scan_verified_canonical<R: TrustedDaemonKeyResolver>(
     trusted_devices: &[DeviceId],
     key_resolver: &mut R,
 ) -> KnowledgeMaterializationResult<VerifiedCanonicalSnapshot> {
+    scan_verified_canonical_until(
+        runtime_root,
+        expected_brain_id,
+        trusted_devices,
+        key_resolver,
+        None,
+    )
+}
+
+fn scan_verified_canonical_until<R: TrustedDaemonKeyResolver>(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    trusted_devices: &[DeviceId],
+    key_resolver: &mut R,
+    deadline: Option<Instant>,
+) -> KnowledgeMaterializationResult<VerifiedCanonicalSnapshot> {
+    check_deadline(deadline)?;
     crate::paths::assert_outside_repository(runtime_root)
         .map_err(|error| KnowledgeMaterializationError::InvalidInput(error.to_string()))?;
     let mut devices = trusted_devices.to_vec();
@@ -224,32 +244,54 @@ fn scan_verified_canonical<R: TrustedDaemonKeyResolver>(
     // First-create writers must take this same lock before adding a device
     // directory. This makes inventory enumeration stable for daemon-owned
     // writers while all per-device locks are acquired and scans run.
-    let inventory_lock = acquire_canonical_inventory_lock(runtime_root)?;
-    require_complete_device_inventory(runtime_root, &devices)?;
+    let inventory_lock = match deadline {
+        Some(deadline) => acquire_canonical_inventory_lock_until(runtime_root, deadline)?,
+        None => acquire_canonical_inventory_lock(runtime_root)?,
+    };
+    require_complete_device_inventory(runtime_root, &devices, deadline)?;
 
     let mut locks: Vec<DeviceCanonicalLock> = Vec::with_capacity(devices.len());
     for device in &devices {
-        if let Some(lock) = acquire_existing_device_canonical_lock(runtime_root, device)? {
+        check_deadline(deadline)?;
+        let lock = match deadline {
+            Some(deadline) => {
+                acquire_existing_device_canonical_lock_until(runtime_root, device, deadline)?
+            }
+            None => acquire_existing_device_canonical_lock(runtime_root, device)?,
+        };
+        if let Some(lock) = lock {
             locks.push(lock);
         }
     }
     // Re-check after per-device locks: this catches any unexpected inventory
     // mutation outside the daemon lock protocol before accepting the snapshot.
-    require_complete_device_inventory(runtime_root, &devices)?;
+    require_complete_device_inventory(runtime_root, &devices, deadline)?;
 
     let mut frames = Vec::<RawFrame>::new();
     for device in &devices {
-        scan_device_read_only(runtime_root, device, &mut frames)?;
+        check_deadline(deadline)?;
+        scan_device_read_only(runtime_root, device, &mut frames, deadline)?;
     }
     // Detect inventory changes by actors outside the daemon lock protocol
     // (for example a not-yet-integrated sync importer) before accepting this
     // verified snapshot. Such actors must eventually join the same lock
     // protocol for a race-free production guarantee.
-    require_complete_device_inventory(runtime_root, &devices)?;
+    require_complete_device_inventory(runtime_root, &devices, deadline)?;
 
     let raw_refs: Vec<&[u8]> = frames.iter().map(|frame| frame.bytes.as_slice()).collect();
-    let history = verify_v2_history(&raw_refs, BorrowedResolver(key_resolver))
-        .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
+    let history = cryptex_events::verify_v2_history_cancellable(
+        &raw_refs,
+        BorrowedResolver(key_resolver),
+        || deadline.is_some_and(|deadline| Instant::now() >= deadline),
+    )
+    .map_err(|error| match error {
+        cryptex_events::CancellableHistoryVerificationError::Cancelled => {
+            KnowledgeMaterializationError::DeadlineExceeded
+        }
+        cryptex_events::CancellableHistoryVerificationError::InvalidRecord(error) => {
+            KnowledgeMaterializationError::Verification(error.to_string())
+        }
+    })?;
     if history.records().len() != frames.len() {
         return Err(KnowledgeMaterializationError::InvalidInput(
             "canonical scan contains duplicate event records; refusing ambiguous frame binding"
@@ -271,13 +313,15 @@ fn scan_verified_canonical<R: TrustedDaemonKeyResolver>(
         frame.position.content_hash = content_hash;
     }
 
-    let state = cryptex_knowledge::reduce_verified_events(expected_brain_id, &history).map_err(
-        |error| {
+    let state =
+        cryptex_knowledge::reduce_verified_events_cancellable(expected_brain_id, &history, || {
+            deadline.is_some_and(|deadline| Instant::now() >= deadline)
+        })
+        .map_err(|error| {
             KnowledgeMaterializationError::InvalidInput(format!(
                 "reducer rejected verified history: {error:?}"
             ))
-        },
-    )?;
+        })?;
     let progress = build_progress(
         &devices,
         history.records(),
@@ -289,7 +333,9 @@ fn scan_verified_canonical<R: TrustedDaemonKeyResolver>(
             .map(|assertion| assertion.event().event_id.clone())
             .collect::<Vec<_>>(),
         &state.materialized_event_ids,
-    );
+        deadline,
+    )?;
+    check_deadline(deadline)?;
     Ok(VerifiedCanonicalSnapshot {
         devices,
         frames,
@@ -313,12 +359,33 @@ pub fn search_events_with_retrieval_safety<R: TrustedDaemonKeyResolver>(
     db: &ProjectionDb,
     query: &SearchQuery,
 ) -> Result<Vec<SearchHit>, GuardedSearchError> {
-    let safety = evaluate_retrieval_safety(
+    search_events_with_retrieval_safety_deadline(
         runtime_root,
         expected_brain_id,
         trusted_devices,
         key_resolver,
         db,
+        query,
+        None,
+    )
+}
+
+pub fn search_events_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolver>(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    trusted_devices: &[DeviceId],
+    key_resolver: &mut R,
+    db: &ProjectionDb,
+    query: &SearchQuery,
+    deadline: Option<Instant>,
+) -> Result<Vec<SearchHit>, GuardedSearchError> {
+    let safety = evaluate_retrieval_safety_until(
+        runtime_root,
+        expected_brain_id,
+        trusted_devices,
+        key_resolver,
+        db,
+        deadline,
     );
     if safety.snapshot.is_none() {
         return Err(GuardedSearchError::BrainWideHold(
@@ -331,9 +398,32 @@ pub fn search_events_with_retrieval_safety<R: TrustedDaemonKeyResolver>(
         // Keep the verified snapshot borrowed throughout the query. The state
         // owns its RAII locks and is dropped only after this scope completes.
         let _snapshot = safety.snapshot.as_ref().expect("checked above");
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            return Err(GuardedSearchError::BrainWideHold(
+                RetrievalSafetyHold::OperationDeadlineExceeded,
+            ));
+        }
         let mut guarded_query = query.clone();
         guarded_query.brain_id = Some(expected_brain_id.to_owned());
-        search_events(db.connection(), &guarded_query).map_err(GuardedSearchError::Query)
+        match deadline {
+            Some(deadline) => match cryptex_projection::search_events_until(
+                db.connection(),
+                &guarded_query,
+                deadline,
+            ) {
+                Ok(_) if Instant::now() >= deadline => Err(GuardedSearchError::BrainWideHold(
+                    RetrievalSafetyHold::OperationDeadlineExceeded,
+                )),
+                Ok(hits) => Ok(hits),
+                Err(_) if Instant::now() >= deadline => Err(GuardedSearchError::BrainWideHold(
+                    RetrievalSafetyHold::OperationDeadlineExceeded,
+                )),
+                Err(error) => Err(GuardedSearchError::Query(error)),
+            },
+            None => {
+                search_events(db.connection(), &guarded_query).map_err(GuardedSearchError::Query)
+            }
+        }
     };
     // Make the lock lifetime explicit: both canonical locks and inventory
     // lock remain held until the query has completed.
@@ -351,19 +441,56 @@ pub fn evaluate_retrieval_safety<R: TrustedDaemonKeyResolver>(
     key_resolver: &mut R,
     db: &ProjectionDb,
 ) -> RetrievalSafetyState {
-    let Ok(snapshot) = scan_verified_canonical(
+    evaluate_retrieval_safety_until(
         runtime_root,
         expected_brain_id,
         trusted_devices,
         key_resolver,
-    ) else {
-        return RetrievalSafetyState::held(RetrievalSafetyHold::CanonicalVerificationUnavailable);
+        db,
+        None,
+    )
+}
+
+fn evaluate_retrieval_safety_until<R: TrustedDaemonKeyResolver>(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    trusted_devices: &[DeviceId],
+    key_resolver: &mut R,
+    db: &ProjectionDb,
+    deadline: Option<Instant>,
+) -> RetrievalSafetyState {
+    let snapshot = match scan_verified_canonical_until(
+        runtime_root,
+        expected_brain_id,
+        trusted_devices,
+        key_resolver,
+        deadline,
+    ) {
+        Ok(snapshot) => snapshot,
+        Err(KnowledgeMaterializationError::DeadlineExceeded) => {
+            return RetrievalSafetyState::held(RetrievalSafetyHold::OperationDeadlineExceeded);
+        }
+        Err(_) if deadline.is_some_and(|deadline| Instant::now() >= deadline) => {
+            return RetrievalSafetyState::held(RetrievalSafetyHold::OperationDeadlineExceeded);
+        }
+        Err(_) => {
+            return RetrievalSafetyState::held(
+                RetrievalSafetyHold::CanonicalVerificationUnavailable,
+            );
+        }
     };
+
+    if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        return RetrievalSafetyState::held(RetrievalSafetyHold::OperationDeadlineExceeded);
+    }
 
     // M3 indexes only v1 memory.note. Until v2 privacy/classification effects
     // are integrated across retrieval, any v2 or verified-unsupported record
     // conservatively holds all retrieval.
     for record in snapshot.history.records() {
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            return RetrievalSafetyState::held(RetrievalSafetyHold::OperationDeadlineExceeded);
+        }
         let hold = match record {
             VersionedRecord::VerifiedV1(_) => continue,
             VersionedRecord::VerifiedUnsupported(_) => RetrievalSafetyHold::UnsupportedSemantics,
@@ -388,7 +515,12 @@ pub fn evaluate_retrieval_safety<R: TrustedDaemonKeyResolver>(
     if !m4_materialization_state_matches(db, &snapshot) {
         return RetrievalSafetyState::held(RetrievalSafetyHold::MaterializationStateMissingOrStale);
     }
-    if !m3_projection_matches_history(db, expected_brain_id, &snapshot.history) {
+    let projection_matches =
+        m3_projection_matches_history(db, expected_brain_id, &snapshot.history, deadline);
+    if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        return RetrievalSafetyState::held(RetrievalSafetyHold::OperationDeadlineExceeded);
+    }
+    if !projection_matches {
         return RetrievalSafetyState::held(RetrievalSafetyHold::ProjectionDoesNotMatchCanonical);
     }
     RetrievalSafetyState::allowed(snapshot)
@@ -491,9 +623,13 @@ fn m3_projection_matches_history(
     db: &ProjectionDb,
     expected_brain_id: &str,
     history: &VerifiedV2History,
+    deadline: Option<Instant>,
 ) -> bool {
     let mut expected = std::collections::BTreeMap::new();
     for record in history.records() {
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            return false;
+        }
         let VersionedRecord::VerifiedV1(event) = record else {
             return false;
         };
@@ -552,10 +688,17 @@ fn m3_projection_matches_history(
     let Ok(rows) = rows else {
         return false;
     };
-    let actual: Result<std::collections::BTreeMap<_, _>, _> = rows
-        .map(|row| row.map(|hit| (hit.event_id.clone(), hit)))
-        .collect();
-    matches!(actual, Ok(actual) if actual == expected)
+    let mut actual = std::collections::BTreeMap::new();
+    for row in rows {
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            return false;
+        }
+        let Ok(hit) = row else {
+            return false;
+        };
+        actual.insert(hit.event_id.clone(), hit);
+    }
+    actual == expected
 }
 
 struct BorrowedResolver<'a, R>(&'a mut R);
@@ -573,7 +716,9 @@ fn scan_device_read_only(
     runtime_root: &Path,
     device_id: &DeviceId,
     output: &mut Vec<RawFrame>,
+    deadline: Option<Instant>,
 ) -> KnowledgeMaterializationResult<()> {
+    check_deadline(deadline)?;
     let directory = canonical_events_device_dir(runtime_root, device_id);
     if !directory.exists() {
         return Ok(());
@@ -581,6 +726,7 @@ fn scan_device_read_only(
     let mut sealed = Vec::new();
     let mut open = None;
     for entry in fs::read_dir(&directory).map_err(StorageError::Io)? {
+        check_deadline(deadline)?;
         let entry = entry.map_err(StorageError::Io)?;
         if !entry.file_type().map_err(StorageError::Io)?.is_file() {
             return Err(KnowledgeMaterializationError::Storage(
@@ -643,7 +789,7 @@ fn scan_device_read_only(
     for index in sealed {
         let path = sealed_segment_path(runtime_root, device_id, index);
         let before = output.len();
-        let verified_len = fold_pack(&path, device_id, index, output)?;
+        let verified_len = fold_pack(&path, device_id, index, output, deadline)?;
         let file_len = fs::metadata(&path).map_err(StorageError::Io)?.len();
         if verified_len != file_len || output.len() == before {
             return Err(KnowledgeMaterializationError::Storage(StorageError::Integrity(
@@ -654,7 +800,7 @@ fn scan_device_read_only(
     if let Some(index) = open {
         let path = active_segment_path(runtime_root, device_id, index);
         let file_len = fs::metadata(&path).map_err(StorageError::Io)?.len();
-        let verified_len = fold_pack(&path, device_id, index, output)?;
+        let verified_len = fold_pack(&path, device_id, index, output, deadline)?;
         if verified_len != file_len {
             return Err(KnowledgeMaterializationError::Storage(
                 StorageError::CompatibilityBoundary(
@@ -686,13 +832,16 @@ fn is_known_housekeeping_file(name: &str) -> bool {
 fn require_complete_device_inventory(
     runtime_root: &Path,
     trusted_devices: &[DeviceId],
+    deadline: Option<Instant>,
 ) -> KnowledgeMaterializationResult<()> {
+    check_deadline(deadline)?;
     let events_root = runtime_root.join("canonical").join("events");
     if !events_root.exists() {
         return Ok(());
     }
     let mut on_disk = Vec::<String>::new();
     for entry in fs::read_dir(&events_root).map_err(StorageError::Io)? {
+        check_deadline(deadline)?;
         let entry = entry.map_err(StorageError::Io)?;
         let file_type = entry.file_type().map_err(StorageError::Io)?;
         if file_type.is_file() && entry.file_name().to_string_lossy() == "inventory.lock" {
@@ -763,12 +912,18 @@ fn fold_pack(
     device_id: &DeviceId,
     pack_index: u64,
     output: &mut Vec<RawFrame>,
+    deadline: Option<Instant>,
 ) -> KnowledgeMaterializationResult<u64> {
     let (frames, verified_len) = fold_verified_frames_with_offsets(
         path,
         &AcceptAllBodies,
         Vec::new(),
         |frames, offset, body| {
+            check_deadline(deadline).map_err(|_| {
+                StorageError::CompatibilityBoundary(
+                    "canonical retrieval scan exceeded its operation deadline".into(),
+                )
+            })?;
             frames.push((offset, body.to_vec()));
             Ok(())
         },
@@ -815,6 +970,14 @@ fn fold_pack(
     Ok(verified_len)
 }
 
+fn check_deadline(deadline: Option<Instant>) -> KnowledgeMaterializationResult<()> {
+    if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        Err(KnowledgeMaterializationError::DeadlineExceeded)
+    } else {
+        Ok(())
+    }
+}
+
 fn parse_pack_index(name: &str, extension: &str) -> Option<u64> {
     let stem = name.strip_suffix(&format!(".{extension}"))?;
     if stem.len() != 20 || !stem.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -851,49 +1014,60 @@ fn build_progress(
     pending: &[cryptex_knowledge::PendingDependency],
     supported_event_ids: &[String],
     materialized_event_ids: &[String],
-) -> Vec<DeviceMaterializationProgress> {
-    let pending_ids: std::collections::BTreeSet<String> = pending
-        .iter()
-        .map(|item| item.event_id.to_ascii_lowercase())
-        .collect();
-    let materialized_ids: std::collections::BTreeSet<String> = materialized_event_ids
-        .iter()
-        .map(|event_id| event_id.to_ascii_lowercase())
-        .collect();
-    let unsupported_ids: std::collections::BTreeSet<String> = records
-        .iter()
-        .filter_map(|record| match record {
-            VersionedRecord::VerifiedUnsupported(event) => {
-                Some(event.event_id.to_ascii_lowercase())
-            }
-            _ => None,
-        })
-        .collect();
+    deadline: Option<Instant>,
+) -> KnowledgeMaterializationResult<Vec<DeviceMaterializationProgress>> {
+    let mut pending_ids = std::collections::BTreeSet::new();
+    for item in pending {
+        check_deadline(deadline)?;
+        pending_ids.insert(item.event_id.to_ascii_lowercase());
+    }
+    let mut materialized_ids = std::collections::BTreeSet::new();
+    for event_id in materialized_event_ids {
+        check_deadline(deadline)?;
+        materialized_ids.insert(event_id.to_ascii_lowercase());
+    }
+    let mut unsupported_ids = std::collections::BTreeSet::new();
+    for record in records {
+        check_deadline(deadline)?;
+        if let VersionedRecord::VerifiedUnsupported(event) = record {
+            unsupported_ids.insert(event.event_id.to_ascii_lowercase());
+        }
+    }
     // Supported v2 records omitted by the reducer are not safe progress. This
     // includes semantically invalid records retained as reviewable conflicts;
     // conservatively stop the contiguous watermark instead of implying that
     // their semantics were successfully materialized.
-    let unmaterialized_supported_ids: std::collections::BTreeSet<String> = supported_event_ids
-        .iter()
-        .map(|event_id| event_id.to_ascii_lowercase())
-        .filter(|event_id| !materialized_ids.contains(event_id))
-        .collect();
+    let mut unmaterialized_supported_ids = std::collections::BTreeSet::new();
+    for event_id in supported_event_ids {
+        check_deadline(deadline)?;
+        let event_id = event_id.to_ascii_lowercase();
+        if !materialized_ids.contains(&event_id) {
+            unmaterialized_supported_ids.insert(event_id);
+        }
+    }
     let mut output = Vec::with_capacity(devices.len());
     for device in devices {
-        let indexes: Vec<usize> = frames
-            .iter()
-            .enumerate()
-            .filter_map(|(index, frame)| {
-                (frame.position.device_id == device.as_str()).then_some(index)
-            })
-            .collect();
+        check_deadline(deadline)?;
+        let mut indexes = Vec::new();
+        for (index, frame) in frames.iter().enumerate() {
+            check_deadline(deadline)?;
+            if frame.position.device_id == device.as_str() {
+                indexes.push(index);
+            }
+        }
         let integrity_position = indexes.last().map(|index| frames[*index].position.clone());
-        let first_blocker = indexes.iter().position(|index| {
+        let mut first_blocker = None;
+        for (position, index) in indexes.iter().enumerate() {
+            check_deadline(deadline)?;
             let event_id = frames[*index].position.event_id.to_ascii_lowercase();
-            pending_ids.contains(&event_id)
+            if pending_ids.contains(&event_id)
                 || unsupported_ids.contains(&event_id)
                 || unmaterialized_supported_ids.contains(&event_id)
-        });
+            {
+                first_blocker = Some(position);
+                break;
+            }
+        }
         let safe_index = first_blocker.unwrap_or(indexes.len());
         let safe_position = safe_index
             .checked_sub(1)
@@ -919,7 +1093,7 @@ fn build_progress(
             blocking_reason,
         });
     }
-    output
+    Ok(output)
 }
 
 #[cfg(test)]
@@ -1134,6 +1308,42 @@ mod tests {
     }
 
     #[test]
+    fn expired_retrieval_deadline_issues_brain_wide_hold_without_reading_content() {
+        let root = exclusive_temp_dir("retrieval-expired-deadline");
+        let db = ProjectionDb::open_in_memory().unwrap();
+        let device = DeviceId::new("deadline-test").unwrap();
+        let key = ed25519_dalek::SigningKey::from_bytes(&[0x42; 32]).verifying_key();
+        let mut resolver = OneTrustedDevice {
+            device: device.as_str().to_owned(),
+            key_id: cryptex_events::signing_key_id_from_verifying_key(&key)
+                .unwrap()
+                .as_str()
+                .to_owned(),
+            key,
+        };
+        let safety = evaluate_retrieval_safety_until(
+            &root,
+            "22222222-2222-4222-8222-222222222222",
+            &[device],
+            &mut resolver,
+            &db,
+            Some(Instant::now() - std::time::Duration::from_millis(1)),
+        );
+        assert!(!safety.allows_content());
+        assert_eq!(
+            safety.hold_reason(),
+            Some(RetrievalSafetyHold::OperationDeadlineExceeded)
+        );
+        assert_eq!(
+            db.connection()
+                .query_row("SELECT COUNT(*) FROM events", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
     fn pending_dependency_keeps_safe_watermark_before_blocking_frame() {
         let device = DeviceId::new("progress-device").unwrap();
         let frames = [1, 2, 3].map(|index| RawFrame {
@@ -1151,7 +1361,7 @@ mod tests {
             target_id: "missing-event".into(),
             reason: "missing_assertion",
         };
-        let progress = build_progress(&[device], &[], &frames, &[pending], &[], &[]);
+        let progress = build_progress(&[device], &[], &frames, &[pending], &[], &[], None).unwrap();
         assert_eq!(
             progress[0].integrity_position,
             Some(frames[2].position.clone())
@@ -1186,7 +1396,9 @@ mod tests {
             &[],
             &["event-2".into()],
             &["event-1".into()],
-        );
+            None,
+        )
+        .unwrap();
 
         assert_eq!(
             progress[0].integrity_position,
@@ -1205,7 +1417,7 @@ mod tests {
         let unexpected = DeviceId::new("not-in-trust-set").unwrap();
         fs::create_dir_all(canonical_events_device_dir(&root, &unexpected)).unwrap();
         let trusted = DeviceId::new("trusted-device").unwrap();
-        let error = require_complete_device_inventory(&root, &[trusted]).unwrap_err();
+        let error = require_complete_device_inventory(&root, &[trusted], None).unwrap_err();
         assert!(matches!(
             error,
             KnowledgeMaterializationError::InvalidInput(_)
@@ -1236,7 +1448,8 @@ mod tests {
                 content_hash: cryptex_events::ContentHashHex::parse(&"22".repeat(32)).unwrap(),
                 raw_record: b"verified unsupported synthetic record".to_vec(),
             });
-        let progress = build_progress(&[device], &[unsupported], &frames, &[], &[], &[]);
+        let progress =
+            build_progress(&[device], &[unsupported], &frames, &[], &[], &[], None).unwrap();
         assert_eq!(
             progress[0].integrity_position,
             Some(frames[2].position.clone())
@@ -1417,7 +1630,7 @@ mod tests {
         let directory = canonical_events_device_dir(&root, &device);
         fs::create_dir_all(&directory).unwrap();
         fs::write(directory.join("not-an-index.seg"), b"must not be omitted").unwrap();
-        let result = scan_device_read_only(&root, &device, &mut Vec::new());
+        let result = scan_device_read_only(&root, &device, &mut Vec::new(), None);
         assert!(matches!(
             result,
             Err(KnowledgeMaterializationError::Storage(

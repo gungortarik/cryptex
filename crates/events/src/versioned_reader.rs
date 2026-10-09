@@ -68,6 +68,18 @@ pub trait TrustedDaemonKeyResolver {
     fn trusted_daemon_key(&mut self, device_id: &str, key_id: &str) -> Option<VerifyingKey>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CancellableHistoryVerificationError {
+    InvalidRecord(ValidationFailure),
+    Cancelled,
+}
+
+impl From<ValidationFailure> for CancellableHistoryVerificationError {
+    fn from(value: ValidationFailure) -> Self {
+        Self::InvalidRecord(value)
+    }
+}
+
 impl VerifiedV2History {
     #[must_use]
     pub fn records(&self) -> &[VersionedRecord] {
@@ -209,16 +221,40 @@ impl VersionedChainVerifier {
 /// whole history; verified unsupported records remain present in the result.
 pub fn verify_v2_history<R>(
     raw_records: &[&[u8]],
-    mut key_resolver: R,
+    key_resolver: R,
 ) -> Result<VerifiedV2History, ValidationFailure>
 where
     R: TrustedDaemonKeyResolver,
+{
+    match verify_v2_history_cancellable(raw_records, key_resolver, || false) {
+        Ok(history) => Ok(history),
+        Err(CancellableHistoryVerificationError::InvalidRecord(error)) => Err(error),
+        Err(CancellableHistoryVerificationError::Cancelled) => {
+            unreachable!("the non-cancellable verifier never cancels")
+        }
+    }
+}
+
+/// Verify a complete history while allowing a bounded caller to stop between
+/// records. Cancellation is distinct from invalid canonical data and never
+/// returns a partial `VerifiedV2History`.
+pub fn verify_v2_history_cancellable<R, C>(
+    raw_records: &[&[u8]],
+    mut key_resolver: R,
+    mut cancelled: C,
+) -> Result<VerifiedV2History, CancellableHistoryVerificationError>
+where
+    R: TrustedDaemonKeyResolver,
+    C: FnMut() -> bool,
 {
     let mut verifiers = std::collections::BTreeMap::<String, VersionedChainVerifier>::new();
     let mut seen_event_bytes = std::collections::BTreeMap::<String, Vec<u8>>::new();
     let mut records = Vec::with_capacity(raw_records.len());
     let mut assertions = Vec::new();
     for bytes in raw_records {
+        if cancelled() {
+            return Err(CancellableHistoryVerificationError::Cancelled);
+        }
         let value: serde_json::Value = serde_json::from_slice(bytes)
             .map_err(|_| failure("invalid_record", "record JSON is malformed", None))?;
         // Event IDs are UUIDs and therefore case-insensitive identifiers.
@@ -273,7 +309,8 @@ where
                     "invalid_record",
                     "unverifiable envelope blocks complete history verification",
                     peek_version(&value),
-                ));
+                )
+                .into());
             }
         };
         if actual_device_id != device_id {
@@ -281,7 +318,8 @@ where
                 "integrity_failure",
                 "record device_id changed during verification",
                 peek_version(&value),
-            ));
+            )
+            .into());
         }
         let verifier = verifiers
             .entry(actual_device_id.to_owned())
@@ -293,7 +331,8 @@ where
                     "integrity_failure",
                     "different verified records share the same event_id",
                     peek_version(&value),
-                ));
+                )
+                .into());
             }
             seen_event_bytes.insert(canonical_event_id, bytes.to_vec());
         }
@@ -1001,6 +1040,18 @@ mod tests {
         chain.verify_next(&second).unwrap();
         assert_eq!(chain.last_seq, Some(5));
         assert_eq!(chain.last_hash, second_v1.content_hash);
+    }
+
+    #[test]
+    fn cancelled_history_verification_returns_no_partial_history() {
+        let (raw, key) = make_v2("knowledge.assertion", 1);
+        let error = verify_v2_history_cancellable(
+            &[&raw],
+            TestTrustedDaemonKeyResolver(key.verifying_key()),
+            || true,
+        )
+        .expect_err("cancelled verification must not return a partial history");
+        assert_eq!(error, CancellableHistoryVerificationError::Cancelled);
     }
 
     #[test]

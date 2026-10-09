@@ -9,7 +9,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use cryptex_core::ids::DeviceId;
 use cryptex_core::validate::{parse_rfc3339_str, parse_uuid_str};
@@ -289,6 +289,27 @@ pub(crate) fn acquire_canonical_inventory_lock(
     Ok(CanonicalInventoryLock { _file: file })
 }
 
+/// Deadline-bounded read-side inventory lock used by content retrieval. Unlike
+/// canonical writers, a timed-out read must release its worker promptly.
+pub(crate) fn acquire_canonical_inventory_lock_until(
+    runtime_root: &Path,
+    deadline: Instant,
+) -> CanonicalWriterResult<CanonicalInventoryLock> {
+    assert_outside_repository(runtime_root)
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let events_root = runtime_root.join("canonical").join("events");
+    fs::create_dir_all(&events_root).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(events_root.join("inventory.lock"))
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    lock_exclusive_until(&file, deadline, "canonical inventory")?;
+    Ok(CanonicalInventoryLock { _file: file })
+}
+
 impl DeviceCanonicalLock {
     pub(crate) fn device_id(&self) -> &DeviceId {
         &self.device_id
@@ -331,6 +352,51 @@ pub(crate) fn acquire_existing_device_canonical_lock(
         return Ok(None);
     }
     acquire_device_lock_in_existing_dir(device_id, &device_dir).map(Some)
+}
+
+pub(crate) fn acquire_existing_device_canonical_lock_until(
+    runtime_root: &Path,
+    device_id: &DeviceId,
+    deadline: Instant,
+) -> CanonicalWriterResult<Option<DeviceCanonicalLock>> {
+    let device_dir = canonical_events_device_dir(runtime_root, device_id);
+    if !device_dir.exists() {
+        return Ok(None);
+    }
+    let lock_path = device_dir.join("writer.lock");
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lock_path)
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    lock_exclusive_until(&file, deadline, "device canonical")?;
+    Ok(Some(DeviceCanonicalLock {
+        device_id: device_id.clone(),
+        _file: file,
+    }))
+}
+
+fn lock_exclusive_until(file: &File, deadline: Instant, scope: &str) -> CanonicalWriterResult<()> {
+    loop {
+        if Instant::now() >= deadline {
+            return Err(CanonicalWriterError::Path(format!(
+                "{scope} lock deadline exceeded"
+            )));
+        }
+        match fs2::FileExt::try_lock_exclusive(file) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => {
+                return Err(CanonicalWriterError::Path(format!(
+                    "{scope} lock failed: {error}"
+                )));
+            }
+        }
+    }
 }
 
 fn acquire_device_lock_in_existing_dir(

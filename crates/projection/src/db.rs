@@ -295,7 +295,8 @@ fn replaceable_unusable_reason(err: &ProjectionError) -> Option<ProjectionReplac
         | ProjectionError::Sqlite(_)
         | ProjectionError::Fts5Unavailable { .. }
         | ProjectionError::EventConflict { .. }
-        | ProjectionError::InvalidQuery { .. } => None,
+        | ProjectionError::InvalidQuery { .. }
+        | ProjectionError::OperationDeadlineExceeded => None,
     }
 }
 
