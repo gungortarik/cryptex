@@ -14,8 +14,8 @@
 > `evidence/m4/m4-adr18-guarded-desktop-search-ipc-20261008.md`.
 >
 > The later security-hardening candidate `c2cf07bf0662589a9932c201f5e9e749e6a1013a`
-> changes reducer and IPC behavior and is not covered by the earlier Mac run;
-> its exact-tip check is pending in
+> changes reducer and IPC behavior; those changes passed exact-SHA macOS checks
+> recorded in
 > `evidence/m4/m4-security-hardening-cancellable-reducer-20261008.md`.
 
 ## Change

@@ -13,7 +13,7 @@
 > `evidence/m4/m4-adr18-guarded-desktop-search-ipc-20261008.md`.
 >
 > Later reducer/IPC hardening at `c2cf07bf0662589a9932c201f5e9e749e6a1013a`
-> requires its own Mac verification; see
+> also passed exact-SHA macOS verification; see
 > `evidence/m4/m4-security-hardening-cancellable-reducer-20261008.md`.
 
 ## Change

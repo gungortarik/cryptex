@@ -3,7 +3,7 @@
 **Code SHA:** `c2cf07bf0662589a9932c201f5e9e749e6a1013a`
 **Branch:** `m4/knowledge-engine`
 **Windows verification:** PASS
-**macOS verification:** WAITING for this SHA
+**macOS verification:** PASS on this SHA
 **GitHub Actions:** not run; retain the single required run for the final reviewed candidate.
 
 ## Changes
@@ -30,21 +30,18 @@ The read-only security re-review found no remaining P1/P2 algorithmic issue, red
 
 Residual availability limitation: a synchronous OS or SQLite call that does not return can retain one of two search reservations until it returns. The daemon then responds `search_busy`; this does not expose results or consume the separate health-worker capacity.
 
-## macOS verification required
+## Exact-SHA macOS verification
 
-The owner-reported macOS PASS at `b6d652da07c175d086c625bfb498cf370dfc5fe2` is valid for that earlier code SHA, which is an ancestor of this commit. It does not cover the reducer cancellation, union-find, or bounded worker changes in `c2cf07b`.
+Owner-reported verification at exact SHA `c2cf07bf0662589a9932c201f5e9e749e6a1013a`:
 
-On macOS, check out this exact SHA and run:
+- Host: macOS 27.0.1 (26A434), arm64; working tree clean before and after.
+- `cargo fmt --all -- --check` — PASS.
+- `cargo test --locked -p cryptex-knowledge` — **34/34 PASS**.
+- `cargo test --locked -p cryptexd` — **194 PASS** (lib 178, bin 2, lifecycle 9, Mode B 3, update rollback 2).
+- Strict Clippy for `cryptex-knowledge` and `cryptexd` — PASS.
+- `cargo check --locked -p cryptex-desktop` — PASS.
+- `git diff --check` — PASS.
 
-```sh
-git checkout c2cf07bf0662589a9932c201f5e9e749e6a1013a
-git rev-parse HEAD
-cargo fmt --all -- --check
-cargo test --locked -p cryptex-knowledge
-cargo test --locked -p cryptexd
-cargo clippy --locked -p cryptex-knowledge -p cryptexd --all-targets -- -D warnings
-cargo check --locked -p cryptex-desktop
-git diff --check
-```
+The earlier macOS report at `b6d652d` did not cover these hardening changes; this exact-SHA run closes that cross-platform verification gap.
 
-Physical visual review, the final DoD review, human review, and the single required dual-OS Actions gate remain open. M4 is not complete; no merge or production v2 activation is claimed.
+Physical visual review, final DoD/human review, and the single required dual-OS Actions gate remain open. M4 is not complete; no merge or production v2 activation is claimed.

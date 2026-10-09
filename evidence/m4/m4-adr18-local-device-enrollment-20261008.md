@@ -16,7 +16,7 @@
 > `evidence/m4/m4-adr18-guarded-desktop-search-ipc-20261008.md`.
 >
 > The later reducer/IPC hardening candidate `c2cf07bf0662589a9932c201f5e9e749e6a1013a`
-> is not covered by that Mac run; its exact-tip Mac check is pending in
+> has its own exact-SHA Mac PASS (macOS 27.0.1 arm64) recorded in
 > `evidence/m4/m4-security-hardening-cancellable-reducer-20261008.md`.
 
 ## Scope
