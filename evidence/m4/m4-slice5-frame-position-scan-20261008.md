@@ -4,6 +4,11 @@
 existing verified frame fold; daemon-to-M4 materialization and retrieval
 safety are still open.
 
+> **Historical status superseded:** daemon materialization, RetrievalSafetyState
+> enforcement, and guarded Desktop retrieval were implemented in later M4
+> slices. Current status and evidence are tracked in the M4 handoff and
+> milestone contract.
+
 ## Change
 
 Added `fold_verified_frames_with_offsets`, which reports the original byte

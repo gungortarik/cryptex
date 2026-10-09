@@ -1,6 +1,11 @@
 # M4 Slice 5 — Daemon Verified Rebuild Path
 
-**Status:** Windows locally verified; macOS verification pending.
+**Historical status at original slice:** Windows locally verified; macOS verification pending.
+
+> **Historical status superseded:** the later full `cryptexd --lib` macOS run at
+> `946642a459531247091e858c301fc7ea17835ff0` passed 175/175 tests, including
+> the M4 rebuild/materialization tests. See
+> `evidence/m4/m4-adr18-ipc-auth-timeout-hardening-20261008.md`.
 
 ## Change
 

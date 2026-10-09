@@ -4,6 +4,12 @@
 **Code commits:** `8241fbf3ac5c00a8617bea3632245ed9b71b118d`, test-fixture correction `04a1328ef5ad668b207a968e7cf3f9988f910815`, read-only resolver `fac6e29f13343c116221ca3abca47b67eb0c051c`, explicit setup command `8775a768abd59db72cd68c8eb1692167319cf947`
 **Branch:** `m4/knowledge-engine`
 
+> **Historical status superseded:** macOS full library and enrollment IPC
+> coverage passed at `946642a459531247091e858c301fc7ea17835ff0` as part of
+> `cargo test --locked -p cryptexd --lib` (175/175). See
+> `evidence/m4/m4-adr18-ipc-auth-timeout-hardening-20261008.md` for the exact
+> host and command record.
+
 ## Scope
 
 Added an explicit daemon library operation for enrolling the current local

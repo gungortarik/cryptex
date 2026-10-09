@@ -2,6 +2,12 @@
 
 **Status:** backend/library gate verified on Windows and macOS; Desktop retrieval integration remains open.
 
+> **Historical status superseded:** guarded Desktop search IPC and renderer
+> integration were implemented later; Windows and macOS frontend verification
+> is recorded at `9eea611`, and current IPC cross-platform tests at
+> `946642a459531247091e858c301fc7ea17835ff0`. Final M4 visual/DoD review
+> remains open.
+
 ## Change
 
 - Added a daemon-issued `RetrievalSafetyState` and fail-closed evaluator for

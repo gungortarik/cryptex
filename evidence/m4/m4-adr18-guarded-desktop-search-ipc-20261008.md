@@ -1,6 +1,6 @@
 # M4 ADR-0018 — Guarded Desktop search IPC
 
-**Status:** Windows/macOS local verification PASS; visual and final M4 gates pending
+**Status:** initial IPC/UI behavior locally verified on Windows/macOS; bounded full-history search follow-up at `3792485` is Windows-verified and awaits exact-tip macOS parity; visual and final M4 gates pending
 **Code SHA:** `652b4def1b71e9ba47323d3e51955cd3d777091a`
 **Branch:** `m4/knowledge-engine`
 
@@ -77,12 +77,49 @@ tests; both full commands exited 0. No app launch, visual review, lockfile
 change, or Actions run occurred. The UI-only hardening at `652b4de` postdates
 this Mac verification; the two frontend checks below remain pending on macOS.
 
+## Later bounded full-history search follow-up (`3792485`)
+
+The original implementation performed authenticated Desktop requests on the
+listener path. The follow-up moves authenticated Desktop connections to
+bounded workers and gives expensive full-history search a separate two-worker
+limit. Desktop connections are capped at eight; non-Desktop health traffic
+retains its independent four-worker pool. This prevents slow searches from
+occupying the listener or health capacity.
+
+One 15-second deadline covers canonical inventory/device lock waits, frame
+scanning, signature verification, deterministic reduction, materialization
+comparison, and SQLite VM execution. Cancellation returns no partial hits and
+maps to a Brain-wide RetrievalSafetyState hold. Expired SQLite progress hooks
+are removed before the connection is reused. A persisted late cross-device
+dependency test proves the safe watermark remains before the unresolved event,
+then incremental replay converges to a fresh full rebuild after the dependency
+arrives.
+
+Windows at `37924852ad2207f0ab618c6737e5e08f0a6907c8`:
+
+- `cargo fmt --all -- --check` — PASS
+- `cargo test --locked -p cryptex-events` — **61/61 PASS**
+- `cargo test --locked -p cryptex-storage` — **41/41 PASS**
+- `cargo test --locked -p cryptex-projection` — **48/48 PASS**
+- `cargo test --locked -p cryptex-knowledge` — **31/31 PASS**
+- `cargo test --locked -p cryptexd --lib` — **182/182 PASS**
+- `cargo test --locked -p cryptexd --bin cryptexd` — **2/2 PASS**
+- `cargo check --locked -p cryptex-desktop` — PASS
+- Strict Clippy for events, storage, projection, knowledge, and cryptexd
+  `--all-targets -- -D warnings` — PASS
+- `git diff --check` — PASS
+
+Owner-reported macOS checks at `946642a459531247091e858c301fc7ea17835ff0`
+verify the earlier peer-auth/IPC implementation, not this new worker/deadline
+follow-up. Exact-tip Mac parity for `3792485` remains required. No Actions were
+run for this follow-up.
+
 ## Remaining work
 
-On current code SHA `652b4de`, macOS still needs
-`pnpm --filter @cryptex/desktop test:search-policy` and
-`pnpm --filter @cryptex/desktop build`. Physical visual review and final
-security/DoD review remain open; backend hold coverage exists, but this record
-does not claim every hold reason was manually exercised in the UI. No Actions
-were run. This slice is not M4 completion and does not enable production v2
-writing.
+macOS frontend checks (`test:search-policy` and Desktop build) passed at
+`9eea611` as recorded in `evidence/m4/m4-search-ui-macos-recheck-20261008.md`.
+The follow-up's Rust behavior still needs exact-tip Mac checks. Physical visual
+review and final security/DoD review remain open; backend hold coverage exists,
+but this record does not claim every hold reason was manually exercised in the
+UI. No Actions were run. This slice is not M4 completion and does not enable
+production v2 writing.
