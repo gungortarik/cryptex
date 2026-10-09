@@ -1,9 +1,9 @@
 # M4 ADR-0018 — IPC peer authentication and bounded frames
 
-**Status:** Windows local verification PASS; macOS verification pending on this change  
+**Status:** Windows and macOS local verification PASS on commit `946642a459531247091e858c301fc7ea17835ff0`
 **Branch:** `m4/knowledge-engine`
 
-Owner macOS attempts at commits `53d0182` and `16e411f` both stopped at compile time before tests ran. The first called `as_raw_fd()` on the `interprocess::local_socket::Stream` enum; the second called `inner()` on that enum. The Darwin adapter is being corrected to match `Stream::UdSocket(unix_stream)` and call `inner().as_raw_fd()` on the wrapped Unix stream. The fix must be rechecked on macOS at its new commit before parity is claimed.
+Owner macOS attempts at commits `53d0182` and `16e411f` stopped at compile time before tests ran. The first called `as_raw_fd()` on the `interprocess::local_socket::Stream` enum; the second called `inner()` on that enum. Commit `946642a` corrected the Darwin adapter to match `Stream::UdSocket(unix_stream)` and call `inner().as_raw_fd()` on the wrapped Unix stream. The exact commit then passed all listed Mac checks below.
 
 ## Security findings resolved in this change
 
@@ -26,25 +26,17 @@ Owner macOS attempts at commits `53d0182` and `16e411f` both stopped at compile 
 - `pnpm --filter @cryptex/desktop build` — PASS
 - `git diff --check` — PASS
 
-A macOS cross-target check from Windows was attempted but cannot compile the bundled C dependencies because this host has no Apple C compiler/SDK (`cc` unavailable). This is an environment limitation, not a passing Mac check.
+## macOS verification
 
-## Required macOS run
+Owner-reported run at exact commit `946642a459531247091e858c301fc7ea17835ff0`:
 
-On the Mac, pull this change and verify the exact resulting commit SHA with:
+- Host: macOS 27.0.1 (26A434), arm64; clean working tree
+- `cargo fmt --all -- --check` — PASS
+- `cargo test --locked -p cryptexd --lib ipc:: -- --nocapture` — **12/12 PASS**
+- `cargo test --locked -p cryptexd --lib` — **175/175 PASS**
+- `cargo test --locked -p cryptexd --bin cryptexd` — **2/2 PASS**
+- `cargo check --locked -p cryptex-desktop` — PASS
+- `cargo clippy --locked -p cryptexd -p cryptex-desktop --all-targets -- -D warnings` — PASS
+- `git diff --check` — PASS
 
-```bash
-git fetch origin
-git checkout m4/knowledge-engine
-git pull --ff-only origin m4/knowledge-engine
-git rev-parse HEAD
-cargo fmt --all -- --check
-cargo test --locked -p cryptexd --lib ipc:: -- --nocapture
-cargo test --locked -p cryptexd --lib
-cargo clippy --locked -p cryptexd -p cryptex-desktop --all-targets -- -D warnings
-cargo check --locked -p cryptex-desktop
-pnpm --filter @cryptex/desktop test:search-policy
-pnpm --filter @cryptex/desktop build
-git diff --check
-```
-
-The IPC test suite exercises the platform peer-PID API, including Darwin `LOCAL_PEERPID` and the live-parent check. No Actions were dispatched. This closes only the reviewed IPC findings after Mac verification; M4 acceptance/security/visual reviews remain open. Production v2 writing remains disabled.
+The IPC tests compiled and exercised Darwin `LOCAL_PEERPID` and the live-parent check. No Actions were dispatched. This closes the cross-platform local IPC verification only; M4 acceptance/security/visual reviews remain open. Production v2 writing remains disabled.
