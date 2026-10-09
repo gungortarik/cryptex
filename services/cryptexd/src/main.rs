@@ -309,7 +309,7 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
 
 #[cfg(windows)]
 fn spawn_platform_ipc_server(runtime_root: &Path) -> std::io::Result<()> {
-    cryptexd::ipc::spawn_retrieval_server(
+    cryptexd::ipc::spawn_daemon_ipc_server(
         runtime_root,
         std::sync::Arc::new(cryptexd::WindowsCredentialStore::new()),
         SecureStoreEnvironment::Dev,
@@ -318,7 +318,7 @@ fn spawn_platform_ipc_server(runtime_root: &Path) -> std::io::Result<()> {
 
 #[cfg(target_os = "macos")]
 fn spawn_platform_ipc_server(runtime_root: &Path) -> std::io::Result<()> {
-    cryptexd::ipc::spawn_retrieval_server(
+    cryptexd::ipc::spawn_daemon_ipc_server(
         runtime_root,
         std::sync::Arc::new(cryptexd::MacosKeychainStore::new()),
         SecureStoreEnvironment::Dev,

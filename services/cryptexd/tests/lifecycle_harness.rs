@@ -4,6 +4,7 @@
 //! Syncthing runtime paths and does not select ADR-0012 supervision.
 
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, MutexGuard};
@@ -57,6 +58,16 @@ fn parse_kv(output: &str, key: &str) -> Option<String> {
     })
 }
 
+fn stop_child_with_diagnostics(child: &mut std::process::Child, reason: &str) -> String {
+    let _ = child.kill();
+    let status = child.wait();
+    let mut stderr = String::new();
+    if let Some(mut pipe) = child.stderr.take() {
+        let _ = pipe.read_to_string(&mut stderr);
+    }
+    format!("{reason}; child exit={status:?}; stderr={stderr}")
+}
+
 #[test]
 fn foundation_entrypoint_still_prints_banner() {
     let _guard = serialize_process_harness();
@@ -91,7 +102,8 @@ fn second_daemon_instance_is_rejected_while_first_remains_healthy() {
 
     assert!(
         wait_until(Duration::from_secs(5), || ready.exists()),
-        "holder did not become ready"
+        "{}",
+        stop_child_with_diagnostics(&mut holder, "holder did not become ready")
     );
 
     let status = Command::new(cryptexd_bin())
@@ -166,7 +178,12 @@ fn clean_shutdown_releases_instance_lock() {
         ])
         .output()
         .expect("hold");
-    assert!(output.status.success());
+    assert!(
+        output.status.success(),
+        "hold command failed; exit={}; stderr={}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
     let observation = observe_instance(&runtime).expect("observe");
     assert!(!observation.lock_held);
     let report = LifecycleReport::from_observation(&runtime, &observation, None, "post-shutdown");
@@ -192,9 +209,10 @@ fn compact_login_hold_publishes_ready_and_clean_stops_under_runtime_root() {
         .expect("spawn login hold");
     let became_ready = wait_until(Duration::from_secs(5), || runtime.join("ready").exists());
     if !became_ready {
-        let _ = holder.kill();
-        let _ = holder.wait();
-        panic!("login hold did not become ready");
+        panic!(
+            "{}",
+            stop_child_with_diagnostics(&mut holder, "login hold did not become ready")
+        );
     }
     let ready_pid = fs::read_to_string(runtime.join("ready")).expect("read ready");
     let observation = observe_instance(&runtime).expect("observe running login hold");
@@ -242,7 +260,8 @@ fn forced_crash_is_detectable_and_restart_path_works() {
 
     assert!(
         wait_until(Duration::from_secs(5), || ready.exists()),
-        "crash fixture never became ready"
+        "{}",
+        stop_child_with_diagnostics(&mut crash, "crash fixture never became ready")
     );
 
     let status = crash.wait().expect("wait crash");
@@ -414,7 +433,8 @@ fn hold_binds_install_identity_and_sequence_store_dir() {
 
     assert!(
         wait_until(Duration::from_secs(5), || ready.exists()),
-        "holder did not become ready"
+        "{}",
+        stop_child_with_diagnostics(&mut holder, "holder did not become ready")
     );
 
     let install_path = runtime.join("identity").join("install_identity.json");
@@ -464,7 +484,11 @@ fn contender_fails_lock_without_creating_or_altering_install_identity() {
     assert!(
         wait_until(Duration::from_secs(5), || ready.exists()
             && install_path.is_file()),
-        "holder did not become ready with install identity"
+        "{}",
+        stop_child_with_diagnostics(
+            &mut holder,
+            "holder did not become ready with install identity"
+        )
     );
     let original = fs::read_to_string(&install_path).expect("read install");
 

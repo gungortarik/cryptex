@@ -198,6 +198,34 @@ pub fn spawn_retrieval_server(
     }))
 }
 
+/// Start the product IPC endpoint. Guarded retrieval is enabled only when the
+/// daemon's current parent can be authenticated as the packaged Desktop. CLI,
+/// test, and other launches retain the health-only endpoint instead of
+/// failing daemon startup; sensitive operations remain unavailable without a
+/// verified Desktop identity.
+pub fn spawn_daemon_ipc_server(
+    runtime_root: &Path,
+    store: Arc<dyn SecureStore>,
+    environment: SecureStoreEnvironment,
+) -> io::Result<()> {
+    let expected_desktop = match desktop_process_identity() {
+        Ok(identity) => identity,
+        Err(error) => {
+            eprintln!(
+                "cryptexd: Desktop peer identity unavailable ({}); serving health-only IPC",
+                error.kind()
+            );
+            return spawn_server(None);
+        }
+    };
+    spawn_server(Some(SearchContext {
+        runtime_root: runtime_root.to_path_buf(),
+        store,
+        environment,
+        expected_desktop,
+    }))
+}
+
 struct SearchContext {
     runtime_root: PathBuf,
     store: Arc<dyn SecureStore>,
