@@ -915,7 +915,9 @@ fn peer_process_id(stream: &Stream) -> io::Result<u32> {
     let mut length = std::mem::size_of_val(&pid) as libc::socklen_t;
     let result = unsafe {
         libc::getsockopt(
-            stream.inner().as_raw_fd(),
+            match stream {
+                Stream::UdSocket(unix_stream) => unix_stream.inner().as_raw_fd(),
+            },
             libc::SOL_LOCAL,
             libc::LOCAL_PEERPID,
             (&mut pid as *mut libc::pid_t).cast(),

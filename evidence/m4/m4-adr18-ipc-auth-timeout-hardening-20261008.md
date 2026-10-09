@@ -3,7 +3,7 @@
 **Status:** Windows local verification PASS; macOS verification pending on this change  
 **Branch:** `m4/knowledge-engine`
 
-The first owner macOS attempt at commit `53d0182` found a compile-only API mismatch in the Darwin peer-PID adapter: `LocalSocketStream` does not implement `AsRawFd` directly. The adapter now obtains the raw descriptor from `LocalSocketStream::inner()` (the wrapped `std::os::unix::net::UnixStream`). No tests ran on that failed attempt. The fix must be rechecked on macOS at its new commit before parity is claimed.
+Owner macOS attempts at commits `53d0182` and `16e411f` both stopped at compile time before tests ran. The first called `as_raw_fd()` on the `interprocess::local_socket::Stream` enum; the second called `inner()` on that enum. The Darwin adapter is being corrected to match `Stream::UdSocket(unix_stream)` and call `inner().as_raw_fd()` on the wrapped Unix stream. The fix must be rechecked on macOS at its new commit before parity is claimed.
 
 ## Security findings resolved in this change
 
