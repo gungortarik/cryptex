@@ -43,7 +43,7 @@ The session was closed with the Desktop clean-quit command. This was not a relea
 
 - macOS local tests, Clippy, and native visual review. No Mac host was available in this session. Those gates stay pending.
 - Owner Definition of Done review and human acceptance.
-- The single final dual-OS GitHub Actions readiness workflow. It had not been started when this record was written.
+- The single final dual-OS GitHub Actions readiness workflow passed after this record's first draft. Run https://github.com/gungortarik/cryptex/actions/runs/37987708059 at exact SHA `7aaa08a0061c3208c0e45ab7d8f6cd032bf52315`: macOS readiness success, Windows readiness success, Windows IPC ACL success. The unsigned Windows package job was skipped by workflow design. No second workflow was started.
 - Production v2 writing remains disabled. M5, M8, M10, and M14 were not implemented.
 
 M4 is not complete.
