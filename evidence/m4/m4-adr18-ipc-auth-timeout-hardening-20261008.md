@@ -3,6 +3,8 @@
 **Status:** Windows local verification PASS; macOS verification pending on this change  
 **Branch:** `m4/knowledge-engine`
 
+The first owner macOS attempt at commit `53d0182` found a compile-only API mismatch in the Darwin peer-PID adapter: `LocalSocketStream` does not implement `AsRawFd` directly. The adapter now obtains the raw descriptor from `LocalSocketStream::inner()` (the wrapped `std::os::unix::net::UnixStream`). No tests ran on that failed attempt. The fix must be rechecked on macOS at its new commit before parity is claimed.
+
 ## Security findings resolved in this change
 
 - Sensitive `content.search` and `identity.enroll_local` requests no longer trust the caller-supplied `client_role` alone. `cryptexd` captures the OS parent Desktop identity when the retrieval endpoint starts and checks the kernel-reported peer PID before serving sensitive IPC requests.
