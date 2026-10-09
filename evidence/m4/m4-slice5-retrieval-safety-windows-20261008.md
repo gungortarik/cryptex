@@ -1,12 +1,22 @@
 # M4 Slice 5 — Retrieval safety gate (Windows local)
 
-**Status:** backend/library gate verified on Windows and macOS; Desktop retrieval integration remains open.
+**Historical status at original retrieval-safety slice:** backend/library gate verified on Windows and macOS; Desktop retrieval integration remained open at that time.
 
 > **Historical status superseded:** guarded Desktop search IPC and renderer
 > integration were implemented later; Windows and macOS frontend verification
 > is recorded at `9eea611`, and current IPC cross-platform tests at
 > `946642a459531247091e858c301fc7ea17835ff0`. Final M4 visual/DoD review
 > remains open.
+>
+> **Current status supersedes this snapshot:** guarded Desktop retrieval, IPC
+> authentication and bounded search are implemented and locally verified on
+> Windows/macOS at code SHA `b6d652da07c175d086c625bfb498cf370dfc5fe2`; see
+> `evidence/m4/m4-adr18-guarded-desktop-search-ipc-20261008.md`.
+>
+> The later security-hardening candidate `c2cf07bf0662589a9932c201f5e9e749e6a1013a`
+> changes reducer and IPC behavior and is not covered by the earlier Mac run;
+> its exact-tip check is pending in
+> `evidence/m4/m4-security-hardening-cancellable-reducer-20261008.md`.
 
 ## Change
 

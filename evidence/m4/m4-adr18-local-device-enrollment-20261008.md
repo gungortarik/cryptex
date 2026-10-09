@@ -1,6 +1,6 @@
 # M4 ADR-0018 — Explicit local device enrollment
 
-**Status:** Windows local verification PASS; macOS parity pending
+**Historical status at initial enrollment slice:** Windows local verification PASS; macOS parity pending at that time
 **Code commits:** `8241fbf3ac5c00a8617bea3632245ed9b71b118d`, test-fixture correction `04a1328ef5ad668b207a968e7cf3f9988f910815`, read-only resolver `fac6e29f13343c116221ca3abca47b67eb0c051c`, explicit setup command `8775a768abd59db72cd68c8eb1692167319cf947`
 **Branch:** `m4/knowledge-engine`
 
@@ -9,6 +9,15 @@
 > `cargo test --locked -p cryptexd --lib` (175/175). See
 > `evidence/m4/m4-adr18-ipc-auth-timeout-hardening-20261008.md` for the exact
 > host and command record.
+>
+> **Current status supersedes this snapshot:** the enrollment and authenticated
+> IPC path passed the complete local Mac verification at exact behavior SHA
+> `b6d652da07c175d086c625bfb498cf370dfc5fe2`. See
+> `evidence/m4/m4-adr18-guarded-desktop-search-ipc-20261008.md`.
+>
+> The later reducer/IPC hardening candidate `c2cf07bf0662589a9932c201f5e9e749e6a1013a`
+> is not covered by that Mac run; its exact-tip Mac check is pending in
+> `evidence/m4/m4-security-hardening-cancellable-reducer-20261008.md`.
 
 ## Scope
 
@@ -38,7 +47,7 @@ Brain mismatch/corrupt metadata, and refusal of unbound existing canonical state
 The CLI tests require explicit runtime-root and SecureStore namespace arguments
 and reject unknown namespace values before touching paths.
 
-## Remaining work
+## Remaining work at original enrollment code SHA
 
 macOS verification has not been run on this code SHA. Desktop-facing guarded
 search IPC and retrieval-safety coverage through that IPC remain to be

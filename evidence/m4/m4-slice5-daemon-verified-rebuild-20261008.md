@@ -6,6 +6,15 @@
 > `946642a459531247091e858c301fc7ea17835ff0` passed 175/175 tests, including
 > the M4 rebuild/materialization tests. See
 > `evidence/m4/m4-adr18-ipc-auth-timeout-hardening-20261008.md`.
+>
+> **Current exact-tip status:** full `cryptexd` package tests passed on macOS
+> at `b6d652da07c175d086c625bfb498cf370dfc5fe2`; the current Windows/Mac
+> verification is recorded in
+> `evidence/m4/m4-adr18-guarded-desktop-search-ipc-20261008.md`.
+>
+> Later reducer/IPC hardening at `c2cf07bf0662589a9932c201f5e9e749e6a1013a`
+> requires its own Mac verification; see
+> `evidence/m4/m4-security-hardening-cancellable-reducer-20261008.md`.
 
 ## Change
 
@@ -54,8 +63,10 @@ file length now blocks before migration or M4 writes; malformed pack filenames
 and unexpected directory entries also fail closed. Regressions prove the
 canonical bytes and preexisting SQLite state remain unchanged. Focused daemon
 materialization tests: 7/7 PASS; full daemon library suite: 157/157 PASS.
-- macOS focused execution: pending.
-- GitHub Actions: not run.
+- At the original Slice 5 tip, focused macOS execution was pending; this is
+  superseded by the exact-tip Mac package verification at `b6d652d` above.
+- GitHub Actions had not run when this historical slice report was recorded;
+  the final reviewed-candidate workflow remains pending.
 
 New regression tests cover verified v1 rebuild with byte-identical canonical
 input, unchanged SQLite state on an unverifiable envelope, and a pending
@@ -63,7 +74,7 @@ dependency holding the safe watermark before its frame.
 
 ## Follow-up
 
-Run on macOS:
+Original next-step procedure (superseded by the exact-tip Mac verification):
 
 ```bash
 cargo fmt --all -- --check
