@@ -166,13 +166,15 @@ where
     check_cancelled(&mut cancelled)?;
     cryptex_core::validate::parse_uuid_str(expected_brain_id)
         .map_err(|_| ReducerError::InvalidEvent(expected_brain_id.to_owned()))?;
-    let known_event_ids: BTreeSet<_> = input
-        .records()
-        .iter()
-        .filter_map(verified_record_event_id)
-        .map(canonical_uuid)
-        .collect();
+    let mut known_event_ids = BTreeSet::new();
+    for record in input.records() {
+        check_cancelled(&mut cancelled)?;
+        if let Some(event_id) = verified_record_event_id(record) {
+            known_event_ids.insert(canonical_uuid(event_id));
+        }
+    }
     let mut by_id = BTreeMap::<String, VerifiedV2KnowledgeAssertion>::new();
+    let mut known_assertion_event_ids = BTreeSet::new();
     for record in input.assertions() {
         check_cancelled(&mut cancelled)?;
         let event = record.event();
@@ -183,6 +185,13 @@ where
             return Err(ReducerError::InvalidEvent(event.event_id.clone()));
         }
         let canonical_id = canonical_uuid(&event.event_id);
+        if matches!(
+            event.payload,
+            KnowledgeAssertionPayload::FactAssert { .. }
+                | KnowledgeAssertionPayload::RelationAssert { .. }
+        ) {
+            known_assertion_event_ids.insert(canonical_id.clone());
+        }
         match by_id.get(&canonical_id) {
             Some(prior) if prior.raw_record() != record.raw_record() => {
                 return Err(ReducerError::ConflictingEventId(canonical_id));
@@ -194,9 +203,16 @@ where
         }
     }
 
-    let mut records: Vec<_> = by_id.into_values().collect();
-    records.sort_by(|left, right| stable_event_cmp(left.event(), right.event()));
-    check_cancelled(&mut cancelled)?;
+    let mut records = Vec::with_capacity(by_id.len());
+    for record in by_id.into_values() {
+        check_cancelled(&mut cancelled)?;
+        records.push(record);
+    }
+    sort_by_cancellable(
+        &mut records,
+        |left, right| stable_event_cmp(left.event(), right.event()),
+        &mut cancelled,
+    )?;
     let mut state = KnowledgeState::default();
     let mut invalid_event_ids = BTreeSet::<String>::new();
     let mut entities = BTreeMap::<String, Entity>::new();
@@ -363,37 +379,57 @@ where
     }
 
     // Revoke is effective only for a known merge edge. Unknown references stay pending.
-    let revoked_targets: BTreeSet<_> = revoked_merges
-        .iter()
-        .map(|(_, target, _)| target.clone())
-        .collect();
-    let mut active_merges = Vec::new();
+    let mut revoked_targets = BTreeSet::new();
+    let mut revoked_provenance_by_target = BTreeMap::<String, Vec<Provenance>>::new();
+    for (_, target, _) in &revoked_merges {
+        check_cancelled(&mut cancelled)?;
+        revoked_targets.insert(target.clone());
+    }
+    for (_, target, source) in &revoked_merges {
+        check_cancelled(&mut cancelled)?;
+        revoked_provenance_by_target
+            .entry(target.clone())
+            .or_default()
+            .push(source.clone());
+    }
+    let mut merge_ids = BTreeSet::new();
+    for (merge_id, _, _) in &merges {
+        check_cancelled(&mut cancelled)?;
+        merge_ids.insert(merge_id.clone());
+    }
+    let mut union_find = EntityUnionFind::new(entities.keys(), &mut cancelled)?;
+    let mut active_merges = BTreeSet::new();
     for (merge_id, ids, _provenance) in &merges {
         check_cancelled(&mut cancelled)?;
         if revoked_targets.contains(merge_id) {
             continue;
         }
-        if ids.iter().any(|id| !entities.contains_key(id)) {
+        let mut missing_entity = None;
+        for id in ids {
+            check_cancelled(&mut cancelled)?;
+            if !entities.contains_key(id) {
+                missing_entity = Some(id.clone());
+                break;
+            }
+        }
+        if let Some(missing_entity) = missing_entity {
             state.pending.push(PendingDependency {
                 event_id: merge_id.clone(),
-                target_id: ids
-                    .iter()
-                    .find(|id| !entities.contains_key(*id))
-                    .cloned()
-                    .unwrap_or_default(),
+                target_id: missing_entity,
                 reason: "missing_entity",
             });
             continue;
         }
-        union_entities(&mut entities, ids);
-        active_merges.push(merge_id.clone());
+        union_find.union_all(ids, &mut cancelled)?;
+        active_merges.insert(merge_id.clone());
+    }
+    for (entity_id, entity) in &mut entities {
+        check_cancelled(&mut cancelled)?;
+        entity.representative_id = union_find.representative(entity_id, &mut cancelled)?;
     }
     for (revoke_event_id, target_merge_id, _) in &revoked_merges {
         check_cancelled(&mut cancelled)?;
-        if !merges
-            .iter()
-            .any(|(id, _, _)| canonical_uuid(id) == *target_merge_id)
-        {
+        if !merge_ids.contains(target_merge_id) {
             if known_event_ids.contains(target_merge_id) {
                 invalid_event_ids.insert(revoke_event_id.clone());
                 state.conflicts.push(Conflict {
@@ -410,13 +446,14 @@ where
             });
         }
     }
+    let mut pending_event_ids = BTreeSet::new();
+    for pending in &state.pending {
+        check_cancelled(&mut cancelled)?;
+        pending_event_ids.insert(pending.event_id.clone());
+    }
     for (merge_id, ids, merge_provenance) in &merges {
         check_cancelled(&mut cancelled)?;
-        let status = if state
-            .pending
-            .iter()
-            .any(|pending| pending.event_id == *merge_id)
-        {
+        let status = if pending_event_ids.contains(merge_id) {
             EntityMergeStatus::Pending
         } else if active_merges.contains(merge_id) {
             EntityMergeStatus::Active
@@ -435,13 +472,17 @@ where
             })
             .flatten();
         let mut provenance = vec![merge_provenance.clone()];
-        provenance.extend(
-            revoked_merges
-                .iter()
-                .filter(|(_, target, _)| target == merge_id)
-                .map(|(_, _, source)| source.clone()),
-        );
-        provenance.sort_by(|a, b| a.event_id.cmp(&b.event_id));
+        if let Some(revocations) = revoked_provenance_by_target.get(merge_id) {
+            for source in revocations {
+                check_cancelled(&mut cancelled)?;
+                provenance.push(source.clone());
+            }
+        }
+        sort_by_cancellable(
+            &mut provenance,
+            |a, b| a.event_id.cmp(&b.event_id),
+            &mut cancelled,
+        )?;
         state.entity_merges.push(EntityMergeRecord {
             event_id: merge_id.clone(),
             entity_ids: ids.clone(),
@@ -450,40 +491,49 @@ where
             provenance,
         });
     }
-    state
-        .entity_merges
-        .sort_by(|a, b| a.event_id.cmp(&b.event_id));
+    sort_by_cancellable(
+        &mut state.entity_merges,
+        |a, b| a.event_id.cmp(&b.event_id),
+        &mut cancelled,
+    )?;
 
+    sort_by_cancellable(
+        &mut aliases,
+        |a, b| {
+            normalize_alias(&a.1)
+                .cmp(&normalize_alias(&b.1))
+                .then(a.1.cmp(&b.1))
+                .then(a.0.cmp(&b.0))
+        },
+        &mut cancelled,
+    )?;
     let mut alias_classes: Vec<Vec<(String, String, Provenance)>> = Vec::new();
-    aliases.sort_by(|a, b| {
-        normalize_alias(&a.1)
-            .cmp(&normalize_alias(&b.1))
-            .then(a.1.cmp(&b.1))
-            .then(a.0.cmp(&b.0))
-    });
+    let mut current_alias_key: Option<String> = None;
     for alias in aliases {
         check_cancelled(&mut cancelled)?;
         let key = normalize_alias(&alias.1);
-        if let Some(group) = alias_classes
-            .iter_mut()
-            .find(|group| normalize_alias(&group[0].1) == key)
-        {
-            group.push(alias);
+        if current_alias_key.as_deref() == Some(key.as_str()) {
+            alias_classes
+                .last_mut()
+                .expect("current alias key has a group")
+                .push(alias);
         } else {
+            current_alias_key = Some(key);
             alias_classes.push(vec![alias]);
         }
     }
     for group in alias_classes {
-        let normalized_key = group
-            .iter()
-            .map(|(_, spelling, _)| normalize_alias(spelling))
-            .min()
-            .unwrap_or_default();
+        let mut normalized_key: Option<String> = None;
         let mut targets = BTreeSet::new();
         let mut provenance = Vec::new();
         let mut spelling = String::new();
         let mut has_unresolved_target = false;
         for (entity_id, alias_spelling, source) in group {
+            check_cancelled(&mut cancelled)?;
+            let folded = normalize_alias(&alias_spelling);
+            if normalized_key.as_ref().is_none_or(|prior| folded < *prior) {
+                normalized_key = Some(folded);
+            }
             if let Some(entity) = entities.get(&entity_id) {
                 targets.insert(entity.representative_id.clone());
                 if spelling.is_empty() || alias_spelling < spelling {
@@ -499,16 +549,26 @@ where
                 });
             }
         }
+        let normalized_key = normalized_key.unwrap_or_default();
         if targets.len() > 1 {
+            let mut event_ids = Vec::with_capacity(provenance.len());
+            for source in &provenance {
+                check_cancelled(&mut cancelled)?;
+                event_ids.push(source.event_id.clone());
+            }
             state.conflicts.push(Conflict {
                 kind: "ambiguous_alias",
                 key: normalized_key.clone(),
-                event_ids: provenance.iter().map(|p| p.event_id.clone()).collect(),
+                event_ids,
             });
         }
         if targets.len() == 1 && !has_unresolved_target {
             let entity_id = targets.iter().next().cloned().unwrap_or_default();
-            provenance.sort_by(|a, b| a.event_id.cmp(&b.event_id));
+            sort_by_cancellable(
+                &mut provenance,
+                |a, b| a.event_id.cmp(&b.event_id),
+                &mut cancelled,
+            )?;
             state.aliases.push(Alias {
                 semantic_id: derived_id(
                     "alias",
@@ -526,17 +586,30 @@ where
         }
     }
 
+    let mut resolutions_by_target = BTreeMap::<String, Vec<_>>::new();
+    for resolution in resolutions {
+        check_cancelled(&mut cancelled)?;
+        resolutions_by_target
+            .entry(resolution.1.clone())
+            .or_default()
+            .push(resolution);
+    }
+
     let mut active = BTreeMap::<String, (SemanticAssertion, Vec<Provenance>)>::new();
     for (target, mut decisions) in corrections {
         check_cancelled(&mut cancelled)?;
-        decisions.sort_by(|a, b| a.0.cmp(&b.0));
+        sort_by_cancellable(&mut decisions, |a, b| a.0.cmp(&b.0), &mut cancelled)?;
         let Some((base, base_provenance)) = assertions.remove(&target) else {
-            let correction_ids: Vec<_> = decisions
-                .iter()
-                .map(|decision| decision.0.clone())
-                .collect();
+            let mut correction_ids = Vec::with_capacity(decisions.len());
+            for decision in &decisions {
+                check_cancelled(&mut cancelled)?;
+                correction_ids.push(decision.0.clone());
+            }
             if known_event_ids.contains(&target) {
-                invalid_event_ids.extend(correction_ids.iter().cloned());
+                for correction_id in &correction_ids {
+                    check_cancelled(&mut cancelled)?;
+                    invalid_event_ids.insert(correction_id.clone());
+                }
                 state.conflicts.push(Conflict {
                     kind: "invalid_correction_target",
                     key: target,
@@ -553,229 +626,259 @@ where
             }
             continue;
         };
-        let decision_ids: BTreeSet<_> = decisions.iter().map(|d| d.0.clone()).collect();
-        let target_resolutions: Vec<_> = resolutions
-            .iter()
-            .filter(|resolution| resolution.1 == target)
-            .collect();
-        handled_resolution_ids.extend(
-            target_resolutions
-                .iter()
-                .map(|resolution| resolution.0.clone()),
-        );
-        let correction_history: Vec<_> = decisions
-            .iter()
-            .map(|decision| decision.2.clone())
-            .collect();
-        let resolution_history: Vec<_> = target_resolutions
-            .iter()
-            .map(|resolution| resolution.4.clone())
-            .collect();
-        let selected: Vec<(String, Option<SemanticAssertion>, Provenance)> =
-            if !target_resolutions.is_empty() {
-                let resolution_ids: BTreeSet<_> = target_resolutions
-                    .iter()
-                    .map(|resolution| resolution.0.clone())
-                    .collect();
-                let resolution_edges: BTreeMap<_, _> = target_resolutions
-                    .iter()
-                    .map(|resolution| {
-                        (
-                            resolution.0.clone(),
-                            resolution
-                                .2
-                                .iter()
-                                .filter(|id| {
-                                    target_resolutions
-                                        .iter()
-                                        .any(|candidate| candidate.0 == **id)
-                                })
-                                .cloned()
-                                .collect::<BTreeSet<_>>(),
-                        )
-                    })
-                    .collect();
-                let cyclic_resolutions = cyclic_nodes(&resolution_edges);
-                if !cyclic_resolutions.is_empty() {
-                    let mut event_ids: Vec<_> = decision_ids.iter().cloned().collect();
-                    event_ids.extend(resolution_ids.iter().cloned());
-                    event_ids.sort();
-                    event_ids.dedup();
-                    state.conflicts.push(Conflict {
-                        kind: "decision_cycle",
-                        key: target.clone(),
-                        event_ids,
-                    });
-                    for resolution_id in resolution_ids {
-                        state.pending.push(PendingDependency {
-                            event_id: resolution_id,
-                            target_id: target.clone(),
-                            reason: "decision_cycle",
-                        });
+        let mut decision_ids = BTreeSet::new();
+        let mut correction_history = Vec::with_capacity(decisions.len());
+        for decision in &decisions {
+            check_cancelled(&mut cancelled)?;
+            decision_ids.insert(decision.0.clone());
+            correction_history.push(decision.2.clone());
+        }
+        let target_resolutions = resolutions_by_target
+            .get(&target)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let mut resolution_history = Vec::with_capacity(target_resolutions.len());
+        for resolution in target_resolutions {
+            check_cancelled(&mut cancelled)?;
+            handled_resolution_ids.insert(resolution.0.clone());
+            resolution_history.push(resolution.4.clone());
+        }
+        let selected: Vec<(String, Option<SemanticAssertion>, Provenance)> = if !target_resolutions
+            .is_empty()
+        {
+            let mut resolution_ids = BTreeSet::new();
+            let mut resolution_by_id = BTreeMap::new();
+            for resolution in target_resolutions {
+                check_cancelled(&mut cancelled)?;
+                resolution_ids.insert(resolution.0.clone());
+                resolution_by_id.insert(resolution.0.as_str(), resolution);
+            }
+            let mut resolution_edges = BTreeMap::new();
+            for resolution in target_resolutions {
+                check_cancelled(&mut cancelled)?;
+                let mut dependencies = BTreeSet::new();
+                for id in &resolution.2 {
+                    check_cancelled(&mut cancelled)?;
+                    if resolution_ids.contains(id) {
+                        dependencies.insert(id.clone());
                     }
+                }
+                resolution_edges.insert(resolution.0.clone(), dependencies);
+            }
+            if graph_has_cycle(&resolution_edges, &mut cancelled)? {
+                let mut event_ids: Vec<_> = decision_ids.iter().cloned().collect();
+                event_ids.extend(resolution_ids.iter().cloned());
+                sort_by_cancellable(&mut event_ids, Ord::cmp, &mut cancelled)?;
+                let mut unique_event_ids = Vec::with_capacity(event_ids.len());
+                for event_id in event_ids {
+                    check_cancelled(&mut cancelled)?;
+                    if unique_event_ids.last() != Some(&event_id) {
+                        unique_event_ids.push(event_id);
+                    }
+                }
+                state.conflicts.push(Conflict {
+                    kind: "decision_cycle",
+                    key: target.clone(),
+                    event_ids: unique_event_ids,
+                });
+                for resolution_id in resolution_ids {
+                    state.pending.push(PendingDependency {
+                        event_id: resolution_id,
+                        target_id: target.clone(),
+                        reason: "decision_cycle",
+                    });
+                }
+                continue;
+            }
+            let mut depended_on = BTreeSet::new();
+            for dependencies in resolution_edges.values() {
+                check_cancelled(&mut cancelled)?;
+                for dependency in dependencies {
+                    check_cancelled(&mut cancelled)?;
+                    depended_on.insert(dependency.clone());
+                }
+            }
+            let mut terminal_resolutions = BTreeSet::new();
+            for resolution_id in &resolution_ids {
+                check_cancelled(&mut cancelled)?;
+                if !depended_on.contains(resolution_id) {
+                    terminal_resolutions.insert(resolution_id.clone());
+                }
+            }
+            let mut resolved =
+                BTreeMap::<String, (String, Option<SemanticAssertion>, Provenance)>::new();
+            for decision in &decisions {
+                resolved.insert(decision.0.clone(), decision.clone());
+            }
+            let mut invalid_resolution = false;
+            let mut choices =
+                BTreeMap::<String, (String, Option<SemanticAssertion>, Provenance)>::new();
+            for resolution_id in topological_nodes_cancellable(&resolution_edges, &mut cancelled)? {
+                let Some(resolution) = resolution_by_id.get(resolution_id.as_str()) else {
+                    continue;
+                };
+                let (_, _, supplied_ids, outcome, provenance) = *resolution;
+                let mut supplied = BTreeSet::new();
+                for supplied_id in supplied_ids {
+                    check_cancelled(&mut cancelled)?;
+                    supplied.insert(supplied_id.clone());
+                }
+                let mut missing_reference = false;
+                let mut invalid_reference = false;
+                for supplied_id in &supplied {
+                    check_cancelled(&mut cancelled)?;
+                    if decision_ids.contains(supplied_id) || resolution_ids.contains(supplied_id) {
+                        continue;
+                    }
+                    if known_event_ids.contains(supplied_id) {
+                        invalid_reference = true;
+                    } else {
+                        missing_reference = true;
+                    }
+                }
+                if invalid_reference {
+                    invalid_event_ids.insert(resolution_id.clone());
+                    state.conflicts.push(Conflict {
+                        kind: "invalid_resolution_reference",
+                        key: target.clone(),
+                        event_ids: vec![resolution_id.clone()],
+                    });
+                    invalid_resolution = true;
                     continue;
                 }
-                let terminal_resolutions: BTreeSet<_> = resolution_ids
-                    .iter()
-                    .filter(|candidate| {
-                        !resolution_edges
-                            .values()
-                            .any(|dependencies| dependencies.contains(*candidate))
-                    })
-                    .cloned()
-                    .collect();
-                let mut resolved =
-                    BTreeMap::<String, (String, Option<SemanticAssertion>, Provenance)>::new();
-                for decision in &decisions {
-                    resolved.insert(decision.0.clone(), decision.clone());
+                if missing_reference {
+                    state.pending.push(PendingDependency {
+                        event_id: resolution_id.clone(),
+                        target_id: target.clone(),
+                        reason: "missing_decision",
+                    });
+                    invalid_resolution = true;
+                    continue;
                 }
-                let mut invalid_resolution = false;
-                let mut choices =
-                    BTreeMap::<String, (String, Option<SemanticAssertion>, Provenance)>::new();
-                for resolution_id in topological_nodes(&resolution_edges) {
-                    let Some((_, _, supplied_ids, outcome, provenance)) = target_resolutions
-                        .iter()
-                        .find(|resolution| resolution.0 == resolution_id)
-                    else {
-                        continue;
-                    };
-                    let supplied: BTreeSet<_> = supplied_ids.iter().cloned().collect();
-                    let mut missing_reference = false;
-                    let mut invalid_reference = false;
-                    for supplied_id in &supplied {
-                        if decisions.iter().any(|decision| decision.0 == *supplied_id)
-                            || resolution_ids.contains(supplied_id)
+                let expected_terminal_count = decision_ids.len() + resolution_ids.len() - 1;
+                let mut complete_terminal_set = supplied.len() == expected_terminal_count;
+                if complete_terminal_set {
+                    for decision_id in &decision_ids {
+                        check_cancelled(&mut cancelled)?;
+                        if !supplied.contains(decision_id) {
+                            complete_terminal_set = false;
+                            break;
+                        }
+                    }
+                }
+                if complete_terminal_set {
+                    for other_resolution in &resolution_ids {
+                        check_cancelled(&mut cancelled)?;
+                        if other_resolution != &resolution_id
+                            && !supplied.contains(other_resolution)
                         {
-                            continue;
-                        }
-                        if known_event_ids.contains(supplied_id) {
-                            invalid_reference = true;
-                        } else {
-                            missing_reference = true;
+                            complete_terminal_set = false;
+                            break;
                         }
                     }
-                    if invalid_reference {
-                        invalid_event_ids.insert(resolution_id.clone());
-                        state.conflicts.push(Conflict {
-                            kind: "invalid_resolution_reference",
-                            key: target.clone(),
-                            event_ids: vec![resolution_id.clone()],
-                        });
-                        invalid_resolution = true;
-                        continue;
+                }
+                if terminal_resolutions.contains(&resolution_id) && !complete_terminal_set {
+                    state.pending.push(PendingDependency {
+                        event_id: resolution_id.clone(),
+                        target_id: target.clone(),
+                        reason: "incomplete_decision_set",
+                    });
+                    invalid_resolution = true;
+                    continue;
+                }
+                let chosen = match outcome {
+                    ConflictOutcome::Select { decision_event_id } => {
+                        let decision_id = canonical_uuid(decision_event_id);
+                        supplied
+                            .contains(&decision_id)
+                            .then(|| resolved.get(&decision_id).cloned())
+                            .flatten()
                     }
-                    if missing_reference {
-                        state.pending.push(PendingDependency {
-                            event_id: resolution_id.clone(),
-                            target_id: target.clone(),
-                            reason: "missing_decision",
-                        });
-                        invalid_resolution = true;
-                        continue;
-                    }
-                    let complete_terminal_set: BTreeSet<_> = decision_ids
-                        .iter()
-                        .cloned()
-                        .chain(
-                            resolution_ids
-                                .iter()
-                                .filter(|id| **id != resolution_id)
-                                .cloned(),
-                        )
-                        .collect();
-                    if terminal_resolutions.contains(&resolution_id)
-                        && supplied != complete_terminal_set
-                    {
-                        state.pending.push(PendingDependency {
-                            event_id: resolution_id.clone(),
-                            target_id: target.clone(),
-                            reason: "incomplete_decision_set",
-                        });
-                        invalid_resolution = true;
-                        continue;
-                    }
-                    let chosen = match outcome {
-                        ConflictOutcome::Select { decision_event_id } => {
-                            let decision_id = canonical_uuid(decision_event_id);
-                            supplied
-                                .contains(&decision_id)
-                                .then(|| resolved.get(&decision_id).cloned())
-                                .flatten()
-                        }
-                        ConflictOutcome::Replace { value } => {
-                            let mut source = provenance.clone();
-                            source.confidence = Some(match value {
-                                SemanticAssertion::Fact { confidence, .. }
-                                | SemanticAssertion::Relation { confidence, .. } => *confidence,
-                            });
-                            Some((resolution_id.clone(), Some(value.clone()), source))
-                        }
-                        ConflictOutcome::Withdraw => {
-                            Some((resolution_id.clone(), None, provenance.clone()))
-                        }
-                    };
-                    let Some((_, value, _)) = chosen else {
-                        state.pending.push(PendingDependency {
-                            event_id: resolution_id.clone(),
-                            target_id: target.clone(),
-                            reason: "missing_decision",
-                        });
-                        invalid_resolution = true;
-                        continue;
-                    };
-                    let mut source = provenance.clone();
-                    if source.confidence.is_none() {
-                        source.confidence = value.as_ref().map(|assertion| match assertion {
+                    ConflictOutcome::Replace { value } => {
+                        let mut source = provenance.clone();
+                        source.confidence = Some(match value {
                             SemanticAssertion::Fact { confidence, .. }
                             | SemanticAssertion::Relation { confidence, .. } => *confidence,
                         });
+                        Some((resolution_id.clone(), Some(value.clone()), source))
                     }
-                    let resolved_choice = (resolution_id.clone(), value, source);
-                    resolved.insert(resolution_id.clone(), resolved_choice.clone());
-                    if terminal_resolutions.contains(&resolution_id) {
-                        choices.insert(
-                            semantic_fingerprint(resolved_choice.1.as_ref())?,
-                            resolved_choice,
-                        );
+                    ConflictOutcome::Withdraw => {
+                        Some((resolution_id.clone(), None, provenance.clone()))
                     }
+                };
+                let Some((_, value, _)) = chosen else {
+                    state.pending.push(PendingDependency {
+                        event_id: resolution_id.clone(),
+                        target_id: target.clone(),
+                        reason: "missing_decision",
+                    });
+                    invalid_resolution = true;
+                    continue;
+                };
+                let mut source = provenance.clone();
+                if source.confidence.is_none() {
+                    source.confidence = value.as_ref().map(|assertion| match assertion {
+                        SemanticAssertion::Fact { confidence, .. }
+                        | SemanticAssertion::Relation { confidence, .. } => *confidence,
+                    });
                 }
-                if choices.len() > 1 {
-                    let mut event_ids: Vec<_> = decisions
-                        .iter()
-                        .map(|decision| decision.0.clone())
-                        .collect();
-                    event_ids.extend(
-                        target_resolutions
-                            .iter()
-                            .map(|resolution| resolution.0.clone()),
+                let resolved_choice = (resolution_id.clone(), value, source);
+                resolved.insert(resolution_id.clone(), resolved_choice.clone());
+                if terminal_resolutions.contains(&resolution_id) {
+                    choices.insert(
+                        semantic_fingerprint(resolved_choice.1.as_ref())?,
+                        resolved_choice,
                     );
-                    event_ids.sort();
-                    state.conflicts.push(Conflict {
-                        kind: "resolution",
-                        key: target.clone(),
-                        event_ids,
-                    });
-                    continue;
                 }
-                if invalid_resolution || choices.is_empty() {
-                    continue;
+            }
+            if choices.len() > 1 {
+                let mut event_ids = Vec::new();
+                for decision in &decisions {
+                    check_cancelled(&mut cancelled)?;
+                    event_ids.push(decision.0.clone());
                 }
-                choices.into_values().collect()
-            } else {
-                let distinct: BTreeSet<_> = decisions
-                    .iter()
-                    .map(|(_, replacement, _)| semantic_fingerprint(replacement.as_ref()))
-                    .collect::<Result<_, _>>()?;
-                if distinct.len() > 1 {
-                    state.conflicts.push(Conflict {
-                        kind: "correction",
-                        key: target.clone(),
-                        event_ids: decisions.iter().map(|d| d.0.clone()).collect(),
-                    });
-                    continue;
+                for resolution in target_resolutions {
+                    check_cancelled(&mut cancelled)?;
+                    event_ids.push(resolution.0.clone());
                 }
-                decisions
-            };
+                sort_by_cancellable(&mut event_ids, Ord::cmp, &mut cancelled)?;
+                state.conflicts.push(Conflict {
+                    kind: "resolution",
+                    key: target.clone(),
+                    event_ids,
+                });
+                continue;
+            }
+            if invalid_resolution || choices.is_empty() {
+                continue;
+            }
+            let mut selected = Vec::with_capacity(choices.len());
+            for choice in choices.into_values() {
+                check_cancelled(&mut cancelled)?;
+                selected.push(choice);
+            }
+            selected
+        } else {
+            let mut distinct = BTreeSet::new();
+            for (_, replacement, _) in &decisions {
+                check_cancelled(&mut cancelled)?;
+                distinct.insert(semantic_fingerprint(replacement.as_ref())?);
+            }
+            if distinct.len() > 1 {
+                let mut event_ids = Vec::with_capacity(decisions.len());
+                for decision in &decisions {
+                    check_cancelled(&mut cancelled)?;
+                    event_ids.push(decision.0.clone());
+                }
+                state.conflicts.push(Conflict {
+                    kind: "correction",
+                    key: target.clone(),
+                    event_ids,
+                });
+                continue;
+            }
+            decisions
+        };
         if let Some((correction_id, replacement, _provenance)) = selected.first().cloned() {
             for (event_id, replacement, provenance) in &selected {
                 state.corrections.push(CorrectionRecord {
@@ -790,21 +893,41 @@ where
                     provenance: provenance.clone(),
                 });
             }
-            let mut sources: Vec<_> = selected
-                .iter()
-                .map(|(_, _, source)| source.clone())
-                .collect();
-            sources.extend(correction_history);
-            sources.extend(resolution_history);
+            let mut sources = Vec::new();
+            for (_, _, source) in &selected {
+                check_cancelled(&mut cancelled)?;
+                sources.push(source.clone());
+            }
+            for source in correction_history {
+                check_cancelled(&mut cancelled)?;
+                sources.push(source);
+            }
+            for source in resolution_history {
+                check_cancelled(&mut cancelled)?;
+                sources.push(source);
+            }
             sources.push(base_provenance);
-            sources.sort_by(|a, b| a.event_id.cmp(&b.event_id));
-            sources.dedup_by(|a, b| a.event_id == b.event_id);
+            sort_by_cancellable(
+                &mut sources,
+                |a, b| a.event_id.cmp(&b.event_id),
+                &mut cancelled,
+            )?;
+            let mut unique_sources = Vec::with_capacity(sources.len());
+            for source in sources {
+                check_cancelled(&mut cancelled)?;
+                if unique_sources
+                    .last()
+                    .is_none_or(|prior: &Provenance| prior.event_id != source.event_id)
+                {
+                    unique_sources.push(source);
+                }
+            }
             if let Some(replacement) = replacement {
-                active.insert(correction_id, (replacement, sources));
+                active.insert(correction_id, (replacement, unique_sources));
             } else {
                 state.withdrawals.push(Withdrawal {
                     target_event_id: target,
-                    provenance: sources,
+                    provenance: unique_sources,
                 });
             }
         }
@@ -813,46 +936,41 @@ where
     // A resolution with no correction group must never silently count as
     // materialized. Keep its dependency pending until the complete event set
     // contains a resolvable target and competing decisions.
-    for (resolution_id, target, decision_ids, _outcome, _source) in &resolutions {
+    for target_resolutions in resolutions_by_target.values() {
         check_cancelled(&mut cancelled)?;
-        if handled_resolution_ids.contains(resolution_id) {
-            continue;
-        }
-        let target_is_assertion = records.iter().any(|record| {
-            canonical_uuid(&record.event().event_id) == *target
-                && matches!(
-                    record.event().payload,
-                    KnowledgeAssertionPayload::FactAssert { .. }
-                        | KnowledgeAssertionPayload::RelationAssert { .. }
-                )
-        });
-        let target_exists = known_event_ids.contains(target);
-        if !target_is_assertion && target_exists {
-            invalid_event_ids.insert(resolution_id.clone());
-            state.conflicts.push(Conflict {
-                kind: "invalid_resolution_target",
-                key: target.clone(),
-                event_ids: vec![resolution_id.clone()],
+        for (resolution_id, target, decision_ids, _outcome, _source) in target_resolutions {
+            check_cancelled(&mut cancelled)?;
+            if handled_resolution_ids.contains(resolution_id) {
+                continue;
+            }
+            let target_is_assertion = known_assertion_event_ids.contains(target);
+            let target_exists = known_event_ids.contains(target);
+            if !target_is_assertion && target_exists {
+                invalid_event_ids.insert(resolution_id.clone());
+                state.conflicts.push(Conflict {
+                    kind: "invalid_resolution_target",
+                    key: target.clone(),
+                    event_ids: vec![resolution_id.clone()],
+                });
+                continue;
+            }
+            state.pending.push(PendingDependency {
+                event_id: resolution_id.clone(),
+                target_id: target.clone(),
+                reason: if !target_exists {
+                    "missing_assertion"
+                } else if decision_ids.is_empty() {
+                    "missing_decision"
+                } else {
+                    "missing_correction_set"
+                },
             });
-            continue;
         }
-        state.pending.push(PendingDependency {
-            event_id: resolution_id.clone(),
-            target_id: target.clone(),
-            reason: if !target_exists {
-                "missing_assertion"
-            } else if decision_ids.is_empty() {
-                "missing_decision"
-            } else {
-                "missing_correction_set"
-            },
-        });
     }
-    active.extend(
-        assertions
-            .into_iter()
-            .map(|(id, (assertion, source))| (id, (assertion, vec![source]))),
-    );
+    for (id, (assertion, source)) in assertions {
+        check_cancelled(&mut cancelled)?;
+        active.insert(id, (assertion, vec![source]));
+    }
 
     let mut fact_candidates = Vec::<(String, String, FactValue, Vec<Provenance>)>::new();
     let mut relation_candidates = Vec::<(String, String, String, Vec<Provenance>)>::new();
@@ -963,11 +1081,16 @@ where
     for (key, values) in by_single {
         check_cancelled(&mut cancelled)?;
         if values.len() > 1 {
-            let event_ids = values
-                .values()
-                .flatten()
-                .flat_map(|(_, sources)| sources.iter().map(|p| p.event_id.clone()))
-                .collect();
+            let mut event_ids = Vec::new();
+            for entries in values.values() {
+                check_cancelled(&mut cancelled)?;
+                for (_, sources) in entries {
+                    for source in sources {
+                        check_cancelled(&mut cancelled)?;
+                        event_ids.push(source.event_id.clone());
+                    }
+                }
+            }
             state.conflicts.push(Conflict {
                 kind: "single_valued_fact",
                 key,
@@ -978,6 +1101,13 @@ where
         if let Some((_, entries)) = values.into_iter().next() {
             let (value, _) = entries[0].clone();
             let subject_entity_id = key.split('|').next().unwrap_or_default().to_owned();
+            let mut provenance = Vec::new();
+            for (_, sources) in entries {
+                for source in sources {
+                    check_cancelled(&mut cancelled)?;
+                    provenance.push(source);
+                }
+            }
             state.facts.push(Fact {
                 semantic_id: derived_id(
                     "fact-single",
@@ -990,16 +1120,20 @@ where
                 subject_entity_id,
                 predicate: "person.birth_date".into(),
                 value,
-                provenance: entries
-                    .into_iter()
-                    .flat_map(|(_, sources)| sources)
-                    .collect(),
+                provenance,
             });
         }
     }
     for entries in by_multi.into_values() {
         check_cancelled(&mut cancelled)?;
         let (subject_entity_id, predicate, value, _) = entries[0].clone();
+        let mut provenance = Vec::new();
+        for (_, _, _, sources) in entries {
+            for source in sources {
+                check_cancelled(&mut cancelled)?;
+                provenance.push(source);
+            }
+        }
         state.facts.push(Fact {
             semantic_id: derived_id(
                 "fact-multi",
@@ -1013,10 +1147,7 @@ where
             subject_entity_id,
             predicate,
             value,
-            provenance: entries
-                .into_iter()
-                .flat_map(|(_, _, _, sources)| sources)
-                .collect(),
+            provenance,
         });
     }
     let mut relation_groups =
@@ -1029,77 +1160,207 @@ where
             .or_default()
             .push((subject, predicate, object, provenance));
     }
-    state.entities = entities.into_values().collect();
-    state.entities.sort_by(|a, b| a.entity_id.cmp(&b.entity_id));
-    state.aliases.sort_by(|a, b| {
-        a.normalized_key
-            .cmp(&b.normalized_key)
-            .then(a.entity_id.cmp(&b.entity_id))
-            .then(a.spelling.cmp(&b.spelling))
-    });
-    state.relations = relation_groups
-        .into_values()
-        .map(|entries| {
-            let (subject_entity_id, predicate, object_entity_id, _) = entries[0].clone();
-            Ok(Relation {
-                semantic_id: derived_id(
-                    "relation",
-                    &json!([
-                        canonical_uuid(expected_brain_id),
-                        &subject_entity_id,
-                        &predicate,
-                        &object_entity_id
-                    ]),
-                )?,
-                subject_entity_id,
-                predicate,
-                object_entity_id,
-                provenance: entries
-                    .into_iter()
-                    .flat_map(|(_, _, _, sources)| sources)
-                    .collect(),
-            })
-        })
-        .collect::<Result<_, ReducerError>>()?;
-    state.facts.sort_by(|a, b| {
-        a.subject_entity_id
-            .cmp(&b.subject_entity_id)
-            .then(a.predicate.cmp(&b.predicate))
-            .then(a.semantic_id.cmp(&b.semantic_id))
-    });
-    state.relations.sort_by(|a, b| {
-        a.subject_entity_id
-            .cmp(&b.subject_entity_id)
-            .then(a.predicate.cmp(&b.predicate))
-            .then(a.object_entity_id.cmp(&b.object_entity_id))
-    });
-    state.conflicts.sort_by(|a, b| {
-        a.kind
-            .cmp(b.kind)
-            .then(a.key.cmp(&b.key))
-            .then(a.event_ids.cmp(&b.event_ids))
-    });
-    state.pending.sort_by(|a, b| {
-        a.target_id
-            .cmp(&b.target_id)
-            .then(a.event_id.cmp(&b.event_id))
-            .then(a.reason.cmp(b.reason))
-    });
-    state
-        .corrections
-        .sort_by(|a, b| a.correction_event_id.cmp(&b.correction_event_id));
-    let unresolved: BTreeSet<_> = state
-        .pending
-        .iter()
-        .map(|pending| pending.event_id.clone())
-        .collect();
-    state.materialized_event_ids = records
-        .iter()
-        .map(|record| canonical_uuid(&record.event().event_id))
-        .filter(|event_id| !unresolved.contains(event_id) && !invalid_event_ids.contains(event_id))
-        .collect();
-    state.materialized_event_ids.sort();
+    state.entities.reserve(entities.len());
+    for entity in entities.into_values() {
+        check_cancelled(&mut cancelled)?;
+        state.entities.push(entity);
+    }
+    sort_by_cancellable(
+        &mut state.entities,
+        |a, b| a.entity_id.cmp(&b.entity_id),
+        &mut cancelled,
+    )?;
+    sort_by_cancellable(
+        &mut state.aliases,
+        |a, b| {
+            a.normalized_key
+                .cmp(&b.normalized_key)
+                .then(a.entity_id.cmp(&b.entity_id))
+                .then(a.spelling.cmp(&b.spelling))
+        },
+        &mut cancelled,
+    )?;
+    state.relations.reserve(relation_groups.len());
+    for (_, entries) in relation_groups {
+        check_cancelled(&mut cancelled)?;
+        let (subject_entity_id, predicate, object_entity_id, _) = entries[0].clone();
+        let mut provenance = Vec::new();
+        for (_, _, _, sources) in entries {
+            for source in sources {
+                check_cancelled(&mut cancelled)?;
+                provenance.push(source);
+            }
+        }
+        state.relations.push(Relation {
+            semantic_id: derived_id(
+                "relation",
+                &json!([
+                    canonical_uuid(expected_brain_id),
+                    &subject_entity_id,
+                    &predicate,
+                    &object_entity_id
+                ]),
+            )?,
+            subject_entity_id,
+            predicate,
+            object_entity_id,
+            provenance,
+        });
+    }
+    sort_by_cancellable(
+        &mut state.facts,
+        |a, b| {
+            a.subject_entity_id
+                .cmp(&b.subject_entity_id)
+                .then(a.predicate.cmp(&b.predicate))
+                .then(a.semantic_id.cmp(&b.semantic_id))
+        },
+        &mut cancelled,
+    )?;
+    sort_by_cancellable(
+        &mut state.relations,
+        |a, b| {
+            a.subject_entity_id
+                .cmp(&b.subject_entity_id)
+                .then(a.predicate.cmp(&b.predicate))
+                .then(a.object_entity_id.cmp(&b.object_entity_id))
+        },
+        &mut cancelled,
+    )?;
+    sort_by_cancellable(
+        &mut state.conflicts,
+        |a, b| {
+            a.kind
+                .cmp(b.kind)
+                .then(a.key.cmp(&b.key))
+                .then(a.event_ids.cmp(&b.event_ids))
+        },
+        &mut cancelled,
+    )?;
+    sort_by_cancellable(
+        &mut state.pending,
+        |a, b| {
+            a.target_id
+                .cmp(&b.target_id)
+                .then(a.event_id.cmp(&b.event_id))
+                .then(a.reason.cmp(b.reason))
+        },
+        &mut cancelled,
+    )?;
+    sort_by_cancellable(
+        &mut state.corrections,
+        |a, b| a.correction_event_id.cmp(&b.correction_event_id),
+        &mut cancelled,
+    )?;
+    let mut unresolved = BTreeSet::new();
+    for pending in &state.pending {
+        check_cancelled(&mut cancelled)?;
+        unresolved.insert(pending.event_id.clone());
+    }
+    for record in &records {
+        check_cancelled(&mut cancelled)?;
+        let event_id = canonical_uuid(&record.event().event_id);
+        if !unresolved.contains(&event_id) && !invalid_event_ids.contains(&event_id) {
+            state.materialized_event_ids.push(event_id);
+        }
+    }
+    sort_by_cancellable(&mut state.materialized_event_ids, Ord::cmp, &mut cancelled)?;
     Ok(state)
+}
+
+/// Stable merge sort with a cancellation check in every merge pass. Standard
+/// slice sorting cannot be interrupted while a large history is being ordered.
+fn sort_by_cancellable<T, F, C>(
+    values: &mut Vec<T>,
+    mut compare: F,
+    cancelled: &mut C,
+) -> Result<(), ReducerError>
+where
+    F: FnMut(&T, &T) -> Ordering,
+    C: FnMut() -> bool,
+{
+    let len = values.len();
+    if len < 2 {
+        return if cancelled() {
+            Err(ReducerError::Cancelled)
+        } else {
+            Ok(())
+        };
+    }
+    let mut order = Vec::with_capacity(len);
+    for index in 0..len {
+        if cancelled() {
+            return Err(ReducerError::Cancelled);
+        }
+        order.push(index);
+    }
+    let mut scratch = Vec::with_capacity(len);
+    for _ in 0..len {
+        if cancelled() {
+            return Err(ReducerError::Cancelled);
+        }
+        scratch.push(0usize);
+    }
+    let mut width = 1usize;
+    while width < len {
+        let mut start = 0usize;
+        while start < len {
+            let middle = start.saturating_add(width).min(len);
+            let end = middle.saturating_add(width).min(len);
+            let (mut left, mut right, mut out) = (start, middle, start);
+            while left < middle && right < end {
+                if cancelled() {
+                    return Err(ReducerError::Cancelled);
+                }
+                if compare(&values[order[left]], &values[order[right]]) != Ordering::Greater {
+                    scratch[out] = order[left];
+                    left += 1;
+                } else {
+                    scratch[out] = order[right];
+                    right += 1;
+                }
+                out += 1;
+            }
+            while left < middle {
+                if cancelled() {
+                    return Err(ReducerError::Cancelled);
+                }
+                scratch[out] = order[left];
+                left += 1;
+                out += 1;
+            }
+            while right < end {
+                if cancelled() {
+                    return Err(ReducerError::Cancelled);
+                }
+                scratch[out] = order[right];
+                right += 1;
+                out += 1;
+            }
+            start = end;
+        }
+        std::mem::swap(&mut order, &mut scratch);
+        width = width.saturating_mul(2);
+    }
+    if cancelled() {
+        return Err(ReducerError::Cancelled);
+    }
+    let mut source: Vec<Option<T>> = Vec::with_capacity(len);
+    for value in std::mem::take(values) {
+        if cancelled() {
+            return Err(ReducerError::Cancelled);
+        }
+        source.push(Some(value));
+    }
+    let mut sorted = Vec::with_capacity(len);
+    for index in order {
+        if cancelled() {
+            return Err(ReducerError::Cancelled);
+        }
+        sorted.push(source[index].take().expect("each sort index is unique"));
+    }
+    *values = sorted;
+    Ok(())
 }
 
 fn provenance(event: &cryptex_events::V2KnowledgeAssertionEvent) -> Provenance {
@@ -1191,53 +1452,113 @@ fn canonical_uuid(id: &str) -> String {
     id.to_ascii_lowercase()
 }
 
-fn cyclic_nodes(graph: &BTreeMap<String, BTreeSet<String>>) -> BTreeSet<String> {
-    fn reaches(
-        graph: &BTreeMap<String, BTreeSet<String>>,
-        current: &str,
-        target: &str,
-        visited: &mut BTreeSet<String>,
-    ) -> bool {
-        let Some(next) = graph.get(current) else {
-            return false;
-        };
-        next.iter().any(|node| {
-            node == target
-                || (visited.insert(node.clone()) && reaches(graph, node, target, visited))
-        })
-    }
-
-    graph
-        .keys()
-        .filter(|node| reaches(graph, node, node, &mut BTreeSet::new()))
-        .cloned()
-        .collect()
-}
-
-fn topological_nodes(graph: &BTreeMap<String, BTreeSet<String>>) -> Vec<String> {
-    fn visit(
-        node: &str,
-        graph: &BTreeMap<String, BTreeSet<String>>,
-        visited: &mut BTreeSet<String>,
-        output: &mut Vec<String>,
-    ) {
-        if !visited.insert(node.to_owned()) {
-            return;
+fn graph_has_cycle<C>(
+    graph: &BTreeMap<String, BTreeSet<String>>,
+    cancelled: &mut C,
+) -> Result<bool, ReducerError>
+where
+    C: FnMut() -> bool,
+{
+    let mut indegree = BTreeMap::new();
+    for node in graph.keys() {
+        if cancelled() {
+            return Err(ReducerError::Cancelled);
         }
-        if let Some(dependencies) = graph.get(node) {
-            for dependency in dependencies {
-                visit(dependency, graph, visited, output);
+        indegree.insert(node.clone(), 0usize);
+    }
+    for dependencies in graph.values() {
+        if cancelled() {
+            return Err(ReducerError::Cancelled);
+        }
+        for dependency in dependencies {
+            if cancelled() {
+                return Err(ReducerError::Cancelled);
+            }
+            if let Some(count) = indegree.get_mut(dependency) {
+                *count += 1;
             }
         }
-        output.push(node.to_owned());
     }
+    let mut ready = BTreeSet::new();
+    for (node, count) in &indegree {
+        if cancelled() {
+            return Err(ReducerError::Cancelled);
+        }
+        if *count == 0 {
+            ready.insert(node.clone());
+        }
+    }
+    let mut visited_count = 0usize;
+    while let Some(node) = ready.pop_first() {
+        if cancelled() {
+            return Err(ReducerError::Cancelled);
+        }
+        visited_count += 1;
+        if let Some(dependencies) = graph.get(&node) {
+            for dependency in dependencies {
+                if cancelled() {
+                    return Err(ReducerError::Cancelled);
+                }
+                if let Some(count) = indegree.get_mut(dependency) {
+                    *count -= 1;
+                    if *count == 0 {
+                        ready.insert(dependency.clone());
+                    }
+                }
+            }
+        }
+    }
+    Ok(visited_count != graph.len())
+}
 
+fn topological_nodes_cancellable<C>(
+    graph: &BTreeMap<String, BTreeSet<String>>,
+    cancelled: &mut C,
+) -> Result<Vec<String>, ReducerError>
+where
+    C: FnMut() -> bool,
+{
     let mut visited = BTreeSet::new();
     let mut output = Vec::with_capacity(graph.len());
     for node in graph.keys() {
-        visit(node, graph, &mut visited, &mut output);
+        if cancelled() {
+            return Err(ReducerError::Cancelled);
+        }
+        if !visited.insert(node.clone()) {
+            continue;
+        }
+        let mut stack = Vec::new();
+        if let Some(dependencies) = graph.get(node) {
+            stack.push((node.as_str(), dependencies.iter()));
+        } else {
+            output.push(node.clone());
+            continue;
+        }
+        while !stack.is_empty() {
+            if cancelled() {
+                return Err(ReducerError::Cancelled);
+            }
+            let dependency = stack
+                .last_mut()
+                .and_then(|(_, dependencies)| dependencies.next())
+                .map(String::as_str);
+            match dependency {
+                Some(dependency) if visited.insert(dependency.to_owned()) => {
+                    if let Some(dependencies) = graph.get(dependency) {
+                        stack.push((dependency, dependencies.iter()));
+                    } else {
+                        output.push(dependency.to_owned());
+                    }
+                }
+                Some(_) => {}
+                None => {
+                    let (finished, _) = stack.pop().expect("nonempty traversal stack");
+                    output.push(finished.to_owned());
+                }
+            }
+        }
     }
-    output
+    Ok(output)
 }
 
 fn normalize_alias(value: &str) -> String {
@@ -1251,16 +1572,125 @@ fn is_unicode_16_whitespace(ch: char) -> bool {
         | '\u{2000}'..='\u{200A}' | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}')
 }
 
-fn union_entities(entities: &mut BTreeMap<String, Entity>, ids: &[String]) {
-    let classes: BTreeSet<_> = ids
-        .iter()
-        .filter_map(|id| entities.get(id).map(|e| e.representative_id.clone()))
-        .collect();
-    let representative = classes.iter().min().cloned().unwrap_or_default();
-    for entity in entities.values_mut() {
-        if classes.contains(&entity.representative_id) {
-            entity.representative_id = representative.clone();
+struct EntityUnionFind {
+    parent: BTreeMap<String, String>,
+    size: BTreeMap<String, usize>,
+    minimum_id: BTreeMap<String, String>,
+}
+
+impl EntityUnionFind {
+    fn new<'a, I, C>(ids: I, cancelled: &mut C) -> Result<Self, ReducerError>
+    where
+        I: IntoIterator<Item = &'a String>,
+        C: FnMut() -> bool,
+    {
+        let mut parent = BTreeMap::new();
+        let mut size = BTreeMap::new();
+        let mut minimum_id = BTreeMap::new();
+        for id in ids {
+            if cancelled() {
+                return Err(ReducerError::Cancelled);
+            }
+            parent.insert(id.clone(), id.clone());
+            size.insert(id.clone(), 1);
+            minimum_id.insert(id.clone(), id.clone());
         }
+        Ok(Self {
+            parent,
+            size,
+            minimum_id,
+        })
+    }
+
+    fn root<C>(&mut self, id: &str, cancelled: &mut C) -> Result<String, ReducerError>
+    where
+        C: FnMut() -> bool,
+    {
+        let mut current = id.to_owned();
+        let mut path = Vec::new();
+        loop {
+            if cancelled() {
+                return Err(ReducerError::Cancelled);
+            }
+            let parent = self
+                .parent
+                .get(&current)
+                .ok_or_else(|| ReducerError::InvalidEvent(id.to_owned()))?;
+            if parent == &current {
+                break;
+            }
+            path.push(current);
+            current = parent.clone();
+        }
+        for item in path {
+            if cancelled() {
+                return Err(ReducerError::Cancelled);
+            }
+            self.parent.insert(item, current.clone());
+        }
+        Ok(current)
+    }
+
+    fn union_all<C>(&mut self, ids: &[String], cancelled: &mut C) -> Result<(), ReducerError>
+    where
+        C: FnMut() -> bool,
+    {
+        let Some(first) = ids.first() else {
+            return Err(ReducerError::InvalidEvent(String::new()));
+        };
+        let mut root = self.root(first, cancelled)?;
+        for id in ids.iter().skip(1) {
+            if cancelled() {
+                return Err(ReducerError::Cancelled);
+            }
+            let candidate = self.root(id, cancelled)?;
+            if candidate == root {
+                continue;
+            }
+            let root_size = *self
+                .size
+                .get(&root)
+                .ok_or_else(|| ReducerError::InvalidEvent(root.clone()))?;
+            let candidate_size = *self
+                .size
+                .get(&candidate)
+                .ok_or_else(|| ReducerError::InvalidEvent(candidate.clone()))?;
+            let (parent, child) = if root_size > candidate_size
+                || (root_size == candidate_size && root < candidate)
+            {
+                (root, candidate)
+            } else {
+                (candidate, root)
+            };
+            let combined_size = root_size.saturating_add(candidate_size);
+            let parent_min = self
+                .minimum_id
+                .get(&parent)
+                .cloned()
+                .ok_or_else(|| ReducerError::InvalidEvent(parent.clone()))?;
+            let child_min = self
+                .minimum_id
+                .remove(&child)
+                .ok_or_else(|| ReducerError::InvalidEvent(child.clone()))?;
+            self.parent.insert(child.clone(), parent.clone());
+            self.size.insert(parent.clone(), combined_size);
+            self.size.remove(&child);
+            self.minimum_id
+                .insert(parent.clone(), parent_min.min(child_min));
+            root = parent;
+        }
+        Ok(())
+    }
+
+    fn representative<C>(&mut self, id: &str, cancelled: &mut C) -> Result<String, ReducerError>
+    where
+        C: FnMut() -> bool,
+    {
+        let root = self.root(id, cancelled)?;
+        self.minimum_id
+            .get(&root)
+            .cloned()
+            .ok_or_else(|| ReducerError::InvalidEvent(id.to_owned()))
     }
 }
 
@@ -1898,6 +2328,97 @@ mod tests {
             reduce_verified_events_cancellable(BRAIN, &history, || true),
             Err(ReducerError::Cancelled),
         );
+    }
+
+    #[test]
+    fn large_sort_is_cancellable_without_returning_partial_order() {
+        let mut values: Vec<_> = (0..4096).rev().collect();
+        let mut checks = 0usize;
+        let result = sort_by_cancellable(&mut values, Ord::cmp, &mut || {
+            checks += 1;
+            checks > 64
+        });
+        assert_eq!(result, Err(ReducerError::Cancelled));
+        assert!(checks > 64);
+        assert_eq!(values, (0..4096).rev().collect::<Vec<_>>());
+    }
+
+    fn synthetic_resolution_graph(size: usize) -> BTreeMap<String, BTreeSet<String>> {
+        (0..size)
+            .map(|index| {
+                let id = format!("{index:08}");
+                let dependencies = if index + 1 < size {
+                    BTreeSet::from([format!("{:08}", index + 1)])
+                } else {
+                    BTreeSet::new()
+                };
+                (id, dependencies)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn entity_union_find_is_order_independent_and_cancellable() {
+        let ids: Vec<_> = (0..2_048)
+            .map(|index| format!("entity-{index:04}"))
+            .collect();
+        let mut forward = EntityUnionFind::new(ids.iter(), &mut || false).unwrap();
+        forward.union_all(&ids, &mut || false).unwrap();
+        let mut reverse = EntityUnionFind::new(ids.iter(), &mut || false).unwrap();
+        let reverse_ids: Vec<_> = ids.iter().rev().cloned().collect();
+        reverse.union_all(&reverse_ids, &mut || false).unwrap();
+        assert_eq!(
+            forward.representative(&ids[1_024], &mut || false).unwrap(),
+            "entity-0000"
+        );
+        assert_eq!(
+            reverse.representative(&ids[1_024], &mut || false).unwrap(),
+            "entity-0000"
+        );
+
+        let mut candidate = EntityUnionFind::new(ids.iter(), &mut || false).unwrap();
+        let mut checks = 0usize;
+        assert_eq!(
+            candidate.union_all(&ids, &mut || {
+                checks += 1;
+                checks > 64
+            }),
+            Err(ReducerError::Cancelled)
+        );
+    }
+
+    #[test]
+    fn long_resolution_graph_is_iterative_and_cancellable() {
+        let graph = synthetic_resolution_graph(20_000);
+        assert!(!graph_has_cycle(&graph, &mut || false).unwrap());
+        let ordered = topological_nodes_cancellable(&graph, &mut || false).unwrap();
+        assert_eq!(ordered.len(), graph.len());
+        assert_eq!(ordered.first().map(String::as_str), Some("00019999"));
+        assert_eq!(ordered.last().map(String::as_str), Some("00000000"));
+
+        let mut checks = 0usize;
+        assert_eq!(
+            graph_has_cycle(&graph, &mut || {
+                checks += 1;
+                checks > 128
+            }),
+            Err(ReducerError::Cancelled)
+        );
+        let mut checks = 0usize;
+        assert_eq!(
+            topological_nodes_cancellable(&graph, &mut || {
+                checks += 1;
+                checks > 128
+            }),
+            Err(ReducerError::Cancelled)
+        );
+
+        let mut cyclic = graph;
+        cyclic
+            .get_mut("00019999")
+            .expect("last graph node")
+            .insert("00000000".into());
+        assert!(graph_has_cycle(&cyclic, &mut || false).unwrap());
     }
 
     #[test]

@@ -194,7 +194,7 @@ pub fn spawn_retrieval_server(
         runtime_root: runtime_root.to_path_buf(),
         store,
         environment,
-        expected_desktop,
+        expected_desktop: Arc::new(expected_desktop),
     }))
 }
 
@@ -222,15 +222,16 @@ pub fn spawn_daemon_ipc_server(
         runtime_root: runtime_root.to_path_buf(),
         store,
         environment,
-        expected_desktop,
+        expected_desktop: Arc::new(expected_desktop),
     }))
 }
 
+#[derive(Clone)]
 struct SearchContext {
     runtime_root: PathBuf,
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
-    expected_desktop: DesktopProcessIdentity,
+    expected_desktop: Arc<DesktopProcessIdentity>,
 }
 
 struct DesktopProcessIdentity {
@@ -302,7 +303,7 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
                             {
                                 eprintln!("cryptexd IPC search worker failed to start: {error}");
                             }
-                        } else if context.is_some() {
+                        } else {
                             let Some(reservation) = try_reserve_ipc_worker(
                                 &unauthenticated_workers,
                                 MAX_UNAUTHENTICATED_IPC_WORKERS,
@@ -325,10 +326,6 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
                             {
                                 eprintln!("cryptexd IPC worker failed to start: {error}");
                             }
-                        } else if let Err(error) =
-                            handle_connection(&mut stream, context.as_deref(), None)
-                        {
-                            eprintln!("cryptexd IPC connection failed: {error}");
                         }
                     }
                     Err(error) => eprintln!("cryptexd IPC accept failed: {error}"),
@@ -674,12 +671,12 @@ fn handle_connection(
                     let response = if desktop_search_workers.is_some() && reservation.is_none() {
                         search_rejected(Some(request.request_id), "search_busy")
                     } else {
-                        let _reservation = reservation;
-                        handle_search_until(
+                        run_search_until(
                             request,
-                            search,
+                            search.cloned(),
                             peer_is_desktop,
-                            Some(response_deadline),
+                            response_deadline,
+                            reservation,
                         )
                     };
                     let bytes = serde_json::to_vec(&response)?;
@@ -701,6 +698,52 @@ fn handle_connection(
         }
     };
     write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)
+}
+
+fn run_search_until(
+    request: Request,
+    context: Option<SearchContext>,
+    peer_is_desktop: bool,
+    deadline: Instant,
+    reservation: Option<IpcWorkerReservation>,
+) -> DesktopSearchResponse {
+    let request_id = request.request_id.clone();
+    run_bounded_search(request_id, deadline, reservation, move || {
+        handle_search_until(request, context.as_ref(), peer_is_desktop, Some(deadline))
+    })
+}
+
+fn run_bounded_search<F>(
+    request_id: String,
+    deadline: Instant,
+    reservation: Option<IpcWorkerReservation>,
+    work: F,
+) -> DesktopSearchResponse
+where
+    F: FnOnce() -> DesktopSearchResponse + Send + 'static,
+{
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let spawned = thread::Builder::new()
+        .name("cryptex-ipc-search".into())
+        .spawn(move || {
+            // A timed-out synchronous OS/SQLite operation may still be unwinding.
+            // Keep its slot occupied until it actually exits, bounding orphaned work.
+            let _reservation = reservation;
+            let response = work();
+            let _ = sender.send(response);
+        });
+    if spawned.is_err() {
+        return search_held(Some(request_id), "search_worker_unavailable");
+    }
+    match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        Ok(response) if Instant::now() <= deadline => response,
+        Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            search_held(Some(request_id), "operation_deadline_exceeded")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            search_held(Some(request_id), "canonical_verification_unavailable")
+        }
+    }
 }
 
 fn write_response(stream: &mut Stream, response: &[u8], deadline: Instant) -> io::Result<()> {
@@ -1143,10 +1186,16 @@ fn handle_search_until(
         Ok(query) => query,
         Err(error) => return search_rejected(Some(request_id), error),
     };
+    if deadline_expired(deadline) {
+        return search_held(Some(request_id.clone()), "operation_deadline_exceeded");
+    }
     let brain = match load_brain_identity(&context.runtime_root) {
         Ok(brain) => brain,
         Err(_) => return search_held(Some(request_id), "canonical_verification_unavailable"),
     };
+    if deadline_expired(deadline) {
+        return search_held(Some(request_id.clone()), "operation_deadline_exceeded");
+    }
     let local_identity = match load_local_device_identity(&context.runtime_root, &brain.brain_id) {
         Ok(identity) => identity,
         Err(crate::local_device_identity::LocalDeviceIdentityError::EnrollmentRequired) => {
@@ -1154,6 +1203,9 @@ fn handle_search_until(
         }
         Err(_) => return search_held(Some(request_id), "canonical_verification_unavailable"),
     };
+    if deadline_expired(deadline) {
+        return search_held(Some(request_id.clone()), "operation_deadline_exceeded");
+    }
     let device = match DeviceId::new(local_identity.device_id) {
         Ok(device) => device,
         Err(_) => return search_held(Some(request_id), "canonical_verification_unavailable"),
@@ -1167,10 +1219,16 @@ fn handle_search_until(
         Ok(resolver) => resolver,
         Err(_) => return search_held(Some(request_id), "canonical_verification_unavailable"),
     };
+    if deadline_expired(deadline) {
+        return search_held(Some(request_id.clone()), "operation_deadline_exceeded");
+    }
     let db = match ProjectionDb::open_or_create(&context.runtime_root) {
         Ok(db) => db,
         Err(_) => return search_held(Some(request_id), "materialization_state_missing_or_stale"),
     };
+    if deadline_expired(deadline) {
+        return search_held(Some(request_id.clone()), "operation_deadline_exceeded");
+    }
     match crate::knowledge_materialization::search_events_with_retrieval_safety_deadline(
         &context.runtime_root,
         &brain.brain_id,
@@ -1186,6 +1244,10 @@ fn handle_search_until(
         }
         Err(GuardedSearchError::Query(_)) => search_rejected(Some(request_id), "invalid_query"),
     }
+}
+
+fn deadline_expired(deadline: Option<Instant>) -> bool {
+    deadline.is_some_and(|deadline| Instant::now() >= deadline)
 }
 
 fn hold_reason_code(reason: RetrievalSafetyHold) -> &'static str {
@@ -1389,7 +1451,9 @@ mod tests {
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,
-            expected_desktop: test_desktop_process_identity().expect("desktop parent identity"),
+            expected_desktop: Arc::new(
+                test_desktop_process_identity().expect("desktop parent identity"),
+            ),
         };
         let response = handle_search(
             search_request("desktop", vec![CAPABILITY_CONTENT_SEARCH.into()]),
@@ -1420,7 +1484,9 @@ mod tests {
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,
-            expected_desktop: test_desktop_process_identity().expect("desktop parent identity"),
+            expected_desktop: Arc::new(
+                test_desktop_process_identity().expect("desktop parent identity"),
+            ),
         };
         let response = handle_search(
             search_request("desktop", vec![CAPABILITY_CONTENT_SEARCH.into()]),
@@ -1452,7 +1518,9 @@ mod tests {
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,
-            expected_desktop: test_desktop_process_identity().expect("desktop parent identity"),
+            expected_desktop: Arc::new(
+                test_desktop_process_identity().expect("desktop parent identity"),
+            ),
         };
         let request = || Request {
             protocol_version: PROTOCOL_VERSION,
@@ -1577,6 +1645,33 @@ mod tests {
         assert_eq!(search.load(Ordering::Acquire), 0);
         assert_eq!(desktop_connections.load(Ordering::Acquire), 0);
         assert_eq!(health.load(Ordering::Acquire), 1);
+    }
+
+    #[test]
+    fn timed_out_search_returns_hold_and_keeps_its_slot_until_work_exits() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let reservation = try_reserve_ipc_worker(&active, MAX_DESKTOP_SEARCH_WORKERS).unwrap();
+        let deadline = Instant::now() + Duration::from_millis(30);
+        let response =
+            run_bounded_search("slow-search".into(), deadline, Some(reservation), || {
+                thread::sleep(Duration::from_millis(120));
+                search_results(Some("slow-search".into()), Vec::new())
+            });
+
+        assert!(response.accepted);
+        assert!(response.hits.is_none(), "late results must never escape");
+        assert_eq!(
+            response.hold_reason.as_deref(),
+            Some("operation_deadline_exceeded")
+        );
+        assert_eq!(active.load(Ordering::Acquire), 1);
+        assert!(try_reserve_ipc_worker(&active, 1).is_none());
+
+        let cleanup_deadline = Instant::now() + Duration::from_secs(2);
+        while active.load(Ordering::Acquire) != 0 && Instant::now() < cleanup_deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(active.load(Ordering::Acquire), 0);
     }
 
     #[test]
