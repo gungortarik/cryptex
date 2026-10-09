@@ -1,6 +1,6 @@
 # M4 ADR-0018 — Guarded Desktop search IPC
 
-**Status:** initial IPC/UI behavior locally verified on Windows/macOS; bounded full-history search follow-up at `3792485` is Windows-verified and awaits exact-tip macOS parity; visual and final M4 gates pending
+**Status:** bounded full-history search and non-Desktop health-only startup are Windows-verified at `b6d652d`; exact-tip macOS parity, visual review and final M4 gates pending
 **Code SHA:** `652b4def1b71e9ba47323d3e51955cd3d777091a`
 **Branch:** `m4/knowledge-engine`
 
@@ -111,8 +111,26 @@ Windows at `37924852ad2207f0ab618c6737e5e08f0a6907c8`:
 
 Owner-reported macOS checks at `946642a459531247091e858c301fc7ea17835ff0`
 verify the earlier peer-auth/IPC implementation, not this new worker/deadline
-follow-up. Exact-tip Mac parity for `3792485` remains required. No Actions were
-run for this follow-up.
+follow-up. An early full-package Windows test then exposed that requiring a
+Desktop parent prevented CLI/lifecycle daemon starts. The failure diagnostic
+showed `daemon parent executable is not Cryptex Desktop`. The production
+startup path now starts retrieval IPC only when the packaged Desktop parent is
+authenticated; otherwise it starts health-only IPC, keeping sensitive search
+unavailable. This preserves CLI/test lifecycle behavior without weakening the
+Desktop peer check.
+
+Windows at `b6d652da07c175d086c625bfb498cf370dfc5fe2`:
+
+- `cargo fmt --all -- --check` — PASS
+- `cargo test --locked -p cryptexd` — **198/198 PASS** (lib 182, bin 2,
+  lifecycle 9, Mode B supervisor 3, update rollback 2)
+- Strict Clippy for events, storage, projection, knowledge, and cryptexd
+  `--all-targets -- -D warnings` — PASS
+- `cargo check --locked -p cryptex-desktop` — PASS
+- `git diff --check` — PASS
+
+Exact-tip Mac parity for `b6d652d` remains required. The report at
+`946642a` is earlier and does not verify this follow-up. No Actions were run.
 
 ## Remaining work
 
