@@ -1,7 +1,9 @@
 //! Local daemon IPC. Health and guarded Desktop retrieval are the only exposed
 //! operations; the daemon owns canonical verification and SQLite access.
 
-use std::io::{self, Read, Write};
+use std::io;
+#[cfg(any(not(windows), test))]
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
@@ -502,12 +504,12 @@ fn exchange(
     request: &Request,
     max_response_bytes: usize,
 ) -> io::Result<Vec<u8>> {
-    stream.set_nonblocking(true)?;
+    arm_ipc_stream(stream)?;
     let mut request_frame = serde_json::to_vec(request)?;
     request_frame.push(b'\n');
     let deadline = Instant::now() + IPC_RESPONSE_DEADLINE;
-    write_all_until(stream, &request_frame, deadline)?;
-    read_frame_until(stream, max_response_bytes, deadline)
+    write_ipc_all(stream, &request_frame, deadline)?;
+    read_ipc_frame(stream, max_response_bytes, deadline)
 }
 
 fn create_listener() -> io::Result<interprocess::local_socket::Listener> {
@@ -647,9 +649,9 @@ fn handle_connection(
                 .map(|pid| context.expected_desktop.matches_peer(pid))
         })
         .unwrap_or(false);
-    stream.set_nonblocking(true)?;
+    arm_ipc_stream(stream)?;
     let request_deadline = Instant::now() + IPC_REQUEST_DEADLINE;
-    let frame = match read_frame_until(stream, MAX_FRAME_BYTES, request_deadline) {
+    let frame = match read_ipc_frame(stream, MAX_FRAME_BYTES, request_deadline) {
         Ok(frame) => frame,
         Err(error) if error.kind() == io::ErrorKind::TimedOut => return Err(error),
         Err(error) if error.kind() == io::ErrorKind::InvalidData => {
@@ -750,7 +752,7 @@ fn write_response(stream: &mut Stream, response: &[u8], deadline: Instant) -> io
     let mut frame = Vec::with_capacity(response.len() + 1);
     frame.extend_from_slice(response);
     frame.push(b'\n');
-    write_all_until(stream, &frame, deadline)
+    write_ipc_all(stream, &frame, deadline)
 }
 
 fn frame_rejection_code(error: &io::Error) -> &'static str {
@@ -761,6 +763,7 @@ fn frame_rejection_code(error: &io::Error) -> &'static str {
     }
 }
 
+#[cfg(any(not(windows), test))]
 fn write_all_until<W: Write>(
     writer: &mut W,
     mut bytes: &[u8],
@@ -788,6 +791,237 @@ fn write_all_until<W: Write>(
     Ok(())
 }
 
+fn arm_ipc_stream(stream: &Stream) -> io::Result<()> {
+    #[cfg(not(windows))]
+    {
+        stream.set_nonblocking(true)?;
+    }
+    #[cfg(windows)]
+    {
+        // interprocess enables PIPE_NOWAIT for nonblocking named pipes. Its
+        // reader then turns the resulting "no data yet" error into a
+        // zero-length read, which this protocol treats as end-of-stream.
+        // Windows framing waits with overlapped I/O and cancels it at the
+        // deadline instead.
+        let _ = stream;
+    }
+    Ok(())
+}
+
+fn read_ipc_frame(stream: &mut Stream, max_bytes: usize, deadline: Instant) -> io::Result<Vec<u8>> {
+    #[cfg(windows)]
+    {
+        read_windows_pipe_frame(stream, max_bytes, deadline)
+    }
+    #[cfg(not(windows))]
+    {
+        read_frame_until(stream, max_bytes, deadline)
+    }
+}
+
+fn write_ipc_all(stream: &mut Stream, bytes: &[u8], deadline: Instant) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        write_windows_pipe_all(stream, bytes, deadline)
+    }
+    #[cfg(not(windows))]
+    {
+        write_all_until(stream, bytes, deadline)
+    }
+}
+
+#[cfg(windows)]
+fn frame_timeout() -> io::Error {
+    io::Error::new(io::ErrorKind::TimedOut, "IPC frame deadline exceeded")
+}
+
+#[cfg(windows)]
+fn read_windows_pipe_frame(
+    stream: &Stream,
+    max_bytes: usize,
+    deadline: Instant,
+) -> io::Result<Vec<u8>> {
+    let mut frame = Vec::with_capacity(1024);
+    let mut chunk = [0_u8; 4096];
+    loop {
+        if Instant::now() >= deadline {
+            return Err(frame_timeout());
+        }
+        match transfer_named_pipe(stream, None, Some(&mut chunk), deadline) {
+            Ok(0) if frame.is_empty() => return Ok(frame),
+            Ok(0) => return Err(invalid_data("incomplete IPC frame")),
+            Ok(read) => {
+                let bytes = &chunk[..read];
+                let line_end = bytes.iter().position(|byte| *byte == b'\n');
+                let append_len = line_end.map_or(bytes.len(), |index| index + 1);
+                if frame.len().saturating_add(append_len) > max_bytes {
+                    return Err(invalid_data("IPC frame exceeds limit"));
+                }
+                frame.extend_from_slice(&bytes[..append_len]);
+                if let Some(end) = line_end {
+                    if end + 1 != bytes.len() {
+                        return Err(invalid_data("trailing bytes after IPC frame"));
+                    }
+                    return Ok(frame);
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+#[cfg(windows)]
+fn write_windows_pipe_all(stream: &Stream, mut bytes: &[u8], deadline: Instant) -> io::Result<()> {
+    while !bytes.is_empty() {
+        if Instant::now() >= deadline {
+            return Err(frame_timeout());
+        }
+        let written = transfer_named_pipe(stream, Some(bytes), None, deadline)?;
+        if written == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "IPC stream closed",
+            ));
+        }
+        bytes = &bytes[written..];
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn transfer_named_pipe(
+    stream: &Stream,
+    write: Option<&[u8]>,
+    read: Option<&mut [u8]>,
+    deadline: Instant,
+) -> io::Result<usize> {
+    use std::os::windows::io::{AsHandle, AsRawHandle};
+    use windows_sys::Win32::{
+        Foundation::{ERROR_IO_PENDING, ERROR_OPERATION_ABORTED, WAIT_OBJECT_0, WAIT_TIMEOUT},
+        Storage::FileSystem::{ReadFile, WriteFile},
+        System::{
+            IO::{CancelIoEx, OVERLAPPED},
+            Threading::{CreateEventW, WaitForSingleObject},
+        },
+    };
+
+    if Instant::now() >= deadline {
+        return Err(frame_timeout());
+    }
+    let Stream::NamedPipe(pipe) = stream;
+    let handle = pipe.as_handle().as_raw_handle();
+    let event = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
+    if event.is_null() {
+        return Err(io::Error::last_os_error());
+    }
+    let _event_guard = EventGuard(event);
+
+    let reading = read.is_some();
+    let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+    overlapped.hEvent = event;
+    let started = match (write, read) {
+        (Some(bytes), None) => {
+            let len = u32::try_from(bytes.len())
+                .map_err(|_| invalid_data("IPC transfer is too large"))?;
+            unsafe {
+                WriteFile(
+                    handle,
+                    bytes.as_ptr().cast(),
+                    len,
+                    std::ptr::null_mut(),
+                    &mut overlapped,
+                )
+            }
+        }
+        (None, Some(bytes)) => {
+            let len = u32::try_from(bytes.len())
+                .map_err(|_| invalid_data("IPC transfer is too large"))?;
+            unsafe {
+                ReadFile(
+                    handle,
+                    bytes.as_mut_ptr().cast(),
+                    len,
+                    std::ptr::null_mut(),
+                    &mut overlapped,
+                )
+            }
+        }
+        _ => return Err(invalid_data("IPC transfer direction is invalid")),
+    };
+    if started == 0 {
+        let error = io::Error::last_os_error();
+        if error.raw_os_error() != Some(ERROR_IO_PENDING as i32) {
+            return map_pipe_read_end(error, reading);
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let millis = u32::try_from(remaining.as_millis()).unwrap_or(u32::MAX - 1);
+        let wait = unsafe { WaitForSingleObject(event, millis) };
+        if wait == WAIT_TIMEOUT {
+            unsafe { CancelIoEx(handle, &overlapped) };
+            return match overlapped_byte_count(handle, &overlapped, true) {
+                Err(error) if error.raw_os_error() == Some(ERROR_OPERATION_ABORTED as i32) => {
+                    Err(frame_timeout())
+                }
+                other => other,
+            };
+        }
+        if wait != WAIT_OBJECT_0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    overlapped_byte_count(handle, &overlapped, false)
+        .or_else(|error| map_pipe_read_end(error, reading))
+}
+
+#[cfg(windows)]
+fn overlapped_byte_count(
+    handle: windows_sys::Win32::Foundation::HANDLE,
+    overlapped: *const windows_sys::Win32::System::IO::OVERLAPPED,
+    wait: bool,
+) -> io::Result<usize> {
+    use windows_sys::Win32::System::IO::GetOverlappedResult;
+
+    let mut transferred = 0_u32;
+    let completed =
+        unsafe { GetOverlappedResult(handle, overlapped, &mut transferred, i32::from(wait)) };
+    if completed == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(usize::try_from(transferred).unwrap_or(usize::MAX))
+    }
+}
+
+#[cfg(windows)]
+fn map_pipe_read_end(error: io::Error, reading: bool) -> io::Result<usize> {
+    use windows_sys::Win32::Foundation::{ERROR_BROKEN_PIPE, ERROR_PIPE_NOT_CONNECTED};
+
+    const BROKEN_PIPE: i32 = ERROR_BROKEN_PIPE as i32;
+    const NOT_CONNECTED: i32 = ERROR_PIPE_NOT_CONNECTED as i32;
+    if reading
+        && matches!(
+            error.raw_os_error(),
+            Some(BROKEN_PIPE) | Some(NOT_CONNECTED)
+        )
+    {
+        Ok(0)
+    } else {
+        Err(error)
+    }
+}
+
+#[cfg(windows)]
+struct EventGuard(windows_sys::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+impl Drop for EventGuard {
+    fn drop(&mut self) {
+        use windows_sys::Win32::Foundation::CloseHandle;
+
+        unsafe { CloseHandle(self.0) };
+    }
+}
+
+#[cfg(any(not(windows), test))]
 fn read_frame_until<R: Read>(
     reader: &mut R,
     max_bytes: usize,
@@ -826,6 +1060,7 @@ fn read_frame_until<R: Read>(
     }
 }
 
+#[cfg(any(not(windows), test))]
 fn wait_until_ready(deadline: Instant) -> io::Result<()> {
     let now = Instant::now();
     if now >= deadline {
@@ -1810,5 +2045,92 @@ mod tests {
         let identity = test_desktop_process_identity().expect("capture test parent process");
         assert!(identity.matches_peer(identity.pid));
         assert!(!identity.matches_peer(identity.pid.wrapping_add(1)));
+    }
+
+    fn isolated_ipc_listener(
+        label: &str,
+    ) -> (
+        interprocess::local_socket::Name<'static>,
+        interprocess::local_socket::Listener,
+    ) {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        #[cfg(windows)]
+        let name =
+            std::ffi::OsString::from(format!("cryptex-ipc-{label}-{}-{suffix}", process::id()))
+                .to_ns_name::<GenericNamespaced>()
+                .expect("test pipe name");
+        #[cfg(unix)]
+        let name = {
+            std::env::temp_dir()
+                .join(format!(
+                    "cryptex-ipc-{label}-{}-{suffix}.sock",
+                    process::id()
+                ))
+                .to_fs_name::<interprocess::local_socket::GenericFilePath>()
+                .expect("test socket name")
+        };
+        let listener = ListenerOptions::new()
+            .name(name.borrow())
+            .create_sync()
+            .expect("test listener");
+        (name, listener)
+    }
+
+    #[test]
+    fn desktop_health_frame_round_trips_on_a_named_pipe() {
+        let (name, listener) = isolated_ipc_listener("health");
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().expect("accept test client");
+            handle_connection(&mut stream, None, None).expect("health connection");
+        });
+        let mut client = Stream::connect(name.borrow()).expect("connect test client");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let request = Request {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "round-trip".into(),
+            client_role: "desktop".into(),
+            capabilities: vec![CAPABILITY_STATUS_READ.into()],
+            operation: "health.ping".into(),
+            query: None,
+        };
+        let mut frame = serde_json::to_vec(&request).expect("request encodes");
+        frame.push(b'\n');
+        write_ipc_all(&mut client, &frame, deadline).expect("client write");
+        let response_frame =
+            read_ipc_frame(&mut client, MAX_RESPONSE_BYTES, deadline).expect("client read");
+        let response: HealthResponse =
+            serde_json::from_slice(&response_frame).expect("response decodes");
+        assert!(response.accepted);
+        assert_eq!(response.request_id.as_deref(), Some("round-trip"));
+        assert_eq!(response.operation.as_deref(), Some("health.pong"));
+        assert!(response.error.is_none());
+        server.join().expect("server thread");
+    }
+
+    #[test]
+    fn stalled_pipe_read_returns_at_the_deadline() {
+        let (name, listener) = isolated_ipc_listener("stall");
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().expect("accept stalled client");
+            arm_ipc_stream(&stream).expect("arm stalled stream");
+            let started = Instant::now();
+            let error = read_ipc_frame(&mut stream, 256, started + Duration::from_millis(250))
+                .expect_err("stalled read");
+            assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+            let elapsed = started.elapsed();
+            assert!(
+                elapsed >= Duration::from_millis(150),
+                "stalled read returned before the deadline: {elapsed:?}"
+            );
+            assert!(
+                elapsed < Duration::from_secs(2),
+                "stalled read exceeded the deadline bound: {elapsed:?}"
+            );
+        });
+        let _client = Stream::connect(name.borrow()).expect("connect stalled client");
+        server.join().expect("server thread");
     }
 }
