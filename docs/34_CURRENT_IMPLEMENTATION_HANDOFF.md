@@ -1,22 +1,32 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-10
-**Current milestone status:** M4 COMPLETE within accepted scope; normal PR #10
-merge is authorized and is the next integration action. M5 preparation follows
-the verified merge; no M5 production implementation is authorized yet.
-**Final review:** `evidence/m4/m4-final-review-20261010.md`; owner-delegated
-technical review accepted under the owner's conditional merge instruction.
-**Required CI:** [38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073)
-PASS at `f9bd8945151a44d450bd8340a6794a5f33df3e72`; Windows/macOS readiness
-(including knowledge and Desktop policy tests) plus Windows IPC ACL PASS.
-**Production v2 activation:** CLOSED; writer remains disabled. Visual/security
-limitations remain recorded in the final review, not silently promoted to PASS.
+**Current milestone:** M5 — Capture + Timeline, PREPARATION ONLY.
+**Active branch:** `codex/m5-capture-timeline`.
+**Verified base:** `origin/m0/foundation` at M4 PR #10 normal merge
+`a6c32bd30f883e546e2eb976787a59057fae211b`. The accepted M4 documentation and tested candidate are ancestors.
+**M4 status:** COMPLETE within accepted scope and merged. Final owner-delegated
+review: `evidence/m4/m4-final-review-20261010.md`; no independent human
+line-by-line review is claimed. Corrected required CI
+[38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073)
+PASS at `f9bd8945151a44d450bd8340a6794a5f33df3e72`, including explicit knowledge
+and Desktop response-policy tests on Windows/macOS plus Windows IPC ACL.
+**Next action:** Windows Cursor should sync this exact branch only from a clean
+checkout, read `evidence/m5/m5-kickoff-plan-20261010.md` and return the concrete
+Slice 1 capture-service/failure-semantics proposal. English instruction:
+`evidence/m5/m5-cursor-preparation-prompt-20261010.md`.
+**Authorization:** M5 preparation only. No M5 product code or new dependencies,
+no Actions run for planning. Production implementation needs explicit approval.
+**Continuing invariants:** v1 memory.note unchanged; production v2 writing OFF;
+canonical writer daemon-only; derived SQLite rebuildable; RetrievalSafetyState
+holds apply to all content-returning paths. M4 visual/security limitations remain
+explicit in its final review. Do not implement M6+ features opportunistically.
 
 ## Historical M4 continuation snapshot (superseded)
 
 The entries below retain their original capture-time statuses. Pending CI,
 owner OPEN, M4 IN PROGRESS and do-not-start-M5 instructions in this historical
-snapshot are superseded by the current closeout above and the final review.
+snapshot are superseded by the current M5 continuation above and the final review.
 
 **M4 review packet:** Draft [PR #10](https://github.com/gungortarik/cryptex/pull/10) targets `m0/foundation`; the technical acceptance audit and diff are prepared. Git reports MERGEABLE (no merge-conflict finding), not approval. Corrected CI run `38033047073` and final human review remain the closeout gates. No merge, M4 COMPLETE claim, M5 work or production v2 activation is authorized by this status note.
 **Corrected M4 CI run:** [38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073) was dispatched once at exact candidate `f9bd8945151a44d450bd8340a6794a5f33df3e72`, containing CI coverage fix `9500e2f`. Both readiness jobs and Windows IPC ACL are running; result PENDING. This follow-up changes workflow coverage/documentation only; product-code baseline remains `b1c43e2`. Final human review is OPEN; M4 is not complete or merged.
@@ -74,14 +84,14 @@ snapshot are superseded by the current closeout above and the final review.
 
 1. `AGENTS.md`
 2. `docs/00_MASTER_SPEC.md`
-3. `docs/milestones/M3_LOCAL_PROJECTION_SEARCH.md`
+3. `docs/milestones/M5_CAPTURE_TIMELINE.md`
 4. `docs/03_MEMORY_MODEL.md`
 5. `docs/04_EVENT_SCHEMA_AND_INVARIANTS.md`
 6. `docs/06_STORAGE_ARCHITECTURE.md`
 7. `docs/17_TEST_AND_FAILURE_MATRIX.md`
 8. `docs/21_DEFINITION_OF_DONE.md`
-9. relevant accepted ADRs, including ADR-0013, ADR-0016, and ADR-0017 for canonical-event reads and M4 materialization
-10. `evidence/m3/m3-kickoff-plan-20261008.md` and M2 closeout records under `evidence/m2/`
+9. relevant accepted ADRs, including ADR-0013/0015/0016/0017/0018; UX design system `docs/14_DESKTOP_UX_AND_DESIGN_SYSTEM.md`
+10. `evidence/m5/m5-kickoff-plan-20261010.md` and M4 final review/CI evidence under `evidence/m4/`
 
 ## Working agreement
 

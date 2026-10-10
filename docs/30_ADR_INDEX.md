@@ -75,9 +75,9 @@ M3 — Local Projection + Search is **COMPLETE within scope** and integrated int
 
 ## 4.4 M4 gate
 
-M4 — Knowledge Engine is **COMPLETE within accepted implementation scope** on
-`m4/knowledge-engine`; normal PR #10 integration is authorized by owner-delegated
-review. Final review: `evidence/m4/m4-final-review-20261010.md`; corrected
+M4 — Knowledge Engine is **COMPLETE within accepted implementation scope** and
+integrated into `m0/foundation` by normal PR #10 merge
+`a6c32bd30f883e546e2eb976787a59057fae211b` after owner-delegated review. Final review: `evidence/m4/m4-final-review-20261010.md`; corrected
 Windows/macOS CI PASS: run `38033047073` at `f9bd894`. ADR-0017 is
 **ACCEPTED** and governs strict v2 structured-event evolution, deterministic
 knowledge materialization, retrieval safety, and additive derived state in the
@@ -88,6 +88,15 @@ management is added. The exact M4 implementation sequence and tests are in
 `docs/milestones/M4_KNOWLEDGE_ENGINE.md`. Production v2 writing remains
 disabled until ADR-0017 §8.2 separately passes; M8/M10/M14 work is not
 authorized by M4 acceptance.
+
+## 4.5 M5 preparation
+
+M5 — Capture + Timeline is in **PREPARATION ONLY** on
+`codex/m5-capture-timeline`, based on the verified M4 merge above. Follow
+`docs/milestones/M5_CAPTURE_TIMELINE.md` and
+`evidence/m5/m5-kickoff-plan-20261010.md`. No new ADR is accepted by this
+preparation; no M5 product implementation or Actions run is authorized yet.
+Production v2 activation remains CLOSED.
 
 ## 5. ADR source records
 
