@@ -1,7 +1,7 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-10
-**Current milestone:** M5 — Capture + Timeline, IN PROGRESS; Slice 2 (retry/restart safety) AUTHORIZED.
+**Current milestone:** M5 -- Capture + Timeline, IN PROGRESS; Slice 2 retry/restart safety implemented (Windows focused verification recorded; macOS pending).
 **Active branch:** `codex/m5-capture-timeline`.
 **Verified base:** `origin/m0/foundation` at M4 PR #10 normal merge
 `a6c32bd30f883e546e2eb976787a59057fae211b`. The accepted M4 documentation and tested candidate are ancestors.
@@ -15,7 +15,7 @@ and Desktop response-policy tests on Windows/macOS plus Windows IPC ACL.
 `evidence/m5/m5-slice1-capture-reconciliation-contract-20261010.md`. Owner
 authorized Slice 1 daemon capture service implementation only.
 **Slice 1 verification:** Product fix `d206ea4dc213f56908807a7700c1f6542e14787a` has Windows focused PASS; owner-reported macOS PASS at exact HEAD `5d580a654d23f851e6853f0b297a8474ad87b747` (27.0.1 / 26A434 / arm64; capture 20, fake 6, writer 22, projection 17, fmt and strict Clippy). Evidence: `evidence/m5/m5-slice1-review-fix-windows-verification-20261010.md` and `evidence/m5/m5-slice1-macos-verification-20261010.md`. Slice 1 local platform gate is closed; final M5 CI/DoD acceptance is not claimed.
-**Next action:** Implement M5 Slice 2 retry/restart safety on `codex/m5-capture-timeline` from tip `6eba9b15aa0047eb003d7b0a758c1aa7526b881e`, per `evidence/m5/m5-slice2-retry-restart-coverage-map-20261010.md`. Prove restart with separate child processes and fresh process-local state. Do not start Desktop capture IPC/UI, timeline, projection wiring, or later slices. No Actions or merge unless the owner requests them.
+**Next action:** Slice 2 retry/restart safety product tip `a1645e7a1d7655d346f7df4aa3519b315db93147`; Windows fmt/focused tests/strict Clippy PASS recorded in `evidence/m5/m5-slice2-windows-verification-20261010.md`. Run the prepared macOS verification commands in that evidence file before Slice 2 closeout. Do not start Desktop capture IPC/UI, timeline, projection wiring, or later slices without explicit authorization. No merge or Actions for this slice unless the owner requests them.
 **Authorization:** M5 Slice 1 complete within local platform gate. M5 Slice 2 (retry/restart safety) product work authorized 2026-10-10. Desktop capture IPC/UI, timeline, projection wiring, later slices, and
 production v2 activation remain CLOSED until separately authorized.
 **Continuing invariants:** v1 memory.note unchanged; production v2 writing OFF;
