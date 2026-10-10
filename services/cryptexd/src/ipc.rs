@@ -1,4 +1,4 @@
-﻿//! Local daemon IPC. Health and guarded Desktop retrieval are the only exposed
+//! Local daemon IPC. Health and guarded Desktop retrieval are the only exposed
 //! operations; the daemon owns canonical verification and SQLite access.
 
 use std::io;
@@ -11,6 +11,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::canonical_writer::CanonicalWriterConfig;
+use crate::capture::{
+    CaptureOutcome, CaptureRejectCode, CaptureRequest, CaptureUncertainReason, capture_memory_note,
+    resolve_capture,
+};
 use crate::compat::DAEMON_PROTOCOL_VERSION;
 use crate::knowledge_materialization::{GuardedSearchError, RetrievalSafetyHold};
 use crate::local_device_identity::LocalDeviceKeyResolver;
@@ -19,6 +24,8 @@ use crate::{
     identity_runtime::load_brain_identity, local_device_identity::load_local_device_identity,
 };
 use cryptex_core::DeviceId;
+use cryptex_events::Classification;
+use cryptex_events::limits::MAX_MEMORY_NOTE_TEXT_BYTES;
 use cryptex_projection::{ProjectionDb, SearchHit, SearchQuery};
 #[cfg(windows)]
 use interprocess::local_socket::GenericNamespaced;
@@ -41,6 +48,20 @@ const MAX_AUTHENTICATED_DESKTOP_CONNECTIONS: usize = 8;
 // Full-history verification/search is bounded independently from the Desktop
 // connection pool, leaving capacity for Desktop health/enrollment requests.
 const MAX_DESKTOP_SEARCH_WORKERS: usize = 2;
+/// One capture/resolve at a time so health/search keep listener capacity.
+const MAX_DESKTOP_CAPTURE_WORKERS: usize = 1;
+const CAPABILITY_CONTENT_CAPTURE: &str = "content.capture";
+/// Capture responses are small (no note body); keep under the legacy frame budget.
+const MAX_CAPTURE_RESPONSE_BYTES: usize = MAX_FRAME_BYTES;
+/// Worst-case JSON string expansion for UTF-8 text (every byte as `\u00XX`).
+const MAX_JSON_STRING_ESCAPE_FACTOR: usize = 6;
+/// Envelope/metadata allowance around the escaped text field.
+const MAX_CAPTURE_REQUEST_OVERHEAD_BYTES: usize = 4 * 1024;
+/// Authenticated Desktop capture frames only. Health/search stay at MAX_FRAME_BYTES.
+const MAX_CAPTURE_FRAME_BYTES: usize =
+    MAX_MEMORY_NOTE_TEXT_BYTES * MAX_JSON_STRING_ESCAPE_FACTOR + MAX_CAPTURE_REQUEST_OVERHEAD_BYTES;
+/// Capture may wait on the device lock; deadline returns Uncertain, not cancelled.
+const IPC_CAPTURE_RESPONSE_DEADLINE: Duration = Duration::from_secs(60);
 #[cfg(windows)]
 const ENDPOINT_ID: &str = "cryptexd-v1";
 
@@ -54,6 +75,46 @@ struct Request {
     operation: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     query: Option<DesktopSearchQuery>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    capture: Option<DesktopCaptureBody>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    capture_resolve: Option<DesktopCaptureResolveBody>,
+}
+
+/// Wire body for `memory.capture`. Raw text is bounded independently of frame size.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DesktopCaptureBody {
+    pub capture_id: String,
+    pub text: String,
+    pub classification: String,
+}
+
+/// Wire body for `memory.capture_resolve` (never appends).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DesktopCaptureResolveBody {
+    pub capture_id: String,
+}
+
+/// Redacted capture/resolve outcome for Desktop. Never includes note body or paths.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopCaptureResponse {
+    pub protocol_version: u32,
+    pub request_id: Option<String>,
+    pub accepted: bool,
+    pub error: Option<String>,
+    pub operation: Option<String>,
+    pub daemon_pid: u32,
+    pub outcome: Option<String>,
+    pub reject_code: Option<String>,
+    pub uncertain_reason: Option<String>,
+    pub capture_id: Option<String>,
+    pub event_id: Option<String>,
+    pub classification: Option<String>,
+    pub created_at: Option<String>,
+    pub content_hash: Option<String>,
 }
 
 /// Bounded read-only search request accepted from the Desktop role only.
@@ -268,6 +329,7 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
     let unauthenticated_workers = Arc::new(AtomicUsize::new(0));
     let desktop_connections = Arc::new(AtomicUsize::new(0));
     let desktop_search_workers = Arc::new(AtomicUsize::new(0));
+    let desktop_capture_workers = Arc::new(AtomicUsize::new(0));
     thread::Builder::new()
         .name("cryptex-ipc".into())
         .spawn(move || {
@@ -290,6 +352,7 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
                             };
                             let worker_context = context.clone();
                             let search_workers = Arc::clone(&desktop_search_workers);
+                            let capture_workers = Arc::clone(&desktop_capture_workers);
                             if let Err(error) = thread::Builder::new()
                                 .name("cryptex-ipc-desktop".into())
                                 .spawn(move || {
@@ -298,6 +361,7 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
                                         &mut stream,
                                         worker_context.as_deref(),
                                         Some(&search_workers),
+                                        Some(&capture_workers),
                                     ) {
                                         eprintln!("cryptexd Desktop IPC failed: {error}");
                                     }
@@ -320,6 +384,7 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
                                     if let Err(error) = handle_connection(
                                         &mut stream,
                                         worker_context.as_deref(),
+                                        None,
                                         None,
                                     ) {
                                         eprintln!("cryptexd IPC connection failed: {error}");
@@ -396,6 +461,8 @@ pub fn health_ping(role: &str, timeout: Duration) -> io::Result<HealthResponse> 
         capabilities: vec![CAPABILITY_STATUS_READ.into()],
         operation: "health.ping".into(),
         query: None,
+        capture: None,
+        capture_resolve: None,
     };
     let frame = exchange(&mut stream, &request, MAX_RESPONSE_BYTES)?;
     let response: HealthResponse = serde_json::from_slice(&frame)?;
@@ -443,6 +510,8 @@ pub fn desktop_search(
         capabilities: vec![CAPABILITY_CONTENT_SEARCH.into()],
         operation: "content.search".into(),
         query: Some(query),
+        capture: None,
+        capture_resolve: None,
     };
     let frame = exchange(&mut stream, &request, MAX_SEARCH_RESPONSE_BYTES)?;
     let response: DesktopSearchResponse = serde_json::from_slice(&frame)?;
@@ -485,6 +554,8 @@ pub fn desktop_enroll_local_device(timeout: Duration) -> io::Result<DesktopEnrol
         capabilities: vec![CAPABILITY_IDENTITY_SETUP.into()],
         operation: "identity.enroll_local".into(),
         query: None,
+        capture: None,
+        capture_resolve: None,
     };
     let frame = exchange(&mut stream, &request, MAX_RESPONSE_BYTES)?;
     let response: DesktopEnrollmentResponse = serde_json::from_slice(&frame)?;
@@ -641,6 +712,7 @@ fn handle_connection(
     stream: &mut Stream,
     search: Option<&SearchContext>,
     desktop_search_workers: Option<&Arc<AtomicUsize>>,
+    desktop_capture_workers: Option<&Arc<AtomicUsize>>,
 ) -> io::Result<()> {
     let peer_is_desktop = search
         .and_then(|context| {
@@ -649,18 +721,31 @@ fn handle_connection(
                 .map(|pid| context.expected_desktop.matches_peer(pid))
         })
         .unwrap_or(false);
-    handle_connection_for_peer(stream, search, desktop_search_workers, peer_is_desktop)
+    handle_connection_for_peer(
+        stream,
+        search,
+        desktop_search_workers,
+        desktop_capture_workers,
+        peer_is_desktop,
+    )
 }
 
 fn handle_connection_for_peer(
     stream: &mut Stream,
     search: Option<&SearchContext>,
     desktop_search_workers: Option<&Arc<AtomicUsize>>,
+    desktop_capture_workers: Option<&Arc<AtomicUsize>>,
     peer_is_desktop: bool,
 ) -> io::Result<()> {
     arm_ipc_stream(stream)?;
     let request_deadline = Instant::now() + IPC_REQUEST_DEADLINE;
-    let frame = match read_ipc_frame(stream, MAX_FRAME_BYTES, request_deadline) {
+    // Authenticate peer before accepting a capture-sized frame.
+    let max_frame = if peer_is_desktop {
+        MAX_CAPTURE_FRAME_BYTES
+    } else {
+        MAX_FRAME_BYTES
+    };
+    let frame = match read_ipc_frame(stream, max_frame, request_deadline) {
         Ok(frame) => frame,
         Err(error) if error.kind() == io::ErrorKind::TimedOut => return Err(error),
         Err(error) if error.kind() == io::ErrorKind::InvalidData => {
@@ -674,7 +759,13 @@ fn handle_connection_for_peer(
     } else {
         match serde_json::from_slice::<Request>(&frame) {
             Ok(request) => {
-                if request.operation == "content.search" {
+                let is_capture_op = matches!(
+                    request.operation.as_str(),
+                    "memory.capture" | "memory.capture_resolve"
+                );
+                if !is_capture_op && frame.len() > MAX_FRAME_BYTES {
+                    serde_json::to_vec(&rejected(Some(request.request_id), "frame_too_large"))?
+                } else if request.operation == "content.search" {
                     let response_deadline = Instant::now() + IPC_RESPONSE_DEADLINE;
                     let reservation = desktop_search_workers.and_then(|workers| {
                         try_reserve_ipc_worker(workers, MAX_DESKTOP_SEARCH_WORKERS)
@@ -699,6 +790,33 @@ fn handle_connection_for_peer(
                     } else {
                         bytes
                     }
+                } else if request.operation == "memory.capture"
+                    || request.operation == "memory.capture_resolve"
+                {
+                    let response_deadline = Instant::now() + IPC_CAPTURE_RESPONSE_DEADLINE;
+                    let reservation = desktop_capture_workers.and_then(|workers| {
+                        try_reserve_ipc_worker(workers, MAX_DESKTOP_CAPTURE_WORKERS)
+                    });
+                    let response = if desktop_capture_workers.is_some() && reservation.is_none() {
+                        capture_rejected(Some(request.request_id), "capture_busy")
+                    } else {
+                        run_capture_until(
+                            request,
+                            search.cloned(),
+                            peer_is_desktop,
+                            response_deadline,
+                            reservation,
+                        )
+                    };
+                    let bytes = serde_json::to_vec(&response)?;
+                    if bytes.len() + 1 > MAX_CAPTURE_RESPONSE_BYTES {
+                        serde_json::to_vec(&capture_rejected(
+                            response.request_id,
+                            "response_too_large",
+                        ))?
+                    } else {
+                        bytes
+                    }
                 } else if request.operation == "identity.enroll_local" {
                     serde_json::to_vec(&handle_enrollment(request, search, peer_is_desktop))?
                 } else {
@@ -708,7 +826,8 @@ fn handle_connection_for_peer(
             Err(_) => serde_json::to_vec(&rejected(None, "malformed_request"))?,
         }
     };
-    write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)
+    let write_deadline = Instant::now() + IPC_CAPTURE_RESPONSE_DEADLINE;
+    write_response(stream, &response, write_deadline)
 }
 
 fn run_search_until(
@@ -1399,7 +1518,10 @@ fn handle_enrollment(
         Some("unauthorized_client_process")
     } else if request.capabilities.as_slice() != [CAPABILITY_IDENTITY_SETUP] {
         Some("unauthorized_capability")
-    } else if request.query.is_some() {
+    } else if request.query.is_some()
+        || request.capture.is_some()
+        || request.capture_resolve.is_some()
+    {
         Some("unexpected_request_payload")
     } else {
         None
@@ -1489,6 +1611,8 @@ fn handle_search_until(
         Some("unauthorized_capability")
     } else if request.query.is_none() {
         Some("missing_search_query")
+    } else if request.capture.is_some() || request.capture_resolve.is_some() {
+        Some("unexpected_capture_body")
     } else {
         None
     };
@@ -1636,7 +1760,11 @@ fn authorize(request: Request) -> HealthResponse {
         Some("unauthorized_client_role")
     } else if request.capabilities.as_slice() != [CAPABILITY_STATUS_READ] {
         Some("unauthorized_capability")
-    } else if request.operation != "health.ping" || request.query.is_some() {
+    } else if request.operation != "health.ping"
+        || request.query.is_some()
+        || request.capture.is_some()
+        || request.capture_resolve.is_some()
+    {
         Some("unsupported_operation")
     } else {
         None
@@ -1669,6 +1797,384 @@ fn invalid_data(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
+fn run_capture_until(
+    request: Request,
+    context: Option<SearchContext>,
+    peer_is_desktop: bool,
+    deadline: Instant,
+    reservation: Option<IpcWorkerReservation>,
+) -> DesktopCaptureResponse {
+    let request_id = request.request_id.clone();
+    run_bounded_capture(request_id, deadline, reservation, move || {
+        handle_capture_until(request, context.as_ref(), peer_is_desktop)
+    })
+}
+
+fn run_bounded_capture<F>(
+    request_id: String,
+    deadline: Instant,
+    reservation: Option<IpcWorkerReservation>,
+    work: F,
+) -> DesktopCaptureResponse
+where
+    F: FnOnce() -> DesktopCaptureResponse + Send + 'static,
+{
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let spawned = thread::Builder::new()
+        .name("cryptex-ipc-capture".into())
+        .spawn(move || {
+            // Timed-out capture work may still hold the device lock until exit.
+            // Keep the worker slot occupied; do not claim the commit was cancelled.
+            let _reservation = reservation;
+            let response = work();
+            let _ = sender.send(response);
+        });
+    if spawned.is_err() {
+        return capture_rejected(Some(request_id), "capture_worker_unavailable");
+    }
+    match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        Ok(response) if Instant::now() <= deadline => response,
+        Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            // Uncertain: work may still be committing. Not a cancel guarantee.
+            capture_uncertain(Some(request_id), "operation_deadline_exceeded")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            capture_uncertain(Some(request_id), "capture_worker_disconnected")
+        }
+    }
+}
+
+fn handle_capture_until(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+) -> DesktopCaptureResponse {
+    let request_id = request.request_id.clone();
+    let is_resolve = request.operation == "memory.capture_resolve";
+    let authorization_error = if request.protocol_version != PROTOCOL_VERSION {
+        Some("incompatible_protocol_version")
+    } else if request.request_id.is_empty() || request.request_id.len() > 128 {
+        Some("invalid_request_id")
+    } else if request.client_role != "desktop" {
+        Some("unauthorized_client_role")
+    } else if !peer_is_desktop {
+        Some("unauthorized_client_process")
+    } else if request.capabilities.as_slice() != [CAPABILITY_CONTENT_CAPTURE] {
+        Some("unauthorized_capability")
+    } else if request.query.is_some() {
+        Some("unexpected_search_query")
+    } else if is_resolve {
+        if request.capture.is_some() {
+            Some("unexpected_capture_body")
+        } else if request.capture_resolve.is_none() {
+            Some("missing_capture_resolve")
+        } else {
+            None
+        }
+    } else if request.operation == "memory.capture" {
+        if request.capture_resolve.is_some() {
+            Some("unexpected_capture_resolve")
+        } else if request.capture.is_none() {
+            Some("missing_capture_body")
+        } else {
+            None
+        }
+    } else {
+        Some("unsupported_operation")
+    };
+    if let Some(error) = authorization_error {
+        return capture_rejected(Some(request_id), error);
+    }
+    let Some(context) = context else {
+        return capture_rejected(Some(request_id), "capture_unavailable");
+    };
+
+    let outcome = if is_resolve {
+        let body = request.capture_resolve.expect("checked");
+        if let Err(code) = validate_capture_id(&body.capture_id) {
+            return capture_rejected(Some(request_id), code);
+        }
+        resolve_capture(
+            context.store.as_ref(),
+            context.environment,
+            &context.runtime_root,
+            &body.capture_id,
+        )
+    } else {
+        let body = request.capture.expect("checked");
+        match validate_capture_body(&body) {
+            Ok(req) => capture_memory_note(
+                context.store.as_ref(),
+                context.environment,
+                &context.runtime_root,
+                req,
+                &CanonicalWriterConfig::default(),
+            ),
+            Err(code) => return capture_rejected(Some(request_id), code),
+        }
+    };
+    map_capture_outcome(
+        request_id,
+        if is_resolve {
+            "memory.capture_resolve.result"
+        } else {
+            "memory.capture.result"
+        },
+        outcome,
+    )
+}
+
+fn validate_capture_id(capture_id: &str) -> Result<(), &'static str> {
+    if capture_id.len() != 36 {
+        return Err("invalid_capture_id");
+    }
+    // UUID shape only; service rejects non-UUID via capture layer too.
+    let ok = capture_id
+        .as_bytes()
+        .iter()
+        .enumerate()
+        .all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => *b == b'-',
+            _ => b.is_ascii_hexdigit(),
+        });
+    if !ok {
+        return Err("invalid_capture_id");
+    }
+    Ok(())
+}
+
+fn parse_wire_classification(value: &str) -> Result<Classification, &'static str> {
+    match value {
+        "public" => Ok(Classification::Public),
+        "internal" => Ok(Classification::Internal),
+        "private" => Ok(Classification::Private),
+        "restricted" => Ok(Classification::Restricted),
+        _ => Err("invalid_classification"),
+    }
+}
+
+fn validate_capture_body(body: &DesktopCaptureBody) -> Result<CaptureRequest, &'static str> {
+    validate_capture_id(&body.capture_id)?;
+    if body.text.len() > MAX_MEMORY_NOTE_TEXT_BYTES {
+        return Err("capture_text_too_large");
+    }
+    // Reject non-UTF-8 is impossible for String; reject NULs as untrusted control.
+    if body.text.as_bytes().contains(&0) {
+        return Err("invalid_capture_text");
+    }
+    let classification = parse_wire_classification(&body.classification)?;
+    Ok(CaptureRequest {
+        capture_id: body.capture_id.clone(),
+        text: body.text.clone(),
+        classification,
+    })
+}
+
+fn map_capture_outcome(
+    request_id: String,
+    operation: &str,
+    outcome: CaptureOutcome,
+) -> DesktopCaptureResponse {
+    match outcome {
+        CaptureOutcome::Committed(commit) => DesktopCaptureResponse {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: Some(request_id),
+            accepted: true,
+            error: None,
+            operation: Some(operation.into()),
+            daemon_pid: process::id(),
+            outcome: Some("committed".into()),
+            reject_code: None,
+            uncertain_reason: None,
+            capture_id: Some(commit.capture_id),
+            event_id: Some(commit.event_id),
+            classification: Some(commit.classification.as_str().into()),
+            created_at: Some(commit.created_at),
+            content_hash: Some(commit.content_hash),
+        },
+        CaptureOutcome::Rejected { code, .. } => DesktopCaptureResponse {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: Some(request_id),
+            accepted: true,
+            error: None,
+            operation: Some(operation.into()),
+            daemon_pid: process::id(),
+            outcome: Some("rejected".into()),
+            reject_code: Some(reject_code_wire(code).into()),
+            uncertain_reason: None,
+            capture_id: None,
+            event_id: None,
+            classification: None,
+            created_at: None,
+            content_hash: None,
+        },
+        CaptureOutcome::Uncertain { reason, .. } => DesktopCaptureResponse {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: Some(request_id),
+            accepted: true,
+            error: None,
+            operation: Some(operation.into()),
+            daemon_pid: process::id(),
+            outcome: Some("uncertain".into()),
+            reject_code: None,
+            uncertain_reason: Some(uncertain_reason_wire(reason).into()),
+            capture_id: None,
+            event_id: None,
+            classification: None,
+            created_at: None,
+            content_hash: None,
+        },
+    }
+}
+
+fn reject_code_wire(code: CaptureRejectCode) -> &'static str {
+    match code {
+        CaptureRejectCode::InvalidRequest => "invalid_request",
+        CaptureRejectCode::EnrollmentRequired => "enrollment_required",
+        CaptureRejectCode::IdentityUnavailable => "identity_unavailable",
+        CaptureRejectCode::CaptureIdConflict => "capture_id_conflict",
+        CaptureRejectCode::NotCommitted => "not_committed",
+    }
+}
+
+fn uncertain_reason_wire(reason: CaptureUncertainReason) -> &'static str {
+    match reason {
+        CaptureUncertainReason::WriterFailure => "writer_failure",
+        CaptureUncertainReason::DurabilityUnconfirmed => "durability_unconfirmed",
+        CaptureUncertainReason::ReceiptMissing => "receipt_missing",
+        CaptureUncertainReason::ReceiptPersistFailed => "receipt_persist_failed",
+        CaptureUncertainReason::VerificationUnavailable => "verification_unavailable",
+        CaptureUncertainReason::FingerprintMismatch => "fingerprint_mismatch",
+        CaptureUncertainReason::LockFailed => "lock_failed",
+    }
+}
+
+fn capture_rejected(request_id: Option<String>, error: &str) -> DesktopCaptureResponse {
+    DesktopCaptureResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: false,
+        error: Some(error.into()),
+        operation: None,
+        daemon_pid: process::id(),
+        outcome: None,
+        reject_code: None,
+        uncertain_reason: None,
+        capture_id: None,
+        event_id: None,
+        classification: None,
+        created_at: None,
+        content_hash: None,
+    }
+}
+
+fn capture_uncertain(request_id: Option<String>, reason: &str) -> DesktopCaptureResponse {
+    DesktopCaptureResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: true,
+        error: None,
+        operation: Some("memory.capture.result".into()),
+        daemon_pid: process::id(),
+        outcome: Some("uncertain".into()),
+        reject_code: None,
+        uncertain_reason: Some(reason.into()),
+        capture_id: None,
+        event_id: None,
+        classification: None,
+        created_at: None,
+        content_hash: None,
+    }
+}
+
+/// Desktop client: submit a capture. Transport errors are uncertain to the UI.
+pub fn desktop_capture(
+    body: DesktopCaptureBody,
+    timeout: Duration,
+) -> io::Result<DesktopCaptureResponse> {
+    desktop_capture_exchange(
+        "memory.capture",
+        Some(body),
+        None,
+        timeout,
+        "memory.capture.result",
+    )
+}
+
+/// Desktop client: resolve a prior capture without appending.
+pub fn desktop_capture_resolve(
+    body: DesktopCaptureResolveBody,
+    timeout: Duration,
+) -> io::Result<DesktopCaptureResponse> {
+    desktop_capture_exchange(
+        "memory.capture_resolve",
+        None,
+        Some(body),
+        timeout,
+        "memory.capture_resolve.result",
+    )
+}
+
+fn desktop_capture_exchange(
+    operation: &str,
+    capture: Option<DesktopCaptureBody>,
+    capture_resolve: Option<DesktopCaptureResolveBody>,
+    timeout: Duration,
+    expected_operation: &str,
+) -> io::Result<DesktopCaptureResponse> {
+    let name = socket_name()?;
+    let started = Instant::now();
+    let mut last_error = None;
+    let mut stream = loop {
+        match Stream::connect(name.clone()) {
+            Ok(stream) => break stream,
+            Err(error) if started.elapsed() < timeout => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(last_error.unwrap_or(error)),
+        }
+    };
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let request_id = format!("{}-{nonce}", process::id());
+    let request = Request {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_CONTENT_CAPTURE.into()],
+        operation: operation.into(),
+        query: None,
+        capture,
+        capture_resolve,
+    };
+    let mut request_frame = serde_json::to_vec(&request)?;
+    request_frame.push(b'\n');
+    if request_frame.len() > MAX_CAPTURE_FRAME_BYTES {
+        return Err(invalid_data("capture request exceeds capture frame bound"));
+    }
+    arm_ipc_stream(&stream)?;
+    let deadline = Instant::now() + IPC_CAPTURE_RESPONSE_DEADLINE;
+    write_ipc_all(&mut stream, &request_frame, deadline)?;
+    let frame = read_ipc_frame(&mut stream, MAX_CAPTURE_RESPONSE_BYTES, deadline)?;
+    let response: DesktopCaptureResponse = serde_json::from_slice(&frame)?;
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(&request_id)
+    {
+        return Err(invalid_data("IPC capture response did not match request"));
+    }
+    if response.accepted
+        && response.outcome.is_some()
+        && response.operation.as_deref() != Some(expected_operation)
+    {
+        return Err(invalid_data("IPC capture response operation mismatch"));
+    }
+    let _ = expected_operation;
+    Ok(response)
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -1699,6 +2205,8 @@ mod tests {
             capabilities,
             operation: "content.search".into(),
             query: Some(DesktopSearchQuery::default()),
+            capture: None,
+            capture_resolve: None,
         }
     }
 
@@ -1783,7 +2291,7 @@ mod tests {
         let (name, listener) = isolated_ipc_listener("content-search");
         let server = thread::spawn(move || {
             let mut stream = listener.accept().expect("accept content search client");
-            handle_connection_for_peer(&mut stream, context.as_ref(), None, true)
+            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, true)
                 .expect("serve content search request");
         });
         let mut client = Stream::connect(name.borrow()).expect("connect content search client");
@@ -2143,6 +2651,8 @@ mod tests {
             capabilities: vec![CAPABILITY_IDENTITY_SETUP.into()],
             operation: "identity.enroll_local".into(),
             query: None,
+            capture: None,
+            capture_resolve: None,
         };
 
         let first = handle_enrollment(request(), Some(&context), true);
@@ -2189,6 +2699,8 @@ mod tests {
                 capabilities: vec![CAPABILITY_IDENTITY_SETUP.into()],
                 operation: "identity.enroll_local".into(),
                 query: None,
+                capture: None,
+                capture_resolve: None,
             },
             None,
             false,
@@ -2210,6 +2722,8 @@ mod tests {
             capabilities: vec![CAPABILITY_STATUS_READ.into()],
             operation: "health.ping".into(),
             query: None,
+            capture: None,
+            capture_resolve: None,
         });
         assert!(response.accepted);
         assert_eq!(response.operation.as_deref(), Some("health.pong"));
@@ -2463,7 +2977,7 @@ mod tests {
         let (name, listener) = isolated_ipc_listener("health");
         let server = thread::spawn(move || {
             let mut stream = listener.accept().expect("accept test client");
-            handle_connection(&mut stream, None, None).expect("health connection");
+            handle_connection(&mut stream, None, None, None).expect("health connection");
         });
         let mut client = Stream::connect(name.borrow()).expect("connect test client");
         let deadline = Instant::now() + Duration::from_secs(2);
@@ -2474,6 +2988,8 @@ mod tests {
             capabilities: vec![CAPABILITY_STATUS_READ.into()],
             operation: "health.ping".into(),
             query: None,
+            capture: None,
+            capture_resolve: None,
         };
         let mut frame = serde_json::to_vec(&request).expect("request encodes");
         frame.push(b'\n');
@@ -2575,5 +3091,297 @@ mod tests {
             started.elapsed()
         );
         server.join().expect("pending reader server thread");
+    }
+
+    fn capture_request(role: &str, capabilities: Vec<String>, body: DesktopCaptureBody) -> Request {
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "capture-test".into(),
+            client_role: role.into(),
+            capabilities,
+            operation: "memory.capture".into(),
+            query: None,
+            capture: Some(body),
+            capture_resolve: None,
+        }
+    }
+
+    fn sample_capture_body() -> DesktopCaptureBody {
+        DesktopCaptureBody {
+            capture_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc".into(),
+            text: "inbox note".into(),
+            classification: "internal".into(),
+        }
+    }
+
+    #[test]
+    fn capture_frame_bound_exceeds_search_frame_and_accounts_for_escape_expansion() {
+        const {
+            assert!(MAX_CAPTURE_FRAME_BYTES > MAX_FRAME_BYTES);
+        }
+        assert_eq!(
+            MAX_CAPTURE_FRAME_BYTES,
+            MAX_MEMORY_NOTE_TEXT_BYTES * MAX_JSON_STRING_ESCAPE_FACTOR
+                + MAX_CAPTURE_REQUEST_OVERHEAD_BYTES
+        );
+    }
+
+    #[test]
+    fn unauthorized_peer_cannot_capture_or_resolve() {
+        let body = sample_capture_body();
+        let rejected = handle_capture_until(
+            capture_request(
+                "desktop",
+                vec![CAPABILITY_CONTENT_CAPTURE.into()],
+                body.clone(),
+            ),
+            None,
+            false,
+        );
+        assert!(!rejected.accepted);
+        assert_eq!(
+            rejected.error.as_deref(),
+            Some("unauthorized_client_process")
+        );
+        assert!(rejected.outcome.is_none());
+
+        let resolve = handle_capture_until(
+            Request {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: "resolve-unauth".into(),
+                client_role: "desktop".into(),
+                capabilities: vec![CAPABILITY_CONTENT_CAPTURE.into()],
+                operation: "memory.capture_resolve".into(),
+                query: None,
+                capture: None,
+                capture_resolve: Some(DesktopCaptureResolveBody {
+                    capture_id: body.capture_id,
+                }),
+            },
+            None,
+            false,
+        );
+        assert!(!resolve.accepted);
+        assert_eq!(
+            resolve.error.as_deref(),
+            Some("unauthorized_client_process")
+        );
+    }
+
+    #[test]
+    fn capture_rejects_invalid_classification_and_unknown_fields() {
+        let fixture = prepared_search_fixture("capture-class");
+        let mut body = sample_capture_body();
+        body.classification = "secret".into();
+        let response = handle_capture_until(
+            capture_request("desktop", vec![CAPABILITY_CONTENT_CAPTURE.into()], body),
+            Some(&fixture.context),
+            true,
+        );
+        assert!(!response.accepted);
+        assert_eq!(response.error.as_deref(), Some("invalid_classification"));
+
+        let malformed = serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
+            "request_id": "x",
+            "client_role": "desktop",
+            "capabilities": [CAPABILITY_CONTENT_CAPTURE],
+            "operation": "memory.capture",
+            "capture": {
+                "captureId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                "text": "hi",
+                "classification": "internal",
+                "extra": true
+            }
+        });
+        let err = serde_json::from_value::<Request>(malformed).expect_err("deny unknown");
+        assert!(err.to_string().contains("unknown field") || err.is_data());
+        let _ = fs::remove_dir_all(&fixture.root);
+    }
+
+    #[test]
+    fn capture_commits_and_resolve_replays_without_search_claim() {
+        let fixture = prepared_search_fixture("capture-commit");
+        let body = sample_capture_body();
+        let response = handle_capture_until(
+            capture_request(
+                "desktop",
+                vec![CAPABILITY_CONTENT_CAPTURE.into()],
+                body.clone(),
+            ),
+            Some(&fixture.context),
+            true,
+        );
+        assert!(response.accepted, "{response:?}");
+        assert_eq!(response.outcome.as_deref(), Some("committed"));
+        assert_eq!(
+            response.capture_id.as_deref(),
+            Some(body.capture_id.as_str())
+        );
+        assert!(response.event_id.is_some());
+        // Redaction: never echo note body fields that don't exist on the wire type.
+        let encoded = serde_json::to_string(&response).unwrap();
+        assert!(!encoded.contains("inbox note"));
+
+        let replay = handle_capture_until(
+            capture_request(
+                "desktop",
+                vec![CAPABILITY_CONTENT_CAPTURE.into()],
+                body.clone(),
+            ),
+            Some(&fixture.context),
+            true,
+        );
+        assert_eq!(replay.event_id, response.event_id);
+
+        let resolved = handle_capture_until(
+            Request {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: "resolve-ok".into(),
+                client_role: "desktop".into(),
+                capabilities: vec![CAPABILITY_CONTENT_CAPTURE.into()],
+                operation: "memory.capture_resolve".into(),
+                query: None,
+                capture: None,
+                capture_resolve: Some(DesktopCaptureResolveBody {
+                    capture_id: body.capture_id,
+                }),
+            },
+            Some(&fixture.context),
+            true,
+        );
+        assert_eq!(resolved.outcome.as_deref(), Some("committed"));
+        assert_eq!(resolved.event_id, response.event_id);
+        let _ = fs::remove_dir_all(&fixture.root);
+    }
+
+    #[test]
+    fn capture_escape_heavy_and_multibyte_text_within_raw_limit() {
+        let fixture = prepared_search_fixture("capture-escape");
+        let text = format!("{}{}", "\\\"\n\t".repeat(1000), "内存笔记".repeat(100));
+        assert!(text.len() <= MAX_MEMORY_NOTE_TEXT_BYTES);
+        let body = DesktopCaptureBody {
+            capture_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd".into(),
+            text,
+            classification: "private".into(),
+        };
+        let request = capture_request("desktop", vec![CAPABILITY_CONTENT_CAPTURE.into()], body);
+        let frame = serde_json::to_vec(&request).unwrap();
+        assert!(frame.len() <= MAX_CAPTURE_FRAME_BYTES);
+        let response = handle_capture_until(request, Some(&fixture.context), true);
+        assert_eq!(
+            response.outcome.as_deref(),
+            Some("committed"),
+            "{response:?}"
+        );
+        let _ = fs::remove_dir_all(&fixture.root);
+    }
+
+    #[test]
+    fn capture_id_conflict_and_receipt_missing_are_typed() {
+        let fixture = prepared_search_fixture("capture-conflict");
+        let mut body = sample_capture_body();
+        body.capture_id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee".into();
+        let first = handle_capture_until(
+            capture_request(
+                "desktop",
+                vec![CAPABILITY_CONTENT_CAPTURE.into()],
+                body.clone(),
+            ),
+            Some(&fixture.context),
+            true,
+        );
+        assert_eq!(first.outcome.as_deref(), Some("committed"));
+        body.text = "different text".into();
+        let conflict = handle_capture_until(
+            capture_request(
+                "desktop",
+                vec![CAPABILITY_CONTENT_CAPTURE.into()],
+                body.clone(),
+            ),
+            Some(&fixture.context),
+            true,
+        );
+        assert_eq!(conflict.outcome.as_deref(), Some("rejected"));
+        assert_eq!(conflict.reject_code.as_deref(), Some("capture_id_conflict"));
+
+        let missing = handle_capture_until(
+            Request {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: "resolve-missing".into(),
+                client_role: "desktop".into(),
+                capabilities: vec![CAPABILITY_CONTENT_CAPTURE.into()],
+                operation: "memory.capture_resolve".into(),
+                query: None,
+                capture: None,
+                capture_resolve: Some(DesktopCaptureResolveBody {
+                    capture_id: "ffffffff-ffff-4fff-8fff-ffffffffffff".into(),
+                }),
+            },
+            Some(&fixture.context),
+            true,
+        );
+        assert_eq!(missing.outcome.as_deref(), Some("uncertain"));
+        assert_eq!(missing.uncertain_reason.as_deref(), Some("receipt_missing"));
+        let _ = fs::remove_dir_all(&fixture.root);
+    }
+
+    #[test]
+    fn search_capability_cannot_invoke_capture() {
+        let fixture = prepared_search_fixture("capture-cap");
+        let response = handle_capture_until(
+            capture_request(
+                "desktop",
+                vec![CAPABILITY_CONTENT_SEARCH.into()],
+                sample_capture_body(),
+            ),
+            Some(&fixture.context),
+            true,
+        );
+        assert!(!response.accepted);
+        assert_eq!(response.error.as_deref(), Some("unauthorized_capability"));
+        let _ = fs::remove_dir_all(&fixture.root);
+    }
+
+    #[test]
+    fn desktop_capture_capacity_is_bounded_and_keeps_health_slots() {
+        let capture = Arc::new(AtomicUsize::new(0));
+        let health = Arc::new(AtomicUsize::new(0));
+        let held = try_reserve_ipc_worker(&capture, MAX_DESKTOP_CAPTURE_WORKERS)
+            .expect("first capture slot");
+        assert!(
+            try_reserve_ipc_worker(&capture, MAX_DESKTOP_CAPTURE_WORKERS).is_none(),
+            "second capture worker must be rejected while one is held"
+        );
+        let health_slot = try_reserve_ipc_worker(&health, MAX_UNAUTHENTICATED_IPC_WORKERS);
+        assert!(
+            health_slot.is_some(),
+            "capture load must not consume health capacity"
+        );
+        drop(held);
+        assert_eq!(capture.load(Ordering::Acquire), 0);
+        assert!(try_reserve_ipc_worker(&capture, MAX_DESKTOP_CAPTURE_WORKERS).is_some());
+    }
+
+    #[test]
+    fn bounded_capture_deadline_returns_uncertain_not_cancel() {
+        let response = run_bounded_capture(
+            "deadline-capture".into(),
+            Instant::now() + Duration::from_millis(30),
+            None,
+            || {
+                thread::sleep(Duration::from_millis(200));
+                capture_rejected(Some("deadline-capture".into()), "should_not_surface")
+            },
+        );
+        assert!(response.accepted);
+        assert_eq!(response.outcome.as_deref(), Some("uncertain"));
+        assert_eq!(
+            response.uncertain_reason.as_deref(),
+            Some("operation_deadline_exceeded")
+        );
+        assert!(response.error.is_none());
+        // Give the detached worker a moment to finish without joining (no cancel claim).
+        thread::sleep(Duration::from_millis(250));
     }
 }

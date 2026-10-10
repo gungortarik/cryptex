@@ -217,7 +217,7 @@ fn resolve_identity(runtime_root: &Path) -> Result<(String, DeviceId), Box<Captu
     Ok((brain.brain_id, device_id))
 }
 
-fn require_enrolled_signing_identity<S: SecureStore>(
+fn require_enrolled_signing_identity<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
@@ -282,7 +282,7 @@ fn take_fail_after_pending_before_append() -> bool {
 
 /// Capture a durable raw note (may append). Holds the device canonical lock for
 /// reconcile + append; never nests a second acquisition of that lock.
-pub fn capture_memory_note<S: SecureStore>(
+pub fn capture_memory_note<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
@@ -423,7 +423,7 @@ pub fn capture_memory_note<S: SecureStore>(
 }
 
 /// Resolve a prior capture attempt. Never appends.
-pub fn resolve_capture<S: SecureStore>(
+pub fn resolve_capture<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
@@ -518,7 +518,7 @@ enum ScanResult {
     Blocked(String),
 }
 
-fn find_verified_event<S: SecureStore>(
+fn find_verified_event<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
@@ -593,7 +593,7 @@ struct AppendPathArgs<'a> {
     config: &'a CanonicalWriterConfig,
 }
 
-fn resume_pending<S: SecureStore>(
+fn resume_pending<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     args: AppendPathArgs<'_>,
@@ -636,7 +636,7 @@ fn resume_pending<S: SecureStore>(
     }
 }
 
-fn append_path<S: SecureStore>(
+fn append_path<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     path: AppendPathArgs<'_>,
@@ -721,7 +721,7 @@ fn map_writer_error(error: CanonicalWriterError) -> CaptureOutcome {
     }
 }
 
-fn durably_confirm_committed<S: SecureStore>(
+fn durably_confirm_committed<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,

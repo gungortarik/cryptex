@@ -441,7 +441,7 @@ fn acquire_device_lock_in_existing_dir(
     })
 }
 
-pub fn append_memory_note<S: SecureStore>(
+pub fn append_memory_note<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     args: AppendMemoryNoteArgs<'_>,
@@ -456,7 +456,7 @@ pub fn append_memory_note<S: SecureStore>(
 }
 
 /// Append a `memory.note` while `lock` is already held for `args.device_id`.
-pub(crate) fn append_memory_note_with_lock<S: SecureStore>(
+pub(crate) fn append_memory_note_with_lock<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     lock: &DeviceCanonicalLock,
@@ -1171,7 +1171,7 @@ pub fn for_each_verified_event<S, F>(
     on_event: F,
 ) -> CanonicalWriterResult<()>
 where
-    S: SecureStore,
+    S: SecureStore + ?Sized,
     F: FnMut(&AcceptedEvent) -> CanonicalWriterResult<()>,
 {
     let _lock = acquire_device_canonical_lock(runtime_root, device_id)?;
@@ -1191,7 +1191,7 @@ pub(crate) fn for_each_verified_event_with_lock<S, F>(
     mut on_event: F,
 ) -> CanonicalWriterResult<()>
 where
-    S: SecureStore,
+    S: SecureStore + ?Sized,
     F: FnMut(&AcceptedEvent) -> CanonicalWriterResult<()>,
 {
     if lock.device_id() != device_id {
@@ -1301,7 +1301,7 @@ pub(crate) fn for_each_verified_event_enrolled_with_lock<S, F>(
     mut on_event: F,
 ) -> CanonicalWriterResult<()>
 where
-    S: SecureStore,
+    S: SecureStore + ?Sized,
     F: FnMut(&AcceptedEvent, &Path) -> CanonicalWriterResult<()>,
 {
     if lock.device_id() != device_id {
@@ -1405,7 +1405,7 @@ where
 /// Load all verified accepted events for a device (test / diagnostics).
 ///
 /// Prefer [`for_each_verified_event`] when projecting large histories.
-pub fn load_verified_events<S: SecureStore>(
+pub fn load_verified_events<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
