@@ -1,4 +1,4 @@
-# M5 Slice 1 — Windows verification
+﻿# M5 Slice 1 â€” Windows verification
 
 **Date:** 2026-10-10  
 **Branch:** `codex/m5-capture-timeline`  
@@ -25,7 +25,7 @@ cargo clippy -p cryptexd --all-targets -- -D warnings
 | `projection::` lib tests | **17/17 PASS** |
 | `clippy -p cryptexd --all-targets -- -D warnings` | **PASS** |
 
-Commit SHA for this verification tip is recorded in the handoff after push.
+Verified commit SHA: `4162cc27e983e611b823311967781417235824a7`.
 
 ## macOS verification (prepared; not executed here)
 
