@@ -96,12 +96,16 @@ M5 — Capture + Timeline is **IN PROGRESS** on
 capture/reconciliation was owner-authorized and implemented. Its focused Windows
 and macOS local verification is complete at product fix `d206ea4`; exact Mac
 tested HEAD and host are recorded in
-`evidence/m5/m5-slice1-macos-verification-20261010.md`. Follow
+`evidence/m5/m5-slice1-macos-verification-20261010.md`. Slice 2 retry/restart
+safety also has focused Windows/macOS local PASS at product fix `07005d9`;
+Mac tested HEAD `44e686c` and scenario counts are recorded in
+`evidence/m5/m5-slice2-macos-verification-20261010.md`. This is not power-loss
+verification. Follow
 `docs/milestones/M5_CAPTURE_TIMELINE.md` and
 `evidence/m5/m5-kickoff-plan-20261010.md`. No new ADR is accepted by this status
 update. Later slices require separate authorization; final M5 CI, Definition of
 Done and owner acceptance remain open. No Actions run or merge was performed for
-the Slice 1 documentation closeout.
+the Slice 1/2 documentation closeouts.
 Production v2 activation remains CLOSED.
 
 ## 5. ADR source records

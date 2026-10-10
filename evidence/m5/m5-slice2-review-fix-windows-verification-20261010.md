@@ -60,7 +60,12 @@ cargo clippy --locked -p cryptexd --all-targets -- -D warnings
 
 Verified product SHA: 07005d93af58f7d2e9881bb62579ba69bb0e7e75.
 
-## macOS verification (prepared; not executed here)
+## macOS verification (historical prepared checklist)
+
+Owner-reported Mac PASS at exact HEAD `44e686c829837bdfadc7f429a9ad331f01a8502f`
+is recorded in `evidence/m5/m5-slice2-macos-verification-20261010.md`.
+The checklist below is retained as originally prepared; it was not run on
+this Windows host. Slice 2 local platform verification is now complete.
 
 ```bash
 git fetch origin codex/m5-capture-timeline
