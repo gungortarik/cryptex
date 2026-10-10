@@ -4,6 +4,7 @@
 //! Errors are typed and redacted: Display/Debug must never recover secret bytes.
 
 mod fake;
+mod file_backed;
 mod naming;
 
 #[cfg(windows)]
@@ -13,6 +14,7 @@ mod windows;
 mod macos;
 
 pub use fake::FakeSecureStore;
+pub use file_backed::FileBackedSecureStore;
 pub use naming::{AccountLabel, SecureStoreEnvironment, ServiceLabel};
 
 #[cfg(windows)]

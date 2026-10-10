@@ -232,6 +232,54 @@ fn require_enrolled_signing_identity<S: SecureStore>(
     Ok(())
 }
 
+#[cfg(test)]
+thread_local! {
+    static FAIL_AFTER_PENDING_BEFORE_APPEND: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+/// Test-only: fail once after durable PENDING receipt, before append.
+#[cfg(test)]
+pub fn fail_after_pending_before_append() {
+    FAIL_AFTER_PENDING_BEFORE_APPEND.with(|f| f.set(true));
+}
+
+/// Test-only: arm capture/writer/receipt faults from `CRYPTEX_TEST_CAPTURE_FAULT`.
+///
+/// Intended for child-process restart tests. Values:
+/// - `after_pending_before_append`
+/// - `after_append_before_tip`
+/// - `after_seal_before_tip`
+/// - `after_append_before_committed_receipt`
+/// - `after_receipt_stage_before_place`
+#[cfg(test)]
+pub fn arm_capture_faults_from_env() {
+    use crate::canonical_writer::{fail_after_append_before_tip, fail_after_seal_before_tip};
+    use crate::capture_receipt::fail_next_receipt_place;
+
+    match std::env::var("CRYPTEX_TEST_CAPTURE_FAULT").ok().as_deref() {
+        Some("after_pending_before_append") => fail_after_pending_before_append(),
+        Some("after_append_before_tip") => fail_after_append_before_tip(),
+        Some("after_seal_before_tip") => fail_after_seal_before_tip(),
+        // Armed in append_path after durable append so PENDING persist is not the fault point.
+        Some("after_append_before_committed_receipt") => {}
+        Some("after_receipt_stage_before_place") => fail_next_receipt_place(),
+        Some(other) => panic!("unknown CRYPTEX_TEST_CAPTURE_FAULT={other}"),
+        None => {}
+    }
+}
+
+#[cfg(test)]
+fn take_fail_after_pending_before_append() -> bool {
+    FAIL_AFTER_PENDING_BEFORE_APPEND.with(|f| {
+        let armed = f.get();
+        if armed {
+            f.set(false);
+        }
+        armed
+    })
+}
+
 /// Capture a durable raw note (may append). Holds the device canonical lock for
 /// reconcile + append; never nests a second acquisition of that lock.
 pub fn capture_memory_note<S: SecureStore>(
@@ -241,6 +289,10 @@ pub fn capture_memory_note<S: SecureStore>(
     request: CaptureRequest,
     config: &CanonicalWriterConfig,
 ) -> CaptureOutcome {
+    #[cfg(test)]
+    {
+        arm_capture_faults_from_env();
+    }
     if let Some(outcome) = validate_request(&request) {
         return outcome;
     }
@@ -313,6 +365,15 @@ pub fn capture_memory_note<S: SecureStore>(
                     return CaptureOutcome::uncertain(
                         CaptureUncertainReason::ReceiptPersistFailed,
                         e.to_string(),
+                    );
+                }
+            }
+            #[cfg(test)]
+            {
+                if take_fail_after_pending_before_append() {
+                    return CaptureOutcome::uncertain(
+                        CaptureUncertainReason::WriterFailure,
+                        "injected fail after durable PENDING before append",
                     );
                 }
             }
@@ -596,6 +657,14 @@ fn append_path<S: SecureStore>(
                     CaptureUncertainReason::DurabilityUnconfirmed,
                     e.to_string(),
                 );
+            }
+            #[cfg(test)]
+            {
+                if std::env::var("CRYPTEX_TEST_CAPTURE_FAULT").ok().as_deref()
+                    == Some("after_append_before_committed_receipt")
+                {
+                    crate::capture_receipt::fail_next_receipt_persist();
+                }
             }
             let committed_receipt = CaptureReceipt {
                 schema_version: crate::capture_receipt::CAPTURE_RECEIPT_SCHEMA_VERSION,

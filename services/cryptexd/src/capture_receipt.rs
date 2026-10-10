@@ -77,6 +77,7 @@ thread_local! {
     static FAIL_PACK_CONFIRM: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static FAIL_RECEIPT_CONFIRM: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
     static FAIL_DIR_ANCESTRY: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static FAIL_RECEIPT_PLACE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static LAST_PACK_CONFIRM: std::cell::RefCell<Option<PathBuf>> =
         const { std::cell::RefCell::new(None) };
 }
@@ -108,6 +109,12 @@ pub fn fail_next_receipt_confirms(count: u32) {
 #[cfg(test)]
 pub fn fail_next_dir_ancestry_syncs(count: u32) {
     FAIL_DIR_ANCESTRY.with(|f| f.set(count));
+}
+
+/// Test-only: fail once after staged receipt bytes are synced, before place/rename.
+#[cfg(test)]
+pub fn fail_next_receipt_place() {
+    FAIL_RECEIPT_PLACE.with(|f| f.set(true));
 }
 
 #[cfg(test)]
@@ -323,6 +330,23 @@ fn persist_receipt(
             .and_then(|_| file.sync_all())
         {
             return Err(cleanup_staging(&tmp, ReceiptError::Io(primary.to_string())));
+        }
+    }
+
+    #[cfg(test)]
+    {
+        let fail = FAIL_RECEIPT_PLACE.with(|f| {
+            let armed = f.get();
+            if armed {
+                f.set(false);
+            }
+            armed
+        });
+        if fail {
+            return Err(cleanup_staging(
+                &tmp,
+                ReceiptError::Durability("injected receipt place failure after staged sync".into()),
+            ));
         }
     }
 
