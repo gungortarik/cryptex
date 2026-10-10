@@ -754,16 +754,17 @@ fn handle_connection_for_peer(
         }
         Err(error) => return Err(error),
     };
-    let response = if frame.is_empty() {
+    let (response_bytes, write_deadline) = if frame.is_empty() {
         return Ok(());
     } else {
         match serde_json::from_slice::<Request>(&frame) {
             Ok(request) => {
+                let write_deadline = response_write_deadline_for_operation(&request.operation);
                 let is_capture_op = matches!(
                     request.operation.as_str(),
                     "memory.capture" | "memory.capture_resolve"
                 );
-                if !is_capture_op && frame.len() > MAX_FRAME_BYTES {
+                let bytes = if !is_capture_op && frame.len() > MAX_FRAME_BYTES {
                     serde_json::to_vec(&rejected(Some(request.request_id), "frame_too_large"))?
                 } else if request.operation == "content.search" {
                     let response_deadline = Instant::now() + IPC_RESPONSE_DEADLINE;
@@ -821,13 +822,24 @@ fn handle_connection_for_peer(
                     serde_json::to_vec(&handle_enrollment(request, search, peer_is_desktop))?
                 } else {
                     serde_json::to_vec(&authorize(request))?
-                }
+                };
+                (bytes, write_deadline)
             }
-            Err(_) => serde_json::to_vec(&rejected(None, "malformed_request"))?,
+            Err(_) => (
+                serde_json::to_vec(&rejected(None, "malformed_request"))?,
+                Instant::now() + IPC_RESPONSE_DEADLINE,
+            ),
         }
     };
-    let write_deadline = Instant::now() + IPC_CAPTURE_RESPONSE_DEADLINE;
-    write_response(stream, &response, write_deadline)
+    write_response(stream, &response_bytes, write_deadline)
+}
+
+fn response_write_deadline_for_operation(operation: &str) -> Instant {
+    let duration = match operation {
+        "memory.capture" | "memory.capture_resolve" => IPC_CAPTURE_RESPONSE_DEADLINE,
+        _ => IPC_RESPONSE_DEADLINE,
+    };
+    Instant::now() + duration
 }
 
 fn run_search_until(
@@ -3361,6 +3373,39 @@ mod tests {
         drop(held);
         assert_eq!(capture.load(Ordering::Acquire), 0);
         assert!(try_reserve_ipc_worker(&capture, MAX_DESKTOP_CAPTURE_WORKERS).is_some());
+    }
+
+    #[test]
+    fn response_write_deadline_is_operation_appropriate() {
+        let capture = response_write_deadline_for_operation("memory.capture");
+        let resolve = response_write_deadline_for_operation("memory.capture_resolve");
+        let health = response_write_deadline_for_operation("status.health");
+        let search = response_write_deadline_for_operation("content.search");
+        let enroll = response_write_deadline_for_operation("identity.enroll_local");
+        let now = Instant::now();
+        let capture_skew = capture.saturating_duration_since(now);
+        let health_skew = health.saturating_duration_since(now);
+        assert!(
+            capture_skew >= IPC_CAPTURE_RESPONSE_DEADLINE - Duration::from_millis(50),
+            "capture write deadline must use the capture bound, got {capture_skew:?}"
+        );
+        assert!(
+            resolve.saturating_duration_since(now)
+                >= IPC_CAPTURE_RESPONSE_DEADLINE - Duration::from_millis(50)
+        );
+        assert!(
+            health_skew <= IPC_RESPONSE_DEADLINE + Duration::from_millis(50),
+            "health write deadline must stay on the standard response bound, got {health_skew:?}"
+        );
+        assert!(
+            search.saturating_duration_since(now)
+                <= IPC_RESPONSE_DEADLINE + Duration::from_millis(50)
+        );
+        assert!(
+            enroll.saturating_duration_since(now)
+                <= IPC_RESPONSE_DEADLINE + Duration::from_millis(50)
+        );
+        assert!(IPC_CAPTURE_RESPONSE_DEADLINE > IPC_RESPONSE_DEADLINE);
     }
 
     #[test]

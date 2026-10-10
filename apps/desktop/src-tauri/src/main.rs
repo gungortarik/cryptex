@@ -11,6 +11,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -51,6 +52,8 @@ struct ProbeState {
     restart_not_before: Arc<Mutex<Instant>>,
     pending_exit_code: Arc<Mutex<Option<i32>>>,
     supervised_pid: Arc<Mutex<Option<u32>>>,
+    /// Session-only capture draft / unresolved submission guard for user-initiated Quit.
+    capture_session_dirty: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -280,17 +283,42 @@ fn p0_4_enroll_local_device() -> Result<cryptexd::ipc::DesktopEnrollmentResponse
     Ok(response)
 }
 
+fn redact_capture_transport_error(error: &std::io::Error, resolve: bool) -> &'static str {
+    match error.kind() {
+        std::io::ErrorKind::TimedOut => {
+            if resolve {
+                "capture_resolve_transport_unavailable"
+            } else {
+                "capture_transport_timeout"
+            }
+        }
+        std::io::ErrorKind::InvalidData => {
+            if resolve {
+                "capture_resolve_rejected"
+            } else {
+                "capture_rejected"
+            }
+        }
+        _ => {
+            if resolve {
+                "capture_resolve_transport_unavailable"
+            } else {
+                "capture_transport_unavailable"
+            }
+        }
+    }
+}
+
 #[tauri::command]
 fn p0_5_capture_memory(
     body: cryptexd::ipc::DesktopCaptureBody,
 ) -> Result<cryptexd::ipc::DesktopCaptureResponse, String> {
     // Connect quickly; capture work uses the daemon capture deadline.
     let response = cryptexd::ipc::desktop_capture(body, Duration::from_secs(2))
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| redact_capture_transport_error(&error, false).to_string())?;
     if !response.accepted {
-        return Err(response
-            .error
-            .unwrap_or_else(|| "daemon rejected capture".into()));
+        // Stable code only — never forward raw daemon/OS diagnostics to the renderer.
+        return Err("capture_rejected".into());
     }
     Ok(response)
 }
@@ -300,13 +328,130 @@ fn p0_5_resolve_capture(
     body: cryptexd::ipc::DesktopCaptureResolveBody,
 ) -> Result<cryptexd::ipc::DesktopCaptureResponse, String> {
     let response = cryptexd::ipc::desktop_capture_resolve(body, Duration::from_secs(2))
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| redact_capture_transport_error(&error, true).to_string())?;
     if !response.accepted {
-        return Err(response
-            .error
-            .unwrap_or_else(|| "daemon rejected capture resolve".into()));
+        return Err("capture_resolve_rejected".into());
     }
     Ok(response)
+}
+
+#[tauri::command]
+fn p0_5_set_capture_session_guard(dirty: bool, state: State<'_, ProbeState>) -> Result<(), String> {
+    state.capture_session_dirty.store(dirty, Ordering::Release);
+    Ok(())
+}
+
+const CAPTURE_QUIT_WARNING: &str = concat!(
+    "Discard unsaved or unresolved capture input and quit? ",
+    "Drafts are session-only and are not written to disk. ",
+    "Cancel keeps Cryptex open.",
+);
+
+/// Returns true when Quit may proceed. Cancel retains the app, draft and pending capture.
+/// Not a guarantee against forced process kill or OS shutdown.
+fn confirm_quit_discarding_capture_session(capture_session_dirty: &AtomicBool) -> bool {
+    if !capture_session_dirty.load(Ordering::Acquire) {
+        return true;
+    }
+    native_confirm_discard_and_quit(CAPTURE_QUIT_WARNING)
+}
+
+#[cfg(windows)]
+fn native_confirm_discard_and_quit(message: &str) -> bool {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MessageBoxW(
+            h_wnd: *mut core::ffi::c_void,
+            lp_text: *const u16,
+            lp_caption: *const u16,
+            u_type: u32,
+        ) -> i32;
+    }
+    const MB_YESNO: u32 = 0x0000_0004;
+    const MB_ICONWARNING: u32 = 0x0000_0030;
+    const MB_DEFBUTTON2: u32 = 0x0000_0100;
+    const IDYES: i32 = 6;
+    fn wide(s: &str) -> Vec<u16> {
+        OsStr::new(s)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
+    }
+    let text = wide(message);
+    let caption = wide("Cryptex");
+    let result = unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2,
+        )
+    };
+    result == IDYES
+}
+
+#[cfg(target_os = "macos")]
+fn native_confirm_discard_and_quit(message: &str) -> bool {
+    let script = format!(
+        "button returned of (display dialog \"{}\" with title \"Cryptex\" buttons {{\"Cancel\",\"Discard and Quit\"}} default button \"Cancel\" with icon caution)",
+        message.replace('\\', "\\\\").replace('"', "\\\"")
+    );
+    let output = std::process::Command::new("osascript")
+        .args(["-e", &script])
+        .output();
+    match output {
+        Ok(out) if out.status.success() => {
+            String::from_utf8_lossy(&out.stdout).contains("Discard and Quit")
+        }
+        _ => false,
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn native_confirm_discard_and_quit(_message: &str) -> bool {
+    false
+}
+
+#[cfg(test)]
+mod capture_quit_guard_tests {
+    use super::CAPTURE_QUIT_WARNING;
+    use super::redact_capture_transport_error;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn dirty_session_flag_is_observable_for_quit_gate() {
+        let dirty = AtomicBool::new(false);
+        assert!(!dirty.load(Ordering::Acquire));
+        dirty.store(true, Ordering::Release);
+        assert!(dirty.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn close_to_tray_documentation_marker() {
+        // Window CloseRequested hides to tray and must not call app.exit.
+        // Interactive tray-Quit Cancel/Confirm still needs Windows/macOS verification.
+        assert!(CAPTURE_QUIT_WARNING.contains("Cancel keeps Cryptex open"));
+    }
+
+    #[test]
+    fn transport_errors_are_stable_redacted_codes() {
+        let timeout = std::io::Error::new(std::io::ErrorKind::TimedOut, r"secret path C:\x");
+        assert_eq!(
+            redact_capture_transport_error(&timeout, false),
+            "capture_transport_timeout"
+        );
+        let other = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "/var/secret.sock");
+        assert_eq!(
+            redact_capture_transport_error(&other, false),
+            "capture_transport_unavailable"
+        );
+        assert_eq!(
+            redact_capture_transport_error(&other, true),
+            "capture_resolve_transport_unavailable"
+        );
+    }
 }
 
 #[tauri::command]
@@ -370,6 +515,9 @@ fn p0_2_write_snapshot(
 
 #[tauri::command]
 fn p0_2_quit_clean(app: AppHandle, state: State<'_, ProbeState>) -> Result<(), String> {
+    if !confirm_quit_discarding_capture_session(state.capture_session_dirty.as_ref()) {
+        return Ok(());
+    }
     stop_supervised_daemon(&state)?;
     if let Ok(root) = runtime_root_path() {
         write_supervisor_state(&root, "clean_quit", None, false)?;
@@ -484,18 +632,33 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             }
             "quit" => {
                 let state = app.state::<ProbeState>();
-                match stop_supervised_daemon(&state) {
-                    Ok(()) => {
-                        if let Ok(root) = runtime_root_path() {
-                            let _ =
-                                write_supervisor_state(&root, "clean_quit_from_tray", None, false);
-                            let _ = write_snapshot(&root, "clean_quit_from_tray", false, Ok(None));
+                if !confirm_quit_discarding_capture_session(state.capture_session_dirty.as_ref()) {
+                    // Cancel: retain app, draft and pending capture.
+                } else {
+                    match stop_supervised_daemon(&state) {
+                        Ok(()) => {
+                            if let Ok(root) = runtime_root_path() {
+                                let _ = write_supervisor_state(
+                                    &root,
+                                    "clean_quit_from_tray",
+                                    None,
+                                    false,
+                                );
+                                let _ =
+                                    write_snapshot(&root, "clean_quit_from_tray", false, Ok(None));
+                            }
+                            app.exit(0);
                         }
-                        app.exit(0);
-                    }
-                    Err(error) => {
-                        if let Ok(root) = runtime_root_path() {
-                            let _ = fs::write(root.join("quit.error"), format!("{error}\n"));
+                        Err(error) => {
+                            if let Ok(root) = runtime_root_path() {
+                                let _ = fs::write(
+                                    root.join("quit.error"),
+                                    format!(
+                                        "{error}
+"
+                                    ),
+                                );
+                            }
                         }
                     }
                 }
@@ -965,6 +1128,7 @@ fn main() {
         restart_not_before: Arc::new(Mutex::new(Instant::now())),
         pending_exit_code: Arc::new(Mutex::new(None)),
         supervised_pid: Arc::new(Mutex::new(None)),
+        capture_session_dirty: Arc::new(AtomicBool::new(false)),
     };
 
     let builder =
@@ -1008,6 +1172,7 @@ fn main() {
             p0_4_enroll_local_device,
             p0_5_capture_memory,
             p0_5_resolve_capture,
+            p0_5_set_capture_session_guard,
             p0_3_wait_for_daemon_restart,
             p0_2_stop_daemon,
             p0_2_show_main_window,
@@ -1016,6 +1181,8 @@ fn main() {
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
+                // Close-to-tray: preserve the renderer session (draft + unresolved capture).
+                // This is not a Quit path and must not call app.exit.
                 api.prevent_close();
                 let app = window.app_handle();
                 record_window_close(app, &app.state::<ProbeState>());

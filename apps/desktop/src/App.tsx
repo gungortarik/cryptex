@@ -4,11 +4,15 @@ import {
   CLASSIFICATIONS,
   MAX_CAPTURE_TEXT_BYTES,
   createCaptureSubmissionGate,
+  createCaptureSubmissionState,
+  evaluateDeliberateNewSave,
+  evaluateOrdinarySave,
   interpretCaptureWire,
   newCaptureId,
-  shouldClearDraftAfterCommit,
+  redactedCaptureTransportMessage,
+  reduceCaptureSubmission,
+  shouldPromptBeforeNativeQuit,
   utf8ByteLength,
-  validateCaptureDraft,
 } from "./capture-policy.mjs";
 import { createSearchRequestGate, normalizeSearchText } from "./search-policy.mjs";
 
@@ -94,6 +98,8 @@ export function App() {
   const searchRef = useRef<HTMLInputElement>(null);
   const searchRequestGate = useRef(createSearchRequestGate()).current;
   const captureRequestGate = useRef(createCaptureSubmissionGate()).current;
+  const captureSeq = useRef(0);
+  const capturePolicyRef = useRef(createCaptureSubmissionState());
   const [draftText, setDraftText] = useState("");
   const [classification, setClassification] = useState("");
   const [captureUi, setCaptureUi] = useState<CaptureUiState>({ kind: "idle" });
@@ -122,14 +128,30 @@ export function App() {
 
   useEffect(() => {
     liveDraftRef.current = { text: draftText, classification };
+    capturePolicyRef.current = {
+      ...capturePolicyRef.current,
+      draftText,
+      classification,
+    };
   }, [draftText, classification]);
 
   useEffect(() => {
+    const unresolved =
+      pendingSnapshot !== null &&
+      (captureUi.kind === "submitting" ||
+        captureUi.kind === "resolving" ||
+        captureUi.kind === "uncertain");
     draftDirtyRef.current =
-      draftText.trim().length > 0 ||
-      pendingSnapshot !== null ||
-      captureBusy ||
-      captureUi.kind === "uncertain";
+      draftText.trim().length > 0 || unresolved || captureBusy;
+    const shouldPrompt = shouldPromptBeforeNativeQuit({
+      draftDirty: draftText.trim().length > 0 || unresolved,
+      hasUnresolved: unresolved,
+    });
+    void invoke("p0_5_set_capture_session_guard", { dirty: shouldPrompt }).catch(
+      () => {
+        // Guard sync is best-effort; Quit still defaults to prompting only when dirty is known.
+      },
+    );
   }, [draftText, pendingSnapshot, captureBusy, captureUi]);
 
   useEffect(() => {
@@ -201,83 +223,183 @@ export function App() {
     }
   }
 
-  function applyCaptureResponse(response: CaptureResponse, snapshot: CaptureSnapshot, generation: number) {
-    if (!captureRequestGate.isCurrent(generation)) return;
-    const interpreted = interpretCaptureWire(response);
-    const message = interpreted.message;
-
-    if (interpreted.isCommitted) {
-      const live = liveDraftRef.current;
-      if (
-        shouldClearDraftAfterCommit({
-          pendingSnapshot: snapshot,
-          liveText: live.text,
-          liveClassification: live.classification,
-          responseCaptureId: response.captureId ?? snapshot.captureId,
-        })
-      ) {
-        setDraftText("");
-        setClassification("");
-      }
-      setPendingSnapshot(null);
-      setCaptureUi({ kind: "committed", message });
-      setCaptureNotice(null);
-      return;
-    }
-
-    if (interpreted.isReceiptMissing) {
+  function syncUiFromPolicy(next: ReturnType<typeof createCaptureSubmissionState>) {
+    capturePolicyRef.current = next;
+    setPendingSnapshot(next.pending);
+    setCaptureNotice(next.notice);
+    setDraftText(next.draftText);
+    setClassification(next.classification);
+    if (next.ui.kind === "idle") {
+      setCaptureUi({ kind: "idle" });
+    } else if (next.ui.kind === "submitting") {
+      setCaptureUi({ kind: "submitting", captureId: next.ui.captureId });
+    } else if (next.ui.kind === "resolving") {
+      setCaptureUi({ kind: "resolving", captureId: next.ui.captureId });
+    } else if (next.ui.kind === "committed") {
+      setCaptureUi({ kind: "committed", message: next.ui.message });
+    } else if (next.ui.kind === "uncertain") {
       setCaptureUi({
         kind: "uncertain",
-        captureId: snapshot.captureId,
-        message,
-        canResolve: false,
+        captureId: next.ui.captureId,
+        message: next.ui.message,
+        canResolve: next.ui.canResolve,
       });
-      return;
-    }
-
-    if (interpreted.isCaptureIdConflict || interpreted.isRejected) {
+    } else if (next.ui.kind === "rejected") {
       setCaptureUi({
         kind: "rejected",
-        message: interpreted.isCaptureIdConflict
-          ? `${message} A deliberate new submission will use a new capture id.`
-          : message,
-        canRetryAsNew: true,
+        message: next.ui.message,
+        canRetryAsNew: next.ui.canRetryAsNew,
       });
+    }
+  }
+
+  function currentPolicyState() {
+    const state = {
+      ...capturePolicyRef.current,
+      draftText,
+      classification,
+      pending: pendingSnapshot ?? capturePolicyRef.current.pending,
+      generation: captureSeq.current,
+      notice: captureNotice,
+    };
+    state.ui =
+      captureUi.kind === "idle"
+        ? { kind: "idle" }
+        : captureUi.kind === "submitting"
+          ? { kind: "submitting", captureId: captureUi.captureId }
+          : captureUi.kind === "resolving"
+            ? { kind: "resolving", captureId: captureUi.captureId }
+            : captureUi.kind === "committed"
+              ? { kind: "committed", message: captureUi.message }
+              : captureUi.kind === "uncertain"
+                ? {
+                    kind: "uncertain",
+                    captureId: captureUi.captureId,
+                    message: captureUi.message,
+                    canResolve: captureUi.canResolve,
+                  }
+                : {
+                    kind: "rejected",
+                    message: captureUi.message,
+                    canRetryAsNew: captureUi.canRetryAsNew,
+                  };
+    return state;
+  }
+
+  function applyCaptureResponse(response: CaptureResponse, snapshot: CaptureSnapshot, generation: number) {
+    if (!captureRequestGate.isCurrent(generation)) {
+      // Still allow late committed archive updates via policy for matching ids.
+      const late = reduceCaptureSubmission(currentPolicyState(), {
+        type: "response",
+        generation,
+        captureId: snapshot.captureId,
+        response,
+        liveText: liveDraftRef.current.text,
+        liveClassification: liveDraftRef.current.classification,
+      });
+      if (late.notice) setCaptureNotice(late.notice);
+      if (late.unresolvedArchive.length !== (currentPolicyState().unresolvedArchive?.length ?? 0)) {
+        // Archive is policy-internal; pending/UI preserved for current generation.
+      }
       return;
     }
-
-    setCaptureUi({
-      kind: "uncertain",
+    const next = reduceCaptureSubmission(currentPolicyState(), {
+      type: "response",
+      generation,
       captureId: snapshot.captureId,
-      message,
-      canResolve: true,
+      response,
+      liveText: liveDraftRef.current.text,
+      liveClassification: liveDraftRef.current.classification,
     });
+    captureSeq.current = next.generation;
+    syncUiFromPolicy(next);
   }
 
   async function submitCapture(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (captureBusy) return;
-
-    const validationError = validateCaptureDraft({
+    const state = currentPolicyState();
+    const ordinary = evaluateOrdinarySave(state, {
       text: draftText,
       classification,
     });
-    if (validationError) {
-      setCaptureUi({ kind: "rejected", message: validationError, canRetryAsNew: false });
+    if (!ordinary.allowed) {
+      if (ordinary.code === "unresolved_blocks_save") {
+        const deliberate = window.confirm(
+          `${ordinary.message}\n\nStart a new capture with a new id anyway? This may duplicate an earlier note if the unresolved submission later commits.`,
+        );
+        if (!deliberate) {
+          setCaptureNotice(ordinary.message ?? null);
+          return;
+        }
+        const deliberateDecision = evaluateDeliberateNewSave(state, {
+          acknowledgeDuplication: true,
+          text: draftText,
+          classification,
+        });
+        if (!deliberateDecision.allowed) {
+          setCaptureNotice(deliberateDecision.message ?? null);
+          return;
+        }
+        const captureId = newCaptureId();
+        const generation = captureRequestGate.begin();
+        const next = reduceCaptureSubmission(state, {
+          type: "save_deliberate",
+          acknowledgeDuplication: true,
+          captureId,
+          text: draftText,
+          classification,
+        });
+        // Keep generation in sync with gate.
+        next.generation = generation;
+        captureSeq.current = generation;
+        syncUiFromPolicy(next);
+        const snapshot = next.pending!;
+        try {
+          const response = await invoke<CaptureResponse>("p0_5_capture_memory", {
+            body: {
+              captureId,
+              text: snapshot.text,
+              classification: snapshot.classification,
+            },
+          });
+          applyCaptureResponse(response, snapshot, generation);
+        } catch (error) {
+          if (!captureRequestGate.isCurrent(generation)) return;
+          const code = error instanceof Error ? error.message : String(error);
+          const message = redactedCaptureTransportMessage(code);
+          const uncertain = reduceCaptureSubmission(currentPolicyState(), {
+            type: "transport_uncertain",
+            generation,
+            captureId,
+            message,
+          });
+          syncUiFromPolicy(uncertain);
+        }
+        return;
+      }
+      const next = reduceCaptureSubmission(state, {
+        type: "save",
+        captureId: newCaptureId(),
+        text: draftText,
+        classification,
+      });
+      // reduceCaptureSubmission on blocked save only sets notice / rejected
+      syncUiFromPolicy(next);
       return;
     }
 
     const captureId = newCaptureId();
-    const snapshot: CaptureSnapshot = {
+    const generation = captureRequestGate.begin();
+    const next = reduceCaptureSubmission(state, {
+      type: "save",
       captureId,
       text: draftText,
       classification,
-    };
-    const generation = captureRequestGate.begin();
-    setPendingSnapshot(snapshot);
-    setCaptureNotice(null);
-    setCaptureUi({ kind: "submitting", captureId });
-
+    });
+    next.generation = generation;
+    captureSeq.current = generation;
+    syncUiFromPolicy(next);
+    const snapshot = next.pending!;
     try {
       const response = await invoke<CaptureResponse>("p0_5_capture_memory", {
         body: {
@@ -289,27 +411,35 @@ export function App() {
       applyCaptureResponse(response, snapshot, generation);
     } catch (error) {
       if (!captureRequestGate.isCurrent(generation)) return;
-      const detail = error instanceof Error ? error.message : String(error);
-      setCaptureUi({
-        kind: "uncertain",
+      const code = error instanceof Error ? error.message : String(error);
+      const message = redactedCaptureTransportMessage(code);
+      const uncertain = reduceCaptureSubmission(currentPolicyState(), {
+        type: "transport_uncertain",
+        generation,
         captureId,
-        message: `${detail} Outcome is uncertain after transport failure. The draft was kept. Use Resolve.`,
-        canResolve: true,
+        message,
       });
+      syncUiFromPolicy(uncertain);
     }
   }
 
   async function resolvePendingCapture() {
-    if (!pendingSnapshot || captureBusy) return;
-    if (captureUi.kind === "uncertain" && !captureUi.canResolve) {
-      setCaptureNotice(
-        "ReceiptMissing must not auto-resubmit. Start a deliberate new submission with a new capture id if you accept possible duplication.",
-      );
+    const state = currentPolicyState();
+    if (!state.pending || isBusy(state)) return;
+    const started = reduceCaptureSubmission(state, { type: "resolve_start" });
+    if (started.notice && started.ui.kind === "uncertain" && !started.ui.canResolve) {
+      syncUiFromPolicy(started);
       return;
     }
-    const snapshot = pendingSnapshot;
+    if (started.ui.kind !== "resolving") {
+      syncUiFromPolicy(started);
+      return;
+    }
     const generation = captureRequestGate.begin();
-    setCaptureUi({ kind: "resolving", captureId: snapshot.captureId });
+    started.generation = generation;
+    captureSeq.current = generation;
+    syncUiFromPolicy(started);
+    const snapshot = started.pending!;
     try {
       const response = await invoke<CaptureResponse>("p0_5_resolve_capture", {
         body: { captureId: snapshot.captureId },
@@ -317,18 +447,30 @@ export function App() {
       applyCaptureResponse(response, snapshot, generation);
     } catch (error) {
       if (!captureRequestGate.isCurrent(generation)) return;
-      const detail = error instanceof Error ? error.message : String(error);
-      setCaptureUi({
-        kind: "uncertain",
+      const code = error instanceof Error ? error.message : String(error);
+      const message = redactedCaptureTransportMessage(
+        code === "capture_resolve_transport_unavailable" ||
+          code === "capture_resolve_rejected"
+          ? code
+          : "capture_resolve_transport_unavailable",
+      );
+      const uncertain = reduceCaptureSubmission(currentPolicyState(), {
+        type: "transport_uncertain",
+        generation,
         captureId: snapshot.captureId,
-        message: `${detail} Resolve failed; draft kept. Outcome remains uncertain.`,
-        canResolve: true,
+        message,
       });
+      syncUiFromPolicy(uncertain);
     }
   }
 
+  function isBusy(state: ReturnType<typeof createCaptureSubmissionState>) {
+    return state.ui.kind === "submitting" || state.ui.kind === "resolving";
+  }
+
   function discardDraft() {
-    if (captureBusy) return;
+    const state = currentPolicyState();
+    if (isBusy(state)) return;
     if (
       draftDirtyRef.current &&
       !window.confirm(
@@ -338,11 +480,10 @@ export function App() {
       return;
     }
     captureRequestGate.invalidate();
-    setDraftText("");
-    setClassification("");
-    setPendingSnapshot(null);
-    setCaptureUi({ kind: "idle" });
-    setCaptureNotice(null);
+    const next = reduceCaptureSubmission(state, { type: "discard" });
+    captureSeq.current = next.generation;
+    syncUiFromPolicy(next);
+    void invoke("p0_5_set_capture_session_guard", { dirty: false }).catch(() => {});
   }
 
   const holdCopy = holdReason
@@ -483,6 +624,9 @@ export function App() {
               <p className="capture-byte-count">
                 Pending capture id {pendingSnapshot.captureId} (
                 {pendingSnapshot.classification})
+                {captureUi.kind === "uncertain" || captureUi.kind === "submitting" || captureUi.kind === "resolving"
+                  ? " — Resolve before ordinary Save, or acknowledge duplication to start a new capture."
+                  : ""}
               </p>
             ) : null}
           </section>

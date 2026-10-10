@@ -48,3 +48,33 @@ export function interpretCaptureWire(response: {
 };
 
 export function newCaptureId(randomUuid?: () => string): string;
+
+export function createCaptureSubmissionState(): any;
+export function hasUnresolvedSubmission(state: any): boolean;
+export function isCaptureBusy(state: any): boolean;
+export function evaluateOrdinarySave(state: any, input?: { text?: string; classification?: string }): {
+  allowed: boolean;
+  code: string;
+  message?: string;
+  pendingCaptureId?: string;
+  canResolve?: boolean;
+  receiptMissing?: boolean;
+};
+export function evaluateDeliberateNewSave(
+  state: any,
+  input?: { acknowledgeDuplication?: boolean; text?: string; classification?: string },
+): {
+  allowed: boolean;
+  code: string;
+  message?: string;
+  archivePrevious?: boolean;
+  previousCaptureId?: string;
+  pendingCaptureId?: string;
+};
+export function reduceCaptureSubmission(state: any, event: any): any;
+export function shouldPromptBeforeNativeQuit(input: {
+  draftDirty: boolean;
+  hasUnresolved: boolean;
+}): boolean;
+export const NATIVE_QUIT_WARNING: string;
+export function redactedCaptureTransportMessage(code: string): string;
