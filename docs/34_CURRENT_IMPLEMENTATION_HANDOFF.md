@@ -1,7 +1,7 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-10
-**Current milestone:** M5 -- Capture + Timeline, IN PROGRESS; Slice 3 Windows-focused gates PASS at `c5c75afcca978e4937c1063aecc76c85a10bf4f5`; macOS verification pending.
+**Current milestone:** M5 -- Capture + Timeline, IN PROGRESS; Slice 3 review-fix Windows PASS at `ec0e064863adb087037c0472f2cc3d8cc299f229`; macOS + interactive Quit verification pending.
 **Active branch:** `codex/m5-capture-timeline`.
 **Verified base:** `origin/m0/foundation` at M4 PR #10 normal merge
 `a6c32bd30f883e546e2eb976787a59057fae211b`. The accepted M4 documentation and tested candidate are ancestors.
@@ -16,9 +16,9 @@ and Desktop response-policy tests on Windows/macOS plus Windows IPC ACL.
 authorized Slice 1 daemon capture service implementation only.
 **Slice 1 verification:** Product fix `d206ea4dc213f56908807a7700c1f6542e14787a` has Windows focused PASS; owner-reported macOS PASS at exact HEAD `5d580a654d23f851e6853f0b297a8474ad87b747` (27.0.1 / 26A434 / arm64; capture 20, fake 6, writer 22, projection 17, fmt and strict Clippy). Evidence: `evidence/m5/m5-slice1-review-fix-windows-verification-20261010.md` and `evidence/m5/m5-slice1-macos-verification-20261010.md`. Slice 1 local platform gate is closed; final M5 CI/DoD acceptance is not claimed.
 **Slice 2 verification:** Product fix `07005d93af58f7d2e9881bb62579ba69bb0e7e75` has Windows focused PASS; owner-reported Mac PASS at `44e686c829837bdfadc7f429a9ad331f01a8502f` (27.0.1 / 26A434 / arm64). Capture 20, restart 15 (1 helper + 14 scenarios), writer 22, projection 17; SecureStore Windows 17 / Mac 14. Format, non-test check and strict Clippy PASS. Evidence: `evidence/m5/m5-slice2-review-fix-windows-verification-20261010.md` and `evidence/m5/m5-slice2-macos-verification-20261010.md`. These are process-restart checks, not power-loss proof.
-**Slice 3 verification:** Product SHA `c5c75afcca978e4937c1063aecc76c85a10bf4f5` has Windows focused PASS (IPC capture/auth/bounds, capture 20, capture_/restart regressions, writer 22, secure_store 17, projection 48, Desktop capture-policy 7 + search-policy 2 + frontend build, fmt and strict Clippy for cryptexd + desktop). Evidence: `evidence/m5/m5-slice3-windows-verification-20261010.md`. macOS not claimed from Windows.
-**Next action:** Owner/Mac verification of Slice 3 at `c5c75afcca978e4937c1063aecc76c85a10bf4f5` using the Mac checklist in that evidence file. Do not start Slice 4, timeline/projection wiring, extraction, Actions, or merge until Mac verification is recorded. Slice 3 scope remains capture IPC + minimal Inbox only.
-**Authorization:** M5 Slices 1 and 2 complete within focused local platform gates. M5 Slice 3 (Desktop capture IPC + minimal Inbox) authorized 2026-10-10 and implemented for Windows-focused gates; dual-OS closeout pending Mac run. Timeline, projection-as-saved wiring, extraction, later slices, and production v2 activation remain CLOSED.
+**Slice 3 verification:** Review-fix product SHA `ec0e064863adb087037c0472f2cc3d8cc299f229` has Windows focused PASS (IPC 32 incl. operation-appropriate write deadlines; capture 20; capture_/restart regressions; Desktop capture-policy 14 + quit-guard 3 + search-policy 2 + frontend build; fmt and strict Clippy). Evidence: `evidence/m5/m5-slice3-review-fix-windows-verification-20261010.md`. macOS and interactive tray-Quit/close-to-tray checks are not claimed from Windows.
+**Next action:** Owner/Mac verification of Slice 3 review-fix at `ec0e064863adb087037c0472f2cc3d8cc299f229` (automated checklist + interactive Quit/close-to-tray). Do not start Slice 4, Actions, merge, or production v2 activation.
+**Authorization:** M5 Slice 3 authorized and implemented; review findings fixed on Windows-focused gates. Dual-OS + interactive Quit closeout pending. Timeline/projection/extraction/later slices remain CLOSED.
 **Continuing invariants:** v1 memory.note unchanged; production v2 writing OFF;
 canonical writer daemon-only; derived SQLite rebuildable; RetrievalSafetyState
 holds apply to all content-returning paths. M4 visual/security limitations remain
