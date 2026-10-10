@@ -47,7 +47,7 @@ npm run build                 # apps/desktop (tsc --noEmit && vite build)
 | Check | Result |
 |---|---|
 | `cargo fmt --all -- --check` | PASS |
-| `ipc::tests::` | **29/29 PASS** (includes capture auth/bounds/commit/resolve/conflict + capacity/deadline) |
+| `ipc::tests::` | **31/31 PASS** (includes capture auth/bounds/commit/resolve/conflict + capacity/deadline) |
 | added `desktop_capture_capacity_is_bounded_and_keeps_health_slots` | PASS |
 | added `bounded_capture_deadline_returns_uncertain_not_cancel` | PASS |
 | `capture::` | **20/20 PASS** |
