@@ -30,6 +30,8 @@ If an ADR record is referenced by authoritative documents but its source file is
 | ADR-0014 | OS secure-store integration | ACCEPTED | Source: `docs/adr/ADR-0014-os-secure-store-integration.md`. Decision addendum: `docs/adr/ADR-0014-os-secure-store-decision-addendum.md`. Accepted 2026-10-06: **P1** direct platform APIs under `cryptexd`. Product pins: Windows `windows-sys = 0.61.2` + `widestring = 1.2.1`; macOS `security-framework = 3.7.0`. K2 and high-level `keyring` unselected. Gate A complete; Gate C Windows and macOS product verification both VERIFIED 2026-10-06 (evidence/m1/gate-c-product-secure-store-windows-20261006.md, evidence/m1/gate-c-product-secure-store-macos-20261006.md). |
 | ADR-0015 | Brain/device identity foundations | ACCEPTED | Source: `docs/adr/ADR-0015-brain-device-identity-foundations.md`. Accepted 2026-10-05. Brain/install/device identity; sequence first-issue `1`; durable write before return; same-`device_id` concurrent allocate atomicity including first-create race; missing/corrupt typed fail-closed; pairing records only; Recovery Kit public metadata. Pairing/revocation product remains M8; kit container remains M11. |
 | ADR-0016 | Immutable event store productization | ACCEPTED | Source: `docs/adr/ADR-0016-immutable-event-store-productization.md`. Accepted 2026-10-07 at `5cc89b709dcf236698c3253b8582c873de7c7f0f`. RFC 8785 JCS; domain-separated BLAKE3+Ed25519; full-`u64` `device_seq` decimal string; crash-safe signing-key init; ordered `.open` quarantine-before-truncate recovery; safe quarantine; single Rust→schemars JSON Schema→TS path; per-device `.open`/`.seg` with configurable seal default (not a frozen protocol constant). Windows quarantine extended-path addendum ACCEPTED 2026-10-07: `docs/adr/ADR-0016-windows-quarantine-extended-path-addendum.md` (`\\?\` I/O in quarantine adapter only; §8.1 names and DeviceId policy unchanged).
+| ADR-0017 | Structured event evolution and knowledge materialization | ACCEPTED | Source: `docs/adr/ADR-0017-structured-event-evolution-and-knowledge-materialization.md`. Accepted 2026-10-08. Defines strict v2 structured assertions, versioned cardinality, deterministic M4 reduction and additive rebuildable tables in M3 `projection.sqlite`. It is a narrow dependent refinement of ADR-0016: v1 bytes, validator, hashes/signatures, framing and quarantine behavior remain unchanged; verified-unsupported payload and unverifiable-envelope handling are explicit. Production v2 writing stays disabled until the separate activation gate passes.
+| ADR-0018 | Local device identity for M4 retrieval | ACCEPTED | Source: `docs/adr/ADR-0018-local-device-retrieval-identity.md`. Owner approved 2026-10-08. Defines explicit local-only DeviceId enrollment bound to the ADR-0016 daemon signing identity and a bounded, read-only guarded Desktop search IPC. Unknown peer streams fail closed; this does not implement M8 pairing/retirement, cross-device trust, or v2 production writing.
 
 ## 4. M0 gate
 
@@ -69,7 +71,23 @@ M2 — Immutable Event Store is **COMPLETE within its accepted scope** and integ
 
 ## 4.3 M3 gate
 
-M3 - Local Projection + Search is in progress on `m3/local-projection-search`, based on the M2 merge commit above. Accepted scope: `docs/milestones/M3_LOCAL_PROJECTION_SEARCH.md`. Kickoff: `evidence/m3/m3-kickoff-plan-20261008.md`. Phase 0 plan: `evidence/m3/m3-phase0-implementation-plan-20261008.md` (ADR verdict: no new ADR required if stated boundaries hold). Slices 1-3 complete (scaffolding, SQLite/FTS5 pin, schema v1 + fixture/schema hardening). Slice 4 verified-feed integration is complete (`evidence/m3/m3-slice4-verified-feed-integration-20261008.md`). Rebuild/checkpoint advancement and search APIs are not started. macOS projection/feed smoke remains pending until actually run. M3 code must preserve canonical-event authority and keep SQLite/FTS rebuildable and disposable.
+M3 — Local Projection + Search is **COMPLETE within scope** and integrated into `m0/foundation` by PR #9 at `35538c144434e1dbfb97b47f89d2536b7646046a`. Final review and dual-OS verification are recorded in `evidence/m3/m3-final-review-20261008.md` and `evidence/m3/m3-final-ci-gate-20261008.md`. SQLite/FTS remains derived and disposable; M4 additions are governed by ADR-0017 and do not change M3 schema v1.
+
+## 4.4 M4 gate
+
+M4 — Knowledge Engine is **COMPLETE within accepted implementation scope** on
+`m4/knowledge-engine`; normal PR #10 integration is authorized by owner-delegated
+review. Final review: `evidence/m4/m4-final-review-20261010.md`; corrected
+Windows/macOS CI PASS: run `38033047073` at `f9bd894`. ADR-0017 is
+**ACCEPTED** and governs strict v2 structured-event evolution, deterministic
+knowledge materialization, retrieval safety, and additive derived state in the
+existing M3 SQLite database. ADR-0018 is also **ACCEPTED** and authorizes only
+the local DeviceId/key binding plus bounded guarded Desktop search IPC required
+by the M4 retrieval gate. Unknown peer streams remain fail-closed; no M8 device
+management is added. The exact M4 implementation sequence and tests are in
+`docs/milestones/M4_KNOWLEDGE_ENGINE.md`. Production v2 writing remains
+disabled until ADR-0017 §8.2 separately passes; M8/M10/M14 work is not
+authorized by M4 acceptance.
 
 ## 5. ADR source records
 

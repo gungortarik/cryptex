@@ -17,12 +17,30 @@ use crate::{StorageError, StorageResult};
 pub fn fold_verified_frames<V, A, F>(
     path: &Path,
     validator: &V,
-    mut acc: A,
+    acc: A,
     mut visit: F,
 ) -> StorageResult<(A, u64)>
 where
     V: FrameBodyValidator,
     F: FnMut(&mut A, &[u8]) -> StorageResult<()>,
+{
+    fold_verified_frames_with_offsets(path, validator, acc, |acc, _, body| visit(acc, body))
+}
+
+/// Fold complete verified frames while reporting each frame's byte offset.
+///
+/// The offset is the position of the frame header in the original pack. This
+/// is useful for derived materialization watermarks; it does not rewrite or
+/// otherwise change the pack scan/recovery behavior.
+pub fn fold_verified_frames_with_offsets<V, A, F>(
+    path: &Path,
+    validator: &V,
+    mut acc: A,
+    mut visit: F,
+) -> StorageResult<(A, u64)>
+where
+    V: FrameBodyValidator,
+    F: FnMut(&mut A, u64, &[u8]) -> StorageResult<()>,
 {
     if !path.exists() {
         return Ok((acc, 0));
@@ -48,10 +66,13 @@ where
         }
         let mut body = vec![0u8; body_len as usize];
         read_exact(&mut file, &mut body)?;
-        if let Err(_err) = validator.validate_frame_body(&body) {
+        if let Err(err) = validator.validate_frame_body(&body) {
+            if matches!(&err, StorageError::CompatibilityBoundary(_)) {
+                return Err(err);
+            }
             return Ok((acc, offset));
         }
-        visit(&mut acc, &body)?;
+        visit(&mut acc, offset, &body)?;
         offset = body_end;
     }
     Ok((acc, offset))
@@ -70,4 +91,82 @@ fn read_exact(file: &mut std::fs::File, buf: &mut [u8]) -> StorageResult<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::recovery::AcceptAllBodies;
+    use cryptex_events::framing::encode_frame_header;
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static ROOT_SEQ: AtomicU64 = AtomicU64::new(1);
+
+    fn temp_file() -> (std::path::PathBuf, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "cryptex-frame-offset-{}-{}",
+            std::process::id(),
+            ROOT_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).unwrap();
+        (root.clone(), root.join("frames.open"))
+    }
+
+    #[test]
+    fn reports_original_frame_header_offsets() {
+        let (root, path) = temp_file();
+        let mut bytes = Vec::new();
+        for body in [b"first".as_slice(), b"second".as_slice()] {
+            bytes.extend_from_slice(&encode_frame_header(body.len() as u32).unwrap());
+            bytes.extend_from_slice(body);
+        }
+        fs::write(&path, &bytes).unwrap();
+        let (offsets, verified_len) = fold_verified_frames_with_offsets(
+            &path,
+            &AcceptAllBodies,
+            Vec::new(),
+            |offsets, offset, body| {
+                offsets.push((offset, body.to_vec()));
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(verified_len, bytes.len() as u64);
+        assert_eq!(
+            offsets,
+            vec![
+                (0, b"first".to_vec()),
+                (
+                    (cryptex_events::framing::FRAME_HEADER_BYTES + 5) as u64,
+                    b"second".to_vec(),
+                ),
+            ]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn offsets_helper_keeps_existing_truncated_prefix_behavior() {
+        let (root, path) = temp_file();
+        let mut bytes = encode_frame_header(5).unwrap().to_vec();
+        bytes.extend_from_slice(b"good!");
+        let second_offset = bytes.len() as u64;
+        bytes.extend_from_slice(&encode_frame_header(8).unwrap());
+        bytes.extend_from_slice(b"short");
+        fs::write(&path, &bytes).unwrap();
+        let (offsets, verified_len) = fold_verified_frames_with_offsets(
+            &path,
+            &AcceptAllBodies,
+            Vec::new(),
+            |offsets, offset, _| {
+                offsets.push(offset);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(offsets, vec![0]);
+        assert_eq!(verified_len, second_offset);
+        fs::remove_dir_all(root).unwrap();
+    }
 }

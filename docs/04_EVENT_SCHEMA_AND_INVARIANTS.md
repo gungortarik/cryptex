@@ -92,7 +92,23 @@ Unsupported or incompatible schema versions must not be silently interpreted as 
 
 The implementation must provide explicit compatible handling, rejection or quarantine according to the accepted M2 contract.
 
-Exact version-number policy and compatibility windows are not selected here unless defined by a later versioning specification.
+ADR-0016 defines the strict v1 contract, whose validator and canonical bytes
+remain unchanged. Accepted ADR-0017 defines the strict v2 structured-event
+contract and reader-first compatibility rollout. It does not widen v1 parsing.
+Production v2 writing remains disabled until ADR-0017 §8.2 passes its separate
+activation gate.
+
+For the narrow ADR-0017 refinement of ADR-0016: a complete v2 envelope whose
+cryptographic rules are known and verify but whose event type/payload schema is
+unsupported is `verified_unsupported`; preserve its bytes, continue integrity
+verification, and do not materialize it. An envelope version or cryptographic
+rule that cannot be verified is `unverifiable_envelope`; preserve the complete
+frame and suffix exactly, stop trusted interpretation at that device-chain
+boundary, and block append/seal decisions that imply verified continuation.
+Neither state may be mislabeled corrupt, rewritten, truncated, or silently
+discarded. Known malformed payloads and invalid cryptographic records continue
+to follow the existing strict validation and ADR-0016 durable quarantine rules.
+All v1 verification, framing and quarantine behavior remains unchanged.
 
 ## 10. Validation before trusted use
 
@@ -125,6 +141,12 @@ M2 includes quarantine behavior for invalid/corrupt/incompatible canonical input
 Quarantine must preserve explicit failure visibility rather than silently dropping integrity problems.
 
 The exact quarantine directory/layout and metadata format are not selected by this document.
+
+ADR-0017 does not change ADR-0016 quarantine behavior for known-invalid v1 or
+v2 records. Its `verified_unsupported` and `unverifiable_envelope` cases are
+distinct: their canonical bytes are preserved without quarantine-as-corrupt
+or stream truncation, and materialization/recovery follows ADR-0017 §§4.4 and
+7.
 
 ## 14. Corrections and supersession
 
@@ -164,6 +186,13 @@ and confidence values:
 How these values are represented in exact event schemas is not selected by this document.
 
 Any representation must preserve the privacy/authority semantics defined by the applicable specifications.
+
+For M4 structured assertions, accepted ADR-0017 uses the Master Spec confidence
+vocabulary and keeps confidence, publication authorization, and lifecycle as
+separate dimensions. Only the trusted daemon validates and publishes an
+authorized assertion; a device signature and receipt reference do not
+independently prove human approval to a remote peer. V1 `memory.note` fields
+and verification remain unchanged.
 
 ## 17. Untrusted inputs
 
@@ -217,16 +246,11 @@ M2 must follow the active Definition of Done and accepted storage/security speci
 
 ## 22. Explicitly unresolved
 
-This document does not select:
-
-- exact event field names
-- exact serialization format
-- exact hash/signature library
-- exact event type enum
-- exact schema-version encoding
-- exact quarantine layout
-- final physical event file/segment naming
-- production per-device segment thresholds / seal-roll policy
+Exact v1 event schema and integrity choices are selected by ADR-0016. The
+initial v2 envelope and typed `knowledge.assertion` payload contract are
+selected by ADR-0017; later schema evolution requires an explicit compatible
+versioning decision. Quarantine layout and production per-device
+segment/seal-roll details remain governed by ADR-0016 and ADR-0013 as applicable.
 
 Those choices require their applicable milestone/ADR/evidence.
 

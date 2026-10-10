@@ -12,7 +12,9 @@ use cryptexd::compat::{
 use cryptexd::error::LifecycleError;
 use cryptexd::install_runtime::prepare_m1_runtime_foundation;
 use cryptexd::instance::{observe_instance, try_acquire_instance};
+use cryptexd::local_device_identity::enroll_local_device;
 use cryptexd::paths::{assert_outside_repository, default_p0_2_runtime_root, ensure_runtime_root};
+use cryptexd::secure_store::{SecureStore, SecureStoreEnvironment};
 use cryptexd::status::{LifecycleReport, write_status_file};
 use cryptexd::supervision::selected_supervision;
 use cryptexd::update::run_update_rollback_proof;
@@ -42,6 +44,7 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
 
     match args[0].as_str() {
         "lifecycle" => run_lifecycle(&args[1..]),
+        "identity" => run_identity(&args[1..]),
         "help" | "--help" | "-h" => {
             print_usage();
             Ok(())
@@ -51,6 +54,110 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
             usage_text()
         ))),
     }
+}
+
+fn run_identity(args: &[String]) -> Result<(), LifecycleError> {
+    if args.first().map(String::as_str) != Some("enroll-local") {
+        return Err(LifecycleError::Usage(format!(
+            "identity requires the explicit 'enroll-local' operation\n{}",
+            usage_text()
+        )));
+    }
+    let mut runtime_root = None;
+    let mut environment = None;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--runtime-root" => {
+                let value = args.get(index + 1).ok_or_else(|| {
+                    LifecycleError::Usage("--runtime-root requires a path".into())
+                })?;
+                runtime_root = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--environment" => {
+                let value = args.get(index + 1).ok_or_else(|| {
+                    LifecycleError::Usage("--environment requires dev or prod".into())
+                })?;
+                environment = Some(match value.as_str() {
+                    "dev" => SecureStoreEnvironment::Dev,
+                    "prod" => SecureStoreEnvironment::Prod,
+                    _ => {
+                        return Err(LifecycleError::Usage(
+                            "--environment must be dev or prod".into(),
+                        ));
+                    }
+                });
+                index += 2;
+            }
+            other => {
+                return Err(LifecycleError::Usage(format!(
+                    "unexpected identity argument '{other}'"
+                )));
+            }
+        }
+    }
+    let runtime_root = runtime_root.ok_or_else(|| {
+        LifecycleError::Usage(
+            "identity enroll-local requires --runtime-root; choose the app-data runtime explicitly"
+                .into(),
+        )
+    })?;
+    let environment = environment.ok_or_else(|| {
+        LifecycleError::Usage(
+            "identity enroll-local requires --environment dev|prod explicitly".into(),
+        )
+    })?;
+    assert_outside_repository(&runtime_root)?;
+    ensure_runtime_root(&runtime_root)?;
+    enroll_local_with_platform_store(&runtime_root, environment)
+}
+
+fn enroll_local_with_store<S: SecureStore>(
+    runtime_root: &Path,
+    store: &S,
+    environment: SecureStoreEnvironment,
+) -> Result<(), LifecycleError> {
+    let identity = enroll_local_device(runtime_root, store, environment)
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    println!("brain_id={}", identity.brain_id);
+    println!("device_id={}", identity.device_id);
+    println!("enrollment=ready");
+    Ok(())
+}
+
+#[cfg(windows)]
+fn enroll_local_with_platform_store(
+    runtime_root: &Path,
+    environment: SecureStoreEnvironment,
+) -> Result<(), LifecycleError> {
+    enroll_local_with_store(
+        runtime_root,
+        &cryptexd::WindowsCredentialStore::new(),
+        environment,
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn enroll_local_with_platform_store(
+    runtime_root: &Path,
+    environment: SecureStoreEnvironment,
+) -> Result<(), LifecycleError> {
+    enroll_local_with_store(
+        runtime_root,
+        &cryptexd::MacosKeychainStore::new(),
+        environment,
+    )
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn enroll_local_with_platform_store(
+    _runtime_root: &Path,
+    _environment: SecureStoreEnvironment,
+) -> Result<(), LifecycleError> {
+    Err(LifecycleError::Usage(
+        "local identity enrollment is supported only on Windows and macOS".into(),
+    ))
 }
 
 fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
@@ -113,7 +220,7 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             let lock = try_acquire_instance(&opts.runtime_root)?;
             let install = prepare_m1_runtime_foundation(&opts.runtime_root)
                 .map_err(|e| e.into_lifecycle())?;
-            cryptexd::ipc::spawn_health_server()?;
+            spawn_platform_ipc_server(&opts.runtime_root)?;
             let report = LifecycleReport::active_holder(
                 &opts.runtime_root,
                 lock.pid(),
@@ -198,6 +305,29 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             usage_text()
         ))),
     }
+}
+
+#[cfg(windows)]
+fn spawn_platform_ipc_server(runtime_root: &Path) -> std::io::Result<()> {
+    cryptexd::ipc::spawn_daemon_ipc_server(
+        runtime_root,
+        std::sync::Arc::new(cryptexd::WindowsCredentialStore::new()),
+        SecureStoreEnvironment::Dev,
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn spawn_platform_ipc_server(runtime_root: &Path) -> std::io::Result<()> {
+    cryptexd::ipc::spawn_daemon_ipc_server(
+        runtime_root,
+        std::sync::Arc::new(cryptexd::MacosKeychainStore::new()),
+        SecureStoreEnvironment::Dev,
+    )
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn spawn_platform_ipc_server(_runtime_root: &Path) -> std::io::Result<()> {
+    cryptexd::ipc::spawn_health_server()
 }
 
 #[derive(Debug)]
@@ -454,6 +584,7 @@ fn usage_text() -> String {
     [
         "usage:",
         "  cryptexd",
+        "  cryptexd identity enroll-local --runtime-root <app-data-path> --environment <dev|prod>",
         "  cryptexd lifecycle status [--runtime-root <path>]",
         "  cryptexd lifecycle probe [--runtime-root <path>]",
         "  cryptexd lifecycle hold --runtime-root <path> (--stop-file <path> | --hold-ms <ms> | --crash-after-ready) [--ready-file <path>]",
@@ -468,4 +599,39 @@ fn usage_text() -> String {
         "  - update-proof is a synthetic fixture harness, not a production updater",
     ]
     .join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_enrollment_requires_explicit_runtime_and_secure_store_namespace() {
+        let missing_both = run(vec!["identity".into(), "enroll-local".into()])
+            .expect_err("must not choose a runtime root or keychain namespace implicitly");
+        assert!(matches!(missing_both, LifecycleError::Usage(_)));
+
+        let missing_environment = run(vec![
+            "identity".into(),
+            "enroll-local".into(),
+            "--runtime-root".into(),
+            "C:\\synthetic-runtime".into(),
+        ])
+        .expect_err("must require explicit SecureStore namespace");
+        assert!(matches!(missing_environment, LifecycleError::Usage(_)));
+    }
+
+    #[test]
+    fn local_enrollment_rejects_unknown_environment_without_touching_paths() {
+        let error = run(vec![
+            "identity".into(),
+            "enroll-local".into(),
+            "--runtime-root".into(),
+            "C:\\synthetic-runtime".into(),
+            "--environment".into(),
+            "other".into(),
+        ])
+        .expect_err("unknown environment");
+        assert!(matches!(error, LifecycleError::Usage(_)));
+    }
 }

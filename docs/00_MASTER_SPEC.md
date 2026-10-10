@@ -83,15 +83,33 @@ The iMac may be the preferred always-on replication and scheduled-backup peer, b
 
 Syncthing is the V1 transport candidate and accepted architecture direction. It transports canonical files/blobs but does not define Cryptex semantics. Trust, schema validation, signatures, entity consolidation, purge semantics and recovery are Cryptex responsibilities.
 
-The **logical** event model is frozen. The **physical packaging** of canonical events is immutable sealed per-device segment/pack files (ADR-0013). One-file-per-event is rejected. Hybrid packaging is not used. Seal size and on-disk names are implementation parameters for M2, not frozen by the P0-1 benchmark profile.
+The **v1 logical** event model is frozen. The **physical packaging** of canonical events is immutable sealed per-device segment/pack files (ADR-0013). One-file-per-event is rejected. Hybrid packaging is not used. Seal size and on-disk names are implementation parameters for M2, not frozen by the P0-1 benchmark profile.
+
+The canonical v1 event contract, including existing `memory.note` bytes and
+verification behavior, remains frozen under ADR-0016. Accepted ADR-0017 defines
+a separate strict v2 schema for structured knowledge assertions and its
+cross-version integrity chain. M4 may implement and verify v2 reading and
+derived knowledge materialization, but production v2 writing remains disabled
+until ADR-0017's independent trusted-device compatibility and downgrade gate
+passes. No legacy v1 validator is widened.
 
 ## 9. Search
 
 V1 search uses SQLite FTS5 plus metadata, relationships and filters. Semantic/vector search is optional post-V1. Core search must remain useful offline with no LLM.
 
+Search availability is subject to the daemon's current `RetrievalSafetyState`.
+A Brain-wide hold overrides normal search availability across M3 FTS results
+and snippets, Desktop retrieval, and future controlled adapters. Missing,
+corrupt, or stale safety state fails closed.
+
 ## 10. Obsidian
 
 Each trusted desktop can materialize a complete local Obsidian-compatible vault from canonical memory. The vault is local and derived; it is not the replication source of truth.
+
+Any daemon-controlled Obsidian generation or refresh must honor the same
+`RetrievalSafetyState`. The daemon cannot revoke plaintext files, exports,
+backups, or copies already written to locations accessible to the operating
+system or user.
 
 Manual edits to managed notes are captured as proposals and become canonical only after daemon validation and, where required, user review. User-owned Notes/Inbox content can be ingested as events.
 

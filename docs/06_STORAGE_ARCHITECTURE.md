@@ -74,6 +74,12 @@ The following are derived and rebuildable:
 
 Derived data is not a replication source of truth.
 
+M4 follows accepted ADR-0017 and adds its derived knowledge tables to M3's
+existing `projection.sqlite`; it does not create a second canonical or
+projection database and does not change M3 schema v1. M4 SQLite schema version
+and reducer/materialization progress are independent from canonical event
+schema versions. M4 tables and metadata are rebuilt from canonical events.
+
 Loss or corruption of derived state must be recoverable by rebuilding it from canonical data according to the applicable milestone contract.
 
 A derived database becoming unavailable must not redefine canonical memory.
@@ -161,6 +167,12 @@ SQLite search state remains derived.
 The Obsidian-compatible vault is also a local derived projection.
 
 Neither SQLite nor the Obsidian vault is canonical replicated memory.
+
+Daemon-controlled content retrieval and Obsidian projection generation must
+consult `RetrievalSafetyState`; a Brain-wide hold overrides normal M3 search.
+This controls daemon-mediated operations only. It cannot revoke plaintext
+files, exports, backups, or copies already exposed to the operating system or
+user.
 
 Their exact implementation belongs to their respective later milestones and must not be implemented opportunistically during M0 beyond explicitly required foundation work.
 
@@ -276,3 +288,7 @@ This document consolidates existing storage requirements from:
 - `docs/milestones/M0_FOUNDATION.md`
 
 Physical packaging of canonical events is accepted in ADR-0013. This document does not independently change that decision or freeze M2 seal-size/filename parameters.
+
+M4's additive projection tables, migration/rebuild behavior, and retrieval
+safety boundary are further specified by accepted
+`docs/adr/ADR-0017-structured-event-evolution-and-knowledge-materialization.md`.

@@ -7,6 +7,7 @@
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
+use std::time::Instant;
 
 use cryptex_core::validate::{Rfc3339UtcInstant, rfc3339_utc_instant};
 use rusqlite::{Connection, params_from_iter};
@@ -206,6 +207,32 @@ pub fn search_events(conn: &Connection, query: &SearchQuery) -> ProjectionResult
     Ok(out)
 }
 
+/// Run a bounded search with SQLite VM cancellation. The progress hook is
+/// always removed before returning so a timed-out guarded query cannot affect
+/// a later M3 projection operation using the same connection.
+pub fn search_events_until(
+    conn: &Connection,
+    query: &SearchQuery,
+    deadline: Instant,
+) -> ProjectionResult<Vec<SearchHit>> {
+    if Instant::now() >= deadline {
+        return Err(ProjectionError::OperationDeadlineExceeded);
+    }
+    conn.progress_handler(1_000, Some(move || Instant::now() >= deadline))?;
+    let result = search_events(conn, query);
+    let deadline_expired = Instant::now() >= deadline;
+    let clear_result = conn.progress_handler(0, None::<fn() -> bool>);
+    if deadline_expired {
+        clear_result?;
+        return Err(ProjectionError::OperationDeadlineExceeded);
+    }
+    match (result, clear_result) {
+        (Ok(hits), Ok(())) => Ok(hits),
+        (Err(error), _) => Err(error),
+        (_, Err(error)) => Err(error.into()),
+    }
+}
+
 /// Max-heap element: larger (instant, event_id) sorts greater so the worst kept
 /// hit sits at the heap peak when bounding by `limit`.
 #[derive(Debug)]
@@ -265,6 +292,21 @@ mod tests {
         MemoryNotePayload,
     };
     use cryptex_events::hex::{ContentHashHex, SignatureHex, SigningKeyId};
+
+    #[test]
+    fn expired_search_deadline_returns_no_hits_and_does_not_poison_connection() {
+        let db = ProjectionDb::open_in_memory().unwrap();
+        let expired = Instant::now() - std::time::Duration::from_millis(1);
+        assert!(matches!(
+            search_events_until(db.connection(), &SearchQuery::default(), expired),
+            Err(ProjectionError::OperationDeadlineExceeded)
+        ));
+        assert!(
+            search_events(db.connection(), &SearchQuery::default())
+                .unwrap()
+                .is_empty()
+        );
+    }
 
     #[allow(clippy::too_many_arguments)]
     fn note(

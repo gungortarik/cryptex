@@ -1,183 +1,257 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { createSearchRequestGate, normalizeSearchText } from "./search-policy.mjs";
 
-/**
- * Temporary P0-2 Mode B developer controls.
- * Not product UI and not an ADR-0012 decision.
- */
+type SearchHit = {
+  eventId: string;
+  createdAt: string;
+  classification: string;
+  text: string;
+};
+
+type GuardedSearchResponse = {
+  hits: SearchHit[] | null;
+  holdReason: string | null;
+};
+
+type LocalEnrollmentResponse = {
+  deviceId: string;
+};
+
+type ConnectionState = "checking" | "active" | "attention";
+
+const HOLD_COPY: Record<string, string> = {
+  local_enrollment_required:
+    "This installation has not been enrolled as a local device yet. Set it up to verify and search this Brain's memory.",
+  canonical_verification_unavailable:
+    "Cryptex could not verify the complete local event history. Search is paused to protect your memory.",
+  unsupported_semantics:
+    "A verified event uses semantics this version cannot safely apply. Search is paused until the app is updated.",
+  v2_semantics_not_integrated:
+    "A structured event affects retrieval, but this build cannot safely interpret it yet. Search is paused.",
+  unresolved_dependency:
+    "Some knowledge dependencies are unresolved. Search is paused rather than returning an incomplete view.",
+  materialization_state_missing_or_stale:
+    "The local search index is missing or out of date. Cryptex is withholding results until it is rebuilt safely.",
+  projection_does_not_match_canonical:
+    "The local search index does not match verified memory. Results are withheld until it is repaired.",
+};
+
+function displayDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+}
+
 export function App() {
-  const [log, setLog] = useState("Desktop shell ready for foundation / P0-2 Mode B probes.");
-  const [cryptexd, setCryptexd] = useState("");
-  const [runtimeRoot, setRuntimeRoot] = useState("");
-  const [autostartEnabled, setAutostartEnabled] = useState(false);
-  const [lastIpcPid, setLastIpcPid] = useState<number | null>(null);
+  const isMac = navigator.platform.toLowerCase().includes("mac");
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [holdReason, setHoldReason] = useState<string | null>(null);
+  const [connection, setConnection] = useState<ConnectionState>("checking");
+  const [searching, setSearching] = useState(false);
+  const [enrolling, setEnrolling] = useState(false);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const searchRequestGate = useRef(createSearchRequestGate()).current;
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const root = await invoke<string>("p0_2_runtime_root");
-        setRuntimeRoot(root);
-      } catch (error) {
-        setLog(`runtime root failed: ${String(error)}`);
+    void invoke("p0_3_ipc_health")
+      .then(() => setConnection("active"))
+      .catch(() => setConnection("attention"));
+
+    function onShortcut(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchRef.current?.focus();
       }
-      try {
-        const path = await invoke<string>("p0_2_default_cryptexd");
-        setCryptexd(path);
-      } catch {
-        // The packaged sidecar is resolved automatically; development may need an explicit path.
-      }
-      try {
-        setAutostartEnabled(await invoke<boolean>("p0_2_autostart_status"));
-      } catch (error) {
-        setLog(`login-start status failed: ${String(error)}`);
-      }
-    })();
+    }
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
   }, []);
 
-  async function toggleAutostart() {
-    const command = autostartEnabled ? "p0_2_autostart_disable" : "p0_2_autostart_enable";
-    try {
-      await invoke(command);
-      const enabled = await invoke<boolean>("p0_2_autostart_status");
-      setAutostartEnabled(enabled);
-      setLog(`Desktop login start ${enabled ? "enabled" : "disabled"}`);
-    } catch (error) {
-      setLog(`Desktop login-start update failed: ${String(error)}`);
-    }
-  }
-
-  async function startDaemon() {
-    try {
-      const pid = await invoke<number>("p0_2_start_daemon", { cryptexd });
-      setLog(`daemon started pid=${pid}`);
-    } catch (error) {
-      setLog(`start failed: ${String(error)}`);
-    }
-  }
-
-  async function status() {
-    try {
-      const text = await invoke<string>("p0_2_daemon_status");
-      setLog(text || "(empty status)");
-    } catch (error) {
-      setLog(`status failed: ${String(error)}`);
-    }
-  }
-
-  async function ipcHealth() {
-    try {
-      const response = await invoke<{ daemon_pid: number; protocol_version: number }>("p0_3_ipc_health");
-      setLastIpcPid(response.daemon_pid);
-      setLog(`IPC health.pong · daemon pid=${response.daemon_pid} · protocol=${response.protocol_version}`);
-    } catch (error) {
-      setLog(`IPC health failed: ${String(error)}`);
-    }
-  }
-
-  async function waitForRestart() {
-    if (lastIpcPid === null) {
-      setLog("Connect to the daemon once first, then use this after a supervised restart.");
+  async function search(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = normalizeSearchText(query);
+    const generation = searchRequestGate.begin();
+    setHits([]);
+    setHoldReason(null);
+    if (!text) {
+      setSearching(false);
+      setNotice("Enter a phrase to search your local notes.");
       return;
     }
+    setSearching(true);
+    setNotice(null);
     try {
-      const response = await invoke<{ daemon_pid: number; protocol_version: number }>(
-        "p0_3_wait_for_daemon_restart",
-        { previousPid: lastIpcPid, timeoutSeconds: 90 },
-      );
-      setLastIpcPid(response.daemon_pid);
-      setLog(`IPC reconnected after restart · pid ${lastIpcPid} → ${response.daemon_pid}`);
-    } catch (error) {
-      setLog(`IPC reconnect not observed: ${String(error)}`);
-    }
-  }
-
-  async function stopDaemon() {
-    try {
-      await invoke("p0_2_stop_daemon");
-      setLog("daemon stop requested");
-    } catch (error) {
-      setLog(`stop failed: ${String(error)}`);
-    }
-  }
-
-  async function showWindow() {
-    try {
-      await invoke("p0_2_show_main_window");
-      setLog("main window show requested");
-    } catch (error) {
-      setLog(`show failed: ${String(error)}`);
-    }
-  }
-
-  async function snapshot() {
-    try {
-      const path = await invoke<string>("p0_2_write_snapshot", {
-        note: "manual_dev_snapshot",
+      const response = await invoke<GuardedSearchResponse>("p0_4_guarded_search", {
+        query: { text, limit: 20 },
       });
-      setLog(`snapshot written: ${path}`);
-    } catch (error) {
-      setLog(`snapshot failed: ${String(error)}`);
+      if (!searchRequestGate.isCurrent(generation)) return;
+      if (response.holdReason) {
+        setConnection("attention");
+        setHoldReason(response.holdReason);
+        return;
+      }
+      setConnection("active");
+      setHits(response.hits ?? []);
+    } catch {
+      if (!searchRequestGate.isCurrent(generation)) return;
+      setConnection("attention");
+      setNotice("Cryptex could not complete a guarded search. No results were kept on screen.");
+    } finally {
+      if (searchRequestGate.isCurrent(generation)) setSearching(false);
     }
   }
 
-  async function quitClean() {
+  async function enrollThisDevice() {
+    setEnrolling(true);
+    setNotice(null);
     try {
-      await invoke("p0_2_quit_clean");
+      const response = await invoke<LocalEnrollmentResponse>("p0_4_enroll_local_device");
+      setDeviceId(response.deviceId);
+      setHoldReason(null);
+      setConnection("active");
+      setNotice("This device is enrolled. Search again to check whether local memory is ready.");
     } catch (error) {
-      setLog(`quit failed: ${String(error)}`);
+      const code = String(error);
+      const message =
+        code.includes("brain_identity_unavailable")
+          ? "A Brain identity is not available in this runtime yet. Device enrollment was not completed."
+          : code.includes("unbound_existing_device_state")
+            ? "Existing local event data has no verified device binding. Cryptex left it untouched; recovery review is required."
+            : code.includes("secure_store_unavailable")
+              ? "The operating-system secure store could not complete enrollment. No replacement identity was created."
+              : "Cryptex could not enroll this device. Existing identity and event data were left unchanged.";
+      setNotice(message);
+    } finally {
+      setEnrolling(false);
     }
   }
+
+  const holdCopy = holdReason
+    ? HOLD_COPY[holdReason] ?? "Search is paused because Cryptex could not verify a safe retrieval state."
+    : null;
 
   return (
-    <main className="foundation-shell">
-      <section className="foundation-card" aria-labelledby="cryptex-title">
-        <p className="eyebrow">M0 · Foundation · P0-2 probe</p>
-        <h1 id="cryptex-title">Cryptex</h1>
-        <p className="summary">
-          Local-first personal memory and knowledge system for macOS and Windows.
-        </p>
-        <p className="status">{log}</p>
-        {runtimeRoot ? <p className="status">runtime: {runtimeRoot}</p> : null}
-        <button type="button" onClick={toggleAutostart}>
-          {autostartEnabled ? "Disable Desktop login start" : "Start Desktop at login"}
+    <main className="app-shell">
+      <aside className="side-rail" aria-label="Primary">
+        <a className="brand-mark" href="#home" aria-label="Cryptex home">
+          C<span>.</span>
+        </a>
+        <div className="rail-rule" />
+        <button className="rail-action is-selected" type="button" aria-label="Search memory">
+          <span aria-hidden="true">⌕</span>
         </button>
-        <label>
-          Daemon sidecar
-          <input
-            value={cryptexd}
-            readOnly
-          />
-        </label>
-        <div className="probe-actions">
-          <button type="button" onClick={startDaemon}>
-            Start probe daemon
-          </button>
-          <button type="button" onClick={status}>
-            Daemon status
-          </button>
-          <button type="button" onClick={ipcHealth}>
-            IPC health ping
-          </button>
-          <button type="button" onClick={waitForRestart}>
-            Wait for IPC reconnect
-          </button>
-          <button type="button" onClick={stopDaemon}>
-            Stop daemon
-          </button>
-          <button type="button" onClick={showWindow}>
-            Show main window
-          </button>
-          <button type="button" onClick={snapshot}>
-            Write snapshot
-          </button>
-          <button type="button" onClick={quitClean}>
-            Quit clean
-          </button>
+        <div className="rail-bottom" aria-hidden="true">M4</div>
+      </aside>
+
+      <section className="workspace" id="home">
+        <header className="topbar">
+          <div className="wordmark">Cryptex</div>
+          <div className={`connection-state state-${connection}`} role="status">
+            <span className="state-dot" />
+            {connection === "checking" ? "Checking" : connection === "active" ? "Active" : "Attention"}
+          </div>
+        </header>
+
+        <div className="content-column">
+          <div className="page-heading">
+            <p className="eyebrow">Your personal archive</p>
+            <h1>Find what you remember.</h1>
+            <p className="intro">
+              Search stays on this device and works offline. No AI is needed to find a note.
+            </p>
+          </div>
+
+          <form className="search-form" onSubmit={search} role="search">
+            <label className="visually-hidden" htmlFor="memory-search">Search your memory</label>
+            <span className="search-glyph" aria-hidden="true">⌕</span>
+            <input
+              id="memory-search"
+              ref={searchRef}
+              value={query}
+              onChange={(event) => {
+                searchRequestGate.invalidate();
+                setSearching(false);
+                setQuery(event.target.value);
+                setHits([]);
+                setHoldReason(null);
+                setNotice(null);
+              }}
+              placeholder="Search notes, people, or ideas"
+              autoComplete="off"
+              maxLength={1024}
+            />
+            <kbd className="shortcut-hint">{isMac ? "⌘" : "Ctrl"} K</kbd>
+            <button className="search-button" type="submit" disabled={searching}>
+              {searching ? "Searching" : "Search"}
+            </button>
+          </form>
+
+          {holdCopy ? (
+            <section className="safety-panel" role="alert" aria-live="assertive">
+              <div className="panel-icon" aria-hidden="true">!</div>
+              <div>
+                <p className="panel-kicker">Retrieval paused</p>
+                <p>{holdCopy}</p>
+                {holdReason === "local_enrollment_required" ? (
+                  <button
+                    className="text-button"
+                    type="button"
+                    onClick={enrollThisDevice}
+                    disabled={enrolling}
+                  >
+                    {enrolling ? "Setting up this device…" : "Set up this device"}
+                  </button>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
+          {notice ? <p className="notice" role="status">{notice}</p> : null}
+          {deviceId ? <p className="device-reference">This device · {deviceId}</p> : null}
+
+          {!holdCopy && !notice && hits.length === 0 ? (
+            <section className="empty-state" aria-live="polite">
+              <div className="empty-rule" />
+              <p className="empty-title">A quiet place for what matters.</p>
+              <p>Enter a phrase above to search your verified local notes.</p>
+            </section>
+          ) : null}
+
+          {hits.length > 0 ? (
+            <section className="results" aria-label="Search results" aria-live="polite">
+              <div className="results-heading">
+                <h2>Notes</h2>
+                <span>{hits.length} {hits.length === 1 ? "result" : "results"}</span>
+              </div>
+              <ul>
+                {hits.map((hit) => (
+                  <li className="result-card" key={hit.eventId}>
+                    <div className="result-meta">
+                      <time dateTime={hit.createdAt}>{displayDate(hit.createdAt)}</time>
+                      <span>{hit.classification}</span>
+                    </div>
+                    <p>{hit.text}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {notice?.includes("could not complete") ? (
+            <p className="privacy-note">Previous results were cleared before this request.</p>
+          ) : null}
         </div>
-        <p className="status">
-          Close the main window to exercise Mode B hide-on-close (process stays alive). Restore via
-          Show, Dock reopen, or `show.request` under the runtime root.
-        </p>
+
+        <footer className="footer-note">
+          <span>Private by design</span>
+          <span className="footer-separator">·</span>
+          <span>Stored and searched locally</span>
+        </footer>
       </section>
     </main>
   );

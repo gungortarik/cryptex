@@ -134,6 +134,14 @@ impl ProjectionDb {
         &self.conn
     }
 
+    /// Mutable connection access for additive derived-store migrations.
+    ///
+    /// M4 extensions must preserve the M3 schema and use this handle only after
+    /// the projection has been opened and validated by this type.
+    pub fn connection_mut(&mut self) -> &mut Connection {
+        &mut self.conn
+    }
+
     pub fn schema_version(&self) -> ProjectionResult<u32> {
         match read_schema_version(&self.conn)? {
             Some(v) => Ok(v),
@@ -287,7 +295,8 @@ fn replaceable_unusable_reason(err: &ProjectionError) -> Option<ProjectionReplac
         | ProjectionError::Sqlite(_)
         | ProjectionError::Fts5Unavailable { .. }
         | ProjectionError::EventConflict { .. }
-        | ProjectionError::InvalidQuery { .. } => None,
+        | ProjectionError::InvalidQuery { .. }
+        | ProjectionError::OperationDeadlineExceeded => None,
     }
 }
 

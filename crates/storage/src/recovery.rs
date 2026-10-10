@@ -156,6 +156,11 @@ fn stream_verified_prefix_length<V: FrameBodyValidator>(
         let mut body = vec![0u8; body_len as usize];
         read_exact(file, &mut body)?;
         if let Err(err) = validator.validate_frame_body(&body) {
+            if matches!(&err, StorageError::CompatibilityBoundary(_)) {
+                // This record may be a valid future event. ADR-0017 requires
+                // byte preservation and blocks legacy append/recovery here.
+                return Err(err);
+            }
             let (reason, extras) = match err {
                 StorageError::Validation {
                     reason_code,
@@ -347,6 +352,31 @@ mod tests {
         assert_eq!(entry.metadata.schema_version_if_parsed, Some(99));
         let meta = fs::read_to_string(entry.directory.join("quarantine.json")).unwrap();
         assert!(!meta.contains(root.to_string_lossy().as_ref()));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    struct PreserveBoundary;
+    impl FrameBodyValidator for PreserveBoundary {
+        fn validate_frame_body(&self, _body: &[u8]) -> StorageResult<()> {
+            Err(StorageError::CompatibilityBoundary(
+                "synthetic unknown-version frame".into(),
+            ))
+        }
+    }
+
+    #[test]
+    fn compatibility_boundary_preserves_active_pack_without_quarantine_or_truncate() {
+        let root = temp_root("compat-boundary");
+        let device = DeviceId::new("device-compat-boundary").unwrap();
+        append_frame(&root, &device, 0, b"previously-verified").unwrap();
+        append_frame(&root, &device, 0, b"opaque-future-record").unwrap();
+        let path = active_segment_path(&root, &device, 0);
+        let before = fs::read(&path).unwrap();
+
+        let err = recover_active_open(&root, &device, 0, &PreserveBoundary).unwrap_err();
+        assert!(matches!(err, StorageError::CompatibilityBoundary(_)));
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert!(!crate::layout::quarantine_events_root(&root).exists());
         let _ = fs::remove_dir_all(&root);
     }
 

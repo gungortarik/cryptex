@@ -9,7 +9,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use cryptex_core::ids::DeviceId;
 use cryptex_core::validate::{parse_rfc3339_str, parse_uuid_str};
@@ -23,7 +23,7 @@ use cryptex_events::hex::ZERO_CONTENT_HASH_HEX;
 use cryptex_events::hex::{ContentHashHex, SigningKeyId};
 use cryptex_events::integrity::{accept_event, check_chain_link, check_first_event_prev_hash};
 use cryptex_events::limits::DEFAULT_SEAL_EVENT_THRESHOLD_HINT;
-use cryptex_events::{ValidationReasonCode, validate_accepted_record_bytes};
+use cryptex_events::{ValidationReasonCode, VersionedRecord, read_versioned_record};
 use cryptex_storage::durability::sync_parent_directory;
 use cryptex_storage::layout::{
     active_segment_path, canonical_events_device_dir, sealed_segment_path,
@@ -184,14 +184,46 @@ struct VerifyingBodyValidator {
 
 impl FrameBodyValidator for VerifyingBodyValidator {
     fn validate_frame_body(&self, body: &[u8]) -> cryptex_storage::StorageResult<()> {
-        let accepted =
-            validate_accepted_record_bytes(body, &self.verifying_key).map_err(|failure| {
-                StorageError::Validation {
-                    reason_code: failure.reason.as_str().to_string(),
-                    detail: failure.detail,
-                    schema_version_if_parsed: failure.schema_version_if_parsed,
-                }
-            })?;
+        let record = read_versioned_record(body, &self.verifying_key).map_err(|failure| {
+            StorageError::Validation {
+                reason_code: failure.reason.as_str().to_string(),
+                detail: failure.detail,
+                schema_version_if_parsed: failure.schema_version_if_parsed,
+            }
+        })?;
+        let (claimed_device_id, schema_version) = match &record {
+            VersionedRecord::VerifiedV1(event) => {
+                (Some(event.device_id.as_str()), Some(EVENT_SCHEMA_VERSION))
+            }
+            VersionedRecord::VerifiedV2Supported(event) => {
+                (Some(event.event().device_id.as_str()), Some(2))
+            }
+            VersionedRecord::VerifiedUnsupported(event) => {
+                (Some(event.device_id.as_str()), Some(2))
+            }
+            VersionedRecord::Unverifiable(_) => (None, None),
+        };
+        if claimed_device_id.is_some_and(|claimed| claimed != self.expected_device_id.as_str()) {
+            return Err(StorageError::Validation {
+                reason_code: ValidationReasonCode::IntegrityFailure.as_str().to_string(),
+                detail: "accepted event device_id does not match segment device".into(),
+                schema_version_if_parsed: schema_version,
+            });
+        }
+        let accepted = match record {
+            VersionedRecord::VerifiedV1(accepted) => accepted,
+            VersionedRecord::VerifiedV2Supported(_) | VersionedRecord::VerifiedUnsupported(_) => {
+                // Integrity is verified. Preserve the record in the chain and
+                // leave materialization to a reader that supports its payload.
+                return Ok(());
+            }
+            VersionedRecord::Unverifiable(record) => {
+                return Err(StorageError::CompatibilityBoundary(format!(
+                    "event envelope version {:?} cannot be verified by this reader",
+                    record.schema_version
+                )));
+            }
+        };
         if accepted.device_id != self.expected_device_id.as_str() {
             return Err(StorageError::Validation {
                 reason_code: ValidationReasonCode::IntegrityFailure.as_str().to_string(),
@@ -230,6 +262,54 @@ pub(crate) struct DeviceCanonicalLock {
     _file: File,
 }
 
+/// Serializes creation of first-time device stream directories against readers
+/// that enumerate the canonical device inventory. Existing-device appends do
+/// not take this lock, so independent devices remain concurrent.
+#[derive(Debug)]
+pub(crate) struct CanonicalInventoryLock {
+    _file: File,
+}
+
+pub(crate) fn acquire_canonical_inventory_lock(
+    runtime_root: &Path,
+) -> CanonicalWriterResult<CanonicalInventoryLock> {
+    assert_outside_repository(runtime_root)
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let events_root = runtime_root.join("canonical").join("events");
+    fs::create_dir_all(&events_root).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(events_root.join("inventory.lock"))
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    fs2::FileExt::lock_exclusive(&file)
+        .map_err(|e| CanonicalWriterError::Path(format!("canonical inventory lock failed: {e}")))?;
+    Ok(CanonicalInventoryLock { _file: file })
+}
+
+/// Deadline-bounded read-side inventory lock used by content retrieval. Unlike
+/// canonical writers, a timed-out read must release its worker promptly.
+pub(crate) fn acquire_canonical_inventory_lock_until(
+    runtime_root: &Path,
+    deadline: Instant,
+) -> CanonicalWriterResult<CanonicalInventoryLock> {
+    assert_outside_repository(runtime_root)
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let events_root = runtime_root.join("canonical").join("events");
+    fs::create_dir_all(&events_root).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(events_root.join("inventory.lock"))
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    lock_exclusive_until(&file, deadline, "canonical inventory")?;
+    Ok(CanonicalInventoryLock { _file: file })
+}
+
 impl DeviceCanonicalLock {
     pub(crate) fn device_id(&self) -> &DeviceId {
         &self.device_id
@@ -248,7 +328,81 @@ pub(crate) fn acquire_device_canonical_lock(
     assert_outside_repository(runtime_root)
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
     let device_dir = canonical_events_device_dir(runtime_root, device_id);
+    // A missing directory is a new inventory entry. Serialize its first
+    // creation with full-inventory readers, then acquire its writer lock
+    // before releasing the inventory lock.
+    let _inventory = if device_dir.exists() {
+        None
+    } else {
+        Some(acquire_canonical_inventory_lock(runtime_root)?)
+    };
     fs::create_dir_all(&device_dir).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    acquire_device_lock_in_existing_dir(device_id, &device_dir)
+}
+
+/// Acquire a device lock without creating inventory. Callers must hold the
+/// canonical inventory lock so a missing device directory cannot appear while
+/// they enumerate and scan trusted streams.
+pub(crate) fn acquire_existing_device_canonical_lock(
+    runtime_root: &Path,
+    device_id: &DeviceId,
+) -> CanonicalWriterResult<Option<DeviceCanonicalLock>> {
+    let device_dir = canonical_events_device_dir(runtime_root, device_id);
+    if !device_dir.exists() {
+        return Ok(None);
+    }
+    acquire_device_lock_in_existing_dir(device_id, &device_dir).map(Some)
+}
+
+pub(crate) fn acquire_existing_device_canonical_lock_until(
+    runtime_root: &Path,
+    device_id: &DeviceId,
+    deadline: Instant,
+) -> CanonicalWriterResult<Option<DeviceCanonicalLock>> {
+    let device_dir = canonical_events_device_dir(runtime_root, device_id);
+    if !device_dir.exists() {
+        return Ok(None);
+    }
+    let lock_path = device_dir.join("writer.lock");
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lock_path)
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    lock_exclusive_until(&file, deadline, "device canonical")?;
+    Ok(Some(DeviceCanonicalLock {
+        device_id: device_id.clone(),
+        _file: file,
+    }))
+}
+
+fn lock_exclusive_until(file: &File, deadline: Instant, scope: &str) -> CanonicalWriterResult<()> {
+    loop {
+        if Instant::now() >= deadline {
+            return Err(CanonicalWriterError::Path(format!(
+                "{scope} lock deadline exceeded"
+            )));
+        }
+        match fs2::FileExt::try_lock_exclusive(file) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => {
+                return Err(CanonicalWriterError::Path(format!(
+                    "{scope} lock failed: {error}"
+                )));
+            }
+        }
+    }
+}
+
+fn acquire_device_lock_in_existing_dir(
+    device_id: &DeviceId,
+    device_dir: &Path,
+) -> CanonicalWriterResult<DeviceCanonicalLock> {
     let lock_path = device_dir.join("writer.lock");
     let file = OpenOptions::new()
         .create(true)
@@ -531,6 +685,12 @@ fn rebuild_chain_state(
                 }
             }
             Err(err) => {
+                if matches!(
+                    &err,
+                    CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(_))
+                ) {
+                    return Err(err);
+                }
                 quarantine_sealed_pack(runtime_root, device_id, *index, &path)?;
                 return Err(err);
             }
@@ -582,17 +742,33 @@ fn rebuild_chain_state(
 }
 
 fn absorb_event(
-    ev: &AcceptedEvent,
+    ev: &VersionedRecord,
     last_hash: &mut ContentHashHex,
     last_key: &mut Option<SigningKeyId>,
     last_seq: &mut Option<u64>,
     observed: &mut Vec<SigningKeyId>,
 ) -> CanonicalWriterResult<()> {
-    *last_hash = ev.content_hash.clone();
-    *last_key = Some(ev.signing_key_id.clone());
-    *last_seq = Some(ev.device_seq.to_u64()?);
-    if !observed.iter().any(|id| id == &ev.signing_key_id) {
-        observed.push(ev.signing_key_id.clone());
+    let (hash, key, seq) = match ev {
+        VersionedRecord::VerifiedV1(ev) => (&ev.content_hash, &ev.signing_key_id, &ev.device_seq),
+        VersionedRecord::VerifiedV2Supported(ev) => (
+            &ev.event().content_hash,
+            &ev.event().signing_key_id,
+            &ev.event().device_seq,
+        ),
+        VersionedRecord::VerifiedUnsupported(ev) => {
+            (&ev.content_hash, &ev.signing_key_id, &ev.device_seq)
+        }
+        VersionedRecord::Unverifiable(_) => {
+            return Err(CanonicalWriterError::Integrity(
+                "unverifiable record cannot advance chain state".into(),
+            ));
+        }
+    };
+    *last_hash = hash.clone();
+    *last_key = Some(key.clone());
+    *last_seq = Some(seq.to_u64()?);
+    if !observed.iter().any(|id| id == key) {
+        observed.push(key.clone());
     }
     Ok(())
 }
@@ -603,32 +779,62 @@ fn scan_pack_events(
     validator: &VerifyingBodyValidator,
     expected_prev: &mut ContentHashHex,
     expected_seq: &mut Option<u64>,
-) -> CanonicalWriterResult<Vec<AcceptedEvent>> {
+) -> CanonicalWriterResult<Vec<VersionedRecord>> {
     let (events, _verified_len) =
         fold_verified_frames(path, validator, Vec::new(), |out, body| {
-            let accepted: AcceptedEvent = serde_json::from_slice(body).map_err(|err| {
-                StorageError::Integrity(format!("accepted JSON parse failed: {err}"))
-            })?;
-            // Chain rules inside fold via temporary check — validated below in Rust after fold
-            // because expected_prev is outside StorageError mapping. Collect then verify.
-            out.push(accepted);
+            let record =
+                read_versioned_record(body, &validator.verifying_key).map_err(|failure| {
+                    StorageError::Validation {
+                        reason_code: failure.reason.as_str().to_string(),
+                        detail: failure.detail,
+                        schema_version_if_parsed: failure.schema_version_if_parsed,
+                    }
+                })?;
+            out.push(record);
             Ok(())
         })?;
 
-    for accepted in &events {
-        if accepted.device_id != device_id.as_str() {
+    for record in &events {
+        let (record_device_id, seq, prev_content_hash, content_hash) = match record {
+            VersionedRecord::VerifiedV1(event) => (
+                event.device_id.as_str(),
+                event.device_seq.to_u64()?,
+                &event.prev_content_hash,
+                &event.content_hash,
+            ),
+            VersionedRecord::VerifiedV2Supported(event) => (
+                event.event().device_id.as_str(),
+                event.event().device_seq.to_u64()?,
+                &event.event().prev_content_hash,
+                &event.event().content_hash,
+            ),
+            VersionedRecord::VerifiedUnsupported(event) => (
+                event.device_id.as_str(),
+                event.device_seq.to_u64()?,
+                &event.prev_content_hash,
+                &event.content_hash,
+            ),
+            VersionedRecord::Unverifiable(event) => {
+                return Err(CanonicalWriterError::Storage(
+                    StorageError::CompatibilityBoundary(format!(
+                        "event envelope version {:?} cannot be verified",
+                        event.schema_version
+                    )),
+                ));
+            }
+        };
+        if record_device_id != device_id.as_str() {
             return Err(CanonicalWriterError::Integrity(format!(
-                "accepted event device_id '{}' does not match segment device '{}'",
-                accepted.device_id,
+                "event device_id '{}' does not match segment device '{}'",
+                record_device_id,
                 device_id.as_str()
             )));
         }
-        let seq = accepted.device_seq.to_u64()?;
         match expected_seq {
             None => {
-                check_first_event_prev_hash(&accepted.prev_content_hash)
+                check_first_event_prev_hash(prev_content_hash)
                     .map_err(|e| CanonicalWriterError::Integrity(e.to_string()))?;
-                if accepted.prev_content_hash != *expected_prev {
+                if *prev_content_hash != *expected_prev {
                     return Err(CanonicalWriterError::Integrity(
                         "first event prev_content_hash mismatch".into(),
                     ));
@@ -643,12 +849,12 @@ fn scan_pack_events(
                         "device_seq not strictly increasing: previous {prev_seq} found {seq}"
                     )));
                 }
-                check_chain_link(expected_prev, &accepted.prev_content_hash)
+                check_chain_link(expected_prev, prev_content_hash)
                     .map_err(|e| CanonicalWriterError::Integrity(e.to_string()))?;
                 *expected_seq = Some(seq);
             }
         }
-        *expected_prev = accepted.content_hash.clone();
+        *expected_prev = content_hash.clone();
     }
     Ok(events)
 }
@@ -1010,8 +1216,23 @@ where
                 events.len()
             )));
         }
-        for ev in &events {
-            on_event(ev)?;
+        for record in &events {
+            match record {
+                VersionedRecord::VerifiedV1(ev) => on_event(ev)?,
+                VersionedRecord::VerifiedV2Supported(_)
+                | VersionedRecord::VerifiedUnsupported(_) => {
+                    return Err(CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(
+                        "verified v2 records require M4 retrieval-safety and materialization support".into(),
+                    )));
+                }
+                VersionedRecord::Unverifiable(_) => {
+                    return Err(CanonicalWriterError::Storage(
+                        StorageError::CompatibilityBoundary(
+                            "unverifiable event blocks retrieval".into(),
+                        ),
+                    ));
+                }
+            }
         }
     }
     if let Some(idx) = open {
@@ -1025,8 +1246,23 @@ where
                 &mut expected_prev,
                 &mut expected_seq,
             )?;
-            for ev in &events {
-                on_event(ev)?;
+            for record in &events {
+                match record {
+                    VersionedRecord::VerifiedV1(ev) => on_event(ev)?,
+                    VersionedRecord::VerifiedV2Supported(_)
+                    | VersionedRecord::VerifiedUnsupported(_) => {
+                        return Err(CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(
+                            "verified v2 records require M4 retrieval-safety and materialization support".into(),
+                        )));
+                    }
+                    VersionedRecord::Unverifiable(_) => {
+                        return Err(CanonicalWriterError::Storage(
+                            StorageError::CompatibilityBoundary(
+                                "unverifiable event blocks retrieval".into(),
+                            ),
+                        ));
+                    }
+                }
             }
         }
     }
@@ -1057,6 +1293,7 @@ mod tests {
     use cryptex_events::framing::encode_frame_header;
     use cryptex_storage::layout::quarantine_events_root;
     use cryptex_storage::{event_signing_key_path, read_active_pack_bytes, sealed_segment_path};
+    use ed25519_dalek::Signer;
     use std::fs::OpenOptions;
     use std::io::Write;
     use std::sync::{Arc, Barrier};
@@ -1144,6 +1381,98 @@ mod tests {
 
         let bytes = read_active_pack_bytes(&root, &device, 0).unwrap();
         assert!(bytes.len() > 20);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn unknown_envelope_in_active_pack_is_preserved_and_blocks_legacy_append() {
+        let root = temp_root("unknown-envelope-open");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("writer-unknown-open").unwrap();
+        append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: "33333333-3333-4333-8333-333333333333",
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "synthetic v1 prefix",
+                config: &CanonicalWriterConfig::default(),
+            },
+        )
+        .unwrap();
+        let unknown = br#"{"schema_version":77,"opaque":"synthetic-future-record"}"#;
+        write_crafted_body_frame(&root, &device, unknown);
+        let path = active_segment_path(&root, &device, 0);
+        let before = fs::read(&path).unwrap();
+
+        let err =
+            load_verified_events(&store, SecureStoreEnvironment::Dev, &root, &device).unwrap_err();
+        assert!(matches!(
+            err,
+            CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(_))
+        ));
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert!(!quarantine_events_root(&root).exists());
+
+        let append_err = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: "33333333-3333-4333-8333-333333333333",
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "must not cross unknown boundary",
+                config: &CanonicalWriterConfig::default(),
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(
+            append_err,
+            CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(_))
+        ));
+        assert_eq!(fs::read(&path).unwrap(), before);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn unknown_envelope_in_sealed_pack_is_not_quarantined_or_removed() {
+        let root = temp_root("unknown-envelope-sealed");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("writer-unknown-sealed").unwrap();
+        append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: "33333333-3333-4333-8333-333333333333",
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "synthetic v1 prefix",
+                config: &CanonicalWriterConfig::default(),
+            },
+        )
+        .unwrap();
+        write_crafted_body_frame(
+            &root,
+            &device,
+            br#"{"schema_version":77,"opaque":"synthetic-future-record"}"#,
+        );
+        seal_active_segment(&root, &device, 0).unwrap();
+        let path = sealed_segment_path(&root, &device, 0);
+        let before = fs::read(&path).unwrap();
+
+        let err =
+            load_verified_events(&store, SecureStoreEnvironment::Dev, &root, &device).unwrap_err();
+        assert!(matches!(
+            err,
+            CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(_))
+        ));
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert!(path.is_file());
+        assert!(!quarantine_events_root(&root).exists());
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -1239,6 +1568,43 @@ mod tests {
             "direct acquire must also refuse"
         );
         assert!(!canonical_events_device_dir(&repoish, &device).exists());
+    }
+
+    #[test]
+    fn first_device_directory_creation_waits_for_inventory_reader() {
+        let root = temp_root("inventory-lock-first-device");
+        let device = DeviceId::new("inventory-first-device").unwrap();
+        let device_dir = canonical_events_device_dir(&root, &device);
+        let inventory = acquire_canonical_inventory_lock(&root).unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let writer_root = root.clone();
+        let writer_device = device.clone();
+        let writer = thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let result = acquire_device_canonical_lock(&writer_root, &writer_device);
+            finished_tx.send(result.is_ok()).unwrap();
+            result
+        });
+
+        started_rx.recv().unwrap();
+        assert!(
+            finished_rx
+                .recv_timeout(std::time::Duration::from_millis(100))
+                .is_err(),
+            "first-device writer must wait while inventory is being read"
+        );
+        assert!(
+            !device_dir.exists(),
+            "writer must not publish a device directory before the inventory lock"
+        );
+
+        drop(inventory);
+        assert!(finished_rx.recv().unwrap());
+        let device_lock = writer.join().unwrap().unwrap();
+        assert!(device_dir.is_dir());
+        drop(device_lock);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1661,6 +2027,125 @@ mod tests {
         file.sync_all().unwrap();
     }
 
+    fn craft_signed_v2_unknown_body(
+        store: &FakeSecureStore,
+        root: &Path,
+        device: &DeviceId,
+        brain_id: &str,
+        seq: u64,
+        prev_hash: &ContentHashHex,
+    ) -> Vec<u8> {
+        let ready =
+            ensure_event_signing_key(store, SecureStoreEnvironment::Dev, root, device, &[], true)
+                .unwrap();
+        let mut record = serde_json::json!({
+            "schema_version": 2,
+            "event_id": new_event_id().unwrap(),
+            "brain_id": brain_id,
+            "device_id": device.as_str(),
+            "device_seq": seq.to_string(),
+            "created_at": now_rfc3339().unwrap(),
+            "event_type": "future.synthetic",
+            "payload_schema_version": 1,
+            "classification": "internal",
+            "signing_key_id": ready.public.signing_key_id.clone(),
+            "payload": {"opaque": "synthetic-only"},
+            "prev_content_hash": prev_hash.as_str(),
+            "content_hash": "00".repeat(32),
+            "signature": "00".repeat(64),
+        });
+        let mut signable = record.clone();
+        signable.as_object_mut().unwrap().remove("content_hash");
+        signable.as_object_mut().unwrap().remove("signature");
+        let canonical = serde_json_canonicalizer::to_vec(&signable).unwrap();
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"cryptex-event-content-v2");
+        hasher.update(&[0]);
+        hasher.update(&canonical);
+        let hash = *hasher.finalize().as_bytes();
+        let signature = ready
+            .signing_key
+            .sign(&[&b"cryptex-event-sig-v2"[..], &[0], hash.as_slice()].concat());
+        record.as_object_mut().unwrap().insert(
+            "content_hash".into(),
+            serde_json::Value::String(ContentHashHex::from_bytes(&hash).unwrap().as_str().into()),
+        );
+        record.as_object_mut().unwrap().insert(
+            "signature".into(),
+            serde_json::Value::String(
+                cryptex_events::SignatureHex::from_bytes(&signature.to_bytes())
+                    .unwrap()
+                    .as_str()
+                    .into(),
+            ),
+        );
+        serde_json_canonicalizer::to_vec(&record).unwrap()
+    }
+
+    #[test]
+    fn verified_unsupported_v2_is_chain_scanned_but_blocks_m3_retrieval() {
+        let root = temp_root("verified-unsupported-v2");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("writer-v2-unsupported").unwrap();
+        let brain = "33333333-3333-4333-8333-333333333333";
+        let config = CanonicalWriterConfig::default();
+        let first = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "synthetic v1 prefix",
+                config: &config,
+            },
+        )
+        .unwrap();
+        let v2_seq = allocate_device_sequence(&root, &device).unwrap();
+        let body = craft_signed_v2_unknown_body(
+            &store,
+            &root,
+            &device,
+            brain,
+            v2_seq,
+            &first.accepted.content_hash,
+        );
+        write_crafted_body_frame(&root, &device, &body);
+        let path = active_segment_path(&root, &device, 0);
+        let bytes_with_v2 = fs::read(&path).unwrap();
+
+        let retrieval =
+            load_verified_events(&store, SecureStoreEnvironment::Dev, &root, &device).unwrap_err();
+        assert!(matches!(
+            retrieval,
+            CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(_))
+        ));
+        assert_eq!(fs::read(&path).unwrap(), bytes_with_v2);
+
+        let third = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "synthetic v1 after verified unsupported v2",
+                config: &config,
+            },
+        )
+        .unwrap();
+        assert_eq!(third.accepted.device_seq.to_u64().unwrap(), v2_seq + 1);
+        assert_eq!(
+            third.accepted.prev_content_hash.as_str(),
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap()["content_hash"]
+                .as_str()
+                .unwrap()
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
     fn craft_signed_mismatched_device_body(
         store: &FakeSecureStore,
         root: &Path,
@@ -1863,7 +2348,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_schema_frame_is_quarantined_and_does_not_fork_chain() {
+    fn unverifiable_schema_frame_is_preserved_and_blocks_append() {
         let root = temp_root("schema-m");
         let store = FakeSecureStore::new();
         let device = DeviceId::new("writer-schema-m").unwrap();
@@ -1892,8 +2377,10 @@ mod tests {
             .insert("schema_version".into(), serde_json::json!(99));
         let bad = serde_json::to_vec(&value).unwrap();
         write_crafted_body_frame(&root, &device, &bad);
+        let path = active_segment_path(&root, &device, 0);
+        let before = fs::read(&path).unwrap();
 
-        let second = append_memory_note(
+        let err = append_memory_note(
             &store,
             SecureStoreEnvironment::Dev,
             AppendMemoryNoteArgs {
@@ -1905,24 +2392,14 @@ mod tests {
                 config: &cfg,
             },
         )
-        .unwrap();
-        assert_eq!(second.accepted.device_seq.to_u64().unwrap(), 2);
-        assert_eq!(
-            second.accepted.prev_content_hash.as_str(),
-            first.accepted.content_hash.as_str()
-        );
-
-        let qroot = quarantine_events_root(&root);
-        let mut found = false;
-        for entry in walkdir_quarantine(&qroot) {
-            let meta = fs::read_to_string(entry.join("quarantine.json")).unwrap();
-            if meta.contains("unsupported_schema") {
-                found = true;
-                assert!(meta.contains(r#""schema_version_if_parsed": 99"#));
-                assert!(!meta.contains(root.to_string_lossy().as_ref()));
-            }
-        }
-        assert!(found, "expected unsupported_schema quarantine entry");
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(_))
+        ));
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert!(!quarantine_events_root(&root).exists());
+        assert_eq!(first.accepted.device_seq.to_u64().unwrap(), 1);
         let _ = fs::remove_dir_all(&root);
     }
 

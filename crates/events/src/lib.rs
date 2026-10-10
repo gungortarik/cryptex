@@ -10,7 +10,9 @@ pub mod hex;
 pub mod integrity;
 pub mod limits;
 pub mod schema;
+pub mod v2_payload;
 pub mod validate_record;
+pub mod versioned_reader;
 
 pub use device_seq::{DEVICE_SEQ_PATTERN, DeviceSeq};
 pub use envelope::{
@@ -33,6 +35,17 @@ pub use limits::{
     MAX_JSON_NESTING_DEPTH, MAX_JSON_STRING_BYTES_PER_RECORD, MAX_MEMORY_NOTE_TEXT_BYTES,
     check_body_len,
 };
+pub use v2_payload::{
+    AuthorizationBasis, Confidence, ConflictOutcome, EntityKind, FactValue,
+    KnowledgeAssertionEventType, KnowledgeAssertionPayload, PublicationAuthorization,
+    RequiredNullable, SemanticAssertion, V2KnowledgeAssertionEvent,
+};
 pub use validate_record::{
     ValidationFailure, ValidationReasonCode, validate_accepted_record_bytes,
+};
+pub use versioned_reader::{
+    CancellableHistoryVerificationError, EVENT_SCHEMA_VERSION_V2, TrustedDaemonKeyResolver,
+    UnverifiableEnvelope, V2_CONTENT_HASH_DOMAIN, V2_SIGNATURE_DOMAIN, VerifiedUnsupportedV2,
+    VerifiedV2History, VerifiedV2KnowledgeAssertion, VersionedChainVerifier, VersionedRecord,
+    read_versioned_record, verify_v2_history, verify_v2_history_cancellable,
 };
