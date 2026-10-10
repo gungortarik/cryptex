@@ -33,6 +33,21 @@ that correction and passed on both operating systems.
 
 ## Gate status
 
+### Final DoD coverage correction — 2026-10-10
+
+This run passed its configured jobs, but the final acceptance audit found
+that readiness did not invoke the `cryptex-knowledge` unit suite or Desktop
+`test:search-policy`. In particular, the interrupted-migration test described
+above was compiled by workspace lint but was not executed by this workflow.
+The missing test steps are being added to both readiness platforms. The full
+M4 CI acceptance gate is therefore **PENDING corrected coverage**; do not
+infer that these tests passed from this historical run. See
+`evidence/m4/m4-final-dod-audit-20261010.md`.
+
+The later macOS visual record closes the scoped retrieval-safety visual check
+at product-equivalent tip `ebdd8c9`; actual tray Quit remains NOT VERIFIED.
+The following paragraph records the gate state when this CI run was captured.
+
 This CI gate does not complete M4 by itself. The macOS native visual review and
 final Definition of Done/owner review remain open. Production v2 structured
 event writing remains disabled. No merge or M4-complete claim is made.
