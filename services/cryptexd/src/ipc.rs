@@ -2424,7 +2424,7 @@ mod tests {
     }
 
     fn isolated_ipc_listener(
-        label: &str,
+        _label: &str,
     ) -> (
         interprocess::local_socket::Name<'static>,
         interprocess::local_socket::Listener,
@@ -2435,16 +2435,16 @@ mod tests {
             .as_nanos();
         #[cfg(windows)]
         let name =
-            std::ffi::OsString::from(format!("cryptex-ipc-{label}-{}-{suffix}", process::id()))
+            std::ffi::OsString::from(format!("cryptex-ipc-{_label}-{}-{suffix}", process::id()))
                 .to_ns_name::<GenericNamespaced>()
                 .expect("test pipe name");
         #[cfg(unix)]
         let name = {
-            std::env::temp_dir()
-                .join(format!(
-                    "cryptex-ipc-{label}-{}-{suffix}.sock",
-                    process::id()
-                ))
+            // Unix-domain socket paths have a small sun_path limit. Keep test
+            // socket names short and use /tmp instead of macOS's long per-user
+            // TMPDIR so the same framed-IPC tests fit on hosted runners.
+            std::path::Path::new("/tmp")
+                .join(format!("cx-{}-{suffix}.sock", process::id()))
                 .to_fs_name::<interprocess::local_socket::GenericFilePath>()
                 .expect("test socket name")
         };
