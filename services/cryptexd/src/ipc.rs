@@ -895,14 +895,26 @@ fn transfer_named_pipe(
     read: Option<&mut [u8]>,
     deadline: Instant,
 ) -> io::Result<usize> {
+    use windows_sys::Win32::System::Threading::WaitForSingleObject;
+
+    transfer_named_pipe_with_wait(stream, write, read, deadline, |event, millis| unsafe {
+        WaitForSingleObject(event, millis)
+    })
+}
+
+#[cfg(windows)]
+fn transfer_named_pipe_with_wait(
+    stream: &Stream,
+    write: Option<&[u8]>,
+    read: Option<&mut [u8]>,
+    deadline: Instant,
+    wait_for_event: impl FnOnce(windows_sys::Win32::Foundation::HANDLE, u32) -> u32,
+) -> io::Result<usize> {
     use std::os::windows::io::{AsHandle, AsRawHandle};
     use windows_sys::Win32::{
-        Foundation::{ERROR_IO_PENDING, ERROR_OPERATION_ABORTED, WAIT_OBJECT_0, WAIT_TIMEOUT},
+        Foundation::{ERROR_IO_INCOMPLETE, ERROR_IO_PENDING, WAIT_OBJECT_0, WAIT_TIMEOUT},
         Storage::FileSystem::{ReadFile, WriteFile},
-        System::{
-            IO::{CancelIoEx, OVERLAPPED},
-            Threading::{CreateEventW, WaitForSingleObject},
-        },
+        System::{IO::OVERLAPPED, Threading::CreateEventW},
     };
 
     if Instant::now() >= deadline {
@@ -955,22 +967,85 @@ fn transfer_named_pipe(
         }
         let remaining = deadline.saturating_duration_since(Instant::now());
         let millis = u32::try_from(remaining.as_millis()).unwrap_or(u32::MAX - 1);
-        let wait = unsafe { WaitForSingleObject(event, millis) };
-        if wait == WAIT_TIMEOUT {
-            unsafe { CancelIoEx(handle, &overlapped) };
-            return match overlapped_byte_count(handle, &overlapped, true) {
-                Err(error) if error.raw_os_error() == Some(ERROR_OPERATION_ABORTED as i32) => {
-                    Err(frame_timeout())
-                }
-                other => other,
-            };
-        }
+        let wait = wait_for_event(event, millis);
         if wait != WAIT_OBJECT_0 {
-            return Err(io::Error::last_os_error());
+            let wait_error = if wait == WAIT_TIMEOUT {
+                frame_timeout()
+            } else {
+                io::Error::last_os_error()
+            };
+            let cleanup_errors = cancel_and_drain_named_pipe(handle, &overlapped);
+            return Err(with_pipe_cleanup_details(wait_error, cleanup_errors));
         }
     }
-    overlapped_byte_count(handle, &overlapped, false)
-        .or_else(|error| map_pipe_read_end(error, reading))
+    let transfer = overlapped_byte_count(handle, &overlapped, false);
+    let transfer = match transfer {
+        Err(error) if error.raw_os_error() == Some(ERROR_IO_INCOMPLETE as i32) => {
+            let cleanup_errors = cancel_and_drain_named_pipe(handle, &overlapped);
+            Err(with_pipe_cleanup_details(error, cleanup_errors))
+        }
+        other => other,
+    };
+    let transfer = transfer.or_else(|error| map_pipe_read_end(error, reading));
+    match transfer {
+        Ok(_) if Instant::now() >= deadline => Err(frame_timeout()),
+        other => other,
+    }
+}
+
+#[cfg(windows)]
+fn cancel_and_drain_named_pipe(
+    handle: windows_sys::Win32::Foundation::HANDLE,
+    overlapped: *const windows_sys::Win32::System::IO::OVERLAPPED,
+) -> Vec<String> {
+    use windows_sys::Win32::Foundation::{
+        ERROR_IO_INCOMPLETE, ERROR_NOT_FOUND, ERROR_OPERATION_ABORTED,
+    };
+    use windows_sys::Win32::System::IO::CancelIoEx;
+
+    let cancelled = unsafe { CancelIoEx(handle, overlapped) };
+    let cancel_error = (cancelled == 0).then(io::Error::last_os_error);
+
+    // The OVERLAPPED value, event, and caller buffer must outlive completion even
+    // when the wait itself fails. A blocking completion query is the drain
+    // boundary; ERROR_IO_INCOMPLETE is retried defensively because returning in
+    // that state would let the kernel retain pointers into this stack frame.
+    let completion = loop {
+        match overlapped_byte_count(handle, overlapped, true) {
+            Err(error) if error.raw_os_error() == Some(ERROR_IO_INCOMPLETE as i32) => {
+                std::thread::yield_now();
+            }
+            result => break result,
+        }
+    };
+
+    let mut errors = Vec::new();
+    if let Some(error) =
+        cancel_error.filter(|error| error.raw_os_error() != Some(ERROR_NOT_FOUND as i32))
+    {
+        errors.push(format!("CancelIoEx failed: {error}"));
+    }
+    if let Err(error) = completion
+        && error.raw_os_error() != Some(ERROR_OPERATION_ABORTED as i32)
+    {
+        errors.push(format!("overlapped completion failed: {error}"));
+    }
+    errors
+}
+
+#[cfg(windows)]
+fn with_pipe_cleanup_details(primary: io::Error, cleanup_errors: Vec<String>) -> io::Error {
+    if cleanup_errors.is_empty() {
+        primary
+    } else {
+        io::Error::new(
+            primary.kind(),
+            format!(
+                "{primary}; overlapped I/O cleanup: {}",
+                cleanup_errors.join("; ")
+            ),
+        )
+    }
 }
 
 #[cfg(windows)]
@@ -2132,5 +2207,69 @@ mod tests {
         });
         let _client = Stream::connect(name.borrow()).expect("connect stalled client");
         server.join().expect("server thread");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn stalled_pipe_write_returns_at_the_deadline() {
+        let (name, listener) = isolated_ipc_listener("write-stall");
+        let server = thread::spawn(move || {
+            let _stream = listener.accept().expect("accept stalled writer");
+            thread::sleep(Duration::from_millis(500));
+        });
+        let client = Stream::connect(name.borrow()).expect("connect stalled writer");
+        let bytes = vec![b'x'; 8 * 1024 * 1024];
+        let started = Instant::now();
+        let error = write_windows_pipe_all(&client, &bytes, started + Duration::from_millis(250))
+            .expect_err("stalled write must reach its deadline");
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "stalled write exceeded the deadline bound: {:?}",
+            started.elapsed()
+        );
+        server.join().expect("stalled writer server thread");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_pipe_wait_cancels_and_drains_pending_read() {
+        use windows_sys::Win32::Foundation::{ERROR_INVALID_HANDLE, SetLastError, WAIT_FAILED};
+
+        let (name, listener) = isolated_ipc_listener("wait-failure");
+        let (sent_tx, sent_rx) = std::sync::mpsc::channel();
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().expect("accept pending reader");
+            thread::sleep(Duration::from_millis(100));
+            stream
+                .write_all(b"x")
+                .expect("write after client cancellation");
+            sent_tx.send(()).expect("notify completed peer write");
+        });
+        let client = Stream::connect(name.borrow()).expect("connect pending reader");
+        let mut byte = [0_u8; 1];
+        let started = Instant::now();
+        let error = transfer_named_pipe_with_wait(
+            &client,
+            None,
+            Some(&mut byte),
+            started + Duration::from_secs(2),
+            |_, _| {
+                unsafe { SetLastError(ERROR_INVALID_HANDLE) };
+                WAIT_FAILED
+            },
+        )
+        .expect_err("injected wait failure");
+        assert_eq!(error.raw_os_error(), Some(ERROR_INVALID_HANDLE as i32));
+        sent_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("peer write after failed wait");
+        assert_eq!(byte, [0], "canceled read must not modify its caller buffer");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "failed wait did not cancel and drain promptly: {:?}",
+            started.elapsed()
+        );
+        server.join().expect("pending reader server thread");
     }
 }
