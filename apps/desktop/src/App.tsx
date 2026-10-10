@@ -7,7 +7,8 @@ import {
   createCaptureSubmissionState,
   evaluateDeliberateNewSave,
   evaluateOrdinarySave,
-  interpretCaptureWire,
+  hasArchivedUnresolved,
+  hasUnresolvedSubmission,
   newCaptureId,
   redactedCaptureTransportMessage,
   reduceCaptureSubmission,
@@ -49,6 +50,7 @@ type CaptureSnapshot = {
   captureId: string;
   text: string;
   classification: string;
+  canResolve?: boolean;
 };
 
 type CaptureUiState =
@@ -104,6 +106,9 @@ export function App() {
   const [classification, setClassification] = useState("");
   const [captureUi, setCaptureUi] = useState<CaptureUiState>({ kind: "idle" });
   const [pendingSnapshot, setPendingSnapshot] = useState<CaptureSnapshot | null>(null);
+  const [unresolvedArchive, setUnresolvedArchive] = useState<
+    Array<CaptureSnapshot & { canResolve?: boolean }>
+  >([]);
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const draftDirtyRef = useRef(false);
   const liveDraftRef = useRef({ text: "", classification: "" });
@@ -136,23 +141,31 @@ export function App() {
   }, [draftText, classification]);
 
   useEffect(() => {
-    const unresolved =
+    const pendingUnresolved =
       pendingSnapshot !== null &&
       (captureUi.kind === "submitting" ||
         captureUi.kind === "resolving" ||
         captureUi.kind === "uncertain");
-    draftDirtyRef.current =
-      draftText.trim().length > 0 || unresolved || captureBusy;
+    const archived = unresolvedArchive.length > 0;
+    const protect =
+      draftText.trim().length > 0 || pendingUnresolved || archived || captureBusy;
+    draftDirtyRef.current = protect;
     const shouldPrompt = shouldPromptBeforeNativeQuit({
-      draftDirty: draftText.trim().length > 0 || unresolved,
-      hasUnresolved: unresolved,
+      draftDirty: draftText.trim().length > 0,
+      hasUnresolved: pendingUnresolved || archived,
+      hasArchived: archived,
     });
-    void invoke("p0_5_set_capture_session_guard", { dirty: shouldPrompt }).catch(
-      () => {
-        // Guard sync is best-effort; Quit still defaults to prompting only when dirty is known.
-      },
-    );
-  }, [draftText, pendingSnapshot, captureBusy, captureUi]);
+    void invoke("p0_5_set_capture_session_guard", {
+      dirty: shouldPrompt,
+      syncFailed: false,
+    }).catch(() => {
+      // Fail closed on sync errors — native Quit must confirm.
+      void invoke("p0_5_set_capture_session_guard", {
+        dirty: true,
+        syncFailed: true,
+      }).catch(() => {});
+    });
+  }, [draftText, pendingSnapshot, unresolvedArchive, captureBusy, captureUi]);
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -226,6 +239,7 @@ export function App() {
   function syncUiFromPolicy(next: ReturnType<typeof createCaptureSubmissionState>) {
     capturePolicyRef.current = next;
     setPendingSnapshot(next.pending);
+    setUnresolvedArchive([...(next.unresolvedArchive || [])]);
     setCaptureNotice(next.notice);
     setDraftText(next.draftText);
     setClassification(next.classification);
@@ -259,6 +273,10 @@ export function App() {
       draftText,
       classification,
       pending: pendingSnapshot ?? capturePolicyRef.current.pending,
+      unresolvedArchive:
+        unresolvedArchive.length > 0
+          ? unresolvedArchive
+          : capturePolicyRef.current.unresolvedArchive || [],
       generation: captureSeq.current,
       notice: captureNotice,
     };
@@ -287,22 +305,6 @@ export function App() {
   }
 
   function applyCaptureResponse(response: CaptureResponse, snapshot: CaptureSnapshot, generation: number) {
-    if (!captureRequestGate.isCurrent(generation)) {
-      // Still allow late committed archive updates via policy for matching ids.
-      const late = reduceCaptureSubmission(currentPolicyState(), {
-        type: "response",
-        generation,
-        captureId: snapshot.captureId,
-        response,
-        liveText: liveDraftRef.current.text,
-        liveClassification: liveDraftRef.current.classification,
-      });
-      if (late.notice) setCaptureNotice(late.notice);
-      if (late.unresolvedArchive.length !== (currentPolicyState().unresolvedArchive?.length ?? 0)) {
-        // Archive is policy-internal; pending/UI preserved for current generation.
-      }
-      return;
-    }
     const next = reduceCaptureSubmission(currentPolicyState(), {
       type: "response",
       generation,
@@ -311,7 +313,10 @@ export function App() {
       liveText: liveDraftRef.current.text,
       liveClassification: liveDraftRef.current.classification,
     });
-    captureSeq.current = next.generation;
+    // Persist archive/pending/draft updates even for late/stale generations.
+    if (captureRequestGate.isCurrent(generation)) {
+      captureSeq.current = next.generation;
+    }
     syncUiFromPolicy(next);
   }
 
@@ -464,6 +469,48 @@ export function App() {
     }
   }
 
+  async function resolveArchivedCapture(captureId: string) {
+    const state = currentPolicyState();
+    if (isBusy(state)) return;
+    const started = reduceCaptureSubmission(state, {
+      type: "resolve_archive_start",
+      captureId,
+    });
+    if (started.resolvingArchiveId !== captureId) {
+      syncUiFromPolicy(started);
+      return;
+    }
+    const generation = captureRequestGate.begin();
+    started.generation = generation;
+    captureSeq.current = generation;
+    syncUiFromPolicy(started);
+    try {
+      const response = await invoke<CaptureResponse>("p0_5_resolve_capture", {
+        body: { captureId },
+      });
+      applyCaptureResponse(
+        response,
+        { captureId, text: "", classification: "" },
+        generation,
+      );
+    } catch (error) {
+      if (!captureRequestGate.isCurrent(generation)) return;
+      const code = error instanceof Error ? error.message : String(error);
+      const message = redactedCaptureTransportMessage(
+        code.startsWith("capture_resolve")
+          ? code
+          : "capture_resolve_transport_unavailable",
+      );
+      const uncertain = reduceCaptureSubmission(currentPolicyState(), {
+        type: "transport_uncertain",
+        generation,
+        captureId,
+        message,
+      });
+      syncUiFromPolicy(uncertain);
+    }
+  }
+
   function isBusy(state: ReturnType<typeof createCaptureSubmissionState>) {
     return state.ui.kind === "submitting" || state.ui.kind === "resolving";
   }
@@ -485,6 +532,9 @@ export function App() {
     syncUiFromPolicy(next);
     void invoke("p0_5_set_capture_session_guard", { dirty: false }).catch(() => {});
   }
+
+  const resolvingArchiveCaptureId =
+    captureUi.kind === "resolving" ? captureUi.captureId : null;
 
   const holdCopy = holdReason
     ? HOLD_COPY[holdReason] ?? "Search is paused because Cryptex could not verify a safe retrieval state."
@@ -620,15 +670,50 @@ export function App() {
                 {captureNotice}
               </p>
             ) : null}
-            {pendingSnapshot ? (
+                        {pendingSnapshot ? (
               <p className="capture-byte-count">
                 Pending capture id {pendingSnapshot.captureId} (
                 {pendingSnapshot.classification})
-                {captureUi.kind === "uncertain" || captureUi.kind === "submitting" || captureUi.kind === "resolving"
+                {captureUi.kind === "uncertain" ||
+                captureUi.kind === "submitting" ||
+                captureUi.kind === "resolving"
                   ? " — Resolve before ordinary Save, or acknowledge duplication to start a new capture."
                   : ""}
               </p>
             ) : null}
+            {unresolvedArchive.length > 0 ? (
+              <div className="capture-archive" role="region" aria-label="Unresolved earlier captures">
+                <p className="capture-byte-count">
+                  Earlier unresolved capture{unresolvedArchive.length === 1 ? "" : "s"} (resolve-only; not abandoned):
+                </p>
+                <ul className="capture-archive-list">
+                  {unresolvedArchive.map((item) => (
+                    <li key={item.captureId}>
+                      <span className="capture-byte-count">
+                        {item.captureId} ({item.classification})
+                      </span>{" "}
+                      <button
+                        type="button"
+                        className="capture-secondary"
+                        disabled={
+                          captureBusy ||
+                          item.canResolve === false ||
+                          resolvingArchiveCaptureId === item.captureId
+                        }
+                        onClick={() => void resolveArchivedCapture(item.captureId)}
+                      >
+                        {resolvingArchiveCaptureId === item.captureId
+                          ? "Resolving…"
+                          : item.canResolve === false
+                            ? "Receipt missing"
+                            : "Resolve"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
           </section>
 
           <form className="search-form" onSubmit={search} role="search">

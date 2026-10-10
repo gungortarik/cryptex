@@ -75,6 +75,9 @@ export function reduceCaptureSubmission(state: any, event: any): any;
 export function shouldPromptBeforeNativeQuit(input: {
   draftDirty: boolean;
   hasUnresolved: boolean;
+  hasArchived?: boolean;
 }): boolean;
 export const NATIVE_QUIT_WARNING: string;
 export function redactedCaptureTransportMessage(code: string): string;
+export function hasArchivedUnresolved(state: any): boolean;
+export function sessionNeedsProtection(state: any): boolean;

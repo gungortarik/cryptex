@@ -54,6 +54,8 @@ struct ProbeState {
     supervised_pid: Arc<Mutex<Option<u32>>>,
     /// Session-only capture draft / unresolved submission guard for user-initiated Quit.
     capture_session_dirty: Arc<AtomicBool>,
+    /// False until the renderer successfully synchronizes guard state (fail closed).
+    capture_guard_sync_ok: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -336,8 +338,18 @@ fn p0_5_resolve_capture(
 }
 
 #[tauri::command]
-fn p0_5_set_capture_session_guard(dirty: bool, state: State<'_, ProbeState>) -> Result<(), String> {
+fn p0_5_set_capture_session_guard(
+    dirty: bool,
+    sync_failed: Option<bool>,
+    state: State<'_, ProbeState>,
+) -> Result<(), String> {
+    if sync_failed.unwrap_or(false) {
+        state.capture_guard_sync_ok.store(false, Ordering::Release);
+        state.capture_session_dirty.store(true, Ordering::Release);
+        return Ok(());
+    }
     state.capture_session_dirty.store(dirty, Ordering::Release);
+    state.capture_guard_sync_ok.store(true, Ordering::Release);
     Ok(())
 }
 
@@ -347,13 +359,76 @@ const CAPTURE_QUIT_WARNING: &str = concat!(
     "Cancel keeps Cryptex open.",
 );
 
-/// Returns true when Quit may proceed. Cancel retains the app, draft and pending capture.
-/// Not a guarantee against forced process kill or OS shutdown.
-fn confirm_quit_discarding_capture_session(capture_session_dirty: &AtomicBool) -> bool {
-    if !capture_session_dirty.load(Ordering::Acquire) {
-        return true;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CaptureQuitGuardView {
+    /// Renderer reported a clean session and sync succeeded.
+    Clean,
+    /// Renderer reported dirty/unresolved/archived input.
+    Dirty,
+    /// Guard never synced or sync failed — must not silently quit.
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UserQuitDecision {
+    Cancelled,
+    Confirmed,
+}
+
+/// Shared user-initiated Quit decision.
+/// Always confirms so unknown/failed/stale guard sync cannot silently discard session input.
+fn decide_user_initiated_quit<F>(guard: CaptureQuitGuardView, confirm: F) -> UserQuitDecision
+where
+    F: FnOnce(&str) -> bool,
+{
+    let _ = guard;
+    if confirm(CAPTURE_QUIT_WARNING) {
+        UserQuitDecision::Confirmed
+    } else {
+        UserQuitDecision::Cancelled
     }
-    native_confirm_discard_and_quit(CAPTURE_QUIT_WARNING)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UserQuitOutcome {
+    Cancelled,
+    Completed,
+    StopFailed,
+}
+
+/// Perform user-initiated Quit with injectable confirm / stop / exit for tests.
+fn perform_user_initiated_quit<C, S, E>(
+    guard: CaptureQuitGuardView,
+    confirm: C,
+    stop_daemon: S,
+    exit: E,
+) -> UserQuitOutcome
+where
+    C: FnOnce(&str) -> bool,
+    S: FnOnce() -> Result<(), String>,
+    E: FnOnce(),
+{
+    match decide_user_initiated_quit(guard, confirm) {
+        UserQuitDecision::Cancelled => UserQuitOutcome::Cancelled,
+        UserQuitDecision::Confirmed => match stop_daemon() {
+            Ok(()) => {
+                exit();
+                UserQuitOutcome::Completed
+            }
+            Err(_) => UserQuitOutcome::StopFailed,
+        },
+    }
+}
+
+fn capture_quit_guard_view(state: &ProbeState) -> CaptureQuitGuardView {
+    if !state.capture_guard_sync_ok.load(Ordering::Acquire) {
+        return CaptureQuitGuardView::Unknown;
+    }
+    if state.capture_session_dirty.load(Ordering::Acquire) {
+        CaptureQuitGuardView::Dirty
+    } else {
+        CaptureQuitGuardView::Clean
+    }
 }
 
 #[cfg(windows)]
@@ -416,23 +491,91 @@ fn native_confirm_discard_and_quit(_message: &str) -> bool {
 
 #[cfg(test)]
 mod capture_quit_guard_tests {
-    use super::CAPTURE_QUIT_WARNING;
-    use super::redact_capture_transport_error;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use super::{
+        CaptureQuitGuardView, UserQuitDecision, UserQuitOutcome, decide_user_initiated_quit,
+        perform_user_initiated_quit, redact_capture_transport_error,
+    };
+    use std::cell::Cell;
 
     #[test]
-    fn dirty_session_flag_is_observable_for_quit_gate() {
-        let dirty = AtomicBool::new(false);
-        assert!(!dirty.load(Ordering::Acquire));
-        dirty.store(true, Ordering::Release);
-        assert!(dirty.load(Ordering::Acquire));
+    fn cancel_never_stops_daemon_or_exits() {
+        let stopped = Cell::new(false);
+        let exited = Cell::new(false);
+        let outcome = perform_user_initiated_quit(
+            CaptureQuitGuardView::Unknown,
+            |_message| false,
+            || {
+                stopped.set(true);
+                Ok(())
+            },
+            || exited.set(true),
+        );
+        assert_eq!(outcome, UserQuitOutcome::Cancelled);
+        assert!(!stopped.get());
+        assert!(!exited.get());
     }
 
     #[test]
-    fn close_to_tray_documentation_marker() {
-        // Window CloseRequested hides to tray and must not call app.exit.
-        // Interactive tray-Quit Cancel/Confirm still needs Windows/macOS verification.
-        assert!(CAPTURE_QUIT_WARNING.contains("Cancel keeps Cryptex open"));
+    fn confirm_allows_clean_shutdown() {
+        let stopped = Cell::new(false);
+        let exited = Cell::new(false);
+        let outcome = perform_user_initiated_quit(
+            CaptureQuitGuardView::Clean,
+            |_message| true,
+            || {
+                stopped.set(true);
+                Ok(())
+            },
+            || exited.set(true),
+        );
+        assert_eq!(outcome, UserQuitOutcome::Completed);
+        assert!(stopped.get());
+        assert!(exited.get());
+    }
+
+    #[test]
+    fn unknown_guard_cannot_silently_bypass_confirmation() {
+        let asked = Cell::new(false);
+        let decision = decide_user_initiated_quit(CaptureQuitGuardView::Unknown, |_message| {
+            asked.set(true);
+            false
+        });
+        assert!(asked.get());
+        assert_eq!(decision, UserQuitDecision::Cancelled);
+
+        let asked_dirty = Cell::new(false);
+        let _ = decide_user_initiated_quit(CaptureQuitGuardView::Dirty, |_message| {
+            asked_dirty.set(true);
+            false
+        });
+        assert!(asked_dirty.get());
+
+        // Even Clean requires confirm in this slice — stale false Clean cannot bypass.
+        let asked_clean = Cell::new(false);
+        let _ = decide_user_initiated_quit(CaptureQuitGuardView::Clean, |_message| {
+            asked_clean.set(true);
+            true
+        });
+        assert!(asked_clean.get());
+    }
+
+    #[test]
+    fn cancel_keeps_protection_when_unresolved_remain_after_newer_commit() {
+        // B committed, A still unresolved/archived → Dirty guard; Cancel must not stop/exit.
+        let stopped = Cell::new(false);
+        let exited = Cell::new(false);
+        let outcome = perform_user_initiated_quit(
+            CaptureQuitGuardView::Dirty,
+            |_message| false,
+            || {
+                stopped.set(true);
+                Ok(())
+            },
+            || exited.set(true),
+        );
+        assert_eq!(outcome, UserQuitOutcome::Cancelled);
+        assert!(!stopped.get());
+        assert!(!exited.get());
     }
 
     #[test]
@@ -515,18 +658,33 @@ fn p0_2_write_snapshot(
 
 #[tauri::command]
 fn p0_2_quit_clean(app: AppHandle, state: State<'_, ProbeState>) -> Result<(), String> {
-    if !confirm_quit_discarding_capture_session(state.capture_session_dirty.as_ref()) {
-        return Ok(());
+    let guard = capture_quit_guard_view(state.inner());
+    let mut stop_error: Option<String> = None;
+    match perform_user_initiated_quit(
+        guard,
+        native_confirm_discard_and_quit,
+        || {
+            let result = (|| -> Result<(), String> {
+                stop_supervised_daemon(&state)?;
+                if let Ok(root) = runtime_root_path() {
+                    write_supervisor_state(&root, "clean_quit", None, false)?;
+                    write_snapshot(&root, "clean_quit", false, Ok(None))?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = &result {
+                stop_error = Some(error.clone());
+            }
+            result
+        },
+        || app.exit(0),
+    ) {
+        UserQuitOutcome::Cancelled | UserQuitOutcome::Completed => Ok(()),
+        UserQuitOutcome::StopFailed => {
+            Err(stop_error.unwrap_or_else(|| "failed to stop supervised daemon".into()))
+        }
     }
-    stop_supervised_daemon(&state)?;
-    if let Ok(root) = runtime_root_path() {
-        write_supervisor_state(&root, "clean_quit", None, false)?;
-        write_snapshot(&root, "clean_quit", false, Ok(None))?;
-    }
-    app.exit(0);
-    Ok(())
 }
-
 fn stop_supervised_daemon(state: &State<'_, ProbeState>) -> Result<(), String> {
     let runtime = state
         .runtime_root
@@ -632,10 +790,11 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             }
             "quit" => {
                 let state = app.state::<ProbeState>();
-                if !confirm_quit_discarding_capture_session(state.capture_session_dirty.as_ref()) {
-                    // Cancel: retain app, draft and pending capture.
-                } else {
-                    match stop_supervised_daemon(&state) {
+                let guard = capture_quit_guard_view(state.inner());
+                let outcome = perform_user_initiated_quit(
+                    guard,
+                    native_confirm_discard_and_quit,
+                    || match stop_supervised_daemon(&state) {
                         Ok(()) => {
                             if let Ok(root) = runtime_root_path() {
                                 let _ = write_supervisor_state(
@@ -647,22 +806,20 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                                 let _ =
                                     write_snapshot(&root, "clean_quit_from_tray", false, Ok(None));
                             }
-                            app.exit(0);
+                            Ok(())
                         }
                         Err(error) => {
                             if let Ok(root) = runtime_root_path() {
-                                let _ = fs::write(
-                                    root.join("quit.error"),
-                                    format!(
-                                        "{error}
-"
-                                    ),
-                                );
+                                let _ = fs::write(root.join("quit.error"), format!("{error}\n"));
                             }
+                            Err(error)
                         }
-                    }
-                }
+                    },
+                    || app.exit(0),
+                );
+                let _ = outcome;
             }
+
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -1129,6 +1286,7 @@ fn main() {
         pending_exit_code: Arc::new(Mutex::new(None)),
         supervised_pid: Arc::new(Mutex::new(None)),
         capture_session_dirty: Arc::new(AtomicBool::new(false)),
+        capture_guard_sync_ok: Arc::new(AtomicBool::new(false)),
     };
 
     let builder =

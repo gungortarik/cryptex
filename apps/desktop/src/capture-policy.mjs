@@ -139,13 +139,12 @@ export function newCaptureId(randomUuid = globalThis.crypto?.randomUUID?.bind(gl
   ).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
-
-
-/** @typedef {{ captureId: string, text: string, classification: string }} CaptureSnapshot */
+/** @typedef {{ captureId: string, text: string, classification: string, canResolve?: boolean }} CaptureSnapshot */
 
 /**
  * Pure submission policy / state machine for Quick Capture.
  * Ordinary Save never overwrites an unresolved pending snapshot.
+ * Deliberate new Save archives the previous unresolved capture for resolve-only tracking.
  */
 export function createCaptureSubmissionState() {
   return {
@@ -156,20 +155,33 @@ export function createCaptureSubmissionState() {
     notice: null,
     draftText: "",
     classification: "",
+    /** When set, an in-flight resolve targets an archived capture_id (pending unchanged). */
+    resolvingArchiveId: null,
   };
 }
 
+export function hasArchivedUnresolved(state) {
+  return Array.isArray(state.unresolvedArchive) && state.unresolvedArchive.length > 0;
+}
+
 export function hasUnresolvedSubmission(state) {
-  return Boolean(
+  const pendingUnresolved = Boolean(
     state.pending &&
       (state.ui.kind === "submitting" ||
         state.ui.kind === "resolving" ||
         state.ui.kind === "uncertain"),
   );
+  return pendingUnresolved || hasArchivedUnresolved(state);
 }
 
 export function isCaptureBusy(state) {
   return state.ui.kind === "submitting" || state.ui.kind === "resolving";
+}
+
+/** Session protection for draft discard / native Quit. */
+export function sessionNeedsProtection(state) {
+  const draftDirty = String(state.draftText ?? "").trim().length > 0;
+  return draftDirty || hasUnresolvedSubmission(state);
 }
 
 /**
@@ -180,7 +192,12 @@ export function evaluateOrdinarySave(state, { text, classification } = {}) {
   if (isCaptureBusy(state)) {
     return { allowed: false, code: "busy", message: "A capture request is already in flight." };
   }
-  if (hasUnresolvedSubmission(state)) {
+  if (
+    state.pending &&
+    (state.ui.kind === "submitting" ||
+      state.ui.kind === "resolving" ||
+      state.ui.kind === "uncertain")
+  ) {
     return {
       allowed: false,
       code: "unresolved_blocks_save",
@@ -188,8 +205,7 @@ export function evaluateOrdinarySave(state, { text, classification } = {}) {
         "An earlier capture is still unresolved. Use Resolve, or deliberately start a new capture after acknowledging possible duplication.",
       pendingCaptureId: state.pending.captureId,
       canResolve: state.ui.kind === "uncertain" ? Boolean(state.ui.canResolve) : true,
-      receiptMissing:
-        state.ui.kind === "uncertain" && state.ui.canResolve === false,
+      receiptMissing: state.ui.kind === "uncertain" && state.ui.canResolve === false,
     };
   }
   const validationError = validateCaptureDraft({
@@ -205,12 +221,18 @@ export function evaluateOrdinarySave(state, { text, classification } = {}) {
 /**
  * Deliberate new submission while an unresolved pending exists.
  * Requires explicit acknowledgeDuplication; never auto-triggered by ReceiptMissing.
+ * Previous pending is archived for resolve-only tracking (never silently abandoned).
  */
 export function evaluateDeliberateNewSave(state, { acknowledgeDuplication, text, classification } = {}) {
   if (isCaptureBusy(state)) {
     return { allowed: false, code: "busy", message: "A capture request is already in flight." };
   }
-  if (!hasUnresolvedSubmission(state)) {
+  const pendingUnresolved =
+    state.pending &&
+    (state.ui.kind === "submitting" ||
+      state.ui.kind === "resolving" ||
+      state.ui.kind === "uncertain");
+  if (!pendingUnresolved) {
     return evaluateOrdinarySave(state, { text, classification });
   }
   if (!acknowledgeDuplication) {
@@ -237,9 +259,21 @@ export function evaluateDeliberateNewSave(state, { acknowledgeDuplication, text,
   };
 }
 
+function archiveEntryFromPending(pending, ui) {
+  return {
+    captureId: pending.captureId,
+    text: pending.text,
+    classification: pending.classification,
+    canResolve: !(ui.kind === "uncertain" && ui.canResolve === false),
+  };
+}
+
+function removeArchiveId(archive, captureId) {
+  return (archive || []).filter((item) => item.captureId !== captureId);
+}
+
 /**
  * Apply a submission-policy event. Returns next state (immutable update).
- * Events: draft, save, save_deliberate, transport_uncertain, response, resolve_start, discard
  */
 export function reduceCaptureSubmission(state, event) {
   switch (event.type) {
@@ -257,14 +291,12 @@ export function reduceCaptureSubmission(state, event) {
         classification: event.classification ?? state.classification,
       });
       if (!decision.allowed) {
-        // Validation while unresolved must not erase uncertain UI.
         if (decision.code === "validation" && hasUnresolvedSubmission(state)) {
           return { ...state, notice: decision.message };
         }
         if (decision.code === "unresolved_blocks_save" || decision.code === "busy") {
           return { ...state, notice: decision.message };
         }
-        // Idle validation failure — rejected without wiping a non-existent pending.
         return {
           ...state,
           notice: decision.message,
@@ -285,6 +317,7 @@ export function reduceCaptureSubmission(state, event) {
         pending: snapshot,
         generation: state.generation + 1,
         notice: null,
+        resolvingArchiveId: null,
         ui: { kind: "submitting", captureId },
         draftText: snapshot.text,
         classification: snapshot.classification,
@@ -299,9 +332,9 @@ export function reduceCaptureSubmission(state, event) {
       if (!decision.allowed) {
         return { ...state, notice: decision.message };
       }
-      const archive = [...state.unresolvedArchive];
+      const archive = [...(state.unresolvedArchive || [])];
       if (decision.archivePrevious && state.pending) {
-        archive.push({ ...state.pending });
+        archive.push(archiveEntryFromPending(state.pending, state.ui));
       }
       const captureId = event.captureId;
       const snapshot = {
@@ -315,6 +348,7 @@ export function reduceCaptureSubmission(state, event) {
         pending: snapshot,
         generation: state.generation + 1,
         notice: null,
+        resolvingArchiveId: null,
         ui: { kind: "submitting", captureId },
         draftText: snapshot.text,
         classification: snapshot.classification,
@@ -324,12 +358,33 @@ export function reduceCaptureSubmission(state, event) {
       if (event.generation !== state.generation) {
         return state;
       }
+      if (state.resolvingArchiveId && event.captureId === state.resolvingArchiveId) {
+        return {
+          ...state,
+          resolvingArchiveId: null,
+          ui:
+            state.pending && state.ui.kind === "resolving"
+              ? {
+                  kind: "uncertain",
+                  captureId: state.pending.captureId,
+                  message: state.ui.message || "Earlier capture still unresolved.",
+                  canResolve: true,
+                }
+              : state.ui.kind === "resolving"
+                ? { kind: "idle" }
+                : state.ui,
+          notice:
+            event.message ||
+            "Resolve transport failed for an archived capture. It remains tracked.",
+        };
+      }
       if (!state.pending || state.pending.captureId !== event.captureId) {
         return state;
       }
       return {
         ...state,
         notice: null,
+        resolvingArchiveId: null,
         ui: {
           kind: "uncertain",
           captureId: event.captureId,
@@ -341,15 +396,61 @@ export function reduceCaptureSubmission(state, event) {
       };
     }
     case "response": {
-      // Late responses apply only to matching generation OR archived capture ids.
       const interpreted = interpretCaptureWire(event.response || {});
+      const responseId =
+        event.captureId || event.response?.captureId || state.pending?.captureId || null;
+
+      // Archived capture response (including late committed) — always persist archive updates.
+      const archiveIdx = (state.unresolvedArchive || []).findIndex(
+        (item) => item.captureId === responseId,
+      );
+      const isArchiveTarget =
+        archiveIdx >= 0 &&
+        (event.generation !== state.generation ||
+          state.resolvingArchiveId === responseId ||
+          !state.pending ||
+          state.pending.captureId !== responseId);
+
+      if (isArchiveTarget) {
+        if (interpreted.isCommitted) {
+          const unresolvedArchive = removeArchiveId(state.unresolvedArchive, responseId);
+          return {
+            ...state,
+            unresolvedArchive,
+            resolvingArchiveId:
+              state.resolvingArchiveId === responseId ? null : state.resolvingArchiveId,
+            notice: `An earlier unresolved capture (${responseId}) later reported as saved.`,
+            // Do not clear current draft/pending for B.
+          };
+        }
+        if (interpreted.isReceiptMissing) {
+          const unresolvedArchive = (state.unresolvedArchive || []).map((item) =>
+            item.captureId === responseId ? { ...item, canResolve: false } : item,
+          );
+          return {
+            ...state,
+            unresolvedArchive,
+            resolvingArchiveId:
+              state.resolvingArchiveId === responseId ? null : state.resolvingArchiveId,
+            notice:
+              "No durable receipt for an archived capture id. It remains tracked; do not auto-resubmit.",
+          };
+        }
+        // Other archive outcomes: keep tracked, clear resolving marker.
+        return {
+          ...state,
+          resolvingArchiveId:
+            state.resolvingArchiveId === responseId ? null : state.resolvingArchiveId,
+          notice: interpreted.message,
+        };
+      }
+
       const matchesPending =
         state.pending &&
-        (event.generation === state.generation ||
-          event.response?.captureId === state.pending.captureId) &&
+        event.generation === state.generation &&
         (!event.captureId || event.captureId === state.pending.captureId);
 
-      if (matchesPending && event.generation === state.generation) {
+      if (matchesPending) {
         if (interpreted.isCommitted) {
           const liveText = event.liveText ?? state.draftText;
           const liveClassification = event.liveClassification ?? state.classification;
@@ -362,16 +463,22 @@ export function reduceCaptureSubmission(state, event) {
           return {
             ...state,
             pending: null,
-            notice: null,
+            notice: hasArchivedUnresolved(state)
+              ? `${interpreted.message} Earlier unresolved capture(s) remain tracked.`
+              : null,
+            resolvingArchiveId: null,
             ui: { kind: "committed", message: interpreted.message },
             draftText: clear ? "" : state.draftText,
             classification: clear ? "" : state.classification,
+            // Archive preserved — A stays protected after B commits.
+            unresolvedArchive: [...(state.unresolvedArchive || [])],
           };
         }
         if (interpreted.isReceiptMissing) {
           return {
             ...state,
             notice: null,
+            resolvingArchiveId: null,
             ui: {
               kind: "uncertain",
               captureId: state.pending.captureId,
@@ -381,10 +488,10 @@ export function reduceCaptureSubmission(state, event) {
           };
         }
         if (interpreted.isCaptureIdConflict || interpreted.isRejected) {
-          // Keep pending snapshot for Resolve / deliberate-new; surface rejected without losing id.
           return {
             ...state,
             notice: null,
+            resolvingArchiveId: null,
             ui: {
               kind: "uncertain",
               captureId: state.pending.captureId,
@@ -398,6 +505,7 @@ export function reduceCaptureSubmission(state, event) {
         return {
           ...state,
           notice: null,
+          resolvingArchiveId: null,
           ui: {
             kind: "uncertain",
             captureId: state.pending.captureId,
@@ -407,22 +515,7 @@ export function reduceCaptureSubmission(state, event) {
         };
       }
 
-      // Late committed for an archived unresolved id: drop from archive only.
-      if (interpreted.isCommitted && event.response?.captureId) {
-        const id = event.response.captureId;
-        const idx = state.unresolvedArchive.findIndex((item) => item.captureId === id);
-        if (idx >= 0) {
-          const unresolvedArchive = state.unresolvedArchive.slice();
-          unresolvedArchive.splice(idx, 1);
-          return {
-            ...state,
-            unresolvedArchive,
-            notice: `An earlier unresolved capture (${id}) later reported as saved.`,
-          };
-        }
-      }
-
-      // Stale / late non-matching response: ignore (do not clobber current UI).
+      // Stale / non-matching: ignore without clobbering.
       return state;
     }
     case "resolve_start": {
@@ -440,7 +533,32 @@ export function reduceCaptureSubmission(state, event) {
         ...state,
         generation: state.generation + 1,
         notice: null,
+        resolvingArchiveId: null,
         ui: { kind: "resolving", captureId: state.pending.captureId },
+      };
+    }
+    case "resolve_archive_start": {
+      if (isCaptureBusy(state)) {
+        return { ...state, notice: "A capture request is already in flight." };
+      }
+      const captureId = event.captureId;
+      const entry = (state.unresolvedArchive || []).find((item) => item.captureId === captureId);
+      if (!entry) {
+        return { ...state, notice: "That archived capture is no longer tracked." };
+      }
+      if (entry.canResolve === false) {
+        return {
+          ...state,
+          notice:
+            "ReceiptMissing must not auto-resubmit. This archived capture stays tracked until discarded or a deliberate new capture is acknowledged.",
+        };
+      }
+      return {
+        ...state,
+        generation: state.generation + 1,
+        notice: null,
+        resolvingArchiveId: captureId,
+        ui: { kind: "resolving", captureId },
       };
     }
     case "discard": {
@@ -449,14 +567,30 @@ export function reduceCaptureSubmission(state, event) {
       }
       return createCaptureSubmissionState();
     }
+    case "discard_archive": {
+      if (isCaptureBusy(state)) {
+        return { ...state, notice: "Cannot discard while a capture request is in flight." };
+      }
+      if (!event.acknowledgeAbandon) {
+        return {
+          ...state,
+          notice: "Discarding an unresolved archived capture requires explicit acknowledgment.",
+        };
+      }
+      return {
+        ...state,
+        unresolvedArchive: removeArchiveId(state.unresolvedArchive, event.captureId),
+        notice: null,
+      };
+    }
     default:
       return state;
   }
 }
 
-/** Native quit guard policy (session-only). Forced kill / OS shutdown are out of scope. */
-export function shouldPromptBeforeNativeQuit({ draftDirty, hasUnresolved }) {
-  return Boolean(draftDirty || hasUnresolved);
+/** Native quit protection policy (session-only). Forced kill / OS shutdown are out of scope. */
+export function shouldPromptBeforeNativeQuit({ draftDirty, hasUnresolved, hasArchived }) {
+  return Boolean(draftDirty || hasUnresolved || hasArchived);
 }
 
 export const NATIVE_QUIT_WARNING =

@@ -179,3 +179,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, va
 }
 .capture-status.is-ok { background: color-mix(in srgb, #4d936a 12%, white); color: #426e57; }
 .capture-byte-count { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+
+.capture-archive { margin-top: 10px; }
+.capture-archive-list { margin: 6px 0 0; padding-left: 18px; }
+.capture-archive-list li { margin: 6px 0; }
