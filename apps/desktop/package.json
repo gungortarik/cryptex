@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc --noEmit && vite build",
     "test:search-policy": "node --test src/search-policy.test.mjs",
+    "test:capture-policy": "node --test src/capture-policy.test.mjs",
     "tauri": "tauri",
     "test:sidecar-build-script": "node --test scripts/prepare-cryptexd-sidecar.test.mjs",
     "tauri:package-smoke": "node scripts/prepare-cryptexd-sidecar.mjs && tauri build --no-bundle --config src-tauri/tauri.bundle.conf.json",

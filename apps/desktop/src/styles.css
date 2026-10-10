@@ -21,7 +21,7 @@
 
 html, body, #root { margin: 0; min-width: 320px; min-height: 100%; }
 body { min-height: 100vh; background: var(--paper); color: var(--ink); }
-button, input { font: inherit; }
+button, input, textarea, select { font: inherit; }
 button { color: inherit; }
 
 .app-shell { min-height: 100vh; display: flex; }
@@ -135,3 +135,47 @@ button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, va
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+
+/* Quick Capture Inbox (M5 Slice 3) */
+.capture-panel {
+  margin: 28px 0 8px;
+  padding: 22px 22px 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.capture-panel h2 {
+  margin: 0 0 6px;
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+.capture-help { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.capture-label { display: block; margin: 0 0 6px; font-size: 12px; font-weight: 650; color: var(--muted); }
+.capture-textarea {
+  width: 100%; min-height: 120px; resize: vertical; padding: 12px 14px;
+  border: 1px solid #d7d5cc; border-radius: 10px; background: #fff;
+  color: var(--ink); font-size: 14px; line-height: 1.5;
+}
+.capture-textarea:focus { outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.capture-meta-row {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-top: 12px;
+}
+.capture-select {
+  min-width: 180px; padding: 10px 12px; border: 1px solid #d7d5cc; border-radius: 9px;
+  background: #fff; color: var(--ink);
+}
+.capture-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.capture-secondary {
+  padding: 10px 14px; border: 1px solid var(--line); border-radius: 9px;
+  background: transparent; color: var(--ink); font-size: 13px; font-weight: 650; cursor: pointer;
+}
+.capture-secondary:disabled { opacity: .55; cursor: not-allowed; }
+.capture-status {
+  margin: 14px 0 0; padding: 10px 12px; border-radius: 9px; font-size: 13px; line-height: 1.45;
+  background: var(--warning-surface); color: var(--warning); white-space: pre-wrap;
+}
+.capture-status.is-ok { background: color-mix(in srgb, #4d936a 12%, white); color: #426e57; }
+.capture-byte-count { margin: 6px 0 0; color: var(--muted); font-size: 11px; }

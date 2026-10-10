@@ -281,6 +281,35 @@ fn p0_4_enroll_local_device() -> Result<cryptexd::ipc::DesktopEnrollmentResponse
 }
 
 #[tauri::command]
+fn p0_5_capture_memory(
+    body: cryptexd::ipc::DesktopCaptureBody,
+) -> Result<cryptexd::ipc::DesktopCaptureResponse, String> {
+    // Connect quickly; capture work uses the daemon capture deadline.
+    let response = cryptexd::ipc::desktop_capture(body, Duration::from_secs(2))
+        .map_err(|error| error.to_string())?;
+    if !response.accepted {
+        return Err(response
+            .error
+            .unwrap_or_else(|| "daemon rejected capture".into()));
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+fn p0_5_resolve_capture(
+    body: cryptexd::ipc::DesktopCaptureResolveBody,
+) -> Result<cryptexd::ipc::DesktopCaptureResponse, String> {
+    let response = cryptexd::ipc::desktop_capture_resolve(body, Duration::from_secs(2))
+        .map_err(|error| error.to_string())?;
+    if !response.accepted {
+        return Err(response
+            .error
+            .unwrap_or_else(|| "daemon rejected capture resolve".into()));
+    }
+    Ok(response)
+}
+
+#[tauri::command]
 fn p0_3_wait_for_daemon_restart(
     previous_pid: u32,
     timeout_seconds: u64,
@@ -977,6 +1006,8 @@ fn main() {
             p0_3_ipc_health,
             p0_4_guarded_search,
             p0_4_enroll_local_device,
+            p0_5_capture_memory,
+            p0_5_resolve_capture,
             p0_3_wait_for_daemon_restart,
             p0_2_stop_daemon,
             p0_2_show_main_window,
