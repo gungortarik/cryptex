@@ -1,8 +1,8 @@
-//! cryptexd-only canonical event writer (ADR-0016 §11).
+﻿//! cryptexd-only canonical event writer (ADR-0016 Â§11).
 //!
 //! Per-device exclusive lock (`writer.lock`) is shared by the canonical writer and
-//! verified reader: reconcile → recover → allocate → append/seal → tip on write, and
-//! discovery → active-open recovery → verified scan/callback on read.
+//! verified reader: reconcile â†’ recover â†’ allocate â†’ append/seal â†’ tip on write, and
+//! discovery â†’ active-open recovery â†’ verified scan/callback on read.
 //! `writer_tip.json` is rebuildable derived state; verified `.seg`/`.open` records are
 //! authoritative for chain tip and active segment discovery.
 
@@ -247,6 +247,9 @@ pub struct AppendMemoryNoteArgs<'a> {
     pub device_id: &'a DeviceId,
     pub classification: Classification,
     pub text: &'a str,
+    /// When set, use this UUID as event_id (M5 capture predetermined id).
+    /// When None, the writer allocates a fresh UUID.
+    pub event_id: Option<&'a str>,
     pub config: &'a CanonicalWriterConfig,
 }
 
@@ -463,6 +466,7 @@ pub(crate) fn append_memory_note_with_lock<S: SecureStore>(
         device_id,
         classification,
         text,
+        event_id,
         config,
     } = args;
     if lock.device_id() != device_id {
@@ -471,10 +475,17 @@ pub(crate) fn append_memory_note_with_lock<S: SecureStore>(
         ));
     }
     parse_uuid_str(brain_id).map_err(|e| CanonicalWriterError::Invalid(e.to_string()))?;
+    let event_id = match event_id {
+        Some(id) => {
+            parse_uuid_str(id).map_err(|e| CanonicalWriterError::Invalid(e.to_string()))?;
+            id.to_string()
+        }
+        None => new_event_id()?,
+    };
     let payload = MemoryNotePayload::new(text)?;
 
     // Discover packs before any key mint so missing seed+metadata cannot mint over
-    // existing history (ADR-0016 §6.3).
+    // existing history (ADR-0016 Â§6.3).
     let (sealed_indexes, open_index) = discover_segments(runtime_root, device_id)?;
     let packs_present = !sealed_indexes.is_empty() || open_index.is_some();
     let bootstrap =
@@ -536,7 +547,7 @@ pub(crate) fn append_memory_note_with_lock<S: SecureStore>(
 
     let signable = SignableEvent {
         schema_version: EVENT_SCHEMA_VERSION,
-        event_id: new_event_id()?,
+        event_id,
         brain_id: brain_id.to_string(),
         device_id: device_id.as_str().to_string(),
         device_seq: DeviceSeq::from_u64(device_seq_n)?,
@@ -884,7 +895,7 @@ fn quarantine_sealed_pack(
         )));
     }
     // Stream exact sealed bytes into quarantine before isolating the canonical object.
-    // ADR-0016 §7.2: quarantine the whole sealed object (no in-place edit). Durability of
+    // ADR-0016 Â§7.2: quarantine the whole sealed object (no in-place edit). Durability of
     // the quarantine entry is confirmed by quarantine_file_range (object + metadata sync)
     // before the canonical .seg is removed from the discoverable pack set.
     quarantine_file_range(
@@ -1163,7 +1174,7 @@ where
 /// Verified feed under an already-held [`DeviceCanonicalLock`].
 ///
 /// Callers that also open a SQLite transaction must acquire the device lock
-/// *before* beginning that transaction (lock order: device → SQLite).
+/// *before* beginning that transaction (lock order: device â†’ SQLite).
 pub(crate) fn for_each_verified_event_with_lock<S, F>(
     store: &S,
     env: SecureStoreEnvironment,
@@ -1349,6 +1360,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "hello-one",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1368,6 +1380,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "hello-two",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1398,6 +1411,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "synthetic v1 prefix",
+                event_id: None,
                 config: &CanonicalWriterConfig::default(),
             },
         )
@@ -1425,6 +1439,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "must not cross unknown boundary",
+                event_id: None,
                 config: &CanonicalWriterConfig::default(),
             },
         )
@@ -1451,6 +1466,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "synthetic v1 prefix",
+                event_id: None,
                 config: &CanonicalWriterConfig::default(),
             },
         )
@@ -1494,6 +1510,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Public,
                 text: "a",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1507,6 +1524,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Public,
                 text: "b",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1532,6 +1550,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Private,
                 text: "nope",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1628,6 +1647,7 @@ mod tests {
                 device_id: &device_b,
                 classification: Classification::Internal,
                 text: "wrong-device",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1666,6 +1686,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "durable-one",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1681,6 +1702,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "durable-two",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1700,6 +1722,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "durable-three-retry",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1739,6 +1762,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Public,
                 text: "seal-me",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1760,6 +1784,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Public,
                 text: "after-seal-retry",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1808,6 +1833,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "seed-before-race",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -1867,6 +1893,7 @@ mod tests {
                     device_id: &writer_device,
                     classification: Classification::Internal,
                     text: "completed-under-exclusion",
+                    event_id: None,
                     config: &cfg,
                 },
             )
@@ -1977,6 +2004,7 @@ mod tests {
                         device_id: &device,
                         classification: Classification::Internal,
                         text: &format!("concurrent-{i}"),
+                        event_id: None,
                         config: &cfg,
                     },
                 )
@@ -2098,6 +2126,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "synthetic v1 prefix",
+                event_id: None,
                 config: &config,
             },
         )
@@ -2132,6 +2161,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "synthetic v1 after verified unsupported v2",
+                event_id: None,
                 config: &config,
             },
         )
@@ -2199,6 +2229,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "prefix-ok",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2224,6 +2255,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "after-recovery",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2273,6 +2305,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Public,
                 text: "seal-prefix",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2300,6 +2333,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Public,
                 text: "must-fail-closed",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2365,6 +2399,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "before-bad-schema",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2389,6 +2424,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "after-quarantine",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2421,6 +2457,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "before-tamper",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2446,6 +2483,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "after-integrity-quarantine",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2487,6 +2525,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Public,
                 text: "seal-me",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2508,6 +2547,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Public,
                 text: "should-fail-closed",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2555,6 +2595,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "before key loss",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2579,6 +2620,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "must not mint",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2623,6 +2665,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "seal-me",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2663,7 +2706,7 @@ mod tests {
         );
         assert!(
             !seg.exists(),
-            "ADR-0016 §7.2: corrupt sealed .seg must be isolated from canonical tree after durable quarantine"
+            "ADR-0016 Â§7.2: corrupt sealed .seg must be isolated from canonical tree after durable quarantine"
         );
 
         // Repeated load must not re-quarantine (canonical object already isolated).
@@ -2702,6 +2745,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "first",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -2721,6 +2765,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "after-gap",
+                event_id: None,
                 config: &cfg,
             },
         )

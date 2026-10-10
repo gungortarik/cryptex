@@ -1,4 +1,4 @@
-//! Daemon-owned, read-only canonical scan followed by a transactional M4 rebuild.
+﻿//! Daemon-owned, read-only canonical scan followed by a transactional M4 rebuild.
 //!
 //! This path is intentionally separate from M2's repair-oriented v1 reader. It
 //! never truncates, quarantines, seals, or rewrites canonical packs: unknown or
@@ -172,7 +172,7 @@ struct VerifiedCanonicalSnapshot {
 /// The caller supplies the enrolled-device key resolver; this function does
 /// not infer trust from event contents or implement device enrollment. Locks
 /// are acquired in stable DeviceId order and held through verification,
-/// reduction, and the SQLite transaction (device locks → SQLite).
+/// reduction, and the SQLite transaction (device locks â†’ SQLite).
 pub fn rebuild_knowledge_from_canonical<R: TrustedDaemonKeyResolver>(
     runtime_root: &Path,
     expected_brain_id: &str,
@@ -1138,6 +1138,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "synthetic note",
+                event_id: None,
                 config: &config,
             },
         )
@@ -1197,6 +1198,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "synthetic safe search note",
+                event_id: None,
                 config: &crate::canonical_writer::CanonicalWriterConfig::default(),
             },
         )
@@ -1285,6 +1287,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "new note makes safety snapshot stale",
+                event_id: None,
                 config: &crate::canonical_writer::CanonicalWriterConfig::default(),
             },
         )
@@ -1477,6 +1480,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "synthetic note",
+                event_id: None,
                 config: &config,
             },
         )
@@ -1560,6 +1564,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "synthetic note",
+                event_id: None,
                 config: &config,
             },
         )

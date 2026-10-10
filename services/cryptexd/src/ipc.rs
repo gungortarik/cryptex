@@ -1,4 +1,4 @@
-//! Local daemon IPC. Health and guarded Desktop retrieval are the only exposed
+﻿//! Local daemon IPC. Health and guarded Desktop retrieval are the only exposed
 //! operations; the daemon owns canonical verification and SQLite access.
 
 use std::io;
@@ -1727,6 +1727,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "synthetic IPC search fixture note",
+                event_id: None,
                 config: &CanonicalWriterConfig::default(),
             },
         )
@@ -2017,6 +2018,7 @@ mod tests {
                 device_id: &stale_fixture.device,
                 classification: Classification::Internal,
                 text: "synthetic second event after materialization",
+                event_id: None,
                 config: &CanonicalWriterConfig::default(),
             },
         )
@@ -2065,6 +2067,7 @@ mod tests {
                 device_id: &fixture.device,
                 classification: Classification::Internal,
                 text: "synthetic second note for full-stream hold",
+                event_id: None,
                 config: &CanonicalWriterConfig::default(),
             },
         )

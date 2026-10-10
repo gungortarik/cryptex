@@ -5,9 +5,11 @@
 //! version-compatibility fixtures, Mode A/B supervision comparison helpers,
 //! and a test-only binary update/rollback harness.
 //!
-//! Secure-store (ADR-0014 ACCEPTED — P1) is owned by this daemon crate.
+//! Secure-store (ADR-0014 ACCEPTED â€” P1) is owned by this daemon crate.
 
 pub mod canonical_writer;
+pub mod capture;
+pub mod capture_receipt;
 pub mod compare;
 pub mod compat;
 pub mod error;

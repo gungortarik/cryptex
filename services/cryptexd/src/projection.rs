@@ -1,4 +1,4 @@
-//! cryptexd-owned projection of verified canonical events (M3 Slice 4/5).
+﻿//! cryptexd-owned projection of verified canonical events (M3 Slice 4/5).
 //!
 //! Reads only through [`crate::canonical_writer::for_each_verified_event`].
 //! Never parses `.open`/`.seg` outside that path and never mutates canonical packs
@@ -445,6 +445,7 @@ mod tests {
                 device_id: device,
                 classification: Classification::Internal,
                 text,
+                event_id: None,
                 config: &CanonicalWriterConfig {
                     seal_event_threshold: seal_threshold,
                 },
@@ -781,6 +782,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "stable-text",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -794,6 +796,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Public,
                 text: "second-note",
+                event_id: None,
                 config: &cfg,
             },
         )
@@ -890,6 +893,7 @@ mod tests {
                 device_id: &device,
                 classification: Classification::Internal,
                 text: "sealed-one",
+                event_id: None,
                 config: &cfg,
             },
         )

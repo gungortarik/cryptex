@@ -1,4 +1,4 @@
-//! Production event envelope types (ADR-0016 §3).
+﻿//! Production event envelope types (ADR-0016 Â§3).
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,18 @@ pub enum Classification {
     Internal,
     Private,
     Restricted,
+}
+
+impl Classification {
+    /// Wire / fingerprint form (snake_case).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::Internal => "internal",
+            Self::Private => "private",
+            Self::Restricted => "restricted",
+        }
+    }
 }
 
 /// Production `event_type` values for M2 (fixture-only types are not included).
