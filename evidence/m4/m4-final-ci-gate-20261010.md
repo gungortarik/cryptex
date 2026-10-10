@@ -1,5 +1,13 @@
 # M4 final dual-OS CI gate — 2026-10-10
 
+- **Current M4 CI acceptance:** PENDING corrected test coverage
+- **Current candidate:** `f9bd8945151a44d450bd8340a6794a5f33df3e72`
+- **Current run:** [38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073)
+- **Coverage correction:** `9500e2f467565f7dad68dd72612ade7eb86b265f`
+- **Review PR:** [#10](https://github.com/gungortarik/cryptex/pull/10), draft; human review OPEN
+
+## Historical configured-job result
+
 - **Status:** PASS
 - **Branch:** `m4/knowledge-engine`
 - **Tested SHA:** `b1c43e2c36534e360cb06fb5cacef5bf6fd210ee`

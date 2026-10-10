@@ -95,6 +95,11 @@ production code; repeat runs without a failure or new gap are not required.
 
 ## Remaining closeout steps
 
+The concrete implementation diff and acceptance packet are available in draft
+[PR #10](https://github.com/gungortarik/cryptex/pull/10), targeting
+`m0/foundation`. The API reports it mergeable, which is a Git conflict check,
+not M4 completion or approval. Human review remains OPEN.
+
 The corrected workflow was dispatched once on review candidate
 `f9bd8945151a44d450bd8340a6794a5f33df3e72`:
 [run 38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073).
