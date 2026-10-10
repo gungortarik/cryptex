@@ -44,6 +44,10 @@ M4 CI acceptance gate is therefore **PENDING corrected coverage**; do not
 infer that these tests passed from this historical run. See
 `evidence/m4/m4-final-dod-audit-20261010.md`.
 
+Corrected run [38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073)
+is **PENDING**, dispatched once at `f9bd8945151a44d450bd8340a6794a5f33df3e72`.
+The API confirmed both readiness jobs and Windows IPC ACL started on that SHA.
+
 The later macOS visual record closes the scoped retrieval-safety visual check
 at product-equivalent tip `ebdd8c9`; actual tray Quit remains NOT VERIFIED.
 The following paragraph records the gate state when this CI run was captured.

@@ -95,6 +95,12 @@ production code; repeat runs without a failure or new gap are not required.
 
 ## Remaining closeout steps
 
+The corrected workflow was dispatched once on review candidate
+`f9bd8945151a44d450bd8340a6794a5f33df3e72`:
+[run 38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073).
+The API confirmed that exact head SHA and both readiness jobs plus IPC ACL
+started. Result is **PENDING**; unsigned packaging is skipped by design.
+
 1. Record the correction commit and one dual-OS CI result including both new
    test steps. Until it passes, the final M4 CI acceptance gate is PENDING.
 2. Present the concrete acceptance audit and diff for final owner/human review,
