@@ -1,8 +1,8 @@
 # M4 Desktop search UI follow-up — macOS verification
 
-**Branch:** `m4/knowledge-engine`  
-**Verified HEAD:** `9eea6116a866ff677482b62d98f0721ba2ceab90`  
-**Host:** macOS 27.0.1 (26A434), arm64  
+**Branch:** `m4/knowledge-engine`
+**Verified HEAD:** `9eea6116a866ff677482b62d98f0721ba2ceab90`
+**Host:** macOS 27.0.1 (26A434), arm64
 **Working tree:** clean on the reporting host
 
 Owner-reported checks on the exact current branch SHA:

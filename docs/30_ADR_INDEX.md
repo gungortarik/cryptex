@@ -75,7 +75,10 @@ M3 — Local Projection + Search is **COMPLETE within scope** and integrated int
 
 ## 4.4 M4 gate
 
-M4 — Knowledge Engine is active on `m4/knowledge-engine`. ADR-0017 is
+M4 — Knowledge Engine is **COMPLETE within accepted implementation scope** on
+`m4/knowledge-engine`; normal PR #10 integration is authorized by owner-delegated
+review. Final review: `evidence/m4/m4-final-review-20261010.md`; corrected
+Windows/macOS CI PASS: run `38033047073` at `f9bd894`. ADR-0017 is
 **ACCEPTED** and governs strict v2 structured-event evolution, deterministic
 knowledge materialization, retrieval safety, and additive derived state in the
 existing M3 SQLite database. ADR-0018 is also **ACCEPTED** and authorizes only

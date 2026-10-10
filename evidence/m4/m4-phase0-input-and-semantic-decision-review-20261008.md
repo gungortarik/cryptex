@@ -1,8 +1,8 @@
 # M4 Phase 0 — Input audit and semantic decision review
 
 **Status:** HISTORICAL — discovery and decision table superseded by accepted ADR-0017 (2026-10-08)
-**Branch:** `m4/knowledge-engine`  
-**Base:** M3 merge `35538c1`  
+**Branch:** `m4/knowledge-engine`
+**Base:** M3 merge `35538c1`
 **Scope:** Read-only source audit and proposed decision framing; no product code, schema/pin change, runtime data, or Actions.
 
 > **Superseded decision framing.** The alternatives below are retained as an

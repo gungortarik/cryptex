@@ -1,7 +1,7 @@
 # M4 Windows native visual review attempt — blocked
 
-**Branch:** `m4/knowledge-engine`  
-**Source HEAD:** `b289a943a3651c993ff2b17227fe0e43c20c6d6c`  
+**Branch:** `m4/knowledge-engine`
+**Source HEAD:** `b289a943a3651c993ff2b17227fe0e43c20c6d6c`
 **Code SHA under review:** `c2cf07bf0662589a9932c201f5e9e749e6a1013a`
 
 ## Result

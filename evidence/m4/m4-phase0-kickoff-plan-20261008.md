@@ -1,8 +1,8 @@
 # M4 Phase 0 — Knowledge Engine preparation
 
 **Status:** HISTORICAL — Phase 0 discovery superseded by accepted ADR-0017 (2026-10-08)
-**Branch:** `m4/knowledge-engine`  
-**Base:** `m0/foundation` at M3 merge commit `35538c144434e1dbfb97b47f89d2536b7646046a` (PR #9)  
+**Branch:** `m4/knowledge-engine`
+**Base:** `m0/foundation` at M3 merge commit `35538c144434e1dbfb97b47f89d2536b7646046a` (PR #9)
 **Scope of this change:** documentation and planning only; no product code, pins, runtime data, or Actions.
 
 > **Superseded planning record.** Its open choices about free-text

@@ -5,8 +5,9 @@
 **Reviewed tip:** `9ab75af43d122313b42d463b36209a4ee66ac0b4`
 **Product-code baseline:** `b1c43e2c36534e360cb06fb5cacef5bf6fd210ee`
 **CI coverage fix:** `9500e2f467565f7dad68dd72612ade7eb86b265f`
-**Verdict:** technical acceptance evidence reviewed; final CI coverage correction
-and human review remain open. M4 is not COMPLETE and is not merged.
+**Verdict:** PASS within accepted M4 scope after corrected CI and owner-delegated
+acceptance. Final closeout: `evidence/m4/m4-final-review-20261010.md`.
+The earlier open-gate statements below are historical and superseded.
 
 ## Review scope and authority
 
@@ -93,7 +94,7 @@ production code; repeat runs without a failure or new gap are not required.
   be revoked by daemon policy. Production v2 activation stays independently
   blocked until its accepted rollout/downgrade gate is implemented and tested.
 
-## Remaining closeout steps
+## Historical closeout steps (now satisfied; retained as audit history)
 
 The concrete implementation diff and acceptance packet are available in draft
 [PR #10](https://github.com/gungortarik/cryptex/pull/10), targeting
@@ -112,3 +113,14 @@ started. Result is **PENDING**; unsigned packaging is skipped by design.
    required by Definition of Done section 11 and the M4 completion gate.
 3. Only after those gates pass, record M4 completion and perform an authorized
    normal PR merge. Do not begin M5 or enable production v2 writing beforehand.
+
+## Final disposition — 2026-10-10
+
+Run [38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073)
+passed at exact candidate `f9bd8945151a44d450bd8340a6794a5f33df3e72`.
+Both readiness jobs ran and passed the missing knowledge and Desktop policy
+steps; Windows IPC ACL also passed. F1 is CLOSED. The owner delegated technical
+review and conditionally authorized M4 closeout/merge if compliant checks pass;
+that condition is now met. No independent human line-by-line review is claimed.
+The visual/security limits above remain explicit; production v2 activation is
+still CLOSED. Branch-wide documentation whitespace warnings were also removed.

@@ -1,10 +1,33 @@
 # M4 final dual-OS CI gate — 2026-10-10
 
-- **Current M4 CI acceptance:** PENDING corrected test coverage
-- **Current candidate:** `f9bd8945151a44d450bd8340a6794a5f33df3e72`
-- **Current run:** [38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073)
+- **Current M4 CI acceptance:** PASS
+- **Tested candidate:** `f9bd8945151a44d450bd8340a6794a5f33df3e72`
+- **Product-code baseline:** `b1c43e2c36534e360cb06fb5cacef5bf6fd210ee`
 - **Coverage correction:** `9500e2f467565f7dad68dd72612ade7eb86b265f`
-- **Review PR:** [#10](https://github.com/gungortarik/cryptex/pull/10), draft; human review OPEN
+- **Required run:** [38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073)
+- **Integration PR:** [#10](https://github.com/gungortarik/cryptex/pull/10)
+
+## Corrected final result
+
+GitHub reports this exact candidate completed successfully. Windows readiness,
+macOS readiness and Windows cross-account IPC ACL all PASS. Unsigned packaging
+is skipped by workflow design, not certified by this result.
+
+Both readiness jobs explicitly passed `Test M4 knowledge reducer and SQLite
+recovery` and `Test Desktop retrieval response policy`. This closes the actual
+test-invocation gap in the historical run below, including interrupted migration
+and process reopen coverage. Formatting, strict workspace lint/check, full daemon
+tests, event/storage/projection tests, schema drift, frontend, release namespace
+and Node failure/recovery boundaries also passed their configured steps.
+
+Subsequent closeout changes are documentation only; no production behavior,
+dependency, test or workflow differs from the tested candidate. No additional
+Actions run is needed for those documentation changes.
+
+Owner-delegated final review and scoped completion are recorded in
+`evidence/m4/m4-final-review-20261010.md`. Production v2 activation remains CLOSED.
+Historical pending/open statements below describe their capture time and are
+superseded by this corrected result and the final review.
 
 ## Historical configured-job result
 
@@ -39,7 +62,7 @@ failed on macOS because the test socket path exceeded `sockaddr_un.sun_path`.
 The Unix test fixture path was shortened in `b1c43e2`; this final run covers
 that correction and passed on both operating systems.
 
-## Gate status
+## Historical gate status (superseded by corrected result above)
 
 ### Final DoD coverage correction — 2026-10-10
 

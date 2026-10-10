@@ -1,6 +1,6 @@
 # M4 — Knowledge Engine
 
-**Status:** ACCEPTED — architecture by ADR-0017; implementation authorized and in progress
+**Status:** ACCEPTED — architecture by ADR-0017; implementation COMPLETE within M4 scope (2026-10-10)
 **Baseline:** 2026-09-28; scope updated 2026-10-08
 
 ## Purpose
@@ -141,3 +141,14 @@ M4 is complete only after all M4 scope, required tests, cross-platform
 verification, security review, required CI, Definition of Done, and human
 review pass. M4 completion does not assert that production v2 activation has
 passed. Do not begin M5 until the M4 gate is green.
+
+## Verified implementation closeout — 2026-10-10
+
+The M4 implementation gate is PASS. Acceptance mapping, owner-delegated review
+and retained limits are in `evidence/m4/m4-final-review-20261010.md` and
+`evidence/m4/m4-final-dod-audit-20261010.md`. Corrected dual-OS CI
+[38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073)
+passes at `f9bd8945151a44d450bd8340a6794a5f33df3e72`, including explicit knowledge
+and Desktop response-policy tests. M5 preparation may follow normal integration.
+This changes implementation status only: the separate production-v2 activation
+gate above remains CLOSED and production writing remains disabled.

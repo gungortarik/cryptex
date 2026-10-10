@@ -1,6 +1,23 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-10
+**Current milestone status:** M4 COMPLETE within accepted scope; normal PR #10
+merge is authorized and is the next integration action. M5 preparation follows
+the verified merge; no M5 production implementation is authorized yet.
+**Final review:** `evidence/m4/m4-final-review-20261010.md`; owner-delegated
+technical review accepted under the owner's conditional merge instruction.
+**Required CI:** [38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073)
+PASS at `f9bd8945151a44d450bd8340a6794a5f33df3e72`; Windows/macOS readiness
+(including knowledge and Desktop policy tests) plus Windows IPC ACL PASS.
+**Production v2 activation:** CLOSED; writer remains disabled. Visual/security
+limitations remain recorded in the final review, not silently promoted to PASS.
+
+## Historical M4 continuation snapshot (superseded)
+
+The entries below retain their original capture-time statuses. Pending CI,
+owner OPEN, M4 IN PROGRESS and do-not-start-M5 instructions in this historical
+snapshot are superseded by the current closeout above and the final review.
+
 **M4 review packet:** Draft [PR #10](https://github.com/gungortarik/cryptex/pull/10) targets `m0/foundation`; the technical acceptance audit and diff are prepared. Git reports MERGEABLE (no merge-conflict finding), not approval. Corrected CI run `38033047073` and final human review remain the closeout gates. No merge, M4 COMPLETE claim, M5 work or production v2 activation is authorized by this status note.
 **Corrected M4 CI run:** [38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073) was dispatched once at exact candidate `f9bd8945151a44d450bd8340a6794a5f33df3e72`, containing CI coverage fix `9500e2f`. Both readiness jobs and Windows IPC ACL are running; result PENDING. This follow-up changes workflow coverage/documentation only; product-code baseline remains `b1c43e2`. Final human review is OPEN; M4 is not complete or merged.
 **Final M4 DoD audit update (takes precedence over prior CI gate wording below):** Reviewed tip `9ab75af` and verified run `38021522882` succeeded at product-code SHA `b1c43e2`. Found a real CI coverage gap: readiness did not execute `cryptex-knowledge` unit tests (including interrupted SQLite migration) or Desktop `test:search-policy`. Added both existing test commands to the Windows/macOS readiness jobs; focused Windows verification PASS (knowledge 35/35, response policy 2/2). No production code or test assertions changed. Final M4 CI acceptance is PENDING corrected coverage. macOS retrieval-safety visual remains scoped PASS; status-item Quit remains NOT VERIFIED. Final human review remains OPEN. Audit and acceptance mapping: `evidence/m4/m4-final-dod-audit-20261010.md`. M4 remains IN PROGRESS; production v2 activation stays CLOSED.
