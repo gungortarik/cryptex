@@ -10,6 +10,8 @@
 pub mod canonical_writer;
 pub mod capture;
 pub mod capture_receipt;
+#[cfg(test)]
+mod capture_restart;
 pub mod compare;
 pub mod compat;
 pub mod error;
