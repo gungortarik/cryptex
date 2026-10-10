@@ -1,7 +1,7 @@
-# 34 — Current Implementation Handoff
+﻿# 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-10
-**Current milestone:** M5 — Capture + Timeline, PREPARATION ONLY.
+**Current milestone:** M5 — Capture + Timeline, Slice 1 (daemon capture/reconciliation) AUTHORIZED.
 **Active branch:** `codex/m5-capture-timeline`.
 **Verified base:** `origin/m0/foundation` at M4 PR #10 normal merge
 `a6c32bd30f883e546e2eb976787a59057fae211b`. The accepted M4 documentation and tested candidate are ancestors.
@@ -11,16 +11,28 @@ line-by-line review is claimed. Corrected required CI
 [38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073)
 PASS at `f9bd8945151a44d450bd8340a6794a5f33df3e72`, including explicit knowledge
 and Desktop response-policy tests on Windows/macOS plus Windows IPC ACL.
-**Next action:** Windows Cursor should sync this exact branch only from a clean
-checkout, read `evidence/m5/m5-kickoff-plan-20261010.md` and return the concrete
-Slice 1 capture-service/failure-semantics proposal. English instruction:
-`evidence/m5/m5-cursor-preparation-prompt-20261010.md`.
-**Authorization:** M5 preparation only. No M5 product code or new dependencies,
-no Actions run for planning. Production implementation needs explicit approval.
+**M5 Slice 1 contract:** Finalized in
+`evidence/m5/m5-slice1-capture-reconciliation-contract-20261010.md`. Owner
+authorized Slice 1 daemon capture service implementation only.
+**Next action:** Slice 1 daemon capture is implemented on this branch; Windows fmt/focused tests/strict Clippy PASS recorded in `evidence/m5/m5-slice1-windows-verification-20261010.md`. Run the prepared macOS verification commands in that evidence file before Slice 1 closeout. Do not start Desktop capture IPC/UI, timeline, projection wiring, or later slices without explicit authorization. No merge or Actions for this slice unless the owner requests them.
+**Authorization:** M5 Slice 1 product code authorized. Later M5 slices and
+production v2 activation remain CLOSED until separately authorized.
 **Continuing invariants:** v1 memory.note unchanged; production v2 writing OFF;
 canonical writer daemon-only; derived SQLite rebuildable; RetrievalSafetyState
 holds apply to all content-returning paths. M4 visual/security limitations remain
 explicit in its final review. Do not implement M6+ features opportunistically.
+
+## Historical M5 preparation snapshot (superseded)
+
+The preparation-only next-action and authorization wording below is superseded by
+the Slice 1 authorization above and the finalized contract evidence.
+
+**Next action (historical):** Windows Cursor should sync this exact branch only from a clean
+checkout, read `evidence/m5/m5-kickoff-plan-20261010.md` and return the concrete
+Slice 1 capture-service/failure-semantics proposal. English instruction:
+`evidence/m5/m5-cursor-preparation-prompt-20261010.md`.
+**Authorization (historical):** M5 preparation only. No M5 product code or new dependencies,
+no Actions run for planning. Production implementation needs explicit approval.
 
 ## Historical M4 continuation snapshot (superseded)
 
@@ -32,14 +44,14 @@ snapshot are superseded by the current M5 continuation above and the final revie
 **Corrected M4 CI run:** [38033047073](https://github.com/gungortarik/cryptex/actions/runs/38033047073) was dispatched once at exact candidate `f9bd8945151a44d450bd8340a6794a5f33df3e72`, containing CI coverage fix `9500e2f`. Both readiness jobs and Windows IPC ACL are running; result PENDING. This follow-up changes workflow coverage/documentation only; product-code baseline remains `b1c43e2`. Final human review is OPEN; M4 is not complete or merged.
 **Final M4 DoD audit update (takes precedence over prior CI gate wording below):** Reviewed tip `9ab75af` and verified run `38021522882` succeeded at product-code SHA `b1c43e2`. Found a real CI coverage gap: readiness did not execute `cryptex-knowledge` unit tests (including interrupted SQLite migration) or Desktop `test:search-policy`. Added both existing test commands to the Windows/macOS readiness jobs; focused Windows verification PASS (knowledge 35/35, response policy 2/2). No production code or test assertions changed. Final M4 CI acceptance is PENDING corrected coverage. macOS retrieval-safety visual remains scoped PASS; status-item Quit remains NOT VERIFIED. Final human review remains OPEN. Audit and acceptance mapping: `evidence/m4/m4-final-dod-audit-20261010.md`. M4 remains IN PROGRESS; production v2 activation stays CLOSED.
 **Current continuation update:** macOS native retrieval-safety visual review scoped PASS at documentation tip `ebdd8c975c103eb437c035fdda70956b9c9be4ef` (product-code SHA covered by final CI: `b1c43e2c36534e360cb06fb5cacef5bf6fd210ee`). Host macOS 27.0.1 (26A434) arm64; Tauri `tauri:package --bundles app` passed; isolated empty pilot consumed `show.request` with `window_visible=true`; synthetic `m4-visual-smoke-test` showed the expected RetrievalSafetyState hold and no results (`proof/02-hold.png` retained outside Git). Clean shutdown used documented `pilot-quit.request` (both PIDs exited, `clean_quit` recorded, `open -W` exited 0); status-item tray **Quit Cryptex** was NOT VERIFIED because Accessibility could not open the status-item menu. Evidence: `evidence/m4/m4-macos-native-visual-review-20261010.md`. Windows visual PASS remains at `79e03d6` (`evidence/m4/m4-windows-native-visual-review-20261009.md`). Final dual-OS CI PASS at `b1c43e2` in run [38021522882](https://github.com/gungortarik/cryptex/actions/runs/38021522882); evidence: `evidence/m4/m4-final-ci-gate-20261010.md`. Production v2 writing remains disabled. M4 remains IN PROGRESS; final DoD/owner review remains open.
-**Current milestone:** M4 - Knowledge Engine (ADR-0017 documentation acceptance integrated at `ee7e173`; Slices 1–4 and the Slice 5 reader/rebuild/retrieval-safety library are locally verified on Windows/macOS at their recorded SHAs; guarded Desktop retrieval integration plus UI hardening is at `652b4de`; Windows and macOS Rust/Tauri/frontend checks are recorded at their respective SHAs; IPC peer-auth hardening at `946642a459531247091e858c301fc7ea17835ff0` binds sensitive retrieval/enrollment to the live parent Desktop PID and expected sibling executable path (Windows retained process handle; macOS current-parent check). Follow-up `37924852ad2207f0ab618c6737e5e08f0a6907c8` moves authenticated Desktop connections off the listener, bounds Desktop connections at eight and expensive full-history searches at two, preserves a separate four-worker non-Desktop health pool, and applies one 15-second deadline across lock waits, verification, reduction and SQLite search; timeout returns a Brain-wide hold without partial hits. A further startup fix at `b6d652da07c175d086c625bfb498cf370dfc5fe2` keeps non-Desktop launches on health-only IPC while sensitive retrieval stays unavailable unless parent Desktop authentication succeeds. Windows `cryptexd` package tests pass 198/198; owner-reported macOS checks on the same code SHA pass (193 daemon package tests, crate tests, strict Clippy and Desktop check). Path identity is not code-signature identity and assumes the installed sibling executable cannot be replaced by an attacker; on that report, visual review and final DoD/security review remained open. Reducer/IPC security review passes at `c2cf07b`; the follow-up Windows overlapped-I/O review at `f8e7636` found no P1/P2; Windows native visual review passes at `79e03d6`; macOS retrieval-safety visual review scoped PASS at `ebdd8c9` (tray status-item Quit NOT VERIFIED); final DoD review and owner acceptance remain open)
+**Current milestone:** M4 - Knowledge Engine (ADR-0017 documentation acceptance integrated at `ee7e173`; Slices 1â€“4 and the Slice 5 reader/rebuild/retrieval-safety library are locally verified on Windows/macOS at their recorded SHAs; guarded Desktop retrieval integration plus UI hardening is at `652b4de`; Windows and macOS Rust/Tauri/frontend checks are recorded at their respective SHAs; IPC peer-auth hardening at `946642a459531247091e858c301fc7ea17835ff0` binds sensitive retrieval/enrollment to the live parent Desktop PID and expected sibling executable path (Windows retained process handle; macOS current-parent check). Follow-up `37924852ad2207f0ab618c6737e5e08f0a6907c8` moves authenticated Desktop connections off the listener, bounds Desktop connections at eight and expensive full-history searches at two, preserves a separate four-worker non-Desktop health pool, and applies one 15-second deadline across lock waits, verification, reduction and SQLite search; timeout returns a Brain-wide hold without partial hits. A further startup fix at `b6d652da07c175d086c625bfb498cf370dfc5fe2` keeps non-Desktop launches on health-only IPC while sensitive retrieval stays unavailable unless parent Desktop authentication succeeds. Windows `cryptexd` package tests pass 198/198; owner-reported macOS checks on the same code SHA pass (193 daemon package tests, crate tests, strict Clippy and Desktop check). Path identity is not code-signature identity and assumes the installed sibling executable cannot be replaced by an attacker; on that report, visual review and final DoD/security review remained open. Reducer/IPC security review passes at `c2cf07b`; the follow-up Windows overlapped-I/O review at `f8e7636` found no P1/P2; Windows native visual review passes at `79e03d6`; macOS retrieval-safety visual review scoped PASS at `ebdd8c9` (tray status-item Quit NOT VERIFIED); final DoD review and owner acceptance remain open)
 **M4 reducer security review (previous slice):** `c2cf07bf0662589a9932c201f5e9e749e6a1013a` is pushed on `m4/knowledge-engine`. Windows fmt, knowledge 34/34, IPC 14/14, full cryptexd 199/199, strict Clippy, Desktop check, and diff check PASS. Owner-reported macOS verification on the exact SHA also passes: knowledge 34/34, cryptexd 194/194, fmt, strict Clippy, Desktop check, and diff check. The read-only security re-review found no remaining P1/P2 issue in the changed reducer/IPC code. This SHA adds cancellation-aware deterministic union-find/alias/revocation reduction and bounded search execution. Record: `evidence/m4/m4-security-hardening-cancellable-reducer-20261008.md`.
 **Historical Windows native visual review attempt (superseded):** At source HEAD `b289a943a3651c993ff2b17227fe0e43c20c6d6c`, Smart App Control blocked the normal Tauri build with OS error `4551`; no native window was launched. Evidence: `evidence/m4/m4-windows-native-visual-review-attempt-20261008.md`. The current-source Windows review later passed as recorded in `evidence/m4/m4-windows-native-visual-review-20261009.md`.
 **Windows IPC closeout (historical):** code `6855c57766c018339a781fabc71a11a810905398` fixes the Desktop health/search failure seen while cryptexd was alive. Windows named-pipe `PIPE_NOWAIT` made a not-yet-ready read look like end-of-stream, so the renderer showed Attention and the generic guarded-search error even though `lifecycle.status` said `health=active`. Windows `cryptexd` library tests passed 185/185, strict Clippy passed, and a debug native window reached Active health and a fail-closed retrieval hold instead of the generic IPC error. Evidence: `evidence/m4/m4-windows-ipc-pipe-roundtrip-20261009.md`. The earlier final dual-OS CI in run `37987708059` at `7aaa08a` was superseded by run `38018083958` at `f8e7636`, which was itself superseded by the latest run `38021522882` at `b1c43e2`. Latest gate details are in `evidence/m4/m4-final-ci-gate-20261010.md`. macOS retrieval-safety visual review is scoped PASS at `ebdd8c9` (`evidence/m4/m4-macos-native-visual-review-20261010.md`); final DoD/owner review remain open. Production v2 writing stays disabled. Do not claim M4 complete.
 **Active branch:** `m4/knowledge-engine`, based on M3 merge commit `35538c144434e1dbfb97b47f89d2536b7646046a` (PR #9)
 **M2 status:** COMPLETE within M2 scope after owner-delegated review and required verification; normal merge PR #8 integrated `m2/immutable-event-store` into `m0/foundation` at `817b6a1`.
 **M3 closeout:** Complete within accepted scope; normal merge PR #9 integrated `m3/local-projection-search` into `m0/foundation` at `35538c1`. Final review: `evidence/m3/m3-final-review-20261008.md`.
-**M4 architecture:** ADR-0017 was accepted and integrated at `ee7e173`; ADR-0018 local-only Desktop retrieval identity was accepted by the owner on 2026-10-08. Follow `docs/milestones/M4_KNOWLEDGE_ENGINE.md` in order. Slices 1–4 and the Slice 5 reader/rebuild/retrieval-safety library are Windows/macOS locally verified at their recorded SHAs. Explicit daemon-owned local DeviceId/key enrollment, read-only local key resolution, and `identity enroll-local` setup are implemented. Guarded Desktop search IPC plus renderer integration and empty/stale-query hardening are at code `652b4de` / branch `9eea611`; Windows and macOS frontend checks pass, with the latest macOS report at exact HEAD `9eea611` (`test:search-policy` 2/2, frontend build, `git diff --check`). Mac Rust/Tauri checks passed at `de1616c`; later shared Rust behavior was owner-verified on macOS at `c2cf07b`. The security review findings—caller-supplied Desktop role not bound to the connecting process and serial IPC framing without a total deadline—are addressed at `16cb39b` (Darwin enum/raw-FD compile correction is included in the current candidate); non-Desktop health traffic has its own bounded four-worker pool; authenticated Desktop connections have eight bounded slots, with a separate two-worker search cap and one 15-second search deadline so slow searches do not block the listener or exhaust the health pool. Windows tests and strict Clippy pass; owner-reported macOS peer-credential/full parity passes at `946642a459531247091e858c301fc7ea17835ff0`. Desktop identity uses an expected sibling executable path, not signature/hash verification, and assumes install-directory protection. Reducer/IPC scoped security review passes at `c2cf07b`; the follow-up Windows overlapped-I/O review at `f8e7636` found no P1/P2, with rare OS/API cancellation failure potentially delaying safe drain. Windows native visual review passes at `79e03d6`; macOS retrieval-safety visual review scoped PASS at `ebdd8c9` (status-item tray Quit NOT VERIFIED; see `evidence/m4/m4-macos-native-visual-review-20261010.md`). The latest dual-OS Actions run [38021522882](https://github.com/gungortarik/cryptex/actions/runs/38021522882) passes at product-code SHA `b1c43e2`; tip `ebdd8c9` is documentation-only after that SHA. Evidence is in `evidence/m4/m4-final-ci-gate-20261010.md`. Next: final DoD and owner acceptance. Do not add M8 pairing/retirement, infer trust from the two machines' ownership, or enable production v2 writing. The future sync/import actor must join the canonical inventory-lock protocol. Phase-0 alternatives remain superseded audit records.
+**M4 architecture:** ADR-0017 was accepted and integrated at `ee7e173`; ADR-0018 local-only Desktop retrieval identity was accepted by the owner on 2026-10-08. Follow `docs/milestones/M4_KNOWLEDGE_ENGINE.md` in order. Slices 1â€“4 and the Slice 5 reader/rebuild/retrieval-safety library are Windows/macOS locally verified at their recorded SHAs. Explicit daemon-owned local DeviceId/key enrollment, read-only local key resolution, and `identity enroll-local` setup are implemented. Guarded Desktop search IPC plus renderer integration and empty/stale-query hardening are at code `652b4de` / branch `9eea611`; Windows and macOS frontend checks pass, with the latest macOS report at exact HEAD `9eea611` (`test:search-policy` 2/2, frontend build, `git diff --check`). Mac Rust/Tauri checks passed at `de1616c`; later shared Rust behavior was owner-verified on macOS at `c2cf07b`. The security review findingsâ€”caller-supplied Desktop role not bound to the connecting process and serial IPC framing without a total deadlineâ€”are addressed at `16cb39b` (Darwin enum/raw-FD compile correction is included in the current candidate); non-Desktop health traffic has its own bounded four-worker pool; authenticated Desktop connections have eight bounded slots, with a separate two-worker search cap and one 15-second search deadline so slow searches do not block the listener or exhaust the health pool. Windows tests and strict Clippy pass; owner-reported macOS peer-credential/full parity passes at `946642a459531247091e858c301fc7ea17835ff0`. Desktop identity uses an expected sibling executable path, not signature/hash verification, and assumes install-directory protection. Reducer/IPC scoped security review passes at `c2cf07b`; the follow-up Windows overlapped-I/O review at `f8e7636` found no P1/P2, with rare OS/API cancellation failure potentially delaying safe drain. Windows native visual review passes at `79e03d6`; macOS retrieval-safety visual review scoped PASS at `ebdd8c9` (status-item tray Quit NOT VERIFIED; see `evidence/m4/m4-macos-native-visual-review-20261010.md`). The latest dual-OS Actions run [38021522882](https://github.com/gungortarik/cryptex/actions/runs/38021522882) passes at product-code SHA `b1c43e2`; tip `ebdd8c9` is documentation-only after that SHA. Evidence is in `evidence/m4/m4-final-ci-gate-20261010.md`. Next: final DoD and owner acceptance. Do not add M8 pairing/retirement, infer trust from the two machines' ownership, or enable production v2 writing. The future sync/import actor must join the canonical inventory-lock protocol. Phase-0 alternatives remain superseded audit records.
 **M4 Slice 1 (historical status at initial landing):** code commit `2a382eb876d5646ff3e504dc3918423fa1594735` added the strict versioned reader and compatibility boundary. Windows checks and owner-reported macOS 27.0.1/arm64 checks passed at the recorded SHA. RetrievalSafetyState enforcement, which was open then, is implemented later through `ecbbaf7`; production v2 writing remains disabled.
 **M4 Slice 2:** code commit `70dba01ff8fdb4018f6eb9be55d41943d300e90e` adds the strict typed `knowledge.assertion` v2 payload validator, separate generated v2 JSON Schema/TypeScript, and routes known v2 records to a typed supported classification. Windows and owner-reported macOS checks pass on this code SHA. Evidence: `evidence/m4/m4-slice2-typed-v2-payload-schema-20261008.md`. V1 artifacts and validator are unchanged; production v2 writing remains disabled.
 **M3 Slice 1:** `evidence/m3/m3-slice1-workspace-scaffolding-20261008.md` - `cryptex-projection` path scaffolding + focused layout tests; no SQLite deps.
@@ -50,7 +62,7 @@ snapshot are superseded by the current M5 continuation above and the final revie
 **M3 Slice 4 follow-up:** `evidence/m3/m3-slice4-idempotent-conflict-feed-errors-20261008.md` - identical replay idempotent; `EventConflict` on field mismatch; `ProjectionFeedError::Projection` preserved for insert failures.
 **M3 Slice 5:** `evidence/m3/m3-slice5-rebuild-incremental-checkpoint-20261008.md` - rebuild + incremental catch-up; checkpoints in same txn; missing/corrupt/unsupported/checkpoint-invalid rebuild disposable only.
 **M3 Slice 5 follow-up:** `evidence/m3/m3-slice5-replace-only-unusable-20261008.md` - `open_replacing_unusable` deletes only CorruptDb/UnsupportedSchema/SchemaInconsistent; Io/Sqlite/Fts5Unavailable preserve files.
-**M3 Slice 5 blocking fix:** `evidence/m3/m3-slice5-device-canonical-lock-reader-20261008.md` - verified reader shares `writer.lock`; projection lock order device→SQLite; no concurrent recover/truncate during append.
+**M3 Slice 5 blocking fix:** `evidence/m3/m3-slice5-device-canonical-lock-reader-20261008.md` - verified reader shares `writer.lock`; projection lock order deviceâ†’SQLite; no concurrent recover/truncate during append.
 **M3 Slice 5 lock follow-up:** `evidence/m3/m3-slice5-device-lock-visibility-boundary-handshake-20261008.md` - lock helpers `pub(crate)` + device-bound; boundary check before FS mutate; thread-scoped reader-at-lock handshake.
 **M3 Slice 6:** `evidence/m3/m3-slice6-search-api-20261008.md` - `search_events` FTS + conjunction metadata filters; UTC `created_at` ranges; `InvalidQuery` for bad FTS/bounds.
 **M3 Slice 6 follow-up:** `evidence/m3/m3-slice6-fractional-instant-precision-20261008.md` - exact UTC instants (incl. fractional seconds) for search range + ordering via `rfc3339_utc_instant`; no new stored column.
@@ -66,12 +78,12 @@ snapshot are superseded by the current M5 continuation above and the final revie
 **Historical M3 Slice 8 meta-CHECK tip (Windows-local at the time; superseded):** 52fe953ecdb29db1f1730148921f1af07be5f50c
 **M3 Slice 8 meta-CHECK hardening:** structural `id=1` parse + multi-id constraint-only probes; non-constraint probe errors non-replaceable; savepoint cleanup errors preserved. See evidence follow-up.
 **M3 Slice 8 follow-up:** FTS integrity-check maps only confirmed corruption to replaceable `CorruptDb`; semantic `projection_meta` id CHECK probe rejects permissive constraints. See evidence follow-up section.
-**M3 Slice 8 (security/DoD findings):** `evidence/m3/m3-slice8-security-dod-findings-20261008.md` — FTS5 external-content `integrity-check` (rank=1) on open; empty-device checkpoint incremental catch-up; schema v1 type/PK/CHECK validation; bounded clear + limited search; error classifications use SQLite result codes only. Windows checks and owner macOS four-check PASS at exact HEAD `4a2ea56`; final dual-OS CI PASS in run `37780668640`. Scoped security/DoD and owner-delegated final review PASS are recorded in `evidence/m3/m3-final-review-20261008.md`; M3 completion gate is PASS within scope.
+**M3 Slice 8 (security/DoD findings):** `evidence/m3/m3-slice8-security-dod-findings-20261008.md` â€” FTS5 external-content `integrity-check` (rank=1) on open; empty-device checkpoint incremental catch-up; schema v1 type/PK/CHECK validation; bounded clear + limited search; error classifications use SQLite result codes only. Windows checks and owner macOS four-check PASS at exact HEAD `4a2ea56`; final dual-OS CI PASS in run `37780668640`. Scoped security/DoD and owner-delegated final review PASS are recorded in `evidence/m3/m3-final-review-20261008.md`; M3 completion gate is PASS within scope.
 **Latest verified candidate SHA:** `9ade9f7db18ec0e383594c19e592809e3b194531` (`9ade9f7`), on `m2/immutable-event-store`.
 **Final dual-OS CI:** PASS in run [37706283147](https://github.com/gungortarik/cryptex/actions/runs/37706283147) against the exact candidate SHA above. macOS and Windows readiness plus Windows IPC ACL succeeded; unsigned Windows package skipped by design. Record: `evidence/m2/m2-final-ci-gate-20261008.md`.
-**Closeout audit tip (L1/L2/F4–F6 + staging ownership):** behavior `b5c9d69`, tip `1a26493` — `evidence/m2/m2-staging-cleanup-ownership-20261007.md`. Windows checks PASS; owner-reported macOS four-check PASS at `9ade9f7` is recorded in the final-gate evidence. Owner-delegated closeout review PASS is recorded at `evidence/m2/m2-owner-delegated-review-20261008.md`; PR #8 integration completed at `817b6a1`. `LongPathsEnabled=0` is not claimed.
+**Closeout audit tip (L1/L2/F4â€“F6 + staging ownership):** behavior `b5c9d69`, tip `1a26493` â€” `evidence/m2/m2-staging-cleanup-ownership-20261007.md`. Windows checks PASS; owner-reported macOS four-check PASS at `9ade9f7` is recorded in the final-gate evidence. Owner-delegated closeout review PASS is recorded at `evidence/m2/m2-owner-delegated-review-20261008.md`; PR #8 integration completed at `817b6a1`. `LongPathsEnabled=0` is not claimed.
 **Base:** `origin/m0/foundation` @ `817b6a126cf6e9cd3e8a27b1348ec977bdc9dcdd` (M2 merge / PR #8)
-**M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) — integrated ancestor
+**M1 merge:** `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6) â€” integrated ancestor
 **M1 implementation source:** `a39920564561f75ada08cba8a47244bec9074345`
 **M1 documentation closeout:** `0c84c5c6a2872480ac4bbc82ebb1541773ddfb75`
 **M3 Slice 8 corruption-class candidate:** code SHA `6b61882dce0814abd51fbf063c69d7775c483e37`; exact branch HEAD with docs stamps `4a2ea56aa2ddc4024d82599f8dc671472179cbe8`. Windows local checks PASS; owner macOS four-check PASS at exact HEAD; final dual-OS Actions PASS in [run 37780668640](https://github.com/gungortarik/cryptex/actions/runs/37780668640). Evidence: `evidence/m3/m3-slice8-security-dod-findings-20261008.md`, `evidence/m3/m3-slice8-macos-four-check-20261008.md`, and `evidence/m3/m3-final-ci-gate-20261008.md`.
@@ -95,7 +107,7 @@ snapshot are superseded by the current M5 continuation above and the final revie
 
 ## Working agreement
 
-### M2 closeout audit (L1/L2/F4–F6) — 2026-10-07
+### M2 closeout audit (L1/L2/F4â€“F6) â€” 2026-10-07
 
 Source re-audit of previously deferred Low findings (see `evidence/m2/m2-closeout-l1-l2-f4-f6-20261007.md`):
 
@@ -133,7 +145,7 @@ Review record: `evidence/m1/m1-final-review-20261007.md`. The owner accepted the
 delegated review on 2026-10-07; PR #6 was normally merged into `m0/foundation` as
 `c2168f3`. M1 is complete within its defined scope. M2 has not started.
 
-**Current status (2026-10-07):** M0 Foundation is COMPLETE (PR #5). M1 — Brain +
+**Current status (2026-10-07):** M0 Foundation is COMPLETE (PR #5). M1 â€” Brain +
 Device Identity is COMPLETE and integrated into `m0/foundation` at merge commit
 `c2168f3edbd4deb00d5e16f5f35643948028b0ca` (PR #6). The behavior-bearing source
 candidate `a39920564561f75ada08cba8a47244bec9074345` passed required Windows/macOS CI;
@@ -168,7 +180,7 @@ No custom cryptography.
 (`evidence/m1/m1-scope-security-audit-20261006.md`). Brain public identity first-create is exclusive/no-replace; install-identity staging
 cleanup and Unix rollback durability now match that hardened path (see audit). Final CI
 PASS on candidate `a399205` is recorded (run 37569756071). The accepted M1 lifecycle and placement boundary is documented in
-ADR-0015 §2.1.1 and the audit. The owner accepted the delegated Codex review; PR #6 is
+ADR-0015 Â§2.1.1 and the audit. The owner accepted the delegated Codex review; PR #6 is
 merged. M1 is complete; M2 has not started.
 
 **M2 closeout record (2026-10-08):** M2 productization was completed and integrated via PR #8 at `817b6a126cf6e9cd3e8a27b1348ec977bdc9dcdd`. The implementation is documented below as historical milestone context.
@@ -176,7 +188,7 @@ merged. M1 is complete; M2 has not started.
 documentation closeout). M1 merge `c2168f3` is an ancestor of the latest final-CI behavior tip `9ade9f7`. Earlier final-CI behavior tip `16f09a3` and its documentation closeout `7a84bdd` are historical; the latest gate is recorded in `evidence/m2/m2-final-ci-gate-20261008.md`. Owner-delegated closeout review PASS; M2 awaits normal integration. Cursor is
 the sole write-capable M2 implementer. ADR-0016 is **ACCEPTED** (2026-10-07) at
 `5cc89b709dcf236698c3253b8582c873de7c7f0f`. Slice 1 scaffolding and framing body_len enforcement are complete. Slice 2 event domain types +
-schema/TS generation is recorded under `evidence/m2/m2-slice2-event-types-schema-20261007.md`; integrity primitives under `evidence/m2/m2-slice3-integrity-primitives-20261007.md` signing-key lifecycle under `evidence/m2/m2-slice4-signing-key-lifecycle-20261007.md` ; segment I/O under `evidence/m2/m2-slice5-segment-io-quarantine-20261007.md` ; durability hardening under `evidence/m2/m2-slice5b-storage-signing-hardening-20261007.md` ; canonical writer under `evidence/m2/m2-slice6-canonical-writer-20261007.md` ; writer transaction hardening under `evidence/m2/m2-slice6b-writer-transaction-hardening-20261007.md` ; schema validation/quarantine matrix under `evidence/m2/m2-slice7-schema-validation-quarantine-matrix-20261007.md` ; seq-gap/streaming-quarantine/framing reasons under `evidence/m2/m2-slice7b-seq-gap-streaming-quarantine-framing-20261007.md` ; cross-platform matrix + CI wiring under `evidence/m2/m2-slice8-cross-platform-matrix-ci-wiring-20261007.md` ; Clippy CI fix after failed run 37648931640 under `evidence/m2/m2-slice8b-clippy-ci-fix-20261007.md` ; macOS unused-`io` fix after partial-green run 37650566598 under `evidence/m2/m2-slice8c-macos-clippy-unused-io-20261007.md` ; Windows process-identity lifetime sync after near-final run 37653004440 under `evidence/m2/m2-slice8d-windows-process-identity-sync-20261007.md` ; pilot-runtime fixture uniqueness after macOS fail on run 37656380940 under `evidence/m2/m2-slice8e-pilot-runtime-fixture-uniqueness-20261007.md` ; ADR-0016 §8.1 quarantine directory format restored; Windows FS path-ops + per-device AcceptedEvent DeviceId binding under `evidence/m2/m2-slice8f-windows-path-ops-and-device-binding-20261007.md`; owner-approved Windows quarantine extended-path adapter (`\\?\` I/O only; no registry/`LongPathsEnabled` dependence; §8.1 names + DeviceId policy unchanged) under `docs/adr/ADR-0016-windows-quarantine-extended-path-addendum.md` (ACCEPTED) and `evidence/m2/m2-slice8g-windows-quarantine-extended-path-20261007.md`; regression tightened so >MAX_PATH existence/read/cleanup required checks use prefixed adapter paths only under `evidence/m2/m2-slice8h-extended-path-regression-tighten-20261007.md`; pre-Actions security/DoD review + in-scope fixes under `evidence/m2/m2-security-dod-review-20261007.md`; macOS CI `prepare_m1_runtime_foundation_*` fixture race fixed under `evidence/m2/m2-slice8i-install-runtime-temp-root-race-20261007.md`; full cryptexd `--lib` temp-root hardening under `evidence/m2/m2-slice8j-cryptexd-lib-temp-root-hardening-20261007.md` (shared `test_temp` exclusive allocator across identity/pairing/recovery/sequence/etc.). **Latest final dual-OS CI gate PASS** on tested SHA `9ade9f7db18ec0e383594c19e592809e3b194531`: run [37706283147](https://github.com/gungortarik/cryptex/actions/runs/37706283147) — macOS readiness **success**, Windows readiness **success**, Windows IPC ACL **success**, unsigned Windows package **skipped** by workflow design. Mac host four-check PASS at the same SHA is documented in `evidence/m2/m2-final-ci-gate-20261008.md`; run 37681630801 is historical. Owner-delegated closeout review PASS is recorded in `evidence/m2/m2-owner-delegated-review-20261008.md`; normal PR #8 integration into `m0/foundation` completed at `817b6a1`. Security/DoD dispositions remain documented in the existing audit records. `LongPathsEnabled=0` is not claimed. M2 is COMPLETE within scope and integrated at merge commit `817b6a1`; M3 Phase 0 plan is complete on `m3/local-projection-search` (`evidence/m3/m3-phase0-implementation-plan-20261008.md`); product implementation not started.
+schema/TS generation is recorded under `evidence/m2/m2-slice2-event-types-schema-20261007.md`; integrity primitives under `evidence/m2/m2-slice3-integrity-primitives-20261007.md` signing-key lifecycle under `evidence/m2/m2-slice4-signing-key-lifecycle-20261007.md` ; segment I/O under `evidence/m2/m2-slice5-segment-io-quarantine-20261007.md` ; durability hardening under `evidence/m2/m2-slice5b-storage-signing-hardening-20261007.md` ; canonical writer under `evidence/m2/m2-slice6-canonical-writer-20261007.md` ; writer transaction hardening under `evidence/m2/m2-slice6b-writer-transaction-hardening-20261007.md` ; schema validation/quarantine matrix under `evidence/m2/m2-slice7-schema-validation-quarantine-matrix-20261007.md` ; seq-gap/streaming-quarantine/framing reasons under `evidence/m2/m2-slice7b-seq-gap-streaming-quarantine-framing-20261007.md` ; cross-platform matrix + CI wiring under `evidence/m2/m2-slice8-cross-platform-matrix-ci-wiring-20261007.md` ; Clippy CI fix after failed run 37648931640 under `evidence/m2/m2-slice8b-clippy-ci-fix-20261007.md` ; macOS unused-`io` fix after partial-green run 37650566598 under `evidence/m2/m2-slice8c-macos-clippy-unused-io-20261007.md` ; Windows process-identity lifetime sync after near-final run 37653004440 under `evidence/m2/m2-slice8d-windows-process-identity-sync-20261007.md` ; pilot-runtime fixture uniqueness after macOS fail on run 37656380940 under `evidence/m2/m2-slice8e-pilot-runtime-fixture-uniqueness-20261007.md` ; ADR-0016 Â§8.1 quarantine directory format restored; Windows FS path-ops + per-device AcceptedEvent DeviceId binding under `evidence/m2/m2-slice8f-windows-path-ops-and-device-binding-20261007.md`; owner-approved Windows quarantine extended-path adapter (`\\?\` I/O only; no registry/`LongPathsEnabled` dependence; Â§8.1 names + DeviceId policy unchanged) under `docs/adr/ADR-0016-windows-quarantine-extended-path-addendum.md` (ACCEPTED) and `evidence/m2/m2-slice8g-windows-quarantine-extended-path-20261007.md`; regression tightened so >MAX_PATH existence/read/cleanup required checks use prefixed adapter paths only under `evidence/m2/m2-slice8h-extended-path-regression-tighten-20261007.md`; pre-Actions security/DoD review + in-scope fixes under `evidence/m2/m2-security-dod-review-20261007.md`; macOS CI `prepare_m1_runtime_foundation_*` fixture race fixed under `evidence/m2/m2-slice8i-install-runtime-temp-root-race-20261007.md`; full cryptexd `--lib` temp-root hardening under `evidence/m2/m2-slice8j-cryptexd-lib-temp-root-hardening-20261007.md` (shared `test_temp` exclusive allocator across identity/pairing/recovery/sequence/etc.). **Latest final dual-OS CI gate PASS** on tested SHA `9ade9f7db18ec0e383594c19e592809e3b194531`: run [37706283147](https://github.com/gungortarik/cryptex/actions/runs/37706283147) â€” macOS readiness **success**, Windows readiness **success**, Windows IPC ACL **success**, unsigned Windows package **skipped** by workflow design. Mac host four-check PASS at the same SHA is documented in `evidence/m2/m2-final-ci-gate-20261008.md`; run 37681630801 is historical. Owner-delegated closeout review PASS is recorded in `evidence/m2/m2-owner-delegated-review-20261008.md`; normal PR #8 integration into `m0/foundation` completed at `817b6a1`. Security/DoD dispositions remain documented in the existing audit records. `LongPathsEnabled=0` is not claimed. M2 is COMPLETE within scope and integrated at merge commit `817b6a1`; M3 Phase 0 plan is complete on `m3/local-projection-search` (`evidence/m3/m3-phase0-implementation-plan-20261008.md`); product implementation not started.
 Do not freeze `segment_events=1000` as a production constant. Do not expand into
 M3/M8/M10 product behavior. Do not dispatch further Actions unless the owner requests them.
 
@@ -352,7 +364,7 @@ reported verified; the Master Spec and accepted milestone contract are unchanged
 Next: review these concrete revisions and the retained security/notice residuals,
 then run required final CI once on the resulting stable candidate. Human diff/ADR
 acceptance and the evidence-backed full M0 checklist remain required.
-ADR-0004/0012 remain PROPOSED; M0 remains IN PROGRESS and M1 is not authorized. *(Historical M0-era note — superseded: M0 complete, M1 active, ADR-0015 ACCEPTED; see top.)*
+ADR-0004/0012 remain PROPOSED; M0 remains IN PROGRESS and M1 is not authorized. *(Historical M0-era note â€” superseded: M0 complete, M1 active, ADR-0015 ACCEPTED; see top.)*
 
 The owner explicitly authorized completing the entire M0 milestone. Closure
 audit: `evidence/m0/m0-closure-audit-20261005.md`. P0-4 managed Syncthing and its
@@ -527,7 +539,7 @@ private keys**. No certificate export, purchase, policy change or signing attemp
 This does not inspect external signing services or establish publisher trust;
 signed-package acceptance cannot be claimed from the existing unsigned proofs.
 
-## P0-2 evidence status — verified slices; acceptance open
+## P0-2 evidence status â€” verified slices; acceptance open
 
 ### macOS
 
@@ -582,7 +594,7 @@ Existing evidence proves:
 
 Still not enough to accept ADR-0012.
 
-### Windows Mode B — valid physical foundation evidence
+### Windows Mode B â€” valid physical foundation evidence
 
 Experiment:
 - `windows-mode-b-r2-20261002T050408Z`
@@ -663,7 +675,7 @@ Not verified by that run:
   `evidence/m0/p0-2/macos-renderer-crash-reconnect-test-plan-20261003.md`.
   The repeat at `dc0ae10` used both bounded holds (15000 ms before crash,
   10000 ms after restart). The visible renderer displayed
-  `IPC reconnected after restart · pid 24966 → 24987`; both PIDs match the
+  `IPC reconnected after restart Â· pid 24966 â†’ 24987`; both PIDs match the
   retained harness measurement (30 ms restart, exit 0). The macOS renderer
   crash/reconnect gate is **PASS / VERIFIED**. Desktop remained open until
   the result appeared, then exited 0 through `Quit clean`. The prior attempt
@@ -718,7 +730,7 @@ Not verified by that run:
 - The separate historical HKCU Run dispatch/exit findings remain without a
   root cause. Do not relabel the later successful reboot/login proof.
 
-### Windows native Task Scheduler candidate — failed candidate
+### Windows native Task Scheduler candidate â€” failed candidate
 
 Experiment:
 - `windows-mode-a-r1-20261002T052751Z`
@@ -747,7 +759,7 @@ The candidate is login-start only:
 - crash-restart parity remains OPEN
 - ADR-0012 remains unresolved
 
-## Historical physical event — earlier Windows reboot/login
+## Historical physical event â€” earlier Windows reboot/login
 
 Both Windows and macOS machines were shut down and restarted on 2026-10-02.
 
@@ -821,7 +833,7 @@ This does not explain the post-login process exit or add a supervision
 mechanism. A persisted snapshot may still age between checks; consumers must
 query current status and must not treat the ready marker as liveness evidence.
 
-### Benign Explorer Run dispatch probe — INCONCLUSIVE
+### Benign Explorer Run dispatch probe â€” INCONCLUSIVE
 
 The `wd-1003a` test-only registration had reported present before the user's
 sign-out/sign-in. The post-login status output reported a registration mismatch
@@ -850,7 +862,7 @@ The reboot therefore stopped it. P0-1 is already complete. Do not restart it mer
 
 ## Current continuation
 
-### Windows implementation slice — committed; Mac release lifecycle passed
+### Windows implementation slice â€” committed; Mac release lifecycle passed
 
 The project owner approved Mode B with per-user login startup launching
 Desktop. The proposal is recorded at
@@ -1094,7 +1106,7 @@ distinct from the planned operator-controlled replacement/rollback experiment.
 
 ### Prior continuation record
 
-### Latest Windows reboot/login result — VERIFIED
+### Latest Windows reboot/login result â€” VERIFIED
 
 The user prepared `wl-1003h` from ordinary Windows PowerShell at
 `2026-10-03T02:02:24Z`, source `0a7eb0e`, clean tree, then physically restarted
@@ -1210,7 +1222,7 @@ Retained diagnostic history and continuation constraints:
 
 ## OPEN
 
-### Next continuation — approved native complete-package handover pilot
+### Next continuation â€” approved native complete-package handover pilot
 
 Native recovery cleanup and Mac formatting parity are recorded below. The next
 concrete plan is `evidence/m0/p0-2/native-package-handover-plan-20261005.md`.
@@ -1328,7 +1340,7 @@ Next implementation is interrupted native handover recovery with owned-child
 absence/ambiguous-state refusal. Signing, canonical acceptance, native
 interruption and version-changing update remain open; ADR-0012 stays PROPOSED.
 
-### Latest native interrupted-claim cleanup — Windows and Mac scoped PASS
+### Latest native interrupted-claim cleanup â€” Windows and Mac scoped PASS
 
 A test-only Rust command `clear-interrupted-recovery-claim` serializes claim
 cleanup with the already pinned fs2 0.4.3 OS lock. It validates an owned,
@@ -1357,7 +1369,7 @@ Native cleaner SIGKILL releases its OS lock; dead recovery claim cleanup and
 baseline retry are verified. Broader stress, signing, native Desktop handover,
 canonical-data and power-loss durability remain open; ADR-0012 is PROPOSED.
 
-### Latest concurrent recovery slice — Windows and Mac scoped PASS
+### Latest concurrent recovery slice â€” Windows and Mac scoped PASS
 
 The test-only candidate exclusively creates `recovery-claim.json` before
 inspecting pending intent. A second recovery and updater activation while the
@@ -1384,7 +1396,7 @@ This is fail-closed candidate exclusion, not an OS lock or production selection.
 Native automatic recovery after recovery-process crash, broad stress, publisher
 trust, handover, canonical-data and durability gates remain open.
 
-### Latest live-updater recovery guard — Windows and Mac scoped PASS
+### Latest live-updater recovery guard â€” Windows and Mac scoped PASS
 
 The filesystem candidate now writes schema-2 pending journals with process PID
 and transaction UUID. External recovery permits rollback only after the OS
@@ -1412,7 +1424,7 @@ was clean. Evidence:
 Simultaneous recovery callers, broad stress, native handover/signing, durability
 and canonical-data acceptance remain open; ADR-0012 remains PROPOSED.
 
-### Latest separate-process updater slice — Windows and Mac scoped PASS
+### Latest separate-process updater slice â€” Windows and Mac scoped PASS
 
 Four new tests run two actual owned Node updater subprocesses against one fresh
 outside-repository package fixture. IPC barriers control staging and selection
@@ -1437,7 +1449,7 @@ Recovery competing with an active updater remains unverified. Native handover,
 signing, power-loss durability, canonical-data acceptance and ADR-0012 remain
 open. No GUI, installed runtime or Actions was used.
 
-### Latest recovery-I/O slice — Windows and Mac scoped PASS
+### Latest recovery-I/O slice â€” Windows and Mac scoped PASS
 
 The test-only transaction candidate now wraps recovery mutation failures in
 `RECOVERY_IO_FAILED`, retaining the underlying cause and structured phase,
@@ -1462,7 +1474,7 @@ Final directory-flush failure after unlink cannot promise journal retention;
 power-loss/native durability and cross-process serialization remain open.
 No installed app, GUI, startup registration, canonical data, or Actions changed.
 
-### Latest package-candidate concurrency slice — Windows and Mac scoped PASS
+### Latest package-candidate concurrency slice â€” Windows and Mac scoped PASS
 
 Review of the serialized filesystem candidate found a lost-selection race when
 one updater paused after staging and another committed. The candidate now
