@@ -46,7 +46,12 @@ cargo clippy -p cryptexd --all-targets -- -D warnings
 
 Verified product SHA: `d206ea4dc213f56908807a7700c1f6542e14787a`.
 
-## macOS verification (prepared; not executed here)
+## macOS verification (historical prepared checklist; subsequently reported PASS)
+
+Owner-reported macOS verification at exact HEAD `5d580a654d23f851e6853f0b297a8474ad87b747`
+is recorded in `evidence/m5/m5-slice1-macos-verification-20261010.md`.
+The checklist below is retained as originally prepared; it was not run on this
+Windows host. Its pending language is superseded by that separate Mac record.
 
 Do **not** claim macOS PASS without running these on a Mac host at this SHA:
 
@@ -67,4 +72,5 @@ cargo clippy -p cryptexd --all-targets -- -D warnings
 
 Slice 1 review fixes only. No Desktop capture IPC/UI, timeline APIs,
 projection-as-saved wiring, extraction, Actions, merge, or later slices.
-M5 is not complete. Slice 1 remains open pending macOS verification.
+M5 is not complete. Slice 1 Windows/macOS focused local verification is complete
+after the separate Mac report; final M5 CI, DoD and owner acceptance remain open.

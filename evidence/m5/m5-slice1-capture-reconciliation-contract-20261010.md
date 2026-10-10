@@ -1,8 +1,8 @@
 # M5 Slice 1 — Capture / reconciliation contract (finalized)
 
-**Status:** ACCEPTED for Slice 1 implementation (owner-authorized 2026-10-10).  
-**Branch:** `codex/m5-capture-timeline`  
-**Base:** M4 PR #10 merge `a6c32bd30f883e546e2eb976787a59057fae211b`  
+**Status:** ACCEPTED for Slice 1 implementation (owner-authorized 2026-10-10).
+**Branch:** `codex/m5-capture-timeline`
+**Base:** M4 PR #10 merge `a6c32bd30f883e546e2eb976787a59057fae211b`
 **Authority:** `docs/00_MASTER_SPEC.md`, `docs/milestones/M5_CAPTURE_TIMELINE.md`,
 ADR-0013 / 0015 / 0016 / 0017 / 0018, `evidence/m5/m5-kickoff-plan-20261010.md`.
 

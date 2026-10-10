@@ -89,13 +89,19 @@ management is added. The exact M4 implementation sequence and tests are in
 disabled until ADR-0017 §8.2 separately passes; M8/M10/M14 work is not
 authorized by M4 acceptance.
 
-## 4.5 M5 preparation
+## 4.5 M5 implementation gate
 
-M5 — Capture + Timeline is in **PREPARATION ONLY** on
-`codex/m5-capture-timeline`, based on the verified M4 merge above. Follow
+M5 — Capture + Timeline is **IN PROGRESS** on
+`codex/m5-capture-timeline`, based on the verified M4 merge above. Slice 1 daemon
+capture/reconciliation was owner-authorized and implemented. Its focused Windows
+and macOS local verification is complete at product fix `d206ea4`; exact Mac
+tested HEAD and host are recorded in
+`evidence/m5/m5-slice1-macos-verification-20261010.md`. Follow
 `docs/milestones/M5_CAPTURE_TIMELINE.md` and
-`evidence/m5/m5-kickoff-plan-20261010.md`. No new ADR is accepted by this
-preparation; no M5 product implementation or Actions run is authorized yet.
+`evidence/m5/m5-kickoff-plan-20261010.md`. No new ADR is accepted by this status
+update. Later slices require separate authorization; final M5 CI, Definition of
+Done and owner acceptance remain open. No Actions run or merge was performed for
+the Slice 1 documentation closeout.
 Production v2 activation remains CLOSED.
 
 ## 5. ADR source records

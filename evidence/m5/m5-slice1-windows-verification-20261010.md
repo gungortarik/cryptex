@@ -1,8 +1,8 @@
 # M5 Slice 1 -- Windows verification
 
-**Date:** 2026-10-10  
-**Branch:** `codex/m5-capture-timeline`  
-**Contract:** `evidence/m5/m5-slice1-capture-reconciliation-contract-20261010.md`  
+**Date:** 2026-10-10
+**Branch:** `codex/m5-capture-timeline`
+**Contract:** `evidence/m5/m5-slice1-capture-reconciliation-contract-20261010.md`
 **CARGO_TARGET_DIR:** `%LOCALAPPDATA%\cryptex-cargo-target`
 
 ## Commands executed (Windows)
