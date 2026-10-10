@@ -335,6 +335,12 @@ fn persist_receipt(
 
     #[cfg(test)]
     {
+        // Abrupt interrupt leaves the staged temp in place and skips cleanup.
+        crate::test_interrupt::maybe_abrupt_exit(
+            "after_receipt_stage_before_place",
+            runtime_root,
+            &receipt.capture_id,
+        );
         let fail = FAIL_RECEIPT_PLACE.with(|f| {
             let armed = f.get();
             if armed {

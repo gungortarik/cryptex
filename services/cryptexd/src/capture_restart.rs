@@ -1,11 +1,17 @@
 //! M5 Slice 2: cross-process capture restart / lost-response proofs.
 //!
 //! Child processes use fresh process-local state and a file-backed test
-//! SecureStore. Process termination here is not claimed as power-loss proof.
+//! SecureStore.
+//!
+//! Two families are covered:
+//! - **Error/restart:** child returns a typed capture outcome; parent reopens.
+//! - **Abrupt interruption:** child writes a handshake then exits at a durability
+//!   boundary before normal capture cleanup returns. Not power-loss proof.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use cryptex_core::BrainIdentity;
 use cryptex_core::ids::DeviceId;
@@ -20,6 +26,9 @@ use crate::capture_receipt::{load_receipt, receipt_path};
 use crate::identity_runtime::write_brain_identity;
 use crate::local_device_identity::{enroll_local_device, load_local_device_identity};
 use crate::secure_store::{FileBackedSecureStore, SecureStoreEnvironment};
+use crate::test_interrupt::{
+    INTERRUPT_ENV, INTERRUPT_EXIT_CODE, READY_NAME, read_ready, wait_child_bounded, wait_for_path,
+};
 use crate::test_temp::exclusive_temp_dir;
 
 const BRAIN: &str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -140,6 +149,7 @@ fn spawn_worker(
     text: &str,
     result_path: &Path,
     fault: Option<&str>,
+    interrupt: Option<&str>,
 ) -> std::process::Child {
     let exe = std::env::current_exe().expect("current_exe");
     let mut cmd = Command::new(&exe);
@@ -157,6 +167,11 @@ fn spawn_worker(
     } else {
         cmd.env_remove(FAULT_ENV);
     }
+    if let Some(boundary) = interrupt {
+        cmd.env(INTERRUPT_ENV, boundary);
+    } else {
+        cmd.env_remove(INTERRUPT_ENV);
+    }
     cmd.spawn().expect("spawn capture xproc worker")
 }
 
@@ -169,10 +184,49 @@ fn run_worker(
 ) -> String {
     let result_path = root.join(format!("result-{}-{}.txt", role, std::process::id()));
     let _ = fs::remove_file(&result_path);
-    let mut child = spawn_worker(root, role, capture_id, text, &result_path, fault);
+    let mut child = spawn_worker(root, role, capture_id, text, &result_path, fault, None);
     let status = child.wait().expect("wait worker");
     assert!(status.success(), "worker {role} failed: {status:?}");
     fs::read_to_string(&result_path).unwrap_or_else(|e| panic!("missing result for {role}: {e}"))
+}
+
+/// Run a child that must abruptly exit at `interrupt` after writing the ready handshake.
+fn run_interrupt_worker(
+    root: &Path,
+    capture_id: &str,
+    text: &str,
+    interrupt: &str,
+) -> (String, String) {
+    let ready = root.join(READY_NAME);
+    let _ = fs::remove_file(&ready);
+    let result_path = root.join(format!("interrupt-result-{}.txt", std::process::id()));
+    let _ = fs::remove_file(&result_path);
+    let mut child = spawn_worker(
+        root,
+        "capture",
+        capture_id,
+        text,
+        &result_path,
+        None,
+        Some(interrupt),
+    );
+    assert!(
+        wait_for_path(&ready, Duration::from_secs(30)),
+        "interrupt handshake not observed for {interrupt}"
+    );
+    let status =
+        wait_child_bounded(&mut child, Duration::from_secs(15)).expect("wait interrupt child");
+    assert_eq!(
+        status.code(),
+        Some(INTERRUPT_EXIT_CODE),
+        "expected abrupt exit {INTERRUPT_EXIT_CODE}, got {status:?}"
+    );
+    // Child must not have completed normal response delivery.
+    assert!(
+        !result_path.exists() || fs::metadata(&result_path).map(|m| m.len()).unwrap_or(0) == 0,
+        "abrupt interrupt must not publish a normal capture result file"
+    );
+    read_ready(root)
 }
 
 fn event_count(root: &Path) -> usize {
@@ -371,8 +425,8 @@ fn xproc_concurrent_matching_capture_ids_single_event() {
     let text = "concurrent matching";
     let r1 = root.join("concurrent-a.txt");
     let r2 = root.join("concurrent-b.txt");
-    let mut a = spawn_worker(&root, "capture", capture_id, text, &r1, None);
-    let mut b = spawn_worker(&root, "capture", capture_id, text, &r2, None);
+    let mut a = spawn_worker(&root, "capture", capture_id, text, &r1, None, None);
+    let mut b = spawn_worker(&root, "capture", capture_id, text, &r2, None, None);
     let sa = a.wait().expect("wait a");
     let sb = b.wait().expect("wait b");
     assert!(sa.success() && sb.success(), "workers failed {sa:?} {sb:?}");
@@ -446,6 +500,138 @@ fn xproc_durable_capture_recoverable_without_sqlite() {
     }
     let replay = run_worker(&root, "resolve", capture_id, text, None);
     assert_eq!(replay, first);
+    assert_eq!(event_count(&root), 1);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn xproc_interrupt_pending_before_append_then_fresh_resume() {
+    dispatch_worker_if_requested();
+    let root = exclusive_temp_dir("cryptex-m5-s2-int-pending");
+    assert_eq!(run_worker(&root, "enroll", "", "", None), "ENROLLED");
+    let capture_id = "a0a0a0a0-a0a0-4a0a-8a0a-a0a0a0a0a0a0";
+    let text = "interrupt after durable pending";
+    let (boundary, detail) =
+        run_interrupt_worker(&root, capture_id, text, "after_pending_before_append");
+    assert_eq!(boundary, "after_pending_before_append");
+    let event_id = pending_event_id(&root, capture_id);
+    assert_eq!(detail, event_id);
+    assert_eq!(event_count(&root), 0);
+
+    let resolved = run_worker(&root, "resolve", capture_id, text, None);
+    assert_eq!(resolved, "REJECTED|not_committed");
+    let resumed = run_worker(&root, "capture", capture_id, text, None);
+    assert!(
+        resumed.starts_with(&format!("COMMITTED|{event_id}|")),
+        "fresh resume must keep {event_id}, got {resumed}"
+    );
+    assert_eq!(event_count(&root), 1);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn xproc_interrupt_append_before_tip_then_fresh_reconcile() {
+    dispatch_worker_if_requested();
+    let root = exclusive_temp_dir("cryptex-m5-s2-int-tip");
+    assert_eq!(run_worker(&root, "enroll", "", "", None), "ENROLLED");
+    let capture_id = "b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1";
+    let text = "interrupt after durable append before tip";
+    let (boundary, detail) =
+        run_interrupt_worker(&root, capture_id, text, "after_append_before_tip");
+    assert_eq!(boundary, "after_append_before_tip");
+    assert_eq!(event_count(&root), 1);
+    let event_id = pending_event_id(&root, capture_id);
+    assert_eq!(detail, event_id);
+
+    let reconciled = run_worker(&root, "capture", capture_id, text, None);
+    assert!(
+        reconciled.starts_with(&format!("COMMITTED|{event_id}|")),
+        "got {reconciled}"
+    );
+    assert_eq!(event_count(&root), 1);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn xproc_interrupt_staged_receipt_before_place_not_committed() {
+    dispatch_worker_if_requested();
+    let root = exclusive_temp_dir("cryptex-m5-s2-int-stage");
+    assert_eq!(run_worker(&root, "enroll", "", "", None), "ENROLLED");
+    let capture_id = "c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2";
+    let text = "interrupt after staged receipt before place";
+    let (boundary, detail) =
+        run_interrupt_worker(&root, capture_id, text, "after_receipt_stage_before_place");
+    assert_eq!(boundary, "after_receipt_stage_before_place");
+    assert_eq!(detail, capture_id);
+    let device = device_id(&root);
+    let path = receipt_path(&root, BRAIN, &device, capture_id);
+    assert!(
+        !path.exists(),
+        "final receipt must be absent after stage interrupt"
+    );
+    assert_eq!(event_count(&root), 0);
+
+    let resolved = run_worker(&root, "resolve", capture_id, text, None);
+    assert_eq!(resolved, "UNCERTAIN|receipt_missing");
+    let committed = run_worker(&root, "capture", capture_id, text, None);
+    assert!(committed.starts_with("COMMITTED|"), "{committed}");
+    assert_eq!(event_count(&root), 1);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn xproc_interrupt_committed_before_response_lost_delivery_replay() {
+    dispatch_worker_if_requested();
+    let root = exclusive_temp_dir("cryptex-m5-s2-int-committed");
+    assert_eq!(run_worker(&root, "enroll", "", "", None), "ENROLLED");
+    let capture_id = "d3d3d3d3-d3d3-4d3d-8d3d-d3d3d3d3d3d3";
+    let text = "interrupt after durable committed before response";
+    let (boundary, detail) =
+        run_interrupt_worker(&root, capture_id, text, "after_committed_before_response");
+    assert_eq!(boundary, "after_committed_before_response");
+    assert_eq!(event_count(&root), 1);
+    let device = device_id(&root);
+    let receipt = load_receipt(&root, BRAIN, &device, capture_id)
+        .expect("load")
+        .expect("committed receipt present");
+    assert_eq!(
+        receipt.state,
+        crate::capture_receipt::ReceiptState::Committed
+    );
+    assert_eq!(detail, receipt.event_id);
+
+    let replay = run_worker(&root, "capture", capture_id, text, None);
+    assert!(
+        replay.starts_with(&format!("COMMITTED|{}|", receipt.event_id)),
+        "lost-delivery replay must return original event, got {replay}"
+    );
+    assert_eq!(event_count(&root), 1);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn xproc_interrupt_append_before_committed_receipt_then_fresh_reconcile() {
+    dispatch_worker_if_requested();
+    let root = exclusive_temp_dir("cryptex-m5-s2-int-committed-receipt");
+    assert_eq!(run_worker(&root, "enroll", "", "", None), "ENROLLED");
+    let capture_id = "e4e4e4e4-e4e4-4e4e-8e4e-e4e4e4e4e4e4";
+    let text = "interrupt after durable append before committed receipt";
+    let (boundary, detail) = run_interrupt_worker(
+        &root,
+        capture_id,
+        text,
+        "after_append_before_committed_receipt",
+    );
+    assert_eq!(boundary, "after_append_before_committed_receipt");
+    assert_eq!(event_count(&root), 1);
+    let event_id = pending_event_id(&root, capture_id);
+    assert_eq!(detail, event_id);
+
+    let reconciled = run_worker(&root, "resolve", capture_id, text, None);
+    assert!(
+        reconciled.starts_with(&format!("COMMITTED|{event_id}|")),
+        "got {reconciled}"
+    );
     assert_eq!(event_count(&root), 1);
     let _ = fs::remove_dir_all(&root);
 }

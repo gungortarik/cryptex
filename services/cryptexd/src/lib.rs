@@ -36,6 +36,8 @@ pub mod supervision;
 
 pub mod supervisor;
 #[cfg(test)]
+mod test_interrupt;
+#[cfg(test)]
 mod test_temp;
 pub mod update;
 

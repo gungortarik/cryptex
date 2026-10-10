@@ -370,6 +370,11 @@ pub fn capture_memory_note<S: SecureStore>(
             }
             #[cfg(test)]
             {
+                crate::test_interrupt::maybe_abrupt_exit(
+                    "after_pending_before_append",
+                    runtime_root,
+                    &event_id,
+                );
                 if take_fail_after_pending_before_append() {
                     return CaptureOutcome::uncertain(
                         CaptureUncertainReason::WriterFailure,
@@ -660,6 +665,11 @@ fn append_path<S: SecureStore>(
             }
             #[cfg(test)]
             {
+                crate::test_interrupt::maybe_abrupt_exit(
+                    "after_append_before_committed_receipt",
+                    path.runtime_root,
+                    path.event_id,
+                );
                 if std::env::var("CRYPTEX_TEST_CAPTURE_FAULT").ok().as_deref()
                     == Some("after_append_before_committed_receipt")
                 {
@@ -679,6 +689,14 @@ fn append_path<S: SecureStore>(
                 return CaptureOutcome::uncertain(
                     CaptureUncertainReason::ReceiptPersistFailed,
                     e.to_string(),
+                );
+            }
+            #[cfg(test)]
+            {
+                crate::test_interrupt::maybe_abrupt_exit(
+                    "after_committed_before_response",
+                    path.runtime_root,
+                    path.event_id,
                 );
             }
             CaptureOutcome::Committed(Box::new(commit_from_accepted(

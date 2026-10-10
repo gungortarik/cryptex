@@ -571,6 +571,11 @@ pub(crate) fn append_memory_note_with_lock<S: SecureStore>(
 
     #[cfg(test)]
     {
+        crate::test_interrupt::maybe_abrupt_exit(
+            "after_append_before_tip",
+            runtime_root,
+            &accepted.event_id,
+        );
         let fail = FAIL_AFTER_APPEND_BEFORE_TIP.with(|f| {
             let armed = f.get();
             if armed {
