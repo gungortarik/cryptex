@@ -853,6 +853,43 @@ fn apply_knowledge_schema_v1(conn: &Connection) -> KnowledgeStoreResult<()> {
 mod tests {
     use super::*;
     use cryptex_projection::{PROJECTION_SCHEMA_VERSION, ProjectionDb, project_memory_note};
+    use std::fs;
+    use std::process::Command;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_ROOT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+    struct TestRoot(std::path::PathBuf);
+
+    impl TestRoot {
+        fn path(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TestRoot {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn exclusive_test_root(label: &str) -> TestRoot {
+        let parent = std::env::temp_dir();
+        for _ in 0..10_000 {
+            let sequence = TEST_ROOT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let root = parent.join(format!(
+                "cryptex-knowledge-{label}-{}-{sequence}",
+                std::process::id()
+            ));
+            match fs::create_dir(&root) {
+                Ok(()) => return TestRoot(root),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("create migration test root {}: {error}", root.display()),
+            }
+        }
+        panic!("exhausted unique migration test roots for {label}");
+    }
+
     #[test]
     fn additive_migration_preserves_m3_schema_and_rows_and_is_idempotent() {
         let mut db = ProjectionDb::open_in_memory().unwrap();
@@ -945,6 +982,123 @@ mod tests {
             "failed M4 migration must roll back all added tables"
         );
         assert_eq!(db.schema_version().unwrap(), PROJECTION_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn interrupted_migration_transaction_rolls_back_on_process_reopen() {
+        const DB_ENV: &str = "CRYPTEX_TEST_INTERRUPTED_M4_MIGRATION_DB";
+        const MARKER_ENV: &str = "CRYPTEX_TEST_INTERRUPTED_M4_MIGRATION_MARKER";
+
+        // The child reaches this same test, stages M4 DDL in an open SQLite
+        // transaction, writes a synchronization marker, then exits without
+        // running Rust/SQLite destructors. The parent reopens the DB as a fresh
+        // process would after interruption and verifies SQLite recovery.
+        if let Some(path) = std::env::var_os(DB_ENV) {
+            let marker = std::env::var_os(MARKER_ENV).expect("child marker path");
+            let mut conn = Connection::open(&path).expect("open child migration database");
+            conn.execute_batch(
+                "PRAGMA journal_mode=DELETE;
+                 PRAGMA synchronous=FULL;
+                 PRAGMA cache_size=1;",
+            )
+            .expect("configure rollback-journal crash fixture");
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .expect("begin child migration transaction");
+            apply_knowledge_schema_v1(&tx).expect("stage M4 schema inside transaction");
+            tx.execute_batch("CREATE TABLE interrupted_migration_probe (value BLOB NOT NULL);")
+                .expect("stage interruption probe table");
+            let page_pressure = vec![b'x'; 8 * 1024];
+            for _ in 0..128 {
+                tx.execute(
+                    "INSERT INTO interrupted_migration_probe(value) VALUES (?1)",
+                    [&page_pressure],
+                )
+                .expect("stage interruption probe rows");
+            }
+            let mut journal_path = path;
+            journal_path.push("-journal");
+            let journal_len = fs::metadata(std::path::PathBuf::from(journal_path))
+                .expect("transaction must create rollback journal")
+                .len();
+            assert!(
+                journal_len > 0,
+                "rollback journal must contain original pages"
+            );
+            let mut marker_file = fs::File::create(marker).expect("create child marker");
+            use std::io::Write;
+            writeln!(marker_file, "{journal_len}").expect("write child journal length");
+            marker_file.sync_all().expect("sync child readiness marker");
+            std::process::exit(73);
+        }
+
+        let root = exclusive_test_root("interrupted-migration");
+        let mut db = ProjectionDb::open_or_create(root.path()).expect("create M3 database");
+        let db_path = db.path().to_path_buf();
+        drop(db);
+        let marker = root.path().join("child-staged-transaction.txt");
+        let test_executable = std::env::current_exe().expect("current test executable");
+        let child = Command::new(test_executable)
+            .args([
+                "--exact",
+                "sqlite::tests::interrupted_migration_transaction_rolls_back_on_process_reopen",
+                "--nocapture",
+            ])
+            .env_clear()
+            .env(DB_ENV, &db_path)
+            .env(MARKER_ENV, &marker)
+            .output()
+            .expect("spawn interrupted migration process");
+
+        assert_eq!(
+            child.status.code(),
+            Some(73),
+            "child did not stop at probe: {}",
+            String::from_utf8_lossy(&child.stderr)
+        );
+        let journal_len = fs::read_to_string(&marker)
+            .expect("child reached staged rollback-journal transaction")
+            .trim()
+            .parse::<u64>()
+            .expect("child recorded rollback-journal length");
+        assert!(
+            journal_len > 0,
+            "child must observe a populated rollback journal"
+        );
+
+        db = ProjectionDb::open_or_create(root.path()).expect("reopen after interrupted migration");
+        let mut journal_path = db_path.as_os_str().to_owned();
+        journal_path.push("-journal");
+        let journal_path = std::path::PathBuf::from(journal_path);
+        match fs::metadata(&journal_path) {
+            Ok(metadata) => assert_eq!(
+                metadata.len(),
+                0,
+                "SQLite must consume the interrupted transaction's rollback journal"
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!("inspect recovered rollback journal: {error}"),
+        }
+        assert_eq!(
+            db.schema_version().expect("M3 remains valid"),
+            PROJECTION_SCHEMA_VERSION
+        );
+        let uncommitted_tables: i64 = db
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('knowledge_meta', 'interrupted_migration_probe')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("inspect recovered schema");
+        assert_eq!(
+            uncommitted_tables, 0,
+            "uncommitted M4 DDL must be rolled back"
+        );
+
+        migrate_knowledge_schema(db.connection_mut()).expect("migration retries cleanly");
+        validate_knowledge_schema_v1(db.connection()).expect("M4 schema validates after retry");
+        drop(db);
     }
 
     #[test]

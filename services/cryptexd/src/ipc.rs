@@ -649,6 +649,15 @@ fn handle_connection(
                 .map(|pid| context.expected_desktop.matches_peer(pid))
         })
         .unwrap_or(false);
+    handle_connection_for_peer(stream, search, desktop_search_workers, peer_is_desktop)
+}
+
+fn handle_connection_for_peer(
+    stream: &mut Stream,
+    search: Option<&SearchContext>,
+    desktop_search_workers: Option<&Arc<AtomicUsize>>,
+    peer_is_desktop: bool,
+) -> io::Result<()> {
     arm_ipc_stream(stream)?;
     let request_deadline = Instant::now() + IPC_REQUEST_DEADLINE;
     let frame = match read_ipc_frame(stream, MAX_FRAME_BYTES, request_deadline) {
@@ -1665,11 +1674,22 @@ mod tests {
     use std::fs;
 
     use cryptex_core::BrainIdentity;
+    use cryptex_events::Classification;
+    use cryptex_storage::layout::{active_segment_path, canonical_events_device_dir};
 
     use super::*;
+    use crate::canonical_writer::{
+        AppendMemoryNoteArgs, CanonicalWriterConfig, append_memory_note,
+    };
     use crate::identity_runtime::write_brain_identity;
+    use crate::knowledge_materialization::rebuild_knowledge_from_canonical;
+    use crate::local_device_identity::enroll_local_device;
+    use crate::projection::rebuild_device_projection;
     use crate::secure_store::FakeSecureStore;
     use crate::test_temp::exclusive_temp_dir;
+    use cryptex_projection::ProjectionDb;
+
+    const TEST_BRAIN_ID: &str = "11111111-1111-4111-8111-111111111111";
 
     fn search_request(role: &str, capabilities: Vec<String>) -> Request {
         Request {
@@ -1680,6 +1700,105 @@ mod tests {
             operation: "content.search".into(),
             query: Some(DesktopSearchQuery::default()),
         }
+    }
+
+    struct SearchFixture {
+        root: PathBuf,
+        brain_id: String,
+        device: DeviceId,
+        store: Arc<FakeSecureStore>,
+        context: SearchContext,
+    }
+
+    fn prepared_search_fixture(label: &str) -> SearchFixture {
+        let root = exclusive_temp_dir(&format!("cryptex-ipc-search-{label}"));
+        let brain = BrainIdentity::new(TEST_BRAIN_ID, "2026-10-08T00:00:00Z").expect("Brain");
+        write_brain_identity(&root, &brain).expect("write Brain identity");
+        let store = Arc::new(FakeSecureStore::new());
+        let identity = enroll_local_device(&root, store.as_ref(), SecureStoreEnvironment::Dev)
+            .expect("enroll local device");
+        let device = DeviceId::new(identity.device_id).expect("device id");
+        append_memory_note(
+            store.as_ref(),
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: TEST_BRAIN_ID,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "synthetic IPC search fixture note",
+                config: &CanonicalWriterConfig::default(),
+            },
+        )
+        .expect("append synthetic note");
+
+        let mut resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+            &root,
+            TEST_BRAIN_ID,
+            store.as_ref(),
+            SecureStoreEnvironment::Dev,
+        )
+        .expect("load local event key");
+        let mut db = ProjectionDb::open_or_create(&root).expect("open projection database");
+        rebuild_device_projection(
+            store.as_ref(),
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &db,
+        )
+        .expect("rebuild M3 projection");
+        rebuild_knowledge_from_canonical(
+            &root,
+            TEST_BRAIN_ID,
+            std::slice::from_ref(&device),
+            &mut resolver,
+            &mut db,
+        )
+        .expect("rebuild M4 knowledge state");
+        drop(db);
+
+        let context = SearchContext {
+            runtime_root: root.clone(),
+            store: store.clone(),
+            environment: SecureStoreEnvironment::Dev,
+            expected_desktop: Arc::new(
+                test_desktop_process_identity().expect("capture test Desktop identity"),
+            ),
+        };
+        SearchFixture {
+            root,
+            brain_id: TEST_BRAIN_ID.into(),
+            device,
+            store,
+            context,
+        }
+    }
+
+    fn content_search_ipc_round_trip(
+        context: Option<SearchContext>,
+        query: DesktopSearchQuery,
+    ) -> DesktopSearchResponse {
+        let (name, listener) = isolated_ipc_listener("content-search");
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().expect("accept content search client");
+            handle_connection_for_peer(&mut stream, context.as_ref(), None, true)
+                .expect("serve content search request");
+        });
+        let mut client = Stream::connect(name.borrow()).expect("connect content search client");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let request = Request {
+            query: Some(query),
+            ..search_request("desktop", vec![CAPABILITY_CONTENT_SEARCH.into()])
+        };
+        let mut frame = serde_json::to_vec(&request).expect("encode request");
+        frame.push(b'\n');
+        write_ipc_all(&mut client, &frame, deadline).expect("write search request");
+        let response_frame = read_ipc_frame(&mut client, MAX_SEARCH_RESPONSE_BYTES, deadline)
+            .expect("read response");
+        let response = serde_json::from_slice(&response_frame).expect("decode search response");
+        server.join().expect("search server thread");
+        response
     }
 
     #[test]
@@ -1765,11 +1884,7 @@ mod tests {
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
         };
-        let response = handle_search(
-            search_request("desktop", vec![CAPABILITY_CONTENT_SEARCH.into()]),
-            Some(&context),
-            true,
-        );
+        let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
 
         assert!(response.accepted);
         assert!(response.hits.is_none());
@@ -1798,11 +1913,7 @@ mod tests {
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
         };
-        let response = handle_search(
-            search_request("desktop", vec![CAPABILITY_CONTENT_SEARCH.into()]),
-            Some(&context),
-            true,
-        );
+        let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
 
         assert!(response.accepted);
         assert!(response.hits.is_none());
@@ -1812,6 +1923,196 @@ mod tests {
         );
         assert!(!crate::local_device_identity::local_device_identity_path(&root).exists());
         fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn desktop_content_search_ipc_returns_a_verified_m3_hit_when_safety_allows() {
+        let fixture = prepared_search_fixture("allowed");
+        let response = content_search_ipc_round_trip(
+            Some(fixture.context.clone()),
+            DesktopSearchQuery {
+                text: Some("synthetic IPC search fixture".into()),
+                ..DesktopSearchQuery::default()
+            },
+        );
+
+        assert!(response.accepted, "unexpected rejection: {response:?}");
+        assert_eq!(response.operation.as_deref(), Some("content.search.result"));
+        assert!(response.hold_reason.is_none());
+        let hits = response.hits.expect("allowed response contains hits");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].device_id, fixture.device.as_str());
+        assert_eq!(hits[0].brain_id, fixture.brain_id);
+        assert_eq!(hits[0].text, "synthetic IPC search fixture note");
+
+        fs::remove_dir_all(fixture.root).expect("cleanup");
+    }
+
+    #[test]
+    fn desktop_content_search_ipc_holds_when_knowledge_state_is_missing_or_corrupt() {
+        let fixture = prepared_search_fixture("missing-knowledge-state");
+        let db = ProjectionDb::open_or_create(&fixture.root).expect("open projection db");
+        db.connection()
+            .execute_batch("DROP TABLE knowledge_meta;")
+            .expect("remove M4 materialization metadata");
+        drop(db);
+
+        let missing = content_search_ipc_round_trip(
+            Some(fixture.context.clone()),
+            DesktopSearchQuery::default(),
+        );
+        assert!(missing.accepted);
+        assert!(missing.hits.is_none());
+        assert_eq!(
+            missing.hold_reason.as_deref(),
+            Some("materialization_state_missing_or_stale")
+        );
+
+        let mut db = ProjectionDb::open_or_create(&fixture.root).expect("reopen projection db");
+        rebuild_knowledge_from_canonical(
+            &fixture.root,
+            &fixture.brain_id,
+            std::slice::from_ref(&fixture.device),
+            &mut crate::local_device_identity::LocalDeviceKeyResolver::load(
+                &fixture.root,
+                &fixture.brain_id,
+                fixture.store.as_ref(),
+                SecureStoreEnvironment::Dev,
+            )
+            .expect("load resolver"),
+            &mut db,
+        )
+        .expect("restore M4 state");
+        db.connection()
+            .execute(
+                "UPDATE knowledge_meta SET build_id = 'tampered' WHERE id = 1",
+                [],
+            )
+            .expect("tamper M4 materialization identity");
+        drop(db);
+
+        let corrupt = content_search_ipc_round_trip(
+            Some(fixture.context.clone()),
+            DesktopSearchQuery::default(),
+        );
+        assert!(corrupt.accepted);
+        assert!(corrupt.hits.is_none());
+        assert_eq!(
+            corrupt.hold_reason.as_deref(),
+            Some("materialization_state_missing_or_stale")
+        );
+
+        fs::remove_dir_all(fixture.root).expect("cleanup");
+    }
+
+    #[test]
+    fn desktop_content_search_ipc_holds_stale_projection_and_inventory_changes() {
+        let stale_fixture = prepared_search_fixture("stale");
+        append_memory_note(
+            stale_fixture.store.as_ref(),
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &stale_fixture.root,
+                brain_id: &stale_fixture.brain_id,
+                device_id: &stale_fixture.device,
+                classification: Classification::Internal,
+                text: "synthetic second event after materialization",
+                config: &CanonicalWriterConfig::default(),
+            },
+        )
+        .expect("append event after materialization");
+        let stale = content_search_ipc_round_trip(
+            Some(stale_fixture.context.clone()),
+            DesktopSearchQuery::default(),
+        );
+        assert!(stale.accepted);
+        assert!(stale.hits.is_none());
+        assert_eq!(
+            stale.hold_reason.as_deref(),
+            Some("materialization_state_missing_or_stale")
+        );
+        fs::remove_dir_all(stale_fixture.root).expect("cleanup stale fixture");
+
+        let inventory_fixture = prepared_search_fixture("inventory-change");
+        let unexpected = DeviceId::new("new-untrusted-device").expect("unexpected device");
+        fs::create_dir_all(canonical_events_device_dir(
+            &inventory_fixture.root,
+            &unexpected,
+        ))
+        .expect("add untrusted canonical device directory");
+        let changed_inventory = content_search_ipc_round_trip(
+            Some(inventory_fixture.context.clone()),
+            DesktopSearchQuery::default(),
+        );
+        assert!(changed_inventory.accepted);
+        assert!(changed_inventory.hits.is_none());
+        assert_eq!(
+            changed_inventory.hold_reason.as_deref(),
+            Some("canonical_verification_unavailable")
+        );
+        fs::remove_dir_all(inventory_fixture.root).expect("cleanup inventory fixture");
+    }
+
+    #[test]
+    fn desktop_content_search_ipc_brain_wide_hold_never_returns_valid_prefix_hits() {
+        let fixture = prepared_search_fixture("brain-wide-hold");
+        append_memory_note(
+            fixture.store.as_ref(),
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &fixture.root,
+                brain_id: &fixture.brain_id,
+                device_id: &fixture.device,
+                classification: Classification::Internal,
+                text: "synthetic second note for full-stream hold",
+                config: &CanonicalWriterConfig::default(),
+            },
+        )
+        .expect("append second note");
+        let mut resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+            &fixture.root,
+            &fixture.brain_id,
+            fixture.store.as_ref(),
+            SecureStoreEnvironment::Dev,
+        )
+        .expect("load local key resolver");
+        let mut db = ProjectionDb::open_or_create(&fixture.root).expect("open projection db");
+        rebuild_device_projection(
+            fixture.store.as_ref(),
+            SecureStoreEnvironment::Dev,
+            &fixture.root,
+            &fixture.device,
+            &db,
+        )
+        .expect("project both notes");
+        rebuild_knowledge_from_canonical(
+            &fixture.root,
+            &fixture.brain_id,
+            std::slice::from_ref(&fixture.device),
+            &mut resolver,
+            &mut db,
+        )
+        .expect("materialize both notes");
+        drop(db);
+
+        let pack = active_segment_path(&fixture.root, &fixture.device, 0);
+        let mut bytes = fs::read(&pack).expect("read synthetic canonical pack");
+        let last = bytes.last_mut().expect("pack contains events");
+        *last ^= 0x01;
+        fs::write(&pack, bytes).expect("corrupt trailing canonical event");
+
+        let held = content_search_ipc_round_trip(
+            Some(fixture.context.clone()),
+            DesktopSearchQuery::default(),
+        );
+        assert!(held.accepted);
+        assert!(held.hits.is_none(), "valid-prefix text must not leak");
+        assert_eq!(
+            held.hold_reason.as_deref(),
+            Some("canonical_verification_unavailable")
+        );
+
+        fs::remove_dir_all(fixture.root).expect("cleanup");
     }
 
     #[test]
