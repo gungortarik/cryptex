@@ -1,4 +1,4 @@
-﻿# M5 Slice 1 â€” Windows verification
+# M5 Slice 1 -- Windows verification
 
 **Date:** 2026-10-10  
 **Branch:** `codex/m5-capture-timeline`  
@@ -45,3 +45,10 @@ cargo clippy -p cryptexd --all-targets -- -D warnings
 Slice 1 only: daemon capture/reconciliation library. No Desktop capture IPC/UI,
 timeline APIs, projection-as-saved wiring, extraction, Actions, or merge.
 M5 is not complete.
+
+## Superseded for macOS closeout
+
+Review findings were fixed after this record. Use product SHA
+d206ea4dc213f56908807a7700c1f6542e14787a and
+evidence/m5/m5-slice1-review-fix-windows-verification-20261010.md
+for macOS verification before Slice 1 closeout.

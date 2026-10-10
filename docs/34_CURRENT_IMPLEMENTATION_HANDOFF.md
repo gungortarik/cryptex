@@ -1,4 +1,4 @@
-﻿# 34 — Current Implementation Handoff
+# 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-10
 **Current milestone:** M5 — Capture + Timeline, Slice 1 (daemon capture/reconciliation) AUTHORIZED.
@@ -14,7 +14,7 @@ and Desktop response-policy tests on Windows/macOS plus Windows IPC ACL.
 **M5 Slice 1 contract:** Finalized in
 `evidence/m5/m5-slice1-capture-reconciliation-contract-20261010.md`. Owner
 authorized Slice 1 daemon capture service implementation only.
-**Next action:** Slice 1 daemon capture is at `4162cc27e983e611b823311967781417235824a7`; Windows fmt/focused tests/strict Clippy PASS recorded in `evidence/m5/m5-slice1-windows-verification-20261010.md`. Run the prepared macOS verification commands in that evidence file before Slice 1 closeout. Do not start Desktop capture IPC/UI, timeline, projection wiring, or later slices without explicit authorization. No merge or Actions for this slice unless the owner requests them.
+**Next action:** Slice 1 review fixes are at `d206ea4dc213f56908807a7700c1f6542e14787a`; Windows fmt/focused tests/strict Clippy PASS recorded in `evidence/m5/m5-slice1-review-fix-windows-verification-20261010.md`. Run the prepared macOS verification commands in that evidence file before Slice 1 closeout. Do not start Desktop capture IPC/UI, timeline, projection wiring, or later slices without explicit authorization. No merge or Actions for this slice unless the owner requests them.
 **Authorization:** M5 Slice 1 product code authorized. Later M5 slices and
 production v2 activation remain CLOSED until separately authorized.
 **Continuing invariants:** v1 memory.note unchanged; production v2 writing OFF;
