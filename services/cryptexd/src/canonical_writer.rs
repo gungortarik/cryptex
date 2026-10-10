@@ -1,8 +1,8 @@
-﻿//! cryptexd-only canonical event writer (ADR-0016 Â§11).
+//! cryptexd-only canonical event writer (ADR-0016 section 11).
 //!
 //! Per-device exclusive lock (`writer.lock`) is shared by the canonical writer and
-//! verified reader: reconcile â†’ recover â†’ allocate â†’ append/seal â†’ tip on write, and
-//! discovery â†’ active-open recovery â†’ verified scan/callback on read.
+//! verified reader: reconcile -> recover -> allocate -> append/seal -> tip on write, and
+//! discovery -> active-open recovery -> verified scan/callback on read.
 //! `writer_tip.json` is rebuildable derived state; verified `.seg`/`.open` records are
 //! authoritative for chain tip and active segment discovery.
 
@@ -38,7 +38,9 @@ use cryptex_storage::{StorageError, append_frame, seal_active_segment};
 use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
 
-use crate::event_signing_key::{EventSigningKeyError, ensure_event_signing_key};
+use crate::event_signing_key::{
+    EventSigningKeyError, ensure_event_signing_key, load_existing_event_verifying_key,
+};
 use crate::paths::{assert_outside_repository, ensure_runtime_root};
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 use crate::sequence_runtime::{allocate_device_sequence, initialize_device_sequence};
@@ -485,7 +487,7 @@ pub(crate) fn append_memory_note_with_lock<S: SecureStore>(
     let payload = MemoryNotePayload::new(text)?;
 
     // Discover packs before any key mint so missing seed+metadata cannot mint over
-    // existing history (ADR-0016 Â§6.3).
+    // existing history (ADR-0016 section 6.3).
     let (sealed_indexes, open_index) = discover_segments(runtime_root, device_id)?;
     let packs_present = !sealed_indexes.is_empty() || open_index.is_some();
     let bootstrap =
@@ -895,7 +897,7 @@ fn quarantine_sealed_pack(
         )));
     }
     // Stream exact sealed bytes into quarantine before isolating the canonical object.
-    // ADR-0016 Â§7.2: quarantine the whole sealed object (no in-place edit). Durability of
+    // ADR-0016 section 7.2: quarantine the whole sealed object (no in-place edit). Durability of
     // the quarantine entry is confirmed by quarantine_file_range (object + metadata sync)
     // before the canonical .seg is removed from the discoverable pack set.
     quarantine_file_range(
@@ -1174,7 +1176,7 @@ where
 /// Verified feed under an already-held [`DeviceCanonicalLock`].
 ///
 /// Callers that also open a SQLite transaction must acquire the device lock
-/// *before* beginning that transaction (lock order: device â†’ SQLite).
+/// *before* beginning that transaction (lock order: device -> SQLite).
 pub(crate) fn for_each_verified_event_with_lock<S, F>(
     store: &S,
     env: SecureStoreEnvironment,
@@ -1265,6 +1267,121 @@ where
                         return Err(CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(
                             "verified v2 records require M4 retrieval-safety and materialization support".into(),
                         )));
+                    }
+                    VersionedRecord::Unverifiable(_) => {
+                        return Err(CanonicalWriterError::Storage(
+                            StorageError::CompatibilityBoundary(
+                                "unverifiable event blocks retrieval".into(),
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Verified feed under an already-held lock using only an enrolled signing key.
+///
+/// Unlike [`for_each_verified_event_with_lock`], this path never creates, completes,
+/// or replaces SecureStore seeds / public signing metadata. Each callback receives
+/// the containing pack path for the verified event.
+pub(crate) fn for_each_verified_event_enrolled_with_lock<S, F>(
+    store: &S,
+    env: SecureStoreEnvironment,
+    runtime_root: &Path,
+    device_id: &DeviceId,
+    lock: &DeviceCanonicalLock,
+    mut on_event: F,
+) -> CanonicalWriterResult<()>
+where
+    S: SecureStore,
+    F: FnMut(&AcceptedEvent, &Path) -> CanonicalWriterResult<()>,
+{
+    if lock.device_id() != device_id {
+        return Err(CanonicalWriterError::Invalid(
+            "device canonical lock does not match verified-reader device_id".into(),
+        ));
+    }
+    let (_meta, verifying_key) =
+        load_existing_event_verifying_key(store, env, runtime_root, device_id)?;
+    let validator = VerifyingBodyValidator {
+        verifying_key,
+        expected_device_id: device_id.clone(),
+    };
+    let (sealed, open) = discover_segments(runtime_root, device_id)?;
+    let mut expected_prev = ContentHashHex::zero();
+    let mut expected_seq: Option<u64> = None;
+    for index in sealed {
+        let path = sealed_segment_path(runtime_root, device_id, index);
+        let events = scan_pack_events(
+            &path,
+            device_id,
+            &validator,
+            &mut expected_prev,
+            &mut expected_seq,
+        )?;
+        let file_len = fs::metadata(&path)
+            .map_err(|e| CanonicalWriterError::Path(e.to_string()))?
+            .len();
+        let (_, verified_len) = fold_verified_frames(&path, &validator, (), |_, _| Ok(()))?;
+        if events.is_empty() || verified_len != file_len {
+            quarantine_sealed_pack(runtime_root, device_id, index, &path)?;
+            let source_relative = format!(
+                "canonical/events/{}/{:020}.seg",
+                device_id.as_filename_stem(),
+                index
+            );
+            return Err(CanonicalWriterError::Integrity(format!(
+                "sealed pack {source_relative} failed verification (verified_len={verified_len}, file_len={file_len}, events={}); quarantined",
+                events.len()
+            )));
+        }
+        for record in &events {
+            match record {
+                VersionedRecord::VerifiedV1(ev) => on_event(ev, &path)?,
+                VersionedRecord::VerifiedV2Supported(_)
+                | VersionedRecord::VerifiedUnsupported(_) => {
+                    return Err(CanonicalWriterError::Storage(
+                        StorageError::CompatibilityBoundary(
+                            "verified v2 records require M4 retrieval-safety and materialization support"
+                                .into(),
+                        ),
+                    ));
+                }
+                VersionedRecord::Unverifiable(_) => {
+                    return Err(CanonicalWriterError::Storage(
+                        StorageError::CompatibilityBoundary(
+                            "unverifiable event blocks retrieval".into(),
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    if let Some(idx) = open {
+        recover_active_open(runtime_root, device_id, idx, &validator)?;
+        let path = active_segment_path(runtime_root, device_id, idx);
+        if path.exists() {
+            let events = scan_pack_events(
+                &path,
+                device_id,
+                &validator,
+                &mut expected_prev,
+                &mut expected_seq,
+            )?;
+            for record in &events {
+                match record {
+                    VersionedRecord::VerifiedV1(ev) => on_event(ev, &path)?,
+                    VersionedRecord::VerifiedV2Supported(_)
+                    | VersionedRecord::VerifiedUnsupported(_) => {
+                        return Err(CanonicalWriterError::Storage(
+                            StorageError::CompatibilityBoundary(
+                                "verified v2 records require M4 retrieval-safety and materialization support"
+                                    .into(),
+                            ),
+                        ));
                     }
                     VersionedRecord::Unverifiable(_) => {
                         return Err(CanonicalWriterError::Storage(
@@ -2706,7 +2823,7 @@ mod tests {
         );
         assert!(
             !seg.exists(),
-            "ADR-0016 Â§7.2: corrupt sealed .seg must be isolated from canonical tree after durable quarantine"
+            "ADR-0016 section 7.2: corrupt sealed .seg must be isolated from canonical tree after durable quarantine"
         );
 
         // Repeated load must not re-quarantine (canonical object already isolated).

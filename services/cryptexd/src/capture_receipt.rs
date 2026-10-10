@@ -1,11 +1,12 @@
-﻿//! Derived capture receipts (M5 Slice 1).
+//! Derived capture receipts (M5 Slice 1).
 //!
-//! Receipts bind `capture_id` Ã¢â€ â€™ `event_id` for the bounded idempotency epoch.
+//! Receipts bind `capture_id` -> `event_id` for the bounded idempotency epoch.
 //! They are not canonical and must not be required for note recovery.
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,8 @@ use cryptex_storage::durability::{sync_directory, sync_file, sync_parent_directo
 use crate::paths::assert_outside_repository;
 
 pub const CAPTURE_RECEIPT_SCHEMA_VERSION: u32 = 1;
+
+static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -43,6 +46,11 @@ pub enum ReceiptError {
     Invalid(String),
     AlreadyExists,
     Io(String),
+    /// Primary failure preserved together with staging cleanup failure.
+    CleanupFailed {
+        primary: String,
+        cleanup: String,
+    },
 }
 
 impl std::fmt::Display for ReceiptError {
@@ -52,6 +60,9 @@ impl std::fmt::Display for ReceiptError {
                 write!(f, "{m}")
             }
             Self::AlreadyExists => write!(f, "capture receipt already exists"),
+            Self::CleanupFailed { primary, cleanup } => {
+                write!(f, "{primary}; staging cleanup failed: {cleanup}")
+            }
         }
     }
 }
@@ -64,9 +75,13 @@ pub type ReceiptResult<T> = Result<T, ReceiptError>;
 thread_local! {
     static FAIL_RECEIPT_PERSIST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static FAIL_PACK_CONFIRM: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static FAIL_RECEIPT_CONFIRM: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static FAIL_DIR_ANCESTRY: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static LAST_PACK_CONFIRM: std::cell::RefCell<Option<PathBuf>> =
+        const { std::cell::RefCell::new(None) };
 }
 
-/// Test-only: next receipt persist fails once after staging bytes.
+/// Test-only: next receipt persist fails once.
 #[cfg(test)]
 pub fn fail_next_receipt_persist() {
     FAIL_RECEIPT_PERSIST.with(|f| f.set(true));
@@ -76,6 +91,28 @@ pub fn fail_next_receipt_persist() {
 #[cfg(test)]
 pub fn fail_next_pack_confirm() {
     FAIL_PACK_CONFIRM.with(|f| f.set(true));
+}
+
+/// Test-only: next receipt-file durability confirm fails once.
+#[cfg(test)]
+pub fn fail_next_receipt_confirm() {
+    fail_next_receipt_confirms(1);
+}
+
+#[cfg(test)]
+pub fn fail_next_receipt_confirms(count: u32) {
+    FAIL_RECEIPT_CONFIRM.with(|f| f.set(count));
+}
+
+/// Test-only: next `count` ancestry sync operations fail.
+#[cfg(test)]
+pub fn fail_next_dir_ancestry_syncs(count: u32) {
+    FAIL_DIR_ANCESTRY.with(|f| f.set(count));
+}
+
+#[cfg(test)]
+pub fn take_last_confirmed_pack() -> Option<PathBuf> {
+    LAST_PACK_CONFIRM.with(|c| c.borrow_mut().take())
 }
 
 pub fn capture_receipts_root(runtime_root: &Path) -> PathBuf {
@@ -94,20 +131,71 @@ pub fn receipt_path(
         .join(format!("{capture_id}.json"))
 }
 
-/// Create parent directories for `dir`, syncing each newly created entry's parent (Unix).
+fn inject_ancestry_fail() -> bool {
+    #[cfg(test)]
+    {
+        FAIL_DIR_ANCESTRY.with(|f| {
+            let remaining = f.get();
+            if remaining > 0 {
+                f.set(remaining - 1);
+                true
+            } else {
+                false
+            }
+        })
+    }
+    #[cfg(not(test))]
+    {
+        false
+    }
+}
+
+/// Ensure `dir` exists and that every directory entry in its ancestry has a
+/// required parent-directory sync (Unix). Existing entries are not skipped:
+/// a prior failed sync must not imply durability.
 pub fn ensure_dir_tree_durable(dir: &Path) -> ReceiptResult<()> {
+    use std::path::Component;
+
     if dir.as_os_str().is_empty() {
         return Err(ReceiptError::Path("empty directory path".into()));
     }
     let mut cur = PathBuf::new();
     for component in dir.components() {
         cur.push(component);
-        if cur.exists() {
+        // Drive prefixes and root dirs have no parent dirent to sync (Windows `C:`).
+        if matches!(component, Component::Prefix(_) | Component::RootDir) {
             continue;
         }
-        fs::create_dir(&cur).map_err(|e| ReceiptError::Io(e.to_string()))?;
+        if !cur.exists() {
+            fs::create_dir(&cur).map_err(|e| ReceiptError::Io(e.to_string()))?;
+        }
+        // Always sync, even when the directory already existed: a prior failed sync
+        // must not be treated as durable merely because the path is visible.
+        if inject_ancestry_fail() {
+            return Err(ReceiptError::Durability(
+                "injected directory ancestry sync failure".into(),
+            ));
+        }
         sync_parent_directory(&cur).map_err(|e| ReceiptError::Durability(e.to_string()))?;
     }
+    Ok(())
+}
+
+/// Confirm durability of an existing directory entry created before the helper
+/// ran (for example by device-lock acquisition).
+pub fn confirm_existing_dir_entry_durable(dir: &Path) -> ReceiptResult<()> {
+    if !dir.is_dir() {
+        return Err(ReceiptError::Path(format!(
+            "directory missing for durability confirm: {}",
+            dir.display()
+        )));
+    }
+    if inject_ancestry_fail() {
+        return Err(ReceiptError::Durability(
+            "injected directory ancestry sync failure".into(),
+        ));
+    }
+    sync_parent_directory(dir).map_err(|e| ReceiptError::Durability(e.to_string()))?;
     Ok(())
 }
 
@@ -149,7 +237,7 @@ pub fn load_receipt(
     }
 }
 
-/// Exclusive-create a PENDING receipt. Fails with [`ReceiptError::AlreadyExists`] if present.
+/// Exclusive-create a PENDING receipt via staged, synced, no-replace publish.
 pub fn create_pending_receipt_exclusive(
     runtime_root: &Path,
     receipt: &CaptureReceipt,
@@ -159,7 +247,7 @@ pub fn create_pending_receipt_exclusive(
             "create_pending_receipt_exclusive requires Pending state".into(),
         ));
     }
-    persist_receipt(runtime_root, receipt, true)
+    persist_receipt(runtime_root, receipt, PersistMode::ExclusiveNew)
 }
 
 pub fn write_committed_receipt(runtime_root: &Path, receipt: &CaptureReceipt) -> ReceiptResult<()> {
@@ -168,20 +256,26 @@ pub fn write_committed_receipt(runtime_root: &Path, receipt: &CaptureReceipt) ->
             "write_committed_receipt requires Committed state".into(),
         ));
     }
-    persist_receipt(runtime_root, receipt, false)
+    persist_receipt(runtime_root, receipt, PersistMode::Replace)
+}
+
+enum PersistMode {
+    ExclusiveNew,
+    Replace,
 }
 
 fn persist_receipt(
     runtime_root: &Path,
     receipt: &CaptureReceipt,
-    exclusive_new: bool,
+    mode: PersistMode,
 ) -> ReceiptResult<()> {
     assert_outside_repository(runtime_root).map_err(|e| ReceiptError::Path(e.to_string()))?;
+    let device = DeviceId::new(receipt.device_id.clone())
+        .map_err(|e| ReceiptError::Invalid(e.to_string()))?;
     let path = receipt_path(
         runtime_root,
         &receipt.brain_id,
-        &DeviceId::new(receipt.device_id.clone())
-            .map_err(|e| ReceiptError::Invalid(e.to_string()))?,
+        &device,
         &receipt.capture_id,
     );
     let parent = path
@@ -209,44 +303,106 @@ fn persist_receipt(
         serde_json::to_string(receipt).map_err(|e| ReceiptError::Invalid(e.to_string()))?;
     json.push('\n');
 
-    if exclusive_new {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(|e| {
-                if e.kind() == io::ErrorKind::AlreadyExists {
-                    ReceiptError::AlreadyExists
-                } else {
-                    ReceiptError::Io(e.to_string())
-                }
-            })?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| ReceiptError::Io(e.to_string()))?;
-        sync_file(&file).map_err(|e| ReceiptError::Durability(e.to_string()))?;
-        sync_parent_directory(&path).map_err(|e| ReceiptError::Durability(e.to_string()))?;
-        return Ok(());
-    }
-
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|t| t.as_nanos())
         .unwrap_or(0);
-    let tmp = path.with_extension(format!("json.tmp.{}-{nanos}", std::process::id()));
+    let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_extension(format!(
+        "json.tmp.{}-{sequence}-{nanos}",
+        std::process::id()
+    ));
     {
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&tmp)
             .map_err(|e| ReceiptError::Io(e.to_string()))?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| ReceiptError::Io(e.to_string()))?;
-        sync_file(&file).map_err(|e| ReceiptError::Durability(e.to_string()))?;
+        if let Err(primary) = file
+            .write_all(json.as_bytes())
+            .and_then(|_| file.sync_all())
+        {
+            return Err(cleanup_staging(&tmp, ReceiptError::Io(primary.to_string())));
+        }
     }
-    replace_atomic(&tmp, &path)?;
-    sync_parent_directory(&path).map_err(|e| ReceiptError::Durability(e.to_string()))?;
-    let _ = sync_directory(parent);
-    Ok(())
+
+    let place = match mode {
+        PersistMode::ExclusiveNew => {
+            if path.exists() {
+                Err(ReceiptError::AlreadyExists)
+            } else {
+                place_new_file_no_replace(&tmp, &path)
+            }
+        }
+        PersistMode::Replace => replace_atomic(&tmp, &path),
+    };
+    match place {
+        Ok(()) => {
+            sync_parent_directory(&path).map_err(|e| ReceiptError::Durability(e.to_string()))?;
+            sync_directory(parent).map_err(|e| ReceiptError::Durability(e.to_string()))?;
+            Ok(())
+        }
+        Err(primary) => Err(cleanup_staging(&tmp, primary)),
+    }
+}
+
+fn cleanup_staging(tmp: &Path, primary: ReceiptError) -> ReceiptError {
+    match fs::remove_file(tmp) {
+        Ok(()) => primary,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => primary,
+        Err(cleanup) => ReceiptError::CleanupFailed {
+            primary: primary.to_string(),
+            cleanup: cleanup.to_string(),
+        },
+    }
+}
+
+fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> ReceiptResult<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
+        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
+        let to: Vec<u16> = dest.as_os_str().encode_wide().chain(Some(0)).collect();
+        let ok = unsafe {
+            windows_sys::Win32::Storage::FileSystem::MoveFileExW(
+                from.as_ptr(),
+                to.as_ptr(),
+                MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        if ok == 0 {
+            let err = io::Error::last_os_error();
+            if err.kind() == io::ErrorKind::AlreadyExists || err.raw_os_error() == Some(183) {
+                return Err(ReceiptError::AlreadyExists);
+            }
+            return Err(ReceiptError::Io(err.to_string()));
+        }
+        Ok(())
+    }
+    #[cfg(unix)]
+    {
+        fs::hard_link(tmp, dest).map_err(|err| {
+            if err.kind() == io::ErrorKind::AlreadyExists {
+                ReceiptError::AlreadyExists
+            } else {
+                ReceiptError::Io(err.to_string())
+            }
+        })?;
+        fs::remove_file(tmp).map_err(|err| {
+            ReceiptError::Io(format!(
+                "failed to remove receipt staging file after durable placement: {err}"
+            ))
+        })?;
+        Ok(())
+    }
+    #[cfg(not(any(windows, unix)))]
+    {
+        let _ = (tmp, dest);
+        Err(ReceiptError::Io(
+            "exclusive receipt placement unsupported on this platform".into(),
+        ))
+    }
 }
 
 fn replace_atomic(tmp: &Path, path: &Path) -> ReceiptResult<()> {
@@ -265,17 +421,13 @@ fn replace_atomic(tmp: &Path, path: &Path) -> ReceiptResult<()> {
             )
         };
         if ok == 0 {
-            let _ = fs::remove_file(tmp);
             return Err(ReceiptError::Io(io::Error::last_os_error().to_string()));
         }
         Ok(())
     }
     #[cfg(unix)]
     {
-        fs::rename(tmp, path).map_err(|e| {
-            let _ = fs::remove_file(tmp);
-            ReceiptError::Io(e.to_string())
-        })
+        fs::rename(tmp, path).map_err(|e| ReceiptError::Io(e.to_string()))
     }
     #[cfg(not(any(windows, unix)))]
     {
@@ -309,7 +461,6 @@ pub fn confirm_pack_durable(pack_path: &Path) -> ReceiptResult<()> {
             pack_path.display()
         )));
     }
-    // Windows FlushFileBuffers requires a writable handle (same pattern as seal).
     let file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -317,5 +468,46 @@ pub fn confirm_pack_durable(pack_path: &Path) -> ReceiptResult<()> {
         .map_err(|e| ReceiptError::Io(e.to_string()))?;
     sync_file(&file).map_err(|e| ReceiptError::Durability(e.to_string()))?;
     sync_parent_directory(pack_path).map_err(|e| ReceiptError::Durability(e.to_string()))?;
+    #[cfg(test)]
+    {
+        LAST_PACK_CONFIRM.with(|c| {
+            *c.borrow_mut() = Some(pack_path.to_path_buf());
+        });
+    }
+    Ok(())
+}
+
+/// Confirm durability of an on-disk receipt file (required even when state is COMMITTED).
+pub fn confirm_receipt_durable(path: &Path) -> ReceiptResult<()> {
+    #[cfg(test)]
+    {
+        let fail = FAIL_RECEIPT_CONFIRM.with(|f| {
+            let left = f.get();
+            if left > 0 {
+                f.set(left - 1);
+                true
+            } else {
+                false
+            }
+        });
+        if fail {
+            return Err(ReceiptError::Durability(
+                "injected receipt durability confirm failure".into(),
+            ));
+        }
+    }
+    if !path.is_file() {
+        return Err(ReceiptError::Path(format!(
+            "receipt missing for durability confirm: {}",
+            path.display()
+        )));
+    }
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(|e| ReceiptError::Io(e.to_string()))?;
+    sync_file(&file).map_err(|e| ReceiptError::Durability(e.to_string()))?;
+    sync_parent_directory(path).map_err(|e| ReceiptError::Durability(e.to_string()))?;
     Ok(())
 }

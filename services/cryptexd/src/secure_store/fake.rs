@@ -2,17 +2,29 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{SecureStore, SecureStoreError, SecureStoreResult, validate_name_pair};
 
 /// Process-local fake store. Secrets are zeroed on overwrite/delete/drop of entries.
-#[derive(Default)]
 pub struct FakeSecureStore {
     inner: Mutex<HashMap<(String, String), Vec<u8>>>,
     /// When set, the next `put` returns this error and clears the latch.
     fail_next_put: Mutex<Option<SecureStoreError>>,
     /// When set, the next `delete` returns this error and clears the latch.
     fail_next_delete: Mutex<Option<SecureStoreError>>,
+    put_count: AtomicU64,
+}
+
+impl Default for FakeSecureStore {
+    fn default() -> Self {
+        Self {
+            inner: Mutex::new(HashMap::new()),
+            fail_next_put: Mutex::new(None),
+            fail_next_delete: Mutex::new(None),
+            put_count: AtomicU64::new(0),
+        }
+    }
 }
 
 impl FakeSecureStore {
@@ -22,6 +34,10 @@ impl FakeSecureStore {
 
     pub fn len(&self) -> usize {
         self.inner.lock().expect("fake store lock").len()
+    }
+
+    pub fn put_count(&self) -> u64 {
+        self.put_count.load(Ordering::SeqCst)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -57,6 +73,7 @@ impl SecureStore for FakeSecureStore {
             zeroize(&mut old);
         }
         map.insert(key, secret.to_vec());
+        self.put_count.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
