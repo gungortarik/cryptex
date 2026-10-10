@@ -53,7 +53,8 @@ Do **not** claim macOS PASS without running these on a Mac host at this SHA:
 ```bash
 git fetch origin codex/m5-capture-timeline
 git checkout codex/m5-capture-timeline
-git reset --hard d206ea4dc213f56908807a7700c1f6542e14787a
+git pull --ff-only origin codex/m5-capture-timeline
+git merge-base --is-ancestor d206ea4dc213f56908807a7700c1f6542e14787a HEAD
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/Library/Caches/cryptex-cargo-target}"
 cargo fmt --all -- --check
 cargo test -p cryptexd --lib capture:: -- --test-threads=1
