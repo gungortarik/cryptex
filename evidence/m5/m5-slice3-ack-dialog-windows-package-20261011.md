@@ -33,21 +33,23 @@ Serve script: `D:\VMs\Win11\serve-m5-s3-ack-zip.ps1` (guest peer `192.168.177.13
 
 Unsigned. No networking/firewall/host security settings changed.
 
-## Interactive verification — BLOCKED
+## Initial interactive status (superseded)
 
-`vmrun list` → **Total running VMs: 0**.  
-Per prior instruction, `vmrun start` was not retried and the encryption password was not requested.
+At package preparation time, `vmrun list` reported **Total running VMs: 0**.
+The guest was later started by the owner; no password was requested by this
+reporting agent.
 
-No Desktop/daemon launch, no pilot PIDs, no ack/archive/Quit observations on Windows for `a172d4b`.  
-Mac native PASS for this product remains at `evidence/m5/m5-slice3-ack-dialog-macos-native-pass-20261011.md`.  
-Automated capture-policy coverage is not native UX evidence.
+The initial package preparation was blocked while the guest was offline. It was
+later downloaded, hash-verified and exercised in a fresh marker-only pilot.
+Current native results are recorded at
+`evidence/m5/m5-slice3-ack-dialog-windows-native-pass-20261011.md`.
 
 ### Prepared host-side pilot stub (unused)
 
 `%LOCALAPPDATA%\Cryptex-Dev\m5-s3-ack-0abdeff7a7504dcd\runtime`  
 contains only `pilot-runtime.marker` = `m0-native-desktop-runtime-v1\n`. Not launched.
 
-## Owner steps after guest unlock
+## Original owner steps (completed; retained for provenance)
 
 1. Unlock/start the Windows 11 VMware guest (owner).  
 2. In guest, download the zip URL above; verify SHA-256 `793430e6…`.  
@@ -72,8 +74,7 @@ $pkg = "$env:LOCALAPPDATA\Cryptex-Dev\m5-s3-ack-a172d4b\pkg"
    - Quit → **Yes** → clean shutdown; no orphans; record `clean_quit_*` / lock release.  
 6. Stop at the first failure; record button labels, PIDs, and notes.
 
-## Remaining gates
+## Remaining gates (after native PASS)
 
-- Windows native ack/archive/Quit at product `a172d4b` (this package) — OPEN (guest offline).  
 - Optional close-to-tray/reopen with archive state — OPEN.  
 - No Actions, merge, Slice 4, or M5-complete.
