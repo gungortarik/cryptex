@@ -110,6 +110,8 @@ export function App() {
     Array<CaptureSnapshot & { canResolve?: boolean }>
   >([]);
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
+  const [confirmDeliberateNew, setConfirmDeliberateNew] = useState(false);
+  const deliberateNewDialogRef = useRef<HTMLDialogElement>(null);
   const draftDirtyRef = useRef(false);
   const liveDraftRef = useRef({ text: "", classification: "" });
   const byteCount = useMemo(() => utf8ByteLength(draftText), [draftText]);
@@ -329,57 +331,8 @@ export function App() {
     });
     if (!ordinary.allowed) {
       if (ordinary.code === "unresolved_blocks_save") {
-        const deliberate = window.confirm(
-          `${ordinary.message}\n\nStart a new capture with a new id anyway? This may duplicate an earlier note if the unresolved submission later commits.`,
-        );
-        if (!deliberate) {
-          setCaptureNotice(ordinary.message ?? null);
-          return;
-        }
-        const deliberateDecision = evaluateDeliberateNewSave(state, {
-          acknowledgeDuplication: true,
-          text: draftText,
-          classification,
-        });
-        if (!deliberateDecision.allowed) {
-          setCaptureNotice(deliberateDecision.message ?? null);
-          return;
-        }
-        const captureId = newCaptureId();
-        const generation = captureRequestGate.begin();
-        const next = reduceCaptureSubmission(state, {
-          type: "save_deliberate",
-          acknowledgeDuplication: true,
-          captureId,
-          text: draftText,
-          classification,
-        });
-        // Keep generation in sync with gate.
-        next.generation = generation;
-        captureSeq.current = generation;
-        syncUiFromPolicy(next);
-        const snapshot = next.pending!;
-        try {
-          const response = await invoke<CaptureResponse>("p0_5_capture_memory", {
-            body: {
-              captureId,
-              text: snapshot.text,
-              classification: snapshot.classification,
-            },
-          });
-          applyCaptureResponse(response, snapshot, generation);
-        } catch (error) {
-          if (!captureRequestGate.isCurrent(generation)) return;
-          const code = error instanceof Error ? error.message : String(error);
-          const message = redactedCaptureTransportMessage(code);
-          const uncertain = reduceCaptureSubmission(currentPolicyState(), {
-            type: "transport_uncertain",
-            generation,
-            captureId,
-            message,
-          });
-          syncUiFromPolicy(uncertain);
-        }
+        setCaptureNotice(ordinary.message ?? null);
+        setConfirmDeliberateNew(true);
         return;
       }
       const next = reduceCaptureSubmission(state, {
@@ -427,6 +380,65 @@ export function App() {
       syncUiFromPolicy(uncertain);
     }
   }
+
+  async function confirmDeliberateNewCapture() {
+    setConfirmDeliberateNew(false);
+    const state = currentPolicyState();
+    const deliberateDecision = evaluateDeliberateNewSave(state, {
+      acknowledgeDuplication: true,
+      text: draftText,
+      classification,
+    });
+    if (!deliberateDecision.allowed) {
+      setCaptureNotice(deliberateDecision.message ?? null);
+      return;
+    }
+    const captureId = newCaptureId();
+    const generation = captureRequestGate.begin();
+    const next = reduceCaptureSubmission(state, {
+      type: "save_deliberate",
+      acknowledgeDuplication: true,
+      captureId,
+      text: draftText,
+      classification,
+    });
+    next.generation = generation;
+    captureSeq.current = generation;
+    syncUiFromPolicy(next);
+    const snapshot = next.pending!;
+    try {
+      const response = await invoke<CaptureResponse>("p0_5_capture_memory", {
+        body: {
+          captureId,
+          text: snapshot.text,
+          classification: snapshot.classification,
+        },
+      });
+      applyCaptureResponse(response, snapshot, generation);
+    } catch (error) {
+      if (!captureRequestGate.isCurrent(generation)) return;
+      const code = error instanceof Error ? error.message : String(error);
+      const message = redactedCaptureTransportMessage(code);
+      const uncertain = reduceCaptureSubmission(currentPolicyState(), {
+        type: "transport_uncertain",
+        generation,
+        captureId,
+        message,
+      });
+      syncUiFromPolicy(uncertain);
+    }
+  }
+
+  function cancelDeliberateNewCapture() {
+    setConfirmDeliberateNew(false);
+  }
+
+  useEffect(() => {
+    const dialog = deliberateNewDialogRef.current;
+    if (!dialog) return;
+    if (confirmDeliberateNew && !dialog.open) dialog.showModal();
+    if (!confirmDeliberateNew && dialog.open) dialog.close();
+  }, [confirmDeliberateNew]);
 
   async function resolvePendingCapture() {
     const state = currentPolicyState();
@@ -802,6 +814,44 @@ export function App() {
           <span className="footer-separator">·</span>
           <span>Stored and searched locally</span>
         </footer>
+
+        {confirmDeliberateNew ? (
+          <dialog
+            ref={deliberateNewDialogRef}
+            className="capture-confirm-dialog"
+            aria-labelledby="capture-confirm-title"
+            aria-describedby="capture-confirm-description"
+            onCancel={(event) => {
+              event.preventDefault();
+              cancelDeliberateNewCapture();
+            }}
+          >
+              <p className="panel-kicker">Unresolved capture</p>
+              <h2 id="capture-confirm-title">Start another capture?</h2>
+              <p id="capture-confirm-description">
+                The earlier submission may still commit. Starting a new capture
+                uses a new id and could create a duplicate note. The earlier
+                capture will remain listed so you can resolve it later.
+              </p>
+              <div className="capture-confirm-actions">
+                <button
+                  className="capture-secondary"
+                  type="button"
+                  onClick={cancelDeliberateNewCapture}
+                  autoFocus
+                >
+                  Cancel
+                </button>
+                <button
+                  className="search-button"
+                  type="button"
+                  onClick={() => void confirmDeliberateNewCapture()}
+                >
+                  Start new capture
+                </button>
+              </div>
+          </dialog>
+        ) : null}
       </section>
     </main>
   );

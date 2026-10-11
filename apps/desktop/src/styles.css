@@ -183,3 +183,13 @@ button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, va
 .capture-archive { margin-top: 10px; }
 .capture-archive-list { margin: 6px 0 0; padding-left: 18px; }
 .capture-archive-list li { margin: 6px 0; }
+.capture-confirm-dialog {
+  width: min(460px, calc(100% - 32px)); max-height: calc(100% - 32px); padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 16px; background: var(--surface); color: var(--ink);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 28%);
+}
+.capture-confirm-dialog::backdrop { background: rgb(18 17 15 / 58%); }
+.capture-confirm-dialog h2 { margin: 0; font-family: var(--display); font-size: 27px; font-weight: 500; }
+.capture-confirm-dialog > p:not(.panel-kicker) { color: var(--muted); line-height: 1.55; }
+.capture-confirm-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
