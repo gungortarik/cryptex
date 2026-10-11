@@ -1,6 +1,7 @@
 //! Explicit M0 pilot isolation, validated before Tauri or daemon startup.
 use std::ffi::OsString;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -30,7 +31,49 @@ fn ordinary(file: &Path, directory: bool) -> Result<(), PilotError> {
     Ok(())
 }
 
+fn is_absent_path_error(error: &io::Error) -> bool {
+    matches!(error.kind(), io::ErrorKind::NotFound)
+}
+
+/// Compile-time repository hint from the Desktop crate layout (apps/desktop/src-tauri -> repo root).
+///
+/// On a machine that still has this build tree, containment under the hint is rejected.
+/// Packaged binaries must not require the build machine path to exist.
+fn build_time_repository_hint() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
+}
+
+/// Resolve the build-time repository boundary.
+///
+/// - Present and canonicalizable -> Some(repo)
+/// - Absent (`NotFound`) -> `None` (portable packaged launch)
+/// - Permission or unexpected I/O -> PilotError::Io (fail closed)
+fn resolve_build_time_repository(hint: &Path) -> Result<Option<PathBuf>, PilotError> {
+    match fs::canonicalize(hint) {
+        Ok(path) => Ok(Some(path)),
+        Err(error) if is_absent_path_error(&error) => Ok(None),
+        Err(_) => Err(PilotError::Io),
+    }
+}
+
+/// Reject runtimes that sit inside any Git checkout, independent of the build host path.
+fn ancestor_contains_git(root: &Path) -> Result<bool, PilotError> {
+    for ancestor in root.ancestors() {
+        let git = ancestor.join(".git");
+        match fs::symlink_metadata(&git) {
+            Ok(_) => return Ok(true),
+            Err(error) if is_absent_path_error(&error) => continue,
+            Err(_) => return Err(PilotError::Io),
+        }
+    }
+    Ok(false)
+}
+
 fn validate(root: &Path) -> Result<(), PilotError> {
+    validate_with_repository_hint(root, &build_time_repository_hint())
+}
+
+fn validate_with_repository_hint(root: &Path, repository_hint: &Path) -> Result<(), PilotError> {
     if !root.is_absolute()
         || root
             .components()
@@ -41,12 +84,14 @@ fn validate(root: &Path) -> Result<(), PilotError> {
     for ancestor in root.ancestors() {
         ordinary(ancestor, true)?;
     }
-    let repository = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.."))
-        .map_err(|_| PilotError::Io)?;
-    if fs::canonicalize(root)
-        .map_err(|_| PilotError::Io)?
-        .starts_with(repository)
+    if let Some(repository) = resolve_build_time_repository(repository_hint)?
+        && fs::canonicalize(root)
+            .map_err(|_| PilotError::Io)?
+            .starts_with(repository)
     {
+        return Err(PilotError::UnsafeRoot);
+    }
+    if ancestor_contains_git(root)? {
         return Err(PilotError::UnsafeRoot);
     }
     let marker = root.join("pilot-runtime.marker");
@@ -134,6 +179,28 @@ mod tests {
         }
     }
 
+    fn fixture_under(parent: &Path) -> PathBuf {
+        loop {
+            let stamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let sequence = FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let root = parent.join(format!(
+                "cryptex-pilot-runtime-inside-repo-{}-{sequence}-{stamp}",
+                std::process::id()
+            ));
+            match fs::create_dir(&root) {
+                Ok(()) => {
+                    fs::write(root.join("pilot-runtime.marker"), MARKER).unwrap();
+                    return root;
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(err) => panic!("fixture_under create_dir failed: {err}"),
+            }
+        }
+    }
+
     #[test]
     fn ordinary_launch_has_no_override_and_missing_option_is_rejected() {
         assert_eq!(parse(&["--cryptex-background".into()]).unwrap(), None);
@@ -159,6 +226,28 @@ mod tests {
     }
 
     #[test]
+    fn valid_isolated_runtime_is_accepted() {
+        let root = fixture();
+        assert_eq!(validate(&root), Ok(()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn absent_build_time_repository_allows_isolated_runtime() {
+        let root = fixture();
+        let missing_build_tree = root.join("missing-build-time-cargo-manifest-repo");
+        assert!(
+            !missing_build_tree.exists(),
+            "fixture must not create the absent build-time path"
+        );
+        assert_eq!(
+            validate_with_repository_hint(&root, &missing_build_tree),
+            Ok(())
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn wrong_marker_and_reused_root_are_rejected() {
         let root = fixture();
         fs::write(root.join("pilot-runtime.marker"), "wrong").unwrap();
@@ -175,6 +264,15 @@ mod tests {
         let repo =
             fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")).unwrap();
         assert_eq!(validate(&repo), Err(PilotError::UnsafeRoot));
+        // Inside an existing checkout must remain rejected even when the build-time
+        // hint is absent (portable packaged binary on another machine).
+        let nested = fixture_under(&repo);
+        let missing_build_tree = nested.join("missing-build-time-cargo-manifest-repo");
+        assert_eq!(
+            validate_with_repository_hint(&nested, &missing_build_tree),
+            Err(PilotError::UnsafeRoot)
+        );
+        fs::remove_dir_all(nested).unwrap();
     }
 
     #[test]
