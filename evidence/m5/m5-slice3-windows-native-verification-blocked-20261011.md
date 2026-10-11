@@ -95,3 +95,13 @@ do not waive acceptance.
 5. Launch: `cryptex-desktop.exe --cryptex-pilot-runtime <pilot>`.
 6. Announce before desktop control; perform Quit Cancel/Confirm matrix + close-to-tray.
 7. Record button labels, PIDs, notes (`clean_quit_from_app_menu` / `clean_quit_from_tray`), lock release.
+
+## Re-attempt 2026-10-11 ~15:00 UTC (same host)
+
+Checkout re-inspected: tracked tree clean at 6aa984b7d024293b23d2c2c9204182bfa95b6b7f (docs tip after 566a798); product ancestor 9b3e4c still present; untracked scratch preserved; no sync/reset/stash.
+Staged artifacts re-hashed; SHA-256 unchanged vs provenance.
+Transfer zip present; host-only VMnet8 still 192.168.177.1; one-time serve script prepared at D:\VMs\Win11\serve-m5-s3-zip.ps1 (**not started** — guest offline).
+mrun path corrected to C:\Program Files\VMware\VMware Workstation\vmrun.exe.
+mrun list → Total running VMs: 0.
+mrun start "D:\VMs\Win11\Windows 11 x64.vmx" gui → **Error: A password is required for this operation** (exit -1).
+Native Quit pilots and archive UX still **NOT EXECUTED / NOT VERIFIED**.
