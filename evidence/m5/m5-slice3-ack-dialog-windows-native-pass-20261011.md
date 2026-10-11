@@ -1,9 +1,9 @@
 # M5 Slice 3 -- Windows native acknowledgement/archive/Quit PASS
 
-**Date:** 2026-10-11  
-**Product SHA:** `a172d4bc45a2bd041a4e28ba6342a9ab9e62dd44`  
-**Package source HEAD:** `65b22417e64378dab0df10213523177888ea5225` (product tree identical; later documentation commits only)  
-**Guest:** Windows 11 x64 VMware guest  
+**Date:** 2026-10-11
+**Product SHA:** `a172d4bc45a2bd041a4e28ba6342a9ab9e62dd44`
+**Package source HEAD:** `65b22417e64378dab0df10213523177888ea5225` (product tree identical; later documentation commits only)
+**Guest:** Windows 11 x64 VMware guest
 **Package ZIP SHA-256:** `793430e6dae75b66cc72560ad246c5bae5f3e98171f4d11992ecd46398fb7336`
 
 ## Isolated pilot
