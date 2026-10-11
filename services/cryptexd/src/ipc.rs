@@ -27,7 +27,7 @@ use crate::{
 use cryptex_core::DeviceId;
 use cryptex_events::Classification;
 use cryptex_events::limits::MAX_MEMORY_NOTE_TEXT_BYTES;
-use cryptex_projection::{ProjectionDb, SearchHit, SearchQuery};
+use cryptex_projection::{ProjectionDb, SearchHit, SearchQuery, TimelineCursor, TimelineQuery};
 #[cfg(windows)]
 use interprocess::local_socket::GenericNamespaced;
 use interprocess::local_socket::{ListenerOptions, Stream, prelude::*};
@@ -41,6 +41,10 @@ const CAPABILITY_IDENTITY_SETUP: &str = "identity.setup";
 const MAX_SEARCH_TEXT_BYTES: usize = 1024;
 const MAX_SEARCH_FILTER_BYTES: usize = 128;
 const MAX_SEARCH_RESPONSE_BYTES: usize = 1024 * 1024;
+const MAX_DETAIL_RESPONSE_BYTES: usize =
+    MAX_MEMORY_NOTE_TEXT_BYTES * MAX_JSON_STRING_ESCAPE_FACTOR + MAX_CAPTURE_REQUEST_OVERHEAD_BYTES;
+const MAX_TIMELINE_PAGE_SIZE: u32 = 50;
+const TIMELINE_SNIPPET_BYTES: usize = 384;
 const MAX_RESPONSE_BYTES: usize = MAX_SEARCH_RESPONSE_BYTES;
 const IPC_REQUEST_DEADLINE: Duration = Duration::from_secs(2);
 const IPC_RESPONSE_DEADLINE: Duration = Duration::from_secs(15);
@@ -129,10 +133,24 @@ pub struct DesktopSearchQuery {
     pub created_at_from: Option<String>,
     pub created_at_to: Option<String>,
     pub limit: Option<u32>,
+    #[serde(default)]
+    pub cursor: Option<DesktopTimelineCursor>,
+    #[serde(default)]
+    pub event_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DesktopTimelineCursor {
+    pub created_at: String,
+    pub event_id: String,
 }
 
 impl DesktopSearchQuery {
     fn validate_and_convert(&self) -> Result<SearchQuery, &'static str> {
+        if self.cursor.is_some() || self.event_id.is_some() {
+            return Err("invalid_search_cursor");
+        }
         if self
             .text
             .as_ref()
@@ -174,6 +192,87 @@ impl DesktopSearchQuery {
             limit: Some(self.limit.unwrap_or(10)),
         })
     }
+
+    fn validate_timeline_and_convert(&self) -> Result<TimelineQuery, &'static str> {
+        if self.event_id.is_some() {
+            return Err("unexpected_timeline_event_id");
+        }
+        for value in [
+            self.classification.as_ref(),
+            self.event_type.as_ref(),
+            self.device_id.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if value.is_empty() || value.len() > MAX_SEARCH_FILTER_BYTES {
+                return Err("invalid_search_filter");
+            }
+        }
+        for value in [self.created_at_from.as_ref(), self.created_at_to.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            if value.is_empty() || value.len() > 64 {
+                return Err("invalid_search_time_bound");
+            }
+        }
+        if self.text.is_some() {
+            return Err("unexpected_timeline_text");
+        }
+        if self
+            .limit
+            .is_some_and(|limit| !(1..=MAX_TIMELINE_PAGE_SIZE).contains(&limit))
+        {
+            return Err("invalid_timeline_limit");
+        }
+        let cursor = self
+            .cursor
+            .as_ref()
+            .map(|cursor| {
+                if cursor.created_at.is_empty()
+                    || cursor.created_at.len() > 64
+                    || cursor.event_id.is_empty()
+                    || cursor.event_id.len() > 128
+                {
+                    return Err("invalid_timeline_cursor");
+                }
+                Ok(TimelineCursor {
+                    created_at: cursor.created_at.clone(),
+                    event_id: cursor.event_id.clone(),
+                })
+            })
+            .transpose()?;
+        Ok(TimelineQuery {
+            classification: self.classification.clone(),
+            event_type: self.event_type.clone(),
+            device_id: self.device_id.clone(),
+            brain_id: None,
+            created_at_from: self.created_at_from.clone(),
+            created_at_to: self.created_at_to.clone(),
+            cursor,
+            limit: self.limit.unwrap_or(20),
+        })
+    }
+
+    fn validate_event_detail_id(&self) -> Result<&str, &'static str> {
+        if self.text.is_some()
+            || self.classification.is_some()
+            || self.event_type.is_some()
+            || self.device_id.is_some()
+            || self.created_at_from.is_some()
+            || self.created_at_to.is_some()
+            || self.limit.is_some()
+            || self.cursor.is_some()
+        {
+            return Err("unexpected_event_detail_filter");
+        }
+        let event_id = self.event_id.as_deref().ok_or("missing_event_id")?;
+        if event_id.is_empty() || event_id.len() > 128 {
+            return Err("invalid_event_id");
+        }
+        Ok(event_id)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +285,8 @@ pub struct DesktopSearchHit {
     pub created_at: String,
     pub event_type: String,
     pub classification: String,
+    pub content_hash: String,
+    pub signing_key_id: String,
     pub text: String,
 }
 
@@ -199,6 +300,8 @@ impl From<SearchHit> for DesktopSearchHit {
             created_at: hit.created_at,
             event_type: hit.event_type,
             classification: hit.classification,
+            content_hash: hit.content_hash,
+            signing_key_id: hit.signing_key_id,
             text: hit.text,
         }
     }
@@ -215,6 +318,10 @@ pub struct DesktopSearchResponse {
     pub daemon_pid: u32,
     pub hits: Option<Vec<DesktopSearchHit>>,
     pub hold_reason: Option<String>,
+    #[serde(default)]
+    pub next_cursor: Option<DesktopTimelineCursor>,
+    #[serde(default)]
+    pub has_more: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -619,6 +726,100 @@ pub fn desktop_search(
     Ok(response)
 }
 
+pub fn desktop_timeline(
+    query: DesktopSearchQuery,
+    timeout: Duration,
+) -> io::Result<DesktopSearchResponse> {
+    let name = socket_name()?;
+    let started = Instant::now();
+    let mut last_error = None;
+    let mut stream = loop {
+        match Stream::connect(name.clone()) {
+            Ok(stream) => break stream,
+            Err(error) if started.elapsed() < timeout => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(last_error.unwrap_or(error)),
+        }
+    };
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let request_id = format!("{}-{nonce}", process::id());
+    let request = Request {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_CONTENT_SEARCH.into()],
+        operation: "content.timeline".into(),
+        query: Some(query),
+        capture: None,
+        capture_resolve: None,
+    };
+    let frame = exchange(&mut stream, &request, MAX_SEARCH_RESPONSE_BYTES)?;
+    let response: DesktopSearchResponse = serde_json::from_slice(&frame)?;
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(&request_id)
+        || (response.accepted && response.operation.as_deref() != Some("content.timeline.result"))
+    {
+        return Err(invalid_data(
+            "IPC timeline response did not match the request",
+        ));
+    }
+    Ok(response)
+}
+
+pub fn desktop_event_detail(
+    event_id: String,
+    timeout: Duration,
+) -> io::Result<DesktopSearchResponse> {
+    let name = socket_name()?;
+    let started = Instant::now();
+    let mut last_error = None;
+    let mut stream = loop {
+        match Stream::connect(name.clone()) {
+            Ok(stream) => break stream,
+            Err(error) if started.elapsed() < timeout => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(last_error.unwrap_or(error)),
+        }
+    };
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let request_id = format!("{}-{nonce}", process::id());
+    let request = Request {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_CONTENT_SEARCH.into()],
+        operation: "content.event.detail".into(),
+        query: Some(DesktopSearchQuery {
+            event_id: Some(event_id),
+            ..DesktopSearchQuery::default()
+        }),
+        capture: None,
+        capture_resolve: None,
+    };
+    let frame = exchange(&mut stream, &request, MAX_DETAIL_RESPONSE_BYTES)?;
+    let response: DesktopSearchResponse = serde_json::from_slice(&frame)?;
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(&request_id)
+        || (response.accepted
+            && response.operation.as_deref() != Some("content.event.detail.result"))
+    {
+        return Err(invalid_data(
+            "IPC event detail response did not match the request",
+        ));
+    }
+    Ok(response)
+}
+
 /// Explicit user-invoked local identity enrollment. This is never called as a
 /// side effect of starting the Desktop, searching, or loading a window.
 pub fn desktop_enroll_local_device(timeout: Duration) -> io::Result<DesktopEnrollmentResponse> {
@@ -884,6 +1085,56 @@ fn handle_connection_for_peer(
                     } else {
                         bytes
                     }
+                } else if request.operation == "content.timeline" {
+                    let response_deadline = Instant::now() + IPC_RESPONSE_DEADLINE;
+                    let reservation = desktop_search_workers.and_then(|workers| {
+                        try_reserve_ipc_worker(workers, MAX_DESKTOP_SEARCH_WORKERS)
+                    });
+                    let response = if desktop_search_workers.is_some() && reservation.is_none() {
+                        timeline_rejected(Some(request.request_id), "search_busy")
+                    } else {
+                        run_timeline_until(
+                            request,
+                            search.cloned(),
+                            peer_is_desktop,
+                            response_deadline,
+                            reservation,
+                        )
+                    };
+                    let bytes = serde_json::to_vec(&response)?;
+                    if bytes.len() + 1 > MAX_SEARCH_RESPONSE_BYTES {
+                        serde_json::to_vec(&timeline_rejected(
+                            response.request_id,
+                            "response_too_large",
+                        ))?
+                    } else {
+                        bytes
+                    }
+                } else if request.operation == "content.event.detail" {
+                    let response_deadline = Instant::now() + IPC_RESPONSE_DEADLINE;
+                    let reservation = desktop_search_workers.and_then(|workers| {
+                        try_reserve_ipc_worker(workers, MAX_DESKTOP_SEARCH_WORKERS)
+                    });
+                    let response = if desktop_search_workers.is_some() && reservation.is_none() {
+                        event_detail_rejected(Some(request.request_id), "search_busy")
+                    } else {
+                        run_event_detail_until(
+                            request,
+                            search.cloned(),
+                            peer_is_desktop,
+                            response_deadline,
+                            reservation,
+                        )
+                    };
+                    let bytes = serde_json::to_vec(&response)?;
+                    if bytes.len() + 1 > MAX_DETAIL_RESPONSE_BYTES {
+                        serde_json::to_vec(&event_detail_rejected(
+                            response.request_id,
+                            "response_too_large",
+                        ))?
+                    } else {
+                        bytes
+                    }
                 } else if request.operation == "memory.capture"
                     || request.operation == "memory.capture_resolve"
                 {
@@ -946,6 +1197,72 @@ fn run_search_until(
     run_bounded_search(request_id, deadline, reservation, move || {
         handle_search_until(request, context.as_ref(), peer_is_desktop, Some(deadline))
     })
+}
+
+fn run_timeline_until(
+    request: Request,
+    context: Option<SearchContext>,
+    peer_is_desktop: bool,
+    deadline: Instant,
+    reservation: Option<IpcWorkerReservation>,
+) -> DesktopSearchResponse {
+    let request_id = request.request_id.clone();
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let spawned = thread::Builder::new()
+        .name("cryptex-ipc-timeline".into())
+        .spawn(move || {
+            let _reservation = reservation;
+            let response =
+                handle_timeline_until(request, context.as_ref(), peer_is_desktop, Some(deadline));
+            let _ = sender.send(response);
+        });
+    if spawned.is_err() {
+        return timeline_held(Some(request_id), "search_worker_unavailable");
+    }
+    match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        Ok(response) if Instant::now() <= deadline => response,
+        Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            timeline_held(Some(request_id), "operation_deadline_exceeded")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            timeline_held(Some(request_id), "canonical_verification_unavailable")
+        }
+    }
+}
+
+fn run_event_detail_until(
+    request: Request,
+    context: Option<SearchContext>,
+    peer_is_desktop: bool,
+    deadline: Instant,
+    reservation: Option<IpcWorkerReservation>,
+) -> DesktopSearchResponse {
+    let request_id = request.request_id.clone();
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let spawned = thread::Builder::new()
+        .name("cryptex-ipc-event-detail".into())
+        .spawn(move || {
+            let _reservation = reservation;
+            let response = handle_event_detail_until(
+                request,
+                context.as_ref(),
+                peer_is_desktop,
+                Some(deadline),
+            );
+            let _ = sender.send(response);
+        });
+    if spawned.is_err() {
+        return event_detail_held(Some(request_id), "search_worker_unavailable");
+    }
+    match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        Ok(response) if Instant::now() <= deadline => response,
+        Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            event_detail_held(Some(request_id), "operation_deadline_exceeded")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            event_detail_held(Some(request_id), "canonical_verification_unavailable")
+        }
+    }
 }
 
 fn run_bounded_search<F>(
@@ -1714,6 +2031,8 @@ fn handle_search_until(
         Some("unauthorized_client_process")
     } else if request.capabilities.as_slice() != [CAPABILITY_CONTENT_SEARCH] {
         Some("unauthorized_capability")
+    } else if request.operation != "content.search" {
+        Some("unsupported_operation")
     } else if request.query.is_none() {
         Some("missing_search_query")
     } else if request.capture.is_some() || request.capture_resolve.is_some() {
@@ -1805,6 +2124,230 @@ fn handle_search_until(
     }
 }
 
+fn handle_timeline_until(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+    deadline: Option<Instant>,
+) -> DesktopSearchResponse {
+    let request_id = request.request_id.clone();
+    let authorization_error = if request.protocol_version != PROTOCOL_VERSION {
+        Some("incompatible_protocol_version")
+    } else if request.request_id.is_empty() || request.request_id.len() > 128 {
+        Some("invalid_request_id")
+    } else if request.client_role != "desktop" {
+        Some("unauthorized_client_role")
+    } else if !peer_is_desktop {
+        Some("unauthorized_client_process")
+    } else if request.capabilities.as_slice() != [CAPABILITY_CONTENT_SEARCH] {
+        Some("unauthorized_capability")
+    } else if request.operation != "content.timeline" {
+        Some("unsupported_operation")
+    } else if request.query.is_none() {
+        Some("missing_timeline_query")
+    } else if request.capture.is_some() || request.capture_resolve.is_some() {
+        Some("unexpected_timeline_body")
+    } else {
+        None
+    };
+    if let Some(error) = authorization_error {
+        return timeline_rejected(Some(request_id), error);
+    }
+    let Some(context) = context else {
+        return timeline_rejected(Some(request_id), "search_unavailable");
+    };
+    let Some(wire_query) = request.query else {
+        return timeline_rejected(Some(request_id), "missing_timeline_query");
+    };
+    let query = match wire_query.validate_timeline_and_convert() {
+        Ok(query) => query,
+        Err(error) => return timeline_rejected(Some(request_id), error),
+    };
+    if deadline_expired(deadline) {
+        return timeline_held(Some(request_id), "operation_deadline_exceeded");
+    }
+    let brain = match load_brain_identity(&context.runtime_root) {
+        Ok(brain) => brain,
+        Err(_) => return timeline_held(Some(request_id), "canonical_verification_unavailable"),
+    };
+    if deadline_expired(deadline) {
+        return timeline_held(Some(request_id), "operation_deadline_exceeded");
+    }
+    let local_identity = match load_local_device_identity(&context.runtime_root, &brain.brain_id) {
+        Ok(identity) => identity,
+        Err(crate::local_device_identity::LocalDeviceIdentityError::EnrollmentRequired) => {
+            return timeline_held(Some(request_id), "local_enrollment_required");
+        }
+        Err(_) => return timeline_held(Some(request_id), "canonical_verification_unavailable"),
+    };
+    if deadline_expired(deadline) {
+        return timeline_held(Some(request_id), "operation_deadline_exceeded");
+    }
+    let device = match DeviceId::new(local_identity.device_id) {
+        Ok(device) => device,
+        Err(_) => return timeline_held(Some(request_id), "canonical_verification_unavailable"),
+    };
+    let mut resolver = match LocalDeviceKeyResolver::load(
+        &context.runtime_root,
+        &brain.brain_id,
+        context.store.as_ref(),
+        context.environment,
+    ) {
+        Ok(resolver) => resolver,
+        Err(_) => return timeline_held(Some(request_id), "canonical_verification_unavailable"),
+    };
+    if deadline_expired(deadline) {
+        return timeline_held(Some(request_id), "operation_deadline_exceeded");
+    }
+    let db = match ProjectionDb::open_or_create(&context.runtime_root) {
+        Ok(db) => db,
+        Err(_) => {
+            request_projection_sync(context);
+            return timeline_held(Some(request_id), "materialization_state_missing_or_stale");
+        }
+    };
+    if deadline_expired(deadline) {
+        return timeline_held(Some(request_id), "operation_deadline_exceeded");
+    }
+    match crate::knowledge_materialization::timeline_events_with_retrieval_safety_deadline(
+        &context.runtime_root,
+        &brain.brain_id,
+        &[device],
+        &mut resolver,
+        &db,
+        &query,
+        deadline,
+    ) {
+        Ok(page) => timeline_results(Some(request_id), page),
+        Err(GuardedSearchError::BrainWideHold(reason)) => {
+            if matches!(
+                reason,
+                RetrievalSafetyHold::MaterializationStateMissingOrStale
+                    | RetrievalSafetyHold::ProjectionDoesNotMatchCanonical
+            ) {
+                drop(db);
+                request_projection_sync(context);
+            }
+            timeline_held(Some(request_id), hold_reason_code(reason))
+        }
+        Err(GuardedSearchError::Query(_)) => timeline_rejected(Some(request_id), "invalid_query"),
+    }
+}
+
+fn handle_event_detail_until(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+    deadline: Option<Instant>,
+) -> DesktopSearchResponse {
+    let request_id = request.request_id.clone();
+    let authorization_error = if request.protocol_version != PROTOCOL_VERSION {
+        Some("incompatible_protocol_version")
+    } else if request.request_id.is_empty() || request.request_id.len() > 128 {
+        Some("invalid_request_id")
+    } else if request.client_role != "desktop" {
+        Some("unauthorized_client_role")
+    } else if !peer_is_desktop {
+        Some("unauthorized_client_process")
+    } else if request.capabilities.as_slice() != [CAPABILITY_CONTENT_SEARCH] {
+        Some("unauthorized_capability")
+    } else if request.operation != "content.event.detail" {
+        Some("unsupported_operation")
+    } else if request.query.is_none() {
+        Some("missing_event_detail_query")
+    } else if request.capture.is_some() || request.capture_resolve.is_some() {
+        Some("unexpected_event_detail_body")
+    } else {
+        None
+    };
+    if let Some(error) = authorization_error {
+        return event_detail_rejected(Some(request_id), error);
+    }
+    let Some(context) = context else {
+        return event_detail_rejected(Some(request_id), "search_unavailable");
+    };
+    let Some(wire_query) = request.query else {
+        return event_detail_rejected(Some(request_id), "missing_event_detail_query");
+    };
+    let event_id = match wire_query.validate_event_detail_id() {
+        Ok(event_id) => event_id.to_owned(),
+        Err(error) => return event_detail_rejected(Some(request_id), error),
+    };
+    if deadline_expired(deadline) {
+        return event_detail_held(Some(request_id), "operation_deadline_exceeded");
+    }
+    let brain = match load_brain_identity(&context.runtime_root) {
+        Ok(brain) => brain,
+        Err(_) => return event_detail_held(Some(request_id), "canonical_verification_unavailable"),
+    };
+    if deadline_expired(deadline) {
+        return event_detail_held(Some(request_id), "operation_deadline_exceeded");
+    }
+    let local_identity = match load_local_device_identity(&context.runtime_root, &brain.brain_id) {
+        Ok(identity) => identity,
+        Err(crate::local_device_identity::LocalDeviceIdentityError::EnrollmentRequired) => {
+            return event_detail_held(Some(request_id), "local_enrollment_required");
+        }
+        Err(_) => {
+            return event_detail_held(Some(request_id), "canonical_verification_unavailable");
+        }
+    };
+    if deadline_expired(deadline) {
+        return event_detail_held(Some(request_id), "operation_deadline_exceeded");
+    }
+    let device = match DeviceId::new(local_identity.device_id) {
+        Ok(device) => device,
+        Err(_) => return event_detail_held(Some(request_id), "canonical_verification_unavailable"),
+    };
+    let mut resolver = match LocalDeviceKeyResolver::load(
+        &context.runtime_root,
+        &brain.brain_id,
+        context.store.as_ref(),
+        context.environment,
+    ) {
+        Ok(resolver) => resolver,
+        Err(_) => return event_detail_held(Some(request_id), "canonical_verification_unavailable"),
+    };
+    if deadline_expired(deadline) {
+        return event_detail_held(Some(request_id), "operation_deadline_exceeded");
+    }
+    let db = match ProjectionDb::open_or_create(&context.runtime_root) {
+        Ok(db) => db,
+        Err(_) => {
+            request_projection_sync(context);
+            return event_detail_held(Some(request_id), "materialization_state_missing_or_stale");
+        }
+    };
+    if deadline_expired(deadline) {
+        return event_detail_held(Some(request_id), "operation_deadline_exceeded");
+    }
+    match crate::knowledge_materialization::event_detail_with_retrieval_safety_deadline(
+        &context.runtime_root,
+        &brain.brain_id,
+        &[device],
+        &mut resolver,
+        &db,
+        &event_id,
+        deadline,
+    ) {
+        Ok(detail) => event_detail_results(Some(request_id), detail.into_iter().collect()),
+        Err(GuardedSearchError::BrainWideHold(reason)) => {
+            if matches!(
+                reason,
+                RetrievalSafetyHold::MaterializationStateMissingOrStale
+                    | RetrievalSafetyHold::ProjectionDoesNotMatchCanonical
+            ) {
+                drop(db);
+                request_projection_sync(context);
+            }
+            event_detail_held(Some(request_id), hold_reason_code(reason))
+        }
+        Err(GuardedSearchError::Query(_)) => {
+            event_detail_rejected(Some(request_id), "invalid_event_id")
+        }
+    }
+}
+
 fn deadline_expired(deadline: Option<Instant>) -> bool {
     deadline.is_some_and(|deadline| Instant::now() >= deadline)
 }
@@ -1837,7 +2380,70 @@ fn search_results(request_id: Option<String>, hits: Vec<SearchHit>) -> DesktopSe
         daemon_pid: process::id(),
         hits: Some(hits.into_iter().map(DesktopSearchHit::from).collect()),
         hold_reason: None,
+        next_cursor: None,
+        has_more: false,
     }
+}
+
+fn timeline_results(
+    request_id: Option<String>,
+    page: cryptex_projection::TimelinePage,
+) -> DesktopSearchResponse {
+    let has_more = page.next_cursor.is_some();
+    let hits = page
+        .hits
+        .into_iter()
+        .map(|hit| {
+            let mut hit = DesktopSearchHit::from(hit);
+            hit.text = timeline_snippet(&hit.text);
+            hit
+        })
+        .collect();
+    DesktopSearchResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: true,
+        error: None,
+        operation: Some("content.timeline.result".into()),
+        daemon_pid: process::id(),
+        hits: Some(hits),
+        hold_reason: None,
+        next_cursor: page.next_cursor.map(|cursor| DesktopTimelineCursor {
+            created_at: cursor.created_at,
+            event_id: cursor.event_id,
+        }),
+        has_more,
+    }
+}
+
+fn event_detail_results(request_id: Option<String>, hits: Vec<SearchHit>) -> DesktopSearchResponse {
+    DesktopSearchResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: true,
+        error: None,
+        operation: Some("content.event.detail.result".into()),
+        daemon_pid: process::id(),
+        hits: Some(hits.into_iter().map(DesktopSearchHit::from).collect()),
+        hold_reason: None,
+        next_cursor: None,
+        has_more: false,
+    }
+}
+
+fn timeline_snippet(text: &str) -> String {
+    if text.len() <= TIMELINE_SNIPPET_BYTES {
+        return text.to_owned();
+    }
+    let end = text
+        .char_indices()
+        .map(|(index, ch)| index + ch.len_utf8())
+        .take_while(|end| *end <= TIMELINE_SNIPPET_BYTES)
+        .last()
+        .unwrap_or(0);
+    let mut snippet = text[..end].to_owned();
+    snippet.push('…');
+    snippet
 }
 
 fn search_held(request_id: Option<String>, reason: &str) -> DesktopSearchResponse {
@@ -1850,6 +2456,8 @@ fn search_held(request_id: Option<String>, reason: &str) -> DesktopSearchRespons
         daemon_pid: process::id(),
         hits: None,
         hold_reason: Some(reason.into()),
+        next_cursor: None,
+        has_more: false,
     }
 }
 
@@ -1863,6 +2471,68 @@ fn search_rejected(request_id: Option<String>, error: &str) -> DesktopSearchResp
         daemon_pid: process::id(),
         hits: None,
         hold_reason: None,
+        next_cursor: None,
+        has_more: false,
+    }
+}
+
+fn timeline_held(request_id: Option<String>, reason: &str) -> DesktopSearchResponse {
+    DesktopSearchResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: true,
+        error: None,
+        operation: Some("content.timeline.result".into()),
+        daemon_pid: process::id(),
+        hits: None,
+        hold_reason: Some(reason.into()),
+        next_cursor: None,
+        has_more: false,
+    }
+}
+
+fn timeline_rejected(request_id: Option<String>, error: &str) -> DesktopSearchResponse {
+    DesktopSearchResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: false,
+        error: Some(error.into()),
+        operation: None,
+        daemon_pid: process::id(),
+        hits: None,
+        hold_reason: None,
+        next_cursor: None,
+        has_more: false,
+    }
+}
+
+fn event_detail_held(request_id: Option<String>, reason: &str) -> DesktopSearchResponse {
+    DesktopSearchResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: true,
+        error: None,
+        operation: Some("content.event.detail.result".into()),
+        daemon_pid: process::id(),
+        hits: None,
+        hold_reason: Some(reason.into()),
+        next_cursor: None,
+        has_more: false,
+    }
+}
+
+fn event_detail_rejected(request_id: Option<String>, error: &str) -> DesktopSearchResponse {
+    DesktopSearchResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: false,
+        error: Some(error.into()),
+        operation: None,
+        daemon_pid: process::id(),
+        hits: None,
+        hold_reason: None,
+        next_cursor: None,
+        has_more: false,
     }
 }
 
@@ -2503,6 +3173,60 @@ mod tests {
         response
     }
 
+    fn content_timeline_ipc_round_trip(
+        context: Option<SearchContext>,
+        query: DesktopSearchQuery,
+    ) -> DesktopSearchResponse {
+        let (name, listener) = isolated_ipc_listener("content-timeline");
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().expect("accept timeline client");
+            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, true)
+                .expect("serve timeline request");
+        });
+        let mut client = Stream::connect(name.borrow()).expect("connect timeline client");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut request = search_request("desktop", vec![CAPABILITY_CONTENT_SEARCH.into()]);
+        request.operation = "content.timeline".into();
+        request.query = Some(query);
+        let mut frame = serde_json::to_vec(&request).expect("encode timeline request");
+        frame.push(b'\n');
+        write_ipc_all(&mut client, &frame, deadline).expect("write timeline request");
+        let response_frame = read_ipc_frame(&mut client, MAX_SEARCH_RESPONSE_BYTES, deadline)
+            .expect("read timeline response");
+        let response = serde_json::from_slice(&response_frame).expect("decode timeline response");
+        server.join().expect("timeline server thread");
+        response
+    }
+
+    fn content_event_detail_ipc_round_trip(
+        context: Option<SearchContext>,
+        event_id: String,
+    ) -> DesktopSearchResponse {
+        let (name, listener) = isolated_ipc_listener("content-event-detail");
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().expect("accept event detail client");
+            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, true)
+                .expect("serve event detail request");
+        });
+        let mut client = Stream::connect(name.borrow()).expect("connect event detail client");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut request = search_request("desktop", vec![CAPABILITY_CONTENT_SEARCH.into()]);
+        request.operation = "content.event.detail".into();
+        request.query = Some(DesktopSearchQuery {
+            event_id: Some(event_id),
+            ..DesktopSearchQuery::default()
+        });
+        let mut frame = serde_json::to_vec(&request).expect("encode event detail request");
+        frame.push(b'\n');
+        write_ipc_all(&mut client, &frame, deadline).expect("write event detail request");
+        let response_frame = read_ipc_frame(&mut client, MAX_DETAIL_RESPONSE_BYTES, deadline)
+            .expect("read event detail response");
+        let response =
+            serde_json::from_slice(&response_frame).expect("decode event detail response");
+        server.join().expect("event detail server thread");
+        response
+    }
+
     #[test]
     fn desktop_query_enforces_text_filter_time_and_limit_bounds() {
         assert!(DesktopSearchQuery::default().validate_and_convert().is_ok());
@@ -2546,6 +3270,146 @@ mod tests {
             .validate_and_convert()
             .is_err()
         );
+        assert!(
+            DesktopSearchQuery {
+                text: Some("not allowed in a timeline request".into()),
+                ..DesktopSearchQuery::default()
+            }
+            .validate_timeline_and_convert()
+            .is_err()
+        );
+        assert!(
+            DesktopSearchQuery {
+                limit: Some(MAX_TIMELINE_PAGE_SIZE + 1),
+                ..DesktopSearchQuery::default()
+            }
+            .validate_timeline_and_convert()
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn desktop_timeline_returns_verified_bounded_snippets_and_provenance() {
+        let fixture = prepared_search_fixture("timeline-allowed");
+        let response = content_timeline_ipc_round_trip(
+            Some(fixture.context.clone()),
+            DesktopSearchQuery {
+                limit: Some(1),
+                ..DesktopSearchQuery::default()
+            },
+        );
+        assert!(response.accepted, "unexpected rejection: {response:?}");
+        assert_eq!(
+            response.operation.as_deref(),
+            Some("content.timeline.result")
+        );
+        assert!(response.hold_reason.is_none());
+        let hits = response
+            .hits
+            .expect("guarded timeline contains verified notes");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].brain_id, fixture.brain_id);
+        assert_eq!(hits[0].device_id, fixture.device.as_str());
+        assert_eq!(hits[0].text, "synthetic IPC search fixture note");
+        assert!(!hits[0].content_hash.is_empty());
+        assert!(!hits[0].signing_key_id.is_empty());
+        assert!(!response.has_more);
+        assert!(response.next_cursor.is_none());
+        fs::remove_dir_all(fixture.root).expect("cleanup fixture");
+    }
+
+    #[test]
+    fn desktop_timeline_withholds_every_row_when_materialization_is_stale() {
+        let fixture = prepared_search_fixture("timeline-stale");
+        let db = ProjectionDb::open_or_create(&fixture.root).expect("open projection db");
+        db.connection()
+            .execute_batch("DROP TABLE knowledge_meta;")
+            .expect("remove M4 materialization metadata");
+        drop(db);
+
+        let response = content_timeline_ipc_round_trip(
+            Some(fixture.context.clone()),
+            DesktopSearchQuery::default(),
+        );
+        assert!(response.accepted);
+        assert!(response.hits.is_none());
+        assert_eq!(
+            response.hold_reason.as_deref(),
+            Some("materialization_state_missing_or_stale")
+        );
+        fs::remove_dir_all(fixture.root).expect("cleanup fixture");
+    }
+
+    #[test]
+    fn timeline_ipc_requires_authenticated_desktop_and_exact_search_capability() {
+        let mut non_desktop = search_request("cli", vec![CAPABILITY_CONTENT_SEARCH.into()]);
+        non_desktop.operation = "content.timeline".into();
+        let response = handle_timeline_until(non_desktop, None, true, None);
+        assert_eq!(response.error.as_deref(), Some("unauthorized_client_role"));
+
+        let mut wrong_capability = search_request(
+            "desktop",
+            vec![CAPABILITY_CONTENT_SEARCH.into(), "status.read".into()],
+        );
+        wrong_capability.operation = "content.timeline".into();
+        let response = handle_timeline_until(wrong_capability, None, true, None);
+        assert_eq!(response.error.as_deref(), Some("unauthorized_capability"));
+
+        let mut wrong_peer = search_request("desktop", vec![CAPABILITY_CONTENT_SEARCH.into()]);
+        wrong_peer.operation = "content.timeline".into();
+        let response = handle_timeline_until(wrong_peer, None, false, None);
+        assert_eq!(
+            response.error.as_deref(),
+            Some("unauthorized_client_process")
+        );
+    }
+
+    #[test]
+    fn desktop_event_detail_returns_full_note_only_after_guarded_verification() {
+        let fixture = prepared_search_fixture("event-detail-allowed");
+        let projection = ProjectionDb::open_or_create(&fixture.root).expect("projection db");
+        let seeded =
+            cryptex_projection::search_events(projection.connection(), &SearchQuery::default())
+                .expect("read seeded event id");
+        let event_id = seeded[0].event_id.clone();
+        drop(projection);
+
+        let response = content_event_detail_ipc_round_trip(Some(fixture.context.clone()), event_id);
+        assert!(response.accepted, "unexpected rejection: {response:?}");
+        assert_eq!(
+            response.operation.as_deref(),
+            Some("content.event.detail.result")
+        );
+        let hits = response.hits.expect("guarded detail contains the note");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].text, "synthetic IPC search fixture note");
+        assert_eq!(hits[0].brain_id, fixture.brain_id);
+        assert!(!hits[0].content_hash.is_empty());
+        fs::remove_dir_all(fixture.root).expect("cleanup fixture");
+    }
+
+    #[test]
+    fn desktop_event_detail_withholds_note_body_when_materialization_is_stale() {
+        let fixture = prepared_search_fixture("event-detail-stale");
+        let projection = ProjectionDb::open_or_create(&fixture.root).expect("projection db");
+        let seeded =
+            cryptex_projection::search_events(projection.connection(), &SearchQuery::default())
+                .expect("read seeded event id");
+        let event_id = seeded[0].event_id.clone();
+        projection
+            .connection()
+            .execute_batch("DROP TABLE knowledge_meta;")
+            .expect("remove M4 materialization metadata");
+        drop(projection);
+
+        let response = content_event_detail_ipc_round_trip(Some(fixture.context.clone()), event_id);
+        assert!(response.accepted);
+        assert!(response.hits.is_none());
+        assert_eq!(
+            response.hold_reason.as_deref(),
+            Some("materialization_state_missing_or_stale")
+        );
+        fs::remove_dir_all(fixture.root).expect("cleanup fixture");
     }
 
     #[test]

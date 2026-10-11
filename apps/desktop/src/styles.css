@@ -93,6 +93,21 @@ button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, va
 .result-meta { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 10px; }
 .result-meta span { padding: 3px 7px; border-radius: 99px; background: #f0efe9; color: #68665e; font-size: 9px; text-transform: capitalize; }
 .result-card p { margin: 11px 0 0; color: var(--ink); font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.timeline-results { margin-top: 42px; }
+.timeline-empty { color: var(--muted); font-size: 13px; }
+.timeline-detail { margin-bottom: 18px; padding: 18px 20px; border: 1px solid var(--accent); border-radius: 11px; background: var(--surface); }
+.timeline-detail .results-heading h3 { margin: 0; font-family: var(--display); font-size: 20px; font-weight: 500; }
+.timeline-detail > p { max-height: 55vh; margin: 12px 0; overflow: auto; color: var(--ink); font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.timeline-detail-source { display: grid; grid-template-columns: minmax(110px, 150px) minmax(0, 1fr); gap: 7px 12px; margin: 12px 0 0; font-size: 11px; }
+.timeline-detail-source dt { color: var(--muted); }
+.timeline-detail-source dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+.timeline-source { margin-top: 13px; color: var(--muted); font-size: 11px; }
+.timeline-source summary { width: fit-content; cursor: pointer; color: var(--accent); font-weight: 650; }
+.timeline-source dl { display: grid; grid-template-columns: minmax(110px, 150px) minmax(0, 1fr); gap: 7px 12px; margin: 12px 0 0; }
+.timeline-source dt { color: var(--muted); }
+.timeline-source dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+.timeline-more { display: block; margin: 16px auto 0; }
+.timeline-open-detail { padding-left: 0; }
 
 .safety-panel { display: grid; grid-template-columns: 29px 1fr; gap: 13px; margin-top: 24px; padding: 18px 19px; border: 1px solid #ead3c4; border-radius: 11px; background: var(--warning-surface); color: #603d2b; }
 .panel-icon { display: grid; place-items: center; width: 25px; height: 25px; border: 1px solid #c18460; border-radius: 50%; color: var(--warning); font-size: 13px; font-weight: 700; }

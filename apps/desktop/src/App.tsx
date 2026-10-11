@@ -19,14 +19,24 @@ import { createSearchRequestGate, normalizeSearchText } from "./search-policy.mj
 
 type SearchHit = {
   eventId: string;
+  brainId: string;
+  deviceId: string;
+  deviceSeq: string;
   createdAt: string;
+  eventType: string;
   classification: string;
+  contentHash: string;
+  signingKeyId: string;
   text: string;
 };
+
+type TimelineCursor = { createdAt: string; eventId: string };
 
 type GuardedSearchResponse = {
   hits: SearchHit[] | null;
   holdReason: string | null;
+  nextCursor: TimelineCursor | null;
+  hasMore: boolean;
 };
 
 type LocalEnrollmentResponse = {
@@ -87,10 +97,27 @@ function displayDate(value: string): string {
     : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
 
+function displayTimelineDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(date);
+}
+
 export function App() {
   const isMac = navigator.platform.toLowerCase().includes("mac");
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
+  const [timelineMode, setTimelineMode] = useState(false);
+  const [timelineHits, setTimelineHits] = useState<SearchHit[]>([]);
+  const [timelineCursor, setTimelineCursor] = useState<TimelineCursor | null>(null);
+  const [timelineHasMore, setTimelineHasMore] = useState(false);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [detailHit, setDetailHit] = useState<SearchHit | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [holdReason, setHoldReason] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("checking");
   const [searching, setSearching] = useState(false);
@@ -181,6 +208,9 @@ export function App() {
 
   async function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setTimelineMode(false);
+    setDetailHit(null);
+    setDetailLoading(false);
     const text = normalizeSearchText(query);
     const generation = searchRequestGate.begin();
     setHits([]);
@@ -210,6 +240,87 @@ export function App() {
       setNotice("Cryptex could not complete a guarded search. No results were kept on screen.");
     } finally {
       if (searchRequestGate.isCurrent(generation)) setSearching(false);
+    }
+  }
+
+  async function loadTimeline(cursor: TimelineCursor | null) {
+    const generation = searchRequestGate.begin();
+    setDetailHit(null);
+    setDetailLoading(false);
+    setTimelineLoading(true);
+    setHoldReason(null);
+    setNotice(null);
+    if (!cursor) {
+      setTimelineHits([]);
+      setTimelineCursor(null);
+      setTimelineHasMore(false);
+    }
+    try {
+      const response = await invoke<GuardedSearchResponse>("p0_5_guarded_timeline", {
+        query: { limit: 20, cursor },
+      });
+      if (!searchRequestGate.isCurrent(generation)) return;
+      if (response.holdReason) {
+        setConnection("attention");
+        setHoldReason(response.holdReason);
+        setTimelineHits([]);
+        setTimelineCursor(null);
+        setTimelineHasMore(false);
+        setDetailHit(null);
+        return;
+      }
+      setConnection("active");
+      const page = response.hits ?? [];
+      setTimelineHits((current) => (cursor ? [...current, ...page] : page));
+      setTimelineCursor(response.nextCursor ?? null);
+      setTimelineHasMore(response.hasMore);
+    } catch {
+      if (!searchRequestGate.isCurrent(generation)) return;
+      setConnection("attention");
+      setNotice("Cryptex could not load a guarded timeline page. No results were kept on screen.");
+      setTimelineHits([]);
+      setTimelineCursor(null);
+      setTimelineHasMore(false);
+      setDetailHit(null);
+    } finally {
+      if (searchRequestGate.isCurrent(generation)) setTimelineLoading(false);
+    }
+  }
+
+  function openTimeline() {
+    searchRequestGate.invalidate();
+    setHits([]);
+    setDetailHit(null);
+    setDetailLoading(false);
+    setTimelineMode(true);
+    void loadTimeline(null);
+  }
+
+  async function openEventDetail(eventId: string) {
+    const generation = searchRequestGate.begin();
+    setDetailLoading(true);
+    setDetailHit(null);
+    setHoldReason(null);
+    setNotice(null);
+    try {
+      const response = await invoke<GuardedSearchResponse>("p0_5_guarded_event_detail", {
+        eventId,
+      });
+      if (!searchRequestGate.isCurrent(generation)) return;
+      if (response.holdReason) {
+        setConnection("attention");
+        setHoldReason(response.holdReason);
+        return;
+      }
+      setConnection("active");
+      setDetailHit(response.hits?.[0] ?? null);
+      if (!response.hits?.length) setNotice("This note is no longer available in the verified local timeline.");
+    } catch {
+      if (!searchRequestGate.isCurrent(generation)) return;
+      setConnection("attention");
+      setNotice("Cryptex could not open this guarded note. No content was kept on screen.");
+    } finally {
+      if (searchRequestGate.isCurrent(generation)) setDetailLoading(false);
     }
   }
 
@@ -559,8 +670,29 @@ export function App() {
           C<span>.</span>
         </a>
         <div className="rail-rule" />
-        <button className="rail-action is-selected" type="button" aria-label="Search memory">
+        <button
+          className={`rail-action ${!timelineMode ? "is-selected" : ""}`}
+          type="button"
+          aria-label="Search memory"
+          aria-pressed={!timelineMode}
+          onClick={() => {
+            searchRequestGate.invalidate();
+            setTimelineMode(false);
+            setTimelineLoading(false);
+            setDetailHit(null);
+            setDetailLoading(false);
+          }}
+        >
           <span aria-hidden="true">⌕</span>
+        </button>
+        <button
+          className={`rail-action ${timelineMode ? "is-selected" : ""}`}
+          type="button"
+          aria-label="Open timeline"
+          aria-pressed={timelineMode}
+          onClick={openTimeline}
+        >
+          <span aria-hidden="true">◷</span>
         </button>
         <div className="rail-bottom" aria-hidden="true">M5</div>
       </aside>
@@ -776,7 +908,82 @@ export function App() {
           {notice ? <p className="notice" role="status">{notice}</p> : null}
           {deviceId ? <p className="device-reference">This device · {deviceId}</p> : null}
 
-          {!holdCopy && !notice && hits.length === 0 ? (
+          {timelineMode && !holdCopy && !notice ? (
+            <section className="results timeline-results" aria-label="Recent notes" aria-live="polite">
+              <div className="results-heading">
+                <h2>Timeline</h2>
+                <span>{timelineHits.length} {timelineHits.length === 1 ? "note" : "notes"}</span>
+              </div>
+              {detailHit ? (
+                <article className="timeline-detail" aria-label="Note detail">
+                  <div className="results-heading">
+                    <h3>Note detail</h3>
+                    <button type="button" className="text-button" onClick={() => setDetailHit(null)}>
+                      Close
+                    </button>
+                  </div>
+                  <div className="result-meta">
+                    <time dateTime={detailHit.createdAt}>{displayTimelineDate(detailHit.createdAt)}</time>
+                    <span>{detailHit.classification}</span>
+                  </div>
+                  <p>{detailHit.text}</p>
+                  <dl className="timeline-detail-source">
+                    <dt>Event</dt><dd>{detailHit.eventId}</dd>
+                    <dt>Brain</dt><dd>{detailHit.brainId}</dd>
+                    <dt>Device / sequence</dt><dd>{detailHit.deviceId} · {detailHit.deviceSeq}</dd>
+                    <dt>Type</dt><dd>{detailHit.eventType}</dd>
+                    <dt>Signing key</dt><dd>{detailHit.signingKeyId}</dd>
+                    <dt>Content hash</dt><dd>{detailHit.contentHash}</dd>
+                  </dl>
+                </article>
+              ) : null}
+              {timelineHits.length === 0 && !timelineLoading ? (
+                <p className="timeline-empty">No notes in this local timeline yet.</p>
+              ) : null}
+              <ul>
+                {timelineHits.map((hit) => (
+                  <li className="result-card" key={hit.eventId}>
+                    <div className="result-meta">
+                      <time dateTime={hit.createdAt}>{displayTimelineDate(hit.createdAt)}</time>
+                      <span>{hit.classification}</span>
+                    </div>
+                    <p>{hit.text}</p>
+                    <button
+                      type="button"
+                      className="text-button timeline-open-detail"
+                      disabled={detailLoading}
+                      onClick={() => void openEventDetail(hit.eventId)}
+                    >
+                      {detailLoading ? "Opening…" : "Open full note"}
+                    </button>
+                    <details className="timeline-source">
+                      <summary>Source details</summary>
+                      <dl>
+                        <dt>Event</dt><dd>{hit.eventId}</dd>
+                        <dt>Brain</dt><dd>{hit.brainId}</dd>
+                        <dt>Device / sequence</dt><dd>{hit.deviceId} · {hit.deviceSeq}</dd>
+                        <dt>Type</dt><dd>{hit.eventType}</dd>
+                        <dt>Signing key</dt><dd>{hit.signingKeyId}</dd>
+                        <dt>Content hash</dt><dd>{hit.contentHash}</dd>
+                      </dl>
+                    </details>
+                  </li>
+                ))}
+              </ul>
+              {timelineHasMore ? (
+                <button
+                  type="button"
+                  className="capture-secondary timeline-more"
+                  disabled={timelineLoading || !timelineCursor}
+                  onClick={() => void loadTimeline(timelineCursor)}
+                >
+                  {timelineLoading ? "Loading…" : "Load older notes"}
+                </button>
+              ) : null}
+            </section>
+          ) : null}
+
+          {!timelineMode && !holdCopy && !notice && hits.length === 0 ? (
             <section className="empty-state" aria-live="polite">
               <div className="empty-rule" />
               <p className="empty-title">A quiet place for what matters.</p>
@@ -784,7 +991,7 @@ export function App() {
             </section>
           ) : null}
 
-          {hits.length > 0 ? (
+          {!timelineMode && hits.length > 0 ? (
             <section className="results" aria-label="Search results" aria-live="polite">
               <div className="results-heading">
                 <h2>Notes</h2>

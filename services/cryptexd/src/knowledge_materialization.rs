@@ -1,4 +1,4 @@
-﻿//! Daemon-owned, read-only canonical scan followed by a transactional M4 rebuild.
+//! Daemon-owned, read-only canonical scan followed by a transactional M4 rebuild.
 //!
 //! This path is intentionally separate from M2's repair-oriented v1 reader. It
 //! never truncates, quarantines, seals, or rewrites canonical packs: unknown or
@@ -16,7 +16,9 @@ use cryptex_knowledge::sqlite::{
     migrate_knowledge_schema, rebuild_from_verified_history,
 };
 use cryptex_projection::{
-    ProjectionDb, ProjectionError, SearchHit, SearchQuery, search_events, validate_schema_v1,
+    ProjectionDb, ProjectionError, SearchHit, SearchQuery, TimelinePage, TimelineQuery,
+    event_detail, event_detail_until, search_events, timeline_events, timeline_events_until,
+    validate_schema_v1,
 };
 use cryptex_storage::layout::{
     active_segment_path, canonical_events_device_dir, sealed_segment_path,
@@ -427,6 +429,120 @@ pub fn search_events_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolver>
     };
     // Make the lock lifetime explicit: both canonical locks and inventory
     // lock remain held until the query has completed.
+    drop(safety);
+    result
+}
+
+/// Return a bounded timeline page only after the same Brain-wide verification
+/// and materialization checks used by search. Canonical locks remain held
+/// through the complete page query.
+pub fn timeline_events_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolver>(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    trusted_devices: &[DeviceId],
+    key_resolver: &mut R,
+    db: &ProjectionDb,
+    query: &TimelineQuery,
+    deadline: Option<Instant>,
+) -> Result<TimelinePage, GuardedSearchError> {
+    let safety = evaluate_retrieval_safety_until(
+        runtime_root,
+        expected_brain_id,
+        trusted_devices,
+        key_resolver,
+        db,
+        deadline,
+    );
+    if safety.snapshot.is_none() {
+        return Err(GuardedSearchError::BrainWideHold(
+            safety
+                .hold_reason()
+                .unwrap_or(RetrievalSafetyHold::CanonicalVerificationUnavailable),
+        ));
+    }
+    let result = {
+        let _snapshot = safety.snapshot.as_ref().expect("checked above");
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            return Err(GuardedSearchError::BrainWideHold(
+                RetrievalSafetyHold::OperationDeadlineExceeded,
+            ));
+        }
+        let mut guarded_query = query.clone();
+        // Timeline is scoped to the verified local Brain. The projection
+        // query receives that trusted ID; the Desktop cannot choose it.
+        guarded_query.brain_id = Some(expected_brain_id.to_owned());
+        match deadline {
+            Some(deadline) => {
+                match timeline_events_until(db.connection(), &guarded_query, deadline) {
+                    Ok(_) if Instant::now() >= deadline => Err(GuardedSearchError::BrainWideHold(
+                        RetrievalSafetyHold::OperationDeadlineExceeded,
+                    )),
+                    Ok(page) => Ok(page),
+                    Err(_) if Instant::now() >= deadline => Err(GuardedSearchError::BrainWideHold(
+                        RetrievalSafetyHold::OperationDeadlineExceeded,
+                    )),
+                    Err(error) => Err(GuardedSearchError::Query(error)),
+                }
+            }
+            None => {
+                timeline_events(db.connection(), &guarded_query).map_err(GuardedSearchError::Query)
+            }
+        }
+    };
+    drop(safety);
+    result
+}
+
+/// Return one complete note only after a fresh Brain-wide safety check. The
+/// cursor or event identifier never bypasses canonical verification.
+pub fn event_detail_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolver>(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    trusted_devices: &[DeviceId],
+    key_resolver: &mut R,
+    db: &ProjectionDb,
+    event_id: &str,
+    deadline: Option<Instant>,
+) -> Result<Option<SearchHit>, GuardedSearchError> {
+    let safety = evaluate_retrieval_safety_until(
+        runtime_root,
+        expected_brain_id,
+        trusted_devices,
+        key_resolver,
+        db,
+        deadline,
+    );
+    if safety.snapshot.is_none() {
+        return Err(GuardedSearchError::BrainWideHold(
+            safety
+                .hold_reason()
+                .unwrap_or(RetrievalSafetyHold::CanonicalVerificationUnavailable),
+        ));
+    }
+    let result = {
+        let _snapshot = safety.snapshot.as_ref().expect("checked above");
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            return Err(GuardedSearchError::BrainWideHold(
+                RetrievalSafetyHold::OperationDeadlineExceeded,
+            ));
+        }
+        match deadline {
+            Some(deadline) => {
+                match event_detail_until(db.connection(), expected_brain_id, event_id, deadline) {
+                    Ok(_) if Instant::now() >= deadline => Err(GuardedSearchError::BrainWideHold(
+                        RetrievalSafetyHold::OperationDeadlineExceeded,
+                    )),
+                    Ok(detail) => Ok(detail),
+                    Err(_) if Instant::now() >= deadline => Err(GuardedSearchError::BrainWideHold(
+                        RetrievalSafetyHold::OperationDeadlineExceeded,
+                    )),
+                    Err(error) => Err(GuardedSearchError::Query(error)),
+                }
+            }
+            None => event_detail(db.connection(), expected_brain_id, event_id)
+                .map_err(GuardedSearchError::Query),
+        }
+    };
     drop(safety);
     result
 }

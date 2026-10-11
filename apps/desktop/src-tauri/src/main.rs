@@ -276,6 +276,34 @@ fn p0_4_guarded_search(
 }
 
 #[tauri::command]
+fn p0_5_guarded_timeline(
+    query: cryptexd::ipc::DesktopSearchQuery,
+) -> Result<cryptexd::ipc::DesktopSearchResponse, String> {
+    let response = cryptexd::ipc::desktop_timeline(query, Duration::from_secs(2))
+        .map_err(|error| error.to_string())?;
+    if !response.accepted {
+        return Err(response
+            .error
+            .unwrap_or_else(|| "daemon rejected guarded timeline".into()));
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+fn p0_5_guarded_event_detail(
+    event_id: String,
+) -> Result<cryptexd::ipc::DesktopSearchResponse, String> {
+    let response = cryptexd::ipc::desktop_event_detail(event_id, Duration::from_secs(2))
+        .map_err(|error| error.to_string())?;
+    if !response.accepted {
+        return Err(response
+            .error
+            .unwrap_or_else(|| "daemon rejected guarded event detail".into()));
+    }
+    Ok(response)
+}
+
+#[tauri::command]
 fn p0_4_enroll_local_device() -> Result<cryptexd::ipc::DesktopEnrollmentResponse, String> {
     let response = cryptexd::ipc::desktop_enroll_local_device(Duration::from_secs(2))
         .map_err(|error| error.to_string())?;
@@ -2092,6 +2120,8 @@ fn main() {
             p0_2_daemon_status,
             p0_3_ipc_health,
             p0_4_guarded_search,
+            p0_5_guarded_timeline,
+            p0_5_guarded_event_detail,
             p0_4_enroll_local_device,
             p0_5_capture_memory,
             p0_5_resolve_capture,
