@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -253,12 +254,15 @@ pub fn spawn_retrieval_server(
     environment: SecureStoreEnvironment,
 ) -> io::Result<()> {
     let expected_desktop = desktop_process_identity()?;
-    spawn_server(Some(SearchContext {
+    let mut context = SearchContext {
         runtime_root: runtime_root.to_path_buf(),
         store,
         environment,
         expected_desktop: Arc::new(expected_desktop),
-    }))
+        projection_sync: None,
+    };
+    start_projection_sync_worker(&mut context);
+    spawn_server(Some(context))
 }
 
 /// Start the product IPC endpoint. Guarded retrieval is enabled only when the
@@ -281,12 +285,15 @@ pub fn spawn_daemon_ipc_server(
             return spawn_server(None);
         }
     };
-    spawn_server(Some(SearchContext {
+    let mut context = SearchContext {
         runtime_root: runtime_root.to_path_buf(),
         store,
         environment,
         expected_desktop: Arc::new(expected_desktop),
-    }))
+        projection_sync: None,
+    };
+    start_projection_sync_worker(&mut context);
+    spawn_server(Some(context))
 }
 
 #[derive(Clone)]
@@ -295,6 +302,92 @@ struct SearchContext {
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
     expected_desktop: Arc<DesktopProcessIdentity>,
+    projection_sync: Option<SyncSender<()>>,
+}
+
+/// Run derived catch-up off the IPC request path. Canonical capture success is
+/// independent of this rebuild; a failed catch-up leaves retrieval guarded and
+/// can be retried on the next stale-search signal.
+fn start_projection_sync_worker(context: &mut SearchContext) {
+    let (sender, receiver) = sync_channel::<()>(1);
+    let mut worker_context = context.clone();
+    worker_context.projection_sync = None;
+    let spawned = thread::Builder::new()
+        .name("cryptex-derived-catchup".into())
+        .spawn(move || {
+            while receiver.recv().is_ok() {
+                if let Err(error) = synchronize_local_derived_state(&worker_context) {
+                    // Do not log paths, memory content, or identity material.
+                    eprintln!(
+                        "cryptexd: derived catch-up deferred ({error:?}); retrieval remains guarded"
+                    );
+                }
+            }
+        });
+    if spawned.is_ok() {
+        context.projection_sync = Some(sender.clone());
+        let _ = sender.try_send(()); // Reconcile canonical commits discovered after restart.
+    } else {
+        eprintln!("cryptexd: derived catch-up worker unavailable; retrieval remains guarded");
+    }
+}
+
+fn request_projection_sync(context: &SearchContext) {
+    let Some(sender) = &context.projection_sync else {
+        return;
+    };
+    match sender.try_send(()) {
+        Ok(()) | Err(TrySendError::Full(())) => {}
+        Err(TrySendError::Disconnected(())) => {
+            eprintln!("cryptexd: derived catch-up worker unavailable; retrieval remains guarded");
+        }
+    }
+}
+
+#[derive(Debug)]
+enum DerivedCatchupError {
+    BrainIdentityUnavailable,
+    LocalDeviceIdentityUnavailable,
+    InvalidDeviceIdentity,
+    SigningIdentityUnavailable,
+    ProjectionDatabaseUnavailable,
+    ProjectionCatchupFailed,
+    KnowledgeRebuildFailed,
+}
+
+fn synchronize_local_derived_state(context: &SearchContext) -> Result<(), DerivedCatchupError> {
+    let brain = load_brain_identity(&context.runtime_root)
+        .map_err(|_| DerivedCatchupError::BrainIdentityUnavailable)?;
+    let identity = load_local_device_identity(&context.runtime_root, &brain.brain_id)
+        .map_err(|_| DerivedCatchupError::LocalDeviceIdentityUnavailable)?;
+    let device = DeviceId::new(identity.device_id)
+        .map_err(|_| DerivedCatchupError::InvalidDeviceIdentity)?;
+    let mut resolver = LocalDeviceKeyResolver::load(
+        &context.runtime_root,
+        &brain.brain_id,
+        context.store.as_ref(),
+        context.environment,
+    )
+    .map_err(|_| DerivedCatchupError::SigningIdentityUnavailable)?;
+    let (mut db, _) = crate::projection::open_projection_db(&context.runtime_root)
+        .map_err(|_| DerivedCatchupError::ProjectionDatabaseUnavailable)?;
+    crate::projection::catch_up_device_projection(
+        context.store.as_ref(),
+        context.environment,
+        &context.runtime_root,
+        &device,
+        &db,
+    )
+    .map_err(|_| DerivedCatchupError::ProjectionCatchupFailed)?;
+    crate::knowledge_materialization::rebuild_knowledge_from_canonical(
+        &context.runtime_root,
+        &brain.brain_id,
+        std::slice::from_ref(&device),
+        &mut resolver,
+        &mut db,
+    )
+    .map_err(|_| DerivedCatchupError::KnowledgeRebuildFailed)?;
+    Ok(())
 }
 
 struct DesktopProcessIdentity {
@@ -1679,7 +1772,10 @@ fn handle_search_until(
     }
     let db = match ProjectionDb::open_or_create(&context.runtime_root) {
         Ok(db) => db,
-        Err(_) => return search_held(Some(request_id), "materialization_state_missing_or_stale"),
+        Err(_) => {
+            request_projection_sync(context);
+            return search_held(Some(request_id), "materialization_state_missing_or_stale");
+        }
     };
     if deadline_expired(deadline) {
         return search_held(Some(request_id.clone()), "operation_deadline_exceeded");
@@ -1695,6 +1791,14 @@ fn handle_search_until(
     ) {
         Ok(hits) => search_results(Some(request_id), hits),
         Err(GuardedSearchError::BrainWideHold(reason)) => {
+            if matches!(
+                reason,
+                RetrievalSafetyHold::MaterializationStateMissingOrStale
+                    | RetrievalSafetyHold::ProjectionDoesNotMatchCanonical
+            ) {
+                drop(db);
+                request_projection_sync(context);
+            }
             search_held(Some(request_id), hold_reason_code(reason))
         }
         Err(GuardedSearchError::Query(_)) => search_rejected(Some(request_id), "invalid_query"),
@@ -1925,6 +2029,9 @@ fn handle_capture_until(
             Err(code) => return capture_rejected(Some(request_id), code),
         }
     };
+    if matches!(&outcome, CaptureOutcome::Committed(_)) {
+        request_projection_sync(context);
+    }
     map_capture_outcome(
         request_id,
         if is_resolve {
@@ -2286,6 +2393,7 @@ mod tests {
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("capture test Desktop identity"),
             ),
+            projection_sync: None,
         };
         SearchFixture {
             root,
@@ -2294,6 +2402,79 @@ mod tests {
             store,
             context,
         }
+    }
+
+    #[test]
+    fn derived_state_rebuilds_from_canonical_after_projection_database_loss() {
+        let mut fixture = prepared_search_fixture("derived-restart-rebuild");
+        let (sync_sender, sync_receiver) = sync_channel(1);
+        fixture.context.projection_sync = Some(sync_sender);
+        let projection_path = cryptex_projection::projection_sqlite_path(&fixture.root);
+        fs::remove_file(&projection_path).expect("remove derived projection database");
+
+        let held = content_search_ipc_round_trip(
+            Some(fixture.context.clone()),
+            DesktopSearchQuery::default(),
+        );
+        assert!(held.accepted);
+        assert!(held.hits.is_none());
+        assert_eq!(
+            held.hold_reason.as_deref(),
+            Some("materialization_state_missing_or_stale")
+        );
+        sync_receiver
+            .try_recv()
+            .expect("stale guarded search schedules derived catch-up");
+
+        synchronize_local_derived_state(&fixture.context)
+            .expect("rebuild M3 and M4 derived state from canonical events");
+
+        let response = content_search_ipc_round_trip(
+            Some(fixture.context.clone()),
+            DesktopSearchQuery {
+                text: Some("synthetic IPC search fixture note".into()),
+                ..DesktopSearchQuery::default()
+            },
+        );
+        assert!(response.accepted);
+        let hits = response.hits.expect("rebuilt derived note is searchable");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].text, "synthetic IPC search fixture note");
+        fs::remove_dir_all(fixture.root).expect("cleanup fixture");
+    }
+
+    #[test]
+    fn daemon_startup_worker_reconstructs_missing_derived_state() {
+        let fixture = prepared_search_fixture("startup-catchup");
+        let projection_path = cryptex_projection::projection_sqlite_path(&fixture.root);
+        fs::remove_file(&projection_path).expect("remove derived projection database");
+        let mut context = fixture.context.clone();
+        start_projection_sync_worker(&mut context);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let response = content_search_ipc_round_trip(
+                Some(context.clone()),
+                DesktopSearchQuery {
+                    text: Some("synthetic IPC search fixture note".into()),
+                    ..DesktopSearchQuery::default()
+                },
+            );
+            assert!(response.accepted);
+            if let Some(hits) = response.hits {
+                assert_eq!(hits.len(), 1);
+                assert_eq!(hits[0].text, "synthetic IPC search fixture note");
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "startup catch-up did not make canonical note searchable"
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
+
+        drop(context);
+        fs::remove_dir_all(fixture.root).expect("cleanup fixture");
     }
 
     fn content_search_ipc_round_trip(
@@ -2404,6 +2585,7 @@ mod tests {
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
+            projection_sync: None,
         };
         let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
 
@@ -2433,6 +2615,7 @@ mod tests {
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
+            projection_sync: None,
         };
         let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
 
@@ -2655,6 +2838,7 @@ mod tests {
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
+            projection_sync: None,
         };
         let request = || Request {
             protocol_version: PROTOCOL_VERSION,
@@ -3213,7 +3397,9 @@ mod tests {
 
     #[test]
     fn capture_commits_and_resolve_replays_without_search_claim() {
-        let fixture = prepared_search_fixture("capture-commit");
+        let mut fixture = prepared_search_fixture("capture-commit");
+        let (sync_sender, sync_receiver) = sync_channel(1);
+        fixture.context.projection_sync = Some(sync_sender);
         let body = sample_capture_body();
         let response = handle_capture_until(
             capture_request(
@@ -3231,6 +3417,9 @@ mod tests {
             Some(body.capture_id.as_str())
         );
         assert!(response.event_id.is_some());
+        sync_receiver
+            .try_recv()
+            .expect("committed capture schedules derived catch-up");
         // Redaction: never echo note body fields that don't exist on the wire type.
         let encoded = serde_json::to_string(&response).unwrap();
         assert!(!encoded.contains("inbox note"));

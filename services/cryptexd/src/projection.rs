@@ -91,7 +91,7 @@ pub fn open_projection_db(
 ///
 /// Projects the full verified feed (idempotent inserts) and advances the device
 /// checkpoint to the verified tip in the same transaction.
-pub fn project_verified_device_events<S: SecureStore>(
+pub fn project_verified_device_events<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
@@ -110,7 +110,7 @@ pub fn project_verified_device_events<S: SecureStore>(
 }
 
 /// Full rebuild for one device: clear disposable rows, project verified feed, checkpoint.
-pub fn rebuild_device_projection<S: SecureStore>(
+pub fn rebuild_device_projection<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
@@ -131,7 +131,7 @@ pub fn rebuild_device_projection<S: SecureStore>(
 
 /// Incremental catch-up from checkpoint; rebuilds disposable state if the checkpoint
 /// is missing, unknown, or ahead of verified packs.
-pub fn catch_up_device_projection<S: SecureStore>(
+pub fn catch_up_device_projection<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
@@ -191,7 +191,7 @@ enum DeviceProjectMode {
     FullIdempotent,
 }
 
-fn run_device_projection<S: SecureStore>(
+fn run_device_projection<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
