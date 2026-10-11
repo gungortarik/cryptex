@@ -16,7 +16,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{
+    AboutMetadata, HELP_SUBMENU_ID, Menu, MenuItem, PredefinedMenuItem, Submenu, WINDOW_SUBMENU_ID,
+};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, RunEvent, State, WindowEvent};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -359,6 +361,217 @@ const CAPTURE_QUIT_WARNING: &str = concat!(
     "Cancel keeps Cryptex open.",
 );
 
+/// Application-menu Quit id. Must not use `PredefinedMenuItem::quit` on macOS:
+/// muda maps that predefined item to native `terminate:`, which bypasses
+/// `RunEvent::ExitRequested` and orphans the supervised daemon.
+const APP_MENU_QUIT_ID: &str = "cryptex-app-menu-quit";
+const APP_MENU_QUIT_ACCELERATOR: &str = "CmdOrCtrl+Q";
+const TRAY_MENU_QUIT_ID: &str = "quit";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlannedMenuEntry {
+    About,
+    Services,
+    Hide,
+    HideOthers,
+    Separator,
+    CloseWindow,
+    /// Explicit custom Quit routed through shared guarded shutdown.
+    CustomQuit,
+    /// Forbidden in Cryptex menus — muda/macOS maps this to `terminate:`.
+    PredefinedQuit,
+}
+
+fn planned_macos_app_submenu() -> &'static [PlannedMenuEntry] {
+    &[
+        PlannedMenuEntry::About,
+        PlannedMenuEntry::Separator,
+        PlannedMenuEntry::Services,
+        PlannedMenuEntry::Separator,
+        PlannedMenuEntry::Hide,
+        PlannedMenuEntry::HideOthers,
+        PlannedMenuEntry::Separator,
+        PlannedMenuEntry::CustomQuit,
+    ]
+}
+
+fn planned_non_macos_file_submenu() -> &'static [PlannedMenuEntry] {
+    &[PlannedMenuEntry::CloseWindow, PlannedMenuEntry::CustomQuit]
+}
+
+fn menu_plan_contains_predefined_quit(entries: &[PlannedMenuEntry]) -> bool {
+    entries
+        .iter()
+        .any(|entry| matches!(entry, PlannedMenuEntry::PredefinedQuit))
+}
+
+fn menu_plan_has_custom_quit(entries: &[PlannedMenuEntry]) -> bool {
+    entries
+        .iter()
+        .any(|entry| matches!(entry, PlannedMenuEntry::CustomQuit))
+}
+
+fn is_app_menu_quit_id(id: &str) -> bool {
+    id == APP_MENU_QUIT_ID
+}
+
+fn is_tray_menu_quit_id(id: &str) -> bool {
+    id == TRAY_MENU_QUIT_ID
+}
+
+/// Route an application/tray menu id to a supervised Quit note, if guarded.
+fn route_menu_quit_id(id: &str) -> Option<&'static str> {
+    if is_app_menu_quit_id(id) {
+        Some("clean_quit_from_app_menu")
+    } else if is_tray_menu_quit_id(id) {
+        Some("clean_quit_from_tray")
+    } else {
+        None
+    }
+}
+
+fn build_cryptex_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let pkg_info = app.package_info();
+    let config = app.config();
+    let about_metadata = AboutMetadata {
+        name: Some(pkg_info.name.clone()),
+        version: Some(pkg_info.version.to_string()),
+        copyright: config.bundle.copyright.clone(),
+        authors: config.bundle.publisher.clone().map(|p| vec![p]),
+        ..Default::default()
+    };
+
+    let quit_item = MenuItem::with_id(
+        app,
+        APP_MENU_QUIT_ID,
+        "Quit Cryptex",
+        true,
+        Some(APP_MENU_QUIT_ACCELERATOR),
+    )?;
+    // Keep the forbidden variant referenced so menus cannot silently regress to it.
+    debug_assert!(menu_plan_contains_predefined_quit(&[
+        PlannedMenuEntry::PredefinedQuit
+    ]));
+    // Touch both platform plans on every OS so Clippy cannot drop menu-contract helpers.
+    debug_assert!(menu_plan_has_custom_quit(planned_macos_app_submenu()));
+    debug_assert!(!menu_plan_contains_predefined_quit(
+        planned_macos_app_submenu()
+    ));
+    debug_assert!(menu_plan_has_custom_quit(planned_non_macos_file_submenu()));
+    debug_assert!(!menu_plan_contains_predefined_quit(
+        planned_non_macos_file_submenu()
+    ));
+
+    let window_menu = Submenu::with_id_and_items(
+        app,
+        WINDOW_SUBMENU_ID,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+            #[cfg(target_os = "macos")]
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+
+    let help_menu = Submenu::with_id_and_items(
+        app,
+        HELP_SUBMENU_ID,
+        "Help",
+        true,
+        &[
+            #[cfg(not(target_os = "macos"))]
+            &PredefinedMenuItem::about(app, None, Some(about_metadata.clone()))?,
+        ],
+    )?;
+
+    #[cfg(target_os = "macos")]
+    {
+        let app_submenu = Submenu::with_items(
+            app,
+            pkg_info.name.clone(),
+            true,
+            &[
+                &PredefinedMenuItem::about(app, None, Some(about_metadata))?,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::services(app, None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::hide(app, None)?,
+                &PredefinedMenuItem::hide_others(app, None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &quit_item,
+            ],
+        )?;
+        Menu::with_items(
+            app,
+            &[
+                &app_submenu,
+                &Submenu::with_items(
+                    app,
+                    "File",
+                    true,
+                    &[&PredefinedMenuItem::close_window(app, None)?],
+                )?,
+                &Submenu::with_items(
+                    app,
+                    "Edit",
+                    true,
+                    &[
+                        &PredefinedMenuItem::undo(app, None)?,
+                        &PredefinedMenuItem::redo(app, None)?,
+                        &PredefinedMenuItem::separator(app)?,
+                        &PredefinedMenuItem::cut(app, None)?,
+                        &PredefinedMenuItem::copy(app, None)?,
+                        &PredefinedMenuItem::paste(app, None)?,
+                        &PredefinedMenuItem::select_all(app, None)?,
+                    ],
+                )?,
+                &Submenu::with_items(
+                    app,
+                    "View",
+                    true,
+                    &[&PredefinedMenuItem::fullscreen(app, None)?],
+                )?,
+                &window_menu,
+                &help_menu,
+            ],
+        )
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Menu::with_items(
+            app,
+            &[
+                &Submenu::with_items(
+                    app,
+                    "File",
+                    true,
+                    &[&PredefinedMenuItem::close_window(app, None)?, &quit_item],
+                )?,
+                &Submenu::with_items(
+                    app,
+                    "Edit",
+                    true,
+                    &[
+                        &PredefinedMenuItem::undo(app, None)?,
+                        &PredefinedMenuItem::redo(app, None)?,
+                        &PredefinedMenuItem::separator(app)?,
+                        &PredefinedMenuItem::cut(app, None)?,
+                        &PredefinedMenuItem::copy(app, None)?,
+                        &PredefinedMenuItem::paste(app, None)?,
+                        &PredefinedMenuItem::select_all(app, None)?,
+                    ],
+                )?,
+                &window_menu,
+                &help_menu,
+            ],
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CaptureQuitGuardView {
     /// Renderer reported a clean session and sync succeeded.
@@ -468,16 +681,18 @@ fn decide_exit_lifecycle_action(
 }
 
 /// Route `RunEvent::ExitRequested` through shared Quit confirmation when user-initiated.
-/// Returns whether the caller must `api.prevent_exit()`.
-fn handle_exit_requested<C, S, E>(
+/// Unauthorized exits call `prevent_exit` **before** any blocking confirm/shutdown work.
+fn handle_exit_requested<P, C, S, E>(
     code: Option<i32>,
     user_quit_in_progress: &AtomicBool,
     guard: CaptureQuitGuardView,
+    prevent_exit: P,
     confirm: C,
     stop_daemon: S,
     exit: E,
-) -> (bool, HandledExitOutcome)
+) -> HandledExitOutcome
 where
+    P: FnOnce(),
     C: FnOnce(&str) -> bool,
     S: FnOnce() -> Result<(), String>,
     E: FnOnce(),
@@ -487,32 +702,75 @@ where
         user_quit_in_progress.load(Ordering::Acquire),
     );
     match action {
-        ExitLifecycleAction::Allow => (false, HandledExitOutcome::IntentionalAllowed),
-        ExitLifecycleAction::PreventDuplicate => (true, HandledExitOutcome::DuplicateIgnored),
+        ExitLifecycleAction::Allow => HandledExitOutcome::IntentionalAllowed,
+        ExitLifecycleAction::PreventDuplicate => {
+            prevent_exit();
+            HandledExitOutcome::DuplicateIgnored
+        }
         ExitLifecycleAction::InterceptAndGuard => {
+            // Fail closed before modal confirm / daemon stop can block the event loop.
+            prevent_exit();
             if user_quit_in_progress
                 .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
                 .is_err()
             {
-                return (true, HandledExitOutcome::DuplicateIgnored);
+                return HandledExitOutcome::DuplicateIgnored;
             }
             let outcome = perform_user_initiated_quit(guard, confirm, stop_daemon, exit);
             match outcome {
                 UserQuitOutcome::Cancelled => {
                     user_quit_in_progress.store(false, Ordering::Release);
-                    (true, HandledExitOutcome::Cancelled)
+                    HandledExitOutcome::Cancelled
                 }
                 UserQuitOutcome::StopFailed => {
                     user_quit_in_progress.store(false, Ordering::Release);
-                    (true, HandledExitOutcome::StopFailed)
+                    HandledExitOutcome::StopFailed
                 }
                 UserQuitOutcome::Completed => {
                     // Keep the gate set until process exit; the follow-up
                     // `app.exit(code)` is Intentional and must not re-prompt.
-                    (true, HandledExitOutcome::Completed)
+                    HandledExitOutcome::Completed
                 }
             }
         }
+    }
+}
+
+fn run_guarded_user_quit(app: &AppHandle, note: &str) {
+    let state = app.state::<ProbeState>();
+    if !try_begin_user_quit(state.inner()) {
+        return;
+    }
+    let guard = capture_quit_guard_view(state.inner());
+    let mut stop_error: Option<String> = None;
+    let outcome = perform_user_initiated_quit(
+        guard,
+        native_confirm_discard_and_quit,
+        || {
+            let result = stop_daemon_for_user_quit(state.inner(), note);
+            if let Err(error) = &result {
+                stop_error = Some(error.clone());
+            }
+            result
+        },
+        || app.exit(0),
+    );
+    match outcome {
+        UserQuitOutcome::Cancelled => end_user_quit(state.inner()),
+        UserQuitOutcome::StopFailed => {
+            end_user_quit(state.inner());
+            let detail = stop_error.unwrap_or_else(|| "failed to stop supervised daemon".into());
+            if let Ok(root) = runtime_root_path() {
+                let _ = fs::write(
+                    root.join("quit.error"),
+                    format!(
+                        "{detail}
+"
+                    ),
+                );
+            }
+        }
+        UserQuitOutcome::Completed => {}
     }
 }
 
@@ -715,13 +973,58 @@ mod capture_quit_guard_tests {
 }
 
 #[cfg(test)]
+#[cfg(test)]
 mod exit_lifecycle_routing_tests {
     use super::{
-        CaptureQuitGuardView, ExitLifecycleAction, ExitRequestKind, HandledExitOutcome,
-        decide_exit_lifecycle_action, exit_request_kind, handle_exit_requested,
+        APP_MENU_QUIT_ACCELERATOR, APP_MENU_QUIT_ID, CaptureQuitGuardView, ExitLifecycleAction,
+        ExitRequestKind, HandledExitOutcome, PlannedMenuEntry, decide_exit_lifecycle_action,
+        exit_request_kind, handle_exit_requested, is_app_menu_quit_id,
+        menu_plan_contains_predefined_quit, menu_plan_has_custom_quit, planned_macos_app_submenu,
+        planned_non_macos_file_submenu, route_menu_quit_id,
     };
     use std::cell::Cell;
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn macos_app_submenu_uses_custom_quit_not_predefined() {
+        let plan = planned_macos_app_submenu();
+        assert!(menu_plan_has_custom_quit(plan));
+        assert!(!menu_plan_contains_predefined_quit(plan));
+        assert!(
+            !plan
+                .iter()
+                .any(|e| matches!(e, PlannedMenuEntry::PredefinedQuit)),
+            "predefined Quit must not remain as a terminate: bypass"
+        );
+        assert!(menu_plan_contains_predefined_quit(&[
+            PlannedMenuEntry::PredefinedQuit
+        ]));
+        assert_eq!(APP_MENU_QUIT_ID, "cryptex-app-menu-quit");
+        assert_eq!(APP_MENU_QUIT_ACCELERATOR, "CmdOrCtrl+Q");
+        assert!(is_app_menu_quit_id(APP_MENU_QUIT_ID));
+        assert_eq!(
+            route_menu_quit_id(APP_MENU_QUIT_ID),
+            Some("clean_quit_from_app_menu")
+        );
+    }
+
+    #[test]
+    fn non_macos_file_submenu_uses_custom_quit_not_predefined() {
+        let plan = planned_non_macos_file_submenu();
+        assert!(menu_plan_has_custom_quit(plan));
+        assert!(!menu_plan_contains_predefined_quit(plan));
+    }
+
+    #[test]
+    fn menu_quit_ids_route_to_guarded_shutdown_notes() {
+        assert_eq!(
+            route_menu_quit_id(APP_MENU_QUIT_ID),
+            Some("clean_quit_from_app_menu")
+        );
+        assert_eq!(route_menu_quit_id("quit"), Some("clean_quit_from_tray"));
+        assert_eq!(route_menu_quit_id("open"), None);
+        assert_eq!(route_menu_quit_id("__tauri_quit__"), None);
+    }
 
     #[test]
     fn application_menu_exit_request_is_user_initiated() {
@@ -733,16 +1036,22 @@ mod exit_lifecycle_routing_tests {
     }
 
     #[test]
-    fn user_exit_cancel_preserves_session() {
+    fn user_exit_cancel_preserves_session_and_prevents_before_confirm() {
         let in_progress = AtomicBool::new(false);
+        let prevented = Cell::new(false);
         let asked = Cell::new(0);
         let stopped = Cell::new(false);
         let exited = Cell::new(false);
-        let (prevent, outcome) = handle_exit_requested(
+        let outcome = handle_exit_requested(
             None,
             &in_progress,
             CaptureQuitGuardView::Dirty,
+            || prevented.set(true),
             |_message| {
+                assert!(
+                    prevented.get(),
+                    "prevent_exit must run before blocking confirmation"
+                );
                 asked.set(asked.get() + 1);
                 false
             },
@@ -752,8 +1061,8 @@ mod exit_lifecycle_routing_tests {
             },
             || exited.set(true),
         );
-        assert!(prevent);
         assert_eq!(outcome, HandledExitOutcome::Cancelled);
+        assert!(prevented.get());
         assert_eq!(asked.get(), 1);
         assert!(!stopped.get());
         assert!(!exited.get());
@@ -763,14 +1072,17 @@ mod exit_lifecycle_routing_tests {
     #[test]
     fn user_exit_confirm_stops_daemon_then_exits() {
         let in_progress = AtomicBool::new(false);
+        let prevented = Cell::new(false);
         let asked = Cell::new(0);
         let stopped = Cell::new(false);
         let exited = Cell::new(false);
-        let (prevent, outcome) = handle_exit_requested(
+        let outcome = handle_exit_requested(
             None,
             &in_progress,
             CaptureQuitGuardView::Unknown,
+            || prevented.set(true),
             |_message| {
+                assert!(prevented.get());
                 asked.set(asked.get() + 1);
                 true
             },
@@ -780,31 +1092,30 @@ mod exit_lifecycle_routing_tests {
             },
             || exited.set(true),
         );
-        assert!(prevent, "original ExitRequested must be prevented");
         assert_eq!(outcome, HandledExitOutcome::Completed);
+        assert!(prevented.get());
         assert_eq!(asked.get(), 1);
         assert!(stopped.get());
         assert!(exited.get());
-        assert!(
-            in_progress.load(Ordering::Acquire),
-            "gate stays set so the intentional follow-up exit cannot re-prompt"
-        );
+        assert!(in_progress.load(Ordering::Acquire));
     }
 
     #[test]
     fn user_exit_shutdown_failure_retains_desktop() {
         let in_progress = AtomicBool::new(false);
+        let prevented = Cell::new(false);
         let exited = Cell::new(false);
-        let (prevent, outcome) = handle_exit_requested(
+        let outcome = handle_exit_requested(
             None,
             &in_progress,
             CaptureQuitGuardView::Clean,
+            || prevented.set(true),
             |_message| true,
             || Err("daemon ignored clean stop and had to be force-stopped".into()),
             || exited.set(true),
         );
-        assert!(prevent);
         assert_eq!(outcome, HandledExitOutcome::StopFailed);
+        assert!(prevented.get());
         assert!(!exited.get());
         assert!(!in_progress.load(Ordering::Acquire));
     }
@@ -812,13 +1123,15 @@ mod exit_lifecycle_routing_tests {
     #[test]
     fn repeated_user_exit_requests_do_not_reprompt() {
         let in_progress = AtomicBool::new(true);
+        let prevented = Cell::new(false);
         let asked = Cell::new(0);
         let stopped = Cell::new(false);
         let exited = Cell::new(false);
-        let (prevent, outcome) = handle_exit_requested(
+        let outcome = handle_exit_requested(
             None,
             &in_progress,
             CaptureQuitGuardView::Dirty,
+            || prevented.set(true),
             |_message| {
                 asked.set(asked.get() + 1);
                 true
@@ -829,8 +1142,8 @@ mod exit_lifecycle_routing_tests {
             },
             || exited.set(true),
         );
-        assert!(prevent);
         assert_eq!(outcome, HandledExitOutcome::DuplicateIgnored);
+        assert!(prevented.get());
         assert_eq!(asked.get(), 0);
         assert!(!stopped.get());
         assert!(!exited.get());
@@ -839,13 +1152,15 @@ mod exit_lifecycle_routing_tests {
     #[test]
     fn intentional_final_exit_skips_prompt() {
         let in_progress = AtomicBool::new(true);
+        let prevented = Cell::new(false);
         let asked = Cell::new(0);
         let stopped = Cell::new(false);
         let exited = Cell::new(false);
-        let (prevent, outcome) = handle_exit_requested(
+        let outcome = handle_exit_requested(
             Some(0),
             &in_progress,
             CaptureQuitGuardView::Dirty,
+            || prevented.set(true),
             |_message| {
                 asked.set(asked.get() + 1);
                 true
@@ -856,8 +1171,8 @@ mod exit_lifecycle_routing_tests {
             },
             || exited.set(true),
         );
-        assert!(!prevent);
         assert_eq!(outcome, HandledExitOutcome::IntentionalAllowed);
+        assert!(!prevented.get());
         assert_eq!(asked.get(), 0);
         assert!(!stopped.get());
         assert!(!exited.get());
@@ -928,34 +1243,10 @@ fn p0_2_write_snapshot(
 }
 
 #[tauri::command]
-fn p0_2_quit_clean(app: AppHandle, state: State<'_, ProbeState>) -> Result<(), String> {
-    if !try_begin_user_quit(state.inner()) {
-        return Ok(());
-    }
-    let guard = capture_quit_guard_view(state.inner());
-    let mut stop_error: Option<String> = None;
-    match perform_user_initiated_quit(
-        guard,
-        native_confirm_discard_and_quit,
-        || {
-            let result = stop_daemon_for_user_quit(state.inner(), "clean_quit");
-            if let Err(error) = &result {
-                stop_error = Some(error.clone());
-            }
-            result
-        },
-        || app.exit(0),
-    ) {
-        UserQuitOutcome::Cancelled => {
-            end_user_quit(state.inner());
-            Ok(())
-        }
-        UserQuitOutcome::Completed => Ok(()),
-        UserQuitOutcome::StopFailed => {
-            end_user_quit(state.inner());
-            Err(stop_error.unwrap_or_else(|| "failed to stop supervised daemon".into()))
-        }
-    }
+fn p0_2_quit_clean(app: AppHandle, _state: State<'_, ProbeState>) -> Result<(), String> {
+    // Shared path; StopFailed leaves Desktop up and writes quit.error.
+    run_guarded_user_quit(&app, "clean_quit");
+    Ok(())
 }
 fn stop_supervised_daemon(state: &ProbeState) -> Result<(), String> {
     let runtime = state
@@ -1057,34 +1348,18 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(error) = show_main_window(app, "tray_menu", &state)
                     && let Ok(runtime) = runtime_root_path()
                 {
-                    let _ = fs::write(runtime.join("window.error"), format!("{error}\n"));
+                    let _ = fs::write(
+                        runtime.join("window.error"),
+                        format!(
+                            "{error}
+"
+                        ),
+                    );
                 }
             }
             "quit" => {
-                let state = app.state::<ProbeState>();
-                if !try_begin_user_quit(state.inner()) {
-                    return;
-                }
-                let guard = capture_quit_guard_view(state.inner());
-                let outcome = perform_user_initiated_quit(
-                    guard,
-                    native_confirm_discard_and_quit,
-                    || match stop_daemon_for_user_quit(state.inner(), "clean_quit_from_tray") {
-                        Ok(()) => Ok(()),
-                        Err(error) => {
-                            if let Ok(root) = runtime_root_path() {
-                                let _ = fs::write(root.join("quit.error"), format!("{error}\n"));
-                            }
-                            Err(error)
-                        }
-                    },
-                    || app.exit(0),
-                );
-                match outcome {
-                    UserQuitOutcome::Cancelled | UserQuitOutcome::StopFailed => {
-                        end_user_quit(state.inner());
-                    }
-                    UserQuitOutcome::Completed => {}
+                if let Some(note) = route_menu_quit_id(event.id.as_ref()) {
+                    run_guarded_user_quit(app, note);
                 }
             }
 
@@ -1102,7 +1377,13 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(error) = show_main_window(app, "tray_left_click", &state)
                     && let Ok(runtime) = runtime_root_path()
                 {
-                    let _ = fs::write(runtime.join("window.error"), format!("{error}\n"));
+                    let _ = fs::write(
+                        runtime.join("window.error"),
+                        format!(
+                            "{error}
+"
+                        ),
+                    );
                 }
             }
         })
@@ -1462,7 +1743,13 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
                                 );
                             }
                             Err(error) => {
-                                let _ = fs::write(root.join("start.error"), format!("{error}\n"));
+                                let _ = fs::write(
+                                    root.join("start.error"),
+                                    format!(
+                                        "{error}
+"
+                                    ),
+                                );
                             }
                         },
                         None => {
@@ -1502,7 +1789,13 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
             if pilot_runtime::root().is_some() && pilot_quit.exists() {
                 let _ = fs::remove_file(&pilot_quit);
                 if let Err(error) = p0_2_quit_clean(app.clone(), app.state::<ProbeState>()) {
-                    let _ = fs::write(root.join("pilot-quit.error"), format!("{error}\n"));
+                    let _ = fs::write(
+                        root.join("pilot-quit.error"),
+                        format!(
+                            "{error}
+"
+                        ),
+                    );
                     app.exit(2);
                 }
                 break;
@@ -1522,7 +1815,13 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
             }
 
             if let Err(error) = restart_exited_daemon(&state, &root) {
-                let _ = fs::write(root.join("restart.error"), format!("{error}\n"));
+                let _ = fs::write(
+                    root.join("restart.error"),
+                    format!(
+                        "{error}
+"
+                    ),
+                );
             }
 
             thread::sleep(Duration::from_millis(150));
@@ -1564,7 +1863,13 @@ fn main() {
             if let Err(error) = show_main_window(app, "single_instance_launch", &state)
                 && let Ok(runtime) = runtime_root_path()
             {
-                let _ = fs::write(runtime.join("window.error"), format!("{error}\n"));
+                let _ = fs::write(
+                    runtime.join("window.error"),
+                    format!(
+                        "{error}
+"
+                    ),
+                );
             }
         }));
 
@@ -1585,6 +1890,12 @@ fn main() {
     );
 
     builder
+        .menu(build_cryptex_app_menu)
+        .on_menu_event(|app, event| {
+            if let Some(note) = route_menu_quit_id(event.id().as_ref()) {
+                run_guarded_user_quit(app, note);
+            }
+        })
         .manage(probe_state.clone())
         .invoke_handler(tauri::generate_handler![
             p0_2_runtime_root,
@@ -1623,7 +1934,13 @@ fn main() {
                 && let Ok(root) = runtime_root_path()
             {
                 let _ = fs::create_dir_all(&root);
-                let _ = fs::write(root.join("start.error"), format!("{error}\n"));
+                let _ = fs::write(
+                    root.join("start.error"),
+                    format!(
+                        "{error}
+"
+                    ),
+                );
             }
             let _ = runtime_root_path().and_then(|root| {
                 fs::create_dir_all(&root).map_err(|e| e.to_string())?;
@@ -1649,14 +1966,17 @@ fn main() {
             RunEvent::ExitRequested { code, api, .. } => {
                 let state = app_handle.state::<ProbeState>();
                 let mut stop_error: Option<String> = None;
-                let (prevent, outcome) = handle_exit_requested(
+                let outcome = handle_exit_requested(
                     code,
                     &state.user_quit_in_progress,
                     capture_quit_guard_view(state.inner()),
+                    || api.prevent_exit(),
                     native_confirm_discard_and_quit,
                     || {
-                        let result =
-                            stop_daemon_for_user_quit(state.inner(), "clean_quit_from_app_menu");
+                        let result = stop_daemon_for_user_quit(
+                            state.inner(),
+                            "clean_quit_from_exit_requested",
+                        );
                         if let Err(error) = &result {
                             stop_error = Some(error.clone());
                         }
@@ -1664,17 +1984,21 @@ fn main() {
                     },
                     || app_handle.exit(0),
                 );
-                if prevent {
-                    api.prevent_exit();
-                }
                 if matches!(outcome, HandledExitOutcome::StopFailed) {
                     let detail =
                         stop_error.unwrap_or_else(|| "failed to stop supervised daemon".into());
                     if let Ok(root) = runtime_root_path() {
-                        let _ = fs::write(root.join("quit.error"), format!("{detail}\n"));
+                        let _ = fs::write(
+                            root.join("quit.error"),
+                            format!(
+                                "{detail}
+"
+                            ),
+                        );
                     }
                 }
             }
+
             #[cfg(target_os = "macos")]
             RunEvent::Reopen {
                 has_visible_windows,
