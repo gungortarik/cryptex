@@ -419,15 +419,52 @@ fn is_tray_menu_quit_id(id: &str) -> bool {
     id == TRAY_MENU_QUIT_ID
 }
 
-/// Route an application/tray menu id to a supervised Quit note, if guarded.
-fn route_menu_quit_id(id: &str) -> Option<&'static str> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MenuListenerOwner {
+    /// `Builder::on_menu_event` — application menu / Cmd+Q only.
+    Application,
+    /// `TrayIconBuilder::on_menu_event` — tray menu ids only.
+    Tray,
+}
+
+/// Tauri 2.12 delivers tray and application menu events to every registered
+/// menu listener. Each owner must accept only its own ids so Cancel cannot
+/// reset the re-entry gate and allow a second prompt for the same event.
+const ALL_MENU_LISTENERS: &[MenuListenerOwner] =
+    &[MenuListenerOwner::Application, MenuListenerOwner::Tray];
+
+/// Application-menu listener: only `APP_MENU_QUIT_ID`.
+fn route_app_menu_event_quit(id: &str) -> Option<&'static str> {
     if is_app_menu_quit_id(id) {
         Some("clean_quit_from_app_menu")
-    } else if is_tray_menu_quit_id(id) {
+    } else {
+        None
+    }
+}
+
+/// Tray-menu listener: only tray Quit id (not the application Quit id).
+fn route_tray_menu_event_quit(id: &str) -> Option<&'static str> {
+    if is_tray_menu_quit_id(id) {
         Some("clean_quit_from_tray")
     } else {
         None
     }
+}
+
+fn route_menu_event_quit_for_owner(owner: MenuListenerOwner, id: &str) -> Option<&'static str> {
+    match owner {
+        MenuListenerOwner::Application => route_app_menu_event_quit(id),
+        MenuListenerOwner::Tray => route_tray_menu_event_quit(id),
+    }
+}
+
+/// Notes that would be acted on if every registered listener saw `id`.
+/// Must contain at most one entry for any Quit id.
+fn menu_quit_notes_from_all_listeners(id: &str) -> Vec<&'static str> {
+    ALL_MENU_LISTENERS
+        .iter()
+        .filter_map(|owner| route_menu_event_quit_for_owner(*owner, id))
+        .collect()
 }
 
 fn build_cryptex_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
@@ -461,6 +498,16 @@ fn build_cryptex_app_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     debug_assert!(!menu_plan_contains_predefined_quit(
         planned_non_macos_file_submenu()
     ));
+    // Single-owner contract: tray and app Quit ids must not both fire for one event.
+    debug_assert_eq!(
+        menu_quit_notes_from_all_listeners(APP_MENU_QUIT_ID),
+        vec!["clean_quit_from_app_menu"]
+    );
+    debug_assert_eq!(
+        menu_quit_notes_from_all_listeners(TRAY_MENU_QUIT_ID),
+        vec!["clean_quit_from_tray"]
+    );
+    let _ = ALL_MENU_LISTENERS;
 
     let window_menu = Submenu::with_id_and_items(
         app,
@@ -976,11 +1023,14 @@ mod capture_quit_guard_tests {
 #[cfg(test)]
 mod exit_lifecycle_routing_tests {
     use super::{
-        APP_MENU_QUIT_ACCELERATOR, APP_MENU_QUIT_ID, CaptureQuitGuardView, ExitLifecycleAction,
-        ExitRequestKind, HandledExitOutcome, PlannedMenuEntry, decide_exit_lifecycle_action,
+        ALL_MENU_LISTENERS, APP_MENU_QUIT_ACCELERATOR, APP_MENU_QUIT_ID, CaptureQuitGuardView,
+        ExitLifecycleAction, ExitRequestKind, HandledExitOutcome, MenuListenerOwner,
+        PlannedMenuEntry, TRAY_MENU_QUIT_ID, UserQuitOutcome, decide_exit_lifecycle_action,
         exit_request_kind, handle_exit_requested, is_app_menu_quit_id,
-        menu_plan_contains_predefined_quit, menu_plan_has_custom_quit, planned_macos_app_submenu,
-        planned_non_macos_file_submenu, route_menu_quit_id,
+        menu_plan_contains_predefined_quit, menu_plan_has_custom_quit,
+        menu_quit_notes_from_all_listeners, perform_user_initiated_quit, planned_macos_app_submenu,
+        planned_non_macos_file_submenu, route_app_menu_event_quit, route_menu_event_quit_for_owner,
+        route_tray_menu_event_quit,
     };
     use std::cell::Cell;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -1003,7 +1053,7 @@ mod exit_lifecycle_routing_tests {
         assert_eq!(APP_MENU_QUIT_ACCELERATOR, "CmdOrCtrl+Q");
         assert!(is_app_menu_quit_id(APP_MENU_QUIT_ID));
         assert_eq!(
-            route_menu_quit_id(APP_MENU_QUIT_ID),
+            route_app_menu_event_quit(APP_MENU_QUIT_ID),
             Some("clean_quit_from_app_menu")
         );
     }
@@ -1016,14 +1066,155 @@ mod exit_lifecycle_routing_tests {
     }
 
     #[test]
-    fn menu_quit_ids_route_to_guarded_shutdown_notes() {
+    fn menu_quit_ids_have_exactly_one_listener_owner() {
         assert_eq!(
-            route_menu_quit_id(APP_MENU_QUIT_ID),
+            route_app_menu_event_quit(APP_MENU_QUIT_ID),
             Some("clean_quit_from_app_menu")
         );
-        assert_eq!(route_menu_quit_id("quit"), Some("clean_quit_from_tray"));
-        assert_eq!(route_menu_quit_id("open"), None);
-        assert_eq!(route_menu_quit_id("__tauri_quit__"), None);
+        assert_eq!(route_app_menu_event_quit(TRAY_MENU_QUIT_ID), None);
+        assert_eq!(
+            route_tray_menu_event_quit(TRAY_MENU_QUIT_ID),
+            Some("clean_quit_from_tray")
+        );
+        assert_eq!(route_tray_menu_event_quit(APP_MENU_QUIT_ID), None);
+        assert_eq!(route_app_menu_event_quit("open"), None);
+        assert_eq!(route_tray_menu_event_quit("open"), None);
+
+        assert_eq!(
+            menu_quit_notes_from_all_listeners(APP_MENU_QUIT_ID),
+            vec!["clean_quit_from_app_menu"]
+        );
+        assert_eq!(
+            menu_quit_notes_from_all_listeners(TRAY_MENU_QUIT_ID),
+            vec!["clean_quit_from_tray"]
+        );
+        assert!(menu_quit_notes_from_all_listeners("open").is_empty());
+    }
+
+    /// Simulate Tauri delivering one menu event to every registered listener.
+    fn dispatch_menu_event_through_all_listeners<F>(id: &str, mut on_note: F) -> usize
+    where
+        F: FnMut(&'static str),
+    {
+        let mut acted = 0;
+        for owner in ALL_MENU_LISTENERS {
+            if let Some(note) = route_menu_event_quit_for_owner(*owner, id) {
+                acted += 1;
+                on_note(note);
+            }
+        }
+        acted
+    }
+
+    #[test]
+    fn one_tray_quit_event_through_all_listeners_cancels_once_then_can_retry() {
+        let asked = Cell::new(0);
+        let stopped = Cell::new(false);
+        let exited = Cell::new(false);
+        let gate = AtomicBool::new(false);
+
+        let run_once = |asked: &Cell<usize>,
+                        stopped: &Cell<bool>,
+                        exited: &Cell<bool>,
+                        gate: &AtomicBool,
+                        confirm: bool| {
+            if !gate
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                return UserQuitOutcome::Cancelled;
+            }
+            let outcome = perform_user_initiated_quit(
+                CaptureQuitGuardView::Dirty,
+                |_message| {
+                    asked.set(asked.get() + 1);
+                    confirm
+                },
+                || {
+                    stopped.set(true);
+                    Ok(())
+                },
+                || exited.set(true),
+            );
+            match outcome {
+                UserQuitOutcome::Cancelled | UserQuitOutcome::StopFailed => {
+                    gate.store(false, Ordering::Release);
+                }
+                UserQuitOutcome::Completed => {}
+            }
+            outcome
+        };
+
+        // First physical tray Quit → Cancel: every listener sees the event, but only tray owns it.
+        let mut outcomes = Vec::new();
+        let acted = dispatch_menu_event_through_all_listeners(TRAY_MENU_QUIT_ID, |_note| {
+            outcomes.push(run_once(&asked, &stopped, &exited, &gate, false));
+        });
+        assert_eq!(
+            acted, 1,
+            "tray Quit must not also be owned by the app listener"
+        );
+        assert_eq!(outcomes, vec![UserQuitOutcome::Cancelled]);
+        assert_eq!(
+            asked.get(),
+            1,
+            "Cancel must prompt exactly once for one event"
+        );
+        assert!(!stopped.get());
+        assert!(!exited.get());
+        assert!(!gate.load(Ordering::Acquire));
+
+        // A later separate Quit click may prompt again.
+        outcomes.clear();
+        let acted = dispatch_menu_event_through_all_listeners(TRAY_MENU_QUIT_ID, |_note| {
+            outcomes.push(run_once(&asked, &stopped, &exited, &gate, true));
+        });
+        assert_eq!(acted, 1);
+        assert_eq!(outcomes, vec![UserQuitOutcome::Completed]);
+        assert_eq!(asked.get(), 2);
+        assert!(stopped.get());
+        assert!(exited.get());
+    }
+
+    #[test]
+    fn one_app_quit_event_through_all_listeners_is_handled_exactly_once() {
+        let asked = Cell::new(0);
+        let stopped = Cell::new(false);
+        let exited = Cell::new(false);
+        let gate = AtomicBool::new(false);
+
+        let mut outcomes = Vec::new();
+        let acted = dispatch_menu_event_through_all_listeners(APP_MENU_QUIT_ID, |_note| {
+            if !gate
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                return;
+            }
+            let outcome = perform_user_initiated_quit(
+                CaptureQuitGuardView::Unknown,
+                |_message| {
+                    asked.set(asked.get() + 1);
+                    true
+                },
+                || {
+                    stopped.set(true);
+                    Ok(())
+                },
+                || exited.set(true),
+            );
+            outcomes.push(outcome);
+        });
+        assert_eq!(acted, 1);
+        assert_eq!(outcomes, vec![UserQuitOutcome::Completed]);
+        assert_eq!(asked.get(), 1);
+        assert!(stopped.get());
+        assert!(exited.get());
+        // App listener owns app Quit; tray listener must ignore it.
+        assert_eq!(
+            route_menu_event_quit_for_owner(MenuListenerOwner::Tray, APP_MENU_QUIT_ID),
+            None
+        );
     }
 
     #[test]
@@ -1331,7 +1522,7 @@ fn start_daemon_for_desktop_launch(state: &ProbeState) -> Result<u32, String> {
 
 fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let open = MenuItem::with_id(app, "open", "Open Cryptex", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Cryptex", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, TRAY_MENU_QUIT_ID, "Quit Cryptex", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
     let icon = app
         .default_window_icon()
@@ -1348,22 +1539,14 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 if let Err(error) = show_main_window(app, "tray_menu", &state)
                     && let Ok(runtime) = runtime_root_path()
                 {
-                    let _ = fs::write(
-                        runtime.join("window.error"),
-                        format!(
-                            "{error}
-"
-                        ),
-                    );
+                    let _ = fs::write(runtime.join("window.error"), format!("{error}\n"));
                 }
             }
-            "quit" => {
-                if let Some(note) = route_menu_quit_id(event.id.as_ref()) {
+            id => {
+                if let Some(note) = route_menu_event_quit_for_owner(MenuListenerOwner::Tray, id) {
                     run_guarded_user_quit(app, note);
                 }
             }
-
-            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -1892,7 +2075,9 @@ fn main() {
     builder
         .menu(build_cryptex_app_menu)
         .on_menu_event(|app, event| {
-            if let Some(note) = route_menu_quit_id(event.id().as_ref()) {
+            if let Some(note) =
+                route_menu_event_quit_for_owner(MenuListenerOwner::Application, event.id().as_ref())
+            {
                 run_guarded_user_quit(app, note);
             }
         })
