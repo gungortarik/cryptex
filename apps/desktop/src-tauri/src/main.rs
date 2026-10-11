@@ -16,11 +16,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-#[cfg(target_os = "macos")]
-use tauri::RunEvent;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, State, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, State, WindowEvent};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use tauri_plugin_autostart::ManagerExt as AutoStartManagerExt;
 
@@ -56,6 +54,8 @@ struct ProbeState {
     capture_session_dirty: Arc<AtomicBool>,
     /// False until the renderer successfully synchronizes guard state (fail closed).
     capture_guard_sync_ok: Arc<AtomicBool>,
+    /// True while a user-initiated Quit confirm/shutdown is in progress (blocks re-entry).
+    user_quit_in_progress: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -420,6 +420,123 @@ where
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExitRequestKind {
+    /// App menu Quit / Cmd+Q / equivalent: Tauri reports `code: None`.
+    UserInitiated,
+    /// Programmatic `AppHandle::exit` after an intentional guarded shutdown.
+    Intentional,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExitLifecycleAction {
+    /// Prevent the raw exit and run shared confirm + clean shutdown.
+    InterceptAndGuard,
+    /// Prevent exit only; a Quit flow is already active (no second dialog).
+    PreventDuplicate,
+    /// Allow exit without prompting (intentional internal shutdown).
+    Allow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HandledExitOutcome {
+    Cancelled,
+    Completed,
+    StopFailed,
+    DuplicateIgnored,
+    IntentionalAllowed,
+}
+
+fn exit_request_kind(code: Option<i32>) -> ExitRequestKind {
+    match code {
+        None => ExitRequestKind::UserInitiated,
+        Some(_) => ExitRequestKind::Intentional,
+    }
+}
+
+fn decide_exit_lifecycle_action(
+    kind: ExitRequestKind,
+    user_quit_in_progress: bool,
+) -> ExitLifecycleAction {
+    match kind {
+        ExitRequestKind::Intentional => ExitLifecycleAction::Allow,
+        ExitRequestKind::UserInitiated if user_quit_in_progress => {
+            ExitLifecycleAction::PreventDuplicate
+        }
+        ExitRequestKind::UserInitiated => ExitLifecycleAction::InterceptAndGuard,
+    }
+}
+
+/// Route `RunEvent::ExitRequested` through shared Quit confirmation when user-initiated.
+/// Returns whether the caller must `api.prevent_exit()`.
+fn handle_exit_requested<C, S, E>(
+    code: Option<i32>,
+    user_quit_in_progress: &AtomicBool,
+    guard: CaptureQuitGuardView,
+    confirm: C,
+    stop_daemon: S,
+    exit: E,
+) -> (bool, HandledExitOutcome)
+where
+    C: FnOnce(&str) -> bool,
+    S: FnOnce() -> Result<(), String>,
+    E: FnOnce(),
+{
+    let action = decide_exit_lifecycle_action(
+        exit_request_kind(code),
+        user_quit_in_progress.load(Ordering::Acquire),
+    );
+    match action {
+        ExitLifecycleAction::Allow => (false, HandledExitOutcome::IntentionalAllowed),
+        ExitLifecycleAction::PreventDuplicate => (true, HandledExitOutcome::DuplicateIgnored),
+        ExitLifecycleAction::InterceptAndGuard => {
+            if user_quit_in_progress
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+            {
+                return (true, HandledExitOutcome::DuplicateIgnored);
+            }
+            let outcome = perform_user_initiated_quit(guard, confirm, stop_daemon, exit);
+            match outcome {
+                UserQuitOutcome::Cancelled => {
+                    user_quit_in_progress.store(false, Ordering::Release);
+                    (true, HandledExitOutcome::Cancelled)
+                }
+                UserQuitOutcome::StopFailed => {
+                    user_quit_in_progress.store(false, Ordering::Release);
+                    (true, HandledExitOutcome::StopFailed)
+                }
+                UserQuitOutcome::Completed => {
+                    // Keep the gate set until process exit; the follow-up
+                    // `app.exit(code)` is Intentional and must not re-prompt.
+                    (true, HandledExitOutcome::Completed)
+                }
+            }
+        }
+    }
+}
+
+fn try_begin_user_quit(state: &ProbeState) -> bool {
+    state
+        .user_quit_in_progress
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+fn end_user_quit(state: &ProbeState) {
+    state.user_quit_in_progress.store(false, Ordering::Release);
+}
+
+fn stop_daemon_for_user_quit(state: &ProbeState, note: &str) -> Result<(), String> {
+    // Adapt State-based stopper for RunEvent / tray paths that hold ProbeState.
+    stop_supervised_daemon(state)?;
+    if let Ok(root) = runtime_root_path() {
+        write_supervisor_state(&root, note, None, false)?;
+        write_snapshot(&root, note, false, Ok(None))?;
+    }
+    Ok(())
+}
+
 fn capture_quit_guard_view(state: &ProbeState) -> CaptureQuitGuardView {
     if !state.capture_guard_sync_ok.load(Ordering::Acquire) {
         return CaptureQuitGuardView::Unknown;
@@ -597,6 +714,160 @@ mod capture_quit_guard_tests {
     }
 }
 
+#[cfg(test)]
+mod exit_lifecycle_routing_tests {
+    use super::{
+        CaptureQuitGuardView, ExitLifecycleAction, ExitRequestKind, HandledExitOutcome,
+        decide_exit_lifecycle_action, exit_request_kind, handle_exit_requested,
+    };
+    use std::cell::Cell;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn application_menu_exit_request_is_user_initiated() {
+        assert_eq!(exit_request_kind(None), ExitRequestKind::UserInitiated);
+        assert_eq!(
+            decide_exit_lifecycle_action(ExitRequestKind::UserInitiated, false),
+            ExitLifecycleAction::InterceptAndGuard
+        );
+    }
+
+    #[test]
+    fn user_exit_cancel_preserves_session() {
+        let in_progress = AtomicBool::new(false);
+        let asked = Cell::new(0);
+        let stopped = Cell::new(false);
+        let exited = Cell::new(false);
+        let (prevent, outcome) = handle_exit_requested(
+            None,
+            &in_progress,
+            CaptureQuitGuardView::Dirty,
+            |_message| {
+                asked.set(asked.get() + 1);
+                false
+            },
+            || {
+                stopped.set(true);
+                Ok(())
+            },
+            || exited.set(true),
+        );
+        assert!(prevent);
+        assert_eq!(outcome, HandledExitOutcome::Cancelled);
+        assert_eq!(asked.get(), 1);
+        assert!(!stopped.get());
+        assert!(!exited.get());
+        assert!(!in_progress.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn user_exit_confirm_stops_daemon_then_exits() {
+        let in_progress = AtomicBool::new(false);
+        let asked = Cell::new(0);
+        let stopped = Cell::new(false);
+        let exited = Cell::new(false);
+        let (prevent, outcome) = handle_exit_requested(
+            None,
+            &in_progress,
+            CaptureQuitGuardView::Unknown,
+            |_message| {
+                asked.set(asked.get() + 1);
+                true
+            },
+            || {
+                stopped.set(true);
+                Ok(())
+            },
+            || exited.set(true),
+        );
+        assert!(prevent, "original ExitRequested must be prevented");
+        assert_eq!(outcome, HandledExitOutcome::Completed);
+        assert_eq!(asked.get(), 1);
+        assert!(stopped.get());
+        assert!(exited.get());
+        assert!(
+            in_progress.load(Ordering::Acquire),
+            "gate stays set so the intentional follow-up exit cannot re-prompt"
+        );
+    }
+
+    #[test]
+    fn user_exit_shutdown_failure_retains_desktop() {
+        let in_progress = AtomicBool::new(false);
+        let exited = Cell::new(false);
+        let (prevent, outcome) = handle_exit_requested(
+            None,
+            &in_progress,
+            CaptureQuitGuardView::Clean,
+            |_message| true,
+            || Err("daemon ignored clean stop and had to be force-stopped".into()),
+            || exited.set(true),
+        );
+        assert!(prevent);
+        assert_eq!(outcome, HandledExitOutcome::StopFailed);
+        assert!(!exited.get());
+        assert!(!in_progress.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn repeated_user_exit_requests_do_not_reprompt() {
+        let in_progress = AtomicBool::new(true);
+        let asked = Cell::new(0);
+        let stopped = Cell::new(false);
+        let exited = Cell::new(false);
+        let (prevent, outcome) = handle_exit_requested(
+            None,
+            &in_progress,
+            CaptureQuitGuardView::Dirty,
+            |_message| {
+                asked.set(asked.get() + 1);
+                true
+            },
+            || {
+                stopped.set(true);
+                Ok(())
+            },
+            || exited.set(true),
+        );
+        assert!(prevent);
+        assert_eq!(outcome, HandledExitOutcome::DuplicateIgnored);
+        assert_eq!(asked.get(), 0);
+        assert!(!stopped.get());
+        assert!(!exited.get());
+    }
+
+    #[test]
+    fn intentional_final_exit_skips_prompt() {
+        let in_progress = AtomicBool::new(true);
+        let asked = Cell::new(0);
+        let stopped = Cell::new(false);
+        let exited = Cell::new(false);
+        let (prevent, outcome) = handle_exit_requested(
+            Some(0),
+            &in_progress,
+            CaptureQuitGuardView::Dirty,
+            |_message| {
+                asked.set(asked.get() + 1);
+                true
+            },
+            || {
+                stopped.set(true);
+                Ok(())
+            },
+            || exited.set(true),
+        );
+        assert!(!prevent);
+        assert_eq!(outcome, HandledExitOutcome::IntentionalAllowed);
+        assert_eq!(asked.get(), 0);
+        assert!(!stopped.get());
+        assert!(!exited.get());
+        assert_eq!(
+            decide_exit_lifecycle_action(ExitRequestKind::Intentional, true),
+            ExitLifecycleAction::Allow
+        );
+    }
+}
+
 #[tauri::command]
 fn p0_3_wait_for_daemon_restart(
     previous_pid: u32,
@@ -625,7 +896,7 @@ fn p0_3_wait_for_daemon_restart(
 
 #[tauri::command]
 fn p0_2_stop_daemon(state: State<'_, ProbeState>) -> Result<(), String> {
-    stop_supervised_daemon(&state)?;
+    stop_supervised_daemon(state.inner())?;
     Ok(())
 }
 
@@ -658,20 +929,16 @@ fn p0_2_write_snapshot(
 
 #[tauri::command]
 fn p0_2_quit_clean(app: AppHandle, state: State<'_, ProbeState>) -> Result<(), String> {
+    if !try_begin_user_quit(state.inner()) {
+        return Ok(());
+    }
     let guard = capture_quit_guard_view(state.inner());
     let mut stop_error: Option<String> = None;
     match perform_user_initiated_quit(
         guard,
         native_confirm_discard_and_quit,
         || {
-            let result = (|| -> Result<(), String> {
-                stop_supervised_daemon(&state)?;
-                if let Ok(root) = runtime_root_path() {
-                    write_supervisor_state(&root, "clean_quit", None, false)?;
-                    write_snapshot(&root, "clean_quit", false, Ok(None))?;
-                }
-                Ok(())
-            })();
+            let result = stop_daemon_for_user_quit(state.inner(), "clean_quit");
             if let Err(error) = &result {
                 stop_error = Some(error.clone());
             }
@@ -679,13 +946,18 @@ fn p0_2_quit_clean(app: AppHandle, state: State<'_, ProbeState>) -> Result<(), S
         },
         || app.exit(0),
     ) {
-        UserQuitOutcome::Cancelled | UserQuitOutcome::Completed => Ok(()),
+        UserQuitOutcome::Cancelled => {
+            end_user_quit(state.inner());
+            Ok(())
+        }
+        UserQuitOutcome::Completed => Ok(()),
         UserQuitOutcome::StopFailed => {
+            end_user_quit(state.inner());
             Err(stop_error.unwrap_or_else(|| "failed to stop supervised daemon".into()))
         }
     }
 }
-fn stop_supervised_daemon(state: &State<'_, ProbeState>) -> Result<(), String> {
+fn stop_supervised_daemon(state: &ProbeState) -> Result<(), String> {
     let runtime = state
         .runtime_root
         .lock()
@@ -790,24 +1062,15 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             }
             "quit" => {
                 let state = app.state::<ProbeState>();
+                if !try_begin_user_quit(state.inner()) {
+                    return;
+                }
                 let guard = capture_quit_guard_view(state.inner());
                 let outcome = perform_user_initiated_quit(
                     guard,
                     native_confirm_discard_and_quit,
-                    || match stop_supervised_daemon(&state) {
-                        Ok(()) => {
-                            if let Ok(root) = runtime_root_path() {
-                                let _ = write_supervisor_state(
-                                    &root,
-                                    "clean_quit_from_tray",
-                                    None,
-                                    false,
-                                );
-                                let _ =
-                                    write_snapshot(&root, "clean_quit_from_tray", false, Ok(None));
-                            }
-                            Ok(())
-                        }
+                    || match stop_daemon_for_user_quit(state.inner(), "clean_quit_from_tray") {
+                        Ok(()) => Ok(()),
                         Err(error) => {
                             if let Ok(root) = runtime_root_path() {
                                 let _ = fs::write(root.join("quit.error"), format!("{error}\n"));
@@ -817,7 +1080,12 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     },
                     || app.exit(0),
                 );
-                let _ = outcome;
+                match outcome {
+                    UserQuitOutcome::Cancelled | UserQuitOutcome::StopFailed => {
+                        end_user_quit(state.inner());
+                    }
+                    UserQuitOutcome::Completed => {}
+                }
             }
 
             _ => {}
@@ -1287,6 +1555,7 @@ fn main() {
         supervised_pid: Arc::new(Mutex::new(None)),
         capture_session_dirty: Arc::new(AtomicBool::new(false)),
         capture_guard_sync_ok: Arc::new(AtomicBool::new(false)),
+        user_quit_in_progress: Arc::new(AtomicBool::new(false)),
     };
 
     let builder =
@@ -1376,26 +1645,45 @@ fn main() {
         })
         .build(context)
         .expect("failed to build Cryptex Desktop")
-        .run(|app_handle, event| {
-            #[cfg(target_os = "macos")]
-            {
-                if let RunEvent::Reopen {
-                    has_visible_windows,
-                    ..
-                } = event
-                    && !has_visible_windows
-                {
-                    let _ = show_main_window(
-                        app_handle,
-                        "dock_reopen",
-                        &app_handle.state::<ProbeState>(),
-                    );
+        .run(|app_handle, event| match event {
+            RunEvent::ExitRequested { code, api, .. } => {
+                let state = app_handle.state::<ProbeState>();
+                let mut stop_error: Option<String> = None;
+                let (prevent, outcome) = handle_exit_requested(
+                    code,
+                    &state.user_quit_in_progress,
+                    capture_quit_guard_view(state.inner()),
+                    native_confirm_discard_and_quit,
+                    || {
+                        let result =
+                            stop_daemon_for_user_quit(state.inner(), "clean_quit_from_app_menu");
+                        if let Err(error) = &result {
+                            stop_error = Some(error.clone());
+                        }
+                        result
+                    },
+                    || app_handle.exit(0),
+                );
+                if prevent {
+                    api.prevent_exit();
+                }
+                if matches!(outcome, HandledExitOutcome::StopFailed) {
+                    let detail =
+                        stop_error.unwrap_or_else(|| "failed to stop supervised daemon".into());
+                    if let Ok(root) = runtime_root_path() {
+                        let _ = fs::write(root.join("quit.error"), format!("{detail}\n"));
+                    }
                 }
             }
-            #[cfg(not(target_os = "macos"))]
-            {
-                let _ = (app_handle, event);
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen {
+                has_visible_windows,
+                ..
+            } if !has_visible_windows => {
+                let _ =
+                    show_main_window(app_handle, "dock_reopen", &app_handle.state::<ProbeState>());
             }
+            _ => {}
         });
 }
 
