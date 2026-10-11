@@ -1,7 +1,7 @@
 # 34 — Current Implementation Handoff
 
 **Snapshot date:** 2026-10-11
-**Current milestone:** M5 -- Capture + Timeline, IN PROGRESS; Slice 3 menu single-owner Quit routing Windows-focused PASS at b9b3e4cdfdc22077c5dd5ec78b0dbbf22969863f; macOS native recheck pending.
+**Current milestone:** M5 -- Capture + Timeline, IN PROGRESS; Slice 3 menu single-owner Quit routing Windows-focused PASS at `b9b3e4cdfdc22077c5dd5ec78b0dbbf22969863f`; owner-reported Mac focused automated and scoped native Quit PASS at `3c17c7b50886139061f5ddc3651a19ea4d2f04a5`.
 **Active branch:** `codex/m5-capture-timeline`.
 **Verified base:** `origin/m0/foundation` at M4 PR #10 normal merge
 `a6c32bd30f883e546e2eb976787a59057fae211b`. The accepted M4 documentation and tested candidate are ancestors.
@@ -19,8 +19,9 @@ authorized Slice 1 daemon capture service implementation only.
 **Slice 3 verification:** Archive/Quit baseline e874c066ba011cf3c46516f3f4c9125d252abf80 remains ancestral. Explicit custom Quit at c3463bf2829be42d7bda41fdc3898ed4c759f1f plus single-owner menu routing fix b9b3e4cdfdc22077c5dd5ec78b0dbbf22969863f (tray Quit and app Quit each handled by exactly one global listener; Cancel prompts once). Windows focused PASS: exit lifecycle/menu 11; Quit guard 5; fmt; strict Clippy. Evidence ancestors: m5-slice3-app-menu-quit-windows-verification-20261011.md. No macOS native PASS claimed from Windows.
 **Slice 3 Mac automated report:** Owner-reported PASS at exact reviewed HEAD `5a21c1ae8079a4d057f6facba85bc00421f128fa`, macOS 27.0.1 / 26A434 / arm64, clean before/after. IPC 30, capture 20, restart 15, writer 22, SecureStore 14, projection feed 17, projection crate 48, Quit guard 5, capture-policy 16, search-policy 2; fmt, strict Clippy, frozen installation, frontend build and diff check PASS. Evidence: `evidence/m5/m5-slice3-macos-automated-verification-20261010.md`. No native app launched; interactive behavior is not claimed.
 **Native Mac review:** App-menu/Cmd+Q FAIL recorded at `3b0c6d4d0410ed963498b906c5da3e3967a6f82c` after ExitRequested-only fix (no confirm; daemon orphaned; muda `terminate:`). Tray Quit and close-to-tray/Dock reopen were previously PASS. Follow-up product `bc3463bf2829be42d7bda41fdc3898ed4c759f1f` replaces predefined Quit with guarded `cryptex-app-menu-quit` + `CmdOrCtrl+Q`; macOS native recheck not claimed from Windows.
-**Next action:** Owner/Mac native recheck of app-menu Quit / Cmd+Q at b9b3e4cdfdc22077c5dd5ec78b0dbbf22969863f (Cancel/Confirm/repeat, tray single-prompt regression, close-to-tray, Dock reopen). Do not start Slice 4, Actions, merge, or production v2 activation.
-**Authorization:** M5 Slice 3 app-menu Quit terminate-bypass fix implemented; Windows-focused verification recorded. Dual-OS interactive Quit closeout pending. Timeline/projection/extraction/later slices remain CLOSED.
+**Corrected native Mac result:** Owner-reported scoped PASS at `3c17c7b50886139061f5ddc3651a19ea4d2f04a5`: app-menu and Cmd+Q Cancel/repeat/Confirm, close-to-tray/Dock reopen, physical tray Cancel/repeat/Confirm. Tray intermediate steps are owner observations, not AX-counted dialogs; Confirm cleanup is corroborated by process/status records. Focused Mac automated gates also PASS (lifecycle/menu 11, Quit guard 5, capture-policy 16, search-policy 2, fmt, strict Clippy, frontend/native build). Evidence: `evidence/m5/m5-slice3-macos-menu-owner-native-pass-20261011.md`.
+**Next action:** Windows native Quit/menu verification and safe archive/unresolved UX reproduction or explicit review disposition. Mac Quit need not be repeated for this documentation-only record. Do not start Slice 4, Actions, merge, or production v2 activation.
+**Authorization:** M5 Slice 3 corrected Mac Quit gate recorded; Windows native and interactive archive/unresolved gaps remain open. Timeline/projection/extraction/later slices remain CLOSED.
 **Continuing invariants:** v1 memory.note unchanged; production v2 writing OFF;
 canonical writer daemon-only; derived SQLite rebuildable; RetrievalSafetyState
 holds apply to all content-returning paths. M4 visual/security limitations remain
