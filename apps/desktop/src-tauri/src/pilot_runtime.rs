@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 
 static ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
 pub(crate) const MARKER: &str = "m0-native-desktop-runtime-v1\n";
+pub(crate) const TIMELINE_FIXTURE_MARKER: &str = "m5-timeline-fixture-v1\n";
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum PilotError {
@@ -100,15 +101,26 @@ fn validate_with_repository_hint(root: &Path, repository_hint: &Path) -> Result<
         return Err(PilotError::UnownedRoot);
     }
     let mut count = 0;
+    let mut has_timeline_fixture = false;
     for entry in fs::read_dir(root).map_err(|_| PilotError::Io)? {
         let entry = entry.map_err(|_| PilotError::Io)?;
-        if entry.file_name() != "pilot-runtime.marker" {
-            return Err(PilotError::ReusedRoot);
+        match entry.file_name().to_str() {
+            Some("pilot-runtime.marker") => count += 1,
+            Some("pilot-timeline-fixture.marker") => {
+                ordinary(&entry.path(), false)?;
+                if fs::read(entry.path()).map_err(|_| PilotError::Io)?
+                    != TIMELINE_FIXTURE_MARKER.as_bytes()
+                {
+                    return Err(PilotError::UnownedRoot);
+                }
+                has_timeline_fixture = true;
+                count += 1;
+            }
+            _ => count += 1,
         }
-        count += 1;
     }
-    if count != 1 {
-        return Err(PilotError::UnownedRoot);
+    if count != 1 && !has_timeline_fixture {
+        return Err(PilotError::ReusedRoot);
     }
     Ok(())
 }
@@ -255,6 +267,28 @@ mod tests {
         fs::write(root.join("pilot-runtime.marker"), MARKER).unwrap();
         fs::write(root.join("ready"), "old").unwrap();
         assert_eq!(validate(&root), Err(PilotError::ReusedRoot));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn marked_timeline_fixture_allows_seeded_runtime_but_unmarked_reuse_is_rejected() {
+        let root = fixture();
+        fs::create_dir(root.join("canonical")).unwrap();
+        assert_eq!(validate(&root), Err(PilotError::ReusedRoot));
+
+        fs::write(
+            root.join("pilot-timeline-fixture.marker"),
+            TIMELINE_FIXTURE_MARKER,
+        )
+        .unwrap();
+        assert_eq!(validate(&root), Ok(()));
+
+        fs::write(
+            root.join("pilot-timeline-fixture.marker"),
+            "unrecognized-fixture\n",
+        )
+        .unwrap();
+        assert_eq!(validate(&root), Err(PilotError::UnownedRoot));
         fs::remove_dir_all(root).unwrap();
     }
 

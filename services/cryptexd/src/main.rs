@@ -1,15 +1,22 @@
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::thread;
 use std::time::Duration;
+
+use cryptex_core::BrainIdentity;
+use cryptex_events::envelope::Classification;
+use cryptexd::canonical_writer::CanonicalWriterConfig;
+use cryptexd::capture::{CaptureOutcome, CaptureRequest, capture_memory_note};
 
 use cryptexd::compat::{
     CompatDecision, ComponentVersions, DAEMON_PROTOCOL_VERSION, evaluate_compat,
     read_synthetic_marker, simulate_failed_update, simulate_rollback, write_synthetic_marker,
 };
 use cryptexd::error::LifecycleError;
+use cryptexd::identity_runtime::write_brain_identity;
 use cryptexd::install_runtime::prepare_m1_runtime_foundation;
 use cryptexd::instance::{observe_instance, try_acquire_instance};
 use cryptexd::local_device_identity::enroll_local_device;
@@ -45,6 +52,7 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
     match args[0].as_str() {
         "lifecycle" => run_lifecycle(&args[1..]),
         "identity" => run_identity(&args[1..]),
+        "pilot-fixture" => run_pilot_fixture(&args[1..]),
         "help" | "--help" | "-h" => {
             print_usage();
             Ok(())
@@ -54,6 +62,201 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
             usage_text()
         ))),
     }
+}
+
+const PILOT_RUNTIME_MARKER: &str = "m0-native-desktop-runtime-v1\n";
+const PILOT_FIXTURE_MARKER: &str = "m5-timeline-fixture-v1\n";
+const PILOT_TIMELINE_NOTE: &str =
+    "Synthetic M5 timeline fixture. Safe to discard with this isolated pilot runtime.";
+
+fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
+    if args.first().map(String::as_str) != Some("timeline-v1") {
+        return Err(LifecycleError::Usage(format!(
+            "pilot-fixture requires the explicit 'timeline-v1' fixture\n{}",
+            usage_text()
+        )));
+    }
+    let mut runtime_root = None;
+    let mut confirmed = false;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--runtime-root" => {
+                let value = args.get(index + 1).ok_or_else(|| {
+                    LifecycleError::Usage("--runtime-root requires a path".into())
+                })?;
+                runtime_root = Some(PathBuf::from(value));
+                index += 2;
+            }
+            "--confirm-isolated-pilot" => {
+                if confirmed {
+                    return Err(LifecycleError::Usage(
+                        "--confirm-isolated-pilot must appear once".into(),
+                    ));
+                }
+                confirmed = true;
+                index += 1;
+            }
+            other => {
+                return Err(LifecycleError::Usage(format!(
+                    "unexpected pilot-fixture argument '{other}'"
+                )));
+            }
+        }
+    }
+    let runtime_root = runtime_root.ok_or_else(|| {
+        LifecycleError::Usage(
+            "pilot-fixture timeline-v1 requires an explicit --runtime-root".into(),
+        )
+    })?;
+    if !confirmed {
+        return Err(LifecycleError::Usage(
+            "pilot-fixture requires --confirm-isolated-pilot".into(),
+        ));
+    }
+    validate_pilot_fixture_root(&runtime_root)?;
+    let _instance = try_acquire_instance(&runtime_root)?;
+    prepare_m1_runtime_foundation(&runtime_root)
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    let (brain_id, event_id) = seed_timeline_fixture_with_platform_store(&runtime_root)?;
+    let mut marker = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(runtime_root.join("pilot-timeline-fixture.marker"))?;
+    marker.write_all(PILOT_FIXTURE_MARKER.as_bytes())?;
+    marker.sync_all()?;
+    println!(
+        "pilot_fixture=timeline-v1\nbrain_id={brain_id}\nevent_id={event_id}\nclassification=public"
+    );
+    Ok(())
+}
+
+fn validate_pilot_fixture_root(runtime_root: &Path) -> Result<(), LifecycleError> {
+    if !runtime_root.is_absolute()
+        || runtime_root
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+    {
+        return Err(LifecycleError::UnsafeRuntimePath(
+            "pilot fixture requires an absolute runtime path without parent traversal".into(),
+        ));
+    }
+    assert_outside_repository(runtime_root)?;
+    let root_meta = fs::symlink_metadata(runtime_root)?;
+    if root_meta.file_type().is_symlink() || !root_meta.is_dir() {
+        return Err(LifecycleError::UnsafeRuntimePath(
+            "pilot fixture runtime must be an ordinary directory".into(),
+        ));
+    }
+    let marker = runtime_root.join("pilot-runtime.marker");
+    let marker_meta = fs::symlink_metadata(&marker)?;
+    if marker_meta.file_type().is_symlink() || !marker_meta.is_file() {
+        return Err(LifecycleError::UnsafeRuntimePath(
+            "pilot fixture requires an ordinary pilot-runtime.marker file".into(),
+        ));
+    }
+    if fs::read(&marker)? != PILOT_RUNTIME_MARKER.as_bytes() {
+        return Err(LifecycleError::UnsafeRuntimePath(
+            "pilot fixture runtime marker does not match".into(),
+        ));
+    }
+    let mut entries = fs::read_dir(runtime_root)?;
+    let only_marker = entries
+        .next()
+        .transpose()?
+        .is_some_and(|entry| entry.file_name() == "pilot-runtime.marker");
+    if !only_marker || entries.next().transpose()?.is_some() {
+        return Err(LifecycleError::UnsafeRuntimePath(
+            "pilot fixture only accepts a fresh runtime containing its marker".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn seed_timeline_fixture_with_store<S: SecureStore>(
+    runtime_root: &Path,
+    store: &S,
+) -> Result<(String, String), LifecycleError> {
+    let brain_id = random_uuid_v4()?;
+    let brain = BrainIdentity::new(brain_id.clone(), "2026-10-11T00:00:00Z")
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    write_brain_identity(runtime_root, &brain)
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    enroll_local_device(runtime_root, store, SecureStoreEnvironment::Dev)
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+
+    let capture_id = random_uuid_v4()?;
+    let outcome = capture_memory_note(
+        store,
+        SecureStoreEnvironment::Dev,
+        runtime_root,
+        CaptureRequest {
+            capture_id,
+            text: PILOT_TIMELINE_NOTE.into(),
+            classification: Classification::Public,
+        },
+        &CanonicalWriterConfig::default(),
+    );
+    match outcome {
+        CaptureOutcome::Committed(commit) => Ok((commit.brain_id, commit.event_id)),
+        CaptureOutcome::Rejected { code, detail } => Err(LifecycleError::Attention(format!(
+            "pilot fixture capture rejected ({code:?}): {detail}"
+        ))),
+        CaptureOutcome::Uncertain { reason, detail } => Err(LifecycleError::Attention(format!(
+            "pilot fixture capture uncertain ({reason:?}): {detail}"
+        ))),
+    }
+}
+
+fn random_uuid_v4() -> Result<String, LifecycleError> {
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes).map_err(|error| {
+        LifecycleError::Attention(format!("OS randomness unavailable: {error}"))
+    })?;
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Ok(format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        bytes[3],
+        bytes[4],
+        bytes[5],
+        bytes[6],
+        bytes[7],
+        bytes[8],
+        bytes[9],
+        bytes[10],
+        bytes[11],
+        bytes[12],
+        bytes[13],
+        bytes[14],
+        bytes[15]
+    ))
+}
+
+#[cfg(windows)]
+fn seed_timeline_fixture_with_platform_store(
+    runtime_root: &Path,
+) -> Result<(String, String), LifecycleError> {
+    seed_timeline_fixture_with_store(runtime_root, &cryptexd::WindowsCredentialStore::new())
+}
+
+#[cfg(target_os = "macos")]
+fn seed_timeline_fixture_with_platform_store(
+    runtime_root: &Path,
+) -> Result<(String, String), LifecycleError> {
+    seed_timeline_fixture_with_store(runtime_root, &cryptexd::MacosKeychainStore::new())
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn seed_timeline_fixture_with_platform_store(
+    _runtime_root: &Path,
+) -> Result<(String, String), LifecycleError> {
+    Err(LifecycleError::Usage(
+        "pilot timeline fixtures are supported only on Windows and macOS".into(),
+    ))
 }
 
 fn run_identity(args: &[String]) -> Result<(), LifecycleError> {
@@ -585,6 +788,7 @@ fn usage_text() -> String {
         "usage:",
         "  cryptexd",
         "  cryptexd identity enroll-local --runtime-root <app-data-path> --environment <dev|prod>",
+        "  cryptexd pilot-fixture timeline-v1 --runtime-root <fresh-pilot-path> --confirm-isolated-pilot",
         "  cryptexd lifecycle status [--runtime-root <path>]",
         "  cryptexd lifecycle probe [--runtime-root <path>]",
         "  cryptexd lifecycle hold --runtime-root <path> (--stop-file <path> | --hold-ms <ms> | --crash-after-ready) [--ready-file <path>]",
@@ -597,6 +801,7 @@ fn usage_text() -> String {
         "  - default runtime root is Cryptex-Dev/p0-2 (never inside the repository)",
         "  - platform registration adapters are placeholders only",
         "  - update-proof is a synthetic fixture harness, not a production updater",
+        "  - pilot-fixture writes one public synthetic v1 note only to a fresh marked pilot runtime",
     ]
     .join("\n")
 }
@@ -604,6 +809,19 @@ fn usage_text() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn fresh_pilot_root() -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("cryptex-pilot-fixture-{}-{stamp}", process::id()));
+        fs::create_dir(&root).expect("pilot root");
+        fs::write(root.join("pilot-runtime.marker"), PILOT_RUNTIME_MARKER).expect("marker");
+        root
+    }
 
     #[test]
     fn local_enrollment_requires_explicit_runtime_and_secure_store_namespace() {
@@ -633,5 +851,59 @@ mod tests {
         ])
         .expect_err("unknown environment");
         assert!(matches!(error, LifecycleError::Usage(_)));
+    }
+
+    #[test]
+    fn timeline_fixture_requires_a_fresh_marked_pilot_runtime() {
+        let root = fresh_pilot_root();
+        validate_pilot_fixture_root(&root).expect("fresh marked pilot");
+
+        fs::write(root.join("unrelated.txt"), "preserve").expect("extra file");
+        let error = validate_pilot_fixture_root(&root).expect_err("reused runtime");
+        assert!(matches!(error, LifecycleError::UnsafeRuntimePath(_)));
+
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn timeline_fixture_requires_explicit_confirmation_before_path_access() {
+        let error = run(vec![
+            "pilot-fixture".into(),
+            "timeline-v1".into(),
+            "--runtime-root".into(),
+            "C:\\unused-pilot-runtime".into(),
+        ])
+        .expect_err("must require explicit fixture confirmation");
+        assert!(matches!(error, LifecycleError::Usage(_)));
+    }
+
+    #[test]
+    fn timeline_fixture_creates_an_accepted_v1_event_through_capture_service() {
+        let root = fresh_pilot_root();
+        prepare_m1_runtime_foundation(&root).expect("install identity");
+        let store = cryptexd::FakeSecureStore::new();
+        let (_, event_id) = seed_timeline_fixture_with_store(&root, &store).expect("seed fixture");
+
+        assert_eq!(event_id.len(), 36);
+        assert!(cryptexd::identity_runtime::brain_identity_path(&root).is_file());
+        let canonical_events = root.join("canonical").join("events");
+        let device_dir = fs::read_dir(&canonical_events)
+            .expect("canonical event directory")
+            .next()
+            .expect("device directory")
+            .expect("read device directory")
+            .path();
+        assert!(
+            fs::read_dir(device_dir)
+                .expect("device events")
+                .any(|entry| entry.as_ref().is_ok_and(|entry| entry
+                    .path()
+                    .extension()
+                    .is_some_and(|ext| ext == "open" || ext == "seg"))),
+            "capture service must append a canonical segment"
+        );
+
+        drop(store);
+        fs::remove_dir_all(root).expect("remove fixture");
     }
 }

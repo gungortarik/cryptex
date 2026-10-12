@@ -138,6 +138,43 @@ pub fn receipt_path(
         .join(format!("{capture_id}.json"))
 }
 
+/// Convert logical paths to the OS I/O form. Windows receipts can exceed
+/// MAX_PATH because they include Brain, device and capture UUIDs in the path.
+fn receipt_fs_path(path: &Path) -> ReceiptResult<PathBuf> {
+    use std::path::Component;
+
+    if path
+        .components()
+        .any(|part| matches!(part, Component::CurDir | Component::ParentDir))
+    {
+        return Err(ReceiptError::Path(
+            "receipt path contains a current- or parent-directory component".into(),
+        ));
+    }
+    #[cfg(windows)]
+    {
+        let absolute = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::path::absolute(path).map_err(|error| ReceiptError::Path(error.to_string()))?
+        };
+        let normalized = absolute.to_string_lossy().replace('/', "\\");
+        if normalized.starts_with(r"\\?\") {
+            return Ok(absolute);
+        }
+        if normalized.starts_with(r"\\") {
+            let rest = normalized.trim_start_matches('\\');
+            Ok(PathBuf::from(format!(r"\\?\UNC\{rest}")))
+        } else {
+            Ok(PathBuf::from(format!(r"\\?\{normalized}")))
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(path.to_path_buf())
+    }
+}
+
 fn inject_ancestry_fail() -> bool {
     #[cfg(test)]
     {
@@ -173,8 +210,9 @@ pub fn ensure_dir_tree_durable(dir: &Path) -> ReceiptResult<()> {
         if matches!(component, Component::Prefix(_) | Component::RootDir) {
             continue;
         }
-        if !cur.exists() {
-            fs::create_dir(&cur).map_err(|e| ReceiptError::Io(e.to_string()))?;
+        let io_path = receipt_fs_path(&cur)?;
+        if !io_path.exists() {
+            fs::create_dir(&io_path).map_err(|e| ReceiptError::Io(e.to_string()))?;
         }
         // Always sync, even when the directory already existed: a prior failed sync
         // must not be treated as durable merely because the path is visible.
@@ -191,7 +229,7 @@ pub fn ensure_dir_tree_durable(dir: &Path) -> ReceiptResult<()> {
 /// Confirm durability of an existing directory entry created before the helper
 /// ran (for example by device-lock acquisition).
 pub fn confirm_existing_dir_entry_durable(dir: &Path) -> ReceiptResult<()> {
-    if !dir.is_dir() {
+    if !receipt_fs_path(dir)?.is_dir() {
         return Err(ReceiptError::Path(format!(
             "directory missing for durability confirm: {}",
             dir.display()
@@ -214,7 +252,8 @@ pub fn load_receipt(
 ) -> ReceiptResult<Option<CaptureReceipt>> {
     assert_outside_repository(runtime_root).map_err(|e| ReceiptError::Path(e.to_string()))?;
     let path = receipt_path(runtime_root, brain_id, device_id, capture_id);
-    match fs::read_to_string(&path) {
+    let io_path = receipt_fs_path(&path)?;
+    match fs::read_to_string(&io_path) {
         Ok(text) => {
             if text.contains('\r') || !text.ends_with('\n') {
                 return Err(ReceiptError::Invalid(
@@ -323,7 +362,7 @@ fn persist_receipt(
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(&tmp)
+            .open(receipt_fs_path(&tmp)?)
             .map_err(|e| ReceiptError::Io(e.to_string()))?;
         if let Err(primary) = file
             .write_all(json.as_bytes())
@@ -358,7 +397,7 @@ fn persist_receipt(
 
     let place = match mode {
         PersistMode::ExclusiveNew => {
-            if path.exists() {
+            if receipt_fs_path(&path)?.exists() {
                 Err(ReceiptError::AlreadyExists)
             } else {
                 place_new_file_no_replace(&tmp, &path)
@@ -377,7 +416,16 @@ fn persist_receipt(
 }
 
 fn cleanup_staging(tmp: &Path, primary: ReceiptError) -> ReceiptError {
-    match fs::remove_file(tmp) {
+    let io_path = match receipt_fs_path(tmp) {
+        Ok(path) => path,
+        Err(cleanup) => {
+            return ReceiptError::CleanupFailed {
+                primary: primary.to_string(),
+                cleanup: cleanup.to_string(),
+            };
+        }
+    };
+    match fs::remove_file(io_path) {
         Ok(()) => primary,
         Err(error) if error.kind() == io::ErrorKind::NotFound => primary,
         Err(cleanup) => ReceiptError::CleanupFailed {
@@ -392,8 +440,10 @@ fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> ReceiptResult<()> {
     {
         use std::os::windows::ffi::OsStrExt;
         const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
-        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = dest.as_os_str().encode_wide().chain(Some(0)).collect();
+        let from_path = receipt_fs_path(tmp)?;
+        let dest_path = receipt_fs_path(dest)?;
+        let from: Vec<u16> = from_path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let to: Vec<u16> = dest_path.as_os_str().encode_wide().chain(Some(0)).collect();
         let ok = unsafe {
             windows_sys::Win32::Storage::FileSystem::MoveFileExW(
                 from.as_ptr(),
@@ -441,8 +491,10 @@ fn replace_atomic(tmp: &Path, path: &Path) -> ReceiptResult<()> {
         use std::os::windows::ffi::OsStrExt;
         const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
         const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
-        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let from_path = receipt_fs_path(tmp)?;
+        let dest_path = receipt_fs_path(path)?;
+        let from: Vec<u16> = from_path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let to: Vec<u16> = dest_path.as_os_str().encode_wide().chain(Some(0)).collect();
         let ok = unsafe {
             windows_sys::Win32::Storage::FileSystem::MoveFileExW(
                 from.as_ptr(),
@@ -485,7 +537,8 @@ pub fn confirm_pack_durable(pack_path: &Path) -> ReceiptResult<()> {
             ));
         }
     }
-    if !pack_path.is_file() {
+    let io_path = receipt_fs_path(pack_path)?;
+    if !io_path.is_file() {
         return Err(ReceiptError::Path(format!(
             "pack missing for durability confirm: {}",
             pack_path.display()
@@ -494,7 +547,7 @@ pub fn confirm_pack_durable(pack_path: &Path) -> ReceiptResult<()> {
     let file = OpenOptions::new()
         .read(true)
         .write(true)
-        .open(pack_path)
+        .open(io_path)
         .map_err(|e| ReceiptError::Io(e.to_string()))?;
     sync_file(&file).map_err(|e| ReceiptError::Durability(e.to_string()))?;
     sync_parent_directory(pack_path).map_err(|e| ReceiptError::Durability(e.to_string()))?;
@@ -526,7 +579,8 @@ pub fn confirm_receipt_durable(path: &Path) -> ReceiptResult<()> {
             ));
         }
     }
-    if !path.is_file() {
+    let io_path = receipt_fs_path(path)?;
+    if !io_path.is_file() {
         return Err(ReceiptError::Path(format!(
             "receipt missing for durability confirm: {}",
             path.display()
@@ -535,9 +589,52 @@ pub fn confirm_receipt_durable(path: &Path) -> ReceiptResult<()> {
     let file = OpenOptions::new()
         .read(true)
         .write(true)
-        .open(path)
+        .open(io_path)
         .map_err(|e| ReceiptError::Io(e.to_string()))?;
     sync_file(&file).map_err(|e| ReceiptError::Durability(e.to_string()))?;
     sync_parent_directory(path).map_err(|e| ReceiptError::Durability(e.to_string()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_temp::exclusive_temp_dir;
+
+    #[test]
+    fn receipt_round_trip_supports_paths_past_legacy_windows_limit() {
+        let base = exclusive_temp_dir("cryptex-long-receipt");
+        let runtime_root = base.join(format!("runtime-{}", "x".repeat(90)));
+        fs::create_dir(&runtime_root).unwrap();
+        let device_id = DeviceId::new("11111111-1111-4111-8111-111111111111").unwrap();
+        let receipt = CaptureReceipt {
+            schema_version: CAPTURE_RECEIPT_SCHEMA_VERSION,
+            brain_id: "22222222-2222-4222-8222-222222222222".into(),
+            device_id: device_id.to_string(),
+            capture_id: "33333333-3333-4333-8333-333333333333".into(),
+            event_id: "44444444-4444-4444-8444-444444444444".into(),
+            fingerprint: "a".repeat(64),
+            state: ReceiptState::Pending,
+        };
+        let path = receipt_path(
+            &runtime_root,
+            &receipt.brain_id,
+            &device_id,
+            &receipt.capture_id,
+        );
+        assert!(path.to_string_lossy().len() > 260);
+
+        create_pending_receipt_exclusive(&runtime_root, &receipt).unwrap();
+        confirm_receipt_durable(&path).unwrap();
+        let loaded = load_receipt(
+            &runtime_root,
+            &receipt.brain_id,
+            &device_id,
+            &receipt.capture_id,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(loaded, receipt);
+        let _ = fs::remove_dir_all(&base);
+    }
 }
