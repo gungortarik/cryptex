@@ -32,7 +32,7 @@ No personal/Cortex memory or repository runtime data was used.
 
 ## Native observations
 
-- Inbox opened and accepted a synthetic note body and `public` classification.
+- Inbox retained a synthetic draft body and `public` classification.
 - Save returned the safe `Capture was rejected. The draft was kept. The unresolved capture id was kept.` outcome. Pending ID: `5818af28-1689-44b8-b7eb-f42811d5db13`.
 - Selecting the Timeline rail produced `RETRIEVAL PAUSED` / `Cryptex could not verify the complete local event history. Search is paused to protect your memory.` The Timeline row and full-note detail could not be exercised because this fresh marker-only pilot had no accepted canonical event to show. No event was fabricated or injected outside product paths.
 - File → Quit displayed the native confirmation. **No** kept the Desktop open and preserved the synthetic draft and pending capture ID.
