@@ -889,10 +889,10 @@ mod tests {
         let canonical_events = root.join("canonical").join("events");
         let device_dir = fs::read_dir(&canonical_events)
             .expect("canonical event directory")
-            .next()
-            .expect("device directory")
-            .expect("read device directory")
-            .path();
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.is_dir())
+            .expect("device directory");
         assert!(
             fs::read_dir(device_dir)
                 .expect("device events")
