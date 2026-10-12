@@ -5,8 +5,8 @@
 ## Build identity
 
 - Branch: `codex/m5-capture-timeline`
-- Source checkout HEAD: `6169ba590075398043cae13c1c2dfcfa68faa1df`
-- The package was built from that HEAD plus the uncommitted Slice 5 fixture and receipt-path changes documented in this worktree. The hashes below identify the exact tested artifacts; this is not a commit SHA.
+- Product commit: `ae6f5a64dbf2825080778462257068744197c501`
+- Package source checkout HEAD before commit: `6169ba590075398043cae13c1c2dfcfa68faa1df`, plus the product changes now recorded in `ae6f5a6`. The tested executable hashes below identify the exact artifacts.
 - Host: Windows 11 x64
 - Desktop: `target/release/cryptex-desktop.exe` — SHA-256 `AB5787CE732D5FBC3AD51078B233F3B8424237E9F5CA3DEF77629D79189BB673`
 - Daemon: `target/release/cryptexd.exe` — SHA-256 `A05C016D9CE258F6CDE02146BA7E1E765FBD2DAD620E03B2D882BC3E2806ACF6`
