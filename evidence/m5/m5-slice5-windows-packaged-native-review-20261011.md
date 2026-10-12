@@ -1,8 +1,10 @@
 # M5 Slice 5 — Windows packaged native review
 
-**Source HEAD:** `3e31da06e1cc8bb485352e13c6cca309eee8cf5e`  
-**Branch:** `codex/m5-capture-timeline`  
-**Host:** Windows 11 x64  
+**Source HEAD:** `3e31da06e1cc8bb485352e13c6cca309eee8cf5e`
+
+**Branch:** `codex/m5-capture-timeline`
+
+**Host:** Windows 11 x64
 **Verdict:** package and isolated launch PASS; Timeline row/detail interaction BLOCKED by the fresh pilot's retrieval-safety hold. Slice 5 is not closed.
 
 ## Package
