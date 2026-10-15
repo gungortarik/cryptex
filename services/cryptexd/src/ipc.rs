@@ -56,6 +56,9 @@ const MAX_DESKTOP_SEARCH_WORKERS: usize = 2;
 /// One capture/resolve at a time so health/search keep listener capacity.
 const MAX_DESKTOP_CAPTURE_WORKERS: usize = 1;
 const CAPABILITY_CONTENT_CAPTURE: &str = "content.capture";
+const CAPABILITY_CONTENT_VAULT: &str = "content.vault";
+const IPC_VAULT_RESPONSE_DEADLINE: Duration = Duration::from_secs(300);
+const MAX_VAULT_ROOT_BYTES: usize = 4096;
 /// Capture responses are small (no note body); keep under the legacy frame budget.
 const MAX_CAPTURE_RESPONSE_BYTES: usize = MAX_FRAME_BYTES;
 /// Worst-case JSON string expansion for UTF-8 text (every byte as `\u00XX`).
@@ -84,6 +87,8 @@ struct Request {
     capture: Option<DesktopCaptureBody>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     capture_resolve: Option<DesktopCaptureResolveBody>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    vault: Option<DesktopVaultBody>,
 }
 
 /// Wire body for `memory.capture`. Raw text is bounded independently of frame size.
@@ -120,6 +125,27 @@ pub struct DesktopCaptureResponse {
     pub classification: Option<String>,
     pub created_at: Option<String>,
     pub content_hash: Option<String>,
+}
+
+/// Explicit destination for a daemon-owned derived-vault rebuild.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DesktopVaultBody {
+    pub vault_root: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopVaultResponse {
+    pub protocol_version: u32,
+    pub request_id: Option<String>,
+    pub accepted: bool,
+    pub error: Option<String>,
+    pub operation: Option<String>,
+    pub daemon_pid: u32,
+    pub note_count: Option<usize>,
+    pub open_note_path: Option<String>,
+    pub hold_reason: Option<String>,
 }
 
 /// Bounded read-only search request accepted from the Desktop role only.
@@ -530,6 +556,7 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
     let desktop_connections = Arc::new(AtomicUsize::new(0));
     let desktop_search_workers = Arc::new(AtomicUsize::new(0));
     let desktop_capture_workers = Arc::new(AtomicUsize::new(0));
+    let desktop_vault_workers = Arc::new(AtomicUsize::new(0));
     thread::Builder::new()
         .name("cryptex-ipc".into())
         .spawn(move || {
@@ -553,6 +580,7 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
                             let worker_context = context.clone();
                             let search_workers = Arc::clone(&desktop_search_workers);
                             let capture_workers = Arc::clone(&desktop_capture_workers);
+                            let vault_workers = Arc::clone(&desktop_vault_workers);
                             if let Err(error) = thread::Builder::new()
                                 .name("cryptex-ipc-desktop".into())
                                 .spawn(move || {
@@ -562,6 +590,7 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
                                         worker_context.as_deref(),
                                         Some(&search_workers),
                                         Some(&capture_workers),
+                                        Some(&vault_workers),
                                     ) {
                                         eprintln!("cryptexd Desktop IPC failed: {error}");
                                     }
@@ -584,6 +613,7 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
                                     if let Err(error) = handle_connection(
                                         &mut stream,
                                         worker_context.as_deref(),
+                                        None,
                                         None,
                                         None,
                                     ) {
@@ -663,6 +693,7 @@ pub fn health_ping(role: &str, timeout: Duration) -> io::Result<HealthResponse> 
         query: None,
         capture: None,
         capture_resolve: None,
+        vault: None,
     };
     let frame = exchange(&mut stream, &request, MAX_RESPONSE_BYTES)?;
     let response: HealthResponse = serde_json::from_slice(&frame)?;
@@ -712,6 +743,7 @@ pub fn desktop_search(
         query: Some(query),
         capture: None,
         capture_resolve: None,
+        vault: None,
     };
     let frame = exchange(&mut stream, &request, MAX_SEARCH_RESPONSE_BYTES)?;
     let response: DesktopSearchResponse = serde_json::from_slice(&frame)?;
@@ -757,6 +789,7 @@ pub fn desktop_timeline(
         query: Some(query),
         capture: None,
         capture_resolve: None,
+        vault: None,
     };
     let frame = exchange(&mut stream, &request, MAX_SEARCH_RESPONSE_BYTES)?;
     let response: DesktopSearchResponse = serde_json::from_slice(&frame)?;
@@ -805,6 +838,7 @@ pub fn desktop_event_detail(
         }),
         capture: None,
         capture_resolve: None,
+        vault: None,
     };
     let frame = exchange(&mut stream, &request, MAX_DETAIL_RESPONSE_BYTES)?;
     let response: DesktopSearchResponse = serde_json::from_slice(&frame)?;
@@ -816,6 +850,56 @@ pub fn desktop_event_detail(
         return Err(invalid_data(
             "IPC event detail response did not match the request",
         ));
+    }
+    Ok(response)
+}
+
+/// Rebuild the selected Obsidian vault from verified local canonical history.
+/// The destination is explicit and is never logged or echoed in the response.
+pub fn desktop_rebuild_vault(
+    vault_root: String,
+    timeout: Duration,
+) -> io::Result<DesktopVaultResponse> {
+    if vault_root.is_empty() || vault_root.len() > MAX_VAULT_ROOT_BYTES {
+        return Err(invalid_data("invalid vault destination"));
+    }
+    let name = socket_name()?;
+    let started = Instant::now();
+    let mut last_error = None;
+    let mut stream = loop {
+        match Stream::connect(name.clone()) {
+            Ok(stream) => break stream,
+            Err(error) if started.elapsed() < timeout => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(last_error.unwrap_or(error)),
+        }
+    };
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let request_id = format!("{}-{nonce}", process::id());
+    let request = Request {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_CONTENT_VAULT.into()],
+        operation: "content.vault.rebuild".into(),
+        query: None,
+        capture: None,
+        capture_resolve: None,
+        vault: Some(DesktopVaultBody { vault_root }),
+    };
+    let deadline = Instant::now() + timeout.min(IPC_VAULT_RESPONSE_DEADLINE);
+    let frame = exchange_until(&mut stream, &request, MAX_RESPONSE_BYTES, deadline)?;
+    let response: DesktopVaultResponse = serde_json::from_slice(&frame)?;
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(&request_id)
+        || (response.accepted && response.operation.as_deref() != Some("content.vault.rebuilt"))
+    {
+        return Err(invalid_data("IPC vault response did not match the request"));
     }
     Ok(response)
 }
@@ -850,6 +934,7 @@ pub fn desktop_enroll_local_device(timeout: Duration) -> io::Result<DesktopEnrol
         query: None,
         capture: None,
         capture_resolve: None,
+        vault: None,
     };
     let frame = exchange(&mut stream, &request, MAX_RESPONSE_BYTES)?;
     let response: DesktopEnrollmentResponse = serde_json::from_slice(&frame)?;
@@ -869,10 +954,23 @@ fn exchange(
     request: &Request,
     max_response_bytes: usize,
 ) -> io::Result<Vec<u8>> {
+    exchange_until(
+        stream,
+        request,
+        max_response_bytes,
+        Instant::now() + IPC_RESPONSE_DEADLINE,
+    )
+}
+
+fn exchange_until(
+    stream: &mut Stream,
+    request: &Request,
+    max_response_bytes: usize,
+    deadline: Instant,
+) -> io::Result<Vec<u8>> {
     arm_ipc_stream(stream)?;
     let mut request_frame = serde_json::to_vec(request)?;
     request_frame.push(b'\n');
-    let deadline = Instant::now() + IPC_RESPONSE_DEADLINE;
     write_ipc_all(stream, &request_frame, deadline)?;
     read_ipc_frame(stream, max_response_bytes, deadline)
 }
@@ -1007,6 +1105,7 @@ fn handle_connection(
     search: Option<&SearchContext>,
     desktop_search_workers: Option<&Arc<AtomicUsize>>,
     desktop_capture_workers: Option<&Arc<AtomicUsize>>,
+    desktop_vault_workers: Option<&Arc<AtomicUsize>>,
 ) -> io::Result<()> {
     let peer_is_desktop = search
         .and_then(|context| {
@@ -1020,6 +1119,7 @@ fn handle_connection(
         search,
         desktop_search_workers,
         desktop_capture_workers,
+        desktop_vault_workers,
         peer_is_desktop,
     )
 }
@@ -1029,6 +1129,7 @@ fn handle_connection_for_peer(
     search: Option<&SearchContext>,
     desktop_search_workers: Option<&Arc<AtomicUsize>>,
     desktop_capture_workers: Option<&Arc<AtomicUsize>>,
+    desktop_vault_workers: Option<&Arc<AtomicUsize>>,
     peer_is_desktop: bool,
 ) -> io::Result<()> {
     arm_ipc_stream(stream)?;
@@ -1162,6 +1263,15 @@ fn handle_connection_for_peer(
                     } else {
                         bytes
                     }
+                } else if request.operation == "content.vault.rebuild" {
+                    let reservation = desktop_vault_workers
+                        .and_then(|workers| try_reserve_ipc_worker(workers, 1));
+                    if desktop_vault_workers.is_some() && reservation.is_none() {
+                        serde_json::to_vec(&vault_rejected(Some(request.request_id), "vault_busy"))?
+                    } else {
+                        let _reservation = reservation;
+                        serde_json::to_vec(&handle_vault_rebuild(request, search, peer_is_desktop))?
+                    }
                 } else if request.operation == "identity.enroll_local" {
                     serde_json::to_vec(&handle_enrollment(request, search, peer_is_desktop))?
                 } else {
@@ -1181,6 +1291,7 @@ fn handle_connection_for_peer(
 fn response_write_deadline_for_operation(operation: &str) -> Instant {
     let duration = match operation {
         "memory.capture" | "memory.capture_resolve" => IPC_CAPTURE_RESPONSE_DEADLINE,
+        "content.vault.rebuild" => IPC_VAULT_RESPONSE_DEADLINE,
         _ => IPC_RESPONSE_DEADLINE,
     };
     Instant::now() + duration
@@ -1943,6 +2054,7 @@ fn handle_enrollment(
     } else if request.query.is_some()
         || request.capture.is_some()
         || request.capture_resolve.is_some()
+        || request.vault.is_some()
     {
         Some("unexpected_request_payload")
     } else {
@@ -2035,7 +2147,10 @@ fn handle_search_until(
         Some("unsupported_operation")
     } else if request.query.is_none() {
         Some("missing_search_query")
-    } else if request.capture.is_some() || request.capture_resolve.is_some() {
+    } else if request.capture.is_some()
+        || request.capture_resolve.is_some()
+        || request.vault.is_some()
+    {
         Some("unexpected_capture_body")
     } else {
         None
@@ -2145,7 +2260,10 @@ fn handle_timeline_until(
         Some("unsupported_operation")
     } else if request.query.is_none() {
         Some("missing_timeline_query")
-    } else if request.capture.is_some() || request.capture_resolve.is_some() {
+    } else if request.capture.is_some()
+        || request.capture_resolve.is_some()
+        || request.vault.is_some()
+    {
         Some("unexpected_timeline_body")
     } else {
         None
@@ -2255,7 +2373,10 @@ fn handle_event_detail_until(
         Some("unsupported_operation")
     } else if request.query.is_none() {
         Some("missing_event_detail_query")
-    } else if request.capture.is_some() || request.capture_resolve.is_some() {
+    } else if request.capture.is_some()
+        || request.capture_resolve.is_some()
+        || request.vault.is_some()
+    {
         Some("unexpected_event_detail_body")
     } else {
         None
@@ -2550,6 +2671,7 @@ fn authorize(request: Request) -> HealthResponse {
         || request.query.is_some()
         || request.capture.is_some()
         || request.capture_resolve.is_some()
+        || request.vault.is_some()
     {
         Some("unsupported_operation")
     } else {
@@ -2581,6 +2703,202 @@ fn rejected(request_id: Option<String>, error: &str) -> HealthResponse {
 
 fn invalid_data(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+fn handle_vault_rebuild(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+) -> DesktopVaultResponse {
+    let request_id = request.request_id.clone();
+    let authorization_error = if request.protocol_version != PROTOCOL_VERSION {
+        Some("incompatible_protocol_version")
+    } else if request.request_id.is_empty() || request.request_id.len() > 128 {
+        Some("invalid_request_id")
+    } else if request.client_role != "desktop" || !peer_is_desktop {
+        Some("unauthorized_client_process")
+    } else if request.capabilities.as_slice() != [CAPABILITY_CONTENT_VAULT] {
+        Some("unauthorized_capability")
+    } else if request.operation != "content.vault.rebuild" {
+        Some("unsupported_operation")
+    } else if request.query.is_some()
+        || request.capture.is_some()
+        || request.capture_resolve.is_some()
+        || request.vault.is_none()
+    {
+        Some("invalid_vault_request")
+    } else {
+        None
+    };
+    if let Some(error) = authorization_error {
+        return vault_rejected(Some(request_id), error);
+    }
+    let Some(context) = context else {
+        return vault_rejected(Some(request_id), "vault_unavailable");
+    };
+    let Some(body) = request.vault else {
+        return vault_rejected(Some(request_id), "invalid_vault_request");
+    };
+    if body.vault_root.is_empty()
+        || body.vault_root.len() > MAX_VAULT_ROOT_BYTES
+        || body.vault_root.contains('\0')
+    {
+        return vault_rejected(Some(request_id), "invalid_vault_destination");
+    }
+    let requested = PathBuf::from(&body.vault_root);
+    if !requested.is_absolute() {
+        return vault_rejected(Some(request_id), "invalid_vault_destination");
+    }
+    match std::fs::symlink_metadata(&requested) {
+        Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
+        _ => return vault_rejected(Some(request_id), "invalid_vault_destination"),
+    }
+    let root = match std::fs::canonicalize(&requested) {
+        Ok(root) => root,
+        Err(_) => return vault_rejected(Some(request_id), "invalid_vault_destination"),
+    };
+    if is_inside_source_repository(&root) {
+        return vault_rejected(Some(request_id), "unsafe_vault_destination");
+    }
+    let runtime = match std::fs::canonicalize(&context.runtime_root) {
+        Ok(path) => path,
+        Err(_) => return vault_rejected(Some(request_id), "vault_unavailable"),
+    };
+    if path_is_same_or_within(&root, &runtime) {
+        return vault_rejected(Some(request_id), "unsafe_vault_destination");
+    }
+    if synchronize_local_derived_state(context).is_err() {
+        return vault_held(Some(request_id), "materialization_state_missing_or_stale");
+    }
+    let brain = match load_brain_identity(&context.runtime_root) {
+        Ok(brain) => brain,
+        Err(_) => return vault_held(Some(request_id), "canonical_verification_unavailable"),
+    };
+    let identity = match load_local_device_identity(&context.runtime_root, &brain.brain_id) {
+        Ok(identity) => identity,
+        Err(_) => return vault_held(Some(request_id), "local_enrollment_required"),
+    };
+    let device = match DeviceId::new(identity.device_id) {
+        Ok(device) => device,
+        Err(_) => return vault_held(Some(request_id), "canonical_verification_unavailable"),
+    };
+    let mut resolver = match LocalDeviceKeyResolver::load(
+        &context.runtime_root,
+        &brain.brain_id,
+        context.store.as_ref(),
+        context.environment,
+    ) {
+        Ok(resolver) => resolver,
+        Err(_) => return vault_held(Some(request_id), "canonical_verification_unavailable"),
+    };
+    let db = match ProjectionDb::open_or_create(&context.runtime_root) {
+        Ok(db) => db,
+        Err(_) => return vault_held(Some(request_id), "materialization_state_missing_or_stale"),
+    };
+    match crate::knowledge_materialization::rebuild_vault_with_retrieval_safety(
+        &context.runtime_root,
+        &brain.brain_id,
+        &[device],
+        &mut resolver,
+        &db,
+        &root,
+    ) {
+        Ok(summary) => DesktopVaultResponse {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: Some(request_id),
+            accepted: true,
+            error: None,
+            operation: Some("content.vault.rebuilt".into()),
+            daemon_pid: process::id(),
+            note_count: Some(summary.note_count),
+            open_note_path: summary
+                .open_note_path
+                .map(|path| path.to_string_lossy().replace('\\', "/")),
+            hold_reason: None,
+        },
+        Err(crate::knowledge_materialization::GuardedVaultError::BrainWideHold(reason)) => {
+            vault_held(Some(request_id), retrieval_hold_code(reason))
+        }
+        Err(crate::knowledge_materialization::GuardedVaultError::Projection(_)) => {
+            vault_rejected(Some(request_id), "vault_rebuild_failed")
+        }
+    }
+}
+
+fn is_inside_source_repository(path: &Path) -> bool {
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let Ok(repository) = std::fs::canonicalize(repository) else {
+        return false;
+    };
+    let path = normalize_path_for_comparison(path);
+    let repository = normalize_path_for_comparison(&repository);
+    path_is_same_or_within(&path, &repository)
+}
+
+fn normalize_path_for_comparison(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        PathBuf::from(path.to_string_lossy().to_lowercase())
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_path_buf()
+    }
+}
+
+fn path_is_same_or_within(path: &Path, root: &Path) -> bool {
+    #[cfg(windows)]
+    let (path, root) = (
+        PathBuf::from(path.to_string_lossy().to_lowercase()),
+        PathBuf::from(root.to_string_lossy().to_lowercase()),
+    );
+    path == root || path.starts_with(root)
+}
+
+fn vault_rejected(request_id: Option<String>, error: &str) -> DesktopVaultResponse {
+    DesktopVaultResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: false,
+        error: Some(error.into()),
+        operation: None,
+        daemon_pid: process::id(),
+        note_count: None,
+        open_note_path: None,
+        hold_reason: None,
+    }
+}
+
+fn vault_held(request_id: Option<String>, reason: &str) -> DesktopVaultResponse {
+    DesktopVaultResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted: true,
+        error: None,
+        operation: Some("content.vault.rebuilt".into()),
+        daemon_pid: process::id(),
+        note_count: None,
+        open_note_path: None,
+        hold_reason: Some(reason.into()),
+    }
+}
+
+fn retrieval_hold_code(reason: RetrievalSafetyHold) -> &'static str {
+    match reason {
+        RetrievalSafetyHold::OperationDeadlineExceeded => "operation_deadline_exceeded",
+        RetrievalSafetyHold::CanonicalVerificationUnavailable => {
+            "canonical_verification_unavailable"
+        }
+        RetrievalSafetyHold::UnsupportedSemantics => "unsupported_semantics",
+        RetrievalSafetyHold::V2SemanticsNotIntegrated => "v2_semantics_not_integrated",
+        RetrievalSafetyHold::UnresolvedDependency => "unresolved_dependency",
+        RetrievalSafetyHold::MaterializationStateMissingOrStale => {
+            "materialization_state_missing_or_stale"
+        }
+        RetrievalSafetyHold::ProjectionDoesNotMatchCanonical => {
+            "projection_does_not_match_canonical"
+        }
+    }
 }
 
 fn run_capture_until(
@@ -2938,6 +3256,7 @@ fn desktop_capture_exchange(
         query: None,
         capture,
         capture_resolve,
+        vault: None,
     };
     let mut request_frame = serde_json::to_vec(&request)?;
     request_frame.push(b'\n');
@@ -2996,7 +3315,82 @@ mod tests {
             query: Some(DesktopSearchQuery::default()),
             capture: None,
             capture_resolve: None,
+            vault: None,
         }
+    }
+
+    fn vault_request(role: &str, capabilities: Vec<String>) -> Request {
+        Request {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "vault-test-request".into(),
+            client_role: role.into(),
+            capabilities,
+            operation: "content.vault.rebuild".into(),
+            query: None,
+            capture: None,
+            capture_resolve: None,
+            vault: Some(DesktopVaultBody {
+                vault_root: "C:\\Users\\Tarik\\Vault".into(),
+            }),
+        }
+    }
+
+    #[test]
+    fn vault_rebuild_requires_authenticated_desktop_process_and_exact_capability() {
+        let request = vault_request("desktop", vec![CAPABILITY_CONTENT_VAULT.into()]);
+        let response = handle_vault_rebuild(request, None, false);
+        assert_eq!(
+            response.error.as_deref(),
+            Some("unauthorized_client_process")
+        );
+
+        let request = vault_request("desktop", vec![CAPABILITY_CONTENT_SEARCH.into()]);
+        let response = handle_vault_rebuild(request, None, true);
+        assert_eq!(response.error.as_deref(), Some("unauthorized_capability"));
+
+        let request = vault_request("mcp", vec![CAPABILITY_CONTENT_VAULT.into()]);
+        let response = handle_vault_rebuild(request, None, true);
+        assert_eq!(
+            response.error.as_deref(),
+            Some("unauthorized_client_process")
+        );
+    }
+
+    #[test]
+    fn vault_destination_guard_rejects_repository_and_accepts_external_directory() {
+        let repository = std::fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+            .expect("repository path");
+        assert!(is_inside_source_repository(&repository));
+        #[cfg(windows)]
+        assert!(is_inside_source_repository(&PathBuf::from(
+            repository.to_string_lossy().to_uppercase()
+        )));
+        let external = exclusive_temp_dir("cryptex-vault-external-destination");
+        let external = std::fs::canonicalize(external).expect("external path");
+        assert!(!is_inside_source_repository(&external));
+    }
+
+    #[test]
+    fn authenticated_vault_request_rebuilds_from_verified_history() {
+        let fixture = prepared_search_fixture("vault-ipc-rebuild");
+        let vault = exclusive_temp_dir("cryptex-ipc-vault-target");
+        let mut request = vault_request("desktop", vec![CAPABILITY_CONTENT_VAULT.into()]);
+        request.vault = Some(DesktopVaultBody {
+            vault_root: vault.to_string_lossy().into_owned(),
+        });
+        let response = handle_vault_rebuild(request, Some(&fixture.context), true);
+        assert!(response.accepted, "{:?}", response.error);
+        assert_eq!(response.note_count, Some(1));
+        let open_note_path = response
+            .open_note_path
+            .as_deref()
+            .expect("generated note path");
+        assert!(open_note_path.starts_with("notes/"));
+        assert!(open_note_path.ends_with(".md"));
+        assert!(vault.join("Cryptex").join(open_note_path).is_file());
+        assert!(vault.join("Cryptex").join("notes").is_dir());
+        fs::remove_dir_all(vault).expect("remove temporary vault");
+        fs::remove_dir_all(fixture.root).expect("remove IPC fixture");
     }
 
     struct SearchFixture {
@@ -3144,7 +3538,20 @@ mod tests {
         }
 
         drop(context);
-        fs::remove_dir_all(fixture.root).expect("cleanup fixture");
+        let cleanup_deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            match fs::remove_dir_all(&fixture.root) {
+                Ok(()) => break,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+                Err(error) if Instant::now() < cleanup_deadline => {
+                    // The catch-up worker exits after its last sender drops;
+                    // on Windows, wait briefly for SQLite's handle to close.
+                    let _ = error;
+                    thread::sleep(Duration::from_millis(20));
+                }
+                Err(error) => panic!("cleanup fixture after worker exit: {error}"),
+            }
+        }
     }
 
     fn content_search_ipc_round_trip(
@@ -3154,7 +3561,7 @@ mod tests {
         let (name, listener) = isolated_ipc_listener("content-search");
         let server = thread::spawn(move || {
             let mut stream = listener.accept().expect("accept content search client");
-            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, true)
+            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, None, true)
                 .expect("serve content search request");
         });
         let mut client = Stream::connect(name.borrow()).expect("connect content search client");
@@ -3180,7 +3587,7 @@ mod tests {
         let (name, listener) = isolated_ipc_listener("content-timeline");
         let server = thread::spawn(move || {
             let mut stream = listener.accept().expect("accept timeline client");
-            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, true)
+            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, None, true)
                 .expect("serve timeline request");
         });
         let mut client = Stream::connect(name.borrow()).expect("connect timeline client");
@@ -3205,7 +3612,7 @@ mod tests {
         let (name, listener) = isolated_ipc_listener("content-event-detail");
         let server = thread::spawn(move || {
             let mut stream = listener.accept().expect("accept event detail client");
-            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, true)
+            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, None, true)
                 .expect("serve event detail request");
         });
         let mut client = Stream::connect(name.borrow()).expect("connect event detail client");
@@ -3713,6 +4120,7 @@ mod tests {
             query: None,
             capture: None,
             capture_resolve: None,
+            vault: None,
         };
 
         let first = handle_enrollment(request(), Some(&context), true);
@@ -3761,6 +4169,7 @@ mod tests {
                 query: None,
                 capture: None,
                 capture_resolve: None,
+                vault: None,
             },
             None,
             false,
@@ -3784,6 +4193,7 @@ mod tests {
             query: None,
             capture: None,
             capture_resolve: None,
+            vault: None,
         });
         assert!(response.accepted);
         assert_eq!(response.operation.as_deref(), Some("health.pong"));
@@ -4037,7 +4447,7 @@ mod tests {
         let (name, listener) = isolated_ipc_listener("health");
         let server = thread::spawn(move || {
             let mut stream = listener.accept().expect("accept test client");
-            handle_connection(&mut stream, None, None, None).expect("health connection");
+            handle_connection(&mut stream, None, None, None, None).expect("health connection");
         });
         let mut client = Stream::connect(name.borrow()).expect("connect test client");
         let deadline = Instant::now() + Duration::from_secs(2);
@@ -4050,6 +4460,7 @@ mod tests {
             query: None,
             capture: None,
             capture_resolve: None,
+            vault: None,
         };
         let mut frame = serde_json::to_vec(&request).expect("request encodes");
         frame.push(b'\n');
@@ -4163,6 +4574,7 @@ mod tests {
             query: None,
             capture: Some(body),
             capture_resolve: None,
+            vault: None,
         }
     }
 
@@ -4217,6 +4629,7 @@ mod tests {
                 capture_resolve: Some(DesktopCaptureResolveBody {
                     capture_id: body.capture_id,
                 }),
+                vault: None,
             },
             None,
             false,
@@ -4311,6 +4724,7 @@ mod tests {
                 capture_resolve: Some(DesktopCaptureResolveBody {
                     capture_id: body.capture_id,
                 }),
+                vault: None,
             },
             Some(&fixture.context),
             true,
@@ -4382,6 +4796,7 @@ mod tests {
                 capture_resolve: Some(DesktopCaptureResolveBody {
                     capture_id: "ffffffff-ffff-4fff-8fff-ffffffffffff".into(),
                 }),
+                vault: None,
             },
             Some(&fixture.context),
             true,

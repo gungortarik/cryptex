@@ -9,7 +9,10 @@ publish = false
 tauri-build.workspace = true
 
 [dependencies]
+serde.workspace = true
 tauri.workspace = true
+tauri-plugin-opener = "=2.6.0"
+rfd = { version = "=0.16.0", default-features = false }
 tauri-plugin-single-instance.workspace = true
 cryptexd = { path = "../../../services/cryptexd" }
 

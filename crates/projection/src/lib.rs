@@ -17,6 +17,7 @@ pub mod ingest;
 pub mod layout;
 pub mod schema;
 pub mod search;
+pub mod vault;
 
 pub use checkpoint::{
     DeviceCheckpoint, clear_all_projection_rows, clear_device_projection, read_device_checkpoint,
@@ -37,4 +38,9 @@ pub use schema::{
 pub use search::{
     SearchHit, SearchQuery, TimelineCursor, TimelinePage, TimelineQuery, event_detail,
     event_detail_until, search_events, search_events_until, timeline_events, timeline_events_until,
+};
+pub use vault::{
+    RenderedVaultNote, VaultAttachmentSource, VaultEntity, VaultFact, VaultKnowledgeView,
+    VaultProjectionSummary, VaultRelation, rebuild_vault_notes, rebuild_vault_projection,
+    rebuild_vault_projection_with_knowledge, rebuild_vault_with_knowledge, render_vault_note,
 };

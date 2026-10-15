@@ -34,6 +34,8 @@ pub enum ProjectionError {
     InvalidQuery { detail: String },
     /// A caller-supplied bounded read exceeded its deadline and returned no partial hits.
     OperationDeadlineExceeded,
+    /// An event cannot be rendered as a supported generated-vault note.
+    InvalidVaultEvent,
     /// Filesystem failure while creating disposable projection paths.
     Io(io::Error),
     /// Underlying SQLite API failure while probing disposable state.
@@ -68,6 +70,7 @@ impl fmt::Display for ProjectionError {
             ),
             Self::InvalidQuery { detail } => write!(f, "projection search query invalid: {detail}"),
             Self::OperationDeadlineExceeded => write!(f, "projection search deadline exceeded"),
+            Self::InvalidVaultEvent => write!(f, "event cannot be rendered as a vault note"),
             Self::Io(err) => write!(f, "projection path io error: {err}"),
             Self::Sqlite(err) => write!(f, "projection sqlite error: {err}"),
         }
@@ -85,7 +88,8 @@ impl std::error::Error for ProjectionError {
             | Self::CorruptDb { .. }
             | Self::EventConflict { .. }
             | Self::InvalidQuery { .. }
-            | Self::OperationDeadlineExceeded => None,
+            | Self::OperationDeadlineExceeded
+            | Self::InvalidVaultEvent => None,
         }
     }
 }
@@ -132,6 +136,7 @@ impl PartialEq for ProjectionError {
             ) => a_id == b_id && a_fields == b_fields,
             (Self::InvalidQuery { detail: a }, Self::InvalidQuery { detail: b }) => a == b,
             (Self::OperationDeadlineExceeded, Self::OperationDeadlineExceeded) => true,
+            (Self::InvalidVaultEvent, Self::InvalidVaultEvent) => true,
             (Self::Io(a), Self::Io(b)) => a.kind() == b.kind() && a.to_string() == b.to_string(),
             (Self::Sqlite(a), Self::Sqlite(b)) => a == b,
             _ => false,

@@ -23,6 +23,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Manager, RunEvent, State, WindowEvent};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use tauri_plugin_autostart::ManagerExt as AutoStartManagerExt;
+use tauri_plugin_opener::OpenerExt;
 
 mod background_process;
 mod frontend_build_mode;
@@ -301,6 +302,217 @@ fn p0_5_guarded_event_detail(
             .unwrap_or_else(|| "daemon rejected guarded event detail".into()));
     }
     Ok(response)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VaultMaterializationUiResponse {
+    cancelled: bool,
+    note_count: Option<usize>,
+    hold_reason: Option<String>,
+    opened_in_obsidian: bool,
+    open_error: Option<&'static str>,
+}
+
+#[tauri::command]
+async fn p0_6_materialize_and_open_vault(
+    app: AppHandle,
+) -> Result<VaultMaterializationUiResponse, String> {
+    let selected = tauri::async_runtime::spawn_blocking(move || {
+        rfd::FileDialog::new()
+            .set_title("Choose an existing Obsidian vault")
+            .pick_folder()
+    })
+    .await
+    .map_err(|_| "VAULT_PICKER_FAILED")?;
+    let Some(selected) = selected else {
+        return Ok(VaultMaterializationUiResponse {
+            cancelled: true,
+            note_count: None,
+            hold_reason: None,
+            opened_in_obsidian: false,
+            open_error: None,
+        });
+    };
+    let path_text = selected
+        .to_str()
+        .ok_or("VAULT_PATH_UNAVAILABLE")?
+        .to_owned();
+    let rebuild = tauri::async_runtime::spawn_blocking(move || {
+        cryptexd::ipc::desktop_rebuild_vault(path_text, Duration::from_secs(300))
+    })
+    .await
+    .map_err(|_| "VAULT_REBUILD_FAILED")?
+    .map_err(|_| "VAULT_DAEMON_UNAVAILABLE")?;
+    if !rebuild.accepted {
+        return Err(rebuild
+            .error
+            .unwrap_or_else(|| "VAULT_REBUILD_FAILED".into()));
+    }
+    if rebuild.hold_reason.is_some() {
+        return Ok(VaultMaterializationUiResponse {
+            cancelled: false,
+            note_count: None,
+            hold_reason: rebuild.hold_reason,
+            opened_in_obsidian: false,
+            open_error: None,
+        });
+    }
+    let open_path = rebuild
+        .open_note_path
+        .as_deref()
+        .and_then(|relative| safe_vault_note_target(&selected, relative));
+    let opened = open_path.is_some_and(|path| {
+        path.to_str().is_some_and(|path| {
+            let uri = format!("obsidian://open?path={}", encode_uri_query_value(path));
+            app.opener().open_url(uri, None::<&str>).is_ok()
+        })
+    });
+    Ok(VaultMaterializationUiResponse {
+        cancelled: false,
+        note_count: rebuild.note_count,
+        hold_reason: None,
+        opened_in_obsidian: opened,
+        open_error: (!opened).then_some("OBSIDIAN_OPEN_FAILED"),
+    })
+}
+
+fn encode_uri_query_value(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[(byte >> 4) as usize]));
+            encoded.push(char::from(HEX[(byte & 0x0f) as usize]));
+        }
+    }
+    encoded
+}
+
+fn safe_vault_note_target(
+    vault_root: &std::path::Path,
+    relative: &str,
+) -> Option<std::path::PathBuf> {
+    let parts = relative.split('/').collect::<Vec<_>>();
+    if parts.len() != 2
+        || !matches!(parts[0], "notes" | "Entities")
+        || relative.contains(['\\', ':'])
+        || !parts[1].ends_with(".md")
+        || !is_uuid_text(parts[1].strip_suffix(".md")?)
+    {
+        return None;
+    }
+    let root_metadata = std::fs::symlink_metadata(vault_root).ok()?;
+    if !root_metadata.is_dir() || root_metadata.file_type().is_symlink() {
+        return None;
+    }
+    let root = std::fs::canonicalize(vault_root).ok()?;
+    let generated = root.join("Cryptex");
+    let note_directory = generated.join(parts[0]);
+    for directory in [&generated, &note_directory] {
+        let metadata = std::fs::symlink_metadata(directory).ok()?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return None;
+        }
+    }
+    let target = note_directory.join(parts[1]);
+    let metadata = std::fs::symlink_metadata(&target).ok()?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return None;
+    }
+    let canonical_target = std::fs::canonicalize(target).ok()?;
+    canonical_target
+        .starts_with(root)
+        .then_some(canonical_target)
+}
+
+fn is_uuid_text(value: &str) -> bool {
+    value.len() == 36
+        && value.bytes().enumerate().all(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        })
+}
+
+#[cfg(test)]
+mod vault_uri_tests {
+    use super::{encode_uri_query_value, safe_vault_note_target};
+
+    #[test]
+    fn vault_uri_query_escapes_path_separators_and_reserved_bytes() {
+        assert_eq!(
+            encode_uri_query_value(r"C:\Users\Tarik\My Vault#1"),
+            "C%3A%5CUsers%5CTarik%5CMy%20Vault%231"
+        );
+    }
+
+    #[test]
+    fn vault_open_target_accepts_only_existing_generated_note_paths() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("cryptex-open-target-{nonce}"));
+        let note = root.join("Cryptex/notes/11111111-1111-4111-8111-111111111111.md");
+        std::fs::create_dir_all(note.parent().unwrap()).unwrap();
+        std::fs::write(&note, "synthetic").unwrap();
+        let canonical_note = std::fs::canonicalize(&note).unwrap();
+        assert_eq!(
+            safe_vault_note_target(&root, "notes/11111111-1111-4111-8111-111111111111.md"),
+            Some(canonical_note)
+        );
+        let entity_note = root.join("Cryptex/Entities/22222222-2222-4222-8222-222222222222.md");
+        std::fs::create_dir_all(entity_note.parent().unwrap()).unwrap();
+        std::fs::write(&entity_note, "synthetic entity").unwrap();
+        assert_eq!(
+            safe_vault_note_target(&root, "Entities/22222222-2222-4222-8222-222222222222.md"),
+            Some(std::fs::canonicalize(&entity_note).unwrap())
+        );
+        assert_eq!(safe_vault_note_target(&root, "../../outside.md"), None);
+        assert_eq!(
+            safe_vault_note_target(
+                &root,
+                "attachments/11111111-1111-4111-8111-111111111111/x.md"
+            ),
+            None
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn vault_open_target_rejects_symlinked_generated_parent() {
+        use std::os::unix::fs::symlink;
+
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("cryptex-open-symlink-root-{nonce}"));
+        let outside = std::env::temp_dir().join(format!("cryptex-open-symlink-outside-{nonce}"));
+        std::fs::create_dir_all(root.join("Cryptex")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(
+            outside.join("11111111-1111-4111-8111-111111111111.md"),
+            "outside synthetic file",
+        )
+        .unwrap();
+        symlink(&outside, root.join("Cryptex").join("notes")).unwrap();
+
+        assert_eq!(
+            safe_vault_note_target(&root, "notes/11111111-1111-4111-8111-111111111111.md"),
+            None
+        );
+
+        std::fs::remove_dir_all(&root).unwrap();
+        std::fs::remove_dir_all(&outside).unwrap();
+    }
 }
 
 #[tauri::command]
@@ -2068,8 +2280,9 @@ fn main() {
         user_quit_in_progress: Arc::new(AtomicBool::new(false)),
     };
 
-    let builder =
-        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             let state = app.state::<ProbeState>();
             if let Err(error) = show_main_window(app, "single_instance_launch", &state)
                 && let Ok(runtime) = runtime_root_path()
@@ -2122,6 +2335,7 @@ fn main() {
             p0_4_guarded_search,
             p0_5_guarded_timeline,
             p0_5_guarded_event_detail,
+            p0_6_materialize_and_open_vault,
             p0_4_enroll_local_device,
             p0_5_capture_memory,
             p0_5_resolve_capture,

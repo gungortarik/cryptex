@@ -153,6 +153,29 @@ button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, va
 
 
 /* Quick Capture Inbox (M5 Slice 3) */
+.vault-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin: 24px 0 8px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.vault-panel > div { flex: 1 1 360px; }
+.vault-panel h2 {
+  margin: 0 0 5px;
+  font-family: var(--display);
+  font-size: 23px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+.vault-panel .capture-help { margin-bottom: 0; }
+.vault-panel > button { margin-left: auto; }
+.vault-panel .capture-status { flex-basis: 100%; margin-bottom: 0; }
+
 .capture-panel {
   margin: 28px 0 8px;
   padding: 22px 22px 20px;

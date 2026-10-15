@@ -296,7 +296,8 @@ fn replaceable_unusable_reason(err: &ProjectionError) -> Option<ProjectionReplac
         | ProjectionError::Fts5Unavailable { .. }
         | ProjectionError::EventConflict { .. }
         | ProjectionError::InvalidQuery { .. }
-        | ProjectionError::OperationDeadlineExceeded => None,
+        | ProjectionError::OperationDeadlineExceeded
+        | ProjectionError::InvalidVaultEvent => None,
     }
 }
 

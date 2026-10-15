@@ -39,6 +39,14 @@ type GuardedSearchResponse = {
   hasMore: boolean;
 };
 
+type VaultMaterializationResponse = {
+  cancelled: boolean;
+  noteCount: number | null;
+  holdReason: string | null;
+  openedInObsidian: boolean;
+  openError: string | null;
+};
+
 type LocalEnrollmentResponse = {
   deviceId: string;
 };
@@ -121,6 +129,8 @@ export function App() {
   const [holdReason, setHoldReason] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("checking");
   const [searching, setSearching] = useState(false);
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const [vaultStatus, setVaultStatus] = useState<string | null>(null);
   const [enrolling, setEnrolling] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -144,6 +154,39 @@ export function App() {
   const byteCount = useMemo(() => utf8ByteLength(draftText), [draftText]);
   const captureBusy =
     captureUi.kind === "submitting" || captureUi.kind === "resolving";
+
+  async function materializeAndOpenVault() {
+    setVaultBusy(true);
+    setVaultStatus(null);
+    try {
+      const result = await invoke<VaultMaterializationResponse>(
+        "p0_6_materialize_and_open_vault",
+      );
+      if (result.cancelled) return;
+      if (result.holdReason) {
+        setVaultStatus(`Vault refresh paused for safety: ${result.holdReason}.`);
+      } else if (result.openedInObsidian) {
+        setVaultStatus(
+          `Vault refreshed with ${result.noteCount ?? 0} notes and opened in Obsidian. Use Obsidian’s Graph view to explore relationships.`,
+        );
+      } else {
+        setVaultStatus(
+          `Vault refreshed with ${result.noteCount ?? 0} notes, but Obsidian could not be opened. Open the selected vault in Obsidian and choose Graph view.`,
+        );
+      }
+    } catch (error) {
+      const code = String(error);
+      setVaultStatus(
+        code.includes("unsafe_vault_destination")
+          ? "Choose a vault outside the Cryptex source and runtime folders."
+          : code.includes("invalid_vault_destination")
+            ? "Choose an existing folder for the Obsidian vault."
+            : "Cryptex could not safely refresh the vault. Check that the device is enrolled and local history is verified.",
+      );
+    } finally {
+      setVaultBusy(false);
+    }
+  }
 
   useEffect(() => {
     void invoke("p0_3_ipc_health")
@@ -714,6 +757,25 @@ export function App() {
               Search stays on this device and works offline. No AI is needed to find a note.
             </p>
           </div>
+
+          <section className="vault-panel" aria-labelledby="vault-heading">
+            <div>
+              <p className="panel-kicker">Obsidian</p>
+              <h2 id="vault-heading">Your verified knowledge view</h2>
+              <p className="capture-help">
+                Refresh a generated copy from verified local memory, then explore it with Obsidian Graph. Cryptex keeps canonical memory separate.
+              </p>
+            </div>
+            <button
+              className="search-button"
+              type="button"
+              disabled={vaultBusy || connection !== "active"}
+              onClick={() => void materializeAndOpenVault()}
+            >
+              {vaultBusy ? "Refreshing…" : "Choose vault, refresh & open"}
+            </button>
+            {vaultStatus ? <p className="capture-status" role="status">{vaultStatus}</p> : null}
+          </section>
 
           <section className="capture-panel" aria-labelledby="capture-heading">
             <p className="panel-kicker">Quick capture</p>

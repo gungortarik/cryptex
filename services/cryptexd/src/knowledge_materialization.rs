@@ -17,8 +17,8 @@ use cryptex_knowledge::sqlite::{
 };
 use cryptex_projection::{
     ProjectionDb, ProjectionError, SearchHit, SearchQuery, TimelinePage, TimelineQuery,
-    event_detail, event_detail_until, search_events, timeline_events, timeline_events_until,
-    validate_schema_v1,
+    VaultEntity, VaultFact, VaultKnowledgeView, VaultRelation, event_detail, event_detail_until,
+    search_events, timeline_events, timeline_events_until, validate_schema_v1,
 };
 use cryptex_storage::layout::{
     active_segment_path, canonical_events_device_dir, sealed_segment_path,
@@ -134,6 +134,28 @@ pub enum GuardedSearchError {
     BrainWideHold(RetrievalSafetyHold),
     Query(ProjectionError),
 }
+
+#[derive(Debug)]
+pub enum GuardedVaultError {
+    BrainWideHold(RetrievalSafetyHold),
+    Projection(ProjectionError),
+}
+
+impl std::fmt::Display for GuardedVaultError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BrainWideHold(reason) => {
+                write!(
+                    f,
+                    "vault materialization withheld by Brain-wide safety hold: {reason:?}"
+                )
+            }
+            Self::Projection(error) => write!(f, "vault materialization failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for GuardedVaultError {}
 
 impl std::fmt::Display for GuardedSearchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -565,6 +587,124 @@ pub fn evaluate_retrieval_safety<R: TrustedDaemonKeyResolver>(
         db,
         None,
     )
+}
+
+/// Rebuild the Obsidian projection only from the complete, currently verified
+/// v1 history. The retrieval gate owns canonical locks through publication;
+/// unsupported or stale state fails closed before the vault is touched.
+pub fn rebuild_vault_with_retrieval_safety<R: TrustedDaemonKeyResolver>(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    trusted_devices: &[DeviceId],
+    key_resolver: &mut R,
+    db: &ProjectionDb,
+    vault_root: &Path,
+) -> Result<cryptex_projection::VaultProjectionSummary, GuardedVaultError> {
+    let safety = evaluate_retrieval_safety(
+        runtime_root,
+        expected_brain_id,
+        trusted_devices,
+        key_resolver,
+        db,
+    );
+    let Some(snapshot) = safety.snapshot.as_ref() else {
+        return Err(GuardedVaultError::BrainWideHold(
+            safety
+                .hold_reason()
+                .unwrap_or(RetrievalSafetyHold::CanonicalVerificationUnavailable),
+        ));
+    };
+
+    let events = snapshot
+        .history
+        .records()
+        .iter()
+        .filter_map(|record| match record {
+            VersionedRecord::VerifiedV1(event) => Some(event),
+            VersionedRecord::VerifiedV2Supported(_)
+            | VersionedRecord::VerifiedUnsupported(_)
+            | VersionedRecord::Unverifiable(_) => None,
+        })
+        .collect::<Vec<_>>();
+    let knowledge = vault_knowledge_view(&snapshot.state);
+    cryptex_projection::rebuild_vault_with_knowledge(vault_root, events, &knowledge)
+        .map_err(GuardedVaultError::Projection)
+}
+
+fn vault_knowledge_view(state: &cryptex_knowledge::KnowledgeState) -> VaultKnowledgeView {
+    use std::collections::BTreeMap;
+
+    use cryptex_events::FactValue;
+
+    // A consolidated entity note uses the reducer's representative UUID. The
+    // representative's own declaration provides the display label.
+    let mut active_entities = BTreeMap::<String, String>::new();
+    for entity in &state.entities {
+        if entity.entity_id == entity.representative_id {
+            active_entities.insert(
+                entity.representative_id.to_ascii_lowercase(),
+                entity.label.clone(),
+            );
+        }
+    }
+    let entities = active_entities
+        .iter()
+        .map(|(entity_id, display_label)| VaultEntity {
+            entity_id: entity_id.clone(),
+            display_label: display_label.clone(),
+        })
+        .collect();
+
+    let facts = state
+        .facts
+        .iter()
+        .filter_map(|fact| {
+            let subject_entity_id = fact.subject_entity_id.to_ascii_lowercase();
+            if !active_entities.contains_key(&subject_entity_id) {
+                return None;
+            }
+            let (value_kind, value) = match &fact.value {
+                FactValue::Text(value) => ("text", value.clone()),
+                FactValue::Decimal(value) => ("decimal", value.clone()),
+                FactValue::Boolean(value) => ("boolean", value.to_string()),
+                FactValue::Date(value) => ("date", value.clone()),
+                FactValue::EntityRef(value) => ("entity_ref", value.to_ascii_lowercase()),
+            };
+            Some(VaultFact {
+                subject_entity_id,
+                semantic_id: fact.semantic_id.clone(),
+                predicate: fact.predicate.clone(),
+                value_kind: value_kind.into(),
+                value,
+            })
+        })
+        .collect();
+
+    let relations = state
+        .relations
+        .iter()
+        .filter_map(|relation| {
+            let subject_entity_id = relation.subject_entity_id.to_ascii_lowercase();
+            let object_entity_id = relation.object_entity_id.to_ascii_lowercase();
+            if !active_entities.contains_key(&subject_entity_id)
+                || !active_entities.contains_key(&object_entity_id)
+            {
+                return None;
+            }
+            Some(VaultRelation {
+                subject_entity_id,
+                semantic_id: relation.semantic_id.clone(),
+                predicate: relation.predicate.clone(),
+                object_entity_id,
+            })
+        })
+        .collect();
+
+    VaultKnowledgeView {
+        entities,
+        facts,
+        relations,
+    }
 }
 
 fn evaluate_retrieval_safety_until<R: TrustedDaemonKeyResolver>(
@@ -1239,6 +1379,74 @@ mod tests {
     }
 
     #[test]
+    fn vault_view_uses_only_representative_entities_and_reduced_relations() {
+        use cryptex_events::{EntityKind, FactValue};
+        use cryptex_knowledge::{Entity, Fact, KnowledgeState, Provenance, Relation};
+
+        let representative = "11111111-1111-4111-8111-111111111111";
+        let merged_id = "22222222-2222-4222-8222-222222222222";
+        let target = "33333333-3333-4333-8333-333333333333";
+        let provenance = Provenance {
+            event_id: "44444444-4444-4444-8444-444444444444".into(),
+            device_id: "fixture-device".into(),
+            device_seq: 1,
+            signing_key_id: "fixture-key".into(),
+            confidence: None,
+            authorization_receipt_id: "55555555-5555-4555-8555-555555555555".into(),
+            classification: Classification::Public,
+        };
+        let state = KnowledgeState {
+            entities: vec![
+                Entity {
+                    entity_id: representative.into(),
+                    representative_id: representative.into(),
+                    kind: EntityKind::Person,
+                    label: "Tarık".into(),
+                    provenance: vec![provenance.clone()],
+                },
+                Entity {
+                    entity_id: merged_id.into(),
+                    representative_id: representative.into(),
+                    kind: EntityKind::Person,
+                    label: "T. G.".into(),
+                    provenance: vec![provenance.clone()],
+                },
+                Entity {
+                    entity_id: target.into(),
+                    representative_id: target.into(),
+                    kind: EntityKind::Project,
+                    label: "Cryptex".into(),
+                    provenance: vec![provenance.clone()],
+                },
+            ],
+            facts: vec![Fact {
+                semantic_id: "fact-key".into(),
+                subject_entity_id: representative.into(),
+                predicate: "person.name".into(),
+                value: FactValue::Text("Tarık".into()),
+                provenance: vec![provenance.clone()],
+            }],
+            relations: vec![Relation {
+                semantic_id: "relation-key".into(),
+                subject_entity_id: representative.into(),
+                predicate: "works_on".into(),
+                object_entity_id: target.into(),
+                provenance: vec![provenance],
+            }],
+            ..KnowledgeState::default()
+        };
+
+        let view = vault_knowledge_view(&state);
+        assert_eq!(view.entities.len(), 2);
+        assert_eq!(view.entities[0].entity_id, representative);
+        assert_eq!(view.entities[0].display_label, "Tarık");
+        assert_eq!(view.facts.len(), 1);
+        assert_eq!(view.facts[0].value_kind, "text");
+        assert_eq!(view.relations.len(), 1);
+        assert_eq!(view.relations[0].object_entity_id, target);
+    }
+
+    #[test]
     fn daemon_rebuild_scans_verified_v1_frames_without_changing_canonical_bytes() {
         let root = exclusive_temp_dir("m4-knowledge-reader");
         let store = FakeSecureStore::new();
@@ -1424,6 +1632,109 @@ mod tests {
             )
         ));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn guarded_vault_rebuild_publishes_verified_history_and_holds_stale_history() {
+        let root = exclusive_temp_dir("m6-guarded-vault-runtime");
+        let vault = exclusive_temp_dir("m6-guarded-vault-output");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("m6-vault-device").unwrap();
+        let brain = "33333333-3333-4333-8333-333333333333";
+        append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "synthetic verified vault note",
+                event_id: None,
+                config: &crate::canonical_writer::CanonicalWriterConfig::default(),
+            },
+        )
+        .unwrap();
+        let ready = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            true,
+        )
+        .unwrap();
+        let mut resolver = OneTrustedDevice {
+            device: device.as_str().to_owned(),
+            key_id: ready.public.signing_key_id,
+            key: ready.signing_key.verifying_key(),
+        };
+        let mut db = ProjectionDb::open_in_memory().unwrap();
+        rebuild_device_projection(&store, SecureStoreEnvironment::Dev, &root, &device, &db)
+            .unwrap();
+        rebuild_knowledge_from_canonical(
+            &root,
+            brain,
+            std::slice::from_ref(&device),
+            &mut resolver,
+            &mut db,
+        )
+        .unwrap();
+
+        assert_eq!(
+            rebuild_vault_with_retrieval_safety(
+                &root,
+                brain,
+                std::slice::from_ref(&device),
+                &mut resolver,
+                &db,
+                &vault,
+            )
+            .unwrap()
+            .note_count,
+            1
+        );
+        let notes_dir = vault.join("Cryptex").join("notes");
+        let note_path = fs::read_dir(&notes_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let published = fs::read(&note_path).unwrap();
+        assert!(String::from_utf8_lossy(&published).contains("synthetic verified vault note"));
+
+        append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "new note makes projection stale",
+                event_id: None,
+                config: &crate::canonical_writer::CanonicalWriterConfig::default(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            rebuild_vault_with_retrieval_safety(
+                &root,
+                brain,
+                std::slice::from_ref(&device),
+                &mut resolver,
+                &db,
+                &vault,
+            ),
+            Err(GuardedVaultError::BrainWideHold(
+                RetrievalSafetyHold::MaterializationStateMissingOrStale
+            ))
+        ));
+        assert_eq!(fs::read(&note_path).unwrap(), published);
+
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(vault).unwrap();
     }
 
     #[test]
