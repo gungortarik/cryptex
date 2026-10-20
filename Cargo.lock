@@ -630,7 +630,7 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "cryptex-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -638,7 +638,7 @@ dependencies = [
 
 [[package]]
 name = "cryptex-desktop"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "cryptexd",
  "rfd",
@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "cryptex-events"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "blake3",
  "cryptex-core",
@@ -667,7 +667,7 @@ dependencies = [
 
 [[package]]
 name = "cryptex-knowledge"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "blake3",
  "cryptex-core",
@@ -681,8 +681,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cryptex-mcp"
+version = "0.1.0"
+dependencies = [
+ "cryptex-core",
+ "cryptex-projection",
+ "cryptexd",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cryptex-projection"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "cryptex-core",
  "cryptex-events",
@@ -694,7 +705,7 @@ dependencies = [
 
 [[package]]
 name = "cryptex-storage"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "blake3",
  "cryptex-core",
@@ -707,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "cryptexd"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "blake3",
  "cryptex-core",
@@ -2287,7 +2298,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "m0-ipc-spike"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "interprocess",
  "libc",
@@ -2299,7 +2310,7 @@ dependencies = [
 
 [[package]]
 name = "m0-lifecycle-compare"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "cryptexd",
  "fs2",
@@ -2308,7 +2319,7 @@ dependencies = [
 
 [[package]]
 name = "m0-storage-bench"
-version = "0.0.0"
+version = "0.1.0"
 
 [[package]]
 name = "markup5ever"
