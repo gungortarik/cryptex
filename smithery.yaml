@@ -1,0 +1,9 @@
+startCommand:
+  type: stdio
+  config:
+    command: cargo
+    args:
+      - run
+      - --release
+      - -p
+      - cryptex-mcp

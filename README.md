@@ -8,6 +8,52 @@ Instead of letting AI agents overwrite raw Markdown files or forcing you to run 
 
 ---
 
+## Quickstart: Connect to Cursor & Claude (30 Seconds)
+
+You can run the lightweight **`cryptex-mcp`** server right now to give Cursor or Claude Desktop persistent, offline-first memory powered by SQLite FTS5.
+
+### 1. Build the MCP Server
+```bash
+git clone https://github.com/gungortarik/cryptex.git
+cd cryptex
+cargo build --release -p cryptex-mcp
+```
+The binary will be compiled to `./target/release/cryptex-mcp`.
+
+### 2. Add to Claude Desktop (`claude_desktop_config.json`)
+Add the following to your Claude configuration file:
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "cryptex": {
+      "command": "/absolute/path/to/cryptex/target/release/cryptex-mcp"
+    }
+  }
+}
+```
+
+### 3. Add to Cursor (`.cursor/mcp.json` or Cursor Settings)
+In Cursor, go to **Settings > Features > MCP**, or add to `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "cryptex": {
+      "command": "cargo",
+      "args": ["run", "--release", "--manifest-path", "/absolute/path/to/cryptex/Cargo.toml", "-p", "cryptex-mcp"]
+    }
+  }
+}
+```
+
+### 4. Available MCP Tools
+- `cryptex_search`: Full-text search (FTS5) over personal memory, notes, and events.
+- `cryptex_status`: Instant health check of the local engine and SQLite database.
+
+---
+
 ## Why Cryptex?
 
 | Approach | Canonical Source | Offline & No Docker? | Multi-Device Conflict-Free? | Tamper-Evident History? | AI Privacy Tiers & Poisoning Defense? |
