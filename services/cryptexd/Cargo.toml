@@ -1,0 +1,39 @@
+﻿[package]
+name = "cryptexd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "cryptexd"
+path = "src/main.rs"
+
+[dependencies]
+cryptex-core = { path = "../../crates/core" }
+cryptex-events = { path = "../../crates/events" }
+cryptex-storage = { path = "../../crates/storage" }
+cryptex-projection = { path = "../../crates/projection" }
+cryptex-knowledge = { path = "../../crates/knowledge" }
+ed25519-dalek = { workspace = true }
+getrandom = "=0.2.16"
+serde_json_canonicalizer = { workspace = true }
+blake3 = { workspace = true }
+fs2 = "0.4.3"
+interprocess = "=2.4.4"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Security_Credentials", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Threading"] }
+widestring = "=1.2.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# ADR-0014 accepted P1 pin (Gate A evidence).
+security-framework = "=3.7.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.189"
+
+[dev-dependencies]

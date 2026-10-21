@@ -8,15 +8,25 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      ipc_acl_only:
+        description: Run only the isolated Windows cross-account IPC test
+        type: boolean
+        default: false
+      windows_desktop_build_only:
+        description: Build only the unsigned Windows Desktop NSIS package and upload artifacts
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   readiness:
+    if: github.event_name != 'workflow_dispatch' || (!inputs.ipc_acl_only && !inputs.windows_desktop_build_only)
     name: Readiness (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 35
 
     strategy:
       fail-fast: false
@@ -62,8 +72,166 @@ jobs:
           pnpm --filter @cryptex/desktop exec tsc --version
           pnpm --filter @cryptex/desktop exec vite --version
 
-      - name: Validate Cargo workspace manifest
-        run: cargo metadata --format-version 1 --no-deps
+      - name: Build desktop frontend
+        run: pnpm --filter @cryptex/desktop build
 
-      # M0 will add real format, lint, test, schema, Golden Brain,
-      # build and packaging checks when those targets exist.
+      - name: Test Desktop retrieval response policy
+        run: pnpm --filter @cryptex/desktop test:search-policy
+
+      - name: Validate Cargo workspace manifest
+        run: cargo metadata --locked --format-version 1 --no-deps
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust workspace
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Check Rust workspace
+        run: cargo check --locked --workspace
+
+      - name: Test M0 storage benchmark harness
+        run: cargo test --locked -p m0-storage-bench
+
+      - name: Test M0 cryptexd lifecycle harness
+        run: cargo test --locked -p cryptexd
+
+      - name: Test M2 event and storage crates
+        run: cargo test --locked -p cryptex-events -p cryptex-storage
+
+      - name: Test M3 projection crate
+        run: cargo test --locked -p cryptex-projection
+
+      - name: Test M4 knowledge reducer and SQLite recovery
+        run: cargo test --locked -p cryptex-knowledge
+
+      - name: Check M2 schema TypeScript drift
+        run: pnpm --filter @cryptex/schemas check:drift
+
+      - name: Test M0 lifecycle compare harness
+        run: cargo test --locked -p m0-lifecycle-compare
+
+      - name: Test M0 local IPC spike
+        run: cargo test --locked -p m0-ipc-spike
+
+      - name: Test Desktop Rust foundation
+        run: cargo test --locked -p cryptex-desktop
+
+      - name: Build native helpers for Node failure-path and Golden tests
+        run: cargo build --locked -p m0-lifecycle-compare -p m0-storage-bench
+
+      - name: Build embedded-frontend release Desktop for negative pre-Tauri CLI tests
+        run: cargo build --locked --release -p cryptex-desktop --features tauri/custom-protocol
+
+      - name: Test release Desktop namespace and frontend build mode
+        run: cargo test --locked --release -p cryptex-desktop --features tauri/custom-protocol
+
+      - name: Lint release-only Desktop paths
+        run: cargo clippy --locked --release -p cryptex-desktop --features tauri/custom-protocol --all-targets -- -D warnings
+
+      - name: Test Node foundation, recovery, packaging and Syncthing boundaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $desktopName = if ($IsWindows) { 'cryptex-desktop.exe' } else { 'cryptex-desktop' }
+          $env:CRYPTEX_PILOT_DESKTOP_TEST_BINARY = Join-Path $env:GITHUB_WORKSPACE "target/release/$desktopName"
+          $lifecycleTests = @(Get-ChildItem -LiteralPath 'tools/m0-lifecycle-compare/scripts' -Filter '*.test.mjs' -File | Sort-Object Name | ForEach-Object { $_.FullName })
+          if ($lifecycleTests.Count -eq 0) { throw 'Lifecycle test inventory missing' }
+          node --test @lifecycleTests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test tools/m0-storage-bench/scripts/capture-syncthing-p0-1-raw-result.test.mjs apps/desktop/scripts/prepare-cryptexd-sidecar.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run cryptexd foundation binary
+        run: cargo run --locked -p cryptexd --quiet
+
+      # Physical native-host proofs and final human/ADR acceptance are retained
+      # separately. These tests do not certify installed/signed distribution.
+
+  ipc-acl:
+    if: github.event_name != 'workflow_dispatch' || !inputs.windows_desktop_build_only
+    name: IPC cross-account ACL (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+
+      - name: Build IPC candidate
+        run: cargo build --locked -p m0-ipc-spike
+
+      - name: Verify actual different-user access denial
+        run: |
+          powershell.exe -NoProfile -NonInteractive -File tools/m0-ipc-spike/scripts/test-windows-ipc-acl-ci.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  windows-desktop-build:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_desktop_build_only
+    name: Windows Desktop package (unsigned, manual only)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check sidecar staging
+        run: pnpm --dir apps/desktop test:sidecar-build-script
+
+      - name: Build unsigned NSIS package
+        run: pnpm --filter @cryptex/desktop tauri:package --bundles nsis
+
+      - name: Test release Desktop path and status helpers
+        run: cargo test -p cryptex-desktop --bin cryptex-desktop --release --locked
+
+      - name: Stage artifacts with provenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'cryptex-windows-package'
+          New-Item -ItemType Directory -Path $artifactRoot | Out-Null
+          Copy-Item -LiteralPath 'target/release/cryptex-desktop.exe' -Destination $artifactRoot
+          Copy-Item -LiteralPath 'apps/desktop/src-tauri/binaries/cryptexd-x86_64-pc-windows-msvc.exe' -Destination (Join-Path $artifactRoot 'cryptexd.exe')
+          $installers = @(Get-ChildItem -LiteralPath 'target/release/bundle/nsis' -Filter '*.exe' -File)
+          if ($installers.Count -eq 0) { throw 'NSIS installer missing' }
+          foreach ($installer in $installers) {
+            Copy-Item -LiteralPath $installer.FullName -Destination $artifactRoot
+          }
+          $files = @(Get-ChildItem -LiteralPath $artifactRoot -File | ForEach-Object {
+            [ordered]@{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash; bytes = $_.Length }
+          })
+          [ordered]@{
+            source_commit = $env:GITHUB_SHA
+            run_id = $env:GITHUB_RUN_ID
+            target = 'x86_64-pc-windows-msvc'
+            signing = 'unsigned development artifact; not release acceptance'
+            files = $files
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $artifactRoot 'provenance.json') -Encoding utf8NoBOM
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryptex-windows-package-${{ github.sha }}
+          path: ${{ runner.temp }}/cryptex-windows-package/
+          if-no-files-found: error
+          retention-days: 7

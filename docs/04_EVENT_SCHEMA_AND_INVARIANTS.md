@@ -9,7 +9,7 @@ This document defines the event-level invariants that are already fixed by the C
 
 It intentionally does not invent exact field names, wire formats or serialization details that are not yet specified.
 
-The exact physical event packaging is resolved by the M0 P0-1 benchmark and ADR-0013 before M2 product implementation.
+The exact physical event packaging is accepted in ADR-0013 (immutable sealed per-device segment/pack files) before M2 product implementation.
 
 ## 2. Authority and scope
 
@@ -38,15 +38,15 @@ Corrections, supersession and later semantic changes are represented through add
 
 The logical event model is frozen.
 
-The physical packaging is not frozen before M0 P0-1.
+The physical packaging is accepted in ADR-0013: immutable sealed per-device segment/pack files. One-file-per-event is rejected. Hybrid is not selected.
 
-M0 must benchmark:
+M0 P0-1 benchmarked:
 
 - one immutable file per event
 - immutable sealed per-device segment/pack files
-- hybrid thresholded segments only if evidence justifies them
+- hybrid thresholded segments only if evidence justified them
 
-No event-schema implementation may assume that the final production architecture is one file per event before ADR-0013 is accepted.
+No event-schema implementation may assume one file per event. Production seal size and container filenames remain M2 parameters; `segment_events=1000` was the P0-1 benchmark profile only.
 
 ## 5. Attribution and integrity
 
@@ -92,7 +92,23 @@ Unsupported or incompatible schema versions must not be silently interpreted as 
 
 The implementation must provide explicit compatible handling, rejection or quarantine according to the accepted M2 contract.
 
-Exact version-number policy and compatibility windows are not selected here unless defined by a later versioning specification.
+ADR-0016 defines the strict v1 contract, whose validator and canonical bytes
+remain unchanged. Accepted ADR-0017 defines the strict v2 structured-event
+contract and reader-first compatibility rollout. It does not widen v1 parsing.
+Production v2 writing remains disabled until ADR-0017 §8.2 passes its separate
+activation gate.
+
+For the narrow ADR-0017 refinement of ADR-0016: a complete v2 envelope whose
+cryptographic rules are known and verify but whose event type/payload schema is
+unsupported is `verified_unsupported`; preserve its bytes, continue integrity
+verification, and do not materialize it. An envelope version or cryptographic
+rule that cannot be verified is `unverifiable_envelope`; preserve the complete
+frame and suffix exactly, stop trusted interpretation at that device-chain
+boundary, and block append/seal decisions that imply verified continuation.
+Neither state may be mislabeled corrupt, rewritten, truncated, or silently
+discarded. Known malformed payloads and invalid cryptographic records continue
+to follow the existing strict validation and ADR-0016 durable quarantine rules.
+All v1 verification, framing and quarantine behavior remains unchanged.
 
 ## 10. Validation before trusted use
 
@@ -125,6 +141,12 @@ M2 includes quarantine behavior for invalid/corrupt/incompatible canonical input
 Quarantine must preserve explicit failure visibility rather than silently dropping integrity problems.
 
 The exact quarantine directory/layout and metadata format are not selected by this document.
+
+ADR-0017 does not change ADR-0016 quarantine behavior for known-invalid v1 or
+v2 records. Its `verified_unsupported` and `unverifiable_envelope` cases are
+distinct: their canonical bytes are preserved without quarantine-as-corrupt
+or stream truncation, and materialization/recovery follows ADR-0017 §§4.4 and
+7.
 
 ## 14. Corrections and supersession
 
@@ -165,6 +187,13 @@ How these values are represented in exact event schemas is not selected by this 
 
 Any representation must preserve the privacy/authority semantics defined by the applicable specifications.
 
+For M4 structured assertions, accepted ADR-0017 uses the Master Spec confidence
+vocabulary and keeps confidence, publication authorization, and lifecycle as
+separate dimensions. Only the trusted daemon validates and publishes an
+authorized assertion; a device signature and receipt reference do not
+independently prove human approval to a remote peer. V1 `memory.note` fields
+and verification remain unchanged.
+
 ## 17. Untrusted inputs
 
 Imported memory, Markdown, attachment metadata and AI output are untrusted input.
@@ -200,7 +229,7 @@ M0 does not implement the full M2 event store.
 
 M0 may create only enough synthetic benchmark/proof code to evaluate physical packaging at realistic scale and to support required P0 evidence.
 
-The M0 event-layout result must be recorded in ADR-0013 before M2 uses the selected production layout.
+The M0 event-layout result is recorded in ADR-0013. M2 must productize sealed per-device segments and must not treat the P0-1 `segment_events=1000` profile as a frozen production constant unless a later accepted specification says so.
 
 ## 21. M2 boundary
 
@@ -217,16 +246,11 @@ M2 must follow the active Definition of Done and accepted storage/security speci
 
 ## 22. Explicitly unresolved
 
-This document does not select:
-
-- exact event field names
-- exact serialization format
-- exact hash/signature library
-- exact event type enum
-- exact schema-version encoding
-- exact quarantine layout
-- final physical event file/segment naming
-- final per-device segment thresholds
+Exact v1 event schema and integrity choices are selected by ADR-0016. The
+initial v2 envelope and typed `knowledge.assertion` payload contract are
+selected by ADR-0017; later schema evolution requires an explicit compatible
+versioning decision. Quarantine layout and production per-device
+segment/seal-roll details remain governed by ADR-0016 and ADR-0013 as applicable.
 
 Those choices require their applicable milestone/ADR/evidence.
 

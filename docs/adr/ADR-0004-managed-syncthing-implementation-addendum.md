@@ -1,0 +1,187 @@
+# ADR-0004 implementation addendum — managed Syncthing
+
+**Status:** ACCEPTED for the scoped M0 P0-4 implementation choice; productionization remains open
+**Date:** 2026-10-05
+**Scope:** M0 P0-4 implementation choice; no replication semantics
+
+## Source record and authority
+
+The original ADR-0004 source is missing. This addendum records an explicit new
+implementation proposal and its evidence, without reconstructing that record.
+Authority: Master Spec, accepted stack baseline **2.1.5**, M0 contract and P0-4
+spike. Trusted-device semantics, canonical validation/signatures and writer
+authority remain Cryptex responsibilities. Syncthing transports files only.
+
+## Proposed decision
+
+Distribute an unmodified, target-matched **stable Syncthing 2.1.5** native
+executable with Cryptex, retaining upstream license/attributions and provenance.
+Resolve from the package, rather than assuming PATH or a user installation.
+Keep its private config/data below platform application support, distinct from
+all user-global profiles. Disable independent automatic binary upgrades; Cryptex
+package compatibility and rollback must control changes to the pinned version.
+
+The backend should own process supervision and authenticated loopback REST;
+renderer capabilities must not expose API keys, arbitrary shell/filesystem or
+raw Syncthing configuration. Backend controls pairing/folder state and maps
+transport status/conflict/version observations into typed diagnostics. Secrets
+require OS secure storage integration, with native generated private files
+protected by the user-only platform permissions. No public Internet API or
+visible default home Sync folder is required.
+
+This document does not authorize a new production supervisor or claim these
+distribution/backend requirements are implemented. The current Node controller
+is a test tool and is not shipped. Productionization remains separately scoped.
+
+## Alternatives considered
+
+- User-global installation/profile: cannot reliably pin the engine or preserve
+  isolation; rejected for the proposed managed product boundary.
+- Unpinned self-updating process: package compatibility/rollback can drift;
+  rejected for the reproducible baseline.
+- Embedding transport internals as a library or recreating synchronization:
+  introduces unnecessary implementation/upgrade coupling; not proposed.
+- Standalone pinned native process with backend REST control: measured here;
+  proposed because it retains the upstream protocol and an explicit boundary.
+
+## Evidence
+
+`evidence/m0/p0-4/windows-managed-syncthing-evidence-20261005.md` records separate
+native identities, isolated config, authenticated REST, pairing/transfer,
+pause/resume/status, native history/conflict preservation, retained same-version
+restart and clean shutdown. Four real monitor exits were 0 and their PIDs absent.
+The observed user-global config digest stayed unchanged.
+
+The staged-package follow-up runs a copied native binary with exact LICENSE/AUTHORS
+from its fresh package role and rechecks membership/digests afterward. Windows
+passes; this does not establish a signed/installed distribution or dependency
+notice completeness. Mac executable-mode/package parity reported PASS at exact
+`501d11d64cb7d77e8b1c51ad453fdf15f326fc8d`: 22/22 tests and live runner exit 0,
+four clean monitor exits, no remaining PIDs and unchanged observed global config.
+See `evidence/m0/p0-4/macos-managed-syncthing-evidence-20261005.md` for the supplied
+artifact hash and provenance. Original notice failure remains preserved.
+
+Early restart shutdown needed about 10.1 seconds. Exact pinned source includes
+a 10-second connection close timeout and a 10-second database shutdown wait;
+the controller uses 25 seconds with margin, rejects database-stop failure and
+retains forced cleanup as failure. Native Syncthing behavior is not patched.
+
+Upstream license/author inventory: `third_party/syncthing/2.1.5/`.
+Sources: [release](https://github.com/syncthing/syncthing/releases/tag/v2.1.5),
+[configuration API](https://docs.syncthing.net/rest/config.html),
+[process/CLI options](https://docs.syncthing.net/users/syncthing.html).
+
+## Tradeoffs, platforms and recovery
+
+Native executables/resources/notices must be retained per supported architecture.
+Loopback ports may collide; a bind/readiness failure must be explicit, never
+attach to an unknown process. Keep Windows process-tree and POSIX process-group
+cleanup behind platform adapters, targeting only owned test/managed children.
+A transport crash must not change canonical writer/trust rules or silently
+reinterpret corrupted files. Startup failure, secret failure, version mismatch
+and incompatible config/database migration require structured refusal.
+
+Pairing tests use synthetic local identities. They do not establish production
+device trust, cross-host semantics, platform signing or publisher authenticity.
+Native history/conflict files are diagnostic transport artifacts; they must not
+be treated as canonical events. The upgrade policy needs an actual changed-version
+compatibility/rollback probe before its acceptance claim.
+
+Windows probe `133428b` implements a test-only strategy: pause synthetic folders,
+cleanly stop the changing peer, preserve its complete cold config/identity/database
+and payload, then start exact 2.1.5 against the historical 2.1.2 profile. Validate
+isolation, identity, authenticated native version and pairing/transfer. A rejected
+candidate is stopped and retained for inspection; the verified cold profile is
+restored and 2.1.2 paired transfer retried. This avoids opening a potentially
+migrated database with an older executable. Only the maintenance-window fixture
+is restored: it is not permission to discard live canonical events or pending
+writes. A shipped updater must keep canonical data outside its rollback state
+and establish its own atomicity, crash and secret boundaries.
+
+Both compatible transition and injected version-health rejection/cold restore
+PASS on Windows, including eight clean stops. Mac parity reported PASS at exact
+`dec5fb19fb37b1199ac0f192c929a7113388cc0b`, 33/33 tests and both live scenarios;
+eight clean absent monitors, unchanged global config digest and staged notices/modes.
+Evidence: `evidence/m0/p0-4/windows-syncthing-upgrade-evidence-20261005.md`.
+Mac evidence: `evidence/m0/p0-4/macos-syncthing-upgrade-evidence-20261005.md`.
+This is one exact version pair, not a claim that arbitrary downgrades or native
+migration failures are safe. No product baseline change or ADR acceptance.
+
+## Required acceptance evidence
+
+### Owner acceptance — 2026-10-05
+
+The owner asked that the Master Spec's Syncthing requirements govern, and
+delegated the implementation recommendation after those requirements were
+explained. This addendum is **ACCEPTED for the scoped M0 P0-4 implementation
+choice**: retain pinned, unmodified Syncthing 2.1.5 as a file transport; keep
+process supervision and authenticated loopback REST on the backend; isolate its
+profile from user-global Syncthing state. The renderer does not receive its API
+secret. Cryptex continues to own trust, canonical validation/signatures and
+writer authority.
+
+This aligns with Master Spec §8 and §13 and M0 P0-4's isolated profile,
+authenticated REST, pairing, pause/resume/status and no-global-collision
+requirements. It does not authorize production replication semantics, OS secure
+storage, a production supervisor/controller, installed upgrades, signing or
+distribution. The Node controller remains test-only; the listed production
+gates remain mandatory.
+
+### Owner-authorized M0 boundary revision — 2026-10-05
+
+The owner answered "kurallar dahilinde onayliyorum" to
+`evidence/m0/m0-acceptance-scope-decision-proposal-20261005.md`, authorizing
+preparation of this revision only. M0 acceptance concerns the managed pinned
+native spike and the selected product implementation boundary. The Node
+controller remains test-only and is not shipped. This does not accept the ADR,
+complete M0, authorize later milestones or approve production distribution.
+
+1. Equivalent Mac managed lifecycle against exact stable 2.1.5: scoped PASS recorded.
+2. Target-matched staged package resolution and exact upstream notice inclusion
+   on both OSes: scoped PASS. Document source/provenance and the remaining
+   dependency/source-access/installer notice obligations; full distribution
+   acceptance remains separately mandatory before shipment.
+3. Explicit upgrade compatibility strategy and tested migration/failure boundaries;
+   Both-platform changed-version/cold-rejection probe PASS; boundary review
+   remains. Same-version restart must not be relabeled version upgrade.
+4. Review of proposed supervisor/secret boundary and residual M0 limitations.
+5. Human acceptance and evidence-backed P0-4 checklist.
+
+6. Required final cross-platform CI and scoped security/failure review. Fixture
+   API/private files are not production OS-secure-store acceptance; inherited
+   Windows profile permissions were not independently proved by these runs.
+
+### Mandatory later product acceptance
+
+- M1 identity/OS secure storage and M8 production replication must establish the
+  backend-owned supervisor, generated private-file permission model, API-secret
+  boundary, explicit device trust and canonical validation. Renderer never receives
+  keys, raw config or arbitrary process launch capability. No test identity becomes
+  production identity; no device becomes master.
+- M14 installed update coordination must keep canonical data outside cold profile
+  rollback, verify actual migration/failure and crash boundaries and refuse unsafe
+  downgrade. The tested 2.1.2 -> 2.1.5 pair does not prove arbitrary compatibility,
+  native migration failures, live canonical rollback or power-loss durability.
+- Before distributing native binaries, deliver source-access information and all
+  required dependency/license notices, verify actual installer inclusion and
+  publisher provenance. M17 signed/notarized release and final third-party notices
+  remain release gates. Binary/LICENSE/AUTHORS fixture inclusion alone is not full
+  legal or signed-distribution acceptance.
+- Independent security review at `3de9d00` notes the test REST adapter buffers
+  response text before checking size. If reused for production supervision,
+  enforce bounded bytes while streaming. See
+  `evidence/m0/m0-independent-review-results-20261005.md`; test adapter inventory
+  and authenticated loopback proof are not production resource-bound guarantees.
+
+The security/notice review records each residual explicitly. These are mandatory
+product gates, not deleted requirements or claims of implementation. Later work
+requires its own milestone authorization; M0 remains synthetic-data only.
+
+Candidate CI and independent security/verifier review completed and are recorded
+in `evidence/m0/m0-independent-review-results-20261005.md`. The owner accepted
+this scoped M0 implementation choice above. M0 closeout/checklist reconciliation
+remains distinct; production gates below remain mandatory.
+
+This scoped implementation addendum is accepted. P0-4/M0 completion still
+requires the repository's remaining closeout checklist; acceptance authorizes
+no M1 work or product replication features by itself.

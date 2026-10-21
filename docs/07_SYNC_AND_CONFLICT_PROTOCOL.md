@@ -241,7 +241,7 @@ Therefore the storage benchmark explicitly measures:
 - corruption blast radius
 - purge complexity
 
-The final event packaging must not be assumed by this document before ADR-0013 is accepted.
+The physical event packaging is accepted in ADR-0013 (sealed per-device segments). This document still does not treat Syncthing as semantic authority. P0-4 remains incomplete.
 
 P0-1 and P0-4 evidence must remain mutually consistent.
 

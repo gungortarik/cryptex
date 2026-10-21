@@ -1,0 +1,18 @@
+[package]
+name = "cryptex-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Cryptex canonical event storage layout helpers (M2; ADR-0016)"
+
+[dependencies]
+cryptex-core = { path = "../core" }
+cryptex-events = { path = "../events" }
+blake3 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+fs2 = "0.4.3"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }

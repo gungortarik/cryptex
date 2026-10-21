@@ -27,6 +27,8 @@ These rules apply to every coding agent working in this repository.
 
 ## Development behavior
 
+- Before implementation or review work, read `docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md` for the current milestone status and continuation point. It is an operational snapshot; authoritative specifications and accepted ADRs still take precedence.
+- If a requested change in tool roles, workflow, architecture, branch strategy, milestone scope, or integration strategy is ambiguous, ask the user before changing direction.
 - Work only inside the assigned milestone/issue scope.
 - Do not refactor unrelated architecture while implementing a feature.
 - Prefer small, reviewable commits.

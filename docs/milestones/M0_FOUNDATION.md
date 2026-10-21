@@ -84,6 +84,23 @@ Select the simplest option that satisfies scale and recovery goals on both platf
 
 Record the decision in ADR-0013 and mark it ACCEPTED before the applicable downstream milestone gate.
 
+**Historical status recorded 2026-10-02:** P0-1 was complete. ADR-0013 was ACCEPTED (sealed per-device segments). M0 remained IN PROGRESS until P0-2, P0-3, P0-4 and remaining M0 gate items were verified. **Superseded for current status** by the M0 closure audit and `checklists/M0_FOUNDATION_GATE.md`, which record M0 complete for its synthetic foundation scope; production readiness remains out of scope.
+
+**Recorded 2026-10-05:** Owner accepted ADR-0012's scoped M0 Mode B direction:
+per-user Desktop starts at login, closing the window hides the app, and explicit
+Quit cleanly stops the owned daemon and exits. Owner also directed the project
+to follow the Master Spec's Syncthing requirements and accepted the scoped
+ADR-0004 P0-4 implementation addendum: pinned native transport, isolated managed
+profile and authenticated backend-owned loopback REST. These decisions do not
+accept production identity/secrets, canonical replication semantics, installed
+updater/power-loss guarantees or signed distribution. M0 closeout evidence and
+required final CI are recorded in `evidence/m0/m0-closure-audit-20261005.md`;
+the owner approved the concrete closeout diff on 2026-10-05. The M0 foundation
+gate is COMPLETE for its synthetic scope, as recorded in
+`checklists/M0_FOUNDATION_GATE.md`. This does not authorize M1 or accept
+production identity/secrets, canonical replication semantics, installed
+updater/power-loss guarantees or signed distribution.
+
 ## 6. P0-2 — Background Runtime / Atomic Update Lifecycle
 
 M0 must prove how `cryptexd` remains available and safely coordinated with Cryptex Desktop on both operating systems.
@@ -229,4 +246,7 @@ Only then may M1 begin.
 
 ## 14. Completion status
 
-Until every M0 completion-gate item has verified evidence, M0 must remain IN PROGRESS and must not be reported as complete.
+**Completion record (2026-10-05):** M0's applicable synthetic foundation gates
+have verified evidence, the owner reviewed and approved the closeout diff, and
+the completion checklist is green. M0 is COMPLETE within the scope above. M1
+remains unauthorized until separately approved.

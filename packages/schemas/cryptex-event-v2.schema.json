@@ -1,0 +1,687 @@
+{
+  "$defs": {
+    "AuthorizationBasis": {
+      "enum": [
+        "direct_user",
+        "user_approved_ai_capture"
+      ],
+      "type": "string"
+    },
+    "Classification": {
+      "description": "Production classification values.",
+      "enum": [
+        "public",
+        "internal",
+        "private",
+        "restricted"
+      ],
+      "type": "string"
+    },
+    "Confidence": {
+      "enum": [
+        "confirmed",
+        "inferred",
+        "uncertain"
+      ],
+      "type": "string"
+    },
+    "ConflictOutcome": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "decision_event_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            },
+            "kind": {
+              "const": "select",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "decision_event_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "replace",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/SemanticAssertion"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "withdraw",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ContentHashHex": {
+      "description": "64-char lowercase hex content hash.",
+      "maxLength": 64,
+      "minLength": 64,
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "DeviceSeq": {
+      "description": "Per-device sequence encoded as a canonical decimal JSON string covering full `u64`.",
+      "maxLength": 20,
+      "minLength": 1,
+      "pattern": "^[1-9][0-9]{0,19}$",
+      "type": "string"
+    },
+    "EntityKind": {
+      "enum": [
+        "person",
+        "project",
+        "course",
+        "device",
+        "organization",
+        "concept",
+        "other"
+      ],
+      "type": "string"
+    },
+    "FactValue": {
+      "description": "Fact values are tagged, exact-shape unions; no floating-point values exist.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "text",
+              "type": "string"
+            },
+            "value": {
+              "maxLength": 524288,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "decimal",
+              "type": "string"
+            },
+            "value": {
+              "maxLength": 1048576,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "boolean",
+              "type": "string"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "date",
+              "type": "string"
+            },
+            "value": {
+              "maxLength": 10,
+              "minLength": 10,
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "entity_ref",
+              "type": "string"
+            },
+            "value": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "KnowledgeAssertionEventType": {
+      "enum": [
+        "knowledge.assertion"
+      ],
+      "type": "string"
+    },
+    "KnowledgeAssertionPayload": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entity_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            },
+            "entity_kind": {
+              "$ref": "#/$defs/EntityKind"
+            },
+            "kind": {
+              "const": "entity.declare",
+              "type": "string"
+            },
+            "label": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "publication_authorization": {
+              "$ref": "#/$defs/PublicationAuthorization"
+            }
+          },
+          "required": [
+            "kind",
+            "entity_id",
+            "entity_kind",
+            "label",
+            "publication_authorization"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "alias": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "entity_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            },
+            "kind": {
+              "const": "entity.alias",
+              "type": "string"
+            },
+            "publication_authorization": {
+              "$ref": "#/$defs/PublicationAuthorization"
+            }
+          },
+          "required": [
+            "kind",
+            "entity_id",
+            "alias",
+            "publication_authorization"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "confidence": {
+              "$ref": "#/$defs/Confidence"
+            },
+            "kind": {
+              "const": "fact.assert",
+              "type": "string"
+            },
+            "predicate": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9._-]{0,63}$",
+              "type": "string"
+            },
+            "publication_authorization": {
+              "$ref": "#/$defs/PublicationAuthorization"
+            },
+            "subject_entity_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/FactValue"
+            }
+          },
+          "required": [
+            "kind",
+            "subject_entity_id",
+            "predicate",
+            "value",
+            "confidence",
+            "publication_authorization"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "confidence": {
+              "$ref": "#/$defs/Confidence"
+            },
+            "kind": {
+              "const": "relation.assert",
+              "type": "string"
+            },
+            "object_entity_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            },
+            "predicate": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9._-]{0,63}$",
+              "type": "string"
+            },
+            "publication_authorization": {
+              "$ref": "#/$defs/PublicationAuthorization"
+            },
+            "subject_entity_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "subject_entity_id",
+            "predicate",
+            "object_entity_id",
+            "confidence",
+            "publication_authorization"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "assertion.correct",
+              "type": "string"
+            },
+            "publication_authorization": {
+              "$ref": "#/$defs/PublicationAuthorization"
+            },
+            "replacement": {
+              "$ref": "#/$defs/RequiredNullable"
+            },
+            "target_event_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "target_event_id",
+            "replacement",
+            "publication_authorization"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entity_ids": {
+              "items": {
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+                "type": "string"
+              },
+              "maxItems": 256,
+              "minItems": 2,
+              "type": "array"
+            },
+            "kind": {
+              "const": "entity.merge",
+              "type": "string"
+            },
+            "publication_authorization": {
+              "$ref": "#/$defs/PublicationAuthorization"
+            }
+          },
+          "required": [
+            "kind",
+            "entity_ids",
+            "publication_authorization"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "entity.merge_revoke",
+              "type": "string"
+            },
+            "publication_authorization": {
+              "$ref": "#/$defs/PublicationAuthorization"
+            },
+            "target_merge_event_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "target_merge_event_id",
+            "publication_authorization"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "decision_event_ids": {
+              "items": {
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+                "type": "string"
+              },
+              "maxItems": 4096,
+              "minItems": 2,
+              "type": "array"
+            },
+            "kind": {
+              "const": "assertion.resolve_conflict",
+              "type": "string"
+            },
+            "outcome": {
+              "$ref": "#/$defs/ConflictOutcome"
+            },
+            "publication_authorization": {
+              "$ref": "#/$defs/PublicationAuthorization"
+            },
+            "target_event_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "target_event_id",
+            "decision_event_ids",
+            "outcome",
+            "publication_authorization"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PublicationAuthorization": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "$ref": "#/$defs/AuthorizationBasis"
+        },
+        "receipt_id": {
+          "maxLength": 36,
+          "minLength": 36,
+          "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "basis",
+        "receipt_id"
+      ],
+      "type": "object"
+    },
+    "RequiredNullable": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SemanticAssertion"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Required JSON property whose value is either `null` or a typed assertion.\nUnlike `Option<T>`, this wrapper remains a required struct property."
+    },
+    "SemanticAssertion": {
+      "description": "Semantic replacement data for correction and conflict-resolution events.\n`kind` distinguishes the assertion's semantic shape, not a new event type.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "confidence": {
+              "$ref": "#/$defs/Confidence"
+            },
+            "kind": {
+              "const": "fact",
+              "type": "string"
+            },
+            "predicate": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9._-]{0,63}$",
+              "type": "string"
+            },
+            "subject_entity_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/FactValue"
+            }
+          },
+          "required": [
+            "kind",
+            "subject_entity_id",
+            "predicate",
+            "value",
+            "confidence"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "confidence": {
+              "$ref": "#/$defs/Confidence"
+            },
+            "kind": {
+              "const": "relation",
+              "type": "string"
+            },
+            "object_entity_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            },
+            "predicate": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9._-]{0,63}$",
+              "type": "string"
+            },
+            "subject_entity_id": {
+              "maxLength": 36,
+              "minLength": 36,
+              "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "subject_entity_id",
+            "predicate",
+            "object_entity_id",
+            "confidence"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SignatureHex": {
+      "description": "128-char lowercase hex Ed25519 signature.",
+      "maxLength": 128,
+      "minLength": 128,
+      "pattern": "^[0-9a-f]{128}$",
+      "type": "string"
+    },
+    "SigningKeyId": {
+      "description": "32-char lowercase hex signing key id.",
+      "maxLength": 32,
+      "minLength": 32,
+      "pattern": "^[0-9a-f]{32}$",
+      "type": "string"
+    }
+  },
+  "$id": "https://cryptex.local/schemas/cryptex-event-v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "brain_id": {
+      "maxLength": 36,
+      "minLength": 36,
+      "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+      "type": "string"
+    },
+    "classification": {
+      "$ref": "#/$defs/Classification"
+    },
+    "content_hash": {
+      "$ref": "#/$defs/ContentHashHex"
+    },
+    "created_at": {
+      "maxLength": 1048576,
+      "type": "string"
+    },
+    "device_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "type": "string"
+    },
+    "device_seq": {
+      "$ref": "#/$defs/DeviceSeq"
+    },
+    "event_id": {
+      "maxLength": 36,
+      "minLength": 36,
+      "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$",
+      "type": "string"
+    },
+    "event_type": {
+      "$ref": "#/$defs/KnowledgeAssertionEventType"
+    },
+    "payload": {
+      "$ref": "#/$defs/KnowledgeAssertionPayload"
+    },
+    "payload_schema_version": {
+      "format": "uint32",
+      "maximum": 1,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "prev_content_hash": {
+      "$ref": "#/$defs/ContentHashHex"
+    },
+    "schema_version": {
+      "format": "uint32",
+      "maximum": 2,
+      "minimum": 2,
+      "type": "integer"
+    },
+    "signature": {
+      "$ref": "#/$defs/SignatureHex"
+    },
+    "signing_key_id": {
+      "$ref": "#/$defs/SigningKeyId"
+    }
+  },
+  "required": [
+    "schema_version",
+    "event_id",
+    "brain_id",
+    "device_id",
+    "device_seq",
+    "created_at",
+    "event_type",
+    "payload_schema_version",
+    "classification",
+    "signing_key_id",
+    "payload",
+    "prev_content_hash",
+    "content_hash",
+    "signature"
+  ],
+  "title": "CryptexKnowledgeAssertionEventV2",
+  "type": "object"
+}

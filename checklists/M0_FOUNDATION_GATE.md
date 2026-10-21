@@ -11,6 +11,18 @@ A checkbox may be marked complete only after the requirement has actual verified
 
 Configuration presence, an implementation claim, compilation alone, or success on only one required platform is not sufficient evidence.
 
+Latest independent review: `evidence/m0/m0-independent-review-results-20261005.md`,
+source `3de9d00`, following the earlier `8437559` implementer audit.
+Retained proofs are scoped to M0 synthetic foundation behavior. Both-platform
+visual review, focused correction checks, final candidate CI and scoped ADR
+acceptances are recorded. Product distribution and production canonical safety
+are not inferred.
+Current continuation: Mac native renderer **SCOPED PASS** with fresh embedded
+Tauri `.app`; initial raw Cargo `7f5ab2b` failure remains preserved. New `65ce7b9`
+frontend-mode correction has focused Windows/Mac proofs, independent review and
+final candidate CI. See
+`evidence/m0/macos-embedded-frontend-visual-evidence-20261005.md`.
+
 ## Governing documents
 
 - `AGENTS.md`
@@ -25,236 +37,244 @@ Configuration presence, an implementation claim, compilation alone, or success o
 
 ## A. Repository and executable foundation
 
-- [ ] Repository state is clean and required CI checks are green.
-  - Evidence:
+- [x] Repository state is clean and required CI checks are green for all M0 behavior-bearing changes.
+  - Evidence: run `37387323751` passed both readiness jobs and Windows cross-account ACL at code candidate `c7fa011672973101cb2a5519b5883b26c6909f90`; later closeout commits are documentation/acceptance records only. Manual installer was intentionally skipped. Full run details in `evidence/m0/m0-final-ci-attempt-20261005.md`.
 
-- [ ] Rust workspace builds successfully.
-  - Evidence:
+- [x] Rust workspace builds successfully.
+  - Evidence: `evidence/m0/windows-release-build-20261002.md` records the full Windows release workspace build. Cross-platform CI remains a separate gate.
 
-- [ ] Blank Cryptex Desktop launches successfully on macOS.
-  - Evidence:
+- [x] Blank Cryptex Desktop launches successfully on macOS.
+  - Evidence: `evidence/m0/p0-2/macos-tauri-owned-supervisor-restart-evidence-20261003.md` and `macos-owned-desktop-session-evidence-20261005.md`; real foundation Tauri process, physical tray and later staged native executable sessions. No product UI acceptance claim.
+  - Initial raw release blank-window FAIL is preserved in `evidence/m0/macos-native-foundation-ui-blank-failure-20261005.md`. Fresh `65ce7b9` Tauri `.app` visibly rendered, with owned-session health and cleanup; see `evidence/m0/macos-embedded-frontend-visual-evidence-20261005.md`. Scoped visual check only; no theme/DPI matrix.
 
-- [ ] Blank Cryptex Desktop launches successfully on Windows.
-  - Evidence:
+- [x] Blank Cryptex Desktop launches successfully on Windows.
+  - Evidence: `evidence/m0/p0-2/windows-physical-release-tray-20261003.md`, `windows-console-visual-result-20261003.md` and `windows-owned-desktop-session-evidence-20261005.md`; actual foundation Desktop process/renderer and staged native sessions.
 
-- [ ] `cryptexd` proof-of-concept runs as designed.
-  - Evidence:
+- [x] `cryptexd` proof-of-concept runs as designed.
+  - Evidence: both-OS `evidence/m0/p0-2/*-native-interruption-evidence-20261005.md`; actual protocol-1 health, PID/parent/path correspondence, held daemon lock and clean exit/released lock/absent IPC.
 
-- [ ] Golden Brain fixture foundation exists and is synthetic-only.
-  - Evidence:
+- [x] Golden Brain fixture foundation exists and is synthetic-only.
+  - Evidence: `evidence/m0/p0-2/windows-native-interruption-evidence-20261005.md` and `macos-native-interruption-evidence-20261005.md`; accepted-codec synthetic sealed packs/manifest preserved. Production event schema is outside this foundation.
 
-- [ ] Doctor foundation exists and reports actual implemented health state rather than configuration-only state.
-  - Evidence:
+- [x] Doctor foundation exists and reports actual implemented health state rather than configuration-only state.
+  - Evidence: both-platform native-interruption evidence above records actual PID/IPC/held-lock health. `m0-foundation.mjs` keeps canonical/Syncthing checks `not-implemented`.
 
 ## B. P0-1 — Physical Event Storage Layout
 
-- [ ] One-file-per-event layout was benchmarked at required realistic scales.
-  - Evidence:
+- [x] One-file-per-event layout was benchmarked at required realistic scales.
+  - Evidence: `evidence/m0/p0-1/macos-*`, `windows-*`; Syncthing 10k/100k files both directions; 500k files macOS→Windows r2 controlled timeout / impracticality (`syncthing-500k-files-macos-to-windows-r2-TIMED-FAILED.md`)
 
-- [ ] Immutable sealed segment/pack layout was benchmarked.
-  - Evidence:
+- [x] Immutable sealed segment/pack layout was benchmarked.
+  - Evidence: `evidence/m0/p0-1/macos-*`, `windows-*`; Syncthing 10k/100k/500k segments both directions, initial + incremental
 
-- [ ] Hybrid layout was evaluated only if evidence justified it.
-  - Evidence:
+- [x] Hybrid layout was evaluated only if evidence justified it.
+  - Evidence: not justified; A/B conclusive. ADR-0013 records hybrid as not selected.
 
-- [ ] Required measurements cover append latency, enumeration, initial sync/scan, incremental sync, rebuild performance, disk overhead, crash behavior, purge complexity and corruption blast radius.
-  - Evidence:
+- [x] Required measurements cover append latency, enumeration, initial sync/scan, incremental sync, rebuild performance, disk overhead, crash behavior, purge complexity and corruption blast radius.
+  - Evidence: local dated runs; `syncthing-initial-sync-protocol.md`; `syncthing-incremental-workload-APPROVED-FOR-MEASUREMENT.md`; `purge-complexity.md`; `corruption-blast-radius.md`
 
-- [ ] Relevant storage-layout behavior was evaluated on macOS and Windows.
-  - Evidence:
+- [x] Relevant storage-layout behavior was evaluated on macOS and Windows.
+  - Evidence: both-platform local FS matrix and both-direction Syncthing cells as indexed in `evidence/m0/p0-1/README.md`
 
-- [ ] Selected layout is supported by recorded evidence and recovery/scale considerations.
-  - Evidence:
+- [x] Selected layout is supported by recorded evidence and recovery/scale considerations.
+  - Evidence: `docs/adr/ADR-0013-physical-event-storage-layout.md`
 
-- [ ] ADR-0013 is ACCEPTED with the selected physical storage layout.
-  - Evidence:
+- [x] ADR-0013 is ACCEPTED with the selected physical storage layout.
+  - Evidence: `docs/adr/ADR-0013-physical-event-storage-layout.md`; `docs/30_ADR_INDEX.md`
 
 ## C. P0-2 — Background Runtime / Atomic Update Lifecycle
 
-- [ ] Main-window close behavior was verified.
-  - Evidence:
+- [x] Main-window `CloseRequested` hide/restore behavior was verified on both platforms.
+  - Evidence: earlier GUI event-path proofs plus `evidence/m0/p0-2/windows-physical-release-tray-20261003.md` and `macos-physical-traffic-light-close-evidence-20261003.md`; literal native close and restore retain the daemon PID. Later Mac owned-supervisor evidence includes physical tray Open/Quit. Earlier Accessibility failures remain historical.
 
-- [ ] Reboot/login startup behavior was verified.
-  - Evidence:
+- [x] Reboot/login startup behavior was verified.
+  - Evidence: `evidence/m0/p0-2/windows-reboot-login-survival-20261002.md` records a real Windows reboot/login, startup launch correlation and the complete 600-second daemon survival observation. `evidence/m0/p0-2/macos-native-supervision-evidence.md` records physical Mac LaunchAgent reboot/login. Both are test-only registrations; production installation remains open.
 
-- [ ] Crash detection/restart behavior was verified.
-  - Evidence:
+- [x] Mode B process-level crash detection/restart behavior was verified on both platforms.
+  - Evidence: `evidence/m0/p0-2/windows-desktop-supervision-evidence.md` and `evidence/m0/p0-2/macos-desktop-supervision-evidence.md`. This verifies the comparison supervisor path; it does not select ADR-0012 or prove a production packaged supervisor.
 
-- [ ] Single-daemon-instance behavior was verified.
-  - Evidence:
+- [x] Single-daemon-instance behavior was verified on both platforms.
+  - Evidence: the Windows and macOS Mode B supervision evidence above records duplicate launch rejection while the daemon lock is held.
 
-- [ ] Desktop reconnect behavior was verified.
-  - Evidence:
+- [x] Desktop IPC reconnect behavior was verified on both platforms.
+  - Evidence: `evidence/m0/p0-2/windows-desktop-ipc-reconnect-20261002.md` and `evidence/m0/p0-2/macos-desktop-ipc-reconnect-20261003.md` cover the shared Desktop Rust client across supervised restart. `windows-tauri-renderer-ipc-reconnect-20261003.md` and `macos-tauri-renderer-ipc-reconnect-20261003.md` additionally verify renderer health/reconnect commands after clean daemon replacement.
 
-- [ ] Compatible Desktop + daemon update behavior was verified.
-  - Evidence:
+- [x] Compatible Desktop + daemon update behavior was verified.
+  - Evidence: both-OS `evidence/m0/p0-2/*-changed-native-package-evidence-20261005.md`; complete staged pair selection and actual healthy candidate. Windows both role hashes changed, Mac Desktop only. M0 spike proof, not installed updater or semantic migration acceptance.
 
-- [ ] Rollback/error path was verified.
-  - Evidence:
+- [x] Synthetic rollback/error path was verified on both platforms.
+  - Evidence: `evidence/m0/p0-2/windows-update-rollback-evidence-20261002.md` and `evidence/m0/p0-2/macos-update-rollback-evidence.md`. These are test-only staged binaries/markers, not installer/update UX.
 
-- [ ] Lifecycle/update behavior does not damage canonical data.
-  - Evidence:
+- [x] Lifecycle/update behavior does not damage canonical data.
+  - Evidence: both-OS changed-package and native-interruption reports preserve accepted-codec synthetic immutable sealed packs/manifest after each scenario. Scoped M0 fixture safety under the revised proposal; production canonical schema/signatures remain outside M0 and unverified.
 
-- [ ] Required lifecycle behavior was verified on macOS and Windows.
-  - Evidence:
+- [x] Required lifecycle behavior was verified on macOS and Windows.
+  - Evidence: both-OS lifecycle/tray/login/reconnect and native pair/recovery proofs indexed in the final audit. Namespace correction now has Windows 21/21 debug + release and Mac 14/14 debug + release evidence; no final installed/signed lifecycle claim.
 
-- [ ] ADR-0012 is ACCEPTED with the selected supervision/update approach.
-  - Evidence:
+- [x] ADR-0012 is ACCEPTED with the selected supervision/update approach.
+  - Evidence: owner confirmed X hides Desktop and explicit Quit stops the daemon and exits. Scoped Mode B acceptance is recorded in `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`; production gates remain open.
 
 ## D. P0-3 — Local IPC Transport
 
-- [ ] macOS local IPC proof works with safe socket-path handling.
-  - Evidence:
+- [x] macOS local IPC proof works with safe socket-path handling.
+  - Evidence: `evidence/m0/p0-3/windows-ipc-spike-20261002.md` records physical Mac socket ownership/mode, a 28-byte path and process-level requests.
 
-- [ ] Windows named-pipe proof works.
-  - Evidence:
+- [x] Windows named-pipe proof works.
+  - Evidence: `evidence/m0/p0-3/windows-ipc-spike-20261002.md`; release binary revalidation in `evidence/m0/windows-release-build-20261002.md`.
 
-- [ ] Current-user-only permissions/ACL behavior is verified.
-  - Evidence:
+- [x] Current-user-only permissions/ACL behavior is verified.
+  - Evidence: `evidence/m0/p0-3/windows-cross-account-acl-20261002.md` records actual authenticated different-account denial on a Windows CI VM plus owner connectivity before/after; physical Mac socket ownership/mode evidence is in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`. The production read-only Desktop health command is integrated and exercised on both platforms; additional CLI/MCP production APIs remain absent.
 
-- [ ] Protocol version negotiation is verified.
-  - Evidence:
+- [x] Protocol version negotiation is verified.
+  - Evidence: physical Windows and Mac spike runs in `evidence/m0/p0-3/windows-ipc-spike-20261002.md` reject an incompatible version.
 
-- [ ] Desktop/CLI/MCP client-role handling is verified as required by the spike.
-  - Evidence:
+- [x] Desktop/CLI/MCP client-role handling is verified as required by the spike.
+  - Evidence: physical role-handshake and unknown-role rejection tests in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`. These are spike clients; production application integration remains open.
 
-- [ ] Daemon restart/reconnect behavior is verified.
-  - Evidence:
+- [x] Daemon restart/reconnect behavior is verified.
+  - Evidence: physical Windows and Mac spike clients reconnect to a restarted server process in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`; the production Desktop Rust client reconnects to real daemons on both platforms in the P0-2 evidence linked above.
 
-- [ ] Malformed request handling is verified.
-  - Evidence:
+- [x] Malformed request handling is verified.
+  - Evidence: physical malformed-frame tests on both platforms in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
 
-- [ ] Oversized request handling is verified.
-  - Evidence:
+- [x] Oversized request handling is verified.
+  - Evidence: physical 65,537-byte frame rejection tests on both platforms in `evidence/m0/p0-3/windows-ipc-spike-20261002.md`.
 
-- [ ] ADR-0007 implementation addendum records the exact IPC implementation/library and relevant security details.
-  - Evidence:
+- [x] ADR-0007 implementation addendum records the exact IPC implementation/library and relevant security details.
+  - Evidence: accepted `docs/adr/ADR-0007-local-ipc-implementation-addendum.md` records `interprocess` 2.4.4, Windows DACL and macOS socket ownership/mode, protocol/capability boundaries, limitations and evidence.
 
 ## E. P0-4 — Managed Syncthing Integration
 
-- [ ] Pinned Syncthing process/sidecar lifecycle is verified on macOS.
-  - Evidence:
+- [x] Pinned Syncthing process/sidecar lifecycle is verified on macOS.
+  - Evidence: `evidence/m0/p0-4/macos-managed-syncthing-evidence-20261005.md`; staged 2.1.5 native binary, four clean absent monitors. Installed distribution remains separate.
 
-- [ ] Pinned Syncthing process/sidecar lifecycle is verified on Windows.
-  - Evidence:
+- [x] Pinned Syncthing process/sidecar lifecycle is verified on Windows.
+  - Evidence: `evidence/m0/p0-4/windows-managed-syncthing-evidence-20261005.md` and `notice-byte-portability-failure-and-fix-20261005.md`; staged native role/notice proof and four clean absent monitors.
 
-- [ ] Cryptex uses an isolated Syncthing config/home.
-  - Evidence:
+- [x] Cryptex uses an isolated Syncthing config/home.
+  - Evidence: both-platform managed evidence uses two fresh synthetic owned homes under Cryptex-Dev app data; no shipped production controller claim.
 
-- [ ] No collision with user-global Syncthing configuration is verified.
-  - Evidence:
+- [x] No collision with user-global Syncthing configuration is verified.
+  - Evidence: both-platform managed/upgrade reports retain unchanged observed global config digests and isolated loopback profiles. This is scoped to those actual runs.
 
-- [ ] REST API authentication is verified.
-  - Evidence:
+- [x] REST API authentication is verified.
+  - Evidence: both-platform managed reports reject wrong API keys 403/403 and require authenticated readiness. Production secret storage is not claimed.
 
-- [ ] Folder/device pairing flow is verified.
-  - Evidence:
+- [x] Folder/device pairing flow is verified.
+  - Evidence: both-platform managed reports prove two local synthetic identities and actual transfer; cross-host device trust remains separate.
 
-- [ ] Pause/resume/status behavior is verified.
-  - Evidence:
+- [x] Pause/resume/status behavior is verified.
+  - Evidence: both-platform managed reports verify configured pause/resume and actual idle/zero-needed/no-pull-error state.
 
-- [ ] Conflict/versioning visibility is verified.
-  - Evidence:
+- [x] Conflict/versioning visibility is verified.
+  - Evidence: both-platform managed reports retain native history and both exact divergent conflict contents.
 
-- [ ] Upgrade-strategy compatibility has evidence.
-  - Evidence:
+- [x] Upgrade-strategy compatibility has evidence.
+  - Evidence: `evidence/m0/p0-4/windows-syncthing-upgrade-evidence-20261005.md` and `macos-syncthing-upgrade-evidence-20261005.md`; actual 2.1.2 -> 2.1.5 transition/restart/transfer and injected rejection/cold restore. No live canonical rollback, native migration-failure or power-loss claim.
 
-- [ ] Required third-party license/notices handling is documented.
-  - Evidence:
+- [x] Required third-party license/notices handling is documented.
+  - Evidence: exact LICENSE/AUTHORS and upstream source/release links in `third_party/syncthing/2.1.5/README.md`, both-OS staged membership/byte proofs, and explicit distribution obligations in the revised ADR-0004/security review. This satisfies M0 handling documentation; delivered source-access/dependency notices and installer inclusion remain mandatory before distribution, not verified here.
 
-- [ ] ADR-0004 implementation addendum records selected packaging/supervision.
-  - Evidence:
+- [x] ADR-0004 implementation addendum records selected packaging/supervision.
+  - Evidence: `docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md` records the accepted scoped M0 P0-4 choice, alternatives and both-OS evidence. Productionization remains separate.
 
 ## F. Cross-platform, security and failure verification
 
-- [ ] Applicable M0 platform-sensitive behavior is verified on both macOS and Windows.
-  - Evidence:
+- [x] Applicable M0 platform-sensitive behavior is verified on both macOS and Windows.
+  - Evidence: scoped proof matrix in final audit plus both-OS release-probe-root evidence and final candidate CI run `37387323751`.
+  - New frontend-mode correction: focused Windows and Mac parity/native render PASS at source `65ce7b9`; raw Mac artifact digests are operator-reported and not independently rehashed from this host. See platform-specific evidence.
 
-- [ ] No device has been made canonical master.
-  - Evidence:
+- [x] No device has been made canonical master.
+  - Evidence: final audit reviews health-only daemon IPC, synthetic benchmark fixtures and equal isolated Syncthing identities. No production brain/identity or master-device behavior implemented.
 
-- [ ] Runtime data remains outside the source repository.
-  - Evidence:
+- [x] Runtime data remains outside the source repository.
+  - Evidence: both-OS native-interruption, changed-package and managed/upgrade reports retain fresh proof roots outside Git; source path guards reject in-repository fixture roots. Historical product-namespace runtimes are also outside Git.
 
-- [ ] Development runtime data uses Cryptex-Dev app-data roots.
-  - Evidence:
+- [x] Development runtime data uses Cryptex-Dev app-data roots.
+  - Evidence: debug/pilot/transaction/Syncthing use Cryptex-Dev. `ad44e82` corrects ordinary release to Cryptex-Dev/runtime/p0-2; Windows 21/21 debug + release, Mac 14/14 debug + release, both CLI 4/4 PASS. Both-OS release-probe-root evidence records paths; historical product-root runs remain explicit and were not moved/deleted.
 
-- [ ] Canonical writers remain within the permitted daemon boundary for implemented M0 behavior.
-  - Evidence:
+- [x] Canonical writers remain within the permitted daemon boundary for implemented M0 behavior.
+  - Evidence: health-only IPC and Desktop supervision/snapshots; Golden uses explicit synthetic benchmark codec and transport fixtures are synthetic only. No production canonical write API or direct client event writer introduced; final audit records limits.
 
-- [ ] Relevant failure paths have tests or reproducible verification.
-  - Evidence:
+- [x] Relevant failure paths have tests or reproducible verification.
+  - Evidence: final audit indexes both-OS protocol rejection/native rollback, actual pre-successor updater kill, injected I/O/claim/owner/process race regressions and sidecar negative tests. No machine power-loss or production migration failure claim.
 
-- [ ] Relevant security checks/review are complete.
-  - Evidence:
+- [x] Relevant security checks/review are complete.
+  - Evidence: implementer corrections/regressions and independent security review in `evidence/m0/m0-independent-review-results-20261005.md`. Narrow M0 verdict PASS; production residuals explicitly retained. Owner-approved closeout does not accept those residuals.
 
-- [ ] No real personal/Cortex data was used for M0 testing.
-  - Evidence:
+- [x] No real personal/Cortex data was used for M0 testing.
+  - Evidence: P0-1 synthetic benchmark protocol plus both-OS Golden/native/managed Syncthing evidence explicitly restricts input to synthetic fixtures. No Cortex ingestion or personal memory API implemented; retained corpora not regenerated in this audit.
 
 ## G. Quality and completion workflow
 
-- [ ] Relevant formatting checks pass.
-  - Evidence:
+- [x] Relevant formatting checks pass.
+  - Evidence: both-OS native-interruption workspace checks and latest sidecar boundary checks; current documentation diff check. Later behavior correction must rerun relevant checks.
 
-- [ ] Relevant lint checks pass.
-  - Evidence:
+- [x] Relevant lint checks pass.
+  - Evidence: both-OS strict workspace Clippy in native-interruption/changed-package evidence and latest strict Desktop Clippy in sidecar review; required candidate CI is indexed below.
 
-- [ ] Relevant unit tests pass.
-  - Evidence:
+- [x] Relevant unit tests pass.
+  - Evidence: dated workspace tests plus latest Windows Desktop 20/20, Mac 13/13 sidecar tests; full counts/sources in final audit. Incremental proof is not a latest-source full workspace claim.
 
-- [ ] Relevant integration tests pass.
-  - Evidence:
+- [x] Relevant integration tests pass.
+  - Evidence: retained native pair/recovery and managed/upgrade runners plus final CI Windows Node 160/160 + 8/8 and Mac 162/162 + 8/8 at code candidate `c7fa011`.
 
-- [ ] Required cross-platform tests pass.
-  - Evidence:
+- [x] Required cross-platform tests pass.
+  - Evidence: existing parity proofs PASS at exact sources; final path correction adds Mac 14/14 debug + release + 4/4 CLI at 7f5ab2b and Windows 21/21 debug + release + 4/4 CLI. Integrated CI passes at `c7fa011`; its run is indexed below.
+  - Current `65ce7b9`: Windows 23 debug / 24 release / 4 CLI; Mac 16 debug / 17 release / 4 CLI; reported PASS, along with platform-specific format/lint/package checks. Later behavior-bearing CI passed at `c7fa011`.
 
-- [ ] Required CI checks are green at the M0 completion commit.
-  - Evidence:
+- [x] Required CI checks are green for the M0 behavior-bearing source included in the closeout.
+  - Evidence: all source/workflow changes are at or before `c7fa011672973101cb2a5519b5883b26c6909f90`, passed in run `37387323751`; following commits only record the Mac result, owner decisions and closeout status. Full job/test counts: `evidence/m0/m0-final-ci-attempt-20261005.md`.
 
-- [ ] Verifier reviewed M0 acceptance criteria against actual repository/runtime state.
-  - Evidence:
+- [x] Verifier reviewed M0 acceptance criteria against actual repository/runtime state.
+  - Evidence: separate read-only verifier at 3de9d00 in `evidence/m0/m0-independent-review-results-20261005.md`, independently queried CI and recomputed Windows recovery report digest. Mac visual evidence is owner-reported and retained separately.
 
-- [ ] Security review is complete for security-sensitive M0 work.
-  - Evidence:
+- [x] Security review is complete for security-sensitive M0 work.
+  - Evidence: independent security auditor at 3de9d00, recorded in `evidence/m0/m0-independent-review-results-20261005.md`; no new blocking synthetic M0 defect established. Five production residuals retained; not human approval or production certification.
 
-- [ ] Human diff/review is complete.
-  - Evidence:
+- [x] Relevant foundation UI quality review is complete.
+  - Evidence: `evidence/m0/m0-foundation-ui-review-20261005.md` records Windows native review; `evidence/m0/macos-embedded-frontend-visual-evidence-20261005.md` records Mac SCOPED PASS and hashes reported by the Mac operator. No broad theme/DPI review is claimed.
+
+- [x] Human diff/review is complete.
+  - Evidence: owner approved proceeding with the concrete closeout diff on 2026-10-05 after the scoped ADR-0012/0004 decisions and remaining M0/production boundaries were presented. The approval does not accept production residuals.
 
 ## H. Architecture and documentation gate
 
-- [ ] All four P0 spikes are resolved with retained evidence.
-  - Evidence:
+- [x] All four P0 spikes are resolved with retained evidence.
+  - Evidence: P0-1 sealed-pack ADR-0013, P0-2 accepted scoped ADR-0012 and both-platform lifecycle/recovery evidence, P0-3 accepted ADR-0007 addendum/ACL and IPC proofs, P0-4 accepted scoped ADR-0004 addendum and both-platform managed/upgrade evidence. Full index: `evidence/m0/m0-closure-audit-20261005.md`.
 
-- [ ] ADR-0012 is ACCEPTED.
-  - Evidence:
+- [x] ADR-0012 is ACCEPTED.
+  - Evidence: owner acceptance and scope limits in `docs/adr/ADR-0012-background-runtime-implementation-proposal.md`.
 
-- [ ] ADR-0013 is ACCEPTED.
-  - Evidence:
+- [x] ADR-0013 is ACCEPTED.
+  - Evidence: `docs/adr/ADR-0013-physical-event-storage-layout.md`
 
-- [ ] ADR-0007 implementation addendum is complete.
-  - Evidence:
+- [x] ADR-0007 implementation addendum is complete.
+  - Evidence: accepted `docs/adr/ADR-0007-local-ipc-implementation-addendum.md`; narrow health-only implementation/evidence and stated limits, no broader production API acceptance.
 
-- [ ] ADR-0004 implementation addendum is complete.
-  - Evidence:
+- [x] ADR-0004 implementation addendum is complete.
+  - Evidence: owner accepted the Master-Spec-aligned M0 P0-4 choice; `docs/adr/ADR-0004-managed-syncthing-implementation-addendum.md` retains production gates.
 
-- [ ] `docs/30_ADR_INDEX.md` reflects final M0 ADR status.
-  - Evidence:
+- [x] `docs/30_ADR_INDEX.md` reflects final M0 ADR status.
+  - Evidence: ADR-0012 and ADR-0004 now show accepted scoped implementation decisions; missing original source records and production residuals remain explicit.
 
-- [ ] Any architecture change discovered through M0 evidence has been recorded through the ADR process.
-  - Evidence:
+- [x] Any architecture change discovered through M0 evidence has been recorded through the ADR process.
+  - Evidence: accepted ADR-0013/0007 and owner-accepted scoped ADR-0012/0004 decisions; no production acceptance inferred.
 
-- [ ] Master Spec has been updated if an accepted architecture decision changed.
-  - Evidence:
+- [x] Master Spec has been updated if an accepted architecture decision changed.
+  - Evidence: no Master Spec change was required. Accepted M0 choices implement the existing Syncthing transport direction and one-device daemon writer/Mode B constraints; they add implementation detail without changing canonical semantics or trust requirements.
 
-- [ ] No M1-or-later feature was implemented opportunistically.
-  - Evidence:
+- [x] No M1-or-later feature was implemented opportunistically.
+  - Evidence: final audit reviews explicit synthetic Golden/Doctor/native/Syncthing scopes; no production identity/event store, replication semantics, secret store or shipped updater claim. Product obligations retained in revised proposals.
 
 ## Final gate
 
-- [ ] Every applicable M0 checklist item above has verified evidence.
-- [ ] `docs/milestones/M0_FOUNDATION.md` completion criteria are satisfied.
-- [ ] `docs/21_DEFINITION_OF_DONE.md` is satisfied.
-- [ ] M0 may be reported COMPLETE.
-- [ ] M1 is authorized to begin.
+- [x] Every applicable M0 checklist item above has verified evidence.
+- [x] `docs/milestones/M0_FOUNDATION.md` completion criteria are satisfied.
+- [x] `docs/21_DEFINITION_OF_DONE.md` is satisfied.
+- [x] M0 may be reported COMPLETE.
+- [ ] M1 work is authorized to begin (separate from closing M0; do not start M1 without explicit scope authorization).
 
-Until all applicable final-gate items are verified, M0 remains IN PROGRESS.
+M0 is COMPLETE for the synthetic foundation scope recorded here. M1
+authorization remains a separate owner decision; this completion does not start
+M1 or accept production residuals.

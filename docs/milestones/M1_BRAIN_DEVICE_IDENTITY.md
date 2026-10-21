@@ -34,6 +34,12 @@ M1 includes:
 - Canonical writes remain daemon-controlled.
 - macOS and Windows are first-class targets.
 
+## Brain identity lifecycle boundary
+
+- `cryptexd lifecycle hold` and `login-hold` do not create or require a Brain identity. Creation remains an explicit daemon-owned setup operation; M1 provides the durable persistence foundation, not a first-run product surface.
+- `identity/brain_identity.json` under the selected Cryptex app-data root is canonical, durable Brain metadata, not disposable runtime state. M1 does not claim that the record is replicated or recoverable on a reinstalled device.
+- M2 event records must bind to the existing `brain_id`; M8 replication must transfer this metadata unchanged; M11 restore must preserve it. M1 does not claim those later behaviors.
+
 ## Non-goals
 
 M1 does not implement:

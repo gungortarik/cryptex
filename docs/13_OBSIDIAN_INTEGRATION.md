@@ -48,6 +48,48 @@ V1 uses Obsidian Graph for full graph visualization.
 
 Cryptex may display compact relationship summaries but does not need to reimplement a separate full graph engine for V1.
 
+### M6 deterministic entity links
+
+M6 materializes the already-reduced M4 knowledge view as derived Obsidian
+entity notes. This is a projection of existing canonical events and reducer
+output; it does not add or infer canonical relationships.
+
+- One generated note represents each active consolidated entity. Its stable
+  path is `Cryptex/Entities/<representative_entity_id>.md`, where the ID is the
+  reducer's canonical lowercase UUID. Labels are never used in file paths.
+- Entity-note frontmatter, in order, is exactly `cryptex_kind: "entity"` then
+  `entity_id: "<representative_entity_id>"` between YAML fences. The body has
+  an H1 display-label heading, then `## Facts` and `## Relations` sections in
+  that order. The heading and link alias use the entity's current display
+  label. Labels, predicates, and fact values are escaped as data; they cannot
+  alter a path, frontmatter field, or link target.
+- Facts are rendered as escaped typed values on their subject entity note:
+  `text`, canonical `decimal`, `boolean`, `date`, or `entity_ref` plus its
+  canonical UUID. An `entity_ref` fact remains plain content; only an M4
+  `relation.assert` produces a WikiLink. Only an active,
+  explicit M4 relation creates a graph edge: the subject note contains one
+  outgoing list item of the form
+  `- <escaped predicate> → [[Cryptex/Entities/<target_representative_id>|<escaped target display label>]]`.
+  No inverse edge is inferred.
+- A relation is omitted if the M4 reducer does not expose it as active, either
+  endpoint has no active consolidated entity note, or the current shared
+  `RetrievalSafetyState` does not permit materialization. Pending, withdrawn,
+  conflicted, or otherwise unresolved relations never create graph edges.
+- Entity ID determines note identity; changing a label updates the heading and
+  link alias without changing the path. A changed M4 merge representative may
+  change the consolidated note path on a deterministic rebuild, which also
+  updates all generated links.
+- Entities sort by representative UUID; facts sort by predicate then semantic
+  ID; relations sort by predicate then target representative UUID. Filenames,
+  link targets, escaping, and LF output are deterministic across Windows and
+  macOS. Rebuild from the same verified canonical history reproduces the same
+  generated tree.
+
+The generated tree is disposable. Editing an entity note or link does not
+write back to canonical memory. If the shared safety state is missing, stale,
+corrupt, or held, M6 creates or refreshes no managed plaintext. This gate does
+not claim to revoke plaintext already copied outside Cryptex control.
+
 ## 6. Managed-note editing
 
 Manual edits to managed/generated notes do not directly rewrite canonical memory.
@@ -96,6 +138,14 @@ Attachment projection requires a separate P1 benchmark comparing hard-link behav
 Cryptex must not assume hard links are universally available or correct.
 
 Canonical attachment storage remains separate from the derived Obsidian projection.
+
+### M6 P1 outcome
+
+The M6 P1 synthetic spike found that writing through a hard link changes the
+source file on both reported Windows and macOS runs. M6 therefore uses
+copy-only derived attachment projection, with staged verification and safe
+publication. Windows and macOS cross-volume copy fallback passed. This decision does not define or implement the M9
+canonical attachment backend. Evidence: `evidence/m6/m6-p1-attachment-projection-decision-20261013.md`.
 
 ### M6 / M9 attachment boundary
 
@@ -182,15 +232,13 @@ The monorepo may contain the plugin package skeleton, but feature implementation
 
 This document does not select:
 
-- final generated vault directory structure
-- final note filename algorithm
-- final frontmatter schema
-- final origin-tracking marker format
+- final origin-tracking marker format for legacy event notes
+- final frontmatter/origin-tracking schema for legacy event notes
 - exact plugin event-listening strategy
-- exact hard-link/copy threshold/fallback rules
+- exact performance-based copy threshold (M6 deliberately uses copies for all projected attachments)
 - exact proposal/review UI
 
-These require P1 evidence and M6/M7 implementation decisions.
+The remaining items require their respective M6/M7 implementation decisions.
 
 ## 19. Source basis
 
