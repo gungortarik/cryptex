@@ -1,9 +1,9 @@
 # M8 independent protocol security review
 
-**Date:** 2026-10-22  
-**Reviewer:** Cursor independent read-only review, existing completed task `Security review of proposal`  
-**Candidate:** `docs/adr/ADR-0019-m8-protocol-addendum-proposal.md` on `codex/m8-device-trust`; review output did not record a Git SHA. The reviewed candidate text was included in checkpoint `b753c7b`.  
-**Recommendation:** **NOT READY**  
+**Date:** 2026-10-22
+**Reviewer:** Cursor independent read-only review, existing completed task `Security review of proposal`
+**Candidate:** `docs/adr/ADR-0019-m8-protocol-addendum-proposal.md` on `codex/m8-device-trust`; review output did not record a Git SHA. The reviewed candidate text was included in checkpoint `b753c7b`.
+**Recommendation:** **NOT READY**
 **Disposition:** Proposal remains PROPOSED / NOT ACCEPTED. No trust activation.
 
 ## Findings
