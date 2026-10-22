@@ -6,6 +6,13 @@ read-only security reviewer**. Do not edit files, run tests, change trust state,
 run GitHub Actions, commit, or push. The proposal is explicitly PROPOSED and
 must remain unaccepted until its required review is complete.
 
+This is a follow-up to the initial NOT READY review recorded in
+`evidence/m8/m8-independent-security-review-20261022.md`. Re-review the exact
+candidate at commit `5723cf1` or its descendant. Focus especially on whether
+the new component-wise cutoff filtering closes the prior cycle false-positive
+without permitting an unauthorized restriction or introducing order-dependent
+results.
+
 Read these authority/context files first:
 
 - `AGENTS.md`
@@ -39,10 +46,16 @@ Challenge the proposal adversarially, with particular attention to:
    writes outside daemon locks.
 5. M8-R5 identity canonicalization against the actual validators and the
    case-sensitive DeviceId contract.
-6. The issuer/cutoff reducer: cycles before prefix filtering, source/target
-   ordering, self-retirement caps, skipped sequence numbers, forks, multiple
-   restrictions, compromised issuers, Brain-wide hold/liveness, and convergence
-   independent of arrival order.
+6. The issuer/cutoff reducer: component-wise eligibility filtering before
+   classifying cycles; externally established cutoffs; nested/dependent
+   components; source/target ordering; self-retirement caps; skipped sequence
+   numbers; forks; multiple restrictions; compromised issuers; Brain-wide
+   hold/liveness; and convergence independent of arrival order. Challenge the
+   new rule with concrete graphs, including a cycle containing an already
+   ineligible edge and a nested cycle whose issuer cutoff depends on another
+   component. Do not assume the candidate SCC/filtering procedure is correct
+   merely because it is stated; identify a reproducible graph where its result
+   is ambiguous, unsafe, or unavailable.
 7. Whether the proposal conflicts with accepted ADRs, privacy requirements,
    platform durability guarantees, or existing event-store semantics.
 
