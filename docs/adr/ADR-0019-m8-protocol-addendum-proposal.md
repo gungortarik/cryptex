@@ -41,10 +41,20 @@ Candidate signed messages have exactly these common fields:
 `protocol_version` (integer 1), `message_type`, `transaction_id` (32 random
 bytes as 64 lowercase hex characters), `brain_id`, `sender_device_id`,
 `sender_signing_key_id`, `sender_public_key` (64 lowercase hex characters),
-`peer_device_id`, `peer_signing_key_id`, `peer_public_key`, `previous_hash`
+`sender_transport_device_id` (the exact native ID string reported by the
+configured adapter and accepted by its existing native-ID format validator),
+`peer_device_id`,
+`peer_signing_key_id`, `peer_public_key`, `peer_transport_device_id`,
+`previous_hash`
 (64 lowercase hex characters or all zeroes for the offer), `payload`, and
-`signature` (128 lowercase hex characters). The offer sets peer identity
-fields to null; later messages bind both full identities. Closed payloads:
+`signature` (128 lowercase hex characters). The offer sets all peer identity
+and peer transport fields to null; later messages bind both full identities
+and both transport associations. For the currently pinned Syncthing adapter,
+the accepted representation is eight groups of seven uppercase base32
+characters separated by seven hyphens (63 ASCII characters total), matching
+the adapter's existing format check. That shape check does not prove ownership
+or identity. Cryptex stores the exact adapter-returned value and never treats
+it as application identity or trust. Closed payloads:
 
 | Type | Payload |
 |---|---|
@@ -59,7 +69,9 @@ Every message hash uses
 `offer_hash` and `proof_hash` are those hashes for their respective messages.
 `agreement_hash` is BLAKE3-256 over
 `UTF8("cryptex-peer-bootstrap-agreement-v1") || 0x00 || JCS({offer_hash,
-proof_hash, brain_id, initiator_identity, responder_identity})`. Both approval
+proof_hash, brain_id, initiator_identity, responder_identity,
+transport_association: {initiator_transport_device_id,
+responder_transport_device_id}})`. Both approval
 messages sign that same agreement hash. `transcript_hash` is BLAKE3-256 over
 `UTF8("cryptex-peer-bootstrap-transcript-v1") || 0x00 || JCS({agreement,
 initiator_approval, responder_approval})`, with approvals in fixed role order.
@@ -79,12 +91,17 @@ remain proposals until independent review and golden vectors pass.
    or merged.
 2. The receiving daemon returns a proof bound to the offer hash and a fresh
    receiver nonce, signed by its existing local event key. Both interfaces
-   display Brain ID, DeviceIds, full event-key fingerprints, and the exact
-   operation. Users compare the full values over a separate trusted channel.
+   display Brain ID, Cryptex DeviceIds, full event-key fingerprints, exact
+   transport DeviceIds, and the exact operation. Users compare the full values
+   over a separate trusted channel. Transport IDs are association labels only.
 3. The initiator confirms the immutable candidate snapshot and signs its
    approval. The responder verifies it, displays the same immutable snapshot,
    and signs only after its own owner confirmation. Any change to Brain,
-   DeviceId, key, transaction, or preceding-message hash invalidates the flow.
+   Cryptex DeviceId, key, transport DeviceId, transaction, or
+   preceding-message hash invalidates the flow. Changing a transport association
+   later invalidates this approval's transport association; transport cannot
+   use the changed association until a separately specified, owner-approved
+   association flow is accepted and completed.
 4. Each side verifies both signed approvals and writes the exact transcript in
    its own immutable local approval record. Local trust becomes active only
    after that record is durable. If delivery or append is interrupted, the
@@ -108,8 +125,9 @@ primitive, key-agreement scheme, or encryption protocol.
 
 An approval anchor is a signed immutable security record in the local
 installation's own device event stream, bound to the full transcript digest,
-local DeviceId/key, peer Brain/DeviceId/key, and transaction ID. The local
-derived roster is rebuilt only from the local stream's valid records rooted in
+local DeviceId/key/transport DeviceId, peer Brain/DeviceId/key/transport
+DeviceId, and transaction ID. The local derived roster is rebuilt only from
+the local stream's valid records rooted in
 the same ADR-0018 OS-held key. An imported peer's approval record is evidence
 of that peer's action but never grants trust at this installation.
 
@@ -139,13 +157,21 @@ classification. Closed production event types proposed:
 |---|---|---|
 | `security.peer_approved` | `transaction_id`, `transcript` | This authoring installation's direct owner approval. The transcript contains the signed offer, proof, and both approvals. Only the local author's stream creates local trust. |
 | `security.device_restricted` | `target_device_id`, `target_signing_key_id`, `target_public_key`, `reason` (`retired` or `compromised`), `cutoff_seq`, `cutoff_content_hash` | Owner-confirmed restriction on one exact key and its verified contiguous event prefix. |
+| `security.device_self_retired` | `last_authorized_seq`, `last_authorized_content_hash` | Terminal self-retirement by the event's own ADR-0018 enrolled identity; applies only to that identity. |
 
 The restriction cutoff is inclusive and encoded as a strict decimal `u64`
 string; `0` means no ordinary content events are retained. The hash binds the
 cutoff to the target stream's exact event at that boundary (all-zero hash only
 for cutoff zero). A restriction cannot be issued for a boundary beyond the
 issuer's verified contiguous target prefix. The signed event itself is not
-rewritten or deleted by applying the cutoff.
+rewritten or deleted by applying the cutoff. A self-retirement event at
+sequence `n` must name `last_authorized_seq = n - 1` and the exact content hash
+at that sequence (zero sequence uses the all-zero hash). The self-retirement
+control event is validated as policy metadata even though it is one sequence
+after the last authorized ordinary content event. It cannot authorize another
+device. Any later record in that identity's stream is ineligible for content
+or policy authority; a fork, inconsistent boundary, or ambiguous retirement
+causes a guarded-content hold.
 
 Candidate security hash/signature domains are distinct from v1/v2:
 
@@ -191,8 +217,8 @@ Candidate deterministic reduction:
    without eligible incoming restrictions has cutoff `u64::MAX`; otherwise its
    effective cutoff is the minimum eligible incoming cutoff. An issuer action
    above its own effective cutoff is ineligible.
-3. A directed cycle (including a self-edge other than the explicit
-   self-retirement case), competing fork, missing policy prefix, or result that
+3. A directed cycle (including any self-edge; self-retirement is not modeled
+   as a graph edge), competing fork, missing policy prefix, or result that
    depends on unavailable security history places the affected Brain in a
    guarded-content hold. It does not choose an event by arrival order, timestamp,
    device preference, or naive minimum over unauthenticated claims. Self-
@@ -203,8 +229,10 @@ Candidate deterministic reduction:
    exposed plaintext cannot be recalled.
 
 Owner-confirmed self-retirement is terminal for that identity: it records the
-last locally authorized sequence and cannot grant that identity authority over
-another device. A cross-device restriction that participates in a dependency
+last locally authorized sequence immediately before its control event and
+cannot grant that identity authority over another device. The control event's
+single-sequence exception is limited to validating that retirement record; it
+does not retain ordinary content at that sequence. A cross-device restriction that participates in a dependency
 cycle causes a hold. An unknown device stream, invalid chain, or failed
 signature follows the existing Brain-wide fail-closed rule and never enters
 the graph.
