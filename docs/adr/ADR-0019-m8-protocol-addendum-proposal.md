@@ -56,6 +56,14 @@ the adapter's existing format check. That shape check does not prove ownership
 or identity. Cryptex stores the exact adapter-returned value and never treats
 it as application identity or trust. Closed payloads:
 
+For each signed message, `sender_signing_key_id` must equal the first 16 bytes
+of SHA-256 over the decoded 32-byte `sender_public_key`, encoded as 32
+lowercase hex characters, exactly as in ADR-0016. `initiator_identity` and
+`responder_identity` in the agreement object are each exactly
+`{device_id, signing_key_id, public_key}` using those wire values; the
+transport-association object contains exactly the two named transport ID
+strings. No display name or mutable profile field enters either object.
+
 | Type | Payload |
 |---|---|
 | `offer` | `initiator_nonce` (64 lowercase hex characters) |
@@ -83,6 +91,15 @@ message hash in that order. Each side retains the exact transcript and can
 append its own local approval record only
 after it has both owner-approved signatures. These exact labels/structures
 remain proposals until independent review and golden vectors pass.
+
+The offer's sender is the initiator and its `previous_hash` is all zeroes. The
+proof's sender is the responder, its peer fields exactly echo the offer's
+initiator identity/transport association, and its `previous_hash` is
+`offer_hash`. Approval role must match the message signer and order: the first
+approval is from the initiator with `previous_hash = proof_hash`; the second is
+from the responder with `previous_hash` equal to the first approval's message
+hash. All four messages carry the same transaction ID and Brain ID. A verifier
+rejects any identity, transport association, role, order, or link mismatch.
 
 ### 2.2 State sequence
 
