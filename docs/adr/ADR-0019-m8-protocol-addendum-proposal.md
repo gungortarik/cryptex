@@ -615,16 +615,22 @@ readers must read v1/v2 unchanged and v3 strictly. Activation requires schema
 and binding generation from Rust types, golden vectors, exact size limits,
 cross-platform byte-for-byte tests, backup/restore and downgrade behavior.
 
-The daemon holds its canonical inventory/device locks only for validation and
+The M8 target holds canonical inventory/device locks only for validation and
 durable append; it never holds them across UI confirmation, clipboard/QR work,
-or transport waits. Lock order and a transaction journal must be reconciled
-with current event-store locks before implementation. Transport and guarded
-content visibility are enabled only after durable bilateral approval and a
-successful full rebuild. Incoming files remain untrusted until validation.
+or transport waits. The current canonical writer does not yet implement the
+multi-device transaction required below: it holds a per-device lock through an
+append, takes the inventory lock only during first directory creation, releases
+that inventory lock before the append, and skips it for existing-device writes.
+No importer publication barrier currently joins this lock set. Section 5.1 is
+therefore a required M8 change, not a description of current code. Lock order
+and a transaction journal must be reconciled with current event-store locks
+before implementation. Transport and guarded-content visibility are enabled
+only after durable bilateral approval and a successful full rebuild. Incoming
+files remain untrusted until validation.
 
-### 5.1 Candidate lock order and post-confirmation revalidation
+### 5.1 Required target lock order and post-confirmation revalidation
 
-The current daemon writer/read path establishes this candidate order:
+The required M8 transaction contract is:
 
 1. Acquire `canonical/events/inventory.lock` whenever a stable full inventory
    or a new device directory is required.
@@ -641,6 +647,13 @@ The current daemon writer/read path establishes this candidate order:
    required, begin its transaction only after canonical device locks, following
    the existing `device -> SQLite` rule. Policy authority is never committed
    in SQLite.
+
+This is not the current lock behavior. `canonical_writer.rs` holds one device
+lock through an append, but for an existing device it does not take the
+inventory lock; for a new device the inventory guard is scoped to directory and
+lock creation and is dropped before frame append. It has no multi-device lock
+acquisition API. This contract therefore requires a reviewed implementation
+change and concurrency/crash tests before M8 trust activation.
 
 The owner dialog, QR/clipboard exchange, and transport waits occur with none of
 these locks held. The confirmation token binds the frozen display digest, not a

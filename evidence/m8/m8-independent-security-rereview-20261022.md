@@ -76,3 +76,10 @@ cap, a minimal competing-fork predicate, and required golden vectors. That
 follow-up is **not** a new independent review, not acceptance, and does not
 close the importer or IPC implementation gates. Re-review of the corrected
 procedure remains required before owner acceptance.
+
+A further documentation-only correction now makes the §5.1 multi-device lock
+order an M8 target contract rather than current behavior. The source review
+confirmed that `canonical_writer.rs` holds one per-device lock through append,
+skips the inventory lock for existing devices, and releases the first-create
+inventory guard before append; it has no multi-device lock API. This does not
+close the importer publication barrier finding or authorize trust activation.
