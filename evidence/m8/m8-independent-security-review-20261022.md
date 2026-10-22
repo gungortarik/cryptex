@@ -62,3 +62,12 @@ derive a safe outcome. This interpretation needs independent review before
 protocol acceptance. The original Cursor recommendation remains NOT READY; no
 owner acceptance, protocol activation, implementation, or M8 completion is
 claimed.
+
+## Independent re-review (2026-10-22)
+
+Full findings: `evidence/m8/m8-independent-security-rereview-20261022.md`.
+Recommendation remained **NOT READY** (2 Critical, 4 High, 4 Medium, 1 Low at
+review time). The critical new finding was that component-wise filtering could
+treat an ineligible outside-SCC edge as an established breaker. A later
+documentation-only proposal fix pins SCC/condensation order and eligible-only
+external cutoffs; that fix is not itself an independent re-review or acceptance.

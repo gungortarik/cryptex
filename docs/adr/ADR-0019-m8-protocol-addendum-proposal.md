@@ -484,32 +484,56 @@ Candidate deterministic reduction:
    remains subject to the existing Brain-wide fail-closed rule. Merely finding
    a well-formed policy event from a known but currently ineligible issuer is
    not itself a hold condition.
-2. Resolve issuer-prefix dependencies component-wise. Restrictions targeting
-   `I` determine `I`'s effective cutoff, so source components are resolved before
-   the devices they restrict. Before classifying a candidate cycle, apply
-   cutoffs already established from outside that dependency component, including
-   a valid self-retirement boundary. Remove any edge whose issuer event sequence
-   is above such an independently established cutoff; that edge is known to be
-   ineligible and cannot create a cycle hold. Recompute the dependency
-   components after filtering. If a remaining cycle's edge eligibility depends
-   on another edge inside the same cycle, authority is mutually affected and
-   unresolved; it triggers the safe-conflict hold below. If filtering makes the
-   component acyclic, resolve it in dependency order. This component rule is a
-   candidate and requires independent review, especially for nested components
-   and cutoff propagation.
-3. Resolve acyclic components in deterministic topological order; sort nodes
-   with equal graph position by the canonical DeviceId byte sequence. For each
-   device `D`, its effective authority cutoff is the minimum of all eligible
-   incoming restriction cutoffs, its valid self-retirement boundary if present,
-   and `u64::MAX` (the identity value when neither restriction exists). A
-   self-retirement record is a terminal control exception validated against the
-   stream's prior verified record/hash; its `last_authorized_seq` is also a cap
-   on all ordinary content and policy actions by that device. For each
-   cross-device restriction `I -> T`, the issuer event sequence must be at or
-   below `I`'s effective cutoff to contribute `cutoff_seq(T)`. The DAG order
-   resolves upstream issuer caps before their outgoing restrictions. An issuer
-   action above its effective cutoff is ineligible and cannot tighten any
-   target.
+2. Resolve issuer-prefix dependencies on the restriction digraph with a single
+   deterministic procedure (no arrival/time order). Let the candidate graph be
+   the directed multigraph of step-1 edges `I -> T`. Proceed as follows:
+
+   a. Compute the strongly connected components (SCCs) of the current edge set.
+      Form the condensation DAG of those SCCs. Process SCCs in deterministic
+      topological order of the condensation; break ties by sorting each SCC's
+      member `DeviceId` values lexicographically by ASCII bytes and comparing
+      the resulting sorted tuples.
+   b. Before processing an SCC, every restriction whose issuer lies outside that
+      SCC may contribute to an external cutoff on a member only when that
+      issuer's effective authority cutoff is already fully resolved (its SCC was
+      processed earlier in condensation order) and the issuer event sequence is
+      at or below that issuer's effective cutoff. Ineligible or not-yet-resolved
+      outside issuers contribute nothing. Never use an unresolved or ineligible
+      outside edge to filter or break a cycle.
+   c. Independently of SCC membership, each device's valid self-retirement
+      boundary is a per-identity terminal cap on that device's ordinary content
+      and policy actions. Apply every such cap when computing that device's
+      provisional filter threshold. Self-retirement is not modeled as a graph
+      edge and is not described as an "outside" cutoff.
+   d. For each device in the SCC, the filter threshold used in this step is the
+      minimum of `u64::MAX`, all eligible already-resolved external restriction
+      cutoffs targeting that device, and its self-retirement cap if present.
+      Remove every outgoing edge from that device whose issuer event sequence is
+      strictly above its filter threshold. Those edges are known ineligible and
+      cannot create a cycle hold.
+   e. After removals, recompute SCCs on the affected subgraph. If the component
+      is now acyclic, resolve it with step 3. If a cycle remains whose edge
+      eligibility still depends on another edge inside the same cycle, authority
+      is mutually affected and unresolved; apply the safe-conflict hold in
+      step 4. Nested SCCs are handled only by condensation order: a downstream
+      cycle must not be filtered until every upstream issuer it depends on is
+      resolved or the Brain is already held.
+
+   This procedure is still a candidate and requires independent re-review with
+   the golden vectors in §6.
+3. Resolve an acyclic component in deterministic topological order on its
+   remaining edges; sort nodes with equal graph position by the canonical
+   DeviceId byte sequence. For each device `D`, its effective authority cutoff
+   is the minimum of all eligible incoming restriction cutoffs, its valid
+   self-retirement boundary if present, and `u64::MAX` (the identity value when
+   neither restriction exists). A self-retirement record is a terminal control
+   exception validated against the stream's prior verified record/hash; its
+   `last_authorized_seq` is also a cap on all ordinary content and policy
+   actions by that device. For each cross-device restriction `I -> T`, the
+   issuer event sequence must be at or below `I`'s effective cutoff to
+   contribute `cutoff_seq(T)`. The DAG order resolves upstream issuer caps
+   before their outgoing restrictions. An issuer action above its effective
+   cutoff is ineligible and cannot tighten any target.
 4. Any unresolved dependency cycle after step 2 (including a self-edge;
    self-retirement is not modeled as a graph edge), competing fork, missing
    policy prefix, or result that depends on unavailable security history places
@@ -517,6 +541,13 @@ Candidate deterministic reduction:
    arrival order, timestamp, device preference, or naive minimum over
    unauthenticated claims. Self-retirement is represented as an explicit
    terminal local action and does not grant that device any later authority.
+   A competing fork, for this candidate, means any of: two verified records in
+   one device stream that share a `device_seq` or `event_id` with different
+   content bytes; two divergent verified prefixes for the same device identity
+   that cannot be reduced to one contiguous chain for cutoff binding; or a
+   restriction/self-retirement whose `cutoff_content_hash` /
+   `last_authorized_content_hash` does not equal the verified record at the
+   named sequence. Each case is a typed hold, not a tie-break.
 5. Recompute from the complete validated union whenever new history arrives.
    Until the same result is derivable, no guarded content is returned. Previously
    exposed plaintext cannot be recalled.
@@ -654,7 +685,15 @@ discover the durable result. Journal/canonical mismatches fail closed.
   device behavior.
 - Independent review of the reduction algorithm, cycle/mutual restriction
   cases, cutoff boundary hash, fork handling, order-independent convergence,
-  and guarded hold scope.
+  and guarded hold scope. Required reducer vectors include at least:
+  (1) eligible external breaker that correctly drops one edge of `{A,B}` and
+  resolves without hold; (2) ineligible external breaker
+  `C→D(cutoff 2), D@5→A(cutoff 9), A@10→B, B@10→A` must hold `{A,B}` and must
+  not apply `B@10→A` alone; (3) nested SCC where `{C,D}` unresolved holds the
+  Brain before `{A,B}` is filtered; (4) self-retirement cap inside an SCC that
+  drops a post-retirement outgoing edge and leaves an acyclic remainder;
+  (5) identical verified unions under shuffled file-arrival orders converge on
+  the same cutoffs or the same hold.
 - Exact schema/TypeScript generation, JCS and signature golden vectors, older
   reader fail-closed fixture, size/depth/duplicate/unknown-field tests, and
   security-operation-digest vectors covering retry with changed chain placement,
@@ -699,8 +738,13 @@ and canonical identity rules before acceptance.
 ## 7. Current status
 
 This document is a concrete review candidate, not an accepted protocol. In
-particular, the new schema/domain labels and causal graph rule are unreviewed.
-No code, schema, writer, resolver, IPC mutation, pairing UI, or peer transport
-activation is authorized. Existing Windows lifecycle receipts remain scoped to
-their tested gates. M8 and the consolidated Mac stage remain open; M7 stays
-deferred; no Actions are requested.
+particular, the new schema/domain labels and causal graph rule remain
+unaccepted. The 2026-10-22 independent re-review recommended NOT READY; a
+documentation follow-up pinned SCC/condensation-ordered eligibility filtering,
+self-retirement as a per-identity cap, a competing-fork predicate, and reducer
+vectors. That follow-up is not a new independent review and does not close the
+importer lock-participation or per-platform IPC binding gates. No code, schema,
+writer, resolver, IPC mutation, pairing UI, or peer transport activation is
+authorized. Existing Windows lifecycle receipts remain scoped to their tested
+gates. M8 and the consolidated Mac stage remain open; M7 stays deferred; no
+Actions are requested.
