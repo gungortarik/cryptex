@@ -79,8 +79,8 @@ message objects, in that fixed array order; the digest commits to every field
 and signature. `agreement_hash` is represented as 64 lowercase hex characters
 in messages and approval records. Messages are ordered `offer`, `proof`,
 initiator `approval`, responder `approval`; `previous_hash` is the preceding
-message hash in that order. Each side
-retains the exact transcript and can append its own local approval record only
+message hash in that order. Each side retains the exact transcript and can
+append its own local approval record only
 after it has both owner-approved signatures. These exact labels/structures
 remain proposals until independent review and golden vectors pass.
 
@@ -240,10 +240,10 @@ Owner-confirmed self-retirement is terminal for that identity: it records the
 last locally authorized sequence immediately before its control event and
 cannot grant that identity authority over another device. The control event's
 single-sequence exception is limited to validating that retirement record; it
-does not retain ordinary content at that sequence. A cross-device restriction that participates in a dependency
-cycle causes a hold. An unknown device stream, invalid chain, or failed
-signature follows the existing Brain-wide fail-closed rule and never enters
-the graph.
+does not retain ordinary content at that sequence. A cross-device restriction
+that participates in a dependency cycle causes a hold. An unknown device
+stream, invalid chain, or failed signature follows the existing Brain-wide
+fail-closed rule and never enters the graph.
 
 This is deliberately conservative. The proposed graph rule and hold scope need
 security review for completeness, liveness, cross-device convergence, and
