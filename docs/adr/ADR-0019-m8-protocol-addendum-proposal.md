@@ -33,7 +33,7 @@ authority and no secret is sent. Pairing over Syncthing alone is insufficient.
 Each message is UTF-8 JSON parsed with duplicate-key rejection, closed field
 sets, strict UUID/hex validation, and RFC 8785 JCS. Proposed limits: 64 KiB per
 message; at most 16 messages and 1 MiB total per transaction; 32-byte
-cryptographically random nonces; 128-bit-or-better transaction IDs. Public
+cryptographically random nonces; 256-bit (32-byte) transaction IDs. Public
 keys are exactly 32 bytes, signatures 64 bytes, and hashes 32 bytes. Hex is
 lowercase and fixed width. No timestamps affect validity.
 
@@ -195,8 +195,14 @@ canonical DeviceId, 16-byte signing-key ID, and full public-key SHA-256
 fingerprint. The daemon returns the frozen display snapshot and digest together
 over the authenticated Desktop IPC. The UI renders that snapshot without
 re-reading mutable pairing or transport state. Confirmation supplies that
-digest plus a daemon-issued, single-use approval-session token bound to the
-authenticated Desktop process/session. The daemon compares the digest to its
+digest plus a daemon-issued, single-use approval-session capability bound to
+the exact authenticated IPC connection and owner-confirmation session. The
+platform IPC adapter must establish the client process identity with an
+OS-authenticated peer credential and bind it to that connection; PID alone or
+same-user identity alone is insufficient. The capability is unguessable,
+connection-scoped, and invalidated on disconnect or daemon restart. Each
+platform's concrete peer-credential mechanism and its resistance to process
+replacement/reuse are acceptance gates. The daemon compares the digest to its
 pending request, verifies the operation and owner session, then consumes the
 token. Validation and consumption are one atomic state transition scoped to
 that authenticated session: concurrent confirmation, cancellation, and replay
@@ -253,6 +259,13 @@ transcript_ready`; allowed responder transitions are `offer_received ->
 proof_created -> peer_approval_received -> local_approval_signed ->
 transcript_ready`. Either role then transitions to `append_unknown` only on
 uncertain durable append and to `anchored` only after canonical verification.
+The first cryptographically valid proof durably pins the transaction to its
+exact peer DeviceId, signing-key ID/public-key fingerprint, and transport
+association. An exact byte-identical replay is idempotent. Any later proof
+using the same transaction ID with a changed peer identity, key, or transport
+binding is a typed transaction conflict; it cannot replace the pinned proof or
+silently alter the state machine. Recovery requires a new transaction ID and
+fresh nonces.
 Owner cancellation or explicit owner expiry before a local approval signature
 is released is terminal from any nonterminal state. After a signed approval has
 been released externally, local cancellation prevents local anchor/continuation
@@ -267,7 +280,9 @@ creation, complete write, and file sync before replacement. On macOS,
 replacement uses same-volume atomic rename followed by reopening/syncing the
 destination and syncing its parent directory;
 on Windows, replacement uses the existing `MoveFileExW` replace/write-through
-pattern and reopens/syncs the destination. Unsupported platform durability
+pattern and reopens/syncs the destination; parent-directory sync is not claimed
+on Windows. These are the currently evidenced platform steps, not a guarantee
+beyond the documented OS/filesystem behavior. Unsupported platform durability
 fails closed. Journal reads enforce a closed schema, size bounds, duplicate-key
 rejection, and recompute stored digests; the journal remains untrusted cache
 data and never establishes trust. Before releasing a previously generated
@@ -278,18 +293,19 @@ authority. The journal is reconciled against canonical history on startup;
 nonterminal state must be re-presented as the same frozen candidate and receive
 a fresh local confirmation session. Missing, malformed, or identity-mismatched
 journal state causes refusal and a fresh transaction with new ID/nonces, never
-trust. Before every anchor append or retry, while holding the canonical
-inventory/device locks in the established order, scan/verify the local stream
-for the transaction ID. Same ID plus same transcript hash and exact local
-identity/key is idempotent and returns the existing event; same ID with any
-different transcript hash or identity is a typed conflict and Brain-wide hold.
-For an uncertain append, reread under those locks first: the exact event ID and
-attempt content hash in the canonical stream means success; any same event ID
-with a different content hash is a conflict. An absent event permits retry
-with the same transaction/event IDs only after the complete relevant stream
-verifies and confirms the event ID is absent. A retry builds a new candidate
-event with the same transaction payload and event ID but a newly reserved
-sequence and current predecessor hash; every failed reservation remains a
+trust. Before any new sequence reservation, and before every anchor append or
+retry, hold the canonical inventory and required device locks in the
+established order, verify the complete relevant local stream, and search both
+the transaction ID and stable event ID. Exactly one record with the same
+transaction ID, event ID, operation digest, transcript hash, and local
+identity/key is idempotent success. A duplicate ID, or any existing event ID
+with a different operation digest or transaction binding, is a typed conflict
+and Brain-wide hold. Never append a second body for an existing event ID. For
+an uncertain append, reread under those locks first: an exact matching record
+means success; a mismatching record is a conflict. A retry may reserve a new
+sequence only after the fully verified stream proves both IDs absent. It may
+then reuse the transaction/event IDs with the same operation and payload but a
+new sequence and current predecessor hash; every failed reservation remains a
 permanent gap. Conflicting or unverifiable state is held. Journal loss never
 authorizes blind append. A new transaction requires fresh nonces and a new
 transaction ID.
@@ -313,12 +329,25 @@ from the affected Brain. A new reader accepts v1 and v2 only through their
 existing validators and applies the strict v3 validator. Golden vectors must
 cover v1->v2->v3->v1 with valid links, a wrong predecessor hash, a sequence gap
 with a valid chain, and an older-reader v3 hold.
+After strict verification, recognized `security.*` v3 records are policy
+metadata: the new reader must feed them to the deterministic trust/cutoff
+reducer and update `RetrievalSafetyState` from that result. They must not be
+classified as generic unsupported memory semantics. Unknown v3 types,
+unverifiable security records, or an unavailable/inconsistent reducer remain
+fail-closed holds. A v3 writer or trust activation is forbidden until this
+reader/retrieval integration and its tests exist.
 
 **M8-R5 — canonical identity equality.** `brain_id` in every bootstrap
 message, and `brain_id` plus `event_id` in every candidate v3 canonical
 security event, use exactly lowercase hyphenated UUID text (8-4-4-4-12);
 uppercase hex, braces, compact forms, and alternate spellings are rejected at
-this protocol boundary. This rule does not change existing v1/v2 acceptance.
+this protocol boundary. At the M8 boundary, parse the existing local Brain ID
+with the existing UUID validator, derive its canonical lowercase wire form
+once, and compare bootstrap/v3 identifiers by their 16 UUID bytes. This handles
+legacy local metadata whose accepted spelling is uppercase without changing
+the strict incoming wire rule or rewriting v1/v2 event bytes. If the local ID
+cannot be parsed unambiguously, refuse before starting the transaction. This
+rule does not change existing v1/v2 acceptance.
 `DeviceId` is the existing ASCII `[A-Za-z0-9_-]{1,64}`
 identity and compares byte-for-byte, case-sensitively; it is never
 case-folded. Key IDs compare as exactly 16 decoded bytes and public-key
@@ -452,9 +481,15 @@ Candidate deterministic reduction:
    deliberately conservative and requires independent liveness/DoS review.
    Restrictions targeting `I` determine `I`'s effective cutoff, so source
    components are resolved before the devices they restrict. Edges from
-   issuers not directly approved locally are excluded from the authority graph;
-   their presence in a canonical device stream remains an invalid/untrusted-
-   input condition handled by the Brain-wide fail-closed rule.
+  issuers not directly approved locally are excluded from the authority graph.
+  A known, directly anchored issuer that is now ineligible because its valid
+  history was later restricted or self-retired remains cryptographically
+  verifiable; its actions are filtered by its effective prefix and do not
+  become invalid input merely because its current authority changed. An
+  unknown/unresolvable device stream or failed chain/signature remains subject
+  to the existing Brain-wide fail-closed rule. Merely finding a well-formed
+  policy event from a known but currently ineligible issuer is not itself a
+  hold condition.
 2. Resolve acyclic components in deterministic topological order; sort nodes
    with equal graph position by the canonical DeviceId byte sequence. For each
    device `D`, its effective authority cutoff is the minimum of all eligible
@@ -489,9 +524,14 @@ that participates in a dependency cycle causes a hold. An unknown device
 stream, invalid chain, or failed signature follows the existing Brain-wide
 fail-closed rule and never enters the graph.
 
-This is deliberately conservative. The proposed graph rule and hold scope need
-security review for completeness, liveness, cross-device convergence, and
-compromised-issuer behavior. No production reducer is authorized by this text.
+This is deliberately conservative. A valid signed cycle can cause a Brain-wide
+guarded-content hold even when one or more edges would be ineligible after
+prefix resolution; a compromised authorized issuer can therefore cause a
+denial of service. This candidate does not define a cycle-specific recovery or
+break-glass operation. The owner must explicitly accept this availability
+consequence and its recovery path, or select a separately reviewed cycle rule,
+before protocol acceptance. No production reducer or trust activation is
+authorized while this decision is open.
 
 ## 5. Reader-first rollout, transaction order, and recovery
 
@@ -553,8 +593,10 @@ The current daemon writer/read path establishes this candidate order:
 The owner dialog, QR/clipboard exchange, and transport waits occur with none of
 these locks held. The confirmation token binds the frozen display digest, not a
 lock held across human interaction. After owner confirmation, the daemon
-reacquires the exact inventory/device set, checks for inventory changes, and
-revalidates the target prefix, issuer authority, transcript/transaction
+reacquires the exact inventory/device set, including both the restriction
+issuer and target device writer locks (or the single affected device for
+self-retirement), in sorted DeviceId order under the inventory lock. It checks
+for inventory changes and revalidates the target prefix, issuer authority, transcript/transaction
 references, and all digest fields before append. A changed inventory or
 boundary invalidates the one-use confirmation and requires a new displayed
 snapshot. Any sync/import actor that can mutate canonical event files must join
@@ -562,6 +604,17 @@ this lock protocol before trust activation; detecting an out-of-protocol
 mutation after the fact is not a race-free substitute. This order remains a
 proposal until checked against every writer/importer and platform durability
 path.
+
+The importer contract is a release gate: a sync/import actor must acquire the
+inventory lock and all affected device writer locks in this order before it
+publishes, replaces, adds, or removes canonical event frames, and retain those
+locks until the complete validated update is durably visible. Readers must not
+observe a partial multi-file import. A Syncthing folder that can directly
+mutate canonical event files without this lock participation is not safe for
+trust activation; post-hoc inventory scans or filesystem watchers do not close
+the race. The concrete sync-to-canonical publication mechanism and its
+interleaving/failure tests remain unimplemented and must be reviewed before
+trust can be enabled.
 
 The pending-journal transaction mutex must not be held while waiting for
 inventory/device/sequence locks or for owner/transport input. Claim a
@@ -585,7 +638,27 @@ discover the durable result. Journal/canonical mismatches fail closed.
   reader fail-closed fixture, size/depth/duplicate/unknown-field tests, and
   security-operation-digest vectors covering retry with changed chain placement,
   changed operation payload, cross-type transaction-ID reuse, and duplicate
-  canonical records.
+  canonical records. Bootstrap bounds require a dedicated streaming/tokenizer
+  parser and reject vectors for duplicate decoded keys, non-integer `1.0`,
+  depth 5, 17 array items, and a decoded string of 16 KiB + 1 bytes; existing
+  event parsers do not satisfy the pre-allocation bootstrap bound.
+- Tests must cover the same transaction ID receiving a conflicting second
+  proof; same-user/different-process approval attempts, IPC disconnect and
+  process replacement; target-prefix mutation while a restriction is being
+  confirmed; formerly approved but now prefix-ineligible issuer history;
+  v3 `security.*` policy records updating retrieval safety; and crash recovery
+  that finds an event by transaction/event ID before reserving another sequence.
+- Import tests must race a reader/restriction append against an incoming
+  multi-file canonical update and prove lock participation prevents partial or
+  mixed snapshots. Journal durability fault injection must match the actual
+  platform guarantee: Unix parent-directory sync is required; Windows uses
+  `MoveFileExW` replace/write-through and destination reopen/sync, without
+  claiming parent-directory sync. Test canonical UUID output from uppercase
+  legacy local Brain metadata while leaving all existing v1/v2 bytes unchanged.
+- Before acceptance, record the owner's explicit decision on the cycle-induced
+  Brain hold and a reviewed recovery path, or replace it with a separately
+  reviewed deterministic rule. Do not treat the existing “liveness review” note
+  as acceptance.
 - Crash injection at every row in §5, idempotent retry tests, restore/rebuild and
   downgrade tests, journal write/flush/replace/readback fault injection and
   torn/corrupt journal recovery on both platforms, cutoff `0`, `1`, and
