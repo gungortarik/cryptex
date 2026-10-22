@@ -1,0 +1,9 @@
+{
+  "id": "cryptex-m7-spike",
+  "name": "Cryptex M7 Spike (Synthetic Only)",
+  "version": "0.0.2",
+  "minAppVersion": "1.5.0",
+  "description": "Disposable observation/status probe. Managed-note IO disabled.",
+  "author": "Cryptex",
+  "isDesktopOnly": true
+}

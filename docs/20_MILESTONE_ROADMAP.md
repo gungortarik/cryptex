@@ -2,6 +2,14 @@
 
 The order minimizes architectural rework. Milestones may be split into smaller PRs but should not be reordered casually.
 
+**Owner-approved scheduling exception (2026-10-19):** M7 remains OPEN /
+DEFERRED with managed-note write-back disabled while its physical-containment
+prerequisite is unresolved. M6 generated Markdown and Obsidian visualization
+remain available. M8 is the next active implementation milestone; its existing
+prerequisites and completion gates apply. M7's scope and eventual completion
+requirements remain in force. Decision:
+`evidence/m7/m7-temporary-deferral-and-m8-sequencing-proposal-20261019.md`.
+
 ## M0 — Foundation and P0 Spikes
 
 - monorepo/toolchains/CI

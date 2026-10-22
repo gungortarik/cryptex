@@ -102,7 +102,7 @@ ADR-0004 receives implementation addendum and chosen packaging before replicatio
 Select audited high-level format/library, test large objects, interrupted backup, restore and key recovery.
 
 ### Obsidian write-back
-Prove safe event listening, `Vault.process` style changes, projection-loop suppression and IPC from plugin.
+Prove safe event listening, `Vault.process` style changes, projection-loop suppression, and IPC from the plugin. Also prove physical containment of managed-note reads/writes on Windows and macOS, including symlink/reparse-point cases. Keep managed-note write-back disabled until containment is proven through a Vault-API-compliant design; metadata-only preflight and direct-filesystem fallback do not close this gate.
 
 ### Attachment projection
 Benchmark hard-link versus copy fallback behavior and cleanup on both OSes.

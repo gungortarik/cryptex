@@ -13,6 +13,11 @@ Follow `AGENTS.md`, `docs/00_MASTER_SPEC.md`, accepted ADRs, `docs/07_SYNC_AND_C
 
 ## Prerequisites
 
+Owner-approved scheduling exception (2026-10-19): M8 preparation and
+implementation may proceed while M7 remains OPEN / DEFERRED and managed-note
+write-back stays disabled. Existing M8 prerequisites and completion gates still
+apply. Decision: `evidence/m7/m7-temporary-deferral-and-m8-sequencing-proposal-20261019.md`.
+
 - M0 managed-Syncthing proof is complete.
 - ADR-0004 implementation addendum is complete.
 - M1 identity/sequence foundations are complete.

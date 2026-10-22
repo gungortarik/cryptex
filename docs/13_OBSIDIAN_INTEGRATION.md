@@ -112,6 +112,7 @@ Before productizing Obsidian write-back, the required P1 spike must prove safe:
 - `Vault.process`-style changes
 - projection-loop suppression
 - IPC from the plugin
+- physical containment of every managed-note read/write on Windows and macOS, including symlink/reparse-point cases
 
 The exact plugin implementation must follow the spike evidence rather than being guessed early.
 
@@ -129,7 +130,7 @@ Exact markers/metadata fields are not selected by this document.
 
 The audited architecture requires safe use of the Obsidian Vault API rather than arbitrary direct filesystem manipulation where the plugin controls Obsidian-managed content.
 
-The exact API calls and plugin design are finalized by the relevant P1 spike and M7 implementation.
+The exact API calls and plugin design are finalized by the relevant P1 spike and M7 implementation. Managed-note write-back must remain disabled until the P1 spike proves that Vault-API operations stay within the physical managed boundary on both Windows and macOS, including symlink/reparse-point cases. A metadata-only preflight is not proof of physical containment. The plugin must not bypass this requirement by switching to direct filesystem operations.
 
 ## 11. Attachment projection
 
