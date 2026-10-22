@@ -475,22 +475,29 @@ Candidate deterministic reduction:
    chain, Brain, issuer identity, target binding, and boundary hash. Build a
    directed candidate graph with edge `I -> T` for each structurally and
    cryptographically valid restriction authored by a locally directly approved
-   issuer. Detect directed cycles in this candidate graph before applying
-   issuer-prefix eligibility; any such cycle places the Brain on hold, even if
-   a cycle edge might later be outside its issuer's effective prefix. This is
-   deliberately conservative and requires independent liveness/DoS review.
-   Restrictions targeting `I` determine `I`'s effective cutoff, so source
-   components are resolved before the devices they restrict. Edges from
-  issuers not directly approved locally are excluded from the authority graph.
-  A known, directly anchored issuer that is now ineligible because its valid
-  history was later restricted or self-retired remains cryptographically
-  verifiable; its actions are filtered by its effective prefix and do not
-  become invalid input merely because its current authority changed. An
-  unknown/unresolvable device stream or failed chain/signature remains subject
-  to the existing Brain-wide fail-closed rule. Merely finding a well-formed
-  policy event from a known but currently ineligible issuer is not itself a
-  hold condition.
-2. Resolve acyclic components in deterministic topological order; sort nodes
+   issuer. Edges from issuers not directly approved locally are excluded from
+   the authority graph. A known, directly anchored issuer that is now ineligible
+   because its valid history was later restricted or self-retired remains
+   cryptographically verifiable; its actions are filtered by its effective
+   prefix and do not become invalid input merely because its current authority
+   changed. An unknown/unresolvable device stream or failed chain/signature
+   remains subject to the existing Brain-wide fail-closed rule. Merely finding
+   a well-formed policy event from a known but currently ineligible issuer is
+   not itself a hold condition.
+2. Resolve issuer-prefix dependencies component-wise. Restrictions targeting
+   `I` determine `I`'s effective cutoff, so source components are resolved before
+   the devices they restrict. Before classifying a candidate cycle, apply
+   cutoffs already established from outside that dependency component, including
+   a valid self-retirement boundary. Remove any edge whose issuer event sequence
+   is above such an independently established cutoff; that edge is known to be
+   ineligible and cannot create a cycle hold. Recompute the dependency
+   components after filtering. If a remaining cycle's edge eligibility depends
+   on another edge inside the same cycle, authority is mutually affected and
+   unresolved; it triggers the safe-conflict hold below. If filtering makes the
+   component acyclic, resolve it in dependency order. This component rule is a
+   candidate and requires independent review, especially for nested components
+   and cutoff propagation.
+3. Resolve acyclic components in deterministic topological order; sort nodes
    with equal graph position by the canonical DeviceId byte sequence. For each
    device `D`, its effective authority cutoff is the minimum of all eligible
    incoming restriction cutoffs, its valid self-retirement boundary if present,
@@ -503,14 +510,14 @@ Candidate deterministic reduction:
    resolves upstream issuer caps before their outgoing restrictions. An issuer
    action above its effective cutoff is ineligible and cannot tighten any
    target.
-3. Any candidate-graph cycle detected in step 1 (including a self-edge;
+4. Any unresolved dependency cycle after step 2 (including a self-edge;
    self-retirement is not modeled as a graph edge), competing fork, missing
    policy prefix, or result that depends on unavailable security history places
    the affected Brain in a guarded-content hold. It does not choose an event by
    arrival order, timestamp, device preference, or naive minimum over
    unauthenticated claims. Self-retirement is represented as an explicit
    terminal local action and does not grant that device any later authority.
-4. Recompute from the complete validated union whenever new history arrives.
+5. Recompute from the complete validated union whenever new history arrives.
    Until the same result is derivable, no guarded content is returned. Previously
    exposed plaintext cannot be recalled.
 
@@ -524,14 +531,28 @@ that participates in a dependency cycle causes a hold. An unknown device
 stream, invalid chain, or failed signature follows the existing Brain-wide
 fail-closed rule and never enters the graph.
 
-This is deliberately conservative. A valid signed cycle can cause a Brain-wide
-guarded-content hold even when one or more edges would be ineligible after
-prefix resolution; a compromised authorized issuer can therefore cause a
-denial of service. This candidate does not define a cycle-specific recovery or
-break-glass operation. The owner must explicitly accept this availability
-consequence and its recovery path, or select a separately reviewed cycle rule,
-before protocol acceptance. No production reducer or trust activation is
-authorized while this decision is open.
+This is deliberately conservative. A remaining unresolved dependency cycle
+after the eligibility filtering in step 2 is a mutually affected authority
+conflict under accepted ADR-0019. The reducer must
+return a typed Brain-wide guarded-content hold, consistent with Master Spec
+§9; it must return no partial guarded content and must not select a restriction
+by arrival order, timestamp, device preference, or unauthenticated minimum.
+Recompute the hold from the complete verified canonical union so replicas
+converge on the same result. A compromised authorized issuer can therefore
+cause denial of service; this is the explicit safe-conflict outcome permitted
+by ADR-0019 §8, not an automatic cycle-resolution algorithm.
+
+No M8 operation may clear or override this hold while the verified union still
+contains the unresolved cycle. Master Spec §14 and `docs/08` §7–8 reserve the
+offline recovery-root capability for first-device bootstrap after all ordinary
+trusted devices are lost; it is not a routine M8 conflict override. M8 defines
+no cycle-specific recovery operation, so the hold remains until a future,
+independently reviewed policy can derive a safe outcome from canonical history.
+The independent security review must confirm this fail-closed scope and
+availability consequence before protocol acceptance. If that review finds the
+hold or lack of M8 recovery inconsistent with the accepted contract, keep the
+protocol NOT ACCEPTED and return for an explicit policy decision. No production
+reducer or trust activation is authorized before that review.
 
 ## 5. Reader-first rollout, transaction order, and recovery
 
@@ -655,10 +676,12 @@ discover the durable result. Journal/canonical mismatches fail closed.
   `MoveFileExW` replace/write-through and destination reopen/sync, without
   claiming parent-directory sync. Test canonical UUID output from uppercase
   legacy local Brain metadata while leaving all existing v1/v2 bytes unchanged.
-- Before acceptance, record the owner's explicit decision on the cycle-induced
-  Brain hold and a reviewed recovery path, or replace it with a separately
-  reviewed deterministic rule. Do not treat the existing “liveness review” note
-  as acceptance.
+- Before acceptance, independently review the cycle-induced Brain-wide hold,
+  its no-partial-content behavior, replica convergence, and the absence of an
+  M8 override. The accepted Master Spec/ADR-0019 permit explicit safe conflict
+  holds; do not invent a cycle-breaking or M11 recovery-root path. If review
+  finds the hold/recovery boundary inconsistent with the accepted contract,
+  keep the protocol NOT ACCEPTED and obtain an explicit policy decision.
 - Crash injection at every row in §5, idempotent retry tests, restore/rebuild and
   downgrade tests, journal write/flush/replace/readback fault injection and
   torn/corrupt journal recovery on both platforms, cutoff `0`, `1`, and

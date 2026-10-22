@@ -38,4 +38,27 @@ The reviewer found the v1/v2/v3 chain-link direction, old-reader fail-closed int
 
 ## Follow-up status
 
-The proposal now incorporates documentation-level clarifications for findings 2–6 and 8–12, plus an explicit importer lock/publication release gate for finding 1. The cycle denial-of-service recovery choice remains open for owner decision; the importer and retrieval-safety gates also require implementation and tests. This review remains NOT READY and does not authorize acceptance, trust activation, or M8 completion. No Actions or tests were run for this documentation follow-up.
+The proposal now incorporates documentation-level clarifications for findings 2–6 and 8–12, plus an explicit importer lock/publication release gate for finding 1. The cycle concern has a documentation follow-up below, but it has not been independently re-reviewed. The importer and retrieval-safety gates also require implementation and tests. This review remains NOT READY and does not authorize acceptance, trust activation, or M8 completion. No Actions or tests were run for this documentation follow-up.
+
+## Master Spec alignment follow-up (not independently reviewed)
+
+The owner asked to resolve the cycle policy from the existing master plan. The
+proposal filters restrictions already known to be beyond an issuer's
+independently established external cutoff before classifying dependency cycles.
+Only a remaining cycle whose issuer eligibility depends on the same cycle is
+treated as unresolved, mutually affected authority. That case returns the
+explicit safe-conflict outcome allowed by ADR-0019 §8: Brain-wide
+guarded-content hold under Master Spec §9, with no partial guarded content and
+no arrival/time/order tie-break. The full verified canonical union is the
+deterministic input, so replicas must converge on the same hold. The component
+filtering/cutoff propagation rule is a new candidate interpretation and still
+needs independent review, especially for nested components.
+
+Master Spec §14 and `docs/08` §7–8 define the recovery root only for first-device
+bootstrap after all ordinary trusted devices are lost. The proposal does not
+extend it into an M8 cycle override. M8 currently defines no cycle-specific
+recovery, so the hold persists until a future independently reviewed policy can
+derive a safe outcome. This interpretation needs independent review before
+protocol acceptance. The original Cursor recommendation remains NOT READY; no
+owner acceptance, protocol activation, implementation, or M8 completion is
+claimed.
