@@ -38,7 +38,7 @@ pub struct LocalDeviceIdentity {
 }
 
 impl LocalDeviceIdentity {
-    fn validate(&self) -> Result<(), LocalDeviceIdentityError> {
+    pub(crate) fn validate(&self) -> Result<(), LocalDeviceIdentityError> {
         require_exact_schema(
             "local device identity",
             self.schema_version,

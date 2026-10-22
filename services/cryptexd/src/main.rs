@@ -52,6 +52,7 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
     match args[0].as_str() {
         "lifecycle" => run_lifecycle(&args[1..]),
         "identity" => run_identity(&args[1..]),
+        "replication" => run_replication(&args[1..]),
         "pilot-fixture" => run_pilot_fixture(&args[1..]),
         "help" | "--help" | "-h" => {
             print_usage();
@@ -62,6 +63,25 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
             usage_text()
         ))),
     }
+}
+
+fn run_replication(args: &[String]) -> Result<(), LifecycleError> {
+    let [command, flag, value] = args else {
+        return Err(LifecycleError::Usage(
+            "replication status requires an explicit --runtime-root <app-data-path>".into(),
+        ));
+    };
+    if command != "status" || flag != "--runtime-root" || value.is_empty() {
+        return Err(LifecycleError::Usage(
+            "usage: cryptexd replication status --runtime-root <app-data-path>".into(),
+        ));
+    }
+    let status = cryptexd::replication_status::inspect_replication_status(Path::new(value))
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    let json = serde_json::to_string_pretty(&status)
+        .map_err(|_| LifecycleError::Attention("cannot serialize replication status".into()))?;
+    println!("{json}");
+    Ok(())
 }
 
 const PILOT_RUNTIME_MARKER: &str = "m0-native-desktop-runtime-v1\n";
@@ -411,6 +431,7 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
                 // paths in a Windows Run value. Uses the same hold lifecycle.
                 let runtime_root = parse_runtime_root(&args[1..])?;
                 HoldOpts {
+                    managed: None,
                     ready_file: Some(runtime_root.join("ready")),
                     mode: HoldMode::UntilStopFile(runtime_root.join("stop")),
                     runtime_root,
@@ -418,11 +439,31 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             } else {
                 parse_hold_opts(&args[1..])?
             };
+            #[cfg(not(windows))]
+            if opts.managed.is_some() {
+                return Err(LifecycleError::Usage(
+                    "managed transport startup awaits this platform adapter".into(),
+                ));
+            }
             ensure_runtime_root(&opts.runtime_root)?;
             // Acquire the single-instance lock before any durable identity writes.
             let lock = try_acquire_instance(&opts.runtime_root)?;
             let install = prepare_m1_runtime_foundation(&opts.runtime_root)
                 .map_err(|e| e.into_lifecycle())?;
+            #[cfg(windows)]
+            let mut transport = start_managed_transport(opts.managed.as_ref())?;
+            #[cfg(windows)]
+            if let Some(worker) = &transport {
+                cryptexd::ipc::spawn_daemon_ipc_server_with_transport(
+                    &opts.runtime_root,
+                    std::sync::Arc::new(cryptexd::WindowsCredentialStore::new()),
+                    SecureStoreEnvironment::Dev,
+                    worker.status_reader(),
+                )?;
+            } else {
+                spawn_platform_ipc_server(&opts.runtime_root)?;
+            }
+            #[cfg(not(windows))]
             spawn_platform_ipc_server(&opts.runtime_root)?;
             let report = LifecycleReport::active_holder(
                 &opts.runtime_root,
@@ -450,6 +491,12 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
                 }
             }
 
+            #[cfg(windows)]
+            if let Some(worker) = &mut transport {
+                worker
+                    .shutdown(Duration::from_secs(40))
+                    .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+            }
             drop(lock);
             let observation = observe_instance(&opts.runtime_root)?;
             let release_report = LifecycleReport::from_observation(
@@ -542,9 +589,67 @@ enum HoldMode {
 
 #[derive(Debug)]
 struct HoldOpts {
+    managed: Option<ManagedTransportOpts>,
     runtime_root: PathBuf,
     ready_file: Option<PathBuf>,
     mode: HoldMode,
+}
+
+#[derive(Debug)]
+#[cfg_attr(not(windows), allow(dead_code))]
+struct ManagedTransportOpts {
+    profile: PathBuf,
+    package: PathBuf,
+    api: u16,
+    sync: u16,
+}
+
+#[cfg(windows)]
+fn start_managed_transport(
+    opts: Option<&ManagedTransportOpts>,
+) -> Result<Option<cryptexd::managed_profile::worker::ManagedTransportWorker>, LifecycleError> {
+    use cryptexd::managed_profile::{
+        controller::Phase,
+        native::NativePorts,
+        worker::{ManagedTransportWorker, WorkerState},
+    };
+    let Some(opts) = opts else {
+        return Ok(None);
+    };
+    let ports = NativePorts::new(opts.api, opts.sync)
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    let mut worker = ManagedTransportWorker::spawn_existing(
+        opts.profile.clone(),
+        opts.package.clone(),
+        SecureStoreEnvironment::Dev,
+        ports,
+    )
+    .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(18);
+    loop {
+        let snapshot = worker
+            .snapshot()
+            .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+        if snapshot.state == WorkerState::Failed {
+            let error = worker.shutdown(Duration::from_secs(3)).err();
+            return Err(LifecycleError::Attention(format!(
+                "managed transport startup refused ({error:?})"
+            )));
+        }
+        if snapshot
+            .controller
+            .is_some_and(|status| status.phase == Phase::LocalReady)
+        {
+            return Ok(Some(worker));
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = worker.shutdown(Duration::from_secs(40));
+            return Err(LifecycleError::Attention(
+                "managed transport startup deadline".into(),
+            ));
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 fn parse_runtime_root(args: &[String]) -> Result<PathBuf, LifecycleError> {
@@ -576,6 +681,7 @@ fn parse_runtime_root(args: &[String]) -> Result<PathBuf, LifecycleError> {
 }
 
 fn parse_hold_opts(args: &[String]) -> Result<HoldOpts, LifecycleError> {
+    let mut managed = std::collections::BTreeMap::new();
     let mut runtime_root = None;
     let mut ready_file = None;
     let mut stop_file = None;
@@ -585,6 +691,23 @@ fn parse_hold_opts(args: &[String]) -> Result<HoldOpts, LifecycleError> {
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
+            flag @ ("--managed-profile"
+            | "--managed-package"
+            | "--managed-api-port"
+            | "--managed-sync-port") => {
+                let value = args
+                    .get(index + 1)
+                    .filter(|v| !v.is_empty())
+                    .ok_or_else(|| {
+                        LifecycleError::Usage("managed transport option requires a value".into())
+                    })?;
+                if managed.insert(flag.to_owned(), value.clone()).is_some() {
+                    return Err(LifecycleError::Usage(
+                        "duplicate managed transport option".into(),
+                    ));
+                }
+                index += 2;
+            }
             "--runtime-root" => {
                 let value = args.get(index + 1).ok_or_else(|| {
                     LifecycleError::Usage("--runtime-root requires a path".into())
@@ -646,7 +769,55 @@ fn parse_hold_opts(args: &[String]) -> Result<HoldOpts, LifecycleError> {
         ));
     };
 
+    let managed = if managed.is_empty() {
+        None
+    } else {
+        if managed.len() != 4 {
+            return Err(LifecycleError::Usage(
+                "managed transport requires all four profile/package/API/sync options".into(),
+            ));
+        }
+        let profile = PathBuf::from(&managed["--managed-profile"]);
+        let package = PathBuf::from(&managed["--managed-package"]);
+        for path in [&profile, &package] {
+            if !path.is_absolute()
+                || path
+                    .components()
+                    .any(|part| matches!(part, std::path::Component::ParentDir))
+            {
+                return Err(LifecycleError::Usage(
+                    "managed paths must be absolute without parent traversal".into(),
+                ));
+            }
+            assert_outside_repository(path)?;
+        }
+        let port = |flag: &str| -> Result<u16, LifecycleError> {
+            let text = &managed[flag];
+            if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) || text.starts_with('0')
+            {
+                return Err(LifecycleError::Usage(
+                    "managed port must be a nonzero decimal u16".into(),
+                ));
+            }
+            text.parse()
+                .map_err(|_| LifecycleError::Usage("managed port must fit u16".into()))
+        };
+        let api = port("--managed-api-port")?;
+        let sync = port("--managed-sync-port")?;
+        if api == sync {
+            return Err(LifecycleError::Usage(
+                "managed API/sync ports must differ".into(),
+            ));
+        }
+        Some(ManagedTransportOpts {
+            profile,
+            package,
+            api,
+            sync,
+        })
+    };
     Ok(HoldOpts {
+        managed,
         runtime_root,
         ready_file,
         mode,
@@ -788,10 +959,12 @@ fn usage_text() -> String {
         "usage:",
         "  cryptexd",
         "  cryptexd identity enroll-local --runtime-root <app-data-path> --environment <dev|prod>",
+        "  cryptexd replication status --runtime-root <app-data-path> (read-only metadata diagnostics)",
         "  cryptexd pilot-fixture timeline-v1 --runtime-root <fresh-pilot-path> --confirm-isolated-pilot",
         "  cryptexd lifecycle status [--runtime-root <path>]",
         "  cryptexd lifecycle probe [--runtime-root <path>]",
         "  cryptexd lifecycle hold --runtime-root <path> (--stop-file <path> | --hold-ms <ms> | --crash-after-ready) [--ready-file <path>]",
+        "    Windows opt-in: --managed-profile <existing-ready-path> --managed-package <pinned-package-dir> --managed-api-port <port> --managed-sync-port <port>",
         "  cryptexd lifecycle login-hold --runtime-root <path> (test-only; ready/stop under runtime root)",
         "  cryptexd lifecycle compat --desktop-protocol <n> [--daemon-protocol <n>] [--runtime-root <path>]",
         "  cryptexd lifecycle update-proof --base-bin <path> [--runtime-root <path>] [--experiment-id <id>]",
@@ -808,6 +981,60 @@ fn usage_text() -> String {
 
 #[cfg(test)]
 mod tests {
+    fn managed_args() -> Vec<String> {
+        vec![
+            "--hold-ms".into(),
+            "0".into(),
+            "--managed-profile".into(),
+            std::env::temp_dir()
+                .join("0123456789abcdef0123456789abcdef")
+                .to_string_lossy()
+                .into_owned(),
+            "--managed-package".into(),
+            std::env::temp_dir()
+                .join("pinned-native-test-package")
+                .to_string_lossy()
+                .into_owned(),
+            "--managed-api-port".into(),
+            "42000".into(),
+            "--managed-sync-port".into(),
+            "42001".into(),
+        ]
+    }
+    #[test]
+    fn managed_transport_startup_requires_complete_explicit_options() {
+        assert!(
+            parse_hold_opts(&["--hold-ms".into(), "0".into()])
+                .unwrap()
+                .managed
+                .is_none()
+        );
+        let opts = parse_hold_opts(&managed_args()).unwrap();
+        assert_eq!(opts.managed.unwrap().api, 42000);
+        let mut partial = managed_args();
+        partial.truncate(8);
+        assert!(parse_hold_opts(&partial).is_err());
+        let mut duplicate = managed_args();
+        duplicate.extend(["--managed-api-port".into(), "42000".into()]);
+        assert!(parse_hold_opts(&duplicate).is_err());
+    }
+    #[test]
+    fn managed_transport_rejects_unsafe_paths_and_ambiguous_ports() {
+        for bad in ["0", "01", "+42000", "65536", "4e4", "42001"] {
+            let mut args = managed_args();
+            args[7] = bad.into();
+            assert!(parse_hold_opts(&args).is_err(), "{bad}");
+        }
+        let mut args = managed_args();
+        args[3] = "relative-profile".into();
+        assert!(parse_hold_opts(&args).is_err());
+        let mut args = managed_args();
+        args[3] = std::env::temp_dir()
+            .join("child/../profile")
+            .to_string_lossy()
+            .into_owned();
+        assert!(parse_hold_opts(&args).is_err());
+    }
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -821,6 +1048,64 @@ mod tests {
         fs::create_dir(&root).expect("pilot root");
         fs::write(root.join("pilot-runtime.marker"), PILOT_RUNTIME_MARKER).expect("marker");
         root
+    }
+
+    #[test]
+    fn replication_status_requires_an_explicit_target_and_rejects_mutation_commands() {
+        for args in [
+            vec!["replication"],
+            vec!["replication", "status"],
+            vec!["replication", "pair", "--runtime-root", "unused"],
+            vec![
+                "replication",
+                "status",
+                "--runtime-root",
+                "unused",
+                "--runtime-root",
+                "other",
+            ],
+        ] {
+            assert!(matches!(
+                run(args.into_iter().map(String::from).collect()),
+                Err(LifecycleError::Usage(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn replication_status_does_not_initialize_a_missing_runtime() {
+        let parent = fresh_pilot_root();
+        let missing = parent.join("uninitialized");
+        run(vec![
+            "replication".into(),
+            "status".into(),
+            "--runtime-root".into(),
+            missing.to_str().unwrap().into(),
+        ])
+        .unwrap();
+        assert!(!missing.exists());
+        fs::remove_dir_all(parent).unwrap();
+    }
+
+    #[test]
+    fn replication_status_reports_metadata_corruption_without_echoing_it() {
+        let root = fresh_pilot_root();
+        fs::create_dir(root.join("identity")).unwrap();
+        fs::write(
+            cryptexd::identity_runtime::brain_identity_path(&root),
+            b"private-invalid-body",
+        )
+        .unwrap();
+        let error = run(vec![
+            "replication".into(),
+            "status".into(),
+            "--runtime-root".into(),
+            root.to_str().unwrap().into(),
+        ])
+        .unwrap_err();
+        assert!(matches!(error, LifecycleError::Attention(_)));
+        assert!(!error.to_string().contains("private-invalid-body"));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

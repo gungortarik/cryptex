@@ -19,14 +19,23 @@ ed25519-dalek = { workspace = true }
 getrandom = "=0.2.16"
 serde_json_canonicalizer = { workspace = true }
 blake3 = { workspace = true }
+sha2 = { workspace = true }
+quick-xml = "=0.42.0"
 fs2 = "0.4.3"
 interprocess = "=2.4.4"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
+# Reuse locked HTTP/runtime versions for authenticated, already-owned sockets.
+bytes = "=1.12.1"
+hyper = { version = "=1.11.1", features = ["client", "http1"] }
+hyper-util = { version = "=0.1.21", features = ["tokio"] }
+http-body-util = "=0.1.5"
+tokio = { version = "=1.53.1", features = ["rt", "time", "net"] }
+futures-util = { version = "=0.3.34", default-features = false, features = ["std"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
-windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Security_Credentials", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Threading"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Security_Credentials", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock"] }
 widestring = "=1.2.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -37,3 +46,5 @@ security-framework = "=3.7.0"
 libc = "=0.2.189"
 
 [dev-dependencies]
+# Legacy URL-client fixtures only. Product requests use the attested socket.
+reqwest = { version = "=0.13.5", default-features = false, features = ["blocking"] }

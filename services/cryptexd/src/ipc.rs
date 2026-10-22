@@ -393,6 +393,8 @@ pub fn spawn_retrieval_server(
         environment,
         expected_desktop: Arc::new(expected_desktop),
         projection_sync: None,
+        #[cfg(windows)]
+        transport_status: None,
     };
     start_projection_sync_worker(&mut context);
     spawn_server(Some(context))
@@ -407,6 +409,31 @@ pub fn spawn_daemon_ipc_server(
     runtime_root: &Path,
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
+) -> io::Result<()> {
+    spawn_daemon_ipc_server_inner(
+        runtime_root,
+        store,
+        environment,
+        #[cfg(windows)]
+        None,
+    )
+}
+
+#[cfg(windows)]
+pub fn spawn_daemon_ipc_server_with_transport(
+    runtime_root: &Path,
+    store: Arc<dyn SecureStore>,
+    environment: SecureStoreEnvironment,
+    transport: crate::managed_profile::worker::StatusReader,
+) -> io::Result<()> {
+    spawn_daemon_ipc_server_inner(runtime_root, store, environment, Some(transport))
+}
+
+fn spawn_daemon_ipc_server_inner(
+    runtime_root: &Path,
+    store: Arc<dyn SecureStore>,
+    environment: SecureStoreEnvironment,
+    #[cfg(windows)] transport: Option<crate::managed_profile::worker::StatusReader>,
 ) -> io::Result<()> {
     let expected_desktop = match desktop_process_identity() {
         Ok(identity) => identity,
@@ -424,8 +451,14 @@ pub fn spawn_daemon_ipc_server(
         environment,
         expected_desktop: Arc::new(expected_desktop),
         projection_sync: None,
+        #[cfg(windows)]
+        transport_status: None,
     };
     start_projection_sync_worker(&mut context);
+    #[cfg(windows)]
+    {
+        context.transport_status = transport;
+    }
     spawn_server(Some(context))
 }
 
@@ -436,6 +469,8 @@ struct SearchContext {
     environment: SecureStoreEnvironment,
     expected_desktop: Arc<DesktopProcessIdentity>,
     projection_sync: Option<SyncSender<()>>,
+    #[cfg(windows)]
+    transport_status: Option<crate::managed_profile::worker::StatusReader>,
 }
 
 /// Run derived catch-up off the IPC request path. Canonical capture success is
@@ -1274,6 +1309,8 @@ fn handle_connection_for_peer(
                     }
                 } else if request.operation == "identity.enroll_local" {
                     serde_json::to_vec(&handle_enrollment(request, search, peer_is_desktop))?
+                } else if request.operation == "transport.status" {
+                    serde_json::to_vec(&handle_transport_status(request, search, peer_is_desktop))?
                 } else {
                     serde_json::to_vec(&authorize(request))?
                 };
@@ -2033,6 +2070,140 @@ fn peer_process_id(stream: &Stream) -> io::Result<u32> {
         .pid()
         .and_then(|pid| u32::try_from(pid).ok())
         .ok_or_else(|| io::Error::new(io::ErrorKind::PermissionDenied, "IPC peer PID unavailable"))
+}
+
+/// Read-only Desktop status. No paths, transport identities, API credentials or
+/// raw worker/native diagnostics cross the wire. Local readiness is not trust.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopTransportResponse {
+    pub protocol_version: u32,
+    pub request_id: Option<String>,
+    pub accepted: bool,
+    pub error: Option<String>,
+    pub operation: Option<String>,
+    pub daemon_pid: u32,
+    pub configured: bool,
+    pub protected: bool,
+    pub state: Option<String>,
+    pub phase: Option<String>,
+    pub attempt: Option<u8>,
+    pub native_pid: Option<u32>,
+    pub stop_requested: bool,
+    pub worker_error: Option<String>,
+}
+
+fn handle_transport_status(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+) -> DesktopTransportResponse {
+    let error = if request.operation != "transport.status" {
+        Some("unsupported_operation")
+    } else if request.protocol_version != PROTOCOL_VERSION {
+        Some("incompatible_protocol_version")
+    } else if request.request_id.is_empty() || request.request_id.len() > 128 {
+        Some("invalid_request_id")
+    } else if request.client_role != "desktop" {
+        Some("unauthorized_client_role")
+    } else if !peer_is_desktop {
+        Some("unauthorized_client_process")
+    } else if request.capabilities.as_slice() != [CAPABILITY_STATUS_READ] {
+        Some("unauthorized_capability")
+    } else if request.query.is_some()
+        || request.capture.is_some()
+        || request.capture_resolve.is_some()
+        || request.vault.is_some()
+    {
+        Some("unexpected_request_payload")
+    } else if context.is_none() {
+        Some("transport_status_unavailable")
+    } else {
+        None
+    };
+    let mut response = DesktopTransportResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: Some(request.request_id),
+        accepted: error.is_none(),
+        error: error.map(str::to_owned),
+        operation: error.is_none().then(|| "transport.status.result".into()),
+        daemon_pid: process::id(),
+        configured: false,
+        protected: false,
+        state: None,
+        phase: None,
+        attempt: None,
+        native_pid: None,
+        stop_requested: false,
+        worker_error: None,
+    };
+    if error.is_some() {
+        return response;
+    }
+    #[cfg(windows)]
+    if let Some(reader) = context.and_then(|context| context.transport_status.as_ref()) {
+        use crate::managed_profile::{
+            controller::Phase,
+            worker::{WorkerError, WorkerState},
+        };
+        let snapshot = match reader.try_snapshot() {
+            Ok(snapshot) => snapshot,
+            Err(_) => {
+                response.accepted = false;
+                response.operation = None;
+                response.error = Some("transport_status_unavailable".into());
+                return response;
+            }
+        };
+        response.configured = true;
+        response.state = Some(
+            match snapshot.state {
+                WorkerState::Opening => "opening",
+                WorkerState::Active => "active",
+                WorkerState::Stopping => "stopping",
+                WorkerState::Finished => "finished",
+                WorkerState::Failed => "failed",
+            }
+            .into(),
+        );
+        response.stop_requested = snapshot.stop_requested;
+        if let Some(status) = snapshot.controller {
+            response.phase = Some(
+                match status.phase {
+                    Phase::Starting => "starting",
+                    Phase::LocalReady => "local_ready",
+                    Phase::RestartWaiting => "restart_waiting",
+                    Phase::Stopped => "stopped",
+                    Phase::Failed => "failed",
+                }
+                .into(),
+            );
+            response.attempt = Some(status.attempt);
+            // Terminal workers do not advertise a stale active PID.
+            if matches!(snapshot.state, WorkerState::Active | WorkerState::Stopping) {
+                response.native_pid = status.pid;
+            }
+        }
+        response.worker_error = snapshot.error.map(|error| {
+            match error {
+                WorkerError::Spawn => "spawn_failed",
+                WorkerError::Panicked => "worker_panicked",
+                WorkerError::StatusUnavailable => "status_unavailable",
+                WorkerError::InvalidDeadline => "invalid_deadline",
+                WorkerError::ShutdownDeadline => "shutdown_deadline",
+                WorkerError::Package(_) => "package_refused",
+                WorkerError::Profile(_) => "profile_refused",
+                WorkerError::Native(_) => "native_refused",
+                WorkerError::Controller(_) => "controller_failed",
+            }
+            .to_owned()
+        });
+    }
+    #[cfg(not(windows))]
+    {
+        response.state = Some("unsupported_platform".into());
+    }
+    response
 }
 
 fn handle_enrollment(
@@ -3305,6 +3476,151 @@ mod tests {
 
     const TEST_BRAIN_ID: &str = "11111111-1111-4111-8111-111111111111";
 
+    fn transport_request() -> Request {
+        let mut request = search_request("desktop", vec![CAPABILITY_STATUS_READ.into()]);
+        request.operation = "transport.status".into();
+        request.query = None;
+        request
+    }
+
+    #[test]
+    fn transport_status_requires_exact_desktop_peer_role_capability_and_body() {
+        let fixture = prepared_search_fixture("transport-auth");
+        for (request, peer, expected) in [
+            (transport_request(), false, "unauthorized_client_process"),
+            (
+                Request {
+                    client_role: "mcp".into(),
+                    ..transport_request()
+                },
+                true,
+                "unauthorized_client_role",
+            ),
+            (
+                Request {
+                    client_role: "cli".into(),
+                    ..transport_request()
+                },
+                true,
+                "unauthorized_client_role",
+            ),
+            (
+                Request {
+                    protocol_version: PROTOCOL_VERSION + 1,
+                    ..transport_request()
+                },
+                true,
+                "incompatible_protocol_version",
+            ),
+            (
+                Request {
+                    capabilities: vec![],
+                    ..transport_request()
+                },
+                true,
+                "unauthorized_capability",
+            ),
+            (
+                Request {
+                    capabilities: vec![
+                        CAPABILITY_STATUS_READ.into(),
+                        CAPABILITY_CONTENT_SEARCH.into(),
+                    ],
+                    ..transport_request()
+                },
+                true,
+                "unauthorized_capability",
+            ),
+            (
+                Request {
+                    query: Some(DesktopSearchQuery::default()),
+                    ..transport_request()
+                },
+                true,
+                "unexpected_request_payload",
+            ),
+            (
+                Request {
+                    request_id: String::new(),
+                    ..transport_request()
+                },
+                true,
+                "invalid_request_id",
+            ),
+        ] {
+            let response = handle_transport_status(request, Some(&fixture.context), peer);
+            assert!(!response.accepted);
+            assert_eq!(response.error.as_deref(), Some(expected));
+            assert!(!response.configured && !response.protected);
+        }
+        let response = handle_transport_status(transport_request(), None, true);
+        assert_eq!(
+            response.error.as_deref(),
+            Some("transport_status_unavailable")
+        );
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[test]
+    fn transport_status_named_pipe_round_trip_is_small_and_unconfigured() {
+        let fixture = prepared_search_fixture("transport-wire");
+        let context = fixture.context.clone();
+        let (name, listener) = isolated_ipc_listener("transport-status");
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().unwrap();
+            // OS Desktop identity is exercised separately; this fixture injects
+            // the decision to cover exact routing/framing and response bytes.
+            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+                .unwrap();
+        });
+        let mut client = Stream::connect(name.borrow()).unwrap();
+        let frame = exchange(&mut client, &transport_request(), 4096).unwrap();
+        assert!(frame.len() < 2048);
+        let response: DesktopTransportResponse = serde_json::from_slice(&frame).unwrap();
+        assert!(response.accepted);
+        assert_eq!(
+            response.operation.as_deref(),
+            Some("transport.status.result")
+        );
+        assert!(!response.configured && !response.protected);
+        assert!(response.native_pid.is_none());
+        server.join().unwrap();
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn transport_status_reports_sanitized_worker_failure_without_paths() {
+        use crate::managed_profile::{
+            native::NativePorts,
+            worker::{ManagedTransportWorker, WorkerState},
+        };
+        let mut fixture = prepared_search_fixture("transport-failed-worker");
+        let private_path = fixture.root.join("private-package-path-must-not-cross-ipc");
+        let mut worker = ManagedTransportWorker::spawn_existing(
+            private_path.clone(),
+            private_path,
+            SecureStoreEnvironment::Dev,
+            NativePorts::new(40400, 40401).unwrap(),
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while worker.snapshot().unwrap().state != WorkerState::Failed {
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(1));
+        }
+        fixture.context.transport_status = Some(worker.status_reader());
+        let response = handle_transport_status(transport_request(), Some(&fixture.context), true);
+        assert!(response.accepted && response.configured && !response.protected);
+        assert_eq!(response.worker_error.as_deref(), Some("package_refused"));
+        let bytes = serde_json::to_string(&response).unwrap();
+        assert!(!bytes.contains("private-package-path"));
+        assert!(!bytes.contains("api_key"));
+        assert!(response.native_pid.is_none());
+        assert!(worker.shutdown(Duration::from_secs(1)).is_err());
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
     fn search_request(role: &str, capabilities: Vec<String>) -> Request {
         Request {
             protocol_version: PROTOCOL_VERSION,
@@ -3458,6 +3774,8 @@ mod tests {
                 test_desktop_process_identity().expect("capture test Desktop identity"),
             ),
             projection_sync: None,
+            #[cfg(windows)]
+            transport_status: None,
         };
         SearchFixture {
             root,
@@ -3857,6 +4175,8 @@ mod tests {
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
             projection_sync: None,
+            #[cfg(windows)]
+            transport_status: None,
         };
         let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
 
@@ -3887,6 +4207,8 @@ mod tests {
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
             projection_sync: None,
+            #[cfg(windows)]
+            transport_status: None,
         };
         let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
 
@@ -4110,6 +4432,8 @@ mod tests {
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
             projection_sync: None,
+            #[cfg(windows)]
+            transport_status: None,
         };
         let request = || Request {
             protocol_version: PROTOCOL_VERSION,

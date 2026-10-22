@@ -22,17 +22,24 @@ pub mod instance;
 pub mod ipc;
 pub mod knowledge_materialization;
 pub mod local_device_identity;
+pub mod managed_profile;
 mod metadata_persistence;
+pub mod owned_process;
 pub mod pairing_store;
 pub mod paths;
+pub mod peer_review;
 pub mod platform;
 pub mod projection;
 pub mod recovery_store;
+pub mod replication_status;
 pub mod secure_store;
 pub mod sequence_runtime;
 pub mod sequence_store;
 pub mod status;
 pub mod supervision;
+pub mod syncthing_owned_rest;
+pub mod syncthing_package;
+pub mod syncthing_rest;
 
 pub mod supervisor;
 #[cfg(test)]
