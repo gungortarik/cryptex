@@ -157,6 +157,177 @@ fresh installation and requires explicit enrollment. Joining an existing Brain
 must preserve its immutable Brain identity bytes; first-Brain creation and
 existing-Brain join are mutually exclusive setup operations.
 
+### 2.4 Draft closure of scoped review findings M8-R1 through M8-R5
+
+The following rules are proposed as normative protocol constraints. They close
+the format ambiguities identified in the 2026-10-22 scoped review, but remain
+subject to independent security review and owner acceptance.
+
+**M8-R1 — immutable approval request.** Before showing a confirmation, the
+daemon freezes the complete candidate and computes:
+
+```text
+approval_request_digest = BLAKE3-256(
+  UTF8("cryptex-owner-approval-request-v1") || 0x00 ||
+  JCS({brain_id, transaction_id, role, operation, agreement_hash,
+       previous_message_hash,
+       local_identity, peer_identity, transport_association,
+       restriction_target, cutoff_seq, cutoff_content_hash})
+)
+```
+
+`operation` is exactly `peer_admission`, `device_restriction`, or
+`self_retirement`; `role` is `initiator`/`responder` for admission and `issuer`
+for restriction/retirement. Each operation has a closed field shape:
+`agreement_hash` and `previous_message_hash` are non-null only for admission;
+they are null for restriction and self-retirement. For admission,
+`previous_message_hash` is the hash of the exact preceding message in the
+four-message order: `proof_hash` for the initiator's approval, or the
+initiator-approval message hash for the responder's approval. This binds the
+request to the exact signed prefix available before the local approval exists;
+the complete `transcript_hash` is computed only after both approvals are
+signed. `peer_identity` is null for self-retirement and is the exact peer or
+target binding for admission/restriction. `transport_association` is null for
+local self-retirement and otherwise contains the exact applicable adapter IDs.
+Restriction fields are null except for a restriction, where target, cutoff,
+and boundary hash are all required. `local_identity` and non-null `peer_identity` contain the
+canonical DeviceId, 16-byte signing-key ID, and full public-key SHA-256
+fingerprint. The daemon returns the frozen display snapshot and digest together
+over the authenticated Desktop IPC. The UI renders that snapshot without
+re-reading mutable pairing or transport state. Confirmation supplies that
+digest plus a daemon-issued, single-use approval-session token bound to the
+authenticated Desktop process/session. The daemon compares the digest to its
+pending request, verifies the operation and owner session, then consumes the
+token. Validation and consumption are one atomic state transition scoped to
+that authenticated session: concurrent confirmation, cancellation, and replay
+requests serialize, and at most one can claim a still-pending token. If
+cancellation wins, it invalidates the token. Confirmation consumes the token
+before signature generation or canonical append. Any later error requires a
+new displayed confirmation and token; a consumed token is never restored.
+For admission it signs only the local approval message; the canonical
+anchor remains gated on both approvals and the complete transcript. A
+restriction or self-retirement may append its canonical event only after its
+exact request is confirmed. After confirmation, the daemon reacquires the
+required canonical locks and recomputes the approval snapshot, including the
+target prefix and cutoff hash for restrictions. If any digest input changed,
+it refuses this confirmation as stale, consumes the token, and requires a new
+displayed snapshot and owner confirmation. A changed, cancelled, expired,
+replayed, or restart-orphaned request is refused. Approval sessions expire
+after five minutes of daemon monotonic time and are invalidated on IPC-session
+close or daemon restart; a
+durable pending transaction may be resumed only by displaying the same frozen
+candidate and obtaining a fresh confirmation session. No owner confirmation is
+inferred from a signed remote claim.
+
+**M8-R2 — parser bounds before JCS.** For bootstrap messages only, enforce the
+64-KiB raw UTF-8 byte limit before parsing, then parse with a streaming/token
+path that rejects invalid UTF-8/JSON, duplicate decoded object keys, nesting
+deeper than 4 containers, more than 24 members in any object, more than 16
+items in any array, or any string token whose decoded UTF-8 representation is
+longer than 16 KiB. The string bound applies to both object keys and values and
+is enforced incrementally after JSON escape decoding. Reject unpaired
+surrogate escapes and any invalid Unicode scalar sequence. Count the root
+object as container depth 1; each nested object or array adds one level. Object
+keys must be ASCII and belong to the exact closed schema. The only JSON number token
+permitted is the exact integer token `1` for `protocol_version`; fractions,
+exponents, negative zero, other numeric values, and out-of-range values are
+rejected. The parser must enforce these bounds while consuming input, before
+building an unbounded object or invoking JCS. After these checks, perform exact
+field/type/identifier validation, then JCS, then signature/hash verification.
+These bootstrap limits do not alter v1/v2 event parsing or event-record limits.
+
+**M8-R3 — durable pending state and idempotency.** A per-installation,
+daemon-owned pending journal stores only public protocol data: transaction ID,
+Brain ID, operation kind, the exact frozen owner-confirmation snapshot and its
+digest, the exact signed transcript messages received/generated so far,
+transcript hash (null until complete), local DeviceId/key ID/full-key
+fingerprint, peer/target binding where applicable, transport association,
+role, state, whether a local approval signature has been generated and whether
+it has been released externally, a stable event ID, and every append attempt's
+reserved sequence, predecessor hash, and candidate content hash if append
+outcome is uncertain. It never stores a private key or grants trust. At most 16
+pending transactions and 1 MiB of journal payload are retained;
+overflow refuses a new transaction before mutation. Allowed initiator
+transitions are `offer_created -> proof_received -> local_approval_signed ->
+transcript_ready`; allowed responder transitions are `offer_received ->
+proof_created -> peer_approval_received -> local_approval_signed ->
+transcript_ready`. Either role then transitions to `append_unknown` only on
+uncertain durable append and to `anchored` only after canonical verification.
+Owner cancellation or explicit owner expiry before a local approval signature
+is released is terminal from any nonterminal state. After a signed approval has
+been released externally, local cancellation prevents local anchor/continuation
+but cannot revoke that already-sent signature or claim global cancellation;
+the UI must report that limitation and the peer may already have its own local
+approval. There is no automatic wall-clock expiry; the five-minute
+approval-session expiry is the only timer and is measured by the daemon's
+monotonic clock. Every journal transition is atomically persisted before its
+corresponding response or external message is released. Candidate journal
+writes use a unique temporary file in the journal directory, exclusive
+creation, complete write, and file sync before replacement. On macOS,
+replacement uses same-volume atomic rename followed by reopening/syncing the
+destination and syncing its parent directory;
+on Windows, replacement uses the existing `MoveFileExW` replace/write-through
+pattern and reopens/syncs the destination. Unsupported platform durability
+fails closed. Journal reads enforce a closed schema, size bounds, duplicate-key
+rejection, and recompute stored digests; the journal remains untrusted cache
+data and never establishes trust. Before releasing a previously generated
+local approval message, verify its signature, transaction binding, and exact
+match to the frozen snapshot being displayed. A durable `anchored` state is
+only a cache: canonical local `security.peer_approved` history remains the
+authority. The journal is reconciled against canonical history on startup;
+nonterminal state must be re-presented as the same frozen candidate and receive
+a fresh local confirmation session. Missing, malformed, or identity-mismatched
+journal state causes refusal and a fresh transaction with new ID/nonces, never
+trust. Before every anchor append or retry, while holding the canonical
+inventory/device locks in the established order, scan/verify the local stream
+for the transaction ID. Same ID plus same transcript hash and exact local
+identity/key is idempotent and returns the existing event; same ID with any
+different transcript hash or identity is a typed conflict and Brain-wide hold.
+For an uncertain append, reread under those locks first: the exact event ID and
+attempt content hash in the canonical stream means success; any same event ID
+with a different content hash is a conflict. An absent event permits retry
+with the same transaction/event IDs only after the complete relevant stream
+verifies and confirms the event ID is absent. A retry builds a new candidate
+event with the same transaction payload and event ID but a newly reserved
+sequence and current predecessor hash; every failed reservation remains a
+permanent gap. Conflicting or unverifiable state is held. Journal loss never
+authorizes blind append. A new transaction requires fresh nonces and a new
+transaction ID.
+
+**M8-R4 — v3 cross-version chain and key resolution.** A v3 security record
+uses the same per-device sequence allocator as v1/v2 and the exact existing
+cross-version `prev_content_hash` link: its predecessor hash is the prior
+record's verified `content_hash`, regardless of predecessor schema version;
+its successor links to the v3 record's verified content hash. Sequence gaps
+remain allowed only as already defined by the shared allocator; each record
+must still have a strictly greater sequence and correct previous hash. The v3
+hash/signature use the v3 domains below, and no v1/v2 bytes, validators, or
+domains change. A new reader resolves the local stream only with the ADR-0018
+enrolled local key and a remote stream only with an exact peer key binding
+rooted in this installation's directly approved local anchor. Imported peer
+approval events may be validated as that peer's history but never add a key to
+this local resolver. Missing or conflicting binding holds the Brain. An older
+reader that encounters `schema_version: 3` classifies the envelope as
+unverifiable; it must not advance that device chain or return guarded content
+from the affected Brain. A new reader accepts v1 and v2 only through their
+existing validators and applies the strict v3 validator. Golden vectors must
+cover v1->v2->v3->v1 with valid links, a wrong predecessor hash, a sequence gap
+with a valid chain, and an older-reader v3 hold.
+
+**M8-R5 — canonical identity equality.** `brain_id` in every bootstrap
+message, and `brain_id` plus `event_id` in every candidate v3 canonical
+security event, use exactly lowercase hyphenated UUID text (8-4-4-4-12);
+uppercase hex, braces, compact forms, and alternate spellings are rejected at
+this protocol boundary. This rule does not change existing v1/v2 acceptance.
+`DeviceId` is the existing ASCII `[A-Za-z0-9_-]{1,64}`
+identity and compares byte-for-byte, case-sensitively; it is never
+case-folded. Key IDs compare as exactly 16 decoded bytes and public-key
+fingerprints as exactly 32 decoded bytes; their wire form is fixed-width
+lowercase hex. Public keys compare as their exact 32 bytes. Transport IDs
+compare as exact adapter-returned ASCII strings after the adapter's existing
+format validation. Case-variant identity and key-ID values fail exact binding
+checks; they are not silently normalized.
+
 ## 3. Candidate security-event format
 
 Use a separately versioned strict event schema (candidate envelope version 3)
@@ -175,8 +346,8 @@ classification. Closed production event types proposed:
 | Event | Closed payload fields | Meaning |
 |---|---|---|
 | `security.peer_approved` | `transaction_id`, `transcript` | This authoring installation's direct owner approval. The transcript contains the signed offer, proof, and both approvals. Only the local author's stream creates local trust. |
-| `security.device_restricted` | `target_device_id`, `target_signing_key_id`, `target_public_key`, `reason` (`retired` or `compromised`), `cutoff_seq`, `cutoff_content_hash` | Owner-confirmed restriction on one exact key and its verified contiguous event prefix. |
-| `security.device_self_retired` | `last_authorized_seq`, `last_authorized_content_hash` | Terminal self-retirement by the event's own ADR-0018 enrolled identity; applies only to that identity. |
+| `security.device_restricted` | `transaction_id`, `target_device_id`, `target_signing_key_id`, `target_public_key`, `reason` (`retired` or `compromised`), `cutoff_seq`, `cutoff_content_hash` | Owner-confirmed restriction on one exact key and its verified contiguous event prefix. |
+| `security.device_self_retired` | `transaction_id`, `last_authorized_seq`, `last_authorized_content_hash` | Terminal self-retirement by the event's own ADR-0018 enrolled identity; applies only to that identity. |
 
 All `security.*` records are policy metadata, never user memory. They are
 excluded from memory search, retrieval, entity/fact materialization, Obsidian
@@ -186,17 +357,48 @@ bodies and public-key material are not returned as note content.
 
 The restriction cutoff is inclusive and encoded as a strict decimal `u64`
 string; `0` means no ordinary content events are retained. The hash binds the
-cutoff to the target stream's exact event at that boundary (all-zero hash only
-for cutoff zero). A restriction cannot be issued for a boundary beyond the
-issuer's verified contiguous target prefix. The signed event itself is not
+cutoff to an exact event in the target stream's verified chain prefix; all-zero
+hash is allowed only with cutoff zero. A cutoff must name an existing event
+sequence in that prefix, not an unoccupied number reserved by an interrupted
+append, and cannot exceed the verified prefix tip. “Contiguous prefix” means
+the complete verified event chain in stream order; numerical sequence gaps
+remain possible under the shared allocator. The signed event itself is not
 rewritten or deleted by applying the cutoff. A self-retirement event at
-sequence `n` must name `last_authorized_seq = n - 1` and the exact content hash
-at that sequence (zero sequence uses the all-zero hash). The self-retirement
-control event is validated as policy metadata even though it is one sequence
-after the last authorized ordinary content event. It cannot authorize another
+sequence `n` must name the immediately preceding verified chain record's
+sequence and exact content hash, which may be less than `n - 1` after skipped
+reservations. If there is no preceding record, use cutoff zero and the
+all-zero hash. The self-retirement control event is validated as policy
+metadata as the sole terminal control exception; it does not authorize
+ordinary content at or after its own sequence and cannot authorize another
 device. Any later record in that identity's stream is ineligible for content
 or policy authority; a fork, inconsistent boundary, or ambiguous retirement
 causes a guarded-content hold.
+
+Every security-event `transaction_id` is a fresh 32-byte random value encoded
+as 64 lowercase hex characters. It is unique within the local author's stream
+across all `security.*` event types. Before append/retry, the daemon searches
+that stream under its writer lock: the same transaction ID with the same event
+type and exact operation digest is idempotent; reuse for a different operation
+or payload is a typed conflict and Brain-wide hold. Define the operation digest
+as:
+
+```text
+security_operation_digest = BLAKE3-256(
+  UTF8("cryptex-security-operation-v1") || 0x00 ||
+  JCS({schema_version, brain_id, device_id, event_type, classification,
+       signing_key_id, payload})
+)
+```
+
+`payload` includes `transaction_id`. Exclude `event_id`, `device_seq`,
+`created_at`, `prev_content_hash`, `content_hash`, and `signature`: a retry
+must preserve the operation while using the shared allocator's newly reserved
+sequence and current predecessor. Exactly one matching canonical record is
+required for idempotent success. More than one record with the transaction ID
+is a typed conflict and Brain-wide hold, even if their operation digests match.
+The stable transaction ID plus this digest lets recovery find restriction and
+self-retirement operations as well as pairing anchors after an uncertain
+append.
 
 Candidate security hash/signature domains are distinct from v1/v2:
 
@@ -210,7 +412,16 @@ This reuses the already selected primitive families and JCS, but the new labels,
 version number, schema fields, framing, limits, and vectors are proposals only.
 They require exact schema generation and an independent security review before
 acceptance. Unknown v3 fields/types, duplicate IDs, malformed keys, bad
-signatures, chain gaps, or unsupported versions are never partially applied.
+signatures, missing/broken predecessor links, or unsupported versions are
+never partially applied. Strictly increasing sequence numbers may contain gaps
+when a reservation was durably consumed before an append failed, as specified
+in ADR-0015/0016; a valid hash link is still required across such a gap.
+
+The v1 -> v2 -> v3 vector must include each version's own hash/signature
+domains. Every link carries the verified predecessor `content_hash`; it does
+not recompute a predecessor using the current record's schema. The v3 canonical
+JCS object includes the exact v3 envelope fields and is signed only after
+strict v3 validation and per-device key resolution.
 
 ## 4. Candidate issuer and causal reduction
 
@@ -231,33 +442,49 @@ compromised key.
 
 Candidate deterministic reduction:
 
-1. Build a directed graph with edge `I -> T` for a restriction from issuer
-   `I` to target `T`. Restrictions targeting `I` determine `I`'s effective
-   cutoff, so source components are resolved before the devices they restrict.
-   Edges from issuers not directly approved locally are excluded from the
-   authority graph; their presence in a canonical device stream remains an
-   invalid/untrusted-input condition handled by the Brain-wide fail-closed rule.
+1. First validate every candidate restriction's exact schema, event signature,
+   chain, Brain, issuer identity, target binding, and boundary hash. Build a
+   directed candidate graph with edge `I -> T` for each structurally and
+   cryptographically valid restriction authored by a locally directly approved
+   issuer. Detect directed cycles in this candidate graph before applying
+   issuer-prefix eligibility; any such cycle places the Brain on hold, even if
+   a cycle edge might later be outside its issuer's effective prefix. This is
+   deliberately conservative and requires independent liveness/DoS review.
+   Restrictions targeting `I` determine `I`'s effective cutoff, so source
+   components are resolved before the devices they restrict. Edges from
+   issuers not directly approved locally are excluded from the authority graph;
+   their presence in a canonical device stream remains an invalid/untrusted-
+   input condition handled by the Brain-wide fail-closed rule.
 2. Resolve acyclic components in deterministic topological order; sort nodes
-   with equal graph position by the canonical DeviceId byte sequence. A device
-   without eligible incoming restrictions has cutoff `u64::MAX`; otherwise its
-   effective cutoff is the minimum eligible incoming cutoff. An issuer action
-   above its own effective cutoff is ineligible.
-3. A directed cycle (including any self-edge; self-retirement is not modeled
-   as a graph edge), competing fork, missing policy prefix, or result that
-   depends on unavailable security history places the affected Brain in a
-   guarded-content hold. It does not choose an event by arrival order, timestamp,
-   device preference, or naive minimum over unauthenticated claims. Self-
-   retirement is represented as an explicit terminal local action and does not
-   grant that device any later authority.
+   with equal graph position by the canonical DeviceId byte sequence. For each
+   device `D`, its effective authority cutoff is the minimum of all eligible
+   incoming restriction cutoffs, its valid self-retirement boundary if present,
+   and `u64::MAX` (the identity value when neither restriction exists). A
+   self-retirement record is a terminal control exception validated against the
+   stream's prior verified record/hash; its `last_authorized_seq` is also a cap
+   on all ordinary content and policy actions by that device. For each
+   cross-device restriction `I -> T`, the issuer event sequence must be at or
+   below `I`'s effective cutoff to contribute `cutoff_seq(T)`. The DAG order
+   resolves upstream issuer caps before their outgoing restrictions. An issuer
+   action above its effective cutoff is ineligible and cannot tighten any
+   target.
+3. Any candidate-graph cycle detected in step 1 (including a self-edge;
+   self-retirement is not modeled as a graph edge), competing fork, missing
+   policy prefix, or result that depends on unavailable security history places
+   the affected Brain in a guarded-content hold. It does not choose an event by
+   arrival order, timestamp, device preference, or naive minimum over
+   unauthenticated claims. Self-retirement is represented as an explicit
+   terminal local action and does not grant that device any later authority.
 4. Recompute from the complete validated union whenever new history arrives.
    Until the same result is derivable, no guarded content is returned. Previously
    exposed plaintext cannot be recalled.
 
 Owner-confirmed self-retirement is terminal for that identity: it records the
-last locally authorized sequence immediately before its control event and
-cannot grant that identity authority over another device. The control event's
-single-sequence exception is limited to validating that retirement record; it
-does not retain ordinary content at that sequence. A cross-device restriction
+last verified chain record before its control event (not the arithmetic value
+`n - 1`, because a reserved sequence may have been skipped) and cannot grant
+that identity authority over another device. The exception is limited to
+validating that actual retirement record; it does not retain ordinary content
+at or after the control event's sequence. A cross-device restriction
 that participates in a dependency cycle causes a hold. An unknown device
 stream, invalid chain, or failed signature follows the existing Brain-wide
 fail-closed rule and never enters the graph.
@@ -280,6 +507,15 @@ compromised-issuer behavior. No production reducer is authorized by this text.
 | Restriction durable, projection incomplete | Apply conservative hold until cutoff/reducer projections are rebuilt. |
 | Worker shutdown uncertain | Report unresolved; never claim clean shutdown or discard ownership state. |
 
+Pending transaction transitions are persisted atomically in the local
+daemon-owned journal described in §2.4. This journal is never trust authority.
+After restart, reconcile it against the local immutable stream under the same
+inventory/device lock order before any retry. If an append may have completed,
+look up the transaction ID and compare transcript hash, local key binding,
+event ID, and event content hash before deciding success or retry. A changed
+transcript under a reused transaction ID is a typed conflict; do not append it
+or silently allocate a replacement ID.
+
 Reader rollout precedes writer rollout. Older readers that encounter schema v3
 must fail closed for the affected Brain, with a typed unsupported-security
 version diagnostic; they must not ignore the record and expose content. New
@@ -294,6 +530,47 @@ with current event-store locks before implementation. Transport and guarded
 content visibility are enabled only after durable bilateral approval and a
 successful full rebuild. Incoming files remain untrusted until validation.
 
+### 5.1 Candidate lock order and post-confirmation revalidation
+
+The current daemon writer/read path establishes this candidate order:
+
+1. Acquire `canonical/events/inventory.lock` whenever a stable full inventory
+   or a new device directory is required.
+2. Acquire every required `canonical/events/<device>/writer.lock` in ascending
+   byte order of the case-sensitive ASCII `DeviceId`. Keep the inventory lock
+   held while the device set is enumerated and device locks are acquired.
+3. For a local append only, acquire the sequence-store process gate and that
+   author's sequence-counter file lock, durably reserve the sequence, then
+   release both sequence-store locks. Append/sync the immutable frame while
+   retaining the required inventory/device locks. A crash after reservation
+   can leave a permanent sequence gap. Never acquire an inventory or device
+   lock while holding a sequence-store lock.
+4. Release the remaining locks in reverse order. If a derived SQLite update is
+   required, begin its transaction only after canonical device locks, following
+   the existing `device -> SQLite` rule. Policy authority is never committed
+   in SQLite.
+
+The owner dialog, QR/clipboard exchange, and transport waits occur with none of
+these locks held. The confirmation token binds the frozen display digest, not a
+lock held across human interaction. After owner confirmation, the daemon
+reacquires the exact inventory/device set, checks for inventory changes, and
+revalidates the target prefix, issuer authority, transcript/transaction
+references, and all digest fields before append. A changed inventory or
+boundary invalidates the one-use confirmation and requires a new displayed
+snapshot. Any sync/import actor that can mutate canonical event files must join
+this lock protocol before trust activation; detecting an out-of-protocol
+mutation after the fact is not a race-free substitute. This order remains a
+proposal until checked against every writer/importer and platform durability
+path.
+
+The pending-journal transaction mutex must not be held while waiting for
+inventory/device/sequence locks or for owner/transport input. Claim a
+single-flight transaction state under that mutex, release it, then acquire the
+canonical locks; persist the resulting state after releasing canonical locks.
+On crash between canonical append and journal update, startup reconciliation
+uses the event ID, transcript hash, and recorded append-attempt hashes to
+discover the durable result. Journal/canonical mismatches fail closed.
+
 ## 6. Required review and verification before acceptance
 
 - Compare this candidate field-by-field with Master Spec, ADR-0015/0016/0017/0018,
@@ -305,12 +582,23 @@ successful full rebuild. Incoming files remain untrusted until validation.
   cases, cutoff boundary hash, fork handling, order-independent convergence,
   and guarded hold scope.
 - Exact schema/TypeScript generation, JCS and signature golden vectors, older
-  reader fail-closed fixture, size/depth/duplicate/unknown-field tests.
+  reader fail-closed fixture, size/depth/duplicate/unknown-field tests, and
+  security-operation-digest vectors covering retry with changed chain placement,
+  changed operation payload, cross-type transaction-ID reuse, and duplicate
+  canonical records.
 - Crash injection at every row in §5, idempotent retry tests, restore/rebuild and
-  downgrade tests, cutoff `0`, `1`, and `u64::MAX`, and before/at/after checks.
+  downgrade tests, journal write/flush/replace/readback fault injection and
+  torn/corrupt journal recovery on both platforms, cutoff `0`, `1`, and
+  `u64::MAX`, and before/at/after checks.
 - Windows batch first, then one consolidated macOS run against the exact same
   accepted source. No trust-changing implementation until review findings are
   resolved and this addendum is explicitly accepted.
+
+The scoped 2026-10-22 findings M8-R1 through M8-R5 have draft resolutions in
+§2.4 and §3. They are not considered independently reviewed or accepted by
+their inclusion here; the required independent security review must challenge
+the selected limits, approval binding, journal transitions, v3 reader contract,
+and canonical identity rules before acceptance.
 
 ## 7. Current status
 
