@@ -5,6 +5,12 @@ This narrows the review questions in ADR-0019 section 8. It does not reserve
 event names/schema versions, define cryptographic bytes or enable remote trust.
 The Master Spec and accepted ADRs remain authoritative.
 
+Subsequent owner decision (2026-10-22): the cross-device restriction permission
+choice below is now selected in
+`docs/adr/ADR-0019-m8-restriction-authority-addendum.md`. Historical unresolved
+wording below describes the proposal before that choice. This document's
+remaining anchor/schema/causal details are still proposed, not accepted.
+
 ## 1. Proposed local approval anchor
 
 An existing installation's root remains its explicitly enrolled local identity,

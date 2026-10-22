@@ -14,6 +14,11 @@ transport adapter may be implemented without enabling peer trust.
 
 ## 1. Context and authority
 
+Owner-selected issuer-permission addendum (2026-10-22):
+`ADR-0019-m8-restriction-authority-addendum.md`. A trusted installation may
+restrict another exact device/key binding with explicit owner confirmation.
+This selects the product permission only; all section 8 protocol gates remain.
+
 Master Spec §§6–9 and 13, documents 07/08 and the accepted M8 contract require
 explicit device trust, immutable replication, sequence-based revocation and no
 canonical master. ADR-0018 authorizes only the enrolled local key. M1's mutable
