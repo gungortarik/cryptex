@@ -100,8 +100,9 @@ remain proposals until independent review and golden vectors pass.
 The full key fingerprint is lowercase hex of SHA-256 over the 32-byte event
 public key (64 characters); the existing 16-byte signing-key ID is not the
 comparison value. Short fingerprints are never the confirmation value. Names
-are display-only. No custom key agreement, encryption, or authentication code
-is introduced.
+are display-only. This defines a new signed bootstrap protocol, so it requires
+independent protocol/security review. It introduces no new cryptographic
+primitive, key-agreement scheme, or encryption protocol.
 
 ### 2.3 Durable approval anchor and reconstruction
 
@@ -167,12 +168,15 @@ Brain, immutable chain continuity, full-key binding, hash, signature, sequence,
 and transaction references. No file arrival order or clock value enters the
 result.
 
-For each installation, only its own directly approved peers are eligible
-issuers. A restriction is eligible only when its issuer was directly approved
-locally and the restriction event sequence is within that issuer's effective
-accepted prefix. A device cannot authorize a third device by approving it.
-Each local owner action is signed in the local stream; a signed claim that a
-human approved something is not independent proof against a compromised key.
+For each installation, only its own directly approved peers are eligible to
+issue cross-device restrictions. The local device may issue a self-retirement
+from its ADR-0018 enrolled identity without appearing in its peer roster. A
+cross-device restriction is eligible only when its issuer was directly
+approved locally and the restriction event sequence is within that issuer's
+effective accepted prefix. A device cannot authorize a third device by
+approving it. Each local owner action is signed in the local stream; a signed
+claim that a human approved something is not independent proof against a
+compromised key.
 
 Candidate deterministic reduction:
 
