@@ -511,29 +511,35 @@ Candidate deterministic reduction:
       Remove every outgoing edge from that device whose issuer event sequence is
       strictly above its filter threshold. Those edges are known ineligible and
       cannot create a cycle hold.
-   e. After removals, recompute SCCs on the affected subgraph. If the component
-      is now acyclic, resolve it with step 3. If a cycle remains whose edge
-      eligibility still depends on another edge inside the same cycle, authority
-      is mutually affected and unresolved; apply the safe-conflict hold in
-      step 4. Nested SCCs are handled only by condensation order: a downstream
-      cycle must not be filtered until every upstream issuer it depends on is
-      resolved or the Brain is already held.
+   e. After removals, recompute the SCCs and condensation DAG of the affected
+      subgraph. If any cycle remains anywhere in that recomputed subgraph, the
+      authority is mutually affected and unresolved; apply the Brain-wide
+      safe-conflict hold in step 4. Do not resolve an acyclic piece separately
+      when another piece still contains a cycle. Only when the entire recomputed
+      subgraph is acyclic may step 3 resolve it. Nested SCCs are handled only by
+      condensation order: a downstream cycle must not be filtered until every
+      upstream issuer it depends on is resolved or the Brain is already held.
 
    This procedure is still a candidate and requires independent re-review with
    the golden vectors in §6.
-3. Resolve an acyclic component in deterministic topological order on its
-   remaining edges; sort nodes with equal graph position by the canonical
-   DeviceId byte sequence. For each device `D`, its effective authority cutoff
-   is the minimum of all eligible incoming restriction cutoffs, its valid
-   self-retirement boundary if present, and `u64::MAX` (the identity value when
-   neither restriction exists). A self-retirement record is a terminal control
-   exception validated against the stream's prior verified record/hash; its
-   `last_authorized_seq` is also a cap on all ordinary content and policy
-   actions by that device. For each cross-device restriction `I -> T`, the
-   issuer event sequence must be at or below `I`'s effective cutoff to
-   contribute `cutoff_seq(T)`. The DAG order resolves upstream issuer caps
-   before their outgoing restrictions. An issuer action above its effective
-   cutoff is ineligible and cannot tighten any target.
+3. Resolve the fully acyclic recomputed subgraph in deterministic topological
+   order; sort nodes with equal graph position by the canonical DeviceId byte
+   sequence. For every device `D`, compute its effective authority cutoff over
+   the whole verified candidate graph as the minimum of `u64::MAX`, its valid
+   self-retirement boundary if present, and every incoming restriction
+   `I@seq -> D` whose issuer `I` has a fully resolved effective cutoff and for
+   which `seq <= effective_cutoff(I)`. This rule includes eligible incoming
+   restrictions outside the SCC currently being processed; an edge does not
+   stop contributing merely because an earlier cycle filter removed other
+   edges from that SCC. Resolve eligible incoming restrictions in topological
+   order so each issuer cutoff is known before evaluating its outgoing edges.
+   A self-retirement record is a terminal control exception validated against
+   the stream's prior verified record/hash; its `last_authorized_seq` caps all
+   ordinary content and policy actions by that device. An issuer action above
+   its effective cutoff is ineligible and cannot tighten any target. If a
+   required issuer cutoff is not fully resolved, step 2 or step 4 applies; it
+   must not be treated as absent and must not be replaced by an SCC-local
+   minimum.
 4. Any unresolved dependency cycle after step 2 (including a self-edge;
    self-retirement is not modeled as a graph edge), competing fork, missing
    policy prefix, or result that depends on unavailable security history places
@@ -696,6 +702,11 @@ discover the durable result. Journal/canonical mismatches fail closed.
 - Independent security review of bootstrap message signing, replay/stale UI
   handling, domain separation, fingerprint derivation, key loss, and compromised
   device behavior.
+- Before owner acceptance, pin a concrete connection-bound OS peer-credential
+  mechanism separately for Windows and macOS. Document the OS identity evidence
+  the daemon verifies, how it remains bound to the live IPC connection, and how
+  process replacement/reuse is rejected; PID or same-user checks alone do not
+  satisfy this gate.
 - Independent review of the reduction algorithm, cycle/mutual restriction
   cases, cutoff boundary hash, fork handling, order-independent convergence,
   and guarded hold scope. Required reducer vectors include at least:
@@ -705,8 +716,13 @@ discover the durable result. Journal/canonical mismatches fail closed.
   not apply `B@10→A` alone; (3) nested SCC where `{C,D}` unresolved holds the
   Brain before `{A,B}` is filtered; (4) self-retirement cap inside an SCC that
   drops a post-retirement outgoing edge and leaves an acyclic remainder;
-  (5) identical verified unions under shuffled file-arrival orders converge on
-  the same cutoffs or the same hold.
+   (5) identical verified unions under shuffled file-arrival orders converge on
+   the same cutoffs or the same hold; (6) for an eligible, fully resolved
+   `X→A(cutoff 2)`,
+   `A@10→B`, `B→A`, and `A@3→E(cutoff 0)`, resolve `A` with effective cutoff
+   2, exclude `A@10→B`, and do not apply `A@3→E`; (7) if filtering one SCC
+   splits its recomputed subgraph into an acyclic piece and a cyclic piece, hold
+   the whole Brain instead of resolving the acyclic piece independently.
 - Exact schema/TypeScript generation, JCS and signature golden vectors, older
   reader fail-closed fixture, size/depth/duplicate/unknown-field tests, and
   security-operation-digest vectors covering retry with changed chain placement,
