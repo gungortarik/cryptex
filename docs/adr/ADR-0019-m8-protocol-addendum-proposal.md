@@ -73,11 +73,13 @@ proof_hash, brain_id, initiator_identity, responder_identity,
 transport_association: {initiator_transport_device_id,
 responder_transport_device_id}})`. Both approval
 messages sign that same agreement hash. `transcript_hash` is BLAKE3-256 over
-`UTF8("cryptex-peer-bootstrap-transcript-v1") || 0x00 || JCS({agreement,
-initiator_approval, responder_approval})`, with approvals in fixed role order.
-Messages are ordered `offer`, `proof`, initiator `approval`, responder
-`approval`; `previous_hash` is the preceding message hash in that order. The
-transcript hash covers all four signed messages in that order. Each side
+`UTF8("cryptex-peer-bootstrap-transcript-v1") || 0x00 || JCS([offer, proof,
+initiator_approval, responder_approval])`. These are the four complete signed
+message objects, in that fixed array order; the digest commits to every field
+and signature. `agreement_hash` is represented as 64 lowercase hex characters
+in messages and approval records. Messages are ordered `offer`, `proof`,
+initiator `approval`, responder `approval`; `previous_hash` is the preceding
+message hash in that order. Each side
 retains the exact transcript and can append its own local approval record only
 after it has both owner-approved signatures. These exact labels/structures
 remain proposals until independent review and golden vectors pass.
@@ -158,6 +160,12 @@ classification. Closed production event types proposed:
 | `security.peer_approved` | `transaction_id`, `transcript` | This authoring installation's direct owner approval. The transcript contains the signed offer, proof, and both approvals. Only the local author's stream creates local trust. |
 | `security.device_restricted` | `target_device_id`, `target_signing_key_id`, `target_public_key`, `reason` (`retired` or `compromised`), `cutoff_seq`, `cutoff_content_hash` | Owner-confirmed restriction on one exact key and its verified contiguous event prefix. |
 | `security.device_self_retired` | `last_authorized_seq`, `last_authorized_content_hash` | Terminal self-retirement by the event's own ADR-0018 enrolled identity; applies only to that identity. |
+
+All `security.*` records are policy metadata, never user memory. They are
+excluded from memory search, retrieval, entity/fact materialization, Obsidian
+projection, and user-visible memory exports. Authenticated security status is
+exposed only through separately authorized, typed status surfaces; record
+bodies and public-key material are not returned as note content.
 
 The restriction cutoff is inclusive and encoded as a strict decimal `u64`
 string; `0` means no ordinary content events are retained. The hash binds the
