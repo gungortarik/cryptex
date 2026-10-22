@@ -7,11 +7,13 @@ run GitHub Actions, commit, or push. The proposal is explicitly PROPOSED and
 must remain unaccepted until its required review is complete.
 
 This is a follow-up to the initial NOT READY review recorded in
-`evidence/m8/m8-independent-security-review-20261022.md`. Re-review the exact
-candidate at commit `5723cf1` or its descendant. Focus especially on whether
-the new component-wise cutoff filtering closes the prior cycle false-positive
-without permitting an unauthorized restriction or introducing order-dependent
-results.
+`evidence/m8/m8-independent-security-review-20261022.md` and the re-review in
+`evidence/m8/m8-independent-security-rereview-20261022.md`. Review exact commit
+`7fc6089` (or a later descendant only if these files are unchanged). Focus on
+whether the new SCC/condensation cutoff procedure closes the cycle findings
+without permitting unauthorized restrictions or order-dependent results, and
+whether §5.1 now accurately distinguishes the proposed target lock contract
+from current `canonical_writer.rs` behavior.
 
 Read these authority/context files first:
 
@@ -40,7 +42,9 @@ Challenge the proposal adversarially, with particular attention to:
    retries after sequence gaps, duplicate transaction IDs/event IDs, the
    security-operation-digest field set and domain, snapshot/signature
    generated-versus-released state, the proposed Unix and Windows journal
-   atomic-replace/fsync steps, rollback/torn-write behavior, and lock inversion.
+   atomic-replace/fsync steps, rollback/torn-write behavior, lock inversion,
+   and whether the target inventory/device/sequence ordering is implementable
+   without claiming that current code already satisfies it.
 4. M8-R4 old-reader fail-closed behavior, key resolution without transitive
    trust, v1/v2/v3 chain integration, and interaction with Syncthing/import
    writes outside daemon locks.
@@ -58,6 +62,8 @@ Challenge the proposal adversarially, with particular attention to:
    is ambiguous, unsafe, or unavailable.
 7. Whether the proposal conflicts with accepted ADRs, privacy requirements,
    platform durability guarantees, or existing event-store semantics.
+8. Whether importer publication can actually join the proposed inventory/device
+   lock protocol; verify the current `canonical_writer.rs` and sync/import path.
 
 Return findings only, ordered by severity (Critical/High/Medium/Low), with exact
 file/line references, a concrete counterexample or attack sequence, the
