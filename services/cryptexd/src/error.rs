@@ -8,6 +8,7 @@ pub enum LifecycleError {
     AlreadyRunning { holder_pid: Option<u32> },
     Incompatible(String),
     UnsafeRuntimePath(String),
+    ImportRecoveryConflict(String),
     Attention(String),
 }
 
@@ -22,6 +23,9 @@ impl fmt::Display for LifecycleError {
             },
             Self::Incompatible(message) => write!(f, "incompatible: {message}"),
             Self::UnsafeRuntimePath(message) => write!(f, "unsafe runtime path: {message}"),
+            Self::ImportRecoveryConflict(message) => {
+                write!(f, "import recovery conflict: {message}")
+            }
             Self::Attention(message) => write!(f, "attention: {message}"),
         }
     }

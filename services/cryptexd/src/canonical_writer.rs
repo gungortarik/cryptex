@@ -65,32 +65,6 @@ pub fn fail_after_seal_before_tip() {
     FAIL_AFTER_SEAL_BEFORE_TIP.with(|f| f.set(true));
 }
 
-#[cfg(test)]
-struct BeforeDeviceLockHook {
-    thread_id: std::thread::ThreadId,
-    hook: std::sync::Arc<dyn Fn() + Send + Sync>,
-}
-
-#[cfg(test)]
-static BEFORE_DEVICE_LOCK_EXCLUSIVE: std::sync::Mutex<Option<BeforeDeviceLockHook>> =
-    std::sync::Mutex::new(None);
-
-/// Test-only: run `hook` on `thread_id` after opening `writer.lock`, before `lock_exclusive`.
-/// Scoped to one thread so parallel tests are not blocked.
-#[cfg(test)]
-pub(crate) fn set_before_device_lock_exclusive_hook(
-    thread_id: Option<std::thread::ThreadId>,
-    hook: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
-) {
-    let mut slot = BEFORE_DEVICE_LOCK_EXCLUSIVE
-        .lock()
-        .expect("lock hook mutex");
-    *slot = match (thread_id, hook) {
-        (Some(thread_id), Some(hook)) => Some(BeforeDeviceLockHook { thread_id, hook }),
-        _ => None,
-    };
-}
-
 #[derive(Debug, Clone)]
 pub struct CanonicalWriterConfig {
     /// Tunable seal threshold (not a protocol constant).
@@ -265,14 +239,64 @@ pub struct AppendMemoryNoteArgs<'a> {
 pub(crate) struct DeviceCanonicalLock {
     device_id: DeviceId,
     _file: File,
+    // Keep inventory ownership until the device lock is released. Field order
+    // matters: Rust drops `_file` before `_inventory`, preserving reverse lock
+    // release order (device, then inventory).
+    _inventory: Option<CanonicalInventoryLock>,
 }
 
-/// Serializes creation of first-time device stream directories against readers
-/// that enumerate the canonical device inventory. Existing-device appends do
-/// not take this lock, so independent devices remain concurrent.
+/// Serializes canonical writes against stable inventory readers and imports.
+/// Every writer acquires this before any device writer lock.
 #[derive(Debug)]
 pub(crate) struct CanonicalInventoryLock {
     _file: File,
+}
+
+/// Canonical write lock set for operations that touch multiple device streams.
+/// The custom `Drop` implementation enforces reverse release order.
+#[derive(Debug)]
+pub(crate) struct CanonicalWriteLockSet {
+    devices: Vec<DeviceCanonicalLock>,
+    inventory: Option<CanonicalInventoryLock>,
+}
+
+impl Drop for CanonicalWriteLockSet {
+    fn drop(&mut self) {
+        // Explicitly release device locks in reverse DeviceId order before the
+        // inventory lock. File handles unlock when their fields are dropped.
+        while self.devices.pop().is_some() {}
+        drop(self.inventory.take());
+    }
+}
+
+/// Acquire inventory first, then every requested device lock in the stable
+/// bytewise order required by ADR-0019. Device directories are created only
+/// while inventory is held. Duplicate identifiers are rejected.
+pub(crate) fn acquire_canonical_write_lock_set(
+    runtime_root: &Path,
+    device_ids: &[DeviceId],
+) -> CanonicalWriterResult<CanonicalWriteLockSet> {
+    assert_outside_repository(runtime_root)
+        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let mut ordered = device_ids.to_vec();
+    ordered.sort_by(|left, right| left.as_str().as_bytes().cmp(right.as_str().as_bytes()));
+    if ordered.windows(2).any(|pair| pair[0] == pair[1]) {
+        return Err(CanonicalWriterError::Invalid(
+            "canonical write lock set contains duplicate DeviceIds".into(),
+        ));
+    }
+
+    let inventory = acquire_canonical_inventory_lock(runtime_root)?;
+    let mut devices = Vec::with_capacity(ordered.len());
+    for device_id in &ordered {
+        let device_dir = canonical_events_device_dir(runtime_root, device_id);
+        fs::create_dir_all(&device_dir).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+        devices.push(acquire_device_lock_in_existing_dir(device_id, &device_dir)?);
+    }
+    Ok(CanonicalWriteLockSet {
+        devices,
+        inventory: Some(inventory),
+    })
 }
 
 pub(crate) fn acquire_canonical_inventory_lock(
@@ -330,19 +354,11 @@ pub(crate) fn acquire_device_canonical_lock(
     runtime_root: &Path,
     device_id: &DeviceId,
 ) -> CanonicalWriterResult<DeviceCanonicalLock> {
-    assert_outside_repository(runtime_root)
-        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
-    let device_dir = canonical_events_device_dir(runtime_root, device_id);
-    // A missing directory is a new inventory entry. Serialize its first
-    // creation with full-inventory readers, then acquire its writer lock
-    // before releasing the inventory lock.
-    let _inventory = if device_dir.exists() {
-        None
-    } else {
-        Some(acquire_canonical_inventory_lock(runtime_root)?)
-    };
-    fs::create_dir_all(&device_dir).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
-    acquire_device_lock_in_existing_dir(device_id, &device_dir)
+    let mut lock_set =
+        acquire_canonical_write_lock_set(runtime_root, std::slice::from_ref(device_id))?;
+    let mut lock = lock_set.devices.remove(0);
+    lock._inventory = lock_set.inventory.take();
+    Ok(lock)
 }
 
 /// Acquire a device lock without creating inventory. Callers must hold the
@@ -380,6 +396,7 @@ pub(crate) fn acquire_existing_device_canonical_lock_until(
     Ok(Some(DeviceCanonicalLock {
         device_id: device_id.clone(),
         _file: file,
+        _inventory: None,
     }))
 }
 
@@ -416,28 +433,12 @@ fn acquire_device_lock_in_existing_dir(
         .write(true)
         .open(&lock_path)
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
-    #[cfg(test)]
-    {
-        let hook = BEFORE_DEVICE_LOCK_EXCLUSIVE
-            .lock()
-            .expect("lock hook mutex")
-            .as_ref()
-            .and_then(|entry| {
-                if entry.thread_id == std::thread::current().id() {
-                    Some(std::sync::Arc::clone(&entry.hook))
-                } else {
-                    None
-                }
-            });
-        if let Some(hook) = hook {
-            hook();
-        }
-    }
     fs2::FileExt::lock_exclusive(&file)
         .map_err(|e| CanonicalWriterError::Path(format!("device canonical lock failed: {e}")))?;
     Ok(DeviceCanonicalLock {
         device_id: device_id.clone(),
         _file: file,
+        _inventory: None,
     })
 }
 
@@ -1749,6 +1750,117 @@ mod tests {
     }
 
     #[test]
+    fn existing_device_writer_holds_inventory_lock_until_device_unlock() {
+        let root = temp_root("inventory-lock-existing-device");
+        let device = DeviceId::new("inventory-existing-device").unwrap();
+        let first = acquire_device_canonical_lock(&root, &device).unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let writer_root = root.clone();
+        let writer_device = device.clone();
+        let writer = thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let result = acquire_device_canonical_lock(&writer_root, &writer_device);
+            finished_tx.send(result.is_ok()).unwrap();
+            result
+        });
+
+        started_rx.recv().unwrap();
+        assert!(
+            finished_rx
+                .recv_timeout(std::time::Duration::from_millis(100))
+                .is_err(),
+            "existing-device writer must serialize behind inventory ownership"
+        );
+        drop(first);
+        assert!(finished_rx.recv().unwrap());
+        drop(writer.join().unwrap().unwrap());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn canonical_writer_retains_inventory_until_device_lock_is_released() {
+        let root = temp_root("inventory-retained-through-write");
+        let device = DeviceId::new("inventory-retained-device").unwrap();
+        let lock = acquire_device_canonical_lock(&root, &device).unwrap();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let reader_root = root.clone();
+        let reader = thread::spawn(move || {
+            let inventory = acquire_canonical_inventory_lock(&reader_root).unwrap();
+            done_tx.send(()).unwrap();
+            inventory
+        });
+
+        assert!(
+            done_rx
+                .recv_timeout(std::time::Duration::from_millis(100))
+                .is_err(),
+            "inventory reader must not pass a live canonical writer"
+        );
+        drop(lock);
+        done_rx.recv().unwrap();
+        drop(reader.join().unwrap());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn multi_device_lock_set_sorts_ids_and_retains_inventory() {
+        let root = temp_root("inventory-multi-device-lock-set");
+        let device_z = DeviceId::new("device-z").unwrap();
+        let device_a = DeviceId::new("device-a").unwrap();
+        let lock_set =
+            acquire_canonical_write_lock_set(&root, &[device_z.clone(), device_a.clone()]).unwrap();
+        let held: Vec<_> = lock_set
+            .devices
+            .iter()
+            .map(|lock| lock.device_id().as_str())
+            .collect();
+        assert_eq!(held, ["device-a", "device-z"]);
+        assert!(
+            lock_set
+                .devices
+                .iter()
+                .any(|lock| lock.device_id() == &device_a)
+        );
+        assert!(
+            lock_set
+                .devices
+                .iter()
+                .any(|lock| lock.device_id() == &device_z)
+        );
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let reader_root = root.clone();
+        let reader = thread::spawn(move || {
+            let inventory = acquire_canonical_inventory_lock(&reader_root).unwrap();
+            done_tx.send(()).unwrap();
+            inventory
+        });
+        assert!(
+            done_rx
+                .recv_timeout(std::time::Duration::from_millis(100))
+                .is_err(),
+            "multi-device operation must retain inventory while device locks are held"
+        );
+        drop(lock_set);
+        done_rx.recv().unwrap();
+        drop(reader.join().unwrap());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn multi_device_lock_set_rejects_duplicate_ids_before_filesystem_changes() {
+        let root = temp_root("inventory-multi-device-duplicate");
+        let device = DeviceId::new("duplicate-device").unwrap();
+        let err = acquire_canonical_write_lock_set(&root, &[device.clone(), device]).unwrap_err();
+        assert!(matches!(err, CanonicalWriterError::Invalid(_)));
+        assert!(
+            !root.join("canonical").exists(),
+            "duplicate set must fail before filesystem mutation"
+        );
+    }
+
+    #[test]
     fn locked_helpers_reject_device_id_mismatch() {
         let root = temp_root("lock-mismatch");
         let store = FakeSecureStore::new();
@@ -1966,13 +2078,11 @@ mod tests {
         let before_len = fs::metadata(&open_path).unwrap().len();
 
         // Ordering handshakes:
-        // 1) writer_holding: writer owns lock + incomplete trailing bytes
+        // 1) writer_holding: writer owns inventory/device locks + incomplete trailing bytes
         // 2) reader_start: main allows reader to enter for_each/acquire
-        // 3) reader_at_lock: test hook fires after open(lock file), before lock_exclusive
-        // 4) writer_release: writer may finish append and drop the lock
+        // 3) writer_release: writer may finish append and drop the lock set
         let writer_holding = Arc::new(Barrier::new(2));
         let reader_start = Arc::new(Barrier::new(2));
-        let reader_at_lock = Arc::new(Barrier::new(2));
         let writer_release = Arc::new(Barrier::new(2));
         let reader_finished = Arc::new(AtomicBool::new(false));
 
@@ -2046,22 +2156,12 @@ mod tests {
         let mid_len = fs::metadata(&open_path).unwrap().len();
         assert!(mid_len > before_len);
 
-        // Install a thread-scoped handshake only after the writer owns the lock.
-        // Scoped to the reader thread so parallel tests are unaffected.
-        let at_lock = Arc::clone(&reader_at_lock);
-        set_before_device_lock_exclusive_hook(
-            Some(reader.thread().id()),
-            Some(Arc::new(move || {
-                at_lock.wait();
-            })),
-        );
-
-        // Allow reader to enter for_each/acquire; barrier proves it reached the lock site.
+        // Let the reader enter while the writer holds the complete lock set.
         reader_start.wait();
-        reader_at_lock.wait();
+        thread::sleep(std::time::Duration::from_millis(100));
         assert!(
             !reader_finished.load(Ordering::SeqCst),
-            "reader must still be blocked on the shared device lock"
+            "reader must still be blocked by the writer's inventory/device locks"
         );
         let lock_path = canonical_events_device_dir(&root, &device).join("writer.lock");
         let probe = OpenOptions::new()
@@ -2083,7 +2183,6 @@ mod tests {
         writer_release.wait();
         writer.join().expect("writer thread");
         reader.join().expect("reader thread");
-        set_before_device_lock_exclusive_hook(None, None);
         assert!(reader_finished.load(Ordering::SeqCst));
 
         let events =

@@ -17,6 +17,8 @@ pub mod compat;
 pub mod error;
 pub mod event_signing_key;
 pub mod identity_runtime;
+pub mod import_limits;
+pub mod import_staging;
 pub mod install_runtime;
 pub mod instance;
 pub mod ipc;

@@ -35,6 +35,7 @@ fn main() {
                 LifecycleError::AlreadyRunning { .. } => 1,
                 LifecycleError::Incompatible(_) => 3,
                 LifecycleError::UnsafeRuntimePath(_) => 4,
+                LifecycleError::ImportRecoveryConflict(_) => 5,
                 LifecycleError::Usage(_) => 2,
                 _ => 2,
             };
@@ -448,6 +449,8 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             ensure_runtime_root(&opts.runtime_root)?;
             // Acquire the single-instance lock before any durable identity writes.
             let lock = try_acquire_instance(&opts.runtime_root)?;
+            cryptexd::import_staging::recover_unprepared_staging(&opts.runtime_root)
+                .map_err(|error| LifecycleError::ImportRecoveryConflict(error.to_string()))?;
             let install = prepare_m1_runtime_foundation(&opts.runtime_root)
                 .map_err(|e| e.into_lifecycle())?;
             #[cfg(windows)]
