@@ -623,16 +623,15 @@ cross-platform byte-for-byte tests, backup/restore and downgrade behavior.
 
 The M8 target holds canonical inventory/device locks only for validation and
 durable append; it never holds them across UI confirmation, clipboard/QR work,
-or transport waits. The current canonical writer does not yet implement the
-multi-device transaction required below: it holds a per-device lock through an
-append, takes the inventory lock only during first directory creation, releases
-that inventory lock before the append, and skips it for existing-device writes.
-No importer publication barrier currently joins this lock set. Section 5.1 is
-therefore a required M8 change, not a description of current code. Lock order
-and a transaction journal must be reconciled with current event-store locks
-before implementation. Transport and guarded-content visibility are enabled
-only after durable bilateral approval and a successful full rebuild. Incoming
-files remain untrusted until validation.
+or transport waits. The Windows implementation slice now routes local
+append/seal/recovery operations through a shared lock-set API that holds the
+inventory lock through the device operation and acquires multi-device locks in
+sorted DeviceId byte order. It does not yet add an importer publication barrier
+or startup journal recovery. Section 5.1 remains a required M8 contract; the
+remaining writer/importer paths and platform durability still require
+verification. Transport and guarded-content visibility are enabled only after
+durable bilateral approval and a successful full rebuild. Incoming files
+remain untrusted until validation.
 
 ### 5.1 Required target lock order and post-confirmation revalidation
 
@@ -654,12 +653,12 @@ The required M8 transaction contract is:
    the existing `device -> SQLite` rule. Policy authority is never committed
    in SQLite.
 
-This is not the current lock behavior. `canonical_writer.rs` holds one device
-lock through an append, but for an existing device it does not take the
-inventory lock; for a new device the inventory guard is scoped to directory and
-lock creation and is dropped before frame append. It has no multi-device lock
-acquisition API. This contract therefore requires a reviewed implementation
-change and concurrency/crash tests before M8 trust activation.
+The Windows implementation now follows this lock order for local
+append/seal/recovery operations and provides a sorted multi-device lock-set
+primitive. Import publication, startup reconciliation, and cross-platform
+durability are still absent. The lock implementation is not a trust-activation
+gate by itself; the complete contract and all required failure tests remain
+mandatory.
 
 The owner dialog, QR/clipboard exchange, and transport waits occur with none of
 these locks held. The confirmation token binds the frozen display digest, not a
@@ -686,6 +685,156 @@ trust activation; post-hoc inventory scans or filesystem watchers do not close
 the race. The concrete sync-to-canonical publication mechanism and its
 interleaving/failure tests remain unimplemented and must be reviewed before
 trust can be enabled.
+
+#### 5.1.1 Owner-approved Syncthing-to-canonical publication flow
+
+The owner approved this flow for the M8 Windows implementation slice on
+2026-10-23. This approval applies to the implementation direction in this
+subsection; it does not accept ADR-0019 as a whole, close the remaining
+independent security review, or enable trust. The flow follows the Master Spec's
+single supported canonical writer and the accepted sync protocol's separation
+of transport from Cryptex semantics. It does not add an OS sandbox requirement
+for the same-user Syncthing child.
+
+1. Syncthing's only managed folder is a dedicated `transport/incoming` tree
+   outside `canonical/events`. Within it, sealed candidates use the canonical
+   relative naming shape `<device-id-hex>/<20-digit-segment-index>.seg`; the
+   daemon requires the path's device stem to equal
+   `DeviceId::as_filename_stem()` and its segment index to match the candidate
+   metadata before staging. The daemon validates the managed folder
+   ID and exact normalized path before starting transport and refuses startup
+   if a folder points at canonical storage. Transport completion is only a
+   hint to inspect incoming files.
+2. Import staging and its journal live in daemon-controlled runtime storage at
+   fixed siblings of `canonical/events` (for example,
+   `canonical/import-staging` and `canonical/import-journal`), outside both
+   `canonical/events` and `transport/incoming`, and on the same volume as
+   canonical destinations. The daemon verifies the expected paths, volume,
+   ownership, and non-link directory handles before use; it refuses startup if
+   the layout cannot meet these conditions.
+3. The daemon copies bounded, sealed `.seg` candidates into that staging root.
+   It opens each source without following symlinks/reparse points, then checks
+   identity through the opened handle: reject link count other than one and any
+   `(device,inode)` / volume-file-ID that aliases an entry under
+   `canonical/events`. Copy only through the opened handle with a fixed size
+   limit; metadata checks followed by a path-based copy are insufficient.
+   Freeze the observed size and verify identity, size, and modification state
+   again after copying; reject a source that changed during the read. It also
+   rejects unsafe segment names, incomplete frames, and any candidate that
+   fails event schema, signature, device identity, Brain identity, sequence,
+   predecessor-hash, trust, or cutoff validation. Validation applies to the
+   staged snapshot, not a mutable transport path. Each copy is written to a
+   unique staging temporary file, checked and synced through its handle, then
+   atomically moved with no-replace semantics to its staged final name. Only
+   complete staged files may be referenced by a prepared manifest. Importer
+   admission limits are at most 16 sealed segment files per batch, 1 GiB per
+   file, 4 GiB total per batch, and one prepared transaction at a time. The
+   per-file cap accommodates 1,000 ADR-0016 maximum-size event records plus
+   frame headers; these are importer resource limits, not event-format limits.
+   The daemon reserves each declared length against the batch budget before
+   copying, checks actual bytes while streaming, and discards the complete
+   staged batch if a source grows, exceeds any cap, or otherwise fails
+   validation. Exceeding any limit fails closed without partial publication.
+4. Before publication, the daemon durably records a transaction manifest with
+   transaction ID, affected DeviceIds, relative segment destinations, segment
+   indexes, lengths, and SHA-256 digests in a closed, versioned schema. Stage
+   files and the prepared manifest are synced before any canonical destination
+   is made visible. Recovery must recompute and compare every staged and
+   already-published file digest; manifest values alone are not evidence of
+   file integrity.
+5. Under the inventory lock and all affected device writer locks in sorted
+   DeviceId order, the daemon revalidates the current inventory, trust/cutoff
+   state, stream chains, and destinations. Segment indexes must be contiguous
+   with the verified sealed stream tip; `.open` files, gaps, divergent duplicate
+   indexes, and unreconciled `.open`/`.seg` pairs are rejected or held for
+   recovery. Publication is additive and uses same-volume no-replace moves.
+   Existing byte-identical segments are idempotent; a divergent destination
+   fails closed. Existing canonical segments and events are never replaced in
+   place. Before trust activation, every canonical mutator—including local
+   append, restriction append, segment seal, and import—must use one reviewed
+   shared lock API: acquire inventory first, then affected device writer locks
+   sorted by DeviceId. The Windows implementation slice migrates current local
+   append/seal/recovery entry points to this API and adds lock-order and
+   interleaving tests. No importer currently publishes canonical segments;
+   until its publication and startup-recovery gates are implemented and tested,
+   trust activation stays disabled. Importer-only locks do not serialize
+   current appenders.
+6. The daemon syncs each destination and required parent directory, then
+   durably marks the transaction committed before releasing canonical locks.
+   The marker must have a closed schema and an atomic, platform-specific
+   durable-write procedure. Do not claim parent-directory durability on
+   Windows while `sync_directory` is a no-op; implement and verify an
+   equivalent Windows durability strategy before claiming the import is
+   committed there. Define and test crashes after each move, after the final
+   move, during marker replacement, and after marker persistence. Derived
+   indexes update after publication and remain rebuildable.
+7. Startup must acquire the single-instance lock and reconcile every prepared
+   transaction under canonical locks before starting transport, inspecting
+   incoming files, preparing or publishing another import, starting IPC,
+   projection/materialization, retrieval, or any canonical enumeration. It may
+   finish a transaction only when every staged or already-published file
+   matches the manifest and full validation still succeeds. Otherwise it holds
+   affected streams and reports a typed recovery conflict. No
+   `for_each_verified_event*` or `scan_verified_canonical*` reader may run
+   before reconciliation completes. This is required because a process crash
+   releases locks but can occur between individual file moves.
+8. Tests must cover config/path refusal, links/reparse points, size/count
+   bounds, duplicate-identical and divergent destinations, local append/import
+   interleavings, every publication crash point, and startup reconciliation on
+   both Windows and macOS. The M8 trust gate also remains blocked on the
+   independent requirements elsewhere in this proposal: owner-approval IPC
+   with connection-bound OS identity and one-time approval sessions, concrete
+   per-platform peer credentials (including macOS per-connection live-process
+   binding/revalidation and PID-reuse tests), the v3 `security.*` reducer to
+   `RetrievalSafetyState` integration before retrieval enablement, a bounded
+   bootstrap parser, and independent review of the reducer's SCC/cutoff
+   vectors. Unknown security-event versions must fail closed.
+
+Implementation status (2026-10-24): the Windows daemon now snapshots bounded
+incoming candidates into `canonical/import-staging` and runs an import startup
+gate after the instance lock but before identity setup, transport, IPC, or
+readers. The gate removes only recognized staging-only transactions; any
+prepared or unknown journal state stops startup with a typed recovery conflict.
+The staging API now requires transport paths to encode the exact DeviceId and
+20-digit segment index and rejects duplicate `(DeviceId, index)` candidates in
+one batch. Rollback keeps ancestor handles pinned while removing an unprepared
+transaction. `ImportStagingSession::verify_candidate` now reopens the staged
+snapshot through the held-directory chain, checks object identity and digest,
+parses only complete frames, verifies supported v1/v2 record signatures using
+a caller-supplied trusted-key resolver, and checks device/Brain identity,
+sequence, and previous-hash continuity from a caller-supplied verified stream
+tip. This is a validation primitive only: it is not wired into publication and
+does not replace trust/cutoff or `RetrievalSafetyState` checks. Canonical
+file-ID alias scanning, prepared/committed journal records, crash reconciliation,
+and canonical publication remain absent.
+The Windows staging path now validates current-user ownership and walks each
+local-drive directory component relative to a held parent handle, opening the
+component itself so reparse points are rejected. Its focused native tests cover
+junction refusal and a blocked ancestor rename while handles remain open; they
+are not full race/fault-injection or independent-review evidence. macOS still
+has only static path checks. Windows parent-directory sync is not implemented
+by `sync_directory`; `MoveFileExW(MOVEFILE_WRITE_THROUGH)` placement has not
+yet had native crash-fault verification. The M8 approval session and bootstrap
+parser are absent, and the v3 security reader is not integrated. Trust
+activation remains blocked on import publication/recovery, approval,
+retrieval-safety, platform durability, macOS parity, and independent security
+review.
+
+The import journal uses unique transaction IDs, immutable prepared manifests,
+and separate no-replace committed markers; it does not mutate one shared
+manifest in place. The import single-flight mutex may only reserve/release
+in-memory transaction ownership. Release it before waiting for transport or
+canonical locks; never hold it while acquiring inventory/device locks. After
+canonical locks are acquired, write the durable committed marker without
+reacquiring the import mutex, then release canonical locks. Startup holds the
+single-instance lock while reconciling manifests/markers before any transport
+or reader starts. This import-journal mutex is distinct from the pending-journal
+mutex described below; neither mutex may be held across canonical-lock waits.
+
+The flow remains subject to independent security review, platform durability
+verification, and explicit owner acceptance before implementation or trust
+activation. It does not claim protection against arbitrary same-user malware
+that directly edits local application data outside Cryptex's supported APIs.
 
 The pending-journal transaction mutex must not be held while waiting for
 inventory/device/sequence locks or for owner/transport input. Claim a
