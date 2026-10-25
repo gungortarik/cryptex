@@ -2740,7 +2740,9 @@ mod tests {
             .join(device.as_filename_stem())
             .join("00000000000000000000.seg");
         fs::create_dir_all(destination.parent().unwrap()).unwrap();
-        fs::write(&destination, b"unexpected partial publication").unwrap();
+        // Even a byte-identical visible destination is not replayed until
+        // publication recovery has a committed-marker implementation.
+        fs::write(&destination, &first_bytes).unwrap();
         assert!(
             recover_import_staging(&root)
                 .unwrap_err()
