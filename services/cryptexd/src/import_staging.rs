@@ -1096,6 +1096,7 @@ pub fn recover_import_staging(runtime_root: &Path) -> Result<(), ImportStagingEr
 
     let mut has_lock_entry = false;
     let mut prepared_path = None;
+    let mut prepared_temp_path = None;
     for entry in fs::read_dir(&journal_root)? {
         let path = entry?.path();
         let name = path
@@ -1110,16 +1111,23 @@ pub fn recover_import_staging(runtime_root: &Path) -> Result<(), ImportStagingEr
             has_lock_entry = true;
         } else if name.ends_with(".prepared.json") && prepared_path.is_none() {
             prepared_path = Some(path);
+        } else if prepared_temp_transaction_id(name).is_some() && prepared_temp_path.is_none() {
+            prepared_temp_path = Some(path);
         } else {
             return Err(ImportStagingError::RecoveryConflict(
                 "prepared or unknown journal entries require reviewed reconciliation".into(),
             ));
         }
     }
+    if prepared_path.is_some() && prepared_temp_path.is_some() {
+        return Err(ImportStagingError::RecoveryConflict(
+            "prepared manifest and temporary manifest coexist".into(),
+        ));
+    }
     if !staging_exists {
-        return if prepared_path.is_some() {
+        return if prepared_path.is_some() || prepared_temp_path.is_some() {
             Err(ImportStagingError::RecoveryConflict(
-                "prepared manifest has no matching staging directory".into(),
+                "prepared manifest state has no matching staging directory".into(),
             ))
         } else {
             Ok(())
@@ -1153,9 +1161,9 @@ pub fn recover_import_staging(runtime_root: &Path) -> Result<(), ImportStagingEr
         ));
     }
     let Some(transaction) = transaction else {
-        if prepared_path.is_some() {
+        if prepared_path.is_some() || prepared_temp_path.is_some() {
             return Err(ImportStagingError::RecoveryConflict(
-                "prepared manifest has no matching staging transaction".into(),
+                "prepared manifest state has no matching staging transaction".into(),
             ));
         }
         return Ok(());
@@ -1202,8 +1210,73 @@ pub fn recover_import_staging(runtime_root: &Path) -> Result<(), ImportStagingEr
             &prepared_path,
             &manifest,
         )?;
+    } else if let Some(temp_path) = prepared_temp_path {
+        let temp_name = temp_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| {
+                ImportStagingError::RecoveryConflict(
+                    "temporary prepared manifest name is not valid UTF-8".into(),
+                )
+            })?;
+        let temp_transaction_id = prepared_temp_transaction_id(temp_name).ok_or_else(|| {
+            ImportStagingError::RecoveryConflict(
+                "temporary prepared manifest name is outside the schema".into(),
+            )
+        })?;
+        if temp_transaction_id != transaction_name {
+            return Err(ImportStagingError::RecoveryConflict(
+                "temporary prepared manifest does not match the staging transaction".into(),
+            ));
+        }
+        validate_prepared_manifest_temp(&temp_path)?;
+        // The final prepared manifest is the boundary before any publication
+        // can begin. A leftover temp therefore belongs to an unprepared
+        // transaction; remove that temp and bounded staging tree so retrying
+        // from the still-present transport source is possible.
+        fs::remove_file(&temp_path)?;
+        sync_staged_parent(&temp_path)?;
+        remove_unprepared_transaction(&transaction)?;
     } else {
         remove_unprepared_transaction(&transaction)?;
+    }
+    Ok(())
+}
+
+fn prepared_temp_transaction_id(name: &str) -> Option<&str> {
+    let transaction_id = name.strip_prefix('.')?.strip_suffix(".prepared.tmp")?;
+    if transaction_id.is_empty()
+        || cryptex_core::validate::parse_uuid_str(transaction_id).is_err()
+        || transaction_id.bytes().any(|byte| byte.is_ascii_uppercase())
+    {
+        return None;
+    }
+    Some(transaction_id)
+}
+
+fn validate_prepared_manifest_temp(path: &Path) -> Result<(), ImportStagingError> {
+    let metadata = fs::symlink_metadata(path)?;
+    if is_link_or_reparse(&metadata)
+        || !metadata.is_file()
+        || metadata.len() > MAX_PREPARED_MANIFEST_BYTES
+    {
+        return Err(ImportStagingError::RecoveryConflict(
+            "temporary prepared manifest is not an ordinary bounded file".into(),
+        ));
+    }
+    let file = open_source_no_follow(path)?;
+    let snapshot = source_snapshot(&file)?;
+    let revalidated = open_source_no_follow(path)?;
+    let revalidated_snapshot = source_snapshot(&revalidated)?;
+    if !snapshot.is_regular_file
+        || snapshot.link_count != 1
+        || snapshot.length > MAX_PREPARED_MANIFEST_BYTES
+        || source_snapshot(&file)? != snapshot
+        || revalidated_snapshot != snapshot
+    {
+        return Err(ImportStagingError::RecoveryConflict(
+            "temporary prepared manifest identity is not an ordinary single-link file".into(),
+        ));
     }
     Ok(())
 }
@@ -2892,6 +2965,56 @@ mod tests {
         assert!(source.exists());
         assert_eq!(device.as_filename_stem(), "6465766963652d61");
         assert_eq!(transaction_id.len(), 36);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn startup_discards_only_a_recognized_temporary_prepared_manifest() {
+        let root = runtime_root("prepared-temp-recovery");
+        let relative = Path::new("6465766963652d61/00000000000000000002.seg");
+        let source = root.join("transport/incoming").join(relative);
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, b"synthetic transport segment").unwrap();
+        let device = DeviceId::new("device-a").unwrap();
+        let mut session = ImportStagingSession::begin(&root).unwrap();
+        let transaction_id = session.transaction_id().to_string();
+        session.stage_segment(relative, &device, 2).unwrap();
+        drop(session);
+
+        let temp_manifest = root
+            .join("canonical/import-journal")
+            .join(format!(".{transaction_id}.prepared.tmp"));
+        fs::write(&temp_manifest, b"partial manifest write").unwrap();
+
+        recover_import_staging(&root).unwrap();
+
+        assert!(!temp_manifest.exists());
+        assert!(
+            !root
+                .join("canonical/import-staging")
+                .join(transaction_id)
+                .exists()
+        );
+        assert!(source.is_file(), "transport source remains retryable");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn startup_preserves_unrecognized_prepared_temporary_journal_entry() {
+        let root = runtime_root("unknown-prepared-temp");
+        let journal = root.join("canonical/import-journal");
+        fs::create_dir_all(&journal).unwrap();
+        let unknown_temp = journal.join(".not-a-transaction.prepared.tmp");
+        fs::write(&unknown_temp, b"preserve this unknown state").unwrap();
+
+        assert!(matches!(
+            recover_import_staging(&root),
+            Err(ImportStagingError::RecoveryConflict(_))
+        ));
+        assert_eq!(
+            fs::read(&unknown_temp).unwrap(),
+            b"preserve this unknown state"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
