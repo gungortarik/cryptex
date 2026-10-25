@@ -70,17 +70,36 @@ pub struct StagedSegment {
 /// holding the canonical locks; a transport claim is never a stream tip.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportStreamTip {
-    pub device_seq: Option<u64>,
-    pub content_hash: ContentHashHex,
+    /// Last fully verified sealed segment already present for this device.
+    /// `None` means the canonical stream has no sealed segments.
+    pub(crate) segment_index: Option<u64>,
+    pub(crate) device_seq: Option<u64>,
+    pub(crate) content_hash: ContentHashHex,
 }
 
 impl ImportStreamTip {
     #[must_use]
     pub fn genesis() -> Self {
         Self {
+            segment_index: None,
             device_seq: None,
             content_hash: ContentHashHex::zero(),
         }
+    }
+
+    #[must_use]
+    pub fn segment_index(&self) -> Option<u64> {
+        self.segment_index
+    }
+
+    #[must_use]
+    pub fn device_seq(&self) -> Option<u64> {
+        self.device_seq
+    }
+
+    #[must_use]
+    pub fn content_hash(&self) -> &ContentHashHex {
+        &self.content_hash
     }
 }
 
@@ -89,10 +108,34 @@ impl ImportStreamTip {
 /// replace RetrievalSafetyState/cutoff policy checks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedStagedSegment {
+    pub device_id: DeviceId,
+    pub segment_index: u64,
     pub event_count: u64,
     pub device_seq: u64,
     pub content_hash: ContentHashHex,
     pub sha256: String,
+}
+
+/// Deterministically verified staged segments and the resulting per-device
+/// tips. The supplied starting tips must come from a complete verified local
+/// inventory while canonical locks are held; this value alone never
+/// authorizes publication.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedStagedBatch {
+    segments: Vec<VerifiedStagedSegment>,
+    end_tips: Vec<(DeviceId, ImportStreamTip)>,
+}
+
+impl VerifiedStagedBatch {
+    #[must_use]
+    pub fn segments(&self) -> &[VerifiedStagedSegment] {
+        &self.segments
+    }
+
+    #[must_use]
+    pub fn end_tips(&self) -> &[(DeviceId, ImportStreamTip)] {
+        &self.end_tips
+    }
 }
 
 /// One in-progress import batch. The OS file lock enforces the one-prepared-
@@ -102,7 +145,7 @@ pub struct ImportStagingSession {
     runtime_root: PathBuf,
     transaction_id: String,
     staging_dir: PathBuf,
-    _single_flight: File,
+    _single_flight: Option<File>,
     _directory_handles: Vec<File>,
     budget: ImportBatchBudget,
     candidates: Vec<StagedSegment>,
@@ -153,6 +196,21 @@ impl ImportStagingSession {
             ))
         })?;
 
+        let mut staged_transactions = fs::read_dir(&staging_root)?;
+        if let Some(entry) = staged_transactions.next() {
+            entry?;
+            return Err(ImportStagingError::RecoveryConflict(
+                "an unprepared staging transaction already occupies the import slot".into(),
+            ));
+        }
+        for entry in fs::read_dir(&journal_root)? {
+            if entry?.file_name() != "import.lock" {
+                return Err(ImportStagingError::RecoveryConflict(
+                    "prepared or unknown journal state occupies the import slot".into(),
+                ));
+            }
+        }
+
         let transaction_id = random_transaction_id()?;
         let transaction_dir = staging_root.join(&transaction_id);
         fs::create_dir(&transaction_dir)?;
@@ -163,7 +221,7 @@ impl ImportStagingSession {
             runtime_root: runtime_root.to_path_buf(),
             transaction_id,
             staging_dir: transaction_dir,
-            _single_flight: single_flight,
+            _single_flight: Some(single_flight),
             _directory_handles: directory_handles,
             budget: ImportBatchBudget::empty(),
             candidates: Vec::new(),
@@ -181,6 +239,11 @@ impl ImportStagingSession {
         device_id: &DeviceId,
         segment_index: u64,
     ) -> Result<&StagedSegment, ImportStagingError> {
+        if self._single_flight.is_none() {
+            return Err(ImportStagingError::Invalid(
+                "staging is closed; no new candidates may be added".into(),
+            ));
+        }
         if self.failed {
             return Err(ImportStagingError::Invalid(
                 "batch already failed; discard the entire staging transaction".into(),
@@ -373,8 +436,161 @@ impl ImportStagingSession {
         Ok(summary)
     }
 
+    /// Verify every staged candidate in deterministic per-device segment
+    /// order. This rejects missing segment indexes and broken cross-segment
+    /// event chains before a caller can prepare a batch. `prior_tips` must
+    /// contain exactly one complete, lock-scoped canonical tip for each
+    /// candidate device; an absent stream must be represented explicitly by
+    /// `ImportStreamTip::genesis()`.
+    pub fn verify_batch<R: TrustedDaemonKeyResolver>(
+        &self,
+        expected_brain_id: &str,
+        prior_tips: &[(DeviceId, ImportStreamTip)],
+        key_resolver: &mut R,
+    ) -> Result<VerifiedStagedBatch, ImportStagingError> {
+        if self.failed || self.candidates.is_empty() {
+            return Err(ImportStagingError::Invalid(
+                "cannot verify an empty or failed staging batch".into(),
+            ));
+        }
+
+        let mut candidates = self.candidates.iter().collect::<Vec<_>>();
+        candidates.sort_by(|left, right| {
+            left.device_id
+                .as_str()
+                .as_bytes()
+                .cmp(right.device_id.as_str().as_bytes())
+                .then_with(|| left.segment_index.cmp(&right.segment_index))
+        });
+        let candidate_devices = candidates
+            .iter()
+            .map(|candidate| candidate.device_id.clone())
+            .collect::<std::collections::HashSet<_>>();
+        let prior_devices = prior_tips
+            .iter()
+            .map(|(device, _)| device.clone())
+            .collect::<std::collections::HashSet<_>>();
+        if candidate_devices.len() != prior_tips.len()
+            || prior_devices.len() != prior_tips.len()
+            || candidate_devices != prior_devices
+        {
+            return Err(ImportStagingError::Invalid(
+                "verified starting tips must exactly cover the candidate devices".into(),
+            ));
+        }
+
+        let mut current_tips = prior_tips.to_vec();
+        let mut summaries = Vec::with_capacity(candidates.len());
+        for candidate in candidates {
+            let tip_index = current_tips
+                .iter()
+                .position(|(device, _)| device == &candidate.device_id)
+                .ok_or_else(|| {
+                    ImportStagingError::Invalid(
+                        "candidate device has no complete verified starting tip".into(),
+                    )
+                })?;
+            let tip = &current_tips[tip_index].1;
+            let expected_index = match tip.segment_index {
+                Some(index) => index.checked_add(1).ok_or_else(|| {
+                    ImportStagingError::Invalid("canonical segment index overflow".into())
+                })?,
+                None => 0,
+            };
+            if candidate.segment_index != expected_index {
+                return Err(ImportStagingError::Invalid(format!(
+                    "candidate segment index {} is not contiguous after verified index {:?}",
+                    candidate.segment_index, tip.segment_index
+                )));
+            }
+
+            let verified =
+                self.verify_candidate(candidate, expected_brain_id, tip, key_resolver)?;
+            current_tips[tip_index] = (
+                candidate.device_id.clone(),
+                ImportStreamTip {
+                    segment_index: Some(candidate.segment_index),
+                    device_seq: Some(verified.device_seq),
+                    content_hash: verified.content_hash.clone(),
+                },
+            );
+            summaries.push(verified);
+        }
+
+        current_tips
+            .sort_by(|left, right| left.0.as_str().as_bytes().cmp(right.0.as_str().as_bytes()));
+        Ok(VerifiedStagedBatch {
+            segments: summaries,
+            end_tips: current_tips,
+        })
+    }
+
+    /// Verify a staged batch against a complete canonical snapshot while the
+    /// canonical inventory and device locks remain held. The importer-only
+    /// staging slot must be released first so lock acquisition follows the
+    /// global inventory -> device order without a staging-lock inversion.
+    pub fn verify_batch_against_canonical<R: TrustedDaemonKeyResolver>(
+        &self,
+        expected_brain_id: &str,
+        trusted_devices: &[DeviceId],
+        key_resolver: &mut R,
+    ) -> Result<VerifiedStagedBatch, ImportStagingError> {
+        if self._single_flight.is_some() {
+            return Err(ImportStagingError::Invalid(
+                "release the staging slot before acquiring canonical locks".into(),
+            ));
+        }
+        if self.failed || self.candidates.is_empty() {
+            return Err(ImportStagingError::Invalid(
+                "cannot verify an empty or failed staging batch".into(),
+            ));
+        }
+
+        let mut affected_devices = self
+            .candidates
+            .iter()
+            .map(|candidate| candidate.device_id.clone())
+            .collect::<Vec<_>>();
+        affected_devices
+            .sort_by(|left, right| left.as_str().as_bytes().cmp(right.as_str().as_bytes()));
+        affected_devices.dedup();
+
+        let snapshot = crate::knowledge_materialization::scan_verified_canonical(
+            &self.runtime_root,
+            expected_brain_id,
+            trusted_devices,
+            key_resolver,
+        )
+        .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
+        let prior_tips = snapshot
+            .import_starting_tips(&affected_devices)
+            .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
+        // `snapshot` stays alive across staged verification, retaining the
+        // inventory/device locks that made these starting tips authoritative.
+        self.verify_batch(expected_brain_id, &prior_tips, key_resolver)
+    }
+
     pub fn budget(&self) -> ImportBatchBudget {
         self.budget
+    }
+
+    /// Release the importer-only process lock after the staged snapshot is
+    /// complete and before acquiring canonical inventory/device locks. The
+    /// unique staging transaction directory remains the durable single-flight
+    /// claim: another `begin` call refuses while it exists, and startup may
+    /// remove it only as an unprepared transaction.
+    pub fn release_staging_slot(&mut self) -> Result<(), ImportStagingError> {
+        if self.failed || self.candidates.is_empty() {
+            return Err(ImportStagingError::Invalid(
+                "cannot release an empty or failed staging transaction".into(),
+            ));
+        }
+        if self._single_flight.take().is_none() {
+            return Err(ImportStagingError::Invalid(
+                "staging slot was already released".into(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -546,6 +762,8 @@ fn verify_segment_stream<R: TrustedDaemonKeyResolver>(
     }
     let device_seq = last_seq.expect("non-empty validated segment has a sequence");
     Ok(VerifiedStagedSegment {
+        device_id: candidate.device_id.clone(),
+        segment_index: candidate.segment_index,
         event_count,
         device_seq,
         content_hash: last_hash,
@@ -1591,27 +1809,44 @@ mod tests {
         device: &DeviceId,
     ) -> (Vec<u8>, cryptex_events::AcceptedEvent, SigningKey) {
         let key = SigningKey::from_bytes(&[7_u8; 32]);
+        let (bytes, event) = signed_test_segment_with_key(
+            device,
+            1,
+            "11111111-1111-4111-8111-111111111111",
+            ContentHashHex::zero(),
+            &key,
+        );
+        (bytes, event, key)
+    }
+
+    fn signed_test_segment_with_key(
+        device: &DeviceId,
+        device_seq: u64,
+        event_id: &str,
+        prev_content_hash: ContentHashHex,
+        key: &SigningKey,
+    ) -> (Vec<u8>, cryptex_events::AcceptedEvent) {
         let key_id = signing_key_id_from_verifying_key(&key.verifying_key()).unwrap();
         let signable = SignableEvent {
             schema_version: cryptex_events::EVENT_SCHEMA_VERSION,
-            event_id: "11111111-1111-4111-8111-111111111111".into(),
+            event_id: event_id.into(),
             brain_id: TEST_BRAIN_ID.into(),
             device_id: device.as_str().into(),
-            device_seq: DeviceSeq::from_u64(1).unwrap(),
+            device_seq: DeviceSeq::from_u64(device_seq).unwrap(),
             created_at: "2026-10-24T00:00:00Z".into(),
             event_type: EventType::MemoryNote,
             classification: Classification::Public,
             signing_key_id: key_id,
             payload: EventPayload::MemoryNote(MemoryNotePayload::new("synthetic import").unwrap()),
-            prev_content_hash: ContentHashHex::zero(),
+            prev_content_hash,
         };
-        let event = accept_event(signable, &key).unwrap();
+        let event = accept_event(signable, key).unwrap();
         let body = serde_json::to_vec(&event).unwrap();
         let mut segment = cryptex_events::encode_frame_header(body.len() as u32)
             .unwrap()
             .to_vec();
         segment.extend_from_slice(&body);
-        (segment, event, key)
+        (segment, event)
     }
 
     fn runtime_root(label: &str) -> PathBuf {
@@ -1692,6 +1927,7 @@ mod tests {
             .unwrap_err();
         assert!(wrong_brain.to_string().contains("brain_id"));
         let wrong_tip = ImportStreamTip {
+            segment_index: None,
             device_seq: Some(7),
             content_hash: ContentHashHex::parse(&"ab".repeat(32)).unwrap(),
         };
@@ -1699,6 +1935,75 @@ mod tests {
             session
                 .verify_candidate(&candidate, TEST_BRAIN_ID, &wrong_tip, &mut resolver)
                 .is_err()
+        );
+
+        drop(session);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn verifies_staged_batch_in_contiguous_segment_and_event_chain_order() {
+        let root = runtime_root("verify-batch");
+        let device = DeviceId::new("device-a").unwrap();
+        let key = SigningKey::from_bytes(&[7_u8; 32]);
+        let (first_bytes, first_event) = signed_test_segment_with_key(
+            &device,
+            1,
+            "11111111-1111-4111-8111-111111111111",
+            ContentHashHex::zero(),
+            &key,
+        );
+        let (second_bytes, second_event) = signed_test_segment_with_key(
+            &device,
+            2,
+            "22222222-2222-4222-8222-222222222222",
+            first_event.content_hash.clone(),
+            &key,
+        );
+        let source_root = root.join("transport/incoming");
+        let first_relative =
+            PathBuf::from(device.as_filename_stem()).join("00000000000000000000.seg");
+        let second_relative =
+            PathBuf::from(device.as_filename_stem()).join("00000000000000000001.seg");
+        for (relative, bytes) in [
+            (&first_relative, &first_bytes),
+            (&second_relative, &second_bytes),
+        ] {
+            let source = source_root.join(relative);
+            fs::create_dir_all(source.parent().unwrap()).unwrap();
+            fs::write(source, bytes).unwrap();
+        }
+
+        let mut session = ImportStagingSession::begin(&root).unwrap();
+        session.stage_segment(&first_relative, &device, 0).unwrap();
+        session.stage_segment(&second_relative, &device, 1).unwrap();
+        let mut resolver = TestTrustedKey(key.verifying_key());
+
+        assert!(
+            session
+                .verify_batch_against_canonical(
+                    TEST_BRAIN_ID,
+                    std::slice::from_ref(&device),
+                    &mut resolver
+                )
+                .is_err()
+        );
+        session.release_staging_slot().unwrap();
+        let verified = session
+            .verify_batch_against_canonical(
+                TEST_BRAIN_ID,
+                std::slice::from_ref(&device),
+                &mut resolver,
+            )
+            .unwrap();
+        assert_eq!(verified.segments().len(), 2);
+        assert_eq!(verified.segments()[0].device_seq, 1);
+        assert_eq!(verified.segments()[1].device_seq, 2);
+        assert_eq!(verified.end_tips()[0].0, device);
+        assert_eq!(verified.end_tips()[0].1.segment_index, Some(1));
+        assert_eq!(
+            verified.end_tips()[0].1.content_hash,
+            second_event.content_hash
         );
 
         drop(session);
@@ -1774,7 +2079,26 @@ mod tests {
         let root = runtime_root("single-flight");
         let first = ImportStagingSession::begin(&root).unwrap();
         assert!(ImportStagingSession::begin(&root).is_err());
-        drop(first);
+        first.discard().unwrap();
+        assert!(ImportStagingSession::begin(&root).is_ok());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn released_staging_slot_stays_reserved_by_the_unprepared_tree() {
+        let root = runtime_root("released-slot");
+        let relative = Path::new("6465766963652d61/00000000000000000000.seg");
+        let source = root.join("transport/incoming").join(relative);
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, b"synthetic sealed segment").unwrap();
+        let device = DeviceId::new("device-a").unwrap();
+        let mut session = ImportStagingSession::begin(&root).unwrap();
+        session.stage_segment(relative, &device, 0).unwrap();
+        session.release_staging_slot().unwrap();
+
+        assert!(ImportStagingSession::begin(&root).is_err());
+        assert!(session.stage_segment(relative, &device, 1).is_err());
+        session.discard().unwrap();
         assert!(ImportStagingSession::begin(&root).is_ok());
         fs::remove_dir_all(root).unwrap();
     }

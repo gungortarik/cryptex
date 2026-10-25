@@ -806,7 +806,18 @@ sequence, and previous-hash continuity from a caller-supplied verified stream
 tip. This is a validation primitive only: it is not wired into publication and
 does not replace trust/cutoff or `RetrievalSafetyState` checks. Canonical
 file-ID alias scanning, prepared/committed journal records, crash reconciliation,
-and canonical publication remain absent.
+and canonical publication remain absent. `verify_batch` additionally orders
+all candidates by bytewise DeviceId and segment index, requires exact
+starting-tip coverage, rejects segment-index gaps, and verifies sequence/hash
+continuity across each device's staged segments. The
+`verify_batch_against_canonical` wrapper derives the starting tips from a
+complete versioned canonical scan while the inventory/device locks remain held;
+the importer-only staging slot must be released first, with the unprepared
+transaction tree retaining the single-flight claim. These remain validation
+primitives and do not authorize publication or implement trust/cutoff/
+`RetrievalSafetyState` policy. The updated focused test target compiles, but
+Windows Application Control blocked execution with error 4551; no runtime PASS
+is claimed for the canonical-lock integration test.
 The Windows staging path now validates current-user ownership and walks each
 local-drive directory component relative to a held parent handle, opening the
 component itself so reparse points are rejected. Its focused native tests cover

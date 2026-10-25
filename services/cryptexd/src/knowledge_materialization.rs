@@ -179,7 +179,8 @@ struct RawFrame {
     bytes: Vec<u8>,
 }
 
-struct VerifiedCanonicalSnapshot {
+pub(crate) struct VerifiedCanonicalSnapshot {
+    runtime_root: std::path::PathBuf,
     devices: Vec<DeviceId>,
     frames: Vec<RawFrame>,
     history: VerifiedV2History,
@@ -189,6 +190,68 @@ struct VerifiedCanonicalSnapshot {
     // SQLite safety comparison and content query.
     _inventory_lock: CanonicalInventoryLock,
     _locks: Vec<DeviceCanonicalLock>,
+}
+
+impl VerifiedCanonicalSnapshot {
+    /// Derive starting tips only from a complete versioned scan whose
+    /// inventory and device locks remain held by this snapshot.
+    pub(crate) fn import_starting_tips(
+        &self,
+        affected_devices: &[DeviceId],
+    ) -> KnowledgeMaterializationResult<Vec<(DeviceId, crate::import_staging::ImportStreamTip)>>
+    {
+        let mut affected = affected_devices.to_vec();
+        affected.sort_by(|left, right| left.as_str().as_bytes().cmp(right.as_str().as_bytes()));
+        if affected.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(KnowledgeMaterializationError::InvalidInput(
+                "import candidate device list contains duplicates".into(),
+            ));
+        }
+
+        let mut tips = affected
+            .iter()
+            .map(|device| {
+                if !self.devices.contains(device) {
+                    return Err(KnowledgeMaterializationError::InvalidInput(
+                        "import device is not in the supplied trusted-device inventory".into(),
+                    ));
+                }
+                if canonical_device_has_open_segment(&self.runtime_root, device)? {
+                    return Err(KnowledgeMaterializationError::InvalidInput(
+                        "import cannot extend a device with an active canonical segment".into(),
+                    ));
+                }
+                Ok((
+                    device.clone(),
+                    crate::import_staging::ImportStreamTip::genesis(),
+                ))
+            })
+            .collect::<KnowledgeMaterializationResult<Vec<_>>>()?;
+
+        for (record, frame) in self.history.records().iter().zip(&self.frames) {
+            let Some((_, device_id, content_hash)) = record_identity(record) else {
+                return Err(KnowledgeMaterializationError::InvalidInput(
+                    "complete canonical snapshot contains an unverifiable record".into(),
+                ));
+            };
+            let Some((_, tip)) = tips
+                .iter_mut()
+                .find(|(device, _)| device.as_str() == device_id)
+            else {
+                continue;
+            };
+            let device_seq = record_device_seq(record)?;
+            tip.segment_index = Some(frame.position.pack_index);
+            tip.device_seq = Some(device_seq);
+            tip.content_hash =
+                cryptex_events::ContentHashHex::parse(&content_hash).map_err(|error| {
+                    KnowledgeMaterializationError::InvalidInput(format!(
+                        "verified canonical content hash is invalid: {error}"
+                    ))
+                })?;
+        }
+        Ok(tips)
+    }
 }
 
 /// Rebuild all M4-derived rows from an explicit set of trusted device streams.
@@ -233,7 +296,7 @@ pub fn rebuild_knowledge_from_canonical<R: TrustedDaemonKeyResolver>(
     })
 }
 
-fn scan_verified_canonical<R: TrustedDaemonKeyResolver>(
+pub(crate) fn scan_verified_canonical<R: TrustedDaemonKeyResolver>(
     runtime_root: &Path,
     expected_brain_id: &str,
     trusted_devices: &[DeviceId],
@@ -361,6 +424,7 @@ fn scan_verified_canonical_until<R: TrustedDaemonKeyResolver>(
     )?;
     check_deadline(deadline)?;
     Ok(VerifiedCanonicalSnapshot {
+        runtime_root: runtime_root.to_path_buf(),
         devices,
         frames,
         history,
@@ -1155,6 +1219,29 @@ fn decode_device_stem(stem: &str) -> Option<String> {
     Some(value)
 }
 
+fn canonical_device_has_open_segment(
+    runtime_root: &Path,
+    device_id: &DeviceId,
+) -> KnowledgeMaterializationResult<bool> {
+    let directory = canonical_events_device_dir(runtime_root, device_id);
+    if !directory.exists() {
+        return Ok(false);
+    }
+    for entry in fs::read_dir(directory).map_err(StorageError::Io)? {
+        let entry = entry.map_err(StorageError::Io)?;
+        let name = entry.file_name();
+        let name = name.to_str().ok_or_else(|| {
+            KnowledgeMaterializationError::InvalidInput(
+                "canonical segment filename is not valid Unicode".into(),
+            )
+        })?;
+        if parse_pack_index(name, "open").is_some() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn hex_nibble(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -1261,6 +1348,24 @@ fn record_identity(record: &VersionedRecord) -> Option<(String, String, String)>
         )),
         VersionedRecord::Unverifiable(_) => None,
     }
+}
+
+fn record_device_seq(record: &VersionedRecord) -> KnowledgeMaterializationResult<u64> {
+    let sequence = match record {
+        VersionedRecord::VerifiedV1(event) => event.device_seq.to_u64(),
+        VersionedRecord::VerifiedV2Supported(event) => event.event().device_seq.to_u64(),
+        VersionedRecord::VerifiedUnsupported(event) => event.device_seq.to_u64(),
+        VersionedRecord::Unverifiable(_) => {
+            return Err(KnowledgeMaterializationError::InvalidInput(
+                "unverifiable record has no import starting sequence".into(),
+            ));
+        }
+    };
+    sequence.map_err(|error| {
+        KnowledgeMaterializationError::InvalidInput(format!(
+            "verified canonical device sequence is invalid: {error}"
+        ))
+    })
 }
 
 fn build_progress(
