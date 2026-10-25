@@ -137,6 +137,7 @@ fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
     }
     validate_pilot_fixture_root(&runtime_root)?;
     let _instance = try_acquire_instance(&runtime_root)?;
+    recover_import_state_before_writer(&runtime_root)?;
     prepare_m1_runtime_foundation(&runtime_root)
         .map_err(|error| LifecycleError::Attention(error.to_string()))?;
     let (brain_id, event_id) = seed_timeline_fixture_with_platform_store(&runtime_root)?;
@@ -150,6 +151,11 @@ fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
         "pilot_fixture=timeline-v1\nbrain_id={brain_id}\nevent_id={event_id}\nclassification=public"
     );
     Ok(())
+}
+
+fn recover_import_state_before_writer(runtime_root: &Path) -> Result<(), LifecycleError> {
+    cryptexd::import_staging::recover_unprepared_staging(runtime_root)
+        .map_err(|error| LifecycleError::ImportRecoveryConflict(error.to_string()))
 }
 
 fn validate_pilot_fixture_root(runtime_root: &Path) -> Result<(), LifecycleError> {
@@ -1163,6 +1169,26 @@ mod tests {
         ])
         .expect_err("must require explicit fixture confirmation");
         assert!(matches!(error, LifecycleError::Usage(_)));
+    }
+
+    #[test]
+    fn pilot_writer_import_recovery_fails_closed_on_unknown_journal_state() {
+        let root = fresh_pilot_root();
+        let journal = root.join("canonical/import-journal");
+        fs::create_dir_all(&journal).expect("journal directory");
+        fs::write(
+            journal.join("unknown.state"),
+            b"synthetic unknown journal state",
+        )
+        .expect("unknown journal marker");
+
+        let error = recover_import_state_before_writer(&root)
+            .expect_err("unknown import state must stop canonical writers");
+        assert!(matches!(error, LifecycleError::ImportRecoveryConflict(_)));
+        assert!(!cryptexd::identity_runtime::brain_identity_path(&root).exists());
+        assert!(!root.join("canonical/events").exists());
+
+        fs::remove_dir_all(root).expect("remove isolated fixture");
     }
 
     #[test]

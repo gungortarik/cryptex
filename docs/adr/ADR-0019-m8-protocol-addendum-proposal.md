@@ -809,6 +809,9 @@ compares the incoming opened-file identity against files under every canonical
 device directory and rejects an alias. This admission-time scan is not race-free
 and must be repeated under canonical locks before publication. Prepared/committed
 journal records, crash reconciliation, and canonical publication remain absent.
+The isolated `pilot-fixture` canonical writer also runs the existing import
+recovery gate after acquiring the instance lock and before writing identity or
+events; this does not add a prepared-transaction recovery implementation.
 `verify_batch` additionally orders
 all candidates by bytewise DeviceId and segment index, requires exact
 starting-tip coverage, rejects segment-index gaps, and verifies sequence/hash
