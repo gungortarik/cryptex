@@ -1,12 +1,13 @@
 # Cursor prompt — independent M8 protocol and importer review
 
 Perform a fresh, independent, read-only follow-up security review of Cryptex M8
-source at exact commit `74754e3` on branch `codex/m8-device-trust`. The prior
+source at exact commit `304cb96` on branch `codex/m8-device-trust`. The prior
 follow-up at `3e83307` is recorded in
 `evidence/m8/m8-independent-security-review-followup-20261025.md`; review the
 pinned source commit, including prepared-temp recovery and the Windows M8
-staging/journal directory-flush change, rather than earlier evidence summaries
-or uncommitted working-tree assumptions.
+staging/journal directory-flush change plus subprocess interruption tests at
+prepared-temp and prepared-manifest boundaries, rather than earlier evidence
+summaries or uncommitted working-tree assumptions.
 
 Do not edit files, run tests, change trust state, run GitHub Actions, commit, or
 push. The protocol addendum remains PROPOSED; trust and transport activation
@@ -47,6 +48,7 @@ Inspect at minimum:
 - `evidence/m8/m8-windows-staging-recovery-slice2-20261024.md`
 - `evidence/m8/m8-independent-windows-staging-review-20261024.md`
 - `evidence/m8/m8-windows-staging-directory-flush-20261025.md`
+- `evidence/m8/m8-windows-prepublication-crash-tests-20261025.md`
 
 Review the implementation against the owner-approved Windows publication
 direction in ADR-0019 §5.1.1 and separately identify protocol details that are
@@ -81,8 +83,11 @@ still only proposed. At minimum, challenge:
    identity/revalidation, offline convergence, cutoff/restriction behavior,
    unknown-version holds and the remaining M8 Definition-of-Done gates.
 
-Do not treat the 16/16 `import_staging::tests` or 414/418 daemon library tests
-(4 ignored) as proof of the broader M8 gates. Report exact file/line references,
+The new `xproc_interrupt_after_prepared_*` tests compile but have not yet run:
+the local Windows Application Control blocks the rebuilt executable with 4551.
+An earlier source checkpoint had 16/16 `import_staging::tests` and 414/418
+daemon library tests (4 ignored); these are not current-test results and do not
+prove the broader M8 gates. Report exact file/line references,
 severity (Critical/High/Medium/Low), concrete counterexample or attack sequence,
 affected invariant, and the smallest safe correction. Separate confirmed code
 facts from assumptions. List what was actually reviewed and any missing

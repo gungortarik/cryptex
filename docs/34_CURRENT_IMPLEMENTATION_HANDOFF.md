@@ -26,9 +26,10 @@ macOS parity, and M8 completion remain open. No Actions ran.
 
 **Independent-review prompt refreshed (2026-10-25):** Updated
 `evidence/m8/m8-independent-security-review-prompt-20261025.md` to pin the
-current source commit `74754e3` and explicitly review the Windows directory
-flush implementation and its remaining crash/race limits. The review is still
-required before changing the M8 readiness/security claims.
+current source commit `304cb96` and review the Windows directory flush,
+prepared-temp recovery, and newly added prepublication interruption tests. The
+new crash tests remain NOT RUN due local Application Control 4551; the review
+is required before changing M8 readiness/security claims.
 
 **M8 independent security review + prepared-temp recovery (2026-10-25):** Owner supplied Cursor Security Review `b6f68bf7-93d5-4674-9286-e2221cdf5e52`, pinned to source `2fe8639`; recommendation **NOT READY**. Critical findings: no canonical publication/replay, no owner-approval IPC/bootstrap parser, and no trust/cutoff/`RetrievalSafetyState` validation in import. High findings: Windows parent-directory durability, macOS containment parity, publication-time alias rescan, transport-to-staging wiring, and serialization with appenders. Full supplied findings and scope boundary: `evidence/m8/m8-independent-security-review-followup-20261025.md`. Fixed the review's M1 crash window: an exact, bounded `.<uuid>.prepared.tmp` with a matching staging transaction is now treated as unprepared and safely cleaned so the still-present incoming source can be retried; malformed/unknown names and mixed temp/final journal states remain fail-closed. `cargo test -p cryptexd --lib import_staging::tests` passes **15/15**; full daemon library suite passes **413/413** (4 ignored); strict clippy, fmt, and diff check pass. This does not address C1–C4/H1–H5 or accept the protocol proposal. A follow-up review prompt now pins source `3e83307` in `evidence/m8/m8-independent-security-review-prompt-20261025.md`; trust activation remains gated on fresh review and the unresolved critical/high findings. No Actions ran.
 
