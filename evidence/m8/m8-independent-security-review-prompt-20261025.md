@@ -1,10 +1,9 @@
 # Cursor prompt — independent M8 protocol and importer review
 
 Perform a fresh, independent, read-only security review of Cryptex M8 source at
-exact commit `4686de6a618c77fe4b463aaadf58dba84123a69e` on branch
-`codex/m8-device-trust`. A later documentation-only commit adds this prompt;
-review the pinned source commit, not earlier evidence summaries or uncommitted
-working-tree assumptions.
+exact commit `ae35ddf` on branch `codex/m8-device-trust`. A later
+documentation-only commit updates this prompt; review the pinned source commit,
+not earlier evidence summaries or uncommitted working-tree assumptions.
 
 Do not edit files, run tests, change trust state, run GitHub Actions, commit, or
 push. The protocol addendum remains PROPOSED; trust and transport activation
