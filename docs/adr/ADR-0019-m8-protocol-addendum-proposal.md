@@ -808,7 +808,15 @@ does not replace trust/cutoff or `RetrievalSafetyState` checks. Staging now
 compares the incoming opened-file identity against files under every canonical
 device directory and rejects an alias. This admission-time scan is not race-free
 and must be repeated under canonical locks before publication. Prepared/committed
-journal records, crash reconciliation, and canonical publication remain absent.
+journal support is partial: a session can write an immutable versioned
+canonical-JSON prepared manifest with exact relative paths, lengths, and
+SHA-256 values using a no-replace move. Closed-schema validation enforces
+canonical transaction/device IDs, sorted contiguous segment entries, and
+configured batch bounds. Startup still fails closed on every prepared marker;
+there is no committed marker, partial-publication reconciliation, or canonical
+publication path. Windows uses `MOVEFILE_WRITE_THROUGH` for placement, but
+parent-directory durability and crash points remain unverified and are not
+claimed.
 The isolated `pilot-fixture` canonical writer also runs the existing import
 recovery gate after acquiring the instance lock and before writing identity or
 events; this does not add a prepared-transaction recovery implementation.

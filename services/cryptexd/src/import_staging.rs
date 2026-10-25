@@ -14,12 +14,14 @@ use cryptex_events::{
     VersionedRecord, ZERO_CONTENT_HASH_HEX, decode_frame_header, read_versioned_record,
 };
 use fs2::FileExt;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::import_limits::{ImportBatchBudget, ImportLimitError};
 use crate::paths::assert_outside_repository;
 
 const COPY_BUFFER_BYTES: usize = 64 * 1024;
+const MAX_PREPARED_MANIFEST_BYTES: u64 = 64 * 1024;
 #[cfg(windows)]
 const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
 
@@ -126,6 +128,25 @@ pub struct VerifiedStagedBatch {
     end_tips: Vec<(DeviceId, ImportStreamTip)>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreparedImportManifest {
+    schema_version: u32,
+    transaction_id: String,
+    segments: Vec<PreparedImportSegment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreparedImportSegment {
+    device_id: String,
+    segment_index: u64,
+    staged_relative_path: String,
+    destination_relative_path: String,
+    length: u64,
+    sha256: String,
+}
+
 impl VerifiedStagedBatch {
     #[must_use]
     pub fn segments(&self) -> &[VerifiedStagedSegment] {
@@ -150,6 +171,7 @@ pub struct ImportStagingSession {
     budget: ImportBatchBudget,
     candidates: Vec<StagedSegment>,
     failed: bool,
+    prepared: bool,
 }
 
 impl ImportStagingSession {
@@ -226,6 +248,7 @@ impl ImportStagingSession {
             budget: ImportBatchBudget::empty(),
             candidates: Vec::new(),
             failed: false,
+            prepared: false,
         })
     }
 
@@ -239,9 +262,9 @@ impl ImportStagingSession {
         device_id: &DeviceId,
         segment_index: u64,
     ) -> Result<&StagedSegment, ImportStagingError> {
-        if self._single_flight.is_none() {
+        if self._single_flight.is_none() || self.prepared {
             return Err(ImportStagingError::Invalid(
-                "staging is closed; no new candidates may be added".into(),
+                "staging is closed or already prepared; no new candidates may be added".into(),
             ));
         }
         if self.failed {
@@ -286,6 +309,11 @@ impl ImportStagingSession {
     /// Explicitly discard this unprepared staging transaction. Cleanup errors
     /// are returned; callers must not proceed to canonical locks after failure.
     pub fn discard(mut self) -> Result<(), ImportStagingError> {
+        if self.prepared {
+            return Err(ImportStagingError::RecoveryConflict(
+                "a prepared import transaction requires startup reconciliation".into(),
+            ));
+        }
         self._directory_handles.clear();
         remove_unprepared_transaction(&self.staging_dir)
     }
@@ -453,9 +481,9 @@ impl ImportStagingSession {
         prior_tips: &[(DeviceId, ImportStreamTip)],
         key_resolver: &mut R,
     ) -> Result<VerifiedStagedBatch, ImportStagingError> {
-        if self.failed || self.candidates.is_empty() {
+        if self.failed || self.prepared || self.candidates.is_empty() {
             return Err(ImportStagingError::Invalid(
-                "cannot verify an empty or failed staging batch".into(),
+                "cannot verify an empty, failed, or prepared staging batch".into(),
             ));
         }
 
@@ -579,6 +607,156 @@ impl ImportStagingSession {
         self.budget
     }
 
+    /// Persist the immutable prepared manifest after full staged-batch
+    /// verification. This does not publish canonical files. Until prepared
+    /// transaction reconciliation is implemented, startup intentionally
+    /// stops on this manifest rather than guessing whether publication began.
+    pub fn prepare_verified_manifest(
+        &mut self,
+        verified: &VerifiedStagedBatch,
+    ) -> Result<PathBuf, ImportStagingError> {
+        if self._single_flight.is_some() {
+            return Err(ImportStagingError::Invalid(
+                "release the staging slot before preparing the manifest".into(),
+            ));
+        }
+        if self.failed || self.prepared || self.candidates.is_empty() {
+            return Err(ImportStagingError::Invalid(
+                "cannot prepare an empty, failed, or already prepared transaction".into(),
+            ));
+        }
+        if verified.segments.len() != self.candidates.len() {
+            return Err(ImportStagingError::Invalid(
+                "verified batch does not cover every staged candidate".into(),
+            ));
+        }
+
+        let mut segments = Vec::with_capacity(verified.segments.len());
+        let mut staged_file_pins = Vec::with_capacity(verified.segments.len());
+        for summary in &verified.segments {
+            let candidate = self
+                .candidates
+                .iter()
+                .find(|candidate| {
+                    candidate.device_id == summary.device_id
+                        && candidate.segment_index == summary.segment_index
+                })
+                .ok_or_else(|| {
+                    ImportStagingError::Invalid(
+                        "verified segment does not belong to this staging transaction".into(),
+                    )
+                })?;
+            if candidate.length == 0
+                || candidate.length > crate::import_limits::MAX_IMPORT_FILE_BYTES
+                || candidate.sha256 != summary.sha256
+            {
+                return Err(ImportStagingError::Invalid(
+                    "verified segment metadata does not match the staged snapshot".into(),
+                ));
+            }
+            let expected_path = self
+                .staging_dir
+                .join(candidate.device_id.as_filename_stem())
+                .join(format!("{:020}.seg", candidate.segment_index));
+            if candidate.staged_path != expected_path {
+                return Err(ImportStagingError::Invalid(
+                    "staged path does not match manifest identity".into(),
+                ));
+            }
+            let parent_handles = inspect_directory_chain(
+                expected_path.parent().ok_or_else(|| {
+                    ImportStagingError::Invalid("staged segment has no parent".into())
+                })?,
+                true,
+            )?;
+            let mut staged = open_source_from_directory_chain(&parent_handles, &expected_path)?;
+            let initial = source_snapshot(&staged)?;
+            if !initial.is_regular_file
+                || initial.link_count != 1
+                || initial.length != candidate.length
+            {
+                return Err(ImportStagingError::Invalid(
+                    "staged segment changed before manifest preparation".into(),
+                ));
+            }
+            staged.seek(SeekFrom::Start(0))?;
+            let (length, digest) = hash_bounded(&mut staged, candidate.length)?;
+            if length != candidate.length || digest != summary.sha256 {
+                return Err(ImportStagingError::Invalid(
+                    "staged segment digest changed before manifest preparation".into(),
+                ));
+            }
+            if source_snapshot(&staged)? != initial {
+                return Err(ImportStagingError::Invalid(
+                    "staged segment identity or metadata changed during manifest preparation"
+                        .into(),
+                ));
+            }
+            let relative = format!(
+                "{}/{:020}.seg",
+                candidate.device_id.as_filename_stem(),
+                candidate.segment_index
+            );
+            segments.push(PreparedImportSegment {
+                device_id: candidate.device_id.as_str().to_owned(),
+                segment_index: candidate.segment_index,
+                staged_relative_path: relative.clone(),
+                destination_relative_path: relative,
+                length: candidate.length,
+                sha256: candidate.sha256.clone(),
+            });
+            // Keep the read-only file and parent handles open through the
+            // manifest placement. Windows sharing denies concurrent writes;
+            // on Unix the daemon-owned staging tree and single-instance
+            // protocol exclude supported concurrent writers.
+            staged_file_pins.push((parent_handles, staged));
+        }
+        segments.sort_by(|left, right| {
+            left.device_id
+                .as_bytes()
+                .cmp(right.device_id.as_bytes())
+                .then_with(|| left.segment_index.cmp(&right.segment_index))
+        });
+        let manifest = PreparedImportManifest {
+            schema_version: 1,
+            transaction_id: self.transaction_id.clone(),
+            segments,
+        };
+        validate_prepared_manifest(&manifest)?;
+        let bytes = serde_json_canonicalizer::to_vec(&manifest).map_err(|error| {
+            ImportStagingError::Invalid(format!("cannot canonicalize prepared manifest: {error}"))
+        })?;
+        if bytes.len() as u64 > MAX_PREPARED_MANIFEST_BYTES {
+            return Err(ImportStagingError::Invalid(
+                "prepared manifest exceeds the schema size bound".into(),
+            ));
+        }
+
+        let journal_root = self.runtime_root.join("canonical/import-journal");
+        ensure_existing_plain_directory(&journal_root)?;
+        let final_path = journal_root.join(format!("{}.prepared.json", self.transaction_id));
+        let temp_path = journal_root.join(format!(".{}.prepared.tmp", self.transaction_id));
+        let write_result = (|| {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temp_path)?;
+            file.write_all(&bytes)?;
+            file.sync_all()?;
+            drop(file);
+            publish_staged_no_replace(&temp_path, &final_path)?;
+            sync_staged_parent(&final_path)?;
+            Ok::<(), ImportStagingError>(())
+        })();
+        if let Err(error) = write_result {
+            let _ = fs::remove_file(&temp_path);
+            return Err(error);
+        }
+        drop(staged_file_pins);
+        self.prepared = true;
+        Ok(final_path)
+    }
+
     /// Release the importer-only process lock after the staged snapshot is
     /// complete and before acquiring canonical inventory/device locks. The
     /// unique staging transaction directory remains the durable single-flight
@@ -597,6 +775,101 @@ impl ImportStagingSession {
         }
         Ok(())
     }
+}
+
+fn validate_prepared_manifest(manifest: &PreparedImportManifest) -> Result<(), ImportStagingError> {
+    if manifest.schema_version != 1 {
+        return Err(ImportStagingError::Invalid(
+            "prepared manifest has an unsupported schema version".into(),
+        ));
+    }
+    cryptex_core::validate::parse_uuid_str(&manifest.transaction_id).map_err(|_| {
+        ImportStagingError::Invalid("prepared manifest transaction ID is invalid".into())
+    })?;
+    if manifest
+        .transaction_id
+        .bytes()
+        .any(|byte| byte.is_ascii_uppercase())
+    {
+        return Err(ImportStagingError::Invalid(
+            "prepared manifest transaction ID is not canonical lowercase UUID text".into(),
+        ));
+    }
+    if manifest.segments.is_empty()
+        || manifest.segments.len() > crate::import_limits::MAX_IMPORT_FILES_PER_BATCH
+    {
+        return Err(ImportStagingError::Invalid(
+            "prepared manifest segment count is outside the configured bound".into(),
+        ));
+    }
+
+    let mut total_bytes = 0_u64;
+    let mut previous: Option<(&str, u64)> = None;
+    for segment in &manifest.segments {
+        let device = DeviceId::new(segment.device_id.clone()).map_err(|error| {
+            ImportStagingError::Invalid(format!("prepared manifest DeviceId is invalid: {error}"))
+        })?;
+        if device.as_str() != segment.device_id {
+            return Err(ImportStagingError::Invalid(
+                "prepared manifest DeviceId is not in canonical form".into(),
+            ));
+        }
+        let expected_relative = format!(
+            "{}/{:020}.seg",
+            device.as_filename_stem(),
+            segment.segment_index
+        );
+        if segment.staged_relative_path != expected_relative
+            || segment.destination_relative_path != expected_relative
+        {
+            return Err(ImportStagingError::Invalid(
+                "prepared manifest paths do not match the DeviceId and segment index".into(),
+            ));
+        }
+        if segment.length == 0 || segment.length > crate::import_limits::MAX_IMPORT_FILE_BYTES {
+            return Err(ImportStagingError::Invalid(
+                "prepared manifest segment length is outside the configured bound".into(),
+            ));
+        }
+        total_bytes = total_bytes
+            .checked_add(segment.length)
+            .ok_or_else(|| ImportStagingError::Invalid("manifest byte count overflow".into()))?;
+        if total_bytes > crate::import_limits::MAX_IMPORT_BATCH_BYTES {
+            return Err(ImportStagingError::Invalid(
+                "prepared manifest exceeds the configured batch byte bound".into(),
+            ));
+        }
+        if segment.sha256.len() != 64
+            || !segment
+                .sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(ImportStagingError::Invalid(
+                "prepared manifest SHA-256 is not canonical lowercase hex".into(),
+            ));
+        }
+        if let Some((previous_device, previous_index)) = previous {
+            let ordering = previous_device
+                .as_bytes()
+                .cmp(segment.device_id.as_bytes())
+                .then_with(|| previous_index.cmp(&segment.segment_index));
+            if ordering != std::cmp::Ordering::Less {
+                return Err(ImportStagingError::Invalid(
+                    "prepared manifest segments are duplicated or not canonically ordered".into(),
+                ));
+            }
+            if previous_device == segment.device_id
+                && previous_index.checked_add(1) != Some(segment.segment_index)
+            {
+                return Err(ImportStagingError::Invalid(
+                    "prepared manifest contains a per-device segment-index gap".into(),
+                ));
+            }
+        }
+        previous = Some((&segment.device_id, segment.segment_index));
+    }
+    Ok(())
 }
 
 fn verify_segment_stream<R: TrustedDaemonKeyResolver>(
@@ -2085,7 +2358,35 @@ mod tests {
             second_event.content_hash
         );
 
-        drop(session);
+        let manifest_path = session.prepare_verified_manifest(&verified).unwrap();
+        let manifest_bytes = fs::read(&manifest_path).unwrap();
+        let manifest: PreparedImportManifest = serde_json::from_slice(&manifest_bytes).unwrap();
+        validate_prepared_manifest(&manifest).unwrap();
+        assert_eq!(
+            serde_json_canonicalizer::to_vec(&manifest).unwrap(),
+            manifest_bytes
+        );
+        let mut gap = manifest.clone();
+        gap.segments[1].segment_index = 3;
+        assert!(validate_prepared_manifest(&gap).is_err());
+        let mut unknown_field = serde_json::to_value(&manifest).unwrap();
+        unknown_field["unexpected"] = serde_json::Value::Bool(true);
+        assert!(serde_json::from_value::<PreparedImportManifest>(unknown_field).is_err());
+        assert!(ImportStagingSession::begin(&root).is_err());
+        assert!(
+            session
+                .discard()
+                .unwrap_err()
+                .to_string()
+                .contains("requires startup reconciliation")
+        );
+        assert!(
+            recover_unprepared_staging(&root)
+                .unwrap_err()
+                .to_string()
+                .contains("prepared or unknown journal")
+        );
+
         fs::remove_dir_all(root).unwrap();
     }
 
