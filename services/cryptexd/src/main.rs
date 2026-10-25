@@ -339,8 +339,17 @@ fn run_identity(args: &[String]) -> Result<(), LifecycleError> {
         )
     })?;
     assert_outside_repository(&runtime_root)?;
-    ensure_runtime_root(&runtime_root)?;
+    let _instance = prepare_identity_enrollment(&runtime_root)?;
     enroll_local_with_platform_store(&runtime_root, environment)
+}
+
+fn prepare_identity_enrollment(
+    runtime_root: &Path,
+) -> Result<cryptexd::instance::InstanceLock, LifecycleError> {
+    ensure_runtime_root(runtime_root)?;
+    let instance = try_acquire_instance(runtime_root)?;
+    recover_import_state_before_writer(runtime_root)?;
+    Ok(instance)
 }
 
 fn enroll_local_with_store<S: SecureStore>(
@@ -1187,6 +1196,29 @@ mod tests {
         assert!(matches!(error, LifecycleError::ImportRecoveryConflict(_)));
         assert!(!cryptexd::identity_runtime::brain_identity_path(&root).exists());
         assert!(!root.join("canonical/events").exists());
+
+        fs::remove_dir_all(root).expect("remove isolated fixture");
+    }
+
+    #[test]
+    fn identity_enrollment_holds_instance_lock_and_reconciles_import_before_identity() {
+        let root = fresh_pilot_root();
+        let journal = root.join("canonical/import-journal");
+        fs::create_dir_all(&journal).expect("journal directory");
+        fs::write(journal.join("unknown.state"), b"unknown journal")
+            .expect("unknown journal marker");
+
+        let error = match prepare_identity_enrollment(&root) {
+            Ok(_) => panic!("unknown import state must block identity setup"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, LifecycleError::ImportRecoveryConflict(_)));
+        assert!(!cryptexd::identity_runtime::brain_identity_path(&root).exists());
+        assert!(!cryptexd::local_device_identity::local_device_identity_path(&root).exists());
+        assert!(
+            try_acquire_instance(&root).is_ok(),
+            "lock must release on failure"
+        );
 
         fs::remove_dir_all(root).expect("remove isolated fixture");
     }
