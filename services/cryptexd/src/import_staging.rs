@@ -749,8 +749,20 @@ impl ImportStagingSession {
             file.write_all(&bytes)?;
             file.sync_all()?;
             drop(file);
+            #[cfg(test)]
+            crate::test_interrupt::maybe_abrupt_exit(
+                "m8_after_prepared_temp_sync",
+                &self.runtime_root,
+                "prepared manifest temporary file synced before no-replace placement",
+            );
             publish_staged_no_replace(&temp_path, &final_path)?;
             sync_staged_parent(&final_path)?;
+            #[cfg(test)]
+            crate::test_interrupt::maybe_abrupt_exit(
+                "m8_after_prepared_manifest_sync",
+                &self.runtime_root,
+                "prepared manifest placed and parent directory synced",
+            );
             Ok::<(), ImportStagingError>(())
         })();
         if let Err(error) = write_result {
@@ -2657,6 +2669,101 @@ mod tests {
         ));
         fs::create_dir_all(root.join("transport/incoming")).unwrap();
         root
+    }
+
+    #[test]
+    fn xproc_import_prepare_interrupt_worker_entry() {
+        let Some(root) = std::env::var_os("CRYPTEX_TEST_M8_IMPORT_ROOT") else {
+            return;
+        };
+        let root = PathBuf::from(root);
+        let device = DeviceId::new("device-a").unwrap();
+        let relative = PathBuf::from(device.as_filename_stem()).join("00000000000000000000.seg");
+        let mut session = ImportStagingSession::begin(&root).unwrap();
+        session.stage_segment(&relative, &device, 0).unwrap();
+        session.release_staging_slot().unwrap();
+        let key = SigningKey::from_bytes(&[7_u8; 32]);
+        let mut resolver = TestTrustedKey(key.verifying_key());
+        let verified = session
+            .verify_batch_against_canonical(
+                TEST_BRAIN_ID,
+                std::slice::from_ref(&device),
+                &mut resolver,
+            )
+            .unwrap();
+        session.prepare_verified_manifest(&verified).unwrap();
+        std::process::exit(98);
+    }
+
+    fn run_import_prepare_interrupt(root: &Path, boundary: &str) {
+        use std::process::{Command, Stdio};
+        use std::time::Duration;
+
+        let ready = root.join(crate::test_interrupt::READY_NAME);
+        let _ = fs::remove_file(&ready);
+        let executable = std::env::current_exe().expect("test executable path");
+        let mut child = Command::new(executable)
+            .args([
+                "--exact",
+                "import_staging::tests::xproc_import_prepare_interrupt_worker_entry",
+                "--nocapture",
+            ])
+            .env("CRYPTEX_TEST_M8_IMPORT_ROOT", root)
+            .env(crate::test_interrupt::INTERRUPT_ENV, boundary)
+            .env("RUST_TEST_THREADS", "1")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn import interrupt worker");
+        assert!(
+            crate::test_interrupt::wait_for_path(&ready, Duration::from_secs(30)),
+            "import interrupt handshake not observed for {boundary}"
+        );
+        let status = crate::test_interrupt::wait_child_bounded(&mut child, Duration::from_secs(15))
+            .expect("wait import interrupt worker");
+        assert_eq!(
+            status.code(),
+            Some(crate::test_interrupt::INTERRUPT_EXIT_CODE),
+            "expected abrupt import interruption, got {status:?}"
+        );
+        assert_eq!(
+            crate::test_interrupt::read_ready(root).0,
+            boundary,
+            "interrupt handshake names the wrong boundary"
+        );
+    }
+
+    fn assert_import_interrupt_recovers(boundary: &str) {
+        let root = runtime_root(boundary);
+        let device = DeviceId::new("device-a").unwrap();
+        let relative = PathBuf::from(device.as_filename_stem()).join("00000000000000000000.seg");
+        let source = root.join("transport/incoming").join(&relative);
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        let (bytes, _, _) = signed_test_segment(&device);
+        fs::write(&source, bytes).unwrap();
+
+        run_import_prepare_interrupt(&root, boundary);
+        assert!(source.is_file(), "transport input remains retryable");
+        recover_import_staging(&root).unwrap();
+        assert_eq!(
+            fs::read_dir(root.join("canonical/import-staging"))
+                .unwrap()
+                .count(),
+            0
+        );
+        let journal = root.join("canonical/import-journal");
+        assert_eq!(fs::read_dir(journal).unwrap().count(), 1); // import.lock only
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn xproc_interrupt_after_prepared_temp_sync_recovers_unprepared_state() {
+        assert_import_interrupt_recovers("m8_after_prepared_temp_sync");
+    }
+
+    #[test]
+    fn xproc_interrupt_after_prepared_manifest_sync_recovers_prepublication_state() {
+        assert_import_interrupt_recovers("m8_after_prepared_manifest_sync");
     }
 
     #[test]

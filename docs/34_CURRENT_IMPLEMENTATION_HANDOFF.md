@@ -1,5 +1,17 @@
 # 34 — Current Implementation Handoff
 
+**M8 Windows pre-publication crash-test slice (2026-10-25):** Added two
+test-only subprocess interruption points for prepared-journal creation: after
+the temporary manifest is synced, and after the prepared manifest plus parent
+directory are synced. Parent recovery assertions check that the source remains
+retryable and pre-publication staging/journal state is safely removed.
+`cargo check -p cryptexd --tests`, strict daemon Clippy, fmt, and diff check
+pass. The focused test binary was rebuilt, then Windows Application Control
+blocked execution with **4551**; the new tests are **NOT RUN** and need to run
+in the Windows development VM. This is process-crash coverage only, not
+power-loss proof or publication replay. Details:
+`evidence/m8/m8-windows-prepublication-crash-tests-20261025.md`. No Actions.
+
 **M8 Windows staging/journal directory-flush follow-up (2026-10-25):**
 Replaced the Windows `sync_staged_parent` no-op with a fail-closed directory
 handle flush scoped to M8 staging and prepared-journal placement/removal. The
