@@ -804,9 +804,12 @@ parses only complete frames, verifies supported v1/v2 record signatures using
 a caller-supplied trusted-key resolver, and checks device/Brain identity,
 sequence, and previous-hash continuity from a caller-supplied verified stream
 tip. This is a validation primitive only: it is not wired into publication and
-does not replace trust/cutoff or `RetrievalSafetyState` checks. Canonical
-file-ID alias scanning, prepared/committed journal records, crash reconciliation,
-and canonical publication remain absent. `verify_batch` additionally orders
+does not replace trust/cutoff or `RetrievalSafetyState` checks. Staging now
+compares the incoming opened-file identity against files under every canonical
+device directory and rejects an alias. This admission-time scan is not race-free
+and must be repeated under canonical locks before publication. Prepared/committed
+journal records, crash reconciliation, and canonical publication remain absent.
+`verify_batch` additionally orders
 all candidates by bytewise DeviceId and segment index, requires exact
 starting-tip coverage, rejects segment-index gaps, and verifies sequence/hash
 continuity across each device's staged segments. The

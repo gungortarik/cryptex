@@ -319,6 +319,11 @@ impl ImportStagingSession {
                 "incoming candidate is not an ordinary file".into(),
             ));
         }
+        if canonical_file_id_alias_exists(&self.runtime_root, initial.identity)? {
+            return Err(ImportStagingError::Invalid(
+                "incoming candidate aliases an entry under canonical/events".into(),
+            ));
+        }
         if initial.link_count != 1 {
             return Err(ImportStagingError::Invalid(format!(
                 "incoming candidate has {} links; exactly one is required",
@@ -1345,6 +1350,52 @@ fn entry_exists(path: &Path) -> Result<bool, ImportStagingError> {
     }
 }
 
+/// Reject an incoming source whose opened file identity is already present in
+/// canonical storage. This is an admission-time scan only; publication must
+/// repeat alias/destination checks while canonical locks are held.
+fn canonical_file_id_alias_exists(
+    runtime_root: &Path,
+    source_identity: (u64, u64, u64),
+) -> Result<bool, ImportStagingError> {
+    let events_root = runtime_root.join("canonical/events");
+    if !entry_exists(&events_root)? {
+        return Ok(false);
+    }
+    ensure_existing_plain_directory(&events_root)?;
+    let events_handles = inspect_directory_chain(&events_root, true)?;
+    for device_entry in fs::read_dir(&events_root)? {
+        let device_entry = device_entry?;
+        let device_path = device_entry.path();
+        let metadata = fs::symlink_metadata(&device_path)?;
+        if device_entry.file_name() == "inventory.lock" && metadata.is_file() {
+            let file = open_source_no_follow(&device_path)?;
+            if source_snapshot(&file)?.identity == source_identity {
+                return Ok(true);
+            }
+            continue;
+        }
+        ensure_metadata_plain_directory(&metadata)?;
+        let device_handles = inspect_directory_chain(&device_path, true)?;
+        for file_entry in fs::read_dir(&device_path)? {
+            let file_entry = file_entry?;
+            let file_path = file_entry.path();
+            let metadata = fs::symlink_metadata(&file_path)?;
+            if is_link_or_reparse(&metadata) || !metadata.is_file() {
+                return Err(ImportStagingError::Invalid(
+                    "canonical device directory contains a link or non-file entry".into(),
+                ));
+            }
+            let file = open_source_from_directory_chain(&device_handles, &file_path)?;
+            if source_snapshot(&file)?.identity == source_identity {
+                return Ok(true);
+            }
+        }
+        drop(device_handles);
+    }
+    drop(events_handles);
+    Ok(false)
+}
+
 fn same_volume(first: &Path, second: &Path) -> Result<bool, ImportStagingError> {
     let first_metadata = fs::metadata(first)?;
     let second_metadata = fs::metadata(second)?;
@@ -1883,6 +1934,34 @@ mod tests {
                 .starts_with(root.join("canonical/import-staging"))
         );
         assert_eq!(session.budget().files(), 1);
+
+        drop(session);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_incoming_file_identity_already_present_in_canonical_events() {
+        let root = runtime_root("canonical-alias");
+        let relative = Path::new("6465766963652d61/00000000000000000000.seg");
+        let source = root.join("transport/incoming").join(relative);
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, b"synthetic hard-linked candidate").unwrap();
+
+        let device = DeviceId::new("device-a").unwrap();
+        let canonical_device = root
+            .join("canonical/events")
+            .join(device.as_filename_stem());
+        fs::create_dir_all(&canonical_device).unwrap();
+        fs::hard_link(&source, canonical_device.join("00000000000000000000.seg")).unwrap();
+
+        let mut session = ImportStagingSession::begin(&root).unwrap();
+        let error = session.stage_segment(relative, &device, 0).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("aliases an entry under canonical/events")
+        );
+        assert!(session.failed);
 
         drop(session);
         fs::remove_dir_all(root).unwrap();
