@@ -1,11 +1,12 @@
 # Cursor prompt — independent M8 protocol and importer review
 
 Perform a fresh, independent, read-only follow-up security review of Cryptex M8
-source at exact commit `3e83307` on branch `codex/m8-device-trust`. The prior
-review at `2fe8639` is recorded in
+source at exact commit `74754e3` on branch `codex/m8-device-trust`. The prior
+follow-up at `3e83307` is recorded in
 `evidence/m8/m8-independent-security-review-followup-20261025.md`; review the
-pinned source commit, including its prepared-temp recovery change, rather than
-earlier evidence summaries or uncommitted working-tree assumptions.
+pinned source commit, including prepared-temp recovery and the Windows M8
+staging/journal directory-flush change, rather than earlier evidence summaries
+or uncommitted working-tree assumptions.
 
 Do not edit files, run tests, change trust state, run GitHub Actions, commit, or
 push. The protocol addendum remains PROPOSED; trust and transport activation
@@ -45,6 +46,7 @@ Inspect at minimum:
 - `services/cryptexd/src/owned_process/`
 - `evidence/m8/m8-windows-staging-recovery-slice2-20261024.md`
 - `evidence/m8/m8-independent-windows-staging-review-20261024.md`
+- `evidence/m8/m8-windows-staging-directory-flush-20261025.md`
 
 Review the implementation against the owner-approved Windows publication
 direction in ADR-0019 §5.1.1 and separately identify protocol details that are
@@ -57,9 +59,12 @@ still only proposed. At minimum, challenge:
 2. Whether the current recovery behavior is safe for each crash point. It only
    aborts an intact prepared transaction when every canonical destination is
    absent; visible destinations remain a conflict. There is not yet a canonical
-   publication path, committed marker, partial-publication replay, or verified
-   Windows parent-directory durability. Confirm the source and exact limits of
-   these claims.
+   publication path, committed marker, or partial-publication replay. Windows
+   staging/journal parent sync now opens and flushes a directory handle, rejects
+   reparse points, and is covered by native tests; assess whether the exact
+   implementation and evidence satisfy the durability contract, including
+   pinned-path/race behavior and crash/power-loss limits. Confirm the source and
+   exact limits of these claims.
 3. Semantic import validation: supported v1/v2 schema/signature/chain checks,
    trust/key binding, cutoff policy and `RetrievalSafetyState`. Distinguish the
    implemented caller-supplied resolver/tip validation from absent policy
@@ -76,7 +81,7 @@ still only proposed. At minimum, challenge:
    identity/revalidation, offline convergence, cutoff/restriction behavior,
    unknown-version holds and the remaining M8 Definition-of-Done gates.
 
-Do not treat the 13/13 `import_staging::tests` or 411/411 daemon library tests
+Do not treat the 16/16 `import_staging::tests` or 414/418 daemon library tests
 (4 ignored) as proof of the broader M8 gates. Report exact file/line references,
 severity (Critical/High/Medium/Low), concrete counterexample or attack sequence,
 affected invariant, and the smallest safe correction. Separate confirmed code
