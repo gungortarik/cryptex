@@ -819,10 +819,11 @@ remains a typed fail-closed conflict. This handles pre-publication crashes but
 does not replay partial publication. There is no committed marker or canonical
 publication path. Windows uses `MOVEFILE_WRITE_THROUGH` for placement, but
 parent-directory durability and crash points remain unverified and are not
-claimed.
+claimed. The Windows `import_staging::tests` group passes 13/13, including the
+prepared-recovery path and native handle tests.
 The isolated `pilot-fixture` canonical writer also runs the existing import
 recovery gate after acquiring the instance lock and before writing identity or
-events; this does not add a prepared-transaction recovery implementation.
+events; it now reconciles intact prepared transactions as described above.
 `verify_batch` additionally orders
 all candidates by bytewise DeviceId and segment index, requires exact
 starting-tip coverage, rejects segment-index gaps, and verifies sequence/hash
@@ -832,9 +833,8 @@ complete versioned canonical scan while the inventory/device locks remain held;
 the importer-only staging slot must be released first, with the unprepared
 transaction tree retaining the single-flight claim. These remain validation
 primitives and do not authorize publication or implement trust/cutoff/
-`RetrievalSafetyState` policy. The updated focused test target compiles, but
-Windows Application Control blocked execution with error 4551; no runtime PASS
-is claimed for the canonical-lock integration test.
+`RetrievalSafetyState` policy. The focused batch/recovery test and the complete
+`import_staging::tests` group pass on Windows (13/13).
 The Windows staging path now validates current-user ownership and walks each
 local-drive directory component relative to a held parent handle, opening the
 component itself so reparse points are rejected. Its focused native tests cover

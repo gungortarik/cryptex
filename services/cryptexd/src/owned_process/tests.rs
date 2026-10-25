@@ -384,7 +384,9 @@ fn externally_terminated_owner_still_closes_its_non_inherited_nested_job() {
     let exit = owner.wait_for_exit(TEST_TIMEOUT).unwrap();
     assert_eq!(exit.exit_code, Some(97));
     assert!(!exit.is_clean());
-    assert!(!process_is_running(child));
+    // Job teardown can complete just after the owner process handle signals;
+    // keep the same bounded eventual-stop assertion used by sibling tests.
+    wait_stopped(child);
 }
 
 #[test]
