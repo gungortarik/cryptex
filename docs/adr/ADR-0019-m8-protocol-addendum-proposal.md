@@ -812,8 +812,11 @@ journal support is partial: a session can write an immutable versioned
 canonical-JSON prepared manifest with exact relative paths, lengths, and
 SHA-256 values using a no-replace move. Closed-schema validation enforces
 canonical transaction/device IDs, sorted contiguous segment entries, and
-configured batch bounds. Startup still fails closed on every prepared marker;
-there is no committed marker, partial-publication reconciliation, or canonical
+configured batch bounds. Startup parses and verifies the manifest and staged
+digests under canonical inventory/device locks. It aborts only when every
+destination is absent; any visible destination or changed/missing staged file
+remains a typed fail-closed conflict. This handles pre-publication crashes but
+does not replay partial publication. There is no committed marker or canonical
 publication path. Windows uses `MOVEFILE_WRITE_THROUGH` for placement, but
 parent-directory durability and crash points remain unverified and are not
 claimed.

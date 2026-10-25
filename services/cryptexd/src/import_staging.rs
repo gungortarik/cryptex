@@ -1,7 +1,8 @@
 //! Daemon-owned, bounded snapshots of untrusted incoming sealed segments.
 //!
-//! This module only copies candidates into `canonical/import-staging`; it does
-//! not validate event trust or publish into `canonical/events`.
+//! This module snapshots and verifies candidate bytes, records a prepared
+//! manifest, and reconciles the pre-publication state. It does not authorize
+//! device trust/cutoff policy or publish into `canonical/events`.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -13,10 +14,14 @@ use cryptex_events::{
     ContentHashHex, FRAME_HEADER_BYTES, FRAME_VERSION_V1, TrustedDaemonKeyResolver,
     VersionedRecord, ZERO_CONTENT_HASH_HEX, decode_frame_header, read_versioned_record,
 };
+use cryptex_storage::layout::canonical_events_device_dir;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::canonical_writer::{
+    acquire_canonical_inventory_lock, acquire_existing_device_canonical_lock,
+};
 use crate::import_limits::{ImportBatchBudget, ImportLimitError};
 use crate::paths::assert_outside_repository;
 
@@ -1050,11 +1055,11 @@ fn verify_segment_stream<R: TrustedDaemonKeyResolver>(
 }
 
 /// Runs under the daemon's single-instance lock before transport, IPC, or
-/// canonical readers start. Since this slice has no prepared-manifest recovery
-/// implementation, unknown journal state is a typed fail-closed conflict.
-/// Unprepared staging-only trees are safe to remove because this code has no
-/// publication path and canonical files are never changed by staging.
-pub fn recover_unprepared_staging(runtime_root: &Path) -> Result<(), ImportStagingError> {
+/// canonical readers start. Unprepared staging-only trees are removed. A
+/// prepared manifest is aborted only if every staged file still matches and
+/// no canonical destination exists; any visible destination remains a typed
+/// fail-closed conflict until replay publication is implemented.
+pub fn recover_import_staging(runtime_root: &Path) -> Result<(), ImportStagingError> {
     assert_outside_repository(runtime_root)
         .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
     let canonical = runtime_root.join("canonical");
@@ -1090,19 +1095,39 @@ pub fn recover_unprepared_staging(runtime_root: &Path) -> Result<(), ImportStagi
     }
 
     let mut has_lock_entry = false;
+    let mut prepared_path = None;
     for entry in fs::read_dir(&journal_root)? {
-        let name = entry?.file_name();
-        if name != "import.lock" || has_lock_entry {
+        let path = entry?.path();
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| {
+                ImportStagingError::RecoveryConflict(
+                    "import journal entry name is not valid UTF-8".into(),
+                )
+            })?;
+        if name == "import.lock" && !has_lock_entry {
+            has_lock_entry = true;
+        } else if name.ends_with(".prepared.json") && prepared_path.is_none() {
+            prepared_path = Some(path);
+        } else {
             return Err(ImportStagingError::RecoveryConflict(
                 "prepared or unknown journal entries require reviewed reconciliation".into(),
             ));
         }
-        has_lock_entry = true;
     }
     if !staging_exists {
-        return Ok(());
+        return if prepared_path.is_some() {
+            Err(ImportStagingError::RecoveryConflict(
+                "prepared manifest has no matching staging directory".into(),
+            ))
+        } else {
+            Ok(())
+        };
     }
-    ensure_existing_plain_directory(&staging_root)?;
+    if staging_exists {
+        ensure_existing_plain_directory(&staging_root)?;
+    }
     if !has_lock_entry {
         return Err(ImportStagingError::RecoveryConflict(
             "staging exists without the single-flight lock record".into(),
@@ -1121,39 +1146,322 @@ pub fn recover_unprepared_staging(runtime_root: &Path) -> Result<(), ImportStagi
     })?;
 
     let mut transactions = fs::read_dir(&staging_root)?;
-    let Some(transaction) = transactions.next() else {
-        return Ok(());
-    };
-    let transaction = transaction?.path();
+    let transaction = transactions.next().transpose()?.map(|entry| entry.path());
     if transactions.next().is_some() {
         return Err(ImportStagingError::RecoveryConflict(
             "staging contains more than one transaction directory".into(),
         ));
     }
+    let Some(transaction) = transaction else {
+        if prepared_path.is_some() {
+            return Err(ImportStagingError::RecoveryConflict(
+                "prepared manifest has no matching staging transaction".into(),
+            ));
+        }
+        return Ok(());
+    };
+    ensure_existing_plain_directory(&transaction)?;
+    let transaction_name = transaction
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            ImportStagingError::RecoveryConflict(
+                "staging transaction name is not valid UTF-8".into(),
+            )
+        })?;
+    cryptex_core::validate::parse_uuid_str(transaction_name).map_err(|_| {
+        ImportStagingError::RecoveryConflict(
+            "staging contains an invalid transaction directory name".into(),
+        )
+    })?;
+    if transaction_name
+        .bytes()
+        .any(|byte| byte.is_ascii_uppercase())
     {
-        ensure_existing_plain_directory(&transaction)?;
-        let name = transaction
+        return Err(ImportStagingError::RecoveryConflict(
+            "staging transaction ID is not canonical lowercase UUID text".into(),
+        ));
+    }
+    let transaction_handles = inspect_directory_chain(&transaction, true)?;
+    drop(transaction_handles);
+
+    if let Some(prepared_path) = prepared_path {
+        let manifest = read_prepared_manifest(&prepared_path)?;
+        if manifest.transaction_id != transaction_name {
+            return Err(ImportStagingError::RecoveryConflict(
+                "prepared manifest does not match the staging transaction".into(),
+            ));
+        }
+        // Do not hold the importer mutex while waiting for canonical locks.
+        // The daemon instance lock and the prepared tree/manifest preserve the
+        // startup reservation throughout this reconciliation.
+        drop(lock);
+        recover_prepared_without_publication(
+            runtime_root,
+            &transaction,
+            &prepared_path,
+            &manifest,
+        )?;
+    } else {
+        remove_unprepared_transaction(&transaction)?;
+    }
+    Ok(())
+}
+
+fn read_prepared_manifest(path: &Path) -> Result<PreparedImportManifest, ImportStagingError> {
+    let metadata = fs::symlink_metadata(path)?;
+    if is_link_or_reparse(&metadata)
+        || !metadata.is_file()
+        || metadata.len() > MAX_PREPARED_MANIFEST_BYTES
+    {
+        return Err(ImportStagingError::RecoveryConflict(
+            "prepared manifest is not an ordinary bounded file".into(),
+        ));
+    }
+    let mut file = open_source_no_follow(path)?;
+    let before = source_snapshot(&file)?;
+    if !before.is_regular_file || before.link_count != 1 {
+        return Err(ImportStagingError::RecoveryConflict(
+            "prepared manifest identity is not an ordinary single-link file".into(),
+        ));
+    }
+    let mut bytes = Vec::with_capacity(before.length as usize);
+    (&mut file)
+        .take(MAX_PREPARED_MANIFEST_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 != before.length
+        || bytes.len() as u64 > MAX_PREPARED_MANIFEST_BYTES
+        || source_snapshot(&file)? != before
+    {
+        return Err(ImportStagingError::RecoveryConflict(
+            "prepared manifest changed while being read".into(),
+        ));
+    }
+    let manifest: PreparedImportManifest = serde_json::from_slice(&bytes).map_err(|error| {
+        ImportStagingError::RecoveryConflict(format!("prepared manifest is invalid: {error}"))
+    })?;
+    validate_prepared_manifest(&manifest).map_err(|error| {
+        ImportStagingError::RecoveryConflict(format!("prepared manifest rejected: {error}"))
+    })?;
+    let canonical = serde_json_canonicalizer::to_vec(&manifest).map_err(|error| {
+        ImportStagingError::RecoveryConflict(format!(
+            "prepared manifest canonicalization failed: {error}"
+        ))
+    })?;
+    if canonical != bytes {
+        return Err(ImportStagingError::RecoveryConflict(
+            "prepared manifest is not in canonical JSON form".into(),
+        ));
+    }
+    let expected_name = format!("{}.prepared.json", manifest.transaction_id);
+    if path.file_name().and_then(|name| name.to_str()) != Some(expected_name.as_str()) {
+        return Err(ImportStagingError::RecoveryConflict(
+            "prepared manifest filename does not match its transaction ID".into(),
+        ));
+    }
+    Ok(manifest)
+}
+
+fn ensure_manifest_matches_staging_tree(
+    transaction: &Path,
+    manifest: &PreparedImportManifest,
+) -> Result<(), ImportStagingError> {
+    let expected = manifest
+        .segments
+        .iter()
+        .map(|segment| segment.staged_relative_path.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let mut actual = std::collections::HashSet::new();
+    for device_entry in fs::read_dir(transaction)? {
+        let device_entry = device_entry?;
+        let device_path = device_entry.path();
+        let metadata = fs::symlink_metadata(&device_path)?;
+        if is_link_or_reparse(&metadata) || !metadata.is_dir() {
+            return Err(ImportStagingError::RecoveryConflict(
+                "prepared staging tree contains a link or non-directory".into(),
+            ));
+        }
+        let device_name = device_path
             .file_name()
             .and_then(|name| name.to_str())
             .ok_or_else(|| {
                 ImportStagingError::RecoveryConflict(
-                    "staging transaction name is not valid UTF-8".into(),
+                    "prepared staging device directory is not valid Unicode".into(),
                 )
             })?;
-        cryptex_core::validate::parse_uuid_str(name).map_err(|_| {
-            ImportStagingError::RecoveryConflict(
-                "staging contains an invalid transaction directory name".into(),
-            )
-        })?;
-        if name.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        let mut device_file_count = 0_usize;
+        for file_entry in fs::read_dir(&device_path)? {
+            let file_entry = file_entry?;
+            let file_path = file_entry.path();
+            let metadata = fs::symlink_metadata(&file_path)?;
+            if is_link_or_reparse(&metadata) || !metadata.is_file() {
+                return Err(ImportStagingError::RecoveryConflict(
+                    "prepared staging tree contains a link or non-file".into(),
+                ));
+            }
+            validate_staging_leaf_name(&file_path)?;
+            let file_name = file_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| {
+                    ImportStagingError::RecoveryConflict(
+                        "prepared staging filename is not valid Unicode".into(),
+                    )
+                })?;
+            let relative = format!("{device_name}/{file_name}");
+            if !expected.contains(relative.as_str()) || !actual.insert(relative) {
+                return Err(ImportStagingError::RecoveryConflict(
+                    "prepared staging tree contains an unmanifested or duplicate file".into(),
+                ));
+            }
+            device_file_count += 1;
+        }
+        if device_file_count == 0 {
             return Err(ImportStagingError::RecoveryConflict(
-                "staging transaction ID is not canonical lowercase UUID text".into(),
+                "prepared staging tree contains an empty device directory".into(),
             ));
         }
-        let transaction_handles = inspect_directory_chain(&transaction, true)?;
-        drop(transaction_handles);
-        remove_unprepared_transaction(&transaction)?;
     }
+    if actual.len() != expected.len() {
+        return Err(ImportStagingError::RecoveryConflict(
+            "prepared manifest does not cover the complete staging tree".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn recover_prepared_without_publication(
+    runtime_root: &Path,
+    transaction: &Path,
+    manifest_path: &Path,
+    manifest: &PreparedImportManifest,
+) -> Result<(), ImportStagingError> {
+    let inventory_lock = acquire_canonical_inventory_lock(runtime_root).map_err(|error| {
+        ImportStagingError::RecoveryConflict(format!(
+            "cannot acquire canonical inventory lock for prepared recovery: {error}"
+        ))
+    })?;
+    let mut devices = manifest
+        .segments
+        .iter()
+        .map(|segment| {
+            DeviceId::new(segment.device_id.clone()).map_err(|error| {
+                ImportStagingError::RecoveryConflict(format!(
+                    "prepared manifest DeviceId is invalid: {error}"
+                ))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    devices.sort_by(|left, right| left.as_str().as_bytes().cmp(right.as_str().as_bytes()));
+    devices.dedup();
+    let mut device_locks = Vec::with_capacity(devices.len());
+    for device in &devices {
+        if let Some(lock) =
+            acquire_existing_device_canonical_lock(runtime_root, device).map_err(|error| {
+                ImportStagingError::RecoveryConflict(format!(
+                    "cannot acquire canonical device lock for prepared recovery: {error}"
+                ))
+            })?
+        {
+            device_locks.push(lock);
+        }
+    }
+
+    ensure_manifest_matches_staging_tree(transaction, manifest).map_err(|error| {
+        ImportStagingError::RecoveryConflict(format!(
+            "prepared staging-tree verification failed: {error}"
+        ))
+    })?;
+
+    for segment in &manifest.segments {
+        let device = DeviceId::new(segment.device_id.clone()).map_err(|error| {
+            ImportStagingError::RecoveryConflict(format!(
+                "prepared manifest DeviceId is invalid: {error}"
+            ))
+        })?;
+        let relative = Path::new(&segment.staged_relative_path);
+        let staged_path = transaction.join(relative);
+        let destination_path = canonical_events_device_dir(runtime_root, &device)
+            .join(format!("{:020}.seg", segment.segment_index));
+        if entry_exists(&destination_path).map_err(|error| {
+            ImportStagingError::RecoveryConflict(format!(
+                "prepared destination inspection failed: {error}"
+            ))
+        })? {
+            return Err(ImportStagingError::RecoveryConflict(
+                "prepared import has visible canonical destinations; replay recovery is not implemented".into(),
+            ));
+        }
+        let parent_handles = inspect_directory_chain(
+            staged_path.parent().ok_or_else(|| {
+                ImportStagingError::RecoveryConflict("prepared staged path has no parent".into())
+            })?,
+            true,
+        )
+        .map_err(|error| {
+            ImportStagingError::RecoveryConflict(format!(
+                "prepared staged-path inspection failed: {error}"
+            ))
+        })?;
+        let mut staged =
+            open_source_from_directory_chain(&parent_handles, &staged_path).map_err(|error| {
+                ImportStagingError::RecoveryConflict(format!(
+                    "prepared staged-file open failed: {error}"
+                ))
+            })?;
+        let before = source_snapshot(&staged).map_err(|error| {
+            ImportStagingError::RecoveryConflict(format!(
+                "prepared staged-file metadata read failed: {error}"
+            ))
+        })?;
+        if !before.is_regular_file || before.link_count != 1 || before.length != segment.length {
+            return Err(ImportStagingError::RecoveryConflict(
+                "prepared staged file identity or length changed".into(),
+            ));
+        }
+        if canonical_file_id_alias_exists(runtime_root, before.identity).map_err(|error| {
+            ImportStagingError::RecoveryConflict(format!(
+                "prepared canonical alias scan failed: {error}"
+            ))
+        })? {
+            return Err(ImportStagingError::RecoveryConflict(
+                "prepared staged file aliases an entry under canonical/events".into(),
+            ));
+        }
+        staged.seek(SeekFrom::Start(0)).map_err(|error| {
+            ImportStagingError::RecoveryConflict(format!(
+                "prepared staged-file rewind failed: {error}"
+            ))
+        })?;
+        let (length, digest) = hash_bounded(&mut staged, segment.length).map_err(|error| {
+            ImportStagingError::RecoveryConflict(format!(
+                "prepared staged-file hash failed: {error}"
+            ))
+        })?;
+        if length != segment.length
+            || digest != segment.sha256
+            || source_snapshot(&staged)? != before
+        {
+            return Err(ImportStagingError::RecoveryConflict(
+                "prepared staged file digest or identity changed".into(),
+            ));
+        }
+    }
+
+    // No publication move exists in this implementation slice. With all
+    // destinations absent and every staged digest intact, aborting this
+    // prepared transaction is safe and repeatable after interruption.
+    fs::remove_file(manifest_path).map_err(|error| {
+        ImportStagingError::Io(format!("remove prepared import manifest: {error}"))
+    })?;
+    sync_staged_parent(manifest_path).map_err(|error| {
+        ImportStagingError::Io(format!("sync prepared import journal parent: {error}"))
+    })?;
+    drop(device_locks);
+    drop(inventory_lock);
+    remove_unprepared_transaction(transaction).map_err(|error| {
+        ImportStagingError::Io(format!("remove prepared staging transaction: {error}"))
+    })?;
     Ok(())
 }
 
@@ -1339,6 +1647,42 @@ fn open_source_from_directory_chain(
     {
         let _ = directory_handles;
         open_source_no_follow(source_path)
+    }
+}
+
+/// Open only enough of a regular file to compare its identity while preserving
+/// handle-relative containment. Broader sharing is required for coordination
+/// files such as `writer.lock`, whose existing handle is intentionally held.
+fn open_identity_from_directory_chain(
+    directory_handles: &[File],
+    path: &Path,
+) -> Result<File, ImportStagingError> {
+    #[cfg(windows)]
+    {
+        let parent = directory_handles.last().ok_or_else(|| {
+            ImportStagingError::Invalid("canonical directory handle chain is empty".into())
+        })?;
+        let leaf = path.file_name().ok_or_else(|| {
+            ImportStagingError::Invalid("canonical identity path has no filename".into())
+        })?;
+        open_nt_child(
+            parent,
+            leaf,
+            windows_sys::Win32::Storage::FileSystem::FILE_READ_ATTRIBUTES
+                | windows_sys::Win32::Storage::FileSystem::SYNCHRONIZE,
+            windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ
+                | windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE
+                | windows_sys::Win32::Storage::FileSystem::FILE_SHARE_DELETE,
+            windows_sys::Wdk::Storage::FileSystem::FILE_OPEN_REPARSE_POINT
+                | windows_sys::Wdk::Storage::FileSystem::FILE_SYNCHRONOUS_IO_NONALERT,
+            windows_sys::Wdk::Storage::FileSystem::FILE_OPEN,
+            windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL,
+        )
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = directory_handles;
+        open_source_no_follow(path)
     }
 }
 
@@ -1641,7 +1985,7 @@ fn canonical_file_id_alias_exists(
         let device_path = device_entry.path();
         let metadata = fs::symlink_metadata(&device_path)?;
         if device_entry.file_name() == "inventory.lock" && metadata.is_file() {
-            let file = open_source_no_follow(&device_path)?;
+            let file = open_identity_from_directory_chain(&events_handles, &device_path)?;
             if source_snapshot(&file)?.identity == source_identity {
                 return Ok(true);
             }
@@ -1657,6 +2001,17 @@ fn canonical_file_id_alias_exists(
                 return Err(ImportStagingError::Invalid(
                     "canonical device directory contains a link or non-file entry".into(),
                 ));
+            }
+            if file_entry.file_name() == "writer.lock" {
+                // This is coordination metadata, but still compare its file
+                // identity so a staged hard link to the lock cannot bypass
+                // the canonical alias check. The held handle requires broad
+                // share access on Windows.
+                let file = open_identity_from_directory_chain(&device_handles, &file_path)?;
+                if source_snapshot(&file)?.identity == source_identity {
+                    return Ok(true);
+                }
+                continue;
             }
             let file = open_source_from_directory_chain(&device_handles, &file_path)?;
             if source_snapshot(&file)?.identity == source_identity {
@@ -2380,11 +2735,27 @@ mod tests {
                 .to_string()
                 .contains("requires startup reconciliation")
         );
+        let destination = root
+            .join("canonical/events")
+            .join(device.as_filename_stem())
+            .join("00000000000000000000.seg");
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        fs::write(&destination, b"unexpected partial publication").unwrap();
         assert!(
-            recover_unprepared_staging(&root)
+            recover_import_staging(&root)
                 .unwrap_err()
                 .to_string()
-                .contains("prepared or unknown journal")
+                .contains("visible canonical destinations")
+        );
+        assert!(manifest_path.is_file());
+        fs::remove_file(&destination).unwrap();
+        recover_import_staging(&root).unwrap();
+        assert!(!manifest_path.exists());
+        assert!(
+            !root
+                .join("canonical/import-staging")
+                .join(&manifest.transaction_id)
+                .exists()
         );
 
         fs::remove_dir_all(root).unwrap();
@@ -2496,7 +2867,7 @@ mod tests {
         session.stage_segment(relative, &device, 2).unwrap();
         drop(session);
 
-        recover_unprepared_staging(&root).unwrap();
+        recover_import_staging(&root).unwrap();
         let staging_root = root.join("canonical/import-staging");
         assert_eq!(fs::read_dir(staging_root).unwrap().count(), 0);
         assert!(source.exists());
@@ -2513,7 +2884,7 @@ mod tests {
         let prepared = journal.join("prepared-transaction.json");
         fs::write(&prepared, b"untrusted fixture").unwrap();
 
-        let error = recover_unprepared_staging(&root).unwrap_err();
+        let error = recover_import_staging(&root).unwrap_err();
         assert!(matches!(error, ImportStagingError::RecoveryConflict(_)));
         assert_eq!(fs::read(&prepared).unwrap(), b"untrusted fixture");
         fs::remove_dir_all(root).unwrap();

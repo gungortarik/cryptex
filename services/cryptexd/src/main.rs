@@ -154,7 +154,7 @@ fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
 }
 
 fn recover_import_state_before_writer(runtime_root: &Path) -> Result<(), LifecycleError> {
-    cryptexd::import_staging::recover_unprepared_staging(runtime_root)
+    cryptexd::import_staging::recover_import_staging(runtime_root)
         .map_err(|error| LifecycleError::ImportRecoveryConflict(error.to_string()))
 }
 
@@ -455,7 +455,7 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             ensure_runtime_root(&opts.runtime_root)?;
             // Acquire the single-instance lock before any durable identity writes.
             let lock = try_acquire_instance(&opts.runtime_root)?;
-            cryptexd::import_staging::recover_unprepared_staging(&opts.runtime_root)
+            cryptexd::import_staging::recover_import_staging(&opts.runtime_root)
                 .map_err(|error| LifecycleError::ImportRecoveryConflict(error.to_string()))?;
             let install = prepare_m1_runtime_foundation(&opts.runtime_root)
                 .map_err(|e| e.into_lifecycle())?;
