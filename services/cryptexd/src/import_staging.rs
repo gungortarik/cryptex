@@ -2530,9 +2530,54 @@ fn sync_staged_parent(path: &Path) -> Result<(), ImportStagingError> {
     }
     #[cfg(windows)]
     {
-        // MoveFileExW(MOVEFILE_WRITE_THROUGH) is the Windows placement barrier.
-        // This deliberately does not claim parent-directory FlushFileBuffers.
-        let _ = path;
+        use std::os::windows::{ffi::OsStrExt, io::FromRawHandle};
+        use std::ptr;
+        use windows_sys::Win32::Foundation::{GENERIC_WRITE, INVALID_HANDLE_VALUE};
+        use windows_sys::Win32::Storage::FileSystem::{
+            BY_HANDLE_FILE_INFORMATION, CreateFileW, FILE_ATTRIBUTE_DIRECTORY,
+            FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+            FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FlushFileBuffers,
+            GetFileInformationByHandle, OPEN_EXISTING,
+        };
+
+        let parent = path.parent().ok_or_else(|| {
+            ImportStagingError::Invalid("staged path has no parent directory".into())
+        })?;
+        let wide = parent
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect::<Vec<_>>();
+        let raw = unsafe {
+            CreateFileW(
+                wide.as_ptr(),
+                GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                ptr::null(),
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                ptr::null_mut(),
+            )
+        };
+        if raw == INVALID_HANDLE_VALUE {
+            return Err(io::Error::last_os_error().into());
+        }
+        let directory = unsafe { File::from_raw_handle(raw) };
+        let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+        if unsafe { GetFileInformationByHandle(raw, &mut info) } == 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        if info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0
+            || info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
+        {
+            return Err(ImportStagingError::Invalid(
+                "refusing to flush a non-directory or reparse-point parent".into(),
+            ));
+        }
+        if unsafe { FlushFileBuffers(raw) } == 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        drop(directory);
     }
     Ok(())
 }
@@ -3076,5 +3121,33 @@ mod tests {
         fs::remove_dir(&junction).unwrap();
         fs::remove_dir_all(root).unwrap();
         fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_staged_parent_sync_rejects_junctions() {
+        use std::process::Command;
+
+        let root = runtime_root("flush-junction-check");
+        let target = root.join("target");
+        let junction = root.join("redirect");
+        fs::create_dir_all(&target).unwrap();
+        let output = Command::new("cmd.exe")
+            .args(["/D", "/C", "mklink", "/J"])
+            .arg(&junction)
+            .arg(&target)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "junction fixture creation failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let error = sync_staged_parent(&junction.join("entry")).unwrap_err();
+        assert!(matches!(error, ImportStagingError::Invalid(_)));
+
+        fs::remove_dir(&junction).unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 }

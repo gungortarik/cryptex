@@ -1,5 +1,17 @@
 # 34 — Current Implementation Handoff
 
+**M8 Windows staging/journal directory-flush follow-up (2026-10-25):**
+Replaced the Windows `sync_staged_parent` no-op with a fail-closed directory
+handle flush scoped to M8 staging and prepared-journal placement/removal. The
+opened parent must be an ordinary non-reparse directory; `FlushFileBuffers`
+failure is returned. Windows `import_staging::tests` pass **16/16**, full
+daemon library tests pass **414/414** (4 ignored), strict daemon Clippy, fmt,
+and diff check pass. Evidence: `evidence/m8/m8-windows-staging-directory-flush-20261025.md`.
+This verifies API operation on the current Windows filesystem, not power-loss
+durability across all supported filesystems or journal/publication crash
+points. Canonical publication/replay, approval/bootstrap, trust/cutoff policy,
+macOS parity, and M8 completion remain open. No Actions ran.
+
 **M8 independent security review + prepared-temp recovery (2026-10-25):** Owner supplied Cursor Security Review `b6f68bf7-93d5-4674-9286-e2221cdf5e52`, pinned to source `2fe8639`; recommendation **NOT READY**. Critical findings: no canonical publication/replay, no owner-approval IPC/bootstrap parser, and no trust/cutoff/`RetrievalSafetyState` validation in import. High findings: Windows parent-directory durability, macOS containment parity, publication-time alias rescan, transport-to-staging wiring, and serialization with appenders. Full supplied findings and scope boundary: `evidence/m8/m8-independent-security-review-followup-20261025.md`. Fixed the review's M1 crash window: an exact, bounded `.<uuid>.prepared.tmp` with a matching staging transaction is now treated as unprepared and safely cleaned so the still-present incoming source can be retried; malformed/unknown names and mixed temp/final journal states remain fail-closed. `cargo test -p cryptexd --lib import_staging::tests` passes **15/15**; full daemon library suite passes **413/413** (4 ignored); strict clippy, fmt, and diff check pass. This does not address C1–C4/H1–H5 or accept the protocol proposal. A follow-up review prompt now pins source `3e83307` in `evidence/m8/m8-independent-security-review-prompt-20261025.md`; trust activation remains gated on fresh review and the unresolved critical/high findings. No Actions ran.
 
 **M8 identity-entry recovery gate (2026-10-25):** `cryptexd identity enroll-local` previously bypassed the import-recovery gate even though local enrollment inspects canonical device packs. It now takes the runtime single-instance lock and reconciles import state before identity setup; an unknown journal fails closed before Brain/local-device metadata can be created. The focused regression test passes, the complete daemon CLI suite passes **12/12**, strict daemon Clippy, fmt, and diff checks pass. This closes the CLI entry-point bypass only; publication/replay, trust and cutoff policy, approval IPC, durability, macOS parity, and independent review remain open. No Actions ran.
