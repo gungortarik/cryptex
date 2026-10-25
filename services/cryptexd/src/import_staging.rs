@@ -2751,6 +2751,23 @@ mod tests {
         );
         assert!(manifest_path.is_file());
         fs::remove_file(&destination).unwrap();
+
+        let staged_path = root
+            .join("canonical/import-staging")
+            .join(&manifest.transaction_id)
+            .join(&manifest.segments[0].staged_relative_path);
+        let staged_bytes = fs::read(&staged_path).unwrap();
+        let mut tampered_bytes = staged_bytes.clone();
+        tampered_bytes[0] ^= 1;
+        fs::write(&staged_path, tampered_bytes).unwrap();
+        assert!(matches!(
+            recover_import_staging(&root),
+            Err(ImportStagingError::RecoveryConflict(_))
+        ));
+        assert!(manifest_path.is_file());
+        assert!(staged_path.is_file());
+
+        fs::write(&staged_path, staged_bytes).unwrap();
         recover_import_staging(&root).unwrap();
         assert!(!manifest_path.exists());
         assert!(
