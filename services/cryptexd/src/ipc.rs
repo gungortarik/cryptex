@@ -1,12 +1,16 @@
 //! Local daemon IPC. Health and guarded Desktop retrieval are the only exposed
 //! operations; the daemon owns canonical verification and SQLite access.
 
+use std::collections::HashMap;
+use std::fs;
 use std::io;
 #[cfg(any(not(windows), test))]
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 use std::thread;
@@ -18,6 +22,9 @@ use crate::capture::{
     resolve_capture,
 };
 use crate::compat::DAEMON_PROTOCOL_VERSION;
+use crate::event_signing_key::{
+    load_existing_event_signing_key, load_existing_event_verifying_key,
+};
 use crate::knowledge_materialization::{GuardedSearchError, RetrievalSafetyHold};
 use crate::local_device_identity::LocalDeviceKeyResolver;
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
@@ -32,12 +39,14 @@ use cryptex_projection::{ProjectionDb, SearchHit, SearchQuery, TimelineCursor, T
 use interprocess::local_socket::GenericNamespaced;
 use interprocess::local_socket::{ListenerOptions, Stream, prelude::*};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 const PROTOCOL_VERSION: u32 = DAEMON_PROTOCOL_VERSION;
 const MAX_FRAME_BYTES: usize = 64 * 1024;
 const CAPABILITY_STATUS_READ: &str = "status.read";
 const CAPABILITY_CONTENT_SEARCH: &str = "content.search";
 const CAPABILITY_IDENTITY_SETUP: &str = "identity.setup";
+const CAPABILITY_BOOTSTRAP_APPROVAL: &str = "peer.approval.manage";
 const MAX_SEARCH_TEXT_BYTES: usize = 1024;
 const MAX_SEARCH_FILTER_BYTES: usize = 128;
 const MAX_SEARCH_RESPONSE_BYTES: usize = 1024 * 1024;
@@ -70,6 +79,8 @@ const MAX_CAPTURE_FRAME_BYTES: usize =
     MAX_MEMORY_NOTE_TEXT_BYTES * MAX_JSON_STRING_ESCAPE_FACTOR + MAX_CAPTURE_REQUEST_OVERHEAD_BYTES;
 /// Capture may wait on the device lock; deadline returns Uncertain, not cancelled.
 const IPC_CAPTURE_RESPONSE_DEADLINE: Duration = Duration::from_secs(60);
+const IPC_APPROVAL_SESSION_DEADLINE: Duration = Duration::from_secs(5 * 60);
+const MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES: usize = 1024 * 1024 + 4096;
 #[cfg(windows)]
 const ENDPOINT_ID: &str = "cryptexd-v1";
 
@@ -90,6 +101,170 @@ struct Request {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     vault: Option<DesktopVaultBody>,
 }
+
+/// Closed wire envelope for the two-phase, connection-bound approval flow.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BootstrapApprovalIpcRequest {
+    protocol_version: u32,
+    request_id: String,
+    client_role: String,
+    capabilities: Vec<String>,
+    operation: String,
+    #[serde(default)]
+    role: Option<String>,
+    #[serde(default)]
+    transcript_messages: Option<Vec<String>>,
+    #[serde(default)]
+    approval_request_digest: Option<String>,
+    #[serde(default)]
+    capability: Option<String>,
+    #[serde(default)]
+    transport_device_id: Option<String>,
+    #[serde(default)]
+    offer_message: Option<String>,
+    #[serde(default)]
+    brain_identity_json: Option<String>,
+    #[serde(default)]
+    transaction_id: Option<String>,
+    #[serde(default)]
+    owner_operation: Option<OwnerSecurityOperationRequest>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum OwnerSecurityOperationRequest {
+    DeviceRestriction {
+        target_device_id: String,
+        reason: crate::bootstrap_journal::RestrictionReason,
+        cutoff_seq: u64,
+    },
+    SelfRetirement,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BootstrapApprovalIpcResponse {
+    protocol_version: u32,
+    request_id: Option<String>,
+    accepted: bool,
+    error: Option<&'static str>,
+    operation: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    approval_request_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    capability: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot: Option<crate::bootstrap_journal::ApprovalSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signed_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exchange_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transaction_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    brain_identity_json: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BootstrapApprovalIpcResponseWire {
+    protocol_version: u32,
+    request_id: Option<String>,
+    accepted: bool,
+    error: Option<String>,
+    operation: String,
+    approval_request_digest: Option<String>,
+    capability: Option<String>,
+    snapshot: Option<crate::bootstrap_journal::ApprovalSnapshot>,
+    signed_message: Option<String>,
+    exchange_message: Option<String>,
+    transaction_id: Option<String>,
+    brain_identity_json: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBootstrapApprovalPrepared {
+    /// Opaque Desktop-local handle. The signing capability remains in memory
+    /// beside the IPC stream and is never exposed to the renderer.
+    pub session_handle: String,
+    pub snapshot: crate::bootstrap_journal::ApprovalSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DesktopOwnerSecurityOperationInput {
+    pub kind: String,
+    #[serde(default)]
+    pub target_device_id: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub cutoff_seq: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopOwnerSecurityOperationPrepared {
+    /// Opaque Desktop-local handle. The confirmation capability remains in
+    /// memory beside the authenticated IPC stream and never reaches the UI.
+    pub session_handle: String,
+    pub snapshot: crate::bootstrap_journal::ApprovalSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopOwnerSecurityOperationResult {
+    pub accepted: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBootstrapApprovalResult {
+    pub accepted: bool,
+    pub error: Option<String>,
+    pub signed_message: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopBootstrapExchangeResult {
+    pub accepted: bool,
+    pub error: Option<String>,
+    pub transaction_id: Option<String>,
+    pub exchange_message: Option<String>,
+    pub brain_identity_json: Option<String>,
+}
+
+struct PendingDesktopBootstrapApproval {
+    stream: Stream,
+    request_id: String,
+    role: String,
+    transcript_messages: Vec<String>,
+    approval_request_digest: String,
+    capability: String,
+    expires_at: Instant,
+}
+
+struct PendingDesktopOwnerSecurityOperation {
+    stream: Stream,
+    request_id: String,
+    transaction_id: String,
+    approval_request_digest: String,
+    capability: String,
+    expires_at: Instant,
+}
+
+static BOOTSTRAP_APPROVAL_SESSIONS: OnceLock<crate::approval_session::ApprovalSessionRegistry> =
+    OnceLock::new();
+static DESKTOP_BOOTSTRAP_APPROVAL_SESSIONS: OnceLock<
+    Mutex<HashMap<String, PendingDesktopBootstrapApproval>>,
+> = OnceLock::new();
+static DESKTOP_OWNER_SECURITY_SESSIONS: OnceLock<
+    Mutex<HashMap<String, PendingDesktopOwnerSecurityOperation>>,
+> = OnceLock::new();
 
 /// Wire body for `memory.capture`. Raw text is bounded independently of frame size.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -395,6 +570,8 @@ pub fn spawn_retrieval_server(
         projection_sync: None,
         #[cfg(windows)]
         transport_status: None,
+        #[cfg(test)]
+        transport_device_id_override: None,
     };
     start_projection_sync_worker(&mut context);
     spawn_server(Some(context))
@@ -453,6 +630,8 @@ fn spawn_daemon_ipc_server_inner(
         projection_sync: None,
         #[cfg(windows)]
         transport_status: None,
+        #[cfg(test)]
+        transport_device_id_override: None,
     };
     start_projection_sync_worker(&mut context);
     #[cfg(windows)]
@@ -471,6 +650,8 @@ struct SearchContext {
     projection_sync: Option<SyncSender<()>>,
     #[cfg(windows)]
     transport_status: Option<crate::managed_profile::worker::StatusReader>,
+    #[cfg(test)]
+    transport_device_id_override: Option<String>,
 }
 
 /// Run derived catch-up off the IPC request path. Canonical capture success is
@@ -793,6 +974,58 @@ pub fn desktop_search(
     Ok(response)
 }
 
+/// Read the transport ID returned by the authenticated, daemon-owned adapter.
+/// The adapter must be configured, active and identity-matched; no credentials
+/// or filesystem paths cross IPC.
+pub fn desktop_read_transport_device_id(timeout: Duration) -> io::Result<String> {
+    let name = socket_name()?;
+    let started = Instant::now();
+    let mut last_error = None;
+    let mut stream = loop {
+        match Stream::connect(name.clone()) {
+            Ok(stream) => break stream,
+            Err(error) if started.elapsed() < timeout => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(last_error.unwrap_or(error)),
+        }
+    };
+    arm_ipc_stream(&stream)?;
+    let request_id = new_bootstrap_event_id().map_err(invalid_data)?;
+    let request = Request {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_STATUS_READ.into()],
+        operation: "transport.status".into(),
+        query: None,
+        capture: None,
+        capture_resolve: None,
+        vault: None,
+    };
+    let frame = exchange(&mut stream, &request, MAX_RESPONSE_BYTES)?;
+    let response: DesktopTransportResponse = serde_json::from_slice(&frame)?;
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(request_id.as_str())
+        || response.operation.as_deref() != Some("transport.status.result")
+    {
+        return Err(invalid_data("transport status response mismatch"));
+    }
+    if !response.accepted || !response.configured || response.protected {
+        return Err(invalid_data(
+            response
+                .error
+                .as_deref()
+                .unwrap_or("transport not configured"),
+        ));
+    }
+    response
+        .transport_device_id
+        .filter(|id| crate::syncthing_rest::native_id_shape(id))
+        .ok_or_else(|| invalid_data("verified transport identity unavailable"))
+}
+
 pub fn desktop_timeline(
     query: DesktopSearchQuery,
     timeout: Duration,
@@ -982,6 +1215,574 @@ pub fn desktop_enroll_local_device(timeout: Duration) -> io::Result<DesktopEnrol
         ));
     }
     Ok(response)
+}
+
+/// Ask the daemon to verify a signed bootstrap prefix and freeze the exact
+/// owner-visible approval snapshot. The returned handle keeps the same local
+/// IPC stream alive; no signing capability is returned to the renderer.
+pub fn desktop_prepare_bootstrap_approval(
+    role: String,
+    transcript_messages: Vec<String>,
+    timeout: Duration,
+) -> io::Result<DesktopBootstrapApprovalPrepared> {
+    let started = Instant::now();
+    let name = socket_name()?;
+    let mut last_error = None;
+    let mut stream = loop {
+        match Stream::connect(name.clone()) {
+            Ok(stream) => break stream,
+            Err(error) if started.elapsed() < timeout => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(last_error.unwrap_or(error)),
+        }
+    };
+    arm_ipc_stream(&stream)?;
+    let request_id = new_bootstrap_event_id().map_err(invalid_data)?;
+    let request = BootstrapApprovalIpcRequest {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_BOOTSTRAP_APPROVAL.into()],
+        operation: "bootstrap.approval.prepare".into(),
+        role: Some(role.clone()),
+        transcript_messages: Some(transcript_messages.clone()),
+        approval_request_digest: None,
+        capability: None,
+        transport_device_id: None,
+        offer_message: None,
+        brain_identity_json: None,
+        transaction_id: None,
+        owner_operation: None,
+    };
+    let response = exchange_bootstrap_approval(&mut stream, &request, Instant::now() + timeout)?;
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(request_id.as_str())
+        || response.operation != "bootstrap.approval.prepared"
+        || !response.accepted
+    {
+        return Err(invalid_data(
+            response
+                .error
+                .as_deref()
+                .unwrap_or("daemon rejected bootstrap approval preparation"),
+        ));
+    }
+    let snapshot = response
+        .snapshot
+        .ok_or_else(|| invalid_data("approval snapshot missing"))?;
+    let approval_request_digest = response
+        .approval_request_digest
+        .ok_or_else(|| invalid_data("approval digest missing"))?;
+    let capability = response
+        .capability
+        .ok_or_else(|| invalid_data("approval capability missing"))?;
+    let session_handle = new_bootstrap_event_id().map_err(invalid_data)?;
+    let sessions = DESKTOP_BOOTSTRAP_APPROVAL_SESSIONS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut sessions = sessions
+        .lock()
+        .map_err(|_| invalid_data("approval session store unavailable"))?;
+    sessions.retain(|_, session| session.expires_at > Instant::now());
+    if sessions.len() >= 8 {
+        return Err(io::Error::new(
+            io::ErrorKind::WouldBlock,
+            "too many pending approval sessions",
+        ));
+    }
+    sessions.insert(
+        session_handle.clone(),
+        PendingDesktopBootstrapApproval {
+            stream,
+            request_id,
+            role,
+            transcript_messages,
+            approval_request_digest,
+            capability,
+            expires_at: Instant::now() + IPC_APPROVAL_SESSION_DEADLINE,
+        },
+    );
+    Ok(DesktopBootstrapApprovalPrepared {
+        session_handle,
+        snapshot,
+    })
+}
+
+/// Prepare a frozen owner-security operation request. All identity and trust
+/// fields are supplied by cryptexd; this input contains only the requested
+/// action and its public cutoff parameters.
+pub fn desktop_prepare_owner_security_operation(
+    input: DesktopOwnerSecurityOperationInput,
+    timeout: Duration,
+) -> io::Result<DesktopOwnerSecurityOperationPrepared> {
+    let owner_operation = match input.kind.as_str() {
+        "device_restriction" => {
+            let target_device_id = input
+                .target_device_id
+                .filter(|id| !id.is_empty() && id.len() <= 128)
+                .ok_or_else(|| invalid_data("restriction target is required"))?;
+            let reason = match input.reason.as_deref() {
+                Some("retired") => crate::bootstrap_journal::RestrictionReason::Retired,
+                Some("compromised") => crate::bootstrap_journal::RestrictionReason::Compromised,
+                _ => return Err(invalid_data("restriction reason is invalid")),
+            };
+            let cutoff_seq = input
+                .cutoff_seq
+                .ok_or_else(|| invalid_data("restriction cutoff is required"))?;
+            OwnerSecurityOperationRequest::DeviceRestriction {
+                target_device_id,
+                reason,
+                cutoff_seq,
+            }
+        }
+        "self_retirement" => {
+            if input.target_device_id.is_some()
+                || input.reason.is_some()
+                || input.cutoff_seq.is_some()
+            {
+                return Err(invalid_data("self-retirement has unexpected peer fields"));
+            }
+            OwnerSecurityOperationRequest::SelfRetirement
+        }
+        _ => return Err(invalid_data("unsupported owner-security operation")),
+    };
+    let started = Instant::now();
+    let name = socket_name()?;
+    let mut last_error = None;
+    let mut stream = loop {
+        match Stream::connect(name.clone()) {
+            Ok(stream) => break stream,
+            Err(error) if started.elapsed() < timeout => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(last_error.unwrap_or(error)),
+        }
+    };
+    arm_ipc_stream(&stream)?;
+    let request_id = new_bootstrap_event_id().map_err(invalid_data)?;
+    let transaction_id = new_bootstrap_transaction_id().map_err(invalid_data)?;
+    let request = BootstrapApprovalIpcRequest {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_BOOTSTRAP_APPROVAL.into()],
+        operation: "owner.security.prepare".into(),
+        role: None,
+        transcript_messages: None,
+        approval_request_digest: None,
+        capability: None,
+        transport_device_id: None,
+        offer_message: None,
+        brain_identity_json: None,
+        transaction_id: Some(transaction_id.clone()),
+        owner_operation: Some(owner_operation),
+    };
+    let response = exchange_bootstrap_approval(&mut stream, &request, Instant::now() + timeout)?;
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(request_id.as_str())
+        || response.operation != "owner.security.prepared"
+        || !response.accepted
+    {
+        return Err(invalid_data(
+            response
+                .error
+                .as_deref()
+                .unwrap_or("daemon rejected owner-security preparation"),
+        ));
+    }
+    let snapshot = response
+        .snapshot
+        .ok_or_else(|| invalid_data("owner-security snapshot missing"))?;
+    let approval_request_digest = response
+        .approval_request_digest
+        .ok_or_else(|| invalid_data("owner-security digest missing"))?;
+    let capability = response
+        .capability
+        .ok_or_else(|| invalid_data("owner-security capability missing"))?;
+    let session_handle = new_bootstrap_event_id().map_err(invalid_data)?;
+    let sessions = DESKTOP_OWNER_SECURITY_SESSIONS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut sessions = sessions
+        .lock()
+        .map_err(|_| invalid_data("owner-security session store unavailable"))?;
+    sessions.retain(|_, session| session.expires_at > Instant::now());
+    if sessions.len() >= 8 {
+        return Err(io::Error::new(
+            io::ErrorKind::WouldBlock,
+            "too many pending owner-security sessions",
+        ));
+    }
+    sessions.insert(
+        session_handle.clone(),
+        PendingDesktopOwnerSecurityOperation {
+            stream,
+            request_id,
+            transaction_id,
+            approval_request_digest,
+            capability,
+            expires_at: Instant::now() + IPC_APPROVAL_SESSION_DEADLINE,
+        },
+    );
+    Ok(DesktopOwnerSecurityOperationPrepared {
+        session_handle,
+        snapshot,
+    })
+}
+
+pub fn desktop_confirm_owner_security_operation(
+    session_handle: String,
+) -> io::Result<DesktopOwnerSecurityOperationResult> {
+    finish_desktop_owner_security_operation(session_handle, "owner.security.confirm")
+}
+
+pub fn desktop_cancel_owner_security_operation(
+    session_handle: String,
+) -> io::Result<DesktopOwnerSecurityOperationResult> {
+    finish_desktop_owner_security_operation(session_handle, "owner.security.cancel")
+}
+
+fn finish_desktop_owner_security_operation(
+    session_handle: String,
+    operation: &str,
+) -> io::Result<DesktopOwnerSecurityOperationResult> {
+    if session_handle.len() != 36
+        || !session_handle
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+    {
+        return Err(invalid_data("invalid owner-security session handle"));
+    }
+    let sessions = DESKTOP_OWNER_SECURITY_SESSIONS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut session = sessions
+        .lock()
+        .map_err(|_| invalid_data("owner-security session store unavailable"))?
+        .remove(&session_handle)
+        .ok_or_else(|| invalid_data("owner-security session expired or unavailable"))?;
+    if session.expires_at <= Instant::now() {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "owner-security session expired",
+        ));
+    }
+    let request = BootstrapApprovalIpcRequest {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: session.request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_BOOTSTRAP_APPROVAL.into()],
+        operation: operation.into(),
+        role: None,
+        transcript_messages: None,
+        approval_request_digest: Some(session.approval_request_digest),
+        capability: Some(session.capability),
+        transport_device_id: None,
+        offer_message: None,
+        brain_identity_json: None,
+        transaction_id: Some(session.transaction_id),
+        owner_operation: None,
+    };
+    let response = exchange_bootstrap_approval(
+        &mut session.stream,
+        &request,
+        Instant::now() + IPC_RESPONSE_DEADLINE,
+    )?;
+    let expected = if operation == "owner.security.cancel" {
+        "owner.security.cancelled"
+    } else {
+        "owner.security.result"
+    };
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(session.request_id.as_str())
+        || response.operation != expected
+    {
+        return Err(invalid_data(
+            "owner-security response did not match the request",
+        ));
+    }
+    Ok(DesktopOwnerSecurityOperationResult {
+        accepted: response.accepted,
+        error: response.error,
+    })
+}
+
+/// Create or resume an initiator offer. The transaction ID is generated once
+/// in this authenticated Desktop backend so a retried IPC request retrieves
+/// the exact journaled offer rather than minting new bytes.
+pub fn desktop_create_bootstrap_offer(
+    transaction_id: String,
+    transport_device_id: String,
+    timeout: Duration,
+) -> io::Result<DesktopBootstrapExchangeResult> {
+    if transaction_id.len() != 64
+        || !transaction_id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(invalid_data("invalid bootstrap transaction ID"));
+    }
+    desktop_exchange_bootstrap_message(
+        "bootstrap.exchange.offer.create",
+        Some(transport_device_id),
+        None,
+        None,
+        Some(transaction_id),
+        timeout,
+    )
+}
+
+/// Generate a transaction identifier before the offer request so Desktop can
+/// retry an interrupted request using the exact same durable journal key.
+pub fn desktop_new_bootstrap_transaction_id() -> io::Result<String> {
+    new_bootstrap_transaction_id().map_err(invalid_data)
+}
+
+/// Read the exact canonical public Brain identity for transfer to a joining
+/// installation. This returns no signing material or local private state.
+pub fn desktop_read_bootstrap_brain_identity(timeout: Duration) -> io::Result<String> {
+    let response = desktop_exchange_bootstrap_message(
+        "bootstrap.exchange.brain_identity.read",
+        None,
+        None,
+        None,
+        None,
+        timeout,
+    )?;
+    if !response.accepted {
+        return Err(invalid_data(
+            response
+                .error
+                .as_deref()
+                .unwrap_or("Brain identity read refused"),
+        ));
+    }
+    response
+        .brain_identity_json
+        .ok_or_else(|| invalid_data("Brain identity response missing"))
+}
+
+/// Persist an incoming offer, create its locally signed proof, then return the
+/// exact journaled proof. Replays use the same proof bytes and transaction.
+pub fn desktop_create_bootstrap_proof(
+    offer_message: String,
+    brain_identity_json: String,
+    transport_device_id: String,
+    timeout: Duration,
+) -> io::Result<DesktopBootstrapExchangeResult> {
+    desktop_exchange_bootstrap_message(
+        "bootstrap.exchange.proof.create",
+        Some(transport_device_id),
+        Some(offer_message),
+        Some(brain_identity_json),
+        None,
+        timeout,
+    )
+}
+
+fn desktop_exchange_bootstrap_message(
+    operation: &str,
+    transport_device_id: Option<String>,
+    offer_message: Option<String>,
+    brain_identity_json: Option<String>,
+    transaction_id: Option<String>,
+    timeout: Duration,
+) -> io::Result<DesktopBootstrapExchangeResult> {
+    let started = Instant::now();
+    let name = socket_name()?;
+    let mut last_error = None;
+    let mut stream = loop {
+        match Stream::connect(name.clone()) {
+            Ok(stream) => break stream,
+            Err(error) if started.elapsed() < timeout => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(last_error.unwrap_or(error)),
+        }
+    };
+    arm_ipc_stream(&stream)?;
+    let request_id = new_bootstrap_event_id().map_err(invalid_data)?;
+    let request = BootstrapApprovalIpcRequest {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_BOOTSTRAP_APPROVAL.into()],
+        operation: operation.into(),
+        role: None,
+        transcript_messages: None,
+        approval_request_digest: None,
+        capability: None,
+        transport_device_id,
+        offer_message,
+        brain_identity_json,
+        transaction_id,
+        owner_operation: None,
+    };
+    let response = exchange_bootstrap_approval(&mut stream, &request, Instant::now() + timeout)?;
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(request_id.as_str())
+    {
+        return Err(invalid_data("bootstrap exchange response mismatch"));
+    }
+    let expected_operation = match operation {
+        "bootstrap.exchange.offer.create" => "bootstrap.exchange.offer.created",
+        "bootstrap.exchange.proof.create" => "bootstrap.exchange.proof.created",
+        "bootstrap.exchange.brain_identity.read" => "bootstrap.exchange.brain_identity.read",
+        _ => return Err(invalid_data("unsupported bootstrap exchange request")),
+    };
+    if response.operation != expected_operation {
+        return Err(invalid_data("bootstrap exchange operation mismatch"));
+    }
+    Ok(DesktopBootstrapExchangeResult {
+        accepted: response.accepted,
+        error: response.error,
+        transaction_id: response.transaction_id,
+        exchange_message: response.exchange_message,
+        brain_identity_json: response.brain_identity_json,
+    })
+}
+
+/// Confirm the frozen approval on the original connection. The daemon consumes
+/// the one-use grant and durably journals before returning the signed message.
+pub fn desktop_confirm_bootstrap_approval(
+    session_handle: String,
+) -> io::Result<DesktopBootstrapApprovalResult> {
+    finish_desktop_bootstrap_approval(session_handle, "bootstrap.approval.confirm")
+}
+
+/// Cancel a pending approval on the original connection. No signature is
+/// generated and the daemon persists the cancellation before acknowledging it.
+pub fn desktop_cancel_bootstrap_approval(
+    session_handle: String,
+) -> io::Result<DesktopBootstrapApprovalResult> {
+    finish_desktop_bootstrap_approval(session_handle, "bootstrap.approval.cancel")
+}
+
+/// Submit the exact four-message transcript after the peer's signature has
+/// returned. The daemon requires the matching released owner approval in its
+/// journal before it creates the canonical local trust anchor.
+pub fn desktop_complete_peer_approval(
+    transcript_messages: Vec<String>,
+    timeout: Duration,
+) -> io::Result<DesktopBootstrapApprovalResult> {
+    let started = Instant::now();
+    let name = socket_name()?;
+    let mut last_error = None;
+    let mut stream = loop {
+        match Stream::connect(name.clone()) {
+            Ok(stream) => break stream,
+            Err(error) if started.elapsed() < timeout => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(last_error.unwrap_or(error)),
+        }
+    };
+    arm_ipc_stream(&stream)?;
+    let request_id = new_bootstrap_event_id().map_err(invalid_data)?;
+    let request = BootstrapApprovalIpcRequest {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_BOOTSTRAP_APPROVAL.into()],
+        operation: "bootstrap.approval.complete".into(),
+        role: None,
+        transcript_messages: Some(transcript_messages),
+        approval_request_digest: None,
+        capability: None,
+        transport_device_id: None,
+        offer_message: None,
+        brain_identity_json: None,
+        transaction_id: None,
+        owner_operation: None,
+    };
+    let response = exchange_bootstrap_approval(&mut stream, &request, Instant::now() + timeout)?;
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(request_id.as_str())
+        || response.operation != "bootstrap.approval.anchored"
+    {
+        return Err(invalid_data("peer approval completion response mismatch"));
+    }
+    Ok(DesktopBootstrapApprovalResult {
+        accepted: response.accepted,
+        error: response.error,
+        signed_message: None,
+    })
+}
+
+fn finish_desktop_bootstrap_approval(
+    session_handle: String,
+    operation: &str,
+) -> io::Result<DesktopBootstrapApprovalResult> {
+    if session_handle.len() != 36
+        || !session_handle
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+    {
+        return Err(invalid_data("invalid approval session handle"));
+    }
+    let sessions = DESKTOP_BOOTSTRAP_APPROVAL_SESSIONS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut session = sessions
+        .lock()
+        .map_err(|_| invalid_data("approval session store unavailable"))?
+        .remove(&session_handle)
+        .ok_or_else(|| invalid_data("approval session expired or unavailable"))?;
+    if session.expires_at <= Instant::now() {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "approval session expired",
+        ));
+    }
+    let request = BootstrapApprovalIpcRequest {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: session.request_id.clone(),
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY_BOOTSTRAP_APPROVAL.into()],
+        operation: operation.into(),
+        role: Some(session.role),
+        transcript_messages: Some(session.transcript_messages),
+        approval_request_digest: Some(session.approval_request_digest),
+        capability: Some(session.capability),
+        transport_device_id: None,
+        offer_message: None,
+        brain_identity_json: None,
+        transaction_id: None,
+        owner_operation: None,
+    };
+    let response = exchange_bootstrap_approval(
+        &mut session.stream,
+        &request,
+        Instant::now() + IPC_RESPONSE_DEADLINE,
+    )?;
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.request_id.as_deref() != Some(session.request_id.as_str())
+        || !matches!(
+            response.operation.as_str(),
+            "bootstrap.approval.signed"
+                | "bootstrap.approval.cancelled"
+                | "bootstrap.approval.result"
+        )
+    {
+        return Err(invalid_data("approval response did not match the request"));
+    }
+    Ok(DesktopBootstrapApprovalResult {
+        accepted: response.accepted,
+        error: response.error,
+        signed_message: response.signed_message,
+    })
+}
+
+fn exchange_bootstrap_approval(
+    stream: &mut Stream,
+    request: &BootstrapApprovalIpcRequest,
+    deadline: Instant,
+) -> io::Result<BootstrapApprovalIpcResponseWire> {
+    let mut bytes = serde_json::to_vec(request)?;
+    bytes.push(b'\n');
+    if bytes.len() > MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES {
+        return Err(invalid_data("approval request exceeds frame limit"));
+    }
+    write_ipc_all(stream, &bytes, deadline)?;
+    let response = read_ipc_frame(stream, MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES, deadline)?;
+    Ok(serde_json::from_slice(&response)?)
 }
 
 fn exchange(
@@ -1184,6 +1985,9 @@ fn handle_connection_for_peer(
         }
         Err(error) => return Err(error),
     };
+    if !frame.is_empty() && is_bootstrap_approval_frame(&frame) {
+        return handle_bootstrap_approval_session(stream, search, peer_is_desktop, &frame);
+    }
     let (response_bytes, write_deadline) = if frame.is_empty() {
         return Ok(());
     } else {
@@ -1323,6 +2127,1418 @@ fn handle_connection_for_peer(
         }
     };
     write_response(stream, &response_bytes, write_deadline)
+}
+
+fn is_bootstrap_approval_frame(frame: &[u8]) -> bool {
+    serde_json::from_slice::<serde_json::Value>(frame)
+        .ok()
+        .and_then(|value| value.get("operation")?.as_str().map(str::to_owned))
+        .is_some_and(|operation| {
+            operation.starts_with("bootstrap.") || operation.starts_with("owner.security.")
+        })
+}
+
+fn approval_role(value: Option<&str>) -> Option<cryptex_events::BootstrapApprovalRole> {
+    match value? {
+        "initiator" => Some(cryptex_events::BootstrapApprovalRole::Initiator),
+        "responder" => Some(cryptex_events::BootstrapApprovalRole::Responder),
+        _ => None,
+    }
+}
+
+fn bootstrap_approval_response(
+    request_id: Option<String>,
+    accepted: bool,
+    error: Option<&'static str>,
+    operation: &'static str,
+    grant: Option<crate::approval_session::ApprovalSessionGrant>,
+    snapshot: Option<crate::bootstrap_journal::ApprovalSnapshot>,
+    signed_message: Option<String>,
+) -> BootstrapApprovalIpcResponse {
+    BootstrapApprovalIpcResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted,
+        error,
+        operation,
+        approval_request_digest: grant
+            .as_ref()
+            .map(|grant| grant.approval_request_digest.clone()),
+        capability: grant.map(|grant| grant.capability),
+        snapshot,
+        signed_message,
+        exchange_message: None,
+        transaction_id: None,
+        brain_identity_json: None,
+    }
+}
+
+fn bootstrap_exchange_response(
+    request_id: Option<String>,
+    accepted: bool,
+    error: Option<&'static str>,
+    operation: &'static str,
+    transaction_id: Option<String>,
+    exchange_message: Option<String>,
+    brain_identity_json: Option<String>,
+) -> BootstrapApprovalIpcResponse {
+    BootstrapApprovalIpcResponse {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        accepted,
+        error,
+        operation,
+        approval_request_digest: None,
+        capability: None,
+        snapshot: None,
+        signed_message: None,
+        exchange_message,
+        transaction_id,
+        brain_identity_json,
+    }
+}
+
+fn handle_bootstrap_exchange(
+    stream: &mut Stream,
+    search: &SearchContext,
+    peer_is_desktop: bool,
+    request: BootstrapApprovalIpcRequest,
+) -> io::Result<()> {
+    if !peer_is_desktop
+        || !approval_request_is_authorized(&request)
+        || !bootstrap_exchange_request_is_well_shaped(&request)
+    {
+        let response = serde_json::to_vec(&bootstrap_exchange_response(
+            Some(request.request_id),
+            false,
+            Some("bootstrap_exchange_request_rejected"),
+            "bootstrap.exchange.result",
+            None,
+            None,
+            None,
+        ))?;
+        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+    }
+
+    if request.operation == "bootstrap.exchange.brain_identity.read" {
+        let result = read_local_brain_identity(search);
+        let (accepted, error, identity) = match result {
+            Ok(identity) => (true, None, Some(identity)),
+            Err(error) => (false, Some(error), None),
+        };
+        let response = serde_json::to_vec(&bootstrap_exchange_response(
+            Some(request.request_id),
+            accepted,
+            error,
+            "bootstrap.exchange.brain_identity.read",
+            None,
+            None,
+            identity,
+        ))?;
+        return write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE);
+    }
+
+    let result = match request.operation.as_str() {
+        "bootstrap.exchange.offer.create" => create_or_resume_bootstrap_offer(search, &request),
+        "bootstrap.exchange.proof.create" => create_or_resume_bootstrap_proof(search, &request),
+        _ => Err("bootstrap_exchange_request_rejected"),
+    };
+    let (accepted, error, transaction_id, message, operation) = match result {
+        Ok((transaction_id, message, operation)) => {
+            (true, None, Some(transaction_id), Some(message), operation)
+        }
+        Err(error) => (
+            false,
+            Some(error),
+            request.transaction_id,
+            None,
+            "bootstrap.exchange.result",
+        ),
+    };
+    let response = serde_json::to_vec(&bootstrap_exchange_response(
+        Some(request.request_id),
+        accepted,
+        error,
+        operation,
+        transaction_id,
+        message,
+        None,
+    ))?;
+    write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)
+}
+
+fn read_local_brain_identity(context: &SearchContext) -> Result<String, &'static str> {
+    let path = crate::identity_runtime::brain_identity_path(&context.runtime_root);
+    let metadata = fs::symlink_metadata(&path).map_err(|_| "local_identity_unavailable")?;
+    if !metadata.file_type().is_file() || metadata.len() > 4096 {
+        return Err("local_identity_unavailable");
+    }
+    let raw = fs::read_to_string(&path).map_err(|_| "local_identity_unavailable")?;
+    let identity =
+        cryptex_core::BrainIdentity::from_json(&raw).map_err(|_| "local_identity_unavailable")?;
+    if identity
+        .to_json_lf()
+        .map_err(|_| "local_identity_unavailable")?
+        != raw
+    {
+        return Err("local_identity_unavailable");
+    }
+    Ok(raw)
+}
+
+fn create_or_resume_bootstrap_offer(
+    context: &SearchContext,
+    request: &BootstrapApprovalIpcRequest,
+) -> Result<(String, String, &'static str), &'static str> {
+    let transaction_id = request
+        .transaction_id
+        .as_deref()
+        .ok_or("bootstrap_exchange_request_rejected")?;
+    let transport_id = request
+        .transport_device_id
+        .as_deref()
+        .ok_or("bootstrap_exchange_request_rejected")?;
+    require_current_transport_device_id(context, transport_id)?;
+    let (brain_id, device_id, ready, local_identity) =
+        load_local_bootstrap_exchange_identity(context)?;
+    let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&context.runtime_root)
+        .map_err(|_| "bootstrap_journal_unavailable")?;
+    if let Some(message) = journaled_local_offer(
+        &journal,
+        transaction_id,
+        &brain_id,
+        &local_identity,
+        transport_id,
+    )? {
+        return Ok((
+            transaction_id.to_owned(),
+            message,
+            "bootstrap.exchange.offer.created",
+        ));
+    }
+    let mut nonce = [0_u8; 32];
+    getrandom::getrandom(&mut nonce).map_err(|_| "secure_random_unavailable")?;
+    let offer = cryptex_events::create_bootstrap_offer(
+        &brain_id,
+        transaction_id,
+        &device_id,
+        transport_id,
+        &nonce,
+        &ready.signing_key,
+    )
+    .map_err(|_| "bootstrap_offer_creation_failed")?;
+    let event_id = new_bootstrap_event_id().map_err(|_| "secure_random_unavailable")?;
+    if journal.record_initiator_offer(&offer, &event_id).is_err() {
+        if let Some(message) = journaled_local_offer(
+            &journal,
+            transaction_id,
+            &brain_id,
+            &local_identity,
+            transport_id,
+        )? {
+            return Ok((
+                transaction_id.to_owned(),
+                message,
+                "bootstrap.exchange.offer.created",
+            ));
+        }
+        return Err("bootstrap_exchange_conflict");
+    }
+    let message = String::from_utf8(offer).map_err(|_| "bootstrap_offer_serialization_failed")?;
+    Ok((
+        transaction_id.to_owned(),
+        message,
+        "bootstrap.exchange.offer.created",
+    ))
+}
+
+fn journaled_local_offer(
+    journal: &crate::bootstrap_journal::BootstrapJournalStore,
+    transaction_id: &str,
+    brain_id: &str,
+    local_identity: &crate::bootstrap_journal::ApprovalIdentity,
+    transport_id: &str,
+) -> Result<Option<String>, &'static str> {
+    let journal = journal
+        .load()
+        .map_err(|_| "bootstrap_journal_unavailable")?;
+    if let Some(exchange) = journal
+        .exchanges
+        .iter()
+        .find(|exchange| exchange.transaction_id == transaction_id)
+    {
+        if exchange.role != crate::bootstrap_journal::BootstrapExchangeRole::Initiator
+            || exchange.brain_id != brain_id
+            || &exchange.local_identity != local_identity
+            || exchange.local_transport_device_id != transport_id
+        {
+            return Err("bootstrap_exchange_conflict");
+        }
+        return Ok(exchange.transcript_messages.first().cloned());
+    }
+    if let Some(transaction) = journal
+        .transactions
+        .iter()
+        .find(|transaction| transaction.snapshot.transaction_id == transaction_id)
+    {
+        if transaction.snapshot.role != crate::bootstrap_journal::BootstrapRole::Initiator
+            || transaction.snapshot.brain_id != brain_id
+            || transaction.snapshot.local_identity != *local_identity
+            || transaction
+                .snapshot
+                .transport_association
+                .as_ref()
+                .is_none_or(|association| association.local_device_id != transport_id)
+        {
+            return Err("bootstrap_exchange_conflict");
+        }
+        return Ok(transaction.transcript_messages.first().cloned());
+    }
+    Ok(None)
+}
+
+fn create_or_resume_bootstrap_proof(
+    context: &SearchContext,
+    request: &BootstrapApprovalIpcRequest,
+) -> Result<(String, String, &'static str), &'static str> {
+    let offer = request
+        .offer_message
+        .as_deref()
+        .ok_or("bootstrap_exchange_request_rejected")?;
+    let transport_id = request
+        .transport_device_id
+        .as_deref()
+        .ok_or("bootstrap_exchange_request_rejected")?;
+    require_current_transport_device_id(context, transport_id)?;
+    let verified_offer = cryptex_events::verify_bootstrap_offer(offer.as_bytes())
+        .map_err(|_| "invalid_signed_offer")?;
+    let brain_identity_json = request
+        .brain_identity_json
+        .as_deref()
+        .ok_or("bootstrap_exchange_request_rejected")?;
+    if brain_identity_json.len() > 4096 {
+        return Err("brain_identity_too_large");
+    }
+    crate::local_device_identity::join_existing_brain(
+        &context.runtime_root,
+        context.store.as_ref(),
+        context.environment,
+        brain_identity_json,
+        verified_offer.brain_id(),
+    )
+    .map_err(|error| match error {
+        crate::local_device_identity::LocalDeviceIdentityError::BrainMismatch => "brain_mismatch",
+        crate::local_device_identity::LocalDeviceIdentityError::ExistingDeviceState => {
+            "existing_device_state"
+        }
+        crate::local_device_identity::LocalDeviceIdentityError::EventSigningKey(_) => {
+            "local_signing_identity_unavailable"
+        }
+        _ => "local_identity_setup_failed",
+    })?;
+    let (brain_id, device_id, ready, local_identity) =
+        load_local_bootstrap_exchange_identity(context)?;
+    if verified_offer.brain_id() != brain_id {
+        return Err("brain_mismatch");
+    }
+    let transaction_id = verified_offer.transaction_id().to_owned();
+    let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&context.runtime_root)
+        .map_err(|_| "bootstrap_journal_unavailable")?;
+    if let Some(message) = journaled_local_proof(
+        &journal,
+        &transaction_id,
+        offer.as_bytes(),
+        &local_identity,
+        transport_id,
+    )? {
+        return Ok((transaction_id, message, "bootstrap.exchange.proof.created"));
+    }
+
+    let event_id = new_bootstrap_event_id().map_err(|_| "secure_random_unavailable")?;
+    journal
+        .record_responder_offer(
+            offer.as_bytes(),
+            local_identity.clone(),
+            transport_id.to_owned(),
+            &event_id,
+        )
+        .map_err(|_| "bootstrap_exchange_conflict")?;
+    let mut nonce = [0_u8; 32];
+    getrandom::getrandom(&mut nonce).map_err(|_| "secure_random_unavailable")?;
+    let proof = cryptex_events::create_bootstrap_proof(
+        offer.as_bytes(),
+        &device_id,
+        transport_id,
+        &nonce,
+        &ready.signing_key,
+    )
+    .map_err(|_| "bootstrap_proof_creation_failed")?;
+    if journal
+        .record_exchange_proof(&transaction_id, &proof)
+        .is_err()
+    {
+        if let Some(message) = journaled_local_proof(
+            &journal,
+            &transaction_id,
+            offer.as_bytes(),
+            &local_identity,
+            transport_id,
+        )? {
+            return Ok((transaction_id, message, "bootstrap.exchange.proof.created"));
+        }
+        return Err("bootstrap_exchange_conflict");
+    }
+    let message = String::from_utf8(proof).map_err(|_| "bootstrap_proof_serialization_failed")?;
+    Ok((transaction_id, message, "bootstrap.exchange.proof.created"))
+}
+
+fn require_current_transport_device_id(
+    context: &SearchContext,
+    supplied: &str,
+) -> Result<(), &'static str> {
+    #[cfg(test)]
+    {
+        let actual = context
+            .transport_device_id_override
+            .as_deref()
+            .ok_or("transport_identity_unavailable")?;
+        if !crate::syncthing_rest::native_id_shape(actual) {
+            return Err("transport_identity_unavailable");
+        }
+        if actual != supplied {
+            return Err("transport_identity_mismatch");
+        }
+        Ok(())
+    }
+    #[cfg(all(windows, not(test)))]
+    {
+        let reader = context
+            .transport_status
+            .as_ref()
+            .ok_or("transport_identity_unavailable")?;
+        let actual = reader
+            .try_transport_device_id()
+            .map_err(|_| "transport_identity_unavailable")?;
+        if actual != supplied {
+            return Err("transport_identity_mismatch");
+        }
+        Ok(())
+    }
+    #[cfg(all(not(windows), not(test)))]
+    {
+        let _ = (context, supplied);
+        Err("transport_identity_unavailable")
+    }
+}
+
+fn journaled_local_proof(
+    store: &crate::bootstrap_journal::BootstrapJournalStore,
+    transaction_id: &str,
+    offer: &[u8],
+    local_identity: &crate::bootstrap_journal::ApprovalIdentity,
+    transport_id: &str,
+) -> Result<Option<String>, &'static str> {
+    let journal = store.load().map_err(|_| "bootstrap_journal_unavailable")?;
+    if let Some(exchange) = journal
+        .exchanges
+        .iter()
+        .find(|exchange| exchange.transaction_id == transaction_id)
+    {
+        if exchange.role != crate::bootstrap_journal::BootstrapExchangeRole::Responder
+            || exchange.local_identity != *local_identity
+            || exchange.local_transport_device_id != transport_id
+            || exchange.transcript_messages.first().map(String::as_bytes) != Some(offer)
+        {
+            return Err("bootstrap_exchange_conflict");
+        }
+        return Ok(exchange.transcript_messages.get(1).cloned());
+    }
+    if let Some(transaction) = journal
+        .transactions
+        .iter()
+        .find(|transaction| transaction.snapshot.transaction_id == transaction_id)
+    {
+        if transaction.snapshot.role != crate::bootstrap_journal::BootstrapRole::Responder
+            || transaction.snapshot.local_identity != *local_identity
+            || transaction
+                .snapshot
+                .transport_association
+                .as_ref()
+                .is_none_or(|association| association.local_device_id != transport_id)
+            || transaction
+                .transcript_messages
+                .first()
+                .map(String::as_bytes)
+                != Some(offer)
+        {
+            return Err("bootstrap_exchange_conflict");
+        }
+        return Ok(transaction.transcript_messages.get(1).cloned());
+    }
+    Ok(None)
+}
+
+fn load_local_bootstrap_exchange_identity(
+    context: &SearchContext,
+) -> Result<
+    (
+        String,
+        DeviceId,
+        crate::event_signing_key::ReadyEventSigningKey,
+        crate::bootstrap_journal::ApprovalIdentity,
+    ),
+    &'static str,
+> {
+    let brain =
+        load_brain_identity(&context.runtime_root).map_err(|_| "local_identity_unavailable")?;
+    let local = load_local_device_identity(&context.runtime_root, &brain.brain_id)
+        .map_err(|_| "local_identity_unavailable")?;
+    let device = DeviceId::new(local.device_id).map_err(|_| "local_identity_unavailable")?;
+    let ready = load_existing_event_signing_key(
+        context.store.as_ref(),
+        context.environment,
+        &context.runtime_root,
+        &device,
+    )
+    .map_err(|_| "local_signing_identity_unavailable")?;
+    let verifying_key = ready.signing_key.verifying_key();
+    let fingerprint = Sha256::digest(verifying_key.as_bytes());
+    let identity = crate::bootstrap_journal::ApprovalIdentity {
+        device_id: device.as_str().to_owned(),
+        signing_key_id: ready.public.signing_key_id.clone(),
+        public_key_fingerprint_sha256: blake3::Hash::from_bytes(fingerprint.into())
+            .to_hex()
+            .to_string(),
+    };
+    if ready.public.device_id != device.as_str()
+        || ready.public.signing_key_id
+            != cryptex_events::signing_key_id_from_verifying_key(&verifying_key)
+                .map_err(|_| "local_signing_identity_unavailable")?
+                .as_str()
+    {
+        return Err("local_signing_identity_mismatch");
+    }
+    Ok((brain.brain_id, device, ready, identity))
+}
+
+fn approval_request_is_authorized(request: &BootstrapApprovalIpcRequest) -> bool {
+    request.protocol_version == PROTOCOL_VERSION
+        && request.client_role == "desktop"
+        && request.request_id.len() <= 128
+        && !request.request_id.is_empty()
+        && request
+            .request_id
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic())
+        && request.capabilities.len() == 1
+        && request.capabilities[0] == CAPABILITY_BOOTSTRAP_APPROVAL
+}
+
+fn approval_request_has_prepare_shape(request: &BootstrapApprovalIpcRequest) -> bool {
+    request.role.is_some()
+        && request.transcript_messages.is_some()
+        && request.approval_request_digest.is_none()
+        && request.capability.is_none()
+        && request.transport_device_id.is_none()
+        && request.offer_message.is_none()
+        && request.brain_identity_json.is_none()
+        && request.transaction_id.is_none()
+}
+
+fn approval_request_has_followup_shape(request: &BootstrapApprovalIpcRequest) -> bool {
+    request.role.is_some()
+        && request.transcript_messages.is_some()
+        && request
+            .approval_request_digest
+            .as_deref()
+            .is_some_and(|digest| {
+                digest.len() == 64
+                    && digest
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            })
+        && request.capability.as_deref().is_some_and(|capability| {
+            capability.len() == 64
+                && capability
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        })
+        && request.transport_device_id.is_none()
+        && request.offer_message.is_none()
+        && request.brain_identity_json.is_none()
+        && request.transaction_id.is_none()
+}
+
+fn owner_security_prepare_has_shape(request: &BootstrapApprovalIpcRequest) -> bool {
+    request.role.is_none()
+        && request.transcript_messages.is_none()
+        && request.approval_request_digest.is_none()
+        && request.capability.is_none()
+        && request.transport_device_id.is_none()
+        && request.offer_message.is_none()
+        && request.brain_identity_json.is_none()
+        && request.transaction_id.as_deref().is_some_and(|id| {
+            id.len() == 64
+                && id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+        && request.owner_operation.is_some()
+}
+
+fn owner_security_followup_has_shape(request: &BootstrapApprovalIpcRequest) -> bool {
+    request.role.is_none()
+        && request.transcript_messages.is_none()
+        && request.owner_operation.is_none()
+        && request.transport_device_id.is_none()
+        && request.offer_message.is_none()
+        && request.brain_identity_json.is_none()
+        && request.transaction_id.as_deref().is_some_and(|id| {
+            id.len() == 64
+                && id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+        && request
+            .approval_request_digest
+            .as_deref()
+            .is_some_and(is_lower_hex_digest)
+        && request
+            .capability
+            .as_deref()
+            .is_some_and(is_lower_hex_digest)
+}
+
+fn is_lower_hex_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn bootstrap_exchange_request_is_well_shaped(request: &BootstrapApprovalIpcRequest) -> bool {
+    if request.role.is_some()
+        || request.transcript_messages.is_some()
+        || request.approval_request_digest.is_some()
+        || request.capability.is_some()
+    {
+        return false;
+    }
+    match request.operation.as_str() {
+        "bootstrap.exchange.brain_identity.read" => {
+            request.transport_device_id.is_none()
+                && request.offer_message.is_none()
+                && request.brain_identity_json.is_none()
+                && request.transaction_id.is_none()
+        }
+        "bootstrap.exchange.offer.create" => {
+            request.transport_device_id.is_some()
+                && request.offer_message.is_none()
+                && request.brain_identity_json.is_none()
+                && request.transaction_id.as_deref().is_some_and(|id| {
+                    id.len() == 64
+                        && id
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                })
+        }
+        "bootstrap.exchange.proof.create" => {
+            request.transport_device_id.is_some()
+                && request
+                    .offer_message
+                    .as_ref()
+                    .is_some_and(|offer| offer.len() <= 64 * 1024)
+                && request
+                    .brain_identity_json
+                    .as_ref()
+                    .is_some_and(|identity| identity.len() <= 4096)
+                && request.transaction_id.is_none()
+        }
+        _ => false,
+    }
+}
+
+fn verify_approval_prefix(
+    request: &BootstrapApprovalIpcRequest,
+) -> Result<
+    (
+        cryptex_events::VerifiedBootstrapApprovalRequest,
+        Vec<Vec<u8>>,
+    ),
+    &'static str,
+> {
+    let role = approval_role(request.role.as_deref()).ok_or("invalid_approval_role")?;
+    let messages = request
+        .transcript_messages
+        .as_ref()
+        .ok_or("missing_transcript")?
+        .iter()
+        .map(|message| message.as_bytes().to_vec())
+        .collect::<Vec<_>>();
+    if messages.iter().any(|message| message.len() > 64 * 1024) {
+        return Err("transcript_too_large");
+    }
+    let refs = messages.iter().map(Vec::as_slice).collect::<Vec<_>>();
+    let verified = cryptex_events::verify_bootstrap_approval_request(&refs, role)
+        .map_err(|_| "invalid_transcript")?;
+    Ok((verified, messages))
+}
+
+fn validate_local_bootstrap_identity(
+    context: &SearchContext,
+    request: &cryptex_events::VerifiedBootstrapApprovalRequest,
+) -> Result<DeviceId, &'static str> {
+    let brain =
+        load_brain_identity(&context.runtime_root).map_err(|_| "local_identity_unavailable")?;
+    if brain.brain_id != request.brain_id() {
+        return Err("brain_mismatch");
+    }
+    let local = load_local_device_identity(&context.runtime_root, &brain.brain_id)
+        .map_err(|_| "local_identity_unavailable")?;
+    let device = DeviceId::new(local.device_id).map_err(|_| "local_identity_unavailable")?;
+    if device.as_str() != request.local_identity().device_id.as_str() {
+        return Err("local_device_mismatch");
+    }
+    let (metadata, verifying_key) = load_existing_event_verifying_key(
+        context.store.as_ref(),
+        context.environment,
+        &context.runtime_root,
+        &device,
+    )
+    .map_err(|_| "local_signing_identity_unavailable")?;
+    if metadata.signing_key_id != request.local_identity().signing_key_id.as_str()
+        || verifying_key.to_bytes() != request.local_identity().public_key
+    {
+        return Err("local_signing_identity_mismatch");
+    }
+    Ok(device)
+}
+
+fn new_bootstrap_event_id() -> Result<String, &'static str> {
+    let mut bytes = [0_u8; 16];
+    getrandom::getrandom(&mut bytes).map_err(|_| "secure_random_unavailable")?;
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex = bytes
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Ok(format!(
+        "{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    ))
+}
+
+fn new_bootstrap_transaction_id() -> Result<String, &'static str> {
+    let mut bytes = [0_u8; 32];
+    getrandom::getrandom(&mut bytes).map_err(|_| "secure_random_unavailable")?;
+    Ok(blake3::Hash::from_bytes(bytes).to_hex().to_string())
+}
+
+fn handle_bootstrap_approval_session(
+    stream: &mut Stream,
+    search: Option<&SearchContext>,
+    peer_is_desktop: bool,
+    first_frame: &[u8],
+) -> io::Result<()> {
+    if !peer_is_desktop || first_frame.len() > MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES {
+        let response = serde_json::to_vec(&bootstrap_approval_response(
+            None,
+            false,
+            Some("desktop_authentication_required"),
+            "bootstrap.approval.result",
+            None,
+            None,
+            None,
+        ))?;
+        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+    }
+    let context = search.ok_or_else(|| invalid_data("approval service unavailable"))?;
+    let request: BootstrapApprovalIpcRequest = match serde_json::from_slice(first_frame) {
+        Ok(request) => request,
+        Err(_) => {
+            let response = serde_json::to_vec(&bootstrap_approval_response(
+                None,
+                false,
+                Some("malformed_request"),
+                "bootstrap.approval.result",
+                None,
+                None,
+                None,
+            ))?;
+            return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+        }
+    };
+    if request.operation.starts_with("owner.security.") {
+        return handle_owner_security_operation_session(stream, context, peer_is_desktop, request);
+    }
+    if request.operation.starts_with("bootstrap.exchange.") {
+        return handle_bootstrap_exchange(stream, context, peer_is_desktop, request);
+    }
+    if request.operation == "bootstrap.approval.complete" {
+        return handle_bootstrap_approval_completion(stream, context, peer_is_desktop, request);
+    }
+    if !approval_request_is_authorized(&request)
+        || !approval_request_has_prepare_shape(&request)
+        || request.operation != "bootstrap.approval.prepare"
+    {
+        let response = serde_json::to_vec(&bootstrap_approval_response(
+            Some(request.request_id),
+            false,
+            Some("approval_request_rejected"),
+            "bootstrap.approval.result",
+            None,
+            None,
+            None,
+        ))?;
+        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+    }
+    let (verified, messages) = match verify_approval_prefix(&request) {
+        Ok(prefix) => prefix,
+        Err(error) => {
+            let response = serde_json::to_vec(&bootstrap_approval_response(
+                Some(request.request_id),
+                false,
+                Some(error),
+                "bootstrap.approval.result",
+                None,
+                None,
+                None,
+            ))?;
+            return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+        }
+    };
+    if let Err(error) = validate_local_bootstrap_identity(context, &verified) {
+        let response = serde_json::to_vec(&bootstrap_approval_response(
+            Some(request.request_id),
+            false,
+            Some(error),
+            "bootstrap.approval.result",
+            None,
+            None,
+            None,
+        ))?;
+        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+    }
+
+    let snapshot =
+        crate::bootstrap_journal::ApprovalSnapshot::from_verified_bootstrap_request(&verified)
+            .map_err(|_| invalid_data("approval snapshot invalid"))?;
+    let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&context.runtime_root)
+        .map_err(|_| invalid_data("approval journal unavailable"))?;
+    let event_id = new_bootstrap_event_id().map_err(invalid_data)?;
+    if journal
+        .begin_verified_approval_prefix(&verified, &messages, &event_id)
+        .is_err()
+    {
+        let response = serde_json::to_vec(&bootstrap_approval_response(
+            Some(request.request_id),
+            false,
+            Some("approval_transaction_conflict"),
+            "bootstrap.approval.result",
+            None,
+            None,
+            None,
+        ))?;
+        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+    }
+
+    let registry = BOOTSTRAP_APPROVAL_SESSIONS
+        .get_or_init(crate::approval_session::ApprovalSessionRegistry::default);
+    let connection = registry
+        .open_connection()
+        .map_err(|_| invalid_data("approval session unavailable"))?;
+    let grant = registry
+        .issue(&connection, snapshot.clone())
+        .map_err(|_| invalid_data("approval session unavailable"))?;
+    let prepared = serde_json::to_vec(&bootstrap_approval_response(
+        Some(request.request_id.clone()),
+        true,
+        None,
+        "bootstrap.approval.prepared",
+        Some(grant.clone()),
+        Some(snapshot),
+        None,
+    ))?;
+    write_response(stream, &prepared, Instant::now() + IPC_RESPONSE_DEADLINE)?;
+
+    let followup_frame = match read_ipc_frame(
+        stream,
+        MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES,
+        Instant::now() + IPC_APPROVAL_SESSION_DEADLINE,
+    ) {
+        Ok(frame) if !frame.is_empty() => frame,
+        Ok(_) => return Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::TimedOut => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    let followup: BootstrapApprovalIpcRequest = match serde_json::from_slice(&followup_frame) {
+        Ok(request) => request,
+        Err(_) => {
+            let response = serde_json::to_vec(&bootstrap_approval_response(
+                Some(request.request_id),
+                false,
+                Some("malformed_confirmation"),
+                "bootstrap.approval.result",
+                None,
+                None,
+                None,
+            ))?;
+            return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+        }
+    };
+    if !approval_request_is_authorized(&followup)
+        || !approval_request_has_followup_shape(&followup)
+        || followup.request_id != request.request_id
+        || followup.role != request.role
+    {
+        let response = serde_json::to_vec(&bootstrap_approval_response(
+            Some(request.request_id),
+            false,
+            Some("approval_session_mismatch"),
+            "bootstrap.approval.result",
+            None,
+            None,
+            None,
+        ))?;
+        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+    }
+    let capability = followup.capability.as_deref().unwrap_or_default();
+    let digest = followup
+        .approval_request_digest
+        .as_deref()
+        .unwrap_or_default();
+    let (confirm_request, _) = match verify_approval_prefix(&followup) {
+        Ok(prefix) => prefix,
+        Err(error) => {
+            let response = serde_json::to_vec(&bootstrap_approval_response(
+                Some(request.request_id),
+                false,
+                Some(error),
+                "bootstrap.approval.result",
+                None,
+                None,
+                None,
+            ))?;
+            return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+        }
+    };
+    if confirm_request != verified
+        || followup.approval_request_digest.as_deref()
+            != Some(grant.approval_request_digest.as_str())
+    {
+        let response = serde_json::to_vec(&bootstrap_approval_response(
+            Some(request.request_id),
+            false,
+            Some("approval_snapshot_changed"),
+            "bootstrap.approval.result",
+            None,
+            None,
+            None,
+        ))?;
+        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+    }
+    if followup.operation == "bootstrap.approval.cancel" {
+        let result = registry
+            .cancel(&connection, capability)
+            .map_err(|_| invalid_data("approval cancellation rejected"))
+            .and_then(|()| {
+                journal
+                    .cancel_pending_approval(verified.transaction_id())
+                    .map_err(|_| invalid_data("approval cancellation could not be persisted"))
+            });
+        let response = serde_json::to_vec(&bootstrap_approval_response(
+            Some(request.request_id),
+            result.is_ok(),
+            result.err().map(|_| "approval_cancellation_rejected"),
+            "bootstrap.approval.cancelled",
+            None,
+            None,
+            None,
+        ))?;
+        return write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE);
+    }
+    if followup.operation != "bootstrap.approval.confirm" {
+        let response = serde_json::to_vec(&bootstrap_approval_response(
+            Some(request.request_id),
+            false,
+            Some("invalid_approval_action"),
+            "bootstrap.approval.result",
+            None,
+            None,
+            None,
+        ))?;
+        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+    }
+    let signed = registry.confirm_bootstrap_approval_journaled(
+        &connection,
+        capability,
+        digest,
+        &confirm_request,
+        &journal,
+        |verified_request| {
+            let brain = load_brain_identity(&context.runtime_root).map_err(|_| {
+                crate::approval_session::ApprovalSessionError::ApprovalSigningFailed
+            })?;
+            let local = load_local_device_identity(&context.runtime_root, &brain.brain_id)
+                .map_err(|_| {
+                    crate::approval_session::ApprovalSessionError::ApprovalSigningFailed
+                })?;
+            let device = DeviceId::new(local.device_id).map_err(|_| {
+                crate::approval_session::ApprovalSessionError::ApprovalSigningFailed
+            })?;
+            let ready = load_existing_event_signing_key(
+                context.store.as_ref(),
+                context.environment,
+                &context.runtime_root,
+                &device,
+            )
+            .map_err(|_| crate::approval_session::ApprovalSessionError::ApprovalSigningFailed)?;
+            if brain.brain_id != verified_request.brain_id()
+                || device.as_str() != verified_request.local_identity().device_id.as_str()
+                || ready.public.signing_key_id
+                    != verified_request.local_identity().signing_key_id.as_str()
+                || ready.signing_key.verifying_key().to_bytes()
+                    != verified_request.local_identity().public_key
+            {
+                return Err(crate::approval_session::ApprovalSessionError::ApprovalSigningFailed);
+            }
+            cryptex_events::sign_bootstrap_approval(verified_request, &ready.signing_key)
+                .map_err(|_| crate::approval_session::ApprovalSessionError::ApprovalSigningFailed)
+        },
+    );
+    let response = match signed {
+        Ok(bytes) => {
+            let signed_message = String::from_utf8(bytes)
+                .map_err(|_| invalid_data("signed approval encoding invalid"))?;
+            bootstrap_approval_response(
+                Some(request.request_id),
+                true,
+                None,
+                "bootstrap.approval.signed",
+                None,
+                None,
+                Some(signed_message),
+            )
+        }
+        Err(error) => bootstrap_approval_response(
+            Some(request.request_id),
+            false,
+            Some(match error {
+                crate::approval_session::ApprovalSessionError::ApprovalJournalFailed => {
+                    "approval_journal_failed"
+                }
+                crate::approval_session::ApprovalSessionError::SnapshotMismatch => {
+                    "approval_snapshot_changed"
+                }
+                _ => "approval_confirmation_failed",
+            }),
+            "bootstrap.approval.result",
+            None,
+            None,
+            None,
+        ),
+    };
+    let response = serde_json::to_vec(&response)?;
+    write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)
+}
+
+fn write_owner_security_rejection(
+    stream: &mut Stream,
+    request_id: &str,
+    error: &'static str,
+) -> io::Result<()> {
+    let bytes = serde_json::to_vec(&bootstrap_approval_response(
+        Some(request_id.to_owned()),
+        false,
+        Some(error),
+        "owner.security.result",
+        None,
+        None,
+        None,
+    ))?;
+    write_response(stream, &bytes, Instant::now() + IPC_REQUEST_DEADLINE)
+}
+
+fn handle_owner_security_operation_session(
+    stream: &mut Stream,
+    context: &SearchContext,
+    peer_is_desktop: bool,
+    request: BootstrapApprovalIpcRequest,
+) -> io::Result<()> {
+    let reply = |accepted, error, operation, grant, snapshot| {
+        bootstrap_approval_response(
+            Some(request.request_id.clone()),
+            accepted,
+            error,
+            operation,
+            grant,
+            snapshot,
+            None,
+        )
+    };
+    if cfg!(target_os = "macos") {
+        return write_owner_security_rejection(
+            stream,
+            &request.request_id,
+            "platform_peer_identity_unavailable",
+        );
+    }
+    if !peer_is_desktop || !approval_request_is_authorized(&request) {
+        return write_owner_security_rejection(
+            stream,
+            &request.request_id,
+            "desktop_authentication_required",
+        );
+    }
+    if request.operation != "owner.security.prepare" || !owner_security_prepare_has_shape(&request)
+    {
+        return write_owner_security_rejection(
+            stream,
+            &request.request_id,
+            "owner_operation_request_rejected",
+        );
+    }
+    let transaction_id = request.transaction_id.as_deref().unwrap_or_default();
+    let (operation, target, reason, cutoff) = match request.owner_operation.as_ref() {
+        Some(OwnerSecurityOperationRequest::DeviceRestriction {
+            target_device_id,
+            reason,
+            cutoff_seq,
+        }) => (
+            crate::bootstrap_journal::BootstrapOperation::DeviceRestriction,
+            Some(target_device_id.as_str()),
+            Some(*reason),
+            Some(*cutoff_seq),
+        ),
+        Some(OwnerSecurityOperationRequest::SelfRetirement) => (
+            crate::bootstrap_journal::BootstrapOperation::SelfRetirement,
+            None,
+            None,
+            None,
+        ),
+        None => {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "owner_operation_request_rejected",
+            );
+        }
+    };
+    let brain = match load_brain_identity(&context.runtime_root) {
+        Ok(brain) => brain,
+        Err(_) => {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "local_identity_unavailable",
+            );
+        }
+    };
+    let snapshot = match crate::knowledge_materialization::build_owner_security_operation_snapshot(
+        &context.runtime_root,
+        &brain.brain_id,
+        context.store.as_ref(),
+        context.environment,
+        crate::knowledge_materialization::OwnerSecuritySnapshotRequest {
+            transaction_id: transaction_id.to_owned(),
+            operation,
+            target_device_id: target,
+            reason,
+            cutoff_seq: cutoff,
+        },
+    ) {
+        Ok(snapshot) => snapshot,
+        Err(_) => {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "owner_operation_policy_held",
+            );
+        }
+    };
+    let journal = match crate::bootstrap_journal::BootstrapJournalStore::new(&context.runtime_root)
+    {
+        Ok(journal) => journal,
+        Err(_) => {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "approval_journal_unavailable",
+            );
+        }
+    };
+    let existing = match journal.load() {
+        Ok(journal) => journal
+            .transactions
+            .into_iter()
+            .find(|transaction| transaction.snapshot.transaction_id == transaction_id),
+        Err(_) => {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "approval_journal_unavailable",
+            );
+        }
+    };
+    if let Some(existing) = existing {
+        if existing.snapshot != snapshot
+            || existing.state != crate::bootstrap_journal::BootstrapState::OwnerPending
+        {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "approval_transaction_conflict",
+            );
+        }
+    } else {
+        let event_id = match new_bootstrap_event_id() {
+            Ok(event_id) => event_id,
+            Err(error) => {
+                return write_owner_security_rejection(stream, &request.request_id, error);
+            }
+        };
+        if journal
+            .begin_owner_operation(snapshot.clone(), &event_id)
+            .is_err()
+        {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "approval_transaction_conflict",
+            );
+        }
+    }
+    let registry = BOOTSTRAP_APPROVAL_SESSIONS
+        .get_or_init(crate::approval_session::ApprovalSessionRegistry::default);
+    let connection = match registry.open_connection() {
+        Ok(connection) => connection,
+        Err(_) => {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "approval_session_unavailable",
+            );
+        }
+    };
+    let grant = match registry.issue(&connection, snapshot.clone()) {
+        Ok(grant) => grant,
+        Err(_) => {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "approval_session_unavailable",
+            );
+        }
+    };
+    let prepared = serde_json::to_vec(&reply(
+        true,
+        None,
+        "owner.security.prepared",
+        Some(grant.clone()),
+        Some(snapshot.clone()),
+    ))?;
+    write_response(stream, &prepared, Instant::now() + IPC_RESPONSE_DEADLINE)?;
+
+    let followup_frame = match read_ipc_frame(
+        stream,
+        MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES,
+        Instant::now() + IPC_APPROVAL_SESSION_DEADLINE,
+    ) {
+        Ok(frame) if !frame.is_empty() => frame,
+        Ok(_) => return Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::TimedOut => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    let followup: BootstrapApprovalIpcRequest = match serde_json::from_slice(&followup_frame) {
+        Ok(request) => request,
+        Err(_) => {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "malformed_confirmation",
+            );
+        }
+    };
+    if !approval_request_is_authorized(&followup)
+        || !owner_security_followup_has_shape(&followup)
+        || followup.request_id != request.request_id
+        || followup.transaction_id.as_deref() != Some(transaction_id)
+        || !matches!(
+            followup.operation.as_str(),
+            "owner.security.confirm" | "owner.security.cancel"
+        )
+    {
+        return write_owner_security_rejection(
+            stream,
+            &request.request_id,
+            "approval_session_mismatch",
+        );
+    }
+    if !peer_process_id(stream)
+        .ok()
+        .is_some_and(|pid| context.expected_desktop.matches_peer(pid))
+    {
+        return write_owner_security_rejection(
+            stream,
+            &request.request_id,
+            "desktop_authentication_required",
+        );
+    }
+    let capability = followup.capability.as_deref().unwrap_or_default();
+    let digest = followup
+        .approval_request_digest
+        .as_deref()
+        .unwrap_or_default();
+    match registry.consume(&connection, capability, digest) {
+        Ok(consumed) if consumed == snapshot => {}
+        Ok(_) => {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "approval_snapshot_changed",
+            );
+        }
+        Err(_) => {
+            return write_owner_security_rejection(
+                stream,
+                &request.request_id,
+                "approval_confirmation_failed",
+            );
+        }
+    }
+    if followup.operation == "owner.security.cancel" {
+        let result = journal.cancel_pending_approval(transaction_id);
+        let response = serde_json::to_vec(&reply(
+            result.is_ok(),
+            result.err().map(|_| "approval_cancellation_rejected"),
+            "owner.security.cancelled",
+            None,
+            None,
+        ))?;
+        return write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE);
+    }
+    if journal
+        .confirm_owner_operation(transaction_id, digest)
+        .is_err()
+    {
+        return write_owner_security_rejection(
+            stream,
+            &request.request_id,
+            "approval_journal_failed",
+        );
+    }
+    let result = crate::knowledge_materialization::append_confirmed_owner_security_operation(
+        &context.runtime_root,
+        &brain.brain_id,
+        context.store.as_ref(),
+        context.environment,
+        transaction_id,
+    );
+    let response = serde_json::to_vec(&reply(
+        result.is_ok(),
+        result.err().map(|_| "owner_operation_append_held"),
+        "owner.security.result",
+        None,
+        None,
+    ))?;
+    write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)
+}
+
+fn handle_bootstrap_approval_completion(
+    stream: &mut Stream,
+    context: &SearchContext,
+    peer_is_desktop: bool,
+    request: BootstrapApprovalIpcRequest,
+) -> io::Result<()> {
+    let reject = |error| {
+        serde_json::to_vec(&bootstrap_approval_response(
+            Some(request.request_id.clone()),
+            false,
+            Some(error),
+            "bootstrap.approval.anchored",
+            None,
+            None,
+            None,
+        ))
+    };
+    // macOS currently exposes only PID-level peer credentials in this IPC
+    // adapter. Do not let a previously confirmed transcript create a durable
+    // trust anchor until the platform can bind the completion connection to
+    // the same live Desktop process instance.
+    if cfg!(target_os = "macos") {
+        let response = reject("platform_peer_identity_unavailable")?;
+        return write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE);
+    }
+    let response = if !peer_is_desktop
+        || !approval_request_is_authorized(&request)
+        || request.operation != "bootstrap.approval.complete"
+        || request.role.is_some()
+        || request.approval_request_digest.is_some()
+        || request.capability.is_some()
+    {
+        reject("approval_request_rejected")?
+    } else {
+        let Some(transcript_messages) = request.transcript_messages.as_ref() else {
+            let bytes = reject("approval_request_rejected")?;
+            return write_response(stream, &bytes, Instant::now() + IPC_RESPONSE_DEADLINE);
+        };
+        let messages = transcript_messages
+            .iter()
+            .map(|message| message.as_bytes().to_vec())
+            .collect::<Vec<_>>();
+        let verified =
+            if messages.len() == 4 && messages.iter().all(|message| message.len() <= 64 * 1024) {
+                let refs = messages.iter().map(Vec::as_slice).collect::<Vec<_>>();
+                cryptex_events::verify_bootstrap_transcript(&refs).ok()
+            } else {
+                None
+            };
+        let Some(verified) = verified else {
+            let bytes = reject("invalid_transcript")?;
+            return write_response(stream, &bytes, Instant::now() + IPC_RESPONSE_DEADLINE);
+        };
+        let journal =
+            match crate::bootstrap_journal::BootstrapJournalStore::new(&context.runtime_root) {
+                Ok(journal) => journal,
+                Err(_) => {
+                    let bytes = reject("approval_journal_unavailable")?;
+                    return write_response(stream, &bytes, Instant::now() + IPC_RESPONSE_DEADLINE);
+                }
+            };
+        if journal
+            .record_verified_complete_transcript(verified.transaction_id(), &messages)
+            .is_err()
+        {
+            reject("approval_transaction_conflict")?
+        } else if crate::knowledge_materialization::append_local_peer_approval_anchor(
+            &context.runtime_root,
+            verified.brain_id(),
+            context.store.as_ref(),
+            context.environment,
+            verified.transaction_id(),
+            &messages,
+        )
+        .is_err()
+        {
+            reject("approval_anchor_held")?
+        } else {
+            serde_json::to_vec(&bootstrap_approval_response(
+                Some(request.request_id.clone()),
+                true,
+                None,
+                "bootstrap.approval.anchored",
+                None,
+                None,
+                None,
+            ))?
+        }
+    };
+    write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)
 }
 
 fn response_write_deadline_for_operation(operation: &str) -> Instant {
@@ -2091,6 +4307,9 @@ pub struct DesktopTransportResponse {
     pub native_pid: Option<u32>,
     pub stop_requested: bool,
     pub worker_error: Option<String>,
+    /// Present only while the owned native worker is active and its
+    /// authenticated REST status matches its pinned profile identity.
+    pub transport_device_id: Option<String>,
 }
 
 fn handle_transport_status(
@@ -2136,6 +4355,7 @@ fn handle_transport_status(
         native_pid: None,
         stop_requested: false,
         worker_error: None,
+        transport_device_id: None,
     };
     if error.is_some() {
         return response;
@@ -2155,6 +4375,7 @@ fn handle_transport_status(
                 return response;
             }
         };
+        response.transport_device_id = reader.try_transport_device_id().ok();
         response.configured = true;
         response.state = Some(
             match snapshot.state {
@@ -3461,6 +5682,7 @@ mod tests {
     use cryptex_core::BrainIdentity;
     use cryptex_events::Classification;
     use cryptex_storage::layout::{active_segment_path, canonical_events_device_dir};
+    use ed25519_dalek::{Signer, SigningKey};
 
     use super::*;
     use crate::canonical_writer::{
@@ -3475,6 +5697,961 @@ mod tests {
     use cryptex_projection::ProjectionDb;
 
     const TEST_BRAIN_ID: &str = "11111111-1111-4111-8111-111111111111";
+
+    fn approval_request(operation: &str) -> BootstrapApprovalIpcRequest {
+        BootstrapApprovalIpcRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "11111111-1111-4111-8111-111111111111".into(),
+            client_role: "desktop".into(),
+            capabilities: vec![CAPABILITY_BOOTSTRAP_APPROVAL.into()],
+            operation: operation.into(),
+            role: Some("initiator".into()),
+            transcript_messages: Some(vec!["{}".into(), "{}".into()]),
+            approval_request_digest: None,
+            capability: None,
+            transport_device_id: None,
+            offer_message: None,
+            brain_identity_json: None,
+            transaction_id: None,
+            owner_operation: None,
+        }
+    }
+
+    fn test_connected_process_identity() -> DesktopProcessIdentity {
+        let pid = process::id();
+        #[cfg(windows)]
+        {
+            use std::os::windows::io::FromRawHandle;
+            use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE};
+
+            let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+            assert!(!handle.is_null());
+            DesktopProcessIdentity {
+                pid,
+                process: unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(handle) },
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            DesktopProcessIdentity { pid }
+        }
+    }
+
+    fn test_bootstrap_hash(domain: &[u8], value: &serde_json::Value) -> String {
+        let canonical = serde_json_canonicalizer::to_vec(value).unwrap();
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(domain);
+        hasher.update(&[0]);
+        hasher.update(&canonical);
+        hasher.finalize().to_hex().to_string()
+    }
+
+    fn test_hex(bytes: &[u8]) -> String {
+        const DIGITS: &[u8; 16] = b"0123456789abcdef";
+        let mut result = String::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            result.push(DIGITS[(byte >> 4) as usize] as char);
+            result.push(DIGITS[(byte & 0x0f) as usize] as char);
+        }
+        result
+    }
+
+    fn sign_test_bootstrap_message(mut value: serde_json::Value, key: &SigningKey) -> Vec<u8> {
+        let object = value.as_object_mut().unwrap();
+        object.remove("signature");
+        let canonical = serde_json_canonicalizer::to_vec(&value).unwrap();
+        let mut preimage = b"cryptex-peer-bootstrap-sig-v1".to_vec();
+        preimage.push(0);
+        preimage.extend_from_slice(&canonical);
+        let signature = key.sign(&preimage);
+        value.as_object_mut().unwrap().insert(
+            "signature".into(),
+            serde_json::Value::String(test_hex(&signature.to_bytes())),
+        );
+        serde_json_canonicalizer::to_vec(&value).unwrap()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn bootstrap_message(
+        kind: &str,
+        transaction_id: &str,
+        sender_device_id: &str,
+        sender_key: &SigningKey,
+        sender_transport_device_id: &str,
+        peer: Option<(&str, &SigningKey, &str)>,
+        previous_hash: &str,
+        payload: serde_json::Value,
+    ) -> serde_json::Value {
+        let sender_public_key = sender_key.verifying_key().to_bytes();
+        let sender_signing_key_id = cryptex_events::integrity::signing_key_id_from_verifying_key(
+            &sender_key.verifying_key(),
+        )
+        .unwrap();
+        let (peer_device_id, peer_signing_key_id, peer_public_key, peer_transport_device_id) =
+            if let Some((device_id, key, transport_id)) = peer {
+                let key_id = cryptex_events::integrity::signing_key_id_from_verifying_key(
+                    &key.verifying_key(),
+                )
+                .unwrap();
+                (
+                    serde_json::Value::String(device_id.into()),
+                    serde_json::Value::String(key_id.as_str().into()),
+                    serde_json::Value::String(test_hex(&key.verifying_key().to_bytes())),
+                    serde_json::Value::String(transport_id.into()),
+                )
+            } else {
+                (
+                    serde_json::Value::Null,
+                    serde_json::Value::Null,
+                    serde_json::Value::Null,
+                    serde_json::Value::Null,
+                )
+            };
+        serde_json::json!({
+            "protocol_version": 1,
+            "message_type": kind,
+            "transaction_id": transaction_id,
+            "brain_id": TEST_BRAIN_ID,
+            "sender_device_id": sender_device_id,
+            "sender_signing_key_id": sender_signing_key_id.as_str(),
+            "sender_public_key": test_hex(&sender_public_key),
+            "sender_transport_device_id": sender_transport_device_id,
+            "peer_device_id": peer_device_id,
+            "peer_signing_key_id": peer_signing_key_id,
+            "peer_public_key": peer_public_key,
+            "peer_transport_device_id": peer_transport_device_id,
+            "previous_hash": previous_hash,
+            "payload": payload,
+            "signature": "00".repeat(64)
+        })
+    }
+
+    fn synthetic_initiator_prefix(fixture: &SearchFixture) -> Vec<String> {
+        let peer_key = SigningKey::from_bytes(&[0x42; 32]);
+        synthetic_initiator_prefix_with_peer_key(fixture, &peer_key)
+    }
+
+    fn synthetic_initiator_prefix_with_peer_key(
+        fixture: &SearchFixture,
+        peer_key: &SigningKey,
+    ) -> Vec<String> {
+        let ready = load_existing_event_signing_key(
+            fixture.store.as_ref(),
+            SecureStoreEnvironment::Dev,
+            &fixture.root,
+            &fixture.device,
+        )
+        .unwrap();
+        let peer_device_id = "33333333-3333-4333-8333-333333333333";
+        let local_transport = "AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA";
+        let peer_transport = "BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB";
+        let transaction_id = "ab".repeat(32);
+        let offer = sign_test_bootstrap_message(
+            bootstrap_message(
+                "offer",
+                &transaction_id,
+                fixture.device.as_str(),
+                &ready.signing_key,
+                local_transport,
+                None,
+                &"00".repeat(32),
+                serde_json::json!({"initiator_nonce":"11".repeat(32)}),
+            ),
+            &ready.signing_key,
+        );
+        let offer_value: serde_json::Value = serde_json::from_slice(&offer).unwrap();
+        let offer_hash = test_bootstrap_hash(b"cryptex-peer-bootstrap-message-v1", &offer_value);
+        let proof = sign_test_bootstrap_message(
+            bootstrap_message(
+                "proof",
+                &transaction_id,
+                peer_device_id,
+                peer_key,
+                peer_transport,
+                Some((fixture.device.as_str(), &ready.signing_key, local_transport)),
+                &offer_hash,
+                serde_json::json!({"offer_hash":offer_hash,"responder_nonce":"22".repeat(32)}),
+            ),
+            peer_key,
+        );
+        vec![
+            String::from_utf8(offer).unwrap(),
+            String::from_utf8(proof).unwrap(),
+        ]
+    }
+
+    #[test]
+    fn bootstrap_approval_ipc_requires_exact_peer_role_capability_and_request_id() {
+        let request = approval_request("bootstrap.approval.prepare");
+        assert!(approval_request_is_authorized(&request));
+        assert!(approval_request_has_prepare_shape(&request));
+        assert!(!approval_request_has_prepare_shape(
+            &BootstrapApprovalIpcRequest {
+                capability: Some("a".repeat(64)),
+                ..approval_request("bootstrap.approval.prepare")
+            }
+        ));
+        assert!(!approval_request_has_followup_shape(
+            &BootstrapApprovalIpcRequest {
+                approval_request_digest: Some("A".repeat(64)),
+                capability: Some("b".repeat(64)),
+                ..approval_request("bootstrap.approval.confirm")
+            }
+        ));
+        assert!(approval_request_has_followup_shape(
+            &BootstrapApprovalIpcRequest {
+                approval_request_digest: Some("a".repeat(64)),
+                capability: Some("b".repeat(64)),
+                ..approval_request("bootstrap.approval.confirm")
+            }
+        ));
+        assert!(!approval_request_is_authorized(
+            &BootstrapApprovalIpcRequest {
+                client_role: "cli".into(),
+                ..approval_request("bootstrap.approval.prepare")
+            }
+        ));
+        assert!(!approval_request_is_authorized(
+            &BootstrapApprovalIpcRequest {
+                capabilities: vec![
+                    CAPABILITY_BOOTSTRAP_APPROVAL.into(),
+                    CAPABILITY_STATUS_READ.into()
+                ],
+                ..approval_request("bootstrap.approval.prepare")
+            }
+        ));
+        assert!(!approval_request_is_authorized(
+            &BootstrapApprovalIpcRequest {
+                request_id: "bad request".into(),
+                ..approval_request("bootstrap.approval.prepare")
+            }
+        ));
+        assert!(serde_json::from_str::<BootstrapApprovalIpcRequest>(
+            r#"{"protocolVersion":1,"requestId":"r","clientRole":"desktop","capabilities":["peer.approval.manage"],"operation":"bootstrap.approval.prepare","unexpected":true}"#
+        ).is_err());
+    }
+
+    #[test]
+    fn bootstrap_exchange_ipc_accepts_only_exact_offer_and_proof_shapes() {
+        let mut read_identity = approval_request("bootstrap.exchange.brain_identity.read");
+        read_identity.role = None;
+        read_identity.transcript_messages = None;
+        assert!(bootstrap_exchange_request_is_well_shaped(&read_identity));
+
+        let mut offer = approval_request("bootstrap.exchange.offer.create");
+        offer.role = None;
+        offer.transcript_messages = None;
+        offer.transport_device_id =
+            Some("AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA".into());
+        offer.transaction_id = Some("ab".repeat(32));
+        assert!(approval_request_is_authorized(&offer));
+        assert!(bootstrap_exchange_request_is_well_shaped(&offer));
+
+        let mut proof = approval_request("bootstrap.exchange.proof.create");
+        proof.role = None;
+        proof.transcript_messages = None;
+        proof.transport_device_id =
+            Some("BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB".into());
+        proof.offer_message = Some("{}".into());
+        proof.brain_identity_json = Some("{}".into());
+        assert!(bootstrap_exchange_request_is_well_shaped(&proof));
+
+        proof.capability = Some("11".repeat(32));
+        assert!(!bootstrap_exchange_request_is_well_shaped(&proof));
+        offer.transaction_id = Some("AB".repeat(32));
+        assert!(!bootstrap_exchange_request_is_well_shaped(&offer));
+    }
+
+    #[test]
+    fn bootstrap_exchange_requires_the_current_adapter_identity() {
+        let fixture = prepared_search_fixture("bootstrap-transport-identity-binding");
+        let actual = "AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA";
+        assert_eq!(
+            require_current_transport_device_id(&fixture.context, actual),
+            Ok(())
+        );
+        assert_eq!(
+            require_current_transport_device_id(
+                &fixture.context,
+                "BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB"
+            ),
+            Err("transport_identity_mismatch")
+        );
+        fs::remove_dir_all(fixture.root).expect("remove synthetic fixture");
+
+        let missing = SearchContext {
+            runtime_root: exclusive_temp_dir("bootstrap-transport-identity-missing"),
+            store: Arc::new(FakeSecureStore::new()),
+            environment: SecureStoreEnvironment::Dev,
+            expected_desktop: Arc::new(
+                test_desktop_process_identity().expect("capture test Desktop identity"),
+            ),
+            projection_sync: None,
+            #[cfg(windows)]
+            transport_status: None,
+            #[cfg(test)]
+            transport_device_id_override: None,
+        };
+        assert_eq!(
+            require_current_transport_device_id(&missing, actual),
+            Err("transport_identity_unavailable")
+        );
+        fs::remove_dir_all(missing.runtime_root).expect("remove missing-identity fixture");
+    }
+
+    #[test]
+    fn bootstrap_offer_is_authenticated_and_journaled_idempotently_before_response() {
+        let fixture = prepared_search_fixture("bootstrap-offer-journaled");
+        let mut request = approval_request("bootstrap.exchange.offer.create");
+        request.role = None;
+        request.transcript_messages = None;
+        request.transport_device_id =
+            Some("AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA".into());
+        request.transaction_id = Some("ab".repeat(32));
+
+        let (transaction_id, first, operation) =
+            create_or_resume_bootstrap_offer(&fixture.context, &request).expect("create offer");
+        assert_eq!(operation, "bootstrap.exchange.offer.created");
+        assert_eq!(transaction_id, "ab".repeat(32));
+        cryptex_events::verify_bootstrap_offer(first.as_bytes()).expect("signed offer");
+        let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&fixture.root)
+            .expect("journal")
+            .load()
+            .expect("load journal");
+        assert_eq!(journal.exchanges.len(), 1);
+        assert_eq!(
+            journal.exchanges[0].transcript_messages,
+            vec![first.clone()]
+        );
+
+        let (_, replay, _) =
+            create_or_resume_bootstrap_offer(&fixture.context, &request).expect("resume offer");
+        assert_eq!(replay, first);
+        assert_eq!(
+            crate::bootstrap_journal::BootstrapJournalStore::new(&fixture.root)
+                .expect("journal")
+                .load()
+                .expect("load journal")
+                .exchanges
+                .len(),
+            1
+        );
+        fs::remove_dir_all(fixture.root).expect("remove synthetic fixture");
+    }
+
+    #[test]
+    fn bootstrap_brain_identity_read_returns_exact_canonical_public_bytes() {
+        let fixture = prepared_search_fixture("bootstrap-brain-identity-read");
+        let expected = load_brain_identity(&fixture.root)
+            .expect("load identity")
+            .to_json_lf()
+            .expect("canonical identity");
+        assert_eq!(read_local_brain_identity(&fixture.context), Ok(expected));
+        fs::remove_dir_all(fixture.root).expect("remove synthetic fixture");
+    }
+
+    #[test]
+    fn bootstrap_proof_verifies_and_journals_the_exact_received_offer() {
+        let mut fixture = prepared_search_fixture("bootstrap-proof-journaled");
+        let peer_key = SigningKey::from_bytes(&[0x53; 32]);
+        let peer_device_id = "33333333-3333-4333-8333-333333333333";
+        let peer_transport = "BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB";
+        let local_transport = "CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC";
+        fixture.context.transport_device_id_override = Some(local_transport.into());
+        let transaction_id = "cd".repeat(32);
+        let offer = sign_test_bootstrap_message(
+            bootstrap_message(
+                "offer",
+                &transaction_id,
+                peer_device_id,
+                &peer_key,
+                peer_transport,
+                None,
+                &"00".repeat(32),
+                serde_json::json!({"initiator_nonce":"53".repeat(32)}),
+            ),
+            &peer_key,
+        );
+        let offer_text = String::from_utf8(offer.clone()).expect("offer UTF-8");
+        let mut request = approval_request("bootstrap.exchange.proof.create");
+        request.role = None;
+        request.transcript_messages = None;
+        request.transport_device_id = Some(local_transport.into());
+        request.offer_message = Some(offer_text);
+        request.brain_identity_json = Some(
+            load_brain_identity(&fixture.root)
+                .unwrap()
+                .to_json_lf()
+                .unwrap(),
+        );
+
+        let (returned_transaction, proof, operation) =
+            create_or_resume_bootstrap_proof(&fixture.context, &request).expect("create proof");
+        assert_eq!(returned_transaction, transaction_id);
+        assert_eq!(operation, "bootstrap.exchange.proof.created");
+        let verified = cryptex_events::verify_bootstrap_approval_request(
+            &[offer.as_slice(), proof.as_bytes()],
+            cryptex_events::BootstrapApprovalRole::Initiator,
+        )
+        .expect("verified signed offer and proof");
+        assert_eq!(verified.transaction_id(), transaction_id);
+
+        let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&fixture.root)
+            .expect("journal")
+            .load()
+            .expect("load journal");
+        assert_eq!(journal.exchanges.len(), 1);
+        assert_eq!(
+            journal.exchanges[0].transcript_messages[0].as_bytes(),
+            offer
+        );
+        assert_eq!(journal.exchanges[0].transcript_messages[1], proof);
+
+        let (_, replay, _) =
+            create_or_resume_bootstrap_proof(&fixture.context, &request).expect("resume proof");
+        assert_eq!(replay, proof);
+        fs::remove_dir_all(fixture.root).expect("remove synthetic fixture");
+    }
+
+    #[test]
+    fn bootstrap_proof_refuses_a_different_brain_without_journaling() {
+        let mut fixture = prepared_search_fixture("bootstrap-proof-brain-mismatch");
+        let peer_key = SigningKey::from_bytes(&[0x59; 32]);
+        let peer_device_id = "33333333-3333-4333-8333-333333333333";
+        let peer_transport = "BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB-BBBBBBB";
+        let local_transport = "CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC";
+        fixture.context.transport_device_id_override = Some(local_transport.into());
+        let transaction_id = "ef".repeat(32);
+        let mut body = bootstrap_message(
+            "offer",
+            &transaction_id,
+            peer_device_id,
+            &peer_key,
+            peer_transport,
+            None,
+            &"00".repeat(32),
+            serde_json::json!({"initiator_nonce":"59".repeat(32)}),
+        );
+        body.as_object_mut().unwrap().insert(
+            "brain_id".into(),
+            serde_json::Value::String("99999999-9999-4999-8999-999999999999".into()),
+        );
+        let offer = sign_test_bootstrap_message(body, &peer_key);
+        let mut request = approval_request("bootstrap.exchange.proof.create");
+        request.role = None;
+        request.transcript_messages = None;
+        request.transport_device_id = Some(local_transport.into());
+        request.offer_message = Some(String::from_utf8(offer).unwrap());
+        request.brain_identity_json = Some(
+            load_brain_identity(&fixture.root)
+                .unwrap()
+                .to_json_lf()
+                .unwrap(),
+        );
+
+        assert_eq!(
+            create_or_resume_bootstrap_proof(&fixture.context, &request),
+            Err("brain_mismatch")
+        );
+        let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&fixture.root)
+            .expect("journal")
+            .load()
+            .expect("load journal");
+        assert!(journal.exchanges.is_empty());
+        fs::remove_dir_all(fixture.root).expect("remove synthetic fixture");
+    }
+
+    #[test]
+    fn bootstrap_approval_ipc_route_rejects_unauthenticated_peer_before_parsing_transcript() {
+        let (name, listener) = isolated_ipc_listener("bootstrap-approval-auth");
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().unwrap();
+            handle_connection_for_peer(&mut stream, None, None, None, None, false).unwrap();
+        });
+        let mut client = Stream::connect(name.borrow()).unwrap();
+        let response = exchange_bootstrap_approval(
+            &mut client,
+            &approval_request("bootstrap.approval.prepare"),
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(!response.accepted);
+        assert_eq!(
+            response.error.as_deref(),
+            Some("desktop_authentication_required")
+        );
+        assert!(response.snapshot.is_none());
+        assert!(response.capability.is_none());
+        server.join().unwrap();
+    }
+
+    #[test]
+    #[cfg_attr(
+        target_os = "macos",
+        ignore = "macOS process-instance binding remains fail-closed"
+    )]
+    fn owner_security_ipc_binds_confirmation_and_appends_self_retirement_once() {
+        let fixture = prepared_search_fixture("owner-self-retirement-ipc");
+        let transaction_id = "cd".repeat(32);
+        let (name, listener) = isolated_ipc_listener("owner-self-retirement-ipc");
+        let mut context = fixture.context.clone();
+        context.expected_desktop = Arc::new(test_connected_process_identity());
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().unwrap();
+            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+                .unwrap();
+        });
+        let mut client = Stream::connect(name.borrow()).unwrap();
+        let mut prepare = approval_request("owner.security.prepare");
+        prepare.role = None;
+        prepare.transcript_messages = None;
+        prepare.transaction_id = Some(transaction_id.clone());
+        prepare.owner_operation = Some(OwnerSecurityOperationRequest::SelfRetirement);
+        let prepared = exchange_bootstrap_approval(
+            &mut client,
+            &prepare,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(prepared.accepted, "{:?}", prepared.error);
+        assert_eq!(prepared.operation, "owner.security.prepared");
+        let snapshot = prepared.snapshot.expect("daemon-derived snapshot");
+        assert_eq!(
+            snapshot.operation,
+            crate::bootstrap_journal::BootstrapOperation::SelfRetirement
+        );
+        assert_eq!(snapshot.local_identity.device_id, fixture.device.as_str());
+        let digest = prepared.approval_request_digest.unwrap();
+        let capability = prepared.capability.unwrap();
+
+        let confirm = BootstrapApprovalIpcRequest {
+            operation: "owner.security.confirm".into(),
+            role: None,
+            transcript_messages: None,
+            transaction_id: Some(transaction_id.clone()),
+            approval_request_digest: Some(digest),
+            capability: Some(capability),
+            ..approval_request("owner.security.confirm")
+        };
+        let confirmed = exchange_bootstrap_approval(
+            &mut client,
+            &confirm,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(confirmed.accepted, "{:?}", confirmed.error);
+        assert_eq!(confirmed.operation, "owner.security.result");
+        server.join().unwrap();
+
+        let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&fixture.root)
+            .unwrap()
+            .load()
+            .unwrap();
+        assert_eq!(journal.transactions.len(), 1);
+        assert_eq!(
+            journal.transactions[0].state,
+            crate::bootstrap_journal::BootstrapState::Anchored
+        );
+        assert_eq!(journal.transactions[0].append_attempts.len(), 1);
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[test]
+    #[cfg_attr(
+        target_os = "macos",
+        ignore = "macOS process-instance binding remains fail-closed"
+    )]
+    fn owner_security_ipc_cancel_is_terminal_and_does_not_append() {
+        let fixture = prepared_search_fixture("owner-self-retirement-cancel");
+        let transaction_id = "ce".repeat(32);
+        let (name, listener) = isolated_ipc_listener("owner-self-retirement-cancel");
+        let mut context = fixture.context.clone();
+        context.expected_desktop = Arc::new(test_connected_process_identity());
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().unwrap();
+            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+                .unwrap();
+        });
+        let mut client = Stream::connect(name.borrow()).unwrap();
+        let mut prepare = approval_request("owner.security.prepare");
+        prepare.role = None;
+        prepare.transcript_messages = None;
+        prepare.transaction_id = Some(transaction_id.clone());
+        prepare.owner_operation = Some(OwnerSecurityOperationRequest::SelfRetirement);
+        let prepared = exchange_bootstrap_approval(
+            &mut client,
+            &prepare,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(prepared.accepted, "{:?}", prepared.error);
+
+        let cancel = BootstrapApprovalIpcRequest {
+            operation: "owner.security.cancel".into(),
+            role: None,
+            transcript_messages: None,
+            transaction_id: Some(transaction_id),
+            approval_request_digest: prepared.approval_request_digest,
+            capability: prepared.capability,
+            ..approval_request("owner.security.cancel")
+        };
+        let cancelled = exchange_bootstrap_approval(
+            &mut client,
+            &cancel,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(cancelled.accepted, "{:?}", cancelled.error);
+        assert_eq!(cancelled.operation, "owner.security.cancelled");
+        assert!(cancelled.signed_message.is_none());
+        server.join().unwrap();
+
+        let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&fixture.root)
+            .unwrap()
+            .load()
+            .unwrap();
+        assert_eq!(journal.transactions.len(), 1);
+        assert_eq!(
+            journal.transactions[0].state,
+            crate::bootstrap_journal::BootstrapState::Cancelled
+        );
+        assert!(journal.transactions[0].append_attempts.is_empty());
+        let canonical = crate::canonical_writer::load_verified_events(
+            fixture.store.as_ref(),
+            SecureStoreEnvironment::Dev,
+            &fixture.root,
+            &fixture.device,
+        )
+        .unwrap();
+        assert_eq!(canonical.len(), 1, "cancel must not append canonical data");
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[test]
+    #[cfg_attr(
+        target_os = "macos",
+        ignore = "macOS peer process-instance binding is not implemented"
+    )]
+    fn bootstrap_approval_ipc_freezes_displays_and_journals_before_signature_release() {
+        let fixture = prepared_search_fixture("bootstrap-approval-round-trip");
+        let peer_device = DeviceId::new("33333333-3333-4333-8333-333333333333").unwrap();
+        let peer_key = crate::event_signing_key::ensure_event_signing_key(
+            fixture.store.as_ref(),
+            SecureStoreEnvironment::Dev,
+            &fixture.root,
+            &peer_device,
+            &[],
+            false,
+        )
+        .unwrap()
+        .signing_key;
+        let messages = synthetic_initiator_prefix_with_peer_key(&fixture, &peer_key);
+        let (name, listener) = isolated_ipc_listener("bootstrap-approval-round-trip");
+        let mut context = fixture.context.clone();
+        context.expected_desktop = Arc::new(test_connected_process_identity());
+        let server = thread::spawn(move || {
+            for _ in 0..3 {
+                let mut stream = listener.accept().unwrap();
+                handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+                    .unwrap();
+            }
+        });
+        let mut client = Stream::connect(name.borrow()).unwrap();
+        let prepare = BootstrapApprovalIpcRequest {
+            transcript_messages: Some(messages.clone()),
+            ..approval_request("bootstrap.approval.prepare")
+        };
+        let prepared = exchange_bootstrap_approval(
+            &mut client,
+            &prepare,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(prepared.accepted, "{:?}", prepared.error);
+        assert_eq!(prepared.operation, "bootstrap.approval.prepared");
+        let snapshot = prepared.snapshot.as_ref().expect("frozen snapshot");
+        assert_eq!(snapshot.local_identity.device_id, fixture.device.as_str());
+        assert_eq!(
+            snapshot.peer_identity.as_ref().unwrap().device_id,
+            "33333333-3333-4333-8333-333333333333"
+        );
+        let digest = prepared.approval_request_digest.clone().unwrap();
+        let capability = prepared.capability.clone().unwrap();
+
+        let confirm = BootstrapApprovalIpcRequest {
+            operation: "bootstrap.approval.confirm".into(),
+            transcript_messages: Some(messages.clone()),
+            approval_request_digest: Some(digest),
+            capability: Some(capability),
+            ..approval_request("bootstrap.approval.confirm")
+        };
+        let confirmed = exchange_bootstrap_approval(
+            &mut client,
+            &confirm,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(confirmed.accepted, "{:?}", confirmed.error);
+        assert_eq!(confirmed.operation, "bootstrap.approval.signed");
+        let signed_message = confirmed.signed_message.expect("signed approval message");
+        let complete_prefix = [
+            messages[0].as_bytes(),
+            messages[1].as_bytes(),
+            signed_message.as_bytes(),
+        ];
+        cryptex_events::verify_bootstrap_approval_request(
+            &complete_prefix,
+            cryptex_events::BootstrapApprovalRole::Responder,
+        )
+        .expect("signed message verifies as the initiator approval");
+        let responder_request = cryptex_events::verify_bootstrap_approval_request(
+            &complete_prefix,
+            cryptex_events::BootstrapApprovalRole::Responder,
+        )
+        .expect("responder approval prefix verifies");
+        let peer_approval = cryptex_events::sign_bootstrap_approval(&responder_request, &peer_key)
+            .expect("synthetic peer approval");
+        let complete_transcript = vec![
+            messages[0].clone(),
+            messages[1].clone(),
+            signed_message,
+            String::from_utf8(peer_approval).unwrap(),
+        ];
+        drop(client);
+        let mut completion_client = Stream::connect(name.borrow()).unwrap();
+        let completed = exchange_bootstrap_approval(
+            &mut completion_client,
+            &BootstrapApprovalIpcRequest {
+                operation: "bootstrap.approval.complete".into(),
+                role: None,
+                transcript_messages: Some(complete_transcript),
+                approval_request_digest: None,
+                capability: None,
+                ..approval_request("bootstrap.approval.complete")
+            },
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(completed.accepted, "{:?}", completed.error);
+        assert_eq!(completed.operation, "bootstrap.approval.anchored");
+
+        let peer_event = append_memory_note(
+            fixture.store.as_ref(),
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &fixture.root,
+                brain_id: &fixture.brain_id,
+                device_id: &peer_device,
+                classification: Classification::Public,
+                text: "synthetic approved-peer cutoff event",
+                event_id: None,
+                config: &CanonicalWriterConfig::default(),
+            },
+        )
+        .expect("append one event to the approved synthetic peer stream");
+
+        let owner_transaction_id = "de".repeat(32);
+        let mut owner_client = Stream::connect(name.borrow()).unwrap();
+        let owner_prepare = BootstrapApprovalIpcRequest {
+            operation: "owner.security.prepare".into(),
+            role: None,
+            transcript_messages: None,
+            transaction_id: Some(owner_transaction_id.clone()),
+            owner_operation: Some(OwnerSecurityOperationRequest::DeviceRestriction {
+                target_device_id: "33333333-3333-4333-8333-333333333333".into(),
+                reason: crate::bootstrap_journal::RestrictionReason::Compromised,
+                cutoff_seq: 1,
+            }),
+            ..approval_request("owner.security.prepare")
+        };
+        let owner_prepared = exchange_bootstrap_approval(
+            &mut owner_client,
+            &owner_prepare,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(owner_prepared.accepted, "{:?}", owner_prepared.error);
+        let owner_snapshot = owner_prepared.snapshot.as_ref().unwrap();
+        assert_eq!(
+            owner_snapshot.restriction_target.as_deref(),
+            Some("33333333-3333-4333-8333-333333333333")
+        );
+        assert_eq!(
+            owner_snapshot.cutoff_content_hash.as_deref(),
+            Some(peer_event.accepted.content_hash.as_str())
+        );
+        let owner_confirm = BootstrapApprovalIpcRequest {
+            operation: "owner.security.confirm".into(),
+            role: None,
+            transcript_messages: None,
+            transaction_id: Some(owner_transaction_id),
+            approval_request_digest: owner_prepared.approval_request_digest,
+            capability: owner_prepared.capability,
+            ..approval_request("owner.security.confirm")
+        };
+        let owner_confirmed = exchange_bootstrap_approval(
+            &mut owner_client,
+            &owner_confirm,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(owner_confirmed.accepted, "{:?}", owner_confirmed.error);
+        assert_eq!(owner_confirmed.operation, "owner.security.result");
+        drop(owner_client);
+        server.join().unwrap();
+
+        let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&fixture.root)
+            .unwrap()
+            .load()
+            .unwrap();
+        assert_eq!(journal.transactions.len(), 2);
+        let transaction = &journal.transactions[0];
+        assert!(transaction.local_approval_signature_generated);
+        assert!(transaction.local_approval_signature_released);
+        assert_eq!(
+            transaction.state,
+            crate::bootstrap_journal::BootstrapState::Anchored
+        );
+        let restriction = &journal.transactions[1];
+        assert_eq!(
+            restriction.state,
+            crate::bootstrap_journal::BootstrapState::Anchored
+        );
+        assert_eq!(restriction.append_attempts.len(), 1);
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[test]
+    fn bootstrap_completion_cannot_bypass_journaled_owner_approval() {
+        let fixture = prepared_search_fixture("bootstrap-completion-no-owner-approval");
+        let prefix = synthetic_initiator_prefix(&fixture);
+        let local_key = load_existing_event_signing_key(
+            fixture.store.as_ref(),
+            SecureStoreEnvironment::Dev,
+            &fixture.root,
+            &fixture.device,
+        )
+        .unwrap();
+        let refs = prefix.iter().map(String::as_bytes).collect::<Vec<_>>();
+        let request = cryptex_events::verify_bootstrap_approval_request(
+            &refs,
+            cryptex_events::BootstrapApprovalRole::Initiator,
+        )
+        .unwrap();
+        let local_approval =
+            cryptex_events::sign_bootstrap_approval(&request, &local_key.signing_key).unwrap();
+        let responder_prefix = [
+            prefix[0].as_bytes(),
+            prefix[1].as_bytes(),
+            local_approval.as_slice(),
+        ];
+        let responder_request = cryptex_events::verify_bootstrap_approval_request(
+            &responder_prefix,
+            cryptex_events::BootstrapApprovalRole::Responder,
+        )
+        .unwrap();
+        let peer_key = SigningKey::from_bytes(&[0x42; 32]);
+        let peer_approval =
+            cryptex_events::sign_bootstrap_approval(&responder_request, &peer_key).unwrap();
+        let transcript = vec![
+            prefix[0].clone(),
+            prefix[1].clone(),
+            String::from_utf8(local_approval).unwrap(),
+            String::from_utf8(peer_approval).unwrap(),
+        ];
+
+        let (name, listener) = isolated_ipc_listener("bootstrap-completion-no-owner-approval");
+        let context = fixture.context.clone();
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().unwrap();
+            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+                .unwrap();
+        });
+        let mut client = Stream::connect(name.borrow()).unwrap();
+        let response = exchange_bootstrap_approval(
+            &mut client,
+            &BootstrapApprovalIpcRequest {
+                operation: "bootstrap.approval.complete".into(),
+                role: None,
+                transcript_messages: Some(transcript),
+                approval_request_digest: None,
+                capability: None,
+                ..approval_request("bootstrap.approval.complete")
+            },
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(!response.accepted);
+        assert_eq!(
+            response.error.as_deref(),
+            Some(if cfg!(target_os = "macos") {
+                "platform_peer_identity_unavailable"
+            } else {
+                "approval_transaction_conflict"
+            })
+        );
+        server.join().unwrap();
+
+        let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&fixture.root)
+            .unwrap()
+            .load()
+            .unwrap();
+        assert!(journal.transactions.is_empty());
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[test]
+    fn bootstrap_approval_ipc_cancel_persists_without_generating_signature() {
+        let fixture = prepared_search_fixture("bootstrap-approval-cancel");
+        let messages = synthetic_initiator_prefix(&fixture);
+        let (name, listener) = isolated_ipc_listener("bootstrap-approval-cancel");
+        let context = fixture.context.clone();
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().unwrap();
+            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+                .unwrap();
+        });
+        let mut client = Stream::connect(name.borrow()).unwrap();
+        let prepared = exchange_bootstrap_approval(
+            &mut client,
+            &BootstrapApprovalIpcRequest {
+                transcript_messages: Some(messages.clone()),
+                ..approval_request("bootstrap.approval.prepare")
+            },
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(prepared.accepted);
+        let cancelled = exchange_bootstrap_approval(
+            &mut client,
+            &BootstrapApprovalIpcRequest {
+                operation: "bootstrap.approval.cancel".into(),
+                transcript_messages: Some(messages),
+                approval_request_digest: prepared.approval_request_digest,
+                capability: prepared.capability,
+                ..approval_request("bootstrap.approval.cancel")
+            },
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(cancelled.accepted, "{:?}", cancelled.error);
+        assert_eq!(cancelled.operation, "bootstrap.approval.cancelled");
+        assert!(cancelled.signed_message.is_none());
+        server.join().unwrap();
+
+        let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&fixture.root)
+            .unwrap()
+            .load()
+            .unwrap();
+        let transaction = &journal.transactions[0];
+        assert_eq!(
+            transaction.state,
+            crate::bootstrap_journal::BootstrapState::Cancelled
+        );
+        assert!(!transaction.local_approval_signature_generated);
+        assert!(!transaction.local_approval_signature_released);
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
 
     fn transport_request() -> Request {
         let mut request = search_request("desktop", vec![CAPABILITY_STATUS_READ.into()]);
@@ -3776,6 +6953,10 @@ mod tests {
             projection_sync: None,
             #[cfg(windows)]
             transport_status: None,
+            #[cfg(test)]
+            transport_device_id_override: Some(
+                "AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA".into(),
+            ),
         };
         SearchFixture {
             root,
@@ -4177,6 +7358,8 @@ mod tests {
             projection_sync: None,
             #[cfg(windows)]
             transport_status: None,
+            #[cfg(test)]
+            transport_device_id_override: None,
         };
         let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
 
@@ -4209,6 +7392,8 @@ mod tests {
             projection_sync: None,
             #[cfg(windows)]
             transport_status: None,
+            #[cfg(test)]
+            transport_device_id_override: None,
         };
         let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
 
@@ -4434,6 +7619,8 @@ mod tests {
             projection_sync: None,
             #[cfg(windows)]
             transport_status: None,
+            #[cfg(test)]
+            transport_device_id_override: None,
         };
         let request = || Request {
             protocol_version: PROTOCOL_VERSION,
@@ -4732,6 +7919,128 @@ mod tests {
         let identity = test_desktop_process_identity().expect("capture test parent process");
         assert!(identity.matches_peer(identity.pid));
         assert!(!identity.matches_peer(identity.pid.wrapping_add(1)));
+    }
+
+    #[cfg(windows)]
+    struct ChildProcessGuard {
+        process: std::process::Child,
+        ready_path: std::path::PathBuf,
+    }
+
+    #[cfg(windows)]
+    impl Drop for ChildProcessGuard {
+        fn drop(&mut self) {
+            if self.process.try_wait().ok().flatten().is_none() {
+                let _ = self.process.kill();
+            }
+            let _ = self.process.wait();
+            let _ = fs::remove_file(&self.ready_path);
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn desktop_process_identity_rejects_exited_peer_with_matching_pid() {
+        use std::io::Read;
+        use std::os::windows::io::FromRawHandle;
+        use std::process::{Command, Stdio};
+        use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE};
+
+        const WORKER_ENV: &str = "CRYPTEX_TEST_IPC_PEER_IDENTITY_WORKER";
+        const WORKER_PIPE_ENV: &str = "CRYPTEX_TEST_IPC_PEER_IDENTITY_PIPE";
+        const READY_ENV: &str = "CRYPTEX_TEST_IPC_PEER_IDENTITY_READY";
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let pipe_name = format!("cryptex-ipc-peer-identity-{}-{suffix}", process::id());
+        let name = std::ffi::OsString::from(&pipe_name)
+            .to_ns_name::<GenericNamespaced>()
+            .expect("test pipe name");
+        let listener = ListenerOptions::new()
+            .name(name.borrow())
+            .create_sync()
+            .expect("test listener");
+        let ready_path = std::env::temp_dir().join(format!(
+            "cryptex-ipc-peer-identity-{}-{suffix}.ready",
+            process::id()
+        ));
+        let executable = std::env::current_exe().expect("test executable path");
+        let mut child = ChildProcessGuard {
+            process: Command::new(executable)
+                .args([
+                    "--exact",
+                    "ipc::tests::desktop_process_identity_worker_entry",
+                    "--nocapture",
+                ])
+                .env(WORKER_ENV, "1")
+                .env(WORKER_PIPE_ENV, &pipe_name)
+                .env(READY_ENV, &ready_path)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("spawn identity worker"),
+            ready_path,
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !child.ready_path.exists() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            child.ready_path.is_file(),
+            "identity worker started; status={:?}",
+            child.process.try_wait().expect("check worker status")
+        );
+        let pid = child.process.id();
+        let mut peer = listener.accept().expect("accept identity worker pipe");
+        let mut handshake = [0; 5];
+        peer.read_exact(&mut handshake)
+            .expect("read worker pipe handshake");
+        assert_eq!(&handshake, b"READY");
+        let peer_pid = peer_process_id(&peer).expect("read connected worker PID");
+        assert_eq!(peer_pid, pid, "kernel pipe credential names exact worker");
+        let process = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+        assert!(!process.is_null(), "open exact child process handle");
+        let identity = DesktopProcessIdentity {
+            pid,
+            process: unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(process) },
+        };
+
+        assert!(
+            identity.matches_peer(peer_pid),
+            "live pinned process is accepted"
+        );
+        child.process.kill().expect("terminate identity worker");
+        child.process.wait().expect("reap identity worker");
+        assert!(
+            !identity.matches_peer(peer_pid),
+            "a dead pinned process is rejected even when the peer PID matches"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn desktop_process_identity_worker_entry() {
+        if std::env::var_os("CRYPTEX_TEST_IPC_PEER_IDENTITY_WORKER").is_some()
+            && let (Some(pipe_name), Some(ready_path)) = (
+                std::env::var_os("CRYPTEX_TEST_IPC_PEER_IDENTITY_PIPE"),
+                std::env::var_os("CRYPTEX_TEST_IPC_PEER_IDENTITY_READY"),
+            )
+        {
+            use std::io::{Read, Write};
+            let name = pipe_name
+                .to_ns_name::<GenericNamespaced>()
+                .expect("worker pipe name");
+            let mut stream = Stream::connect(name.borrow()).expect("connect worker pipe");
+            stream.write_all(b"READY").expect("write pipe handshake");
+            fs::write(ready_path, b"READY").expect("write worker readiness marker");
+            let mut byte = [0];
+            while stream.read(&mut byte).expect("read worker pipe") != 0 {}
+            loop {
+                thread::sleep(Duration::from_secs(60));
+            }
+        }
     }
 
     fn isolated_ipc_listener(

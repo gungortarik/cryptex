@@ -81,6 +81,33 @@ impl ProjectionDb {
         Ok(Self { conn, path })
     }
 
+    /// Open an existing projection without creating, migrating, or repairing
+    /// it. This is for startup gates that must compare derived state before
+    /// normal projection setup; missing, corrupt, and unsupported databases
+    /// fail closed and remain untouched.
+    pub fn open_existing_read_only(app_data_root: &Path) -> ProjectionResult<Self> {
+        let path = projection_sqlite_path(app_data_root);
+        let metadata = fs::symlink_metadata(&path)?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err(ProjectionError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "existing projection path is not an ordinary file",
+            )));
+        }
+        let conn = Connection::open_with_flags(
+            &path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        let check: String = conn.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+        if check != "ok" {
+            return Err(ProjectionError::CorruptDb {
+                detail: format!("quick_check reported {check}"),
+            });
+        }
+        crate::schema::validate_schema_v1_read_only(&conn)?;
+        Ok(Self { conn, path })
+    }
+
     /// Open the projection DB, replacing only explicitly unusable disposable files.
     ///
     /// Replacement runs solely for [`ProjectionError::CorruptDb`],
@@ -507,6 +534,35 @@ mod tests {
             .unwrap();
         assert_eq!(built_at, built_at2);
         drop(second);
+    }
+
+    #[test]
+    fn existing_read_only_open_validates_without_mutating_projection_file() {
+        let root = exclusive_temp_root("readonly-open");
+        let created = ProjectionDb::open_or_create(root.path()).expect("create baseline");
+        drop(created);
+        let path = projection_sqlite_path(root.path());
+        let before = fs::read(&path).expect("read baseline bytes");
+
+        let db = ProjectionDb::open_existing_read_only(root.path()).expect("read-only open");
+        assert_eq!(db.schema_version().unwrap(), PROJECTION_SCHEMA_VERSION);
+        assert!(
+            db.connection()
+                .execute_batch("CREATE TABLE read_only_probe(value TEXT)")
+                .is_err()
+        );
+        drop(db);
+
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert!(!path.with_extension("sqlite-wal").exists());
+        assert!(!path.with_extension("sqlite-shm").exists());
+    }
+
+    #[test]
+    fn existing_read_only_open_does_not_create_a_missing_database() {
+        let root = exclusive_temp_root("readonly-missing");
+        assert!(ProjectionDb::open_existing_read_only(root.path()).is_err());
+        assert!(!derived_projection_dir(root.path()).exists());
     }
 
     #[test]

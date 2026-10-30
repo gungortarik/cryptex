@@ -66,6 +66,53 @@ pub struct VerifiedV2History {
 /// because they were embedded in or requested by an event.
 pub trait TrustedDaemonKeyResolver {
     fn trusted_daemon_key(&mut self, device_id: &str, key_id: &str) -> Option<VerifyingKey>;
+
+    /// Return this installation's locally held identity anchor when the
+    /// resolver represents one. Generic trusted-key resolvers remain
+    /// compatible and do not enable local-anchor policy scanning by default.
+    fn local_trust_anchor(&self) -> Option<LocalTrustAnchor> {
+        None
+    }
+}
+
+/// Local identity material used to derive peer bindings from signed local
+/// approval anchors. This carries only a public key and never grants trust on
+/// its own; the key ID is checked against the key before policy verification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalTrustAnchor {
+    device_id: DeviceId,
+    signing_key_id: SigningKeyId,
+    public_key: [u8; 32],
+}
+
+impl LocalTrustAnchor {
+    #[must_use]
+    pub const fn new(
+        device_id: DeviceId,
+        signing_key_id: SigningKeyId,
+        public_key: [u8; 32],
+    ) -> Self {
+        Self {
+            device_id,
+            signing_key_id,
+            public_key,
+        }
+    }
+
+    #[must_use]
+    pub const fn device_id(&self) -> &DeviceId {
+        &self.device_id
+    }
+
+    #[must_use]
+    pub const fn signing_key_id(&self) -> &SigningKeyId {
+        &self.signing_key_id
+    }
+
+    #[must_use]
+    pub const fn public_key(&self) -> &[u8; 32] {
+        &self.public_key
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +128,16 @@ impl From<ValidationFailure> for CancellableHistoryVerificationError {
 }
 
 impl VerifiedV2History {
+    pub(crate) fn from_authenticated_content(
+        records: Vec<VersionedRecord>,
+        assertions: Vec<VerifiedV2KnowledgeAssertion>,
+    ) -> Self {
+        Self {
+            records,
+            assertions,
+        }
+    }
+
     #[must_use]
     pub fn records(&self) -> &[VersionedRecord] {
         &self.records
@@ -119,6 +176,9 @@ pub enum VersionedRecord {
     VerifiedV1(AcceptedEvent),
     VerifiedV2Supported(VerifiedV2KnowledgeAssertion),
     VerifiedUnsupported(VerifiedUnsupportedV2),
+    /// Authenticated M8 security control event. This is chain data, not a
+    /// retrieval fact or publication authorization by itself.
+    VerifiedSecurityV3(crate::security_v3::SecurityEventV3),
     Unverifiable(UnverifiableEnvelope),
 }
 
@@ -175,6 +235,16 @@ impl VersionedChainVerifier {
                 &event.content_hash,
                 2,
             ),
+            VersionedRecord::VerifiedSecurityV3(event) => (
+                event.device_id().as_str(),
+                event
+                    .device_seq()
+                    .to_u64()
+                    .map_err(|_| failure("invalid_record", "v3 device_seq is invalid", Some(3)))?,
+                event.prev_content_hash(),
+                event.content_hash(),
+                3,
+            ),
             VersionedRecord::Unverifiable(_) => {
                 return Err(failure(
                     "invalid_record",
@@ -209,6 +279,47 @@ impl VersionedChainVerifier {
 
         self.last_seq = Some(seq);
         self.last_hash = content_hash.clone();
+        Ok(())
+    }
+
+    /// Verify and advance with a separately authenticated M8 v3 security
+    /// record. The normal dispatch reader intentionally does not classify v3
+    /// as verified, so callers must explicitly use the strict v3 parser first.
+    pub fn verify_security_v3_next(
+        &mut self,
+        record: &crate::security_v3::SecurityEventV3,
+    ) -> Result<(), ValidationFailure> {
+        let seq = record.device_seq().to_u64().map_err(|_| {
+            failure(
+                "invalid_record",
+                "v3 device_seq is invalid",
+                Some(crate::security_v3::SECURITY_V3_SCHEMA_VERSION.into()),
+            )
+        })?;
+        if record.device_id().as_str() != self.expected_device_id {
+            return Err(failure(
+                "integrity_failure",
+                "v3 event device_id does not match the device chain",
+                Some(crate::security_v3::SECURITY_V3_SCHEMA_VERSION.into()),
+            ));
+        }
+        if let Some(prior_seq) = self.last_seq {
+            if seq <= prior_seq || record.prev_content_hash() != &self.last_hash {
+                return Err(failure(
+                    "integrity_failure",
+                    "v3 device sequence or cross-version hash-chain link is invalid",
+                    Some(crate::security_v3::SECURITY_V3_SCHEMA_VERSION.into()),
+                ));
+            }
+        } else if record.prev_content_hash().as_str() != crate::hex::ZERO_CONTENT_HASH_HEX {
+            return Err(failure(
+                "integrity_failure",
+                "first device event must use the zero previous-hash sentinel",
+                Some(crate::security_v3::SECURITY_V3_SCHEMA_VERSION.into()),
+            ));
+        }
+        self.last_seq = Some(seq);
+        self.last_hash = record.content_hash().clone();
         Ok(())
     }
 }
@@ -304,6 +415,7 @@ where
             VersionedRecord::VerifiedV1(event) => event.device_id.as_str(),
             VersionedRecord::VerifiedV2Supported(record) => record.event.device_id.as_str(),
             VersionedRecord::VerifiedUnsupported(record) => record.device_id.as_str(),
+            VersionedRecord::VerifiedSecurityV3(record) => record.device_id().as_str(),
             VersionedRecord::Unverifiable(_) => {
                 return Err(failure(
                     "invalid_record",
@@ -405,6 +517,10 @@ pub fn read_versioned_record(
             enforce_limits(&value, 0)
                 .map_err(|_| failure("limit_exceeded", "record exceeds JSON limits", Some(2)))?;
             read_v2(bytes, value, verifying_key)
+        }
+        Some(v) if v == u64::from(crate::security_v3::SECURITY_V3_SCHEMA_VERSION) => {
+            crate::security_v3::read_security_v3_event(bytes, verifying_key)
+                .map(VersionedRecord::VerifiedSecurityV3)
         }
         Some(v) => Ok(VersionedRecord::Unverifiable(UnverifiableEnvelope {
             schema_version: Some(v),

@@ -1,16 +1,744 @@
+**M8 Windows owner-security confirmation, append, and recovery (2026-10-29):** After owner acceptance of ADR-0019 §2, the daemon now derives immutable restriction/self-retirement snapshots from complete verified trust history, journals the exact snapshot before approval, and requires a same-connection, single-use confirmation capability. Windows revalidates the live connected Desktop process before confirmation. Confirmed operations append under canonical locks; startup reconciles an append-unknown owner operation against exact canonical history and anchors it without duplicate append. Desktop now presents the full snapshot for explicit owner review. Synthetic regression tests cover self-retirement confirmation/recovery and peer-admission followed by restriction. Verification: daemon library **517 passed / 0 failed / 4 ignored**; the separate binary test executable was blocked by Windows Application Control (OS 4551), so binary tests are not claimed. Strict daemon/Desktop release Clippy, fmt, TypeScript/Vite build, `tauri:package-smoke` (no bundle), and `git diff --check` pass. Built Desktop SHA-256 `EA86B015F747BAF9D63FC366923958D260F9AE38E26381902E6ADA90C0A62A32`; daemon sidecar SHA-256 `B05039386DE7F234021FBBEC2EF3DD27A6BC8354EA5D38FCF80D864BA690929B`. This is not an installer or interactive native Windows pass: UI, nonzero cutoff boundaries, production Syncthing-to-publication flow, macOS authenticated peer identity/parity, and independent review remain open. No Actions, commit, push, or M8 completion.
 # 34 — Current Implementation Handoff
+
+## Published checkpoint summary — 2026-10-29
+
+Current milestone: **M8, in progress and not complete**. Branch:
+`codex/m8-device-trust`. See the root [README](../README.md#implementation-status--2026-10-29)
+for a compact implemented/open matrix. This checkpoint packages the accumulated
+Windows trust, owner-approval, import-validation, and recovery work for review;
+it does not authorize production activation or claim cross-platform readiness.
+
+**Fresh checkpoint checks:** daemon library 515 passed / 3 failed / 4 ignored;
+isolated owned-process HTTP rerun 4 passed / 4 failed, with
+`Endpoint(PeerNotOwned)`. This supersedes earlier green-test summaries for
+current readiness. Daemon binary tests now pass 12/12; workspace all-target
+release Clippy, format, frontend build, and 18 Desktop policy tests pass.
+See [publication verification](../evidence/m8/m8-checkpoint-publication-20261029.md).
+
+**Exact next task:** investigate the owned-process HTTP test failures without
+weakening ownership validation. Then run the Windows native Desktop owner flow against a fresh
+synthetic profile outside the source repository. Verify confirmation, cancel,
+denial, retry/error behavior, nonzero exact cutoff boundaries, and recovery
+without duplicate canonical append. The latest package smoke built the app and
+sidecar but did not launch the interactive owner dialog.
+
+**Remaining M8 gates:** production Syncthing-to-staging/publication and safe
+replay; remaining marker/directory durability and crash-boundary evidence;
+macOS authenticated peer identity and owner-operation parity; independent
+security review; and the remaining milestone/Definition-of-Done checks.
+The macOS owner approval route currently fails closed.
+
+**Reading the history:** dated entries below (and the latest entry above this
+heading) retain their original verification scope. "No commit, push, Actions"
+describes the individual evidence run. The user has now requested committing
+and pushing the accumulated checkpoint; that publication does not complete M8
+or turn historical test results into new verification.
+
+**M8 Windows owner-operation snapshot construction (2026-10-29):** The
+lock-scoped, complete canonical trust scan now retains its verified local
+approval roster for building immutable owner-visible restriction and
+self-retirement snapshots. Restriction requests require a currently trusted,
+directly approved peer; bind the peer event key and both verified transport
+IDs; and accept only an exact canonical cutoff boundary no later than the
+current effective cutoff. Self-retirement binds the exact latest local
+sequence/hash (or the defined empty-prefix sentinel). Both builders reject a
+reused canonical security transaction ID and validate the closed snapshot
+digest. This produces request data only: it does not issue a confirmation
+capability, sign an event, or append canonical bytes. Daemon library **515
+passed / 0 failed / 4 ignored**, binary **12/12**, strict release Clippy, fmt
+check, and `git diff --check` pass. Native owner UI/IPC integration, operation
+signing/locked append/recovery, Windows native release proof, macOS parity, and
+independent security review remain open. No commit, push, Actions, or M8
+completion.
+
+**M8 Windows owner-operation confirmation binding (2026-10-29):** Following
+the owner's acceptance of the §2 bootstrap model, the approval snapshot and
+canonical digest now include the restriction reason (`retired`/`compromised`)
+and the self-retirement last-authorized sequence/content hash. The bounded
+journal validates and persists these immutable payloads before confirmation;
+the restriction path is no longer rejected solely because its reason was
+unbound. This does not enable canonical append: locked-history revalidation,
+operation-specific event construction/append/recovery, native Windows UI, and
+macOS parity remain open. Full verification passed: daemon library **514 passed
+/ 0 failed / 4 ignored**, binary **12/12**, strict release Clippy, format check,
+and `git diff --check`. Windows Application Control initially blocked one test
+launch (OS 4551); a subsequent full run completed without changing security
+settings. No commit, push, Actions, or M8 completion.
+
+**M8 Windows marker durability contract check (2026-10-29):** Confirmed the
+existing no-replace `MoveFileExW` adapter uses `MOVEFILE_WRITE_THROUGH`. The
+Microsoft API documentation says the call returns only after the file is
+actually moved on disk; it separately guarantees flushing for copy/delete
+moves. The directory-handle `FlushFileBuffers` call is not treated as the
+documented guarantee. This host's test temp volume is NTFS (C:), and existing
+cross-process interruption tests exercise the canonical move and committed
+marker temp/final boundaries there. This is process-crash evidence only: no
+power-loss test or other filesystem is covered, so Windows committed
+durability remains a release gate. Source:
+https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw.
+No code, commit, push, or Actions in this documentation check.
+
+**M8 Windows post-import trust/cutoff gate (2026-10-29):** Staged and
+prepared-recovery verification now rebuilds the complete authenticated
+security-history union from the locked canonical frames plus exact verified
+staged record bodies. The local-anchor verifier and ADR trust reducer run over
+that union before a policy token is returned. The gate checks every existing
+and candidate device remains in the resulting trusted cutoff set, admits
+staged v1 content only when it falls within the post-import cutoff, rejects
+unintegrated content versions, reduces the resulting cutoff-aware content, and
+holds unresolved or unmaterialized assertions. V3 records are evaluated as
+policy metadata; they never enter materialized content. Regression coverage
+verifies an imported self-retirement lowers the effective cutoff in both the
+normal batch and prepared-recovery paths while its control event stays out of
+content state. `cargo test -p cryptexd --lib --bins`: library **513 passed / 0
+failed / 4 ignored**, binary **12/12**; strict release Clippy, fmt check, and
+`git diff --check` pass. This is a validation token only; it does not activate
+transport admission or authorize production publication/replay. Windows
+native directory-durability proof, real transport-to-staging wiring, macOS
+parity, and independent security review remain open. No commit, push, Actions,
+or M8 completion.
+
+**M8 Windows read-only recovery regression fix (2026-10-29):** The prepared-
+recovery startup verifier now uses the projection crate's read-only schema
+validator through the shared retrieval safety gate. The writable FTS capability
+probe attempted temporary writes on a read-only connection and incorrectly
+held valid materialization as stale. Regression coverage reopens a persisted
+synthetic projection read-only, verifies the matching visible destination, and
+confirms the transaction still remains held with its evidence preserved. Daemon
+library **513/513** and binary **12/12** tests pass; strict daemon/projection
+release Clippy, fmt, and diff checks pass. The lifecycle integration fixtures
+and projection test executable were blocked by Windows Application Control
+(OS error 4551); those suites are not claimed on this run. No publication or
+cleanup was enabled. No commit, push, Actions, or M8 completion.
+
+**M8 Windows prepared-recovery startup policy gate (2026-10-29):** Startup now
+invokes the lock-bearing verifier only when a prepared transaction has one or
+more visible canonical destinations. It opens the existing projection DB
+read-only and loads existing Brain/device trust state without creating or
+repairing either. The verifier reconstructs the pre-import M3/M4 and
+local-trust snapshot from matching manifest-bound tail files, then checks each
+source identity, digest, signature, Brain/device binding, sequence/hash-chain,
+trust, and cutoff. A successful check still ends in a typed hold: it does not
+publish, write a commit marker, or clean up. Missing local policy state and
+imported v3 trust-control effects also fail closed. Evidence:
+`evidence/m8/m8-windows-prepared-recovery-policy-verifier-20261029.md`.
+Windows marker durability, native interruption coverage, transport wiring,
+macOS parity, and independent security review remain open. No commit, push,
+Actions, or M8 completion.
+
+**M8 Windows unmarked destination classification (2026-10-29):** Startup
+recovery now accepts only a manifest-listed staged file or its exact canonical
+destination for each segment, and validates identity, length, and SHA-256.
+When no commit marker exists, matching partial and complete destination sets
+are explicitly classified and held; they are never resumed without the full
+locked trust/cutoff and `RetrievalSafetyState` gate. Missing, mismatched, or
+duplicate staged/destination copies also hold with evidence preserved. The
+focused regression exercises a moved subset, all moved destinations, then
+restores the synthetic staging state to test the pre-publication abort. It
+does not enable replay, transport publication, or M8 completion. Evidence:
+`evidence/m8/m8-windows-unmarked-destination-classification-20261029.md`.
+No commit, push, Actions, or M8 completion.
+
+**M8 Windows committed-temp recovery (2026-10-29):** Startup now completes a
+recognized temporary committed marker only after its exact prepared-manifest
+digest, remaining staged files, and every canonical destination have been
+revalidated under canonical inventory/device locks. It moves the marker with
+no-replace semantics, syncs and reads it back, then performs the same
+transaction-local cleanup as a final marker. A missing or mismatched
+destination, bad companion, existing final marker, or unrecognized journal
+entry remains held with evidence preserved. Cross-process interruption tests
+cover the recovery marker move and post-sync boundary; they are not power-loss
+or Windows directory-durability proof. Partial-publication replay and the
+production transport-to-publication path remain disabled. Evidence:
+`evidence/m8/m8-windows-committed-temp-recovery-20261029.md`. No commit, push,
+Actions, or M8 completion.
+
+**M8 Windows committed-final cleanup (2026-10-29):** Startup recovery now
+finishes cleanup only for a valid final committed marker whose exact prepared
+manifest companion, any remaining staged files, and every canonical
+destination pass identity/length/SHA-256 checks under the canonical inventory
+and device locks. It removes only that transaction's staging, manifest, and
+marker, in that order; canonical files are untouched. A temporary marker is
+now completed only through the additional gate described above. Missing or
+mismatched destinations, incomplete companions, and conflicting journal
+states still hold and preserve available evidence. Windows process-crash tests
+do not prove power-loss or directory durability. The production
+transport-to-publication path remains disabled. Evidence:
+`evidence/m8/m8-windows-final-marker-cleanup-20261029.md`. No commit, push,
+Actions, or M8 completion.
+
+**M8 Windows regression verification (2026-10-29):** Re-ran the complete
+`cryptexd` package on the Windows host: **507 library tests, 12 binary tests,
+9 lifecycle tests, 3 supervisor tests, and 2 rollback tests passed**. The
+workspace library suite excluding `cryptex-desktop` passed **764 tests with 4
+ignored**. Strict release Clippy for all `cryptexd` targets, workspace format
+check, and `git diff --check` pass. Downloaded the official pinned Syncthing
+2.1.5 Windows amd64 archive, verified its executable against the repository's
+SHA-256 pin, then passed all four explicit loopback-only native fixtures:
+owned lifecycle, Windows Credential Manager profile, package ownership, and
+native provisioning/reopen/collision recovery. The synthetic Credential
+Manager entry was deleted and no native process remained. The first lifecycle attempt collided with
+an already-running synthetic `m8-win-native` pilot holding the global Windows
+IPC endpoint; that exact pilot was stopped through its runtime stop file and
+reported `clean shutdown released instance lock`, after which all lifecycle
+tests passed. This is host/native-fixture evidence only: it does not exercise a
+peer transport or complete M8. The Windows Desktop UI build, capture/search
+policy tests, Tauri Rust check, and unbundled Tauri release package smoke also
+pass. The smoke produced a release Desktop executable and pinned daemon
+sidecar; it did not run a native owner dialog. Evidence:
+`evidence/m8/m8-windows-regression-verification-20261029.md`. No commit, push,
+or Actions.
+
+**M8 Windows owner-operation journal gate (2026-10-29):** Added durable
+`owner_pending`/`owner_approved` journal states for issuer-side security
+operations. Approval can advance only against the exact digest-checked
+snapshot already stored by the daemon. At that point non-admission append was
+closed because the snapshot omitted restriction reason and self-retirement
+boundary. This owner decision was resolved on 2026-10-29: the accepted §2
+bootstrap implementation basis now binds those fields in ADR-0019 §2.4 and the
+journal snapshot/digest. Full daemon verification after that change is recorded
+in `evidence/m8/m8-windows-owner-operation-journal-gate-20261029.md`.
+Operation-specific locked-history revalidation, event append/recovery, native
+Windows interaction, and macOS parity remain open; no native owner operation
+or M8 completion is claimed.
+
+**M8 Windows v3 restriction/self-retirement signing primitives (2026-10-29):**
+Added typed `security.device_restricted` and `security.device_self_retired`
+event signers using the existing v3 envelope, canonical hash/signature path,
+and strict reparse before bytes are returned. Restriction signing binds the
+target public key to its signing-key ID; self-retirement rejects a cutoff at
+or after its control event. The helpers are byte constructors only: owner
+approval, exact target/cutoff verification against canonical history, journal,
+sequence reservation, lock-bearing append/replay, and activation remain
+unimplemented. `cryptex-events` tests **86/86** and compile-fail doctest **1/1**
+pass; strict crate Clippy and diff check pass. Evidence:
+`evidence/m8/m8-windows-security-event-signing-primitives-20261029.md`. Next:
+wire one owner-confirmed restriction operation through a frozen approval
+session and lock-scoped canonical append/reconciliation, or hold if the
+existing ADR does not fully define that transition. No native package, Mac
+parity, Actions, commit, push, or M8 completion is claimed.
+
+**M8 Windows §2 journaled message-exchange/UI slice (2026-10-29):** Added
+authenticated Desktop IPC and Tauri commands to create/resume a signed offer
+and verify an incoming offer before generating/resuming the signed proof.
+Transaction IDs come from the OS CSPRNG before the request so an interrupted
+Desktop request can be retried against the same journal key. The daemon
+persists the exact offer before releasing it and persists the received offer
+before generating/releasing proof bytes. Added a copy/paste exchange panel
+before the existing immutable owner-review and local-trust flow. The responder
+can explicitly join using the exact canonical public Brain identity copied
+from the initiator; a mismatched existing Brain or unbound local canonical
+state is refused without replacement. Exact metadata is preserved and the new
+DeviceId/key enrollment resumes idempotently. The initiating Desktop can
+display the canonical public Brain identity for transfer. Synthetic tests
+cover exact request shape, offer/proof verification, journal-before-response,
+exact replay, identity read/join, and refusal of mismatched or occupied state
+(**11 focused IPC tests pass; cryptexd library: 506 passed, 0 failed, 4
+ignored**, including active/ready transport identity gating and rejection of
+missing/mismatched adapter identity); `cryptex-events`
+**84/84** plus doc test **1/1**, `cryptexd`
+Clippy, Desktop Clippy, frontend build, and diff check pass. Pairing no longer
+accepts a manually entered transport DeviceId. Desktop reads the ID only from
+the daemon's active managed worker status, and the daemon rechecks it against
+the current worker before signing an offer/proof. The worker publishes it only
+after the pinned Syncthing instance answers authenticated local REST status
+with the same ID as its validated private profile receipt. Inactive, stopping,
+unavailable, or mismatched adapter state fails closed. No transport or sync
+starts from pairing. Windows packaged/native review, macOS peer-identity/parity,
+transport-to-staging wiring, publication replay/durability, and independent
+security review remain open. The active worker is currently reachable only
+through the development `lifecycle hold` harness; normal Desktop startup does
+not yet own/start the managed worker. Thus the new identity path fails closed
+until product lifecycle wiring exists, and does not establish an interactive
+pairing pass. M8 is not complete.
+
+**M8 Windows §2 exchange-message construction (2026-10-29):** Added public
+`cryptex-events` builders for the initiator `offer` and responder `proof`.
+The proof builder accepts only a cryptographically verified signed offer and
+copies its exact Brain, transaction, initiator identity/transport, and message
+hash into the response. Both builders bind the local DeviceId and transport
+association, sign the exact protocol domain/JCS bytes, and re-parse their output
+through the bounded closed-schema signature verifier before returning bytes.
+The daemon caller must still obtain fresh transaction/nonces from the OS CSPRNG
+and durably journal exact messages before exposing them; no IPC/UI exchange
+creation, transport activation, or sync was added. Windows verification:
+`cryptex-events` **84/84**, compile-fail doc test **1/1**, strict crate Clippy,
+workspace fmt check, and `git diff --check` PASS. Next Windows §2 work is the
+daemon-owned journaled exchange state and authenticated Desktop handoff; the
+macOS completion gate, Syncthing/import wiring, publication replay/durability,
+native packaged review, and independent security review remain open. M8 is
+not complete.
+
+**M8 Windows bootstrap-to-local-trust flow (2026-10-29):** The authenticated
+Desktop completion IPC and Tauri review action now connect the owner-approved
+bootstrap transcript to local trust creation. Completion requires the exact
+four-message transcript to match the journaled owner approval and frozen peer
+snapshot, verifies the transcript, scans canonical history and trust policy
+under the writer locks, and appends a locally authored
+`security.peer_approved` v3 record. The stable operation digest makes exact
+replay idempotent; an explicit owner retry after a complete scan may reserve a
+new sequence only when both event and transaction IDs are absent. Startup
+reconciliation checks `append_unknown` and `anchored` entries before transport
+or IPC, accepts only an exact canonical match, and never appends. Missing,
+mismatched, or unverifiable records hold startup and preserve evidence. A
+negative IPC test proves a transcript without the journaled owner approval
+cannot create trust. The Desktop UI presents the peer identity/fingerprint and
+transport association before the final local-trust action; this action does
+not start transport or sync. Current Windows checks: `cryptexd --lib` **495
+passed / 0 failed / 4 ignored**, events **82/82**, knowledge **36/36**, strict
+Clippy, format, `git diff --check`, frontend build, and daemon binary check
+pass. Still open: native Windows packaged UX/interruption evidence, macOS
+native parity and peer-identity transport, transport exchange and importer
+wiring, publication replay/durability, and independent security review. M8 is
+not complete. A read-only Cursor security review found the macOS completion
+IPC still lacks process-instance binding; `bootstrap.approval.complete` now
+fails closed on macOS with `platform_peer_identity_unavailable` until that
+platform gate is implemented. Windows positive and negative completion IPC
+tests, daemon Clippy, formatting, and diff checks pass after the guard change;
+the macOS build/native test has not been run.
+
+**M8 scope boundary:** On 2026-10-29 the owner accepted ADR-0019 §§2–4 as the
+Windows implementation basis and authorized Windows implementation. The
+existing §5.1.1 Windows flow approval remains in force. This does not accept
+ADR-0019 as a whole or waive independent security review. The explicit
+Windows owner-approved local-trust path is implemented under the accepted
+protocol/reducer rules; it does not enable peer transport or publication. A
+local-anchor trust/cutoff validator now checks staged batches. An internal
+no-replace publisher consumes its M3/M4 lock-bearing token in synthetic tests,
+but managed transport does not call it and publication recovery/durability
+gates remain open. Native platform evidence and independent review are still
+required before claiming M8 readiness.
+
+**M8 Windows bootstrap/trust follow-up (2026-10-29):** Added a 64 KiB
+bounded bootstrap JSON parser and a closed four-message transcript verifier
+covering signatures, identity/key bindings, role/order, hashes, and transport
+associations. A valid locally signed `security.peer_approved` anchor derives
+the peer key, fingerprint, and transport binding; imported peer anchors do not
+grant local trust. Policy issuer authorization now runs after the complete
+local roster is derived, independent of cross-device sort order. Added a
+read-only lock-scoped canonical policy scanner that first authenticates the
+local stream with the supplied local key, then verifies the complete snapshot
+only with that key and bindings from local anchors. Unknown device records or
+unapproved device directories fail closed. Events tests **79/79**, trust
+reducer tests **13/13**, and the focused scanner regression pass. The scanner
+does not load the key from the OS secure store itself and is not wired to
+retrieval/import authorization. The R1 authenticated approval-session
+capability is now connected to authenticated Windows Desktop IPC and an
+explicit Desktop review/approve/cancel panel. The daemon freezes and returns
+the display snapshot, requires the same connection and unchanged signed prefix
+for confirm/cancel, and journals the local approval signature before returning
+it to Desktop. At this checkpoint, a successful signature was only a signed
+bootstrap message. The later completion/anchor integration is recorded in the
+current status at the top of this handoff; transport activation remains off.
+See `evidence/m8/m8-windows-bootstrap-approval-ipc-20261029.md`.
+
+**M8 Windows v3 anchor preparation follow-up (2026-10-29):** The versioned
+reader now strictly authenticates schema-v3 security records and validates
+their per-device chain position across v1/v2/v3 boundaries. The knowledge
+materializer excludes control records from memory-note projection, while the
+trust-history/reducer and cutoff-aware retrieval path consume authenticated v3
+policy records. Added a signer primitive that can form a local
+`security.peer_approved` record only from a fully verified four-message
+transcript and the matching participant key; this produces bytes only. The
+bootstrap journal can now persist the exact completed transcript plus stable
+append-attempt metadata. Its `anchored` cache transition has no direct state
+machine path and remains unavailable without a matching recorded candidate;
+canonical history is still authoritative. Cross-version writer-chain and
+journal regression tests pass. At this checkpoint, production anchor
+append/reconciliation and the local-trust action were not yet enabled; the
+later completion integration is recorded at the top of this handoff.
+Transport, publication recovery/durability, and native review gates remain
+open.
+
+**M8 verified-transcript type hardening (2026-10-29):** Made every field of
+`VerifiedBootstrapTranscript` private and exposed read-only accessors, so
+callers cannot fabricate transcript verification evidence by constructing the
+public struct. Added a compile-fail doctest for external construction and
+updated the daemon trust/journal consumers to use accessors. This tightens the
+proof boundary only; it does not append trust anchors or activate peers.
+
+**M8 cutoff-aware content view foundation (2026-10-29):** Added a helper on
+`VerifiedSecurityHistory` that yields only authenticated v1/v2 records whose
+device has a supplied effective cutoff and whose sequence is at or below that
+cutoff. It never yields v3 policy records; absent cutoffs exclude a device.
+The history can now be converted into the existing verified content-history
+type, and `cryptex-knowledge::reduce_verified_security_history` runs the M4
+reducer only over that filtered set. The lock-scoped trust-policy snapshot
+derives its cutoff map from the local-anchor reducer before invoking this
+content reducer. Local secure-store key resolvers now expose a read-only
+`LocalTrustAnchor` to retrieval scanning. `RetrievalSafetyState` uses that
+anchor to enumerate and lock the complete canonical inventory, verify peer
+keys only from local approval transcripts, derive effective cutoffs, and
+construct a filtered content snapshot while retaining all locks through M3/M4
+comparison and query. A missing/unapproved inventory member, invalid trust
+history, unresolved dependency, or stale projection holds retrieval. V2
+semantics remain held by the existing retrieval gate. The generic M4 rebuild
+and import-tip scanner remain unchanged; this does not enable publication or
+transport. Events **80/80**, knowledge **36/36**, and the focused local-anchor
+guarded-search regression pass. Windows native Desktop interaction and
+independent security review remain open.
+
+**M8 Windows local-policy import validation (2026-10-29):** Added a separate
+staged-batch validation entry point that scans the complete canonical inventory
+under inventory/device locks, derives peer keys only from locally signed
+approval transcripts, rejects devices outside the reduced trust set, derives
+the candidate starting tip from the authenticated full history, and rejects
+both current tips and staged segment ends beyond effective cutoffs. The
+lock-scoped snapshot and derived resolver cannot be supplied by the transport
+caller. Import validation now consumes a successful M3/M4
+`RetrievalSafetyState` and returns an unforgeable `ImportPolicyVerifiedBatch`
+that retains its exact canonical snapshot locks. For a first-stream candidate,
+the scanner checks locally reduced trust before creating a missing device
+directory, then acquires the full sorted device-lock set under inventory lock
+and rescans; an unapproved candidate does not create canonical state. Windows
+regressions cover the unapproved-device refusal, a contiguous signed approved
+segment through M3/M4 safety binding, lock retention against another writer,
+and inventory-guarded first-stream lock creation. While the token owns those
+locks, a read-only publication preflight rechecks staged identity/hash, rejects
+canonical file-ID aliases, and refuses an occupied sealed destination or
+matching `.open` path. A test-only call path then moves exact staged bytes with
+no-replace placement, sync/read-backs each destination, and writes/reads back
+the committed marker while retaining that token. Marker recovery now accepts
+the ADR's moved-source state only when the corresponding destination hash
+matches. Cross-process interruption tests cover after a canonical move, after
+marker-temp sync, and after final-marker placement/read-back. Startup remains
+held at the partial-move and marker-temp boundaries; after a valid final marker
+and complete matching destinations, it now cleans only that committed
+transaction's staging, manifest, and marker. Windows-host full daemon tests
+pass with 490 library, 12 binary, 9 lifecycle, 3 supervisor, and 2 update
+tests (4 ignored); strict release Clippy, fmt, and `git diff --check` pass.
+The publisher remains unconnected to managed transport or a production IPC
+path. Recovery still does not finish partial publication or complete marker
+temps. Windows directory durability is not established by these process-crash
+tests. See `evidence/m8/m8-windows-local-policy-import-validation-20261029.md`
+and `evidence/m8/m8-windows-final-marker-cleanup-20261029.md`.
+
+**M8 Windows approval IPC/UI slice (2026-10-29):** Loopback IPC tests cover
+strict role/capability/request shape, rejection before transcript parsing for
+unauthenticated peers, a synthetic prepare→frozen snapshot→confirm→journaled
+signature round trip, verification of the returned signed message, and
+cancellation without signature generation. Full daemon library tests pass
+**485 / 0 failed / 4 ignored**; Desktop frontend
+build and Windows Desktop `cargo check` pass. Native owner-dialog interaction
+remains unverified: the isolated packaged pilot launch was blocked by Windows
+Code Integrity event 3077 (Enterprise signing level); no policy change or
+bypass was attempted. The panel accepts compact signed transcript messages for
+review; it does not exchange messages with Syncthing or another device.
+Transport identity remains a transcript association label, not proof of a
+live peer. The operator must compare the full IDs and fingerprints over a
+separate trusted channel. This is not M8 completion: canonical anchor
+append/idempotency, startup recovery/reconciliation, trusted importer
+publication, transport activation, independent security review, Windows native
+interaction and macOS parity remain open.
+
+**M8 Windows bootstrap journal foundation (2026-10-29):** Added a bounded,
+closed-schema daemon journal model for the exact immutable owner snapshot,
+transcript bindings, transaction states, stable event IDs, and append-attempt
+metadata. Writes are serialized under a process lock, use unique same-directory
+temporary files, sync before replacement, reopen/sync the destination, and use
+the Windows replace/write-through primitive. Reads reject duplicate JSON keys,
+invalid schemas, duplicate transaction/event IDs, linked/non-file entries, and
+unexpected leftover files while preserving evidence. Transcript verification
+now exposes both approval-message hashes so the journal can check the exact
+R1 role-specific preceding-message binding. Focused journal tests **9/9** and
+bootstrap parser/transcript tests **4/4** pass. Full Windows library suites
+also pass: events **78/78** and cryptexd **467 passed / 0 failed / 4 ignored**.
+Release Clippy, format, and diff checks pass. The later Windows approval IPC/UI
+slice consumes this journal for local signature release; canonical append,
+startup reconciliation, peer trust activation, and publication remain
+disabled. Windows process-interruption/durability probing and macOS native
+parity remain open. Evidence:
+`evidence/m8/m8-windows-bootstrap-journal-foundation-20261029.md`.
+
+**M8 Windows R1 approval-session capability foundation (2026-10-29):** Added
+an ephemeral, process-memory-only registry for unguessable 256-bit approval
+capabilities. A grant binds the frozen approval snapshot digest to an opaque
+per-connection identity; its display snapshot is derived from a verified
+bootstrap prefix. Wrong-connection use, digest mismatch, cancellation,
+disconnect invalidation, replay, and expiry after five minutes of daemon
+monotonic time fail closed. Confirmation consumes the capability before
+checking the full request binding and invoking the signer. A read-only event
+signing-key loader now refuses missing state without creating directories,
+locks, or key material; focused tests cover existing and missing state.
+Capacity is bounded globally and per connection, and Debug output redacts the
+bearer token. Windows daemon library tests **481 passed / 0 failed / 4 ignored**,
+focused approval/key tests **14/14 pass**, release Clippy, fmt, and diff check
+pass. The journal records verified initiator/responder prefixes before
+approval, accepts exact byte-identical replay, and rejects altered bytes for
+the same transaction. A journaled confirmation helper now consumes the grant,
+invokes its signer callback, durably records the signed message, and only then
+returns it; tests cover initiator signature release and responder transcript
+completion.
+At the time this foundation note was written, the helper was not yet called by
+production IPC. The later integration is recorded in
+`evidence/m8/m8-windows-bootstrap-approval-ipc-20261029.md`. Canonical append,
+startup reconciliation, peer trust activation, and publication remain
+disabled. Evidence:
+`evidence/m8/m8-windows-approval-session-capability-20261029.md`.
+
+**M8 bootstrap approval-prefix verification and signer primitive (2026-10-29):**
+Added role-specific verification of the signed offer/proof prefix (plus the
+initiator approval for the responder role), deriving the exact Brain,
+transaction, local/peer full key identities, transport associations, agreement
+hash, and required preceding-message hash. A signer emits the role-specific
+approval only when the supplied private key matches the verified local full
+key and key ID. The daemon converts this verified context into the exact owner
+snapshot, compares every binding during confirmation, consumes the capability
+before signing, and burns it on mismatch or signing failure. Tests recreate
+both approval messages byte-for-byte from the existing complete transcript,
+verify a completed transcript, and reject altered prefixes, snapshot mismatch,
+and mismatched keys. Events library **79/79** and daemon library **474 passed /
+0 failed / 4 ignored**; release Clippy, fmt, and diff check pass. This daemon
+method is not called by IPC or Desktop UI. No product approval/signature, journal
+transition, or canonical append is enabled; no trust is activated.
+Evidence: `evidence/m8/m8-windows-bootstrap-approval-signing-20261029.md`.
+
+**M8 Windows trust/cutoff reducer and verified-history bridge (2026-10-29):**
+Added a deterministic SCC/cutoff reducer plus a v1/v2/v3 verified-history
+builder. The history reader sorts by device ID and sequence, validates the
+cross-version chain independent of arrival order, rejects unsupported
+semantics/forks/conflicting event IDs, and supports cancellation without
+returning partial history. The builder admits reducer restrictions only from
+the local device or caller-supplied directly approved peers, binds each
+nonzero cutoff to the exact target record hash and signing-key ID, binds
+self-retirement to the immediately preceding record, rejects later records
+after retirement, and rejects duplicate security transaction IDs per author
+stream. Tests cover a v1→v2→v3 chain, arrival reordering, duplicate sequence,
+exact cutoff mismatch, terminal retirement, and cancellation; reducer vectors
+still cover all seven required SCC/cutoff cases and fail-closed histories.
+Earlier results: events library **74/74** and daemon trust-reducer tests
+**11/11** before the bootstrap follow-up. This bridge trusts its caller to provide an exhaustive lock-scoped
+canonical snapshot and a locally trusted key resolver; it does not verify
+approval transcripts or derive the direct-approval roster. It is not wired to
+the production canonical scanner, `RetrievalSafetyState`, content filtering,
+publication, or transport. It cannot authorize retrieval or import yet.
+Independent review and native platform gates still precede activation.
+Evidence: `evidence/m8/m8-windows-trust-history-bridge-20261029.md`.
+
+The existing lock-scoped M4 canonical scan now also verifies the exact scanned
+v1/v2 frame set through the M8 security-history reader and retains that
+authenticated history in its snapshot. Its reduction helper now takes the
+local DeviceId/key and derives local peer bindings from locally anchored
+approval transcripts; it does not yet resolve the full canonical union with
+those bindings. A synthetic scanner test covers a single local v1 stream and
+confirms local-only trust. The existing M4 versioned reader still rejects v3
+before this bridge can consume a v3 canonical stream; it is not called by
+retrieval or import paths. This adds a second verification pass for v1/v2 and
+is not an activation or M8 completion claim.
+
+**M8 Windows strict v3 event-reader slice (2026-10-29):** Added an isolated
+strict reader for the three proposed `security.*` event payloads. It enforces
+the closed envelope/payload fields, record limits, duplicate-key rejection,
+canonical lowercase IDs/hex, internal classification, target key-ID/full-key
+binding, canonical JCS, the v3 content-hash/signature domains, and Ed25519
+verification. `VersionedChainVerifier` has an explicit v3 advance method for
+records produced by that reader. The ordinary dispatcher intentionally still
+classifies v3 as unverifiable, keeping existing retrieval consumers fail-closed.
+Ten focused reader/chain tests and the full events library suite passed at
+**71/71** before the verified-history bridge added three more events tests.
+This slice is superseded by the current bridge summary above for test totals and
+remaining trust/history limitations. The ordinary dispatcher still holds v3,
+so existing retrieval callers cannot accidentally treat these records as
+memory. Evidence:
+`evidence/m8/m8-windows-security-v3-reader-20261029.md`.
+
+**M8 Windows transport-path batch staging (2026-10-25):** Added
+`ImportStagingSession::stage_batch_from_transport_paths`, which derives each
+candidate's `DeviceId` and segment index from the exact canonical
+`<lowercase-device-id-hex>/<20-digit-index>.seg` relative path, rejects
+noncanonical paths and duplicate identities before staging, and copies a batch
+in deterministic DeviceId/index order through the existing handle-checked,
+bounded staging path. The focused `import_staging::tests` group passes **45/45**,
+including a second-candidate failure check that confirms the first staged
+snapshot is rolled back while the transport source remains retryable.
+This remains a callable staging primitive: no Syncthing event/poller invokes it,
+no trust/cutoff or `RetrievalSafetyState` gate is wired, and it grants no
+canonical publication, marker completion, cleanup, or transport activation.
+Evidence: `evidence/m8/m8-windows-import-path-batch-staging-20261025.md`.
+
+**M8 Windows committed-marker parser/startup hold (2026-10-25):** Added the
+closed v1 final/temp-marker parser with bounded no-follow reads, identity
+recheck, canonical JSON/schema/UUID/hash/name validation. Startup recognizes
+valid final and temporary markers, binds each to the exact prepared-manifest
+digest, verifies the complete staged companion, then re-reads the marker and
+manifest and rechecks the complete staging tree after acquiring canonical
+inventory/device locks before classifying destinations as absent, matching, or
+conflicting. Every marker state still returns a typed hold; no
+marker completion, publication, or cleanup is enabled. Added subprocess
+interruptions after marker-temp sync and final-marker placement; both restart
+probes hold and preserve marker evidence. At the committed-marker checkpoint,
+Windows verification was `import_staging::tests` **40/40**, daemon library
+suite **440 passed / 0 failed / 4 ignored**. The later transport-batch rollback
+regression brings the focused group to **45/45**; a full Windows
+`cargo test -p cryptexd` refresh on 2026-10-29 passed: library **445 passed / 0
+failed / 4 ignored**, binary **12/12**, lifecycle **9/9**, supervisor **3/3**,
+rollback **2/2**. Strict release Clippy, fmt, and diff checks also pass on the
+current tree. Tests include
+marker/manifest replacement rejection and exact byte-preservation for a valid
+committed marker with prepared companion, a valid temporary marker with
+companion, malformed final and temporary markers with staging present, and
+final+temporary conflict.
+The earlier full `cargo test -p cryptexd` package run also passed: 12 binary, 9
+lifecycle, 3 supervisor, and 2 rollback integration tests (in addition to the
+440-test library suite; 4 ignored).
+The non-Desktop workspace library suites passed **671/671** (4 ignored).
+Full workspace tests are blocked by Windows Application Control 4551 on the
+generated Tauri WebView2 macro DLL; excluding Desktop still blocks the generated
+events schema-generator test binary. Security policy was left unchanged, so
+Desktop/UI and generated-tool tests remain unverified here.
+The prior 4551-blocked launch is superseded. `cargo check -p cryptexd --tests`
+also passed earlier in this slice.
+Evidence:
+`evidence/m8/m8-windows-committed-marker-parser-20261025.md`.
+Marker interruption probes also passed 2/2 on D:, E:, and F: (fixed NTFS
+volumes); this is not power-loss or cross-filesystem proof.
+No Actions, commit, push, trust, or transport activation.
+
+**M8 Windows pinned peer-process liveness (2026-10-25):** Added a Windows-only
+native test of the existing `DesktopProcessIdentity` retained process handle.
+It accepts a synthetic child while the exact process object is live and rejects
+the same numeric PID after that child exits. `ipc::tests` passed **47/47**; the
+full daemon library suite passed **438 / 0 failed / 4 ignored**; strict release
+Clippy, fmt, and diff checks passed. The test exercises the retained-handle
+predicate together with kernel peer-PID retrieval over a real local named
+pipe; it does not test actual PID reuse, executable replacement, or full
+Desktop authorization. It is not macOS parity or trust evidence. Details:
+`evidence/m8/m8-windows-pinned-peer-process-liveness-20261025.md`. No Actions,
+commit, push, trust activation, or transport activation.
+
+Independent Cursor read-only review of this parser/hold slice found no
+Critical/High issue and confirmed that neither final nor temporary marker can
+authorize a commit in the current code. It flagged stale ADR implementation
+status wording and a stale recovery rustdoc comment; both are now corrected.
+The review noted missing explicit preservation assertions for conflicting
+marker combinations; regression tests cover malformed recognized marker bytes,
+final/temp coexistence, manifest digest mismatch, and destination mismatch while
+preserving evidence. Matching-subset classification and a temporary marker with
+a full companion are also tested. Marker and manifest are re-read and compared,
+and the complete staging tree is rechecked after canonical locks are acquired;
+the current observation path still always returns a hold. Process-interruption
+tests still do not exercise future replay/cleanup rows or prove power-loss
+durability.
+Replay and cleanup remain unimplemented. These are review-scope limitations,
+not M8 readiness evidence.
+
+**M8 macOS XPC peer-identity feasibility (2026-10-25):** Owner chose a bounded
+synthetic XPC feasibility spike. Apple's public XPC APIs can enforce signed
+peer-code requirements on messages (C API since macOS 12; NSXPC since macOS
+13); endpoint forwarding and PID reuse mean signer/PID alone do not yet prove
+the exact Desktop process instance. Spike design and negative-case matrix:
+`evidence/m8/m8-macos-xpc-peer-identity-feasibility-20261025.md`; the bounded
+Mac Cursor execution prompt is
+`evidence/m8/m8-macos-xpc-cursor-execution-prompt-20261025.md`. Native Mac
+build/run is **NOT RUN** on this Windows workstation. Production Unix-socket
+IPC remains unchanged; any XPC migration would require a separate ADR-0007
+amendment. No Actions, production IPC changes, trust activation, commit, or
+push.
+
+**M8 Windows committed-marker placement probe (2026-10-25):** Added a
+Windows-only native test for the proposed marker temp/final naming under
+`canonical/import-journal`. It syncs the marker temp, exercises no-replace
+placement through `MoveFileExW(MOVEFILE_WRITE_THROUGH)`, flushes the journal
+parent using the scoped directory-handle helper, and reads back exact bytes.
+Focused placement and collision probes **1/1 each**, `import_staging::tests`
+**21/21**, fmt, release Clippy
+(`--lib --tests -D warnings`), and diff check PASS. The `%TEMP%` fixture ran on
+the host's `C:` NTFS volume only. Microsoft Learn documents
+the move flag but does not list `FlushFileBuffers` among functions supported
+with directory handles; its success is observed on this host, not a documented
+cross-filesystem guarantee. This is not a production marker writer,
+process-crash/power-loss test, or portable durability proof. Evidence:
+`evidence/m8/m8-windows-prepublication-crash-tests-20261025.md`. Trust and
+transport remain disabled; no Actions, commit, or push.
+
+**M8 publication/recovery contract clarification (2026-10-25):** Expanded
+proposed ADR-0019 §5.1.1 with one deterministic marker/destination recovery
+table. Any path that finishes uncommitted publication or creates/completes a
+marker requires fresh locked trust/cutoff, `RetrievalSafetyState`, chain, and
+destination revalidation before its next filesystem mutation. A valid final
+marker is treated as the durable commit decision and only its manifest and
+destination integrity are checked before cleanup; current retrieval policy is
+still applied by the reducer. This is still a proposed contract, not accepted protocol
+or implementation. Windows marker-directory durability and native crash tests,
+publication/replay code, independent re-review, and the macOS peer-identity
+architecture gate remain open. `git diff --check` passes. No source, tests,
+Actions, commit, or push.
+
+**M8 canonical writer lock coverage audit (2026-10-25):** Read-only search and
+inspection at source HEAD `ae61603` found production segment append/seal/open
+recovery calls centralized in `canonical_writer.rs`; daemon capture acquires
+the inventory-first per-device lock before append, and multi-device locks are
+ordered by DeviceId bytes. Projection and knowledge-materialization production
+paths read under the corresponding canonical locks. Other direct segment
+mutation matches are tests. Storage mutation APIs remain public, and importer
+publication does not yet exist, so this narrows (but does not close) the shared
+lock gate: any future importer publisher must join the same lock set and
+revalidate while holding it. No publication, policy, replay, trust, or
+cross-platform security claim follows from this audit. Details:
+`evidence/m8/m8-canonical-writer-lock-coverage-audit-20261025.md`. No source
+changes, tests, Actions, commit, or push.
 
 **M8 Windows pre-publication crash-test slice (2026-10-25):** Added two
 test-only subprocess interruption points for prepared-journal creation: after
 the temporary manifest is synced, and after the prepared manifest plus parent
 directory are synced. Parent recovery assertions check that the source remains
-retryable and pre-publication staging/journal state is safely removed.
-`cargo check -p cryptexd --tests`, strict daemon Clippy, fmt, and diff check
-pass. The focused test binary was rebuilt, then Windows Application Control
-blocked execution with **4551**; the new tests are **NOT RUN** and need to run
-in the Windows development VM. This is process-crash coverage only, not
-power-loss proof or publication replay. Details:
-`evidence/m8/m8-windows-prepublication-crash-tests-20261025.md`. No Actions.
+retryable and pre-publication staging/journal state is safely removed. The
+initial test launch was blocked by Windows Application Control **4551**; a
+subsequent local retry passed both interruption tests (**2/2**), the complete
+`import_staging::tests` group (**19/19**), and the daemon library suite
+(**417 passed, 0 failed, 4 ignored**). Strict daemon Clippy, fmt, test-target
+check, and diff check pass. This is Windows process-crash coverage for the two
+pre-publication states only, not power-loss proof or publication replay.
+Details: `evidence/m8/m8-windows-prepublication-crash-tests-20261025.md`.
+No Actions.
+
+**M8 protocol addendum independent review (2026-10-25):** Owner authorized a
+read-only Cursor review of R1–R5 and §5.1.1 at `ae61603`; recommendation was
+**NOT READY**. The reviewer found the product direction consistent with the
+Master Spec and accepted ADR-0019, but owner acceptance remains blocked on
+concrete Windows/macOS connection-bound process credentials, independent
+review of R1–R5 and the §4 cycle-hold vectors, and a complete publication,
+commit-marker, and partial-replay decision matrix. The review also found stale
+Windows durability/test-count wording; the proposal’s implementation status
+has now been corrected to distinguish the scoped staging flush from pending
+journal/publication guarantees. Findings:
+`evidence/m8/m8-protocol-addendum-independent-review-20261025.md`. Trust and
+transport remain disabled. No Actions ran.
+
+**M8 protocol proposal follow-up review (2026-10-25):** Owner-authorized
+read-only Cursor review of the updated, uncommitted proposal at Git HEAD
+`ae61603` returned **NOT READY**. Critical: the macOS inherited pipe does not
+itself authenticate parent-supplied audit-token bytes, and full-token equality
+is not established as stable or sufficient for PID-reuse resistance. High:
+Windows peer binding does not implement R1 approval sessions; pipe inheritance
+and parent-liveness checks need a fail-closed contract; reducer and
+`RetrievalSafetyState` must bind under canonical locks at publish and recovery
+finish; subset replay must rerun the locked validation; marker ambiguity and
+Windows marker-parent durability need explicit rows/evidence. These proposal
+clarifications were recorded. Follow-up against Apple-published XNU confirms
+the peer-token/task-token constants, warns audit-token representation can
+change, and shows XNU's internal PID-version validation. A supported user-space
+generation-validation API and token-bound code-signature check are still
+unresolved, as are native tests. Proposal remains PROPOSED; no source,
+trust, or transport activation. Details:
+`evidence/m8/m8-protocol-addendum-independent-review-20261025.md`. No Actions.
+
+**M8 peer-identity API follow-up (2026-10-25):** A further owner-authorized
+read-only Cursor review of the revised peer-pin/recovery text returned
+**NOT READY**. The macOS process-generation and token-bound code-sign API
+composition is still unnamed; Windows marker-parent durability and
+shared-mutator lock participation remain evidence gates. The proposal now
+specifies intended pipe-end ownership and exact committed-marker names/schema;
+these are target text only, not implementation evidence. Apple docs confirm
+public audit-token-based Security APIs and XPC peer code-signing requirements,
+but do not establish a public Unix-socket process-generation accessor. Apple's
+XPC PID getter itself warns PID may go stale/reuse. XPC is only a feasibility
+candidate and switching from accepted ADR-0007's `interprocess` sockets needs
+explicit architecture approval; no migration was made. The proposal remains
+PROPOSED, with trust and transport disabled. Details and sources:
+`evidence/m8/m8-protocol-addendum-independent-review-20261025.md`. No source,
+tests, Actions, commit, or push in this documentation follow-up.
 
 **M8 Windows staging/journal directory-flush follow-up (2026-10-25):**
 Replaced the Windows `sync_staged_parent` no-op with a fail-closed directory

@@ -43,11 +43,12 @@ pub enum WorkerState {
 }
 
 /// Fixed-size, in-process diagnostic only. Never trust/policy or durable state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Snapshot {
     pub state: WorkerState,
     pub stop_requested: bool,
     pub controller: Option<Status>,
+    pub transport_device_id: Option<String>,
     pub outcome: Option<Outcome>,
     pub error: Option<WorkerError>,
 }
@@ -61,23 +62,54 @@ struct Shared {
 pub struct StatusReader(Arc<Shared>);
 impl StatusReader {
     pub fn try_snapshot(&self) -> Result<Snapshot, WorkerError> {
-        let mut snapshot = *self
+        let mut snapshot = self
             .0
             .snapshot
             .try_lock()
-            .map_err(|_| WorkerError::StatusUnavailable)?;
+            .map_err(|_| WorkerError::StatusUnavailable)?
+            .clone();
         snapshot.stop_requested = self.0.stop.load(Ordering::Acquire);
         Ok(snapshot)
     }
+
+    /// Returns the exact local ID observed on the authenticated owned REST
+    /// socket, and only while that worker remains active and ready.
+    pub fn try_transport_device_id(&self) -> Result<String, WorkerError> {
+        let snapshot = self.try_snapshot()?;
+        if snapshot.state != WorkerState::Active
+            || snapshot.stop_requested
+            || snapshot
+                .controller
+                .is_none_or(|status| status.phase != super::controller::Phase::LocalReady)
+        {
+            return Err(WorkerError::StatusUnavailable);
+        }
+        let identity = snapshot
+            .transport_device_id
+            .ok_or(WorkerError::StatusUnavailable)?;
+        if !crate::syncthing_rest::native_id_shape(&identity) {
+            return Err(WorkerError::StatusUnavailable);
+        }
+        Ok(identity)
+    }
 }
 impl Shared {
-    fn publish(&self, status: Status) -> Result<Control, WorkerError> {
+    fn publish(
+        &self,
+        status: Status,
+        transport_device_id: Option<&str>,
+    ) -> Result<Control, WorkerError> {
         let stop = self.stop.load(Ordering::Acquire);
         let mut snapshot = self
             .snapshot
             .lock()
             .map_err(|_| WorkerError::StatusUnavailable)?;
         snapshot.controller = Some(status);
+        snapshot.transport_device_id = if status.phase == super::controller::Phase::LocalReady {
+            transport_device_id.map(str::to_owned)
+        } else {
+            None
+        };
         snapshot.state = if stop {
             WorkerState::Stopping
         } else {
@@ -128,13 +160,20 @@ impl ManagedTransportWorker {
             let mut prepared = profile
                 .reopen_native(&package, &store, ports)
                 .map_err(WorkerError::Native)?;
+            let transport_device_id = prepared.configured_transport_device_id().to_owned();
             let mut status_failed = false;
             let result = prepared
-                .supervise(&package, &store, |status| match shared.publish(status) {
-                    Ok(control) => control,
-                    Err(_) => {
-                        status_failed = true;
-                        Control::Stop
+                .supervise(&package, &store, |status| {
+                    match shared.publish(
+                        status,
+                        (status.phase == super::controller::Phase::LocalReady)
+                            .then_some(transport_device_id.as_str()),
+                    ) {
+                        Ok(control) => control,
+                        Err(_) => {
+                            status_failed = true;
+                            Control::Stop
+                        }
                     }
                 })
                 .map_err(WorkerError::Controller);
@@ -155,6 +194,7 @@ impl ManagedTransportWorker {
                 state: WorkerState::Opening,
                 stop_requested: false,
                 controller: None,
+                transport_device_id: None,
                 outcome: None,
                 error: None,
             }),
@@ -189,11 +229,12 @@ impl ManagedTransportWorker {
     }
 
     pub fn snapshot(&self) -> Result<Snapshot, WorkerError> {
-        let mut snapshot = *self
+        let mut snapshot = self
             .shared
             .snapshot
             .lock()
-            .map_err(|_| WorkerError::StatusUnavailable)?;
+            .map_err(|_| WorkerError::StatusUnavailable)?
+            .clone();
         snapshot.stop_requested = self.shared.stop.load(Ordering::Acquire);
         Ok(snapshot)
     }
@@ -265,6 +306,38 @@ impl Drop for ManagedTransportWorker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transport_identity_is_available_only_for_an_active_ready_worker() {
+        let shared = Arc::new(Shared {
+            stop: AtomicBool::new(false),
+            snapshot: Mutex::new(Snapshot {
+                state: WorkerState::Active,
+                stop_requested: false,
+                controller: Some(Status {
+                    phase: super::super::controller::Phase::LocalReady,
+                    attempt: 1,
+                    pid: Some(42),
+                    error: None,
+                }),
+                transport_device_id: Some(
+                    "AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA".into(),
+                ),
+                outcome: None,
+                error: None,
+            }),
+        });
+        let reader = StatusReader(shared.clone());
+        assert_eq!(
+            reader.try_transport_device_id().unwrap(),
+            "AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA"
+        );
+        shared.snapshot.lock().unwrap().state = WorkerState::Stopping;
+        assert_eq!(
+            reader.try_transport_device_id(),
+            Err(WorkerError::StatusUnavailable)
+        );
+    }
     #[test]
     fn cancellation_and_join_are_idempotent() {
         let mut worker = ManagedTransportWorker::spawn_task(|s| {
@@ -343,12 +416,15 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(1));
             }
             assert_eq!(
-                s.publish(Status {
-                    phase: super::super::controller::Phase::Starting,
-                    attempt: 1,
-                    pid: None,
-                    error: None
-                })?,
+                s.publish(
+                    Status {
+                        phase: super::super::controller::Phase::Starting,
+                        attempt: 1,
+                        pid: None,
+                        error: None
+                    },
+                    None
+                )?,
                 Control::Stop
             );
             assert_eq!(s.snapshot.lock().unwrap().state, WorkerState::Stopping);

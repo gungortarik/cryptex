@@ -116,6 +116,7 @@ fn validate_history_positions(
                 event.device_id.as_str(),
                 event.content_hash.as_str(),
             ),
+            VersionedRecord::VerifiedSecurityV3(_) => continue,
             VersionedRecord::Unverifiable(_) => {
                 return Err(KnowledgeStoreError::Schema(
                     "verified history contains an unverifiable envelope".into(),

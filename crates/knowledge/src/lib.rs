@@ -146,6 +146,47 @@ pub fn reduce_verified_events(
     reduce_verified_events_cancellable(expected_brain_id, input, || false)
 }
 
+/// Reduce only content records admitted by effective cutoffs from the local
+/// trust reducer. V3 policy records never enter the knowledge reducer.
+///
+/// This function assumes the supplied security history is complete and
+/// authenticated and that `effective_cutoffs` was derived from locally
+/// anchored trust policy. It does not establish either property itself.
+pub fn reduce_verified_security_history(
+    expected_brain_id: &str,
+    input: &cryptex_events::VerifiedSecurityHistory,
+    effective_cutoffs: &std::collections::BTreeMap<String, u64>,
+) -> Result<KnowledgeState, ReducerError> {
+    reduce_verified_security_history_cancellable(
+        expected_brain_id,
+        input,
+        effective_cutoffs,
+        || false,
+    )
+}
+
+/// Cancellable cutoff-aware reduction. Cancellation never returns a partial
+/// knowledge state.
+pub fn reduce_verified_security_history_cancellable<C>(
+    expected_brain_id: &str,
+    input: &cryptex_events::VerifiedSecurityHistory,
+    effective_cutoffs: &std::collections::BTreeMap<String, u64>,
+    mut cancelled: C,
+) -> Result<KnowledgeState, ReducerError>
+where
+    C: FnMut() -> bool,
+{
+    let content = input
+        .content_history_through_cutoffs_cancellable(effective_cutoffs, &mut cancelled)
+        .map_err(|error| match error {
+            cryptex_events::CancellableSecurityHistoryError::Cancelled => ReducerError::Cancelled,
+            cryptex_events::CancellableSecurityHistoryError::InvalidRecord(_) => {
+                ReducerError::InvalidEvent(expected_brain_id.to_owned())
+            }
+        })?;
+    reduce_verified_events_cancellable(expected_brain_id, &content, cancelled)
+}
+
 /// Reduce a complete verified history with cooperative cancellation points.
 /// A cancelled reduction returns no partial state.
 pub fn reduce_verified_events_cancellable<C>(
@@ -1416,6 +1457,7 @@ fn verified_record_event_id(record: &VersionedRecord) -> Option<&str> {
         VersionedRecord::VerifiedV1(event) => Some(&event.event_id),
         VersionedRecord::VerifiedV2Supported(event) => Some(&event.event().event_id),
         VersionedRecord::VerifiedUnsupported(event) => Some(&event.event_id),
+        VersionedRecord::VerifiedSecurityV3(_) => None,
         VersionedRecord::Unverifiable(_) => None,
     }
 }
@@ -1925,6 +1967,43 @@ mod tests {
         assert_eq!(forward.facts.len(), 1);
         assert_eq!(forward.facts[0].provenance.len(), 2);
         assert_eq!(forward.materialized_event_ids.len(), 3);
+    }
+
+    #[test]
+    fn security_history_reducer_applies_cutoff_before_knowledge_materialization() {
+        use ed25519_dalek::SigningKey;
+        use std::collections::BTreeMap;
+
+        let raw = event('1', 1, declare(PERSON_A, "Ada"));
+        let key = SigningKey::from_bytes(&[0x42; 32]).verifying_key();
+        let history = cryptex_events::verify_security_history(
+            &[raw.as_slice()],
+            BRAIN,
+            SyntheticTrustedDaemonKey(key),
+        )
+        .unwrap();
+
+        let excluded = reduce_verified_security_history(BRAIN, &history, &BTreeMap::new()).unwrap();
+        assert!(excluded.entities.is_empty());
+        assert!(excluded.materialized_event_ids.is_empty());
+
+        let included = reduce_verified_security_history(
+            BRAIN,
+            &history,
+            &BTreeMap::from([("device-1".to_owned(), 1)]),
+        )
+        .unwrap();
+        assert_eq!(included.entities.len(), 1);
+        assert_eq!(included.materialized_event_ids.len(), 1);
+        assert_eq!(
+            reduce_verified_security_history_cancellable(
+                BRAIN,
+                &history,
+                &BTreeMap::from([("device-1".to_owned(), 1)]),
+                || true,
+            ),
+            Err(ReducerError::Cancelled)
+        );
     }
 
     #[test]

@@ -9,16 +9,18 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use cryptex_core::ids::DeviceId;
 use cryptex_core::validate::{parse_uuid_str, require_exact_schema};
-use cryptex_events::TrustedDaemonKeyResolver;
+use cryptex_core::{BrainIdentity, ids::DeviceId};
+use cryptex_events::{SigningKeyId, TrustedDaemonKeyResolver};
 use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
 
 use crate::event_signing_key::{
     EventSigningKeyError, ensure_event_signing_key, load_existing_event_verifying_key,
 };
-use crate::identity_runtime::{IdentityRuntimeError, load_brain_identity};
+use crate::identity_runtime::{
+    IdentityRuntimeError, brain_identity_path, load_brain_identity, write_brain_identity,
+};
 use crate::paths::{assert_outside_repository, ensure_runtime_root};
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 
@@ -127,6 +129,14 @@ impl TrustedDaemonKeyResolver for LocalDeviceKeyResolver {
     fn trusted_daemon_key(&mut self, device_id: &str, key_id: &str) -> Option<VerifyingKey> {
         (device_id == self.device_id && key_id == self.signing_key_id).then_some(self.verifying_key)
     }
+
+    fn local_trust_anchor(&self) -> Option<cryptex_events::LocalTrustAnchor> {
+        Some(cryptex_events::LocalTrustAnchor::new(
+            DeviceId::new(self.device_id.clone()).ok()?,
+            SigningKeyId::parse(&self.signing_key_id).ok()?,
+            self.verifying_key.to_bytes(),
+        ))
+    }
 }
 
 pub fn local_device_identity_path(runtime_root: &Path) -> PathBuf {
@@ -197,6 +207,58 @@ pub fn enroll_local_device<S: SecureStore + ?Sized>(
         .map_err(LocalDeviceIdentityError::EventSigningKey)?;
     drop(lock);
     Ok(existing)
+}
+
+/// Explicitly join an existing Brain using the exact canonical public Brain
+/// identity supplied over the owner's separate trusted channel. A different
+/// preexisting identity or any unbound canonical/device state is preserved and
+/// refused; this function never replaces Brain metadata.
+pub fn join_existing_brain<S: SecureStore + ?Sized>(
+    runtime_root: &Path,
+    store: &S,
+    env: SecureStoreEnvironment,
+    raw_brain_identity: &str,
+    expected_brain_id: &str,
+) -> LocalDeviceIdentityResult<LocalDeviceIdentity> {
+    assert_outside_repository(runtime_root)
+        .map_err(|error| LocalDeviceIdentityError::Io(error.to_string()))?;
+    ensure_runtime_root(runtime_root)
+        .map_err(|error| LocalDeviceIdentityError::Io(error.to_string()))?;
+
+    let identity = BrainIdentity::from_json(raw_brain_identity)
+        .map_err(|error| LocalDeviceIdentityError::InvalidMetadata(error.to_string()))?;
+    let canonical_identity = identity
+        .to_json_lf()
+        .map_err(|error| LocalDeviceIdentityError::InvalidMetadata(error.to_string()))?;
+    if identity.brain_id != expected_brain_id || canonical_identity != raw_brain_identity {
+        return Err(LocalDeviceIdentityError::BrainMismatch);
+    }
+
+    let path = brain_identity_path(runtime_root);
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.file_type().is_file() => {
+            let existing = fs::read_to_string(&path)
+                .map_err(|error| LocalDeviceIdentityError::Io(error.to_string()))?;
+            let parsed = BrainIdentity::from_json(&existing)
+                .map_err(|error| LocalDeviceIdentityError::InvalidMetadata(error.to_string()))?;
+            if parsed != identity || existing != raw_brain_identity {
+                return Err(LocalDeviceIdentityError::BrainMismatch);
+            }
+        }
+        Ok(_) => {
+            return Err(LocalDeviceIdentityError::InvalidMetadata(
+                "Brain identity path is not a regular file".into(),
+            ));
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            refuse_existing_unbound_state(runtime_root)?;
+            write_brain_identity(runtime_root, &identity)
+                .map_err(LocalDeviceIdentityError::Brain)?;
+        }
+        Err(error) => return Err(LocalDeviceIdentityError::Io(error.to_string())),
+    }
+
+    enroll_local_device(runtime_root, store, env)
 }
 
 /// Read and validate persisted local identity without creating or repairing it.
@@ -450,6 +512,87 @@ mod tests {
         );
 
         fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn explicit_join_existing_brain_creates_new_device_and_resumes_exact_identity() {
+        let root = exclusive_temp_dir("cryptex-local-device-join");
+        let store = FakeSecureStore::new();
+        let brain = BrainIdentity::new(BRAIN_ID, "2026-10-08T00:00:00Z").expect("brain");
+        let raw_identity = brain.to_json_lf().expect("canonical Brain identity");
+
+        let first = join_existing_brain(
+            &root,
+            &store,
+            SecureStoreEnvironment::Dev,
+            &raw_identity,
+            BRAIN_ID,
+        )
+        .expect("join existing Brain");
+        let second = join_existing_brain(
+            &root,
+            &store,
+            SecureStoreEnvironment::Dev,
+            &raw_identity,
+            BRAIN_ID,
+        )
+        .expect("resume exact join");
+
+        assert_eq!(first, second);
+        assert_eq!(store.len(), 1);
+        assert_eq!(
+            fs::read_to_string(brain_identity_path(&root)).expect("read joined Brain"),
+            raw_identity,
+            "the original canonical identity bytes must be preserved"
+        );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn join_existing_brain_refuses_conflicts_and_unbound_state_without_writes() {
+        let wrong_root = exclusive_temp_dir("cryptex-local-device-join-wrong-brain");
+        let store = FakeSecureStore::new();
+        let other = BrainIdentity::new(
+            "99999999-9999-4999-8999-999999999999",
+            "2026-10-08T00:00:00Z",
+        )
+        .expect("other Brain")
+        .to_json_lf()
+        .expect("canonical identity");
+        assert!(matches!(
+            join_existing_brain(
+                &wrong_root,
+                &store,
+                SecureStoreEnvironment::Dev,
+                &other,
+                BRAIN_ID,
+            ),
+            Err(LocalDeviceIdentityError::BrainMismatch)
+        ));
+        assert!(!brain_identity_path(&wrong_root).exists());
+        assert_eq!(store.len(), 0);
+        fs::remove_dir_all(wrong_root).expect("cleanup wrong-brain fixture");
+
+        let occupied_root = exclusive_temp_dir("cryptex-local-device-join-occupied");
+        let state = occupied_root.join("canonical").join("events");
+        fs::create_dir_all(&state).expect("create sentinel state");
+        fs::write(state.join("foreign-state"), b"preserve").expect("write sentinel");
+        let brain = BrainIdentity::new(BRAIN_ID, "2026-10-08T00:00:00Z").expect("brain");
+        let raw_identity = brain.to_json_lf().expect("canonical Brain identity");
+        assert!(matches!(
+            join_existing_brain(
+                &occupied_root,
+                &store,
+                SecureStoreEnvironment::Dev,
+                &raw_identity,
+                BRAIN_ID,
+            ),
+            Err(LocalDeviceIdentityError::ExistingDeviceState)
+        ));
+        assert!(!brain_identity_path(&occupied_root).exists());
+        assert_eq!(fs::read(state.join("foreign-state")).unwrap(), b"preserve");
+        assert_eq!(store.len(), 0);
+        fs::remove_dir_all(occupied_root).expect("cleanup occupied fixture");
     }
 
     #[test]

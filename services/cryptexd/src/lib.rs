@@ -7,6 +7,10 @@
 //!
 //! Secure-store (ADR-0014 ACCEPTED â€” P1) is owned by this daemon crate.
 
+#[allow(dead_code)] // Connected IPC integration is the next R1 activation gate.
+pub(crate) mod approval_session;
+#[allow(dead_code)] // Approval IPC consumes this durable foundation in the next gated slice.
+pub(crate) mod bootstrap_journal;
 pub mod canonical_writer;
 pub mod capture;
 pub mod capture_receipt;
@@ -42,6 +46,8 @@ pub mod supervision;
 pub mod syncthing_owned_rest;
 pub mod syncthing_package;
 pub mod syncthing_rest;
+#[allow(dead_code)] // Wired after the verified v3 reader and retrieval gate land.
+pub(crate) mod trust_reducer;
 
 pub mod supervisor;
 #[cfg(test)]

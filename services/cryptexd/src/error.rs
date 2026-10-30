@@ -9,6 +9,7 @@ pub enum LifecycleError {
     Incompatible(String),
     UnsafeRuntimePath(String),
     ImportRecoveryConflict(String),
+    PeerApprovalRecoveryConflict(String),
     Attention(String),
 }
 
@@ -25,6 +26,9 @@ impl fmt::Display for LifecycleError {
             Self::UnsafeRuntimePath(message) => write!(f, "unsafe runtime path: {message}"),
             Self::ImportRecoveryConflict(message) => {
                 write!(f, "import recovery conflict: {message}")
+            }
+            Self::PeerApprovalRecoveryConflict(message) => {
+                write!(f, "peer approval recovery conflict: {message}")
             }
             Self::Attention(message) => write!(f, "attention: {message}"),
         }

@@ -1,11 +1,14 @@
 # ADR-0019 M8 protocol and security-event addendum — proposal
 
-**Status:** PROPOSED for scoped security review; not accepted and not implemented  
+**Status:** PROPOSED overall; owner accepted §§2–4 as the Windows
+implementation basis on 2026-10-29, including the operation-specific owner
+approval digest fields below. This does not accept the full addendum or enable
+trust, transport, retrieval, or publication.
 **Date:** 2026-10-22  
 **Scope:** Concrete candidate for the remaining ADR-0019 §8 gates. The accepted
 product permissions in ADR-0019 and its restriction-authority addendum remain
-the authority. This document does not authorize a writer, resolver, transport
-activation, schema rollout, or trust change.
+the authority. This document does not authorize production writer/resolver
+activation, transport activation, schema rollout, or a trust change.
 
 ## 1. Decisions this proposal must preserve
 
@@ -172,7 +175,9 @@ approval_request_digest = BLAKE3-256(
   JCS({brain_id, transaction_id, role, operation, agreement_hash,
        previous_message_hash,
        local_identity, peer_identity, transport_association,
-       restriction_target, cutoff_seq, cutoff_content_hash})
+       restriction_target, restriction_reason, cutoff_seq,
+       cutoff_content_hash, last_authorized_seq,
+       last_authorized_content_hash})
 )
 ```
 
@@ -190,7 +195,16 @@ signed. `peer_identity` is null for self-retirement and is the exact peer or
 target binding for admission/restriction. `transport_association` is null for
 local self-retirement and otherwise contains the exact applicable adapter IDs.
 Restriction fields are null except for a restriction, where target, cutoff,
-and boundary hash are all required. `local_identity` and non-null `peer_identity` contain the
+reason, and boundary hash are all required. `restriction_reason` is exactly
+`retired` or `compromised`, and is non-null only for a device restriction.
+Self-retirement fields are null except for self-retirement, where
+`last_authorized_seq` and `last_authorized_content_hash` are both required and
+bind the immediately preceding verified record in the local device chain;
+they are null for admission and restriction. A zero sequence is permitted only
+for the empty-prefix sentinel and must use the all-zero 32-byte hash. These
+operation fields are frozen before display,
+included in the canonical digest, stored in the durable journal, and rechecked
+against locked canonical history before append. `local_identity` and non-null `peer_identity` contain the
 canonical DeviceId, 16-byte signing-key ID, and full public-key SHA-256
 fingerprint. The daemon returns the frozen display snapshot and digest together
 over the authenticated Desktop IPC. The UI renders that snapshot without
@@ -210,6 +224,57 @@ requests serialize, and at most one can claim a still-pending token. If
 cancellation wins, it invalidates the token. Confirmation consumes the token
 before signature generation or canonical append. Any later error requires a
 new displayed confirmation and token; a consumed token is never restored.
+
+**Proposed OS peer-credential pins (not yet accepted or natively verified):**
+On Windows, for every named-pipe connection, obtain the peer PID from the
+connected pipe handle using the kernel peer-credential API
+(`GetNamedPipeClientProcessId`); compare it to the Desktop PID captured when
+`cryptexd` was launched, and require the retained process handle for that exact
+Desktop process to remain live. Resolve and validate the packaged Desktop image
+through that pinned process identity at daemon startup. A missing PID,
+mismatched PID, exited process, or unavailable process handle rejects the
+connection; do not trust a PID in the request. The retained process handle
+makes PID reuse fail closed.
+
+This paragraph specifies only OS peer binding. It does not implement or close
+the separate M8-R1 approval-session protocol: displayed digest binding,
+one-time session consumption, cancellation serialization, and consume-before-
+append remain independent requirements.
+
+On macOS, for every connected Unix-domain socket, obtain the peer's opaque audit
+token with `getsockopt(SOL_LOCAL, LOCAL_PEERTOKEN)`. At daemon launch, Desktop
+obtains its own kernel audit token with `task_info(TASK_AUDIT_TOKEN)` and passes
+it to the child over a one-shot inherited pipe (never argv, environment, or a
+runtime file). The pipe is only a carrier, not authentication: the parent alone
+owns the write end and the child alone receives the read end. The parent closes
+its read end before spawning; the child closes any write end before reading.
+Set close-on-exec/non-inherit on both ends and explicitly clear it only for the
+one intended child read end at spawn. No grandchild or unrelated process may
+inherit either end. The child must read exactly the fixed token size, reject
+short/extra/malformed input, close the read end, and use documented
+kernel-backed checks to prove that the token
+identifies the live `getppid()` process instance and that this process is the
+expected packaged Desktop executable before pinning it. The pipe ends must be
+non-inheritable except for the intended child read end; token bytes must never
+be logged. For each connection, match the kernel peer token to the pinned
+process instance using PID plus a kernel process-generation identity (such as
+pidversion), obtained and validated through a supported API, or an equivalent
+kernel validation that the token still names the same live process instance.
+Do not read opaque token slots directly from user space, and do not compare
+unspecified mutable audit-token fields as a lifetime-stable byte string.
+Current XNU source uses PID plus the embedded PID version in its internal
+`proc_find_audit_token`; this does not by itself prove that Cryptex can call an
+equivalent supported user-space API. Missing identity fields, failed
+kernel/code-signature validation, a short read, process exit, mismatch, or
+unavailable APIs reject the connection; there is no `LOCAL_PEERPID`-only
+fallback. A daemon restart requires a new parent-bound handoff. Primary XNU
+source confirms the socket/task token constants, the token's opaque nature, and
+an internal PID-version check; the supported user-space process-generation
+validation and token-bound code-signature APIs remain to be identified and
+verified. Native tests must cover unrelated peers, forged handoff bytes, same-PID
+replacement/reuse, credential changes, process exit during a connection, and
+Desktop restart. This remains a review candidate, not an accepted security
+guarantee.
 For admission it signs only the local approval message; the canonical
 anchor remains gated on both approvals and the complete transcript. A
 restriction or self-retirement may append its canonical event only after its
@@ -588,8 +653,16 @@ independently reviewed policy can derive a safe outcome from canonical history.
 The independent security review must confirm this fail-closed scope and
 availability consequence before protocol acceptance. If that review finds the
 hold or lack of M8 recovery inconsistent with the accepted contract, keep the
-protocol NOT ACCEPTED and return for an explicit policy decision. No production
-reducer or trust activation is authorized before that review.
+protocol NOT ACCEPTED and return for an explicit policy decision.
+
+**Owner implementation decision (2026-10-29):** The owner accepts the
+bootstrap/onboarding protocol in §2 and the security-event and trust/cutoff
+reducer model in §§3–4 as the Windows implementation basis. This is not
+acceptance of ADR-0019 as a whole and does not waive independent protocol or
+security review. The parser, transcript verifier, reducer, and approval flow
+may be implemented and tested, but trust, transport, retrieval, and publication
+activation remain disabled until the required independent review and native
+platform gates pass.
 
 ## 5. Reader-first rollout, transaction order, and recovery
 
@@ -735,6 +808,10 @@ for the same-user Syncthing child.
    copying, checks actual bytes while streaming, and discards the complete
    staged batch if a source grows, exceeds any cap, or otherwise fails
    validation. Exceeding any limit fails closed without partial publication.
+   A caller-supplied key resolver or cryptographic verification primitive
+   alone is insufficient. The reducer result and `RetrievalSafetyState` are
+   bound to verified tips under canonical locks immediately before publication
+   (step 5) and again before any recovery finish move (step 7).
 4. Before publication, the daemon durably records a transaction manifest with
    transaction ID, affected DeviceIds, relative segment destinations, segment
    indexes, lengths, and SHA-256 digests in a closed, versioned schema. Stage
@@ -761,40 +838,181 @@ for the same-user Syncthing child.
    current appenders.
 6. The daemon syncs each destination and required parent directory, then
    durably marks the transaction committed before releasing canonical locks.
-   The marker must have a closed schema and an atomic, platform-specific
-   durable-write procedure. Do not claim parent-directory durability on
-   Windows while `sync_directory` is a no-op; implement and verify an
-   equivalent Windows durability strategy before claiming the import is
-   committed there. Define and test crashes after each move, after the final
-   move, during marker replacement, and after marker persistence. Derived
-   indexes update after publication and remain rebuildable.
+   The closed v1 marker is canonical UTF-8 JSON, at most 4 KiB, with exactly
+   `protocol_version` (integer `1`), `transaction_id` (canonical lowercase
+   hyphenated UUID), and `prepared_manifest_sha256` (64 lowercase hex digits).
+   Its final name is `<transaction-id>.committed.json`; its only recognized
+   temporary name is `.<transaction-id>.committed.tmp`, both directly in
+   `canonical/import-journal`. Reject duplicate/unknown fields, non-canonical
+   JSON, size overflow, or a filename/embedded-ID mismatch. Write the unique
+   marker temporary in the marker directory and sync the file before placement.
+   On Windows, use same-volume `MoveFileExW` with `MOVEFILE_WRITE_THROUGH` and
+   without `MOVEFILE_REPLACE_EXISTING` or `MOVEFILE_COPY_ALLOWED`; require the
+   no-replace move to succeed, then read back and validate the final marker
+   before releasing canonical locks. Do not treat a successful
+   `FlushFileBuffers` call on a directory handle as a documented guarantee:
+   Microsoft's directory-handle API list does not include that function. The
+   existing M8 host probe demonstrates that the call succeeds on one Windows
+   filesystem only. Windows committed status remains unavailable until native
+   interruption coverage exercises every marker boundary on supported target
+   filesystems and the resulting limits are documented. Define and test crashes
+   after each move, after the final move, during marker placement, and after
+   marker persistence. Derived indexes update after publication and remain
+   rebuildable.
 7. Startup must acquire the single-instance lock and reconcile every prepared
    transaction under canonical locks before starting transport, inspecting
    incoming files, preparing or publishing another import, starting IPC,
-   projection/materialization, retrieval, or any canonical enumeration. It may
-   finish a transaction only when every staged or already-published file
-   matches the manifest and full validation still succeeds. Otherwise it holds
-   affected streams and reports a typed recovery conflict. No
+   projection/materialization, retrieval, or any canonical enumeration. The
+   target commit/recovery decision is deterministic and classifies the marker
+   before destination visibility. A valid committed marker permits cleanup only
+   when every destination matches; if any destination is absent or mismatched,
+   hold. An unrecognized, malformed, or conflicting marker/temporary is a
+   typed hold with evidence preserved. A recognized marker temporary may be
+   atomically completed only after its transaction and manifest digest are
+   revalidated and every destination is verified against the manifest;
+   otherwise hold.
+   With no committed marker or recognized marker temporary, no destination
+   visible means validate the complete staged set and abort the prepared
+   transaction while leaving the transport source retryable; with every
+   destination visible and matching the prepared manifest, durably
+   create/verify the committed
+   marker and finish cleanup; with a strict subset visible, finish the remaining
+   no-replace moves only when every visible destination matches and every
+   remaining staged file matches the manifest. While holding the same canonical
+   locks, subset recovery must rerun step 5's full inventory, trust/cutoff and
+   `RetrievalSafetyState` binding, verified-tip continuity, destination/alias,
+   and `.open` conflict checks immediately before any finish move. A failed or
+   changed revalidation becomes a typed hold; it must not continue from the
+   stale prepared snapshot. Then write/verify the marker; any missing, changed,
+   conflicting, malformed, or unverifiable state is a typed fail-closed hold
+   with evidence preserved. With no marker and all destinations present, the
+   exact prepared-manifest digest and every destination must be revalidated
+   before safely creating the marker; otherwise hold. Windows committed status
+   is unavailable until
+   marker-parent durability has a verified platform strategy and native
+   interruption coverage; the staging/journal parent-flush helper alone does
+   not prove marker durability. The importer holds the
+   canonical locks throughout the finish/marker sequence, and readers remain
+   gated until recovery completes. These are target rules; they are not
+   implemented by the current pre-publication abort-only slice. No
    `for_each_verified_event*` or `scan_verified_canonical*` reader may run
    before reconciliation completes. This is required because a process crash
    releases locks but can occur between individual file moves.
-8. Tests must cover config/path refusal, links/reparse points, size/count
+   The recovery decision table is normative for this proposal. “Visible” means
+   the expected canonical destination exists; “matches” requires a no-follow
+   identity/metadata check plus exact length and SHA-256 equality with the
+   prepared manifest. Any unlisted canonical entry, alias, reparse/link, or
+   unexpected journal entry is a typed hold. Every row that creates or
+   completes a committed marker must, while holding inventory and all affected
+   device locks, rerun the complete step 5 validation against the current
+   canonical snapshot, including trust/cutoff and `RetrievalSafetyState`, and
+   recheck every destination immediately before any missing canonical move or
+   marker creation/completion. A valid final marker is already the durable
+   commit decision: its recovery row verifies the closed marker, exact
+   prepared-manifest digest, and every destination before cleanup, but does
+   not re-admit the transaction under a potentially newer trust/cutoff policy.
+   The normal reducer still applies current policy to canonical content before
+   retrieval.
+
+   The normal committed window contains the final marker together with its
+   exact prepared manifest and staging transaction until cleanup. Recovery
+   must verify that companion transaction, its closed manifest digest, and the
+   complete destination set before removing any transaction-local state. A
+   valid marker with a missing, mismatched, or unverifiable prepared/staging
+   companion is a typed hold; it is not permission to guess cleanup state.
+
+   | Marker state | Destination state | Required action |
+   |---|---|---|
+   | Unknown, malformed, conflicting, or mismatched final marker | Any | Typed hold; preserve journal and staging evidence. |
+   | Valid final marker bound to the exact prepared-manifest digest | All destinations, prepared manifest, and staging files match | Cleanup only this transaction after closed-schema, manifest-digest, identity, and file-hash checks; never alter canonical files. |
+   | Valid final marker | Prepared manifest or staging companion is absent, mismatched, or unverifiable | Typed hold; preserve remaining evidence and canonical files. |
+   | Valid final marker | Any destination absent or mismatched | Typed hold; do not infer or repair a committed transaction. |
+   | Recognized marker temporary with valid closed schema and exact manifest digest | Every destination matches | Complete only the no-replace temp-to-final marker placement, sync/read back, then cleanup after locked validation. |
+   | Recognized marker temporary | Any destination absent or mismatched | Typed hold; a marker temp cannot authorize missing canonical moves. |
+   | No marker/temp; prepared transaction is valid | No destination visible; every staged file matches | Abort pre-publication transaction; preserve transport source for retry. No canonical mutation. |
+   | No marker/temp; prepared transaction is valid | Strict subset visible; visible files match and all remaining staged files match | Rerun full locked step 5 validation; finish only remaining no-replace moves; durably create/read back final marker; otherwise typed hold. |
+   | No marker/temp; prepared transaction is valid | Every destination visible and matching | Rerun full locked step 5 validation; durably create/read back final marker; cleanup only after marker validation. |
+   | No marker/temp | Any visible destination mismatches, or staged file is missing/changed | Typed hold; preserve evidence and do not delete or overwrite canonical entries. |
+   | Unknown marker/journal entry, multiple transactions, or unrecognized temp | Any | Typed hold; preserve evidence. |
+
+   A valid prepared manifest alone is not proof that a destination is trusted or
+   that an import committed. Canonical readers, writers, projection, transport,
+   and IPC remain gated until startup recovery returns a terminal safe result.
+   The owner approved this table for the Windows implementation slice on
+   2026-10-23; it is normative for that slice, not a blanket acceptance of this
+   ADR or authorization to activate trust. The current tree has an internal
+   lock-bearing no-replace publication primitive and startup recovery for
+   valid final and temporary committed markers when every destination matches.
+   Partial-publication replay and production transport-to-publication wiring
+   remain absent. Windows marker-parent durability and native interruption
+   gates remain open, so the publisher is not activated.
+ 8. Tests must cover config/path refusal, links/reparse points, size/count
    bounds, duplicate-identical and divergent destinations, local append/import
    interleavings, every publication crash point, and startup reconciliation on
-   both Windows and macOS. The M8 trust gate also remains blocked on the
-   independent requirements elsewhere in this proposal: owner-approval IPC
-   with connection-bound OS identity and one-time approval sessions, concrete
-   per-platform peer credentials (including macOS per-connection live-process
-   binding/revalidation and PID-reuse tests), the v3 `security.*` reducer to
-   `RetrievalSafetyState` integration before retrieval enablement, a bounded
-   bootstrap parser, and independent review of the reducer's SCC/cutoff
-   vectors. Unknown security-event versions must fail closed.
+   both Windows and macOS. The Windows slice now has a bounded bootstrap
+   parser, authenticated owner-approval IPC with one-time connection-bound
+   sessions, and v3 `security.*` reducer integration with
+   `RetrievalSafetyState`; these implementations still require independent
+   security review and native-platform verification. Concrete peer-credential
+   binding/revalidation remains a platform gate, including macOS live-process
+   identity and PID-reuse coverage. Unknown security-event versions must fail
+   closed.
 
-Implementation status (2026-10-24): the Windows daemon now snapshots bounded
+Implementation status (2026-10-29): the owner accepted §§2–4 as the Windows
+trust/reducer implementation basis, subject to the independent review and
+native-platform gates above. The Windows daemon now snapshots bounded
 incoming candidates into `canonical/import-staging` and runs an import startup
 gate after the instance lock but before identity setup, transport, IPC, or
-readers. The gate removes only recognized staging-only transactions; any
-prepared or unknown journal state stops startup with a typed recovery conflict.
+readers. It removes only recognized unprepared staging-only transactions. A
+prepared transaction is validated under canonical inventory/device locks and
+aborted only when every destination is absent and the complete staged tree
+matches; any visible destination or changed/missing staged state remains a
+typed recovery conflict. Recognized committed markers are parsed and bound to
+their prepared companion under canonical locks. A valid final marker is
+cleaned up only when every canonical destination matches the manifest; cleanup
+removes only that transaction's staging, manifest, and marker and never changes
+canonical files. A recognized temporary marker is moved to its final name only
+after all destinations match, using no-replace placement, parent sync, and
+read-back before the same transaction cleanup. Partial-publication replay and
+transport-to-publication wiring remain unavailable. Unknown or conflicting
+journal states still fail closed.
+
+The Windows bootstrap parser/transcript verifier is implemented as a bounded
+candidate-validation primitive. A daemon-owned bootstrap journal foundation
+now models the frozen owner snapshot, exact transcript, state, stable event ID,
+and append-attempt metadata; it validates duplicate keys, schema, snapshot
+digest, verified transcript identity/transport/role-specific predecessor
+bindings, and serializes atomic updates. A Windows authenticated Desktop IPC
+path now verifies a bounded candidate, freezes and returns the immutable
+snapshot, and issues a connection-bound one-use session. The Desktop review
+panel displays the full identities/fingerprints and requires explicit owner
+confirm or cancel. On confirm, the daemon revalidates the signed prefix,
+consumes the grant, loads only the existing matching local signing key, writes
+the signature to the journal, and then returns the signed message. On cancel,
+it validates the same transcript/digest and persists cancellation without
+signing. Loopback tests cover authenticated routing, snapshot binding, signed
+message verification, and journal-before-release ordering. This is still not
+the complete M8-R3 flow. A lock-bearing internal `security.peer_approved`
+append foundation now verifies the complete transcript, local owner-approval
+journal state, reduced canonical trust snapshot, global event/transaction
+uniqueness, stable operation digest, and canonical reread; exact replay is
+idempotent. An `append_unknown` entry with no exact canonical record is held
+instead of retried blindly. Daemon startup now reconciles `append_unknown` and
+`anchored` journal entries against the lock-scoped canonical history before
+transport or IPC starts; only an exact canonical match is accepted, and other
+states hold startup while preserving evidence. Startup does not append. These
+synthetic append/replay/reconciliation tests pass. The authenticated Desktop
+`bootstrap.approval.complete` IPC and Tauri local-trust action now invoke the
+lock-bearing append path. Completion accepts only the full verified transcript
+matching the journaled, explicitly released owner approval and frozen
+snapshot; the daemon scans canonical trust/inventory under locks before
+appending. A complete absence scan permits an explicit owner retry with a new
+sequence, while startup reconciliation never appends. Tests cover success,
+exact replay, startup reconciliation, and rejection without journaled owner
+approval. This creates only a local canonical trust anchor; it does not start
+transport or sync. Transport exchange/peer validation, native packaged UX and
+interruption/durability proof, macOS parity, and independent security review
+remain open.
 The staging API now requires transport paths to encode the exact DeviceId and
 20-digit segment index and rejects duplicate `(DeviceId, index)` candidates in
 one batch. Rollback keeps ancestor handles pinned while removing an unprepared
@@ -804,7 +1022,27 @@ parses only complete frames, verifies supported v1/v2 record signatures using
 a caller-supplied trusted-key resolver, and checks device/Brain identity,
 sequence, and previous-hash continuity from a caller-supplied verified stream
 tip. This is a validation primitive only: it is not wired into publication and
-does not replace trust/cutoff or `RetrievalSafetyState` checks. Staging now
+does not replace trust/cutoff or `RetrievalSafetyState` checks. A first pure
+Windows trust/cutoff reducer now implements deterministic SCC filtering over
+a complete pre-verified policy-history input and has synthetic coverage for the
+seven required reducer vectors plus fail-closed history states. It does not
+parse or authenticate events, bind cutoff boundary hashes, or authorize
+publication. A strict, separate v3 security-event parser authenticates closed
+event envelopes, payload shape, canonical JCS, content hash, signing-key
+binding, and Ed25519 signature. A verified-history layer orders supplied v1,
+v2, and v3 records by device/sequence, rejects conflicting event IDs and
+unsupported semantics, and checks cross-version chains; its cancellable API
+never returns partial history. The reducer-input builder validates nonzero
+cutoff sequence/hash/key-ID against the exact target-chain record and enforces
+self-retirement's immediately preceding record and terminal behavior. These
+layers trust the caller to provide an exhaustive lock-scoped snapshot and
+locally trusted key resolver; they do not verify bootstrap message signatures
+or derive the directly-approved roster. The normal version dispatcher still
+classifies v3 as unverifiable. Neither verified-history nor reducer input is
+wired to `RetrievalSafetyState`, production canonical scanning, publication,
+or transport. Trust, transport, retrieval, and publication activation remain
+disabled until those integrations, independent review, and native gates pass.
+Staging now
 compares the incoming opened-file identity against files under every canonical
 device directory and rejects an alias. This admission-time scan is not race-free
 and must be repeated under canonical locks before publication. Prepared/committed
@@ -812,15 +1050,45 @@ journal support is partial: a session can write an immutable versioned
 canonical-JSON prepared manifest with exact relative paths, lengths, and
 SHA-256 values using a no-replace move. Closed-schema validation enforces
 canonical transaction/device IDs, sorted contiguous segment entries, and
-configured batch bounds. Startup parses and verifies the manifest and staged
-digests under canonical inventory/device locks. It aborts only when every
-destination is absent; any visible destination or changed/missing staged file
-remains a typed fail-closed conflict. This handles pre-publication crashes but
-does not replay partial publication. There is no committed marker or canonical
-publication path. Windows uses `MOVEFILE_WRITE_THROUGH` for placement, but
-parent-directory durability and crash points remain unverified and are not
-claimed. The Windows `import_staging::tests` group passes 13/13, including the
-prepared-recovery path and native handle tests.
+configured batch bounds. Startup parses and verifies the manifest under
+canonical inventory/device locks. With no committed marker, it aborts only
+when all destinations are absent and all staged files match. A matching
+destination subset or a fully visible matching destination set is now
+classified from exact identities, lengths, and SHA-256 values, but remains a
+typed hold because the full trust/cutoff and `RetrievalSafetyState` recovery
+gate is not wired. Mismatched, duplicated, or missing staged/destination files
+also hold and preserve evidence. A closed v1 committed-marker parser and typed
+startup hold exist. A valid final marker is cleaned up only after its exact
+prepared-manifest digest, staging companion, and every destination pass locked
+checks. A valid temporary marker is promoted no-replace only when every
+destination matches, then synced, read back, and cleaned up under the same
+locked checks. The working tree has an internal no-replace canonical publisher
+and committed-marker writer that consume the local-policy/M3-M4 lock-bearing
+token. They are tested on synthetic fixtures but are not called by managed
+transport or a production IPC path. No-marker destination/companion replay and
+transport-to-publication wiring remain unavailable. The prepared
+staging/journal path now uses the M8-scoped
+Windows `sync_staged_parent` directory-handle flush for placement/removal; this
+does not establish durability for canonical destination publication, the
+separate pending journal, or power loss. The Windows process-interruption tests passed 2/2 at the pre-marker checkpoint.
+After companion/destination classification and lock-bound revalidation, the
+focused group grew to 40 `import_staging::tests` on Windows; the daemon library
+suite passed 440 tests with 4 ignored. `cargo fmt --all -- --check`, strict
+release Clippy, and `git diff --check` pass. New Windows-host process-kill
+coverage exercises the publisher after one destination move, after committed
+marker temp sync, and after final-marker placement/read-back; recovery holds and
+preserves evidence at each. These are process-crash and host-filesystem results,
+not physical power-loss or supported-filesystem durability proof. Current
+tests cover matching-subset classification, valid final/temp marker companion
+holds, marker/manifest replacement after lock acquisition, malformed final and
+temporary markers with staging present, final+temporary coexistence, and
+byte-preservation of marker/manifest/staging evidence. They also exercise a
+synthetic complete publisher transaction and recognize that moved staged files
+are represented by matching canonical destinations. They do not exercise
+valid-final cleanup or publication replay. Companion digest/tree checks begin
+before lock acquisition to derive the lock set; then the marker and manifest
+are re-read and compared and the staged-file subset/destinations are rechecked
+under canonical locks. These runs supersede the earlier OS error 4551 result.
 The isolated `pilot-fixture` canonical writer also runs the existing import
 recovery gate after acquiring the instance lock and before writing identity or
 events; it now reconciles intact prepared transactions as described above.
@@ -833,20 +1101,25 @@ complete versioned canonical scan while the inventory/device locks remain held;
 the importer-only staging slot must be released first, with the unprepared
 transaction tree retaining the single-flight claim. These remain validation
 primitives and do not authorize publication or implement trust/cutoff/
-`RetrievalSafetyState` policy. The focused batch/recovery test and the complete
-`import_staging::tests` group pass on Windows (13/13).
+`RetrievalSafetyState` policy. The focused batch/recovery tests are included in
+the current Windows `import_staging::tests` result (21/21).
 The Windows staging path now validates current-user ownership and walks each
 local-drive directory component relative to a held parent handle, opening the
 component itself so reparse points are rejected. Its focused native tests cover
 junction refusal and a blocked ancestor rename while handles remain open; they
 are not full race/fault-injection or independent-review evidence. macOS still
-has only static path checks. Windows parent-directory sync is not implemented
-by `sync_directory`; `MoveFileExW(MOVEFILE_WRITE_THROUGH)` placement has not
-yet had native crash-fault verification. The M8 approval session and bootstrap
-parser are absent, and the v3 security reader is not integrated. Trust
-activation remains blocked on import publication/recovery, approval,
-retrieval-safety, platform durability, macOS parity, and independent security
-review.
+has only static path checks. The general Windows `sync_directory` remains a
+no-op; the scoped `sync_staged_parent` flush is used for staging/prepared
+journal and the test-exercised publication primitive, but does not prove
+pending-journal or canonical-publication parent durability. Process-kill
+publication boundaries are covered, but physical power loss and the target
+filesystem durability strategy remain unresolved. The bounded bootstrap
+parser/transcript verifier, pending journal, authenticated Windows approval
+session, and local-trust completion path now exist. The v3 security reader and
+trust/cutoff reducer feed `RetrievalSafetyState` on Windows. These local trust
+and retrieval paths do not activate peer transport. Remote replication remains
+blocked on transport exchange and validation, canonical publication/recovery,
+platform durability, macOS parity, and independent security review.
 
 The import journal uses unique transaction IDs, immutable prepared manifests,
 and separate no-replace committed markers; it does not mutate one shared
@@ -859,10 +1132,10 @@ single-instance lock while reconciling manifests/markers before any transport
 or reader starts. This import-journal mutex is distinct from the pending-journal
 mutex described below; neither mutex may be held across canonical-lock waits.
 
-The flow remains subject to independent security review, platform durability
-verification, and explicit owner acceptance before implementation or trust
-activation. It does not claim protection against arbitrary same-user malware
-that directly edits local application data outside Cryptex's supported APIs.
+The flow remains subject to independent security review and platform durability
+verification before remote transport/publication activation. It does not claim
+protection against arbitrary same-user malware that directly edits local
+application data outside Cryptex's supported APIs.
 
 The pending-journal transaction mutex must not be held while waiting for
 inventory/device/sequence locks or for owner/transport input. Claim a
@@ -883,7 +1156,8 @@ discover the durable result. Journal/canonical mismatches fail closed.
   mechanism separately for Windows and macOS. Document the OS identity evidence
   the daemon verifies, how it remains bound to the live IPC connection, and how
   process replacement/reuse is rejected; PID or same-user checks alone do not
-  satisfy this gate.
+  satisfy this gate. The candidate pins above remain PROPOSED until both native
+  platform test matrices and an independent review pass.
 - Independent review of the reduction algorithm, cycle/mutual restriction
   cases, cutoff boundary hash, fork handling, order-independent convergence,
   and guarded hold scope. Required reducer vectors include at least:
@@ -949,8 +1223,20 @@ unaccepted. The 2026-10-22 independent re-review recommended NOT READY; a
 documentation follow-up pinned SCC/condensation-ordered eligibility filtering,
 self-retirement as a per-identity cap, a competing-fork predicate, and reducer
 vectors. That follow-up is not a new independent review and does not close the
-importer lock-participation or per-platform IPC binding gates. No code, schema,
+importer lock-participation or per-platform IPC binding gates. The 2026-10-25
+Cursor follow-up also returned NOT READY: macOS handoff authenticity and
+supported user-space process-generation/code-signature validation remain
+underspecified; Windows peer binding is not the R1 approval-session protocol;
+publish/recovery must rebind policy on the locked snapshot, revalidate subset
+finish, and cover marker ambiguity and Windows marker-parent durability. Apple
+XNU source confirms the opaque token warning and internal PID-version check,
+but these do not establish a supported user-space identity API or native
+guarantee. No code, schema,
 writer, resolver, IPC mutation, pairing UI, or peer transport activation is
-authorized. Existing Windows lifecycle receipts remain scoped to their tested
+authorized by this proposal as a whole. The owner's 2026-10-23 approval in
+§5.1.1 separately authorizes implementation of that Windows publication-flow
+slice only; it does not accept the proposed trust schema, authorize trust or
+peer transport activation, or close the independent review, durability, or
+macOS gates. Existing Windows lifecycle receipts remain scoped to their tested
 gates. M8 and the consolidated Mac stage remain open; M7 stays deferred; no
 Actions are requested.

@@ -210,6 +210,21 @@ pub fn load_existing_event_verifying_key<S: SecureStore + ?Sized>(
     runtime_root: &Path,
     device_id: &DeviceId,
 ) -> EventSigningKeyResult<(EventSigningKeyPublic, VerifyingKey)> {
+    let ready = load_existing_event_signing_key(store, env, runtime_root, device_id)?;
+    let verifying_key = ready.signing_key.verifying_key();
+    Ok((ready.public, verifying_key))
+}
+
+/// Load the already enrolled signing key without creating or repairing any
+/// SecureStore item, runtime directory, lock file, or public metadata. This is
+/// reserved for daemon operations that have passed an explicit owner-approval
+/// gate; ordinary identity/retrieval paths should use the verifying-key API.
+pub fn load_existing_event_signing_key<S: SecureStore + ?Sized>(
+    store: &S,
+    env: SecureStoreEnvironment,
+    runtime_root: &Path,
+    device_id: &DeviceId,
+) -> EventSigningKeyResult<ReadyEventSigningKey> {
     assert_outside_repository(runtime_root)
         .map_err(|error| EventSigningKeyError::Io(error.to_string()))?;
 
@@ -229,9 +244,8 @@ pub fn load_existing_event_verifying_key<S: SecureStore + ?Sized>(
     let account = AccountLabel::device_event_signing_seed(device_id.as_str());
     let seed = store.get(service.as_str(), account.as_str())?;
     let ready = ready_from_seed_and_meta(&seed, &metadata, device_id)?;
-    let verifying_key = ready.signing_key.verifying_key();
     drop(lock);
-    Ok((metadata, verifying_key))
+    Ok(ready)
 }
 
 fn fresh_create<S: SecureStore + ?Sized>(
@@ -642,6 +656,46 @@ mod tests {
         assert_eq!(first.public.signing_key_id, second.public.signing_key_id);
         assert_eq!(first.public.public_key, second.public.public_key);
         assert_eq!(first.public.public_key.len(), 64);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn read_only_signing_key_loader_reads_existing_key() {
+        let root = temp_root("read-only-existing");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("device-read-only").unwrap();
+        let created = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .unwrap();
+
+        let loaded =
+            load_existing_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device)
+                .unwrap();
+        assert_eq!(loaded.public, created.public);
+        assert_eq!(
+            loaded.signing_key.to_bytes(),
+            created.signing_key.to_bytes()
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn read_only_signing_key_loader_does_not_initialize_missing_state() {
+        let root = temp_root("read-only-missing");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("device-read-only-missing").unwrap();
+
+        let result =
+            load_existing_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device);
+
+        assert!(matches!(result, Err(EventSigningKeyError::Io(_))));
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
         let _ = fs::remove_dir_all(&root);
     }
 

@@ -671,6 +671,7 @@ fn real_pinned_profile_provision_reopen_and_collision_recovery() {
         selected,
     )
     .unwrap();
+    let worker_status = worker.status_reader();
     let deadline = Instant::now() + Duration::from_secs(18);
     let worker_pid = loop {
         let snapshot = worker.snapshot().unwrap();
@@ -678,6 +679,10 @@ fn real_pinned_profile_provision_reopen_and_collision_recovery() {
         if let Some(status) = snapshot.controller
             && status.phase == Phase::LocalReady
         {
+            assert_eq!(
+                worker_status.try_transport_device_id().unwrap(),
+                identity.as_deref().expect("prepared adapter identity")
+            );
             break status.pid.unwrap();
         }
         assert!(Instant::now() < deadline, "worker readiness deadline");
@@ -713,6 +718,10 @@ fn real_pinned_profile_provision_reopen_and_collision_recovery() {
         Ok(Outcome::CleanShutdown)
     );
     assert_eq!(worker.snapshot().unwrap().state, WorkerState::Finished);
+    assert_eq!(
+        worker_status.try_transport_device_id(),
+        Err(WorkerError::StatusUnavailable)
+    );
     drop(worker);
     // Exercise the actual daemon startup/stop call sites while no profile owner
     // remains. CLI parent intentionally receives health-only IPC, not Desktop.

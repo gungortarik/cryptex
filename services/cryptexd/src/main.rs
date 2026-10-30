@@ -35,7 +35,8 @@ fn main() {
                 LifecycleError::AlreadyRunning { .. } => 1,
                 LifecycleError::Incompatible(_) => 3,
                 LifecycleError::UnsafeRuntimePath(_) => 4,
-                LifecycleError::ImportRecoveryConflict(_) => 5,
+                LifecycleError::ImportRecoveryConflict(_)
+                | LifecycleError::PeerApprovalRecoveryConflict(_) => 5,
                 LifecycleError::Usage(_) => 2,
                 _ => 2,
             };
@@ -137,7 +138,7 @@ fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
     }
     validate_pilot_fixture_root(&runtime_root)?;
     let _instance = try_acquire_instance(&runtime_root)?;
-    recover_import_state_before_writer(&runtime_root)?;
+    recover_writer_state_before_start(&runtime_root)?;
     prepare_m1_runtime_foundation(&runtime_root)
         .map_err(|error| LifecycleError::Attention(error.to_string()))?;
     let (brain_id, event_id) = seed_timeline_fixture_with_platform_store(&runtime_root)?;
@@ -153,9 +154,58 @@ fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
     Ok(())
 }
 
-fn recover_import_state_before_writer(runtime_root: &Path) -> Result<(), LifecycleError> {
+fn recover_writer_state_before_start(runtime_root: &Path) -> Result<(), LifecycleError> {
+    recover_import_staging_before_start(runtime_root)?;
+    reconcile_platform_peer_approval_anchors(runtime_root)
+}
+
+#[cfg(windows)]
+fn recover_import_staging_before_start(runtime_root: &Path) -> Result<(), LifecycleError> {
+    let store = cryptexd::WindowsCredentialStore::new();
+    cryptexd::import_staging::recover_import_staging_with_policy_verifier(
+        runtime_root,
+        |root, transaction, manifest| {
+            cryptexd::import_staging::verify_visible_prepared_recovery_with_local_state(
+                root,
+                transaction,
+                manifest,
+                &store,
+                SecureStoreEnvironment::Dev,
+            )
+        },
+    )
+    .map_err(|error| LifecycleError::ImportRecoveryConflict(error.to_string()))
+}
+
+#[cfg(not(windows))]
+fn recover_import_staging_before_start(runtime_root: &Path) -> Result<(), LifecycleError> {
     cryptexd::import_staging::recover_import_staging(runtime_root)
         .map_err(|error| LifecycleError::ImportRecoveryConflict(error.to_string()))
+}
+
+#[cfg(windows)]
+fn reconcile_platform_peer_approval_anchors(runtime_root: &Path) -> Result<(), LifecycleError> {
+    cryptexd::knowledge_materialization::reconcile_peer_approval_anchors_before_startup(
+        runtime_root,
+        &cryptexd::WindowsCredentialStore::new(),
+        SecureStoreEnvironment::Dev,
+    )
+    .map_err(|error| LifecycleError::PeerApprovalRecoveryConflict(error.to_string()))
+}
+
+#[cfg(target_os = "macos")]
+fn reconcile_platform_peer_approval_anchors(runtime_root: &Path) -> Result<(), LifecycleError> {
+    cryptexd::knowledge_materialization::reconcile_peer_approval_anchors_before_startup(
+        runtime_root,
+        &cryptexd::MacosKeychainStore::new(),
+        SecureStoreEnvironment::Dev,
+    )
+    .map_err(|error| LifecycleError::PeerApprovalRecoveryConflict(error.to_string()))
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn reconcile_platform_peer_approval_anchors(_runtime_root: &Path) -> Result<(), LifecycleError> {
+    Ok(())
 }
 
 fn validate_pilot_fixture_root(runtime_root: &Path) -> Result<(), LifecycleError> {
@@ -348,7 +398,7 @@ fn prepare_identity_enrollment(
 ) -> Result<cryptexd::instance::InstanceLock, LifecycleError> {
     ensure_runtime_root(runtime_root)?;
     let instance = try_acquire_instance(runtime_root)?;
-    recover_import_state_before_writer(runtime_root)?;
+    recover_writer_state_before_start(runtime_root)?;
     Ok(instance)
 }
 
@@ -464,8 +514,7 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             ensure_runtime_root(&opts.runtime_root)?;
             // Acquire the single-instance lock before any durable identity writes.
             let lock = try_acquire_instance(&opts.runtime_root)?;
-            cryptexd::import_staging::recover_import_staging(&opts.runtime_root)
-                .map_err(|error| LifecycleError::ImportRecoveryConflict(error.to_string()))?;
+            recover_writer_state_before_start(&opts.runtime_root)?;
             let install = prepare_m1_runtime_foundation(&opts.runtime_root)
                 .map_err(|e| e.into_lifecycle())?;
             #[cfg(windows)]
@@ -1191,7 +1240,7 @@ mod tests {
         )
         .expect("unknown journal marker");
 
-        let error = recover_import_state_before_writer(&root)
+        let error = recover_writer_state_before_start(&root)
             .expect_err("unknown import state must stop canonical writers");
         assert!(matches!(error, LifecycleError::ImportRecoveryConflict(_)));
         assert!(!cryptexd::identity_runtime::brain_identity_path(&root).exists());

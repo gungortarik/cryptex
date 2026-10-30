@@ -263,6 +263,112 @@ fn p0_3_ipc_health() -> Result<cryptexd::ipc::HealthResponse, String> {
 }
 
 #[tauri::command]
+fn m8_new_bootstrap_transaction_id() -> Result<String, String> {
+    cryptexd::ipc::desktop_new_bootstrap_transaction_id().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn m8_read_bootstrap_brain_identity() -> Result<String, String> {
+    cryptexd::ipc::desktop_read_bootstrap_brain_identity(Duration::from_secs(10))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn m8_read_transport_device_id() -> Result<String, String> {
+    cryptexd::ipc::desktop_read_transport_device_id(Duration::from_secs(10))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn m8_create_bootstrap_offer(
+    transaction_id: String,
+    transport_device_id: String,
+) -> Result<cryptexd::ipc::DesktopBootstrapExchangeResult, String> {
+    cryptexd::ipc::desktop_create_bootstrap_offer(
+        transaction_id,
+        transport_device_id,
+        Duration::from_secs(10),
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn m8_create_bootstrap_proof(
+    offer_message: String,
+    brain_identity_json: String,
+    transport_device_id: String,
+) -> Result<cryptexd::ipc::DesktopBootstrapExchangeResult, String> {
+    cryptexd::ipc::desktop_create_bootstrap_proof(
+        offer_message,
+        brain_identity_json,
+        transport_device_id,
+        Duration::from_secs(10),
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn m8_prepare_peer_approval(
+    role: String,
+    transcript_messages: Vec<String>,
+) -> Result<cryptexd::ipc::DesktopBootstrapApprovalPrepared, String> {
+    cryptexd::ipc::desktop_prepare_bootstrap_approval(
+        role,
+        transcript_messages,
+        Duration::from_secs(10),
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn m8_confirm_peer_approval(
+    session_handle: String,
+) -> Result<cryptexd::ipc::DesktopBootstrapApprovalResult, String> {
+    cryptexd::ipc::desktop_confirm_bootstrap_approval(session_handle)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn m8_cancel_peer_approval(
+    session_handle: String,
+) -> Result<cryptexd::ipc::DesktopBootstrapApprovalResult, String> {
+    cryptexd::ipc::desktop_cancel_bootstrap_approval(session_handle)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn m8_complete_peer_approval(
+    transcript_messages: Vec<String>,
+) -> Result<cryptexd::ipc::DesktopBootstrapApprovalResult, String> {
+    cryptexd::ipc::desktop_complete_peer_approval(transcript_messages, Duration::from_secs(10))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn m8_prepare_owner_security_operation(
+    input: cryptexd::ipc::DesktopOwnerSecurityOperationInput,
+) -> Result<cryptexd::ipc::DesktopOwnerSecurityOperationPrepared, String> {
+    cryptexd::ipc::desktop_prepare_owner_security_operation(input, Duration::from_secs(15))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn m8_confirm_owner_security_operation(
+    session_handle: String,
+) -> Result<cryptexd::ipc::DesktopOwnerSecurityOperationResult, String> {
+    cryptexd::ipc::desktop_confirm_owner_security_operation(session_handle)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn m8_cancel_owner_security_operation(
+    session_handle: String,
+) -> Result<cryptexd::ipc::DesktopOwnerSecurityOperationResult, String> {
+    cryptexd::ipc::desktop_cancel_owner_security_operation(session_handle)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn p0_4_guarded_search(
     query: cryptexd::ipc::DesktopSearchQuery,
 ) -> Result<cryptexd::ipc::DesktopSearchResponse, String> {
@@ -2332,6 +2438,18 @@ fn main() {
             p0_2_start_daemon,
             p0_2_daemon_status,
             p0_3_ipc_health,
+            m8_new_bootstrap_transaction_id,
+            m8_read_bootstrap_brain_identity,
+            m8_read_transport_device_id,
+            m8_create_bootstrap_offer,
+            m8_create_bootstrap_proof,
+            m8_prepare_peer_approval,
+            m8_confirm_peer_approval,
+            m8_cancel_peer_approval,
+            m8_complete_peer_approval,
+            m8_prepare_owner_security_operation,
+            m8_confirm_owner_security_operation,
+            m8_cancel_owner_security_operation,
             p0_4_guarded_search,
             p0_5_guarded_timeline,
             p0_5_guarded_event_detail,

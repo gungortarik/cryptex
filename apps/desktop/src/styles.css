@@ -231,3 +231,36 @@ button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, va
 .capture-confirm-dialog h2 { margin: 0; font-family: var(--display); font-size: 27px; font-weight: 500; }
 .capture-confirm-dialog > p:not(.panel-kicker) { color: var(--muted); line-height: 1.55; }
 .capture-confirm-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+
+.bootstrap-panel {
+  margin: 24px 0 8px; padding: 22px; border: 1px solid var(--line);
+  border-radius: 14px; background: var(--surface);
+}
+.bootstrap-panel h2, .bootstrap-review h3 {
+  margin: 0 0 6px; font-family: var(--display); font-size: 23px;
+  font-weight: 500; letter-spacing: -0.025em;
+}
+.bootstrap-form { display: grid; gap: 8px; }
+.bootstrap-form label, .bootstrap-signed-message {
+  color: var(--muted); font-size: 12px; font-weight: 650;
+}
+.bootstrap-form select, .bootstrap-form textarea, .bootstrap-form input, .bootstrap-review select, .bootstrap-review input, .bootstrap-review textarea, .bootstrap-signed-message textarea {
+  width: 100%; padding: 11px 13px; border: 1px solid var(--line);
+  border-radius: 9px; background: var(--surface); color: var(--ink);
+  font: inherit; font-size: 13px;
+}
+.bootstrap-form textarea, .bootstrap-review textarea, .bootstrap-signed-message textarea {
+  min-height: 112px; resize: vertical; overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.bootstrap-form button { justify-self: end; margin-top: 6px; }
+.bootstrap-review { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.bootstrap-review dl { display: grid; grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1.3fr); gap: 9px 16px; }
+.bootstrap-review dt { color: var(--muted); font-size: 12px; }
+.bootstrap-review dd { min-width: 0; margin: 0; font-size: 12px; }
+.bootstrap-review code { overflow-wrap: anywhere; user-select: all; }
+.bootstrap-signed-message { display: grid; gap: 8px; margin-top: 16px; }
+@media (max-width: 620px) {
+  .bootstrap-review dl { grid-template-columns: 1fr; gap: 4px; }
+  .bootstrap-review dd { margin-bottom: 10px; }
+}

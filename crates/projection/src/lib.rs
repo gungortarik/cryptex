@@ -33,7 +33,7 @@ pub use ingest::{project_memory_note, project_memory_notes};
 pub use layout::{PROJECTION_DB_FILE_NAME, derived_projection_dir, projection_sqlite_path};
 pub use schema::{
     PROJECTION_BUILD_ID_V1, PROJECTION_SCHEMA_VERSION, apply_schema_v1, read_schema_version,
-    validate_schema_v1,
+    validate_schema_v1, validate_schema_v1_read_only,
 };
 pub use search::{
     SearchHit, SearchQuery, TimelineCursor, TimelinePage, TimelineQuery, event_detail,

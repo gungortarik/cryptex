@@ -14,7 +14,7 @@ pub struct InstallId(String);
 /// case-insensitive Windows/macOS filesystems (ADR-0015 path-safety).
 ///
 /// `Deserialize` routes through the same checks as [`DeviceId::new`].
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct DeviceId(String);
 
 impl InstallId {

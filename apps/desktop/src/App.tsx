@@ -51,6 +51,58 @@ type LocalEnrollmentResponse = {
   deviceId: string;
 };
 
+type ApprovalIdentity = {
+  deviceId: string;
+  signingKeyId: string;
+  publicKeyFingerprintSha256: string;
+};
+
+type PeerApprovalSnapshot = {
+  brainId: string;
+  transactionId: string;
+  role: string;
+  operation: string;
+  agreementHash: string | null;
+  previousMessageHash: string | null;
+  localIdentity: ApprovalIdentity;
+  peerIdentity: ApprovalIdentity | null;
+  transportAssociation: { localDeviceId: string; peerDeviceId: string } | null;
+  restrictionTarget: string | null;
+  restrictionReason: string | null;
+  cutoffSeq: string | null;
+  cutoffContentHash: string | null;
+  lastAuthorizedSeq: string | null;
+  lastAuthorizedContentHash: string | null;
+};
+
+type PeerApprovalPrepared = {
+  sessionHandle: string;
+  snapshot: PeerApprovalSnapshot;
+};
+
+type PeerApprovalResult = {
+  accepted: boolean;
+  error: string | null;
+  signedMessage: string | null;
+};
+
+type OwnerSecurityOperationPrepared = {
+  sessionHandle: string;
+  snapshot: PeerApprovalSnapshot;
+};
+
+type OwnerSecurityOperationResult = {
+  accepted: boolean;
+  error: string | null;
+};
+
+type BootstrapExchangeResult = {
+  accepted: boolean;
+  error: string | null;
+  transactionId: string | null;
+  exchangeMessage: string | null;
+};
+
 type CaptureResponse = {
   accepted: boolean;
   outcome: string | null;
@@ -131,6 +183,29 @@ export function App() {
   const [searching, setSearching] = useState(false);
   const [vaultBusy, setVaultBusy] = useState(false);
   const [vaultStatus, setVaultStatus] = useState<string | null>(null);
+  const [approvalRole, setApprovalRole] = useState<"initiator" | "responder">("initiator");
+  const [approvalTranscript, setApprovalTranscript] = useState("");
+  const [approvalPrepared, setApprovalPrepared] = useState<PeerApprovalPrepared | null>(null);
+  const [approvedSnapshot, setApprovedSnapshot] = useState<PeerApprovalSnapshot | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [approvalStatus, setApprovalStatus] = useState<string | null>(null);
+  const [ownerOperationKind, setOwnerOperationKind] = useState<"device_restriction" | "self_retirement">("device_restriction");
+  const [ownerTargetDeviceId, setOwnerTargetDeviceId] = useState("");
+  const [ownerRestrictionReason, setOwnerRestrictionReason] = useState<"retired" | "compromised">("compromised");
+  const [ownerCutoffSeq, setOwnerCutoffSeq] = useState("");
+  const [ownerOperationPrepared, setOwnerOperationPrepared] = useState<OwnerSecurityOperationPrepared | null>(null);
+  const [ownerOperationStatus, setOwnerOperationStatus] = useState<string | null>(null);
+  const [signedApproval, setSignedApproval] = useState<string | null>(null);
+  const [completionTranscript, setCompletionTranscript] = useState("");
+  const [exchangeTransportId, setExchangeTransportId] = useState("");
+  const [exchangeTransactionId, setExchangeTransactionId] = useState("");
+  const [exchangeOffer, setExchangeOffer] = useState("");
+  const [exchangeProof, setExchangeProof] = useState("");
+  const [incomingOffer, setIncomingOffer] = useState("");
+  const [incomingBrainIdentity, setIncomingBrainIdentity] = useState("");
+  const [localBrainIdentity, setLocalBrainIdentity] = useState("");
+  const [incomingProof, setIncomingProof] = useState("");
+  const [incomingInitiatorApproval, setIncomingInitiatorApproval] = useState("");
   const [enrolling, setEnrolling] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -185,6 +260,240 @@ export function App() {
       );
     } finally {
       setVaultBusy(false);
+    }
+  }
+
+  async function preparePeerApproval(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setApprovalBusy(true);
+    setApprovalStatus(null);
+    setSignedApproval(null);
+    setCompletionTranscript("");
+    setApprovedSnapshot(null);
+    try {
+      const messages = approvalTranscript.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      const prepared = await invoke<PeerApprovalPrepared>("m8_prepare_peer_approval", {
+        role: approvalRole,
+        transcriptMessages: messages,
+      });
+      setApprovalPrepared(prepared);
+      setApprovedSnapshot(prepared.snapshot);
+      setApprovalStatus("Review every value below and compare the full identifiers with the other device over a trusted separate channel.");
+    } catch {
+      setApprovalPrepared(null);
+      setApprovalStatus("Cryptex could not verify this signed transcript. No approval was created.");
+    } finally {
+      setApprovalBusy(false);
+    }
+  }
+
+  async function createBootstrapOffer() {
+    setApprovalBusy(true);
+    setApprovalStatus(null);
+    try {
+      const transportDeviceId = await invoke<string>("m8_read_transport_device_id");
+      setExchangeTransportId(transportDeviceId);
+      const transactionId = exchangeTransactionId || await invoke<string>("m8_new_bootstrap_transaction_id");
+      setExchangeTransactionId(transactionId);
+      const result = await invoke<BootstrapExchangeResult>("m8_create_bootstrap_offer", {
+        transactionId,
+        transportDeviceId,
+      });
+      if (!result.accepted || !result.exchangeMessage) {
+        setApprovalStatus(`Offer was not created. ${result.error ?? "No signed message was returned."}`);
+        return;
+      }
+      setExchangeOffer(result.exchangeMessage);
+      setApprovalStatus(`Signed offer saved in the daemon journal. Transaction ${result.transactionId ?? "unknown"}. No transport or sync was started.`);
+    } catch (error) {
+      setApprovalStatus(`Offer was not created: ${String(error)}`);
+    } finally {
+      setApprovalBusy(false);
+    }
+  }
+
+  async function readBootstrapBrainIdentity() {
+    setApprovalBusy(true);
+    setApprovalStatus(null);
+    try {
+      const identity = await invoke<string>("m8_read_bootstrap_brain_identity");
+      setLocalBrainIdentity(identity);
+      setApprovalStatus("Canonical public Brain identity loaded. It contains no signing key; copy it to the joining device over your separate trusted channel.");
+    } catch {
+      setApprovalStatus("Cryptex could not read the canonical Brain identity. No file was changed.");
+    } finally {
+      setApprovalBusy(false);
+    }
+  }
+
+  async function createBootstrapProof() {
+    setApprovalBusy(true);
+    setApprovalStatus(null);
+    try {
+      const transportDeviceId = await invoke<string>("m8_read_transport_device_id");
+      setExchangeTransportId(transportDeviceId);
+      const result = await invoke<BootstrapExchangeResult>("m8_create_bootstrap_proof", {
+        offerMessage: incomingOffer.trim(),
+        brainIdentityJson: incomingBrainIdentity.trim(),
+        transportDeviceId,
+      });
+      if (!result.accepted || !result.exchangeMessage) {
+        setApprovalStatus(`Proof was not created. ${result.error ?? "No signed message was returned."}`);
+        return;
+      }
+      setExchangeProof(result.exchangeMessage);
+      setApprovalStatus(`Signed proof saved in the daemon journal for transaction ${result.transactionId ?? "unknown"}. No trust or sync was activated.`);
+    } catch (error) {
+      setApprovalStatus(`Proof was not created: ${String(error)}`);
+    } finally {
+      setApprovalBusy(false);
+    }
+  }
+
+  function loadExchangeIntoApprovalReview() {
+    const messages = approvalRole === "initiator"
+      ? [exchangeOffer, incomingProof]
+      : [incomingOffer, exchangeProof, incomingInitiatorApproval];
+    if (messages.some((message) => !message.trim())) {
+      setApprovalStatus("Complete the signed-message exchange fields first. Nothing was approved.");
+      return;
+    }
+    setApprovalTranscript(messages.map((message) => message.trim()).join("\n"));
+    setApprovalPrepared(null);
+    setSignedApproval(null);
+    setCompletionTranscript("");
+    setApprovalStatus("Exchange messages loaded for verification. Verify and review will authenticate them before showing an approval.");
+  }
+
+  async function confirmPeerApproval() {
+    if (!approvalPrepared) return;
+    setApprovalBusy(true);
+    setApprovalStatus(null);
+    try {
+      const result = await invoke<PeerApprovalResult>("m8_confirm_peer_approval", {
+        sessionHandle: approvalPrepared.sessionHandle,
+      });
+      setApprovalPrepared(null);
+      if (!result.accepted || !result.signedMessage) {
+        setApprovalStatus("Approval was not signed. Review the transcript again before retrying.");
+        return;
+      }
+      setSignedApproval(result.signedMessage);
+      const prefix = approvalTranscript.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      setCompletionTranscript([...prefix, result.signedMessage].join("\n"));
+      setApprovalStatus("Signed approval created. It is not yet a durable trust record; no device was added to the trusted roster.");
+    } catch {
+      setApprovalPrepared(null);
+      setApprovalStatus("Approval could not be completed. The confirmation expired or was consumed; prepare and review it again.");
+    } finally {
+      setApprovalBusy(false);
+    }
+  }
+
+  async function cancelPeerApproval() {
+    if (!approvalPrepared) return;
+    setApprovalBusy(true);
+    try {
+      const result = await invoke<PeerApprovalResult>("m8_cancel_peer_approval", {
+        sessionHandle: approvalPrepared.sessionHandle,
+      });
+      setApprovalPrepared(null);
+      setApprovalStatus(result.accepted ? "Approval cancelled. No signature was created." : "Cancellation could not be confirmed. No trust change was made.");
+    } catch {
+      setApprovalPrepared(null);
+      setApprovalStatus("Approval session closed. No trust change was made.");
+    } finally {
+      setApprovalBusy(false);
+    }
+  }
+
+  async function completePeerApproval() {
+    setApprovalBusy(true);
+    setApprovalStatus(null);
+    try {
+      const messages = completionTranscript.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      const result = await invoke<PeerApprovalResult>("m8_complete_peer_approval", {
+        transcriptMessages: messages,
+      });
+      if (!result.accepted) {
+        setApprovalStatus("Cryptex could not safely record this pairing. The transcript was kept for review; no trust change was confirmed.");
+        return;
+      }
+      setApprovalStatus("Pairing recorded in canonical local history. Device sync is not started by this action.");
+    } catch {
+      setApprovalStatus("Pairing could not be recorded. Keep the exact four signed messages and retry after checking the transaction status.");
+    } finally {
+      setApprovalBusy(false);
+    }
+  }
+
+  async function prepareOwnerSecurityOperation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setApprovalBusy(true);
+    setOwnerOperationStatus(null);
+    try {
+      const cutoff = ownerOperationKind === "device_restriction" ? Number(ownerCutoffSeq) : null;
+      if (ownerOperationKind === "device_restriction"
+        && (!Number.isSafeInteger(cutoff) || cutoff === null || cutoff < 0)) {
+        setOwnerOperationStatus("Enter an exact cutoff sequence number from the reviewed device history.");
+        return;
+      }
+      const prepared = await invoke<OwnerSecurityOperationPrepared>("m8_prepare_owner_security_operation", {
+        input: ownerOperationKind === "self_retirement"
+          ? { kind: ownerOperationKind, targetDeviceId: null, reason: null, cutoffSeq: null }
+          : {
+              kind: ownerOperationKind,
+              targetDeviceId: ownerTargetDeviceId.trim(),
+              reason: ownerRestrictionReason,
+              cutoffSeq: cutoff,
+            },
+      });
+      setOwnerOperationPrepared(prepared);
+      setOwnerOperationStatus("Review the complete device identity and exact cutoff below before confirming.");
+    } catch {
+      setOwnerOperationPrepared(null);
+      setOwnerOperationStatus("Cryptex could not verify this owner operation against current canonical trust history. Nothing was changed.");
+    } finally {
+      setApprovalBusy(false);
+    }
+  }
+
+  async function confirmOwnerSecurityOperation() {
+    if (!ownerOperationPrepared) return;
+    setApprovalBusy(true);
+    setOwnerOperationStatus(null);
+    try {
+      const result = await invoke<OwnerSecurityOperationResult>("m8_confirm_owner_security_operation", {
+        sessionHandle: ownerOperationPrepared.sessionHandle,
+      });
+      setOwnerOperationPrepared(null);
+      setOwnerOperationStatus(result.accepted
+        ? "Security operation is anchored in canonical history. The daemon will enforce the new trust cutoff."
+        : `Operation was not completed; the daemon held it for review. ${result.error ?? "No further detail was returned."}`);
+    } catch {
+      setOwnerOperationPrepared(null);
+      setOwnerOperationStatus("Confirmation could not be verified. Check the daemon status before retrying; the request may be held for recovery.");
+    } finally {
+      setApprovalBusy(false);
+    }
+  }
+
+  async function cancelOwnerSecurityOperation() {
+    if (!ownerOperationPrepared) return;
+    setApprovalBusy(true);
+    try {
+      const result = await invoke<OwnerSecurityOperationResult>("m8_cancel_owner_security_operation", {
+        sessionHandle: ownerOperationPrepared.sessionHandle,
+      });
+      setOwnerOperationPrepared(null);
+      setOwnerOperationStatus(result.accepted
+        ? "Operation cancelled. No canonical event was written."
+        : `Cancellation could not be confirmed. ${result.error ?? "No further detail was returned."}`);
+    } catch {
+      setOwnerOperationPrepared(null);
+      setOwnerOperationStatus("Approval session closed. No trust change was confirmed.");
+    } finally {
+      setApprovalBusy(false);
     }
   }
 
@@ -775,6 +1084,265 @@ export function App() {
               {vaultBusy ? "Refreshing…" : "Choose vault, refresh & open"}
             </button>
             {vaultStatus ? <p className="capture-status" role="status">{vaultStatus}</p> : null}
+          </section>
+
+          <section className="bootstrap-panel" aria-labelledby="bootstrap-heading">
+            <div>
+              <p className="panel-kicker">Device trust · M8 Windows flow</p>
+              <h2 id="bootstrap-heading">Review a signed pairing request</h2>
+              <p className="capture-help">
+                Exchange signed public messages by copy and paste. Compare full device IDs, key fingerprints, and transport IDs through a separate trusted channel. This flow does not start transport or sync.
+              </p>
+            </div>
+            {!approvalPrepared ? (
+              <div className="bootstrap-review" aria-labelledby="bootstrap-exchange-heading">
+                <h3 id="bootstrap-exchange-heading">1. Create or receive the signed exchange</h3>
+                <label htmlFor="bootstrap-role">Your role</label>
+                <select
+                  id="bootstrap-role"
+                  value={approvalRole}
+                  onChange={(event) => setApprovalRole(event.target.value as "initiator" | "responder")}
+                  disabled={approvalBusy}
+                >
+                  <option value="initiator">Initiator · create offer</option>
+                  <option value="responder">Responder · create proof</option>
+                </select>
+                <button className="capture-secondary" type="button" onClick={() => void invoke<string>("m8_read_transport_device_id").then((id) => { setExchangeTransportId(id); setApprovalStatus("Adapter identity verified by the daemon’s active local connection."); }).catch(() => { setExchangeTransportId(""); setApprovalStatus("No active, identity-verified adapter is available. Pairing was not created."); })} disabled={approvalBusy || connection !== "active"}>
+                  {exchangeTransportId ? "Refresh verified adapter identity" : "Read verified adapter identity"}
+                </button>
+                {exchangeTransportId ? <p className="capture-help">Verified adapter DeviceId: <code>{exchangeTransportId}</code></p> : <p className="capture-help">Pairing requires the configured adapter to be active. Its DeviceId is read and rechecked by the daemon; it cannot be entered manually.</p>}
+                <button className="capture-secondary" type="button" onClick={() => void readBootstrapBrainIdentity()} disabled={approvalBusy || connection !== "active"}>
+                  {approvalBusy ? "Reading…" : "Show public Brain identity to share"}
+                </button>
+                {localBrainIdentity ? <label className="bootstrap-signed-message" htmlFor="bootstrap-brain-identity-output">Public Brain identity JSON · copy exactly<textarea id="bootstrap-brain-identity-output" value={localBrainIdentity} readOnly rows={4} /></label> : null}
+                {approvalRole === "initiator" ? (
+                  <>
+                    <label htmlFor="bootstrap-transaction-id">Transaction ID · keep it to resume after restart</label>
+                    <input
+                      id="bootstrap-transaction-id"
+                      value={exchangeTransactionId}
+                      onChange={(event) => {
+                        setExchangeTransactionId(event.target.value.trim());
+                        setExchangeOffer("");
+                      }}
+                      placeholder="Generated once, or paste a saved transaction ID"
+                      maxLength={64}
+                      disabled={approvalBusy}
+                    />
+                    <button className="search-button" type="button" onClick={() => void createBootstrapOffer()} disabled={approvalBusy || connection !== "active"}>
+                      {approvalBusy ? "Creating…" : exchangeTransactionId ? "Create or resume signed offer" : "Create signed offer"}
+                    </button>
+                    {exchangeTransactionId ? <button className="capture-secondary" type="button" onClick={() => { setExchangeTransactionId(""); setExchangeOffer(""); setIncomingProof(""); setApprovalTranscript(""); }} disabled={approvalBusy}>Start a new transaction</button> : null}
+                    {exchangeOffer ? <label className="bootstrap-signed-message" htmlFor="bootstrap-offer-output">Offer · send to the responder<textarea id="bootstrap-offer-output" value={exchangeOffer} readOnly rows={4} /></label> : null}
+                    <label htmlFor="bootstrap-proof-input">Responder’s signed proof</label>
+                    <textarea id="bootstrap-proof-input" value={incomingProof} onChange={(event) => setIncomingProof(event.target.value)} rows={4} maxLength={65536} disabled={approvalBusy} />
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor="bootstrap-offer-input">Initiator’s signed offer</label>
+                    <textarea id="bootstrap-offer-input" value={incomingOffer} onChange={(event) => setIncomingOffer(event.target.value)} rows={4} maxLength={65536} disabled={approvalBusy} />
+                    <label htmlFor="bootstrap-brain-identity">Existing Brain identity JSON · copy exactly from the initiating device</label>
+                    <textarea id="bootstrap-brain-identity" value={incomingBrainIdentity} onChange={(event) => setIncomingBrainIdentity(event.target.value)} rows={4} maxLength={4096} disabled={approvalBusy} />
+                    <p className="capture-help">If this device has no Brain identity, the daemon will create the explicit join-existing-Brain setup from this exact public identity, only when no conflicting local state exists. A different local Brain is never replaced.</p>
+                    <button className="search-button" type="button" onClick={() => void createBootstrapProof()} disabled={approvalBusy || connection !== "active" || !incomingOffer.trim() || !incomingBrainIdentity.trim()}>
+                      {approvalBusy ? "Creating…" : exchangeProof ? "Resume signed proof" : "Verify offer and create proof"}
+                    </button>
+                    {exchangeProof ? <label className="bootstrap-signed-message" htmlFor="bootstrap-proof-output">Proof · return to the initiator<textarea id="bootstrap-proof-output" value={exchangeProof} readOnly rows={4} /></label> : null}
+                    <label htmlFor="bootstrap-initiator-approval-input">Initiator’s signed approval</label>
+                    <textarea id="bootstrap-initiator-approval-input" value={incomingInitiatorApproval} onChange={(event) => setIncomingInitiatorApproval(event.target.value)} rows={4} maxLength={65536} disabled={approvalBusy} />
+                  </>
+                )}
+                <button className="capture-secondary" type="button" onClick={loadExchangeIntoApprovalReview} disabled={approvalBusy}>
+                  Load messages for owner review
+                </button>
+              </div>
+            ) : null}
+            {!approvalPrepared ? (
+              <form className="bootstrap-form" onSubmit={(event) => void preparePeerApproval(event)}>
+                <h3>2. Verify and review before signing</h3>
+                <p className="capture-help">The signed offer, proof, and any received approval are shown in this exact order. You can inspect or correct the lines before verification.</p>
+                <label htmlFor="bootstrap-transcript">Signed messages · one compact JSON message per line</label>
+                <textarea
+                  id="bootstrap-transcript"
+                  value={approvalTranscript}
+                  onChange={(event) => setApprovalTranscript(event.target.value)}
+                  placeholder={'Paste one complete signed JSON message per line'}
+                  rows={5}
+                  maxLength={1052672}
+                  required
+                  disabled={approvalBusy}
+                />
+                <button className="search-button" type="submit" disabled={approvalBusy || connection !== "active"}>
+                  {approvalBusy ? "Verifying…" : "Verify and review"}
+                </button>
+              </form>
+            ) : (
+              <div className="bootstrap-review" aria-labelledby="bootstrap-review-heading">
+                <h3 id="bootstrap-review-heading">Confirm this exact operation</h3>
+                <p className="capture-help">Compare the full Brain, device IDs, key fingerprints, and transport IDs with the other device over a separate trusted channel. Approving signs this request only.</p>
+                <dl>
+                  <dt>Operation · role</dt><dd>{approvalPrepared.snapshot.operation} · {approvalPrepared.snapshot.role}</dd>
+                  <dt>Brain ID</dt><dd><code>{approvalPrepared.snapshot.brainId}</code></dd>
+                  <dt>Transaction</dt><dd><code>{approvalPrepared.snapshot.transactionId}</code></dd>
+                  <dt>This device</dt><dd><code>{approvalPrepared.snapshot.localIdentity.deviceId}</code></dd>
+                  <dt>This signing-key ID</dt><dd><code>{approvalPrepared.snapshot.localIdentity.signingKeyId}</code></dd>
+                  <dt>This key fingerprint · SHA-256</dt><dd><code>{approvalPrepared.snapshot.localIdentity.publicKeyFingerprintSha256}</code></dd>
+                  <dt>Peer device</dt><dd><code>{approvalPrepared.snapshot.peerIdentity?.deviceId ?? "—"}</code></dd>
+                  <dt>Peer signing-key ID</dt><dd><code>{approvalPrepared.snapshot.peerIdentity?.signingKeyId ?? "—"}</code></dd>
+                  <dt>Peer key fingerprint · SHA-256</dt><dd><code>{approvalPrepared.snapshot.peerIdentity?.publicKeyFingerprintSha256 ?? "—"}</code></dd>
+                  <dt>Transport association</dt><dd><code>{approvalPrepared.snapshot.transportAssociation ? `${approvalPrepared.snapshot.transportAssociation.localDeviceId} ↔ ${approvalPrepared.snapshot.transportAssociation.peerDeviceId}` : "—"}</code></dd>
+                  <dt>Agreement hash</dt><dd><code>{approvalPrepared.snapshot.agreementHash ?? "—"}</code></dd>
+                  <dt>Previous-message hash</dt><dd><code>{approvalPrepared.snapshot.previousMessageHash ?? "—"}</code></dd>
+                </dl>
+                <div className="capture-confirm-actions">
+                  <button className="capture-secondary" type="button" onClick={() => void cancelPeerApproval()} disabled={approvalBusy}>Cancel</button>
+                  <button className="search-button" type="button" onClick={() => void confirmPeerApproval()} disabled={approvalBusy}>
+                    {approvalBusy ? "Signing…" : "Approve and sign"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {approvalStatus ? <p className="capture-status" role="status">{approvalStatus}</p> : null}
+            {signedApproval ? (
+              <>
+                {approvedSnapshot ? (
+                  <div className="bootstrap-review" aria-labelledby="bootstrap-complete-heading">
+                    <h3 id="bootstrap-complete-heading">Device to add after transcript verification</h3>
+                    <dl>
+                      <dt>Peer device</dt><dd><code>{approvedSnapshot.peerIdentity?.deviceId ?? "—"}</code></dd>
+                      <dt>Peer signing-key ID</dt><dd><code>{approvedSnapshot.peerIdentity?.signingKeyId ?? "—"}</code></dd>
+                      <dt>Peer key fingerprint · SHA-256</dt><dd><code>{approvedSnapshot.peerIdentity?.publicKeyFingerprintSha256 ?? "—"}</code></dd>
+                      <dt>Transport association</dt><dd><code>{approvedSnapshot.transportAssociation ? `${approvedSnapshot.transportAssociation.localDeviceId} ↔ ${approvedSnapshot.transportAssociation.peerDeviceId}` : "—"}</code></dd>
+                      <dt>Transaction</dt><dd><code>{approvedSnapshot.transactionId}</code></dd>
+                    </dl>
+                  </div>
+                ) : null}
+                <label className="bootstrap-signed-message" htmlFor="bootstrap-signed-message">
+                  Signed message to return to the other device
+                  <textarea id="bootstrap-signed-message" value={signedApproval} readOnly rows={4} />
+                </label>
+                <label className="bootstrap-signed-message" htmlFor="bootstrap-complete-transcript">
+                  Complete transcript · paste the peer’s final signed approval as message 4 when needed
+                  <textarea
+                    id="bootstrap-complete-transcript"
+                    value={completionTranscript}
+                    onChange={(event) => setCompletionTranscript(event.target.value)}
+                    rows={6}
+                    maxLength={1052672}
+                    disabled={approvalBusy}
+                  />
+                </label>
+                <button
+                  className="search-button"
+                  type="button"
+                  onClick={() => void completePeerApproval()}
+                  disabled={approvalBusy || connection !== "active"}
+                >
+                  {approvalBusy ? "Verifying…" : "Add approved device to local trust"}
+                </button>
+              </>
+            ) : null}
+          </section>
+
+          <section className="bootstrap-panel" aria-labelledby="owner-security-heading">
+            <div>
+              <p className="panel-kicker">Device trust · owner action</p>
+              <h2 id="owner-security-heading">Restrict a device or retire this one</h2>
+              <p className="capture-help">
+                Cryptex derives identity and cutoff evidence from verified canonical history. Confirming writes one signed security event; it does not delete history or start sync.
+              </p>
+            </div>
+            {!ownerOperationPrepared ? (
+              <form className="bootstrap-form" onSubmit={(event) => void prepareOwnerSecurityOperation(event)}>
+                <label htmlFor="owner-operation-kind">Security operation</label>
+                <select
+                  id="owner-operation-kind"
+                  value={ownerOperationKind}
+                  onChange={(event) => setOwnerOperationKind(event.target.value as "device_restriction" | "self_retirement")}
+                  disabled={approvalBusy || connection !== "active"}
+                >
+                  <option value="device_restriction">Restrict an approved device</option>
+                  <option value="self_retirement">Retire this device</option>
+                </select>
+                {ownerOperationKind === "device_restriction" ? (
+                  <>
+                    <label htmlFor="owner-target-device">Approved device ID</label>
+                    <input
+                      id="owner-target-device"
+                      value={ownerTargetDeviceId}
+                      onChange={(event) => setOwnerTargetDeviceId(event.target.value)}
+                      maxLength={128}
+                      required
+                      disabled={approvalBusy}
+                    />
+                    <label htmlFor="owner-restriction-reason">Reason</label>
+                    <select
+                      id="owner-restriction-reason"
+                      value={ownerRestrictionReason}
+                      onChange={(event) => setOwnerRestrictionReason(event.target.value as "retired" | "compromised")}
+                      disabled={approvalBusy}
+                    >
+                      <option value="compromised">Compromised</option>
+                      <option value="retired">Retired</option>
+                    </select>
+                    <label htmlFor="owner-cutoff-seq">Exact authorized sequence cutoff</label>
+                    <input
+                      id="owner-cutoff-seq"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={ownerCutoffSeq}
+                      onChange={(event) => setOwnerCutoffSeq(event.target.value)}
+                      required
+                      disabled={approvalBusy}
+                    />
+                    <p className="capture-help">The daemon checks that this exact boundary belongs to the approved device. The matching content hash is shown before confirmation.</p>
+                  </>
+                ) : (
+                  <p className="capture-help">This permanently ends this device’s authority after the displayed last-authorized event. Review the exact boundary before confirming.</p>
+                )}
+                <button className="search-button" type="submit" disabled={approvalBusy || connection !== "active"}>
+                  {approvalBusy ? "Checking…" : "Prepare owner review"}
+                </button>
+              </form>
+            ) : (
+              <div className="bootstrap-review" aria-labelledby="owner-operation-review-heading">
+                <h3 id="owner-operation-review-heading">Review the exact security change</h3>
+                <p className="capture-help">
+                  Confirm only if these full identifiers and boundary are correct. The confirmation is tied to this live desktop connection and expires automatically.
+                </p>
+                <dl>
+                  <dt>Operation</dt><dd>{ownerOperationPrepared.snapshot.operation}</dd>
+                  <dt>Brain ID</dt><dd><code>{ownerOperationPrepared.snapshot.brainId}</code></dd>
+                  <dt>Transaction</dt><dd><code>{ownerOperationPrepared.snapshot.transactionId}</code></dd>
+                  <dt>Issuing device</dt><dd><code>{ownerOperationPrepared.snapshot.localIdentity.deviceId}</code></dd>
+                  <dt>Issuing signing key</dt><dd><code>{ownerOperationPrepared.snapshot.localIdentity.signingKeyId}</code></dd>
+                  {ownerOperationPrepared.snapshot.operation === "device_restriction" ? (
+                    <>
+                      <dt>Target device</dt><dd><code>{ownerOperationPrepared.snapshot.peerIdentity?.deviceId ?? "—"}</code></dd>
+                      <dt>Target signing key</dt><dd><code>{ownerOperationPrepared.snapshot.peerIdentity?.signingKeyId ?? "—"}</code></dd>
+                      <dt>Target key fingerprint · SHA-256</dt><dd><code>{ownerOperationPrepared.snapshot.peerIdentity?.publicKeyFingerprintSha256 ?? "—"}</code></dd>
+                      <dt>Reason</dt><dd>{ownerOperationPrepared.snapshot.restrictionReason ?? "—"}</dd>
+                      <dt>Authorized through sequence</dt><dd>{ownerOperationPrepared.snapshot.cutoffSeq ?? "—"}</dd>
+                      <dt>Cutoff content hash</dt><dd><code>{ownerOperationPrepared.snapshot.cutoffContentHash ?? "—"}</code></dd>
+                      <dt>Transport association</dt><dd><code>{ownerOperationPrepared.snapshot.transportAssociation ? `${ownerOperationPrepared.snapshot.transportAssociation.localDeviceId} ↔ ${ownerOperationPrepared.snapshot.transportAssociation.peerDeviceId}` : "—"}</code></dd>
+                    </>
+                  ) : (
+                    <>
+                      <dt>Last-authorized sequence</dt><dd>{ownerOperationPrepared.snapshot.lastAuthorizedSeq ?? "—"}</dd>
+                      <dt>Last-authorized content hash</dt><dd><code>{ownerOperationPrepared.snapshot.lastAuthorizedContentHash ?? "—"}</code></dd>
+                    </>
+                  )}
+                </dl>
+                <div className="capture-confirm-actions">
+                  <button className="capture-secondary" type="button" onClick={() => void cancelOwnerSecurityOperation()} disabled={approvalBusy}>Cancel</button>
+                  <button className="search-button" type="button" onClick={() => void confirmOwnerSecurityOperation()} disabled={approvalBusy}>
+                    {approvalBusy ? "Applying…" : "Confirm security change"}
+                  </button>
+                </div>
+              </div>
+            )}
+            {ownerOperationStatus ? <p className="capture-status" role="status">{ownerOperationStatus}</p> : null}
           </section>
 
           <section className="capture-panel" aria-labelledby="capture-heading">

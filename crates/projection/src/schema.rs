@@ -233,6 +233,20 @@ pub fn read_schema_version(conn: &Connection) -> ProjectionResult<Option<u32>> {
 /// Fail closed unless schema_version matches this crate and required objects exist.
 pub fn validate_schema_v1(conn: &Connection) -> ProjectionResult<()> {
     ensure_fts5_available(conn)?;
+    validate_schema_v1_structure(conn, true)
+}
+
+/// Validate the persisted v1 layout without running the temporary FTS5
+/// capability probe. Safe for a read-only connection used before normal DB
+/// initialization; the stored FTS table definition is still validated.
+pub fn validate_schema_v1_read_only(conn: &Connection) -> ProjectionResult<()> {
+    validate_schema_v1_structure(conn, false)
+}
+
+fn validate_schema_v1_structure(
+    conn: &Connection,
+    probe_constraints: bool,
+) -> ProjectionResult<()> {
     let Some(found) = read_schema_version(conn)? else {
         return Err(ProjectionError::SchemaInconsistent {
             detail: "projection_meta table missing".into(),
@@ -269,8 +283,30 @@ pub fn validate_schema_v1(conn: &Connection) -> ProjectionResult<()> {
         &["primary key"],
         "projection_meta.id must be PRIMARY KEY",
     )?;
-    require_projection_meta_id_singleton_constraint(conn)?;
+    if probe_constraints {
+        require_projection_meta_id_singleton_constraint(conn)?;
+    } else {
+        require_projection_meta_id_singleton_structure(conn)?;
+    }
     require_fts_events(conn)?;
+    Ok(())
+}
+
+fn require_projection_meta_id_singleton_structure(conn: &Connection) -> ProjectionResult<()> {
+    require_projection_meta_check_expression_is_id_eq_1(conn)?;
+    let id: i64 = conn.query_row("SELECT id FROM projection_meta WHERE id = 1", [], |row| {
+        row.get(0)
+    })?;
+    let extras: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM projection_meta WHERE id != 1",
+        [],
+        |row| row.get(0),
+    )?;
+    if id != 1 || extras != 0 {
+        return Err(ProjectionError::SchemaInconsistent {
+            detail: "projection_meta must contain only its singleton id=1 row".into(),
+        });
+    }
     Ok(())
 }
 

@@ -35,7 +35,7 @@ use cryptex_storage::quarantine::{
 use cryptex_storage::recovery::{FrameBodyValidator, recover_active_open};
 use cryptex_storage::stream_frames::fold_verified_frames;
 use cryptex_storage::{StorageError, append_frame, seal_active_segment};
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
 use crate::event_signing_key::{
@@ -84,6 +84,37 @@ pub struct AppendOutcome {
     pub accepted: AcceptedEvent,
     pub segment_index: u64,
     pub sealed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SecurityAnchorAppendOutcome {
+    pub(crate) event_id: String,
+    pub(crate) device_seq: u64,
+    pub(crate) content_hash: String,
+}
+
+pub(crate) struct SecurityAnchorAppendArgs<'a> {
+    pub runtime_root: &'a Path,
+    pub device_id: &'a DeviceId,
+    pub lock: &'a DeviceCanonicalLock,
+    pub signing_key: &'a SigningKey,
+    pub signing_key_id: &'a str,
+    pub event_id: &'a str,
+    pub transcript: &'a cryptex_events::VerifiedBootstrapTranscript,
+    pub transaction_id: &'a str,
+    pub journal: &'a crate::bootstrap_journal::BootstrapJournalStore,
+}
+
+pub(crate) struct OwnerSecurityOperationAppendArgs<'a> {
+    pub runtime_root: &'a Path,
+    pub device_id: &'a DeviceId,
+    pub lock: &'a DeviceCanonicalLock,
+    pub signing_key: &'a SigningKey,
+    pub signing_key_id: &'a str,
+    pub snapshot: &'a crate::bootstrap_journal::ApprovalSnapshot,
+    pub target_public_key: Option<&'a [u8; 32]>,
+    pub event_id: &'a str,
+    pub journal: &'a crate::bootstrap_journal::BootstrapJournalStore,
 }
 
 #[derive(Debug)]
@@ -177,6 +208,9 @@ impl FrameBodyValidator for VerifyingBodyValidator {
             VersionedRecord::VerifiedUnsupported(event) => {
                 (Some(event.device_id.as_str()), Some(2))
             }
+            VersionedRecord::VerifiedSecurityV3(event) => {
+                (Some(event.device_id().as_str()), Some(3))
+            }
             VersionedRecord::Unverifiable(_) => (None, None),
         };
         if claimed_device_id.is_some_and(|claimed| claimed != self.expected_device_id.as_str()) {
@@ -188,7 +222,9 @@ impl FrameBodyValidator for VerifyingBodyValidator {
         }
         let accepted = match record {
             VersionedRecord::VerifiedV1(accepted) => accepted,
-            VersionedRecord::VerifiedV2Supported(_) | VersionedRecord::VerifiedUnsupported(_) => {
+            VersionedRecord::VerifiedV2Supported(_)
+            | VersionedRecord::VerifiedUnsupported(_)
+            | VersionedRecord::VerifiedSecurityV3(_) => {
                 // Integrity is verified. Preserve the record in the chain and
                 // leave materialization to a reader that supports its payload.
                 return Ok(());
@@ -373,6 +409,23 @@ pub(crate) fn acquire_existing_device_canonical_lock(
         return Ok(None);
     }
     acquire_device_lock_in_existing_dir(device_id, &device_dir).map(Some)
+}
+
+/// Create and lock an approved first-stream device directory while the caller
+/// already holds the inventory lock. The inventory guard is explicit in the
+/// signature so callers cannot accidentally race first-device creation with a
+/// canonical inventory scan.
+pub(crate) fn acquire_device_canonical_lock_under_inventory(
+    runtime_root: &Path,
+    device_id: &DeviceId,
+    _inventory: &CanonicalInventoryLock,
+) -> CanonicalWriterResult<DeviceCanonicalLock> {
+    assert_outside_repository(runtime_root)
+        .map_err(|error| CanonicalWriterError::Path(error.to_string()))?;
+    let device_dir = canonical_events_device_dir(runtime_root, device_id);
+    fs::create_dir_all(&device_dir)
+        .map_err(|error| CanonicalWriterError::Path(error.to_string()))?;
+    acquire_device_lock_in_existing_dir(device_id, &device_dir)
 }
 
 pub(crate) fn acquire_existing_device_canonical_lock_until(
@@ -645,6 +698,397 @@ pub(crate) fn append_memory_note_with_lock<S: SecureStore + ?Sized>(
     })
 }
 
+/// Append a verified peer-approval control event under an already-held local
+/// device lock (which must retain the canonical inventory lock). This helper
+/// persists the exact append attempt before touching the canonical pack and
+/// advances the journal only after a full chain reread confirms the candidate.
+/// The caller must perform exhaustive Brain-wide event/transaction lookup
+/// under the same inventory lock before invoking it.
+#[allow(dead_code)] // Connected after the startup reconciliation gate is wired.
+pub(crate) fn append_peer_approved_anchor_with_lock(
+    args: SecurityAnchorAppendArgs<'_>,
+) -> CanonicalWriterResult<SecurityAnchorAppendOutcome> {
+    let SecurityAnchorAppendArgs {
+        runtime_root,
+        device_id,
+        lock,
+        signing_key,
+        signing_key_id,
+        event_id,
+        transcript,
+        transaction_id,
+        journal,
+    } = args;
+    if lock.device_id() != device_id {
+        return Err(CanonicalWriterError::Invalid(
+            "device canonical lock does not match security anchor author".into(),
+        ));
+    }
+    if transcript.transaction_id() != transaction_id || transcript.brain_id().is_empty() {
+        return Err(CanonicalWriterError::Invalid(
+            "verified transcript differs from anchor transaction".into(),
+        ));
+    }
+    let event_id = parse_uuid_str(event_id)
+        .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))?
+        .to_string();
+    let signing_key_id = SigningKeyId::parse(signing_key_id)?;
+    let public_key_id =
+        cryptex_events::signing_key_id_from_verifying_key(&signing_key.verifying_key())?;
+    if signing_key_id != public_key_id {
+        return Err(CanonicalWriterError::Invalid(
+            "security anchor signing key id differs from enrolled key".into(),
+        ));
+    }
+    let local_transcript_device = [&transcript.initiator(), &transcript.responder()]
+        .into_iter()
+        .find(|participant| {
+            participant.signing_key_id == signing_key_id
+                && participant.public_key == signing_key.verifying_key().to_bytes()
+        })
+        .map(|participant| participant.device_id.as_str());
+    if local_transcript_device != Some(device_id.as_str()) {
+        return Err(CanonicalWriterError::Invalid(
+            "local stream does not match the verified transcript signer".into(),
+        ));
+    }
+
+    let validator = VerifyingBodyValidator {
+        verifying_key: signing_key.verifying_key(),
+        expected_device_id: device_id.clone(),
+    };
+    let mut state = rebuild_chain_state(runtime_root, device_id, &validator)?;
+    ensure_sequence_ready(runtime_root, device_id)?;
+    let sequence = allocate_device_sequence(runtime_root, device_id)
+        .map_err(|error| CanonicalWriterError::Sequence(error.to_string()))?;
+    if state.last_device_seq.is_some_and(|last| sequence <= last) {
+        return Err(CanonicalWriterError::Sequence(format!(
+            "allocated device_seq {sequence} is not greater than verified tip {}",
+            state.last_device_seq.unwrap_or_default()
+        )));
+    }
+    let created_at = now_rfc3339()?;
+    let candidate = cryptex_events::sign_peer_approved_event(
+        transcript,
+        &event_id,
+        DeviceSeq::from_u64(sequence)?,
+        &created_at,
+        &signing_key_id,
+        &state.last_content_hash,
+        signing_key,
+    )
+    .map_err(|failure| CanonicalWriterError::Integrity(failure.to_string()))?;
+    let verified_candidate =
+        cryptex_events::read_security_v3_event(&candidate, &signing_key.verifying_key())
+            .map_err(|failure| CanonicalWriterError::Integrity(failure.to_string()))?;
+
+    journal
+        .record_append_attempt(
+            transaction_id,
+            crate::bootstrap_journal::AppendAttempt {
+                reserved_sequence: sequence,
+                predecessor_hash: state.last_content_hash.as_str().to_owned(),
+                candidate_content_hash: Some(verified_candidate.content_hash().as_str().to_owned()),
+            },
+        )
+        .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))?;
+
+    let segment_index = state.active_segment_index;
+    append_frame(runtime_root, device_id, segment_index, &candidate)?;
+    let events_in_active = state.events_in_active.saturating_add(1);
+    if events_in_active >= DEFAULT_SEAL_EVENT_THRESHOLD_HINT {
+        seal_active_segment(runtime_root, device_id, segment_index)?;
+    }
+
+    // Canonical bytes, not the tip cache or journal, prove success. If this
+    // reread fails after append, the journal remains append_unknown for startup
+    // reconciliation; this call never retries blindly.
+    state = rebuild_chain_state(runtime_root, device_id, &validator)?;
+    let expected_hash = verified_candidate.content_hash().as_str();
+    if state.last_device_seq != Some(sequence) || state.last_content_hash.as_str() != expected_hash
+    {
+        return Err(CanonicalWriterError::Integrity(
+            "canonical reread does not end at the signed security anchor".into(),
+        ));
+    }
+    persist_tip_from_state(runtime_root, device_id, &state, signing_key_id.as_str())?;
+    journal
+        .record_verified_anchor(
+            transaction_id,
+            sequence,
+            verified_candidate.content_hash().as_str(),
+        )
+        .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))?;
+
+    Ok(SecurityAnchorAppendOutcome {
+        event_id,
+        device_seq: sequence,
+        content_hash: expected_hash.to_owned(),
+    })
+}
+
+/// Append one already-confirmed restriction or self-retirement under the
+/// caller's complete canonical inventory/device lock set. The caller must
+/// rederive and compare the frozen approval snapshot from the locked verified
+/// history and prove transaction/event-ID uniqueness before invoking this
+/// function. This method records `append_unknown` before canonical I/O and
+/// marks `anchored` only after a full canonical reread.
+pub(crate) fn append_owner_security_operation_with_lock(
+    args: OwnerSecurityOperationAppendArgs<'_>,
+) -> CanonicalWriterResult<SecurityAnchorAppendOutcome> {
+    use crate::bootstrap_journal::{BootstrapOperation, RestrictionReason};
+
+    let OwnerSecurityOperationAppendArgs {
+        runtime_root,
+        device_id,
+        lock,
+        signing_key,
+        signing_key_id,
+        snapshot,
+        target_public_key,
+        event_id,
+        journal,
+    } = args;
+    if lock.device_id() != device_id {
+        return Err(CanonicalWriterError::Invalid(
+            "device canonical lock does not match security operation author".into(),
+        ));
+    }
+    snapshot
+        .digest()
+        .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))?;
+    if snapshot.operation == BootstrapOperation::PeerAdmission
+        || snapshot.role != crate::bootstrap_journal::BootstrapRole::Issuer
+        || snapshot.local_identity.device_id != device_id.as_str()
+    {
+        return Err(CanonicalWriterError::Invalid(
+            "owner security snapshot does not authorize this local issuer".into(),
+        ));
+    }
+    let event_id = parse_uuid_str(event_id)
+        .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))?
+        .to_string();
+    let signing_key_id = SigningKeyId::parse(signing_key_id)?;
+    let derived_key_id =
+        cryptex_events::signing_key_id_from_verifying_key(&signing_key.verifying_key())?;
+    if signing_key_id != derived_key_id
+        || snapshot.local_identity.signing_key_id != signing_key_id.as_str()
+    {
+        return Err(CanonicalWriterError::Invalid(
+            "owner security snapshot differs from the enrolled event signing key".into(),
+        ));
+    }
+    use sha2::Digest;
+    let local_fingerprint = sha2::Sha256::digest(signing_key.verifying_key().as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    if snapshot.local_identity.public_key_fingerprint_sha256 != local_fingerprint {
+        return Err(CanonicalWriterError::Invalid(
+            "owner security snapshot differs from the enrolled public key".into(),
+        ));
+    }
+    if snapshot.operation == BootstrapOperation::DeviceRestriction {
+        let target = snapshot.peer_identity.as_ref().ok_or_else(|| {
+            CanonicalWriterError::Invalid("restriction peer binding missing".into())
+        })?;
+        let target_id = snapshot
+            .restriction_target
+            .as_deref()
+            .ok_or_else(|| CanonicalWriterError::Invalid("restriction target missing".into()))?;
+        let target_key = target_public_key.ok_or_else(|| {
+            CanonicalWriterError::Invalid("verified restriction public key missing".into())
+        })?;
+        let target_fingerprint = sha2::Sha256::digest(target_key)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        if target.device_id != target_id
+            || target.public_key_fingerprint_sha256 != target_fingerprint
+        {
+            return Err(CanonicalWriterError::Invalid(
+                "verified restriction key differs from the frozen peer binding".into(),
+            ));
+        }
+    } else if target_public_key.is_some() {
+        return Err(CanonicalWriterError::Invalid(
+            "self-retirement must not carry a peer public key".into(),
+        ));
+    }
+
+    let validator = VerifyingBodyValidator {
+        verifying_key: signing_key.verifying_key(),
+        expected_device_id: device_id.clone(),
+    };
+    let mut state = rebuild_chain_state(runtime_root, device_id, &validator)?;
+    ensure_sequence_ready(runtime_root, device_id)?;
+    let sequence = allocate_device_sequence(runtime_root, device_id)
+        .map_err(|error| CanonicalWriterError::Sequence(error.to_string()))?;
+    if state.last_device_seq.is_some_and(|last| sequence <= last) {
+        return Err(CanonicalWriterError::Sequence(format!(
+            "allocated device_seq {sequence} is not greater than verified tip {}",
+            state.last_device_seq.unwrap_or_default()
+        )));
+    }
+    let created_at = now_rfc3339()?;
+    let device_seq = DeviceSeq::from_u64(sequence)?;
+    let candidate = match snapshot.operation {
+        BootstrapOperation::DeviceRestriction => {
+            let target_id = snapshot
+                .restriction_target
+                .as_deref()
+                .ok_or_else(|| CanonicalWriterError::Invalid("restriction target missing".into()))
+                .and_then(|id| {
+                    DeviceId::new(id.to_owned())
+                        .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))
+                })?;
+            let target = snapshot.peer_identity.as_ref().ok_or_else(|| {
+                CanonicalWriterError::Invalid("restriction peer binding missing".into())
+            })?;
+            let target_key = target_public_key.ok_or_else(|| {
+                CanonicalWriterError::Invalid("verified restriction public key missing".into())
+            })?;
+            let target_key_id = SigningKeyId::parse(&target.signing_key_id)?;
+            let reason = match snapshot.restriction_reason {
+                Some(RestrictionReason::Retired) => cryptex_events::RestrictionReasonV3::Retired,
+                Some(RestrictionReason::Compromised) => {
+                    cryptex_events::RestrictionReasonV3::Compromised
+                }
+                None => {
+                    return Err(CanonicalWriterError::Invalid(
+                        "restriction reason missing".into(),
+                    ));
+                }
+            };
+            let cutoff_seq = snapshot
+                .cutoff_seq
+                .as_deref()
+                .ok_or_else(|| CanonicalWriterError::Invalid("restriction cutoff missing".into()))?
+                .parse::<u64>()
+                .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))?;
+            let cutoff_hash =
+                ContentHashHex::parse(snapshot.cutoff_content_hash.as_deref().ok_or_else(
+                    || CanonicalWriterError::Invalid("restriction cutoff hash missing".into()),
+                )?)?;
+            cryptex_events::security_v3::sign_device_restricted_event(
+                &event_id,
+                &snapshot.brain_id,
+                device_id,
+                device_seq,
+                &created_at,
+                &signing_key_id,
+                &state.last_content_hash,
+                &snapshot.transaction_id,
+                &target_id,
+                &target_key_id,
+                target_key,
+                reason,
+                cutoff_seq,
+                &cutoff_hash,
+                signing_key,
+            )
+        }
+        BootstrapOperation::SelfRetirement => {
+            if target_public_key.is_some() {
+                return Err(CanonicalWriterError::Invalid(
+                    "self-retirement must not carry a peer public key".into(),
+                ));
+            }
+            let last_authorized_seq = snapshot
+                .last_authorized_seq
+                .as_deref()
+                .ok_or_else(|| {
+                    CanonicalWriterError::Invalid("self-retirement boundary missing".into())
+                })?
+                .parse::<u64>()
+                .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))?;
+            let last_authorized_hash = ContentHashHex::parse(
+                snapshot
+                    .last_authorized_content_hash
+                    .as_deref()
+                    .ok_or_else(|| {
+                        CanonicalWriterError::Invalid(
+                            "self-retirement boundary hash missing".into(),
+                        )
+                    })?,
+            )?;
+            cryptex_events::security_v3::sign_device_self_retired_event(
+                &event_id,
+                &snapshot.brain_id,
+                device_id,
+                device_seq,
+                &created_at,
+                &signing_key_id,
+                &state.last_content_hash,
+                &snapshot.transaction_id,
+                last_authorized_seq,
+                &last_authorized_hash,
+                signing_key,
+            )
+        }
+        BootstrapOperation::PeerAdmission => unreachable!("rejected above"),
+    }
+    .map_err(|failure| CanonicalWriterError::Integrity(failure.to_string()))?;
+    let verified_candidate =
+        cryptex_events::read_security_v3_event(&candidate, &signing_key.verifying_key())
+            .map_err(|failure| CanonicalWriterError::Integrity(failure.to_string()))?;
+
+    journal
+        .record_append_attempt(
+            &snapshot.transaction_id,
+            crate::bootstrap_journal::AppendAttempt {
+                reserved_sequence: sequence,
+                predecessor_hash: state.last_content_hash.as_str().to_owned(),
+                candidate_content_hash: Some(verified_candidate.content_hash().as_str().to_owned()),
+            },
+        )
+        .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))?;
+
+    let segment_index = state.active_segment_index;
+    append_frame(runtime_root, device_id, segment_index, &candidate)?;
+    #[cfg(test)]
+    {
+        let fail = FAIL_AFTER_APPEND_BEFORE_TIP.with(|f| {
+            let armed = f.get();
+            if armed {
+                f.set(false);
+            }
+            armed
+        });
+        if fail {
+            return Err(CanonicalWriterError::Path(
+                "injected failure after durable owner-operation append".into(),
+            ));
+        }
+    }
+    let events_in_active = state.events_in_active.saturating_add(1);
+    if events_in_active >= DEFAULT_SEAL_EVENT_THRESHOLD_HINT {
+        seal_active_segment(runtime_root, device_id, segment_index)?;
+    }
+    state = rebuild_chain_state(runtime_root, device_id, &validator)?;
+    let expected_hash = verified_candidate.content_hash().as_str();
+    if state.last_device_seq != Some(sequence) || state.last_content_hash.as_str() != expected_hash
+    {
+        return Err(CanonicalWriterError::Integrity(
+            "canonical reread does not end at the signed owner operation".into(),
+        ));
+    }
+    persist_tip_from_state(runtime_root, device_id, &state, signing_key_id.as_str())?;
+    journal
+        .record_verified_anchor(
+            &snapshot.transaction_id,
+            sequence,
+            verified_candidate.content_hash().as_str(),
+        )
+        .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))?;
+
+    Ok(SecurityAnchorAppendOutcome {
+        event_id,
+        device_seq: sequence,
+        content_hash: expected_hash.to_owned(),
+    })
+}
+
 fn signing_key_id_string(id: &str) -> String {
     id.to_string()
 }
@@ -777,6 +1221,9 @@ fn absorb_event(
         VersionedRecord::VerifiedUnsupported(ev) => {
             (&ev.content_hash, &ev.signing_key_id, &ev.device_seq)
         }
+        VersionedRecord::VerifiedSecurityV3(ev) => {
+            (ev.content_hash(), ev.signing_key_id(), ev.device_seq())
+        }
         VersionedRecord::Unverifiable(_) => {
             return Err(CanonicalWriterError::Integrity(
                 "unverifiable record cannot advance chain state".into(),
@@ -832,6 +1279,12 @@ fn scan_pack_events(
                 event.device_seq.to_u64()?,
                 &event.prev_content_hash,
                 &event.content_hash,
+            ),
+            VersionedRecord::VerifiedSecurityV3(event) => (
+                event.device_id().as_str(),
+                event.device_seq().to_u64()?,
+                event.prev_content_hash(),
+                event.content_hash(),
             ),
             VersionedRecord::Unverifiable(event) => {
                 return Err(CanonicalWriterError::Storage(
@@ -1239,9 +1692,10 @@ where
             match record {
                 VersionedRecord::VerifiedV1(ev) => on_event(ev)?,
                 VersionedRecord::VerifiedV2Supported(_)
-                | VersionedRecord::VerifiedUnsupported(_) => {
+                | VersionedRecord::VerifiedUnsupported(_)
+                | VersionedRecord::VerifiedSecurityV3(_) => {
                     return Err(CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(
-                        "verified v2 records require M4 retrieval-safety and materialization support".into(),
+                        "non-v1 canonical records require a version-aware retrieval-safety path".into(),
                     )));
                 }
                 VersionedRecord::Unverifiable(_) => {
@@ -1269,9 +1723,10 @@ where
                 match record {
                     VersionedRecord::VerifiedV1(ev) => on_event(ev)?,
                     VersionedRecord::VerifiedV2Supported(_)
-                    | VersionedRecord::VerifiedUnsupported(_) => {
+                    | VersionedRecord::VerifiedUnsupported(_)
+                    | VersionedRecord::VerifiedSecurityV3(_) => {
                         return Err(CanonicalWriterError::Storage(StorageError::CompatibilityBoundary(
-                            "verified v2 records require M4 retrieval-safety and materialization support".into(),
+                            "non-v1 canonical records require a version-aware retrieval-safety path".into(),
                         )));
                     }
                     VersionedRecord::Unverifiable(_) => {
@@ -1348,10 +1803,11 @@ where
             match record {
                 VersionedRecord::VerifiedV1(ev) => on_event(ev, &path)?,
                 VersionedRecord::VerifiedV2Supported(_)
-                | VersionedRecord::VerifiedUnsupported(_) => {
+                | VersionedRecord::VerifiedUnsupported(_)
+                | VersionedRecord::VerifiedSecurityV3(_) => {
                     return Err(CanonicalWriterError::Storage(
                         StorageError::CompatibilityBoundary(
-                            "verified v2 records require M4 retrieval-safety and materialization support"
+                            "non-v1 canonical records require a version-aware retrieval-safety path"
                                 .into(),
                         ),
                     ));
@@ -1381,10 +1837,11 @@ where
                 match record {
                     VersionedRecord::VerifiedV1(ev) => on_event(ev, &path)?,
                     VersionedRecord::VerifiedV2Supported(_)
-                    | VersionedRecord::VerifiedUnsupported(_) => {
+                    | VersionedRecord::VerifiedUnsupported(_)
+                    | VersionedRecord::VerifiedSecurityV3(_) => {
                         return Err(CanonicalWriterError::Storage(
                             StorageError::CompatibilityBoundary(
-                                "verified v2 records require M4 retrieval-safety and materialization support"
+                                "non-v1 canonical records require a version-aware retrieval-safety path"
                                     .into(),
                             ),
                         ));
@@ -1517,6 +1974,88 @@ mod tests {
 
         let bytes = read_active_pack_bytes(&root, &device, 0).unwrap();
         assert!(bytes.len() > 20);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn appends_after_authenticated_security_v3_control_record_without_retrieving_it() {
+        let root = temp_root("v3-chain-append");
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("writer-v3-chain-device").unwrap();
+        let brain = "33333333-3333-4333-8333-333333333333";
+        let cfg = CanonicalWriterConfig {
+            seal_event_threshold: 1000,
+        };
+        let first = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "synthetic v1 before control event",
+                event_id: None,
+                config: &cfg,
+            },
+        )
+        .unwrap();
+        let key = crate::event_signing_key::load_existing_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+        )
+        .unwrap();
+        let control = signed_v3_peer_approval_body(
+            &key.signing_key,
+            &key.public.signing_key_id,
+            brain,
+            &device,
+            2,
+            first.accepted.content_hash.as_str(),
+        );
+        write_crafted_body_frame(&root, &device, &control);
+        let authenticated =
+            cryptex_events::read_security_v3_event(&control, &key.signing_key.verifying_key())
+                .unwrap();
+        let bytes_before_read = fs::read(active_segment_path(&root, &device, 0)).unwrap();
+        assert!(matches!(
+            load_verified_events(&store, SecureStoreEnvironment::Dev, &root, &device),
+            Err(CanonicalWriterError::Storage(
+                StorageError::CompatibilityBoundary(_)
+            ))
+        ));
+        assert_eq!(
+            fs::read(active_segment_path(&root, &device, 0)).unwrap(),
+            bytes_before_read,
+            "ordinary M3 retrieval must hold without mutating the v3 control record"
+        );
+
+        // The synthetic control event consumes sequence 2, just as a native
+        // v3 writer would. Keep the durable allocator in step before the next
+        // ordinary append verifies cross-version chain continuation.
+        assert_eq!(allocate_device_sequence(&root, &device).unwrap(), 2);
+
+        let third = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Internal,
+                text: "synthetic v1 after control event",
+                event_id: None,
+                config: &cfg,
+            },
+        )
+        .unwrap();
+        assert_eq!(third.accepted.device_seq.to_u64().unwrap(), 3);
+        assert_eq!(
+            third.accepted.prev_content_hash.as_str(),
+            authenticated.content_hash().as_str()
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -1746,6 +2285,41 @@ mod tests {
         let device_lock = writer.join().unwrap().unwrap();
         assert!(device_dir.is_dir());
         drop(device_lock);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn approved_first_stream_lock_creation_stays_under_inventory_guard() {
+        let root = temp_root("inventory-approved-import-device");
+        let device = DeviceId::new("approved-import-first-stream").unwrap();
+        let device_dir = canonical_events_device_dir(&root, &device);
+        let inventory = acquire_canonical_inventory_lock(&root).unwrap();
+        let device_lock =
+            acquire_device_canonical_lock_under_inventory(&root, &device, &inventory).unwrap();
+        assert!(device_dir.join("writer.lock").is_file());
+
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let writer_root = root.clone();
+        let writer_device = device.clone();
+        let writer = thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let lock = acquire_device_canonical_lock(&writer_root, &writer_device).unwrap();
+            finished_tx.send(()).unwrap();
+            lock
+        });
+        started_rx.recv().unwrap();
+        assert!(
+            finished_rx
+                .recv_timeout(std::time::Duration::from_millis(100))
+                .is_err(),
+            "a competing writer must wait while import owns inventory and device locks"
+        );
+
+        drop(device_lock);
+        drop(inventory);
+        finished_rx.recv().unwrap();
+        drop(writer.join().unwrap());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -2274,6 +2848,55 @@ mod tests {
         file.write_all(&header).unwrap();
         file.write_all(body).unwrap();
         file.sync_all().unwrap();
+    }
+
+    fn signed_v3_peer_approval_body(
+        key: &ed25519_dalek::SigningKey,
+        signing_key_id: &str,
+        brain_id: &str,
+        device: &DeviceId,
+        sequence: u64,
+        previous_hash: &str,
+    ) -> Vec<u8> {
+        let mut value = serde_json::json!({
+            "schema_version": 3,
+            "event_id": "44444444-4444-4444-8444-444444444444",
+            "brain_id": brain_id,
+            "device_id": device.as_str(),
+            "device_seq": sequence.to_string(),
+            "created_at": "2026-10-29T12:00:00Z",
+            "event_type": "security.peer_approved",
+            "classification": "internal",
+            "signing_key_id": signing_key_id,
+            "payload": {
+                "transaction_id": "5555555555555555555555555555555555555555555555555555555555555555",
+                "transcript": [{}, {}, {}, {}]
+            },
+            "prev_content_hash": previous_hash
+        });
+        let signable = serde_json_canonicalizer::to_vec(&value).unwrap();
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(cryptex_events::SECURITY_V3_CONTENT_HASH_DOMAIN);
+        hasher.update(&[0]);
+        hasher.update(&signable);
+        let content_hash = *hasher.finalize().as_bytes();
+        let mut preimage = cryptex_events::SECURITY_V3_SIGNATURE_DOMAIN.to_vec();
+        preimage.push(0);
+        preimage.extend_from_slice(&content_hash);
+        let signature = key.sign(&preimage);
+        let content_hash_hex = content_hash
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let signature_hex = signature
+            .to_bytes()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let object = value.as_object_mut().unwrap();
+        object.insert("content_hash".into(), serde_json::json!(content_hash_hex));
+        object.insert("signature".into(), serde_json::json!(signature_hex));
+        serde_json_canonicalizer::to_vec(&value).unwrap()
     }
 
     fn craft_signed_v2_unknown_body(

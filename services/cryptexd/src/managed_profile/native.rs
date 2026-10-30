@@ -418,6 +418,13 @@ fn ensure_same_or_new(
 
 #[cfg(windows)]
 impl<'profile> PreparedNativeProfile<'profile> {
+    /// The private configuration identity, validated against the immutable
+    /// readiness receipt by `reopen_native` before the profile is returned.
+    /// Callers may publish it only after the owned REST status confirms it.
+    pub(crate) fn configured_transport_device_id(&self) -> &str {
+        &self.receipt.native_id
+    }
+
     fn require_idle(&self) -> Result<(), NativeConfigError> {
         if self.cleanup_unresolved {
             return Err(NativeConfigError::UnresolvedCleanup);
