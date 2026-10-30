@@ -1,5 +1,17 @@
 # 34 — Current Implementation Handoff
 
+## Latest continuation — second-Windows Desktop smoke PASS (2026-10-30)
+
+The owner supplied a successful unbundled release Desktop/daemon package-smoke
+log on Windows 26200.9711 / 25H2, standard-user session, source archive `a5f859a`.
+Node 24.19.0 and pnpm 11.28.0 were used. This adds a build PASS to the 520/0/4
+library and reported 12 binary passes; it does not verify an interactive owner
+flow. Next: record executable hashes and launch a fresh marked, synthetic
+pilot outside the source tree through the supported daemon fixture and Desktop
+pilot flag. Verify startup before reviewing/cancelling self-retirement.
+Evidence: [`m8-second-windows-desktop-native-verification-20261030.md`](../evidence/m8/m8-second-windows-desktop-native-verification-20261030.md).
+No installer, native owner-flow, transport, macOS parity, or M8 completion claim.
+
 ## Latest continuation — native TCP state diagnostic (2026-10-29)
 
 **Latest second-host standard-user verification:** daemon library **520 passed

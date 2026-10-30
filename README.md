@@ -39,9 +39,13 @@ Desktop/sidecar package smoke. The package smoke did not verify an interactive
 owner dialog or installer. See the [checkpoint evidence](evidence/m8/m8-checkpoint-publication-20261029.md)
 and [owner-operation evidence](evidence/m8/m8-windows-owner-security-operation-ipc-append-recovery-20261029.md).
 
-**Next continuation point:** check Node/pnpm prerequisites on the second
-Windows/VM, then verify the Windows Desktop owner flow in a standard-user
-session using a
+The second Windows/VM also completed the **unbundled release Desktop/daemon
+package smoke** with Node 24.19.0 and pnpm 11.28.0. The owner-supplied log is
+recorded in the [native verification checkpoint](evidence/m8/m8-second-windows-desktop-native-verification-20261030.md);
+an interactive owner-flow pass remains pending.
+
+**Next continuation point:** record binary hashes, launch the second-Windows
+Desktop in a standard-user session, and verify the owner flow using a
 fresh synthetic profile outside the repository, including confirmation,
 cancellation, denial, retry, exact nonzero cutoff boundaries, and recovery.
 Then address production transport/publication, macOS parity, and independent
