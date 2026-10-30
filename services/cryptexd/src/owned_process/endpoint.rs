@@ -17,6 +17,8 @@ pub enum EndpointError {
     Unavailable,
     Deadline,
     OwnerExited,
+    /// The exact socket tuple exists, but the OS does not attest ESTABLISHED.
+    PeerNotEstablished,
     PeerNotOwned,
     TableUnavailable,
     TableTooLarge,

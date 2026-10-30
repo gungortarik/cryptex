@@ -141,6 +141,7 @@ fn find_server(
     }
     let bytes = storage.as_ptr().cast::<u8>();
     let mut found = None;
+    let mut exact_non_established = false;
     for index in 0..count {
         let row = unsafe { bytes.add(offset + index * stride) };
         let candidate = if server.is_ipv4() {
@@ -155,8 +156,9 @@ fn find_server(
                 IpAddr::V4(Ipv4Addr::from(row.dwRemoteAddr.to_ne_bytes())),
                 u16::from_be(row.dwRemotePort as u16),
             );
-            (row.dwState == MIB_TCP_STATE_ESTAB as u32 && local == server && remote == client)
-                .then_some(row.dwOwningPid)
+            let exact = local == server && remote == client;
+            exact_non_established |= exact && row.dwState != MIB_TCP_STATE_ESTAB as u32;
+            (row.dwState == MIB_TCP_STATE_ESTAB as u32 && exact).then_some(row.dwOwningPid)
         } else {
             let row = unsafe { ptr::read_unaligned(row.cast::<MIB_TCP6ROW_OWNER_PID>()) };
             let local = SocketAddr::new(
@@ -167,12 +169,12 @@ fn find_server(
                 IpAddr::V6(Ipv6Addr::from(row.ucRemoteAddr)),
                 u16::from_be(row.dwRemotePort as u16),
             );
-            (row.dwState == MIB_TCP_STATE_ESTAB as u32
-                && row.dwLocalScopeId == 0
+            let exact = row.dwLocalScopeId == 0
                 && row.dwRemoteScopeId == 0
                 && local == server
-                && remote == client)
-                .then_some(row.dwOwningPid)
+                && remote == client;
+            exact_non_established |= exact && row.dwState != MIB_TCP_STATE_ESTAB as u32;
+            (row.dwState == MIB_TCP_STATE_ESTAB as u32 && exact).then_some(row.dwOwningPid)
         };
         if let Some(pid) = candidate {
             if pid == 0 || found.is_some() {
@@ -181,7 +183,11 @@ fn find_server(
             found = Some(pid);
         }
     }
-    found.ok_or(EndpointError::PeerNotOwned)
+    found.ok_or(if exact_non_established {
+        EndpointError::PeerNotEstablished
+    } else {
+        EndpointError::PeerNotOwned
+    })
 }
 
 #[cfg(test)]
@@ -257,7 +263,7 @@ mod tests {
         let table = ipv4_table(&[value]);
         assert_eq!(
             find_server(&table, table.len() * 4, client, server).unwrap_err(),
-            EndpointError::PeerNotOwned
+            EndpointError::PeerNotEstablished
         );
         value = row(50001);
         value.dwOwningPid = 0;
@@ -266,5 +272,78 @@ mod tests {
             find_server(&table, table.len() * 4, client, server).unwrap_err(),
             EndpointError::InvalidTable
         );
+    }
+
+    #[test]
+    fn exact_non_established_tuple_is_distinct_from_missing_or_unowned_peer() {
+        let client = "127.0.0.1:50001".parse().unwrap();
+        let server = "127.0.0.1:8384".parse().unwrap();
+        for state in [0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, u32::MAX] {
+            let mut value = row(50001);
+            value.dwState = state;
+            let table = ipv4_table(&[value]);
+            assert_eq!(
+                find_server(&table, table.len() * 4, client, server),
+                Err(EndpointError::PeerNotEstablished),
+                "state {state} must never attest a peer"
+            );
+            value.dwRemotePort = 50000u16.to_be() as u32;
+            let table = ipv4_table(&[value]);
+            assert_eq!(
+                find_server(&table, table.len() * 4, client, server),
+                Err(EndpointError::PeerNotOwned),
+                "another tuple must not be diagnosed as this connection"
+            );
+        }
+        // A retained closing row must not shadow the exact established row.
+        let mut closing = row(50001);
+        closing.dwState = 6;
+        for values in [[closing, row(50001)], [row(50001), closing]] {
+            let table = ipv4_table(&values);
+            assert_eq!(
+                find_server(&table, table.len() * 4, client, server),
+                Ok(1234)
+            );
+        }
+    }
+
+    #[test]
+    fn ipv6_state_diagnostic_requires_the_exact_unscoped_tuple() {
+        let client = "[::1]:50001".parse().unwrap();
+        let server = "[::1]:8384".parse().unwrap();
+        let mut value = MIB_TCP6ROW_OWNER_PID {
+            ucLocalAddr: Ipv6Addr::LOCALHOST.octets(),
+            dwLocalScopeId: 0,
+            dwLocalPort: 8384u16.to_be() as u32,
+            ucRemoteAddr: Ipv6Addr::LOCALHOST.octets(),
+            dwRemoteScopeId: 0,
+            dwRemotePort: 50001u16.to_be() as u32,
+            dwState: 0,
+            dwOwningPid: 1234,
+        };
+        for (state, scope, expected) in [
+            (0, 0, Err(EndpointError::PeerNotEstablished)),
+            (6, 0, Err(EndpointError::PeerNotEstablished)),
+            (0, 1, Err(EndpointError::PeerNotOwned)),
+            (MIB_TCP_STATE_ESTAB as u32, 0, Ok(1234)),
+        ] {
+            value.dwState = state;
+            value.dwRemoteScopeId = scope;
+            let offset = offset_of!(MIB_TCP6TABLE_OWNER_PID, table);
+            let mut table = vec![0u32; (offset + size_of_val(&value)).div_ceil(4)];
+            table[0] = 1;
+            // SDK IPv6 rows contain only initialized DWORD/byte-array fields.
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    (&value as *const MIB_TCP6ROW_OWNER_PID).cast::<u8>(),
+                    table.as_mut_ptr().cast::<u8>().add(offset),
+                    size_of_val(&value),
+                );
+            }
+            assert_eq!(
+                find_server(&table, table.len() * 4, client, server),
+                expected
+            );
+        }
     }
 }

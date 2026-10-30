@@ -34,8 +34,19 @@ The daemon binary tests now pass **12/12**. Workspace release Clippy across
 all targets, formatting, frontend build, and Desktop policy tests (**18/18**)
 pass. See [checkpoint verification](evidence/m8/m8-checkpoint-publication-20261029.md).
 
-**Next continuation point:** investigate the owned-process HTTP test failures,
-then verify the Windows Desktop owner flow using a
+**Current investigation:** a standalone Win32/C# probe reproduced exact TCP
+tuples reporting state 0 or 6 despite successful loopback round trips before
+and after the snapshot (6 of 18 samples on this Windows build). The daemon now
+distinguishes `PeerNotEstablished` from missing/unowned peers; the acceptance
+requirements are unchanged. See the [diagnostic evidence and reproducer](evidence/m8/m8-windows-tcp-state-diagnostic-20261029.md).
+The native HTTP failures remain unresolved.
+The fresh daemon library run is **516 passed / 4 failed / 4 ignored**;
+all five TCP parser regressions, strict daemon Clippy, format, and the probe
+self-tests pass. Second-Windows/VM comparison is pending.
+
+**Next continuation point:** compare the standalone probe and HTTP tests on an
+independently verified supported Windows host/build, investigate the native
+attestation anomaly, then verify the Windows Desktop owner flow using a
 fresh synthetic profile outside the repository, including confirmation,
 cancellation, denial, retry, exact nonzero cutoff boundaries, and recovery.
 Then address production transport/publication, macOS parity, and independent
