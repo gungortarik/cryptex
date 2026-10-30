@@ -111,15 +111,37 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\cryptex-tcp-probe
 
 This supports a host/build-dependent attestation anomaly. It does not identify
 the underlying component or establish a general Windows-version regression.
-The same Cryptex HTTP tests still need to run on the second host; its probe
-pass alone does not close the four development-host HTTP failures.
+The probe pass alone does not close the four development-host HTTP failures.
+
+## Second-host owned HTTP tests — owner-reported PASS
+
+The owner downloaded the source archive pinned to
+`a5f859a34e3b9946527d97d1187c2c5ac72381a8` into a fresh temporary directory on
+the same second Windows/VM (26200.9711 / 25H2). Git was unavailable; Cargo and
+the required Rust 1.98.1 MSVC toolchain were present. Rustup's optional
+self-update failed with access denied, but the pinned toolchain was already
+installed. The owner then ran the test command directly:
+
+```powershell
+cargo +1.98.1 test --locked -p cryptexd --lib owned_process::tests::http:: -- --test-threads=1
+```
+
+The owner reported **`test result ok 8 passed`**. This is a scoped,
+owner-reported HTTP-group PASS at the pinned checkpoint. A complete console
+transcript was not supplied for that successful invocation; no additional
+suite or packaged/native Desktop result is inferred.
+
+Together with the independent 60/60 probe, this strengthens the evidence for
+a development-host/build-dependent attestation problem. It does not prove
+which OS/networking component is responsible or fix the local failures.
+No ownership check, established-state gate, or HTTP assertion was weakened.
 
 ## Next gate
 
-Check whether Git and Cargo are available on the second host, then run the
-unchanged owned-process HTTP tests at the pinned source checkpoint there.
-If they pass, compare the native fixture and development-host networking
-stack before proposing any production change. Do not bypass state or
+Run the complete daemon library and binary tests on the second host with the
+same pinned source/toolchain before continuing native owner UI verification.
+Keep the development-host networking anomaly open and compare its native
+fixture/stack before proposing any production change. Do not bypass state or
 job checks, enable a listener-only fallback, or weaken response expectations.
 Native Desktop owner-flow verification remains open; no native UI pass is
 claimed here. Production transport/publication, macOS parity, independent

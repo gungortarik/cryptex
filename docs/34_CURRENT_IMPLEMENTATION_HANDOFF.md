@@ -16,13 +16,19 @@ self-tests pass. The owner has now supplied the second Windows/VM probe result
 from pinned source `13e8d02`: **26200.9711 / 25H2; 60 samples, all round trips
 passed, zero mismatches, state 5 only**. The corresponding development-host
 ten-iteration probe had 3/60 mismatches. This supports a host/build-dependent
-anomaly but does not establish its underlying cause or close Cryptex HTTP tests.
+anomaly but does not establish its underlying cause.
+
+**Second-host HTTP follow-up:** the owner reports **8/8 owned-process HTTP
+tests passed** on the same Windows/VM, source archive pinned to `a5f859a`,
+Rust 1.98.1, using the unchanged serial HTTP-group command. This is a scoped
+owner-reported PASS; a full successful transcript was not supplied. Full daemon
+and native owner UI verification there are still pending. The development-host
+failures remain open; no state/job check or HTTP assertion was relaxed.
 
 Evidence and reproducible commands:
 [`m8-windows-tcp-state-diagnostic-20261029.md`](../evidence/m8/m8-windows-tcp-state-diagnostic-20261029.md).
-Next: check Git/Cargo availability on the second Windows/VM and run the
-unchanged owned-process HTTP tests at the pinned checkpoint there, then
-compare the results before continuing the Windows owner UI gate
+Next: run the full daemon library/binary suite on the second Windows/VM at the
+same pinned checkpoint/toolchain, then continue the Windows owner UI gate
 below. No installer, native owner UI, macOS parity, production transport,
 security review, or M8 completion is claimed.
 

@@ -44,11 +44,13 @@ The fresh daemon library run is **516 passed / 4 failed / 4 ignored**;
 all five TCP parser regressions, strict daemon Clippy, format, and the probe
 self-tests pass. The owner-reported second-Windows/VM probe on **26200.9711
 (25H2)** passed **60/60 samples with zero mismatches**, compared with 3/60
-mismatches on development build 26300.9818. Cryptex HTTP tests on that second
-host are still pending; the probe result does not close those failures.
+mismatches on development build 26300.9818. The owner also reports **8/8
+owned-process HTTP tests passed** on that second host at source `a5f859a`
+with Rust 1.98.1. Full daemon and native Desktop verification there remain
+pending; the development-host failures remain open.
 
-**Next continuation point:** run the unchanged owned-process HTTP tests on the
-second Windows/VM, compare the results, investigate the native
+**Next continuation point:** run the full daemon library/binary suite on the
+second Windows/VM, retain the host-specific native
 attestation anomaly, then verify the Windows Desktop owner flow using a
 fresh synthetic profile outside the repository, including confirmation,
 cancellation, denial, retry, exact nonzero cutoff boundaries, and recovery.
