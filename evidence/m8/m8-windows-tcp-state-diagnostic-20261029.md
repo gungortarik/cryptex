@@ -85,14 +85,41 @@ Add `-Summary` to emit compact JSON for a second-host comparison.
   PASS.
 - `cargo fmt --all -- --check` and `git diff --check`: PASS.
 
-The owner has an additional Windows/VM available for comparison. Its probe
-and HTTP-test results are pending; no second-host pass is claimed.
+## Second-host probe — owner-reported result
+
+The owner ran the pinned probe from source commit
+`13e8d02a24510bc71e46625f466c140c761eafdc` on the other Windows/VM and supplied
+the console output in chat. This is owner-reported native probe evidence, not
+an agent-observed Cryptex test run.
+
+| Measurement | Development host | Second Windows/VM |
+| --- | --- | --- |
+| Build revision | 26300.9818 | 26200.9711 |
+| Display version | 26H2 | 25H2 |
+| Samples (`-Iterations 10 -Summary`) | 60 | 60 |
+| Round trips before and after snapshot | 60 passed | 60 passed |
+| Exact state/PID mismatches | 3 (IPv4) | 0 |
+| Observed states | 0, 5 | 5 only |
+
+The first second-host invocation was blocked by its script execution policy;
+no probe result is attributed to that attempt. The subsequent process-scoped
+invocation completed and returned the JSON above:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\cryptex-tcp-probe.ps1" -Iterations 10 -Summary
+```
+
+This supports a host/build-dependent attestation anomaly. It does not identify
+the underlying component or establish a general Windows-version regression.
+The same Cryptex HTTP tests still need to run on the second host; its probe
+pass alone does not close the four development-host HTTP failures.
 
 ## Next gate
 
-Compare the same probe and unchanged HTTP assertions on an independently
-verified supported Windows host/build, then investigate the host networking
-stack if the anomaly is isolated to this installation. Do not bypass state or
+Check whether Git and Cargo are available on the second host, then run the
+unchanged owned-process HTTP tests at the pinned source checkpoint there.
+If they pass, compare the native fixture and development-host networking
+stack before proposing any production change. Do not bypass state or
 job checks, enable a listener-only fallback, or weaken response expectations.
 Native Desktop owner-flow verification remains open; no native UI pass is
 claimed here. Production transport/publication, macOS parity, independent

@@ -42,10 +42,13 @@ requirements are unchanged. See the [diagnostic evidence and reproducer](evidenc
 The native HTTP failures remain unresolved.
 The fresh daemon library run is **516 passed / 4 failed / 4 ignored**;
 all five TCP parser regressions, strict daemon Clippy, format, and the probe
-self-tests pass. Second-Windows/VM comparison is pending.
+self-tests pass. The owner-reported second-Windows/VM probe on **26200.9711
+(25H2)** passed **60/60 samples with zero mismatches**, compared with 3/60
+mismatches on development build 26300.9818. Cryptex HTTP tests on that second
+host are still pending; the probe result does not close those failures.
 
-**Next continuation point:** compare the standalone probe and HTTP tests on an
-independently verified supported Windows host/build, investigate the native
+**Next continuation point:** run the unchanged owned-process HTTP tests on the
+second Windows/VM, compare the results, investigate the native
 attestation anomaly, then verify the Windows Desktop owner flow using a
 fresh synthetic profile outside the repository, including confirmation,
 cancellation, denial, retry, exact nonzero cutoff boundaries, and recovery.

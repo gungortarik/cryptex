@@ -12,13 +12,17 @@ server tuples in state 0 or 6 instead of established state 5 on build
 established-state requirements are unchanged. The HTTP failures are not fixed.
 Fresh daemon library run: **516 passed / 4 failed / 4 ignored**; all five TCP
 parser tests passed. Strict release all-target daemon Clippy, format, and probe
-self-tests pass. The owner has a second Windows/VM available; comparison is
-pending.
+self-tests pass. The owner has now supplied the second Windows/VM probe result
+from pinned source `13e8d02`: **26200.9711 / 25H2; 60 samples, all round trips
+passed, zero mismatches, state 5 only**. The corresponding development-host
+ten-iteration probe had 3/60 mismatches. This supports a host/build-dependent
+anomaly but does not establish its underlying cause or close Cryptex HTTP tests.
 
 Evidence and reproducible commands:
 [`m8-windows-tcp-state-diagnostic-20261029.md`](../evidence/m8/m8-windows-tcp-state-diagnostic-20261029.md).
-Next: compare the native probe and unchanged HTTP assertions on an independently
-verified supported Windows host/build, then continue the Windows owner UI gate
+Next: check Git/Cargo availability on the second Windows/VM and run the
+unchanged owned-process HTTP tests at the pinned checkpoint there, then
+compare the results before continuing the Windows owner UI gate
 below. No installer, native owner UI, macOS parity, production transport,
 security review, or M8 completion is claimed.
 
