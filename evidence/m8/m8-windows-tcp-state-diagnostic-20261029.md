@@ -138,8 +138,61 @@ No ownership check, established-state gate, or HTTP assertion was weakened.
 
 ## Next gate
 
-Run the complete daemon library and binary tests on the second host with the
-same pinned source/toolchain before continuing native owner UI verification.
+### Earlier elevated second-host run — FAILED
+
+The owner supplied the tail of the full daemon library/binary command output
+from the same pinned source on the second Windows/VM. The library result is
+**477 passed / 43 failed / 4 ignored**, in 180.47 seconds. Cargo stopped at
+the library failure; no binary-test result is claimed for this invocation.
+
+The failures comprise 40 import-staging cases, two knowledge import/recovery
+cases, and one managed-profile corruption case. Many explicit failures report
+`staging directory is not owned by the current user`; others fail their
+expected later-stage diagnostic assertions. The managed-profile case received
+`UnsafePermissions` rather than `InvalidState`. The earlier HTTP-group 8/8
+PASS is still a scoped result, not a full-daemon pass.
+
+The owner then supplied the shell/fixture probe: **Elevated=True,
+OwnerMatchesUser=False, OwnerIsAdministrators=True**. New directories in that
+elevated shell had Administrators ownership rather than the token user's SID.
+This explains the ownership boundary encountered by the elevated run; its
+failure remains recorded rather than being treated as a passing environment.
+
+### Standard-user second-host run — library PASS, binary PASS reported
+
+Following the instruction to use a non-elevated PowerShell, the owner reran
+the pinned source/toolchain command and reported the binary result as **12
+passed**. The successful binary transcript itself was not supplied.
+
+The owner then separately reran the library command and supplied the filtered
+console output, including this exact result:
+
+```text
+test result: ok. 520 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 32.52s
+```
+
+Command:
+
+```powershell
+cargo +1.98.1 test --locked -p cryptexd --lib -- --test-threads=1
+```
+
+Source remained the archive pinned to `a5f859a34e3b9946527d97d1187c2c5ac72381a8`,
+Windows 26200.9711 / 25H2, Rust 1.98.1. This is owner-provided evidence of a
+complete daemon library PASS in the standard-user run, plus the separately
+reported binary PASS. The four ignored native fixtures were not exercised;
+integration executables and the packaged Desktop owner UI were not tested by
+these commands. No production permission gate or failing assertion was changed.
+
+The elevated-owner compatibility gap and the development host's TCP anomaly
+remain separate open limitations. This standard-user pass does not prove that
+the application supports an elevated launch or fix native TCP attestation on
+build 26300.9818.
+
+Check the second host's Node/pnpm prerequisites and prepare native Desktop
+owner UI verification in the standard-user session with a fresh synthetic
+profile outside the repository. Test confirmation, cancellation, refusal,
+retry, exact nonzero cutoffs, and restart recovery as separate cases.
 Keep the development-host networking anomaly open and compare its native
 fixture/stack before proposing any production change. Do not bypass state or
 job checks, enable a listener-only fallback, or weaken response expectations.

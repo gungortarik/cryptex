@@ -1,7 +1,17 @@
-**M8 Windows owner-security confirmation, append, and recovery (2026-10-29):** After owner acceptance of ADR-0019 §2, the daemon now derives immutable restriction/self-retirement snapshots from complete verified trust history, journals the exact snapshot before approval, and requires a same-connection, single-use confirmation capability. Windows revalidates the live connected Desktop process before confirmation. Confirmed operations append under canonical locks; startup reconciles an append-unknown owner operation against exact canonical history and anchors it without duplicate append. Desktop now presents the full snapshot for explicit owner review. Synthetic regression tests cover self-retirement confirmation/recovery and peer-admission followed by restriction. Verification: daemon library **517 passed / 0 failed / 4 ignored**; the separate binary test executable was blocked by Windows Application Control (OS 4551), so binary tests are not claimed. Strict daemon/Desktop release Clippy, fmt, TypeScript/Vite build, `tauri:package-smoke` (no bundle), and `git diff --check` pass. Built Desktop SHA-256 `EA86B015F747BAF9D63FC366923958D260F9AE38E26381902E6ADA90C0A62A32`; daemon sidecar SHA-256 `B05039386DE7F234021FBBEC2EF3DD27A6BC8354EA5D38FCF80D864BA690929B`. This is not an installer or interactive native Windows pass: UI, nonzero cutoff boundaries, production Syncthing-to-publication flow, macOS authenticated peer identity/parity, and independent review remain open. No Actions, commit, push, or M8 completion.
 # 34 — Current Implementation Handoff
 
 ## Latest continuation — native TCP state diagnostic (2026-10-29)
+
+**Latest second-host standard-user verification:** daemon library **520 passed
+/ 0 failed / 4 ignored**, exact result supplied by the owner (32.52s); binary
+**12 passed**, separately owner-reported. Source archive `a5f859a`, Rust 1.98.1,
+Windows 26200.9711 / 25H2. The earlier 477/43/4 run was elevated; a probe
+confirmed `Elevated=True`, `OwnerMatchesUser=False`,
+`OwnerIsAdministrators=True`. A standard-user rerun passed without changing
+ownership checks or assertions. Elevated-launch compatibility and the
+development host's TCP-state anomaly remain open; neither is fixed by the
+standard-user pass. The four ignored native fixtures, integration test
+executables, and native owner UI are not covered by this verification.
 
 The owned HTTP failures have been narrowed to native TCP-state attestation.
 A standalone Win32/C# probe (no Cryptex, HTTP, child job, or credentials) completed
@@ -21,16 +31,21 @@ anomaly but does not establish its underlying cause.
 **Second-host HTTP follow-up:** the owner reports **8/8 owned-process HTTP
 tests passed** on the same Windows/VM, source archive pinned to `a5f859a`,
 Rust 1.98.1, using the unchanged serial HTTP-group command. This is a scoped
-owner-reported PASS; a full successful transcript was not supplied. Full daemon
-and native owner UI verification there are still pending. The development-host
+owner-reported PASS; a full successful HTTP-group transcript was not supplied.
+The later standard-user daemon result is recorded above; native owner UI
+verification is still pending. The development-host
 failures remain open; no state/job check or HTTP assertion was relaxed.
 
 Evidence and reproducible commands:
 [`m8-windows-tcp-state-diagnostic-20261029.md`](../evidence/m8/m8-windows-tcp-state-diagnostic-20261029.md).
-Next: run the full daemon library/binary suite on the second Windows/VM at the
-same pinned checkpoint/toolchain, then continue the Windows owner UI gate
+Next: check Node/pnpm prerequisites on the second Windows/VM and prepare the
+Windows owner UI gate using a standard-user session and a fresh synthetic profile
 below. No installer, native owner UI, macOS parity, production transport,
 security review, or M8 completion is claimed.
+
+## Earlier owner-operation snapshot — historical
+
+**M8 Windows owner-security confirmation, append, and recovery (2026-10-29):** After owner acceptance of ADR-0019 §2, the daemon now derives immutable restriction/self-retirement snapshots from complete verified trust history, journals the exact snapshot before approval, and requires a same-connection, single-use confirmation capability. Windows revalidates the live connected Desktop process before confirmation. Confirmed operations append under canonical locks; startup reconciles an append-unknown owner operation against exact canonical history and anchors it without duplicate append. Desktop now presents the full snapshot for explicit owner review. Synthetic regression tests cover self-retirement confirmation/recovery and peer-admission followed by restriction. Verification: daemon library **517 passed / 0 failed / 4 ignored**; the separate binary test executable was blocked by Windows Application Control (OS 4551), so binary tests are not claimed. Strict daemon/Desktop release Clippy, fmt, TypeScript/Vite build, `tauri:package-smoke` (no bundle), and `git diff --check` pass. Built Desktop SHA-256 `EA86B015F747BAF9D63FC366923958D260F9AE38E26381902E6ADA90C0A62A32`; daemon sidecar SHA-256 `B05039386DE7F234021FBBEC2EF3DD27A6BC8354EA5D38FCF80D864BA690929B`. This is not an installer or interactive native Windows pass: UI, nonzero cutoff boundaries, production Syncthing-to-publication flow, macOS authenticated peer identity/parity, and independent review remain open. No Actions, commit, push, or M8 completion.
 
 ## Published checkpoint summary — 2026-10-29
 

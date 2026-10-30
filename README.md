@@ -16,42 +16,32 @@ implementation checkpoint, not a release or an accepted M8 completion.
 | Import and recovery | Bounded staging, signature/identity/chain checks, policy gates, committed-marker validation and cleanup, and conservative holds for incomplete publication | Production Syncthing-to-staging-to-publication wiring, safe replay, and remaining durability/crash-boundary proof |
 | macOS | Peer-identity feasibility investigation and a continuation prompt | Authenticated peer identity, equivalent owner-operation integration, and native parity verification; this approval route currently fails closed |
 
-Earlier Windows evidence reports **517 daemon library tests passed,
-0 failed, 4 ignored**, strict daemon/Desktop release Clippy, formatting,
-TypeScript/Vite build, and an unbundled Desktop/sidecar package smoke pass.
-The separate binary test executable was blocked by Windows Application Control
-(OS error 4551) on that run. These results do not prove an interactive native
-owner flow, installer readiness, macOS parity, or end-to-end peer replication.
-See the [owner-operation evidence](evidence/m8/m8-windows-owner-security-operation-ipc-append-recovery-20261029.md)
-for exact commands and limits.
+**Latest Windows verification (owner-provided, second Windows/VM):** on
+**26200.9711 / 25H2**, pinned source `a5f859a`, Rust 1.98.1, the standard-user
+run passed **520 daemon library tests (0 failed, 4 ignored)**. The owner also
+reported **12 binary tests passed**; the separate owned HTTP group passed
+**8/8**, and the native TCP probe matched **60/60** samples. The four ignored
+native fixtures, integration executables, and interactive Desktop flow are
+not covered by these results.
 
-**Checkpoint verification update:** the fresh pre-publication daemon library
-run is **not green**: 515 passed, 3 failed, 4 ignored. An isolated rerun of the
-owned-process HTTP group produced 4 passed and 4 failed with
-`Endpoint(PeerNotOwned)` rather than the expected owned-server result. The
-cause remains unresolved; no ownership check or test assertion was weakened.
-The daemon binary tests now pass **12/12**. Workspace release Clippy across
-all targets, formatting, frontend build, and Desktop policy tests (**18/18**)
-pass. See [checkpoint verification](evidence/m8/m8-checkpoint-publication-20261029.md).
+The earlier elevated second-host run failed 43 tests at ownership/permission
+boundaries; a probe confirmed new directories were owned by Administrators.
+The standard-user rerun passed with unchanged security checks and assertions.
+Elevated-launch compatibility remains an open limitation. On development build
+26300.9818, four HTTP tests still fail alongside independently reproduced
+native TCP-state mismatches; that host-specific anomaly is unresolved.
+See the [diagnostic and verification evidence](evidence/m8/m8-windows-tcp-state-diagnostic-20261029.md)
+for commands, result provenance, earlier failures, and scope limits.
 
-**Current investigation:** a standalone Win32/C# probe reproduced exact TCP
-tuples reporting state 0 or 6 despite successful loopback round trips before
-and after the snapshot (6 of 18 samples on this Windows build). The daemon now
-distinguishes `PeerNotEstablished` from missing/unowned peers; the acceptance
-requirements are unchanged. See the [diagnostic evidence and reproducer](evidence/m8/m8-windows-tcp-state-diagnostic-20261029.md).
-The native HTTP failures remain unresolved.
-The fresh daemon library run is **516 passed / 4 failed / 4 ignored**;
-all five TCP parser regressions, strict daemon Clippy, format, and the probe
-self-tests pass. The owner-reported second-Windows/VM probe on **26200.9711
-(25H2)** passed **60/60 samples with zero mismatches**, compared with 3/60
-mismatches on development build 26300.9818. The owner also reports **8/8
-owned-process HTTP tests passed** on that second host at source `a5f859a`
-with Rust 1.98.1. Full daemon and native Desktop verification there remain
-pending; the development-host failures remain open.
+Earlier development-host checks passed workspace release Clippy, format,
+TypeScript/Vite build, Desktop policy tests (18/18), and an unbundled
+Desktop/sidecar package smoke. The package smoke did not verify an interactive
+owner dialog or installer. See the [checkpoint evidence](evidence/m8/m8-checkpoint-publication-20261029.md)
+and [owner-operation evidence](evidence/m8/m8-windows-owner-security-operation-ipc-append-recovery-20261029.md).
 
-**Next continuation point:** run the full daemon library/binary suite on the
-second Windows/VM, retain the host-specific native
-attestation anomaly, then verify the Windows Desktop owner flow using a
+**Next continuation point:** check Node/pnpm prerequisites on the second
+Windows/VM, then verify the Windows Desktop owner flow in a standard-user
+session using a
 fresh synthetic profile outside the repository, including confirmation,
 cancellation, denial, retry, exact nonzero cutoff boundaries, and recovery.
 Then address production transport/publication, macOS parity, and independent
