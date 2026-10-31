@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+      - m0/foundation
   workflow_dispatch:
     inputs:
       ipc_acl_only:
@@ -104,6 +105,9 @@ jobs:
 
       - name: Test M4 knowledge reducer and SQLite recovery
         run: cargo test --locked -p cryptex-knowledge
+
+      - name: Test MCP JSON-RPC behavior
+        run: cargo test --locked -p cryptex-mcp
 
       - name: Check M2 schema TypeScript drift
         run: pnpm --filter @cryptex/schemas check:drift
