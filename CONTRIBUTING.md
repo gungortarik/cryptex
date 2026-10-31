@@ -86,3 +86,14 @@ If you use an AI coding assistant to help build your PR, pass it the prompt cont
 - `cryptexd` is the sole canonical writer; clients communicate via IPC.
 - Preserve cross-platform portability (UTF-8, LF line endings, no canonical symlink assumptions, Windows/macOS path safety).
 - All tests and `cargo fmt` / `clippy -D warnings` must pass before merging.
+
+---
+
+## Intellectual Property, Review and Commercialization
+
+- Read [Cryptex IP and Contribution Governance](docs/governance/IP_AND_CONTRIBUTION_POLICY.md) before proposing changes to licensing, branding, security-sensitive architecture, or commercial features.
+- The repository presently publishes source under `MIT OR Apache-2.0`. Do not remove or change license texts, copyright statements, or third-party attribution without prior maintainer discussion.
+- Submit PRs from your own fork. The project maintainer (@gungortarik) alone decides whether submitted changes are merged into official branches and released.
+- Use the [pull request template](.github/PULL_REQUEST_TEMPLATE.md) to document code provenance, tests, and security considerations. Never commit private memory, credentials, tokens, customer data, or runtime databases.
+- The project is considering a contributor agreement to support potential future commercial distributions. **No CLA is in force at this time.** The [working draft](docs/governance/CLA_DRAFT_FOR_LEGAL_REVIEW.md) is for legal review only; do not treat it as signed, binding, or a restriction on existing open-source permissions.
+- Acceptance of a PR is not guaranteed. Ask before implementing substantial architectural or licensing changes.
