@@ -232,6 +232,14 @@ Cryptex distinguishes:
 
 A configured daemon or integration must not be reported as Active or Verified unless runtime evidence supports that state.
 
+Lifecycle status files are timestamped observations, not live process handles.
+Consumers must not treat an old `health=active`, PID, or ready marker as current
+evidence. The `lifecycle status` command rechecks the single-instance lock and
+refreshes the status snapshot. Its `pid` field is populated only while the lock
+is observed held; `recorded_pid` preserves the last PID value for diagnostics
+when the lock is stale or absent. A ready marker records that startup reached a
+point in time and does not establish current liveness.
+
 Doctor and Desktop health surfaces must eventually consume real runtime checks rather than optimistic configuration flags.
 
 M0 provides only the Doctor/runtime-health foundation required by the milestone contract.

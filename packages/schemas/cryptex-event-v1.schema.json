@@ -1,0 +1,135 @@
+{
+  "$defs": {
+    "Classification": {
+      "description": "Production classification values.",
+      "enum": [
+        "public",
+        "internal",
+        "private",
+        "restricted"
+      ],
+      "type": "string"
+    },
+    "ContentHashHex": {
+      "description": "64-char lowercase hex content hash.",
+      "maxLength": 64,
+      "minLength": 64,
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "DeviceSeq": {
+      "description": "Per-device sequence encoded as a canonical decimal JSON string covering full `u64`.",
+      "maxLength": 20,
+      "minLength": 1,
+      "pattern": "^[1-9][0-9]{0,19}$",
+      "type": "string"
+    },
+    "EventPayload": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MemoryNotePayload"
+        }
+      ],
+      "description": "Type-specific payload object. Production M2 includes only `memory.note`."
+    },
+    "EventType": {
+      "description": "Production `event_type` values for M2 (fixture-only types are not included).",
+      "enum": [
+        "memory.note"
+      ],
+      "type": "string"
+    },
+    "MemoryNotePayload": {
+      "additionalProperties": false,
+      "description": "Payload for `memory.note`.",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
+    "SignatureHex": {
+      "description": "128-char lowercase hex Ed25519 signature.",
+      "maxLength": 128,
+      "minLength": 128,
+      "pattern": "^[0-9a-f]{128}$",
+      "type": "string"
+    },
+    "SigningKeyId": {
+      "description": "32-char lowercase hex signing key id.",
+      "maxLength": 32,
+      "minLength": 32,
+      "pattern": "^[0-9a-f]{32}$",
+      "type": "string"
+    }
+  },
+  "$id": "https://cryptex.local/schemas/cryptex-event-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Accepted on-disk record: signable fields plus integrity fields.",
+  "properties": {
+    "brain_id": {
+      "type": "string"
+    },
+    "classification": {
+      "$ref": "#/$defs/Classification"
+    },
+    "content_hash": {
+      "$ref": "#/$defs/ContentHashHex"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "device_id": {
+      "type": "string"
+    },
+    "device_seq": {
+      "$ref": "#/$defs/DeviceSeq"
+    },
+    "event_id": {
+      "type": "string"
+    },
+    "event_type": {
+      "$ref": "#/$defs/EventType"
+    },
+    "payload": {
+      "$ref": "#/$defs/EventPayload"
+    },
+    "prev_content_hash": {
+      "$ref": "#/$defs/ContentHashHex"
+    },
+    "schema_version": {
+      "format": "uint32",
+      "maximum": 1,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signature": {
+      "$ref": "#/$defs/SignatureHex"
+    },
+    "signing_key_id": {
+      "$ref": "#/$defs/SigningKeyId"
+    }
+  },
+  "required": [
+    "schema_version",
+    "event_id",
+    "brain_id",
+    "device_id",
+    "device_seq",
+    "created_at",
+    "event_type",
+    "classification",
+    "signing_key_id",
+    "payload",
+    "prev_content_hash",
+    "content_hash",
+    "signature"
+  ],
+  "title": "CryptexAcceptedEventV1",
+  "type": "object"
+}

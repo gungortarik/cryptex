@@ -1,7 +1,35 @@
 [workspace]
 resolver = "3"
-members = []
+members = [
+  "apps/desktop/src-tauri",
+  "crates/core",
+  "crates/events",
+  "crates/storage",
+  "crates/projection",
+  "crates/knowledge",
+  "services/cryptexd",
+  "services/cryptex-mcp",
+  "tools/m0-ipc-spike",
+  "tools/m0-storage-bench",
+  "tools/m0-lifecycle-compare",
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+version = "0.1.0"
 
 [workspace.dependencies]
-tauri = "=2.12.0"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+schemars = { version = "=1.2.2", features = ["derive"] }
+blake3 = "=1.8.2"
+ed25519-dalek = "=2.2.0"
+sha2 = "=0.10.9"
+serde_json_canonicalizer = "=0.3.2"
+unicode-normalization = "=0.1.24"
+# M3 Slice 2: bundled SQLite amalgamation with FTS5 (libsqlite3-sys -DSQLITE_ENABLE_FTS5).
+rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled", "hooks"] }
+tauri = { version = "=2.12.0", features = ["tray-icon"] }
 tauri-build = "=2.7.0"
+tauri-plugin-single-instance = "=2.3.0"

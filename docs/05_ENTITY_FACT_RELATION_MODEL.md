@@ -9,7 +9,9 @@ This document defines the fixed semantic boundaries for Cryptex entities, facts,
 
 It preserves the distinction between immutable canonical history and derived/materialized knowledge state.
 
-It intentionally does not invent the final M4 algorithms, thresholds or schemas.
+Initial M4 schema and deterministic semantics are defined by accepted
+ADR-0017. This document preserves the high-level model and points to that ADR
+for the concrete v2 payload, reducer, and derived-store contract.
 
 ## 2. Authority and scope
 
@@ -60,7 +62,9 @@ M4 includes:
 - aliases
 - semantic consolidation
 
-The exact entity-ID format, alias storage representation and resolution algorithm are not selected by this document.
+Initial M4 entity IDs are explicit UUIDs. Independent cross-device IDs remain
+separate until an explicit authorized merge; fuzzy-name matching never merges
+entities. Alias normalization and ambiguity behavior follow ADR-0017.
 
 ## 6. Alias behavior
 
@@ -70,7 +74,8 @@ Aliases must not erase provenance or silently mutate canonical historical record
 
 The knowledge engine may materialize alias state from canonical history.
 
-Exact alias matching, normalization and conflict rules belong to M4 evidence/implementation.
+Exact alias normalization and conflict rules follow accepted ADR-0017. An alias
+matching multiple entities remains ambiguous and does not merge them.
 
 ## 7. Fact model
 
@@ -80,9 +85,16 @@ Materialized active facts are derived state.
 
 Facts may carry logical state/confidence according to the accepted memory model.
 
-A newer accepted fact may supersede an older fact semantically while preserving the history that produced both.
+An accepted correction or withdrawal may change which fact is active while
+preserving the history that produced every assertion. Arrival time and
+Last-Write-Wins do not select a value.
 
-The exact fact-key/type schema is not selected here.
+The initial fact key/value schema and cardinality policy follow accepted
+ADR-0017. `person.birth_date` is single-valued per person; all other and
+unknown predicates are multi-valued by default. Different values for a
+multi-valued predicate coexist; they are not automatically conflicts.
+Single-valued conflicts have no winner until explicit authorized
+correction/withdrawal history addresses them.
 
 ## 8. Relation model
 
@@ -92,7 +104,9 @@ The materialized relationship graph is derived and rebuildable.
 
 Relationship state must not become canonical merely because graph traversal or visualization uses it.
 
-The exact relation-type taxonomy, directionality representation and cardinality rules belong to M4.
+The initial relation representation follows accepted ADR-0017. Relations are
+multi-valued by default; different targets coexist, with no inferred inverse
+relations or fuzzy entity merge.
 
 ## 9. Confidence
 
@@ -104,7 +118,11 @@ Knowledge confidence values are:
 
 Confidence must remain visible as semantic information rather than being discarded by materialization.
 
-The exact algorithm for determining or changing confidence is intentionally unresolved until the knowledge-engine milestone.
+For structured M4 assertions, confidence follows this vocabulary and remains
+separate from authorization and lifecycle. `cryptexd` validates the explicit
+publication request; a signature plus receipt reference does not independently
+prove human approval or factual correctness to remote peers. AI proposals stay
+in local staging until explicitly authorized for publication.
 
 ## 10. Knowledge lifecycle state
 
@@ -139,7 +157,11 @@ Offline-first convergence requires deterministic knowledge consolidation from ac
 
 Two trusted peers that receive the same valid canonical history should be able to converge on the same derived knowledge state under the same accepted rules.
 
-The exact algorithm and tie-breaking details are not selected by this document unless specified by a later accepted ADR/specification.
+Initial deterministic replay, dependency resolution, correction handling,
+cardinality, normalization, and stable tie-break rules follow accepted ADR-0017.
+Missing cross-device references remain pending and block contiguous safe
+materialized progress until resolved; event arrival order and wall-clock time
+cannot decide the result.
 
 Wall-clock time must not become security authority.
 
@@ -149,7 +171,9 @@ Derived facts and relations must retain sufficient provenance to connect current
 
 The knowledge engine must not silently collapse history in a way that prevents later explanation/correction behavior.
 
-Exact provenance-field layout belongs to implementation specifications.
+M4 provenance follows accepted ADR-0017 and is rebuilt from canonical events,
+including source event/device/sequence, signing key, confidence,
+authorization basis/receipt reference, classification, and contribution role.
 
 ## 14. Classification and privacy
 
@@ -186,11 +210,20 @@ Search/index structures remain derived.
 
 The order matters: M4 must not silently turn the search database into canonical knowledge storage.
 
+M4 knowledge state is additive and rebuildable within M3's existing
+`projection.sqlite`; M3 schema v1 remains unchanged. Content retrieval is
+conditional on the daemon's current `RetrievalSafetyState`, and a Brain-wide
+hold overrides normal search availability.
+
 ## 17. Obsidian relationship
 
 Obsidian receives a derived materialized view of Cryptex knowledge.
 
 Generated notes/links may reflect entities, facts and relations, but the vault is not canonical.
+
+Daemon-controlled Obsidian projection generation must honor the same retrieval
+safety decision. The daemon cannot revoke plaintext files/copies already
+written where the operating system or user can access them.
 
 Manual managed-note edits become proposals and only affect canonical memory after daemon-controlled validation/review according to the Obsidian milestone.
 
@@ -232,22 +265,13 @@ M0–M3 must not opportunistically implement the full knowledge engine.
 
 Earlier milestones may define only the foundations explicitly required by their contracts.
 
-## 21. Explicitly unresolved
+## 21. Remaining versioned decisions
 
-This document does not select:
-
-- entity-ID format
-- alias normalization algorithm
-- entity-resolution thresholds
-- fact-key/type taxonomy
-- relation-type taxonomy
-- semantic merge heuristics
-- confidence-scoring algorithm
-- detailed tie-breaking algorithm
-- exact provenance schema
-- exact materialized database schema
-
-These details require M4 implementation evidence and/or accepted ADR/specification updates.
+The initial M4 payload, reducer semantics, confidence/authorization
+separation, cardinality, provenance, and additive derived schema are selected
+by accepted ADR-0017. Later payload versions, changes to reducer/cardinality/
+normalization policy, and production v2 writer activation require their
+explicit version or activation gate; acceptance here does not enable them.
 
 ## 22. Source basis
 
@@ -258,4 +282,6 @@ This document consolidates existing knowledge-model requirements from:
 - `docs/20_MILESTONE_ROADMAP.md`
 - `docs/32_PRE_IMPLEMENTATION_AUDIT_REPORT.md`
 
-It does not independently select unresolved M4 algorithms or schema details.
+Initial M4 algorithms and schema details are specified by accepted
+`docs/adr/ADR-0017-structured-event-evolution-and-knowledge-materialization.md`;
+this document does not independently change that decision.

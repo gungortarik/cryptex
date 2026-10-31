@@ -1,0 +1,15 @@
+[package]
+name = "cryptex-projection"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Cryptex disposable local SQLite/FTS projection helpers (M3; derived state only)"
+
+[dependencies]
+cryptex-core = { path = "../core" }
+cryptex-events = { path = "../events" }
+rusqlite = { workspace = true }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }

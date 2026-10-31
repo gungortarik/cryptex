@@ -53,13 +53,11 @@ The storage-layout benchmark must measure:
 
 The selected design must be the simplest option that satisfies scale and recovery goals on both platforms.
 
-## 5. No premature physical-layout assumption
+## 5. Physical-layout assumption
 
-One-file-per-event must not be treated as accepted production architecture before the benchmark.
+One-file-per-event must not be treated as accepted production architecture.
 
-Likewise, sealed segments or hybrid packaging must not be selected merely because they appear more scalable in theory.
-
-ADR-0013 records the evidence-based decision.
+ADR-0013 is ACCEPTED: canonical packaging is immutable sealed per-device segment/pack files. Hybrid is not selected. `segment_events=1000` remains a P0-1 benchmark profile, not a frozen production constant.
 
 ## 6. Cross-platform scale requirement
 

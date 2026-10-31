@@ -4,6 +4,8 @@ These are not optional research tasks. They resolve the remaining architecture d
 
 ## P0-1 — Physical Event Storage Layout
 
+**Status:** RESOLVED — ADR-0013 ACCEPTED (sealed per-device segments; one-file-per-event rejected; hybrid not selected)
+
 ### Question
 Does one immutable file per event remain practical at 10k/100k/500k events with Syncthing, antivirus/indexing and rebuild workloads on Windows/macOS?
 
@@ -25,6 +27,8 @@ C. hybrid thresholded segments if justified
 
 ### Acceptance
 Select the simplest option that meets scale/recovery goals on both platforms. Record ADR-0013 as ACCEPTED before M2.
+
+**Recorded:** ADR-0013 is ACCEPTED. P0-2, P0-3 and P0-4 are unchanged by this result.
 
 ---
 

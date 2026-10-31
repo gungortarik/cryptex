@@ -23,9 +23,11 @@ If new evidence contradicts an accepted decision, implementation stops and the A
 
 **Risk:** one-file-per-event may create unacceptable filesystem/Syncthing/indexing/rebuild behavior at realistic scale.
 
-**Mitigation:** M0 P0-1 benchmarks one-file-per-event, sealed segment/pack files and a hybrid only if justified at 10k/100k/500k events on macOS and Windows.
+**Mitigation:** M0 P0-1 benchmarked one-file-per-event, sealed segment/pack files and a hybrid only if justified at 10k/100k/500k events on macOS and Windows.
 
 **Gate:** ADR-0013 accepted before M2.
+
+**Recorded:** ADR-0013 is ACCEPTED. One-file-per-event is rejected for production packaging. Canonical packaging is sealed per-device segments.
 
 ### R-02 — Background daemon lifecycle/update ambiguity
 

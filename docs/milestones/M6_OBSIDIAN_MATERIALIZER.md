@@ -32,7 +32,7 @@ M6 proves and productizes the **derived projection side** of attachment handling
 For M6:
 
 - attachment projection uses synthetic attachment fixtures and a stable projection boundary/interface
-- copy/hard-link fallback behavior and cleanup are proven according to the required P1 spike
+- copy-only projection and cleanup are proven according to the required P1 spike; M6 never hard-links projected files because writes through a hard link mutate the source
 - generated attachment output remains derived and rebuildable
 - no canonical attachment blob store is introduced
 - no SHA-256 blob-store implementation, deduplication, reference tracking or integrity-repair subsystem is implemented
@@ -51,6 +51,36 @@ This boundary preserves milestone order and must not be used to pull M9 implemen
 - Cross-platform path/name behavior must be safe.
 - V1 uses Obsidian Graph for full graph visualization rather than requiring a separate full graph engine.
 - M6 attachment fixtures are synthetic and do not create a second canonical attachment store.
+
+## Entity-note and link contract
+
+M6 renders the active consolidated entities, facts, and relations already
+produced by the M4 reducer. This is a derived projection only: it does not
+change the M4 event model, infer relationships, or create a second relation
+store. The exact format and safety rules are defined in
+`docs/13_OBSIDIAN_INTEGRATION.md` §5, “M6 deterministic entity links”.
+
+In summary, each active consolidated entity has one note at
+`Cryptex/Entities/<representative_entity_id>.md`; the canonical lowercase
+representative UUID is the filename identity, never a display label. Facts
+appear as content in the subject entity note. Each active explicit relation
+adds one directed outgoing Obsidian link from subject to object. No reverse
+link is inferred. Only the shared `RetrievalSafetyState` may authorize exposing
+these contents; a missing, stale, corrupt, or held state prevents creation or
+refresh of managed plaintext. M6 does not add an exception to that gate.
+
+## Link verification requirements
+
+Focused projection tests must prove:
+
+- exact UUID-based entity paths and frontmatter, with duplicate labels remaining distinct
+- an explicit relation creates exactly one subject-to-object WikiLink, and no inferred inverse link
+- changing a display label changes rendered labels but not the entity path or link target
+- pending, withdrawn, conflicted, unresolved, or endpoint-less relations create no links
+- unsafe labels, predicates, and fact values cannot escape Markdown/frontmatter or alter link targets
+- identical reducer input produces byte-identical LF output regardless of input order or supported OS
+- rebuild reproduces the same graph; a held/missing/stale safety state leaves the existing generated tree unchanged
+- edits to generated notes do not change canonical events; ownership validation continues to reject modified generated output before replacement
 
 ## Non-goals
 

@@ -9,9 +9,13 @@
 *.ts text eol=lf
 *.tsx text eol=lf
 *.js text eol=lf
+*.mjs text eol=lf
 *.jsx text eol=lf
 *.sh text eol=lf
 *.ps1 text eol=lf
+
+# Hashed upstream notice text must have identical checkout bytes on both OSes.
+/third_party/syncthing/2.1.5/*.txt text eol=lf
 
 # Lockfiles
 Cargo.lock text eol=lf

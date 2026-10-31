@@ -40,7 +40,10 @@ They do not imply that every concept is stored as a separately mutable canonical
 
 Canonical durable memory is immutable event data plus the other explicitly canonical durable objects defined by the Master Spec.
 
-Materialized entity/fact/relation state is derived and rebuildable.
+Materialized entity/fact/relation state is derived and rebuildable. Under
+accepted ADR-0017, M4 materializes only explicitly structured, verified v2
+assertions; it never promotes arbitrary v1 `memory.note` free text into
+entities, facts, or relations.
 
 Therefore:
 
@@ -64,7 +67,10 @@ Events are the basis from which later systems can derive:
 - correction/supersede state
 - search/index projections
 
-The exact event schema belongs to `docs/04_EVENT_SCHEMA_AND_INVARIANTS.md` and later M1/M2 implementation work.
+The exact event schema belongs to `docs/04_EVENT_SCHEMA_AND_INVARIANTS.md`.
+ADR-0016's v1 contract remains unchanged; accepted ADR-0017 defines the
+separately validated initial v2 structured assertion envelope and keeps its
+production writer disabled behind a separate activation gate.
 
 ## 6. Entity role
 
@@ -72,9 +78,10 @@ An ENTITY represents an identifiable subject in the user's knowledge system.
 
 Examples may include a person, project, course, device, organization or concept.
 
-Entity resolution, aliases and merge/consolidation behavior belong to M4 Knowledge Engine.
-
-This document does not define a final entity-ID format, resolution algorithm or similarity threshold.
+For the initial M4 contract, entity IDs are explicit UUIDs in ADR-0017
+payloads. Independent device declarations remain distinct unless an explicit
+authorized merge event equates them; fuzzy name similarity never merges
+entities. Alias normalization and ambiguity behavior follow ADR-0017.
 
 ## 7. Fact role
 
@@ -86,7 +93,13 @@ Materialized active facts are derived state.
 
 Correction of a fact must preserve history rather than editing canonical history in place.
 
-Exact fact schemas and consolidation rules belong to the later knowledge-model specification and M4.
+The initial typed fact schema and predicate/cardinality policy follow accepted
+ADR-0017. `person.birth_date` is single-valued for a person; all unregistered
+or unknown predicates are multi-valued. Distinct values under multi-valued
+predicates coexist and are not conflicts solely because they differ.
+Single-valued conflicts remain unresolved until explicit authorized
+correction/withdrawal history addresses them; timestamps and Last-Write-Wins
+never choose a winner.
 
 ## 8. Relation role
 
@@ -96,7 +109,9 @@ Materialized relationship graph state is derived and rebuildable.
 
 The relationship graph must not become a separate canonical source of truth merely because it is convenient for visualization or querying.
 
-Detailed relation types and consolidation behavior belong to M4.
+The initial relation representation and default multi-valued cardinality
+follow accepted ADR-0017. Distinct targets coexist; replay does not infer
+inverse relations or merge entities by similarity.
 
 ## 9. Artifact role
 
@@ -149,7 +164,13 @@ Cryptex confidence values are:
 
 Confidence is part of the logical knowledge model.
 
-The exact rules for promoting, lowering or reconciling confidence belong to M4 and must not be guessed during earlier milestones.
+For structured M4 assertions, confidence is separate from publication
+authorization and lifecycle. A trusted daemon validates the authorized
+publication request before signing. A device signature or receipt reference
+authenticates the daemon's attestation under this trust model; it does not
+independently prove human approval or factual correctness to a remote peer.
+AI-assisted proposals remain local staging until explicit authorized
+publication and cannot be marked `confirmed` merely because they were signed.
 
 ## 12. Classification
 
@@ -174,7 +195,10 @@ Canonical immutable history is the basis for provenance.
 
 Derived knowledge must not discard the ability to trace current state back to relevant canonical history.
 
-The exact provenance fields are not selected by this document.
+For M4, provenance fields follow accepted ADR-0017: source event/device/
+sequence, signing key, confidence, authorization basis/receipt reference,
+classification, and contribution role. Canonical events remain authoritative;
+these fields are reproducible in a complete rebuild.
 
 ## 14. Corrections and supersession
 
@@ -184,7 +208,9 @@ New accepted information may supersede older material semantically.
 
 The historical chain remains available for timeline/provenance behavior unless later purge semantics deliberately remove content according to the accepted deletion model.
 
-Detailed correction/consolidation algorithms belong to M4.
+Initial deterministic correction, withdrawal, conflict, and explicit
+resolution rules follow accepted ADR-0017. They retain history and never use
+wall-clock time or Last-Write-Wins.
 
 ## 15. Offline convergence
 
@@ -192,7 +218,10 @@ Trusted desktops may create memory while disconnected.
 
 Canonical immutable events can converge by union after reconnection, followed by deterministic Cryptex validation and knowledge consolidation.
 
-No wall-clock ordering may become security authority.
+No wall-clock ordering may become security authority. Missing cross-device
+references remain pending and cannot be marked applied or permanently skipped;
+materialization progress is contiguous safe progress distinct from integrity
+verification progress.
 
 Conflict/convergence transport behavior belongs to `docs/07_SYNC_AND_CONFLICT_PROTOCOL.md`.
 
@@ -232,7 +261,11 @@ Derived projections may include:
 
 All remain rebuildable and disposable.
 
-The exact projection schemas belong to later milestones.
+M4 adds disposable, rebuildable knowledge tables to the existing M3
+`projection.sqlite`; M3 schema v1 remains unchanged. All content retrieval is
+subject to `RetrievalSafetyState`, with Brain-wide hold taking precedence.
+Daemon-controlled Obsidian generation must use the same gate, but previously
+written plaintext files/copies cannot be revoked by the daemon.
 
 ## 19. Milestone boundaries
 
@@ -248,17 +281,12 @@ The logical model is implemented incrementally:
 
 Earlier milestones must not opportunistically implement later semantic layers.
 
-## 20. Explicitly unresolved
+## 20. Remaining versioned decisions
 
-This document does not select:
-
-- exact event JSON/binary schema fields
-- exact entity ID format
-- exact fact or relation type enums
-- entity-resolution algorithm
-- consolidation thresholds
-- confidence-calculation algorithm
-- exact provenance field layout
+The initial M4 event, reducer, confidence/authorization, cardinality,
+provenance, and derived-schema contracts are selected by accepted ADR-0017.
+Changing event payload schemas, cardinality/normalization policy, or enabling
+production v2 writing requires its explicit version or activation gate.
 - semantic merge heuristics
 
 Those details remain governed by their dedicated specifications, milestones and evidence.
@@ -272,4 +300,6 @@ This document consolidates existing memory-model requirements from:
 - `docs/20_MILESTONE_ROADMAP.md`
 - `docs/32_PRE_IMPLEMENTATION_AUDIT_REPORT.md`
 
-It does not independently redesign the Cryptex memory model.
+It does not independently redesign the Cryptex memory model. Initial M4
+semantics are further specified by accepted
+`docs/adr/ADR-0017-structured-event-evolution-and-knowledge-materialization.md`.

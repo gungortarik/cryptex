@@ -156,9 +156,9 @@ When canonical event storage is implemented, relevant verification must include:
 | rebuild from canonical data | disposable state can be reconstructed |
 | purge-related integrity bridge | integrity remains verifiable without retaining purged content |
 
-Exact storage tests depend on the physical packaging selected by M0 P0-1 and ADR-0013.
+Exact storage tests for M2 depend on the physical packaging accepted in ADR-0013 (sealed per-device segments). Seal size and container filenames remain M2 parameters.
 
-M0 must not assume the final M2 storage implementation before that decision.
+M0 must not implement the full M2 event store opportunistically.
 
 ## 9. Derived-state matrix
 

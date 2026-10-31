@@ -36,6 +36,7 @@
 - `docs/31_TECH_STACK_BASELINE.md` — implementation technology baseline
 - `docs/32_PRE_IMPLEMENTATION_AUDIT_REPORT.md` — A-to-Z audit findings and corrections
 - `docs/33_CURSOR_HANDOFF.md` — controlled implementation handoff procedure
+- `docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md` — current milestone status, verified evidence and exact continuation point
 - `docs/milestones/` — M0 through M17 implementation contracts
 
 ## Checklists

@@ -1,0 +1,7 @@
+# Cryptex repository code review ownership
+# GitHub CODEOWNERS requests review from the repository maintainer.
+# Mandatory review requires a separate branch protection rule.
+* @gungortarik
+
+# Protect ownership of this policy file, too.
+/.github/CODEOWNERS @gungortarik
