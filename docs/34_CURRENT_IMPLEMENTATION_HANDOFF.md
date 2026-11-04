@@ -24,7 +24,11 @@ pin. After building both Release binaries on Windows, run
 Use `-JoiningDevice` for the endpoint that will join the initiator's Brain.
 The runner creates fresh roots, waits for the daemon ready file, and opens
 the pilot window for the adapter identity check. PowerShell parsing passed.
-Live runner and two-endpoint pairing verification are pending. A host Release
+The owner launched the corrected Release pilot in the Windows VM and selected
+**Read verified adapter identity**. The screenshot showed a verified adapter
+DeviceId and the refresh button. This verifies the VM's native Desktop adapter
+identity read. Signed offer, two-endpoint pairing and restriction review remain
+pending. A host Release
 attempt exposed the original fixed profile name as invalid. The daemon now
 generates a valid leaf and the launcher consumes the reported path.
 The targeted daemon test passed: provisioning rejects a reused marked root
