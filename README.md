@@ -12,7 +12,7 @@ implementation checkpoint, not a release or an accepted M8 completion.
 | Area | Implemented in this checkpoint | Still required |
 | --- | --- | --- |
 | Security events and trust | Strict v3 security-event reading, verified trust history, local trust/cutoff reduction, and cutoff-aware content validation | Independent security review and remaining protocol/compatibility gates |
-| Windows owner approval | Journaled bootstrap exchange, Desktop approval UI, connection-bound single-use confirmation, restriction/self-retirement append, and duplicate-safe recovery; Desktop snapshot serialization fix is in the current candidate | Retest the native owner review on the second Windows VM; verify cancellation, confirmation, denial/retry, nonzero cutoff boundaries, and recovery |
+| Windows owner approval | Journaled bootstrap exchange, Desktop approval UI, connection-bound single-use confirmation, restriction/self-retirement append, and duplicate-safe recovery; snapshot serialization fix passed native review-and-cancel on the second Windows VM | Verify confirmation only in a dedicated synthetic flow, plus denial/retry, nonzero cutoff boundaries, and recovery |
 | Import and recovery | Bounded staging, signature/identity/chain checks, policy gates, committed-marker validation and cleanup, and conservative holds for incomplete publication | Production Syncthing-to-staging-to-publication wiring, safe replay, and remaining durability/crash-boundary proof |
 | macOS | Peer-identity feasibility investigation and a continuation prompt | Authenticated peer identity, equivalent owner-operation integration, and native parity verification; this approval route currently fails closed |
 
@@ -40,23 +40,24 @@ owner dialog or installer. See the [checkpoint evidence](evidence/m8/m8-checkpoi
 and [owner-operation evidence](evidence/m8/m8-windows-owner-security-operation-ipc-append-recovery-20261029.md).
 
 The second Windows/VM completed the **unbundled release Desktop/daemon package
-smoke** with Node 24.19.0 and pnpm 11.28.0. Its interactive owner-flow attempt
-on 2026-11-03 exposed a renderer crash: after **Prepare owner review**, the
-window went blank twice; `Ctrl+R` restored the form. Inspection found the
-Tauri response serialized the durable snake_case snapshot directly while the
-React view expected camelCase. The current candidate adds a camelCase-only
-Desktop transport DTO and a regression test without changing journal bytes.
-Retest this fix on the second VM is still required; no owner operation was
-confirmed. Details and exact verification scope are in the
+smoke** with Node 24.19.0, Cargo 1.98.1, and pnpm 11.28.0 at source `b733e43`.
+Its initial interactive attempt exposed a renderer crash: after **Prepare
+owner review**, the window went blank twice. The Tauri response serialized the
+durable snake_case snapshot while React expected camelCase. The fix adds a
+camelCase-only Desktop transport DTO and regression test without changing
+journal bytes. The owner then rebuilt from a short temporary path and verified
+the corrected self-retirement snapshot plus **Cancel**; Cryptex reported
+“Operation cancelled. No canonical event was written.” No confirmation was
+performed. Confirmation, denial/retry, nonzero cutoff boundaries, and recovery
+remain unverified. Details and exact verification scope are in the
 [owner-review rendering evidence](evidence/m8/m8-windows-owner-review-rendering-20261103.md).
 
-**Next continuation point:** publish the current Desktop snapshot fix, then
-rebuild on the second Windows VM with Node 24.19.0 and pnpm 11.28.0. Use a
-fresh synthetic profile outside the repository: two pre-fix review attempts
-left owner-pending journal entries in the disposable profile after `Ctrl+R`
-discarded the renderer handles. Verify the corrected exact owner review and
-cancel it without confirmation. Continue with denial, retry, exact nonzero
-cutoff boundaries, and recovery. Then address production
+**Next continuation point:** continue remaining M8 owner-flow cases in fresh
+synthetic profiles: denial, retry, exact nonzero cutoff boundaries, and
+recovery. Do not test permanent confirmation on the current device. The two
+pre-fix review attempts left owner-pending journal entries in their disposable
+profile after `Ctrl+R` discarded the renderer handles; that profile was not
+reused. Then address production
 transport/publication, macOS parity, and independent security review before
 evaluating the M8 completion gate. ADR-0019's protocol addendum remains
 PROPOSED overall; owner acceptance of sections 2–4 as the Windows

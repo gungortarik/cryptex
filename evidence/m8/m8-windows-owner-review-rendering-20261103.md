@@ -41,27 +41,44 @@ snake_case for the journal structure.
 - `cargo check --locked -p cryptex-desktop`: **passed**.
 - `cargo clippy --locked -p cryptexd --lib -- -D warnings`: **passed**.
 - `cargo fmt --all -- --check` and `git diff --check`: **passed**.
-- `pnpm --filter @cryptex/desktop tauri:package-smoke`: **passed**, unbundled
-  Release Desktop and daemon sidecar. Host used Node 26.13.0 / pnpm 11.28.0;
-  package manager warned that the repo pins Node 24.19.0. Verify again with the
-  pinned Node on the second VM.
+- Development-host `pnpm --filter @cryptex/desktop tauri:package-smoke`:
+  **passed**, unbundled Release Desktop and daemon sidecar. Host used Node
+  26.13.0 / pnpm 11.28.0; pnpm warned that the repo pins Node 24.19.0.
 - Full daemon library run: **519 passed / 2 failed / 4 ignored**. Both failures
   were the existing owned-process HTTP tests returning `PeerNotEstablished`
   on this development host. This fix did not weaken native TCP-state or
   process-ownership validation.
 
-Build hashes:
+Second-VM build and owner-flow retest:
 
-- Desktop: `B9AFA1D304B8D99567237AFDE1AE822F35FB2411F43ADAA46FD397FEF220FEBC`
-- Daemon sidecar: `DFE5C16E5206DCDAF0BB675D5EA7A7ED2A9057844A30F8CE64A32FBCB4462CAA`
+- Source `b733e436b0f9f69ded13699aa012fc6b2901650d`; Windows 26200.9711 / 25H2,
+  standard user; Node 24.19.0, Cargo 1.98.1, pnpm 11.28.0.
+- Initial package build failed at the long temp path with MASM
+  `A1009: line too long`. Re-extraction under `%TEMP%\cx-b733e43` resolved it;
+  package smoke passed and built an unbundled Release Desktop plus daemon.
+- Desktop SHA-256:
+  `2ADB6443E58A0B8CA893BB6EE17423311C8897A3D42E0B73C68189A295BAC6CD`
+- Daemon SHA-256:
+  `2B8431464AB8C94CE22AAA03D9C2F54A0E245D16DBC285DC0B7FA5525C556E1A`
+- A fresh marked synthetic fixture returned Brain
+  `18b2f76c-eae5-46ff-b7b9-8ac3f110ff46` and seed event
+  `08fb17ca-f651-4e08-82c5-2ae718128062`. The corrected Desktop rendered
+  `self_retirement`, transaction
+  `8effe1659f080bb983c85445076ea395f4d390484e56717d16c0d3db19ae5c1e`, issuing
+  device `102ca9af-4077-4de2-bc58-3bf436c9cf02`, signing key
+  `d49ab5902c64736d82b654986afbdaac`, last-authorized sequence `1`, and hash
+  `9f142876c5969a1f5bdbb41ec48c8b53dc8a8f9c441960a04aeb07a236f1db06`.
+- Owner selected **Cancel**; the UI reported **“Operation cancelled. No
+  canonical event was written.”** No confirmation was performed.
 
 ## Scope and next step
 
-This is a confirmed UI rendering defect and a locally verified code fix, not a
-post-fix native Windows owner-flow pass. The approval session deadline is five
-minutes; 15 seconds is only the Desktop-to-daemon connect timeout. The two
-pre-fix attempts were not confirmed; because the WebView reload discarded the
-session handles, their synthetic journal records may remain `OwnerPending`.
-Use a fresh marked synthetic runtime when retesting the published fix. Verify
-that the exact self-retirement snapshot appears, then choose **Cancel**. Do not
-claim the owner flow passed until the review and cancellation are observed.
+The rendering defect is fixed and the corrected Windows owner review plus
+cancellation passed on the second VM. This does not cover confirmed append,
+denial/retry, exact nonzero cutoff boundaries, recovery, a bundled installer,
+or M8 completion. The approval session deadline is five minutes; 15 seconds is
+only the Desktop-to-daemon connect timeout. The two pre-fix attempts were not
+confirmed; their lost renderer handles mean their old synthetic journal
+records may remain `OwnerPending`. That profile was not reused; the corrected
+test used a fresh marked runtime. No canonical trust event was written by the
+cancelled operation.

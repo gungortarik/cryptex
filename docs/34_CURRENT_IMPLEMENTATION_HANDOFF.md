@@ -30,16 +30,31 @@ rejecting the development host's inconsistent native TCP state as
 SHA-256 `B9AFA1D304B8D99567237AFDE1AE822F35FB2411F43ADAA46FD397FEF220FEBC`;
 sidecar SHA-256 `DFE5C16E5206DCDAF0BB675D5EA7A7ED2A9057844A30F8CE64A32FBCB4462CAA`.
 
-The post-fix native VM review has **not** been run. Two pre-fix preparations
-were followed by WebView reloads, so the renderer lost both in-memory session
-handles. The owner-operation approval session deadline is **5 minutes** (the
-15-second value is only the Tauri-to-daemon connection timeout). No confirm
-call was made; canonical history was not changed. Those synthetic profile
-journal entries may remain `OwnerPending`; use a fresh synthetic profile for
-the post-fix retest. Next: rebuild from the published fix on the second VM,
-prepare self-retirement, inspect the full exact snapshot, and click **Cancel**.
-Do not claim native owner-flow PASS until that review and cancellation are
-observed. See [the detailed rendering evidence](../evidence/m8/m8-windows-owner-review-rendering-20261103.md).
+**Post-fix second-VM verification:** source `b733e436b0f9f69ded13699aa012fc6b2901650d`,
+Windows `26200.9711 / 25H2`, standard user, Node `24.19.0`, Cargo `1.98.1`,
+pnpm `11.28.0`. The first package attempt under the long temp path failed in
+MASM with `A1009: line too long`; re-extracting under `%TEMP%\cx-b733e43` fixed
+the build path. The unbundled Tauri Release package smoke then passed. Owner
+reported Desktop SHA-256
+`2ADB6443E58A0B8CA893BB6EE17423311C8897A3D42E0B73C68189A295BAC6CD` and daemon
+SHA-256 `2B8431464AB8C94CE22AAA03D9C2F54A0E245D16DBC285DC0B7FA5525C556E1A`.
+
+Using a fresh marked synthetic runtime and fixture Brain
+`18b2f76c-eae5-46ff-b7b9-8ac3f110ff46` / event
+`08fb17ca-f651-4e08-82c5-2ae718128062`, the corrected UI rendered the full
+self-retirement review. It showed operation `self_retirement`, transaction
+`8effe1659f080bb983c85445076ea395f4d390484e56717d16c0d3db19ae5c1e`, issuing
+device `102ca9af-4077-4de2-bc58-3bf436c9cf02`, signing key
+`d49ab5902c64736d82b654986afbdaac`, last-authorized sequence `1`, and hash
+`9f142876c5969a1f5bdbb41ec48c8b53dc8a8f9c441960a04aeb07a236f1db06`. The
+owner selected **Cancel**. Cryptex displayed **“Operation cancelled. No
+canonical event was written.”** No confirmation was performed. This is a
+scoped native review-and-cancel PASS; confirmation, denial/retry, nonzero
+cutoff, and recovery cases remain open. The two pre-fix preparations were
+refreshed without cancellation, so their old synthetic journal may retain
+`OwnerPending` records; it was not reused. Owner-operation session deadline is
+**5 minutes**; 15 seconds is only the Tauri-to-daemon connection timeout.
+See [the detailed rendering evidence](../evidence/m8/m8-windows-owner-review-rendering-20261103.md).
 
 ## Latest continuation — second-Windows Desktop smoke PASS (2026-10-30)
 
