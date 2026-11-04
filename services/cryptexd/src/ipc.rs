@@ -1704,7 +1704,12 @@ fn desktop_exchange_bootstrap_message(
         "bootstrap.exchange.brain_identity.read" => "bootstrap.exchange.brain_identity.read",
         _ => return Err(invalid_data("unsupported bootstrap exchange request")),
     };
-    if response.operation != expected_operation {
+    let is_exchange_rejection = response.operation == "bootstrap.exchange.result"
+        && !response.accepted
+        && response.error.is_some()
+        && response.exchange_message.is_none()
+        && response.brain_identity_json.is_none();
+    if response.operation != expected_operation && !is_exchange_rejection {
         return Err(invalid_data("bootstrap exchange operation mismatch"));
     }
     Ok(DesktopBootstrapExchangeResult {

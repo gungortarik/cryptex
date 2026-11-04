@@ -32,6 +32,10 @@ the VM pilot. Responder verification, two-endpoint pairing and restriction
 review remain pending. A host Release
 attempt exposed the original fixed profile name as invalid. The daemon now
 generates a valid leaf and the launcher consumes the reported path.
+The VM responder displayed `bootstrap exchange operation mismatch` while
+creating proof. Desktop now preserves the daemon's typed exchange rejection
+instead of masking it. Two targeted proof tests passed. The underlying
+responder rejection still needs to be observed in a rebuilt Desktop.
 The targeted daemon test passed: provisioning rejects a reused marked root
 before opening the package and preserves existing files.
 
