@@ -9,7 +9,7 @@ launch and restart. The daemon validates the package, profile and ports.
 The Windows daemon now exposes `pilot-transport --confirm-isolated-pilot
 <fresh-marked-root> <pinned-package-dir> <api-port> <sync-port>`. The marked
 provisioning root is separate from the Desktop runtime. The command creates
-its private `managed-profile` child using the existing package validation,
+its private child with a random 32-character hex name using package validation,
 profile provisioning, and Windows credential store.
 The host build passed. Windows Application Control blocked the new daemon
 before the provisioning command ran. Next, build and run the command in the
@@ -21,7 +21,9 @@ pin. After building both Release binaries on Windows, run
 Use `-JoiningDevice` for the endpoint that will join the initiator's Brain.
 The runner creates fresh roots, waits for the daemon ready file, and opens
 the pilot window for the adapter identity check. PowerShell parsing passed.
-Live runner and two-endpoint pairing verification are pending.
+Live runner and two-endpoint pairing verification are pending. A host Release
+attempt exposed the original fixed profile name as invalid. The daemon now
+generates a valid leaf and the launcher consumes the reported path.
 The targeted daemon test passed: provisioning rejects a reused marked root
 before opening the package and preserves existing files.
 

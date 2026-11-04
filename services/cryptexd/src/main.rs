@@ -121,7 +121,7 @@ fn run_pilot_transport(args: &[String]) -> Result<(), LifecycleError> {
     }
     let package = PinnedSyncthingPackage::open(package_path)
         .map_err(|error| LifecycleError::Attention(error.to_string()))?;
-    let profile_path = root.join("managed-profile");
+    let profile_path = root.join(random_uuid_v4()?.replace('-', ""));
     let mut profile = ManagedProfile::create(&profile_path, SecureStoreEnvironment::Dev)
         .map_err(|error| LifecycleError::Attention(error.to_string()))?;
     profile
@@ -1274,7 +1274,7 @@ mod tests {
             run_pilot_transport(&args),
             Err(LifecycleError::UnsafeRuntimePath(_))
         ));
-        assert!(!root.join("managed-profile").exists());
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 2);
         assert_eq!(
             fs::read_to_string(root.join("existing-state")).unwrap(),
             "preserve"

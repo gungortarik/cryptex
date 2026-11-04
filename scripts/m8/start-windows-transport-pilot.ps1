@@ -38,14 +38,19 @@ try {
     $syncListener.Stop()
 }
 Write-Output "pilot_root=$trial"
-& $daemon pilot-transport --confirm-isolated-pilot $prep $package $api $sync
+$receipt = @(& $daemon pilot-transport --confirm-isolated-pilot $prep $package $api $sync)
 if ($LASTEXITCODE -ne 0) { throw "Pilot transport provisioning failed ($LASTEXITCODE)." }
+$profilePrefix = 'managed_profile='
+if ($receipt.Count -ne 1 -or -not $receipt[0].StartsWith($profilePrefix)) {
+    throw 'Pilot transport did not report its profile path.'
+}
+$profile = $receipt[0].Substring($profilePrefix.Length)
+Write-Output $receipt[0]
 if (-not $JoiningDevice) {
     & $daemon pilot-fixture timeline-v1 --runtime-root $runtime --confirm-isolated-pilot
     if ($LASTEXITCODE -ne 0) { throw "Timeline fixture failed ($LASTEXITCODE)." }
 }
 
-$profile = Join-Path $prep 'managed-profile'
 $desktopArguments = @('--cryptex-pilot-runtime', ('"{0}"' -f $runtime),
     '--cryptex-pilot-transport', ('"{0}"' -f $profile), ('"{0}"' -f $package), $api, $sync)
 $process = Start-Process -FilePath $desktop -ArgumentList $desktopArguments -PassThru
