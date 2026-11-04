@@ -12,7 +12,7 @@ implementation checkpoint, not a release or an accepted M8 completion.
 | Area | Implemented in this checkpoint | Still required |
 | --- | --- | --- |
 | Security events and trust | Strict v3 security-event reading, verified trust history, local trust/cutoff reduction, and cutoff-aware content validation | Independent security review and remaining protocol/compatibility gates |
-| Windows owner approval | Journaled bootstrap exchange, Desktop approval UI, connection-bound single-use confirmation, restriction/self-retirement append, and duplicate-safe recovery; snapshot serialization fix passed native review-and-cancel on the second Windows VM | Verify confirmation only in a dedicated synthetic flow, plus denial/retry, nonzero cutoff boundaries, and recovery |
+| Windows owner approval | Journaled bootstrap exchange, Desktop approval UI, connection-bound single-use confirmation, restriction/self-retirement append, and duplicate-safe recovery; native self-retirement review/cancel/retry and unapproved-peer denial passed on the second Windows VM | Native approved-peer restriction review at a nonzero cutoff and native restart/recovery flow; no confirmation on the owner's current device |
 | Import and recovery | Bounded staging, signature/identity/chain checks, policy gates, committed-marker validation and cleanup, and conservative holds for incomplete publication | Production Syncthing-to-staging-to-publication wiring, safe replay, and remaining durability/crash-boundary proof |
 | macOS | Peer-identity feasibility investigation and a continuation prompt | Authenticated peer identity, equivalent owner-operation integration, and native parity verification; this approval route currently fails closed |
 
@@ -49,13 +49,18 @@ journal bytes. The owner then rebuilt from a short temporary path and verified
 the corrected self-retirement snapshot, then repeated the preparation after
 cancellation and received a different transaction ID. Both **Cancel** actions
 reported “Operation cancelled. No canonical event was written.” No
-confirmation was performed. Confirmation, denial, nonzero cutoff boundaries,
-and recovery remain unverified. Details and exact verification scope are in the
+confirmation was performed. A valid-format but unapproved peer restriction
+request was also denied with “Nothing was changed.” Targeted synthetic daemon
+tests passed for an approved peer's exact nonzero cutoff/hash, rejection of a
+later boundary, the owner restriction IPC flow, and self-retirement append
+recovery. The approved-peer UI and native recovery flows remain unverified.
+Details and exact verification scope are in the
 [owner-review rendering evidence](evidence/m8/m8-windows-owner-review-rendering-20261103.md).
 
-**Next continuation point:** continue remaining M8 owner-flow cases in fresh
-synthetic profiles: denial, exact nonzero cutoff boundaries, and recovery. Do
-not test permanent confirmation on the current device. The two
+**Next continuation point:** prepare a fresh synthetic profile with a directly
+approved peer, then verify the Desktop restriction review at a nonzero cutoff
+and cancel it. Continue with the native restart/recovery flow. Do not test
+permanent confirmation on the owner's current device. The two
 pre-fix review attempts left owner-pending journal entries in their disposable
 profile after `Ctrl+R` discarded the renderer handles; that profile was not
 reused. Then address production

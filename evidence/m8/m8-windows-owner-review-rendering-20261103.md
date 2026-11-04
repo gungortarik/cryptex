@@ -76,13 +76,34 @@ Second-VM build and owner-flow retest:
   it; Cryptex again reported **“Operation cancelled. No canonical event was
   written.”** This verifies a fresh retry after cancellation in the same
   synthetic profile.
+- The owner then submitted a restriction request for valid-format but
+  unapproved synthetic device `00000000-0000-4000-8000-000000000001`, reason
+  `compromised`, cutoff `1`. Cryptex displayed **“Cryptex could not verify this
+  owner operation against current canonical trust history. Nothing was
+  changed.”** No review or confirmation was offered; the request was denied.
+
+Targeted local daemon tests, each **1 passed / 0 failed**:
+
+- `restriction_request_binds_approved_peer_and_exact_verified_cutoff` — exact
+  approved-peer cutoff sequence `1` and its content hash are bound; later
+  sequence `2` is rejected.
+- `owner_operation_boundaries_require_exact_empty_prefix_hash` — the
+  self-retirement empty-prefix sentinel requires its exact hash.
+- `bootstrap_approval_ipc_freezes_displays_and_journals_before_signature_release`
+  — synthetic peer bootstrap followed by a nonzero-cutoff restriction IPC,
+  confirmation, and append in an isolated test fixture.
+- `confirmed_self_retirement_append_recovers_after_durable_append` — recovery
+  after the synthetic canonical append.
 
 ## Scope and next step
 
-The rendering defect is fixed and the corrected Windows owner review,
-cancellation, and post-cancel retry passed on the second VM. This does not
-cover confirmed append, denial, exact nonzero cutoff boundaries, recovery, a
-bundled installer, or M8 completion. The approval session deadline is five minutes; 15 seconds is
+The rendering defect is fixed; the corrected Windows owner review,
+cancellation, post-cancel retry, and unapproved-peer denial passed on the
+second VM. Targeted daemon tests cover the exact nonzero cutoff, restriction
+IPC append, and self-retirement recovery in isolated fixtures. This does not
+cover native Desktop review of an approved-peer restriction, native restart/
+recovery, a bundled installer, or M8 completion. The approval session deadline
+is five minutes; 15 seconds is
 only the Desktop-to-daemon connect timeout. The two pre-fix attempts were not
 confirmed; their lost renderer handles mean their old synthetic journal
 records may remain `OwnerPending`. That profile was not reused; the corrected

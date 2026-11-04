@@ -53,10 +53,17 @@ second time. It produced a different transaction ID (prefix `eebbae8c`),
 displayed the same exact local device and sequence-1 boundary, and was
 cancelled with the same no-append status. No confirmation was performed. This
 is a scoped native review, cancellation, and post-cancel retry PASS;
-confirmation, denial, nonzero cutoff, and recovery cases remain open. The two pre-fix preparations were
-refreshed without cancellation, so their old synthetic journal may retain
-`OwnerPending` records; it was not reused. Owner-operation session deadline is
-**5 minutes**; 15 seconds is only the Tauri-to-daemon connection timeout.
+The owner then submitted a restriction request for syntactically valid but
+unapproved device `00000000-0000-4000-8000-000000000001`, reason `compromised`,
+cutoff `1`. The
+UI displayed **“Cryptex could not verify this owner operation against current
+canonical trust history. Nothing was changed.”** No review or confirmation
+followed. This is a scoped negative owner-policy check. The two pre-fix
+preparations were refreshed without cancellation, so their old synthetic
+journal may retain `OwnerPending` records; it was not reused. Owner-operation
+session deadline is **5 minutes**; 15 seconds is only the Tauri-to-daemon
+connection timeout. Targeted local Rust checks also passed: exact approved
+peer cutoff/hash and rejection of a later boundary (`restriction_request_binds_approved_peer_and_exact_verified_cutoff`), empty-prefix sentinel validation (`owner_operation_boundaries_require_exact_empty_prefix_hash`), the synthetic peer-bootstrap plus nonzero-cutoff restriction IPC flow (`bootstrap_approval_ipc_freezes_displays_and_journals_before_signature_release`), and self-retirement append recovery (`confirmed_self_retirement_append_recovers_after_durable_append`), each **1/1**. These tests do not constitute native Desktop review of an approved-peer restriction or a native restart/recovery pass; those remain open.
 See [the detailed rendering evidence](../evidence/m8/m8-windows-owner-review-rendering-20261103.md).
 
 ## Latest continuation — second-Windows Desktop smoke PASS (2026-10-30)
