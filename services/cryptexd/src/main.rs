@@ -56,6 +56,8 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
         "identity" => run_identity(&args[1..]),
         "replication" => run_replication(&args[1..]),
         "pilot-fixture" => run_pilot_fixture(&args[1..]),
+        #[cfg(windows)]
+        "pilot-transport" => run_pilot_transport(&args[1..]),
         "help" | "--help" | "-h" => {
             print_usage();
             Ok(())
@@ -90,6 +92,44 @@ const PILOT_RUNTIME_MARKER: &str = "m0-native-desktop-runtime-v1\n";
 const PILOT_FIXTURE_MARKER: &str = "m5-timeline-fixture-v1\n";
 const PILOT_TIMELINE_NOTE: &str =
     "Synthetic M5 timeline fixture. Safe to discard with this isolated pilot runtime.";
+
+#[cfg(windows)]
+fn run_pilot_transport(args: &[String]) -> Result<(), LifecycleError> {
+    use cryptexd::managed_profile::{ManagedProfile, native::NativePorts};
+    use cryptexd::syncthing_package::PinnedSyncthingPackage;
+
+    let [confirm, root, package, api, sync] = args else {
+        return Err(LifecycleError::Usage(usage_text()));
+    };
+    if confirm != "--confirm-isolated-pilot" {
+        return Err(LifecycleError::Usage(usage_text()));
+    }
+    let root = Path::new(root);
+    validate_pilot_fixture_root(root)?;
+    let port = |value: &str| {
+        value.parse::<u16>().map_err(|_| {
+            LifecycleError::Usage("pilot transport requires decimal API and sync ports".into())
+        })
+    };
+    let ports = NativePorts::new(port(api)?, port(sync)?)
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    let package_path = Path::new(package);
+    if !package_path.is_absolute() {
+        return Err(LifecycleError::Usage(
+            "pilot package path must be absolute".into(),
+        ));
+    }
+    let package = PinnedSyncthingPackage::open(package_path)
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    let profile_path = root.join("managed-profile");
+    let mut profile = ManagedProfile::create(&profile_path, SecureStoreEnvironment::Dev)
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    profile
+        .prepare_native(&package, &cryptexd::WindowsCredentialStore::new(), ports)
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    println!("managed_profile={}", profile_path.display());
+    Ok(())
+}
 
 fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
     if args.first().map(String::as_str) != Some("timeline-v1") {
@@ -1028,6 +1068,7 @@ fn usage_text() -> String {
         "  cryptexd identity enroll-local --runtime-root <app-data-path> --environment <dev|prod>",
         "  cryptexd replication status --runtime-root <app-data-path> (read-only metadata diagnostics)",
         "  cryptexd pilot-fixture timeline-v1 --runtime-root <fresh-pilot-path> --confirm-isolated-pilot",
+        "  cryptexd pilot-transport --confirm-isolated-pilot <fresh-marked-root> <pinned-package-dir> <api-port> <sync-port> (Windows)",
         "  cryptexd lifecycle status [--runtime-root <path>]",
         "  cryptexd lifecycle probe [--runtime-root <path>]",
         "  cryptexd lifecycle hold --runtime-root <path> (--stop-file <path> | --hold-ms <ms> | --crash-after-ready) [--ready-file <path>]",

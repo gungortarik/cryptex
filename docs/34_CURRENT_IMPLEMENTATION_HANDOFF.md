@@ -6,8 +6,15 @@ The Windows Desktop pilot accepts `--cryptex-pilot-transport <ready-profile>
 <pinned-package-dir> <api-port> <sync-port>` alongside the existing marked
 runtime option. It forwards the four values to the Desktop-owned daemon on
 launch and restart. The daemon validates the package, profile and ports.
-Next, expose isolated profile provisioning through the daemon and verify the
-adapter identity in Desktop on the host and its one Windows VM.
+The Windows daemon now exposes `pilot-transport --confirm-isolated-pilot
+<fresh-marked-root> <pinned-package-dir> <api-port> <sync-port>`. The marked
+provisioning root is separate from the Desktop runtime. The command creates
+its private `managed-profile` child using the existing package validation,
+profile provisioning, and Windows credential store.
+The host build passed. Windows Application Control blocked the new daemon
+before the provisioning command ran. Next, build and run the command in the
+Windows VM, then verify adapter identity through Desktop. Host-side pairing
+still needs a working second endpoint.
 
 ## Latest continuation — Windows owner-review renderer crash isolated (2026-11-03)
 
