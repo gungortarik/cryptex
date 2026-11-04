@@ -48,9 +48,12 @@ device `102ca9af-4077-4de2-bc58-3bf436c9cf02`, signing key
 `d49ab5902c64736d82b654986afbdaac`, last-authorized sequence `1`, and hash
 `9f142876c5969a1f5bdbb41ec48c8b53dc8a8f9c441960a04aeb07a236f1db06`. The
 owner selected **Cancel**. Cryptex displayed **“Operation cancelled. No
-canonical event was written.”** No confirmation was performed. This is a
-scoped native review-and-cancel PASS; confirmation, denial/retry, nonzero
-cutoff, and recovery cases remain open. The two pre-fix preparations were
+canonical event was written.”** The owner then prepared self-retirement a
+second time. It produced a different transaction ID (prefix `eebbae8c`),
+displayed the same exact local device and sequence-1 boundary, and was
+cancelled with the same no-append status. No confirmation was performed. This
+is a scoped native review, cancellation, and post-cancel retry PASS;
+confirmation, denial, nonzero cutoff, and recovery cases remain open. The two pre-fix preparations were
 refreshed without cancellation, so their old synthetic journal may retain
 `OwnerPending` records; it was not reused. Owner-operation session deadline is
 **5 minutes**; 15 seconds is only the Tauri-to-daemon connection timeout.

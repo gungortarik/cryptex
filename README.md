@@ -46,15 +46,16 @@ owner review**, the window went blank twice. The Tauri response serialized the
 durable snake_case snapshot while React expected camelCase. The fix adds a
 camelCase-only Desktop transport DTO and regression test without changing
 journal bytes. The owner then rebuilt from a short temporary path and verified
-the corrected self-retirement snapshot plus **Cancel**; Cryptex reported
-“Operation cancelled. No canonical event was written.” No confirmation was
-performed. Confirmation, denial/retry, nonzero cutoff boundaries, and recovery
-remain unverified. Details and exact verification scope are in the
+the corrected self-retirement snapshot, then repeated the preparation after
+cancellation and received a different transaction ID. Both **Cancel** actions
+reported “Operation cancelled. No canonical event was written.” No
+confirmation was performed. Confirmation, denial, nonzero cutoff boundaries,
+and recovery remain unverified. Details and exact verification scope are in the
 [owner-review rendering evidence](evidence/m8/m8-windows-owner-review-rendering-20261103.md).
 
 **Next continuation point:** continue remaining M8 owner-flow cases in fresh
-synthetic profiles: denial, retry, exact nonzero cutoff boundaries, and
-recovery. Do not test permanent confirmation on the current device. The two
+synthetic profiles: denial, exact nonzero cutoff boundaries, and recovery. Do
+not test permanent confirmation on the current device. The two
 pre-fix review attempts left owner-pending journal entries in their disposable
 profile after `Ctrl+R` discarded the renderer handles; that profile was not
 reused. Then address production

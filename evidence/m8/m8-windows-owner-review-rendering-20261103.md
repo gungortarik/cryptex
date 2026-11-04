@@ -70,13 +70,19 @@ Second-VM build and owner-flow retest:
   `9f142876c5969a1f5bdbb41ec48c8b53dc8a8f9c441960a04aeb07a236f1db06`.
 - Owner selected **Cancel**; the UI reported **“Operation cancelled. No
   canonical event was written.”** No confirmation was performed.
+- After that cancellation, the owner prepared the same self-retirement review
+  again. It rendered a different transaction ID (prefix `eebbae8c`) while
+  retaining the same local device and sequence-1 boundary. The owner cancelled
+  it; Cryptex again reported **“Operation cancelled. No canonical event was
+  written.”** This verifies a fresh retry after cancellation in the same
+  synthetic profile.
 
 ## Scope and next step
 
-The rendering defect is fixed and the corrected Windows owner review plus
-cancellation passed on the second VM. This does not cover confirmed append,
-denial/retry, exact nonzero cutoff boundaries, recovery, a bundled installer,
-or M8 completion. The approval session deadline is five minutes; 15 seconds is
+The rendering defect is fixed and the corrected Windows owner review,
+cancellation, and post-cancel retry passed on the second VM. This does not
+cover confirmed append, denial, exact nonzero cutoff boundaries, recovery, a
+bundled installer, or M8 completion. The approval session deadline is five minutes; 15 seconds is
 only the Desktop-to-daemon connect timeout. The two pre-fix attempts were not
 confirmed; their lost renderer handles mean their old synthetic journal
 records may remain `OwnerPending`. That profile was not reused; the corrected
