@@ -4,7 +4,7 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
-## Implementation status — 2026-10-29
+## Implementation status — 2026-11-03
 
 Active branch: `codex/m8-device-trust`. This branch contains a Windows-focused
 implementation checkpoint, not a release or an accepted M8 completion.
@@ -12,7 +12,7 @@ implementation checkpoint, not a release or an accepted M8 completion.
 | Area | Implemented in this checkpoint | Still required |
 | --- | --- | --- |
 | Security events and trust | Strict v3 security-event reading, verified trust history, local trust/cutoff reduction, and cutoff-aware content validation | Independent security review and remaining protocol/compatibility gates |
-| Windows owner approval | Journaled bootstrap exchange, Desktop approval UI, connection-bound single-use confirmation, restriction/self-retirement append, and duplicate-safe recovery | Interactive native Desktop verification, nonzero cutoff boundaries, and packaged denial/cancel/retry/error cases |
+| Windows owner approval | Journaled bootstrap exchange, Desktop approval UI, connection-bound single-use confirmation, restriction/self-retirement append, and duplicate-safe recovery; Desktop snapshot serialization fix is in the current candidate | Retest the native owner review on the second Windows VM; verify cancellation, confirmation, denial/retry, nonzero cutoff boundaries, and recovery |
 | Import and recovery | Bounded staging, signature/identity/chain checks, policy gates, committed-marker validation and cleanup, and conservative holds for incomplete publication | Production Syncthing-to-staging-to-publication wiring, safe replay, and remaining durability/crash-boundary proof |
 | macOS | Peer-identity feasibility investigation and a continuation prompt | Authenticated peer identity, equivalent owner-operation integration, and native parity verification; this approval route currently fails closed |
 
@@ -39,19 +39,28 @@ Desktop/sidecar package smoke. The package smoke did not verify an interactive
 owner dialog or installer. See the [checkpoint evidence](evidence/m8/m8-checkpoint-publication-20261029.md)
 and [owner-operation evidence](evidence/m8/m8-windows-owner-security-operation-ipc-append-recovery-20261029.md).
 
-The second Windows/VM also completed the **unbundled release Desktop/daemon
-package smoke** with Node 24.19.0 and pnpm 11.28.0. The owner-supplied log is
-recorded in the [native verification checkpoint](evidence/m8/m8-second-windows-desktop-native-verification-20261030.md);
-an interactive owner-flow pass remains pending.
+The second Windows/VM completed the **unbundled release Desktop/daemon package
+smoke** with Node 24.19.0 and pnpm 11.28.0. Its interactive owner-flow attempt
+on 2026-11-03 exposed a renderer crash: after **Prepare owner review**, the
+window went blank twice; `Ctrl+R` restored the form. Inspection found the
+Tauri response serialized the durable snake_case snapshot directly while the
+React view expected camelCase. The current candidate adds a camelCase-only
+Desktop transport DTO and a regression test without changing journal bytes.
+Retest this fix on the second VM is still required; no owner operation was
+confirmed. Details and exact verification scope are in the
+[owner-review rendering evidence](evidence/m8/m8-windows-owner-review-rendering-20261103.md).
 
-**Next continuation point:** record binary hashes, launch the second-Windows
-Desktop in a standard-user session, and verify the owner flow using a
-fresh synthetic profile outside the repository, including confirmation,
-cancellation, denial, retry, exact nonzero cutoff boundaries, and recovery.
-Then address production transport/publication, macOS parity, and independent
-security review before evaluating the M8 completion gate. ADR-0019's protocol
-addendum remains PROPOSED overall; owner acceptance of sections 2–4 as the
-Windows implementation basis is not full protocol or milestone acceptance.
+**Next continuation point:** publish the current Desktop snapshot fix, then
+rebuild on the second Windows VM with Node 24.19.0 and pnpm 11.28.0. Use a
+fresh synthetic profile outside the repository: two pre-fix review attempts
+left owner-pending journal entries in the disposable profile after `Ctrl+R`
+discarded the renderer handles. Verify the corrected exact owner review and
+cancel it without confirmation. Continue with denial, retry, exact nonzero
+cutoff boundaries, and recovery. Then address production
+transport/publication, macOS parity, and independent security review before
+evaluating the M8 completion gate. ADR-0019's protocol addendum remains
+PROPOSED overall; owner acceptance of sections 2–4 as the Windows
+implementation basis is not full protocol or milestone acceptance.
 
 The [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) is the detailed
 continuation record. Its dated entries are historical evidence: statements

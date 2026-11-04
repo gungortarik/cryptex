@@ -183,13 +183,89 @@ struct BootstrapApprovalIpcResponseWire {
     brain_identity_json: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopApprovalIdentity {
+    pub device_id: String,
+    pub signing_key_id: String,
+    pub public_key_fingerprint_sha256: String,
+}
+
+impl From<crate::bootstrap_journal::ApprovalIdentity> for DesktopApprovalIdentity {
+    fn from(identity: crate::bootstrap_journal::ApprovalIdentity) -> Self {
+        Self {
+            device_id: identity.device_id,
+            signing_key_id: identity.signing_key_id,
+            public_key_fingerprint_sha256: identity.public_key_fingerprint_sha256,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopTransportAssociation {
+    pub local_device_id: String,
+    pub peer_device_id: String,
+}
+
+impl From<crate::bootstrap_journal::TransportAssociation> for DesktopTransportAssociation {
+    fn from(association: crate::bootstrap_journal::TransportAssociation) -> Self {
+        Self {
+            local_device_id: association.local_device_id,
+            peer_device_id: association.peer_device_id,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopApprovalSnapshot {
+    pub brain_id: String,
+    pub transaction_id: String,
+    pub role: crate::bootstrap_journal::BootstrapRole,
+    pub operation: crate::bootstrap_journal::BootstrapOperation,
+    pub agreement_hash: Option<String>,
+    pub previous_message_hash: Option<String>,
+    pub local_identity: DesktopApprovalIdentity,
+    pub peer_identity: Option<DesktopApprovalIdentity>,
+    pub transport_association: Option<DesktopTransportAssociation>,
+    pub restriction_target: Option<String>,
+    pub restriction_reason: Option<crate::bootstrap_journal::RestrictionReason>,
+    pub cutoff_seq: Option<String>,
+    pub cutoff_content_hash: Option<String>,
+    pub last_authorized_seq: Option<String>,
+    pub last_authorized_content_hash: Option<String>,
+}
+
+impl From<crate::bootstrap_journal::ApprovalSnapshot> for DesktopApprovalSnapshot {
+    fn from(snapshot: crate::bootstrap_journal::ApprovalSnapshot) -> Self {
+        Self {
+            brain_id: snapshot.brain_id,
+            transaction_id: snapshot.transaction_id,
+            role: snapshot.role,
+            operation: snapshot.operation,
+            agreement_hash: snapshot.agreement_hash,
+            previous_message_hash: snapshot.previous_message_hash,
+            local_identity: snapshot.local_identity.into(),
+            peer_identity: snapshot.peer_identity.map(Into::into),
+            transport_association: snapshot.transport_association.map(Into::into),
+            restriction_target: snapshot.restriction_target,
+            restriction_reason: snapshot.restriction_reason,
+            cutoff_seq: snapshot.cutoff_seq,
+            cutoff_content_hash: snapshot.cutoff_content_hash,
+            last_authorized_seq: snapshot.last_authorized_seq,
+            last_authorized_content_hash: snapshot.last_authorized_content_hash,
+        }
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopBootstrapApprovalPrepared {
     /// Opaque Desktop-local handle. The signing capability remains in memory
     /// beside the IPC stream and is never exposed to the renderer.
     pub session_handle: String,
-    pub snapshot: crate::bootstrap_journal::ApprovalSnapshot,
+    pub snapshot: DesktopApprovalSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,7 +286,7 @@ pub struct DesktopOwnerSecurityOperationPrepared {
     /// Opaque Desktop-local handle. The confirmation capability remains in
     /// memory beside the authenticated IPC stream and never reaches the UI.
     pub session_handle: String,
-    pub snapshot: crate::bootstrap_journal::ApprovalSnapshot,
+    pub snapshot: DesktopApprovalSnapshot,
 }
 
 #[derive(Debug, Serialize)]
@@ -1304,7 +1380,7 @@ pub fn desktop_prepare_bootstrap_approval(
     );
     Ok(DesktopBootstrapApprovalPrepared {
         session_handle,
-        snapshot,
+        snapshot: snapshot.into(),
     })
 }
 
@@ -1425,7 +1501,7 @@ pub fn desktop_prepare_owner_security_operation(
     );
     Ok(DesktopOwnerSecurityOperationPrepared {
         session_handle,
-        snapshot,
+        snapshot: snapshot.into(),
     })
 }
 
@@ -8529,5 +8605,45 @@ mod tests {
         assert!(response.error.is_none());
         // Give the detached worker a moment to finish without joining (no cancel claim).
         thread::sleep(Duration::from_millis(250));
+    }
+
+    #[test]
+    fn desktop_approval_snapshot_uses_camel_case_without_changing_journal_shape() {
+        let snapshot = crate::bootstrap_journal::ApprovalSnapshot {
+            brain_id: TEST_BRAIN_ID.into(),
+            transaction_id: "a".repeat(64),
+            role: crate::bootstrap_journal::BootstrapRole::Issuer,
+            operation: crate::bootstrap_journal::BootstrapOperation::SelfRetirement,
+            agreement_hash: None,
+            previous_message_hash: None,
+            local_identity: crate::bootstrap_journal::ApprovalIdentity {
+                device_id: "22222222-2222-4222-8222-222222222222".into(),
+                signing_key_id: "signing-key".into(),
+                public_key_fingerprint_sha256: "b".repeat(64),
+            },
+            peer_identity: None,
+            transport_association: None,
+            restriction_target: None,
+            restriction_reason: None,
+            cutoff_seq: None,
+            cutoff_content_hash: None,
+            last_authorized_seq: Some("0".into()),
+            last_authorized_content_hash: Some("c".repeat(64)),
+        };
+
+        let journal_value = serde_json::to_value(&snapshot).unwrap();
+        assert!(journal_value.get("local_identity").is_some());
+        assert!(journal_value.get("localIdentity").is_none());
+
+        let desktop_value = serde_json::to_value(DesktopApprovalSnapshot::from(snapshot)).unwrap();
+        assert_eq!(desktop_value["brainId"], TEST_BRAIN_ID);
+        assert_eq!(desktop_value["transactionId"], "a".repeat(64));
+        assert_eq!(desktop_value["operation"], "self_retirement");
+        assert_eq!(
+            desktop_value["localIdentity"]["deviceId"],
+            "22222222-2222-4222-8222-222222222222"
+        );
+        assert_eq!(desktop_value["lastAuthorizedSeq"], "0");
+        assert!(desktop_value.get("local_identity").is_none());
     }
 }

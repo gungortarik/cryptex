@@ -1,5 +1,46 @@
 # 34 — Current Implementation Handoff
 
+## Latest continuation — Windows owner-review renderer crash isolated (2026-11-03)
+
+The owner repeated the native self-retirement review preparation twice on the
+standard-user Windows 26200.9711 / 25H2 VM, using the marked synthetic runtime
+`%TEMP%\cryptex-m8-owner-638f41528100470eb48ccac291b9b4ce`. Each **Prepare owner
+review** click blanked the Desktop WebView. Desktop and daemon processes stayed
+alive; `gui-proof.snapshot` reported a visible window and the expected runtime
+root, with no `start.error`, `window.error`, or `restart.error`. `Ctrl+R`
+restored the initial form. The owner did not click **Confirm security change**.
+
+Root cause: Tauri returned the journal's `ApprovalSnapshot` directly. Durable
+snapshot structs serialize snake_case, while React reads camelCase and
+dereferences `snapshot.localIdentity.deviceId`; the mismatch throws during
+render and blanks the WebView. The candidate adds dedicated camelCase Desktop
+snapshot, identity, and transport DTOs at the IPC boundary. The persistent
+journal serialization remains unchanged. A Rust regression test asserts both
+the Desktop camelCase response and the unchanged durable snake_case shape.
+
+Verification on the development host: focused regression **1/1**, frontend
+TypeScript/Vite build PASS, Desktop Rust `cargo check` PASS, daemon library
+Clippy with `-D warnings` PASS, format and diff checks PASS, and unbundled
+Tauri release package smoke PASS. The package smoke used Node **26.13.0** and
+pnpm **11.28.0**; it emitted the expected engine mismatch warning because the
+repository pins Node 24.19.0. Current daemon library run: **519 passed / 2
+failed / 4 ignored**. Both failures are existing owned-process HTTP checks
+rejecting the development host's inconsistent native TCP state as
+`PeerNotEstablished`; no ownership/state checks were relaxed. Built Desktop
+SHA-256 `B9AFA1D304B8D99567237AFDE1AE822F35FB2411F43ADAA46FD397FEF220FEBC`;
+sidecar SHA-256 `DFE5C16E5206DCDAF0BB675D5EA7A7ED2A9057844A30F8CE64A32FBCB4462CAA`.
+
+The post-fix native VM review has **not** been run. Two pre-fix preparations
+were followed by WebView reloads, so the renderer lost both in-memory session
+handles. The owner-operation approval session deadline is **5 minutes** (the
+15-second value is only the Tauri-to-daemon connection timeout). No confirm
+call was made; canonical history was not changed. Those synthetic profile
+journal entries may remain `OwnerPending`; use a fresh synthetic profile for
+the post-fix retest. Next: rebuild from the published fix on the second VM,
+prepare self-retirement, inspect the full exact snapshot, and click **Cancel**.
+Do not claim native owner-flow PASS until that review and cancellation are
+observed. See [the detailed rendering evidence](../evidence/m8/m8-windows-owner-review-rendering-20261103.md).
+
 ## Latest continuation — second-Windows Desktop smoke PASS (2026-10-30)
 
 The owner supplied a successful unbundled release Desktop/daemon package-smoke
