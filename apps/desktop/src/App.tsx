@@ -334,7 +334,9 @@ export function App() {
       setExchangeTransportId(transportDeviceId);
       const result = await invoke<BootstrapExchangeResult>("m8_create_bootstrap_proof", {
         offerMessage: incomingOffer.trim(),
-        brainIdentityJson: incomingBrainIdentity.trim(),
+        // Textareas can normalize pasted line endings. The daemon requires
+        // canonical LF JSON with one final newline.
+        brainIdentityJson: incomingBrainIdentity.replace(/\r\n/g, "\n").replace(/\n*$/, "\n"),
         transportDeviceId,
       });
       if (!result.accepted || !result.exchangeMessage) {

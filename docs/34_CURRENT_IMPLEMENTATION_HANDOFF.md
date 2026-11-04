@@ -36,6 +36,10 @@ The VM responder displayed `bootstrap exchange operation mismatch` while
 creating proof. Desktop now preserves the daemon's typed exchange rejection
 instead of masking it. Two targeted proof tests passed. The underlying
 responder rejection still needs to be observed in a rebuilt Desktop.
+Source inspection also found that the responder textarea submission removed
+the mandatory final LF from the canonical Brain identity. Desktop now
+restores that LF and converts pasted CRLF to LF before submitting the public
+identity. The daemon still compares the result with its canonical form.
 The targeted daemon test passed: provisioning rejects a reused marked root
 before opening the package and preserves existing files.
 
