@@ -22,6 +22,8 @@ Use `-JoiningDevice` for the endpoint that will join the initiator's Brain.
 The runner creates fresh roots, waits for the daemon ready file, and opens
 the pilot window for the adapter identity check. PowerShell parsing passed.
 Live runner and two-endpoint pairing verification are pending.
+The targeted daemon test passed: provisioning rejects a reused marked root
+before opening the package and preserves existing files.
 
 ## Latest continuation — Windows owner-review renderer crash isolated (2026-11-03)
 

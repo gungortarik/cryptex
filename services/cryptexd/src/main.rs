@@ -1258,6 +1258,29 @@ mod tests {
         fs::remove_dir_all(root).expect("remove fixture");
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn pilot_transport_rejects_reused_runtime_before_provisioning() {
+        let root = fresh_pilot_root();
+        fs::write(root.join("existing-state"), "preserve").unwrap();
+        let args = vec![
+            "--confirm-isolated-pilot".into(),
+            root.to_str().unwrap().into(),
+            root.join("missing-package").to_str().unwrap().into(),
+            "12345".into(),
+            "12346".into(),
+        ];
+        assert!(matches!(
+            run_pilot_transport(&args),
+            Err(LifecycleError::UnsafeRuntimePath(_))
+        ));
+        assert!(!root.join("managed-profile").exists());
+        assert_eq!(
+            fs::read_to_string(root.join("existing-state")).unwrap(),
+            "preserve"
+        );
+    }
+
     #[test]
     fn timeline_fixture_requires_explicit_confirmation_before_path_access() {
         let error = run(vec![
