@@ -11,10 +11,13 @@ The Windows daemon now exposes `pilot-transport --confirm-isolated-pilot
 provisioning root is separate from the Desktop runtime. The command creates
 its private child with a random 32-character hex name using package validation,
 profile provisioning, and Windows credential store.
-The host build passed. Windows Application Control blocked the new daemon
-before the provisioning command ran. Next, build and run the command in the
-Windows VM, then verify adapter identity through Desktop. Host-side pairing
-still needs a working second endpoint.
+The host Release daemon provisioned the corrected profile and passed a
+bounded managed lifecycle run. That run reached ready and exited with code
+0. The standalone daemon reported health-only IPC because no Desktop peer
+was present. Windows Application Control blocked the staged Desktop launch
+on the host. The corrected `cryptex-m8-ready-eb9bc4c.zip` is ready for transfer
+to the one Windows VM for Desktop adapter identity verification. Host-side
+pairing still needs a working second endpoint.
 The installed host Syncthing binary matches the repository's Windows SHA-256
 pin. After building both Release binaries on Windows, run
 `scripts/m8/start-windows-transport-pilot.ps1 -SyncthingExe <pinned-exe>`.
