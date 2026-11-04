@@ -2102,6 +2102,7 @@ fn start_daemon_inner(cryptexd: &str, runtime: &Path) -> Result<(u32, Child), St
             "--stop-file",
             stop.to_str().ok_or("stop utf8")?,
         ])
+        .args(pilot_runtime::daemon_transport_args(runtime))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()

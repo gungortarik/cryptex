@@ -1,5 +1,14 @@
 # 34 — Current Implementation Handoff
 
+## Windows managed transport pilot continuation
+
+The Windows Desktop pilot accepts `--cryptex-pilot-transport <ready-profile>
+<pinned-package-dir> <api-port> <sync-port>` alongside the existing marked
+runtime option. It forwards the four values to the Desktop-owned daemon on
+launch and restart. The daemon validates the package, profile and ports.
+Next, expose isolated profile provisioning through the daemon and verify the
+adapter identity in Desktop on the host and its one Windows VM.
+
 ## Latest continuation — Windows owner-review renderer crash isolated (2026-11-03)
 
 The owner repeated the native self-retirement review preparation twice on the

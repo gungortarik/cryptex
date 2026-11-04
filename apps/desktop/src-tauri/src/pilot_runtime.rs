@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 static ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
+static TRANSPORT: OnceLock<Option<Vec<OsString>>> = OnceLock::new();
 pub(crate) const MARKER: &str = "m0-native-desktop-runtime-v1\n";
 pub(crate) const TIMELINE_FIXTURE_MARKER: &str = "m5-timeline-fixture-v1\n";
 
@@ -129,6 +130,10 @@ fn parse(args: &[OsString]) -> Result<Option<PathBuf>, PilotError> {
     let mut root = None;
     let mut index = 0;
     while index < args.len() {
+        if args[index] == "--cryptex-pilot-transport" {
+            index += 5;
+            continue;
+        }
         if args[index] == "--cryptex-pilot-runtime" {
             if root.is_some() || index + 1 == args.len() {
                 return Err(PilotError::Arguments);
@@ -143,9 +148,67 @@ fn parse(args: &[OsString]) -> Result<Option<PathBuf>, PilotError> {
     Ok(root)
 }
 
+fn parse_transport(
+    args: &[OsString],
+    root: Option<&Path>,
+) -> Result<Option<Vec<OsString>>, PilotError> {
+    let mut transport = None;
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] == "--cryptex-pilot-runtime" {
+            index += 2;
+            continue;
+        }
+        if args[index] == "--cryptex-pilot-transport" {
+            if !cfg!(windows) || root.is_none() || transport.is_some() {
+                return Err(PilotError::Arguments);
+            }
+            let values = args
+                .get(index + 1..index + 5)
+                .ok_or(PilotError::Arguments)?;
+            if values
+                .iter()
+                .any(|value| value.is_empty() || value.to_string_lossy().starts_with("--"))
+            {
+                return Err(PilotError::Arguments);
+            }
+            let flags = [
+                "--managed-profile",
+                "--managed-package",
+                "--managed-api-port",
+                "--managed-sync-port",
+            ];
+            transport = Some(
+                flags
+                    .into_iter()
+                    .zip(values)
+                    .flat_map(|(flag, value)| [OsString::from(flag), value.clone()])
+                    .collect(),
+            );
+            index += 5;
+            continue;
+        }
+        index += 1;
+    }
+    Ok(transport)
+}
+
 pub(crate) fn initialize() -> Result<(), PilotError> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    ROOT.set(parse(&args)?).map_err(|_| PilotError::Arguments)
+    let root = parse(&args)?;
+    let transport = parse_transport(&args, root.as_deref())?;
+    ROOT.set(root).map_err(|_| PilotError::Arguments)?;
+    TRANSPORT.set(transport).map_err(|_| PilotError::Arguments)
+}
+
+pub(crate) fn daemon_transport_args(runtime: &Path) -> &'static [OsString] {
+    if ROOT.get().and_then(Option::as_deref) == Some(runtime) {
+        return TRANSPORT
+            .get()
+            .and_then(Option::as_deref)
+            .unwrap_or_default();
+    }
+    &[]
 }
 
 pub(crate) fn root() -> Option<PathBuf> {
@@ -167,6 +230,42 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+    #[test]
+    fn transport_requires_windows_pilot_and_complete_arguments() {
+        let args = [
+            "--cryptex-pilot-transport",
+            "profile",
+            "package",
+            "1234",
+            "5678",
+        ]
+        .map(OsString::from);
+        let root = Some(Path::new("pilot"));
+        assert_eq!(parse_transport(&args, None), Err(PilotError::Arguments));
+        assert_eq!(
+            parse_transport(&args[..4], root),
+            Err(PilotError::Arguments)
+        );
+        if cfg!(windows) {
+            assert_eq!(
+                parse_transport(&args, root).unwrap().unwrap(),
+                [
+                    "--managed-profile",
+                    "profile",
+                    "--managed-package",
+                    "package",
+                    "--managed-api-port",
+                    "1234",
+                    "--managed-sync-port",
+                    "5678"
+                ]
+                .map(OsString::from)
+            );
+        } else {
+            assert_eq!(parse_transport(&args, root), Err(PilotError::Arguments));
+        }
+    }
 
     fn fixture() -> PathBuf {
         let temporary = fs::canonicalize(std::env::temp_dir()).unwrap();
