@@ -40,6 +40,12 @@ Source inspection also found that the responder textarea submission removed
 the mandatory final LF from the canonical Brain identity. Desktop now
 restores that LF and converts pasted CRLF to LF before submitting the public
 identity. The daemon still compares the result with its canonical form.
+The VM responder subsequently created a signed proof and the initiator
+resumed its saved offer. The initiator review exposed a missing journal
+transition: preparation expected a previously stored proof. The journal now
+records the verified proof against the exact saved offer and promotes the
+exchange in the same update. The targeted regression passed. A rebuilt VM
+retry is pending.
 The targeted daemon test passed: provisioning rejects a reused marked root
 before opening the package and preserves existing files.
 

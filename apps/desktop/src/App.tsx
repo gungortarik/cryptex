@@ -279,9 +279,18 @@ export function App() {
       setApprovalPrepared(prepared);
       setApprovedSnapshot(prepared.snapshot);
       setApprovalStatus("Review every value below and compare the full identifiers with the other device over a trusted separate channel.");
-    } catch {
+    } catch (error) {
       setApprovalPrepared(null);
-      setApprovalStatus("Cryptex could not verify this signed transcript. No approval was created.");
+      const reason = String(error);
+      const knownReasons = [
+        "approval_request_rejected", "invalid_approval_role", "missing_transcript",
+        "transcript_too_large", "invalid_transcript", "brain_mismatch",
+        "local_identity_unavailable", "local_device_mismatch",
+        "local_signing_identity_unavailable", "local_signing_identity_mismatch",
+        "approval_transaction_conflict", "desktop_authentication_required",
+      ];
+      const detail = knownReasons.includes(reason) ? ` (${reason})` : "";
+      setApprovalStatus(`Cryptex could not verify this signed transcript${detail}. No approval was created.`);
     } finally {
       setApprovalBusy(false);
     }

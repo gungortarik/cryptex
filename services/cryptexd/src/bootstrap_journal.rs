@@ -1667,7 +1667,18 @@ impl BootstrapJournalStore {
                 .iter()
                 .position(|exchange| exchange.transaction_id == request.transaction_id());
             let stable_event_id = if let Some(index) = exchange_index {
-                let exchange = &journal.exchanges[index];
+                let exchange = &mut journal.exchanges[index];
+                if request.role() == cryptex_events::BootstrapApprovalRole::Initiator
+                    && exchange.role == BootstrapExchangeRole::Initiator
+                    && exchange.state == BootstrapState::OfferCreated
+                    && let [offer, proof] = raw_messages
+                    && exchange
+                        .transcript_messages
+                        .first()
+                        .is_some_and(|saved| saved.as_bytes() == offer.as_slice())
+                {
+                    exchange.record_proof(proof)?;
+                }
                 let expected_prefix_len = match request.role() {
                     cryptex_events::BootstrapApprovalRole::Initiator => 2,
                     cryptex_events::BootstrapApprovalRole::Responder => 2,
@@ -2351,15 +2362,10 @@ mod tests {
             cryptex_events::BootstrapApprovalRole::Initiator,
         )
         .unwrap();
-        store
-            .record_exchange_proof(verified.transaction_id(), &proof)
-            .unwrap();
-        store
-            .record_exchange_proof(verified.transaction_id(), &proof)
-            .unwrap();
-        let replayed = store.load().unwrap().exchanges.remove(0);
-        assert_eq!(replayed.state, BootstrapState::ProofReceived);
-        assert_eq!(replayed.transcript_messages.len(), 2);
+        assert_eq!(
+            store.load().unwrap().exchanges[0].state,
+            BootstrapState::OfferCreated
+        );
 
         let approval = cryptex_events::sign_bootstrap_approval(&verified, &initiator_key).unwrap();
         let mut prefix = vec![offer.clone(), proof.clone(), approval.clone()];
