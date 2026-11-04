@@ -45,7 +45,12 @@ resumed its saved offer. The initiator review exposed a missing journal
 transition: preparation expected a previously stored proof. The journal now
 records the verified proof against the exact saved offer and promotes the
 exchange in the same update. The targeted regression passed. A rebuilt VM
-retry is pending.
+retry passed. The VM initiator signed its approval and the owner supplied
+the signed message. The Windows transport pilot now supports explicit
+`--cryptex-pilot-resume` for the initialized, marked temp layout so the
+responder can be reopened with its original identity on the same VM.
+Desktop pilot tests passed 11/11. Native responder resume and approval remain
+pending.
 The targeted daemon test passed: provisioning rejects a reused marked root
 before opening the package and preserves existing files.
 

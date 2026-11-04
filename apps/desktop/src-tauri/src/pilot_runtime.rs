@@ -76,6 +76,10 @@ fn validate(root: &Path) -> Result<(), PilotError> {
 }
 
 fn validate_with_repository_hint(root: &Path, repository_hint: &Path) -> Result<(), PilotError> {
+    validate_root(root, repository_hint, false)
+}
+
+fn validate_root(root: &Path, repository_hint: &Path, resume: bool) -> Result<(), PilotError> {
     if !root.is_absolute()
         || root
             .components()
@@ -120,13 +124,43 @@ fn validate_with_repository_hint(root: &Path, repository_hint: &Path) -> Result<
             _ => count += 1,
         }
     }
-    if count != 1 && !has_timeline_fixture {
+    if resume {
+        let parent = root.parent().ok_or(PilotError::UnsafeRoot)?;
+        let suffix = parent
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_prefix("cx-m8-"))
+            .ok_or(PilotError::UnsafeRoot)?;
+        let temp = fs::canonicalize(std::env::temp_dir()).map_err(|_| PilotError::Io)?;
+        if root.file_name().and_then(|name| name.to_str()) != Some("desktop")
+            || suffix.len() != 32
+            || !suffix
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            || fs::canonicalize(parent)
+                .map_err(|_| PilotError::Io)?
+                .parent()
+                != Some(temp.as_path())
+        {
+            return Err(PilotError::UnsafeRoot);
+        }
+        let install = cryptexd::install_runtime::install_identity_path(root);
+        ordinary(install.parent().ok_or(PilotError::UnsafeRoot)?, true)?;
+        ordinary(&install, false)?;
+    } else if count != 1 && !has_timeline_fixture {
         return Err(PilotError::ReusedRoot);
     }
     Ok(())
 }
 
 fn parse(args: &[OsString]) -> Result<Option<PathBuf>, PilotError> {
+    let resume = args
+        .iter()
+        .filter(|arg| *arg == "--cryptex-pilot-resume")
+        .count();
+    if resume > 1 || (resume == 1 && !cfg!(windows)) {
+        return Err(PilotError::Arguments);
+    }
     let mut root = None;
     let mut index = 0;
     while index < args.len() {
@@ -139,7 +173,11 @@ fn parse(args: &[OsString]) -> Result<Option<PathBuf>, PilotError> {
                 return Err(PilotError::Arguments);
             }
             let path = PathBuf::from(&args[index + 1]);
-            validate(&path)?;
+            if resume == 1 {
+                validate_root(&path, &build_time_repository_hint(), true)?;
+            } else {
+                validate(&path)?;
+            }
             root = Some(path);
             index += 1;
         }
@@ -197,6 +235,9 @@ pub(crate) fn initialize() -> Result<(), PilotError> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let root = parse(&args)?;
     let transport = parse_transport(&args, root.as_deref())?;
+    if args.iter().any(|arg| arg == "--cryptex-pilot-resume") && transport.is_none() {
+        return Err(PilotError::Arguments);
+    }
     ROOT.set(root).map_err(|_| PilotError::Arguments)?;
     TRANSPORT.set(transport).map_err(|_| PilotError::Arguments)
 }
@@ -230,6 +271,28 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+    #[cfg(windows)]
+    #[test]
+    fn explicit_resume_accepts_initialized_transport_pilot() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let parent = std::env::temp_dir().join(format!("cx-m8-{stamp:032x}"));
+        let root = parent.join("desktop");
+        let install = cryptexd::install_runtime::install_identity_path(&root);
+        fs::create_dir_all(install.parent().unwrap()).unwrap();
+        fs::write(root.join("pilot-runtime.marker"), MARKER).unwrap();
+        assert!(validate_root(&root, &build_time_repository_hint(), true).is_err());
+        fs::write(install, "{}").unwrap();
+        assert_eq!(validate(&root), Err(PilotError::ReusedRoot));
+        assert_eq!(
+            validate_root(&root, &build_time_repository_hint(), true),
+            Ok(())
+        );
+        fs::remove_dir_all(parent).unwrap();
+    }
 
     #[test]
     fn transport_requires_windows_pilot_and_complete_arguments() {
