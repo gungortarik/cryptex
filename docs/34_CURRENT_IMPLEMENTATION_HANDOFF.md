@@ -15,6 +15,13 @@ The host build passed. Windows Application Control blocked the new daemon
 before the provisioning command ran. Next, build and run the command in the
 Windows VM, then verify adapter identity through Desktop. Host-side pairing
 still needs a working second endpoint.
+The installed host Syncthing binary matches the repository's Windows SHA-256
+pin. After building both Release binaries on Windows, run
+`scripts/m8/start-windows-transport-pilot.ps1 -SyncthingExe <pinned-exe>`.
+Use `-JoiningDevice` for the endpoint that will join the initiator's Brain.
+The runner creates fresh roots, waits for the daemon ready file, and opens
+the pilot window for the adapter identity check. PowerShell parsing passed.
+Live runner and two-endpoint pairing verification are pending.
 
 ## Latest continuation — Windows owner-review renderer crash isolated (2026-11-03)
 
