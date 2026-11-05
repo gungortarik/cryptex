@@ -1,12 +1,14 @@
 # Contributing to Cryptex
 
+**New to open source or to Cryptex?** Follow [FIRST_CONTRIBUTION.md](FIRST_CONTRIBUTION.md) first. It shows how to choose one small issue, create a fork and send a reviewable pull request. Questions are welcome in [GitHub Discussions](https://github.com/gungortarik/cryptex/discussions).
+
 Welcome! Cryptex is a local-first, event-sourced personal memory system in Rust and Tauri 2. Whether you are a **Rust systems developer**, a **React 19 / Tauri UI craftsman**, or an **AI tooling / MCP builder**, this repo is structured so you can ship high-impact PRs without guessing architectural intent.
 
 ---
 
 ## Why Contributing to Cryptex is Different
 
-Most open-source projects have vague requirements buried in old chat threads. Cryptex has a **complete, pre-audited 34-document engineering specification**:
+Most open-source projects have vague requirements buried in old chat threads. Cryptex has a detailed engineering documentation set:
 1. [`docs/00_MASTER_SPEC.md`](docs/00_MASTER_SPEC.md) — The authoritative product and architecture contract.
 2. [`docs/30_ADR_INDEX.md`](docs/30_ADR_INDEX.md) — Accepted Architecture Decision Records (`ADR-0001` through `ADR-0018`).
 3. [`docs/milestones/`](docs/milestones/) — Scoped contracts for every milestone (`M0` through `M17`).
@@ -16,16 +18,16 @@ Most open-source projects have vague requirements buried in old chat threads. Cr
 
 ## High-Impact Areas Looking for Contributors
 
-We have already completed and verified **M0 through M6** (Identity, OS Keychain/DPAPI, Immutable Sealed Event Store, SQLite + FTS5 Index, Deterministic Knowledge Engine, Capture/Timeline, and Obsidian Vault Materialization).
+The repository documents work on the foundation, secure local storage, search, knowledge, capture and Obsidian materialization. **Check the current handoff and milestone gates before assuming a feature is release-ready.**
 
-Here are the best self-contained tracks you can pick up right now:
+The tracks below are major workstreams, **not beginner-sized tasks**. For a first contribution, use an issue tagged [`good first issue`](https://github.com/gungortarik/cryptex/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22):
 
 ### Track 1: AI & MCP Bridge (`M12` — Rust)
-- **Spec:** [`docs/12_MCP_AND_AI_ADAPTERS.md`](docs/12_MCP_AND_AI_ADAPTERS.md) & [`docs/milestones/M12_MCP_AGENTS.md`](docs/milestones/M12_MCP_AGENTS.md)
+- **Spec:** [`docs/12_MCP_AND_AI_ADAPTERS.md`](docs/12_MCP_AND_AI_ADAPTERS.md) & [`docs/milestones/M12_MCP_AI_INTEGRATIONS.md`](docs/milestones/M12_MCP_AI_INTEGRATIONS.md)
 - **Goal:** Build `services/cryptex-mcp` (stdio MCP server talking to `cryptexd` over local IPC) exposing `cryptex_search`, `cryptex_context`, `cryptex_remember`, `cryptex_correct`, `cryptex_forget`, `cryptex_timeline`, and `cryptex_status` with classification filtering (`public`/`internal`/`private`/`restricted`).
 
 ### Track 2: Desktop Product UI & Design System (`M13` — React 19 + TypeScript + Tauri 2)
-- **Spec:** [`docs/14_DESKTOP_UX_AND_DESIGN_SYSTEM.md`](docs/14_DESKTOP_UX_AND_DESIGN_SYSTEM.md) & [`docs/milestones/M13_DESKTOP_UI.md`](docs/milestones/M13_DESKTOP_UI.md)
+- **Spec:** [`docs/14_DESKTOP_UX_AND_DESIGN_SYSTEM.md`](docs/14_DESKTOP_UX_AND_DESIGN_SYSTEM.md) & [`docs/milestones/M13_DESKTOP_PRODUCT_UI.md`](docs/milestones/M13_DESKTOP_PRODUCT_UI.md)
 - **Goal:** Build a calm, high-density, native-feeling desktop utility interface (Home/Health dashboard, `Cmd/Ctrl+K` Global Search palette, Entity/Memory browser, Devices view, Backup/Recovery view, Doctor view). No Rust crypto experience required!
 
 ### Track 3: Content-Addressed Attachment Store (`M9` — Rust)
@@ -37,12 +39,24 @@ Here are the best self-contained tracks you can pick up right now:
 - **Goal:** Implement reversible logical `Forget` and physical `Purge` with the content-free `purge_bridge` ledger so hash chains remain valid after content erasure.
 
 ### Track 5: Encrypted Backups & Disaster Recovery (`M11` — Rust)
-- **Spec:** [`docs/10_BACKUP_RESTORE.md`](docs/10_BACKUP_RESTORE.md) & [`docs/milestones/M11_BACKUP_RESTORE.md`](docs/milestones/M11_BACKUP_RESTORE.md)
+- **Spec:** [`docs/10_BACKUP_RESTORE.md`](docs/10_BACKUP_RESTORE.md) & [`docs/milestones/M11_BACKUP_DISASTER_RESTORE.md`](docs/milestones/M11_BACKUP_DISASTER_RESTORE.md)
 - **Goal:** Implement `age`-encrypted filesystem backup snapshots, retention policies, sandbox restore verification, and Recovery Kit first-device bootstrap.
 
 ### Track 6: Obsidian Controlled Write-back (`M7` — TypeScript / Rust)
-- **Spec:** [`docs/13_OBSIDIAN_INTEGRATION.md`](docs/13_OBSIDIAN_INTEGRATION.md) & [`docs/milestones/M07_OBSIDIAN_WRITEBACK.md`](docs/milestones/M07_OBSIDIAN_WRITEBACK.md)
+- **Spec:** [`docs/13_OBSIDIAN_INTEGRATION.md`](docs/13_OBSIDIAN_INTEGRATION.md) & [`docs/milestones/M7_OBSIDIAN_CONTROLLED_WRITEBACK.md`](docs/milestones/M7_OBSIDIAN_CONTROLLED_WRITEBACK.md)
 - **Goal:** Detect human edits or `Inbox/` drops in the local Obsidian vault and submit them as validated event proposals to `cryptexd` without creating write loops.
+
+---
+
+## How to collaborate
+
+1. Pick an open issue. Ask a question or comment that you want to work on it.
+2. Fork the repo and create a descriptive feature branch from the currently designated base.
+3. Keep changes scoped to the acceptance criteria; never commit personal runtime memory or credentials.
+4. Run the checks relevant to your changes, and say which ones you ran (and which you couldn't).
+5. Open a PR referencing the issue. Maintainers review and merge; no direct repository access is needed.
+
+For a documentation-only PR, you generally do not need to install Rust, Tauri or pnpm. Check relative links and follow project terminology.
 
 ---
 

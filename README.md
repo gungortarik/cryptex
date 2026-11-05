@@ -1,6 +1,16 @@
 # Cryptex
 
-**Markdown is a human projection, not canonical truth.**
+**A local-first memory engine for AI tools — with your data under your control.**
+
+Cryptex is an open-source project building durable, searchable personal memory for desktop AI workflows. It is designed to work offline, make its history auditable, and project human-readable notes to Obsidian without treating mutable Markdown as the source of truth.
+
+**We welcome contributors.** You can help with documentation, accessibility, testing on macOS/Windows, Rust, React/Tauri, or MCP integrations. You don't need to understand the entire architecture to make your first contribution.
+
+**Start here:** [First contribution guide](FIRST_CONTRIBUTION.md) · [Beginner-friendly issues](https://github.com/gungortarik/cryptex/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) · [All open tasks](https://github.com/gungortarik/cryptex/issues) · [Contribution guidelines](CONTRIBUTING.md) · [Discussions](https://github.com/gungortarik/cryptex/discussions)
+
+> **Project stage: active development / pre-release.** This repository contains working foundations and planned features. Read the milestone checklist below and the [implementation handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) before assuming a feature is complete. There is no stable end-user release yet.
+
+**Design principle:** Markdown is a human projection, not canonical truth.
 
 Cryptex is a **local-first, event-sourced personal memory and knowledge engine** built in **Rust** (`cryptexd`) and **Tauri 2 + React 19** for **macOS** and **Windows 11**.
 
@@ -8,9 +18,9 @@ Instead of letting AI agents overwrite raw Markdown files or forcing you to run 
 
 ---
 
-## Quickstart: Connect to Cursor & Claude (30 Seconds)
+## Experimental MCP quickstart (build from source)
 
-You can run the lightweight **`cryptex-mcp`** server right now to give Cursor or Claude Desktop persistent, offline-first memory powered by SQLite FTS5.
+An early **`cryptex-mcp`** implementation is present in this repository with `cryptex_search` and `cryptex_status`. The commands below are for developers experimenting with the source code, not a stable packaged installation. Building Rust dependencies takes longer than 30 seconds on many machines. The broader M12 integration is still in progress.
 
 ### 1. Build the MCP Server
 ```bash
@@ -54,14 +64,14 @@ In Cursor, go to **Settings > Features > MCP**, or add to `.cursor/mcp.json`:
 
 ---
 
-## Why Cryptex?
+## What makes Cryptex interesting?
 
-| Approach | Canonical Source | Offline & No Docker? | Multi-Device Conflict-Free? | Tamper-Evident History? | AI Privacy Tiers & Poisoning Defense? |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| **Raw Markdown MCPs** (`mcp-obsidian`, etc.) | Mutable `.md` files | Yes | ❌ Merge conflicts | ❌ Overwrites in place | ❌ Full vault exposed |
-| **Cloud / Container Stacks** (`OpenMemory`, `Graphiti`) | Postgres / Graph DB | ❌ Heavy Docker + LLM | Cloud-dependent | Partial | ❌ |
-| **Lightweight SQLite MCPs** (`Memora`, etc.) | Single SQLite file | Yes | ❌ Single machine | ❌ Mutable rows | ❌ |
-| **Cryptex** | **Signed Immutable Events (`.seg`)** | **✅ Single Rust Daemon** | **✅ Set-Union Convergence** | **✅ Ed25519 + Hash Chain** | **✅ 4-Tier Classification & Authority Gates** |
+- **Local-first by design:** search and capture are designed to work without a hosted database or LLM API.
+- **Auditable changes:** immutable events, rather than direct edits to canonical memory, are the basis for the architecture.
+- **Readable notes:** an Obsidian-compatible Markdown vault is generated from validated local state.
+- **AI integrations:** MCP adapters are being developed to let assistants work with a permissioned view of memory.
+
+The roadmap distinguishes implemented foundations from planned features. Security, sync, purge and recovery guarantees depend on completion of their respective milestone gates.
 
 ---
 
@@ -101,6 +111,8 @@ In Cursor, go to **Settings > Features > MCP**, or add to `.cursor/mcp.json`:
 
 ## Implementation Progress (Milestones M0–M17)
 
+> The checkboxes summarize repository roadmap claims, not an independently verified release certification. For current blockers, review the [implementation handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) and milestone evidence.
+
 Cryptex is engineered against a rigorous, pre-audited 34-document specification ([`DOCUMENT_INDEX.md`](DOCUMENT_INDEX.md) and [`docs/00_MASTER_SPEC.md`](docs/00_MASTER_SPEC.md)).
 
 - [x] **M0 — Foundation & P0 Technical Spikes:** Cross-platform Rust/Tauri workspace, sealed segment storage benchmark (`ADR-0013`), daemon supervision (`ADR-0012`), Unix domain socket & Windows named-pipe IPC with strict peer ACLs (`ADR-0007`).
@@ -110,12 +122,12 @@ Cryptex is engineered against a rigorous, pre-audited 34-document specification 
 - [x] **M4 — Knowledge Engine:** Deterministic union-find entity resolution, aliases, typed `knowledge.assertion` v2 schemas, active/superseded facts, directional relations, and `RetrievalSafetyState` gates.
 - [x] **M5 — Capture & Timeline:** Offline Quick Capture Inbox, deduplication acknowledgement & archive workflow, post-commit derived state catch-up worker, bounded keyset Timeline pagination with source provenance.
 - [x] **M6 — Obsidian Materializer:** Deterministic Markdown note & entity-link (`[[WikiLink]]`) materialization under `Cryptex/`, copy-only attachment projection boundary, manifest verification, and Desktop "Open in Obsidian / Graph" handoff.
-- [ ] **M7 — Controlled Obsidian Write-back** *(Ready for contributors — see [`docs/milestones/M07_OBSIDIAN_WRITEBACK.md`](docs/milestones/M07_OBSIDIAN_WRITEBACK.md))*
-- [ ] **M8 — Device Trust & Syncthing Replication** *(See [`docs/milestones/M08_TRUST_REPLICATION.md`](docs/milestones/M08_TRUST_REPLICATION.md))*
+- [ ] **M7 — Controlled Obsidian Write-back** *(Ready for contributors — see [`docs/milestones/M7_OBSIDIAN_CONTROLLED_WRITEBACK.md`](docs/milestones/M7_OBSIDIAN_CONTROLLED_WRITEBACK.md))*
+- [ ] **M8 — Device Trust & Syncthing Replication** *(See [`docs/milestones/M8_DEVICE_TRUST_REPLICATION.md`](docs/milestones/M8_DEVICE_TRUST_REPLICATION.md))*
 - [ ] **M9 — Content-Addressed Attachment Store** *(See [`docs/milestones/M09_ATTACHMENTS.md`](docs/milestones/M09_ATTACHMENTS.md))*
 - [ ] **M10 — Forget & Physical Purge Workflow** *(See [`docs/milestones/M10_FORGET_PURGE.md`](docs/milestones/M10_FORGET_PURGE.md))*
-- [ ] **M11 — Encrypted Backup (`age`) & Disaster Recovery Bootstrap** *(See [`docs/milestones/M11_BACKUP_RESTORE.md`](docs/milestones/M11_BACKUP_RESTORE.md))*
-- [ ] **M12 — Local MCP Bridge (`cryptex-mcp`) & AI Agent Adapters** *(High Priority — see [`docs/milestones/M12_MCP_AGENTS.md`](docs/milestones/M12_MCP_AGENTS.md))*
+- [ ] **M11 — Encrypted Backup (`age`) & Disaster Recovery Bootstrap** *(See [`docs/milestones/M11_BACKUP_DISASTER_RESTORE.md`](docs/milestones/M11_BACKUP_DISASTER_RESTORE.md))*
+- [ ] **M12 — Local MCP Bridge (`cryptex-mcp`) & AI Agent Adapters** *(High Priority — see [`docs/milestones/M12_MCP_AI_INTEGRATIONS.md`](docs/milestones/M12_MCP_AI_INTEGRATIONS.md))*
 - [ ] **M13 — Desktop Product UI & Design System** *(React 19 + Tauri 2 — see [`docs/14_DESKTOP_UX_AND_DESIGN_SYSTEM.md`](docs/14_DESKTOP_UX_AND_DESIGN_SYSTEM.md))*
 - [ ] **M14–M17 — Platform Polish, Cortex Re-ingestion, Hardening & Beta RC**
 
@@ -146,7 +158,7 @@ We are actively looking for **Rust systems engineers**, **Tauri / React / TypeSc
 
 Because Cryptex has a complete, ambiguity-free specification in [`docs/`](docs/00_MASTER_SPEC.md) and pre-configured agent instructions in [`AGENTS.md`](AGENTS.md) and [`.cursor/agents/`](.cursor/agents/), contributing with **Claude Code, Cursor, Codex, or Antigravity** is extraordinarily fast.
 
-👉 **Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and check out the open GitHub Issues to claim a module!**
+👉 **First PR?** Start with the [first contribution guide](FIRST_CONTRIBUTION.md) and a [small beginner-friendly issue](https://github.com/gungortarik/cryptex/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22). Comment on the issue before beginning; no direct write access is required.
 
 ---
 
