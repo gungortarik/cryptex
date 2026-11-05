@@ -4,7 +4,7 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
-## Implementation status — 2026-11-03
+## Implementation status — 2026-11-05
 
 Active branch: `codex/m8-device-trust`. This branch contains a Windows-focused
 implementation checkpoint, not a release or an accepted M8 completion.
@@ -57,17 +57,21 @@ recovery. The approved-peer UI and native recovery flows remain unverified.
 Details and exact verification scope are in the
 [owner-review rendering evidence](evidence/m8/m8-windows-owner-review-rendering-20261103.md).
 
-**Next continuation point:** prepare a fresh synthetic profile with a directly
-approved peer, then verify the Desktop restriction review at a nonzero cutoff
-and cancel it. Continue with the native restart/recovery flow. Do not test
-permanent confirmation on the owner's current device. The two
-pre-fix review attempts left owner-pending journal entries in their disposable
-profile after `Ctrl+R` discarded the renderer handles; that profile was not
-reused. Then address production
-transport/publication, macOS parity, and independent security review before
-evaluating the M8 completion gate. ADR-0019's protocol addendum remains
-PROPOSED overall; owner acceptance of sections 2–4 as the Windows
-implementation basis is not full protocol or milestone acceptance.
+**Next continuation point (2026-11-05):** first resolve the native responder
+pairing transcript failure (`invalid_transcript`) using the existing isolated
+Windows pilot profiles. No responder approval, durable trust record, or sync
+was created. Follow [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](docs/M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
+and the latest section in the [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md);
+do not repeat copy/paste attempts until the exact message mismatch is known.
+After that pairing slice is closed, return to the Windows owner restriction
+review at a nonzero cutoff and native restart/recovery flow. Do not test
+permanent confirmation on the owner's current device. The two pre-fix review
+attempts left owner-pending journal entries in their disposable profile after
+`Ctrl+R` discarded the renderer handles; that profile was not reused. Then
+address production transport/publication, macOS parity, and independent
+security review before evaluating the M8 completion gate. ADR-0019's protocol
+addendum remains PROPOSED overall; owner acceptance of sections 2–4 as the
+Windows implementation basis is not full protocol or milestone acceptance.
 
 The [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) is the detailed
 continuation record. Its dated entries are historical evidence: statements

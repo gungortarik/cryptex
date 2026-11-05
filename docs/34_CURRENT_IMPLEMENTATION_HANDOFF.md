@@ -1,5 +1,21 @@
 # 34 — Current Implementation Handoff
 
+## Latest interactive continuation — responder pairing (`2026-11-05`)
+
+The one-VM Windows pilot pairing resumed with the initialized responder
+profile, but responder owner-review verification still returns
+`invalid_transcript`. No responder approval or durable trust record was
+created; no synchronization started. The role check after reopening has not
+yet been confirmed. Source inspection shows the responder prefix is assembled
+as offer, proof, initiator approval, while the daemon intentionally returns a
+generic error for any signature, ordering, or binding failure. Diagnose the
+exact message failure before asking the owner to retry. Preserve signed JSON
+exactly and keep raw device identifiers/messages out of this repository.
+
+See [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
+for the full sequence, verified and unverified state, code pointers, safe next
+actions, and remaining M8 gates.
+
 ## Windows managed transport pilot continuation
 
 The Windows Desktop pilot accepts `--cryptex-pilot-transport <ready-profile>
