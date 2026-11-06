@@ -10,9 +10,11 @@ pairing** after restart. Paste the original four signed lines there to invoke th
 existing daemon completion verifier against the same journal. On build
 `19d94b1` the owner did this in the resumed responder profile. Desktop
 reported “Pairing recorded in canonical local history.” This confirms the
-responder-side completion via the UI. Next, complete the same transaction in
-the original initiator profile using the saved four messages. Sync remains a
-separate gate.
+responder-side completion via the UI. After instructions to switch to the
+original initiator profile, the owner supplied the same success message for
+the initiator completion attempt. Next, read both journals to confirm each
+profile has the transaction in `anchored` state. This final two-profile check
+is pending. Sync remains a separate gate.
 
 The original signed inputs passed responder review. The VM created the fourth
 signed message and its signature was independently verified. The subsequent

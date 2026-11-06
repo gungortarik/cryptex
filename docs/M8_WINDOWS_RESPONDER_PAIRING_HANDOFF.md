@@ -5,16 +5,17 @@ signed message four. The owner submitted the complete transcript to record
 local trust and initially received a generic rejection. After a public test
 note was saved, the owner resumed that responder profile on build `19d94b1`,
 submitted the four saved messages and saw “Pairing recorded in canonical local
-history.” Next, use those messages on the original initiator profile and check
-its local completion result. The November 5
+history.” The subsequent initiator completion attempt also displayed that
+success message. Read both journals to confirm `anchored` on each profile
+before closing the two-profile verification. The November 5
 stopping point below is historical.
 
 ## Status
 
-**M8 remains in progress. The interactive Windows pairing is not complete.**
-This note records the latest owner-guided responder pairing attempt and its
-unresolved failure. It is an operational handoff, not a change to the Master
-Spec, accepted ADRs, or milestone scope.
+**M8 remains in progress.** Both owner-guided completion attempts displayed
+success. The final two-profile journal check and subsequent platform and
+replication gates remain open. The dated update above supersedes the older
+failure and stopping-point sections below.
 
 ## Current repository checkpoint
 

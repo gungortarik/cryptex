@@ -59,8 +59,9 @@ Details and exact verification scope are in the
 
 **Next continuation point (2026-11-06):** responder verification and signing
 succeeded with the original signed inputs. The resumed responder on build
-`19d94b1` reported pairing recorded in canonical local history. Complete the
-same transaction on the original initiator profile. Follow [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](docs/M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
+`19d94b1` reported pairing recorded in canonical local history. The subsequent
+initiator attempt displayed the same success message. Confirm both journals
+show `anchored` for that transaction. Follow [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](docs/M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
 and the latest section in the [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md);
 retain the four signed messages for initiator completion.
 After that pairing slice is closed, return to the Windows owner restriction
