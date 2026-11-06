@@ -7,15 +7,18 @@ and zero recorded append attempts. The relaunched pilot subsequently confirmed
 a public test note was saved. Restart cleared the Desktop's in-memory approval,
 which previously hid the completion form. Desktop now exposes **Resume a signed
 pairing** after restart. Paste the original four signed lines there to invoke the
-existing daemon completion verifier against the same journal. The native retry
-and durable responder trust record remain unverified.
+existing daemon completion verifier against the same journal. On build
+`19d94b1` the owner did this in the resumed responder profile. Desktop
+reported “Pairing recorded in canonical local history.” This confirms the
+responder-side completion via the UI. Next, complete the same transaction in
+the original initiator profile using the saved four messages. Sync remains a
+separate gate.
 
 The original signed inputs passed responder review. The VM created the fourth
 signed message and its signature was independently verified. The subsequent
 **Add approved device to local trust** request returned a rejection. The
 earlier UI hid the daemon's error code. Desktop now displays known completion
-codes. Resume the same disposable responder profile and diagnose the completion
-rejection before claiming a durable trust record.
+codes. That rejection preceded the successful responder retry described above.
 
 ## Latest interactive continuation — responder pairing (`2026-11-05`)
 

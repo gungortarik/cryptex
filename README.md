@@ -58,11 +58,11 @@ Details and exact verification scope are in the
 [owner-review rendering evidence](evidence/m8/m8-windows-owner-review-rendering-20261103.md).
 
 **Next continuation point (2026-11-06):** responder verification and signing
-succeeded with the original signed inputs. Local trust recording returned a
-rejection. Use the updated Desktop to capture the completion error code on the
-existing responder profile. Follow [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](docs/M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
+succeeded with the original signed inputs. The resumed responder on build
+`19d94b1` reported pairing recorded in canonical local history. Complete the
+same transaction on the original initiator profile. Follow [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](docs/M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
 and the latest section in the [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md);
-retain the four signed messages for the completion diagnostic.
+retain the four signed messages for initiator completion.
 After that pairing slice is closed, return to the Windows owner restriction
 review at a nonzero cutoff and native restart/recovery flow. Do not test
 permanent confirmation on the owner's current device. The two pre-fix review

@@ -2,8 +2,11 @@
 
 **2026-11-06 update:** The responder accepted the original signed prefix and
 signed message four. The owner submitted the complete transcript to record
-local trust and received the generic rejection. Capture the completion error
-code with the updated Desktop on the same responder profile. The November 5
+local trust and initially received a generic rejection. After a public test
+note was saved, the owner resumed that responder profile on build `19d94b1`,
+submitted the four saved messages and saw “Pairing recorded in canonical local
+history.” Next, use those messages on the original initiator profile and check
+its local completion result. The November 5
 stopping point below is historical.
 
 ## Status
