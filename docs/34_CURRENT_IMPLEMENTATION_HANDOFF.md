@@ -12,9 +12,13 @@ existing daemon completion verifier against the same journal. On build
 reported “Pairing recorded in canonical local history.” This confirms the
 responder-side completion via the UI. After instructions to switch to the
 original initiator profile, the owner supplied the same success message for
-the initiator completion attempt. Next, read both journals to confirm each
-profile has the transaction in `anchored` state. This final two-profile check
-is pending. Sync remains a separate gate.
+the initiator completion attempt. The owner then read both journals in the
+Windows VM. Initiator and responder each reported `anchored` and four transcript
+messages for the same transaction. This closes the one-VM, two-profile signed
+pairing/local trust-recording exercise. Next verify restart reconciliation and
+duplicate-safe completion, then resume native nonzero-cutoff restriction review.
+Production sync, empty-history first pairing, and independent-device coverage
+remain open gates.
 
 The original signed inputs passed responder review. The VM created the fourth
 signed message and its signature was independently verified. The subsequent

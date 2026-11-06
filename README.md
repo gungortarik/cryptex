@@ -60,11 +60,13 @@ Details and exact verification scope are in the
 **Next continuation point (2026-11-06):** responder verification and signing
 succeeded with the original signed inputs. The resumed responder on build
 `19d94b1` reported pairing recorded in canonical local history. The subsequent
-initiator attempt displayed the same success message. Confirm both journals
-show `anchored` for that transaction. Follow [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](docs/M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
+initiator attempt displayed the same success message. The owner confirmed
+both journals show `anchored` and four messages for that transaction. Next
+verify native restart reconciliation and duplicate-safe completion.
+Follow [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](docs/M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
 and the latest section in the [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md);
-retain the four signed messages for initiator completion.
-After that pairing slice is closed, return to the Windows owner restriction
+retain the four signed messages for the duplicate-safe completion check.
+Then return to the Windows owner restriction
 review at a nonzero cutoff and native restart/recovery flow. Do not test
 permanent confirmation on the owner's current device. The two pre-fix review
 attempts left owner-pending journal entries in their disposable profile after

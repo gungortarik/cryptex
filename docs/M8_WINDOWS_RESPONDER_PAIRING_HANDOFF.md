@@ -6,15 +6,19 @@ local trust and initially received a generic rejection. After a public test
 note was saved, the owner resumed that responder profile on build `19d94b1`,
 submitted the four saved messages and saw “Pairing recorded in canonical local
 history.” The subsequent initiator completion attempt also displayed that
-success message. Read both journals to confirm `anchored` on each profile
-before closing the two-profile verification. The November 5
+success message. A subsequent owner-provided PowerShell read showed both
+initiator and responder journals in `anchored` state with four messages for
+the same transaction. The one-VM, two-profile local pairing exercise passed.
+Next verify restart reconciliation and duplicate-safe completion, followed by
+native nonzero-cutoff restriction review. Empty-history first pairing and
+production transport remain open. The November 5
 stopping point below is historical.
 
 ## Status
 
-**M8 remains in progress.** Both owner-guided completion attempts displayed
-success. The final two-profile journal check and subsequent platform and
-replication gates remain open. The dated update above supersedes the older
+**M8 remains in progress.** Both local pairing records passed the UI and
+two-profile journal check. Restart, platform and replication gates remain
+open. The dated update above supersedes the older
 failure and stopping-point sections below.
 
 ## Current repository checkpoint
