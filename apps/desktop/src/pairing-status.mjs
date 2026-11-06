@@ -8,3 +8,8 @@ export function pairingRejectionStatus(code) {
   const detail = completionCodes.has(code) ? ` (${code})` : "";
   return `Cryptex could not safely record this pairing${detail}. Keep the complete transcript for review.`;
 }
+
+export function completionMessages(text) {
+  const messages = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  return messages.length === 4 ? messages : [];
+}

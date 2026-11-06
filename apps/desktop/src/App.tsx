@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { pairingRejectionStatus } from "./pairing-status.mjs";
+import { completionMessages, pairingRejectionStatus } from "./pairing-status.mjs";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   CLASSIFICATIONS,
@@ -423,7 +423,11 @@ export function App() {
     setApprovalBusy(true);
     setApprovalStatus(null);
     try {
-      const messages = completionTranscript.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      const messages = completionMessages(completionTranscript);
+      if (!messages.length) {
+        setApprovalStatus("Paste all four signed messages, one per line.");
+        return;
+      }
       const result = await invoke<PeerApprovalResult>("m8_complete_peer_approval", {
         transcriptMessages: messages,
       });
@@ -1233,6 +1237,11 @@ export function App() {
                   Signed message to return to the other device
                   <textarea id="bootstrap-signed-message" value={signedApproval} readOnly rows={4} />
                 </label>
+              </>
+            ) : null}
+            {!approvalPrepared ? (
+              <>
+                {!signedApproval ? <h3>Resume a signed pairing</h3> : null}
                 <label className="bootstrap-signed-message" htmlFor="bootstrap-complete-transcript">
                   Complete transcript · paste the peer’s final signed approval as message 4 when needed
                   <textarea
@@ -1248,7 +1257,7 @@ export function App() {
                   className="search-button"
                   type="button"
                   onClick={() => void completePeerApproval()}
-                  disabled={approvalBusy || connection !== "active"}
+                  disabled={approvalBusy || connection !== "active" || !completionMessages(completionTranscript).length}
                 >
                   {approvalBusy ? "Verifying…" : "Add approved device to local trust"}
                 </button>

@@ -2,6 +2,14 @@
 
 ## Current Windows pilot checkpoint (2026-11-06)
 
+The responder journal showed four verified messages, state `transcript_ready`,
+and zero recorded append attempts. The relaunched pilot subsequently confirmed
+a public test note was saved. Restart cleared the Desktop's in-memory approval,
+which previously hid the completion form. Desktop now exposes **Resume a signed
+pairing** after restart. Paste the original four signed lines there to invoke the
+existing daemon completion verifier against the same journal. The native retry
+and durable responder trust record remain unverified.
+
 The original signed inputs passed responder review. The VM created the fourth
 signed message and its signature was independently verified. The subsequent
 **Add approved device to local trust** request returned a rejection. The
