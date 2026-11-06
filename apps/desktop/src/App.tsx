@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { pairingRejectionStatus } from "./pairing-status.mjs";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   CLASSIFICATIONS,
@@ -427,7 +428,7 @@ export function App() {
         transcriptMessages: messages,
       });
       if (!result.accepted) {
-        setApprovalStatus("Cryptex could not safely record this pairing. The transcript was kept for review; no trust change was confirmed.");
+        setApprovalStatus(pairingRejectionStatus(result.error));
         return;
       }
       setApprovalStatus("Pairing recorded in canonical local history. Device sync is not started by this action.");

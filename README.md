@@ -57,12 +57,12 @@ recovery. The approved-peer UI and native recovery flows remain unverified.
 Details and exact verification scope are in the
 [owner-review rendering evidence](evidence/m8/m8-windows-owner-review-rendering-20261103.md).
 
-**Next continuation point (2026-11-05):** first resolve the native responder
-pairing transcript failure (`invalid_transcript`) using the existing isolated
-Windows pilot profiles. No responder approval, durable trust record, or sync
-was created. Follow [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](docs/M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
+**Next continuation point (2026-11-06):** responder verification and signing
+succeeded with the original signed inputs. Local trust recording returned a
+rejection. Use the updated Desktop to capture the completion error code on the
+existing responder profile. Follow [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](docs/M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
 and the latest section in the [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md);
-do not repeat copy/paste attempts until the exact message mismatch is known.
+retain the four signed messages for the completion diagnostic.
 After that pairing slice is closed, return to the Windows owner restriction
 review at a nonzero cutoff and native restart/recovery flow. Do not test
 permanent confirmation on the owner's current device. The two pre-fix review

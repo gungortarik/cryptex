@@ -1,5 +1,14 @@
 # 34 — Current Implementation Handoff
 
+## Current Windows pilot checkpoint (2026-11-06)
+
+The original signed inputs passed responder review. The VM created the fourth
+signed message and its signature was independently verified. The subsequent
+**Add approved device to local trust** request returned a rejection. The
+earlier UI hid the daemon's error code. Desktop now displays known completion
+codes. Resume the same disposable responder profile and diagnose the completion
+rejection before claiming a durable trust record.
+
 ## Latest interactive continuation — responder pairing (`2026-11-05`)
 
 The one-VM Windows pilot pairing resumed with the initialized responder

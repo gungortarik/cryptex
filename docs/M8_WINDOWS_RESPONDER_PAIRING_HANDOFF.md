@@ -1,5 +1,11 @@
 # M8 Windows responder pairing handoff — 2026-11-05
 
+**2026-11-06 update:** The responder accepted the original signed prefix and
+signed message four. The owner submitted the complete transcript to record
+local trust and received the generic rejection. Capture the completion error
+code with the updated Desktop on the same responder profile. The November 5
+stopping point below is historical.
+
 ## Status
 
 **M8 remains in progress. The interactive Windows pairing is not complete.**
