@@ -1,5 +1,51 @@
 # 34 — Current Implementation Handoff
 
+## Separate technical review found two defects; corrections verified (2026-11-08)
+
+The owner authorized a fresh-context, read-only reviewer agent. It reviewed clean
+commit `2165539491733b40ff61908955823e0b3fafe514` in an isolated worktree and
+reproduced two P2/medium findings using synthetic scratch sources/runtimes:
+
+- A genuinely signed zero-cutoff restriction could name a known device ID with
+  an unrelated valid key and restrict the actual device. Reproduced through the
+  real internal publication/rebuild path, not only the reducer helper.
+- A lower-level import policy proof from runtime A could publish in B without
+  holding B's inventory/device locks. The current service replay check blocks
+  this route, but the lower-level admission/final-publication invariant was
+  incomplete.
+
+Correction commit `f072ae234344bcee51b9bcb995fc4d1678aba45f` binds known restriction
+targets to their exact pinned key ID/full public key for every cutoff and checks
+the import snapshot's runtime at admission and again before publication. Unknown
+third-target restriction metadata remains supported; it does not grant trust.
+Added signed-key and two-runtime regressions; no canonical bytes are edited,
+test assertions weakened, or external publication entry point enabled.
+
+Author verification: reducer **14/14**, publication **11/11**, binary **15/15**,
+strict all-target daemon Clippy and fmt pass. Broader daemon library run: **554 passed, 0 failed,
+4 ignored, 8 explicitly filtered owned-HTTP tests**. Those eight are the known
+development-host TCP compatibility group; this is not a full-suite pass or a
+fix for that compatibility case. Earlier Windows/Mac receipts remain scoped to
+their prior source revisions, not this correction.
+
+The reviewer independently copied corrected sources to scratch, verified all
+four files byte-identical to the correction commit's Git blobs and passed all
+three new regression entries. No additional confirmed defect remains in the
+bounded correction reviewed. This is a separate-agent technical
+assessment, not independent human certification or human diff approval. See
+[findings and integration continuation](../evidence/m8/m8-independent-review-findings-20261108.md).
+
+**Next engineering gate:** implement/review the live daemon's runtime-wide
+reader/failure barrier before managed-controller publication wiring. Existing
+IPC/projection workers do not borrow the mutable instance guard. Recovery-required
+or committed-but-stale errors must keep all guarded operations held until
+verified recovery/rebuild. Preserve canonical lock ordering and the staging
+reservation's short lifetime. The report records concrete acceptance checks.
+Mac production parity, native physical durability, ordinary cross-device
+offline/restriction integration, required CI and human review remain open.
+Normal publication stays disabled; M8 is not complete. No owner VM/Mac action
+is required for this review checkpoint; neither machine needs to stay running.
+
 ## Windows VM comparison passed; selected native checks recorded (2026-11-08)
 
 Owner returned `WIN-TEST-SONUC.zip`, SHA-256

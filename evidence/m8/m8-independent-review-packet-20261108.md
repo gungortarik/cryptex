@@ -2,6 +2,13 @@
 
 ## Status
 
+Follow-up: the owner-authorized separate technical reviewer has now assessed
+commit `2165539491733b40ff61908955823e0b3fafe514`. Two confirmed findings and
+correction commit `f072ae234344bcee51b9bcb995fc4d1678aba45f` are recorded in the
+[review result](m8-independent-review-findings-20261108.md). The original packet
+below remains review scope, not a verdict. Technical agent review does not
+replace required human review or close normal-publication/M8 gates.
+
 Prepared for an independent reviewer. **This document is not an independent
 review, approval, or authorization to activate publication.** The implementation
 author's self-review found/fixed a lifecycle hardlink truncation defect; selected
