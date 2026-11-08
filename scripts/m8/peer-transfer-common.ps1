@@ -9,14 +9,18 @@ function Assert-PeerBinary($Path) {
 function Read-PeerSettings($Path) {
     if ((Get-Item -LiteralPath $Path).Length -gt 16KB) { throw 'oversized_settings' }
     $settings = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-    if ($settings.schema -ne 1 -or $settings.session -notmatch '^[a-f0-9]{32}$' -or
+    if ($settings.schema -notin @(1,2) -or $settings.session -notmatch '^[a-f0-9]{32}$' -or
         $settings.host_id -notmatch '^([A-Z2-7]{7}-){7}[A-Z2-7]{7}$' -or
-        $settings.sha256 -notmatch '^[A-F0-9]{64}$' -or $settings.bytes -ne 32768 -or
+        $settings.sha256 -notmatch '^[A-F0-9]{64}$' -or $settings.bytes -lt 1 -or $settings.bytes -gt 1MB -or
         $settings.host_port -lt 1025 -or $settings.host_port -gt 65535) { throw 'invalid_settings' }
     $ip = [Net.IPAddress]::Parse($settings.host_address)
     $b = $ip.GetAddressBytes()
     if ($b.Length -ne 4 -or -not ($b[0] -eq 10 -or ($b[0] -eq 192 -and $b[1] -eq 168) -or
         ($b[0] -eq 172 -and $b[1] -ge 16 -and $b[1] -le 31) -or $b[0] -eq 127)) { throw 'private_ipv4_required' }
+    if ($settings.schema -eq 1 -and $settings.bytes -ne 32768) { throw 'invalid_settings' }
+    if ($settings.schema -eq 2 -and ($settings.probe_id -notmatch '^[a-f0-9]{32}$' -or
+        $settings.payload_name -ne ('signed-' + $settings.probe_id + '.seg') -or
+        $settings.daemon_sha256 -notmatch '^[A-F0-9]{64}$' -or $settings.descriptor_sha256 -notmatch '^[A-F0-9]{64}$')) { throw 'invalid_signed_settings' }
     return $settings
 }
 function New-PeerFixture($Binary) {
@@ -95,6 +99,11 @@ function Add-PeerFolder($Node, $Settings, $PeerId, $Role, $PeerAddress) {
             $remote.Count -ne 1 -or @($remote[0].addresses).Count -ne 1 -or $remote[0].addresses[0] -ne $PeerAddress) {
             throw 'retained_folder_mismatch'
         }
+        # These owned synthetic folders intentionally exchange plain bytes.
+        # v2.1.5 may retain a redaction placeholder as a folder-device password
+        # across reopen. Never PUT an unmodified secret-redacted GET response.
+        foreach ($entry in $folder.devices) { $entry.encryptionPassword='' }
+        Invoke-PeerApi $Node ('/rest/config/folders/' + $folder.id) 'PUT' $folder | Out-Null
         return $payload
     }
     if (@($config.devices).Count -ne 1) { throw 'isolation_failed' }

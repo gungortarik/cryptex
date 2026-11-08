@@ -42,6 +42,7 @@ pub mod replication_status;
 pub mod secure_store;
 pub mod sequence_runtime;
 pub mod sequence_store;
+pub mod signed_transfer_probe;
 pub mod status;
 pub mod supervision;
 pub mod syncthing_owned_rest;

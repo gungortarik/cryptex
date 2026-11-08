@@ -183,6 +183,59 @@ fn run_pilot_transport(args: &[String]) -> Result<(), LifecycleError> {
 }
 
 fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
+    if args.first().map(String::as_str) == Some("verify-signed-transfer-v1") {
+        let [
+            _,
+            segment_flag,
+            segment,
+            descriptor_flag,
+            descriptor,
+            confirm,
+        ] = args
+        else {
+            return Err(LifecycleError::Usage("verify-signed-transfer-v1 requires --segment <path> --descriptor <path> --confirm-isolated-pilot".into()));
+        };
+        if segment_flag != "--segment"
+            || descriptor_flag != "--descriptor"
+            || confirm != "--confirm-isolated-pilot"
+        {
+            return Err(LifecycleError::Usage(
+                "invalid signed probe verification arguments".into(),
+            ));
+        }
+        let report = cryptexd::signed_transfer_probe::verify_files(
+            Path::new(segment),
+            Path::new(descriptor),
+        )
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+        println!(
+            "{}",
+            serde_json::to_string(&report)
+                .map_err(|_| LifecycleError::Attention("probe_report_failed".into()))?
+        );
+        return Ok(());
+    }
+    if args.first().map(String::as_str) == Some("signed-transfer-v1") {
+        let [_, flag, root, confirm] = args else {
+            return Err(LifecycleError::Usage(
+                "signed-transfer-v1 requires --runtime-root <fresh-pilot> --confirm-isolated-pilot"
+                    .into(),
+            ));
+        };
+        if flag != "--runtime-root" || confirm != "--confirm-isolated-pilot" {
+            return Err(LifecycleError::Usage(
+                "invalid signed probe generation arguments".into(),
+            ));
+        }
+        let root = Path::new(root);
+        validate_pilot_fixture_root(root)?;
+        let _instance = try_acquire_instance(root)?;
+        prepare_m1_runtime_foundation(root)
+            .map_err(|_| LifecycleError::Attention("probe_setup_failed".into()))?;
+        create_signed_probe_with_platform_store(root)?;
+        println!("signed_transfer_fixture=ready");
+        return Ok(());
+    }
     if args.first().map(String::as_str) != Some("timeline-v1") {
         return Err(LifecycleError::Usage(format!(
             "pilot-fixture requires the explicit 'timeline-v1' fixture\n{}",
@@ -243,6 +296,33 @@ fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
         "pilot_fixture=timeline-v1\nbrain_id={brain_id}\nevent_id={event_id}\nclassification=public"
     );
     Ok(())
+}
+
+#[cfg(windows)]
+fn create_signed_probe_with_platform_store(root: &Path) -> Result<(), LifecycleError> {
+    cryptexd::signed_transfer_probe::create(
+        root,
+        &cryptexd::WindowsCredentialStore::new(),
+        &random_uuid_v4()?,
+        &random_uuid_v4()?,
+    )
+    .map_err(|error| LifecycleError::Attention(error.to_string()))
+}
+#[cfg(target_os = "macos")]
+fn create_signed_probe_with_platform_store(root: &Path) -> Result<(), LifecycleError> {
+    cryptexd::signed_transfer_probe::create(
+        root,
+        &cryptexd::MacosKeychainStore::new(),
+        &random_uuid_v4()?,
+        &random_uuid_v4()?,
+    )
+    .map_err(|error| LifecycleError::Attention(error.to_string()))
+}
+#[cfg(not(any(windows, target_os = "macos")))]
+fn create_signed_probe_with_platform_store(_root: &Path) -> Result<(), LifecycleError> {
+    Err(LifecycleError::Usage(
+        "signed probe generation requires an OS secure store".into(),
+    ))
 }
 
 fn recover_writer_state_before_start(
@@ -1123,6 +1203,8 @@ fn usage_text() -> String {
         "  cryptexd replication status --runtime-root <app-data-path> (read-only metadata diagnostics)",
         "  cryptexd replication validate-incoming --runtime-root <app-data-path> --environment <dev|prod> <relative-segment>... (stages, validates, discards)",
         "  cryptexd pilot-fixture timeline-v1 --runtime-root <fresh-pilot-path> --confirm-isolated-pilot",
+        "  cryptexd pilot-fixture signed-transfer-v1 --runtime-root <fresh-pilot-path> --confirm-isolated-pilot (synthetic signed segment)",
+        "  cryptexd pilot-fixture verify-signed-transfer-v1 --segment <path> --descriptor <path> --confirm-isolated-pilot (signature only; no trust or publication)",
         "  cryptexd pilot-transport --confirm-isolated-pilot <fresh-marked-root> <pinned-package-dir> <api-port> <sync-port> (Windows)",
         "  cryptexd lifecycle status [--runtime-root <path>]",
         "  cryptexd lifecycle probe [--runtime-root <path>]",
@@ -1375,6 +1457,39 @@ mod tests {
         ])
         .expect_err("must require explicit fixture confirmation");
         assert!(matches!(error, LifecycleError::Usage(_)));
+    }
+
+    #[test]
+    fn signed_probe_commands_require_exact_explicit_confirmation() {
+        for args in [
+            vec![
+                "pilot-fixture",
+                "signed-transfer-v1",
+                "--runtime-root",
+                "unused",
+            ],
+            vec![
+                "pilot-fixture",
+                "signed-transfer-v1",
+                "--runtime-root",
+                "unused",
+                "--confirm-isolated-pilot",
+                "extra",
+            ],
+            vec![
+                "pilot-fixture",
+                "verify-signed-transfer-v1",
+                "--segment",
+                "unused",
+                "--descriptor",
+                "unused",
+            ],
+        ] {
+            assert!(matches!(
+                run(args.into_iter().map(String::from).collect()),
+                Err(LifecycleError::Usage(_))
+            ));
+        }
     }
 
     #[test]

@@ -27,7 +27,8 @@ try {
         Wait-PeerNative $node
         $payload = Add-PeerFolder $node $settings $settings.host_id 'receiveonly' ('tcp://' + $settings.host_address + ':' + $settings.host_port)
         Write-Host 'Test dosyasi bekleniyor (en fazla 3 dakika)...'
-        $target = Join-Path $payload 'synthetic.bin'
+        $payloadName = if ($settings.schema -eq 2) { $settings.payload_name } else { 'synthetic.bin' }
+        $target = Join-Path $payload $payloadName
         $deadline = [DateTime]::UtcNow.AddSeconds(180)
         $matched = $false
         while ([DateTime]::UtcNow -lt $deadline) {
@@ -43,14 +44,22 @@ try {
         if (-not $matched) { throw 'transfer_timeout' }
         Stop-PeerNative $node
         $node = $null
-        Write-PeerJson (Join-Path $stateRoot 'transfer-result.json') @{
+        $signatureCheck = $null
+        if ($settings.schema -eq 2) {
+            . (Join-Path $PSScriptRoot 'verify-signed-payload.ps1')
+            $signatureCheck=Test-SignedPayload $settings $target $stateRoot
+        }
+        $resultName = if ($settings.schema -eq 2) { 'signed-transfer-result.json' } else { 'transfer-result.json' }
+        Write-PeerJson (Join-Path $stateRoot $resultName) @{
             schema=1; scope='synthetic_native_transport_only'; session=$settings.session; outcome='received_hash_match';
             receiver_id=$fixture.native_id; sender_id=$settings.host_id; bytes=$settings.bytes; sha256=$settings.sha256;
-            canonical_import='not_run'; clean_shutdown=$true; collected_utc=[DateTime]::UtcNow.ToString('o')
+            canonical_import='not_run'; clean_shutdown=$true; collected_utc=[DateTime]::UtcNow.ToString('o');
+            probe_id=$settings.probe_id; signature_check=$signatureCheck
         }
-        $output = Join-Path $stateRoot 'AKTARIM-SONUC.zip'
-        Compress-Archive -LiteralPath (Join-Path $stateRoot 'transfer-result.json') -DestinationPath $output -Force
-        Write-Host 'Aktarim tamamlandi. AKTARIM-SONUC.zip dosyasini sohbete ekleyin.'
+        $archiveName = if ($settings.schema -eq 2) { 'IMZALI-SONUC.zip' } else { 'AKTARIM-SONUC.zip' }
+        $output = Join-Path $stateRoot $archiveName
+        Compress-Archive -LiteralPath (Join-Path $stateRoot $resultName) -DestinationPath $output -Force
+        Write-Host ('Test tamamlandi. ' + $archiveName + ' dosyasini sohbete ekleyin.')
     }
     if (-not $NoOpen) { Start-Process explorer.exe -ArgumentList ('/select,"{0}"' -f $output) }
     Write-Host $output

@@ -1,5 +1,49 @@
 # 34 — Current Implementation Handoff
 
+## One-click signed transport probe prepared (2026-11-08)
+
+The owner requested the next signed-data test as a portable one-click package.
+Added explicit daemon pilot commands `signed-transfer-v1` (fresh marked runtime,
+OS secure store, daemon canonical writer, one sealed synthetic v1 event) and
+`verify-signed-transfer-v1` (bounded read-only signature/identity/frame check).
+Verification uses the existing event validator and Ed25519 implementation.
+Its public descriptor is an expected test key, not a trusted-roster entry;
+reports explicitly keep `trust_activated` and `published` false.
+
+The new signed package reuses the already tested host/VM native identities and
+folder. The owner only extracts and opens `IMZALI-TEST.cmd`; no new public-ID
+request or pairing is needed. It transports a newly named sealed event, verifies
+the received hash and signature, and requires a separately modified copy to fail
+with the daemon's integrity error. The original received file is rehashed to
+confirm preservation. No source segment or private key is included in the ZIP;
+only the daemon, public descriptor, pinned expected hashes and scripts ship.
+It emits one `IMZALI-SONUC.zip`, or an error ZIP.
+
+Validation: four probe library tests, fifteen daemon CLI tests, strict Clippy and
+format checks passed. A release build and native two-process regression passed,
+including the base random transfer, retained-profile restart, new signed event
+transfer, positive signature verification and negative modified-copy check.
+Initial packaging exposed a Windows path-length failure in public signing-key
+metadata; new signer fixtures use a short protected LocalAppData/Cryptex-Dev/sp
+path. Retained plain synthetic folders explicitly clear native encryption
+password placeholders on reopen. Sender completion uses the actual source-file
+inventory size to avoid stale index observations and fast-disconnect races.
+
+**VM signed result pending.** This probe verifies cryptographic integrity under
+an explicitly supplied public test key. It is not the `validate-incoming`
+local-trust/continuity/retrieval-policy path. The next integration gate still
+requires an appropriate authenticated Brain/peer history; no trust bootstrap or
+canonical publication gate was bypassed. See [probe evidence and scope](../evidence/m8/m8-signed-transport-probe-20261108.md).
+
+Prepared VM package: `%USERPROFILE%\Downloads\cryptex-imzali-c15cf5f1.zip`.
+Probe ID: `c15cf5f1870648e9b6bdaa5129766cb7`, 723 bytes, SHA-256
+`2C421940C8820F49D49569141EFEB0E70BA02960037D1526BBFA2194E1F7A77F`.
+Retained native session remains `87a57c018d63481cb71a9a0f6abdd1f1`.
+Agent starts the sender with its existing `vm-public-request.json` and
+`-PackageDirectory <session>/signed-package-c15cf5f1870648e9b6bdaa5129766cb7`.
+The owner then opens `IMZALI-TEST.cmd` on the same VM and returns
+`IMZALI-SONUC.zip`. Do not recreate native identities or use regression sessions.
+
 ## Host-to-VM native file transfer passed (2026-11-08)
 
 The owner ran the portable package in the existing Windows VM and returned
