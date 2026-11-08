@@ -57,19 +57,21 @@ pub(crate) fn publish_incoming<S: SecureStore + ?Sized>(
 ) -> Result<IncomingPublicationReport, IncomingPublicationError> {
     use IncomingPublicationError::Rejected;
     let _pins = ImportStagingSession::pin_existing_runtime(root).map_err(Rejected)?;
-    let instance = crate::instance::try_acquire_instance(root)
+    let mut instance = crate::instance::try_acquire_instance(root)
         .map_err(|error| Rejected(ImportStagingError::Invalid(error.to_string())))?;
-    publish_incoming_with_instance(root, paths, &instance, store, environment)
+    publish_incoming_with_instance(root, paths, &mut instance, store, environment)
 }
 
 /// Long-lived daemon integration must reuse its existing instance ownership.
 /// The caller must retain the startup/recovery admission barrier and turn any
 /// recovery-required result into a runtime-wide hold before serving readers.
 /// This entry point is not connected to a live controller yet.
+/// Exclusive borrowing also prevents two import/recovery operations from
+/// concurrently using one instance guard through this safe-Rust API.
 pub(crate) fn publish_incoming_with_instance<S: SecureStore + ?Sized>(
     root: &Path,
     paths: &[PathBuf],
-    instance: &crate::instance::InstanceLock,
+    instance: &mut crate::instance::InstanceLock,
     store: &S,
     environment: SecureStoreEnvironment,
 ) -> Result<IncomingPublicationReport, IncomingPublicationError> {

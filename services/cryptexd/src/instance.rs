@@ -1,4 +1,4 @@
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -39,12 +39,7 @@ pub struct InstanceObservation {
 pub fn try_acquire_instance(runtime_root: &Path) -> LifecycleResult<InstanceLock> {
     fs::create_dir_all(runtime_root)?;
     let path = lock_path(runtime_root);
-    let mut file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(&path)?;
+    let mut file = crate::platform::instance_file::open(&path, true)?;
 
     match file.try_lock_exclusive() {
         Ok(()) => {}
@@ -62,6 +57,7 @@ pub fn try_acquire_instance(runtime_root: &Path) -> LifecycleResult<InstanceLock
         }
     }
 
+    crate::platform::instance_file::validate(&file)?;
     let pid = std::process::id();
     file.set_len(0)?;
     writeln!(file, "{pid}")?;
@@ -92,11 +88,11 @@ pub fn observe_instance(runtime_root: &Path) -> LifecycleResult<InstanceObservat
         });
     }
 
-    let probe = OpenOptions::new().read(true).write(true).open(&path)?;
+    let mut probe = crate::platform::instance_file::open(&path, false)?;
     match probe.try_lock_exclusive() {
         Ok(()) => {
+            let holder_pid = read_lock_pid(&mut probe)?;
             let _ = probe.unlock();
-            let holder_pid = read_lock_pid(&path)?;
             Ok(InstanceObservation {
                 lock_present: true,
                 lock_held: false,
@@ -128,10 +124,15 @@ fn is_lock_conflict(error: &std::io::Error) -> bool {
     ) || matches!(error.raw_os_error(), Some(11) | Some(35) | Some(33))
 }
 
-fn read_lock_pid(path: &Path) -> LifecycleResult<Option<u32>> {
+fn read_lock_pid(file: &mut File) -> LifecycleResult<Option<u32>> {
+    crate::platform::instance_file::validate(file)?;
     let mut contents = String::new();
-    let mut file = File::open(path)?;
-    file.read_to_string(&mut contents)?;
+    file.take(129).read_to_string(&mut contents)?;
+    if contents.len() > 128 {
+        return Err(LifecycleError::UnsafeRuntimePath(
+            "instance PID file exceeds its read bound".into(),
+        ));
+    }
     let trimmed = contents.trim();
     if trimmed.is_empty() {
         return Ok(None);
@@ -150,6 +151,65 @@ mod tests {
         let root = crate::test_temp::exclusive_temp_dir(&format!("cryptexd-instance-{label}"));
         assert_outside_repository(&root).expect("temp runtime must be outside repository");
         root
+    }
+
+    #[test]
+    fn hardlinked_instance_file_cannot_truncate_an_immutable_file() {
+        let root = unique_root("hardlink-refusal");
+        let canonical = root.join("synthetic-canonical.seg");
+        let original = b"synthetic immutable canonical bytes\n";
+        fs::write(&canonical, original).unwrap();
+        fs::hard_link(&canonical, lock_path(&root)).unwrap();
+        assert!(
+            observe_instance(&root).is_err(),
+            "observation must refuse linked lock files too"
+        );
+        let result = try_acquire_instance(&root);
+        let rejected = result.is_err();
+        drop(result);
+        let observed = fs::read(&canonical).unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            rejected,
+            "hardlinked instance file must be refused before PID writes"
+        );
+        assert_eq!(observed, original);
+    }
+
+    #[test]
+    fn oversized_pid_observation_is_bounded_and_preserves_bytes() {
+        let root = unique_root("oversized-pid");
+        let original = vec![b'1'; 1024];
+        fs::write(lock_path(&root), &original).unwrap();
+        assert!(observe_instance(&root).is_err());
+        assert_eq!(fs::read(lock_path(&root)).unwrap(), original);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_instance_file_is_refused_without_touching_target() {
+        let root = unique_root("symlink-refusal");
+        let target = root.join("synthetic-canonical.seg");
+        fs::write(&target, b"synthetic immutable bytes").unwrap();
+        std::os::unix::fs::symlink(&target, lock_path(&root)).unwrap();
+        assert!(try_acquire_instance(&root).is_err());
+        assert!(observe_instance(&root).is_err());
+        assert_eq!(fs::read(target).unwrap(), b"synthetic immutable bytes");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn windows_live_instance_file_cannot_be_replaced() {
+        let root = unique_root("pinned-lock-name");
+        let guard = try_acquire_instance(&root).unwrap();
+        let moved = root.join("renamed-daemon.lock");
+        assert!(fs::rename(lock_path(&root), &moved).is_err());
+        assert!(lock_path(&root).is_file());
+        drop(guard);
+        fs::rename(lock_path(&root), moved).unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

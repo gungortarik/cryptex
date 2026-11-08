@@ -1,5 +1,52 @@
 # 34 — Current Implementation Handoff
 
+## Security self-review fixes; Windows limits and Mac preflight (2026-11-08)
+
+Reviewed the dormant persistent-import integration at `2705330` against the
+Master Spec, accepted platform/sync contracts and ADR-0019 §5.1.1. This is an
+implementation-author self-review, not the independent security review required
+for activation. Verdict for normal publication remains **NOT READY**.
+
+Reproduced a shared lifecycle defect with synthetic data: a hardlinked
+`daemon.lock` let instance acquisition truncate another file before import
+admission. Fixed instance-file opening through a platform adapter: no-follow,
+ordinary/single-link handle checks before PID writes/inspection, Windows
+non-delete sharing, and bounded PID reads through the already-locked handle.
+The immutable target is now preserved by acquisition and observation regressions.
+Also made the daemon-owned publication entry require an exclusive mutable
+instance guard, preventing overlapping import/recovery calls through the same
+safe-Rust API. The future controller still needs the runtime-wide reader barrier.
+
+Latest focused Windows results: instance nine and publication nine passed;
+daemon CLI fifteen passed; strict all-target Clippy, format and diff checks
+passed. A broader daemon library run after the lock-file fix reported **553
+passed, five failed, four ignored**. All five failures were owned HTTP endpoint
+checks returning `PeerNotEstablished`. On this host (Windows build
+26300.9818 / 26H2, NTFS), a new synthetic TCP probe recorded six mismatches in
+60 samples while all 60 before/after round trips succeeded; parser self-test
+passed. This supports the known host TCP-table diagnosis but does not make the
+five tests pass or close the endpoint-ownership gate. No state check was relaxed.
+
+One intermediate unsigned test build was blocked by Windows Application Control
+(4551; Code Integrity 3077/3033/3118). The later ordinary build containing the
+exclusive-guard fix ran both focused groups successfully. Protection settings
+were not changed. This is not evidence that an unsigned distribution is allowed.
+
+Owner confirmed a real Mac is available. Prepared
+`%USERPROFILE%\Downloads\cryptex-mac-kontrol-20261108.zip`: two allowlisted
+members, executable Unix mode and LF `.command`; no binaries, keys, profiles
+or network/install steps. It reports macOS/build/architecture, scratch filesystem,
+existing CLT/pinned Rust readiness and synthetic scratch link/copy capability.
+Bash syntax and non-macOS refusal passed here; actual Mac execution is pending.
+
+**Next owner action:** on the Mac, extract that ZIP, open `MAC-KONTROL.command`,
+return `MAC-SONUC.zip`. If macOS blocks opening, return the warning rather than
+disabling protection. Use that receipt to plan native Mac tests; do not call
+readiness a macOS integration pass. Normal publication/managed adapter wiring,
+clean Windows endpoint evidence, macOS native integration, physical durability
+and independent review remain open. Detailed findings and source/check matrix:
+[security and platform review](../evidence/m8/m8-security-platform-review-20261108.md).
+
 ## Windows internal persistent-import integration implemented (2026-11-08)
 
 Owner requested continuation from the successful validation relay into permanent

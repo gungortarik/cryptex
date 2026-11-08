@@ -5,6 +5,8 @@
 
 use crate::supervision::RegistrationStatus;
 
+pub(crate) mod instance_file;
+
 #[cfg(target_os = "macos")]
 pub mod macos;
 #[cfg(target_os = "windows")]

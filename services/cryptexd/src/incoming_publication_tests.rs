@@ -304,15 +304,29 @@ fn refuses_owned_runtime_before_staging_or_publication() {
 }
 
 #[test]
+fn hardlinked_runtime_lock_cannot_modify_existing_canonical_bytes() {
+    let fixture = Fixture::new();
+    let before = event_hashes(&fixture.receiver);
+    let target = fixture.receiver.join(&before[0].0);
+    fs::hard_link(target, crate::paths::lock_path(&fixture.receiver)).unwrap();
+    assert!(matches!(
+        fixture.publish(),
+        Err(IncomingPublicationError::Rejected(_))
+    ));
+    assert_eq!(event_hashes(&fixture.receiver), before);
+    assert!(!fixture.receiver.join("canonical/import-staging").exists());
+}
+
+#[test]
 fn reuses_matching_instance_and_refuses_a_foreign_instance_without_staging() {
     let fixture = Fixture::new();
     let foreign = crate::test_temp::exclusive_temp_dir("incoming-foreign-owner");
-    let foreign_instance = crate::instance::try_acquire_instance(&foreign).unwrap();
+    let mut foreign_instance = crate::instance::try_acquire_instance(&foreign).unwrap();
     let before = event_hashes(&fixture.receiver);
     let result = publish_incoming_with_instance(
         &fixture.receiver,
         &fixture.paths,
-        &foreign_instance,
+        &mut foreign_instance,
         &fixture.store,
         ENV,
     );
@@ -321,11 +335,11 @@ fn reuses_matching_instance_and_refuses_a_foreign_instance_without_staging() {
     assert!(!fixture.receiver.join("canonical/import-staging").exists());
     drop(foreign_instance);
     fs::remove_dir_all(foreign).unwrap();
-    let instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
+    let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
     let report = publish_incoming_with_instance(
         &fixture.receiver,
         &fixture.paths,
-        &instance,
+        &mut instance,
         &fixture.store,
         ENV,
     )

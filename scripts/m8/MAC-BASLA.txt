@@ -1,0 +1,13 @@
+MAC-KONTROL.command dosyasini Mac'te calistirin.
+
+1. ZIP dosyasini Mac'e kopyalayin ve acarak ayiklayin.
+2. MAC-KONTROL.command dosyasina cift tiklayin.
+3. Finder'da gosterilen MAC-SONUC.zip dosyasini sohbete ekleyin.
+
+Kontrol yalnizca macOS surumu, islemci turu, gecici klasor dosya sistemi ve
+gelistirme araclarinin hazirligini raporlar. Kucuk sentetik gecici dosyalar
+olusturur. Cryptex profillerine/anahtarlarina erismez; veri aktarimi, kurulum,
+ag baglantisi veya guvenlik ayari degisikligi yapmaz.
+
+Guvenlik uyarisi cikarsa uyariyi gonderin; sistem korumalarini kapatmayin.
+Bu hazirlik kontrolu macOS entegrasyon veya guc kesintisi testinin gecmesi degildir.
