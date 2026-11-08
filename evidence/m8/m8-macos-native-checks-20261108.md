@@ -195,3 +195,15 @@ Successful native primitive tests do not close the production Mac parity gaps
 listed above, Windows endpoint failures, physical power-loss or independent
 review gates. No source signature, remote attestation or normal publication
 activation is inferred from the supplied ZIP.
+
+### Exact outgoing lint-only package
+
+- Corrected source commit: `bc5e5d0e69f9664c72b08c3d9b62a5f4c987d494`.
+- Embedded source ZIP SHA-256:
+  `bcefd254b89310fa4c42ecc6a6796cf67acae30a9f08143c8b928e7bd3fd9228`.
+- `cryptex-mac-lint-20261108.zip`: 2,269,692 bytes; SHA-256
+  `76BF3A8BAD09DF6EA11F30E1729F73E3DAE2E28E247DAEF374CC3CB7901155D7`.
+- Six exact members, source/runner bytes, digest, Unix executable modes and LF
+  verified. Expected return is `MAC-LINT-SONUC.zip`, with `result.txt`,
+  `build.log`, `clippy.log` when those stages run. A clean compile/Clippy result
+  on this source is still pending; do not replace the historical failed receipt.
