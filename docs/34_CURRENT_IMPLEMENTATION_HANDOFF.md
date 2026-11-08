@@ -1,5 +1,52 @@
 # 34 — Current Implementation Handoff
 
+## Windows internal persistent-import integration implemented (2026-11-08)
+
+Owner requested continuation from the successful validation relay into permanent
+import integration. Added crate-private Windows `incoming_publication` orchestration:
+runtime instance ownership, startup reconciliation before canonical inspection,
+bounded incoming snapshots, the existing complete local-anchor trust/M3/M4 gate,
+prepared manifest, additive no-replace publisher, receipt-bound cleanup, and
+verified canonical-to-M3/M4 refresh before success. No CLI, IPC, watcher or managed
+transport caller activates it. ADR-0019 §5.1.1 implementation permission and its
+remaining activation gates are unchanged.
+
+Exact replays are removed only from private staging under the successful
+runtime-bound inventory/device-lock snapshot, after no-follow, single-link,
+length/digest checks against existing canonical segments. All-identical batches
+return zero published events; mixed old/new batches publish only a contiguous
+new tail. Divergent bytes reject. Transport source files and existing canonical
+event bytes are never replaced or deleted.
+
+Errors distinguish rejected admission, recovery-required preparation/publication,
+and committed canonical data with a failed derived refresh. Preparation errors
+preserve transaction evidence because the manifest may already be visible;
+partial publication is never cleaned as a failed unprepared import. Restart
+recovery does not fabricate fresh M3/M4 watermarks: a stale derived view still
+holds new admission until an explicit verified rebuild.
+
+The daemon-owned entry point also accepts a matching existing instance guard,
+refuses a guard belonging to another runtime, and never reacquires the caller's
+instance lock. A future controller must propagate recovery-required outcomes
+into its runtime-wide admission barrier before allowing readers to continue.
+
+Windows verification passed: eight new integration test entries (one subprocess
+worker), including peer persistence/reopen, duplicate/mixed replay, invalid
+batch atomicity, owned-runtime refusal, post-commit refresh failure, and six
+process-exit boundaries across prepared temp/final, two destination moves and
+committed temp/final. Existing staging/recovery 63, validation-only nine and
+trusted-probe three tests passed; strict daemon all-target Clippy and format
+passed. Fixtures use signed mutual approval histories and FakeSecureStore on
+the host's real filesystem. This is not independent review, VM publication,
+physical power-loss proof, or macOS evidence.
+
+**Next:** review the internal transaction integration and idempotency/error
+boundaries before adding any external publication entry point. The managed
+adapter-to-service caller remains absent; native platform durability and
+independent security review gates remain open. No new VM package was issued,
+and existing owner profiles remain untouched. See
+[implementation and review handoff](../evidence/m8/m8-persistent-import-integration-20261108.md).
+
 ## Trusted-import relay and VM full-policy checks passed (2026-11-08)
 
 The owner returned `GUVEN-SONUC.zip` for probe

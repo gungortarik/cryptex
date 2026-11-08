@@ -233,7 +233,7 @@ pub fn prepare<S: SecureStore>(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::canonical_writer::{
         AppendMemoryNoteArgs, CanonicalWriterConfig, append_memory_note,
@@ -271,7 +271,7 @@ mod tests {
         .accepted;
         (device, event)
     }
-    fn pair() -> (
+    pub(crate) fn pair() -> (
         std::path::PathBuf,
         std::path::PathBuf,
         std::path::PathBuf,

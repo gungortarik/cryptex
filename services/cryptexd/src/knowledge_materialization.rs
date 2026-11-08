@@ -163,6 +163,23 @@ impl RetrievalSafetyState {
         })
     }
 
+    /// Idempotent replay is decided only inside this successful local-policy
+    /// snapshot. Byte equality outside the trusted, locked inventory is not an
+    /// admission decision. Normal transport publication remains gated.
+    #[cfg(windows)]
+    pub(crate) fn remove_identical_import_replays(
+        &self,
+        session: &mut crate::import_staging::ImportStagingSession,
+    ) -> Result<usize, crate::import_staging::ImportStagingError> {
+        let snapshot = self.snapshot.as_ref().ok_or_else(|| {
+            crate::import_staging::ImportStagingError::Invalid(format!(
+                "retrieval safety gate is held: {:?}",
+                self.hold_reason()
+            ))
+        })?;
+        session.remove_identical_replays(snapshot)
+    }
+
     /// Consume the same locked M3/M4 and M8 policy snapshot after a prepared
     /// recovery batch has been verified from its exact staged/canonical files.
     /// This creates no publication decision; it only carries the validated
@@ -743,6 +760,11 @@ fn lower_hex(bytes: &[u8]) -> String {
 impl VerifiedCanonicalSnapshot {
     pub(crate) fn verified_records(&self) -> &[cryptex_events::VersionedRecord] {
         self.history.records()
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn locks_runtime(&self, root: &Path) -> bool {
+        self.runtime_root == root
     }
 
     pub(crate) fn locks_devices(&self, devices: &[DeviceId]) -> bool {

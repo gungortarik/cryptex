@@ -545,6 +545,83 @@ impl ImportStagingSession {
         &self.candidates
     }
 
+    /// Remove only private staged copies of exact, already verified canonical
+    /// segments. The successful safety gate retains this runtime's inventory
+    /// and affected device locks throughout comparison and removal.
+    #[cfg(windows)]
+    pub(crate) fn remove_identical_replays(
+        &mut self,
+        snapshot: &crate::knowledge_materialization::VerifiedCanonicalSnapshot,
+    ) -> Result<usize, ImportStagingError> {
+        let devices = self
+            .candidates
+            .iter()
+            .map(|c| c.device_id.clone())
+            .collect::<Vec<_>>();
+        if self.failed
+            || self.prepared
+            || self._single_flight.is_some()
+            || !snapshot.locks_runtime(&self.runtime_root)
+            || !snapshot.locks_devices(&devices)
+            || snapshot.verified_trust_context().is_none()
+        {
+            return Err(ImportStagingError::Invalid(
+                "replay comparison requires the matching locked local-policy snapshot".into(),
+            ));
+        }
+        let mut duplicates = Vec::new();
+        for candidate in &self.candidates {
+            let destination = sealed_segment_path(
+                &self.runtime_root,
+                &candidate.device_id,
+                candidate.segment_index,
+            );
+            if !entry_exists(&destination)? {
+                continue;
+            }
+            if entry_exists(&active_segment_path(
+                &self.runtime_root,
+                &candidate.device_id,
+                candidate.segment_index,
+            ))? {
+                return Err(ImportStagingError::RecoveryConflict(
+                    "replay has conflicting sealed and active destinations".into(),
+                ));
+            }
+            let relative = format!(
+                "{}/{:020}.seg",
+                candidate.device_id.as_filename_stem(),
+                candidate.segment_index
+            );
+            let expected = PreparedImportSegment {
+                device_id: candidate.device_id.as_str().to_owned(),
+                segment_index: candidate.segment_index,
+                staged_relative_path: relative.clone(),
+                destination_relative_path: relative,
+                length: candidate.length,
+                sha256: candidate.sha256.clone(),
+            };
+            manifest_file_matches(&candidate.staged_path, &expected, false)?;
+            manifest_file_matches(&destination, &expected, false)?;
+            duplicates.push(candidate.staged_path.clone());
+        }
+        for path in &duplicates {
+            fs::remove_file(path)?;
+        }
+        let original_devices = devices
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>();
+        self.candidates
+            .retain(|c| !duplicates.contains(&c.staged_path));
+        for device in original_devices {
+            if !self.candidates.iter().any(|c| c.device_id == device) {
+                let parent = self.staging_dir.join(device.as_filename_stem());
+                fs::remove_dir(&parent)?;
+            }
+        }
+        Ok(duplicates.len())
+    }
+
     /// Verify the exact daemon-staged snapshot against a caller-supplied,
     /// fully verified stream tip and trusted daemon-key resolver. This is a
     /// validation primitive only; it does not publish or grant trust.

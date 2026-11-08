@@ -23,6 +23,9 @@ pub mod event_signing_key;
 pub mod identity_runtime;
 pub mod import_limits;
 pub mod import_staging;
+#[cfg(windows)]
+#[allow(dead_code)] // Internal integration only; normal transport/IPC activation remains gated.
+pub(crate) mod incoming_publication;
 pub mod incoming_validation;
 pub mod install_runtime;
 pub mod instance;

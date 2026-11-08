@@ -1,0 +1,196 @@
+//! Windows internal incoming-to-canonical transaction integration.
+//!
+//! No CLI, IPC, watcher or managed-transport caller enables this path. Activation
+//! still requires the ADR-0019 native durability and independent review gates.
+
+use std::path::{Path, PathBuf};
+
+use cryptex_events::TrustedDaemonKeyResolver;
+
+use crate::import_staging::{ImportStagingError, ImportStagingSession};
+use crate::secure_store::{SecureStore, SecureStoreEnvironment};
+
+#[derive(Debug)]
+pub(crate) enum IncomingPublicationError {
+    Rejected(ImportStagingError),
+    /// Preparation may have reached disk, or publication may be partially
+    /// visible. Preserve transaction evidence; never report a clean rollback.
+    RecoveryRequired(ImportStagingError),
+    /// The final canonical commit exists. Only derived-state refresh failed.
+    CommittedNeedsRebuild(String),
+}
+
+impl std::fmt::Display for IncomingPublicationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rejected(error) => write!(f, "incoming import rejected: {error}"),
+            Self::RecoveryRequired(error) => {
+                write!(f, "incoming import requires recovery: {error}")
+            }
+            Self::CommittedNeedsRebuild(error) => write!(
+                f,
+                "incoming import committed; derived rebuild required: {error}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for IncomingPublicationError {}
+
+#[derive(Debug)]
+pub(crate) struct IncomingPublicationReport {
+    pub(crate) published_segments: usize,
+    pub(crate) published_events: u64,
+    pub(crate) identical_segments: usize,
+}
+
+/// Own the runtime, reconcile prior transactions before canonical inspection,
+/// snapshot candidates, retain the exact local trust/M3/M4 lock-bearing token
+/// through preparation and no-replace commit, then clean and refresh derived
+/// state before releasing instance ownership. Incoming files are never moved
+/// or removed. Rejection cleanup applies only before manifest preparation.
+pub(crate) fn publish_incoming<S: SecureStore + ?Sized>(
+    root: &Path,
+    paths: &[PathBuf],
+    store: &S,
+    environment: SecureStoreEnvironment,
+) -> Result<IncomingPublicationReport, IncomingPublicationError> {
+    use IncomingPublicationError::Rejected;
+    let _pins = ImportStagingSession::pin_existing_runtime(root).map_err(Rejected)?;
+    let instance = crate::instance::try_acquire_instance(root)
+        .map_err(|error| Rejected(ImportStagingError::Invalid(error.to_string())))?;
+    publish_incoming_with_instance(root, paths, &instance, store, environment)
+}
+
+/// Long-lived daemon integration must reuse its existing instance ownership.
+/// The caller must retain the startup/recovery admission barrier and turn any
+/// recovery-required result into a runtime-wide hold before serving readers.
+/// This entry point is not connected to a live controller yet.
+pub(crate) fn publish_incoming_with_instance<S: SecureStore + ?Sized>(
+    root: &Path,
+    paths: &[PathBuf],
+    instance: &crate::instance::InstanceLock,
+    store: &S,
+    environment: SecureStoreEnvironment,
+) -> Result<IncomingPublicationReport, IncomingPublicationError> {
+    use IncomingPublicationError::{CommittedNeedsRebuild, RecoveryRequired, Rejected};
+    let _pins = ImportStagingSession::pin_existing_runtime(root).map_err(Rejected)?;
+    if instance.path() != crate::paths::lock_path(root) {
+        return Err(Rejected(ImportStagingError::Invalid(
+            "publication instance belongs to another runtime".into(),
+        )));
+    }
+    crate::import_staging::recover_import_staging_with_local_state(
+        root,
+        instance,
+        store,
+        environment,
+    )
+    .map_err(RecoveryRequired)?;
+    let mut session = ImportStagingSession::begin(root).map_err(Rejected)?;
+    let admission = (|| {
+        let brain = crate::identity_runtime::load_brain_identity(root)
+            .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
+        let mut resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+            root,
+            &brain.brain_id,
+            store,
+            environment,
+        )
+        .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
+        let db = cryptex_projection::ProjectionDb::open_existing_read_only(root)
+            .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
+        let mut devices = session
+            .stage_batch_from_transport_paths(paths)?
+            .iter()
+            .map(|candidate| candidate.device_id.clone())
+            .collect::<Vec<_>>();
+        devices.sort_by(|a, b| a.as_str().as_bytes().cmp(b.as_str().as_bytes()));
+        devices.dedup();
+        session.release_staging_slot()?;
+        let safety = crate::knowledge_materialization::evaluate_import_retrieval_safety(
+            root,
+            &brain.brain_id,
+            &devices,
+            &mut resolver,
+            &db,
+        );
+        let identical = safety.remove_identical_import_replays(&mut session)?;
+        let verified = if session.candidates().is_empty() {
+            None
+        } else {
+            Some(safety.verify_import_batch(&session, &brain.brain_id)?)
+        };
+        Ok::<_, ImportStagingError>((brain.brain_id, identical, verified))
+    })();
+    let (brain, identical, verified) = match admission {
+        Ok(result) => result,
+        Err(error) => {
+            if let Err(cleanup) = session.discard() {
+                return Err(RecoveryRequired(ImportStagingError::RecoveryConflict(
+                    format!("admission failed: {error}; staging cleanup failed: {cleanup}"),
+                )));
+            }
+            return Err(Rejected(error));
+        }
+    };
+    let Some(verified) = verified else {
+        session.discard().map_err(RecoveryRequired)?;
+        return Ok(IncomingPublicationReport {
+            published_segments: 0,
+            published_events: 0,
+            identical_segments: identical,
+        });
+    };
+    let count = verified.verified().segments().len();
+    let events = verified
+        .verified()
+        .segments()
+        .iter()
+        .map(|s| s.event_count)
+        .sum();
+    // From this point forward even a preparation error preserves all staged
+    // evidence: its final manifest may already have reached disk.
+    session
+        .prepare_verified_manifest(verified.verified())
+        .map_err(RecoveryRequired)?;
+    session
+        .publish_verified_batch(&verified)
+        .map_err(RecoveryRequired)?;
+    drop(verified);
+    drop(session);
+    // Final-marker recovery checks exact destinations and performs the existing
+    // receipt-bound cleanup. Instance ownership excludes supported readers.
+    crate::import_staging::recover_import_staging_with_local_state(
+        root,
+        instance,
+        store,
+        environment,
+    )
+    .map_err(RecoveryRequired)?;
+    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+        root,
+        &brain,
+        store,
+        environment,
+    )
+    .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
+    let anchor = resolver
+        .local_trust_anchor()
+        .ok_or_else(|| CommittedNeedsRebuild("local trust anchor unavailable".into()))?;
+    let mut db = cryptex_projection::ProjectionDb::open_or_create(root)
+        .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
+    crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
+        root, &brain, &anchor, &mut db,
+    )
+    .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
+    Ok(IncomingPublicationReport {
+        published_segments: count,
+        published_events: events,
+        identical_segments: identical,
+    })
+}
+
+#[cfg(test)]
+#[path = "incoming_publication_tests.rs"]
+mod tests;
