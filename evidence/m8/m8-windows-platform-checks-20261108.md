@@ -79,3 +79,14 @@ Mac selected native checks and corrected lint are complete at their recorded
 scope. This package does not close managed-adapter/controller wiring, Mac
 production publication parity, physical power-loss durability or independent
 security review. Normal publication remains disabled; M8 is not complete.
+
+## Exact outgoing package
+
+- Source commit: `c55f3b70c763aef7541481e3897dba348d300c47`.
+- Embedded source ZIP SHA-256:
+  `7ef0213a8eb9045a0fb1112e3485e24a352957af4d59fceaf453e44f276fe493`.
+- `cryptex-win-test-20261108.zip`: 2,278,986 bytes; SHA-256
+  `F06A601E114677AC62C434FC902A528CD4C5CA5647FE7BDE0EEA35C5DDC3109F`.
+- Six exact members, source/script byte bindings, source digest, CRLF launcher
+  and LF PowerShell checked before delivery. Source passes the runner's entry,
+  case-alias, path, symlink and expansion checks. Native VM results are pending.
