@@ -1,5 +1,30 @@
 # 34 — Current Implementation Handoff
 
+## One-click VM preflight package (2026-11-08)
+
+The owner chose a portable runner instead of repeated terminal commands and
+screenshots. `scripts/m8/package-vm-check.ps1` packages `VM-KONTROL.cmd`, the
+standalone PowerShell 5.1 collector, instructions and a file-hash manifest.
+Extract in the existing VM and double-click the launcher; Explorer selects
+one `SONUC.zip` to return. No Git, Rust, pnpm, administrator rights or new VM
+is required. The launcher's execution-policy override is process-only.
+
+This first package is **read-only preflight, not the peer-transfer test**.
+It collects OS/PowerShell versions, local IPv4 addresses, relevant process IDs
+and executable hashes, and marked TEMP pilot journal counts/states. It exports
+no event bodies, signed messages, keys, full logs or full process command lines.
+It reports missing/invalid data, does not create or restart pilot profiles,
+does not alter trust/network/protection settings, and uploads nothing.
+Reports live outside the repo under LocalAppData/Cryptex-Dev/vm-checks.
+File states are observations, not fresh signature or connectivity verification.
+
+Windows PowerShell 5.1 regression covers summary counts, private-content
+exclusion and file preservation, malformed/unknown journals, invalid IDs,
+oversized journals, wrong markers and junction refusal. The collector also
+completed a host smoke run and produced its report archive. VM execution is
+pending. Next inspect that single VM report to prepare the supported independent
+peer-stream test; publication activation gates below remain unchanged.
+
 ## Approved cleanup receipt and Windows startup integration (2026-11-07)
 
 The owner approved the narrow cleanup-receipt amendment. ADR-0019 section 5.1.1
