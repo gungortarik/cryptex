@@ -1,5 +1,48 @@
 # 34 — Current Implementation Handoff
 
+## Independent Windows transport test package (2026-11-08)
+
+The owner returned the single VM preflight archive. Collection had no errors;
+the two original journals still report anchored / four messages / one append
+attempt. No Cryptex processes were running. The VM reported 192.168.177.131/24;
+the host VMnet8 interface is 192.168.177.1/24. Connectivity is not yet proven.
+The original pairing/replay exercise needs no repeat.
+
+Added a portable two-step **synthetic native transport** harness. It uses the
+existing pinned Syncthing 2.1.5 binary, isolated private test profiles, distinct
+host/VM native identities, a 32 KiB random file and its expected SHA-256.
+`package-peer-transfer.ps1` retains a host fixture and emits a VM ZIP with
+`1-HAZIRLA.cmd` and `2-AKTAR.cmd`. First the VM generates its own private keys
+locally and returns only `ISTEK.zip` with the public native ID/session. After
+validating this request, the agent runs `start-peer-sender.ps1`; then the owner
+clicks `2-AKTAR.cmd` in the same extracted package. The VM connects outbound to
+the explicit host private address and returns a result/error ZIP. No key/config
+or raw log is exported. Existing Cryptex profiles and canonical files are unused.
+Only the host test sync listener binds its explicit LAN address; APIs stay
+loopback-only. Discovery, relays, NAT and upgrades stay off. No firewall or
+antivirus settings are modified. Sender waits at most ten minutes by default;
+receiver waits three. Processes are stopped after the attempt.
+
+PowerShell 5.1 native regression passed a two-process loopback transfer with
+matching bytes/hash and clean stops, request/session rejection, and private-IP
+validation. Early harness failures were corrected before packaging; in
+particular folder-device records explicitly set blank encryption passwords,
+and sender lifetime allows the receiver to finish verification. This is not
+host-to-VM evidence yet and does not validate signed Cryptex events, canonical
+publication, the managed production adapter, power loss, or milestone completion.
+See [test scope and continuation](../evidence/m8/m8-portable-peer-transport-20261108.md).
+
+**Next:** get `ISTEK.zip` from the VM, validate its exact session/native pin,
+start the scoped sender and have the owner run `2-AKTAR.cmd`. Use the returned
+hash/connection/shutdown report to assess actual host-to-VM native transport.
+Then continue the daemon policy/import integration gates below.
+
+Current prepared session: `87a57c018d63481cb71a9a0f6abdd1f1` under
+`%LOCALAPPDATA%\Cryptex-Dev\peer-transfer`. Owner package:
+`%USERPROFILE%\Downloads\cryptex-aktarim-87a57c01.zip`. Sender has not started;
+wait for this session's VM public request. Do not use loopback regression
+sessions for the real VM attempt.
+
 ## One-click VM preflight package (2026-11-08)
 
 The owner chose a portable runner instead of repeated terminal commands and
@@ -21,9 +64,8 @@ File states are observations, not fresh signature or connectivity verification.
 Windows PowerShell 5.1 regression covers summary counts, private-content
 exclusion and file preservation, malformed/unknown journals, invalid IDs,
 oversized journals, wrong markers and junction refusal. The collector also
-completed a host smoke run and produced its report archive. VM execution is
-pending. Next inspect that single VM report to prepare the supported independent
-peer-stream test; publication activation gates below remain unchanged.
+completed a host smoke run and produced its report archive. VM execution now
+also completed, as recorded above; publication activation gates remain unchanged.
 
 ## Approved cleanup receipt and Windows startup integration (2026-11-07)
 
