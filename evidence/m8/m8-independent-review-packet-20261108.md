@@ -2,6 +2,11 @@
 
 ## Status
 
+Later coordination implementation: `a5429ea150748b64ce7ce25c618327671cdf62d2`.
+See [runtime-admission evidence](m8-runtime-admission-20261108.md); its final
+independent review and normal-controller activation remain open. The earlier
+two-finding correction verdict below does not cover this later coordinator.
+
 Follow-up: the owner-authorized separate technical reviewer has now assessed
 commit `2165539491733b40ff61908955823e0b3fafe514`. Two confirmed findings and
 correction commit `f072ae234344bcee51b9bcb995fc4d1678aba45f` are recorded in the

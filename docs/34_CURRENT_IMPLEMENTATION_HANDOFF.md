@@ -1,5 +1,48 @@
 # 34 — Current Implementation Handoff
 
+## Runtime admission coordinates internal live imports and IPC (2026-11-08)
+
+Owner requested live-transfer safe read/write coordination. Code commit
+`a5429ea150748b64ce7ce25c618327671cdf62d2` binds one process-local admission
+coordinator to each actual `InstanceLock`. Product IPC constructors require the
+matching instance. Ordinary IPC/derived operations retain cloneable leases;
+exclusive import blocks newcomers and drains existing work before staging.
+The lease spans response serialization/write and timed-out worker completion,
+then the import spans recovery through commit/cleanup/derived rebuild.
+Canonical lock ordering and the staging reservation's short lifetime are kept.
+
+Clean pre-prepare rejection reopens admission. Ambiguous recovery/publication
+or committed-but-stale refresh latches a typed runtime hold. Internal verified
+recovery plus cutoff-aware rebuild is required to reopen it. Panic/abandonment
+fails closed; poisoned state is not reset. Prepared owner-review sessions
+release admission during think-time and reacquire for follow-up. Health and
+redacted transport status remain available. Shutdown now stops admission and
+drains actual work (40-second bound) before claiming verified lock release.
+Idle contexts use weak OS-handle references; active leases pin real ownership.
+
+Windows author verification: **566 library tests passed, 0 failed, 4 ignored,
+8 explicitly filtered known owned-HTTP tests**; binary **15/15**. Included groups:
+runtime admission five, publication thirteen, IPC sixty-six. Actual pipe
+backpressure, orphaned workers, owner think-time and real instance-shared
+signed-import/IPC checks passed. Strict all-target daemon Clippy, fmt and diff
+check pass. A narrow coordinator reader/shutdown metadata check for the Apple
+target passed; this is not native Mac or whole-app verification. Earlier native
+receipts do not cover this new source.
+
+The separate reviewer performed a preliminary source pass; its executable was
+blocked by Application Control (4551), and its later agent turn was rejected by
+an automatic possible-cybersecurity-content filter. No protection was changed.
+**Final independent review of this exact coordinator remains open.** See
+[coordination evidence and detailed continuation](../evidence/m8/m8-runtime-admission-20261108.md).
+
+**Next boundary:** finish that review before adding a managed-controller caller
+to the internal publisher. Peer-aware long-lived derived refresh and local-tail
+allocator scope must be addressed before broader activation. Native Mac parity,
+physical durability, ordinary cross-device offline/restriction integration,
+the host TCP compatibility case, required CI and human review remain open.
+Normal transport publication stays disabled; M8 is not complete. No owner VM/Mac
+action is needed for this code checkpoint.
+
 ## Separate technical review found two defects; corrections verified (2026-11-08)
 
 The owner authorized a fresh-context, read-only reviewer agent. It reviewed clean
