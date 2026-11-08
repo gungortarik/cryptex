@@ -2290,6 +2290,12 @@ fn inspect_committed_marker_companion(
                 "committed transaction staging cleanup sync failed: {error}"
             ))
         })?;
+        #[cfg(test)]
+        crate::test_interrupt::maybe_abrupt_exit(
+            "m8_after_committed_staging_cleanup",
+            runtime_root,
+            "committed staging removed and parent synced; manifest and marker retained",
+        );
         fs::remove_file(&manifest_path).map_err(|error| {
             ImportStagingError::RecoveryConflict(format!(
                 "committed transaction manifest cleanup failed: {error}"
@@ -2300,6 +2306,12 @@ fn inspect_committed_marker_companion(
                 "committed transaction manifest cleanup sync failed: {error}"
             ))
         })?;
+        #[cfg(test)]
+        crate::test_interrupt::maybe_abrupt_exit(
+            "m8_after_committed_manifest_cleanup",
+            runtime_root,
+            "committed manifest removed and parent synced; marker retained",
+        );
         if read_committed_marker(&cleanup_marker_path)? != *marker {
             return Err(ImportStagingError::RecoveryConflict(
                 "committed marker changed before final cleanup; preserve evidence".into(),
@@ -2315,6 +2327,12 @@ fn inspect_committed_marker_companion(
                 "committed marker cleanup sync failed: {error}"
             ))
         })?;
+        #[cfg(test)]
+        crate::test_interrupt::maybe_abrupt_exit(
+            "m8_after_committed_marker_cleanup",
+            runtime_root,
+            "committed cleanup complete and journal parent synced",
+        );
         return Ok("all destinations match; transaction cleanup completed");
     }
 
@@ -5518,6 +5536,51 @@ mod tests {
             boundary,
             "interrupt handshake names the wrong recovery boundary"
         );
+    }
+
+    #[test]
+    fn xproc_committed_cleanup_interruptions_preserve_events_and_hold_missing_companions() {
+        for (boundary, manifest_remains, marker_remains) in [
+            ("m8_after_committed_staging_cleanup", true, true),
+            ("m8_after_committed_manifest_cleanup", false, true),
+            ("m8_after_committed_marker_cleanup", false, false),
+        ] {
+            let (root, manifest, marker, destinations) =
+                committed_marker_companion_fixture("committed-cleanup-interrupt", None);
+            for (destination, bytes) in &destinations {
+                fs::create_dir_all(destination.parent().unwrap()).unwrap();
+                fs::write(destination, bytes).unwrap();
+            }
+            let original_manifest = fs::read(&manifest).unwrap();
+            let original_marker = fs::read(&marker).unwrap();
+            run_committed_marker_recovery_interrupt(&root, boundary);
+            let transaction =
+                root.join("canonical/import-staging/123e4567-e89b-12d3-a456-426614174000");
+            assert!(!transaction.exists(), "{boundary}");
+            for _ in 0..2 {
+                let result = recover_import_staging(&root);
+                if marker_remains {
+                    assert!(
+                        matches!(result, Err(ImportStagingError::RecoveryConflict(_))),
+                        "missing committed companion must remain a typed hold: {boundary}: {result:?}"
+                    );
+                } else {
+                    result.unwrap();
+                }
+                assert_eq!(manifest.exists(), manifest_remains, "{boundary}");
+                assert_eq!(marker.exists(), marker_remains, "{boundary}");
+                if manifest_remains {
+                    assert_eq!(fs::read(&manifest).unwrap(), original_manifest);
+                }
+                if marker_remains {
+                    assert_eq!(fs::read(&marker).unwrap(), original_marker);
+                }
+                for (destination, bytes) in &destinations {
+                    assert_eq!(fs::read(destination).unwrap(), *bytes, "{boundary}");
+                }
+            }
+            fs::remove_dir_all(root).unwrap();
+        }
     }
 
     #[test]

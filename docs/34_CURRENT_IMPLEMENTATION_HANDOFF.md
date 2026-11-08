@@ -1,5 +1,26 @@
 # 34 — Current Implementation Handoff
 
+## Cleanup interruption gate and protocol decision (2026-11-07)
+
+Three new real-process interruption checks expose a startup availability gap:
+after committed staging or manifest cleanup, the remaining marker lacks a
+required companion and recovery returns a typed hold on every retry. Canonical
+bytes and surviving evidence remain unchanged. After the last marker deletion,
+recovery succeeds repeatably. Existing production behavior was not changed.
+
+The focused regression passed; strict daemon Clippy passed. The subsequent full
+import-staging suite could not execute because Windows Application Control
+blocked its test executable (OS error 4551). The previous 57-test pass below
+does not cover this change. See [audit evidence](../evidence/m8/m8-cleanup-interruption-20261107.md).
+
+**Next decision:** review the [bounded cleanup-receipt proposal](proposals/m8-import-cleanup-receipt.md).
+ADR-0019's normative Windows table explicitly requires a hold for absent
+companions; automatically resuming our own interrupted cleanup needs the
+proposed protocol amendment. It is not implemented or approved. After approval,
+implement/test receipt-bound cleanup, then complete policy-bound startup
+integration (including temporary-marker validation). Keep publication inactive
+until its remaining gates pass. No repeat of the completed VM pairing is needed.
+
 ## Prepared import recovery finisher candidate (2026-11-07)
 
 Added a private, inactive finisher for unmarked prepared imports with some or
