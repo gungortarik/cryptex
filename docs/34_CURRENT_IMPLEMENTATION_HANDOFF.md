@@ -1,6 +1,32 @@
 # 34 — Current Implementation Handoff
 
+## Host-to-VM signed transport probe passed (2026-11-08)
+
+The owner returned `IMZALI-SONUC.zip` for probe
+`c15cf5f1870648e9b6bdaa5129766cb7`, retained native session
+`87a57c018d63481cb71a9a0f6abdd1f1`. The VM reports receipt of 723 bytes,
+matching expected SHA-256, successful daemon signature verification, rejection
+of a separately tampered copy, and clean native shutdown. Its flags explicitly
+remain `trust_activated: false`, `published: false`, `canonical_import: not_run`.
+
+The agent matched the exact probe/session/native peer IDs/length/hash to host
+settings and sender completion, rehashed both the original sealed canonical
+source and its transport copy, and independently reran source signature
+verification. The host log records the VM's 192.168.177.131 endpoint over TLS
+1.3 at 19:38:43 UTC; host native exit was recorded at 19:38:46 UTC. The exact
+owned sender executable has no remaining process. See [bound signed receipt](../evidence/m8/m8-signed-transport-probe-20261108.md#actual-windows-vm-result).
+
+**Next:** establish the appropriate authenticated Brain/peer history and exercise
+the full daemon `replication validate-incoming` trust/continuity/retrieval-policy
+path for a transported signed segment. The cryptographic probe's supplied test
+key is not a trusted-roster entry and must not be used to bypass that gate.
+Canonical publication remains inactive pending its existing review/platform
+requirements. The basic random and signed native host-to-VM checks are complete;
+do not repeat them. No test sender remains active; the VM may be closed for now.
+
 ## One-click signed transport probe prepared (2026-11-08)
+
+Historical preparation checkpoint; actual VM result is recorded above.
 
 The owner requested the next signed-data test as a portable one-click package.
 Added explicit daemon pilot commands `signed-transfer-v1` (fresh marked runtime,
@@ -29,7 +55,7 @@ path. Retained plain synthetic folders explicitly clear native encryption
 password placeholders on reopen. Sender completion uses the actual source-file
 inventory size to avoid stale index observations and fast-disconnect races.
 
-**VM signed result pending.** This probe verifies cryptographic integrity under
+**VM signed result passed, as recorded above.** This probe verifies cryptographic integrity under
 an explicitly supplied public test key. It is not the `validate-incoming`
 local-trust/continuity/retrieval-policy path. The next integration gate still
 requires an appropriate authenticated Brain/peer history; no trust bootstrap or
