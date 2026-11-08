@@ -23,14 +23,15 @@ pub fn validate_incoming<S: SecureStore + ?Sized>(
     store: &S,
     environment: SecureStoreEnvironment,
 ) -> Result<IncomingValidationReport, ImportStagingError> {
+    // Refuse unsafe roots before the instance API can create/write anything.
+    let _runtime_pins = ImportStagingSession::pin_existing_runtime(root)?;
+    // Own the runtime before inspecting or mutating import state, and retain
+    // ownership through cleanup. In particular, never take the staging slot
+    // from a running daemon whose startup recovery may need that same slot.
+    let _instance = crate::instance::try_acquire_instance(root)
+        .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
     let mut session = ImportStagingSession::begin(root)?;
-    // Keep instance ownership through staging cleanup as well as validation.
-    let instance = crate::instance::try_acquire_instance(root);
     let result = (|| {
-        // This command runs while the Desktop-owned daemon is stopped.
-        let _instance = instance
-            .as_ref()
-            .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
         let brain = crate::identity_runtime::load_brain_identity(root)
             .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
         let mut resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
@@ -49,6 +50,12 @@ pub fn validate_incoming<S: SecureStore + ?Sized>(
             .collect::<Vec<_>>();
         devices.sort_by(|left, right| left.as_str().as_bytes().cmp(right.as_str().as_bytes()));
         devices.dedup();
+        #[cfg(test)]
+        crate::test_interrupt::maybe_abrupt_exit(
+            "m8_validation_after_staging",
+            root,
+            "incoming snapshot complete; instance and staging locks held",
+        );
         session.release_staging_slot()?;
         let safety = crate::knowledge_materialization::evaluate_import_retrieval_safety(
             root,
@@ -58,6 +65,12 @@ pub fn validate_incoming<S: SecureStore + ?Sized>(
             &db,
         );
         let verified = safety.verify_import_batch(&session, &brain.brain_id)?;
+        #[cfg(test)]
+        crate::test_interrupt::maybe_abrupt_exit(
+            "m8_validation_after_policy",
+            root,
+            "policy verified; instance and canonical locks held before discard",
+        );
         Ok(IncomingValidationReport {
             outcome: "validated_only",
             segment_count: verified.verified().segments().len(),
@@ -94,6 +107,17 @@ mod tests {
         Vec<u8>,
     ) {
         let root = crate::test_temp::exclusive_temp_dir("cx-incoming");
+        fixture_at(root)
+    }
+
+    fn fixture_at(
+        root: PathBuf,
+    ) -> (
+        PathBuf,
+        PathBuf,
+        crate::secure_store::FakeSecureStore,
+        Vec<u8>,
+    ) {
         let store = crate::secure_store::FakeSecureStore::new();
         let env = SecureStoreEnvironment::Dev;
         let brain = "22222222-2222-4222-8222-222222222222";
@@ -330,9 +354,143 @@ mod tests {
         );
         drop(instance);
         let unknown = root.join("canonical/import-journal/unknown.prepared.json");
+        assert!(!unknown.parent().unwrap().exists());
+        assert!(!root.join("canonical/import-staging").exists());
+        fs::create_dir_all(unknown.parent().unwrap()).unwrap();
         fs::write(&unknown, b"synthetic unknown state").unwrap();
         assert!(validate_incoming(&root, &[path], &store, SecureStoreEnvironment::Dev).is_err());
         assert_eq!(fs::read(unknown).unwrap(), b"synthetic unknown state");
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_missing_and_relative_roots_without_creating_them() {
+        let parent = crate::test_temp::exclusive_temp_dir("cx-validation-root");
+        let missing = parent.join("missing");
+        let store = crate::secure_store::FakeSecureStore::new();
+        assert!(validate_incoming(&missing, &[], &store, SecureStoreEnvironment::Dev).is_err());
+        assert!(!missing.exists());
+        assert!(
+            validate_incoming(Path::new("."), &[], &store, SecureStoreEnvironment::Dev).is_err()
+        );
+        fs::remove_dir_all(parent).unwrap();
+    }
+
+    #[test]
+    fn running_instance_takes_precedence_over_import_slot_conflicts() {
+        let (root, path, store, _) = fixture();
+        let instance = crate::instance::try_acquire_instance(&root).unwrap();
+        let session = ImportStagingSession::begin(&root).unwrap();
+        let error =
+            validate_incoming(&root, &[path], &store, SecureStoreEnvironment::Dev).unwrap_err();
+        assert!(error.to_string().contains("already"), "{error}");
+        session.discard().unwrap();
+        drop(instance);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn event_bytes(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+        let mut records = Vec::new();
+        for device in fs::read_dir(root.join("canonical/events")).unwrap() {
+            let device = device.unwrap();
+            if !device.file_type().unwrap().is_dir() {
+                continue;
+            }
+            for entry in fs::read_dir(device.path()).unwrap() {
+                let path = entry.unwrap().path();
+                if path.extension().is_some_and(|ext| ext == "seg") {
+                    records.push((path.clone(), fs::read(path).unwrap()));
+                }
+            }
+        }
+        records.sort_by(|a, b| a.0.cmp(&b.0));
+        records
+    }
+
+    #[test]
+    fn xproc_validation_interrupt_worker() {
+        let Some(root) = std::env::var_os("CRYPTEX_TEST_VALIDATION_ROOT") else {
+            return;
+        };
+        let (root, path, store, _) = fixture_at(PathBuf::from(root));
+        fs::write(
+            root.join("validation-before.json"),
+            serde_json::to_vec(&event_bytes(&root)).unwrap(),
+        )
+        .unwrap();
+        validate_incoming(&root, &[path], &store, SecureStoreEnvironment::Dev).unwrap();
+        panic!("validation did not reach its expected interruption boundary");
+    }
+
+    #[test]
+    fn interrupted_validation_recovers_without_publication_or_event_changes() {
+        use std::process::Command;
+        use std::time::Duration;
+
+        for boundary in ["m8_validation_after_staging", "m8_validation_after_policy"] {
+            let root = crate::test_temp::exclusive_temp_dir("cx-validation-crash");
+            let mut child = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "incoming_validation::tests::xproc_validation_interrupt_worker",
+                    "--nocapture",
+                ])
+                .env("CRYPTEX_TEST_VALIDATION_ROOT", &root)
+                .env(crate::test_interrupt::INTERRUPT_ENV, boundary)
+                .spawn()
+                .unwrap();
+            let status =
+                crate::test_interrupt::wait_child_bounded(&mut child, Duration::from_secs(30))
+                    .unwrap();
+            assert_eq!(
+                status.code(),
+                Some(crate::test_interrupt::INTERRUPT_EXIT_CODE)
+            );
+            assert_eq!(crate::test_interrupt::read_ready(&root).0, boundary);
+            let before: Vec<(PathBuf, Vec<u8>)> =
+                serde_json::from_slice(&fs::read(root.join("validation-before.json")).unwrap())
+                    .unwrap();
+            assert!(!before.is_empty());
+            assert_eq!(event_bytes(&root), before);
+            let device = before[0].0.parent().unwrap().file_name().unwrap();
+            let incoming = root
+                .join("transport/incoming")
+                .join(device)
+                .join("00000000000000000001.seg");
+            let incoming_bytes = fs::read(&incoming).unwrap();
+            let transaction = fs::read_dir(root.join("canonical/import-staging"))
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .path();
+            // A retry must preserve interrupted state for startup recovery.
+            let store = crate::secure_store::FakeSecureStore::new();
+            assert!(matches!(
+                validate_incoming(&root, &[], &store, SecureStoreEnvironment::Dev),
+                Err(ImportStagingError::RecoveryConflict(_))
+            ));
+            assert!(transaction.exists());
+            let instance = crate::instance::try_acquire_instance(&root).unwrap();
+            for _ in 0..2 {
+                crate::import_staging::recover_import_staging(&root).unwrap();
+                assert_eq!(event_bytes(&root), before);
+                assert_eq!(fs::read(&incoming).unwrap(), incoming_bytes);
+                assert_eq!(
+                    fs::read_dir(root.join("canonical/import-staging"))
+                        .unwrap()
+                        .count(),
+                    0
+                );
+            }
+            assert_eq!(
+                fs::read_dir(root.join("canonical/import-journal"))
+                    .unwrap()
+                    .count(),
+                1
+            );
+            drop(instance);
+            fs::remove_dir_all(root).unwrap();
+        }
     }
 }

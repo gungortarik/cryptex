@@ -227,6 +227,22 @@ pub struct ImportStagingSession {
 }
 
 impl ImportStagingSession {
+    /// Validate and pin an existing runtime before acquiring instance ownership.
+    /// This performs no staging or canonical directory creation.
+    pub(crate) fn pin_existing_runtime(
+        runtime_root: &Path,
+    ) -> Result<Vec<File>, ImportStagingError> {
+        if !runtime_root.is_absolute() {
+            return Err(ImportStagingError::Invalid(
+                "runtime root must be absolute".into(),
+            ));
+        }
+        assert_outside_repository(runtime_root)
+            .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
+        ensure_existing_plain_directory(runtime_root)?;
+        inspect_directory_chain(runtime_root, true)
+    }
+
     pub fn begin(runtime_root: &Path) -> Result<Self, ImportStagingError> {
         if !runtime_root.is_absolute() {
             return Err(ImportStagingError::Invalid(

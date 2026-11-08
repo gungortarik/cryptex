@@ -1,5 +1,25 @@
 # 34 — Current Implementation Handoff
 
+## Incoming validation ownership and crash checks (2026-11-07)
+
+The validation CLI now acquires runtime instance ownership before opening the
+import staging session. Existing-root checks and the staging module's platform
+directory inspection precede that acquisition. A running daemon therefore
+causes refusal before staging directories or an import slot are created.
+The instance lock remains held through discard. Interrupted/unrecognized import
+state still requires recovery; validation does not silently remove it.
+
+Windows targeted validation tests: **9 passed**, including the subprocess worker
+entry and a parent test that interrupts validation after staging and after policy
+verification. Repeated startup recovery leaves canonical segment bytes and
+incoming source bytes unchanged. Strict Clippy, format and whitespace checks
+passed. These are process-interruption checks with synthetic fixtures, not
+power-loss, native peer import, or macOS evidence. Publication remains disabled.
+See [test scope and continuation](../evidence/m8/m8-incoming-validation-crash-checks-20261107.md).
+Next implement and test policy-bound recovery of unmarked prepared imports with
+partially visible destinations, retaining the existing publication activation
+gates. The one-VM pairing/replay results below remain valid and need no repeat.
+
 ## Incoming-validation integration (2026-11-07)
 
 Added `cryptexd replication validate-incoming --runtime-root <absolute-path>
