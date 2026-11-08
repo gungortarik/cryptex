@@ -12,6 +12,7 @@
 *.mjs text eol=lf
 *.jsx text eol=lf
 *.sh text eol=lf
+*.command text eol=lf
 *.ps1 text eol=lf
 
 # Hashed upstream notice text must have identical checkout bytes on both OSes.
