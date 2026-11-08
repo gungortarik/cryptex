@@ -29,6 +29,8 @@ pub enum ProbeError {
     Append,
     Key,
     StorePlatform(i64),
+    NotApproved,
+    NonSynthetic,
 }
 impl std::fmt::Display for ProbeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -46,6 +48,8 @@ impl std::fmt::Display for ProbeError {
             Self::Enrollment => "probe_enrollment_failed",
             Self::Append => "probe_append_failed",
             Self::Key => "probe_key_unavailable",
+            Self::NotApproved => "probe_peer_not_approved",
+            Self::NonSynthetic => "probe_non_synthetic_source",
             Self::StorePlatform(_) => unreachable!(),
         })
     }

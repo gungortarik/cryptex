@@ -741,6 +741,10 @@ fn lower_hex(bytes: &[u8]) -> String {
 }
 
 impl VerifiedCanonicalSnapshot {
+    pub(crate) fn verified_records(&self) -> &[cryptex_events::VersionedRecord] {
+        self.history.records()
+    }
+
     pub(crate) fn locks_devices(&self, devices: &[DeviceId]) -> bool {
         devices.iter().all(|device| {
             self.devices
@@ -970,6 +974,75 @@ pub fn rebuild_knowledge_from_canonical<R: TrustedDaemonKeyResolver>(
         &snapshot.progress,
     )?;
 
+    Ok(KnowledgeRebuildReport {
+        verified_records: snapshot.history.records().len(),
+        materialized_assertions: snapshot.history.assertions().len(),
+        pending_dependencies: snapshot.state.pending.len(),
+        device_count: snapshot.devices.len(),
+    })
+}
+
+/// Pilot/import preparation only. Rebuild the same cutoff-aware content view
+/// used by the local-anchor safety gate; security controls remain independently
+/// verified under the snapshot locks and are not projected as memory notes.
+pub(crate) fn rebuild_knowledge_from_local_approval_history(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    anchor: &LocalTrustAnchor,
+    db: &mut ProjectionDb,
+) -> KnowledgeMaterializationResult<KnowledgeRebuildReport> {
+    let snapshot = scan_verified_canonical_from_local_anchor_until(
+        runtime_root,
+        expected_brain_id,
+        anchor,
+        None,
+    )?;
+    if snapshot
+        .history
+        .records()
+        .iter()
+        .any(|record| !matches!(record, VersionedRecord::VerifiedV1(_)))
+    {
+        return Err(KnowledgeMaterializationError::InvalidInput(
+            "pilot projection requires a verified v1 content view".into(),
+        ));
+    }
+    {
+        let tx = db.connection_mut().transaction().map_err(|_| {
+            KnowledgeMaterializationError::InvalidInput(
+                "pilot projection transaction failed".into(),
+            )
+        })?;
+        for device in &snapshot.devices {
+            cryptex_projection::clear_device_projection(&tx, device.as_str()).map_err(|_| {
+                KnowledgeMaterializationError::InvalidInput("pilot projection clear failed".into())
+            })?;
+        }
+        for record in snapshot.history.records() {
+            if let VersionedRecord::VerifiedV1(event) = record {
+                cryptex_projection::project_memory_note(&tx, event).map_err(|_| {
+                    KnowledgeMaterializationError::InvalidInput(
+                        "pilot projection note failed".into(),
+                    )
+                })?;
+            }
+        }
+        tx.commit().map_err(|_| {
+            KnowledgeMaterializationError::InvalidInput("pilot projection commit failed".into())
+        })?;
+    }
+    migrate_knowledge_schema(db.connection_mut())?;
+    rebuild_from_verified_history(
+        db.connection_mut(),
+        expected_brain_id,
+        &snapshot.history,
+        &snapshot
+            .frames
+            .iter()
+            .map(|frame| frame.position.clone())
+            .collect::<Vec<_>>(),
+        &snapshot.progress,
+    )?;
     Ok(KnowledgeRebuildReport {
         verified_records: snapshot.history.records().len(),
         materialized_assertions: snapshot.history.assertions().len(),

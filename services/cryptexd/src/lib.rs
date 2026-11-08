@@ -50,6 +50,7 @@ pub mod syncthing_package;
 pub mod syncthing_rest;
 #[allow(dead_code)] // Wired after the verified v3 reader and retrieval gate land.
 pub(crate) mod trust_reducer;
+pub mod trusted_import_probe;
 
 pub mod supervisor;
 #[cfg(test)]

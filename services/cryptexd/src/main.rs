@@ -183,6 +183,54 @@ fn run_pilot_transport(args: &[String]) -> Result<(), LifecycleError> {
 }
 
 fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
+    if args.first().map(String::as_str) == Some("trusted-import-prepare-v1") {
+        let [
+            _,
+            source_flag,
+            source,
+            receiver_flag,
+            receiver,
+            negative_flag,
+            negative,
+            probe_flag,
+            probe,
+            confirm,
+        ] = args
+        else {
+            return Err(LifecycleError::Usage("trusted-import-prepare-v1 requires --source-root <marked-pilot> --receiver-root <marked-pilot> --negative-root <fresh-pilot> --probe-id <uuid> --confirm-isolated-pilot".into()));
+        };
+        if source_flag != "--source-root"
+            || receiver_flag != "--receiver-root"
+            || negative_flag != "--negative-root"
+            || probe_flag != "--probe-id"
+            || confirm != "--confirm-isolated-pilot"
+        {
+            return Err(LifecycleError::Usage(
+                "invalid trusted import probe arguments".into(),
+            ));
+        }
+        let source = Path::new(source);
+        let receiver = Path::new(receiver);
+        let negative = Path::new(negative);
+        validate_marked_existing_pilot_root(source)?;
+        validate_marked_existing_pilot_root(receiver)?;
+        validate_marked_existing_pilot_root(negative)?;
+        validate_pilot_fixture_root(negative)?;
+        if fs::canonicalize(source)? == fs::canonicalize(receiver)? {
+            return Err(LifecycleError::Usage(
+                "distinct pilot roots required".into(),
+            ));
+        }
+        let source_guard = try_acquire_instance(source)?;
+        let receiver_guard = try_acquire_instance(receiver)?;
+        let negative_guard = try_acquire_instance(negative)?;
+        recover_writer_state_before_start(source, &source_guard)?;
+        recover_writer_state_before_start(receiver, &receiver_guard)?;
+        recover_writer_state_before_start(negative, &negative_guard)?;
+        let report = prepare_trusted_probe_with_platform_store(source, receiver, negative, probe)?;
+        println!("{report}");
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("verify-signed-transfer-v1") {
         let [
             _,
@@ -296,6 +344,76 @@ fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
         "pilot_fixture=timeline-v1\nbrain_id={brain_id}\nevent_id={event_id}\nclassification=public"
     );
     Ok(())
+}
+
+fn validate_marked_existing_pilot_root(root: &Path) -> Result<(), LifecycleError> {
+    if !root.is_absolute()
+        || root
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+    {
+        return Err(LifecycleError::UnsafeRuntimePath(
+            "absolute marked pilot path required".into(),
+        ));
+    }
+    assert_outside_repository(root)?;
+    for ancestor in root.ancestors() {
+        let meta = fs::symlink_metadata(ancestor)?;
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if meta.file_attributes() & 0x400 != 0 {
+                return Err(LifecycleError::UnsafeRuntimePath(
+                    "pilot reparse path refused".into(),
+                ));
+            }
+        }
+        if meta.file_type().is_symlink() || !meta.is_dir() {
+            return Err(LifecycleError::UnsafeRuntimePath(
+                "ordinary pilot directory required".into(),
+            ));
+        }
+    }
+    let marker = root.join("pilot-runtime.marker");
+    let meta = fs::symlink_metadata(&marker)?;
+    if !meta.is_file()
+        || meta.file_type().is_symlink()
+        || meta.len() != PILOT_RUNTIME_MARKER.len() as u64
+        || fs::read(marker)? != PILOT_RUNTIME_MARKER.as_bytes()
+    {
+        return Err(LifecycleError::UnsafeRuntimePath(
+            "pilot marker mismatch".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+fn prepare_trusted_probe_with_platform_store(
+    source: &Path,
+    receiver: &Path,
+    negative: &Path,
+    probe: &str,
+) -> Result<String, LifecycleError> {
+    #[cfg(windows)]
+    let store = cryptexd::WindowsCredentialStore::new();
+    #[cfg(target_os = "macos")]
+    let store = cryptexd::MacosKeychainStore::new();
+    let report = cryptexd::trusted_import_probe::prepare(source, receiver, negative, probe, &store)
+        .map_err(|e| LifecycleError::Attention(e.to_string()))?;
+    serde_json::to_string(&report)
+        .map_err(|_| LifecycleError::Attention("probe_report_failed".into()))
+}
+#[cfg(not(any(windows, target_os = "macos")))]
+fn prepare_trusted_probe_with_platform_store(
+    _source: &Path,
+    _receiver: &Path,
+    _negative: &Path,
+    _probe: &str,
+) -> Result<String, LifecycleError> {
+    Err(LifecycleError::Usage(
+        "trusted probe requires an OS secure store".into(),
+    ))
 }
 
 #[cfg(windows)]
@@ -1204,6 +1322,7 @@ fn usage_text() -> String {
         "  cryptexd replication validate-incoming --runtime-root <app-data-path> --environment <dev|prod> <relative-segment>... (stages, validates, discards)",
         "  cryptexd pilot-fixture timeline-v1 --runtime-root <fresh-pilot-path> --confirm-isolated-pilot",
         "  cryptexd pilot-fixture signed-transfer-v1 --runtime-root <fresh-pilot-path> --confirm-isolated-pilot (synthetic signed segment)",
+        "  cryptexd pilot-fixture trusted-import-prepare-v1 --source-root <marked-pilot> --receiver-root <marked-pilot> --negative-root <fresh-pilot> --probe-id <uuid> --confirm-isolated-pilot (existing approved test peers only)",
         "  cryptexd pilot-fixture verify-signed-transfer-v1 --segment <path> --descriptor <path> --confirm-isolated-pilot (signature only; no trust or publication)",
         "  cryptexd pilot-transport --confirm-isolated-pilot <fresh-marked-root> <pinned-package-dir> <api-port> <sync-port> (Windows)",
         "  cryptexd lifecycle status [--runtime-root <path>]",
@@ -1462,6 +1581,18 @@ mod tests {
     #[test]
     fn signed_probe_commands_require_exact_explicit_confirmation() {
         for args in [
+            vec![
+                "pilot-fixture",
+                "trusted-import-prepare-v1",
+                "--source-root",
+                "unused",
+                "--receiver-root",
+                "unused",
+                "--negative-root",
+                "unused",
+                "--probe-id",
+                "unused",
+            ],
             vec![
                 "pilot-fixture",
                 "signed-transfer-v1",
