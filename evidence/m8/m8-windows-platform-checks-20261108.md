@@ -89,4 +89,64 @@ security review. Normal publication remains disabled; M8 is not complete.
   `F06A601E114677AC62C434FC902A528CD4C5CA5647FE7BDE0EEA35C5DDC3109F`.
 - Six exact members, source/script byte bindings, source digest, CRLF launcher
   and LF PowerShell checked before delivery. Source passes the runner's entry,
-  case-alias, path, symlink and expansion checks. Native VM results are pending.
+  case-alias, path, symlink and expansion checks. Native VM results were pending
+  at package handoff; the actual returned result follows.
+
+## Actual Windows VM result
+
+Owner returned `WIN-TEST-SONUC.zip`, SHA-256
+`469A07AE1593F58000DB801C2A5AC588C55A445550EDD6F9F1EA8BB56756C5E0`.
+Exactly seven bounded members were inspected:
+
+| Member | Bytes |
+| --- | ---: |
+| result.json | 1,856 |
+| tcp-summary.log | 448 |
+| tcp-parser.log | 79 |
+| build.log | 5,061 |
+| instance.log | 1,062 |
+| publication.log | 1,257 |
+| owned_http.log | 1,098 |
+
+Duplicate JSON keys, duplicate members, unknown names and size expansion were
+rejected by the receipt checker before acceptance. Source commit/archive digest
+match the exact outgoing binding above, scope
+`isolated_windows_platform_tests`, probe `m8-windows-platform-20261108-v1`.
+Collected timestamp: `2026-11-08T22:13:33.7837136Z`.
+
+Reported OS: `10.0.26200.0`, revision `26200.9711`, display version `25H2`.
+The harness compiled in 1 minute 41 seconds. Native results:
+
+| Check | Actual log/receipt result |
+| --- | --- |
+| TCP summary | 60 samples; zero mismatches; 60 before/after round trips; observed states `[5]` |
+| TCP parser self-test | Passed bounds/exact tuple/duplicate rows/raw-state checks |
+| Instance safety/lifecycle | 9 passed, zero failed/ignored |
+| Persistent incoming publication | 9 passed, zero failed/ignored |
+| Owned established HTTP connections | 8 passed, zero failed/ignored |
+
+The five named check records all have exit zero and `passed: true`. Build exit
+and runner exit are zero; outcome is `selected_windows_checks_passed`. Group
+counts and final summaries were matched to actual logs, not accepted from a
+boolean alone. Normal harness counts include subprocess worker entries.
+The parser log agrees with its expected positive self-test string.
+
+The receipt explicitly keeps publication, production profile access and security
+settings changes false. Canonical publication tests used isolated synthetic
+FakeSecureStore fixtures; they are not a normal peer import into owner memory.
+No real paired device, transport profile or Windows Credential Manager record
+was needed. This is supplied runner evidence, not remote attestation.
+
+All eight owned-HTTP tests pass here, including the five that failed on the
+development host. Their code/assertions were unchanged: redirects/identity/auth/
+ownership/deadline behavior was not weakened to produce this comparison. The
+host's differing 26300.9818 TCP observations remain an unresolved environment
+compatibility case; the VM result does not establish the exact host root cause
+or turn that host's prior full suite green.
+
+The VM's volume filesystem type was not collected. Process-exit recovery on
+this machine does not prove physical power-loss/parent-directory durability or
+the complete Windows target-filesystem matrix. Mac production parity and
+independent security review remain open. No normal publication activation.
+The selected native-check round needs no further owner/VM action; preserve its
+receipt and use the independent review packet for the next engineering gate.

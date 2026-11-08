@@ -1,5 +1,40 @@
 # 34 — Current Implementation Handoff
 
+## Windows VM comparison passed; selected native checks recorded (2026-11-08)
+
+Owner returned `WIN-TEST-SONUC.zip`, SHA-256
+`469A07AE1593F58000DB801C2A5AC588C55A445550EDD6F9F1EA8BB56756C5E0`.
+The exact seven bounded members match pinned source commit
+`c55f3b70c763aef7541481e3897dba348d300c47` and archive digest
+`7ef0213a8eb9045a0fb1112e3485e24a352957af4d59fceaf453e44f276fe493`.
+On reported Windows 25H2/build 26200.9711 the harness built and all 26 selected
+test entries passed: instance nine, persistent publication nine, owned-HTTP
+eight. The TCP probe reports 60/60 before/after round trips and exact established
+owners, zero mismatches, raw state five only; parser self-test passed. All five
+check records, build exit, runner exit and actual log summaries agree.
+
+The five development-host HTTP failures do not reproduce on this VM with the
+same source. This supports an environment-specific TCP/endpoint issue, not a
+diagnosed universal fix: host build 26300.9818 remains an unresolved compatibility
+case. No endpoint check, test assertion, signing policy, firewall or antivirus
+setting was weakened. Receipt reports no production profile access/publication.
+VM volume filesystem type was not collected; do not infer physical durability.
+
+Together with the earlier Mac 80-test native receipt and corrected strict Mac
+Clippy result, the selected native-check round is complete. No repeat pairing,
+transfer, Mac readiness, native groups or lint is required at these checkpoints.
+No test sender or owner profile needs to stay running; the VM may be shut down.
+See [actual Windows receipt](../evidence/m8/m8-windows-platform-checks-20261108.md#actual-windows-vm-result).
+
+**Next engineering/review gate:** use the prepared
+[independent review packet](../evidence/m8/m8-independent-review-packet-20261108.md).
+It records code/evidence scope and activation blockers; it is not an independent
+review verdict. Passing these tests does not enable normal publication; no new
+device action is needed for this checkpoint. The live-controller reader/failure barrier,
+Mac production ancestor-handle/no-replace/endpoint parity, native physical
+durability and independent security review remain open. Normal publication
+stays disabled and M8 remains incomplete.
+
 ## Mac compile/strict Clippy passed; Windows VM checks prepared (2026-11-08)
 
 Owner returned `MAC-LINT-SONUC.zip`, SHA-256
