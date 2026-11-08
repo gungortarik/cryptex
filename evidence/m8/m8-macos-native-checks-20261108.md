@@ -207,3 +207,32 @@ activation is inferred from the supplied ZIP.
   verified. Expected return is `MAC-LINT-SONUC.zip`, with `result.txt`,
   `build.log`, `clippy.log` when those stages run. A clean compile/Clippy result
   on this source is still pending; do not replace the historical failed receipt.
+
+## Actual corrected Mac compile/Clippy result
+
+Owner returned `MAC-LINT-SONUC.zip`, SHA-256
+`EF77822C3E9A14CCAB93B5F7C8BF1A5AC1DD7F457EB6EAF0867EE9D3F5A855BD`.
+Exactly three bounded members: `result.txt` 653 bytes, `build.log` 4,974 bytes,
+`clippy.log` 4,105 bytes. Metadata binds to the exact corrected source commit
+`bc5e5d0e69f9664c72b08c3d9b62a5f4c987d494` and archive SHA-256
+`bcefd254b89310fa4c42ecc6a6796cf67acae30a9f08143c8b928e7bd3fd9228`.
+
+Collected at `2026-11-08T21:58:08Z` on reported macOS 27.2/build 26B123/arm64,
+pinned Rust 1.98.1. The scoped receipt reports `build=pass`, `clippy=pass`,
+`failed_checks=0`, `outcome=compile_and_clippy_passed`, `runner_exit=0`.
+Actual logs finish the test profile in 17.67 seconds and dev/Clippy profile in
+7.42 seconds without warning/error diagnostics. Clippy ran on Mac; this is not
+a host cross-compilation or missing-tool fallback.
+
+`native_tests=not_rerun` is preserved: the prior 80 passed test entries and
+native Keychain result remain separate evidence from their original source
+`74c6c40`. The intervening Rust correction only narrows Windows-only test helper
+compilation, with no production behavior or existing test-body change. This
+closes the two reported Mac lint errors; it does not imply another full Mac
+test run, independent review or publication activation.
+
+No further Mac action is needed for this selected native/lint checkpoint.
+Remaining platform work includes Mac production publication/ancestor-pin and
+managed-endpoint parity plus physical durability. Windows host owned-HTTP
+failures and independent security review remain open. See the subsequent
+Windows isolated VM check package for the next available platform evidence.

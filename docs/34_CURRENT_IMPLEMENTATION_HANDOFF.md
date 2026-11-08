@@ -1,5 +1,43 @@
 # 34 — Current Implementation Handoff
 
+## Mac compile/strict Clippy passed; Windows VM checks prepared (2026-11-08)
+
+Owner returned `MAC-LINT-SONUC.zip`, SHA-256
+`EF77822C3E9A14CCAB93B5F7C8BF1A5AC1DD7F457EB6EAF0867EE9D3F5A855BD`.
+Exactly `result.txt`, `build.log`, `clippy.log` match corrected source commit
+`bc5e5d0e69f9664c72b08c3d9b62a5f4c987d494` and source archive digest
+`bcefd254b89310fa4c42ecc6a6796cf67acae30a9f08143c8b928e7bd3fd9228`.
+Native arm64 macOS 27.2/build 26B123 reports test-harness build pass, strict
+all-target Clippy pass, zero failed checks and runner exit zero. The logs show
+completed test/dev profiles without compiler warnings/errors. The original 80
+passed native test entries and Keychain result are retained; they were not rerun
+by this lint-only follow-up. The two dead-code cfg errors are closed for this
+Mac source. Do not repeat Mac readiness/tests/lint for the same checkpoint.
+
+Next available platform evidence is the existing Windows VM: the development
+host still has five owned-HTTP failures with inconsistent native TCP-state
+observations. Added `WIN-TEST.cmd` / `WIN-TEST.ps1` and a pinned-source packager.
+The outgoing `%USERPROFILE%\Downloads\cryptex-win-test-20261108.zip` builds on
+the VM using existing Rust 1.98.1/C++ tools, runs the ten-iteration loopback TCP
+probe/parser self-test and instance nine/publication nine/owned-HTTP eight tests.
+Only new isolated synthetic test runtimes are used; no owner profile, pairing,
+Keychain/Credential Manager record or normal transport is accessed/activated.
+Initial locked Cargo dependencies may download; later tests are offline.
+
+The package captures all failures, rejects missing/empty/wrong-count test
+summaries and returns `WIN-TEST-SONUC.zip`. It changes no firewall/antivirus/
+Application Control/system execution policy. Host checks covered PS syntax,
+process stdout/stderr and nonzero-exit capture, report metadata and pinned ZIP
+bindings; actual VM native results are pending.
+
+**Next owner action:** extract the Windows ZIP in the existing Windows VM and
+open `WIN-TEST.cmd`; return `WIN-TEST-SONUC.zip` whether pass or failure. Mac
+needs no further action at this checkpoint. Check source/package binding in
+[Windows VM evidence](../evidence/m8/m8-windows-platform-checks-20261108.md).
+Mac production publication/ancestor-handle/transport parity, live-controller
+barrier, physical durability and independent review remain open. Normal
+publication is disabled; M8 is not complete.
+
 ## Mac native groups passed; test-only cfg correction awaits Mac lint (2026-11-08)
 
 Owner returned `MAC-TEST-SONUC.zip`, SHA-256

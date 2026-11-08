@@ -1,0 +1,16 @@
+Bu paketi mevcut Windows VM'de ayiklayin ve WIN-TEST.cmd dosyasina cift tiklayin.
+Sonuc klasorunde acilan WIN-TEST-SONUC.zip dosyasini sohbete ekleyin.
+Hata olsa da ayni ZIP'i gonderin. Mac'te yeniden islem gerekmez.
+
+Var olan Rust 1.98.1 ve C++ derleme araclari kullanilir; kurulum/guncelleme veya
+yonetici izni istenmez. Ilk derlemede Cargo.lock bagimliliklari indirilebilir.
+Sonraki testler offline calisir. Git, Node veya pnpm gerekmez.
+
+TCP durum tanisi, kilit dosyasi testleri, kalici ice aktarma testleri ve sekiz
+sahip olunan HTTP baglantisi testi sinanir. Yalnizca yeni sentetik gecici
+test profilleri ve loopback baglantilari kullanilir. Eski Cryptex profillerine
+ve gercek anahtarlara erisilmez; eslesme ve cihaz aktarimi baslatilmaz.
+
+Guvenlik duvari, antivirus, uygulama denetimi veya sistem ExecutionPolicy
+ayarlari degistirilmez. Script izni yalnizca baslatilan test sureci icindir.
+Windows bir dosyayi engellerse korumayi kapatmayin; hata sonucunu gonderin.
