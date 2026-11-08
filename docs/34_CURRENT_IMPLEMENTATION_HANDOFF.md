@@ -1,5 +1,28 @@
 # 34 — Current Implementation Handoff
 
+## Prepared import recovery finisher candidate (2026-11-07)
+
+Added a private, inactive finisher for unmarked prepared imports with some or
+all destinations already visible. It requires the matching runtime instance
+lock, reloads local secure-store identity and the read-only projection, and
+retains the existing pre-/post-import policy token's canonical locks across
+remaining no-replace moves and committed-marker creation. It rechecks the
+manifest, journal namespace, exact file locations/digests, aliases and active
+file conflicts before moving. No-visible-destination transactions still belong
+to the existing abort path.
+
+Windows import-staging suite: **57 passed**, including eight rejection cases
+and four subprocess interruption boundaries for the new finisher. Strict Clippy,
+format and whitespace checks passed. Production startup still holds unmarked
+visible imports; neither the finisher nor normal publisher was activated.
+See [candidate recovery evidence](../evidence/m8/m8-prepared-import-finisher-20261107.md).
+
+Next audit the complete startup decision table before integration, especially
+temporary-marker policy revalidation and interruption during cleanup. Obtain
+the required durability/platform and independent-review evidence before
+activating transport publication. Native peer restriction remains downstream;
+the completed pairing/replay checks need no repeat.
+
 ## Incoming validation ownership and crash checks (2026-11-07)
 
 The validation CLI now acquires runtime instance ownership before opening the

@@ -2703,7 +2703,6 @@ fn recover_prepared_without_publication(
 /// staged or canonical locations, against the current lock-bearing M3/M4 and
 /// local trust/cutoff snapshot. The returned token keeps the canonical locks
 /// alive, but this function does not move files or write a committed marker.
-#[allow(dead_code)] // Startup recovery will consume this before enabling replay.
 fn verify_prepared_recovery_batch<R: TrustedDaemonKeyResolver>(
     runtime_root: &Path,
     transaction: &Path,
@@ -2876,6 +2875,177 @@ fn verify_prepared_recovery_batch<R: TrustedDaemonKeyResolver>(
             end_tips: tips.into_iter().collect(),
         })
     })
+}
+
+/// Candidate recovery finisher. Kept private and disconnected from startup
+/// until publication/durability review gates pass. The caller must own the
+/// runtime instance; this function independently reloads local policy and keeps
+/// its canonical locks through every finish move and committed-marker write.
+#[allow(dead_code)]
+fn finish_visible_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
+    runtime_root: &Path,
+    transaction_id: &str,
+    instance: &crate::instance::InstanceLock,
+    store: &S,
+    env: crate::secure_store::SecureStoreEnvironment,
+) -> Result<PathBuf, ImportStagingError> {
+    let _root_pins = ImportStagingSession::pin_existing_runtime(runtime_root)?;
+    if instance.path() != crate::paths::lock_path(runtime_root) {
+        return Err(ImportStagingError::RecoveryConflict(
+            "recovery instance lock belongs to a different runtime".into(),
+        ));
+    }
+    cryptex_core::validate::parse_uuid_str(transaction_id).map_err(|_| {
+        ImportStagingError::RecoveryConflict("invalid recovery transaction ID".into())
+    })?;
+    let transaction = runtime_root
+        .join("canonical/import-staging")
+        .join(transaction_id);
+    let journal = runtime_root.join("canonical/import-journal");
+    let manifest_path = journal.join(format!("{transaction_id}.prepared.json"));
+    let mut pins = inspect_directory_chain(&transaction, true)?;
+    pins.extend(inspect_directory_chain(&journal, true)?);
+    if !same_volume(&runtime_root.join("canonical/events"), &transaction)? {
+        return Err(ImportStagingError::RecoveryConflict(
+            "recovery staging and canonical destinations must share a volume".into(),
+        ));
+    }
+    let manifest = read_prepared_manifest(&manifest_path)?;
+    let brain = crate::identity_runtime::load_brain_identity(runtime_root)
+        .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
+    let mut resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+        runtime_root,
+        &brain.brain_id,
+        store,
+        env,
+    )
+    .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
+    let db = cryptex_projection::ProjectionDb::open_existing_read_only(runtime_root)
+        .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
+    let policy = verify_prepared_recovery_batch(
+        runtime_root,
+        &transaction,
+        &manifest,
+        &brain.brain_id,
+        &mut resolver,
+        &db,
+    )?;
+    if !policy.keeps_retrieval_snapshot() || !policy.keeps_post_import_policy() {
+        return Err(ImportStagingError::RecoveryConflict(
+            "recovery policy is held".into(),
+        ));
+    }
+    // Canonical locks precede the import mutex. Never wait for canonical locks
+    // while holding the staging slot.
+    let slot_path = journal.join("import.lock");
+    if !entry_exists(&slot_path)? {
+        return Err(ImportStagingError::RecoveryConflict(
+            "recovery journal is missing its existing import lock".into(),
+        ));
+    }
+    let slot = open_lock_file(&slot_path)?;
+    slot.try_lock_exclusive()
+        .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
+    let check_journal = || -> Result<(), ImportStagingError> {
+        for entry in fs::read_dir(&journal)? {
+            let path = entry?.path();
+            if path != journal.join("import.lock") && path != manifest_path {
+                return Err(ImportStagingError::RecoveryConflict(
+                    "recovery found a marker or unexpected journal entry".into(),
+                ));
+            }
+        }
+        let entries = fs::read_dir(runtime_root.join("canonical/import-staging"))?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<Result<Vec<_>, _>>()?;
+        if entries != [transaction.clone()] || read_prepared_manifest(&manifest_path)? != manifest {
+            return Err(ImportStagingError::RecoveryConflict(
+                "recovery transaction or manifest changed after policy verification".into(),
+            ));
+        }
+        ensure_manifest_staging_subset(&transaction, &manifest)
+    };
+    check_journal()?;
+    let check_locations = || -> Result<usize, ImportStagingError> {
+        let mut visible = 0;
+        for segment in &manifest.segments {
+            let device = DeviceId::new(segment.device_id.clone())
+                .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
+            let staged = transaction.join(&segment.staged_relative_path);
+            let destination = sealed_segment_path(runtime_root, &device, segment.segment_index);
+            let staged_exists = entry_exists(&staged)?;
+            let destination_exists = entry_exists(&destination)?;
+            if staged_exists == destination_exists
+                || entry_exists(&active_segment_path(
+                    runtime_root,
+                    &device,
+                    segment.segment_index,
+                ))?
+            {
+                return Err(ImportStagingError::RecoveryConflict(
+                    "recovery requires exactly one segment location and no active-file conflict"
+                        .into(),
+                ));
+            }
+            let source = if staged_exists { &staged } else { &destination };
+            if !manifest_file_matches(source, segment, false)? {
+                return Err(ImportStagingError::RecoveryConflict(
+                    "recovery segment changed".into(),
+                ));
+            }
+            let (_file, snapshot) = open_recovery_source(source)?;
+            if staged_exists && canonical_file_id_alias_exists(runtime_root, snapshot.identity)? {
+                return Err(ImportStagingError::RecoveryConflict(
+                    "recovery staging aliases canonical storage".into(),
+                ));
+            }
+            visible += usize::from(destination_exists);
+        }
+        Ok(visible)
+    };
+    if check_locations()? == 0 {
+        return Err(ImportStagingError::RecoveryConflict(
+            "unpublished prepared transaction must use the abort recovery path".into(),
+        ));
+    }
+    for segment in &manifest.segments {
+        // Recheck the entire batch, including previously visible destinations,
+        // before each additive move, not just the next staged source.
+        check_journal()?;
+        check_locations()?;
+        let device = DeviceId::new(segment.device_id.clone())
+            .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
+        let destination = sealed_segment_path(runtime_root, &device, segment.segment_index);
+        if !entry_exists(&destination)? {
+            let source = transaction.join(&segment.staged_relative_path);
+            let _source_parent = inspect_directory_chain(source.parent().unwrap(), true)?;
+            let _destination_parent = inspect_directory_chain(destination.parent().unwrap(), true)?;
+            publish_staged_no_replace(&source, &destination)?;
+            sync_staged_parent(&destination)?;
+            #[cfg(test)]
+            crate::test_interrupt::maybe_abrupt_exit(
+                &format!("m8_after_recovery_segment_move_{}", segment.segment_index),
+                runtime_root,
+                "recovery finished a missing segment; no commit marker yet",
+            );
+        }
+        sync_staged_parent(&destination)?;
+    }
+    check_journal()?;
+    if check_locations()? != manifest.segments.len() {
+        return Err(ImportStagingError::RecoveryConflict(
+            "recovery destinations incomplete".into(),
+        ));
+    }
+    let bytes = serde_json_canonicalizer::to_vec(&manifest)
+        .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
+    let marker = CommittedImportMarker {
+        protocol_version: 1,
+        transaction_id: manifest.transaction_id.clone(),
+        prepared_manifest_sha256: encode_hex(&Sha256::digest(&bytes)),
+    };
+    // policy, slot, directory pins and instance ownership outlive this write.
+    write_committed_marker(runtime_root, &marker)
 }
 
 /// Build the local read-only policy context for a startup-visible prepared
@@ -4170,6 +4340,19 @@ mod tests {
         crate::secure_store::FakeSecureStore,
         cryptex_projection::ProjectionDb,
     ) {
+        prepared_policy_verified_fixture_with_notes(root, 0)
+    }
+
+    fn prepared_policy_verified_fixture_with_notes(
+        root: &Path,
+        note_count: u64,
+    ) -> (
+        DeviceId,
+        ImportStagingSession,
+        crate::knowledge_materialization::ImportPolicyVerifiedBatch,
+        crate::secure_store::FakeSecureStore,
+        cryptex_projection::ProjectionDb,
+    ) {
         let store = crate::secure_store::FakeSecureStore::new();
         let brain = TEST_BRAIN_ID;
         let identity = cryptex_core::BrainIdentity::new(brain, "2026-10-29T00:00:00Z").unwrap();
@@ -4207,18 +4390,36 @@ mod tests {
             true,
         )
         .unwrap();
+        let mut prior = first.clone();
+        for index in 1..=note_count {
+            let (bytes, note) = signed_test_segment_with_key(
+                &device,
+                index + 1,
+                &format!("33333333-3333-4333-8333-{index:012}"),
+                prior.content_hash.clone(),
+                &ready.signing_key,
+            );
+            let incoming = root
+                .join("transport/incoming")
+                .join(device.as_filename_stem());
+            fs::create_dir_all(&incoming).unwrap();
+            fs::write(incoming.join(format!("{index:020}.seg")), bytes).unwrap();
+            prior = note;
+        }
+        let retirement_index = note_count + 1;
+        let cutoff = note_count + 1;
         let retirement_event_id = "22222222-2222-4222-8222-222222222224";
         let retirement_body = cryptex_events::security_v3::sign_device_self_retired_event(
             retirement_event_id,
             brain,
             &device,
-            DeviceSeq::from_u64(2).unwrap(),
+            DeviceSeq::from_u64(cutoff + 1).unwrap(),
             "2026-10-29T00:00:01Z",
             &first.signing_key_id,
-            &first.content_hash,
+            &prior.content_hash,
             &"a".repeat(64),
-            1,
-            &first.content_hash,
+            cutoff,
+            &prior.content_hash,
             &ready.signing_key,
         )
         .unwrap();
@@ -4226,13 +4427,25 @@ mod tests {
             .unwrap()
             .to_vec();
         candidate_bytes.extend_from_slice(&retirement_body);
-        let relative = PathBuf::from(device.as_filename_stem()).join("00000000000000000001.seg");
+        let relative =
+            PathBuf::from(device.as_filename_stem()).join(format!("{retirement_index:020}.seg"));
         let source = root.join("transport/incoming").join(&relative);
         fs::create_dir_all(source.parent().unwrap()).unwrap();
         fs::write(&source, candidate_bytes).unwrap();
 
         let mut session = ImportStagingSession::begin(root).unwrap();
-        session.stage_segment(&relative, &device, 1).unwrap();
+        for index in 1..=note_count {
+            session
+                .stage_segment(
+                    &PathBuf::from(device.as_filename_stem()).join(format!("{index:020}.seg")),
+                    &device,
+                    index,
+                )
+                .unwrap();
+        }
+        session
+            .stage_segment(&relative, &device, retirement_index)
+            .unwrap();
         session.release_staging_slot().unwrap();
         let mut resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
             root,
@@ -4273,7 +4486,7 @@ mod tests {
                 .trust
                 .effective_cutoffs
                 .get(&device),
-            Some(&1),
+            Some(&cutoff),
             "the self-retirement control should reduce the local content cutoff"
         );
         assert!(
@@ -4392,6 +4605,285 @@ mod tests {
         assert!(destination.is_file());
         assert!(!staged.exists());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    fn replay_fixture(
+        root: &Path,
+        visible: usize,
+    ) -> (PreparedImportManifest, crate::secure_store::FakeSecureStore) {
+        replay_fixture_with_notes(root, visible, 1)
+    }
+
+    fn replay_fixture_with_notes(
+        root: &Path,
+        visible: usize,
+        note_count: u64,
+    ) -> (PreparedImportManifest, crate::secure_store::FakeSecureStore) {
+        let (_, session, policy, store, db) =
+            prepared_policy_verified_fixture_with_notes(root, note_count);
+        let id = session.transaction_id().to_owned();
+        drop(policy);
+        drop(session);
+        drop(db);
+        let manifest = read_prepared_manifest(
+            &root
+                .join("canonical/import-journal")
+                .join(format!("{id}.prepared.json")),
+        )
+        .unwrap();
+        for segment in manifest.segments.iter().take(visible) {
+            let device = DeviceId::new(segment.device_id.clone()).unwrap();
+            publish_staged_no_replace(
+                &root
+                    .join("canonical/import-staging")
+                    .join(&id)
+                    .join(&segment.staged_relative_path),
+                &sealed_segment_path(root, &device, segment.segment_index),
+            )
+            .unwrap();
+        }
+        (manifest, store)
+    }
+
+    fn assert_replay_destinations(root: &Path, manifest: &PreparedImportManifest) {
+        for segment in &manifest.segments {
+            let device = DeviceId::new(segment.device_id.clone()).unwrap();
+            assert!(
+                manifest_file_matches(
+                    &sealed_segment_path(root, &device, segment.segment_index),
+                    segment,
+                    false
+                )
+                .unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn prepared_replay_finishes_partial_and_complete_batches_then_cleans_repeatably() {
+        for visible in [1, 2] {
+            let root = compact_runtime_root();
+            let (manifest, store) = replay_fixture(&root, visible);
+            let device = DeviceId::new(manifest.segments[0].device_id.clone()).unwrap();
+            let first_path = sealed_segment_path(&root, &device, 0);
+            let first = fs::read(&first_path).unwrap();
+            let instance = crate::instance::try_acquire_instance(&root).unwrap();
+            let marker = finish_visible_prepared_recovery(
+                &root,
+                &manifest.transaction_id,
+                &instance,
+                &store,
+                crate::secure_store::SecureStoreEnvironment::Dev,
+            )
+            .unwrap();
+            assert!(marker.is_file());
+            assert_replay_destinations(&root, &manifest);
+            for _ in 0..2 {
+                recover_import_staging(&root).unwrap();
+                assert_replay_destinations(&root, &manifest);
+                assert_eq!(fs::read(&first_path).unwrap(), first);
+            }
+            assert!(!marker.exists());
+            drop(instance);
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn prepared_replay_holds_conflicts_without_moving_remaining_segment() {
+        for fault in [
+            "unpublished",
+            "corrupt-visible",
+            "missing",
+            "duplicate",
+            "active",
+            "journal",
+            "signature",
+            "wrong-instance",
+        ] {
+            let root = compact_runtime_root();
+            let (mut manifest, store) = replay_fixture(&root, usize::from(fault != "unpublished"));
+            let device = DeviceId::new(manifest.segments[0].device_id.clone()).unwrap();
+            let transaction = root
+                .join("canonical/import-staging")
+                .join(&manifest.transaction_id);
+            let journal = root.join("canonical/import-journal");
+            let manifest_path = journal.join(format!("{}.prepared.json", manifest.transaction_id));
+            let visible = sealed_segment_path(&root, &device, 1);
+            let remaining = transaction.join(&manifest.segments[1].staged_relative_path);
+            match fault {
+                "corrupt-visible" => fs::write(&visible, b"corrupt").unwrap(),
+                "missing" => fs::remove_file(&remaining).unwrap(),
+                "duplicate" => {
+                    fs::copy(
+                        &visible,
+                        transaction.join(&manifest.segments[0].staged_relative_path),
+                    )
+                    .unwrap();
+                }
+                "active" => fs::write(active_segment_path(&root, &device, 2), b"conflict").unwrap(),
+                "journal" => fs::write(journal.join("unexpected"), b"preserve").unwrap(),
+                "signature" => {
+                    let mut bytes = fs::read(&remaining).unwrap();
+                    let offset = bytes
+                        .windows(13)
+                        .position(|w| w == b"\"signature\":\"")
+                        .unwrap()
+                        + 13;
+                    bytes[offset] = if bytes[offset] == b'0' { b'1' } else { b'0' };
+                    fs::write(&remaining, &bytes).unwrap();
+                    manifest.segments[1].sha256 = encode_hex(&Sha256::digest(&bytes));
+                    fs::write(
+                        &manifest_path,
+                        serde_json_canonicalizer::to_vec(&manifest).unwrap(),
+                    )
+                    .unwrap();
+                }
+                _ => {}
+            }
+            let other = compact_runtime_root();
+            let instance = crate::instance::try_acquire_instance(if fault == "wrong-instance" {
+                &other
+            } else {
+                &root
+            })
+            .unwrap();
+            let manifest_before = fs::read(&manifest_path).unwrap();
+            let remaining_before = fs::read(&remaining).ok();
+            assert!(
+                finish_visible_prepared_recovery(
+                    &root,
+                    &manifest.transaction_id,
+                    &instance,
+                    &store,
+                    crate::secure_store::SecureStoreEnvironment::Dev
+                )
+                .is_err(),
+                "{fault}"
+            );
+            assert_eq!(
+                fs::read(&manifest_path).unwrap(),
+                manifest_before,
+                "{fault}"
+            );
+            assert_eq!(fs::read(&remaining).ok(), remaining_before, "{fault}");
+            assert!(!sealed_segment_path(&root, &device, 2).exists(), "{fault}");
+            assert!(
+                !journal
+                    .join(format!("{}.committed.json", manifest.transaction_id))
+                    .exists()
+            );
+            drop(instance);
+            fs::remove_dir_all(other).unwrap();
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn xproc_prepared_replay_worker() {
+        use crate::secure_store::{
+            AccountLabel, SecureStore, SecureStoreEnvironment, ServiceLabel,
+        };
+        let Some(root) = std::env::var_os("CRYPTEX_TEST_REPLAY_ROOT") else {
+            return;
+        };
+        let root = PathBuf::from(root);
+        let id = std::env::var("CRYPTEX_TEST_REPLAY_ID").unwrap();
+        // Only synthetic fixture credentials cross this test child's stdin.
+        let (device, seed): (String, Vec<u8>) = serde_json::from_reader(std::io::stdin()).unwrap();
+        let store = crate::secure_store::FakeSecureStore::new();
+        store
+            .put(
+                ServiceLabel::device_credentials(SecureStoreEnvironment::Dev).as_str(),
+                AccountLabel::device_event_signing_seed(&device).as_str(),
+                &seed,
+            )
+            .unwrap();
+        let instance = crate::instance::try_acquire_instance(&root).unwrap();
+        finish_visible_prepared_recovery(
+            &root,
+            &id,
+            &instance,
+            &store,
+            SecureStoreEnvironment::Dev,
+        )
+        .unwrap();
+        panic!("replay did not reach interruption boundary");
+    }
+
+    #[test]
+    fn prepared_replay_interruptions_finish_without_duplicate_events() {
+        use crate::secure_store::{
+            AccountLabel, SecureStore, SecureStoreEnvironment, ServiceLabel,
+        };
+        use std::process::{Command, Stdio};
+        use std::time::Duration;
+        for boundary in [
+            "m8_after_recovery_segment_move_2",
+            "m8_after_recovery_segment_move_3",
+            "m8_after_committed_marker_temp_sync",
+            "m8_after_committed_marker_final_sync",
+        ] {
+            let root = compact_runtime_root();
+            let (manifest, store) = replay_fixture_with_notes(&root, 1, 2);
+            let device = &manifest.segments[0].device_id;
+            let seed = store
+                .get(
+                    ServiceLabel::device_credentials(SecureStoreEnvironment::Dev).as_str(),
+                    AccountLabel::device_event_signing_seed(device).as_str(),
+                )
+                .unwrap();
+            let mut child = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "import_staging::tests::xproc_prepared_replay_worker",
+                    "--nocapture",
+                ])
+                .env("CRYPTEX_TEST_REPLAY_ROOT", &root)
+                .env("CRYPTEX_TEST_REPLAY_ID", &manifest.transaction_id)
+                .env(crate::test_interrupt::INTERRUPT_ENV, boundary)
+                .stdin(Stdio::piped())
+                .spawn()
+                .unwrap();
+            serde_json::to_writer(child.stdin.take().unwrap(), &(device, seed)).unwrap();
+            let status =
+                crate::test_interrupt::wait_child_bounded(&mut child, Duration::from_secs(30))
+                    .unwrap();
+            assert_eq!(
+                status.code(),
+                Some(crate::test_interrupt::INTERRUPT_EXIT_CODE)
+            );
+            assert_eq!(crate::test_interrupt::read_ready(&root).0, boundary);
+            let instance = crate::instance::try_acquire_instance(&root).unwrap();
+            if boundary.starts_with("m8_after_recovery_segment_move_") {
+                finish_visible_prepared_recovery(
+                    &root,
+                    &manifest.transaction_id,
+                    &instance,
+                    &store,
+                    SecureStoreEnvironment::Dev,
+                )
+                .unwrap();
+            }
+            for _ in 0..2 {
+                recover_import_staging(&root).unwrap();
+                assert_replay_destinations(&root, &manifest);
+            }
+            assert_eq!(
+                fs::read_dir(root.join("canonical/import-staging"))
+                    .unwrap()
+                    .count(),
+                0
+            );
+            assert_eq!(
+                fs::read_dir(root.join("canonical/import-journal"))
+                    .unwrap()
+                    .count(),
+                1
+            );
+            drop(instance);
+            fs::remove_dir_all(root).unwrap();
+        }
     }
 
     #[test]
