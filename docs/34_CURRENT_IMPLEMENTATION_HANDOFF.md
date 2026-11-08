@@ -1,6 +1,31 @@
 # 34 — Current Implementation Handoff
 
+## Host-to-VM native file transfer passed (2026-11-08)
+
+The owner ran the portable package in the existing Windows VM and returned
+`ISTEK.zip`, then `AKTARIM-SONUC.zip`. Session
+`87a57c018d63481cb71a9a0f6abdd1f1` transferred 32768 synthetic bytes from host
+192.168.177.1 to VM 192.168.177.131 using distinct pinned Syncthing identities.
+The returned receiver hash equals the retained original source and prepared
+hash. Sender reported peer completion; both sides reported clean shutdown.
+The host log independently records the VM's LAN address and TLS 1.3 connection;
+the exact owned host executable has no remaining process.
+
+This closes the independent Windows **native synthetic transport** check.
+It does not exercise Cryptex's managed adapter, signed-event policy validation,
+canonical import/publication, power loss, or macOS. The receipt explicitly says
+`canonical_import: not_run`. See [bound receipt and evidence](../evidence/m8/m8-windows-host-vm-native-transfer-20261108.md).
+
+**Next:** extend the automated harness toward transporting a daemon-produced
+signed segment and validating it through the daemon's incoming-policy entry
+point with the appropriate Brain/peer identity. Keep canonical publication
+behind its existing activation gates. Do not repeat the completed same-VM
+pairing/replay or basic host-to-VM synthetic transfer. No native test sender
+is currently left running; the owner can close the VM for now.
+
 ## Independent Windows transport test package (2026-11-08)
+
+Historical preparation checkpoint; the actual transfer result is above.
 
 The owner returned the single VM preflight archive. Collection had no errors;
 the two original journals still report anchored / four messages / one append
