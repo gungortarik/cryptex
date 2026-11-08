@@ -3,6 +3,158 @@ use cryptex_core::DeviceId;
 use cryptex_events::envelope::Classification;
 use std::fs;
 
+#[test]
+fn rejects_signed_wrong_target_key_restriction_before_publication() {
+    use cryptex_events::{ContentHashHex, DeviceSeq, SigningKeyId};
+    use std::io::Write;
+
+    let mut fixture = Fixture::new();
+    let next = fixture.append_next();
+    let prior_bytes = fs::read(fixture.source.join("canonical/events").join(&next)).unwrap();
+    let prior: serde_json::Value =
+        serde_json::from_slice(&prior_bytes[cryptex_events::FRAME_HEADER_BYTES..]).unwrap();
+    let previous = ContentHashHex::parse(prior["content_hash"].as_str().unwrap()).unwrap();
+    let sequence: u64 = prior["device_seq"].as_str().unwrap().parse().unwrap();
+    let issuer = DeviceId::new(fixture.report.source_device.clone()).unwrap();
+    let target = DeviceId::new(fixture.report.receiver_device.clone()).unwrap();
+    let issuer_key = crate::event_signing_key::load_existing_event_signing_key(
+        &fixture.store,
+        ENV,
+        &fixture.source,
+        &issuer,
+    )
+    .unwrap();
+    let unrelated_key = ed25519_dalek::SigningKey::from_bytes(&[0x52; 32]);
+    let body = cryptex_events::security_v3::sign_device_restricted_event(
+        "99999999-9999-4999-8999-999999999999",
+        &fixture.report.brain_id,
+        &issuer,
+        DeviceSeq::from_u64(sequence + 1).unwrap(),
+        "2026-11-08T00:00:03Z",
+        &SigningKeyId::parse(&issuer_key.public.signing_key_id).unwrap(),
+        &previous,
+        &"af".repeat(32),
+        &target,
+        &cryptex_events::signing_key_id_from_verifying_key(&unrelated_key.verifying_key()).unwrap(),
+        &unrelated_key.verifying_key().to_bytes(),
+        cryptex_events::security_v3::RestrictionReasonV3::Retired,
+        0,
+        &ContentHashHex::zero(),
+        &issuer_key.signing_key,
+    )
+    .unwrap();
+    let path = PathBuf::from(issuer.as_filename_stem()).join("00000000000000000002.seg");
+    let incoming = fixture.receiver.join("transport/incoming").join(&path);
+    let mut file = fs::File::create(&incoming).unwrap();
+    file.write_all(&cryptex_events::encode_frame_header(body.len() as u32).unwrap())
+        .unwrap();
+    file.write_all(&body).unwrap();
+    drop(file);
+    fixture.paths.extend([next, path]);
+    let before = event_hashes(&fixture.receiver);
+    let incoming_before = fs::read(&incoming).unwrap();
+    assert!(matches!(
+        fixture.publish(),
+        Err(IncomingPublicationError::Rejected(_))
+    ));
+    assert_eq!(event_hashes(&fixture.receiver), before);
+    assert_eq!(fs::read(incoming).unwrap(), incoming_before);
+    fixture.assert_clean();
+}
+
+#[test]
+fn import_policy_proofs_cannot_cross_runtime_boundaries() {
+    fn clone_plain_tree(source: &Path, target: &Path) {
+        fs::create_dir_all(target).unwrap();
+        for entry in fs::read_dir(source).unwrap() {
+            let entry = entry.unwrap();
+            let destination = target.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                clone_plain_tree(&entry.path(), &destination);
+            } else {
+                assert!(entry.file_type().unwrap().is_file());
+                fs::copy(entry.path(), destination).unwrap();
+            }
+        }
+    }
+
+    let fixture = Fixture::new();
+    let other = crate::test_temp::exclusive_temp_dir("incoming-foreign-policy");
+    clone_plain_tree(&fixture.receiver, &other);
+    let before = event_hashes(&other);
+    let mut foreign_session = ImportStagingSession::begin(&other).unwrap();
+    foreign_session
+        .stage_batch_from_transport_paths(&fixture.paths)
+        .unwrap();
+    foreign_session.release_staging_slot().unwrap();
+    let devices = vec![DeviceId::new(fixture.report.source_device.clone()).unwrap()];
+    let db = cryptex_projection::ProjectionDb::open_existing_read_only(&fixture.receiver).unwrap();
+    let safety = || {
+        let mut resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+            &fixture.receiver,
+            &fixture.report.brain_id,
+            &fixture.store,
+            ENV,
+        )
+        .unwrap();
+        crate::knowledge_materialization::evaluate_import_retrieval_safety(
+            &fixture.receiver,
+            &fixture.report.brain_id,
+            &devices,
+            &mut resolver,
+            &db,
+        )
+    };
+    let first = safety();
+    assert!(first.allows_content());
+    assert!(
+        first
+            .verify_import_batch(&foreign_session, &fixture.report.brain_id)
+            .is_err(),
+        "a source runtime's locks must not authorize another runtime's import"
+    );
+
+    // Obtain a legitimate source-runtime proof, then try to reuse its exact
+    // verified bytes at the final publication boundary in the other runtime.
+    let mut source_session = ImportStagingSession::begin(&fixture.receiver).unwrap();
+    source_session
+        .stage_batch_from_transport_paths(&fixture.paths)
+        .unwrap();
+    source_session.release_staging_slot().unwrap();
+    let policy = safety()
+        .verify_import_batch(&source_session, &fixture.report.brain_id)
+        .unwrap();
+    foreign_session
+        .prepare_verified_manifest(policy.verified())
+        .unwrap();
+    let destination_lock =
+        crate::canonical_writer::acquire_canonical_inventory_lock(&other).unwrap();
+    assert!(
+        policy
+            .validate_publication_preconditions(&foreign_session)
+            .is_err()
+    );
+    assert!(foreign_session.publish_verified_batch(&policy).is_err());
+    assert_eq!(event_hashes(&other), before);
+    assert!(
+        fs::read_dir(other.join("canonical/import-journal"))
+            .unwrap()
+            .all(|entry| {
+                !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".committed.json")
+            })
+    );
+    drop(destination_lock);
+    drop(policy);
+    drop(db);
+    source_session.discard().unwrap();
+    drop(foreign_session);
+    fs::remove_dir_all(other).unwrap();
+}
+
 const ENV: SecureStoreEnvironment = SecureStoreEnvironment::Dev;
 const PROBE: &str = "44444444-4444-4444-8444-444444444444";
 

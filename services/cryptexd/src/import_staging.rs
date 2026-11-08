@@ -247,6 +247,10 @@ impl ImportStagingSession {
         inspect_directory_chain(runtime_root, true)
     }
 
+    pub(crate) fn runtime_root(&self) -> &Path {
+        &self.runtime_root
+    }
+
     pub fn begin(runtime_root: &Path) -> Result<Self, ImportStagingError> {
         if !runtime_root.is_absolute() {
             return Err(ImportStagingError::Invalid(
@@ -858,6 +862,11 @@ impl ImportStagingSession {
         expected_brain_id: &str,
         snapshot: &crate::knowledge_materialization::VerifiedCanonicalSnapshot,
     ) -> Result<VerifiedStagedBatch, ImportStagingError> {
+        if !snapshot.locks_runtime(&self.runtime_root) {
+            return Err(ImportStagingError::Invalid(
+                "retrieval safety snapshot belongs to another runtime".into(),
+            ));
+        }
         if self._single_flight.is_some() {
             return Err(ImportStagingError::Invalid(
                 "release the staging slot before acquiring canonical locks".into(),

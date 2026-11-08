@@ -286,6 +286,16 @@ impl ImportPolicyVerifiedBatch {
         &self,
         session: &crate::import_staging::ImportStagingSession,
     ) -> Result<(), crate::import_staging::ImportStagingError> {
+        if !self
+            .safety
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.locks_runtime(session.runtime_root()))
+        {
+            return Err(crate::import_staging::ImportStagingError::Invalid(
+                "publication safety snapshot belongs to another runtime".into(),
+            ));
+        }
         session.validate_publication_preconditions(&self.verified)
     }
 }
@@ -762,7 +772,6 @@ impl VerifiedCanonicalSnapshot {
         self.history.records()
     }
 
-    #[cfg(windows)]
     pub(crate) fn locks_runtime(&self, root: &Path) -> bool {
         self.runtime_root == root
     }

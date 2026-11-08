@@ -239,6 +239,7 @@ pub(crate) fn build_verified_trust_history(
         let SecurityPayloadV3::DeviceRestricted {
             target_device_id,
             target_signing_key_id,
+            target_public_key,
             cutoff_seq,
             cutoff_content_hash,
             ..
@@ -250,6 +251,26 @@ pub(crate) fn build_verified_trust_history(
             issuer == local_device || approved_peer_bindings.contains_key(&issuer);
         if !issuer_is_authorized {
             continue;
+        }
+        // A zero boundary has no target record to authenticate its identity.
+        // Bind every known target to the complete pinned identity before
+        // reducing by DeviceId, for zero and nonzero cutoffs alike. Unknown
+        // third-device restrictions remain policy metadata, not trust grants.
+        let pinned_target = if target_device_id == &local_device {
+            Some((local_signing_key_id, local_public_key))
+        } else {
+            approved_peer_bindings
+                .get(target_device_id)
+                .map(|binding| (&binding.signing_key_id, &binding.public_key))
+        };
+        if let Some((key_id, public_key)) = pinned_target {
+            let public_key_hex: String = public_key
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            if target_signing_key_id != key_id || target_public_key != &public_key_hex {
+                return Err(TrustHold::InvalidPolicyHistory);
+            }
         }
         if *cutoff_seq == 0 {
             if cutoff_content_hash.as_str() != ZERO_CONTENT_HASH_HEX {
@@ -1415,6 +1436,81 @@ mod tests {
         )
         .unwrap();
         assert!(peer_only_derived.directly_approved_peers.is_empty());
+    }
+
+    #[test]
+    fn zero_cutoff_restrictions_bind_known_targets_to_their_pinned_keys() {
+        let local_key = SigningKey::from_bytes(&TEST_SEED);
+        let peer_key = SigningKey::from_bytes(&[0x31; 32]);
+        let unrelated_key = SigningKey::from_bytes(&[0x32; 32]);
+        let local_anchor = make_v3(
+            "local",
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            1,
+            ZERO_CONTENT_HASH_HEX,
+            "security.peer_approved",
+            serde_json::json!({
+                "transaction_id": "ab".repeat(32),
+                "transcript": valid_bootstrap_transcript("local", &local_key, "peer", &peer_key)
+            }),
+            &local_key,
+        );
+        let anchor: Value = serde_json::from_slice(&local_anchor).unwrap();
+        for (target, target_key, issuer, issuer_key, seq, previous) in [
+            (
+                "local",
+                &local_key,
+                "peer",
+                &peer_key,
+                1,
+                ZERO_CONTENT_HASH_HEX,
+            ),
+            (
+                "peer",
+                &peer_key,
+                "local",
+                &local_key,
+                2,
+                anchor["content_hash"].as_str().unwrap(),
+            ),
+        ] {
+            for (named_key, should_accept) in [(target_key, true), (&unrelated_key, false)] {
+                // Both cases are genuine signatures with internally consistent
+                // target key IDs. Only the device-to-pinned-key binding differs.
+                let restriction = make_v3(
+                    issuer,
+                    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    seq,
+                    previous,
+                    "security.device_restricted",
+                    serde_json::json!({
+                        "transaction_id": "cd".repeat(32),
+                        "target_device_id": target,
+                        "target_signing_key_id": signing_key_id_from_verifying_key(&named_key.verifying_key()).unwrap().as_str(),
+                        "target_public_key": hex(&named_key.verifying_key().to_bytes()),
+                        "reason": "compromised",
+                        "cutoff_seq": "0",
+                        "cutoff_content_hash": ZERO_CONTENT_HASH_HEX
+                    }),
+                    issuer_key,
+                );
+                let result = verify_history_from_local_anchors(
+                    &[local_anchor.as_slice(), restriction.as_slice()],
+                    BRAIN,
+                    device("local"),
+                    signing_key_id_from_verifying_key(&local_key.verifying_key()).unwrap(),
+                    local_key.verifying_key().to_bytes(),
+                );
+                if should_accept {
+                    assert!(result.is_ok(), "matching target {target} must be accepted");
+                } else {
+                    assert!(
+                        matches!(result, Err(TrustHold::InvalidPolicyHistory)),
+                        "unrelated key must not restrict pinned target {target}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
