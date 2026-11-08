@@ -8,14 +8,29 @@ if [ "$(uname -s)" != 'Darwin' ]; then
     exit 2
 fi
 
+mode=full
+if [ "$#" -eq 1 ] && [ "$1" = '--lint-only' ]; then
+    mode=lint
+elif [ "$#" -ne 0 ]; then
+    echo 'Gecersiz test secenegi.'
+    exit 2
+fi
+
 base="$(cd "$(dirname "$0")" && pwd)"
 work="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/cryptex-mac-test.XXXXXX")"
 report="$work/result.txt"
 result="$work/MAC-TEST-SONUC.zip"
+if [ "$mode" = lint ]; then result="$work/MAC-LINT-SONUC.zip"; fi
 {
     echo 'schema=1'
-    echo 'scope=macos_native_primitive_validation_and_keychain_tests'
-    echo 'probe_id=m8-macos-native-20261108-v1'
+    if [ "$mode" = lint ]; then
+        echo 'scope=macos_native_compile_and_clippy_only'
+        echo 'probe_id=m8-macos-lint-20261108-v1'
+        echo 'native_tests=not_rerun'
+    else
+        echo 'scope=macos_native_primitive_validation_and_keychain_tests'
+        echo 'probe_id=m8-macos-native-20261108-v1'
+    fi
     echo "collected_utc=$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
     echo "macos_version=$(/usr/bin/sw_vers -productVersion)"
     echo "macos_build=$(/usr/bin/sw_vers -buildVersion)"
@@ -37,7 +52,7 @@ finish() {
         if [ -f "$work/$name" ]; then files+=("$name"); fi
     done
     if (cd "$work" && /usr/bin/zip -q "$result" "${files[@]}"); then
-        echo 'MAC-TEST-SONUC.zip hazir. Sonuc basarili olsa da hata olsa da bu ZIP dosyasini sohbete ekle.'
+        echo "${result##*/} hazir. Sonuc basarili olsa da hata olsa da bu ZIP dosyasini sohbete ekle."
         /usr/bin/open -R "$result"
     else
         echo "Sonuc ZIP dosyasi olusturulamadi. Rapor burada: $report"
@@ -109,13 +124,15 @@ run_tests() {
     echo "$name=$status" >> "$report"
 }
 
-run_tests instance 'instance::tests::'
-run_tests staging 'import_staging::tests::'
-run_tests incoming 'incoming_validation::tests::'
-run_tests trusted 'trusted_import_probe::tests::'
-echo 'Keychain testi yalnizca sentetik gelistirme test kayitlarini kullanir. macOS izin penceresi gosterebilir.'
-echo 'secure_store_tests=attempted' >> "$report"
-run_tests keychain 'secure_store::macos::tests::'
+if [ "$mode" = full ]; then
+    run_tests instance 'instance::tests::'
+    run_tests staging 'import_staging::tests::'
+    run_tests incoming 'incoming_validation::tests::'
+    run_tests trusted 'trusted_import_probe::tests::'
+    echo 'Keychain testi yalnizca sentetik gelistirme test kayitlarini kullanir. macOS izin penceresi gosterebilir.'
+    echo 'secure_store_tests=attempted' >> "$report"
+    run_tests keychain 'secure_store::macos::tests::'
+fi
 
 echo 'Mac hedefinde Clippy kontrolu...'
 if "$rustup_bin" run 1.98.1 cargo clippy --offline --locked --color never -p cryptexd --all-targets -- -D warnings > "$work/clippy.log" 2>&1; then
@@ -127,8 +144,16 @@ else
 fi
 echo "failed_checks=$failures" >> "$report"
 if [ "$failures" -eq 0 ]; then
-    echo 'outcome=selected_native_checks_passed' >> "$report"
+    if [ "$mode" = lint ]; then
+        echo 'outcome=compile_and_clippy_passed' >> "$report"
+    else
+        echo 'outcome=selected_native_checks_passed' >> "$report"
+    fi
 else
-    echo 'outcome=selected_native_checks_failed' >> "$report"
+    if [ "$mode" = lint ]; then
+        echo 'outcome=compile_and_clippy_failed' >> "$report"
+    else
+        echo 'outcome=selected_native_checks_failed' >> "$report"
+    fi
     exit 2
 fi

@@ -76,8 +76,9 @@ normal daemon startup or paired/native transport activation is involved.
 ## Verification and outstanding gates
 
 Host checks: Bash syntax, refusal to execute on non-Mac, Python packager syntax,
-archive member/mode/path/hash verification and diff checks. These are wrapper
-checks only. Actual native build/test/Keychain results are pending.
+archive member/mode/path/hash verification and diff checks. These were wrapper
+checks only. At the original package handoff native build/test/Keychain results
+were pending; the actual returned result is recorded below.
 
 The persistent publication service is deliberately Windows-only and is not
 ported by removing a conditional compilation flag. Mac managed endpoint
@@ -119,4 +120,78 @@ Built and verified after committing the runner:
 Expected return `MAC-TEST-SONUC.zip` contains `result.txt` and only created
 members of `build.log`, `instance.log`, `staging.log`, `incoming.log`,
 `trusted.log`, `keychain.log`, `clippy.log`. Metadata may be present even when
-compilation fails and no test group ran. Actual Mac execution remains pending.
+compilation fails and no test group ran. Actual Mac execution was pending at
+this package checkpoint; the returned receipt follows.
+
+## Actual native Mac receipt
+
+The owner returned `MAC-TEST-SONUC.zip`, SHA-256
+`FBCD68F17FBA6C4C510AF575EA38A33D240867D8B08C5473AE946CBBCF8C2F0E`.
+The eight exact members and expanded lengths were bounded before reading:
+
+| Member | Bytes |
+| --- | ---: |
+| result.txt | 1,335 |
+| build.log | 9,886 |
+| instance.log | 1,814 |
+| staging.log | 6,929 |
+| incoming.log | 2,083 |
+| trusted.log | 1,471 |
+| keychain.log | 1,343 |
+| clippy.log | 4,935 |
+
+Metadata matches the exact outgoing source commit/archive digest above,
+`scope=macos_native_primitive_validation_and_keychain_tests` and
+`probe_id=m8-macos-native-20261108-v1`. Collected timestamp is
+`2026-11-08T21:44:20Z`; OS/build/architecture remain macOS 27.2/26B123/arm64.
+
+| Native check | Observed result |
+| --- | --- |
+| Library test harness build | Passed; 23.33 seconds |
+| Instance safety/lifecycle | 8 passed |
+| Import staging/recovery | 58 passed |
+| Incoming validation | 9 passed |
+| Signed trusted/unapproved fixture policy | 3 passed |
+| Native Keychain adapter | 2 passed |
+| Strict all-target Clippy | Failed, exit 101 |
+
+All 80 selected test entries passed with zero failed/ignored entries. Group
+summaries agree with the actual log endings. The instance log includes both
+the hardlinked immutable-file refusal and Unix symlink refusal. The Keychain
+log names the native missing/delete/read/redaction matrix. Subprocess entries
+are included in normal harness counts; this is not 80 distinct manual scenarios.
+
+The overall `selected_native_checks_failed`, `failed_checks=1`, `runner_exit=2`
+is correct and preserved. Clippy was installed and ran; it was not an unavailable
+tool. It rejected `Operation::Config` and `test_read_config` as unused in Mac
+test builds. Both callers (`owned_process::tests` and
+`managed_profile::native::tests`) are gated to Windows. The helper variant,
+its match arm and method previously used only `cfg(test)`.
+
+Correction: gate all three with `cfg(all(test, windows))`. This matches the
+actual supported test consumer set and keeps the Windows config-read tests
+intact. No `allow`/`expect`, warning-flag relaxation or production REST/trust
+behavior change is introduced. Strict Windows all-target Clippy passed after
+the correction; native Mac Clippy on corrected source is still pending.
+
+## Lint-only continuation
+
+The shared runner now accepts `--lint-only`, exposed by `MAC-LINT.command`.
+Its scope is `macos_native_compile_and_clippy_only`, probe
+`m8-macos-lint-20261108-v1`. It verifies the pinned archive, builds the test
+harness and runs the same strict all-target Clippy. It returns
+`MAC-LINT-SONUC.zip` with `result.txt`, `build.log`, and `clippy.log` when
+reached. Outcome distinguishes `compile_and_clippy_passed`/`failed` or build
+failure. Metadata explicitly says `native_tests=not_rerun`.
+
+Package `cryptex-mac-lint-20261108.zip` has six allowlisted members:
+`MAC-TEST.command`, `MAC-LINT.command`, `MAC-LINT-BASLA.txt`,
+`SOURCE-COMMIT.txt`, `SOURCE-SHA256.txt`, `source.zip`. Both launchers preserve
+executable Unix mode/LF. The new invocation does not run the successful test
+groups or access Keychain. Bash syntax, non-Mac refusal and Windows strict
+Clippy were checked; actual corrected Mac compile/lint results remain pending.
+
+Successful native primitive tests do not close the production Mac parity gaps
+listed above, Windows endpoint failures, physical power-loss or independent
+review gates. No source signature, remote attestation or normal publication
+activation is inferred from the supplied ZIP.

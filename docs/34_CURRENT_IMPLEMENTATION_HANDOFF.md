@@ -1,5 +1,39 @@
 # 34 — Current Implementation Handoff
 
+## Mac native groups passed; test-only cfg correction awaits Mac lint (2026-11-08)
+
+Owner returned `MAC-TEST-SONUC.zip`, SHA-256
+`FBCD68F17FBA6C4C510AF575EA38A33D240867D8B08C5473AE946CBBCF8C2F0E`.
+The exact eight bounded members match source commit
+`74c6c400d5ff9229625c0397dab5e3ef4f8344ab` and archive digest
+`6c03ac3629aec97c1904e8a216a53e21e5356ec8459fbc80b07539ad011ae771`.
+Native arm64 macOS 27.2/build 26B123 compiled the harness and passed all five
+selected groups: instance eight, staging/recovery 58, incoming validation nine,
+trusted probe three, native Keychain two (**80 passed total**, zero failures).
+Logs confirm the new Unix symlink/hardlink refusal tests and actual native
+Keychain matrix ran. These are supplied runner observations, not attestation.
+
+Overall receipt correctly remains failed because strict Mac all-target Clippy
+reported two dead-code errors: test-only `Operation::Config` and
+`test_read_config` in `syncthing_owned_rest.rs`. Both callers are Windows-only
+test modules. Corrected the enum variant, match arm and helper to
+`cfg(all(test, windows))`; no lint suppression, test weakening, product behavior
+change or endpoint-ownership fallback. Strict Windows all-target Clippy and
+format passed with the correction; Mac Clippy on corrected source is pending.
+
+Prepared a lint-only launcher using the same exact-source packaging workflow:
+`%USERPROFILE%\Downloads\cryptex-mac-lint-20261108.zip`. It compiles the test
+harness and runs strict Clippy on the Mac; it deliberately does not rerun the
+80 passed tests or touch Keychain. The full native runner remains available.
+
+**Next owner action:** extract that ZIP on the same Mac, open
+`MAC-LINT.command`, return `MAC-LINT-SONUC.zip` (success or failure). Match the
+new source binding in [Mac check evidence](../evidence/m8/m8-macos-native-checks-20261108.md)
+before accepting the result. Preserve the passed native receipt. The Windows
+HTTP failures, Mac production publication/ancestor-pin/transport parity,
+runtime-wide controller barrier, physical durability and independent security
+review gates remain open. M8 is not complete.
+
 ## Mac readiness received; native checks runner prepared (2026-11-08)
 
 Owner returned `MAC-SONUC.zip`, SHA-256

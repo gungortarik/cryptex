@@ -15,7 +15,7 @@ def git(*args: str) -> bytes:
     return subprocess.check_output(["git", "-C", str(ROOT), *args])
 
 
-def build(revision: str, output: Path) -> tuple[str, str]:
+def build(revision: str, output: Path, lint_only: bool = False) -> tuple[str, str]:
     commit = git("rev-parse", "--verify", f"{revision}^{{commit}}").decode().strip()
     if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
         raise ValueError("invalid commit binding")
@@ -40,13 +40,20 @@ def build(revision: str, output: Path) -> tuple[str, str]:
                     raise ValueError("source archive contains a symlink")
         source_bytes = source.read_bytes()
     digest = hashlib.sha256(source_bytes).hexdigest()
+    files = {"MAC-TEST.command": 0o100755}
+    if lint_only:
+        files.update({"MAC-LINT.command": 0o100755, "MAC-LINT-BASLA.txt": 0o100644})
+    else:
+        files["MAC-TEST-BASLA.txt"] = 0o100644
     members = {
-        "MAC-TEST.command": (0o100755, git("show", f"{commit}:scripts/m8/MAC-TEST.command")),
-        "MAC-TEST-BASLA.txt": (0o100644, git("show", f"{commit}:scripts/m8/MAC-TEST-BASLA.txt")),
+        name: (mode, git("show", f"{commit}:scripts/m8/{name}"))
+        for name, mode in files.items()
+    }
+    members.update({
         "SOURCE-COMMIT.txt": (0o100644, (commit + "\n").encode()),
         "SOURCE-SHA256.txt": (0o100644, (digest + "\n").encode()),
         "source.zip": (0o100644, source_bytes),
-    }
+    })
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w") as archive:
         for name, (mode, data) in members.items():
@@ -70,9 +77,9 @@ def build(revision: str, output: Path) -> tuple[str, str]:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revision", default="HEAD")
-    parser.add_argument(
-        "--output", type=Path,
-        default=Path.home() / "Downloads" / "cryptex-mac-test-20261108.zip",
-    )
+    parser.add_argument("--lint-only", action="store_true")
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    build(args.revision, args.output)
+    name = "cryptex-mac-lint-20261108.zip" if args.lint_only else "cryptex-mac-test-20261108.zip"
+    output = args.output or Path.home() / "Downloads" / name
+    build(args.revision, output, args.lint_only)

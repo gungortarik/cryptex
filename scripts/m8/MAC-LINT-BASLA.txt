@@ -1,0 +1,10 @@
+Mac'te ZIP'i ayiklayin ve MAC-LINT.command dosyasina cift tiklayin.
+Olusan MAC-LINT-SONUC.zip dosyasini sohbete ekleyin; hata olursa da ayni ZIP'i gonderin.
+
+Onceki 80 testin basarili sonuclari korunuyor. Bu paket yalnizca duzeltilmis
+kaynakta test harness derlemesini ve Clippy -D warnings kontrolunu calistirir.
+Kilit, kurtarma ve Keychain testlerini yeniden calistirmaz.
+
+Var olan Rust 1.98.1 kullanilir. Ilk derlemede Cargo.lock ile sabitlenmis
+bagimliliklar indirilebilir. Kurulum, sudo, Keychain erisimi, profil degisikligi
+veya guvenlik ayari degisikligi yapilmaz. Normal yayinlama kapali kalir.

@@ -66,7 +66,7 @@ enum Operation {
     Version,
     Status,
     Shutdown,
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     Config,
 }
 impl Operation {
@@ -75,7 +75,7 @@ impl Operation {
             Self::Version => "/rest/system/version",
             Self::Status => "/rest/system/status",
             Self::Shutdown => "/rest/system/shutdown",
-            #[cfg(test)]
+            #[cfg(all(test, windows))]
             Self::Config => "/rest/config",
         }
     }
@@ -138,7 +138,7 @@ impl<'a> OwnedSyncthingRest<'a> {
         self.request(Operation::Shutdown, deadline).map(|_| ())
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn test_read_config(&self) -> Result<Vec<u8>, OwnedRestError> {
         self.request(Operation::Config, Instant::now() + BUDGET)
     }
