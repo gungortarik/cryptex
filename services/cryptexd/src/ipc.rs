@@ -634,12 +634,15 @@ pub fn spawn_health_server() -> io::Result<()> {
 /// Desktop search. The caller already owns the daemon instance lock.
 pub fn spawn_retrieval_server(
     runtime_root: &Path,
+    instance: &crate::instance::InstanceLock,
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
 ) -> io::Result<()> {
     let expected_desktop = desktop_process_identity()?;
     let mut context = SearchContext {
         runtime_root: runtime_root.to_path_buf(),
+        admission: bound_runtime_admission(runtime_root, instance)?,
+        operation: None,
         store,
         environment,
         expected_desktop: Arc::new(expected_desktop),
@@ -660,11 +663,13 @@ pub fn spawn_retrieval_server(
 /// verified Desktop identity.
 pub fn spawn_daemon_ipc_server(
     runtime_root: &Path,
+    instance: &crate::instance::InstanceLock,
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
 ) -> io::Result<()> {
     spawn_daemon_ipc_server_inner(
         runtime_root,
+        instance,
         store,
         environment,
         #[cfg(windows)]
@@ -675,19 +680,22 @@ pub fn spawn_daemon_ipc_server(
 #[cfg(windows)]
 pub fn spawn_daemon_ipc_server_with_transport(
     runtime_root: &Path,
+    instance: &crate::instance::InstanceLock,
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
     transport: crate::managed_profile::worker::StatusReader,
 ) -> io::Result<()> {
-    spawn_daemon_ipc_server_inner(runtime_root, store, environment, Some(transport))
+    spawn_daemon_ipc_server_inner(runtime_root, instance, store, environment, Some(transport))
 }
 
 fn spawn_daemon_ipc_server_inner(
     runtime_root: &Path,
+    instance: &crate::instance::InstanceLock,
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
     #[cfg(windows)] transport: Option<crate::managed_profile::worker::StatusReader>,
 ) -> io::Result<()> {
+    let admission = bound_runtime_admission(runtime_root, instance)?;
     let expected_desktop = match desktop_process_identity() {
         Ok(identity) => identity,
         Err(error) => {
@@ -700,6 +708,8 @@ fn spawn_daemon_ipc_server_inner(
     };
     let mut context = SearchContext {
         runtime_root: runtime_root.to_path_buf(),
+        admission,
+        operation: None,
         store,
         environment,
         expected_desktop: Arc::new(expected_desktop),
@@ -720,6 +730,8 @@ fn spawn_daemon_ipc_server_inner(
 #[derive(Clone)]
 struct SearchContext {
     runtime_root: PathBuf,
+    admission: crate::runtime_admission::RuntimeAdmission,
+    operation: Option<crate::runtime_admission::OperationPermit>,
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
     expected_desktop: Arc<DesktopProcessIdentity>,
@@ -728,6 +740,26 @@ struct SearchContext {
     transport_status: Option<crate::managed_profile::worker::StatusReader>,
     #[cfg(test)]
     transport_device_id_override: Option<String>,
+}
+
+fn bound_runtime_admission(
+    root: &Path,
+    instance: &crate::instance::InstanceLock,
+) -> io::Result<crate::runtime_admission::RuntimeAdmission> {
+    if instance.path() != crate::paths::lock_path(root) {
+        return Err(invalid_data("IPC instance belongs to another runtime"));
+    }
+    Ok(instance.admission())
+}
+
+impl SearchContext {
+    fn admitted(&self) -> Result<Self, crate::runtime_admission::AdmissionError> {
+        let mut context = self.clone();
+        if context.operation.is_none() {
+            context.operation = Some(self.admission.enter(&self.runtime_root)?);
+        }
+        Ok(context)
+    }
 }
 
 /// Run derived catch-up off the IPC request path. Canonical capture success is
@@ -771,6 +803,7 @@ fn request_projection_sync(context: &SearchContext) {
 
 #[derive(Debug)]
 enum DerivedCatchupError {
+    RuntimeHeld,
     BrainIdentityUnavailable,
     LocalDeviceIdentityUnavailable,
     InvalidDeviceIdentity,
@@ -781,6 +814,10 @@ enum DerivedCatchupError {
 }
 
 fn synchronize_local_derived_state(context: &SearchContext) -> Result<(), DerivedCatchupError> {
+    let admitted = context
+        .admitted()
+        .map_err(|_| DerivedCatchupError::RuntimeHeld)?;
+    let context = &admitted;
     let brain = load_brain_identity(&context.runtime_root)
         .map_err(|_| DerivedCatchupError::BrainIdentityUnavailable)?;
     let identity = load_local_device_identity(&context.runtime_root, &brain.brain_id)
@@ -2069,11 +2106,40 @@ fn handle_connection_for_peer(
     if !frame.is_empty() && is_bootstrap_approval_frame(&frame) {
         return handle_bootstrap_approval_session(stream, search, peer_is_desktop, &frame);
     }
+    // Keep a lease through the actual bounded response write. Cloned worker
+    // contexts retain it even if this connection times out first.
+    let mut admitted_search = None;
     let (response_bytes, write_deadline) = if frame.is_empty() {
         return Ok(());
     } else {
         match serde_json::from_slice::<Request>(&frame) {
             Ok(request) => {
+                if peer_is_desktop
+                    && matches!(
+                        request.operation.as_str(),
+                        "content.search"
+                            | "content.timeline"
+                            | "content.event.detail"
+                            | "memory.capture"
+                            | "memory.capture_resolve"
+                            | "content.vault.rebuild"
+                            | "identity.enroll_local"
+                    )
+                    && let Some(context) = search
+                {
+                    match context.admitted() {
+                        Ok(context) => admitted_search = Some(context),
+                        Err(error) => {
+                            let response = runtime_operation_held(&request, error.code())?;
+                            return write_response(
+                                stream,
+                                &response,
+                                Instant::now() + IPC_RESPONSE_DEADLINE,
+                            );
+                        }
+                    }
+                }
+                let search = admitted_search.as_ref().or(search);
                 let write_deadline = response_write_deadline_for_operation(&request.operation);
                 let is_capture_op = matches!(
                     request.operation.as_str(),
@@ -2210,6 +2276,21 @@ fn handle_connection_for_peer(
     write_response(stream, &response_bytes, write_deadline)
 }
 
+fn runtime_operation_held(request: &Request, code: &'static str) -> io::Result<Vec<u8>> {
+    let id = Some(request.request_id.clone());
+    Ok(match request.operation.as_str() {
+        "content.search" => serde_json::to_vec(&search_held(id, code))?,
+        "content.timeline" => serde_json::to_vec(&timeline_held(id, code))?,
+        "content.event.detail" => serde_json::to_vec(&event_detail_held(id, code))?,
+        "content.vault.rebuild" => serde_json::to_vec(&vault_held(id, code))?,
+        "identity.enroll_local" => serde_json::to_vec(&enrollment_rejected(id, code))?,
+        "memory.capture" | "memory.capture_resolve" => {
+            serde_json::to_vec(&capture_rejected(id, code))?
+        }
+        _ => serde_json::to_vec(&rejected(id, code))?,
+    })
+}
+
 fn is_bootstrap_approval_frame(frame: &[u8]) -> bool {
     serde_json::from_slice::<serde_json::Value>(frame)
         .ok()
@@ -2285,6 +2366,10 @@ fn handle_bootstrap_exchange(
     peer_is_desktop: bool,
     request: BootstrapApprovalIpcRequest,
 ) -> io::Result<()> {
+    let Some(_permit) = admit_approval_operation(search, stream, &request.request_id, false)?
+    else {
+        return Ok(());
+    };
     if !peer_is_desktop
         || !approval_request_is_authorized(&request)
         || !bootstrap_exchange_request_is_well_shaped(&request)
@@ -2978,6 +3063,10 @@ fn handle_bootstrap_approval_session(
         ))?;
         return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
     }
+    let Some(permit) = admit_approval_operation(context, stream, &request.request_id, false)?
+    else {
+        return Ok(());
+    };
     let (verified, messages) = match verify_approval_prefix(&request) {
         Ok(prefix) => prefix,
         Err(error) => {
@@ -3046,6 +3135,7 @@ fn handle_bootstrap_approval_session(
         None,
     ))?;
     write_response(stream, &prepared, Instant::now() + IPC_RESPONSE_DEADLINE)?;
+    drop(permit); // Owner think-time holds no runtime or canonical admission.
 
     let followup_frame = match read_ipc_frame(
         stream,
@@ -3056,6 +3146,15 @@ fn handle_bootstrap_approval_session(
         Ok(_) => return Ok(()),
         Err(error) if error.kind() == io::ErrorKind::TimedOut => return Ok(()),
         Err(error) => return Err(error),
+    };
+    let Some(_permit) = admit_approval_operation(
+        context,
+        stream,
+        &request.request_id,
+        request.operation.starts_with("owner.security."),
+    )?
+    else {
+        return Ok(());
     };
     let followup: BootstrapApprovalIpcRequest = match serde_json::from_slice(&followup_frame) {
         Ok(request) => request,
@@ -3228,6 +3327,34 @@ fn handle_bootstrap_approval_session(
     write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)
 }
 
+fn admit_approval_operation(
+    context: &SearchContext,
+    stream: &mut Stream,
+    request_id: &str,
+    owner: bool,
+) -> io::Result<Option<crate::runtime_admission::OperationPermit>> {
+    match context.admission.enter(&context.runtime_root) {
+        Ok(permit) => Ok(Some(permit)),
+        Err(error) => {
+            let response = serde_json::to_vec(&bootstrap_approval_response(
+                Some(request_id.to_owned()),
+                false,
+                Some(error.code()),
+                if owner {
+                    "owner.security.result"
+                } else {
+                    "bootstrap.approval.result"
+                },
+                None,
+                None,
+                None,
+            ))?;
+            write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)?;
+            Ok(None)
+        }
+    }
+}
+
 fn write_owner_security_rejection(
     stream: &mut Stream,
     request_id: &str,
@@ -3284,6 +3411,9 @@ fn handle_owner_security_operation_session(
             "owner_operation_request_rejected",
         );
     }
+    let Some(permit) = admit_approval_operation(context, stream, &request.request_id, true)? else {
+        return Ok(());
+    };
     let transaction_id = request.transaction_id.as_deref().unwrap_or_default();
     let (operation, target, reason, cutoff) = match request.owner_operation.as_ref() {
         Some(OwnerSecurityOperationRequest::DeviceRestriction {
@@ -3424,6 +3554,7 @@ fn handle_owner_security_operation_session(
         Some(snapshot.clone()),
     ))?;
     write_response(stream, &prepared, Instant::now() + IPC_RESPONSE_DEADLINE)?;
+    drop(permit); // Owner think-time holds no runtime or canonical admission.
 
     let followup_frame = match read_ipc_frame(
         stream,
@@ -3434,6 +3565,15 @@ fn handle_owner_security_operation_session(
         Ok(_) => return Ok(()),
         Err(error) if error.kind() == io::ErrorKind::TimedOut => return Ok(()),
         Err(error) => return Err(error),
+    };
+    let Some(_permit) = admit_approval_operation(
+        context,
+        stream,
+        &request.request_id,
+        request.operation.starts_with("owner.security."),
+    )?
+    else {
+        return Ok(());
     };
     let followup: BootstrapApprovalIpcRequest = match serde_json::from_slice(&followup_frame) {
         Ok(request) => request,
@@ -3536,6 +3676,10 @@ fn handle_bootstrap_approval_completion(
     peer_is_desktop: bool,
     request: BootstrapApprovalIpcRequest,
 ) -> io::Result<()> {
+    let Some(_permit) = admit_approval_operation(context, stream, &request.request_id, false)?
+    else {
+        return Ok(());
+    };
     let reject = |error| {
         serde_json::to_vec(&bootstrap_approval_response(
             Some(request.request_id.clone()),
@@ -6060,8 +6204,13 @@ mod tests {
         );
         fs::remove_dir_all(fixture.root).expect("remove synthetic fixture");
 
+        let missing_root = exclusive_temp_dir("bootstrap-transport-identity-missing");
         let missing = SearchContext {
-            runtime_root: exclusive_temp_dir("bootstrap-transport-identity-missing"),
+            admission: crate::runtime_admission::RuntimeAdmission::detached_for_tests(
+                &missing_root,
+            ),
+            operation: None,
+            runtime_root: missing_root,
             store: Arc::new(FakeSecureStore::new()),
             environment: SecureStoreEnvironment::Dev,
             expected_desktop: Arc::new(
@@ -7025,6 +7174,8 @@ mod tests {
         drop(db);
 
         let context = SearchContext {
+            admission: crate::runtime_admission::RuntimeAdmission::detached_for_tests(&root),
+            operation: None,
             runtime_root: root.clone(),
             store: store.clone(),
             environment: SecureStoreEnvironment::Dev,
@@ -7046,6 +7197,390 @@ mod tests {
             store,
             context,
         }
+    }
+
+    #[test]
+    fn runtime_hold_blocks_content_mutation_enrollment_and_derived_work_but_health_stays_live() {
+        let fixture = prepared_search_fixture("runtime-admission-held");
+        fixture
+            .context
+            .admission
+            .exclusive(
+                &fixture.root,
+                Instant::now() + Duration::from_secs(2),
+                false,
+            )
+            .unwrap()
+            .finish(Some(
+                crate::runtime_admission::RuntimeHold::RecoveryRequired,
+            ));
+        for operation in [
+            "content.search",
+            "content.timeline",
+            "content.event.detail",
+            "memory.capture",
+            "memory.capture_resolve",
+            "content.vault.rebuild",
+            "identity.enroll_local",
+            "health.ping",
+            "transport.status",
+        ] {
+            let context = fixture.context.clone();
+            let (name, listener) = isolated_ipc_listener("admission-held");
+            let server = thread::spawn(move || {
+                let mut stream = listener.accept().unwrap();
+                handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+                    .unwrap();
+            });
+            let mut client = Stream::connect(name.borrow()).unwrap();
+            let mut request = search_request("desktop", vec![CAPABILITY_STATUS_READ.into()]);
+            request.operation = operation.into();
+            if matches!(operation, "health.ping" | "transport.status") {
+                request.query = None;
+            }
+            let mut bytes = serde_json::to_vec(&request).unwrap();
+            bytes.push(b'\n');
+            write_ipc_all(&mut client, &bytes, Instant::now() + Duration::from_secs(2)).unwrap();
+            let response = read_ipc_frame(
+                &mut client,
+                MAX_SEARCH_RESPONSE_BYTES,
+                Instant::now() + Duration::from_secs(2),
+            )
+            .unwrap();
+            let response: serde_json::Value = serde_json::from_slice(&response).unwrap();
+            if matches!(operation, "health.ping" | "transport.status") {
+                assert_eq!(response["accepted"], true, "{operation}: {response}");
+            } else {
+                assert!(
+                    response["holdReason"] == "runtime_recovery_required"
+                        || response["error"] == "runtime_recovery_required",
+                    "{operation}: {response}"
+                );
+                for field in ["hits", "snippet", "deviceId", "captureId", "openNotePath"] {
+                    assert!(response[field].is_null(), "held operation exposed {field}");
+                }
+            }
+            server.join().unwrap();
+        }
+        assert!(matches!(
+            synchronize_local_derived_state(&fixture.context),
+            Err(DerivedCatchupError::RuntimeHeld)
+        ));
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn real_import_and_ipc_share_instance_admission_through_commit_cleanup_and_rebuild() {
+        struct PausedStore<'a> {
+            inner: &'a FakeSecureStore,
+            destination: PathBuf,
+            once: AtomicUsize,
+            started: std::sync::mpsc::SyncSender<()>,
+            resume: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+        }
+        impl SecureStore for PausedStore<'_> {
+            fn put(
+                &self,
+                service: &str,
+                account: &str,
+                secret: &[u8],
+            ) -> crate::secure_store::SecureStoreResult<()> {
+                self.inner.put(service, account, secret)
+            }
+            fn get(
+                &self,
+                service: &str,
+                account: &str,
+            ) -> crate::secure_store::SecureStoreResult<Vec<u8>> {
+                if self.destination.is_file() && self.once.swap(1, Ordering::SeqCst) == 0 {
+                    self.started.send(()).unwrap();
+                    self.resume
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(Duration::from_secs(5))
+                        .unwrap();
+                }
+                self.inner.get(service, account)
+            }
+            fn delete(
+                &self,
+                service: &str,
+                account: &str,
+            ) -> crate::secure_store::SecureStoreResult<()> {
+                self.inner.delete(service, account)
+            }
+        }
+        let (source, receiver, negative, store) = crate::trusted_import_probe::tests::pair();
+        let report = crate::trusted_import_probe::prepare(
+            &source,
+            &receiver,
+            &negative,
+            "44444444-4444-4444-8444-444444444444",
+            &store,
+        )
+        .unwrap();
+        let paths: Vec<PathBuf> = report
+            .segments
+            .iter()
+            .map(|s| PathBuf::from(&s.relative_path))
+            .collect();
+        for path in &paths {
+            let destination = receiver.join("transport/incoming").join(path);
+            fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            fs::copy(source.join("canonical/events").join(path), destination).unwrap();
+        }
+        let store = Arc::new(store);
+        let mut instance = crate::instance::try_acquire_instance(&receiver).unwrap();
+        let context = SearchContext {
+            runtime_root: receiver.clone(),
+            admission: instance.admission(),
+            operation: None,
+            store: store.clone(),
+            environment: SecureStoreEnvironment::Dev,
+            expected_desktop: Arc::new(test_connected_process_identity()),
+            projection_sync: None,
+            transport_status: None,
+            transport_device_id_override: None,
+        };
+        let (started_send, started_recv) = sync_channel(1);
+        let (resume_send, resume_recv) = std::sync::mpsc::channel();
+        let paused = PausedStore {
+            inner: store.as_ref(),
+            destination: receiver.join("canonical/events").join(&paths[0]),
+            once: AtomicUsize::new(0),
+            started: started_send,
+            resume: std::sync::Mutex::new(resume_recv),
+        };
+        std::thread::scope(|scope| {
+            let worker = scope.spawn(|| {
+                crate::incoming_publication::publish_incoming_with_instance(
+                    &receiver,
+                    &paths,
+                    &mut instance,
+                    &paused,
+                    SecureStoreEnvironment::Dev,
+                )
+            });
+            started_recv.recv_timeout(Duration::from_secs(5)).unwrap();
+            assert!(
+                paused.destination.is_file(),
+                "canonical moves have completed, refresh has not"
+            );
+            let response =
+                content_search_ipc_round_trip(Some(context.clone()), DesktopSearchQuery::default());
+            assert!(response.hits.is_none());
+            assert_eq!(response.hold_reason.as_deref(), Some("runtime_busy"));
+            resume_send.send(()).unwrap();
+            assert_eq!(
+                worker.join().unwrap().unwrap().published_segments,
+                paths.len()
+            );
+        });
+        let response =
+            content_search_ipc_round_trip(Some(context.clone()), DesktopSearchQuery::default());
+        assert!(response.hold_reason.is_none(), "{:?}", response.hold_reason);
+        assert!(response.hits.is_some());
+        instance.drain_runtime(Duration::from_secs(2)).unwrap();
+        drop(instance);
+        drop(context);
+        for root in [source, receiver, negative] {
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn actual_response_backpressure_keeps_instance_admission_until_the_write_finishes() {
+        let mut fixture = prepared_search_fixture("runtime-response-write");
+        let instance = crate::instance::try_acquire_instance(&fixture.root).unwrap();
+        fixture.context.admission = instance.admission();
+        let event_id = "abababab-abab-4bab-8bab-abababababab";
+        append_memory_note(
+            fixture.store.as_ref(),
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &fixture.root,
+                brain_id: &fixture.brain_id,
+                device_id: &fixture.device,
+                classification: Classification::Internal,
+                text: &"w".repeat(500 * 1024),
+                event_id: Some(event_id),
+                config: &CanonicalWriterConfig::default(),
+            },
+        )
+        .unwrap();
+        synchronize_local_derived_state(&fixture.context).unwrap();
+        let (name, listener) = isolated_ipc_listener("admission-write");
+        let context = fixture.context.clone();
+        let (done_send, done_recv) = std::sync::mpsc::channel();
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().unwrap();
+            let result =
+                handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true);
+            done_send.send(result).unwrap();
+        });
+        let mut client = Stream::connect(name.borrow()).unwrap();
+        let mut request = search_request("desktop", vec![CAPABILITY_CONTENT_SEARCH.into()]);
+        request.operation = "content.event.detail".into();
+        request.query = Some(DesktopSearchQuery {
+            event_id: Some(event_id.into()),
+            ..DesktopSearchQuery::default()
+        });
+        let mut frame = serde_json::to_vec(&request).unwrap();
+        frame.push(b'\n');
+        write_ipc_all(&mut client, &frame, Instant::now() + Duration::from_secs(3)).unwrap();
+        // One actual pipe byte proves the worker completed and serialization/
+        // response writing began. Leave the large body unread to apply OS
+        // backpressure; do not simulate this with a manually held context.
+        let mut first = [0u8];
+        assert_eq!(
+            transfer_named_pipe(
+                &client,
+                None,
+                Some(&mut first),
+                Instant::now() + Duration::from_secs(3)
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(first[0], b'{');
+        assert!(
+            done_recv.try_recv().is_err(),
+            "large response must still be writing"
+        );
+        assert!(matches!(
+            fixture
+                .context
+                .admission
+                .exclusive(&fixture.root, Instant::now(), false),
+            Err(crate::runtime_admission::AdmissionError::Busy)
+        ));
+        let rest = read_ipc_frame(
+            &mut client,
+            MAX_DETAIL_RESPONSE_BYTES,
+            Instant::now() + Duration::from_secs(3),
+        )
+        .unwrap();
+        assert!(rest.len() > 500 * 1024);
+        done_recv
+            .recv_timeout(Duration::from_secs(3))
+            .unwrap()
+            .unwrap();
+        server.join().unwrap();
+        fixture
+            .context
+            .admission
+            .exclusive(
+                &fixture.root,
+                Instant::now() + Duration::from_secs(2),
+                false,
+            )
+            .unwrap()
+            .finish(None);
+        instance.drain_runtime(Duration::from_secs(2)).unwrap();
+        drop(instance);
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[test]
+    fn bounded_search_timeout_keeps_runtime_lease_until_worker_actually_exits() {
+        let fixture = prepared_search_fixture("runtime-orphan");
+        let context = fixture.context.admitted().unwrap();
+        let worker_context = context.clone();
+        let (send, recv) = std::sync::mpsc::channel();
+        let (done_send, done_recv) = std::sync::mpsc::channel();
+        let response = run_bounded_search(
+            "runtime-orphan".into(),
+            Instant::now() + Duration::from_millis(40),
+            None,
+            move || {
+                recv.recv().unwrap();
+                drop(worker_context);
+                done_send.send(()).unwrap();
+                search_held(None, "synthetic")
+            },
+        );
+        assert_eq!(
+            response.hold_reason.as_deref(),
+            Some("operation_deadline_exceeded")
+        );
+        drop(context);
+        assert!(matches!(
+            fixture
+                .context
+                .admission
+                .exclusive(&fixture.root, Instant::now(), false),
+            Err(crate::runtime_admission::AdmissionError::Busy)
+        ));
+        send.send(()).unwrap();
+        done_recv.recv_timeout(Duration::from_secs(2)).unwrap();
+        fixture
+            .context
+            .admission
+            .exclusive(
+                &fixture.root,
+                Instant::now() + Duration::from_secs(2),
+                false,
+            )
+            .unwrap()
+            .finish(None);
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[test]
+    #[cfg_attr(
+        target_os = "macos",
+        ignore = "macOS peer process-instance binding is not implemented"
+    )]
+    fn owner_review_wait_releases_admission_and_confirmation_rechecks_it() {
+        let fixture = prepared_search_fixture("owner-admission");
+        let (name, listener) = isolated_ipc_listener("owner-admission");
+        let mut context = fixture.context.clone();
+        context.expected_desktop = Arc::new(test_connected_process_identity());
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().unwrap();
+            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+                .unwrap();
+        });
+        let mut client = Stream::connect(name.borrow()).unwrap();
+        let mut prepare = approval_request("owner.security.prepare");
+        prepare.role = None;
+        prepare.transcript_messages = None;
+        prepare.transaction_id = Some("ac".repeat(32));
+        prepare.owner_operation = Some(OwnerSecurityOperationRequest::SelfRetirement);
+        let prepared = exchange_bootstrap_approval(
+            &mut client,
+            &prepare,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(prepared.accepted, "{:?}", prepared.error);
+        let exclusive = fixture
+            .context
+            .admission
+            .exclusive(
+                &fixture.root,
+                Instant::now() + Duration::from_secs(2),
+                false,
+            )
+            .unwrap();
+        let mut confirm = prepare;
+        confirm.operation = "owner.security.confirm".into();
+        confirm.owner_operation = None;
+        confirm.capability = prepared.capability;
+        confirm.approval_request_digest = prepared.approval_request_digest;
+        let response = exchange_bootstrap_approval(
+            &mut client,
+            &confirm,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert!(!response.accepted);
+        assert_eq!(response.error.as_deref(), Some("runtime_busy"));
+        exclusive.finish(None);
+        server.join().unwrap();
+        fs::remove_dir_all(fixture.root).unwrap();
     }
 
     #[test]
@@ -7430,6 +7965,8 @@ mod tests {
         let root = exclusive_temp_dir("cryptex-ipc-search-missing-brain");
         let store: Arc<dyn SecureStore> = Arc::new(FakeSecureStore::new());
         let context = SearchContext {
+            admission: crate::runtime_admission::RuntimeAdmission::detached_for_tests(&root),
+            operation: None,
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,
@@ -7464,6 +8001,8 @@ mod tests {
         write_brain_identity(&root, &brain).expect("write Brain identity");
         let store: Arc<dyn SecureStore> = Arc::new(FakeSecureStore::new());
         let context = SearchContext {
+            admission: crate::runtime_admission::RuntimeAdmission::detached_for_tests(&root),
+            operation: None,
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,
@@ -7691,6 +8230,8 @@ mod tests {
         write_brain_identity(&root, &brain).expect("write Brain identity");
         let store = Arc::new(FakeSecureStore::new());
         let context = SearchContext {
+            admission: crate::runtime_admission::RuntimeAdmission::detached_for_tests(&root),
+            operation: None,
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,

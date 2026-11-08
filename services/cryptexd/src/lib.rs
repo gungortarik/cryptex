@@ -42,6 +42,7 @@ pub mod platform;
 pub mod projection;
 pub mod recovery_store;
 pub mod replication_status;
+mod runtime_admission;
 pub mod secure_store;
 pub mod sequence_runtime;
 pub mod sequence_store;

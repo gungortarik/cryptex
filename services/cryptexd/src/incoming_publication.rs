@@ -8,10 +8,12 @@ use std::path::{Path, PathBuf};
 use cryptex_events::TrustedDaemonKeyResolver;
 
 use crate::import_staging::{ImportStagingError, ImportStagingSession};
+use crate::runtime_admission::{AdmissionError, RuntimeHold};
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 
 #[derive(Debug)]
 pub(crate) enum IncomingPublicationError {
+    Admission(AdmissionError),
     Rejected(ImportStagingError),
     /// Preparation may have reached disk, or publication may be partially
     /// visible. Preserve transaction evidence; never report a clean rollback.
@@ -23,6 +25,7 @@ pub(crate) enum IncomingPublicationError {
 impl std::fmt::Display for IncomingPublicationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Admission(error) => write!(f, "incoming admission refused: {error}"),
             Self::Rejected(error) => write!(f, "incoming import rejected: {error}"),
             Self::RecoveryRequired(error) => {
                 write!(f, "incoming import requires recovery: {error}")
@@ -63,9 +66,9 @@ pub(crate) fn publish_incoming<S: SecureStore + ?Sized>(
 }
 
 /// Long-lived daemon integration must reuse its existing instance ownership.
-/// The caller must retain the startup/recovery admission barrier and turn any
-/// recovery-required result into a runtime-wide hold before serving readers.
-/// This entry point is not connected to a live controller yet.
+/// Reuses that instance's shared IPC/derived-worker admission barrier. It drains
+/// ordinary work before staging and latches failure before reopening admission.
+/// This entry point is not connected to a transport controller yet.
 /// Exclusive borrowing also prevents two import/recovery operations from
 /// concurrently using one instance guard through this safe-Rust API.
 pub(crate) fn publish_incoming_with_instance<S: SecureStore + ?Sized>(
@@ -75,7 +78,53 @@ pub(crate) fn publish_incoming_with_instance<S: SecureStore + ?Sized>(
     store: &S,
     environment: SecureStoreEnvironment,
 ) -> Result<IncomingPublicationReport, IncomingPublicationError> {
-    use IncomingPublicationError::{CommittedNeedsRebuild, RecoveryRequired, Rejected};
+    publish_incoming_until(
+        root,
+        paths,
+        instance,
+        store,
+        environment,
+        std::time::Instant::now() + std::time::Duration::from_secs(10),
+    )
+}
+
+fn publish_incoming_until<S: SecureStore + ?Sized>(
+    root: &Path,
+    paths: &[PathBuf],
+    instance: &mut crate::instance::InstanceLock,
+    store: &S,
+    environment: SecureStoreEnvironment,
+    deadline: std::time::Instant,
+) -> Result<IncomingPublicationReport, IncomingPublicationError> {
+    if instance.path() != crate::paths::lock_path(root) {
+        return Err(IncomingPublicationError::Rejected(
+            ImportStagingError::Invalid("publication instance belongs to another runtime".into()),
+        ));
+    }
+    let exclusive = instance
+        .admission()
+        .exclusive(root, deadline, false)
+        .map_err(IncomingPublicationError::Admission)?;
+    let result = publish_exclusively(root, paths, instance, store, environment);
+    exclusive.finish(match &result {
+        Ok(_) | Err(IncomingPublicationError::Rejected(_)) => None,
+        Err(IncomingPublicationError::RecoveryRequired(_)) => Some(RuntimeHold::RecoveryRequired),
+        Err(IncomingPublicationError::CommittedNeedsRebuild(_)) => {
+            Some(RuntimeHold::DerivedRebuildRequired)
+        }
+        Err(IncomingPublicationError::Admission(_)) => Some(RuntimeHold::RecoveryRequired),
+    });
+    result
+}
+
+fn publish_exclusively<S: SecureStore + ?Sized>(
+    root: &Path,
+    paths: &[PathBuf],
+    instance: &mut crate::instance::InstanceLock,
+    store: &S,
+    environment: SecureStoreEnvironment,
+) -> Result<IncomingPublicationReport, IncomingPublicationError> {
+    use IncomingPublicationError::{RecoveryRequired, Rejected};
     let _pins = ImportStagingSession::pin_existing_runtime(root).map_err(Rejected)?;
     if instance.path() != crate::paths::lock_path(root) {
         return Err(Rejected(ImportStagingError::Invalid(
@@ -170,27 +219,68 @@ pub(crate) fn publish_incoming_with_instance<S: SecureStore + ?Sized>(
         environment,
     )
     .map_err(RecoveryRequired)?;
-    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
-        root,
-        &brain,
-        store,
-        environment,
-    )
-    .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
+    rebuild_imported_state(root, &brain, store, environment)?;
+    Ok(IncomingPublicationReport {
+        published_segments: count,
+        published_events: events,
+        identical_segments: identical,
+    })
+}
+
+fn rebuild_imported_state<S: SecureStore + ?Sized>(
+    root: &Path,
+    brain: &str,
+    store: &S,
+    environment: SecureStoreEnvironment,
+) -> Result<(), IncomingPublicationError> {
+    use IncomingPublicationError::CommittedNeedsRebuild;
+    let resolver =
+        crate::local_device_identity::LocalDeviceKeyResolver::load(root, brain, store, environment)
+            .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
     let anchor = resolver
         .local_trust_anchor()
         .ok_or_else(|| CommittedNeedsRebuild("local trust anchor unavailable".into()))?;
     let mut db = cryptex_projection::ProjectionDb::open_or_create(root)
         .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
     crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
-        root, &brain, &anchor, &mut db,
+        root, brain, &anchor, &mut db,
     )
     .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
-    Ok(IncomingPublicationReport {
-        published_segments: count,
-        published_events: events,
-        identical_segments: identical,
-    })
+    Ok(())
+}
+
+/// Internal recovery only: no renderer/CLI/autonomous recovery entry point.
+/// A failed repair keeps admission closed; only complete verified recovery plus
+/// cutoff-aware M3/M4 rebuild permits ordinary operations to resume.
+pub(crate) fn recover_live_with_instance<S: SecureStore + ?Sized>(
+    root: &Path,
+    instance: &mut crate::instance::InstanceLock,
+    store: &S,
+    environment: SecureStoreEnvironment,
+) -> Result<(), IncomingPublicationError> {
+    let exclusive = instance
+        .admission()
+        .exclusive(
+            root,
+            std::time::Instant::now() + std::time::Duration::from_secs(10),
+            true,
+        )
+        .map_err(IncomingPublicationError::Admission)?;
+    crate::import_staging::recover_import_staging_with_local_state(
+        root,
+        instance,
+        store,
+        environment,
+    )
+    .map_err(IncomingPublicationError::RecoveryRequired)?;
+    let brain = crate::identity_runtime::load_brain_identity(root)
+        .map_err(|error| IncomingPublicationError::CommittedNeedsRebuild(error.to_string()))?;
+    if let Err(error) = rebuild_imported_state(root, &brain.brain_id, store, environment) {
+        exclusive.finish(Some(RuntimeHold::DerivedRebuildRequired));
+        return Err(error);
+    }
+    exclusive.finish(None);
+    Ok(())
 }
 
 #[cfg(test)]

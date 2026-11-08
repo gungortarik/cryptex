@@ -1,6 +1,7 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use fs2::FileExt;
 
@@ -10,18 +11,40 @@ use crate::status::{read_status_pid, read_status_recorded_pid};
 
 /// Exclusive single-instance lock for one local runtime context.
 pub struct InstanceLock {
-    _file: File,
+    _file: Arc<File>,
     path: PathBuf,
     pid: u32,
+    admission: crate::runtime_admission::RuntimeAdmission,
 }
 
 impl InstanceLock {
+    /// Stop ordinary admission and wait for actual workers/response writes,
+    /// rather than treating a request timeout as completion. A failed drain is
+    /// an attention outcome; Drop still retains the OS lock in active leases.
+    pub fn drain_runtime(&self, timeout: std::time::Duration) -> LifecycleResult<()> {
+        let deadline = std::time::Instant::now()
+            .checked_add(timeout)
+            .ok_or_else(|| LifecycleError::Attention("invalid runtime drain deadline".into()))?;
+        self.admission
+            .stop_and_drain(deadline)
+            .map_err(|error| LifecycleError::Attention(error.to_string()))
+    }
+
+    pub(crate) fn admission(&self) -> crate::runtime_admission::RuntimeAdmission {
+        self.admission.clone()
+    }
     pub fn path(&self) -> &Path {
         &self.path
     }
 
     pub fn pid(&self) -> u32 {
         self.pid
+    }
+}
+
+impl Drop for InstanceLock {
+    fn drop(&mut self) {
+        self.admission.stop();
     }
 }
 
@@ -63,10 +86,14 @@ pub fn try_acquire_instance(runtime_root: &Path) -> LifecycleResult<InstanceLock
     writeln!(file, "{pid}")?;
     file.sync_all()?;
 
+    let file = Arc::new(file);
+    let admission =
+        crate::runtime_admission::RuntimeAdmission::new(runtime_root, Arc::downgrade(&file));
     Ok(InstanceLock {
         _file: file,
         path,
         pid,
+        admission,
     })
 }
 

@@ -815,15 +815,16 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             if let Some(worker) = &transport {
                 cryptexd::ipc::spawn_daemon_ipc_server_with_transport(
                     &opts.runtime_root,
+                    &lock,
                     std::sync::Arc::new(cryptexd::WindowsCredentialStore::new()),
                     SecureStoreEnvironment::Dev,
                     worker.status_reader(),
                 )?;
             } else {
-                spawn_platform_ipc_server(&opts.runtime_root)?;
+                spawn_platform_ipc_server(&opts.runtime_root, &lock)?;
             }
             #[cfg(not(windows))]
-            spawn_platform_ipc_server(&opts.runtime_root)?;
+            spawn_platform_ipc_server(&opts.runtime_root, &lock)?;
             let report = LifecycleReport::active_holder(
                 &opts.runtime_root,
                 lock.pid(),
@@ -850,6 +851,7 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
                 }
             }
 
+            lock.drain_runtime(Duration::from_secs(40))?;
             #[cfg(windows)]
             if let Some(worker) = &mut transport {
                 worker
@@ -858,6 +860,11 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
             }
             drop(lock);
             let observation = observe_instance(&opts.runtime_root)?;
+            if observation.lock_held {
+                return Err(LifecycleError::Attention(
+                    "runtime lock remains held after shutdown drain".into(),
+                ));
+            }
             let release_report = LifecycleReport::from_observation(
                 &opts.runtime_root,
                 &observation,
@@ -917,25 +924,36 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
 }
 
 #[cfg(windows)]
-fn spawn_platform_ipc_server(runtime_root: &Path) -> std::io::Result<()> {
+fn spawn_platform_ipc_server(
+    runtime_root: &Path,
+    instance: &cryptexd::instance::InstanceLock,
+) -> std::io::Result<()> {
     cryptexd::ipc::spawn_daemon_ipc_server(
         runtime_root,
+        instance,
         std::sync::Arc::new(cryptexd::WindowsCredentialStore::new()),
         SecureStoreEnvironment::Dev,
     )
 }
 
 #[cfg(target_os = "macos")]
-fn spawn_platform_ipc_server(runtime_root: &Path) -> std::io::Result<()> {
+fn spawn_platform_ipc_server(
+    runtime_root: &Path,
+    instance: &cryptexd::instance::InstanceLock,
+) -> std::io::Result<()> {
     cryptexd::ipc::spawn_daemon_ipc_server(
         runtime_root,
+        instance,
         std::sync::Arc::new(cryptexd::MacosKeychainStore::new()),
         SecureStoreEnvironment::Dev,
     )
 }
 
 #[cfg(not(any(windows, target_os = "macos")))]
-fn spawn_platform_ipc_server(_runtime_root: &Path) -> std::io::Result<()> {
+fn spawn_platform_ipc_server(
+    _runtime_root: &Path,
+    _instance: &cryptexd::instance::InstanceLock,
+) -> std::io::Result<()> {
     cryptexd::ipc::spawn_health_server()
 }
 

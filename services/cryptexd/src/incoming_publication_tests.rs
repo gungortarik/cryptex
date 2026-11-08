@@ -505,42 +505,157 @@ fn reuses_matching_instance_and_refuses_a_foreign_instance_without_staging() {
     fixture.assert_clean();
 }
 
+struct FailAfterCommit<'a> {
+    inner: &'a crate::FakeSecureStore,
+    destination: PathBuf,
+}
+impl SecureStore for FailAfterCommit<'_> {
+    fn put(
+        &self,
+        service: &str,
+        account: &str,
+        secret: &[u8],
+    ) -> crate::secure_store::SecureStoreResult<()> {
+        self.inner.put(service, account, secret)
+    }
+    fn get(&self, service: &str, account: &str) -> crate::secure_store::SecureStoreResult<Vec<u8>> {
+        if self.destination.exists() {
+            return Err(crate::SecureStoreError::Platform {
+                op: "test_refresh",
+                code: 1,
+            });
+        }
+        self.inner.get(service, account)
+    }
+    fn delete(&self, service: &str, account: &str) -> crate::secure_store::SecureStoreResult<()> {
+        self.inner.delete(service, account)
+    }
+}
+
+#[test]
+fn live_commit_rebuild_failure_holds_all_clones_until_verified_repair() {
+    let fixture = Fixture::new();
+    let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
+    let gate = instance.admission();
+    let failing = FailAfterCommit {
+        inner: &fixture.store,
+        destination: fixture
+            .receiver
+            .join("canonical/events")
+            .join(&fixture.paths[0]),
+    };
+    assert!(matches!(
+        publish_incoming_with_instance(
+            &fixture.receiver,
+            &fixture.paths,
+            &mut instance,
+            &failing,
+            ENV
+        ),
+        Err(IncomingPublicationError::CommittedNeedsRebuild(_))
+    ));
+    let committed = event_hashes(&fixture.receiver);
+    assert!(matches!(
+        gate.enter(&fixture.receiver),
+        Err(AdmissionError::Held(RuntimeHold::DerivedRebuildRequired))
+    ));
+    assert!(matches!(
+        publish_incoming_with_instance(
+            &fixture.receiver,
+            &fixture.paths,
+            &mut instance,
+            &fixture.store,
+            ENV
+        ),
+        Err(IncomingPublicationError::Admission(AdmissionError::Held(_)))
+    ));
+    assert!(recover_live_with_instance(&fixture.receiver, &mut instance, &failing, ENV).is_err());
+    assert!(gate.enter(&fixture.receiver).is_err());
+    recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV).unwrap();
+    drop(gate.enter(&fixture.receiver).unwrap());
+    assert_eq!(event_hashes(&fixture.receiver), committed);
+    let replay = publish_incoming_with_instance(
+        &fixture.receiver,
+        &fixture.paths,
+        &mut instance,
+        &fixture.store,
+        ENV,
+    )
+    .unwrap();
+    assert_eq!(
+        (replay.published_segments, replay.identical_segments),
+        (0, 1)
+    );
+    drop(instance);
+    fixture.assert_clean();
+}
+
+#[test]
+fn live_timeout_is_nonmutating_and_recovery_failure_latches_before_new_operations() {
+    let fixture = Fixture::new();
+    let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
+    let gate = instance.admission();
+    let ordinary = gate.enter(&fixture.receiver).unwrap();
+    let before = event_hashes(&fixture.receiver);
+    assert!(matches!(
+        publish_incoming_until(
+            &fixture.receiver,
+            &fixture.paths,
+            &mut instance,
+            &fixture.store,
+            ENV,
+            std::time::Instant::now()
+        ),
+        Err(IncomingPublicationError::Admission(AdmissionError::Busy))
+    ));
+    assert_eq!(event_hashes(&fixture.receiver), before);
+    assert!(!fixture.receiver.join("canonical/import-staging").exists());
+    drop(ordinary);
+    let journal = fixture.receiver.join("canonical/import-journal");
+    fs::create_dir_all(&journal).unwrap();
+    let corrupt = journal.join("unknown.json");
+    fs::write(&corrupt, b"synthetic invalid recovery evidence").unwrap();
+    assert!(matches!(
+        publish_incoming_with_instance(
+            &fixture.receiver,
+            &fixture.paths,
+            &mut instance,
+            &fixture.store,
+            ENV
+        ),
+        Err(IncomingPublicationError::RecoveryRequired(_))
+    ));
+    assert!(matches!(
+        gate.enter(&fixture.receiver),
+        Err(AdmissionError::Held(RuntimeHold::RecoveryRequired))
+    ));
+    assert!(
+        recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV).is_err()
+    );
+    assert!(gate.enter(&fixture.receiver).is_err());
+    assert_eq!(event_hashes(&fixture.receiver), before);
+    // Simulate operator repair of only the injected synthetic evidence.
+    fs::remove_file(corrupt).unwrap();
+    recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV).unwrap();
+    drop(gate.enter(&fixture.receiver).unwrap());
+    assert_eq!(event_hashes(&fixture.receiver), before);
+    assert!(matches!(
+        publish_incoming_with_instance(
+            &fixture.receiver,
+            &[PathBuf::from("../invalid.seg")],
+            &mut instance,
+            &fixture.store,
+            ENV
+        ),
+        Err(IncomingPublicationError::Rejected(_))
+    ));
+    drop(gate.enter(&fixture.receiver).unwrap());
+    assert_eq!(event_hashes(&fixture.receiver), before);
+    drop(instance);
+}
+
 #[test]
 fn post_commit_refresh_failure_never_reports_a_clean_rejection() {
-    struct FailAfterCommit<'a> {
-        inner: &'a crate::FakeSecureStore,
-        destination: PathBuf,
-    }
-    impl SecureStore for FailAfterCommit<'_> {
-        fn put(
-            &self,
-            service: &str,
-            account: &str,
-            secret: &[u8],
-        ) -> crate::secure_store::SecureStoreResult<()> {
-            self.inner.put(service, account, secret)
-        }
-        fn get(
-            &self,
-            service: &str,
-            account: &str,
-        ) -> crate::secure_store::SecureStoreResult<Vec<u8>> {
-            if self.destination.exists() {
-                return Err(crate::SecureStoreError::Platform {
-                    op: "test_refresh",
-                    code: 1,
-                });
-            }
-            self.inner.get(service, account)
-        }
-        fn delete(
-            &self,
-            service: &str,
-            account: &str,
-        ) -> crate::secure_store::SecureStoreResult<()> {
-            self.inner.delete(service, account)
-        }
-    }
     let fixture = Fixture::new();
     let destination = fixture
         .receiver
