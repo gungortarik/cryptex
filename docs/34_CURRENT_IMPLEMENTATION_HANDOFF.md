@@ -7,9 +7,13 @@ four-message transcript again through **Resume a signed pairing**. The UI
 reported canonical pairing recorded. A before/after SHA-256 comparison of
 canonical event files (excluding lock files and the derived writer tip)
 returned unchanged files. The transaction remained `anchored` with exactly one
-append attempt. Initiator restart/replay is a scoped PASS. Repeat this check
-on the responder profile, then proceed to native nonzero-cutoff restriction
-review. The owner has supplied the PowerShell result screenshot in this chat.
+append attempt. The owner then repeated the reopen/replay comparison on the
+responder and supplied the same `True / anchored / 1` result. Both role checks
+passed. Evidence: [two-profile pairing and replay](../evidence/m8/m8-windows-two-profile-pairing-replay-20261107.md).
+Next prepare native approved-peer restriction review at a nonzero exact cutoff.
+First establish a peer event in the reviewing profile through a supported
+daemon import/replication route. Empty-history first pairing and append-unknown
+crash recovery remain separate open items.
 
 ## Current Windows pilot checkpoint (2026-11-06)
 

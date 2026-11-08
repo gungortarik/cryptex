@@ -2,8 +2,11 @@
 
 **2026-11-07 update:** Initiator reopen and replay of the exact same four
 messages passed. Canonical event file hashes stayed unchanged and its journal
-remained `anchored` with one append attempt. Next perform the same responder
-reopen/replay comparison. Native restriction review follows that check.
+remained `anchored` with one append attempt. Responder reopen/replay subsequently
+returned the same result. Both role checks passed. See
+[the native evidence](../evidence/m8/m8-windows-two-profile-pairing-replay-20261107.md).
+Next prepare native nonzero-cutoff approved-peer restriction review, including
+verified peer-event availability through a supported daemon import route.
 
 **2026-11-06 update:** The responder accepted the original signed prefix and
 signed message four. The owner submitted the complete transcript to record
@@ -22,7 +25,8 @@ stopping point below is historical.
 ## Status
 
 **M8 remains in progress.** Both local pairing records passed the UI and
-two-profile journal check. Restart, platform and replication gates remain
+two-profile journal check, followed by unchanged canonical event hashes after
+reopen/replay on each role. Crash recovery, platform and replication gates remain
 open. The dated update above supersedes the older
 failure and stopping-point sections below.
 

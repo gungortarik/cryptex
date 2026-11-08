@@ -57,17 +57,18 @@ recovery. The approved-peer UI and native recovery flows remain unverified.
 Details and exact verification scope are in the
 [owner-review rendering evidence](evidence/m8/m8-windows-owner-review-rendering-20261103.md).
 
-**Next continuation point (2026-11-06):** responder verification and signing
+**Next continuation point (2026-11-07):** responder verification and signing
 succeeded with the original signed inputs. The resumed responder on build
 `19d94b1` reported pairing recorded in canonical local history. The subsequent
 initiator attempt displayed the same success message. The owner confirmed
-both journals show `anchored` and four messages for that transaction. Next
-verify native restart reconciliation and duplicate-safe completion.
+both journals show `anchored` and four messages for that transaction. Both
+profiles then passed reopen/replay with unchanged event-file hashes and one
+append attempt each. See [native replay evidence](evidence/m8/m8-windows-two-profile-pairing-replay-20261107.md).
 Follow [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](docs/M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
 and the latest section in the [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md);
-retain the four signed messages for the duplicate-safe completion check.
-Then return to the Windows owner restriction
-review at a nonzero cutoff and native restart/recovery flow. Do not test
+Next prepare the Windows owner restriction review at a nonzero cutoff using
+a peer event verified through a supported daemon import/replication route.
+Native append-unknown crash recovery remains open. Do not test
 permanent confirmation on the owner's current device. The two pre-fix review
 attempts left owner-pending journal entries in their disposable profile after
 `Ctrl+R` discarded the renderer handles; that profile was not reused. Then
