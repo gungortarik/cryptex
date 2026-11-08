@@ -1,6 +1,41 @@
 # 34 — Current Implementation Handoff
 
+## Trusted-import relay and VM full-policy checks passed (2026-11-08)
+
+The owner returned `GUVEN-SONUC.zip` for probe
+`c223e671-3c5e-413d-a82c-419ed88a508f`, retained native session
+`87a57c018d63481cb71a9a0f6abdd1f1`. Its single bounded JSON receipt matches
+the exact host settings, native peer IDs, sender completion, and retained source
+ZIP: 4,120 bytes, SHA-256
+`04BF510CCD9A6284DF2B2AA27E9107AB4D2254BB6F13F036882AB438DF2BADD4`.
+
+The actual VM daemon accepted one trusted segment containing three events,
+verified the genuine unapproved fixture signature and rejected its admission,
+rejected the corrupted incoming copy, and accepted the restored trusted batch
+again. The runner reports unchanged canonical event hashes and approval journal,
+no unknown canonical device directory, and clean native shutdown. Both positive
+reports remain `validated_only`, `published: false`.
+
+Host evidence records the pinned VM carrier connecting from
+`192.168.177.131:55500` over TLS 1.3 at 15:49:43 local / 20:49:43 UTC and
+clean sender exit at 15:49:46 local / 20:49:46 UTC. The VM receipt timestamp is
+20:49:47.7054539 UTC. The exact owned sender executable is no longer running.
+See [actual receipt and limits](../evidence/m8/m8-trusted-import-relay-20261108.md#actual-windows-vm-result).
+
+**Continuation:** basic random transport, signed transport, and this full-policy
+validation relay are complete; do not repeat their copy/paste setup or pairing.
+No VM action or sender needs to remain active for this checkpoint. Preserve the
+two original VM profiles and public transcripts. Next engineering gate is the
+normal managed transport-to-staging/canonical-publication path, subject to the
+authoritative specification/ADR and its existing review gates. This test used
+two owner-approved logical Cryptex profiles inside one VM with a host relay;
+it does not establish independent OS-level Cryptex enrollment or durable import.
+Managed-adapter integration, canonical publication, macOS, power-loss and
+independent security review remain open; M8 is not complete.
+
 ## Trusted preparation received; full-policy relay test ready (2026-11-08)
+
+Historical package checkpoint; actual VM results are recorded above.
 
 The owner returned `GUVEN-HAZIRLIK.zip` for probe
 `c223e671-3c5e-413d-a82c-419ed88a508f`. The inspected 4,120-byte archive has

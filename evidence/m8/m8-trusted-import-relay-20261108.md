@@ -80,7 +80,7 @@ is the existing preparation implementation; its production policy is unchanged.
 Mocked orchestration and local native regression do not establish the final VM
 policy result.
 
-## Resume / outstanding evidence
+## Package handoff before the returned result
 
 Run the host sender with the retained session, `vm-public-request.json`, package
 directory `trusted-package-c223e6713c5e413da82c419ed88a508f`, and
@@ -88,9 +88,54 @@ directory `trusted-package-c223e6713c5e413da82c419ed88a508f`, and
 `GUVEN-TEST.cmd`, and returns `GUVEN-SONUC.zip` or `AKTARIM-HATA.zip`.
 Recheck sender readiness after any restart or expired wait window.
 
-Final VM policy receipt is pending. Match its session/probe, peer IDs,
+At this package checkpoint the final VM policy receipt was pending. Match its session/probe, peer IDs,
 4,120-byte payload hash, clean shutdown, all policy/no-change booleans, and
 `validated_only`/publication-false results to settings and sender completion.
 VM no-change fields are runner observations, not remote attestation.
 Normal publication, managed-adapter integration, macOS, power-loss testing and
 independent review remain separate open gates.
+
+## Actual Windows VM result
+
+The owner subsequently returned `GUVEN-SONUC.zip`. SHA-256:
+`31F2D333C9683229075F9619D6F6E4D36B0B46C5E50E469BD4A05C31B61B63BF`.
+The archive contains exactly one `trusted-import-result.json` (2,004 bytes),
+collected at `2026-11-08T20:49:47.7054539Z`.
+
+The agent compared the receipt to the exact schema-3 package settings, retained
+VM public request, sender completion and current retained relay source ZIP.
+Session/probe/native sender/native receiver, payload length and payload digest
+all match the values above. The original Downloads preparation ZIP was no longer
+present at this later check; the retained relay source still matches the pinned
+original digest and 4,120-byte length. No private runtime/configuration or signed
+event payload is committed with this evidence.
+
+Observed result:
+
+| Check | Result |
+| --- | --- |
+| Native receipt | `received_hash_match`, clean shutdown |
+| Trusted batch | `validated_only`, one segment, three events |
+| Genuine unapproved fixture signature | Verified |
+| Unapproved signer admission | Rejected |
+| Corrupted incoming copy | Rejected |
+| Restored batch repeated | `validated_only`, one segment, three events |
+| Canonical event hashes | Unchanged |
+| Approval journal | Unchanged |
+| Unknown canonical device directory | Absent |
+| Publication | False in policy, positive and repeat reports |
+
+The sender receipt independently records `peer_completion_observed`, the same
+session/payload digest, and clean shutdown. The host native log records the
+pinned VM device connecting from `192.168.177.131:55500` to
+`192.168.177.1:1393` at `2026-11-08 15:49:43` local (20:49:43 UTC), using
+TLS 1.3 / `TLS_AES_128_GCM_SHA256`. The peer reported native shutdown and the
+host exited at 15:49:46 local (20:49:46 UTC). No process remains for the exact
+owned sender executable.
+
+This closes the expected native relay/full-policy validation probe. The VM
+policy/no-change booleans are observations from the shipped runner, not remote
+attestation. Both canonical Cryptex profiles were in the same VM; the host was
+the carrier relay. No durable canonical import, normal managed-adapter flow,
+independent OS-level Cryptex enrollment, macOS parity, power-loss result or
+independent security review is established. Existing open release gates remain.
