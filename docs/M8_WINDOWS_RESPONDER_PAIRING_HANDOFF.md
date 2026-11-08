@@ -1,5 +1,10 @@
 # M8 Windows responder pairing handoff — 2026-11-05
 
+**2026-11-07 update:** Initiator reopen and replay of the exact same four
+messages passed. Canonical event file hashes stayed unchanged and its journal
+remained `anchored` with one append attempt. Next perform the same responder
+reopen/replay comparison. Native restriction review follows that check.
+
 **2026-11-06 update:** The responder accepted the original signed prefix and
 signed message four. The owner submitted the complete transcript to record
 local trust and initially received a generic rejection. After a public test

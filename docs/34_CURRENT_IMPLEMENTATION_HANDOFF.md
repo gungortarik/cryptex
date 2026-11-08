@@ -1,5 +1,16 @@
 # 34 — Current Implementation Handoff
 
+## Latest native replay check (2026-11-07)
+
+The owner reopened the initiator on build `19d94b1` and submitted the original
+four-message transcript again through **Resume a signed pairing**. The UI
+reported canonical pairing recorded. A before/after SHA-256 comparison of
+canonical event files (excluding lock files and the derived writer tip)
+returned unchanged files. The transaction remained `anchored` with exactly one
+append attempt. Initiator restart/replay is a scoped PASS. Repeat this check
+on the responder profile, then proceed to native nonzero-cutoff restriction
+review. The owner has supplied the PowerShell result screenshot in this chat.
+
 ## Current Windows pilot checkpoint (2026-11-06)
 
 The responder journal showed four verified messages, state `transcript_ready`,
