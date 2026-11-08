@@ -70,6 +70,26 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
 }
 
 fn run_replication(args: &[String]) -> Result<(), LifecycleError> {
+    if args.first().is_some_and(|arg| arg == "validate-incoming") {
+        let [_, root_flag, root, env_flag, environment, paths @ ..] = args else {
+            return Err(LifecycleError::Usage("replication validate-incoming requires --runtime-root <path> --environment <dev|prod> <relative-segment>...".into()));
+        };
+        if root_flag != "--runtime-root" || env_flag != "--environment" || paths.is_empty() {
+            return Err(LifecycleError::Usage(
+                "invalid validate-incoming arguments".into(),
+            ));
+        }
+        let environment = match environment.as_str() {
+            "dev" => SecureStoreEnvironment::Dev,
+            "prod" => SecureStoreEnvironment::Prod,
+            _ => {
+                return Err(LifecycleError::Usage(
+                    "environment must be dev or prod".into(),
+                ));
+            }
+        };
+        return validate_incoming_with_platform_store(Path::new(root), paths, environment);
+    }
     let [command, flag, value] = args else {
         return Err(LifecycleError::Usage(
             "replication status requires an explicit --runtime-root <app-data-path>".into(),
@@ -86,6 +106,37 @@ fn run_replication(args: &[String]) -> Result<(), LifecycleError> {
         .map_err(|_| LifecycleError::Attention("cannot serialize replication status".into()))?;
     println!("{json}");
     Ok(())
+}
+
+fn validate_incoming_with_platform_store(
+    root: &Path,
+    paths: &[String],
+    environment: SecureStoreEnvironment,
+) -> Result<(), LifecycleError> {
+    #[cfg(windows)]
+    let store = cryptexd::WindowsCredentialStore::new();
+    #[cfg(target_os = "macos")]
+    let store = cryptexd::MacosKeychainStore::new();
+    #[cfg(any(windows, target_os = "macos"))]
+    {
+        let paths = paths.iter().map(PathBuf::from).collect::<Vec<_>>();
+        let report =
+            cryptexd::incoming_validation::validate_incoming(root, &paths, &store, environment)
+                .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+        println!(
+            "{}",
+            serde_json::to_string(&report)
+                .map_err(|error| LifecycleError::Attention(error.to_string()))?
+        );
+        Ok(())
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = (root, paths, environment);
+        Err(LifecycleError::Usage(
+            "incoming validation requires Windows or macOS secure storage".into(),
+        ))
+    }
 }
 
 const PILOT_RUNTIME_MARKER: &str = "m0-native-desktop-runtime-v1\n";
@@ -1067,6 +1118,7 @@ fn usage_text() -> String {
         "  cryptexd",
         "  cryptexd identity enroll-local --runtime-root <app-data-path> --environment <dev|prod>",
         "  cryptexd replication status --runtime-root <app-data-path> (read-only metadata diagnostics)",
+        "  cryptexd replication validate-incoming --runtime-root <app-data-path> --environment <dev|prod> <relative-segment>... (stages, validates, discards)",
         "  cryptexd pilot-fixture timeline-v1 --runtime-root <fresh-pilot-path> --confirm-isolated-pilot",
         "  cryptexd pilot-transport --confirm-isolated-pilot <fresh-marked-root> <pinned-package-dir> <api-port> <sync-port> (Windows)",
         "  cryptexd lifecycle status [--runtime-root <path>]",
@@ -1089,6 +1141,35 @@ fn usage_text() -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn incoming_validation_requires_explicit_environment_and_nonempty_batch() {
+        for args in [
+            vec!["replication", "validate-incoming"],
+            vec![
+                "replication",
+                "validate-incoming",
+                "--runtime-root",
+                "unused",
+                "--environment",
+                "dev",
+            ],
+            vec![
+                "replication",
+                "validate-incoming",
+                "--runtime-root",
+                "unused",
+                "--environment",
+                "unknown",
+                "segment",
+            ],
+        ] {
+            assert!(matches!(
+                super::run(args.into_iter().map(String::from).collect()),
+                Err(cryptexd::LifecycleError::Usage(_))
+            ));
+        }
+    }
+
     fn managed_args() -> Vec<String> {
         vec![
             "--hold-ms".into(),

@@ -1,5 +1,19 @@
 # 34 — Current Implementation Handoff
 
+## Incoming-validation integration (2026-11-07)
+
+Added `cryptexd replication validate-incoming --runtime-root <absolute-path>
+--environment <dev|prod> <relative-segment>...`. It exercises bounded staging,
+local secure-store trust, the existing read-only projection/retrieval gate and
+post-import policy verification, then discards staging. Its report explicitly
+uses `validated_only` and `published: false`. Five library tests and one binary
+argument test passed, along with strict Clippy and formatting checks.
+
+The publisher remains behind its documented recovery/durability activation
+gates. The native nonzero-cutoff restriction test still requires a peer's sealed
+stream to reach the reviewing profile through verified daemon publication.
+See [entry-point evidence and next prerequisites](../evidence/m8/m8-incoming-validation-entrypoint-20261107.md).
+
 ## Latest native replay check (2026-11-07)
 
 The owner reopened the initiator on build `19d94b1` and submitted the original
