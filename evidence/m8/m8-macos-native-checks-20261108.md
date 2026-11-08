@@ -100,3 +100,23 @@ inspection. Match source commit/digest and Mac architecture/build to the outgoin
 package/receipt. Distinguish build, tests, Clippy and missing tools. Confirm every
 selected group actually ran with nonzero test count. Do not treat a summary-only
 success as independent review or infer transport/publication from these groups.
+
+## Exact outgoing package binding
+
+Built and verified after committing the runner:
+
+- Source commit: `74c6c400d5ff9229625c0397dab5e3ef4f8344ab`.
+- Embedded `source.zip` SHA-256:
+  `6c03ac3629aec97c1904e8a216a53e21e5356ec8459fbc80b07539ad011ae771`.
+- Outgoing `cryptex-mac-test-20261108.zip`: 2,266,096 bytes; SHA-256
+  `02DE6B1D58A7209885C1E3EE3C346BD835B8614F168AC6CF56245EBF6B9AB110`.
+- Outer five-member allowlist, contents and Unix modes verified by the packager;
+  inner tracked-source paths/symlink refusal and expansion bound verified.
+- Runner Bash syntax and non-Mac refusal passed. The exact pinned Cargo
+  `--offline --locked --color never ... --no-run` argument shape was accepted
+  by the host toolchain; that is not a Mac build result.
+
+Expected return `MAC-TEST-SONUC.zip` contains `result.txt` and only created
+members of `build.log`, `instance.log`, `staging.log`, `incoming.log`,
+`trusted.log`, `keychain.log`, `clippy.log`. Metadata may be present even when
+compilation fails and no test group ran. Actual Mac execution remains pending.
