@@ -435,9 +435,14 @@ mod tests {
         let target = receiver.join("transport/incoming").join(&relative);
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         fs::copy(negative.join("canonical/events").join(&relative), &target).unwrap();
-        assert!(
+        let rejected =
             crate::incoming_validation::validate_incoming(&receiver, &[relative], &store, ENV)
-                .is_err()
+                .unwrap_err();
+        assert!(
+            rejected
+                .to_string()
+                .contains("retrieval safety gate is held: Some(CanonicalVerificationUnavailable)"),
+            "{rejected}"
         );
         let segment = &report.segments[0];
         let target = receiver
@@ -452,14 +457,16 @@ mod tests {
             .unwrap();
         bytes[offset] ^= 1;
         fs::write(&target, bytes).unwrap();
+        let rejected = crate::incoming_validation::validate_incoming(
+            &receiver,
+            &[segment.relative_path.clone().into()],
+            &store,
+            ENV,
+        )
+        .unwrap_err();
         assert!(
-            crate::incoming_validation::validate_incoming(
-                &receiver,
-                &[segment.relative_path.clone().into()],
-                &store,
-                ENV
-            )
-            .is_err()
+            rejected.to_string().contains("integrity_failure"),
+            "{rejected}"
         );
         for root in [&source, &receiver, &negative] {
             fs::remove_dir_all(root).unwrap();

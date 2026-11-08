@@ -1,6 +1,52 @@
 # 34 — Current Implementation Handoff
 
+## Trusted preparation received; full-policy relay test ready (2026-11-08)
+
+The owner returned `GUVEN-HAZIRLIK.zip` for probe
+`c223e671-3c5e-413d-a82c-419ed88a508f`. The inspected 4,120-byte archive has
+SHA-256 `04BF510CCD9A6284DF2B2AA27E9107AB4D2254BB6F13F036882AB438DF2BADD4`.
+Its exact four members are the bounded manifest, one approved-source segment,
+one same-Brain unapproved-signer segment and the latter's public descriptor.
+Manifest identities/hashes match the original owner-approved pilot profiles.
+The unapproved fixture's signature was independently verified using the daemon;
+that signature alone grants no trust.
+
+Prepared `%USERPROFILE%\Downloads\cryptex-guven-test-c223e671.zip`. Its nine
+allowlisted members are the runner, pinned daemon, settings and supporting
+scripts/instructions. It contains no source segments, payload archive or keys:
+the original returned archive must travel over the retained native carrier.
+The host relays public synthetic data from the VM's source profile back to its
+receiver profile. This does not establish independent OS-level Cryptex enrollment.
+
+`GUVEN-TEST.cmd` receives and hashes the payload, shuts the native receiver down,
+then runs actual `cryptexd replication validate-incoming` against the original
+receiver runtime. It requires trusted-batch acceptance, valid unapproved-signer
+rejection, corrupted-copy rejection, repeat acceptance, and unchanged canonical
+event hashes/approval journal. Reports keep `canonical_import: validated_only`
+and `published: false`; no normal publication is enabled.
+
+Local checks passed: real bundle/member/hash inspection and genuine negative
+signature verification; PowerShell orchestration tests with mocked CLI outcomes
+(including unrelated-error refusal and traversal rejection); the existing native
+signed-transfer regression; strengthened Rust negative-policy test; strict daemon
+Clippy, format, script parsing and diff checks. Mocked orchestration is not VM
+policy evidence. The returned final `GUVEN-SONUC.zip` is still pending.
+
+**Next owner action:** extract `cryptex-guven-test-c223e671.zip` in the same VM,
+open `GUVEN-TEST.cmd`, return `GUVEN-SONUC.zip` or `AKTARIM-HATA.zip`.
+The host sender uses session `87a57c018d63481cb71a9a0f6abdd1f1`, its retained
+`vm-public-request.json`, and package directory
+`trusted-package-c223e6713c5e413da82c419ed88a508f` beneath
+`%LOCALAPPDATA%\Cryptex-Dev\peer-transfer\<session>`. Start it with
+`scripts/m8/start-peer-sender.ps1` and `-WaitSeconds 1800` before asking the owner
+to run the test; a future session must check/restart it, not assume it is live.
+Review the returned receipt against the exact settings and sender completion.
+Publication, managed-adapter, macOS, power-loss and independent-review gates
+remain open. See [relay test evidence and scope](../evidence/m8/m8-trusted-import-relay-20261108.md).
+
 ## Trusted-import preparation package ready (2026-11-08)
+
+Historical package checkpoint; the preparation receipt is recorded above.
 
 The owner requested the trusted-device/import check as another one-click test.
 The implementation reuses the two **previously owner-approved Cryptex pilot

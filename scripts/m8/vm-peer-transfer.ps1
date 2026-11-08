@@ -27,7 +27,7 @@ try {
         Wait-PeerNative $node
         $payload = Add-PeerFolder $node $settings $settings.host_id 'receiveonly' ('tcp://' + $settings.host_address + ':' + $settings.host_port)
         Write-Host 'Test dosyasi bekleniyor (en fazla 3 dakika)...'
-        $payloadName = if ($settings.schema -eq 2) { $settings.payload_name } else { 'synthetic.bin' }
+        $payloadName = if ($settings.schema -in @(2,3)) { $settings.payload_name } else { 'synthetic.bin' }
         $target = Join-Path $payload $payloadName
         $deadline = [DateTime]::UtcNow.AddSeconds(180)
         $matched = $false
@@ -45,18 +45,23 @@ try {
         Stop-PeerNative $node
         $node = $null
         $signatureCheck = $null
+        $policyCheck = $null
         if ($settings.schema -eq 2) {
             . (Join-Path $PSScriptRoot 'verify-signed-payload.ps1')
             $signatureCheck=Test-SignedPayload $settings $target $stateRoot
         }
-        $resultName = if ($settings.schema -eq 2) { 'signed-transfer-result.json' } else { 'transfer-result.json' }
-        Write-PeerJson (Join-Path $stateRoot $resultName) @{
-            schema=1; scope='synthetic_native_transport_only'; session=$settings.session; outcome='received_hash_match';
-            receiver_id=$fixture.native_id; sender_id=$settings.host_id; bytes=$settings.bytes; sha256=$settings.sha256;
-            canonical_import='not_run'; clean_shutdown=$true; collected_utc=[DateTime]::UtcNow.ToString('o');
-            probe_id=$settings.probe_id; signature_check=$signatureCheck
+        if ($settings.schema -eq 3) {
+            . (Join-Path $PSScriptRoot 'validate-trusted-import-payload.ps1')
+            $policyCheck=Test-TrustedImportPayload $settings $target $stateRoot
         }
-        $archiveName = if ($settings.schema -eq 2) { 'IMZALI-SONUC.zip' } else { 'AKTARIM-SONUC.zip' }
+        $resultName = if ($settings.schema -eq 3) { 'trusted-import-result.json' } elseif ($settings.schema -eq 2) { 'signed-transfer-result.json' } else { 'transfer-result.json' }
+        Write-PeerJson (Join-Path $stateRoot $resultName) @{
+            schema=1; scope=$(if ($settings.schema -eq 3) {'trusted_import_validation_only'} else {'synthetic_native_transport_only'}); session=$settings.session; outcome='received_hash_match';
+            receiver_id=$fixture.native_id; sender_id=$settings.host_id; bytes=$settings.bytes; sha256=$settings.sha256;
+            canonical_import=$(if ($settings.schema -eq 3) {'validated_only'} else {'not_run'}); clean_shutdown=$true; collected_utc=[DateTime]::UtcNow.ToString('o');
+            probe_id=$settings.probe_id; signature_check=$signatureCheck; policy_check=$policyCheck
+        }
+        $archiveName = if ($settings.schema -eq 3) { 'GUVEN-SONUC.zip' } elseif ($settings.schema -eq 2) { 'IMZALI-SONUC.zip' } else { 'AKTARIM-SONUC.zip' }
         $output = Join-Path $stateRoot $archiveName
         Compress-Archive -LiteralPath (Join-Path $stateRoot $resultName) -DestinationPath $output -Force
         Write-Host ('Test tamamlandi. ' + $archiveName + ' dosyasini sohbete ekleyin.')

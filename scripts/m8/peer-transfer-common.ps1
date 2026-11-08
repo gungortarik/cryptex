@@ -9,7 +9,7 @@ function Assert-PeerBinary($Path) {
 function Read-PeerSettings($Path) {
     if ((Get-Item -LiteralPath $Path).Length -gt 16KB) { throw 'oversized_settings' }
     $settings = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-    if ($settings.schema -notin @(1,2) -or $settings.session -notmatch '^[a-f0-9]{32}$' -or
+    if ($settings.schema -notin @(1,2,3) -or $settings.session -notmatch '^[a-f0-9]{32}$' -or
         $settings.host_id -notmatch '^([A-Z2-7]{7}-){7}[A-Z2-7]{7}$' -or
         $settings.sha256 -notmatch '^[A-F0-9]{64}$' -or $settings.bytes -lt 1 -or $settings.bytes -gt 1MB -or
         $settings.host_port -lt 1025 -or $settings.host_port -gt 65535) { throw 'invalid_settings' }
@@ -21,6 +21,11 @@ function Read-PeerSettings($Path) {
     if ($settings.schema -eq 2 -and ($settings.probe_id -notmatch '^[a-f0-9]{32}$' -or
         $settings.payload_name -ne ('signed-' + $settings.probe_id + '.seg') -or
         $settings.daemon_sha256 -notmatch '^[A-F0-9]{64}$' -or $settings.descriptor_sha256 -notmatch '^[A-F0-9]{64}$')) { throw 'invalid_signed_settings' }
+    if ($settings.schema -eq 3 -and ($settings.probe_id -cnotmatch '^[a-f0-9]{32}$' -or
+        $settings.payload_name -cne ('trusted-' + $settings.probe_id + '.zip') -or
+        $settings.trusted_probe_id.Replace('-','') -cne $settings.probe_id -or
+        $settings.daemon_sha256 -cnotmatch '^[A-F0-9]{64}$' -or $settings.manifest_sha256 -cnotmatch '^[A-F0-9]{64}$' -or
+        $settings.receiver_profile -cnotmatch '^cx-m8-[0-9a-f]{32}$')) { throw 'invalid_trusted_settings' }
     return $settings
 }
 function New-PeerFixture($Binary) {

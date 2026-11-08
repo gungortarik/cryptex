@@ -20,13 +20,13 @@ try {
     $node = Start-PeerNative $fixture
     Wait-PeerNative $node
     $payload = Add-PeerFolder $node $settings $request.native_id 'sendonly' 'dynamic'
-    $payloadName = if ($settings.schema -eq 2) { $settings.payload_name } else { 'synthetic.bin' }
+    $payloadName = if ($settings.schema -in @(2,3)) { $settings.payload_name } else { 'synthetic.bin' }
     $source = Join-Path $fixture.root $payloadName
     if ((Get-FileHash -LiteralPath $source).Hash -ne $settings.sha256) { throw 'source_hash_mismatch' }
     Copy-Item -LiteralPath $source -Destination (Join-Path $payload $payloadName)
     Invoke-PeerApi $node ('/rest/db/scan?folder=cx-native-' + $settings.session) 'POST' | Out-Null
     $sourceFiles = @(Get-ChildItem -LiteralPath $payload -File -Force)
-    if ($sourceFiles | Where-Object { $_.Name -ne 'synthetic.bin' -and $_.Name -notmatch '^signed-[a-f0-9]{32}\.seg$' }) { throw 'unexpected_source_file' }
+    if ($sourceFiles | Where-Object { $_.Name -ne 'synthetic.bin' -and $_.Name -notmatch '^signed-[a-f0-9]{32}\.seg$' -and $_.Name -notmatch '^trusted-[a-f0-9]{32}\.zip$' }) { throw 'unexpected_source_file' }
     $expectedGlobalBytes = ($sourceFiles | Measure-Object -Property Length -Sum).Sum
     if ($expectedGlobalBytes -lt $settings.bytes) { throw 'source_index_not_ready' }
     Write-Output 'sender_ready_waiting_for_vm'
@@ -54,7 +54,7 @@ try {
     Stop-PeerNative $node
     $node=$null
     if (-not $complete) { throw 'sender_wait_timeout' }
-    $resultName = if ($settings.schema -eq 2) { 'signed-sender-' + $settings.probe_id + '.json' } else { 'sender-result.json' }
+    $resultName = if ($settings.schema -eq 3) { 'trusted-sender-' + $settings.probe_id + '.json' } elseif ($settings.schema -eq 2) { 'signed-sender-' + $settings.probe_id + '.json' } else { 'sender-result.json' }
     Write-PeerJson (Join-Path $SessionRoot $resultName) @{schema=1; session=$settings.session;
         scope='synthetic_native_transport_only'; outcome='peer_completion_observed'; clean_shutdown=$true; sha256=$settings.sha256}
     Write-Output 'sender_peer_completion_observed'
