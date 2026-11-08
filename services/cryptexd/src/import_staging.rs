@@ -36,6 +36,8 @@ const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
 
 type PreparedRecoveryPolicyVerifier<'a> =
     dyn FnMut(&Path, &Path, &Path) -> Result<(), ImportStagingError> + 'a;
+type PreparedRecoveryFinisher<'a> =
+    dyn FnMut(&Path, &str, Option<&Path>) -> Result<(), ImportStagingError> + 'a;
 
 #[derive(Debug)]
 pub enum ImportStagingError {
@@ -192,6 +194,8 @@ struct CommittedImportMarker {
     transaction_id: String,
     prepared_manifest_sha256: String,
 }
+
+mod cleanup;
 
 impl VerifiedStagedBatch {
     #[must_use]
@@ -1558,24 +1562,12 @@ fn verify_segment_stream<R: TrustedDaemonKeyResolver>(
     })
 }
 
-/// Runs under the daemon's single-instance lock before transport, IPC, or
-/// canonical readers start. Unprepared staging-only trees are removed. A
-/// prepared manifest is aborted only if every staged file still matches and
-/// no canonical destination exists; any visible destination remains a typed
-/// fail-closed conflict. Recognized committed-marker files are parsed and held
-/// for reviewed replay; their digest is bound to the prepared companion and
-/// staged/destination files are checked for observation only. Every recognized
-/// final or temporary marker remains a typed hold, including a valid final
-/// marker whose destinations match. No marker completion, publication, replay,
-/// A valid final committed marker is already the immutable commit decision:
-/// after its exact companion and every destination are revalidated under the
-/// canonical lock set, recovery may remove only that transaction's staging,
-/// manifest, and marker. A valid temporary marker is promoted only when every
-/// canonical destination matches; missing, partial, or mismatched destinations
-/// remain typed holds. Unmarked prepared transactions with visible destinations
-/// are classified and held until full policy-bound replay is implemented.
+/// Runs under daemon instance ownership before transport, IPC or canonical
+/// readers. Aborts verified unpublished transactions and cleans final committed
+/// decisions using receipts. Temporary markers and unmarked visible imports
+/// hold unless the caller uses `recover_import_staging_with_local_state`.
 pub fn recover_import_staging(runtime_root: &Path) -> Result<(), ImportStagingError> {
-    recover_import_staging_inner(runtime_root, None)
+    recover_import_staging_inner(runtime_root, None, None)
 }
 
 /// Run the local policy verifier when a prepared transaction already has one
@@ -1589,12 +1581,36 @@ pub fn recover_import_staging_with_policy_verifier<F>(
 where
     F: FnMut(&Path, &Path, &Path) -> Result<(), ImportStagingError>,
 {
-    recover_import_staging_inner(runtime_root, Some(&mut verify_visible))
+    recover_import_staging_inner(runtime_root, Some(&mut verify_visible), None)
+}
+
+/// Startup recovery with explicit instance ownership and local policy context.
+/// Unmarked visible imports and temporary commit decisions require the complete
+/// locked policy verifier; final decisions use receipt-bound cleanup only.
+/// This does not activate transport publication or create local identity.
+pub fn recover_import_staging_with_local_state<S: crate::secure_store::SecureStore + ?Sized>(
+    runtime_root: &Path,
+    instance: &crate::instance::InstanceLock,
+    store: &S,
+    env: crate::secure_store::SecureStoreEnvironment,
+) -> Result<(), ImportStagingError> {
+    let _pins = ImportStagingSession::pin_existing_runtime(runtime_root)?;
+    if instance.path() != crate::paths::lock_path(runtime_root) {
+        return Err(ImportStagingError::RecoveryConflict(
+            "startup instance belongs to another runtime".into(),
+        ));
+    }
+    let mut finish = |root: &Path, id: &str, temporary: Option<&Path>| {
+        finish_prepared_recovery(root, id, instance, store, env, temporary)?;
+        recover_import_staging(root)
+    };
+    recover_import_staging_inner(runtime_root, None, Some(&mut finish))
 }
 
 fn recover_import_staging_inner(
     runtime_root: &Path,
     mut verify_visible: Option<&mut PreparedRecoveryPolicyVerifier<'_>>,
+    mut finish_visible: Option<&mut PreparedRecoveryFinisher<'_>>,
 ) -> Result<(), ImportStagingError> {
     assert_outside_repository(runtime_root)
         .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
@@ -1635,6 +1651,7 @@ fn recover_import_staging_inner(
     let mut prepared_temp_path = None;
     let mut committed_path = None;
     let mut committed_temp_path = None;
+    let mut cleanup_path = None;
     for entry in fs::read_dir(&journal_root)? {
         let path = entry?.path();
         let name = path
@@ -1657,6 +1674,8 @@ fn recover_import_staging_inner(
             && committed_temp_path.is_none()
         {
             committed_temp_path = Some(path);
+        } else if cleanup::is_receipt_name(name) && cleanup_path.is_none() {
+            cleanup_path = Some(path);
         } else {
             return Err(ImportStagingError::RecoveryConflict(
                 "unknown or conflicting journal entries require reviewed reconciliation".into(),
@@ -1672,6 +1691,17 @@ fn recover_import_staging_inner(
         return Err(ImportStagingError::RecoveryConflict(
             "prepared manifest and temporary manifest coexist".into(),
         ));
+    }
+    if let Some(path) = cleanup_path {
+        if !has_lock_entry {
+            return Err(ImportStagingError::RecoveryConflict(
+                "cleanup receipt has no import lock record".into(),
+            ));
+        }
+        drop(_directory_handles);
+        return cleanup::resume(runtime_root, &path).map_err(|error| {
+            ImportStagingError::RecoveryConflict(format!("cleanup recovery held: {error}"))
+        });
     }
     if !staging_exists {
         if let Some(path) = committed_path {
@@ -1721,6 +1751,7 @@ fn recover_import_staging_inner(
         // under the canonical locks, so release this earlier read-only walk
         // before removing the transaction entries.
         drop(_directory_handles);
+        drop(lock);
         let marker = read_committed_marker(&path)?;
         let destinations = inspect_committed_marker_companion(runtime_root, &path, &marker)?;
         return if destinations == "all destinations match; transaction cleanup completed" {
@@ -1736,14 +1767,14 @@ fn recover_import_staging_inner(
         // read-only directory walk before reopening and pinning the exact
         // marker/manifest under the canonical locks.
         drop(_directory_handles);
+        drop(lock);
         let marker = read_committed_marker(&path)?;
-        let destinations = inspect_committed_marker_companion(runtime_root, &path, &marker)?;
-        return if destinations == "all destinations match; transaction cleanup completed" {
-            Ok(())
-        } else {
-            Err(ImportStagingError::RecoveryConflict(format!(
-                "committed marker temporary and destinations classified as {destinations}; preserve evidence"
-            )))
+        return match finish_visible.as_deref_mut() {
+            Some(finish) => finish(runtime_root, &marker.transaction_id, Some(&path)),
+            None => Err(ImportStagingError::RecoveryConflict(
+                "temporary committed marker requires full local policy recovery; preserve evidence"
+                    .into(),
+            )),
         };
     }
 
@@ -1804,6 +1835,7 @@ fn recover_import_staging_inner(
             &prepared_path,
             &manifest,
             &mut verify_visible,
+            &mut finish_visible,
         )?;
     } else if let Some(temp_path) = prepared_temp_path {
         let temp_name = temp_path
@@ -2086,12 +2118,9 @@ fn validate_committed_marker(marker: &CommittedImportMarker) -> Result<(), &'sta
     Ok(())
 }
 
-/// Validates a committed marker's companion and destinations while holding
-/// canonical inventory/device locks. A fully matching final marker permits
-/// cleanup; a fully matching temporary marker may first be moved to its final
-/// name with no-replace semantics, parent sync, and read-back. Any absent or
-/// mismatched destination remains a typed hold. Neither path changes canonical
-/// files or re-admits trust.
+/// Checks a final commit's exact companions and destinations under canonical
+/// locks, then performs receipt-bound cleanup. Never re-admits trust or changes
+/// canonical bytes; temporary decisions require the separate policy path.
 fn inspect_committed_marker_companion(
     runtime_root: &Path,
     marker_path: &Path,
@@ -2182,9 +2211,10 @@ fn inspect_committed_marker_companion(
 
     // The marker and companion are untrusted filesystem state. Rebind both to
     // the bytes that selected this transaction while the canonical lock set
-    // is held. Inspection currently only returns a typed hold, but keeping the
-    // read boundary here prevents future replay/cleanup code from relying on
-    // the earlier unlocked snapshot.
+    // is held, before cleanup can rely on the earlier unlocked snapshot.
+    // Acquire the importer slot after the complete canonical lock set.
+    let _import_lock = cleanup::lock_slot(runtime_root)?;
+    cleanup::check_initial_journal(runtime_root, marker_path, &manifest_path)?;
     let locked_manifest =
         read_bound_committed_marker_companion(marker_path, marker, &manifest_path, &manifest)?;
     ensure_manifest_staging_subset(&transaction, &locked_manifest).map_err(|error| {
@@ -2231,108 +2261,14 @@ fn inspect_committed_marker_companion(
         let final_marker_path = runtime_root
             .join("canonical/import-journal")
             .join(format!("{}.committed.json", marker.transaction_id));
-        let cleanup_marker_path = if marker_path == final_marker_path.as_path() {
-            marker_path.to_path_buf()
-        } else {
-            if entry_exists(&final_marker_path)? {
-                return Err(ImportStagingError::RecoveryConflict(
-                    "final committed marker appeared beside its temporary; preserve evidence"
-                        .into(),
-                ));
-            }
-            if read_committed_marker(marker_path)? != *marker {
-                return Err(ImportStagingError::RecoveryConflict(
-                    "committed marker temporary changed before completion; preserve evidence"
-                        .into(),
-                ));
-            }
-            publish_staged_no_replace(marker_path, &final_marker_path).map_err(|error| {
-                ImportStagingError::RecoveryConflict(format!(
-                    "cannot complete committed marker temporary without replacement: {error}"
-                ))
-            })?;
-            #[cfg(test)]
-            crate::test_interrupt::maybe_abrupt_exit(
-                "m8_after_recovery_committed_marker_temp_move",
-                runtime_root,
-                "recovery moved the committed marker temp without replacement before parent sync",
-            );
-            sync_staged_parent(&final_marker_path).map_err(|error| {
-                ImportStagingError::RecoveryConflict(format!(
-                    "completed committed marker parent sync failed: {error}"
-                ))
-            })?;
-            if read_committed_marker(&final_marker_path)? != *marker {
-                return Err(ImportStagingError::RecoveryConflict(
-                    "completed final marker read-back differs; preserve evidence".into(),
-                ));
-            }
-            #[cfg(test)]
-            crate::test_interrupt::maybe_abrupt_exit(
-                "m8_after_recovery_committed_marker_final_sync",
-                runtime_root,
-                "recovery synced and read back the final marker before transaction cleanup",
-            );
-            final_marker_path
-        };
-
-        // A verified final marker is the commit decision. A verified temp is
-        // promoted only after every destination matches. Remove transaction
-        // evidence while the complete canonical lock set and import-journal
-        // lock remain held; remove the marker last so interruption fails closed.
-        remove_unprepared_transaction(&transaction).map_err(|error| {
-            ImportStagingError::RecoveryConflict(format!(
-                "committed transaction staging cleanup failed; preserve remaining evidence: {error}"
-            ))
-        })?;
-        sync_staged_parent(&transaction).map_err(|error| {
-            ImportStagingError::RecoveryConflict(format!(
-                "committed transaction staging cleanup sync failed: {error}"
-            ))
-        })?;
-        #[cfg(test)]
-        crate::test_interrupt::maybe_abrupt_exit(
-            "m8_after_committed_staging_cleanup",
-            runtime_root,
-            "committed staging removed and parent synced; manifest and marker retained",
-        );
-        fs::remove_file(&manifest_path).map_err(|error| {
-            ImportStagingError::RecoveryConflict(format!(
-                "committed transaction manifest cleanup failed: {error}"
-            ))
-        })?;
-        sync_staged_parent(&manifest_path).map_err(|error| {
-            ImportStagingError::RecoveryConflict(format!(
-                "committed transaction manifest cleanup sync failed: {error}"
-            ))
-        })?;
-        #[cfg(test)]
-        crate::test_interrupt::maybe_abrupt_exit(
-            "m8_after_committed_manifest_cleanup",
-            runtime_root,
-            "committed manifest removed and parent synced; marker retained",
-        );
-        if read_committed_marker(&cleanup_marker_path)? != *marker {
+        if marker_path != final_marker_path.as_path() {
             return Err(ImportStagingError::RecoveryConflict(
-                "committed marker changed before final cleanup; preserve evidence".into(),
+                "temporary marker requires policy-bound startup recovery".into(),
             ));
         }
-        fs::remove_file(&cleanup_marker_path).map_err(|error| {
-            ImportStagingError::RecoveryConflict(format!(
-                "committed marker cleanup failed: {error}"
-            ))
-        })?;
-        sync_staged_parent(&cleanup_marker_path).map_err(|error| {
-            ImportStagingError::RecoveryConflict(format!(
-                "committed marker cleanup sync failed: {error}"
-            ))
-        })?;
-        #[cfg(test)]
-        crate::test_interrupt::maybe_abrupt_exit(
-            "m8_after_committed_marker_cleanup",
-            runtime_root,
-            "committed cleanup complete and journal parent synced",
-        );
+        let cleanup_marker_path = final_marker_path;
+
+        cleanup::complete_locked(runtime_root, &cleanup_marker_path, marker, &locked_manifest)?;
         return Ok("all destinations match; transaction cleanup completed");
     }
 
@@ -2570,6 +2506,7 @@ fn recover_prepared_without_publication(
     manifest_path: &Path,
     manifest: &PreparedImportManifest,
     verify_visible: &mut Option<&mut PreparedRecoveryPolicyVerifier<'_>>,
+    finish_visible: &mut Option<&mut PreparedRecoveryFinisher<'_>>,
 ) -> Result<(), ImportStagingError> {
     let inventory_lock = acquire_canonical_inventory_lock(runtime_root).map_err(|error| {
         ImportStagingError::RecoveryConflict(format!(
@@ -2679,6 +2616,11 @@ fn recover_prepared_without_publication(
     }
 
     if visible_destinations != 0 {
+        if let Some(finish) = finish_visible.as_deref_mut() {
+            drop(device_locks);
+            drop(inventory_lock);
+            return finish(runtime_root, &manifest.transaction_id, None);
+        }
         let classification = if visible_destinations == manifest.segments.len() {
             "all canonical destinations match"
         } else {
@@ -2696,12 +2638,11 @@ fn recover_prepared_without_publication(
             )));
         }
         return Err(ImportStagingError::RecoveryConflict(format!(
-            "prepared transaction classified as {classification}; policy-bound replay is not implemented"
+            "prepared transaction classified as {classification}; local policy context is required for replay"
         )));
     }
 
-    // No publication move exists in this implementation slice. With all
-    // destinations absent and every staged digest intact, aborting this
+    // With all destinations absent and every staged digest intact, aborting this
     // prepared transaction is safe and repeatable after interruption.
     fs::remove_file(manifest_path).map_err(|error| {
         ImportStagingError::Io(format!("remove prepared import manifest: {error}"))
@@ -2895,17 +2836,25 @@ fn verify_prepared_recovery_batch<R: TrustedDaemonKeyResolver>(
     })
 }
 
-/// Candidate recovery finisher. Kept private and disconnected from startup
-/// until publication/durability review gates pass. The caller must own the
-/// runtime instance; this function independently reloads local policy and keeps
-/// its canonical locks through every finish move and committed-marker write.
-#[allow(dead_code)]
+/// Test entry for the unmarked branch of policy-bound startup recovery.
+#[cfg(test)]
 fn finish_visible_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
     runtime_root: &Path,
     transaction_id: &str,
     instance: &crate::instance::InstanceLock,
     store: &S,
     env: crate::secure_store::SecureStoreEnvironment,
+) -> Result<PathBuf, ImportStagingError> {
+    finish_prepared_recovery(runtime_root, transaction_id, instance, store, env, None)
+}
+
+fn finish_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
+    runtime_root: &Path,
+    transaction_id: &str,
+    instance: &crate::instance::InstanceLock,
+    store: &S,
+    env: crate::secure_store::SecureStoreEnvironment,
+    temporary: Option<&Path>,
 ) -> Result<PathBuf, ImportStagingError> {
     let _root_pins = ImportStagingSession::pin_existing_runtime(runtime_root)?;
     if instance.path() != crate::paths::lock_path(runtime_root) {
@@ -2929,6 +2878,22 @@ fn finish_visible_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized
         ));
     }
     let manifest = read_prepared_manifest(&manifest_path)?;
+    let expected_marker = CommittedImportMarker {
+        protocol_version: 1,
+        transaction_id: manifest.transaction_id.clone(),
+        prepared_manifest_sha256: encode_hex(&Sha256::digest(
+            serde_json_canonicalizer::to_vec(&manifest)
+                .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?,
+        )),
+    };
+    if let Some(path) = temporary
+        && (path != journal.join(format!(".{transaction_id}.committed.tmp"))
+            || read_committed_marker(path)? != expected_marker)
+    {
+        return Err(ImportStagingError::RecoveryConflict(
+            "temporary marker does not bind this prepared transaction".into(),
+        ));
+    }
     let brain = crate::identity_runtime::load_brain_identity(runtime_root)
         .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
     let mut resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
@@ -2967,11 +2932,21 @@ fn finish_visible_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized
     let check_journal = || -> Result<(), ImportStagingError> {
         for entry in fs::read_dir(&journal)? {
             let path = entry?.path();
-            if path != journal.join("import.lock") && path != manifest_path {
+            if path != journal.join("import.lock")
+                && path != manifest_path
+                && Some(path.as_path()) != temporary
+            {
                 return Err(ImportStagingError::RecoveryConflict(
                     "recovery found a marker or unexpected journal entry".into(),
                 ));
             }
+        }
+        if let Some(path) = temporary
+            && read_committed_marker(path)? != expected_marker
+        {
+            return Err(ImportStagingError::RecoveryConflict(
+                "temporary marker changed after policy verification".into(),
+            ));
         }
         let entries = fs::read_dir(runtime_root.join("canonical/import-staging"))?
             .map(|entry| entry.map(|entry| entry.path()))
@@ -3021,7 +2996,13 @@ fn finish_visible_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized
         }
         Ok(visible)
     };
-    if check_locations()? == 0 {
+    let visible = check_locations()?;
+    if temporary.is_some() && visible != manifest.segments.len() {
+        return Err(ImportStagingError::RecoveryConflict(
+            "temporary marker cannot authorize missing canonical moves".into(),
+        ));
+    }
+    if visible == 0 {
         return Err(ImportStagingError::RecoveryConflict(
             "unpublished prepared transaction must use the abort recovery path".into(),
         ));
@@ -3055,15 +3036,32 @@ fn finish_visible_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized
             "recovery destinations incomplete".into(),
         ));
     }
-    let bytes = serde_json_canonicalizer::to_vec(&manifest)
-        .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
-    let marker = CommittedImportMarker {
-        protocol_version: 1,
-        transaction_id: manifest.transaction_id.clone(),
-        prepared_manifest_sha256: encode_hex(&Sha256::digest(&bytes)),
-    };
     // policy, slot, directory pins and instance ownership outlive this write.
-    write_committed_marker(runtime_root, &marker)
+    if let Some(path) = temporary {
+        let final_path = journal.join(format!("{transaction_id}.committed.json"));
+        publish_staged_no_replace(path, &final_path)?;
+        #[cfg(test)]
+        crate::test_interrupt::maybe_abrupt_exit(
+            "m8_after_recovery_committed_marker_temp_move",
+            runtime_root,
+            "policy-bound marker promotion before parent sync",
+        );
+        sync_staged_parent(&final_path)?;
+        if read_committed_marker(&final_path)? != expected_marker {
+            return Err(ImportStagingError::RecoveryConflict(
+                "completed marker read-back differs".into(),
+            ));
+        }
+        #[cfg(test)]
+        crate::test_interrupt::maybe_abrupt_exit(
+            "m8_after_recovery_committed_marker_final_sync",
+            runtime_root,
+            "policy-bound marker promotion synced and read back",
+        );
+        Ok(final_path)
+    } else {
+        write_committed_marker(runtime_root, &expected_marker)
+    }
 }
 
 /// Build the local read-only policy context for a startup-visible prepared
@@ -4798,6 +4796,154 @@ mod tests {
     }
 
     #[test]
+    fn startup_policy_recovery_handles_abort_partial_full_and_temporary_decisions() {
+        use crate::secure_store::SecureStoreEnvironment;
+        for (visible, temporary) in [(0, false), (1, false), (2, false), (2, true)] {
+            let root = compact_runtime_root();
+            let (manifest, store) = replay_fixture(&root, visible);
+            let device = DeviceId::new(manifest.segments[0].device_id.clone()).unwrap();
+            let original = sealed_segment_path(&root, &device, 0);
+            let original_bytes = fs::read(&original).unwrap();
+            if temporary {
+                write_fixture_marker_temp(&root, &manifest);
+            }
+            let instance = crate::instance::try_acquire_instance(&root).unwrap();
+            for _ in 0..2 {
+                recover_import_staging_with_local_state(
+                    &root,
+                    &instance,
+                    &store,
+                    SecureStoreEnvironment::Dev,
+                )
+                .unwrap();
+                assert_eq!(fs::read(&original).unwrap(), original_bytes);
+                if visible == 0 {
+                    assert!(!sealed_segment_path(&root, &device, 1).exists());
+                    assert!(!sealed_segment_path(&root, &device, 2).exists());
+                } else {
+                    assert_replay_destinations(&root, &manifest);
+                }
+                assert_eq!(
+                    fs::read_dir(root.join("canonical/import-journal"))
+                        .unwrap()
+                        .count(),
+                    1
+                );
+                assert_eq!(
+                    fs::read_dir(root.join("canonical/import-staging"))
+                        .unwrap()
+                        .count(),
+                    0
+                );
+            }
+            drop(instance);
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    fn write_fixture_marker_temp(root: &Path, manifest: &PreparedImportManifest) -> PathBuf {
+        let marker = CommittedImportMarker {
+            protocol_version: 1,
+            transaction_id: manifest.transaction_id.clone(),
+            prepared_manifest_sha256: encode_hex(&Sha256::digest(
+                serde_json_canonicalizer::to_vec(manifest).unwrap(),
+            )),
+        };
+        let path = root
+            .join("canonical/import-journal")
+            .join(format!(".{}.committed.tmp", manifest.transaction_id));
+        fs::write(&path, serde_json_canonicalizer::to_vec(&marker).unwrap()).unwrap();
+        path
+    }
+
+    #[test]
+    fn startup_temporary_decision_needs_policy_and_all_destinations() {
+        use crate::secure_store::{
+            AccountLabel, SecureStore, SecureStoreEnvironment, ServiceLabel,
+        };
+        for fault in [
+            "missing-destination",
+            "signature",
+            "missing-key",
+            "wrong-instance",
+            "marker-digest",
+        ] {
+            let root = compact_runtime_root();
+            let (mut manifest, store) =
+                replay_fixture(&root, if fault == "missing-destination" { 1 } else { 2 });
+            let device = DeviceId::new(manifest.segments[0].device_id.clone()).unwrap();
+            if fault == "signature" {
+                let path = sealed_segment_path(&root, &device, 2);
+                let mut bytes = fs::read(&path).unwrap();
+                let offset = bytes
+                    .windows(13)
+                    .position(|w| w == b"\"signature\":\"")
+                    .unwrap()
+                    + 13;
+                bytes[offset] = if bytes[offset] == b'0' { b'1' } else { b'0' };
+                fs::write(&path, &bytes).unwrap();
+                manifest.segments[1].sha256 = encode_hex(&Sha256::digest(&bytes));
+                fs::write(
+                    root.join("canonical/import-journal")
+                        .join(format!("{}.prepared.json", manifest.transaction_id)),
+                    serde_json_canonicalizer::to_vec(&manifest).unwrap(),
+                )
+                .unwrap();
+            }
+            if fault == "missing-key" {
+                store
+                    .delete(
+                        ServiceLabel::device_credentials(SecureStoreEnvironment::Dev).as_str(),
+                        AccountLabel::device_event_signing_seed(device.as_str()).as_str(),
+                    )
+                    .unwrap();
+            }
+            let temporary = write_fixture_marker_temp(&root, &manifest);
+            if fault == "marker-digest" {
+                let mut marker = read_committed_marker(&temporary).unwrap();
+                marker.prepared_manifest_sha256 = "0".repeat(64);
+                fs::write(
+                    &temporary,
+                    serde_json_canonicalizer::to_vec(&marker).unwrap(),
+                )
+                .unwrap();
+            }
+            let before = fs::read(&temporary).unwrap();
+            let other = compact_runtime_root();
+            let instance = crate::instance::try_acquire_instance(if fault == "wrong-instance" {
+                &other
+            } else {
+                &root
+            })
+            .unwrap();
+            for _ in 0..2 {
+                assert!(
+                    recover_import_staging_with_local_state(
+                        &root,
+                        &instance,
+                        &store,
+                        SecureStoreEnvironment::Dev
+                    )
+                    .is_err(),
+                    "{fault}"
+                );
+                assert_eq!(fs::read(&temporary).unwrap(), before);
+                assert!(
+                    !temporary
+                        .with_file_name(format!("{}.committed.json", manifest.transaction_id))
+                        .exists()
+                );
+                if fault == "missing-destination" {
+                    assert!(!sealed_segment_path(&root, &device, 2).exists());
+                }
+            }
+            drop(instance);
+            fs::remove_dir_all(root).unwrap();
+            fs::remove_dir_all(other).unwrap();
+        }
+    }
+
+    #[test]
     fn xproc_prepared_replay_worker() {
         use crate::secure_store::{
             AccountLabel, SecureStore, SecureStoreEnvironment, ServiceLabel,
@@ -4806,7 +4952,6 @@ mod tests {
             return;
         };
         let root = PathBuf::from(root);
-        let id = std::env::var("CRYPTEX_TEST_REPLAY_ID").unwrap();
         // Only synthetic fixture credentials cross this test child's stdin.
         let (device, seed): (String, Vec<u8>) = serde_json::from_reader(std::io::stdin()).unwrap();
         let store = crate::secure_store::FakeSecureStore::new();
@@ -4818,9 +4963,8 @@ mod tests {
             )
             .unwrap();
         let instance = crate::instance::try_acquire_instance(&root).unwrap();
-        finish_visible_prepared_recovery(
+        recover_import_staging_with_local_state(
             &root,
-            &id,
             &instance,
             &store,
             SecureStoreEnvironment::Dev,
@@ -4873,18 +5017,14 @@ mod tests {
             );
             assert_eq!(crate::test_interrupt::read_ready(&root).0, boundary);
             let instance = crate::instance::try_acquire_instance(&root).unwrap();
-            if boundary.starts_with("m8_after_recovery_segment_move_") {
-                finish_visible_prepared_recovery(
+            for _ in 0..2 {
+                recover_import_staging_with_local_state(
                     &root,
-                    &manifest.transaction_id,
                     &instance,
                     &store,
                     SecureStoreEnvironment::Dev,
                 )
                 .unwrap();
-            }
-            for _ in 0..2 {
-                recover_import_staging(&root).unwrap();
                 assert_replay_destinations(&root, &manifest);
             }
             assert_eq!(
@@ -5240,7 +5380,7 @@ mod tests {
         let marker_bytes = fs::read(&temporary).unwrap();
 
         let error = recover_import_staging(&root).unwrap_err();
-        assert!(error.to_string().contains("all destinations absent"));
+        assert!(error.to_string().contains("requires full local policy"));
         assert!(temporary.is_file());
         assert_eq!(fs::read(&temporary).unwrap(), marker_bytes);
         assert!(manifest.is_file());
@@ -5254,7 +5394,7 @@ mod tests {
     }
 
     #[test]
-    fn committed_marker_temporary_completes_only_after_all_destinations_match() {
+    fn committed_marker_temporary_requires_policy_even_when_all_destinations_match() {
         let (root, manifest, marker, destinations) =
             committed_marker_companion_fixture("committed-marker-temp-complete", None);
         let temporary =
@@ -5265,13 +5405,15 @@ mod tests {
             fs::write(destination, bytes).unwrap();
         }
 
-        recover_import_staging(&root).unwrap();
-        assert!(!temporary.exists());
+        assert!(matches!(
+            recover_import_staging(&root),
+            Err(ImportStagingError::RecoveryConflict(_))
+        ));
+        assert!(temporary.exists());
         assert!(!marker.exists());
-        assert!(!manifest.exists());
+        assert!(manifest.exists());
         assert!(
-            !root
-                .join("canonical/import-staging/123e4567-e89b-12d3-a456-426614174000")
+            root.join("canonical/import-staging/123e4567-e89b-12d3-a456-426614174000")
                 .exists()
         );
         for (destination, bytes) in destinations {
@@ -5539,42 +5681,46 @@ mod tests {
     }
 
     #[test]
-    fn xproc_committed_cleanup_interruptions_preserve_events_and_hold_missing_companions() {
-        for (boundary, manifest_remains, marker_remains) in [
-            ("m8_after_committed_staging_cleanup", true, true),
-            ("m8_after_committed_manifest_cleanup", false, true),
-            ("m8_after_committed_marker_cleanup", false, false),
+    fn xproc_committed_cleanup_receipt_resumes_every_complete_boundary() {
+        for boundary in [
+            "m8_before_cleanup_receipt_creation",
+            "m8_cleanup_receipt_temp_synced",
+            "m8_cleanup_receipt_moved",
+            "m8_cleanup_receipt_final_synced",
+            "m8_during_committed_staging_cleanup",
+            "m8_cleanup_staged_file_removed_before_sync",
+            "m8_cleanup_staged_directory_removed_before_sync",
+            "m8_cleanup_transaction_removed_before_sync",
+            "m8_after_committed_staging_cleanup",
+            "m8_after_committed_manifest_cleanup_before_sync",
+            "m8_after_committed_manifest_cleanup",
+            "m8_after_committed_marker_cleanup_before_sync",
+            "m8_after_committed_marker_cleanup",
+            "m8_cleanup_receipt_removed_before_sync",
+            "m8_after_cleanup_receipt_removed",
         ] {
             let (root, manifest, marker, destinations) =
-                committed_marker_companion_fixture("committed-cleanup-interrupt", None);
+                committed_marker_companion_fixture("cleanup-receipt-interrupt", None);
             for (destination, bytes) in &destinations {
                 fs::create_dir_all(destination.parent().unwrap()).unwrap();
                 fs::write(destination, bytes).unwrap();
             }
-            let original_manifest = fs::read(&manifest).unwrap();
-            let original_marker = fs::read(&marker).unwrap();
             run_committed_marker_recovery_interrupt(&root, boundary);
-            let transaction =
-                root.join("canonical/import-staging/123e4567-e89b-12d3-a456-426614174000");
-            assert!(!transaction.exists(), "{boundary}");
             for _ in 0..2 {
-                let result = recover_import_staging(&root);
-                if marker_remains {
-                    assert!(
-                        matches!(result, Err(ImportStagingError::RecoveryConflict(_))),
-                        "missing committed companion must remain a typed hold: {boundary}: {result:?}"
-                    );
-                } else {
-                    result.unwrap();
-                }
-                assert_eq!(manifest.exists(), manifest_remains, "{boundary}");
-                assert_eq!(marker.exists(), marker_remains, "{boundary}");
-                if manifest_remains {
-                    assert_eq!(fs::read(&manifest).unwrap(), original_manifest);
-                }
-                if marker_remains {
-                    assert_eq!(fs::read(&marker).unwrap(), original_marker);
-                }
+                recover_import_staging(&root).unwrap();
+                assert!(!manifest.exists(), "{boundary}");
+                assert!(!marker.exists(), "{boundary}");
+                assert_eq!(
+                    fs::read_dir(root.join("canonical/import-staging"))
+                        .unwrap()
+                        .count(),
+                    0
+                );
+                let journal = fs::read_dir(root.join("canonical/import-journal"))
+                    .unwrap()
+                    .map(|entry| entry.unwrap().file_name())
+                    .collect::<Vec<_>>();
+                assert_eq!(journal, vec![std::ffi::OsString::from("import.lock")]);
                 for (destination, bytes) in &destinations {
                     assert_eq!(fs::read(destination).unwrap(), *bytes, "{boundary}");
                 }
@@ -5584,39 +5730,323 @@ mod tests {
     }
 
     #[test]
-    fn xproc_recovery_after_temporary_marker_move_is_repeatable() {
-        for boundary in [
-            "m8_after_recovery_committed_marker_temp_move",
-            "m8_after_recovery_committed_marker_final_sync",
+    fn xproc_incomplete_cleanup_receipt_holds_without_removing_companions() {
+        let (root, manifest, marker, destinations) =
+            committed_marker_companion_fixture("cleanup-receipt-partial", None);
+        for (destination, bytes) in &destinations {
+            fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            fs::write(destination, bytes).unwrap();
+        }
+        run_committed_marker_recovery_interrupt(&root, "m8_cleanup_receipt_created");
+        for _ in 0..2 {
+            assert!(matches!(
+                recover_import_staging(&root),
+                Err(ImportStagingError::RecoveryConflict(_))
+            ));
+            assert!(manifest.is_file());
+            assert!(marker.is_file());
+            for (destination, bytes) in &destinations {
+                assert_eq!(fs::read(destination).unwrap(), *bytes);
+            }
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cleanup_receipt_conflicts_hold_without_deleting_evidence() {
+        for fault in [
+            "unknown-field",
+            "duplicate-key",
+            "version",
+            "digest",
+            "transaction",
+            "path",
+            "oversized",
+            "noncanonical",
+            "partial",
+            "filename",
+            "both-receipts",
+            "manifest",
+            "marker",
+            "destination-missing",
+            "destination-changed",
+            "staging-extra",
+            "staging-extra-directory",
+            "other-transaction",
+            "journal-extra",
+            "receipt-hardlink",
+            "destination-hardlink",
+            "no-receipt-missing-staging",
+            "no-lock",
+            "temp-missing-staging",
+            "temp-missing-marker",
+            "temp-missing-manifest",
         ] {
-            let (root, manifest, marker, destinations) = committed_marker_companion_fixture(
-                "committed-marker-temp-recovery-interrupt",
-                None,
-            );
-            let temporary =
-                marker.with_file_name(".123e4567-e89b-12d3-a456-426614174000.committed.tmp");
-            fs::rename(&marker, &temporary).unwrap();
+            let (root, manifest, marker, destinations) =
+                committed_marker_companion_fixture("cleanup-receipt-conflict", None);
             for (destination, bytes) in &destinations {
                 fs::create_dir_all(destination.parent().unwrap()).unwrap();
                 fs::write(destination, bytes).unwrap();
             }
+            run_committed_marker_recovery_interrupt(&root, "m8_cleanup_receipt_final_synced");
+            let journal = root.join("canonical/import-journal");
+            let id = "123e4567-e89b-12d3-a456-426614174000";
+            let receipt = journal.join(format!("{id}.cleanup.json"));
+            let temporary = journal.join(format!(".{id}.cleanup.tmp"));
+            let transaction = root.join("canonical/import-staging").join(id);
+            let bytes = fs::read(&receipt).unwrap();
+            let mut value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            match fault {
+                "unknown-field" => {
+                    value["extra"] = true.into();
+                }
+                "duplicate-key" => {
+                    let mut duplicate = b"{\"protocol_version\":1,".to_vec();
+                    duplicate.extend_from_slice(&bytes[1..]);
+                    fs::write(&receipt, duplicate).unwrap();
+                }
+                "version" => {
+                    value["protocol_version"] = 2.into();
+                }
+                "digest" => {
+                    value["committed_marker"]["prepared_manifest_sha256"] = "0".repeat(64).into();
+                }
+                "transaction" => {
+                    value["transaction_id"] = "123e4567-e89b-12d3-a456-426614174001".into();
+                }
+                "path" => {
+                    value["prepared_manifest"]["segments"][0]["destination_relative_path"] =
+                        "../escape.seg".into();
+                }
+                "oversized" => {
+                    fs::write(&receipt, vec![b' '; 72 * 1024 + 1]).unwrap();
+                }
+                "noncanonical" => {
+                    fs::write(&receipt, serde_json::to_string_pretty(&value).unwrap()).unwrap();
+                }
+                "partial" => {
+                    fs::write(&receipt, b"{\"protocol_version\":").unwrap();
+                }
+                "filename" => {
+                    fs::rename(
+                        &receipt,
+                        journal.join("123e4567-e89b-12d3-a456-426614174001.cleanup.json"),
+                    )
+                    .unwrap();
+                }
+                "both-receipts" => {
+                    fs::copy(&receipt, &temporary).unwrap();
+                }
+                "manifest" => {
+                    fs::write(&manifest, b"{}").unwrap();
+                }
+                "marker" => {
+                    fs::write(&marker, b"{}").unwrap();
+                }
+                "destination-missing" => {
+                    fs::remove_file(&destinations[0].0).unwrap();
+                }
+                "destination-changed" => {
+                    fs::write(&destinations[0].0, b"changed").unwrap();
+                }
+                "staging-extra" => {
+                    fs::write(transaction.join("extra"), b"unknown").unwrap();
+                }
+                "staging-extra-directory" => {
+                    fs::create_dir(transaction.join("extra")).unwrap();
+                }
+                "other-transaction" => {
+                    fs::create_dir(
+                        transaction.with_file_name("123e4567-e89b-12d3-a456-426614174001"),
+                    )
+                    .unwrap();
+                }
+                "journal-extra" => {
+                    fs::write(journal.join("extra"), b"unknown").unwrap();
+                }
+                "receipt-hardlink" => {
+                    fs::hard_link(&receipt, root.join("receipt-alias")).unwrap();
+                }
+                "destination-hardlink" => {
+                    fs::hard_link(&destinations[0].0, root.join("destination-alias")).unwrap();
+                }
+                "no-receipt-missing-staging" => {
+                    fs::remove_file(&receipt).unwrap();
+                    fs::remove_dir_all(&transaction).unwrap();
+                }
+                "no-lock" => {
+                    fs::remove_file(journal.join("import.lock")).unwrap();
+                }
+                "temp-missing-staging" => {
+                    fs::rename(&receipt, &temporary).unwrap();
+                    fs::remove_dir_all(&transaction).unwrap();
+                }
+                "temp-missing-marker" => {
+                    fs::rename(&receipt, &temporary).unwrap();
+                    fs::remove_file(&marker).unwrap();
+                }
+                "temp-missing-manifest" => {
+                    fs::rename(&receipt, &temporary).unwrap();
+                    fs::remove_file(&manifest).unwrap();
+                }
+                _ => unreachable!(),
+            }
+            if ["unknown-field", "version", "digest", "transaction", "path"].contains(&fault) {
+                fs::write(&receipt, serde_json_canonicalizer::to_vec(&value).unwrap()).unwrap();
+            }
+            fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+                fn visit(path: &Path, files: &mut Vec<(PathBuf, Vec<u8>)>) {
+                    for entry in fs::read_dir(path).unwrap() {
+                        let path = entry.unwrap().path();
+                        if path.is_dir() {
+                            visit(&path, files);
+                        } else if path.extension().and_then(|e| e.to_str()) != Some("lock") {
+                            files.push((path.clone(), fs::read(path).unwrap()));
+                        }
+                    }
+                }
+                let mut files = Vec::new();
+                visit(root, &mut files);
+                files.sort();
+                files
+            }
+            let before = snapshot(&root);
+            for _ in 0..2 {
+                let result = recover_import_staging(&root);
+                assert!(
+                    matches!(result, Err(ImportStagingError::RecoveryConflict(_))),
+                    "{fault}: {result:?}"
+                );
+                assert_eq!(snapshot(&root), before, "{fault}: evidence changed");
+            }
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
 
-            run_committed_marker_recovery_interrupt(&root, boundary);
-            let final_marker = marker;
-            assert!(final_marker.is_file());
-            assert!(!temporary.exists());
-            assert!(read_committed_marker(&final_marker).is_ok());
-            recover_import_staging(&root).unwrap();
-            assert!(!final_marker.exists());
-            assert!(!manifest.exists());
+    #[test]
+    fn cleanup_receipt_lock_contention_preserves_evidence() {
+        for kind in ["import", "inventory", "device"] {
+            let (root, manifest, marker, destinations) =
+                committed_marker_companion_fixture("cleanup-slot", None);
+            for (destination, bytes) in &destinations {
+                fs::create_dir_all(destination.parent().unwrap()).unwrap();
+                fs::write(destination, bytes).unwrap();
+            }
+            run_committed_marker_recovery_interrupt(&root, "m8_cleanup_receipt_final_synced");
+            let slot = if kind == "import" {
+                let lock =
+                    open_lock_file(&root.join("canonical/import-journal/import.lock")).unwrap();
+                lock.try_lock_exclusive().unwrap();
+                Some(lock)
+            } else {
+                None
+            };
+            let mut inventory = if kind != "import" {
+                Some(acquire_canonical_inventory_lock(&root).unwrap())
+            } else {
+                None
+            };
+            let device = if kind == "device" {
+                let lock = acquire_existing_device_canonical_lock(
+                    &root,
+                    &DeviceId::new("device-a").unwrap(),
+                )
+                .unwrap();
+                drop(inventory.take());
+                lock
+            } else {
+                None
+            };
             assert!(
-                !root
-                    .join("canonical/import-staging/123e4567-e89b-12d3-a456-426614174000")
-                    .exists()
+                matches!(
+                    recover_import_staging(&root),
+                    Err(ImportStagingError::RecoveryConflict(_))
+                ),
+                "{kind}"
             );
+            assert!(manifest.exists());
+            assert!(marker.exists());
+            drop(slot);
+            drop(device);
+            drop(inventory);
+            recover_import_staging(&root).unwrap();
             for (destination, bytes) in destinations {
                 assert_eq!(fs::read(destination).unwrap(), bytes);
             }
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn xproc_policy_recovery_after_temporary_marker_move_is_repeatable() {
+        use crate::secure_store::{
+            AccountLabel, SecureStore, SecureStoreEnvironment, ServiceLabel,
+        };
+        use std::process::{Command, Stdio};
+        use std::time::Duration;
+        for boundary in [
+            "m8_after_recovery_committed_marker_temp_move",
+            "m8_after_recovery_committed_marker_final_sync",
+        ] {
+            let root = compact_runtime_root();
+            let (manifest, store) = replay_fixture(&root, 2);
+            let marker = CommittedImportMarker {
+                protocol_version: 1,
+                transaction_id: manifest.transaction_id.clone(),
+                prepared_manifest_sha256: encode_hex(&Sha256::digest(
+                    serde_json_canonicalizer::to_vec(&manifest).unwrap(),
+                )),
+            };
+            let path = root
+                .join("canonical/import-journal")
+                .join(format!(".{}.committed.tmp", manifest.transaction_id));
+            fs::write(&path, serde_json_canonicalizer::to_vec(&marker).unwrap()).unwrap();
+            let device = &manifest.segments[0].device_id;
+            let seed = store
+                .get(
+                    ServiceLabel::device_credentials(SecureStoreEnvironment::Dev).as_str(),
+                    AccountLabel::device_event_signing_seed(device).as_str(),
+                )
+                .unwrap();
+            let mut child = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "import_staging::tests::xproc_prepared_replay_worker",
+                    "--nocapture",
+                ])
+                .env("CRYPTEX_TEST_REPLAY_ROOT", &root)
+                .env(crate::test_interrupt::INTERRUPT_ENV, boundary)
+                .stdin(Stdio::piped())
+                .spawn()
+                .unwrap();
+            serde_json::to_writer(child.stdin.take().unwrap(), &(device, seed)).unwrap();
+            let status =
+                crate::test_interrupt::wait_child_bounded(&mut child, Duration::from_secs(30))
+                    .unwrap();
+            assert_eq!(
+                status.code(),
+                Some(crate::test_interrupt::INTERRUPT_EXIT_CODE)
+            );
+            assert_eq!(crate::test_interrupt::read_ready(&root).0, boundary);
+            let instance = crate::instance::try_acquire_instance(&root).unwrap();
+            for _ in 0..2 {
+                recover_import_staging_with_local_state(
+                    &root,
+                    &instance,
+                    &store,
+                    SecureStoreEnvironment::Dev,
+                )
+                .unwrap();
+                assert_replay_destinations(&root, &manifest);
+            }
+            assert!(!path.exists());
+            assert_eq!(
+                fs::read_dir(root.join("canonical/import-journal"))
+                    .unwrap()
+                    .count(),
+                1
+            );
+            drop(instance);
             fs::remove_dir_all(root).unwrap();
         }
     }
@@ -5722,7 +6152,7 @@ mod tests {
             }
 
             let recovered = recover_import_staging(&root);
-            if matches!(marker_name, Some("final" | "temp")) {
+            if matches!(marker_name, Some("final")) {
                 recovered.expect(
                     "valid committed marker plus complete destinations permits completion and cleanup",
                 );

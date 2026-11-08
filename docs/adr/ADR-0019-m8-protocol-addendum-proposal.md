@@ -919,13 +919,45 @@ for the same-user Syncthing child.
    must verify that companion transaction, its closed manifest digest, and the
    complete destination set before removing any transaction-local state. A
    valid marker with a missing, mismatched, or unverifiable prepared/staging
-   companion is a typed hold; it is not permission to guess cleanup state.
+   companion is a typed hold unless the owner-approved cleanup receipt below
+   authorizes resuming cleanup; it is not permission to guess cleanup state.
+
+   **Cleanup receipt amendment, owner approved 2026-11-07 (Windows slice):**
+   Before removing committed transaction evidence, the daemon writes a closed,
+   canonical JSON `<transaction_id>.cleanup.json` through the recognized
+   `.<transaction_id>.cleanup.tmp`, using sync, no-replace placement, parent sync
+   and read-back. The bounded (72 KiB) receipt contains `protocol_version: 1`,
+   `transaction_id`, the complete closed `committed_marker`, and the complete
+   closed `prepared_manifest`. All IDs agree; the existing manifest schema,
+   64 KiB manifest bound and marker SHA-256 binding still apply. Unknown fields,
+   duplicate keys, noncanonical encodings, aliases and conflicting journal state
+   reject. This is local recovery metadata, not a canonical event or trust grant.
+
+   Retain runtime instance ownership, canonical inventory and sorted device
+   locks, then the importer slot. Revalidate the receipt, every destination and
+   all remaining companions under those locks. A final receipt permits missing
+   companions and a matching staged subset only. Remove staging, manifest,
+   committed marker, then receipt last, syncing parents. Never modify canonical
+   events or recreate deleted companions. No final receipt means the original
+   missing-companion hold remains. Receipt creation does not re-admit a valid
+   final commit under newer policy; retrieval still applies current policy.
+
+   | Cleanup receipt state | Required action |
+   |---|---|
+   | Valid final; all destinations and remaining companions match | Resume transaction-local cleanup even if companions are absent; receipt removed last. |
+   | Valid temporary only; final committed marker, manifest, staging and every destination match | Complete no-replace receipt placement, sync/read back, then cleanup. |
+   | Temporary only with missing companion; malformed/partial receipt; final plus temporary; unknown/conflicting evidence | Typed hold; preserve all remaining evidence. |
+   | Any receipt with absent, changed or unverifiable destination | Typed hold; never repair or delete canonical files. |
+
+   Older binaries reject the new journal entries; automatic downgrade is not
+   authorized. Approval covers this recovery amendment only, not acceptance of
+   the full ADR, publication activation, or platform durability certification.
 
    | Marker state | Destination state | Required action |
    |---|---|---|
    | Unknown, malformed, conflicting, or mismatched final marker | Any | Typed hold; preserve journal and staging evidence. |
    | Valid final marker bound to the exact prepared-manifest digest | All destinations, prepared manifest, and staging files match | Cleanup only this transaction after closed-schema, manifest-digest, identity, and file-hash checks; never alter canonical files. |
-   | Valid final marker | Prepared manifest or staging companion is absent, mismatched, or unverifiable | Typed hold; preserve remaining evidence and canonical files. |
+   | Valid final marker without a valid final cleanup receipt | Prepared manifest or staging companion is absent, mismatched, or unverifiable | Typed hold; preserve remaining evidence and canonical files. |
    | Valid final marker | Any destination absent or mismatched | Typed hold; do not infer or repair a committed transaction. |
    | Recognized marker temporary with valid closed schema and exact manifest digest | Every destination matches | Complete only the no-replace temp-to-final marker placement, sync/read back, then cleanup after locked validation. |
    | Recognized marker temporary | Any destination absent or mismatched | Typed hold; a marker temp cannot authorize missing canonical moves. |
@@ -942,10 +974,12 @@ for the same-user Syncthing child.
    2026-10-23; it is normative for that slice, not a blanket acceptance of this
    ADR or authorization to activate trust. The current tree has an internal
    lock-bearing no-replace publication primitive and startup recovery for
-   valid final and temporary committed markers when every destination matches.
-   Partial-publication replay and production transport-to-publication wiring
-   remain absent. Windows marker-parent durability and native interruption
-   gates remain open, so the publisher is not activated.
+   valid final decisions with receipt-bound cleanup. Windows startup also
+   finishes partially visible prepared imports and temporary committed markers
+   through full locked local policy validation (2026-11-07). Production
+   transport-to-publication wiring remains absent. Windows power-loss/parent
+   durability, native peer integration, macOS and independent review gates
+   remain open, so normal publication is not activated.
  8. Tests must cover config/path refusal, links/reparse points, size/count
    bounds, duplicate-identical and divergent destinations, local append/import
    interleavings, every publication crash point, and startup reconciliation on

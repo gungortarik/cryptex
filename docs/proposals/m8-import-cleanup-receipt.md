@@ -1,7 +1,9 @@
 # M8 interrupted import cleanup: proposed receipt
 
-Date: 2026-11-07. Status: **PROPOSED; owner approval required; not implemented**.
-Base implementation: `e2dc285`. This document does not amend ADR-0019 by itself.
+Date: 2026-11-07. Status: **OWNER APPROVED for the Windows recovery slice**.
+The owner approved proceeding after reviewing this proposal in chat. The
+normative amendment is now recorded in ADR-0019 section 5.1.1. This approval
+does not activate publication or accept the entire ADR. Base: `af4c36b`.
 
 ## Problem demonstrated
 
@@ -88,4 +90,5 @@ AGENTS.md says: "If requirements conflict, stop implementation and report the
 conflict. Do not invent a new architecture." ADR-0019 section 5.1.1 says a valid
 marker with a missing prepared/staging companion is a typed hold. Replacing that
 rule with automatic continuation requires the explicit amendment above.
-Until approval, retain existing behavior and keep publication inactive.
+Owner approval permits this narrow amendment; keep publication inactive until
+its separate integration, platform and review gates pass.

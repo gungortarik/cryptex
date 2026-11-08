@@ -1,6 +1,40 @@
 # 34 — Current Implementation Handoff
 
+## Approved cleanup receipt and Windows startup integration (2026-11-07)
+
+The owner approved the narrow cleanup-receipt amendment. ADR-0019 section 5.1.1
+now records that approval. Committed cleanup writes a bounded, closed receipt
+containing the exact manifest and commit decision before deleting companions.
+Recovery validates all destinations and remaining evidence, resumes cleanup,
+and removes the receipt last. Without a receipt, missing companions still hold.
+Unknown, malformed, conflicting and aliased evidence is never silently removed.
+
+Windows startup now passes its live instance guard to policy-bound recovery
+before identity/materialization, transport or IPC starts. Unmarked partially
+visible imports finish under the pre-/post-import policy token. Temporary commit
+markers require that same complete policy verification and every destination;
+the context-free API now holds them instead of promoting by hashes alone.
+Final commit/receipt cleanup does not re-admit under a newer trust policy.
+Normal transport publication remains inactive; this is startup recovery wiring.
+
+Verification: the import-staging suite passed **63 tests**, including 15 complete
+cleanup interruption boundaries, an incomplete-receipt hold, 26 conflict cases,
+signed startup branches and marker-promotion interruptions. Canonical inventory,
+device and importer-lock contention checks passed. Daemon binary tests:
+**14 passed**; incoming-validation regression: **9 passed**. Strict Clippy,
+format and diff checks passed. Windows Application Control intermittently blocked
+an intermediate test build (`4551`); subsequent normal builds/tests ran without
+changing protection settings. See [current recovery evidence](../evidence/m8/m8-cleanup-receipt-startup-20261107.md).
+
+**Next:** obtain Windows package/native peer-stream, power-loss/platform, macOS
+and independent-review evidence before activating transport publication. The
+native nonzero-cutoff peer review still depends on supported publication;
+completed pairing/replay needs no repeat. This closes the implemented Windows
+process-interruption recovery slice, not the whole M8 milestone.
+
 ## Cleanup interruption gate and protocol decision (2026-11-07)
+
+Historical checkpoint; superseded by the approved implementation above.
 
 Three new real-process interruption checks expose a startup availability gap:
 after committed staging or manifest cleanup, the remaining marker lacks a
