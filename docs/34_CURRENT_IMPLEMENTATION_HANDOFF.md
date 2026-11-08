@@ -1,5 +1,57 @@
 # 34 — Current Implementation Handoff
 
+## Trusted-import preparation package ready (2026-11-08)
+
+The owner requested the trusted-device/import check as another one-click test.
+The implementation reuses the two **previously owner-approved Cryptex pilot
+profiles in the VM**, rather than automatically approving new keys. The host
+will be an untrusted transport relay for their public synthetic segments; this
+does not claim two independent OS installations' Cryptex trust enrollment.
+
+New explicit daemon pilot command `trusted-import-prepare-v1` owns/reconciles
+the marked source and receiver runtimes and a fresh negative fixture. It loads
+both OS-held local anchors, re-verifies their signed histories, checks reciprocal
+direct peer bindings and unrestricted authority, and refuses non-synthetic source
+notes before capture/export. It captures one idempotent public test note and
+seals through the existing writer. It prepares only an already-approved empty
+writer slot at the receiver and rebuilds disposable M3/M4 from the same verified
+cutoff-aware content snapshot used by the safety gate. Strict trust, signature,
+continuity, inventory and M3/M4 comparisons are unchanged. No approval event,
+trusted-key SQLite row or published peer event is injected.
+
+The negative fixture signs a valid event claiming the same Brain ID using a
+fresh unapproved OS-held key. Only its public descriptor/segment are exported.
+All signing seeds stay in VM secure storage. The exporter whitelists relative
+segment paths and verifies file hashes; the outgoing archive contains only the
+manifest and known synthetic public/control event data, never executable code
+or runtime key/config files. Canonical source notes are appended, never edited;
+receiver canonical event bytes are not imported by this preparation step.
+
+Checks passed: three new trusted-policy tests (including valid peer acceptance,
+duplicate validation without publication, stale-watermark hold, valid same-Brain
+unapproved signer rejection, corrupted-record rejection, missing-approval and
+non-synthetic-source refusal), nine incoming-validation regressions and fifteen
+CLI tests. Strict Clippy, format and release build passed. PowerShell package
+checks covered member allowlist/daemon hash, missing-profile error reporting,
+source preservation and path/hash rejection. These are local tests; VM native
+preparation and transported full-policy validation remain pending.
+
+**Next owner action:** extract
+`%USERPROFILE%\Downloads\cryptex-guven-hazirlik-c223e671.zip` in the same VM,
+open `GUVEN-HAZIRLA.cmd`, return `GUVEN-HAZIRLIK.zip` or `GUVEN-HATA.zip`.
+Probe: `c223e671-3c5e-413d-a82c-419ed88a508f`.
+Expected Brain/source/receiver remain
+`99e94c1a-0c62-48a0-88d2-61b9a146e021`,
+`74ab8018-fc82-4815-84c6-48d728578184`,
+`a61f5092-6a37-4f7c-acc6-e470d6f438c2`.
+The package pins the original `cx-m8-c152.../desktop` source and
+`cx-m8-7333.../desktop` receiver. No new VM, copy/paste pairing or source key
+export is needed. After the returned bundle is inspected, prepare the native
+relay package and run the actual `replication validate-incoming` path with
+positive/unapproved/tampered cases. Do not label preparation as the VM import
+test passing; publication/managed-adapter/platform/review gates remain open.
+See [scope and verification](../evidence/m8/m8-trusted-import-preparation-20261108.md).
+
 ## Host-to-VM signed transport probe passed (2026-11-08)
 
 The owner returned `IMZALI-SONUC.zip` for probe
