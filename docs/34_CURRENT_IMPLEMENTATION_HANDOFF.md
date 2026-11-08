@@ -1,5 +1,40 @@
 # 34 — Current Implementation Handoff
 
+## Mac readiness received; native checks runner prepared (2026-11-08)
+
+Owner returned `MAC-SONUC.zip`, SHA-256
+`07B009241BAFF87A542B39CBDC6768F30CEAAD6BD7C590498BF72A0DA646452A`.
+Exactly one bounded `platform.txt` (497 bytes) matches the readiness scope/probe.
+It reports macOS 27.2/build 26B123, native arm64 (`translated=0`), CLT/clang and
+Rust 1.98.1 present. Scratch copy, hardlink count two and symlink checks pass.
+Filesystem type remains `unknown`; native Cryptex/secure-store/power-loss tests
+explicitly remain not run. This receipt is a runner observation, not attestation
+or a platform integration pass.
+
+Prepared `MAC-TEST.command` plus an exact-commit source packager. The outgoing
+`%USERPROFILE%\Downloads\cryptex-mac-test-20261108.zip` contains source code
+and five allowlisted runner/binding members total, with executable Unix mode
+and LF script. It checks source SHA-256, uses existing Rust 1.98.1 and CLT to
+build the daemon library test harness on the Mac, then runs instance-file,
+import-staging/recovery, incoming-validation, trusted-probe and native Keychain
+groups, plus Mac all-target Clippy. Cargo.lock-bound dependencies may be
+downloaded for the initial build; subsequent commands are offline. No toolchain
+installation, `sudo`, production profile access or security-setting change.
+
+Success/failure logs and source/OS bindings return as `MAC-TEST-SONUC.zip`.
+Empty test selections cannot count as passing. Compile failure still returns
+its report/log. Keychain cases use only existing synthetic dev test accounts.
+The Windows-only persistent publication service is not enabled on Mac; selected
+native checks do not establish managed peer ownership, full Mac replication,
+physical durability, or independent review. Existing Windows HTTP failures and
+the live-controller barrier/review gates remain open.
+
+**Next owner action:** extract `cryptex-mac-test-20261108.zip` on that Mac,
+open `MAC-TEST.command`, return `MAC-TEST-SONUC.zip` even when it reports a
+failure. Actual native results are pending. Check the exact outgoing source
+commit/hash recorded in [Mac native check evidence](../evidence/m8/m8-macos-native-checks-20261108.md)
+before evaluating the returned report; do not rerun readiness or pairing.
+
 ## Security self-review fixes; Windows limits and Mac preflight (2026-11-08)
 
 Reviewed the dormant persistent-import integration at `2705330` against the

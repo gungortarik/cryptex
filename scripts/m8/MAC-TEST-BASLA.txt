@@ -1,0 +1,18 @@
+Mac'te ZIP'i ayiklayin ve MAC-TEST.command dosyasina cift tiklayin.
+Tamamlandiginda Finder'da gosterilen MAC-TEST-SONUC.zip dosyasini sohbete ekleyin.
+Hata olursa da ayni sonuc ZIP dosyasini gonderin. Terminal komutu gerekmez.
+
+Paket sabitlenmis kaynak kodu Mac'inizde Rust 1.98.1 ile derler. Ilk derlemede
+Cargo.lock ile sabitlenmis acik kaynak bagimliliklarini Internet'ten indirebilir.
+Rust/Xcode kurulumu veya guncellemesi yapmaz; sudo gerektirmez.
+Derleme ve test gunlukleri, yeni ozel gecici klasorde tutulur.
+
+Kilit dosyasi guvenligi, import staging/kurtarma, gelen veri dogrulamasi,
+imzali onayli test gecmisi ve yerel Keychain adapteri sinanir. Keychain icin
+yalnizca sentetik gelistirme test kayitlari olusturulur/silinir; macOS izin
+penceresi gosterebilir. Mevcut Cryptex profillerine veya gercek anahtarlara
+erismez. Guvenlik ayarlarini veya antivirusu kapatmayin.
+
+Bu secili yerel kontrollerin gecmesi, fiziksel guc kesintisi dayanikliligi,
+tam Mac cihaz eslesmesi/aktarimi ya da bagimsiz guvenlik onayi degildir.
+Windows kalici yayin servisi Mac'te acilmaz; normal yayinlama kapali kalir.
