@@ -65,6 +65,12 @@ duplicate/malformed inventory and manifest rejection, privacy and truthful scope
 checks pass. Dedicated manual-only Mac CI will verify those native process bounds
 and the API-only launcher; its result is recorded below after execution.
 
+The new standalone workflow was not yet registered on the default branch, so its
+first workflow_dispatch returned404 and executed nothing. The existing registered
+CI workflow now exposes mac_identity_preflight_only, reusing the narrow Mac job
+from this branch and skipping readiness/IPC/installer jobs for that explicit mode.
+Normal CI defaults/permissions are unchanged; no main-branch integration needed.
+
 ## Primary sources
 
 - [Apple code-signing identity enumeration](https://developer.apple.com/documentation/xcode/creating-distribution-signed-code-for-the-mac/).

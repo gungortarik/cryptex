@@ -9,6 +9,10 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      mac_identity_preflight_only:
+        description: Run only the read-only Mac identity prerequisite harness
+        type: boolean
+        default: false
       ipc_acl_only:
         description: Run only the isolated Windows cross-account IPC test
         type: boolean
@@ -23,7 +27,7 @@ permissions:
 
 jobs:
   readiness:
-    if: github.event_name != 'workflow_dispatch' || (!inputs.ipc_acl_only && !inputs.windows_desktop_build_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.mac_identity_preflight_only && !inputs.ipc_acl_only && !inputs.windows_desktop_build_only)
     name: Readiness (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
@@ -159,7 +163,7 @@ jobs:
       # separately. These tests do not certify installed/signed distribution.
 
   ipc-acl:
-    if: github.event_name != 'workflow_dispatch' || !inputs.windows_desktop_build_only
+    if: github.event_name != 'workflow_dispatch' || (!inputs.mac_identity_preflight_only && !inputs.windows_desktop_build_only)
     name: IPC cross-account ACL (Windows)
     runs-on: windows-latest
     timeout-minutes: 10
@@ -178,8 +182,12 @@ jobs:
           powershell.exe -NoProfile -NonInteractive -File tools/m0-ipc-spike/scripts/test-windows-ipc-acl-ci.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+  mac-identity-preflight:
+    if: github.event_name == 'workflow_dispatch' && inputs.mac_identity_preflight_only
+    uses: ./.github/workflows/m8-macos-identity-preflight.yml
+
   windows-desktop-build:
-    if: github.event_name == 'workflow_dispatch' && inputs.windows_desktop_build_only
+    if: github.event_name == 'workflow_dispatch' && !inputs.mac_identity_preflight_only && inputs.windows_desktop_build_only
     name: Windows Desktop package (unsigned, manual only)
     runs-on: windows-latest
     timeout-minutes: 25
