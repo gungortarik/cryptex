@@ -1,0 +1,25 @@
+name: M8 Mac identity prerequisite harness
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prerequisites:
+    runs-on: macos-latest
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify prerequisite collector, privacy and process bounds
+        run: |
+          bash -n scripts/m8/MAC-KIMLIK.command
+          python3 -m unittest discover -s scripts/m8 -p test_mac_identity_preflight.py -v
+      - name: Package exact source outside checkout and run API prerequisites only
+        run: |
+          python3 scripts/m8/package-macos-identity.py --output "$RUNNER_TEMP/mac-identity.zip"
+          mkdir "$RUNNER_TEMP/mac-identity-package"
+          unzip -q "$RUNNER_TEMP/mac-identity.zip" -d "$RUNNER_TEMP/mac-identity-package"
+          CRYPTEX_MAC_PREFLIGHT_HEADLESS=1 bash "$RUNNER_TEMP/mac-identity-package/MAC-KIMLIK.command"
+          # The collector reports missing signing prerequisites truthfully;
+          # this workflow does not run/approve the signed XPC matrix.

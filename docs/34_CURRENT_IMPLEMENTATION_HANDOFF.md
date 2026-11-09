@@ -1,5 +1,20 @@
 # 34 — Current Implementation Handoff
 
+## Mac identity prerequisite package prepared; signed matrix NOT RUN (2026-11-09)
+
+The next owner action is one Mac prerequisite package, not another Windows VM
+pairing/transfer. New scripts/m8/MAC-KIMLIK.command collects SDK/API availability
+and existing valid file-Keychain identity counts, exporting only sanitized counts
+and fixed diagnostics. It never signs, imports/generates credentials, starts a
+service or changes production IPC/trust. Full signed XPC matrix and product minimum
+OS proof remain NOT RUN/unconfirmed. A zero file-Keychain count does not rule out
+data-protection Keychain identities.
+
+Source review corrected owned-group cleanup/late-reader races. Local parser/privacy/
+binding checks pass; actual Mac harness CI/package receipt bindings follow in
+[prerequisite evidence](../evidence/m8/m8-macos-identity-preflight-20261109.md).
+Retain the green product-code CI below; no product Rust/frontend behavior changed.
+
 ## Current resume point: exact-code dual-OS CI green; M8 OPEN (2026-11-09)
 
 **Tested/pushed behavior source:** `6de8dbea8b6cf0221cd114ed91c77290ce1a6165`,

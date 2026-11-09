@@ -1,0 +1,19 @@
+1. ZIP dosyasini Mac'e kopyala ve acarak ayikla.
+2. MAC-KIMLIK.command dosyasina cift tikla.
+3. Finder'da gosterilen MAC-KIMLIK-SONUC.zip dosyasini bu sohbete ekle.
+
+Bu kisa kontrol, SDK/API hazirligini ve mevcut dosya tabanli Keychain'deki
+gecerli kod imzalama kimliklerinin yalnizca sayisini raporlar. Sertifika adlari,
+parmak izleri, kullanici adi veya ozel anahtarlar sonuc ZIP'ine konmaz.
+security find-identity, data-protection Keychain kimliklerini listelemez; sifir
+sonuc tum imzalama imkanlarinin yok oldugunu kanitlamaz.
+
+Kendi gecici klasorunde kucuk bir API-mevcudiyet programi derler/calistirir.
+Hicbir kimlikle kod imzalamaz, sertifika/Keychain olusturmaz, ag baglantisi,
+kurulum veya guvenlik ayari degisikligi yapmaz. Cryptex'i acmana gerek yok.
+Guvenlik uyarisi cikarsa uyariyi gonder; sistem korumalarini kapatma.
+
+Bu paket XPC baglanti/ayni imzali ikinci surec testinin kendisi degildir.
+Imza kimlikleri ve asgari urun macOS hedefi dogrulanmadan tam guvenlik
+denemesinin gecmis sayilmasini onler. API derleme hedefi 12.0 yalnizca bu
+denemeye aittir; Cryptex'in urun hedefini degistirmez. M8 acik kalir.
