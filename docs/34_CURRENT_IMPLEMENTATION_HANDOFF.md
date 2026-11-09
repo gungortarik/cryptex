@@ -1,5 +1,19 @@
 # 34 — Current Implementation Handoff
 
+## Long-path candidate delivered to VM; receiver result pending (2026-11-08)
+
+Request `DENETLEYICI-ISTEK-45278d8e-a4a65ab5fda6.zip` passed closed validation.
+Fresh host relay connected to VM; 6557 bytes, 100% completion, zero needed
+bytes/items observed. Host script exited 0 with peer_completion_observed and clean
+shutdown after completion keepalive. Sender is no longer running.
+
+Next dependency: owner returns `DENETLEYICI-SONUC-45278d8e-a4a65ab5fda6.zip`.
+Verify c669a9a candidate/source digest and all native publication/restart/replay/
+IPC/credential-cleanup assertions before claiming the long-path live flow passed.
+Do not rerun pairing or send another request. Host receipt is transport evidence,
+not canonical import/M8 completion. See
+[host transfer evidence](../evidence/m8/m8-native-controller-long-path-host-transfer-20261108.md).
+
 ## Long Windows import paths reproduced and corrected (2026-11-08)
 
 Diagnostic `DENETLEYICI-TANI-5b92b54889a6-1729dd82.zip` confirms the received
