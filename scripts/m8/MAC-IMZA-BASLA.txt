@@ -1,0 +1,24 @@
+1. Bu ZIP'i kendi MacBook'unda ayikla.
+2. MAC-IMZA.command dosyasina cift tikla.
+3. Keychain, codesign icin mevcut anahtarini kullanma izni sorarsa bu islem
+   icin Izin Ver / Allow sec. Always Allow secme. Istersen iptal edebilirsin.
+4. Finder'da gosterilen MAC-IMZA-SONUC.zip dosyasini sohbete ekle.
+
+Paket tek mevcut dosya-Keychain imzalama kimligini yerel olarak secer.
+Anahtar disari aktarilmaz. Birden fazla kimlik varsa tahmin etmez, durur.
+Yalnizca gecici sentetik programlar imzalanir. Yeni sertifika olusturulmaz,
+hesap eklenmez, guvenlik ayarlari veya Cryptex verileri degistirilmez.
+Gecici kullanici XPC servisi test sonunda kaldirilir; kurulum yapilmaz.
+
+Sonuc yalnizca sentetik nonce mesajlari, kaynak/deneme programi hash'leri ve
+sabit tani kodlarini icerir. Sertifika adi, kullanici adi, gercek sertifika
+secicisi ve ozel anahtar sonuc ZIP'ine konmaz. Test dosyalari /private/tmp
+altinda ozel bir klasordedir; kalici Cryptex profili kullanilmaz.
+
+Ayni imzali ikinci surece aktarilan endpoint de sinanir. Bunun kabul edilmesi
+imzanin tek basina belirli bir surec ornegini ayiramadigini gosterir.
+Ikinci sertifikayla farkli imzalayan ve eski baglantiyi tekrar kullanma
+senaryolari bu pakette GECMIS sayilmaz; ayri acik kontrollerdir. Ad-hoc
+imza, ikinci sertifikali imzalayanin yerine gecmez. macOS 12.0 derleme hedefi
+sadece denemeye aittir; urunun asgari surumunun dogrulandigi anlamina gelmez.
+Bu bir tam M8 veya uretim kimlik dogrulamasi onayi degildir.

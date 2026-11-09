@@ -1,5 +1,16 @@
 # 34 — Current Implementation Handoff
 
+## Signed synthetic XPC package prepared; native harness verification pending (2026-11-09)
+
+MAC-IMZA.command uses the personal Mac's single existing certificate for temporary
+nonce-echo fixtures, with exact certificate/identifier requirements and delivered
+message-derived SecCode checks. Wrong-ID/ad-hoc/unsigned observations and a
+same-requirement forwarded endpoint after origin exit are scoped separately.
+Full feasibility stays INCOMPLETE: second certified signer, stale actual connection
+reuse, product minimum OS and exact-instance custody remain unproven. No production
+IPC/trust/transport changes. Do not deliver until Mac harness CI passes; owner run
+is NOT RUN. [Scope and safety](../evidence/m8/m8-macos-signed-xpc-observations-20261109.md).
+
 ## Personal Mac API preflight passed; one signing candidate found (2026-11-09)
 
 The latest MAC-KIMLIK-SONUC.zip is from the user's own MacBook, collected at

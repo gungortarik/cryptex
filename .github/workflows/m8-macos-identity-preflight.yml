@@ -15,7 +15,17 @@ jobs:
       - name: Verify prerequisite collector, privacy and process bounds
         run: |
           bash -n scripts/m8/MAC-KIMLIK.command
+          bash -n scripts/m8/MAC-IMZA.command
           python3 -m unittest discover -s scripts/m8 -p test_mac_identity_preflight.py -v
+          python3 -m unittest discover -s scripts/m8 -p test_mac_xpc_probe.py -v
+      - name: Compile synthetic XPC source and exercise anonymous same-process smoke
+        run: |
+          xcrun --sdk macosx clang -std=c11 -fblocks -Wall -Wextra -Werror -mmacosx-version-min=12.0 -isysroot "$(xcrun --sdk macosx --show-sdk-path)" scripts/m8/mac_xpc_probe.c -framework Security -framework CoreFoundation -o "$RUNNER_TEMP/xpc-synthetic"
+          codesign --force --timestamp=none --sign - --identifier com.cryptex.m8.ci.synthetic "$RUNNER_TEMP/xpc-synthetic"
+          "$RUNNER_TEMP/xpc-synthetic" self-smoke 'identifier "com.cryptex.m8.ci.synthetic"'
+          # CI ad-hoc/self-process smoke is not the owner's signed cross-process matrix.
+      - name: Exercise cross-process synthetic XPC and endpoint courier on disposable CI
+        run: python3 -B scripts/m8/mac_xpc_ci_smoke.py
       - name: Package exact source outside checkout and run API prerequisites only
         run: |
           python3 scripts/m8/package-macos-identity.py --output "$RUNNER_TEMP/mac-identity.zip"

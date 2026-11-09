@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       mac_identity_preflight_only:
-        description: Run only the read-only Mac identity prerequisite harness
+        description: Run only Mac prerequisite and synthetic XPC harness checks
         type: boolean
         default: false
       ipc_acl_only:
