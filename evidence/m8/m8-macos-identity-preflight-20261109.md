@@ -71,6 +71,13 @@ CI workflow now exposes mac_identity_preflight_only, reusing the narrow Mac job
 from this branch and skipping readiness/IPC/installer jobs for that explicit mode.
 Normal CI defaults/permissions are unchanged; no main-branch integration needed.
 
+First registered-branch run42686288860 on563a43ad failed the three native process
+tests before API compilation: select.kqueue does not implement a context manager.
+The wrapper now uses contextlib.closing and a platform-independent queue double
+with only close/control catches that API assumption. No test assertion weakened;
+rerun is required before delivering a package. That initial outgoing archive
+was not delivered to the owner.
+
 ## Primary sources
 
 - [Apple code-signing identity enumeration](https://developer.apple.com/documentation/xcode/creating-distribution-signed-code-for-the-mac/).

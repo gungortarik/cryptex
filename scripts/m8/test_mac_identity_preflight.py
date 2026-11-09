@@ -8,6 +8,8 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 import zipfile
 
 sys.dont_write_bytecode = True
@@ -19,6 +21,24 @@ spec.loader.exec_module(packager)
 
 
 class IdentityPreflightTests(unittest.TestCase):
+    def test_darwin_queue_only_needs_close_not_context_manager_support(self):
+        class Queue:
+            closed = False
+
+            def control(self, changes, count, timeout):
+                return [SimpleNamespace(flags=0)]
+
+            def close(self):
+                self.closed = True
+
+        queue = Queue()
+        api = SimpleNamespace(kqueue=lambda: queue, kevent=lambda *a, **k: None,
+                              KQ_FILTER_PROC=1, KQ_EV_ADD=2, KQ_EV_ONESHOT=4,
+                              KQ_NOTE_EXIT=8, KQ_EV_ERROR=16)
+        with patch.object(probe, 'select', api), patch.object(probe.sys, 'platform', 'darwin'):
+            self.assertTrue(probe.wait_without_reaping(123, 1))
+        self.assertTrue(queue.closed)
+
     def test_inventory_exports_only_counts_and_does_not_infer_key_use(self):
         text = ('  1) ' + 'A' * 40 + ' "Apple Development: PRIVATE PERSON (ABCDEFGHIJ)"\n'
                 '  2) ' + 'B' * 40 + ' "Developer ID Application: PRIVATE PERSON (ABCDEFGHIJ)"\n'

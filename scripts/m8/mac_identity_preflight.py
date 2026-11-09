@@ -1,6 +1,7 @@
 """Read-only Mac identity prerequisites; never a native XPC authorization pass."""
 
 import argparse
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import errno
@@ -41,7 +42,7 @@ def wait_without_reaping(pid, timeout):
     if sys.platform == "darwin":
         # Apple's system Python predates os.waitid support on macOS. kqueue's
         # process exit notification does not reap our child or release its PID.
-        with select.kqueue() as queue:
+        with closing(select.kqueue()) as queue:
             event = select.kevent(pid, filter=select.KQ_FILTER_PROC,
                                  flags=select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
                                  fflags=select.KQ_NOTE_EXIT)
