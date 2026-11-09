@@ -1,5 +1,15 @@
 # 34 — Current Implementation Handoff
 
+## Standard-user CI child module environment corrected (2026-11-08)
+
+Run42560323415 on92d3f5b successfully launched the credential child through
+SID/non-admin/profile-existence checks, then WindowsPS5.1 Get-Acl autoload failed
+because it inherited PS7 module search paths. Child now uses only its native
+PSHOME\Modules before autoload. Local native5.1 Get-Acl check passes. No production
+policy changed; next CI run must prove complete daemon execution and cleanup.
+Mac same-run daemon lib/bin passed and progressed to release Desktop tests;
+Windows different-user ACL job passed. Full CI remains unverified.
+
 ## CI retry: Mac library green; fixture allocation/Windows token corrected (2026-11-08)
 
 CI42559236900 on34f5866: Mac library 464 passed/0failed/4ignored; binary test

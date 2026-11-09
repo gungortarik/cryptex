@@ -100,3 +100,19 @@ nonzero exit, missing/zero/filter/mismatched inventories. No local host account,
 profile or credential process was created. Independent source review found no
 launch blocker and recommended stderr-safe capture/separate account cleanup;
 both were applied. Actual hosted credential/profile compatibility remains pending.
+
+## Hosted launcher first execution
+
+[Run 42560323415](https://github.com/gungortarik/cryptex/actions/runs/42560323415)
+on `92d3f5b176f2348e503f8171912436ebba99b576` reached credential child startup:
+SID/non-admin checks and profile existence passed, then Get-Acl could not autoload
+Microsoft.PowerShell.Security because Windows PowerShell5.1 inherited PS7 module
+paths. Daemon tests did not run in that child. Parent reported child test failure;
+no account/profile cleanup failure was reported. IPC cross-account job passed;
+Mac passed daemon library/binary and continued toward release Desktop tests.
+
+Child now sets process-local PSModulePath to its own PSHOME\Modules before any
+module-dependent command. Native WindowsPS5.1 security-module/Get-Acl loading was
+verified locally read-only; no account created on owner host. The fix changes
+only test-launcher environment, not machine policy, production code or ownership.
+New hosted run must verify the complete daemon test/cleanup path.

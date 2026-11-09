@@ -1,4 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$Payload)
+# Parent runs PowerShell7; this credential child is Windows PowerShell5.1.
+# Do not inherit incompatible PS7 module paths into native PS5.1 autoload.
+$env:PSModulePath="$PSHOME\Modules"
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows'){throw 'Hosted CI required.'}
