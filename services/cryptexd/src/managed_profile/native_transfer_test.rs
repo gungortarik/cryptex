@@ -37,7 +37,15 @@ fn digest(path: &Path) -> String {
 fn canonical_hashes(root: &Path) -> std::collections::BTreeMap<PathBuf, String> {
     let mut result = std::collections::BTreeMap::new();
     for device in fs::read_dir(root.join("canonical/events")).unwrap() {
-        for file in fs::read_dir(device.unwrap().path()).unwrap() {
+        let device = device.unwrap();
+        let kind = device.file_type().unwrap();
+        // The canonical writer keeps this coordination file beside device directories.
+        if device.file_name() == "inventory.lock" {
+            assert!(kind.is_file(), "inventory lock must be a regular file");
+            continue;
+        }
+        assert!(kind.is_dir(), "unexpected canonical inventory entry");
+        for file in fs::read_dir(device.path()).unwrap() {
             let path = file.unwrap().path();
             if path
                 .extension()
@@ -48,6 +56,40 @@ fn canonical_hashes(root: &Path) -> std::collections::BTreeMap<PathBuf, String> 
         }
     }
     result
+}
+#[test]
+fn canonical_inventory_tracks_event_bytes_with_root_inventory_lock() {
+    let (_, receiver, _, _) = crate::trusted_import_probe::tests::pair();
+    assert!(receiver.join("canonical/events/inventory.lock").is_file());
+    let before = canonical_hashes(&receiver);
+    assert!(!before.is_empty());
+    let relative = before.keys().next().unwrap();
+    let path = receiver.join(relative);
+    let original = fs::read(&path).unwrap();
+    // Deliberately mutate only this disposable fixture to test the evidence helper.
+    fs::write(&path, b"changed synthetic event bytes").unwrap();
+    assert_ne!(before, canonical_hashes(&receiver));
+    fs::write(&path, original).unwrap();
+    assert_eq!(before, canonical_hashes(&receiver));
+    let extra = path.parent().unwrap().join("00000000000000000099.seg");
+    fs::write(&extra, b"additional synthetic segment").unwrap();
+    assert_eq!(canonical_hashes(&receiver).len(), before.len() + 1);
+    fs::remove_file(&extra).unwrap();
+    fs::remove_file(&path).unwrap();
+    assert_ne!(before, canonical_hashes(&receiver));
+}
+#[test]
+fn canonical_inventory_refuses_unexpected_root_file() {
+    let root = crate::test_temp::exclusive_temp_dir("native-inventory-invalid");
+    fs::create_dir_all(root.join("canonical/events")).unwrap();
+    fs::write(root.join("canonical/events/unexpected.seg"), b"unexpected").unwrap();
+    assert!(std::panic::catch_unwind(|| canonical_hashes(&root)).is_err());
+}
+#[test]
+fn canonical_inventory_refuses_directory_in_lock_slot() {
+    let root = crate::test_temp::exclusive_temp_dir("native-inventory-lock-slot");
+    fs::create_dir_all(root.join("canonical/events/inventory.lock")).unwrap();
+    assert!(std::panic::catch_unwind(|| canonical_hashes(&root)).is_err());
 }
 fn wait_ready(worker: &ManagedTransportWorker, attempt: u8) -> u32 {
     let until = Instant::now() + Duration::from_secs(40);

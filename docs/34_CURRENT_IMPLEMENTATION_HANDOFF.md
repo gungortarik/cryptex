@@ -1,5 +1,25 @@
 # 34 — Current Implementation Handoff
 
+## Native pilot VM receipt: inventory helper corrected (2026-11-08)
+
+Returned `DENETLEYICI-SONUC-d1e5c535-4975885cbff4.zip` matches the
+`e1b2aed` source/archive binding. Build passed, but the single native test
+failed before worker startup/request export: its canonical hash helper tried
+to enumerate the writer's root `inventory.lock` as a device directory
+(Windows error 267). This is a pilot helper defect, not a transfer pass.
+
+The helper now excludes only the regular `inventory.lock` coordination file;
+unexpected root files/directories in that slot still fail. A real signed fixture
+regression reproduced the same failure before the fix and passes afterward,
+including event-byte change/addition/deletion detection. Three focused tests,
+strict all-target daemon Clippy, formatting and diff checks pass.
+No production code or transport security checks changed.
+
+Next: deliver the corrected one-click package, then collect its request ZIP.
+The same untouched host relay session can be used: the failed VM run never
+exported a request and no host transfer began. Native integration remains pending.
+See [failure evidence](../evidence/m8/m8-native-controller-inventory-fix-20261108.md).
+
 ## Opt-in real native worker transfer pilot prepared (2026-11-08)
 
 Candidate `e1b2aedcf5f94461f15e02ba49e2662bd77d62ab`; verified package
