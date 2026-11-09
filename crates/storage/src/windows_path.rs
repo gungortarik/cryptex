@@ -1,4 +1,4 @@
-//! Path encoding for daemon-owned public metadata Win32 file operations.
+//! Path encoding for daemon-owned Win32 storage and metadata operations.
 //!
 //! This performs no filesystem lookup and is not an ownership/reparse validator.
 //! Ordinary DOS/UNC paths retain their Win32 absolute-path semantics; existing
@@ -8,7 +8,7 @@ use std::io;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Component, Path, Prefix};
 
-pub(crate) fn for_win32_api(path: &Path) -> io::Result<Vec<u16>> {
+pub fn for_win32_api(path: &Path) -> io::Result<Vec<u16>> {
     if path.as_os_str().encode_wide().any(|unit| unit == 0) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,

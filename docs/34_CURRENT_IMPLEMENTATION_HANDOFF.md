@@ -1,5 +1,24 @@
 # 34 — Current Implementation Handoff
 
+## Full writer path corrected after final hosted failure (2026-11-08)
+
+CI42563317369 on18774b2 completed: Mac readiness + Windows IPC ACL passed;
+Windows library595passed/1failed/5ignored. Remaining policy-fixture failure was
+canonical writer tip placement at a long path, misleadingly reported OS0 because
+cleanup ran before reading the original Win32 error.
+
+A >260 Unicode-path full writer regression reproduced that failure, then exposed
+the same unencoded path at sequence persistence. The shared Windows encoding now
+lives in storage/windows_path and is reexported by the daemon platform adapter.
+Writer tip, sequence initialization/counter, local/install identity and segment
+seal callers use it, preserving each exclusive/replace flag. Original tip error
+is captured before cleanup. Strict staging/quarantine/capture adapters untouched.
+
+Local: fullwriter29, sequence16, localidentity11, install10 and storage44 pass;
+7 daemon long-path regressions pass, strict Clippy/fmt/diff pass. Independent
+source-only review found no actionable issue. New full CI is required. Mac product
+gaps/next authorized bounded probe are listed in the M8 completion ledger.
+
 ## Final metadata caller audit includes Brain identity and journal (2026-11-08)
 
 The same raw Win32 long-path defect also affected exclusive Brain identity create

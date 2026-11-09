@@ -367,11 +367,10 @@ fn place_initialization_marker(tmp: &Path, path: &Path) -> std::io::Result<()> {
 
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::Storage::FileSystem::{MOVEFILE_WRITE_THROUGH, MoveFileExW};
 
-        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let from = crate::platform::windows::file_path::for_win32_api(tmp)?;
+        let to = crate::platform::windows::file_path::for_win32_api(path)?;
         // SAFETY: both pointers refer to valid null-terminated UTF-16 paths.
         let result = unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), MOVEFILE_WRITE_THROUGH) };
         if result == 0 {
@@ -405,13 +404,13 @@ fn replace_file_atomic(tmp: &Path, dest: &Path) -> CoreResult<()> {
 
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
-
         const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
         const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
 
-        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = dest.as_os_str().encode_wide().chain(Some(0)).collect();
+        let from = crate::platform::windows::file_path::for_win32_api(tmp)
+            .map_err(|error| CoreError::Durability(error.to_string()))?;
+        let to = crate::platform::windows::file_path::for_win32_api(dest)
+            .map_err(|error| CoreError::Durability(error.to_string()))?;
         // SAFETY: pointers are null-terminated wide strings from OsStr encoding.
         let ok = unsafe {
             windows_sys::Win32::Storage::FileSystem::MoveFileExW(

@@ -411,10 +411,9 @@ fn clean_staging(tmp: &Path, primary: io::Error) -> LocalDeviceIdentityError {
 fn place_no_replace(tmp: &Path, path: &Path) -> io::Result<()> {
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
         const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
-        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let from = crate::platform::windows::file_path::for_win32_api(tmp)?;
+        let to = crate::platform::windows::file_path::for_win32_api(path)?;
         // SAFETY: both pointers reference valid null-terminated UTF-16 paths.
         if unsafe {
             windows_sys::Win32::Storage::FileSystem::MoveFileExW(
@@ -482,6 +481,32 @@ mod tests {
     use crate::test_temp::exclusive_temp_dir;
 
     const BRAIN_ID: &str = "11111111-1111-4111-8111-111111111111";
+
+    #[cfg(windows)]
+    #[test]
+    fn long_windows_foundation_and_enrollment_reopen_without_new_identities() {
+        let base = exclusive_temp_dir("m8-long-enroll");
+        let root = base.join("uzun-çalışma-".repeat(16));
+        let brain = BrainIdentity::new(BRAIN_ID, "2026-10-08T00:00:00Z").unwrap();
+        write_brain_identity(&root, &brain).unwrap();
+        let install = crate::install_runtime::prepare_m1_runtime_foundation(&root).unwrap();
+        let store = FakeSecureStore::new();
+        let enrolled = enroll_local_device(&root, &store, SecureStoreEnvironment::Dev).unwrap();
+        let path = local_device_identity_path(&root);
+        assert!(path.as_os_str().len() > 260);
+        let before = fs::read(&path).unwrap();
+        assert_eq!(
+            crate::install_runtime::prepare_m1_runtime_foundation(&root).unwrap(),
+            install
+        );
+        assert_eq!(
+            enroll_local_device(&root, &store, SecureStoreEnvironment::Dev).unwrap(),
+            enrolled
+        );
+        assert_eq!(fs::read(path).unwrap(), before);
+        assert_eq!(store.len(), 1);
+        fs::remove_dir_all(base).unwrap();
+    }
 
     fn prepared_root() -> PathBuf {
         let root = exclusive_temp_dir("cryptex-local-device");

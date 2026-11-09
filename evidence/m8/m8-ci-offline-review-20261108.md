@@ -195,3 +195,37 @@ run covers all final metadata callers. It is not claimed as a successful CI run.
 Independent source-only review found no actionable issue in these two callers;
 typed cleanup/placement errors, journal validation/locking and native move flags
 remain intact. No executable was run by the reviewer.
+
+## Full writer long-path follow-through
+
+[Run42563317369](https://github.com/gungortarik/cryptex/actions/runs/42563317369)
+on18774b2baa8cd0096ef7475253154c2c89536807 completed with Mac readiness and
+Windows IPC ACL passing. Windows library **595passed/1failed/5ignored**, 34.64s.
+The sole failure was the original unapproved-candidate policy fixture, now past
+enrollment but failing canonical append with Path(OS0). Full suite remains failed.
+
+A new full writer regression under a >260 Unicode path independently reproduced
+Path(OS0). Correcting tip encoding then revealed Sequence(OS3). Source audit also
+identified unencoded sequence initialization/counter, segment seal, local device
+and install identity moves. They now share the already reviewed encoder, moved
+without algorithm changes to storage's Windows-only platform module; daemon
+platform reexports it using its existing storage dependency. No duplicated
+algorithm or reversed dependency. Existing strict staging/quarantine/capture
+path adapters remain untouched; encoding is not a containment validator.
+
+Exclusive marker/local/install/segment moves retain WRITE_THROUGH without
+REPLACE_EXISTING; derived tip and counter retain REPLACE_EXISTING|WRITE_THROUGH.
+Writer tip last_os_error is captured before cleanup, retaining the real failure.
+No canonical naming/event bytes, counter/lock policy, trust rule, seed lifecycle
+or activation changed.
+
+Full writer regression appends and seals two signed events, reopens verification
+and proves prior sealed bytes unchanged. Foundation/enrollment regression reloads
+the same install/device identities and one stored seed. Storage regression invokes
+native no-replace against an occupied destination, proves both files unchanged,
+then seals successfully and replays identically. Local checks pass: writer29/29,
+sequence16/16, localidentity11/11, install10/10, storage44/44, daemon long-path7/7,
+strict all-target daemon/storage Clippy, workspace format and diff checks.
+Independent source-only review found no actionable issue and verified native
+flags, typed errors, coverage and helper move; no reviewer binaries executed.
+Next exact-candidate hosted run remains required.

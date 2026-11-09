@@ -180,13 +180,13 @@ fn placement_error_to_identity_error(error: PlacementError, tmp: &Path) -> Ident
 fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> Result<(), PlacementError> {
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
-
         // Do not set MOVEFILE_REPLACE_EXISTING - losing creators must fail.
         const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
 
-        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = dest.as_os_str().encode_wide().chain(Some(0)).collect();
+        let from = crate::platform::windows::file_path::for_win32_api(tmp)
+            .map_err(|error| PlacementError::from_io(error, dest))?;
+        let to = crate::platform::windows::file_path::for_win32_api(dest)
+            .map_err(|error| PlacementError::from_io(error, dest))?;
         // SAFETY: pointers are null-terminated wide strings from OsStr encoding.
         let ok = unsafe {
             windows_sys::Win32::Storage::FileSystem::MoveFileExW(

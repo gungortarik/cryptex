@@ -128,10 +128,9 @@ pub fn seal_active_segment(
 fn place_sealed_from_open(open: &Path, sealed: &Path) -> StorageResult<()> {
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
         const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
-        let src: Vec<u16> = open.as_os_str().encode_wide().chain(Some(0)).collect();
-        let dst: Vec<u16> = sealed.as_os_str().encode_wide().chain(Some(0)).collect();
+        let src = crate::windows_path::for_win32_api(open)?;
+        let dst = crate::windows_path::for_win32_api(sealed)?;
         let ok = unsafe {
             windows_sys::Win32::Storage::FileSystem::MoveFileExW(
                 src.as_ptr(),
@@ -354,6 +353,30 @@ mod tests {
     }
 
     /// Windows seal uses MoveFileEx; after success `.open` is gone and `.seg` retains bytes.
+    #[cfg(windows)]
+    #[test]
+    fn long_windows_seal_preserves_bytes_and_refuses_native_overwrite() {
+        let base = temp_root("long-seal");
+        let root = base.join("uzun-çalışma-".repeat(16));
+        let device = DeviceId::new("long-device").unwrap();
+        append_frame(&root, &device, 0, b"synthetic frame").unwrap();
+        let open = active_segment_path(&root, &device, 0);
+        let sealed = sealed_segment_path(&root, &device, 0);
+        assert!(sealed.as_os_str().len() > 260);
+        let before = fs::read(&open).unwrap();
+        fs::write(&sealed, b"competing sealed bytes").unwrap();
+        assert!(place_sealed_from_open(&open, &sealed).is_err());
+        assert_eq!(fs::read(&open).unwrap(), before);
+        assert_eq!(fs::read(&sealed).unwrap(), b"competing sealed bytes");
+        fs::remove_file(&sealed).unwrap();
+        seal_active_segment(&root, &device, 0).unwrap();
+        assert!(!open.exists());
+        assert_eq!(fs::read(&sealed).unwrap(), before);
+        seal_active_segment(&root, &device, 0).unwrap();
+        assert_eq!(fs::read(sealed).unwrap(), before);
+        fs::remove_dir_all(base).unwrap();
+    }
+
     #[cfg(windows)]
     #[test]
     fn windows_seal_moves_open_to_sealed_pack() {

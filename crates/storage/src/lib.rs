@@ -11,6 +11,8 @@ pub mod recovery;
 pub mod segment_io;
 pub mod stream_frames;
 pub mod timefmt;
+#[cfg(windows)]
+pub mod windows_path;
 
 pub use error::{StorageError, StorageResult};
 pub use layout::{

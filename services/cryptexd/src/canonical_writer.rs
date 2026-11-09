@@ -1538,11 +1538,12 @@ fn persist_tip(path: &Path, tip: &WriterTip) -> CanonicalWriterResult<()> {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
         const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
         const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
-        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let from = crate::platform::windows::file_path::for_win32_api(&tmp)
+            .map_err(|error| CanonicalWriterError::Path(error.to_string()))?;
+        let to = crate::platform::windows::file_path::for_win32_api(path)
+            .map_err(|error| CanonicalWriterError::Path(error.to_string()))?;
         let ok = unsafe {
             windows_sys::Win32::Storage::FileSystem::MoveFileExW(
                 from.as_ptr(),
@@ -1551,10 +1552,9 @@ fn persist_tip(path: &Path, tip: &WriterTip) -> CanonicalWriterResult<()> {
             )
         };
         if ok == 0 {
+            let error = std::io::Error::last_os_error();
             let _ = fs::remove_file(&tmp);
-            return Err(CanonicalWriterError::Path(
-                std::io::Error::last_os_error().to_string(),
-            ));
+            return Err(CanonicalWriterError::Path(error.to_string()));
         }
     }
     #[cfg(unix)]
@@ -1919,6 +1919,58 @@ mod tests {
             }
         };
         crate::test_temp::exclusive_temp_dir_in(&base, &format!("m2-t-w-{label}"))
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn long_windows_writer_appends_seals_reopens_and_preserves_prior_segments() {
+        let base = temp_root("long-path");
+        let root = base.join("uzun-çalışma-".repeat(16));
+        let store = FakeSecureStore::new();
+        let device = DeviceId::new("33333333-3333-4333-8333-333333333333").unwrap();
+        let brain = "33333333-3333-4333-8333-333333333333";
+        let config = CanonicalWriterConfig {
+            seal_event_threshold: 1,
+        };
+        assert!(writer_tip_path(&root, &device).as_os_str().len() > 260);
+        let first = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Public,
+                text: "first offline note",
+                event_id: None,
+                config: &config,
+            },
+        )
+        .expect("append and seal at long path");
+        let first_path = sealed_segment_path(&root, &device, first.segment_index);
+        let before = fs::read(&first_path).unwrap();
+        let second = append_memory_note(
+            &store,
+            SecureStoreEnvironment::Dev,
+            AppendMemoryNoteArgs {
+                runtime_root: &root,
+                brain_id: brain,
+                device_id: &device,
+                classification: Classification::Public,
+                text: "second offline note",
+                event_id: None,
+                config: &config,
+            },
+        )
+        .unwrap();
+        assert!(first.sealed && second.sealed);
+        assert_eq!(fs::read(first_path).unwrap(), before);
+        let events =
+            load_verified_events(&store, SecureStoreEnvironment::Dev, &root, &device).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0], first.accepted);
+        assert_eq!(events[1], second.accepted);
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

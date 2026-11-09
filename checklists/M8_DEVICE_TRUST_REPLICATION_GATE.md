@@ -25,6 +25,34 @@ protocol scope, then consolidate final native integration/security/human review.
 Any additional owner/device action should be packaged once against a concrete
 candidate. M9 starts only after this milestone gate is green.
 
+## Next consolidated Mac implementation/verification batch
+
+Source audit at18774b2 confirms these are implementation gaps, not just missing
+screenshots or an unrun test package:
+
+- `managed_profile/mod.rs` private profile handle and `native.rs` prepare/reopen
+  refuse non-Windows; `worker.rs` depends on WindowsCredentialStore. Add verified
+  Mac platform adapters under the existing lifecycle/credential contracts.
+- `lib.rs` excludes incoming_publication on Mac; non-Windows
+  `import_staging::inspect_directory_chain` returns no pinned ancestor handles.
+  Establish equivalent containment/owner/no-follow/volume/no-replace/directory
+  durability guarantees before connecting the publication worker.
+- `ipc.rs` owner-security preparation and bootstrap completion deliberately refuse
+  `platform_peer_identity_unavailable` on Mac. Bind the exact live Desktop
+  connection/process instance before enabling those operations; a PID match alone
+  cannot replace that proof. Preserve stale/cross-connection confirmation refusal.
+  The previously authorized synthetic XPC feasibility probe is still NOT RUN in
+  `evidence/m8/m8-macos-xpc-peer-identity-feasibility-20261025.md`; complete that
+  bounded probe/review first. It does not authorize replacing ADR-0007's production
+  Unix-socket IPC. Any production architecture amendment needs separate acceptance.
+- Keep normal startup feeder and peer/folder configuration disabled until the
+  complete protocol/security acceptance gate permits activation. Passing Mac CI
+  with these paths excluded/refused is useful regression evidence, not parity.
+- After implementation and source review, produce one pinned Mac native batch for
+  authorization, transport/publication interruption/reopen/replay, offline writes
+  and restriction propagation. Reuse the completed Windows receipt; request a new
+  Windows/native round only if changed behavior needs it. Do not repeat pairing.
+
 Physical power-cut and full soak testing are not claimed by these results.
 Determine the applicable M8 durability evidence from accepted storage/DoD rules;
 do not silently expand this ledger into M11 recovery or M16 full stress scope.
