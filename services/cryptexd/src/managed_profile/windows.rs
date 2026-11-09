@@ -227,6 +227,24 @@ impl PrivateDirectory {
         Ok(file)
     }
 
+    #[cfg(test)]
+    pub(super) fn replace_config_for_transfer_test(
+        &self,
+        bytes: &[u8],
+    ) -> Result<(), ProfileError> {
+        use std::io::Write;
+        let mut file = create_owned_file(
+            &self.path.join("config.xml"),
+            &self.user,
+            windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING,
+        )?;
+        validate_file(&file, &self.user)?;
+        file.set_len(0)
+            .and_then(|()| file.write_all(bytes))
+            .and_then(|()| file.sync_all())
+            .map_err(|_| ProfileError::Io)
+    }
+
     pub(super) fn open_read(&self, name: &str) -> Result<Option<File>, ProfileError> {
         match OpenOptions::new()
             .read(true)

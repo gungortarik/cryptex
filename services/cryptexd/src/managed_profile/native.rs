@@ -100,6 +100,8 @@ struct Receipt {
 /// Holds both the root profile session and private native-home directory. A
 /// launched session borrows this exclusively, preventing two concurrent starts.
 pub struct PreparedNativeProfile<'profile> {
+    #[cfg(all(test, windows))]
+    transfer_test: Option<native_xml::TransferTestPolicy>,
     #[cfg(windows)]
     profile: &'profile mut ManagedProfile,
     #[cfg(windows)]
@@ -122,6 +124,16 @@ impl fmt::Debug for PreparedNativeProfile<'_> {
 }
 
 impl ManagedProfile {
+    #[cfg(all(test, windows))]
+    pub(crate) fn reopen_transfer_test<'a, S: SecureStore + ?Sized>(
+        &'a mut self,
+        package: &PinnedSyncthingPackage,
+        store: &S,
+        ports: NativePorts,
+        policy: native_xml::TransferTestPolicy,
+    ) -> Result<PreparedNativeProfile<'a>, NativeConfigError> {
+        self.reopen_native_inner(package, store, ports, Some(policy))
+    }
     /// Worker reopen only: never enter provisioning/generation for an incomplete
     /// profile. Existing ready state is still fully validated by prepare_native.
     pub fn reopen_native<'profile, S: SecureStore + ?Sized>(
@@ -129,6 +141,22 @@ impl ManagedProfile {
         package: &PinnedSyncthingPackage,
         store: &S,
         ports: NativePorts,
+    ) -> Result<PreparedNativeProfile<'profile>, NativeConfigError> {
+        self.reopen_native_inner(
+            package,
+            store,
+            ports,
+            #[cfg(all(test, windows))]
+            None,
+        )
+    }
+
+    fn reopen_native_inner<'profile, S: SecureStore + ?Sized>(
+        &'profile mut self,
+        package: &PinnedSyncthingPackage,
+        store: &S,
+        ports: NativePorts,
+        #[cfg(all(test, windows))] transfer_test: Option<native_xml::TransferTestPolicy>,
     ) -> Result<PreparedNativeProfile<'profile>, NativeConfigError> {
         ports.validate()?;
         let _ = package;
@@ -168,6 +196,8 @@ impl ManagedProfile {
             }
             let home = Arc::new(self.directory.child("native", false)?);
             let prepared = PreparedNativeProfile {
+                #[cfg(test)]
+                transfer_test,
                 _root_pin: self.directory.clone(),
                 profile: self,
                 home,
@@ -264,6 +294,8 @@ impl ManagedProfile {
             }
             let home = Arc::new(self.directory.child("native", false)?);
             let prepared = PreparedNativeProfile {
+                #[cfg(test)]
+                transfer_test: None,
                 _root_pin: self.directory.clone(),
                 profile: self,
                 home,
@@ -355,6 +387,8 @@ impl ManagedProfile {
         };
         self.write_new("native-ready.json", &json(&receipt)?)?;
         let prepared = PreparedNativeProfile {
+            #[cfg(test)]
+            transfer_test: None,
             _root_pin: self.directory.clone(),
             profile: self,
             home,
@@ -418,6 +452,34 @@ fn ensure_same_or_new(
 
 #[cfg(windows)]
 impl<'profile> PreparedNativeProfile<'profile> {
+    /// Test-only exact peer/folder exception. Product reopen still rejects it.
+    #[cfg(test)]
+    pub(crate) fn configure_transfer_test<S: SecureStore + ?Sized>(
+        &mut self,
+        store: &S,
+        peer: &str,
+        address: &str,
+        folder: &str,
+        incoming: &std::path::Path,
+    ) -> Result<native_xml::TransferTestPolicy, NativeConfigError> {
+        if self.in_use || self.cleanup_unresolved || self.transfer_test.is_some() {
+            return Err(NativeConfigError::InvalidState);
+        }
+        self.validate(store)?;
+        let config = read_required(&self.home, "config.xml", 256 * 1024)?;
+        let (policy, bytes) = native_xml::TransferTestPolicy::create(
+            &config,
+            self.receipt.ports,
+            peer,
+            address,
+            folder,
+            incoming,
+        )?;
+        self.home.replace_config_for_transfer_test(&bytes)?;
+        self.transfer_test = Some(policy.clone());
+        self.validate(store)?;
+        Ok(policy)
+    }
     /// The private configuration identity, validated against the immutable
     /// readiness receipt by `reopen_native` before the profile is returned.
     /// Callers may publish it only after the owned REST status confirms it.
@@ -442,11 +504,13 @@ impl<'profile> PreparedNativeProfile<'profile> {
         {
             return Err(NativeConfigError::IdentityChanged);
         }
-        let config = native_xml::inspect(
-            &read_required(&self.home, "config.xml", 256 * 1024)?,
-            self.receipt.ports,
-            false,
-        )?;
+        let bytes = read_required(&self.home, "config.xml", 256 * 1024)?;
+        #[cfg(test)]
+        let bytes = match &self.transfer_test {
+            Some(policy) => policy.checked_bootstrap_config(&bytes)?,
+            None => bytes,
+        };
+        let config = native_xml::inspect(&bytes, self.receipt.ports, false)?;
         if config.native_id != self.receipt.native_id {
             return Err(NativeConfigError::IdentityChanged);
         }

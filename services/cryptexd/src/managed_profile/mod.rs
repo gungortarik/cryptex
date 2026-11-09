@@ -22,6 +22,8 @@ pub mod controller;
 #[allow(dead_code)] // Gated bridge; native activation/review is a separate release gate.
 pub(crate) mod incoming;
 pub mod native;
+#[cfg(all(test, windows))]
+mod native_transfer_test;
 #[cfg(windows)]
 mod native_xml;
 #[cfg(all(test, windows))]

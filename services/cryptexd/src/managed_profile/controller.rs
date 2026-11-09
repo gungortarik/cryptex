@@ -4,6 +4,13 @@ use std::time::Duration;
 
 use super::native::NativeConfigError;
 
+#[cfg(all(test, windows))]
+#[derive(Default)]
+pub(crate) struct NativeTestCrash {
+    pub(crate) requested: std::sync::atomic::AtomicBool,
+    pub(crate) completed: std::sync::atomic::AtomicUsize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     Starting,
@@ -221,6 +228,30 @@ mod windows {
                         store,
                     },
                     remaining: crashes,
+                    trigger: None,
+                },
+                control,
+                std::thread::sleep,
+            )
+        }
+
+        #[cfg(test)]
+        pub(crate) fn supervise_with_trigger<S: SecureStore + ?Sized>(
+            &mut self,
+            package: &PinnedSyncthingPackage,
+            store: &S,
+            trigger: std::sync::Arc<NativeTestCrash>,
+            control: impl FnMut(Status) -> Control,
+        ) -> Result<Outcome, ControllerError> {
+            run(
+                &mut FaultDriver {
+                    inner: NativeDriver {
+                        prepared: self,
+                        package,
+                        store,
+                    },
+                    remaining: 0,
+                    trigger: Some(trigger),
                 },
                 control,
                 std::thread::sleep,
@@ -232,12 +263,14 @@ mod windows {
     struct FaultDriver<'a, 'profile, S: SecureStore + ?Sized> {
         inner: NativeDriver<'a, 'profile, S>,
         remaining: u8,
+        trigger: Option<std::sync::Arc<NativeTestCrash>>,
     }
     #[cfg(test)]
     struct FaultRunning<'a, 'profile, S: SecureStore + ?Sized> {
         inner: Running<'a, 'profile, S>,
         crash: bool,
         observed: bool,
+        trigger: Option<std::sync::Arc<NativeTestCrash>>,
     }
     #[cfg(test)]
     impl<'profile, S: SecureStore + ?Sized> Driver for FaultDriver<'_, 'profile, S> {
@@ -252,6 +285,7 @@ mod windows {
                 inner: self.inner.start()?,
                 crash,
                 observed: false,
+                trigger: self.trigger.clone(),
             })
         }
     }
@@ -261,9 +295,21 @@ mod windows {
             self.inner.pid()
         }
         fn exited(&mut self) -> Result<bool, NativeConfigError> {
-            if self.crash && self.observed {
+            let triggered = self.observed
+                && self
+                    .trigger
+                    .as_ref()
+                    .is_some_and(|v| v.requested.swap(false, std::sync::atomic::Ordering::AcqRel));
+            if (self.crash && self.observed) || triggered {
                 self.crash = false;
                 self.inner.session.crash_owned_job_for_test()?;
+                if triggered {
+                    self.trigger
+                        .as_ref()
+                        .unwrap()
+                        .completed
+                        .fetch_add(1, std::sync::atomic::Ordering::Release);
+                }
             }
             self.inner.exited()
         }

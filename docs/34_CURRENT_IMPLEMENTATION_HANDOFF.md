@@ -1,5 +1,42 @@
 # 34 — Current Implementation Handoff
 
+## Opt-in real native worker transfer pilot prepared (2026-11-08)
+
+The owner selected **main Windows computer ↔ existing Windows VM**. The new
+one-click `NATIVE-AKTAR.cmd` package builds the exact source candidate on the VM,
+creates fresh synthetic canonical identities with signed reciprocal approvals,
+and prepares an actual managed native receiver. Its public request ZIP contains
+only signed public test segments and public transport metadata. The host relays
+those bytes using a fresh isolated send-only Syncthing profile. Existing owner
+profiles/pairings are not used. Keep the VM runner open while returning the
+request ZIP; the native delivery deadline is 30 minutes after build/readiness.
+
+The ignored native harness uses actual owned REST readiness, receives through
+Syncthing into `transport/incoming`, explicitly terminates its owned native job
+**after delivery and before publication**, observes the acknowledged restart,
+then invokes `ManagedTransportWorker::process_incoming`. It checks shared
+admission and real named-pipe search during publication/rebuild, verifies imported
+bytes and pre-existing canonical hashes, cleanly reopens native/runtime ownership,
+and replays with zero new segments and identical canonical data. IPC uses the
+existing test authorization seam, not an independent native Desktop auth proof.
+
+The exact single-peer/receive-only-folder exception and crash trigger are
+`cfg(test)` only. Normal native reopen still rejects this configuration. No
+normal feeder, new product transport authority or security bypass was added.
+Synthetic event keys stay in the test process; only the native API credential
+uses a fresh Windows DEV credential account. Successful receipt requires its
+deletion; failure cleanup logs a redacted diagnostic. Private test directories
+are retained, not included in result ZIPs.
+
+Local source/runner checks passed; actual native end-to-end receipt is **pending**.
+Host preflight stopped with `Rest(Endpoint(PeerNotEstablished))`, consistent with
+the previously unresolved development-host TCP state problem. It is not a native
+pilot pass. Windows VM previously passed the owned HTTP checks; use it as receiver.
+This pilot does not claim interruption mid-network-write, power-loss durability,
+macOS production parity, automatic activation or M8 completion.
+
+See [pilot evidence and exact resume instructions](../evidence/m8/m8-native-controller-pilot-20261108.md).
+
 ## Exact-candidate native coordination checks passed on Windows and Mac (2026-11-08)
 
 Owner returned `MAC-TEST-SONUC.zip` and `WIN-TEST-SONUC (2).zip` for candidate

@@ -1,0 +1,21 @@
+VM ICIN
+1. ZIP'i Windows VM icinde ayiklayin.
+2. NATIVE-AKTAR.cmd dosyasini normal kullanici olarak acin (yonetici degil).
+3. Derleme bitince DENETLEYICI-ISTEK-....zip olusur. Sohbete ekleyin.
+   Test penceresini ve VM'i acik tutun. Ana bilgisayar gondericisini ajan baslatir.
+4. Aktarim, kontrollu servis kesintisi, yeniden baslatma, kalici ice aktarma,
+   IPC okuma ve tekrar denemede degismezlik otomatik sinanir.
+5. Bitince DENETLEYICI-SONUC-....zip dosyasini sohbete ekleyin. Hata olsa da gonderin.
+
+Dosyalar Downloads klasorune yazilir. Kaynak derlemesi Rust 1.98.1 ve
+Windows C++ derleme araclarini kullanir; eksikse sonuc raporu uretir.
+Gonderici bekleme suresi derlemeden SONRA 30 dakikadir.
+Mevcut Cryptex profilleri kullanilmaz. Guvenlik duvari/antivirus degistirilmez.
+Kaynak/verici ve alici canonical kimlikleri VM'deki sentetik test verisidir;
+ana bilgisayar yalnizca imzali public segmentleri tasiyan guvenilmeyen relay'dir.
+Native API anahtari VM Windows kimlik deposunda taze DEV hesabindadir.
+Bu hesap normal test bitisinde/panikte temizlenir. Profil/log dosyalari ozel
+test klasorunde kalir; sonuc ZIP'i anahtar veya config.xml icermez.
+Kesinti aktarim dogrulandiktan sonra, canonical yayindan once uygulanir.
+Fiziksel guc kesintisi, agin aktarim ortasinda kopmasi, normal uygulamada otomatik
+aktarim veya M8'in tamamlanmasi bu paketin gectigi anlamina gelmez.

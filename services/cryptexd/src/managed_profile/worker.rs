@@ -139,6 +139,39 @@ impl std::fmt::Debug for ManagedTransportWorker {
 }
 impl ManagedTransportWorker {
     #[cfg(test)]
+    pub(crate) fn spawn_transfer_test(
+        profile: PathBuf,
+        package: PathBuf,
+        ports: NativePorts,
+        policy: super::native_xml::TransferTestPolicy,
+        crash: Arc<super::controller::NativeTestCrash>,
+    ) -> Result<Self, WorkerError> {
+        Self::spawn_task(move |shared| {
+            let package = PinnedSyncthingPackage::open(&package).map_err(WorkerError::Package)?;
+            let mut profile = ManagedProfile::open(&profile, SecureStoreEnvironment::Dev)
+                .map_err(WorkerError::Profile)?;
+            let store = WindowsCredentialStore::new();
+            let mut prepared = profile
+                .reopen_transfer_test(&package, &store, ports, policy)
+                .map_err(WorkerError::Native)?;
+            let identity = prepared.configured_transport_device_id().to_owned();
+            let mut failed = false;
+            let outcome = prepared
+                .supervise_with_trigger(&package, &store, crash, |status| {
+                    shared.publish(status, Some(&identity)).unwrap_or_else(|_| {
+                        failed = true;
+                        Control::Stop
+                    })
+                })
+                .map_err(WorkerError::Controller);
+            if failed {
+                Err(WorkerError::StatusUnavailable)
+            } else {
+                outcome
+            }
+        })
+    }
+    #[cfg(test)]
     pub(crate) fn synthetic_for_incoming_tests(identity: &str, ready: bool) -> Self {
         let identity = identity.to_owned();
         let (send, receive) = std::sync::mpsc::sync_channel(1);

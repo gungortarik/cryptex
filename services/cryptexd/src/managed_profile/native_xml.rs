@@ -9,6 +9,10 @@ use super::native::{NativeConfigError, NativePorts};
 use crate::syncthing_rest::{ApiCredential, native_id_shape};
 
 const MAX_CONFIG: usize = 256 * 1024;
+#[cfg(all(test, windows))]
+mod transfer_test;
+#[cfg(all(test, windows))]
+pub(super) use transfer_test::TransferTestPolicy;
 type Result<T> = std::result::Result<T, NativeConfigError>;
 
 fn xml_character(c: char) -> bool {

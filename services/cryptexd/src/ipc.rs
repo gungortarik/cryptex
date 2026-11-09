@@ -5890,7 +5890,7 @@ fn desktop_capture_exchange(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::fs;
 
     use cryptex_core::BrainIdentity;
@@ -5911,6 +5911,42 @@ mod tests {
     use cryptex_projection::ProjectionDb;
 
     const TEST_BRAIN_ID: &str = "11111111-1111-4111-8111-111111111111";
+
+    /// Real named-pipe request, shared admission and verified search for the
+    /// opt-in native-transfer integration fixture. Never compiled into an app.
+    #[cfg(windows)]
+    pub(crate) fn native_transfer_search(
+        root: &Path,
+        admission: crate::runtime_admission::RuntimeAdmission,
+        store: Arc<FakeSecureStore>,
+        busy: bool,
+    ) {
+        let context = SearchContext {
+            runtime_root: root.to_owned(),
+            admission,
+            operation: None,
+            store,
+            environment: SecureStoreEnvironment::Dev,
+            expected_desktop: Arc::new(test_connected_process_identity()),
+            projection_sync: None,
+            transport_status: None,
+            transport_device_id_override: None,
+        };
+        let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
+        if busy {
+            assert_eq!(response.hold_reason.as_deref(), Some("runtime_busy"));
+            assert!(response.hits.is_none());
+        } else {
+            assert!(response.hold_reason.is_none(), "{:?}", response.hold_reason);
+            assert!(
+                response
+                    .hits
+                    .unwrap()
+                    .iter()
+                    .any(|h| h.text == crate::trusted_import_probe::NOTE)
+            );
+        }
+    }
 
     fn approval_request(operation: &str) -> BootstrapApprovalIpcRequest {
         BootstrapApprovalIpcRequest {

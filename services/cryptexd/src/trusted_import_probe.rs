@@ -277,6 +277,20 @@ pub(crate) mod tests {
         std::path::PathBuf,
         crate::FakeSecureStore,
     ) {
+        pair_with_transport(
+            "XAAPCAD-GA4SF4J-BNQL3FS-T456WKV-FGLXUKO-CDWHVDW-EYWNRIG-SM5GUAZ",
+            "U2SYIGU-YWZX757-2WPZGCR-DHD7MLH-ZKV7HLJ-EYO6CXE-K3DU3DU-SDFXYAE",
+        )
+    }
+    pub(crate) fn pair_with_transport(
+        transport_a: &str,
+        transport_b: &str,
+    ) -> (
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::path::PathBuf,
+        crate::FakeSecureStore,
+    ) {
         let source = crate::test_temp::exclusive_temp_dir("trusted-source");
         let receiver = crate::test_temp::exclusive_temp_dir("trusted-receiver");
         let negative = crate::test_temp::exclusive_temp_dir("trusted-negative");
@@ -286,8 +300,6 @@ pub(crate) mod tests {
         let (b, first_b) = local(&receiver, brain, &store);
         let key_a = load_existing_event_signing_key(&store, ENV, &source, &a).unwrap();
         let key_b = load_existing_event_signing_key(&store, ENV, &receiver, &b).unwrap();
-        let transport_a = "XAAPCAD-GA4SF4J-BNQL3FS-T456WKV-FGLXUKO-CDWHVDW-EYWNRIG-SM5GUAZ";
-        let transport_b = "U2SYIGU-YWZX757-2WPZGCR-DHD7MLH-ZKV7HLJ-EYO6CXE-K3DU3DU-SDFXYAE";
         let offer = cryptex_events::create_bootstrap_offer(
             brain,
             &"a".repeat(64),
