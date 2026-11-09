@@ -35,3 +35,17 @@ cooperatively cancels run `524ee335fd33` under its known synthetic root/session.
 The old runner's failed cancellation receipt is expected and is not the new result.
 No existing owner profile/pairing or security setting is changed. Await a fresh
 request from the replacement; retained host relay has never sent a payload.
+
+## Replacement binding
+
+- Source: `393d0c4dcdfc36ddd72c0d6386d067ada6634d0c`.
+- Source ZIP SHA-256: `c039876748e35f947661d9a754f6465b3464d1c39b536f3ce906192cd9505e92`.
+- Package: `C:\Users\Tarik\Downloads\cryptex-denetleyici-aktarim-393d0c4.zip`.
+- Package SHA-256: `91d6ed10426367d2c3dfc44ff6bb1650dc7c65bfabc1ebd6fcbcdc5da4d8bbf2`.
+- Size: 14,289,663 bytes, eleven exact members. Includes source-bound cancellation
+  helper; generated launcher has validated fixed prior-run/session arguments and
+  stops on cancellation failure before starting new runner.
+- Private session sidecar: `package-binding-393d0c4.json`; older bindings retained.
+- Owner: extract in a new VM directory, open `NATIVE-AKTAR.cmd`, return new
+  DENETLEYICI-ISTEK ZIP and keep VM/new runner open. Old cancellation failure
+  receipt is expected. Actual transfer/restart/publication remains pending.

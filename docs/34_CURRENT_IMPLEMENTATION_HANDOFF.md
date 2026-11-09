@@ -20,6 +20,9 @@ bounded cooperative cancellation of only that waiting synthetic run before a fre
 VM test. Helper requires matching session/checkpoint and observes runner completion;
 it never kills arbitrary processes or modifies canonical data. Same untouched host
 relay session `d1e5c535ae0e459fb699be8f7324c149`. Await the replacement request ZIP.
+Ready package: `C:\Users\Tarik\Downloads\cryptex-denetleyici-aktarim-393d0c4.zip`,
+source `393d0c4dcdfc36ddd72c0d6386d067ada6634d0c`; eleven members/hash bindings
+verified. Owner opens `NATIVE-AKTAR.cmd` from a fresh extracted VM directory.
 See [digest correction evidence](../evidence/m8/m8-native-controller-digest-fix-20261108.md).
 
 ## Native pilot VM receipt: inventory helper corrected (2026-11-08)
