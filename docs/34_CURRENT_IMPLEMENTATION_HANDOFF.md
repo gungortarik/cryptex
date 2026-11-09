@@ -1,6 +1,22 @@
 # 34 — Current Implementation Handoff
 
-## Submitted Mac API preflight passed; signing prerequisite unresolved (2026-11-09)
+## Personal Mac API preflight passed; one signing candidate found (2026-11-09)
+
+The latest MAC-KIMLIK-SONUC.zip is from the user's own MacBook, collected at
+2026-11-09T21:04:04Z on source59411433. API compile/presence passed on
+macOS27.2/build26B123 arm64, SDK27.2, runner_exit0. It enumerates one valid
+file-Keychain entry, one distinct certificate and one observed Apple team label.
+Receipt SHA256:
+`e9e620e8f3749b883152f4d4ab334338c6df724a44c12a797ee2b0b51c9d706f`.
+Next: select the existing identity locally for the bounded synthetic signed XPC
+probe. The receipt intentionally contains no certificate selector or Team ID;
+one team-label count does not establish a second signer for the negative matrix.
+No signing/private-key use has been tested. Full signed-matrix prerequisites
+remain unproven, exact-instance binding NOT TESTED, product minimum OS unconfirmed.
+Do not request another API preflight or repeat completed Windows VM tests.
+Details: [prerequisite evidence](../evidence/m8/m8-macos-identity-preflight-20261109.md).
+
+## Earlier borrowed-Mac receipt; distinct environment (2026-11-09)
 
 The submitted MAC-KIMLIK-SONUC.zip passed API compile/runtime presence checks on
 macOS27.2/build26B123 arm64, SDK27.2, source59411433, runner_exit0. It reports zero

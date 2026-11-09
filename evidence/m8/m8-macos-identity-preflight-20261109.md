@@ -157,6 +157,33 @@ Full XPC matrix remains NOT RUN, exact-instance binding NOT TESTED, product
 minimum OS unconfirmed, production_changed=false and m8_complete=false. No
 Windows VM or repeated pairing/transfer package is needed for this prerequisite.
 
+## Personal MacBook follow-up receipt (2026-11-09)
+
+The user supplied a new `MAC-KIMLIK-SONUC.zip` explicitly from their own MacBook.
+SHA256: `e9e620e8f3749b883152f4d4ab334338c6df724a44c12a797ee2b0b51c9d706f`.
+The sole member is result.json (989 bytes), collected at2026-11-09T21:04:04Z,
+source59411433c5c903bb15d2251f135f911c4b295fa7. The local receipt reports
+macOS27.2/build26B123 arm64, SDK27.2, API compile=pass, API presence=pass,
+outcome=prerequisites_collected and runner_exit=0.
+
+This account reports one valid file-Keychain entry, one distinct certificate and
+one observed Apple team label. signing_selection_needed=true and
+next=select_existing_signing_identities. This supersedes the earlier zero-count
+environment as the working Mac prerequisite result, without contradicting it:
+the two receipts describe different machines/accounts according to the user.
+The sanitized receipt contains no certificate selector, team identifier or key.
+It neither proves usable private-key access nor supplies a different-signer
+fixture for the full negative matrix. No credential was exported or used.
+
+Next: select the existing identity on the personal Mac and prepare the bounded
+synthetic signed probe with explicit fixture requirements. Do not silently create
+or import additional credentials. Do not rerun the successful API preflight.
+signed_matrix_prerequisites_proven=false, native_xpc_matrix=not_run,
+exact_instance_binding=not_tested, product_minimum_os=unconfirmed,
+data_protection_keychain=not_enumerated, private_key_use=not_requested,
+production_changed=false and m8_complete=false remain explicit receipt limits.
+This receipt is owner-supplied local evidence, not remote attestation.
+
 ## Primary sources
 
 - [Apple code-signing identity enumeration](https://developer.apple.com/documentation/xcode/creating-distribution-signed-code-for-the-mac/).

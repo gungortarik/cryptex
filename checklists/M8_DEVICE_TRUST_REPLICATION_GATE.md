@@ -45,11 +45,11 @@ screenshots or an unrun test package:
   `evidence/m8/m8-macos-xpc-peer-identity-feasibility-20261025.md`; complete that
   bounded probe/review first. It does not authorize replacing ADR-0007's production
   Unix-socket IPC. Any production architecture amendment needs separate acceptance.
-  Submitted source59411433 Mac prerequisite receipt passed API compile/presence,
-  but enumerated zero valid file-Keychain identities (data-protection Keychain
-  not enumerated). The user used an available Mac, not their personal Mac.
-  Establish access and existing signing identity availability before the signed
-  matrix; do not rerun completed Windows pairing to resolve this Mac prerequisite.
+  Latest source59411433 personal-Mac prerequisite receipt passed API compile/
+  presence and enumerated one valid file-Keychain signing certificate; the
+  earlier borrowed-Mac receipt had zero. Select the existing identity locally;
+  actual signing/private-key use and different-signer fixture availability remain
+  untested. Do not repeat API preflight or completed Windows pairing checks.
 - Keep normal startup feeder and peer/folder configuration disabled until the
   complete protocol/security acceptance gate permits activation. Passing Mac CI
   with these paths excluded/refused is useful regression evidence, not parity.

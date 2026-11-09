@@ -42,12 +42,12 @@ operations and disabled normal feeding until acceptance. Then verify real
 cross-device offline/restriction propagation and consolidate final review.
 
 The [one-click Mac identity prerequisite package](evidence/m8/m8-macos-identity-preflight-20261109.md)
-is verified on Mac CI42687722399/source59411433. The submitted Mac receipt also
-passed API compile/presence checks, with zero valid file-Keychain identities
-enumerated. The user used an available Mac, not their personal Mac; these counts
-describe that machine/account only. Access to a suitable signing environment is
-the next prerequisite. No key use or trust change occurred; the full signed
-matrix remains NOT RUN. Do not repeat completed Windows VM pairing/transfer.
+is verified on Mac CI42687722399/source59411433. The latest receipt from the
+user's personal MacBook passed API compile/presence checks and enumerated one
+valid file-Keychain signing certificate (the earlier borrowed Mac reported zero).
+Next select the existing identity locally for the bounded synthetic probe;
+private-key use and the full signed matrix remain untested. No trust change
+occurred. Do not repeat completed API or Windows VM pairing/transfer checks.
 
 The [M8 completion ledger](checklists/M8_DEVICE_TRUST_REPLICATION_GATE.md) maps
 requirements to evidence and open gates. The [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md)
