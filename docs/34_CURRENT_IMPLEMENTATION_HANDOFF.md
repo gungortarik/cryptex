@@ -20,6 +20,8 @@ Next owner dependency: run the small read-only diagnostic package for existing
 VM run `5b92b54889a6`, return `DENETLEYICI-TANI-5b92b54889a6-*.zip`.
 It inventories only that retained synthetic run and exports bounded native logs,
 not keys/config/event bodies; does not restart the test or alter processes.
+Package ready: `C:\Users\Tarik\Downloads\cryptex-denetleyici-tani-6c88bb8.zip`;
+owner extracts in VM and opens `TANI.cmd`.
 Do not request another pairing/live retry before inspecting those records.
 See [VM failure evidence](../evidence/m8/m8-native-controller-publication-timeout-20261108.md).
 
