@@ -474,10 +474,11 @@ fn unique_tmp(path: &Path) -> PathBuf {
 fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> EventSigningKeyResult<()> {
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
         const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
-        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = dest.as_os_str().encode_wide().chain(Some(0)).collect();
+        let from = crate::platform::windows::file_path::for_win32_api(tmp)
+            .map_err(|err| EventSigningKeyError::Io(err.to_string()))?;
+        let to = crate::platform::windows::file_path::for_win32_api(dest)
+            .map_err(|err| EventSigningKeyError::Io(err.to_string()))?;
         let ok = unsafe {
             windows_sys::Win32::Storage::FileSystem::MoveFileExW(
                 from.as_ptr(),
@@ -605,6 +606,63 @@ mod tests {
 
     fn temp_root(label: &str) -> PathBuf {
         crate::test_temp::exclusive_temp_dir(&format!("cryptex-m2-signing-{label}"))
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn long_windows_metadata_create_retry_and_reload_preserve_the_key() {
+        let base = temp_root("long-path");
+        let root = base.join("uzun-çalışma-".repeat(16));
+        fs::create_dir_all(&root).unwrap();
+        let device = DeviceId::new("device-long-path").unwrap();
+        let path = event_signing_key_path(&root, &device);
+        assert!(path.as_os_str().len() > 260);
+        let store = FakeSecureStore::new();
+        FAIL_NEXT_METADATA_WRITE.with(|flag| flag.set(true));
+        assert!(matches!(
+            ensure_event_signing_key(
+                &store,
+                SecureStoreEnvironment::Dev,
+                &root,
+                &device,
+                &[],
+                false
+            ),
+            Err(EventSigningKeyError::IncompleteInit(_))
+        ));
+        let service = ServiceLabel::device_credentials(SecureStoreEnvironment::Dev);
+        let account = AccountLabel::device_event_signing_seed(device.as_str());
+        let seed = store.get(service.as_str(), account.as_str()).unwrap();
+        let ready = ensure_event_signing_key(
+            &store,
+            SecureStoreEnvironment::Dev,
+            &root,
+            &device,
+            &[],
+            false,
+        )
+        .expect("complete public metadata from the persisted seed at a long path");
+        assert_eq!(ready.signing_key.to_bytes().as_slice(), seed.as_slice());
+        let bytes = fs::read(&path).unwrap();
+        assert!(matches!(
+            write_public_metadata_exclusive(&path, &ready.public),
+            Err(EventSigningKeyError::AlreadyExists(_))
+        ));
+        // Exercise the native no-replace boundary itself, not only the early exists check.
+        let competing = path.with_extension("competitor");
+        fs::write(&competing, b"must not replace metadata").unwrap();
+        assert!(matches!(
+            place_new_file_no_replace(&competing, &path),
+            Err(EventSigningKeyError::AlreadyExists(_))
+        ));
+        assert_eq!(fs::read(&competing).unwrap(), b"must not replace metadata");
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        let loaded =
+            load_existing_event_signing_key(&store, SecureStoreEnvironment::Dev, &root, &device)
+                .unwrap();
+        assert_eq!(loaded.public, ready.public);
+        assert_eq!(loaded.signing_key.to_bytes().as_slice(), seed.as_slice());
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

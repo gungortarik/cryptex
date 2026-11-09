@@ -19,8 +19,8 @@ relax protocol acceptance or authorize production activation.
 Do not repeat completed Windows native pairing/transfer packages. Existing result
 receipt is in `evidence/m8/m8-native-controller-result-20261108.md`.
 
-Immediate sequence: finish local offline/restriction integration checks, run
-exact-candidate CI, prepare remaining Mac/platform work against the accepted
+Immediate sequence: local offline/restriction integration checks passed; finish
+exact-candidate CI after the hosted long-metadata-path correction, prepare remaining Mac/platform work against the accepted
 protocol scope, then consolidate final native integration/security/human review.
 Any additional owner/device action should be packaged once against a concrete
 candidate. M9 starts only after this milestone gate is green.

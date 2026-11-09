@@ -1,5 +1,21 @@
 # 34 — Current Implementation Handoff
 
+## Hosted Windows suite reached; metadata long-path correction (2026-11-08)
+
+CI42561855133 on802f95d completed: Mac readiness and Windows cross-account ACL
+passed. Standard-user Windows daemon library ran 587 passed/3 failed/5 ignored;
+all three failures were public signing metadata placement returning Win32 OS3 at
+long runtime paths. Full Windows readiness did not pass.
+
+Two new >260-character Unicode-path regressions reproduced OS3 before correction.
+Metadata MoveFileExW now receives extended UTF-16 drive/UNC paths through a small
+Windows adapter, with no filesystem canonicalization. Existing verbatim semantics,
+exclusive signing metadata placement, mutable identity replacement/write-through,
+persisted seed retry and staging ownership/reparse/volume checks are preserved.
+Local key14/14, metadata5/5, encoder2/2, previously failing policy test1/1,
+strict daemon all-target Clippy/fmt/diff pass. New exact-candidate CI is required.
+See [CI evidence](../evidence/m8/m8-ci-offline-review-20261108.md).
+
 ## CI credential-profile lookup bound to actual token (2026-11-08)
 
 Run42560988740 passed module loading, then the CI-only environment-based profile

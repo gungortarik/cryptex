@@ -6,6 +6,7 @@
 
 use crate::supervision::RegistrationStatus;
 
+pub(crate) mod file_path;
 pub mod hkcu_run;
 pub mod logon_task;
 

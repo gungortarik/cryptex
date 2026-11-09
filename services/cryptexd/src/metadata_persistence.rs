@@ -96,12 +96,11 @@ where
 fn replace_atomic(tmp: &Path, path: &Path) -> io::Result<()> {
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::Storage::FileSystem::{
             MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
         };
-        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let from = crate::platform::windows::file_path::for_win32_api(tmp)?;
+        let to = crate::platform::windows::file_path::for_win32_api(path)?;
         // SAFETY: both pointers refer to valid null-terminated UTF-16 strings.
         if unsafe {
             MoveFileExW(
@@ -136,6 +135,21 @@ mod tests {
 
     fn fixture() -> std::path::PathBuf {
         crate::test_temp::exclusive_temp_dir("cryptex-m1-metadata")
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn long_windows_metadata_path_supports_create_and_atomic_replacement() {
+        let base = fixture();
+        let root = base.join("uzun-çalışma-".repeat(16));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("record.json");
+        assert!(path.as_os_str().len() > 260);
+        write_public_metadata(&path, b"first\n").expect("create at long path");
+        write_public_metadata(&path, b"second\n").expect("replace at long path");
+        assert_eq!(fs::read(&path).unwrap(), b"second\n");
+        assert_eq!(fs::read_dir(root).unwrap().count(), 2);
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

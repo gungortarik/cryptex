@@ -132,3 +132,46 @@ Official contract: [GetUserProfileDirectoryW](https://learn.microsoft.com/en-us/
 Token query and wrapper compile were verified locally read-only, no account created.
 Independent source reviewer found no blocker in the bounded API/token use or final
 summary inventory logic. Hosted full test execution/cleanup is still required.
+
+## Complete standard-user library execution exposed long metadata paths
+
+[Run42561855133](https://github.com/gungortarik/cryptex/actions/runs/42561855133)
+on `802f95d1b832df3b3460325217a7e676cf5efc9a` completed: Mac readiness and
+Windows different-user IPC ACL passed. Windows daemon library ran **587 passed,
+3 failed, 5 ignored**, in41.60s. Credential launch/private TEMP/token profile
+resolution therefore reached the full library; parent reported no cleanup failure.
+Windows readiness remains failed. Three remaining failures:
+
+- import_staging::tests::local_policy_batch_verification_rejects_unapproved_candidate_device
+- ipc::tests::bootstrap_completion_cannot_bypass_journaled_owner_approval
+- ipc::tests::bootstrap_exchange_requires_the_current_adapter_identity
+
+All fail preparing signing public metadata: seed persisted, raw MoveFileExW returns
+OS3 (path not found) under long runtime paths. Two new Windows >260-character
+Unicode-path regressions, for exclusive signing metadata and atomic mutable public
+metadata, independently reproduced OS3 before the fix. No test path was shortened.
+
+A shared Windows metadata encoder now resolves ordinary DOS/UNC paths without
+filesystem lookup and adds extended UTF-16 prefixes/backslashes; existing verbatim
+paths retain literal semantics. NUL/device namespaces are refused. Relative paths
+retain absolute Win32 resolution semantics. It is explicitly not a path-security
+validator. Strict import staging conversion, pinned handles, owner/reparse/volume
+checks are untouched. Signing placement retains no-replace + write-through;
+mutable metadata retains replace-existing + write-through. No seed/key rotation,
+canonical mutation, policy relaxation or transport activation.
+
+Long signing regression proves recovery from an injected post-seed metadata error,
+same seed on retry/reload, and native refusal of a competing destination with both
+files unchanged. Mutable metadata regression proves create/replace at long paths
+without temporary leftovers. Encoder tests cover drive/forward slash/Unicode,
+UNC, already-verbatim, relative paths and invalid namespace/NUL refusal. UNC
+encoding is tested without contacting a share; no network filesystem durability
+claim is made.
+
+Local corrected checks: event key14/14, metadata5/5, encoder2/2, previously failing
+policy test1/1; strict daemon all-target Clippy, format and diff checks pass.
+Independent source reviewer found no actionable regression and checked pinned
+Rust1.98.1 absolute-path implementation: verbatim paths unchanged, ordinary paths
+use GetFullPathNameW without link resolution. Review was source-only, not execution
+or human certification; native no-replace and persisted-seed behavior unchanged.
+Exact-candidate hosted Windows/macOS CI remains required.
