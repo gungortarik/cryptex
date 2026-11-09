@@ -1,5 +1,22 @@
 # 34 — Current Implementation Handoff
 
+## Local offline convergence and restriction integration added (2026-11-08)
+
+Two new persistent daemon tests cover independent offline writes from both peers,
+canonical/search convergence under reversed incoming hint order and idempotent
+replay; and owner-confirmed retired/compromised cutoff 3 refusing a disconnected
+target's signed seq 4 while retaining authorized history. Focused checks pass.
+These are signed fixtures plus real daemon publication, not native networking or
+native Desktop approval. No normal feeder/activation or policy change.
+
+The successful Windows native pilot below remains complete; do not repeat it.
+Remaining acceptance work is mapped in
+[M8 completion ledger](../checklists/M8_DEVICE_TRUST_REPLICATION_GATE.md), with
+[local integration evidence](../evidence/m8/m8-offline-restriction-integration-20261108.md).
+Immediate next step: exact-candidate Windows/macOS/IPC ACL CI, then address the
+Mac product-platform/protocol boundary and real offline/restriction propagation.
+M8 remains OPEN; human review and protocol activation gates still apply.
+
 ## Actual native transfer/publication/restart/replay pilot passed (2026-11-08)
 
 Owner returned `DENETLEYICI-SONUC-45278d8e-a4a65ab5fda6.zip`. Exact six

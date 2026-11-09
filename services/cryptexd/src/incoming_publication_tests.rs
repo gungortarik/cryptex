@@ -3,6 +3,213 @@ use cryptex_core::DeviceId;
 use cryptex_events::envelope::Classification;
 use std::fs;
 
+fn append_offline_note(fixture: &Fixture, root: &Path, device: &str, text: &str) -> PathBuf {
+    let device = DeviceId::new(device).unwrap();
+    let appended = crate::canonical_writer::append_memory_note(
+        &fixture.store,
+        ENV,
+        crate::canonical_writer::AppendMemoryNoteArgs {
+            runtime_root: root,
+            brain_id: &fixture.report.brain_id,
+            device_id: &device,
+            classification: Classification::Public,
+            text,
+            event_id: None,
+            config: &crate::canonical_writer::CanonicalWriterConfig {
+                seal_event_threshold: 1,
+            },
+        },
+    )
+    .unwrap();
+    assert!(appended.sealed);
+    PathBuf::from(device.as_filename_stem()).join(format!("{:020}.seg", appended.segment_index))
+}
+
+fn verified_note_texts(fixture: &Fixture, root: &Path) -> std::collections::BTreeSet<String> {
+    let db = cryptex_projection::ProjectionDb::open_existing_read_only(root).unwrap();
+    let mut resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+        root,
+        &fixture.report.brain_id,
+        &fixture.store,
+        ENV,
+    )
+    .unwrap();
+    let safety = crate::knowledge_materialization::evaluate_retrieval_safety(
+        root,
+        &fixture.report.brain_id,
+        &[],
+        &mut resolver,
+        &db,
+    );
+    assert!(safety.allows_content(), "{:?}", safety.hold_reason());
+    cryptex_projection::search::search_events(db.connection(), &Default::default())
+        .unwrap()
+        .into_iter()
+        .map(|hit| hit.text)
+        .collect()
+}
+
+#[test]
+fn offline_both_peers_write_then_reconcile_without_a_master_or_duplicate_segments() {
+    let fixture = Fixture::new();
+    // No transport process: each daemon writes its own stream independently.
+    let source_tail = append_offline_note(
+        &fixture,
+        &fixture.source,
+        &fixture.report.source_device,
+        "Synthetic offline source note.",
+    );
+    let receiver_tail = append_offline_note(
+        &fixture,
+        &fixture.receiver,
+        &fixture.report.receiver_device,
+        "Synthetic offline receiver note.",
+    );
+    // prepare() initializes the receiving side only. Initialize the other
+    // installation's derived state from its own signed history as well.
+    {
+        let _slots = crate::canonical_writer::acquire_canonical_write_lock_set(
+            &fixture.source,
+            &[
+                DeviceId::new(fixture.report.source_device.clone()).unwrap(),
+                DeviceId::new(fixture.report.receiver_device.clone()).unwrap(),
+            ],
+        )
+        .unwrap();
+    }
+    for root in [&fixture.source, &fixture.receiver] {
+        let mut instance = crate::instance::try_acquire_instance(root).unwrap();
+        recover_live_with_instance(root, &mut instance, &fixture.store, ENV).unwrap();
+    }
+    let source_before = event_hashes(&fixture.source);
+    let receiver_before = event_hashes(&fixture.receiver);
+    copy_incoming(&fixture.receiver, &fixture.source, &receiver_tail);
+    copy_incoming(&fixture.source, &fixture.receiver, &source_tail);
+    // Source receives the receiver's complete sealed prefix first. Receiver
+    // receives its peer's segments in reverse hint order in one bounded batch.
+    let a = publish_incoming(
+        &fixture.source,
+        std::slice::from_ref(&receiver_tail),
+        &fixture.store,
+        ENV,
+    )
+    .unwrap();
+    let mut paths = vec![source_tail];
+    paths.extend(fixture.paths.clone());
+    let b = publish_incoming(&fixture.receiver, &paths, &fixture.store, ENV).unwrap();
+    assert_eq!(a.published_segments, 1);
+    assert_eq!(b.published_segments, 2);
+    let union_a = event_hashes(&fixture.source);
+    let union_b = event_hashes(&fixture.receiver);
+    assert_eq!(union_a, union_b);
+    let notes = verified_note_texts(&fixture, &fixture.source);
+    assert_eq!(notes, verified_note_texts(&fixture, &fixture.receiver));
+    assert!(notes.contains("Synthetic offline source note."));
+    assert!(notes.contains("Synthetic offline receiver note."));
+    for prior in source_before.iter().chain(&receiver_before) {
+        assert!(
+            union_a.contains(prior),
+            "pre-existing immutable segment changed"
+        );
+    }
+    assert_eq!(
+        publish_incoming(&fixture.source, &[receiver_tail], &fixture.store, ENV)
+            .unwrap()
+            .published_segments,
+        0
+    );
+    assert_eq!(
+        publish_incoming(&fixture.receiver, &paths, &fixture.store, ENV)
+            .unwrap()
+            .published_segments,
+        0
+    );
+    assert_eq!(event_hashes(&fixture.source), union_a);
+    assert_eq!(event_hashes(&fixture.receiver), union_b);
+}
+
+#[test]
+fn offline_restricted_peer_tail_is_refused_after_owner_confirmed_cutoff() {
+    use crate::bootstrap_journal::{BootstrapJournalStore, RestrictionReason};
+    for reason in [RestrictionReason::Retired, RestrictionReason::Compromised] {
+        let fixture = Fixture::new();
+        fixture.publish().unwrap();
+        let issuer = DeviceId::new(fixture.report.receiver_device.clone()).unwrap();
+        let target = DeviceId::new(fixture.report.source_device.clone()).unwrap();
+        let key = crate::event_signing_key::load_existing_event_signing_key(
+            &fixture.store,
+            ENV,
+            &fixture.receiver,
+            &issuer,
+        )
+        .unwrap();
+        let policy = crate::knowledge_materialization::scan_verified_trust_policy(
+            &fixture.receiver,
+            &fixture.report.brain_id,
+            &issuer,
+            &cryptex_events::SigningKeyId::parse(&key.public.signing_key_id).unwrap(),
+            &key.signing_key.verifying_key().to_bytes(),
+            &[issuer.clone(), target.clone()],
+        )
+        .unwrap();
+        let transaction = "ac".repeat(32);
+        let snapshot = policy
+            .device_restriction_approval_snapshot(transaction.clone(), &target, reason, 3)
+            .unwrap();
+        drop(policy);
+        let journal = BootstrapJournalStore::new(&fixture.receiver).unwrap();
+        journal
+            .begin_owner_operation(snapshot.clone(), "99999999-9999-4999-8999-999999999997")
+            .unwrap();
+        journal
+            .confirm_owner_operation(&transaction, &snapshot.digest().unwrap())
+            .unwrap();
+        crate::knowledge_materialization::append_confirmed_owner_security_operation(
+            &fixture.receiver,
+            &fixture.report.brain_id,
+            &fixture.store,
+            ENV,
+            &transaction,
+        )
+        .unwrap();
+        // Source has not received the restriction and can still create local
+        // bytes while offline. Receiver must not mistake its signature for authority.
+        let tail = append_offline_note(
+            &fixture,
+            &fixture.source,
+            &fixture.report.source_device,
+            "Synthetic stale restricted tail.",
+        );
+        copy_incoming(&fixture.source, &fixture.receiver, &tail);
+        let before = event_hashes(&fixture.receiver);
+        let incoming = fixture.receiver.join("transport/incoming").join(&tail);
+        let bytes = fs::read(&incoming).unwrap();
+        let result = publish_incoming(
+            &fixture.receiver,
+            std::slice::from_ref(&tail),
+            &fixture.store,
+            ENV,
+        );
+        assert!(
+            matches!(result, Err(IncomingPublicationError::Rejected(_))),
+            "{reason:?}: {result:?}"
+        );
+        assert_eq!(event_hashes(&fixture.receiver), before);
+        assert_eq!(fs::read(&incoming).unwrap(), bytes);
+        assert!(
+            !fixture
+                .receiver
+                .join("canonical/events")
+                .join(&tail)
+                .exists()
+        );
+        let notes = verified_note_texts(&fixture, &fixture.receiver);
+        assert!(notes.contains(crate::trusted_import_probe::NOTE));
+        assert!(!notes.contains("Synthetic stale restricted tail."));
+        fixture.assert_clean();
+    }
+}
+
 #[test]
 fn local_stream_replays_are_idempotent_but_new_signed_tails_require_restore() {
     fn clone_tree(source: &Path, target: &Path) {
