@@ -24,3 +24,8 @@ jobs:
           CRYPTEX_MAC_PREFLIGHT_HEADLESS=1 bash "$RUNNER_TEMP/mac-identity-package/MAC-KIMLIK.command"
           # The collector reports missing signing prerequisites truthfully;
           # this workflow does not run/approve the signed XPC matrix.
+      - name: Diagnose public API compilation on disposable CI host only
+        if: failure()
+        run: |
+          # Only this fixed public source is compiled; never print keychain inventory.
+          xcrun --sdk macosx clang -std=c11 -fblocks -Wall -Wextra -Werror -mmacosx-version-min=12.0 -isysroot "$(xcrun --sdk macosx --show-sdk-path)" scripts/m8/mac_identity_api.c -framework Security -o "$RUNNER_TEMP/api-availability-diagnostic"
