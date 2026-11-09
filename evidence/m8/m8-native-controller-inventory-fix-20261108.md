@@ -41,3 +41,16 @@ Production writer, transport ownership and import gates are unchanged.
 Do not repeat the known failing host owned-endpoint preflight or weaken its
 checks. Next live execution is the corrected package on the VM. Retain the
 unchanged host relay session from the preceding pilot evidence. M8 remains open.
+
+## Corrected package delivered
+
+- Source: `8789ca2bb5a167ca018b5be0919397ef4e172456`.
+- Source ZIP SHA-256: `06353a6ea65eab426b0499c08de1cd902bab4a0cf9d3784fd94cbfcb285ead3c`.
+- Package: `C:\Users\Tarik\Downloads\cryptex-denetleyici-aktarim-8789ca2.zip`.
+- Package SHA-256: `c15925aeba0a75260a81584be04c38349913b6668693b32b59317c6d8b7a548c`.
+- Size: 14,285,116 bytes. Ten exact members and embedded fix/source binding verified.
+- Host session remains `d1e5c535ae0e459fb699be8f7324c149`; separate
+  `package-binding-8789ca2.json` preserves this binding without replacing the old one.
+- Owner extracts this new package in a new VM folder and double-clicks
+  `NATIVE-AKTAR.cmd`; returns request ZIP and leaves VM/window open.
+  No host listener started in this correction turn. Actual native pass pending.

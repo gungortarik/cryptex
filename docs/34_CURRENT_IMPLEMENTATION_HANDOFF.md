@@ -15,7 +15,9 @@ including event-byte change/addition/deletion detection. Three focused tests,
 strict all-target daemon Clippy, formatting and diff checks pass.
 No production code or transport security checks changed.
 
-Next: deliver the corrected one-click package, then collect its request ZIP.
+Corrected candidate `8789ca2bb5a167ca018b5be0919397ef4e172456` is packaged as
+`C:\Users\Tarik\Downloads\cryptex-denetleyici-aktarim-8789ca2.zip`.
+Next: owner runs the corrected one-click package; collect its request ZIP.
 The same untouched host relay session can be used: the failed VM run never
 exported a request and no host transfer began. Native integration remains pending.
 See [failure evidence](../evidence/m8/m8-native-controller-inventory-fix-20261108.md).
