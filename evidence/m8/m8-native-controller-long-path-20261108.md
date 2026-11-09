@@ -56,3 +56,15 @@ Native ID `L522WBJ-BF7DO2L-MBUCWLS-JXPUBRO-BKB6ZFD-IUC2MVY-QLLUQ6T-43FUNQK`.
 Private listener descriptor `tcp://192.168.177.1:14687`; native profile generated
 with pinned executable and private ACL, no sender listener launched. Await fresh
 VM request for this session. Prior session/evidence retained unchanged.
+
+## Delivered candidate
+
+- Source `c669a9a4f653fdfd759ef4c9250c834d664d26d0`.
+- Source ZIP SHA-256 `eee2a0cfd46aa28f8969baeea6d9301f11c95188c35c7b43354edb9a8dd915b8`.
+- Package `C:\Users\Tarik\Downloads\cryptex-denetleyici-aktarim-c669a9a.zip`.
+- SHA-256 `75f3c02e20c48510d3aa155873865fce8eebfb01cc2e8045624214e0c8c0f05e`.
+- Size 14,298,346 bytes; ten exact members/source binding and embedded fix verified.
+- Host session package-binding.json retains these values.
+- Owner extracts new package in VM, opens NATIVE-AKTAR.cmd, returns
+  DENETLEYICI-ISTEK-45278d8e-*.zip and keeps runner/VM open.
+  Old completed run is not restarted or modified. No host sender launched yet.

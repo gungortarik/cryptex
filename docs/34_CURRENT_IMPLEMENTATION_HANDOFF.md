@@ -21,6 +21,10 @@ Prepare/deliver corrected native package using fresh host relay session
 `45278d8e00394a62b8d3607208858878` under the usual private relay root.
 Fresh native sender is generated but not launched. Never reuse the old request:
 its host folder/payload are already consumed and receiver test ended.
+Ready package `C:\Users\Tarik\Downloads\cryptex-denetleyici-aktarim-c669a9a.zip`
+binds source `c669a9a4f653fdfd759ef4c9250c834d664d26d0`. Next: owner runs
+NATIVE-AKTAR.cmd in VM, returns DENETLEYICI-ISTEK-45278d8e-*.zip while keeping
+the VM runner open. Use the fresh host session above for relay validation/start.
 See [long-path evidence](../evidence/m8/m8-native-controller-long-path-20261108.md).
 
 ## VM confirms delivery/restart; publication pause timed out (2026-11-08)
