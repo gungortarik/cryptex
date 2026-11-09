@@ -18,6 +18,9 @@ use crate::syncthing_rest::{ApiCredential, credential_labels};
 
 #[cfg(any(windows, test))]
 pub mod controller;
+#[cfg(windows)]
+#[allow(dead_code)] // Gated bridge; native activation/review is a separate release gate.
+pub(crate) mod incoming;
 pub mod native;
 #[cfg(windows)]
 mod native_xml;

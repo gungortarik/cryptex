@@ -149,6 +149,11 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
             environment,
         )
         .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
+        let local_device = resolver
+            .local_trust_anchor()
+            .ok_or_else(|| ImportStagingError::Invalid("local trust anchor unavailable".into()))?
+            .device_id()
+            .clone();
         let db = cryptex_projection::ProjectionDb::open_existing_read_only(root)
             .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
         let mut devices = session
@@ -167,6 +172,14 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
             &db,
         );
         let identical = safety.remove_identical_import_replays(&mut session)?;
+        if session
+            .candidates()
+            .iter()
+            .any(|candidate| candidate.device_id == local_device)
+        {
+            return Err(ImportStagingError::Invalid(
+                "incoming cannot extend this installation's local stream; restore requires allocator reconciliation".into()));
+        }
         let verified = if session.candidates().is_empty() {
             None
         } else {

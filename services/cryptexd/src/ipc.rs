@@ -32,8 +32,8 @@ use crate::{
     identity_runtime::load_brain_identity, local_device_identity::load_local_device_identity,
 };
 use cryptex_core::DeviceId;
-use cryptex_events::Classification;
 use cryptex_events::limits::MAX_MEMORY_NOTE_TEXT_BYTES;
+use cryptex_events::{Classification, TrustedDaemonKeyResolver};
 use cryptex_projection::{ProjectionDb, SearchHit, SearchQuery, TimelineCursor, TimelineQuery};
 #[cfg(windows)]
 use interprocess::local_socket::GenericNamespaced;
@@ -805,11 +805,8 @@ fn request_projection_sync(context: &SearchContext) {
 enum DerivedCatchupError {
     RuntimeHeld,
     BrainIdentityUnavailable,
-    LocalDeviceIdentityUnavailable,
-    InvalidDeviceIdentity,
     SigningIdentityUnavailable,
     ProjectionDatabaseUnavailable,
-    ProjectionCatchupFailed,
     KnowledgeRebuildFailed,
 }
 
@@ -820,11 +817,7 @@ fn synchronize_local_derived_state(context: &SearchContext) -> Result<(), Derive
     let context = &admitted;
     let brain = load_brain_identity(&context.runtime_root)
         .map_err(|_| DerivedCatchupError::BrainIdentityUnavailable)?;
-    let identity = load_local_device_identity(&context.runtime_root, &brain.brain_id)
-        .map_err(|_| DerivedCatchupError::LocalDeviceIdentityUnavailable)?;
-    let device = DeviceId::new(identity.device_id)
-        .map_err(|_| DerivedCatchupError::InvalidDeviceIdentity)?;
-    let mut resolver = LocalDeviceKeyResolver::load(
+    let resolver = LocalDeviceKeyResolver::load(
         &context.runtime_root,
         &brain.brain_id,
         context.store.as_ref(),
@@ -833,19 +826,15 @@ fn synchronize_local_derived_state(context: &SearchContext) -> Result<(), Derive
     .map_err(|_| DerivedCatchupError::SigningIdentityUnavailable)?;
     let (mut db, _) = crate::projection::open_projection_db(&context.runtime_root)
         .map_err(|_| DerivedCatchupError::ProjectionDatabaseUnavailable)?;
-    crate::projection::catch_up_device_projection(
-        context.store.as_ref(),
-        context.environment,
-        &context.runtime_root,
-        &device,
-        &db,
-    )
-    .map_err(|_| DerivedCatchupError::ProjectionCatchupFailed)?;
-    crate::knowledge_materialization::rebuild_knowledge_from_canonical(
+    let anchor = resolver
+        .local_trust_anchor()
+        .ok_or(DerivedCatchupError::SigningIdentityUnavailable)?;
+    // Refresh the same complete, cutoff-aware union used by retrieval/import.
+    // A local-only rebuild can erase peers from the shared M4 view after import.
+    crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
         &context.runtime_root,
         &brain.brain_id,
-        std::slice::from_ref(&device),
-        &mut resolver,
+        &anchor,
         &mut db,
     )
     .map_err(|_| DerivedCatchupError::KnowledgeRebuildFailed)?;
@@ -7380,7 +7369,35 @@ mod tests {
         let response =
             content_search_ipc_round_trip(Some(context.clone()), DesktopSearchQuery::default());
         assert!(response.hold_reason.is_none(), "{:?}", response.hold_reason);
-        assert!(response.hits.is_some());
+        let before: Vec<_> = response
+            .hits
+            .unwrap()
+            .into_iter()
+            .map(|hit| (hit.event_id, hit.text))
+            .collect();
+        assert!(
+            before
+                .iter()
+                .any(|(_, text)| text == crate::trusted_import_probe::NOTE)
+        );
+        synchronize_local_derived_state(&context).unwrap();
+        let refreshed =
+            content_search_ipc_round_trip(Some(context.clone()), DesktopSearchQuery::default());
+        assert!(
+            refreshed.hold_reason.is_none(),
+            "{:?}",
+            refreshed.hold_reason
+        );
+        let after: Vec<_> = refreshed
+            .hits
+            .unwrap()
+            .into_iter()
+            .map(|hit| (hit.event_id, hit.text))
+            .collect();
+        assert_eq!(
+            after, before,
+            "background refresh must retain the verified peer union"
+        );
         instance.drain_runtime(Duration::from_secs(2)).unwrap();
         drop(instance);
         drop(context);
@@ -7450,10 +7467,11 @@ mod tests {
             "large response must still be writing"
         );
         assert!(matches!(
-            fixture
-                .context
-                .admission
-                .exclusive(&fixture.root, Instant::now(), false),
+            fixture.context.admission.exclusive(
+                &fixture.root,
+                Instant::now() + Duration::from_millis(40),
+                false
+            ),
             Err(crate::runtime_admission::AdmissionError::Busy)
         ));
         let rest = read_ipc_frame(
@@ -7507,10 +7525,11 @@ mod tests {
         );
         drop(context);
         assert!(matches!(
-            fixture
-                .context
-                .admission
-                .exclusive(&fixture.root, Instant::now(), false),
+            fixture.context.admission.exclusive(
+                &fixture.root,
+                Instant::now() + Duration::from_millis(40),
+                false
+            ),
             Err(crate::runtime_admission::AdmissionError::Busy)
         ));
         send.send(()).unwrap();

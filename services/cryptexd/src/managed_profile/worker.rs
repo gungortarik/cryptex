@@ -138,6 +138,45 @@ impl std::fmt::Debug for ManagedTransportWorker {
     }
 }
 impl ManagedTransportWorker {
+    #[cfg(test)]
+    pub(crate) fn synthetic_for_incoming_tests(identity: &str, ready: bool) -> Self {
+        let identity = identity.to_owned();
+        let (send, receive) = std::sync::mpsc::sync_channel(1);
+        let worker = Self::spawn_task(move |shared| {
+            shared.publish(
+                Status {
+                    phase: if ready {
+                        super::controller::Phase::LocalReady
+                    } else {
+                        super::controller::Phase::Starting
+                    },
+                    attempt: 1,
+                    pid: None,
+                    error: None,
+                },
+                ready.then_some(identity.as_str()),
+            )?;
+            send.send(()).unwrap();
+            while !shared.stop.load(Ordering::Acquire) {
+                std::thread::park_timeout(Duration::from_millis(10));
+            }
+            Ok(Outcome::Cancelled)
+        })
+        .unwrap();
+        receive.recv_timeout(Duration::from_secs(2)).unwrap();
+        worker
+    }
+    /// Daemon-only bridge; no startup/renderer route feeds it before the native
+    /// publication gates close. Status never substitutes for canonical trust.
+    #[allow(dead_code)]
+    pub(crate) fn process_incoming<S: crate::secure_store::SecureStore + ?Sized>(
+        &self,
+        controller: &mut super::incoming::IncomingController,
+        instance: &mut crate::instance::InstanceLock,
+        store: &S,
+    ) -> Result<super::incoming::IncomingTick, super::incoming::IncomingControllerError> {
+        controller.poll(&self.status_reader(), instance, store)
+    }
     pub fn status_reader(&self) -> StatusReader {
         StatusReader(self.shared.clone())
     }

@@ -4,6 +4,81 @@ use cryptex_events::envelope::Classification;
 use std::fs;
 
 #[test]
+fn local_stream_replays_are_idempotent_but_new_signed_tails_require_restore() {
+    fn clone_tree(source: &Path, target: &Path) {
+        fs::create_dir_all(target).unwrap();
+        for entry in fs::read_dir(source).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                clone_tree(&entry.path(), &target.join(entry.file_name()));
+            } else {
+                assert!(entry.file_type().unwrap().is_file());
+                fs::copy(entry.path(), target.join(entry.file_name())).unwrap();
+            }
+        }
+    }
+    let fixture = Fixture::new();
+    let local = DeviceId::new(fixture.report.receiver_device.clone()).unwrap();
+    let config = crate::canonical_writer::CanonicalWriterConfig {
+        seal_event_threshold: 1,
+    };
+    let append = |root: &Path| {
+        crate::canonical_writer::append_memory_note(
+            &fixture.store,
+            ENV,
+            crate::canonical_writer::AppendMemoryNoteArgs {
+                runtime_root: root,
+                brain_id: &fixture.report.brain_id,
+                device_id: &local,
+                classification: Classification::Public,
+                text: "Synthetic local restore tail.",
+                event_id: None,
+                config: &config,
+            },
+        )
+        .unwrap()
+    };
+    append(&fixture.receiver);
+    let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
+    recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV).unwrap();
+    let replay = PathBuf::from(local.as_filename_stem()).join("00000000000000000000.seg");
+    copy_incoming(&fixture.receiver, &fixture.receiver, &replay);
+    let report = publish_incoming_with_instance(
+        &fixture.receiver,
+        &[replay],
+        &mut instance,
+        &fixture.store,
+        ENV,
+    )
+    .unwrap();
+    assert_eq!(
+        (report.published_segments, report.identical_segments),
+        (0, 1)
+    );
+    drop(instance);
+    let restored = crate::test_temp::exclusive_temp_dir("incoming-local-restore-copy");
+    clone_tree(&fixture.receiver, &restored);
+    append(&restored);
+    let tail = PathBuf::from(local.as_filename_stem()).join("00000000000000000001.seg");
+    copy_incoming(&restored, &fixture.receiver, &tail);
+    let before = event_hashes(&fixture.receiver);
+    let sequence =
+        crate::sequence_runtime::last_issued_device_sequence(&fixture.receiver, &local).unwrap();
+    let result = publish_incoming(&fixture.receiver, &[tail], &fixture.store, ENV);
+    assert!(
+        matches!(&result, Err(IncomingPublicationError::Rejected(ImportStagingError::Invalid(message)))
+        if message.contains("local stream")),
+        "{result:?}"
+    );
+    assert_eq!(event_hashes(&fixture.receiver), before);
+    assert_eq!(
+        crate::sequence_runtime::last_issued_device_sequence(&fixture.receiver, &local).unwrap(),
+        sequence
+    );
+    fs::remove_dir_all(restored).unwrap();
+}
+
+#[test]
 fn rejects_signed_wrong_target_key_restriction_before_publication() {
     use cryptex_events::{ContentHashHex, DeviceSeq, SigningKeyId};
     use std::io::Write;
