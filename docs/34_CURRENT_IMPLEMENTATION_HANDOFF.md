@@ -1,5 +1,28 @@
 # 34 — Current Implementation Handoff
 
+## VM confirms delivery/restart; publication pause timed out (2026-11-08)
+
+Returned `DENETLEYICI-SONUC-d1e5c535-5b92b54889a6.zip` matches candidate
+`393d0c4` and its source digest. Build exit 0; native test exit 101, 0 passed,
+1 failed, 149.93 seconds. Checkpoints confirm actual delivery before publication
+and acknowledged owned-job crash/restart with unchanged identity. The test then
+times out waiting for the post-commit/pre-rebuild pause signal (line 403).
+No publication/replay/clean-shutdown pass receipt exists. Drop reports unresolved
+worker shutdown; do not assume VM native cleanup completed from host shutdown.
+
+Cause is not established. A new shared helper reproducing that exact publication,
+busy IPC and post-publication search sequence passes locally with explicitly
+synthetic transport readiness (1/1). The helper now reports early poll completion
+or failure rather than hiding it behind the pause timeout. This is diagnostic
+test-only work; it does not fix or establish native behavior.
+
+Next owner dependency: run the small read-only diagnostic package for existing
+VM run `5b92b54889a6`, return `DENETLEYICI-TANI-5b92b54889a6-*.zip`.
+It inventories only that retained synthetic run and exports bounded native logs,
+not keys/config/event bodies; does not restart the test or alter processes.
+Do not request another pairing/live retry before inspecting those records.
+See [VM failure evidence](../evidence/m8/m8-native-controller-publication-timeout-20261108.md).
+
 ## Actual host-to-VM relay completed; receiver receipt pending (2026-11-08)
 
 Request `DENETLEYICI-ISTEK-d1e5c535-5b92b54889a6.zip` passed validation.

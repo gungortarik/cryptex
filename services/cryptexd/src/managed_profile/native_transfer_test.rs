@@ -166,6 +166,114 @@ impl SecureStore for PausedStore {
     }
 }
 
+fn publication_with_busy_ipc(
+    worker: &ManagedTransportWorker,
+    controller: &mut IncomingController,
+    instance: &mut crate::instance::InstanceLock,
+    receiver: &Path,
+    paths: &[PathBuf],
+    store: Arc<crate::FakeSecureStore>,
+) -> crate::incoming_publication::IncomingPublicationReport {
+    let gate = instance.admission();
+    let exclusive = gate
+        .exclusive(receiver, Instant::now() + Duration::from_secs(2), false)
+        .unwrap();
+    assert!(matches!(
+        worker
+            .process_incoming(controller, instance, store.as_ref())
+            .unwrap(),
+        IncomingTick::Deferred
+    ));
+    crate::ipc::tests::native_transfer_search(receiver, gate.clone(), store.clone(), true);
+    exclusive.finish(None);
+    let (started_send, started_recv) = std::sync::mpsc::sync_channel(1);
+    let (resume_send, resume_recv) = std::sync::mpsc::channel();
+    let paused = PausedStore {
+        inner: store.clone(),
+        destination: receiver.join("canonical/events").join(&paths[0]),
+        once: AtomicBool::new(false),
+        started: started_send,
+        resume: std::sync::Mutex::new(resume_recv),
+    };
+    let result = std::thread::scope(|scope| {
+        let publishing = scope.spawn(|| {
+            let result = worker.process_incoming(controller, instance, &paused);
+            match &result {
+                Ok(tick) => println!("native_publication_tick={tick:?}"),
+                Err(error) => println!("native_publication_error={error}"),
+            }
+            result
+        });
+        let until = Instant::now() + Duration::from_secs(10);
+        loop {
+            if started_recv.try_recv().is_ok() {
+                break;
+            }
+            if publishing.is_finished() {
+                panic!(
+                    "publication ended before rebuild pause: {:?}",
+                    publishing.join().unwrap()
+                );
+            }
+            assert!(
+                Instant::now() < until,
+                "publication pause deadline; worker={:?}",
+                worker.snapshot()
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        crate::ipc::tests::native_transfer_search(receiver, gate.clone(), store.clone(), true);
+        resume_send.send(()).unwrap();
+        publishing.join().unwrap().unwrap()
+    });
+    let IncomingTick::Published(published) = result else {
+        panic!("publication missing")
+    };
+    published
+}
+
+#[test]
+fn native_publication_pause_and_ipc_with_synthetic_transport() {
+    let (source, receiver, negative, store) = crate::trusted_import_probe::tests::pair();
+    let report = crate::trusted_import_probe::prepare(
+        &source,
+        &receiver,
+        &negative,
+        "44444444-4444-4444-8444-444444444444",
+        &store,
+    )
+    .unwrap();
+    let paths: Vec<PathBuf> = report
+        .segments
+        .iter()
+        .map(|s| s.relative_path.clone().into())
+        .collect();
+    for path in &paths {
+        let dest = receiver.join("transport/incoming").join(path);
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        fs::copy(source.join("canonical/events").join(path), dest).unwrap();
+    }
+    let mut worker = ManagedTransportWorker::synthetic_for_incoming_tests(
+        "U2SYIGU-YWZX757-2WPZGCR-DHD7MLH-ZKV7HLJ-EYO6CXE-K3DU3DU-SDFXYAE",
+        true,
+    );
+    let mut instance = crate::instance::try_acquire_instance(&receiver).unwrap();
+    let mut controller = IncomingController::new(receiver.clone(), ENV).unwrap();
+    controller.enqueue(paths.clone()).unwrap();
+    let store = Arc::new(store);
+    let published = publication_with_busy_ipc(
+        &worker,
+        &mut controller,
+        &mut instance,
+        &receiver,
+        &paths,
+        store.clone(),
+    );
+    assert_eq!(published.published_segments, paths.len());
+    crate::ipc::tests::native_transfer_search(&receiver, instance.admission(), store, false);
+    worker.shutdown(Duration::from_secs(2)).unwrap();
+}
+
 #[test]
 #[ignore = "explicit one-click host/VM synthetic relay fixture required"]
 fn real_delivery_worker_publication_crash_restart_and_replay() {
@@ -376,38 +484,15 @@ fn real_delivery_worker_publication_crash_restart_and_replay() {
         identity
     );
     checkpoint(&work, "owned_job_crash_restarted_identity_unchanged");
+    let published = publication_with_busy_ipc(
+        &worker,
+        &mut controller,
+        &mut instance,
+        &receiver,
+        &paths,
+        store.clone(),
+    );
     let gate = instance.admission();
-    let exclusive = gate
-        .exclusive(&receiver, Instant::now() + Duration::from_secs(2), false)
-        .unwrap();
-    assert!(matches!(
-        worker
-            .process_incoming(&mut controller, &mut instance, store.as_ref())
-            .unwrap(),
-        IncomingTick::Deferred
-    ));
-    crate::ipc::tests::native_transfer_search(&receiver, gate.clone(), store.clone(), true);
-    exclusive.finish(None);
-    let (started_send, started_recv) = std::sync::mpsc::sync_channel(1);
-    let (resume_send, resume_recv) = std::sync::mpsc::channel();
-    let paused = PausedStore {
-        inner: store.clone(),
-        destination: receiver.join("canonical/events").join(&paths[0]),
-        once: AtomicBool::new(false),
-        started: started_send,
-        resume: std::sync::Mutex::new(resume_recv),
-    };
-    let result = std::thread::scope(|scope| {
-        let publishing =
-            scope.spawn(|| worker.process_incoming(&mut controller, &mut instance, &paused));
-        started_recv.recv_timeout(Duration::from_secs(10)).unwrap();
-        crate::ipc::tests::native_transfer_search(&receiver, gate.clone(), store.clone(), true);
-        resume_send.send(()).unwrap();
-        publishing.join().unwrap().unwrap()
-    });
-    let IncomingTick::Published(published) = result else {
-        panic!("publication missing")
-    };
     assert_eq!(published.published_segments, paths.len());
     let after_publication = canonical_hashes(&receiver);
     assert_eq!(after_publication.len(), baseline.len() + paths.len());
