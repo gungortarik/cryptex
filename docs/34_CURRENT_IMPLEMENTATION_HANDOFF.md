@@ -2,6 +2,12 @@
 
 ## Opt-in real native worker transfer pilot prepared (2026-11-08)
 
+Candidate `e1b2aedcf5f94461f15e02ba49e2662bd77d62ab`; verified package
+`C:\Users\Tarik\Downloads\cryptex-denetleyici-aktarim-20261108.zip` (14,282,177
+bytes). Final independent source review has no remaining concrete finding.
+Exact source/package hashes and retained host relay session are in the evidence
+linked below. Owner execution/request ZIP is the next dependency.
+
 The owner selected **main Windows computer ↔ existing Windows VM**. The new
 one-click `NATIVE-AKTAR.cmd` package builds the exact source candidate on the VM,
 creates fresh synthetic canonical identities with signed reciprocal approvals,

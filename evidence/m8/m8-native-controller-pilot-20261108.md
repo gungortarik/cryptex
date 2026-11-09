@@ -80,7 +80,22 @@ Its `relay.json` binds the native ID and private endpoint on `192.168.177.1`;
 `sender.json` points to the fresh retained relay profile. Do not substitute old
 pairing profiles or manually alter signed segments.
 
-Package/source digest binding will be added after creating the exact candidate.
+## Delivered candidate binding
+
+- Source commit: `e1b2aedcf5f94461f15e02ba49e2662bd77d62ab`.
+- Source ZIP SHA-256: `a720e511f72bd93c31bb382abaa3abbd802605f375336f6956fed31bd16c7227`.
+- Package: `C:\Users\Tarik\Downloads\cryptex-denetleyici-aktarim-20261108.zip`.
+- Package SHA-256: `da93da58712220cf5f0bd202360fcf7c158ca3b6da654f80326f48e9c3870a40`.
+- Size: 14,282,177 bytes. Session: `d1e5c535ae0e459fb699be8f7324c149`.
+- Exact ten ZIP members verified; embedded launcher equals the candidate source;
+  source digest/size bounds and pinned native executable/notices verified.
+- Retained host session also contains `package-binding.json`; no sender launched.
+
+Independent reviewer completed the final Rust/scripts source pass with no
+remaining concrete correctness/safety/false-PASS finding. Reviewer ran no
+executables. Final script bytes were bound before commit; subsequent changes
+are documentation only. Native receiver receipt remains pending.
+
 M8 remains open: native receipt, remaining cross-device restriction/offline gates,
 macOS production publication/endpoint parity, physical durability, required CI
 and human review are separate completion gates.
