@@ -1447,18 +1447,46 @@ mod tests {
         assert!(parse_hold_opts(&args).is_err());
     }
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static PILOT_ROOT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
     fn fresh_pilot_root() -> PathBuf {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
-        let root =
-            std::env::temp_dir().join(format!("cryptex-pilot-fixture-{}-{stamp}", process::id()));
-        fs::create_dir(&root).expect("pilot root");
-        fs::write(root.join("pilot-runtime.marker"), PILOT_RUNTIME_MARKER).expect("marker");
-        root
+        for _ in 0..10_000 {
+            let sequence = PILOT_ROOT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "cryptex-pilot-fixture-{}-{sequence}",
+                process::id()
+            ));
+            match fs::create_dir(&root) {
+                Ok(()) => {
+                    fs::write(root.join("pilot-runtime.marker"), PILOT_RUNTIME_MARKER)
+                        .expect("marker");
+                    return root;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("pilot root allocation: {error}"),
+            }
+        }
+        panic!("pilot root allocation exhausted");
+    }
+
+    #[test]
+    fn parallel_pilot_roots_are_exclusive_and_have_intact_markers() {
+        let roots = std::thread::scope(|scope| {
+            let jobs: Vec<_> = (0..32).map(|_| scope.spawn(fresh_pilot_root)).collect();
+            jobs.into_iter()
+                .map(|job| job.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        let unique: std::collections::BTreeSet<_> = roots.iter().collect();
+        assert_eq!(unique.len(), roots.len());
+        for root in roots {
+            let marker = root.join("pilot-runtime.marker");
+            assert_eq!(fs::read(&marker).unwrap(), PILOT_RUNTIME_MARKER.as_bytes());
+            fs::remove_file(marker).unwrap();
+            fs::remove_dir(root).unwrap();
+        }
     }
 
     #[test]

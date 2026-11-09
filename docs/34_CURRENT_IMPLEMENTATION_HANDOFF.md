@@ -1,5 +1,21 @@
 # 34 — Current Implementation Handoff
 
+## CI retry: Mac library green; fixture allocation/Windows token corrected (2026-11-08)
+
+CI42559236900 on34f5866: Mac library 464 passed/0failed/4ignored; binary test
+failed timestamp-root collision. Test-only atomic exclusive allocation now passes
+16/16 binary tests at16threads, with32-thread uniqueness regression. Windows
+library512passed/78failed/5ignored, dominated by strict ownership refusal because
+hosted runner is elevated. Production owner checks remain unchanged.
+
+Windows CI now prebuilds exact daemon lib/bin artifacts, executes complete test
+inventories under a verified fresh standard-user process/private TEMP/profile,
+checks final summaries/exit/identity proof, and removes recorded account/profile.
+Source/binaries are read/execute only for that user; scratch is writable.
+Doctests remain separately checked. Source review and local guard/parser/summary
+checks pass; actual CI execution of the new launcher is the next validation.
+Full detail in [CI evidence](../evidence/m8/m8-ci-offline-review-20261108.md).
+
 ## Exact-candidate CI exposed two test scheduling assumptions (2026-11-08)
 
 CI run 42558672783 on 8cfcd50: Windows different-user IPC ACL passed; Mac daemon

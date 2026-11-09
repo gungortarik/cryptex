@@ -94,7 +94,17 @@ jobs:
         run: cargo test --locked -p m0-storage-bench
 
       - name: Test M0 cryptexd lifecycle harness
+        if: runner.os != 'Windows'
         run: cargo test --locked -p cryptexd
+
+      - name: Test daemon with real standard-user ownership (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & ./scripts/m8/run-daemon-tests-standard-user-ci.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --locked -p cryptexd --doc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Test M2 event and storage crates
         run: cargo test --locked -p cryptex-events -p cryptex-storage

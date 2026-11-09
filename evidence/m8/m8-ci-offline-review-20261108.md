@@ -58,3 +58,45 @@ Mac product limitations remain separate: incoming_publication and native managed
 worker are Windows-only; non-Windows staging ancestor inspection returns no pinned
 handles; native Mac owner security/bootstrap completion refuses platform peer
 identity unavailable. Prior passing Mac tests do not establish those product gates.
+
+## Second native CI and environment corrections
+
+[Run 42559236900](https://github.com/gungortarik/cryptex/actions/runs/42559236900)
+on `34f58668f94ad8de969a4fc7083974b62914ba4d` failed overall. Mac library now
+passes **464/464**, 4 ignored. Binary group failed 1/14 due timestamp-only
+fresh_pilot_root allocation collision (AlreadyExists). Replace that test helper
+with process-local atomic sequence + exclusive create/retry, no pre-delete;
+32-thread uniqueness/marker regression and all 16 Windows binary tests pass.
+Independent source reviewer found no blocking issue; test name narrowed to match
+actual fresh-root coverage. It does not claim an injected collision test.
+
+Windows library reported 512 passed/78 failed/5 ignored; 45 error occurrences
+name strict staging ownership refusal. Hosted Windows runners are elevated;
+new directories default to Administrators ownership. This duplicates the earlier
+owner-elevated VM environment issue. We do not weaken SID/owner checks or ignore
+these tests. Other failures require reassessment after fixing execution identity.
+
+CI-only standard-user launcher prebuilds exact daemon lib/bin test artifacts from
+Cargo JSON, creates a crypto-random disposable Users account, grants source/binary
+read/execute and scratch-only write, then starts a hidden credentialed process
+with its profile loaded. Child checks SID, non-admin token, profile/temp ownership,
+uses its own profile/appdata/private TEMP, and retains original CARGO_MANIFEST_DIR.
+All ordinary tests execute with no new filters. Each executable is enumerated
+before execution; successful final summary must cover passed+ignored inventory,
+zero failures/filtered entries, nonzero passed tests and zero process exit. Nested
+process-fixture summaries are allowed before the final root summary. Native
+stderr is captured as text through ProcessStartInfo to avoid PowerShell5.1 error
+record promotion. Daemon doctests remain a separate cargo invocation.
+
+Parent observes process completion, verifies child proof, waits bounded profile
+unload and removes only the recorded fresh SID/profile/account. Scratch deletion
+checks the resolved generated path under RUNNER_TEMP; cleanup failures fail CI.
+Failure diagnostics stay only on the disposable runner; no profile/key archive.
+Existing different-user IPC ACL job is unchanged.
+
+Local checks for the launcher: PowerShell AST parse, non-CI refusal before account
+creation, complete-summary validator accepts complete/nested results and rejects
+nonzero exit, missing/zero/filter/mismatched inventories. No local host account,
+profile or credential process was created. Independent source review found no
+launch blocker and recommended stderr-safe capture/separate account cleanup;
+both were applied. Actual hosted credential/profile compatibility remains pending.
