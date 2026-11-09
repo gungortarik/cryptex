@@ -3,13 +3,24 @@ $work=Join-Path $env:LOCALAPPDATA ('Cryptex-Dev\win-test\'+[guid]::NewGuid().ToS
 New-Item -ItemType Directory -Path $work | Out-Null
 $utf8=New-Object Text.UTF8Encoding($false)
 $report=[ordered]@{
-    schema=1; scope='isolated_windows_platform_tests'; probe_id='m8-windows-platform-20261108-v1';
+    schema=1; scope='isolated_windows_coordination_and_publication_tests'; probe_id='m8-windows-platform-20261108-v2';
     collected_utc=[DateTime]::UtcNow.ToString('o'); os=[Environment]::OSVersion.Version.ToString();
     publication_enabled=$false; production_profiles_accessed=$false; security_settings_changed=$false;
+    power_loss_tests='not_run'; cross_device_transfer='not_tested'; controller_transport_observations='synthetic';
     outcome='not_completed'; checks=@()
 }
 $logs=@()
 $exitCode=1
+
+function Test-GroupSummary([int]$Code,[string[]]$Summary,[int]$ExpectedCount) {
+    return ($Code -eq 0 -and $Summary.Count -eq 1 -and
+        $Summary[0] -cmatch ('^test result: ok\. '+$ExpectedCount+' passed; 0 failed; 0 ignored;'))
+}
+
+function Get-TestFileSystem([string]$Path) {
+    try { return ([IO.DriveInfo]::new([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path)))).DriveFormat }
+    catch { return 'unknown' }
+}
 
 function Invoke-TestProcess([string]$Executable,[string]$Arguments,[string]$Log,[string]$WorkingDirectory) {
     $start=New-Object Diagnostics.ProcessStartInfo
@@ -32,6 +43,8 @@ function Invoke-TestProcess([string]$Executable,[string]$Arguments,[string]$Log,
 }
 
 try {
+    $report.work_filesystem=Get-TestFileSystem $work
+    $report.temp_filesystem=Get-TestFileSystem ([IO.Path]::GetTempPath())
     $commit=(Get-Content -LiteralPath (Join-Path $PSScriptRoot 'SOURCE-COMMIT.txt') -Raw).Trim()
     $expected=(Get-Content -LiteralPath (Join-Path $PSScriptRoot 'SOURCE-SHA256.txt') -Raw).Trim()
     if($commit -cnotmatch '^[0-9a-f]{40}$' -or $expected -cnotmatch '^[0-9a-f]{64}$'){throw 'invalid_source_binding'}
@@ -77,16 +90,18 @@ try {
     if($code -ne 0){throw 'build_failed'}
     foreach($group in @(
         @{name='instance';filter='instance::tests::';expected_count=9},
-        @{name='publication';filter='incoming_publication::tests::';expected_count=9},
+        @{name='admission';filter='runtime_admission::tests::';expected_count=5},
+        @{name='publication';filter='incoming_publication::tests::';expected_count=14},
+        @{name='controller';filter='managed_profile::incoming::tests::';expected_count=4},
+        @{name='ipc';filter='ipc::tests::';expected_count=66},
         @{name='owned_http';filter='owned_process::tests::http::';expected_count=8}
     )){
         Write-Host ('Test: '+$group.name)
         $log=Join-Path $work ($group.name+'.log'); $logs+=$log
         $code=Invoke-TestProcess $rustupPath ('run 1.98.1 cargo test --offline --locked --color never -p cryptexd --lib '+$group.filter+' -- --test-threads=1') $log $source
-        $summary=@(Get-Content -LiteralPath $log | Where-Object { $_ -cmatch '^test result:' } | Select-Object -Last 1)
-        $expectedSummary='^test result: ok\. '+$group.expected_count+' passed; 0 failed; 0 ignored;'
-        $passed=($code -eq 0 -and $summary.Count -eq 1 -and $summary[0] -cmatch $expectedSummary)
-        $report.checks+=@{name=$group.name;exit_code=$code;passed=$passed;summary=($summary -join '')}
+        $summary=@(Get-Content -LiteralPath $log | Where-Object { $_ -cmatch '^test result:' })
+        $passed=Test-GroupSummary $code $summary $group.expected_count
+        $report.checks+=@{name=$group.name;exit_code=$code;passed=$passed;expected_count=$group.expected_count;summary=($summary -join '')}
     }
     if(@($report.checks | Where-Object { -not $_.passed }).Count -eq 0){
         $report.outcome='selected_windows_checks_passed'; $exitCode=0

@@ -28,8 +28,8 @@ if [ "$mode" = lint ]; then result="$work/MAC-LINT-SONUC.zip"; fi
         echo 'probe_id=m8-macos-lint-20261108-v1'
         echo 'native_tests=not_rerun'
     else
-        echo 'scope=macos_native_primitive_validation_and_keychain_tests'
-        echo 'probe_id=m8-macos-native-20261108-v1'
+        echo 'scope=macos_native_coordination_primitive_validation_and_keychain_tests'
+        echo 'probe_id=m8-macos-native-20261108-v2'
     fi
     echo "collected_utc=$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
     echo "macos_version=$(/usr/bin/sw_vers -productVersion)"
@@ -39,6 +39,8 @@ if [ "$mode" = lint ]; then result="$work/MAC-LINT-SONUC.zip"; fi
     echo 'windows_publication_service=not_available_on_macos'
     echo 'managed_endpoint_ownership=not_tested'
     echo 'power_loss_tests=not_run'
+    echo 'controller_bridge=windows_only_not_tested'
+    echo 'cross_device_transfer=not_tested'
     echo 'independent_security_review=not_performed'
 } > "$report"
 
@@ -48,7 +50,7 @@ finish() {
     set +e
     echo "runner_exit=$runner_code" >> "$report"
     files=(result.txt)
-    for name in build.log instance.log staging.log incoming.log trusted.log keychain.log clippy.log; do
+    for name in build.log instance.log admission.log staging.log incoming.log trusted.log keychain.log clippy.log; do
         if [ -f "$work/$name" ]; then files+=("$name"); fi
     done
     if (cd "$work" && /usr/bin/zip -q "$result" "${files[@]}"); then
@@ -62,6 +64,12 @@ finish() {
 trap finish EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# Record filesystem type only, never a volume name/UUID or a durability claim.
+mount_point="$(/bin/df -P "$work" | /usr/bin/awk 'NR==2 {for(i=6;i<=NF;i++) printf "%s%s", (i==6?"":" "), $i}')"
+filesystem="$(/usr/sbin/diskutil info -plist "$mount_point" | /usr/bin/plutil -extract FilesystemType raw -o - - 2>/dev/null)" || filesystem=unknown
+case "$filesystem" in apfs|hfs|ntfs|exfat|msdos) ;; *) filesystem=unknown ;; esac
+echo "work_filesystem=$filesystem" >> "$report"
 
 commit="$(/bin/cat "$base/SOURCE-COMMIT.txt")"
 expected="$(/bin/cat "$base/SOURCE-SHA256.txt")"
@@ -107,13 +115,13 @@ failures=0
 run_tests() {
     name="$1"
     filter="$2"
+    expected_count="$3"
     echo "Test: $name"
     if "$rustup_bin" run 1.98.1 cargo test --offline --locked --color never -p cryptexd --lib "$filter" -- --test-threads=1 > "$work/$name.log" 2>&1; then
-        summary="$(/usr/bin/awk '/^test result:/{line=$0} END{print line}' "$work/$name.log")"
+        summary="$(/usr/bin/awk '/^test result:/{n++; line=$0} END{if(n==1) print line}' "$work/$name.log")"
         case "$summary" in
-            'test result: ok. 0 passed;'*) status='failed_no_matching_tests'; failures=$((failures + 1)) ;;
-            'test result: ok.'*) status='pass' ;;
-            *) status='failed_missing_summary'; failures=$((failures + 1)) ;;
+            "test result: ok. $expected_count passed; 0 failed; 0 ignored;"*) status='pass' ;;
+            *) status='failed_count_or_summary'; failures=$((failures + 1)) ;;
         esac
         echo "${name}_summary=$summary" >> "$report"
     else
@@ -125,13 +133,14 @@ run_tests() {
 }
 
 if [ "$mode" = full ]; then
-    run_tests instance 'instance::tests::'
-    run_tests staging 'import_staging::tests::'
-    run_tests incoming 'incoming_validation::tests::'
-    run_tests trusted 'trusted_import_probe::tests::'
+    run_tests instance 'instance::tests::' 8
+    run_tests admission 'runtime_admission::tests::' 5
+    run_tests staging 'import_staging::tests::' 58
+    run_tests incoming 'incoming_validation::tests::' 9
+    run_tests trusted 'trusted_import_probe::tests::' 3
     echo 'Keychain testi yalnizca sentetik gelistirme test kayitlarini kullanir. macOS izin penceresi gosterebilir.'
     echo 'secure_store_tests=attempted' >> "$report"
-    run_tests keychain 'secure_store::macos::tests::'
+    run_tests keychain 'secure_store::macos::tests::' 2
 fi
 
 echo 'Mac hedefinde Clippy kontrolu...'

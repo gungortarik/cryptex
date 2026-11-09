@@ -7,7 +7,8 @@ Cargo.lock ile sabitlenmis acik kaynak bagimliliklarini Internet'ten indirebilir
 Rust/Xcode kurulumu veya guncellemesi yapmaz; sudo gerektirmez.
 Derleme ve test gunlukleri, yeni ozel gecici klasorde tutulur.
 
-Kilit dosyasi guvenligi, import staging/kurtarma, gelen veri dogrulamasi,
+Yeni kaynak surumundeki okuma/yazma koordinasyonu, kilit dosyasi guvenligi,
+import staging/kurtarma, gelen veri dogrulamasi,
 imzali onayli test gecmisi ve yerel Keychain adapteri sinanir. Keychain icin
 yalnizca sentetik gelistirme test kayitlari olusturulur/silinir; macOS izin
 penceresi gosterebilir. Mevcut Cryptex profillerine veya gercek anahtarlara
@@ -16,3 +17,5 @@ erismez. Guvenlik ayarlarini veya antivirusu kapatmayin.
 Bu secili yerel kontrollerin gecmesi, fiziksel guc kesintisi dayanikliligi,
 tam Mac cihaz eslesmesi/aktarimi ya da bagimsiz guvenlik onayi degildir.
 Windows kalici yayin servisi Mac'te acilmaz; normal yayinlama kapali kalir.
+Windows'a ozel denetleyici Mac'te sinanmaz. Disk dosya sistemi turu raporlanir;
+bu bilgi tek basina fiziksel dayaniklilik kaniti degildir.
