@@ -84,6 +84,15 @@ reported EPERM. Group stopping is now one-time under the lifecycle lock, before
 reaping. A native clean-exit/output regression also checks the successful path;
 reaping runs even if cleanup itself errors. Assertions remain unchanged.
 
+Run42686906555 onde92225 passed output/deadline/descendant checks; the added clean
+exit regression exposed Darwin's all-zombie killpg EPERM behavior. Apple's XNU
+killpg1 implementation filters SZOMB members and returns EPERM when none qualify.
+EPERM is now accepted only after a bounded, exact-group ps snapshot contains no
+live member (all Z or absent). Live/wrong-group/malformed/error snapshots still
+refuse. The leader stays unreaped through that query, preventing PGID recycling.
+No general permission-error suppression was added; a parser regression guards it.
+Source: [Apple XNU killpg1](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c).
+
 ## Primary sources
 
 - [Apple code-signing identity enumeration](https://developer.apple.com/documentation/xcode/creating-distribution-signed-code-for-the-mac/).

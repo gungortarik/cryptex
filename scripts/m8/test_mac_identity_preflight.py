@@ -21,6 +21,14 @@ spec.loader.exec_module(packager)
 
 
 class IdentityPreflightTests(unittest.TestCase):
+    def test_permission_error_exception_requires_a_dead_exact_group_snapshot(self):
+        self.assertTrue(probe.dead_group_snapshot(0, b' 123 Z\n', b'', 123))
+        self.assertTrue(probe.dead_group_snapshot(1, b'', b'', 123))
+        for code, output, errors in [(0, b'123 S\n', b''), (0, b'124 Z\n', b''),
+                                     (0, b'123 Z\n123 R\n', b''), (0, b'private diagnostic', b''),
+                                     (0, b'', b'permission denied'), (7, b'', b'')]:
+            self.assertFalse(probe.dead_group_snapshot(code, output, errors, 123))
+
     def test_darwin_queue_only_needs_close_not_context_manager_support(self):
         class Queue:
             closed = False

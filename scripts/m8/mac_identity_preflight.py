@@ -67,6 +67,25 @@ def wait_without_reaping(pid, timeout):
         time.sleep(min(0.01, max(0, deadline - time.monotonic())))
 
 
+def dead_group_snapshot(code, output, errors, pgid):
+    if code not in (0, 1) or errors or len(output) > OUTPUT_LIMIT:
+        return False
+    for line in output.splitlines():
+        match = re.fullmatch(rb"\s*(\d+)\s+(Z[A-Za-z0-9+<>-]*)\s*", line)
+        if not match or int(match.group(1)) != pgid:
+            return False
+    return True
+
+
+def darwin_group_is_dead(pgid, env):
+    # Darwin killpg filters zombie members and can return EPERM for an all-dead
+    # group. Query only this still-reserved group, with no names/arguments/UIDs.
+    result = subprocess.run(["/bin/ps", "-x", "-g", str(pgid), "-o", "pgid=,stat="],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            timeout=2, env=env, check=False)
+    return dead_group_snapshot(result.returncode, result.stdout, result.stderr, pgid)
+
+
 def run_bounded(args, timeout=20):
     env = os.environ.copy()
     env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -92,6 +111,9 @@ def run_bounded(args, timeout=20):
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        except PermissionError:
+            if sys.platform != "darwin" or not darwin_group_is_dead(process.pid, env):
+                raise
         stopped = True
 
     def read():
