@@ -1,5 +1,29 @@
 # 34 — Current Implementation Handoff
 
+## Exact-candidate native coordination packages ready; receipts pending (2026-11-08)
+
+Candidate `5708cb7bad7f3bc35d43df2568414de2267a18a4` retains the reviewed
+daemon implementation and updates only the native check runners/instructions.
+One-click Windows and Mac source packages are ready in the owner's Downloads.
+Windows selects **106 tests**, including the four dormant-controller cases,
+five admission cases, fourteen publication cases and sixty-six IPC cases.
+Mac selects **85 tests**, including the five shared admission cases, followed
+by strict daemon Clippy. Mac does not execute Windows-only publication/controller
+code. Both report filesystem type without claiming power-loss durability.
+
+Runner helper regressions passed locally (Windows PowerShell 5.1 and Git Bash);
+these are **not native package receipts**. Source archive/member integrity and
+Mac executable ZIP mode checks passed. Exact Windows filter counts were checked
+against the candidate test inventory. No new daemon behavior or activation.
+
+Next: owner extracts the Windows ZIP in the existing VM and double-clicks
+`WIN-TEST.cmd`; on the Mac, extracts the Mac ZIP and opens `MAC-TEST.command`.
+Collect `WIN-TEST-SONUC.zip` and `MAC-TEST-SONUC.zip`, including failures.
+Do not repeat pairing or modify existing profiles. Detailed bindings/checks:
+[native coordination packages](../evidence/m8/m8-native-coordination-packages-20261108.md).
+Native results, real cross-device controller feeding, Mac production parity,
+physical durability, CI and human review remain open. M8 is not complete.
+
 ## Coordination source review completed; dormant worker bridge connected (2026-11-08)
 
 Implementation `67c3f8bca2e32e73e25958bde517285a7cb94bc2`, final code/test
