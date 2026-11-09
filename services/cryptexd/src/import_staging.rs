@@ -3886,9 +3886,39 @@ fn same_volume(first: &Path, second: &Path) -> Result<bool, ImportStagingError> 
 }
 
 #[cfg(windows)]
+fn windows_extended_path(path: &Path) -> Result<Vec<u16>, ImportStagingError> {
+    use std::os::windows::ffi::OsStrExt;
+    let mut components = path.components();
+    if !matches!(components.next(), Some(Component::Prefix(p)) if matches!(p.kind(), std::path::Prefix::Disk(_)))
+        || !matches!(components.next(), Some(Component::RootDir))
+        || components.any(|part| !matches!(part, Component::Normal(_)))
+    {
+        return Err(ImportStagingError::Invalid(
+            "native staging path must be an absolute local drive path".into(),
+        ));
+    }
+    // Preserve the already validated path; do not canonicalize through links.
+    // Raw Win32 APIs otherwise impose MAX_PATH even when Rust fs accepts it.
+    let mut wide: Vec<u16> = r"\\?\".encode_utf16().collect();
+    wide.extend(path.as_os_str().encode_wide().map(|unit| {
+        if unit == u16::from(b'/') {
+            u16::from(b'\\')
+        } else {
+            unit
+        }
+    }));
+    if wide.contains(&0) {
+        return Err(ImportStagingError::Invalid(
+            "native staging path contains NUL".into(),
+        ));
+    }
+    wide.push(0);
+    Ok(wide)
+}
+
+#[cfg(windows)]
 fn directory_volume_serial(path: &Path) -> Result<u32, ImportStagingError> {
     use std::mem::zeroed;
-    use std::os::windows::ffi::OsStrExt;
     use std::os::windows::io::{AsRawHandle, FromRawHandle};
     use std::ptr;
     use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
@@ -3898,11 +3928,7 @@ fn directory_volume_serial(path: &Path) -> Result<u32, ImportStagingError> {
         FILE_SHARE_READ, FILE_SHARE_WRITE, GetFileInformationByHandle, OPEN_EXISTING,
     };
 
-    let wide = path
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect::<Vec<_>>();
+    let wide = windows_extended_path(path)?;
     let handle = unsafe {
         CreateFileW(
             wide.as_ptr(),
@@ -4245,18 +4271,9 @@ fn encode_hex(bytes: &[u8]) -> String {
 fn publish_staged_no_replace(source: &Path, destination: &Path) -> Result<(), ImportStagingError> {
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::Storage::FileSystem::{MOVEFILE_WRITE_THROUGH, MoveFileExW};
-        let source_wide = source
-            .as_os_str()
-            .encode_wide()
-            .chain(Some(0))
-            .collect::<Vec<_>>();
-        let destination_wide = destination
-            .as_os_str()
-            .encode_wide()
-            .chain(Some(0))
-            .collect::<Vec<_>>();
+        let source_wide = windows_extended_path(source)?;
+        let destination_wide = windows_extended_path(destination)?;
         if unsafe {
             MoveFileExW(
                 source_wide.as_ptr(),
@@ -4294,7 +4311,7 @@ fn sync_staged_parent(path: &Path) -> Result<(), ImportStagingError> {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::{ffi::OsStrExt, io::FromRawHandle};
+        use std::os::windows::io::FromRawHandle;
         use std::ptr;
         use windows_sys::Win32::Foundation::{GENERIC_WRITE, INVALID_HANDLE_VALUE};
         use windows_sys::Win32::Storage::FileSystem::{
@@ -4307,11 +4324,7 @@ fn sync_staged_parent(path: &Path) -> Result<(), ImportStagingError> {
         let parent = path.parent().ok_or_else(|| {
             ImportStagingError::Invalid("staged path has no parent directory".into())
         })?;
-        let wide = parent
-            .as_os_str()
-            .encode_wide()
-            .chain(Some(0))
-            .collect::<Vec<_>>();
+        let wide = windows_extended_path(parent)?;
         let raw = unsafe {
             CreateFileW(
                 wide.as_ptr(),
@@ -4357,6 +4370,49 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const TEST_BRAIN_ID: &str = "22222222-2222-4222-8222-222222222222";
+
+    #[test]
+    #[cfg(windows)]
+    fn long_windows_publication_preserves_no_replace_and_directory_checks() {
+        let root = crate::test_temp::exclusive_temp_dir("long-staging-adapter");
+        let parent = root.join("long-path-".repeat(20)).join("unicode-é");
+        fs::create_dir_all(&parent).unwrap();
+        let source = parent.join("source.seg");
+        let destination = parent.join("destination.seg");
+        assert!(destination.as_os_str().len() > 260);
+        fs::write(&source, b"synthetic new segment").unwrap();
+        fs::write(&destination, b"existing immutable segment").unwrap();
+        assert!(publish_staged_no_replace(&source, &destination).is_err());
+        assert_eq!(
+            fs::read(&destination).unwrap(),
+            b"existing immutable segment"
+        );
+        assert!(source.is_file());
+        fs::remove_file(&destination).unwrap();
+        // Manifest-relative paths use forward slashes; verbatim Win32 paths
+        // must normalize separators without resolving symlinks or junctions.
+        let slashes = PathBuf::from(destination.to_string_lossy().replace('\\', "/"));
+        publish_staged_no_replace(&source, &slashes).unwrap();
+        assert!(!source.exists());
+        assert_eq!(fs::read(&destination).unwrap(), b"synthetic new segment");
+        directory_volume_serial(&parent).unwrap();
+        sync_staged_parent(&destination).unwrap();
+        assert!(directory_volume_serial(&destination).is_err());
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn extended_staging_paths_refuse_nonlocal_and_parent_paths() {
+        for value in [
+            r"relative\file",
+            r"C:\a\..\file",
+            r"\\server\share\file",
+            r"\\.\C:\file",
+            "C:\\nul\0name",
+        ] {
+            assert!(windows_extended_path(Path::new(value)).is_err());
+        }
+    }
 
     struct TestTrustedKey(VerifyingKey);
 

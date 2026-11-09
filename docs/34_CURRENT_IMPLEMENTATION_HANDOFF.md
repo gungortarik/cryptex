@@ -1,5 +1,28 @@
 # 34 — Current Implementation Handoff
 
+## Long Windows import paths reproduced and corrected (2026-11-08)
+
+Diagnostic `DENETLEYICI-TANI-5b92b54889a6-1729dd82.zip` confirms the received
+6557-byte segment hash matches the source/request; receiver canonical peer
+directory contains only writer.lock, not the imported segment. Native log confirms
+transfer and restart. It does not prove clean VM shutdown.
+
+Reproduced publication failure locally by setting TEMP to the VM runner's long
+app-data directory shape: old code returns Rejected(Io(os error 3)) before the
+post-commit pause. Raw Win32 path APIs imposed MAX_PATH on generated staging paths.
+Windows staging now uses checked extended local-drive paths at volume inspection,
+no-replace move and directory flush. Separators normalized, no canonicalization,
+no altered share/reparse/owner checks or replacement flags. Long-path publication
+and busy named-pipe IPC now pass; import staging 65/65, incoming publication 14/14,
+strict Clippy/fmt/diff checks pass. This fixes a reproduced Windows defect; a new
+native VM receipt is still required to establish the whole flow.
+
+Prepare/deliver corrected native package using fresh host relay session
+`45278d8e00394a62b8d3607208858878` under the usual private relay root.
+Fresh native sender is generated but not launched. Never reuse the old request:
+its host folder/payload are already consumed and receiver test ended.
+See [long-path evidence](../evidence/m8/m8-native-controller-long-path-20261108.md).
+
 ## VM confirms delivery/restart; publication pause timed out (2026-11-08)
 
 Returned `DENETLEYICI-SONUC-d1e5c535-5b92b54889a6.zip` matches candidate

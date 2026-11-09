@@ -234,7 +234,12 @@ fn publication_with_busy_ipc(
 
 #[test]
 fn native_publication_pause_and_ipc_with_synthetic_transport() {
-    let (source, receiver, negative, store) = crate::trusted_import_probe::tests::pair();
+    let (source, short_receiver, negative, store) = crate::trusted_import_probe::tests::pair();
+    let parent = crate::test_temp::exclusive_temp_dir("native-long-runtime");
+    let receiver = parent.join("long-runtime-".repeat(3));
+    // Preserve a production-like long runtime in this regression independently
+    // of the developer's TEMP setting; MoveFileExW must not impose MAX_PATH.
+    fs::rename(short_receiver, &receiver).unwrap();
     let report = crate::trusted_import_probe::prepare(
         &source,
         &receiver,
