@@ -4,83 +4,48 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
-## Implementation status — 2026-11-05
+## Implementation status — 2026-11-09
 
-Active branch: `codex/m8-device-trust`. This branch contains a Windows-focused
-implementation checkpoint, not a release or an accepted M8 completion.
+Active branch: `codex/m8-device-trust`. **M8 remains OPEN.** This is an
+implementation checkpoint; normal transport/publication activation and M9 are gated.
 
-| Area | Implemented in this checkpoint | Still required |
+| Area | Verified evidence | Remaining work |
 | --- | --- | --- |
-| Security events and trust | Strict v3 security-event reading, verified trust history, local trust/cutoff reduction, and cutoff-aware content validation | Independent security review and remaining protocol/compatibility gates |
-| Windows owner approval | Journaled bootstrap exchange, Desktop approval UI, connection-bound single-use confirmation, restriction/self-retirement append, and duplicate-safe recovery; native self-retirement review/cancel/retry and unapproved-peer denial passed on the second Windows VM | Native approved-peer restriction review at a nonzero cutoff and native restart/recovery flow; no confirmation on the owner's current device |
-| Import and recovery | Bounded staging, signature/identity/chain checks, policy gates, committed-marker validation and cleanup, and conservative holds for incomplete publication | Production Syncthing-to-staging-to-publication wiring, safe replay, and remaining durability/crash-boundary proof |
-| macOS | Peer-identity feasibility investigation and a continuation prompt | Authenticated peer identity, equivalent owner-operation integration, and native parity verification; this approval route currently fails closed |
+| Pairing and owner actions | Signed bilateral exchange, both durable anchors, duplicate-safe reopen/replay, Windows review/cancel/refusal and journal/IPC regressions | Native authorization/platform parity, final protocol and product-flow review |
+| Windows live transfer | Actual host-to-VM Syncthing delivery, controlled process interruption, unchanged identity on restart, one published segment/three events, real IPC busy/search, immutable hashes and zero-new replay | Supported production peer/folder policy and startup feeding remain disabled pending acceptance |
+| Offline and restriction integration | Daemon tests: both peers write offline then converge under reversed arrival hints; owner-confirmed retired/compromised cutoff rejects the disconnected peer's later signed event | Actual cross-device offline/reconnect and restriction propagation through supported product integration |
+| Windows persistence | Long Unicode-path regressions cover key/identity/journal/counter/writer/seal operations, persisted-seed retry and no-replace invariants; full standard-user CI passed | Scoped native authorization/product review and remaining activation gates |
+| macOS | Earlier selected native primitive/credential receipts; general readiness CI passed on source6de8dbe | Managed native profile/worker, pinned publication/containment and exact live Desktop connection identity are incomplete |
+| Security and completion | Independent technical source reviews; corrected findings and explicit regression evidence | Final candidate security/product review, required human diff review, platform/protocol acceptance |
 
-**Latest Windows verification (owner-provided, second Windows/VM):** on
-**26200.9711 / 25H2**, pinned source `a5f859a`, Rust 1.98.1, the standard-user
-run passed **520 daemon library tests (0 failed, 4 ignored)**. The owner also
-reported **12 binary tests passed**; the separate owned HTTP group passed
-**8/8**, and the native TCP probe matched **60/60** samples. The four ignored
-native fixtures, integration executables, and interactive Desktop flow are
-not covered by these results.
+The completed Windows native pilot is recorded in
+[native transfer evidence](evidence/m8/m8-native-controller-result-20261108.md).
+It uses synthetic canonical identities and a test peer/folder policy; it does not
+activate normal replication. **Do not repeat the completed pairing/VM packages.**
+The owner can keep that VM closed until a concrete new device action is needed.
 
-The earlier elevated second-host run failed 43 tests at ownership/permission
-boundaries; a probe confirmed new directories were owned by Administrators.
-The standard-user rerun passed with unchanged security checks and assertions.
-Elevated-launch compatibility remains an open limitation. On development build
-26300.9818, four HTTP tests still fail alongside independently reproduced
-native TCP-state mismatches; that host-specific anomaly is unresolved.
-See the [diagnostic and verification evidence](evidence/m8/m8-windows-tcp-state-diagnostic-20261029.md)
-for commands, result provenance, earlier failures, and scope limits.
+Local offline/cutoff checks and Windows persistence corrections are recorded in
+[integration evidence](evidence/m8/m8-offline-restriction-integration-20261108.md)
+and [CI/review evidence](evidence/m8/m8-ci-offline-review-20261108.md).
+Current full CI run: [42564404285](https://github.com/gungortarik/cryptex/actions/runs/42564404285)
+on `6de8dbea8b6cf0221cd114ed91c77290ce1a6165` — **SUCCESS**: Windows/macOS
+readiness and Windows different-user IPC ACL passed. Daemon library: Windows596
+passed/0failed/5ignored; Mac464passed/0failed/4ignored. Existing explicit native
+fixtures remain outside ordinary CI; installer packaging was skipped by design.
 
-Earlier development-host checks passed workspace release Clippy, format,
-TypeScript/Vite build, Desktop policy tests (18/18), and an unbundled
-Desktop/sidecar package smoke. The package smoke did not verify an interactive
-owner dialog or installer. See the [checkpoint evidence](evidence/m8/m8-checkpoint-publication-20261029.md)
-and [owner-operation evidence](evidence/m8/m8-windows-owner-security-operation-ipc-append-recovery-20261029.md).
+**Next continuation point:** the consolidated Mac stage. The previously authorized
+[synthetic connection-identity feasibility probe](evidence/m8/m8-macos-xpc-peer-identity-feasibility-20261025.md)
+remains NOT RUN. It must establish exact process/connection binding before any
+production IPC architecture amendment. Complete the Mac profile/publication
+adapters and native proof under the accepted contracts; retain fail-closed
+operations and disabled normal feeding until acceptance. Then verify real
+cross-device offline/restriction propagation and consolidate final review.
 
-The second Windows/VM completed the **unbundled release Desktop/daemon package
-smoke** with Node 24.19.0, Cargo 1.98.1, and pnpm 11.28.0 at source `b733e43`.
-Its initial interactive attempt exposed a renderer crash: after **Prepare
-owner review**, the window went blank twice. The Tauri response serialized the
-durable snake_case snapshot while React expected camelCase. The fix adds a
-camelCase-only Desktop transport DTO and regression test without changing
-journal bytes. The owner then rebuilt from a short temporary path and verified
-the corrected self-retirement snapshot, then repeated the preparation after
-cancellation and received a different transaction ID. Both **Cancel** actions
-reported “Operation cancelled. No canonical event was written.” No
-confirmation was performed. A valid-format but unapproved peer restriction
-request was also denied with “Nothing was changed.” Targeted synthetic daemon
-tests passed for an approved peer's exact nonzero cutoff/hash, rejection of a
-later boundary, the owner restriction IPC flow, and self-retirement append
-recovery. The approved-peer UI and native recovery flows remain unverified.
-Details and exact verification scope are in the
-[owner-review rendering evidence](evidence/m8/m8-windows-owner-review-rendering-20261103.md).
-
-**Next continuation point (2026-11-07):** responder verification and signing
-succeeded with the original signed inputs. The resumed responder on build
-`19d94b1` reported pairing recorded in canonical local history. The subsequent
-initiator attempt displayed the same success message. The owner confirmed
-both journals show `anchored` and four messages for that transaction. Both
-profiles then passed reopen/replay with unchanged event-file hashes and one
-append attempt each. See [native replay evidence](evidence/m8/m8-windows-two-profile-pairing-replay-20261107.md).
-Follow [`M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md`](docs/M8_WINDOWS_RESPONDER_PAIRING_HANDOFF.md)
-and the latest section in the [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md);
-Next prepare the Windows owner restriction review at a nonzero cutoff using
-a peer event verified through a supported daemon import/replication route.
-Native append-unknown crash recovery remains open. Do not test
-permanent confirmation on the owner's current device. The two pre-fix review
-attempts left owner-pending journal entries in their disposable profile after
-`Ctrl+R` discarded the renderer handles; that profile was not reused. Then
-address production transport/publication, macOS parity, and independent
-security review before evaluating the M8 completion gate. ADR-0019's protocol
-addendum remains PROPOSED overall; owner acceptance of sections 2–4 as the
-Windows implementation basis is not full protocol or milestone acceptance.
-
-The [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) is the detailed
-continuation record. Its dated entries are historical evidence: statements
-such as "No commit, push" describe those individual runs, not the publication
-status of this checkpoint.
+The [M8 completion ledger](checklists/M8_DEVICE_TRUST_REPLICATION_GATE.md) maps
+requirements to evidence and open gates. The [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md)
+is the operational resume record. Older dated entries are historical receipts;
+read its latest status first. ADR-0019's protocol addendum remains PROPOSED overall;
+acceptance of the Windows implementation basis does not close M8.
 
 Authoritative project documentation lives under `docs/`. Runtime data must remain outside this source repository.
 

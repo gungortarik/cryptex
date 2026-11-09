@@ -1,6 +1,6 @@
 # M8 completion ledger
 
-Updated 2026-11-08. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
+Updated 2026-11-09. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
@@ -14,13 +14,13 @@ relax protocol acceptance or authorize production activation.
 | Windows platform | Actual native pilot on 25H2/NTFS; long-path publication and recovery tests | Native Desktop authorization beyond the test IPC seam; final scoped security/platform review |
 | macOS platform | Prior selected native coordination checks passed on exact earlier candidate | Production publication ancestor/volume/no-replace/IPC authorization parity, accepted implementation scope, exact-candidate native verification |
 | Security review | Prior technical independent agent source reviews and corrected findings | Final candidate review including recent platform/native integration changes; required human diff review |
-| CI | CI workflow defines Windows/macOS readiness and Windows different-user IPC ACL | Green exact-candidate runs; local selected tests and old platform receipts are not substitutes |
+| CI | [Run42564404285](https://github.com/gungortarik/cryptex/actions/runs/42564404285) passed Windows/macOS readiness and different-user IPC ACL on source6de8dbe; Windows library596/0failed/5ignored, Mac464/0failed/4ignored | Revalidate changed behavior on later implementation candidates; explicit native/activation/human gates remain separate |
 
 Do not repeat completed Windows native pairing/transfer packages. Existing result
 receipt is in `evidence/m8/m8-native-controller-result-20261108.md`.
 
-Immediate sequence: local offline/restriction integration checks passed; finish
-exact-candidate CI after the hosted long-metadata-path correction, prepare remaining Mac/platform work against the accepted
+Immediate sequence: local offline/restriction integration and exact-code CI passed;
+prepare remaining Mac/platform work against the accepted
 protocol scope, then consolidate final native integration/security/human review.
 Any additional owner/device action should be packaged once against a concrete
 candidate. M9 starts only after this milestone gate is green.

@@ -1,5 +1,38 @@
 # 34 — Current Implementation Handoff
 
+## Current resume point: exact-code dual-OS CI green; M8 OPEN (2026-11-09)
+
+**Tested/pushed behavior source:** `6de8dbea8b6cf0221cd114ed91c77290ce1a6165`,
+branch `codex/m8-device-trust`.
+[CI42564404285](https://github.com/gungortarik/cryptex/actions/runs/42564404285)
+completed SUCCESS: Windows readiness, macOS readiness and Windows different-user
+IPC ACL all passed. Unsigned installer job was skipped by workflow design.
+Windows standard-user daemon library596passed/0failed/5ignored; binary16/16.
+Mac library464passed/0failed/4ignored; binary15/15. Release Desktop tests47/47
+Windows and40/40 Mac; full workflow format/lint/build/schema/Node steps passed.
+Ignored explicit native fixtures remain outside ordinary CI; no new filter/ignore.
+The CI launcher verified complete lib/bin inventories, actual non-admin SID and
+private TEMP, and completed account/profile cleanup without failure.
+
+The long-path persistence fixes, local offline/cutoff integration and independent
+technical source review are complete for this candidate. README and
+[M8 completion ledger](../checklists/M8_DEVICE_TRUST_REPLICATION_GATE.md) now map
+the actual remaining gates. This section supersedes pending-CI continuation
+statements in the historical retry entries below. Detailed logs/counts/limits:
+[CI evidence](../evidence/m8/m8-ci-offline-review-20261108.md).
+
+**Next:** consolidated Mac stage. The owner-authorized synthetic XPC peer/instance
+feasibility probe is still NOT RUN. Complete that bounded proof/review before any
+ADR-0007 production IPC amendment. Mac managed profile/worker, publication ancestor
+pins/atomicity and native authenticated owner actions remain incomplete. Normal
+startup feeding/production peer policy stay disabled until protocol/security
+acceptance. Then verify actual cross-device offline/restriction propagation and
+final security/product/human review. M8 is not closed and M9 has not started.
+
+Do not repeat completed Windows pairing/native transfer/replay packages. VM can
+remain closed; request one consolidated new device batch only for a concrete
+candidate. Later documentation-only status commits do not change the tested code.
+
 ## Full writer path corrected after final hosted failure (2026-11-08)
 
 CI42563317369 on18774b2 completed: Mac readiness + Windows IPC ACL passed;

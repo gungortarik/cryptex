@@ -229,3 +229,43 @@ strict all-target daemon/storage Clippy, workspace format and diff checks.
 Independent source-only review found no actionable issue and verified native
 flags, typed errors, coverage and helper move; no reviewer binaries executed.
 Next exact-candidate hosted run remains required.
+
+## Final exact-code CI receipt — 2026-11-09
+
+Behavior/source SHA: `6de8dbea8b6cf0221cd114ed91c77290ce1a6165` on
+`codex/m8-device-trust`.
+[Run42564404285](https://github.com/gungortarik/cryptex/actions/runs/42564404285)
+completed **SUCCESS**. GitHub job metadata and downloaded completed job logs agree.
+
+| Gate | Result |
+| --- | --- |
+| Windows readiness (job128987653428) | Success, 15m1s |
+| macOS readiness (job128987653425) | Success, 14m5s |
+| Windows different-user IPC ACL (job128987653335) | Success, 41s |
+| Unsigned Windows installer job | Skipped by manual-only workflow design |
+| Windows standard-user daemon library | 596 passed, 0 failed, 5 ignored, 0 filtered, 41.43s |
+| Windows daemon binary / doctests | 16 passed; 0 doctests, both exit0 |
+| Mac daemon library | 464 passed, 0 failed, 4 ignored, 0 filtered, 12.71s |
+| Mac daemon binary | 15 passed, 0 failed |
+| Events / storage | 86 events both OS; storage44 Windows /40 Mac, no failures |
+| Desktop debug / release | Windows46/47; Mac39/40, no failures |
+| Workspace format, strict Clippy/check, frontend/schema, Node boundaries, foundation launch | All workflow steps passed |
+
+Windows credential launcher reached both complete inventories, verified its actual
+non-admin SID/private TEMP/profile and completed its recorded account/profile
+cleanup. No new ignore/filter or ownership bypass was added. Existing explicit
+native fixture tests remain ignored in ordinary CI. The earlier successful native
+host/VM receipt is separate evidence; it was not repeated by this workflow.
+
+The previously failing policy fixture also passed locally with an inherited
+CI-shaped longer private TEMP parent before dispatch. Long writer regression had
+first reproduced OS0, then exposed sequence OS3 after the partial tip correction;
+the final complete path now passes without shortening the fixture/runtime names.
+
+This closes the requested exact-code CI retry for these changes. Later README/
+handoff/ledger/evidence-only commits retain this tested behavior SHA; they are
+documentation updates, not a claim of a different source run. No installer,
+physical power-cut, production activation, native Mac transport/IPC parity or
+human acceptance is certified. M8 remains OPEN. Next gates are in the completion
+ledger, including the previously authorized but unrun Mac synthetic identity
+probe, platform adapters, real offline/restriction propagation and final review.
