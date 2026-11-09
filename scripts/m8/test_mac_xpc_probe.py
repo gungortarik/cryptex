@@ -1,4 +1,5 @@
 import importlib.util
+from contextlib import redirect_stdout
 import io
 import json
 from pathlib import Path
@@ -15,6 +16,9 @@ from mac_identity_preflight import CommandResult, PreflightError
 spec = importlib.util.spec_from_file_location("xpc_packager", Path(__file__).with_name("package-macos-xpc.py"))
 packager = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(packager)
+ci_spec = importlib.util.spec_from_file_location("xpc_ci_smoke", Path(__file__).with_name("mac_xpc_ci_smoke.py"))
+ci = importlib.util.module_from_spec(ci_spec)
+ci_spec.loader.exec_module(ci)
 
 
 class SyntheticXpcTests(unittest.TestCase):
@@ -138,6 +142,26 @@ class SyntheticXpcTests(unittest.TestCase):
             marker.write_text(json.dumps({'domain': domain, 'label': label}))
             self.assertEqual(probe.cleanup(work, lambda *_: CommandResult(5, 'private')), 'cleanup_unconfirmed')
             self.assertTrue(marker.exists())
+
+    def test_ci_probe_failure_still_emits_cleanup_and_unproven_process_exit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = io.StringIO()
+
+            def checked(_run, _args, diagnostic, timeout=20):
+                return 'CDHash=' + 'a' * 40 if diagnostic == 'adhoc_detail' else '/SDK'
+
+            with (patch.object(ci.sys, 'platform', 'darwin'),
+                  patch.dict(ci.os.environ, {'GITHUB_ACTIONS': 'true'}),
+                  patch.object(ci.tempfile, 'mkdtemp', return_value=directory),
+                  patch.object(ci, 'validate_work'), patch.object(ci, 'checked', checked),
+                  patch.object(ci, 'exercise', side_effect=RuntimeError('injected')),
+                  patch.object(ci, 'cleanup', return_value='registration_removed'),
+                  redirect_stdout(output), self.assertRaisesRegex(RuntimeError, 'injected')):
+                ci.main()
+            receipt = json.loads(output.getvalue())
+            self.assertEqual(receipt['scope'], 'disposable_ci_adhoc_smoke_only')
+            self.assertEqual(receipt['temporary_job_cleanup'], 'registration_removed')
+            self.assertEqual(receipt['server_process_exit'], 'not_independently_observed')
 
     def test_package_hashes_modes_source_binding_and_tampering(self):
         files = {name: Path(__file__).with_name(name).read_bytes() for name in probe.FILES}

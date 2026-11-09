@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Signed synthetic XPC package prepared; native harness verification pending (2026-11-09)
+## Signed synthetic XPC package ready; native harness CI passed (2026-11-09)
 
 MAC-IMZA.command uses the personal Mac's single existing certificate for temporary
 nonce-echo fixtures, with exact certificate/identifier requirements and delivered
@@ -8,8 +8,16 @@ message-derived SecCode checks. Wrong-ID/ad-hoc/unsigned observations and a
 same-requirement forwarded endpoint after origin exit are scoped separately.
 Full feasibility stays INCOMPLETE: second certified signer, stale actual connection
 reuse, product minimum OS and exact-instance custody remain unproven. No production
-IPC/trust/transport changes. Do not deliver until Mac harness CI passes; owner run
-is NOT RUN. [Scope and safety](../evidence/m8/m8-macos-signed-xpc-observations-20261109.md).
+IPC/trust/transport changes. Mac CI42701476626 passed sourceee5d417; real CI ad-hoc
+echo/message-refusal/forwarded-endpoint observations and job registration removal
+worked. Connection-layer wrong-ID error stays inconclusive; signer-only forwarded
+endpoint acceptance is an observation, not an exact-instance solution. Owner run
+is NOT RUN. Next: personal MacBook extract -> MAC-IMZA.command -> return
+MAC-IMZA-SONUC.zip. Outgoing file:
+`C:\Users\Tarik\Downloads\cryptex-mac-imza-ee5d4176.zip`, SHA256
+`b659127a06f62ca44aebba766d5d673bfb7a2691ea33d26517a75cb75874ce4d`.
+The user's existing key may request allow-once access; no key export/new certificate.
+[Scope and safety](../evidence/m8/m8-macos-signed-xpc-observations-20261109.md).
 
 ## Personal Mac API preflight passed; one signing candidate found (2026-11-09)
 

@@ -48,8 +48,8 @@ def main():
             raise RuntimeError("CI forwarded endpoint observation differs")
     finally:
         report["temporary_job_cleanup"] = cleanup(work)
-        print(json.dumps(report, indent=2))
         report["server_process_exit"] = "not_independently_observed"
+        print(json.dumps(report, indent=2))
         if report["temporary_job_cleanup"] not in ("registration_removed", "not_registered"):
             raise RuntimeError("CI synthetic job cleanup not confirmed")
     # Working files remain private in disposable runner TEMP; no certificate exists.

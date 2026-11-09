@@ -45,9 +45,11 @@ The [one-click Mac identity prerequisite package](evidence/m8/m8-macos-identity-
 is verified on Mac CI42687722399/source59411433. The latest receipt from the
 user's personal MacBook passed API compile/presence checks and enumerated one
 valid file-Keychain signing certificate (the earlier borrowed Mac reported zero).
-Next select the existing identity locally for the bounded synthetic probe;
-private-key use and the full signed matrix remain untested. No trust change
-occurred. Do not repeat completed API or Windows VM pairing/transfer checks.
+The [bounded signed XPC observation package](evidence/m8/m8-macos-signed-xpc-observations-20261109.md)
+is ready on sourceee5d417 after native Mac harness CI42701476626 passed. Next run
+MAC-IMZA.command on the personal MacBook with that existing identity. Owner key
+use/full matrix remain untested; no trust change occurred. Do not repeat completed
+API or Windows VM pairing/transfer checks.
 
 The [M8 completion ledger](checklists/M8_DEVICE_TRUST_REPLICATION_GATE.md) maps
 requirements to evidence and open gates. The [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md)

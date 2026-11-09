@@ -1,6 +1,6 @@
 # M8 synthetic signed XPC observation package
 
-Status: implementation prepared; native CI verification pending; owner run NOT RUN.
+Status: native harness CI passed; owner certificate run NOT RUN; full matrix INCOMPLETE.
 This continues the authorized XPC feasibility investigation only. Accepted
 ADR-0007 production Unix-socket IPC, canonical data, trust and transport are unchanged.
 
@@ -71,3 +71,31 @@ Primary references: [Apple XPC peer requirements](https://developer.apple.com/do
 [message-derived SecCode](https://developer.apple.com/documentation/security/seccodecreatewithxpcmessage(_:_:_:)),
 [XPC endpoints](https://developer.apple.com/documentation/xpc/xpc_endpoint_create(_:)),
 [launchd jobs](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
+
+## Verified candidate and outgoing package
+
+Source `ee5d41764aef396e3064ffb52c1f357e2acca310` passed narrow Mac
+[CI42701476626](https://github.com/gungortarik/cryptex/actions/runs/42701476626),
+job129447049254,12seconds. XPC10tests and11 applicable prerequisite tests passed;
+one non-Mac refusal test skipped. Warning-denied native compile, same-process
+ad-hoc smoke, shared real cross-process exercise and launchd registration removal
+passed. Expected guarded/observer echoes before/after negatives succeeded;
+wrong-ID observer explicitly rejected the delivered message. Wrong-ID guarded
+client returned connection_error and remains inconclusive, not a rejection pass.
+The same-requirement recipient echoed through the forwarded endpoint after origin
+exit, observing signer-only insufficiency in this CI ad-hoc/codehash environment.
+It does not establish the personal certificate result or a production custody fix.
+General readiness/Windows ACL/installer jobs were intentionally skipped; retain
+earlier full product CI evidence separately. A follow-up CI-only receipt correction
+moves the unproven-server-exit field before serialization; a fault-injected test
+checks that limit and cleanup survive probe failure. Owner-package bytes unchanged.
+
+Outgoing `C:\Users\Tarik\Downloads\cryptex-mac-imza-ee5d4176.zip`,15895bytes,
+SHA256 `b659127a06f62ca44aebba766d5d673bfb7a2691ea33d26517a75cb75874ce4d`.
+Packaged only exact committed source. Closed six-member inventory, payload hashes,
+UTF8/LF and executable launcher mode were verified. Source-only independent review
+confirmed the receipt/authorization precision corrections; owner run remains pending.
+
+Owner next: extract on the personal MacBook, double-click MAC-IMZA.command,
+allow codesign key access once if asked (or cancel), return MAC-IMZA-SONUC.zip.
+No terminal, Windows VM, new certificate or repeated pairing/API preflight needed.
