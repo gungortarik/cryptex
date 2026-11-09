@@ -162,6 +162,10 @@ fn worker_readiness_cannot_substitute_for_runtime_binding_or_approval() {
     ));
     drop(other);
     std::fs::remove_dir_all(foreign).unwrap();
+    // The prior rejected batch has already created the staging parent. Stop
+    // must leave that parent empty, rather than requiring it never existed.
+    let staging = fixture.receiver.join("canonical/import-staging");
+    assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
     ready.request_stop().unwrap();
     assert!(matches!(
         ready
@@ -169,7 +173,7 @@ fn worker_readiness_cannot_substitute_for_runtime_binding_or_approval() {
             .unwrap(),
         IncomingTick::WaitingForTransport
     ));
-    assert!(!fixture.receiver.join("canonical/import-staging").exists());
+    assert_eq!(std::fs::read_dir(staging).unwrap().count(), 0);
     ready.shutdown(std::time::Duration::from_secs(2)).unwrap();
 }
 
