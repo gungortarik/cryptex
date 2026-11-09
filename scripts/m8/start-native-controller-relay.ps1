@@ -54,11 +54,11 @@ try {
     foreach($segment in $request.segments) {
         $name='payload/'+$segment.relative_path
         if($segment.relative_path -cnotmatch '^[0-9a-f]{72}/[0-9]{20}\.seg$' -or $seen.ContainsKey($name) -or
-            -not $entries.ContainsKey($name) -or $segment.sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+            -not $entries.ContainsKey($name) -or $segment.sha256 -cnotmatch '^[0-9a-fA-F]{64}$' -or
             $segment.bytes -le 0 -or $segment.bytes -gt 8MB){throw 'segment_manifest_invalid'}
         $seen[$name]=$true
         $path=Join-Path $stage $name
-        if((Get-Item -LiteralPath $path).Length -ne $segment.bytes -or (Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -cne $segment.sha256){throw 'segment_digest_mismatch'}
+        if((Get-Item -LiteralPath $path).Length -ne $segment.bytes -or (Get-FileHash -LiteralPath $path).Hash -ine $segment.sha256){throw 'segment_digest_mismatch'}
         $expectedBytes+=$segment.bytes
     }
     if($entries.Count -ne $seen.Count+1){throw 'unlisted_payload'}

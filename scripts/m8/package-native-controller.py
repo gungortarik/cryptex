@@ -17,7 +17,7 @@ def git(*args):
     return subprocess.check_output(["git", "-C", str(ROOT), *args])
 
 
-def build(revision, relay_path, binary, output):
+def build(revision, relay_path, binary, output, previous_run=None):
     commit = git("rev-parse", "--verify", f"{revision}^{{commit}}").decode().strip()
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("invalid commit")
@@ -44,6 +44,15 @@ def build(revision, relay_path, binary, output):
     members = {n: git("show", f"{commit}:scripts/m8/{n}") for n in (
         "NATIVE-AKTAR.cmd", "NATIVE-AKTAR.ps1", "NATIVE-AKTAR-BASLA.txt")}
     members["NATIVE-AKTAR.cmd"] = members["NATIVE-AKTAR.cmd"].replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    if previous_run is not None:
+        if not re.fullmatch(r"[0-9a-f]{12}", previous_run):
+            raise ValueError("invalid previous run")
+        members["stop-native-controller-run.ps1"] = git("show", f"{commit}:scripts/m8/stop-native-controller-run.ps1")
+        cancel = (f'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-native-controller-run.ps1" '
+                  f'-Run {previous_run} -Session {relay["session"]}\r\n'
+                  'if errorlevel 1 (\r\n  pause\r\n  exit /b 1\r\n)\r\n').encode()
+        members["NATIVE-AKTAR.cmd"] = members["NATIVE-AKTAR.cmd"].replace(
+            b'powershell.exe -NoProfile', cancel + b'powershell.exe -NoProfile', 1)
     members.update({"source.zip": source, "SOURCE-COMMIT.txt": (commit+"\n").encode(),
         "SOURCE-SHA256.txt": (hashlib.sha256(source).hexdigest()+"\n").encode(),
         "relay.json": raw, "syncthing.exe": native})
@@ -65,5 +74,6 @@ if __name__ == "__main__":
     parser.add_argument("--relay", type=Path, required=True)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--previous-run", help="Cancel this exact waiting synthetic VM run before starting")
     args = parser.parse_args()
-    build(args.revision, args.relay, args.binary, args.output)
+    build(args.revision, args.relay, args.binary, args.output, args.previous_run)

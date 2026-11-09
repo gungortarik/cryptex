@@ -1,5 +1,27 @@
 # 34 — Current Implementation Handoff
 
+## Native request reached VM readiness; digest casing corrected (2026-11-08)
+
+Owner returned `DENETLEYICI-ISTEK-d1e5c535-524ee335fd33.zip`: one public
+6,557-byte signed fixture segment plus its manifest. The old host validator
+rejected the existing probe's uppercase SHA-256 (`segment_manifest_invalid`).
+The native receiver helper also used lowercase digest text for an exact comparison,
+so the waiting VM candidate cannot complete even if host validation alone is fixed.
+No host sender was launched. Do not send this request or call it a transfer pass.
+
+Fixed test digest representation to match actual `ProbeSegment`, and host validation
+accepts either valid 64-hex representation while still comparing the full digest.
+Real fixture digest/change regression plus three inventory regressions pass;
+runner checks cover both cases and bad digest rejection. Actual returned request
+now passes `-ValidateOnly`. Strict Clippy, fmt and diff checks pass.
+
+Replacement one-click package must use `--previous-run 524ee335fd33` to request
+bounded cooperative cancellation of only that waiting synthetic run before a fresh
+VM test. Helper requires matching session/checkpoint and observes runner completion;
+it never kills arbitrary processes or modifies canonical data. Same untouched host
+relay session `d1e5c535ae0e459fb699be8f7324c149`. Await the replacement request ZIP.
+See [digest correction evidence](../evidence/m8/m8-native-controller-digest-fix-20261108.md).
+
 ## Native pilot VM receipt: inventory helper corrected (2026-11-08)
 
 Returned `DENETLEYICI-SONUC-d1e5c535-4975885cbff4.zip` matches the

@@ -32,7 +32,8 @@ struct Relay {
 fn digest(path: &Path) -> String {
     let meta = fs::symlink_metadata(path).unwrap();
     assert!(meta.is_file() && !meta.file_type().is_symlink() && meta.len() <= 8 * 1024 * 1024);
-    format!("{:x}", Sha256::digest(fs::read(path).unwrap()))
+    // Match the existing trusted-import probe descriptor representation.
+    format!("{:X}", Sha256::digest(fs::read(path).unwrap()))
 }
 fn canonical_hashes(root: &Path) -> std::collections::BTreeMap<PathBuf, String> {
     let mut result = std::collections::BTreeMap::new();
@@ -90,6 +91,27 @@ fn canonical_inventory_refuses_directory_in_lock_slot() {
     let root = crate::test_temp::exclusive_temp_dir("native-inventory-lock-slot");
     fs::create_dir_all(root.join("canonical/events/inventory.lock")).unwrap();
     assert!(std::panic::catch_unwind(|| canonical_hashes(&root)).is_err());
+}
+#[test]
+fn native_digest_matches_actual_prepared_segment_descriptor() {
+    let (source, receiver, negative, store) = crate::trusted_import_probe::tests::pair();
+    let report = crate::trusted_import_probe::prepare(
+        &source,
+        &receiver,
+        &negative,
+        "44444444-4444-4444-8444-444444444444",
+        &store,
+    )
+    .unwrap();
+    assert!(!report.segments.is_empty());
+    for segment in report.segments {
+        let path = source.join("canonical/events").join(segment.relative_path);
+        assert_eq!(digest(&path), segment.sha256);
+        let original = fs::read(&path).unwrap();
+        fs::write(&path, b"altered disposable fixture").unwrap();
+        assert_ne!(digest(&path), segment.sha256);
+        fs::write(&path, original).unwrap();
+    }
 }
 fn wait_ready(worker: &ManagedTransportWorker, attempt: u8) -> u32 {
     let until = Instant::now() + Duration::from_secs(40);

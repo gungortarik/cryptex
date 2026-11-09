@@ -3,7 +3,7 @@ $root=Join-Path $env:TEMP ('cx-native-runner-check-'+[guid]::NewGuid().ToString(
 New-Item -ItemType Directory -Path $root | Out-Null
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 try {
-    foreach($name in @('NATIVE-AKTAR.ps1','start-native-controller-relay.ps1')) {
+    foreach($name in @('NATIVE-AKTAR.ps1','start-native-controller-relay.ps1','stop-native-controller-run.ps1')) {
         $tokens=$null; $errors=$null
         $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $name),[ref]$tokens,[ref]$errors)
         if($errors.Count){throw "parse_failed_$name"}
@@ -37,6 +37,14 @@ try {
     & (Join-Path $PSScriptRoot 'start-native-controller-relay.ps1') -SessionRoot $root -RequestZip $requestZip -ValidateOnly
     $r=Get-Content (Join-Path $root 'relay-result.json') -Raw | ConvertFrom-Json
     if($r.outcome -ne 'request_validated_only' -or $r.native_launched){throw 'valid_request_failed'}
+    # Actual Rust ProbeSegment descriptors use uppercase SHA-256 text.
+    $manifest.segments[0].sha256=(Get-FileHash -LiteralPath $file).Hash.ToUpperInvariant()
+    $manifest | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $public 'request.json')
+    $upperZip=Join-Path $root 'upper-digest.zip'
+    Compress-Archive -Path (Join-Path $public '*') -DestinationPath $upperZip
+    & (Join-Path $PSScriptRoot 'start-native-controller-relay.ps1') -SessionRoot $root -RequestZip $upperZip -ValidateOnly
+    $r=Get-Content (Join-Path $root 'relay-result.json') -Raw | ConvertFrom-Json
+    if($r.outcome -ne 'request_validated_only' -or $r.native_launched){throw 'upper_digest_failed'}
     foreach($bad in @('../escape.txt','payload/../escape.seg','C:/escape.txt','request.json')) {
         $zipPath=Join-Path $root ([guid]::NewGuid().ToString('N')+'.zip')
         Copy-Item -LiteralPath $requestZip -Destination $zipPath
