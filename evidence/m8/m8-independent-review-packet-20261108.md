@@ -2,6 +2,13 @@
 
 ## Status
 
+Latest source-review closure: `141ff83cdbc0aee8215c742b42f278decd31ccbc`.
+The separate reviewer closed the coordinator's P2 deadline-test finding and
+reviewed the dormant managed-worker bridge, peer refresh and local-tail refusal.
+See [final bounded review and bridge evidence](m8-controller-bridge-20261108.md).
+This closes technical source review for that revision, not native activation,
+durability, required CI, human review or M8 completion.
+
 Later coordination implementation: `a5429ea150748b64ce7ce25c618327671cdf62d2`.
 See [runtime-admission evidence](m8-runtime-admission-20261108.md); its final
 independent review and normal-controller activation remain open. The earlier

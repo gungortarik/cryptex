@@ -1,5 +1,43 @@
 # 34 — Current Implementation Handoff
 
+## Coordination source review completed; dormant worker bridge connected (2026-11-08)
+
+Implementation `67c3f8bca2e32e73e25958bde517285a7cb94bc2`, final code/test
+revision `141ff83cdbc0aee8215c742b42f278decd31ccbc`. The separate reviewer
+completed the source review, found a P2 coverage defect in two already-expired
+lease-probe deadlines, and closed it after both probes changed to future 40 ms
+deadlines. Its final byte-bound source verdict reports no remaining confirmed
+correctness findings. No reviewer executable was retried or protection changed.
+This is technical agent source review, not human certification or a native pass.
+
+`ManagedTransportWorker::process_incoming` now connects a bounded internal
+`IncomingController` to its own status reader and the existing instance-owned
+publisher. It waits for readiness, verifies canonical local transport binding
+under ordinary admission, releases that lease before exclusive publication,
+defers busy work and retains held/ambiguous work. Clean rejection/binding failure
+consumes only hints, preserving incoming bytes and preventing automatic costly
+retries. No normal startup/watcher/CLI/renderer feeder is enabled.
+
+Background derived refresh now rebuilds the complete verified cutoff-aware peer
+union using the existing v1-content import rebuild. New local-identity incoming
+tails are refused after equality replay pruning; local allocator/canonical bytes
+stay unchanged. Existing local replays remain idempotent. Broader restore and
+v2 retrieval semantics are not enabled.
+
+Author checks: IPC **66/66**, controller bridge **4/4**, signed local-tail/replay
+regression and peer-refresh check pass, binary **15/15**, strict all-target daemon
+Clippy/fmt/diff checks pass. Final library run: **571 passed, 0 failed, 4 ignored,
+8 explicitly filtered known owned-HTTP tests** (81.12 s). This is not a full-suite
+pass or a host TCP compatibility fix. Exact scope and results are in
+[controller/review evidence](../evidence/m8/m8-controller-bridge-20261108.md).
+Transport observations in controller tests are explicitly synthetic, not native
+owned-endpoint evidence. Earlier native receipts do not cover this source.
+
+**Next boundary:** native exact-candidate transfer/publication and filesystem
+durability gates before ordinary automatic feeding/activation. Mac production
+parity, ordinary cross-device offline/restriction/recovery coverage, host TCP
+compatibility, required CI and human review remain open. M8 is not complete.
+
 ## Runtime admission coordinates internal live imports and IPC (2026-11-08)
 
 Owner requested live-transfer safe read/write coordination. Code commit

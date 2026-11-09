@@ -1,5 +1,11 @@
 # M8 instance-bound runtime admission — 2026-11-08
 
+Follow-up: [the completed technical source review and dormant controller
+connection](m8-controller-bridge-20261108.md) supersede this checkpoint's pending
+review status. The reviewer closed a P2 test-deadline coverage issue at final
+revision `141ff83`; normal publication/native gates remain closed. Historical
+execution/review statements below retain their original checkpoint scope.
+
 ## Scope and source
 
 The owner requested safe live-transfer read/write coordination. Implementation
