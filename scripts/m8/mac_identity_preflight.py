@@ -244,7 +244,8 @@ def collect(facts, run, package, work):
     binary = work / "api-availability"
     checked(run, ["/usr/bin/xcrun", "--sdk", "macosx", "clang", "-std=c11", "-fblocks",
                   "-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=12.0", "-isysroot", sdk,
-                  str(source), "-framework", "Security", "-o", str(binary)], "api_compile", 60)
+                  str(source), "-framework", "Security", "-framework", "CoreFoundation",
+                  "-o", str(binary)], "api_compile", 60)
     facts["api_compile"] = "pass"
     lines = checked(run, [str(binary)], "api_presence").splitlines()
     if len(lines) != len(SYMBOLS) or set(lines) != {name + "=present" for name in SYMBOLS}:

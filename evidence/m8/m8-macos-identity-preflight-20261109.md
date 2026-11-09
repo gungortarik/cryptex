@@ -93,6 +93,13 @@ refuse. The leader stays unreaped through that query, preventing PGID recycling.
 No general permission-error suppression was added; a parser regression guards it.
 Source: [Apple XNU killpg1](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c).
 
+Run42687272930 on51690e7 passed11 tests (one non-Mac-only check skipped) including
+all native process cases, then failed API linking. Disposable-CI-only compiler
+diagnostics in run42687524508 identify unresolved CFRelease: CoreFoundation must
+be linked explicitly beside Security. Both real collector and diagnostic command
+now include that framework; no API check or assertion was removed. Raw compiler
+diagnostics stay on the disposable CI host; owner receipts retain fixed codes.
+
 ## Primary sources
 
 - [Apple code-signing identity enumeration](https://developer.apple.com/documentation/xcode/creating-distribution-signed-code-for-the-mac/).
