@@ -82,14 +82,17 @@ def run_bounded(args, timeout=20):
     pipe_failed = threading.Event()
     lifecycle = threading.Lock()
     reaped = False
+    stopped = False
 
     def stop_locked():
-        if reaped:
+        nonlocal stopped
+        if reaped or stopped:
             return
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        stopped = True
 
     def read():
         try:
@@ -118,9 +121,11 @@ def run_bounded(args, timeout=20):
         # its pipe and otherwise survive. The leader is not reaped until here,
         # so this group ID cannot have been recycled to an unrelated process.
         with lifecycle:
-            stop_locked()
-            process.wait(timeout=5)
-            reaped = True
+            try:
+                stop_locked()
+            finally:
+                process.wait(timeout=5)
+                reaped = True
         reader.join(timeout=2)
         if reader.is_alive():
             timed_out = True  # Never block closing a pipe retained outside our group.

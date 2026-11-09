@@ -78,6 +78,12 @@ with only close/control catches that API assumption. No test assertion weakened;
 rerun is required before delivering a package. That initial outgoing archive
 was not delivered to the owner.
 
+Run42686557847 on841dc03 passed deadline/descendant tests but output-cap cleanup
+issued a second killpg after its reader had already killed the group; Darwin
+reported EPERM. Group stopping is now one-time under the lifecycle lock, before
+reaping. A native clean-exit/output regression also checks the successful path;
+reaping runs even if cleanup itself errors. Assertions remain unchanged.
+
 ## Primary sources
 
 - [Apple code-signing identity enumeration](https://developer.apple.com/documentation/xcode/creating-distribution-signed-code-for-the-mac/).

@@ -121,6 +121,13 @@ class IdentityPreflightTests(unittest.TestCase):
             self.assertEqual(list(root.iterdir()), [])
 
     @unittest.skipUnless(os.name == 'posix', 'native process-group deadline verification runs on Mac CI')
+    def test_native_clean_exit_collects_complete_output(self):
+        result = probe.run_bounded([sys.executable, '-c', 'print("expected-output")'], 5)
+        self.assertEqual(result.code, 0)
+        self.assertEqual(result.output, 'expected-output\n')
+        self.assertFalse(result.timed_out or result.limited or result.pipe_failed)
+
+    @unittest.skipUnless(os.name == 'posix', 'native process-group deadline verification runs on Mac CI')
     def test_native_process_deadline_is_bounded(self):
         result = probe.run_bounded([sys.executable, '-c', 'import time; time.sleep(20)'], 0.1)
         self.assertTrue(result.timed_out)
