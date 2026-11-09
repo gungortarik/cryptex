@@ -1,5 +1,20 @@
 # 34 — Current Implementation Handoff
 
+## Actual host-to-VM relay completed; receiver receipt pending (2026-11-08)
+
+Request `DENETLEYICI-ISTEK-d1e5c535-5b92b54889a6.zip` passed validation.
+Started the retained isolated send-only native relay. Actual VM connection,
+100% completion, 6557 global bytes and zero needed bytes/items observed. Host
+script exited 0 after its 120-second keepalive with `peer_completion_observed`
+and clean shutdown. No sender remains running for this session.
+
+Next owner dependency: return `DENETLEYICI-SONUC-d1e5c535-5b92b54889a6.zip`.
+Check candidate `393d0c4`/archive digest, exact test exit/summary and native JSON
+checkpoint assertions before claiming controller publication/restart/replay pass.
+Do not repeat pairing or send another request. Host transfer alone does not
+establish canonical import or M8 completion. See
+[host transfer evidence](../evidence/m8/m8-native-controller-host-transfer-20261108.md).
+
 ## Native request reached VM readiness; digest casing corrected (2026-11-08)
 
 Owner returned `DENETLEYICI-ISTEK-d1e5c535-524ee335fd33.zip`: one public
