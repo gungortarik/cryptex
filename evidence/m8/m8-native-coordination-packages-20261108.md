@@ -1,5 +1,10 @@
 # Native coordination candidate packages — 2026-11-08
 
+Follow-up: both exact-candidate receipts were returned and verified: Windows
+106/106, Mac 85/85 plus Clippy. See the
+[native results](m8-native-coordination-results-20261108.md). The pending language
+below records the package-preparation checkpoint, not current receipt status.
+
 ## Source binding and scope
 
 Candidate: `5708cb7bad7f3bc35d43df2568414de2267a18a4`.

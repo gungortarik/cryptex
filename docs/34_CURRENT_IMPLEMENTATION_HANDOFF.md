@@ -1,5 +1,33 @@
 # 34 — Current Implementation Handoff
 
+## Exact-candidate native coordination checks passed on Windows and Mac (2026-11-08)
+
+Owner returned `MAC-TEST-SONUC.zip` and `WIN-TEST-SONUC (2).zip` for candidate
+`5708cb7bad7f3bc35d43df2568414de2267a18a4`. Both reports bind the expected
+source archive digest. Exact ZIP members, individual test outcomes, aggregate
+summaries, build logs and exit statuses agree: Windows **106/106**, Mac
+**85/85** plus strict all-target daemon Clippy, zero failed or ignored entries
+in these selections. These are selected native tests, not complete suites.
+
+Windows VM 25H2/build 26200.9711 reports NTFS for work/test-temp volumes;
+all eight owned-HTTP tests pass, TCP 60 samples/zero mismatches/state five,
+parser self-test passes. Mac arm64 27.2/build 26B123 reports APFS. Shared
+admission tests pass on both OSes. Windows controller tests use synthetic
+transport readiness; they do not prove real native transport-to-publication.
+
+This native test round is complete for this candidate. Do not ask the owner
+to rerun these packages or repeat pairing. No VM/Mac needs to remain running
+for receipt review. Evidence and hashes:
+[native coordination results](../evidence/m8/m8-native-coordination-results-20261108.md).
+
+Next engineering checkpoint: isolate actual owned-transport readiness and
+incoming delivery through the dormant Windows worker bridge, with real IPC
+readers and replay/restart/failure checks. It must stay an explicit synthetic
+pilot until activation requirements pass; do not add a normal startup feeder.
+Mac production ancestor/no-replace/endpoint parity, physical durability,
+remaining cross-device offline/restriction integration, development-host TCP
+compatibility, required CI and human review remain open. M8 is not complete.
+
 ## Exact-candidate native coordination packages ready; receipts pending (2026-11-08)
 
 Candidate `5708cb7bad7f3bc35d43df2568414de2267a18a4` retains the reviewed
