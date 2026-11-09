@@ -37,7 +37,7 @@ try {
         Set-Acl -LiteralPath $entry.path -AclObject $acl
     }
     $payload=Join-Path $scratch 'tests.json'
-    @{schema=1;sid=$user.SID.Value;scratch=$scratch;manifest=$manifest;executables=$executables} |
+    @{schema=1;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $payload -Encoding UTF8
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'

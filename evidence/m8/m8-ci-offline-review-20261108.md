@@ -116,3 +116,19 @@ module-dependent command. Native WindowsPS5.1 security-module/Get-Acl loading wa
 verified locally read-only; no account created on owner host. The fix changes
 only test-launcher environment, not machine policy, production code or ownership.
 New hosted run must verify the complete daemon test/cleanup path.
+
+Run [42560988740](https://github.com/gungortarik/cryptex/actions/runs/42560988740)
+on `bd8c3c6fd6be215017629a0ad58e9c4ab8cdcdd9` passed module loading but stopped
+at the launcher's profile-owner check before daemon execution. Environment-based
+GetFolderPath is not adequate proof of the credential process profile. The child
+now resolves its profile with GetUserProfileDirectoryW using its actual verified
+WindowsIdentity token, checks a bounded result against the fresh account name,
+then replaces inherited USERPROFILE/app-data values. The existing strict
+SID-owned private TEMP check stays in place before compiling the small API wrapper.
+OS-managed profile directory ownership is not substituted for canonical runtime
+ownership; all production runtime checks remain unchanged.
+
+Official contract: [GetUserProfileDirectoryW](https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-getuserprofiledirectoryw).
+Token query and wrapper compile were verified locally read-only, no account created.
+Independent source reviewer found no blocker in the bounded API/token use or final
+summary inventory logic. Hosted full test execution/cleanup is still required.

@@ -1,5 +1,15 @@
 # 34 — Current Implementation Handoff
 
+## CI credential-profile lookup bound to actual token (2026-11-08)
+
+Run42560988740 passed module loading, then the CI-only environment-based profile
+lookup failed its owner check before tests. Child now queries GetUserProfileDirectoryW
+with its real SID/non-admin-verified WindowsIdentity token, validates the fresh
+account profile name and replaces inherited profile/appdata values. Strict owner
+checks on newly created private TEMP and production canonical paths are unchanged.
+Local read-only native API/parser checks and independent source review pass;
+next hosted CI run must establish complete daemon execution/cleanup.
+
 ## Standard-user CI child module environment corrected (2026-11-08)
 
 Run42560323415 on92d3f5b successfully launched the credential child through

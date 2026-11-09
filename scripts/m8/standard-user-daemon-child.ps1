@@ -9,17 +9,37 @@ $p=Get-Content -LiteralPath $Payload -Raw | ConvertFrom-Json
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $principal=[Security.Principal.WindowsPrincipal]::new($identity)
 if($identity.User.Value -ne $p.sid -or $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Standard-user token required.'}
-$profile=[Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-if(-not $profile -or -not (Test-Path -LiteralPath $profile -PathType Container)){throw 'Loaded user profile required.'}
-if((Get-Acl -LiteralPath $profile).GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $p.sid){throw 'Loaded profile owner mismatch.'}
-$env:USERPROFILE=$profile
-$env:LOCALAPPDATA=Join-Path $profile 'AppData\Local'
-$env:APPDATA=Join-Path $profile 'AppData\Roaming'
 $env:TEMP=Join-Path $p.scratch 'private-temp'
 $env:TMP=$env:TEMP
 New-Item -ItemType Directory -Path $env:TEMP | Out-Null
 $owner=(Get-Acl -LiteralPath $env:TEMP).GetOwner([Security.Principal.SecurityIdentifier]).Value
 if($owner -ne $p.sid){throw 'Temporary directory owner mismatch.'}
+# Environment/GetFolderPath can retain the launching runner's profile. Resolve
+# the credential process profile from its actual TOKEN_QUERY handle instead.
+Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class CryptexCiProfile {
+    [DllImport("userenv.dll", EntryPoint="GetUserProfileDirectoryW", CharSet=CharSet.Unicode, SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ReadProfile(IntPtr token, StringBuilder path, ref uint size);
+    public static string Read(IntPtr token) {
+        uint size=0; ReadProfile(token, null, ref size);
+        if(size<2 || size>32768) throw new InvalidOperationException("Profile size unavailable");
+        var path=new StringBuilder((int)size);
+        if(!ReadProfile(token, path, ref size)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        return path.ToString();
+    }
+}
+'@
+$profile=[CryptexCiProfile]::Read($identity.Token)
+if(-not (Test-Path -LiteralPath $profile -PathType Container) -or
+    [IO.Path]::GetFileName($profile) -notmatch ('^'+[regex]::Escape($p.user_name)+'(\..*)?$')){throw 'Fresh credential profile required.'}
+$env:USERPROFILE=$profile
+$env:LOCALAPPDATA=Join-Path $profile 'AppData\Local'
+$env:APPDATA=Join-Path $profile 'AppData\Roaming'
 $env:CARGO_MANIFEST_DIR=$p.manifest
 Set-Location -LiteralPath $p.manifest
 function Invoke-TestBinary([string]$Exe,[string]$Arguments) {
