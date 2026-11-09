@@ -175,3 +175,23 @@ Rust1.98.1 absolute-path implementation: verbatim paths unchanged, ordinary path
 use GetFullPathNameW without link resolution. Review was source-only, not execution
 or human certification; native no-replace and persisted-seed behavior unchanged.
 Exact-candidate hosted Windows/macOS CI remains required.
+
+## Same-defect caller audit: Brain identity and pairing journal
+
+Final source audit found the same raw MoveFileExW encoding in exclusive Brain
+identity creation and mutable bootstrap journal replacement. These are part of
+the same device-enrollment/trust persistence path, not unrelated refactoring.
+Two additional >260-character Unicode-path regressions reproduced OS3 before
+correction; both callers now use the same metadata encoder. Identity flags remain
+no-replace/write-through; journal flags remain replace/write-through, with existing
+strict journal locking/validation/cleanup unchanged.
+
+Regression coverage: public Brain create/load plus native occupied-destination
+refusal leaves both files unchanged; actual journal store creates, updates and
+reopens retaining two unique transactions. Local identity11/11, journal15/15,
+strict daemon all-target Clippy/fmt/diff pass. Existing staging adapter untouched.
+Run42563020408 onfcfb65d was superseded before completion so the next full hosted
+run covers all final metadata callers. It is not claimed as a successful CI run.
+Independent source-only review found no actionable issue in these two callers;
+typed cleanup/placement errors, journal validation/locking and native move flags
+remain intact. No executable was run by the reviewer.

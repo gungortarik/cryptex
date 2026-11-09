@@ -302,11 +302,11 @@ fn placement_error_to_identity_error(error: PlacementError, tmp: &Path) -> Ident
 fn place_new_file_no_replace(tmp: &Path, dest: &Path) -> Result<(), PlacementError> {
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
-
         const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
-        let from: Vec<u16> = tmp.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = dest.as_os_str().encode_wide().chain(Some(0)).collect();
+        let from = crate::platform::windows::file_path::for_win32_api(tmp)
+            .map_err(|error| PlacementError::from_io(error, dest))?;
+        let to = crate::platform::windows::file_path::for_win32_api(dest)
+            .map_err(|error| PlacementError::from_io(error, dest))?;
         // SAFETY: pointers are null-terminated wide strings from OsStr encoding.
         let ok = unsafe {
             windows_sys::Win32::Storage::FileSystem::MoveFileExW(
@@ -617,6 +617,38 @@ mod tests {
 
     fn temp_root() -> PathBuf {
         crate::test_temp::exclusive_temp_dir("cryptexd-identity")
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn long_windows_brain_identity_create_does_not_replace_the_winner() {
+        let base = temp_root();
+        let root = base.join("uzun-çalışma-".repeat(16));
+        fs::create_dir_all(&root).unwrap();
+        let store = FakeSecureStore::new();
+        let identity = create_synthetic_brain(
+            &root,
+            &store,
+            SecureStoreEnvironment::Dev,
+            "11111111-1111-4111-8111-111111111111",
+            "long-device",
+            "2026-10-06T00:00:00Z",
+            b"synthetic-long-path-private-material",
+        )
+        .expect("create identity at long path");
+        let path = brain_identity_path(&root);
+        assert!(path.as_os_str().len() > 260);
+        assert_eq!(load_brain_identity(&root).unwrap(), identity);
+        let before = fs::read(&path).unwrap();
+        let competing = path.with_extension("competitor");
+        fs::write(&competing, b"losing identity").unwrap();
+        assert!(matches!(
+            place_new_file_no_replace(&competing, &path),
+            Err(PlacementError::AlreadyExists(_))
+        ));
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert_eq!(fs::read(competing).unwrap(), b"losing identity");
+        fs::remove_dir_all(base).unwrap();
     }
 
     /// On put: replace the public brain file with a directory so rollback cannot remove it.

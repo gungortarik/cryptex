@@ -2003,20 +2003,11 @@ fn replace_atomic(tmp: &Path, destination: &Path) -> io::Result<()> {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::Storage::FileSystem::{
             MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
         };
-        let from = tmp
-            .as_os_str()
-            .encode_wide()
-            .chain(Some(0))
-            .collect::<Vec<_>>();
-        let to = destination
-            .as_os_str()
-            .encode_wide()
-            .chain(Some(0))
-            .collect::<Vec<_>>();
+        let from = crate::platform::windows::file_path::for_win32_api(tmp)?;
+        let to = crate::platform::windows::file_path::for_win32_api(destination)?;
         // SAFETY: both pointers reference owned, null-terminated UTF-16 paths.
         if unsafe {
             MoveFileExW(
@@ -2252,6 +2243,44 @@ fn hex_lower(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use ed25519_dalek::SigningKey;
+
+    #[cfg(windows)]
+    #[test]
+    fn long_windows_journal_create_replace_and_reopen_preserve_transactions() {
+        let base = crate::test_temp::exclusive_temp_dir("m8-long-journal");
+        let root = base.join("uzun-çalışma-".repeat(16));
+        fs::create_dir_all(&root).unwrap();
+        assert!(root.join(JOURNAL_DIR).join(JOURNAL_FILE).as_os_str().len() > 260);
+        let store = BootstrapJournalStore::new(&root).unwrap();
+        let mut journal = PendingBootstrapJournal::default();
+        journal
+            .insert(transaction(BootstrapRole::Initiator))
+            .unwrap();
+        store
+            .update(|stored| {
+                *stored = journal.clone();
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(store.load().unwrap(), journal);
+        // A second committed update must replace rather than append/truncate.
+        let mut second = transaction(BootstrapRole::Responder);
+        second.snapshot.transaction_id = "dd".repeat(32);
+        second.stable_event_id = "44444444-4444-4444-8444-444444444444".into();
+        second.approval_request_digest = second.snapshot.digest().unwrap();
+        journal.insert(second).unwrap();
+        store
+            .update(|stored| {
+                *stored = journal.clone();
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            BootstrapJournalStore::new(&root).unwrap().load().unwrap(),
+            journal
+        );
+        fs::remove_dir_all(base).unwrap();
+    }
 
     const BRAIN: &str = "11111111-1111-4111-8111-111111111111";
     const LOCAL_TRANSPORT: &str = "A234567-A234567-A234567-A234567-A234567-A234567-A234567-A234567";

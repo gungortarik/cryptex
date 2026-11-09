@@ -1,5 +1,15 @@
 # 34 — Current Implementation Handoff
 
+## Final metadata caller audit includes Brain identity and journal (2026-11-08)
+
+The same raw Win32 long-path defect also affected exclusive Brain identity create
+and bootstrap journal replacement. Two additional >260-character Unicode-path
+regressions reproduced OS3 before applying the already reviewed metadata encoder.
+Identity11/11 and journal15/15 now pass; no-replace/create-winner and full journal
+update/reopen semantics are preserved. Strict daemon Clippy/fmt/diff pass.
+Run42563020408 onfcfb65d was superseded before completion; next CI must cover
+these final callers too. Normal activation and M8 completion remain gated.
+
 ## Hosted Windows suite reached; metadata long-path correction (2026-11-08)
 
 CI42561855133 on802f95d completed: Mac readiness and Windows cross-account ACL
