@@ -126,10 +126,36 @@ Five names, payload member hashes, UTF8/LF and executable ZIP mode were rechecke
 after packaging. The earlier undelivered563a43ad archive was removed only after
 its recorded hash matched, leaving the verified candidate for the owner.
 
-Owner next: copy that ZIP to the Mac, extract, double-click MAC-KIMLIK.command,
-return MAC-KIMLIK-SONUC.zip. No Windows VM, Cryptex profile, terminal command or
-tool installation is needed for this step. Missing tools/identity availability is
-a reported prerequisite, never a manufactured native authorization pass.
+## Submitted Mac prerequisite receipt (2026-11-09)
+
+The owner returned `MAC-KIMLIK-SONUC.zip`, SHA256
+`516f4b6c9871af6824e72fb58a6d3aa7b38cb9d3124a410c7b9c6affd97db9f1`.
+Its only member is `result.json` (993 bytes), collected at
+`2026-11-09T19:58:48Z` and bound to source
+`59411433c5c903bb15d2251f135f911c4b295fa7`. The supplied local observations
+report macOS27.2/build26B123 arm64 and SDK27.2; API compile and runtime presence
+both passed, outcome=prerequisites_collected and runner_exit=0.
+
+Valid file-Keychain entries, distinct certificates and observed Apple team-label
+counts are all zero. Data-protection Keychain was not enumerated, so this does
+not establish that every possible signing identity is absent. No private key was
+used. signing_selection_needed=false means no enumerated candidate to select;
+signed_matrix_prerequisites_proven remains false. This is an owner-supplied
+receipt, not remote attestation or a signed authorization-matrix result.
+
+The user clarified that this was an available Mac, **not their own Mac**. Treat
+the inventory as specific to that machine/account; do not attribute it to the
+user's personal Mac or reuse it as another host's signing readiness. Access to
+the tested Mac and its existing Xcode account/team are not yet established.
+Do not repeat this successful API preflight on the same unchanged environment.
+Next: establish access to a suitable Mac and existing signing identity before
+running the authorized bounded signed matrix. A different Mac may need its own
+prerequisite check. Missing identity availability is a reported prerequisite,
+not a repository failure or permission to generate/import credentials.
+
+Full XPC matrix remains NOT RUN, exact-instance binding NOT TESTED, product
+minimum OS unconfirmed, production_changed=false and m8_complete=false. No
+Windows VM or repeated pairing/transfer package is needed for this prerequisite.
 
 ## Primary sources
 

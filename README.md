@@ -42,10 +42,12 @@ operations and disabled normal feeding until acceptance. Then verify real
 cross-device offline/restriction propagation and consolidate final review.
 
 The [one-click Mac identity prerequisite package](evidence/m8/m8-macos-identity-preflight-20261109.md)
-is verified on Mac CI42687722399/source59411433. Next owner action: extract it on
-the Mac, run MAC-KIMLIK.command and return MAC-KIMLIK-SONUC.zip. It checks only
-SDK/API availability and sanitized existing identity counts, with no key use or
-trust change; the owner's receipt and full signed matrix are still pending.
+is verified on Mac CI42687722399/source59411433. The submitted Mac receipt also
+passed API compile/presence checks, with zero valid file-Keychain identities
+enumerated. The user used an available Mac, not their personal Mac; these counts
+describe that machine/account only. Access to a suitable signing environment is
+the next prerequisite. No key use or trust change occurred; the full signed
+matrix remains NOT RUN. Do not repeat completed Windows VM pairing/transfer.
 
 The [M8 completion ledger](checklists/M8_DEVICE_TRUST_REPLICATION_GATE.md) maps
 requirements to evidence and open gates. The [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md)

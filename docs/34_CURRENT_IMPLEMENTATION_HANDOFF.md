@@ -1,9 +1,16 @@
 # 34 — Current Implementation Handoff
 
-## Mac identity prerequisite package prepared; signed matrix NOT RUN (2026-11-09)
+## Submitted Mac API preflight passed; signing prerequisite unresolved (2026-11-09)
 
-The next owner action is one Mac prerequisite package, not another Windows VM
-pairing/transfer. New scripts/m8/MAC-KIMLIK.command collects SDK/API availability
+The submitted MAC-KIMLIK-SONUC.zip passed API compile/runtime presence checks on
+macOS27.2/build26B123 arm64, SDK27.2, source59411433, runner_exit0. It reports zero
+valid file-Keychain identities; data-protection Keychain was not enumerated.
+The user clarified this was an available Mac, not their personal Mac. Its signing
+inventory describes only that machine/account. Next establish access to a suitable
+Mac and an existing signing identity; access to the tested Mac/Xcode team is still
+unconfirmed. Do not repeat the same successful API check or Windows VM pairing.
+
+New scripts/m8/MAC-KIMLIK.command collects SDK/API availability
 and existing valid file-Keychain identity counts, exporting only sanitized counts
 and fixed diagnostics. It never signs, imports/generates credentials, starts a
 service or changes production IPC/trust. Full signed XPC matrix and product minimum
@@ -16,9 +23,11 @@ API compile/presence flow (one non-Mac-only check skipped). No signed XPC matrix
 Outgoing `C:\Users\Tarik\Downloads\cryptex-mac-kimlik-59411433.zip` has the same
 SHA256 as the CI-executed package:
 `7d80c39594a7e111dbd8fb27239a1be25f6c83089e704c88d08a1907f6f08730`.
-Owner next: Mac extract -> double-click MAC-KIMLIK.command -> return
-MAC-KIMLIK-SONUC.zip. Owner Mac receipt is pending; do not infer its signing
-inventory from the disposable CI account. Details and scoped limits:
+Submitted receipt SHA256:
+`516f4b6c9871af6824e72fb58a6d3aa7b38cb9d3124a410c7b9c6affd97db9f1`.
+This is prerequisite evidence only. Full signed matrix remains NOT RUN; do not
+generate/import credentials or change production IPC to bypass the missing
+prerequisite. Details and scoped limits:
 [prerequisite evidence](../evidence/m8/m8-macos-identity-preflight-20261109.md).
 Retain the green product-code CI below; no product Rust/frontend behavior changed.
 
