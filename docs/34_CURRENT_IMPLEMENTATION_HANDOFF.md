@@ -1,5 +1,33 @@
 # 34 — Current Implementation Handoff
 
+## Actual native transfer/publication/restart/replay pilot passed (2026-11-08)
+
+Owner returned `DENETLEYICI-SONUC-45278d8e-a4a65ab5fda6.zip`. Exact six
+members, source/archive binding, build/test/runner exit codes, log summary and
+native/host receipts agree for candidate `c669a9a4f653fdfd759ef4c9250c834d664d26d0`.
+The explicit Windows native test passed 1/1, zero failed/ignored (592 filtered),
+108.15 seconds; Windows 10.0.26200.0, NTFS.
+
+Actual owned REST readiness and cross-host Syncthing delivery, acknowledged native
+job crash before publication, restart with unchanged ID, worker publication of
+one segment/three events, real named-pipe busy/search behavior, unchanged existing
+canonical hashes, clean native reopen, identical replay with no new segment,
+clean shutdown and synthetic API credential deletion all passed. Host receipt
+independently confirms 6557 bytes/100% transfer and clean relay shutdown.
+
+This requested pilot round is complete. Do not repeat the package, request ZIPs,
+pairing or manual signed-message exchange. Owner can close the runner/VM for now;
+no test endpoint needs to remain live. Detailed receipt bindings and limits:
+[verified native pilot result](../evidence/m8/m8-native-controller-result-20261108.md).
+
+M8 remains open: test-only peer/folder policy and synthetic canonical identities
+are still used, IPC peer authentication uses the existing test seam. This does
+not enable normal startup transport feeding or prove native Desktop authorization,
+Mac production publication/endpoint parity, physical power-loss durability,
+remaining cross-device offline/restriction integration, required CI or human
+review. Continue engineering from these explicit remaining gates, preserving
+the successful native receipt; do not confuse them with a failed transfer pilot.
+
 ## Long-path candidate delivered to VM; receiver result pending (2026-11-08)
 
 Request `DENETLEYICI-ISTEK-45278d8e-a4a65ab5fda6.zip` passed closed validation.
