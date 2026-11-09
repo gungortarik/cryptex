@@ -1,5 +1,17 @@
 # 34 — Current Implementation Handoff
 
+## Exact-candidate CI exposed two test scheduling assumptions (2026-11-08)
+
+CI run 42558672783 on 8cfcd50: Windows different-user IPC ACL passed; Mac daemon
+tests reported 462 passed/2 failed/4 ignored. Failures are a sleep-based worker
+reservation assertion and an HTTP fixture waiting for an optional second request
+after the client deadline. Corrected with a release channel and deterministic
+test-only inter-request deadline seam; production search/owned REST unchanged.
+Local targeted IPC +19 REST tests and strict Clippy/fmt/diff pass. Independent
+source review found no blocking finding in these changes or the long-path/offline
+candidate; its request-counter limitation is explicitly recorded. New CI required.
+See [CI/source-review evidence](../evidence/m8/m8-ci-offline-review-20261108.md).
+
 ## Local offline convergence and restriction integration added (2026-11-08)
 
 Two new persistent daemon tests cover independent offline writes from both peers,

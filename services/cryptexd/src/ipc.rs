@@ -8437,12 +8437,19 @@ pub(crate) mod tests {
     fn timed_out_search_returns_hold_and_keeps_its_slot_until_work_exits() {
         let active = Arc::new(AtomicUsize::new(0));
         let reservation = try_reserve_ipc_worker(&active, MAX_DESKTOP_SEARCH_WORKERS).unwrap();
+        let (release, blocked) = std::sync::mpsc::channel();
         let deadline = Instant::now() + Duration::from_millis(30);
-        let response =
-            run_bounded_search("slow-search".into(), deadline, Some(reservation), || {
-                thread::sleep(Duration::from_millis(120));
+        let response = run_bounded_search(
+            "slow-search".into(),
+            deadline,
+            Some(reservation),
+            move || {
+                // Work cannot finish before the test inspects its reservation,
+                // even if the caller is descheduled beyond the old 120ms sleep.
+                let _ = blocked.recv();
                 search_results(Some("slow-search".into()), Vec::new())
-            });
+            },
+        );
 
         assert!(response.accepted);
         assert!(response.hits.is_none(), "late results must never escape");
@@ -8452,6 +8459,7 @@ pub(crate) mod tests {
         );
         assert_eq!(active.load(Ordering::Acquire), 1);
         assert!(try_reserve_ipc_worker(&active, 1).is_none());
+        release.send(()).unwrap();
 
         let cleanup_deadline = Instant::now() + Duration::from_secs(2);
         while active.load(Ordering::Acquire) != 0 && Instant::now() < cleanup_deadline {

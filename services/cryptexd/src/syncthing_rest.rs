@@ -179,11 +179,23 @@ impl SyncthingRest {
         &self,
         budget: Duration,
     ) -> Result<TransportObservation, SyncthingRestError> {
-        let deadline = Instant::now() + budget;
+        self.observe_with_version_hook(budget, |_| {})
+    }
+
+    // This REST fixture client is cfg(test). A deterministic inter-request
+    // deadline seam avoids assuming a runner schedules two HTTP exchanges
+    // within a 250ms wall-clock window; owned production REST is separate.
+    fn observe_with_version_hook(
+        &self,
+        budget: Duration,
+        after_version: impl FnOnce(&mut Instant),
+    ) -> Result<TransportObservation, SyncthingRestError> {
+        let mut deadline = Instant::now() + budget;
         let version: VersionResponse = self.get_json("/rest/system/version", deadline)?;
         if version.version != PINNED_VERSION {
             return Err(SyncthingRestError::VersionMismatch);
         }
+        after_version(&mut deadline);
         let status: StatusResponse = self.get_json("/rest/system/status", deadline)?;
         if status.my_id != self.expected_identity {
             return Err(SyncthingRestError::IdentityMismatch);
@@ -544,26 +556,26 @@ mod tests {
 
     #[test]
     fn total_budget_covers_body_reads_and_both_requests() {
-        let (endpoint, worker) = serve(vec![
-            Reply {
-                bytes: json(r#"{"version":"v2.1.5"}"#),
-                delay: Duration::from_millis(120),
-                body_delay: Duration::ZERO,
-            },
-            Reply {
-                bytes: json(&format!(r#"{{"myID":"{ID}"}}"#)),
-                delay: Duration::from_millis(250),
-                body_delay: Duration::ZERO,
-            },
-        ]);
+        let (endpoint, worker) = serve(vec![Reply {
+            bytes: json(r#"{"version":"v2.1.5"}"#),
+            delay: Duration::ZERO,
+            body_delay: Duration::ZERO,
+        }]);
         let client = SyncthingRest::for_owned_profile(endpoint, ID, credential()).unwrap();
-        let started = Instant::now();
+        let mut version_checked = false;
         assert_eq!(
-            client.observe_with_budget(Duration::from_millis(250)),
+            client.observe_with_version_hook(Duration::from_secs(5), |deadline| {
+                version_checked = true;
+                // Exhaust the shared budget after version validation. Status
+                // must not get a fresh request budget or issue a second request.
+                *deadline = Instant::now();
+            }),
             Err(SyncthingRestError::Deadline)
         );
-        assert!(started.elapsed() < Duration::from_secs(2));
-        worker.join().unwrap();
+        assert!(version_checked);
+        let requests = worker.join().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].starts_with("GET /rest/system/version "));
     }
 
     #[test]
