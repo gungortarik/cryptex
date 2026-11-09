@@ -10,8 +10,15 @@ service or changes production IPC/trust. Full signed XPC matrix and product mini
 OS proof remain NOT RUN/unconfirmed. A zero file-Keychain count does not rule out
 data-protection Keychain identities.
 
-Source review corrected owned-group cleanup/late-reader races. Local parser/privacy/
-binding checks pass; actual Mac harness CI/package receipt bindings follow in
+Source review corrected owned-group cleanup/late-reader races. Local8checks pass;
+Mac CI42687722399 on59411433 passed11 applicable tests plus the actual one-click
+API compile/presence flow (one non-Mac-only check skipped). No signed XPC matrix.
+Outgoing `C:\Users\Tarik\Downloads\cryptex-mac-kimlik-59411433.zip` has the same
+SHA256 as the CI-executed package:
+`7d80c39594a7e111dbd8fb27239a1be25f6c83089e704c88d08a1907f6f08730`.
+Owner next: Mac extract -> double-click MAC-KIMLIK.command -> return
+MAC-KIMLIK-SONUC.zip. Owner Mac receipt is pending; do not infer its signing
+inventory from the disposable CI account. Details and scoped limits:
 [prerequisite evidence](../evidence/m8/m8-macos-identity-preflight-20261109.md).
 Retain the green product-code CI below; no product Rust/frontend behavior changed.
 

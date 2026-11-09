@@ -59,7 +59,7 @@ both a post-return continuation marker and actual gone/zombie state. The reviewe
 also caught the initial ready-file visibility race; atomic ready publication was
 applied. This is technical source review, not human certification or native proof.
 
-Local Windows checks:6 platform-independent tests pass;3 POSIX process tests are
+Local Windows checks:8 platform-independent tests pass;4 POSIX process tests are
 deferred to Mac execution. Bash syntax, non-Mac refusal, package hashes/modes,
 duplicate/malformed inventory and manifest rejection, privacy and truthful scope
 checks pass. Dedicated manual-only Mac CI will verify those native process bounds
@@ -99,6 +99,37 @@ diagnostics in run42687524508 identify unresolved CFRelease: CoreFoundation must
 be linked explicitly beside Security. Both real collector and diagnostic command
 now include that framework; no API check or assertion was removed. Raw compiler
 diagnostics stay on the disposable CI host; owner receipts retain fixed codes.
+
+## Verified outgoing candidate and owner continuation
+
+Source `59411433c5c903bb15d2251f135f911c4b295fa7` passed the narrow Mac-only
+[CI42687722399](https://github.com/gungortarik/cryptex/actions/runs/42687722399),
+job129398931515, 17seconds. All11 Mac-applicable tests passed; the one non-Mac
+refusal check was skipped on Mac and passed on the Windows authoring host. Actual
+deadline, streaming output cap, clean exit and detached-descendant cleanup passed.
+The Darwin EPERM exception was independently source-reviewed with no actionable
+safety/receipt issue. Its two-column owned-group ps output is buffered before its
+64KiB acceptance check (not a streaming cap); that query has its own2s timeout.
+
+The extracted one-click launcher ran on macOS26.7.2/build25G332 arm64, SDK26.5:
+API compile/link and runtime symbol presence passed; runner_exit0 and
+outcome=prerequisites_collected. That disposable CI account enumerated zero valid
+file-Keychain entries. This is not the owner's Mac inventory. Full XPC matrix,
+exact-instance binding, product minimum OS and private-key use remain untested.
+All other product-readiness/ACL/installer jobs were deliberately skipped in this
+narrow mode; retain product-code CI42564404285 separately. No product Rust changed.
+
+Outgoing `cryptex-mac-kimlik-59411433.zip`, SHA256:
+`7d80c39594a7e111dbd8fb27239a1be25f6c83089e704c88d08a1907f6f08730`.
+Local archive and the exact archive exercised on Mac CI have identical SHA256.
+Five names, payload member hashes, UTF8/LF and executable ZIP mode were rechecked
+after packaging. The earlier undelivered563a43ad archive was removed only after
+its recorded hash matched, leaving the verified candidate for the owner.
+
+Owner next: copy that ZIP to the Mac, extract, double-click MAC-KIMLIK.command,
+return MAC-KIMLIK-SONUC.zip. No Windows VM, Cryptex profile, terminal command or
+tool installation is needed for this step. Missing tools/identity availability is
+a reported prerequisite, never a manufactured native authorization pass.
 
 ## Primary sources
 

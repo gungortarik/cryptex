@@ -41,6 +41,12 @@ adapters and native proof under the accepted contracts; retain fail-closed
 operations and disabled normal feeding until acceptance. Then verify real
 cross-device offline/restriction propagation and consolidate final review.
 
+The [one-click Mac identity prerequisite package](evidence/m8/m8-macos-identity-preflight-20261109.md)
+is verified on Mac CI42687722399/source59411433. Next owner action: extract it on
+the Mac, run MAC-KIMLIK.command and return MAC-KIMLIK-SONUC.zip. It checks only
+SDK/API availability and sanitized existing identity counts, with no key use or
+trust change; the owner's receipt and full signed matrix are still pending.
+
 The [M8 completion ledger](checklists/M8_DEVICE_TRUST_REPLICATION_GATE.md) maps
 requirements to evidence and open gates. The [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md)
 is the operational resume record. Older dated entries are historical receipts;
