@@ -4,7 +4,13 @@ Updated 2026-11-10. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
-Latest reviewed candidate b234322 addresses the two launch-draft findings with
+Personal-Mac b234322 launch receipt: incomplete, not a positive case pass. The
+TeamID query omitted the API's required Signing flag; this is a harness bug, not
+proof of a missing certificate. Corrected888d68a passed CI42914376385, with direct
+per-declaration public probes and the proper metadata request. One updated native
+run remains pending. See [receipt and correction](../evidence/m8/m8-macos-launch-owner-receipt-20261110.md).
+
+Earlier reviewed candidate b234322 addresses the two launch-draft findings with
 atomic public Mac27 descriptor creation and a verified-live-self organization/
 sealed-counterpart policy. CI42911736801 passed only compile/refusal/scoped
 regressions on Mac26; eleven positive owner-native observations remain pending.

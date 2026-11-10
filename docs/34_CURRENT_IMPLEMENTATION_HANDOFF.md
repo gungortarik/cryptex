@@ -1,5 +1,29 @@
 # 34 — Current Implementation Handoff
 
+## Owner launch receipt incomplete; corrected measurement package ready (2026-11-10)
+
+Personal-Mac MAC-BAGLANTI result from b234322 matches source/native hash on
+Mac27.2/SDK27.2 arm64. Compilation/signing succeeded, but only the common deadline
+control ran; aggregate API gating was false and Team metadata was not obtained.
+Neither custody finding closed. The Team query used flag0 rather than the required
+kSecCSSigningInformation: a harness defect, not a certificate-shortage diagnosis.
+[Receipt, correction and exact next step](../evidence/m8/m8-macos-launch-owner-receipt-20261110.md).
+
+Corrected source888d68a requests signing metadata after strict self validation and
+uses per-declaration public compile probes instead of a version-macro conjunction.
+No copied flags/private declarations/fallbacks. Exact CI42914376385 SUCCESS;
+Mac40Pythonpass/one platform skip, local Windows36pass/five native-Mac skips.
+Source review passed within this bounded scope. Positive owner-native cases remain
+unverified; actual production IPC/owner gates and minimum-OS policy are unchanged.
+
+Next owner action: same personal Mac, extract updated888d68ac package ->
+MAC-BAGLANTI.command -> return the new MAC-BAGLANTI-SONUC.zip. Outgoing
+`C:\Users\Tarik\Downloads\cryptex-mac-baglanti-888d68ac.zip`, SHA256
+`c4db8cdff70444f45989324aff5c8032533523e84037e6c43c684492cd49a088`.
+Do not rerun the old b234322 package or change certificates based on its incomplete
+metadata query. A genuine failed public-declaration probe ends this candidate;
+never force a numeric/non-atomic fallback. No VM/pairing/Mach repeat is needed.
+
 ## Two Mac findings have a reviewed candidate; one personal-Mac run pending (2026-11-10)
 
 Source b234322 adds a product-separated atomic launch/signed-bundle candidate.
