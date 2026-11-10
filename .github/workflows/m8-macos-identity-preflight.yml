@@ -19,8 +19,11 @@ jobs:
           python3 -m unittest discover -s scripts/m8 -p test_mac_identity_preflight.py -v
           python3 -m unittest discover -s scripts/m8 -p test_mac_xpc_probe.py -v
           python3 -m unittest discover -s scripts/m8 -p test_mac_peer_api_audit.py -v
+          python3 -m unittest discover -s scripts/m8 -p test_mac_message_identity.py -v
       - name: Audit supported public peer-identity SDK surface without private headers
         run: python3 -B scripts/m8/mac_peer_api_audit.py
+      - name: Probe actual raw Mach message sender generation with public audit getters
+        run: python3 -B scripts/m8/mac_message_identity.py --package scripts/m8 --ci
       - name: Compile synthetic XPC source and exercise anonymous same-process smoke
         run: |
           xcrun --sdk macosx clang -std=c11 -fblocks -Wall -Wextra -Werror -mmacosx-version-min=12.0 -isysroot "$(xcrun --sdk macosx --show-sdk-path)" scripts/m8/mac_xpc_probe.c -framework Security -framework CoreFoundation -o "$RUNNER_TEMP/xpc-synthetic"

@@ -25,17 +25,17 @@ CLIENT = "com.cryptex.m8.synthetic.client"
 SERVER = "com.cryptex.m8.synthetic.server"
 
 
-def verify_package(package):
+def verify_package(package, files=FILES, scope=SCOPE):
     manifest_path = package / "MANIFEST.json"
     if manifest_path.is_symlink() or manifest_path.stat().st_size > 8192:
         raise PreflightError("manifest_invalid")
     data = json.loads(manifest_path.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
     if (set(data) != {"schema", "scope", "source_commit", "files"}
             or type(data["schema"]) is not int or data["schema"] != 1
-            or data["scope"] != SCOPE or not re.fullmatch(r"[0-9a-f]{40}", data["source_commit"])
-            or set(data["files"]) != set(FILES)):
+            or data["scope"] != scope or not re.fullmatch(r"[0-9a-f]{40}", data["source_commit"])
+            or set(data["files"]) != set(files)):
         raise PreflightError("manifest_invalid")
-    for name in FILES:
+    for name in files:
         path = package / name
         info = path.lstat()
         if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 65536
