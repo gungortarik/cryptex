@@ -59,7 +59,9 @@ jobs:
       - name: Lint changed daemon and Desktop paths
         run: cargo clippy --locked -p cryptexd -p cryptex-desktop --all-targets -- -D warnings
       - name: Test actual child startup, malformed readiness and crash restart
-        run: cargo test --locked -p cryptexd --test desktop_startup -- --test-threads=1
+        env:
+          CRYPTEX_STARTUP_DISPOSABLE_ACCOUNT: '1'
+        run: cargo test --locked -p cryptexd --test desktop_startup -- --include-ignored --test-threads=1
       - name: Test Desktop Rust foundation
         run: cargo test --locked -p cryptex-desktop
 

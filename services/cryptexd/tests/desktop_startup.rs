@@ -94,6 +94,14 @@ fn startup_worker() {
         fs::write(root.join("ready"), [b'x'; 65]).unwrap();
     } else if mode == "directory" {
         fs::create_dir(root.join("ready")).unwrap();
+    } else if mode == "empty" || mode == "fixed-partial" {
+        let bytes = if mode == "empty" {
+            String::new()
+        } else {
+            std::process::id().to_string()
+        };
+        fs::write(root.join("ready"), bytes).unwrap();
+        fs::write(root.join("fixture-prepared"), b"ready").unwrap();
     }
     // Refusal tests must kill/reap this still-running process.
     thread::sleep(Duration::from_secs(15));
@@ -126,6 +134,20 @@ fn empty_and_partial_pid_wait_for_complete_supervised_child_readiness() {
     let child = OwnedChild(rx.recv_timeout(Duration::from_secs(5)).unwrap().unwrap());
     assert_eq!(child.0.id(), pid);
     waiter.join().unwrap();
+}
+
+#[test]
+fn held_incomplete_readiness_reaches_deadline_instead_of_refusal_or_success() {
+    for mode in ["empty", "fixed-partial"] {
+        let root = Runtime::new(mode);
+        let child = worker(&root, mode);
+        wait_file(&root.0.join("fixture-prepared"));
+        // No scheduler timing assumption: the fixture never completes its line.
+        assert_eq!(
+            await_ready(child, &root.0.join("ready"), Duration::ZERO).unwrap_err(),
+            StartupError::Deadline
+        );
+    }
 }
 
 #[test]
@@ -224,7 +246,19 @@ fn fifo_ready_does_not_block_and_symlink_is_refused() {
 }
 
 #[test]
+#[ignore = "binds the per-user product endpoint; requires explicitly disposable account"]
 fn actual_daemon_crash_restart_requires_fresh_readiness_and_connection() {
+    // A failed health request cannot prove this endpoint is unused. Never let
+    // ordinary developer test runs overwrite a slow owner's daemon socket.
+    assert_eq!(
+        std::env::var("CRYPTEX_STARTUP_DISPOSABLE_ACCOUNT").as_deref(),
+        Ok("1")
+    );
+    assert_eq!(std::env::var("GITHUB_ACTIONS").as_deref(), Ok("true"));
+    assert_eq!(
+        std::env::var("RUNNER_ENVIRONMENT").as_deref(),
+        Ok("github-hosted")
+    );
     let root = Runtime::new("daemon");
     assert!(
         cryptexd::ipc::desktop_health_ping(Duration::from_millis(50)).is_err(),
@@ -274,6 +308,7 @@ fn actual_daemon_crash_restart_requires_fresh_readiness_and_connection() {
     assert_eq!(ping.daemon_pid, second.0.id());
     #[cfg(unix)]
     {
+        use interprocess::local_socket::prelude::*;
         use std::io::{Read, Write};
         old.set_nonblocking(true).unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
