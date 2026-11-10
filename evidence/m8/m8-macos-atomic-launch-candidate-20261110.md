@@ -1,5 +1,10 @@
 # Mac atomic launch and verified-self package candidate
 
+**Superseded by the [second owner receipt](m8-macos-launch-owner-receipt-2-20261110.md):**
+the corrected source888d68a passes five controls but fails all six mapped-child
+cases. The direct descriptor mapping candidate is stopped. Package/run directions
+below are historical; no unchanged owner rerun is requested.
+
 Status: bounded native candidate, **NOT production integration or M8 closure**.
 Source: `b2343229058336b35ddab42bd3cdd974284e89a0`.
 

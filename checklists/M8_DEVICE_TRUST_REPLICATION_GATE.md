@@ -4,6 +4,14 @@ Updated 2026-11-10. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
+Latest owner receipt888d68a: public SDK/runtime and certified bundle eligibility
+pass, but only five of eleven cases pass. All six mapped-child handoff cases fail.
+The direct CLOFORK + ordinary spawn-duplication carrier is stopped; no unchanged
+owner rerun is requested. Published kernel ordering supports the diagnosis, but
+actual spawn errno was not recorded. Neither custody finding is closed; see
+[receipt and next decision](../evidence/m8/m8-macos-launch-owner-receipt-2-20261110.md).
+Older pending-run entries below are historical, superseded by this result.
+
 Personal-Mac b234322 launch receipt: incomplete, not a positive case pass. The
 TeamID query omitted the API's required Signing flag; this is a harness bug, not
 proof of a missing certificate. Corrected888d68a passed CI42914376385, with direct

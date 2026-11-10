@@ -242,6 +242,14 @@ one-time session consumption, cancellation serialization, and consume-before-
 append remain independent requirements.
 
 **Mac review candidate update (2026-11-10; not accepted/activated):**
+The subsequent [owner run](../../evidence/m8/m8-macos-launch-owner-receipt-2-20261110.md)
+failed all six intended-child handoff cases despite eligible public APIs and
+certified bundle validation. The direct CLOFORK/ordinary spawn-duplication
+candidate below is stopped, not an implementable accepted launch recipe.
+Published kernel ordering supports the conflict; actual native errno was not
+captured. A [replacement-design decision](../proposals/m8-macos-launch-carrier-reassessment.md)
+is pending. No fallback, private mapping API or production activation is allowed.
+
 Keep the accepted Unix-domain-socket transport. LOCAL_PEERTOKEN is a live socket-
 owner sample, not an audit trailer identifying the writer of an individual frame.
 A transferred/shared connected descriptor remains an unresolved authorization

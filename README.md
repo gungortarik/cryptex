@@ -4,12 +4,12 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
-Latest Mac continuation: the personal-Mac b234322 receipt is incomplete. Compilation/
-signing passed, but a missing signing-metadata request flag prevented TeamID lookup;
-aggregate API gating also needs individual observations. [Corrected source888d68a](evidence/m8/m8-macos-launch-owner-receipt-20261110.md)
-passed scoped CI42914376385 and is packaged for one updated MAC-BAGLANTI run.
-Neither custody gap is closed yet. Product IPC, owner-operation gates and minimum-
-OS policy are unchanged; no certificate change is requested.
+Latest Mac continuation: the [updated personal-Mac receipt](evidence/m8/m8-macos-launch-owner-receipt-2-20261110.md)
+passes API/signing eligibility and five controls, but fails all six intended-child
+handoff cases (5/11). The direct CLOFORK descriptor/spawn-duplication candidate is
+stopped; no repeat run is requested. A [bounded replacement-design decision](docs/proposals/m8-macos-launch-carrier-reassessment.md)
+is pending. Neither custody gap is closed. Product Unix IPC, owner-operation gates
+and minimum-OS policy are unchanged.
 
 ## Implementation status — 2026-11-09
 

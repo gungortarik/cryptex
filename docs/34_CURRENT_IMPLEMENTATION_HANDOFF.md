@@ -1,5 +1,27 @@
 # 34 — Current Implementation Handoff
 
+## Second owner receipt: 5/11; direct descriptor carrier stopped (2026-11-10)
+
+New MAC-BAGLANTI-SONUC (2).zip matches source888d68a and the native hash.
+All five public declaration probes, runtime API eligibility, signed bundle
+eligibility and five control/exclusion cases pass. All six intended-child handoff
+cases fail; runner_exit2 and candidate_complete=false are consistent. The row
+result strings name expected outcomes, not observed child exits.
+[Exact receipt and source diagnosis](../evidence/m8/m8-macos-launch-owner-receipt-2-20261110.md).
+
+Published XNU excludes CLOFORK descriptors before spawn dup2 actions. That strongly
+explains the common failure, but this receipt does not record the actual errno.
+The apparent fileport spawn mapping workaround is declared in a private header;
+do not copy it or clear the parent's flags. Stop this direct mapping candidate.
+No unchanged package rerun, certificate adjustment or VM action is requested.
+
+Next: owner decision on the [bounded carrier reassessment](proposals/m8-macos-launch-carrier-reassessment.md)
+before moving to a public sender-attributed message-bootstrap experiment. This
+keeps accepted Unix product IPC unchanged; no new carrier is implemented or
+accepted. Mac owner mutation gates stay closed, minimum-OS policy unchanged,
+both original security findings and M8 still open. Older pending-run instructions
+below are historical and superseded by this section.
+
 ## Owner launch receipt incomplete; corrected measurement package ready (2026-11-10)
 
 Personal-Mac MAC-BAGLANTI result from b234322 matches source/native hash on

@@ -1,5 +1,10 @@
 # Personal-Mac launch receipt: incomplete; measurement corrections prepared
 
+**Update:** the corrected owner run has returned; see the
+[second receipt and stopped carrier candidate](m8-macos-launch-owner-receipt-2-20261110.md).
+Its five controls pass but six mapped-child cases fail. The next-package
+instructions below are historical; do not repeat that run unchanged.
+
 The returned `MAC-BAGLANTI-SONUC.zip` was inspected as data, not executed.
 SHA256: `01b3348109602953e910744ec7740b3c2d247a86fbf3ae008781d03508ff36df`.
 Inventory: one regular `result.json`,1680 bytes. Collected2026-11-10T22:15:21Z.
