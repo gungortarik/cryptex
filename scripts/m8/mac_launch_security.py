@@ -10,12 +10,11 @@ import re
 import shutil
 import signal
 import sys
-import tempfile
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mac_identity_preflight import PreflightError, checked, run_bounded, scalar, unique_object
-from mac_xpc_probe import select_identity, validate_work, verify_package
+from mac_xpc_probe import new_private_work, select_identity, validate_work, verify_package
 
 SCOPE = "macos_atomic_launch_same_organization_candidate_only"
 DESKTOP = "com.cryptex.m8.custody.desktop"
@@ -149,7 +148,7 @@ def main():
     args = parser.parse_args()
     if sys.platform != "darwin" or (args.ci and (args.work or os.environ.get("GITHUB_ACTIONS") != "true")):
         return 2
-    work = Path(tempfile.mkdtemp(prefix="cryptex-mac-imza.", dir="/private/tmp")) if args.ci else args.work
+    work = new_private_work() if args.ci else args.work
     if work is None:
         return 2
     package = args.package.resolve()

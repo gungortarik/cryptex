@@ -4,6 +4,8 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import sys
+import shutil
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -14,6 +16,15 @@ from mac_identity_preflight import PreflightError
 
 
 class LaunchSecurityReceiptTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "darwin", "native temporary-owner validation")
+    def test_private_allocator_satisfies_unchanged_native_owner_and_name_guard(self):
+        work = probe.new_private_work()
+        try:
+            probe.validate_work(work, Path(__file__).parent.resolve())
+            self.assertRegex(work.name, r"^cryptex-mac-imza\.[a-f0-9]{24}$")
+        finally:
+            shutil.rmtree(work)
+
     @staticmethod
     def rows(eligible=True, supported=True):
         rows = [{"capability": "atomic_api", "headers": supported, "runtime": supported},

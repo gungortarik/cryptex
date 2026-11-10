@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import plistlib
 import re
+import secrets
 import shutil
 import signal
 import stat
@@ -54,6 +55,14 @@ def validate_work(work, package):
             or any((p / ".git").exists() or (p / ".git").is_symlink()
                    for p in (work.resolve(), *work.resolve().parents))):
         raise PreflightError("unsafe_work_directory")
+
+
+def new_private_work():
+    # tempfile's random alphabet includes '_', which this exact work-directory
+    # grammar deliberately excludes. Keep validation strict; fix the allocator.
+    work = Path("/private/tmp") / ("cryptex-mac-imza." + secrets.token_hex(12))
+    work.mkdir(mode=0o700)
+    return work
 
 
 def select_identity(inventory):

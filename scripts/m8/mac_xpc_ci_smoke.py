@@ -4,18 +4,17 @@ import os
 from pathlib import Path
 import re
 import sys
-import tempfile
 
 sys.dont_write_bytecode = True
 from mac_identity_preflight import checked, run_bounded
-from mac_xpc_probe import CLIENT, SERVER, cleanup, exercise, validate_work
+from mac_xpc_probe import CLIENT, SERVER, cleanup, exercise, new_private_work, validate_work
 
 
 def main():
     if sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("disposable Mac CI only")
     source = Path(__file__).with_name("mac_xpc_probe.c").resolve()
-    work = Path(tempfile.mkdtemp(prefix="cryptex-mac-imza.", dir="/private/tmp"))
+    work = new_private_work()
     validate_work(work, source.parent)
     os.environ["TMPDIR"] = str(work)
     binaries = {}

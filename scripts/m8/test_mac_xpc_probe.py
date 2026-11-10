@@ -152,7 +152,7 @@ class SyntheticXpcTests(unittest.TestCase):
 
             with (patch.object(ci.sys, 'platform', 'darwin'),
                   patch.dict(ci.os.environ, {'GITHUB_ACTIONS': 'true'}),
-                  patch.object(ci.tempfile, 'mkdtemp', return_value=directory),
+                  patch.object(ci, 'new_private_work', return_value=Path(directory)),
                   patch.object(ci, 'validate_work'), patch.object(ci, 'checked', checked),
                   patch.object(ci, 'exercise', side_effect=RuntimeError('injected')),
                   patch.object(ci, 'cleanup', return_value='registration_removed'),

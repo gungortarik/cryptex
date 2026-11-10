@@ -8,12 +8,11 @@ from pathlib import Path
 import re
 import signal
 import sys
-import tempfile
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mac_identity_preflight import PreflightError, checked, run_bounded, scalar, unique_object
-from mac_xpc_probe import select_identity, validate_work, verify_package
+from mac_xpc_probe import new_private_work, select_identity, validate_work, verify_package
 
 SCOPE = "raw_mach_message_instance_probe_only"
 IDENTIFIER = "com.cryptex.m8.synthetic.process"
@@ -107,7 +106,7 @@ def main():
     if args.ci:
         if args.work:
             return 2
-        work = Path(tempfile.mkdtemp(prefix="cryptex-mac-imza.", dir="/private/tmp"))
+        work = new_private_work()
     else:
         if not args.work:
             return 2
