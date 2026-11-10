@@ -34,6 +34,37 @@ CHANNEL_CASES = {
 DIAGNOSTICS = {"apple_anchor_or_fixed_self_identifier_refused", "certified_team_unavailable",
                "packaged_self_path_refused", "sealed_bundle_or_counterpart_refused",
                "verified_same_organization_bundle"}
+PUBLIC_HEADERS = "#include <fcntl.h>\n#include <unistd.h>\n"
+PUBLIC_ATOMIC_EXPRESSIONS = {
+    "pipe2_declaration": "if (__builtin_available(macOS 27.0, *)) { (void)&pipe2; }",
+    "open_clofork_declaration": "(void)O_CLOFORK;",
+    "fd_clofork_declaration": "(void)FD_CLOFORK;",
+    "combined_atomic_expression": "if (__builtin_available(macOS 27.0, *)) { int fds[2]; (void)pipe2(fds, O_CLOEXEC | O_CLOFORK | O_NONBLOCK); (void)fcntl(fds[0], F_SETFD, FD_CLOEXEC | FD_CLOFORK); }",
+}
+
+
+def public_atomic_checks(work, sdk, run):
+    checks = {}
+    for name, expression in {"baseline_public_headers": "", **PUBLIC_ATOMIC_EXPRESSIONS}.items():
+        source = work / (name + ".c")
+        with source.open("x", encoding="utf-8", newline="\n") as target:
+            target.write(PUBLIC_HEADERS + "void probe(void) { " + expression + " }\n")
+        result = run(["/usr/bin/xcrun", "clang", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                      "-Werror=unguarded-availability-new", "-mmacosx-version-min=12.0",
+                      "-isysroot", sdk, "-fsyntax-only", str(source)], 30)
+        if result.limited or result.timed_out or result.pipe_failed:
+            raise PreflightError("public_sdk_probe_bound_failed")
+        if result.code not in (0, 1):
+            raise PreflightError("public_sdk_compiler_failed")
+        checks[name] = result.code == 0
+        if name == "baseline_public_headers" and not checks[name]:
+            raise PreflightError("public_sdk_header_baseline_failed")
+    return checks
+
+
+def atomic_build_enabled(checks):
+    return (set(checks) == {"baseline_public_headers", *PUBLIC_ATOMIC_EXPRESSIONS}
+            and all(type(value) is bool and value for value in checks.values()))
 
 
 def parse_native(output):
@@ -84,11 +115,14 @@ def collect(report, package, work, ci=False):
         raise PreflightError("sdk_path_invalid")
     source = package / "mac_launch_security.c"
     report["native_source_sha256"] = hashlib.sha256(source.read_bytes()).hexdigest()
+    report["public_sdk_checks"] = public_atomic_checks(work, sdk, run_bounded)
+    api_enabled = atomic_build_enabled(report["public_sdk_checks"])
     bundle = work / "Candidate.app"
     binaries = bundle / "Contents" / "MacOS"
     binaries.mkdir(parents=True)
     desktop, daemon = binaries / "Desktop", binaries / "Daemon"
     compiled = run_bounded(["/usr/bin/xcrun", "clang", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                           "-DCPX_PUBLIC_ATOMIC_API=" + ("1" if api_enabled else "0"),
                            "-Werror=unguarded-availability-new", "-mmacosx-version-min=12.0",
                            "-isysroot", sdk, str(source), "-framework", "Security", "-framework",
                            "CoreFoundation", "-lbsm", "-o", str(desktop)], 60)
@@ -124,6 +158,10 @@ def collect(report, package, work, ci=False):
     result = run_bounded([str(desktop), "probe", str(wrong), str(adhoc)], 60)
     native = parse_native(checked(lambda *_: result, [], "native_probe", 60))
     report["native"] = native
+    if native["atomic_api"]["headers"] != api_enabled:
+        raise PreflightError("native_public_api_build_mismatch")
+    report["atomic_runtime_gate"] = ("not_exercised_public_headers_refused" if not api_enabled else
+                                     "os_guard_passed" if native["atomic_api"]["runtime"] else "os_guard_refused")
     if any(not row["pass"] for row in native["cases"]):
         raise PreflightError("native_candidate_case_failed")
     observed = complete(native)

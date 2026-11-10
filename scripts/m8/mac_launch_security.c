@@ -30,12 +30,16 @@ extern char **environ;
 _Static_assert(sizeof(audit_token_t) == 32, "opaque handoff size changed");
 static const char *policy_diagnostic = "untrusted_self";
 
-// Do not copy numeric flags or manually redeclare a missing SDK API.
-#if defined(__MAC_27_0) && defined(O_CLOFORK) && defined(FD_CLOFORK) && MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_27_0
-#define HAS_ATOMIC_API 1
-#else
-#define HAS_ATOMIC_API 0
+// The trusted build driver sets this only after compiling public-header probes
+// for every required declaration. No version-macro guess, private declaration,
+// copied numeric flag or non-atomic runtime fallback.
+#ifndef CPX_PUBLIC_ATOMIC_API
+#define CPX_PUBLIC_ATOMIC_API 0
 #endif
+#if CPX_PUBLIC_ATOMIC_API != 0 && CPX_PUBLIC_ATOMIC_API != 1
+#error invalid atomic API feature result
+#endif
+#define HAS_ATOMIC_API CPX_PUBLIC_ATOMIC_API
 
 typedef struct {
     SecRequirementRef peer;
@@ -111,7 +115,7 @@ static bool policy_open(Policy *policy, bool desktop) {
     if (!initial_text || SecRequirementCreateWithString(initial_text, 0, &initial) != errSecSuccess ||
         SecCodeCopySelf(0, &self) != errSecSuccess || !self ||
         SecCodeCheckValidity(self, kSecCSStrictValidate, initial) != errSecSuccess ||
-        SecCodeCopySigningInformation((SecStaticCodeRef)self, 0, &info) != errSecSuccess || !info) goto done;
+        SecCodeCopySigningInformation((SecStaticCodeRef)self, kSecCSSigningInformation, &info) != errSecSuccess || !info) goto done;
     // Dynamic signing info is read only AFTER successful live-code validation.
     policy_diagnostic = "certified_team_unavailable";
     CFTypeRef team_value = CFDictionaryGetValue(info, kSecCodeInfoTeamIdentifier);

@@ -16,6 +16,36 @@ from mac_identity_preflight import PreflightError
 
 
 class LaunchSecurityReceiptTests(unittest.TestCase):
+    def test_each_public_declaration_controls_build_without_version_macro_guess(self):
+        names = {"baseline_public_headers", *probe.PUBLIC_ATOMIC_EXPRESSIONS}
+        for missing in (None, *probe.PUBLIC_ATOMIC_EXPRESSIONS):
+            with tempfile.TemporaryDirectory() as directory:
+                seen = []
+                def run(args, _timeout):
+                    self.assertIn("-fsyntax-only", args)
+                    self.assertIn("-mmacosx-version-min=12.0", args)
+                    name = Path(args[-1]).stem
+                    seen.append(name)
+                    return SimpleNamespace(code=1 if name == missing else 0, limited=False, timed_out=False, pipe_failed=False)
+                checks = probe.public_atomic_checks(Path(directory), "/public/sdk", run)
+                self.assertEqual(set(seen), names)
+                self.assertEqual(probe.atomic_build_enabled(checks), missing is None)
+                if missing:
+                    self.assertFalse(checks[missing])
+
+    def test_public_header_baseline_and_abnormal_compiler_failures_are_errors(self):
+        for field in ("baseline", "timed_out", "limited", "pipe_failed", "signal"):
+            with tempfile.TemporaryDirectory() as directory:
+                result = SimpleNamespace(code=1 if field == "baseline" else -9 if field == "signal" else 0,
+                                         limited=field == "limited", timed_out=field == "timed_out", pipe_failed=field == "pipe_failed")
+                with self.assertRaises(PreflightError):
+                    probe.public_atomic_checks(Path(directory), "/public/sdk", lambda *_: result)
+        checks = {name: True for name in ("baseline_public_headers", *probe.PUBLIC_ATOMIC_EXPRESSIONS)}
+        checks["pipe2_declaration"] = 1
+        self.assertFalse(probe.atomic_build_enabled(checks))
+        checks["unexpected"] = True
+        self.assertFalse(probe.atomic_build_enabled(checks))
+
     @unittest.skipUnless(sys.platform == "darwin", "native temporary-owner validation")
     def test_private_allocator_satisfies_unchanged_native_owner_and_name_guard(self):
         work = probe.new_private_work()
