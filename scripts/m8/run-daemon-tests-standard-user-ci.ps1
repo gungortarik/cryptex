@@ -1,3 +1,4 @@
+param([switch]$DesktopStartupOnly)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
@@ -5,12 +6,17 @@ if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted
 }
 $workspace=(Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
 $manifest=Join-Path $workspace 'services\cryptexd'
-$artifacts=@(& cargo test --locked -p cryptexd --no-run --message-format=json)
+$buildArgs=@('test','--locked','-p','cryptexd','--no-run','--message-format=json')
+if($DesktopStartupOnly){$buildArgs+=@('--test','desktop_startup')}
+$artifacts=@(& cargo @buildArgs)
 if($LASTEXITCODE -ne 0){throw 'Daemon test build failed.'}
 $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Object {
-    $_.reason -eq 'compiler-artifact' -and $_.target.name -eq 'cryptexd' -and $_.profile.test -and $_.executable
+    $_.reason -eq 'compiler-artifact' -and
+    $_.target.name -eq $(if($DesktopStartupOnly){'desktop_startup'}else{'cryptexd'}) -and
+    $_.profile.test -and $_.executable
 } | ForEach-Object {$_.executable} | Sort-Object -Unique)
-if($executables.Count -ne 2){throw 'Expected exact daemon library and binary test artifacts.'}
+$expectedSuites=if($DesktopStartupOnly){1}else{2}
+if($executables.Count -ne $expectedSuites){throw 'Expected exact daemon test artifacts.'}
 foreach($exe in $executables) {
     $full=(Resolve-Path -LiteralPath $exe).Path
     if(-not $full.StartsWith($workspace+'\target\',[StringComparison]::OrdinalIgnoreCase)){throw 'Test artifact outside workspace target.'}
@@ -37,7 +43,7 @@ try {
         Set-Acl -LiteralPath $entry.path -AclObject $acl
     }
     $payload=Join-Path $scratch 'tests.json'
-    @{schema=1;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables} |
+    @{schema=1;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $payload -Encoding UTF8
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'
@@ -53,7 +59,7 @@ try {
     Get-Content -LiteralPath $stderr
     if($child.ExitCode -ne 0){throw 'Standard-user daemon tests failed.'}
     $report=Get-Content -LiteralPath (Join-Path $scratch 'result.json') -Raw | ConvertFrom-Json
-    if($report.sid -ne $user.SID.Value -or $report.elevated -or -not $report.passed -or $report.suites -ne 2){throw 'Missing standard-user proof.'}
+    if($report.sid -ne $user.SID.Value -or $report.elevated -or -not $report.passed -or $report.suites -ne $expectedSuites){throw 'Missing standard-user proof.'}
 } catch {$failure=$_.Exception.Message}
 finally {
     if($null -ne $child) {

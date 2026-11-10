@@ -280,7 +280,7 @@ fn actual_daemon_crash_restart_requires_fresh_readiness_and_connection() {
             .arg("--stop-file")
             .arg(root.0.join("stop"))
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stderr(Stdio::inherit());
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;

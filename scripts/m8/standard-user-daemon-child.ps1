@@ -58,22 +58,29 @@ function Invoke-TestBinary([string]$Exe,[string]$Arguments) {
         return @{code=$process.ExitCode;stdout=$stdout.Result;stderr=$stderr.Result}
     } finally {$process.Dispose()}
 }
-function Assert-CompleteSuite([int]$Code,[string]$Stdout,[int]$Count) {
+function Assert-CompleteSuite([int]$Code,[string]$Stdout,[int]$Count,[bool]$NoIgnored=$false) {
     $summary=@($Stdout -split '\r?\n' | Where-Object {$_ -cmatch '^test result:'})
     # Process-interruption tests may print nested harness summaries. The final
     # summary must cover this executable's complete pre-enumerated inventory.
     if($Code -ne 0 -or $Count -lt 1 -or $summary.Count -eq 0 -or $summary[-1] -cnotmatch '^test result: ok\. ([1-9][0-9]*) passed; 0 failed; ([0-9]+) ignored; 0 measured; 0 filtered out;'){throw 'Daemon test suite failed or incomplete.'}
     if(([int]$Matches[1]+[int]$Matches[2]) -ne $Count){throw 'Incomplete daemon inventory coverage.'}
+    if($NoIgnored -and [int]$Matches[2] -ne 0){throw 'Startup suite must execute every test, including the endpoint fixture.'}
 }
 $suites=0
+$testArguments=''
+$startupOnly=[bool]($p.PSObject.Properties['desktop_startup_only'] -and $p.desktop_startup_only)
+if($startupOnly) {
+    $env:CRYPTEX_STARTUP_DISPOSABLE_ACCOUNT='1'
+    $testArguments='--include-ignored --test-threads=1'
+}
 foreach($exe in $p.executables) {
     $list=Invoke-TestBinary $exe '--list'
     $count=@($list.stdout -split '\r?\n' | Where-Object {$_ -cmatch ': test$'}).Count
     if($list.code -ne 0 -or $count -eq 0){throw 'Missing daemon test inventory.'}
-    $run=Invoke-TestBinary $exe ''
+    $run=Invoke-TestBinary $exe $testArguments
     $run.stdout | Write-Output
     $run.stderr | Write-Output
-    Assert-CompleteSuite $run.code $run.stdout $count
+    Assert-CompleteSuite $run.code $run.stdout $count $startupOnly
     $suites++
 }
 @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=$suites} | ConvertTo-Json |
