@@ -1,5 +1,28 @@
 # 34 — Current Implementation Handoff
 
+## Raw Mach actual-sender experiment passed CI; personal-Mac run pending (2026-11-10)
+
+Public SDK audit confirmed audit_token_to_pidversion is declared in public BSM
+headers, while XPC audit getters are not. A separate RAW MACH experiment uses the
+kernel's actual-message audit trailer, public PID/generation getters, joint kernel
+code validation and a retained live task-name right. Mac CI42898425263 on85ef4b1
+passed all eight cases, including same-binary/shared-send-right intrusion, forged
+payload, replay, same-PID exec generation change and a queued message after exit.
+Source-only independent review found no actionable issue in this bounded scope.
+
+This does NOT solve XPC binding or change production Unix-socket IPC. The test
+receiver pins its spawned worker; actual Desktop-parent custody, integration,
+receiver-restart session semantics, actual PID-reuse run and minimum product OS
+remain unverified. M8 stays OPEN. Any Mach production channel requires separate
+ADR-0007 acceptance. [Mechanism, CI and limits](../evidence/m8/m8-macos-message-instance-proof-20261110.md).
+
+Next owner action: personal MacBook extract -> MAC-SUREC.command -> return
+MAC-SUREC-SONUC.zip. One existing-key signing prompt may require allow-once.
+Outgoing `C:\Users\Tarik\Downloads\cryptex-mac-surec-85ef4b13.zip`, SHA256
+`edafdd90908ef0820f2f69ebe8f7f2b0349b0eff969f0cd273dbf8db1fa49af6`.
+No repeated Windows VM/pairing/API preflight. Do not claim owner-native success
+until its receipt is checked; product activation remains disabled.
+
 ## Owner signed Mac observations received; exact-instance gate remains open (2026-11-10)
 
 MAC-IMZA-SONUC.zip from the personal MacBook reports successful existing-key
