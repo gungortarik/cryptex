@@ -241,40 +241,56 @@ the separate M8-R1 approval-session protocol: displayed digest binding,
 one-time session consumption, cancellation serialization, and consume-before-
 append remain independent requirements.
 
-On macOS, for every connected Unix-domain socket, obtain the peer's opaque audit
-token with `getsockopt(SOL_LOCAL, LOCAL_PEERTOKEN)`. At daemon launch, Desktop
-obtains its own kernel audit token with `task_info(TASK_AUDIT_TOKEN)` and passes
-it to the child over a one-shot inherited pipe (never argv, environment, or a
-runtime file). The pipe is only a carrier, not authentication: the parent alone
-owns the write end and the child alone receives the read end. The parent closes
-its read end before spawning; the child closes any write end before reading.
-Set close-on-exec/non-inherit on both ends and explicitly clear it only for the
-one intended child read end at spawn. No grandchild or unrelated process may
-inherit either end. The child must read exactly the fixed token size, reject
-short/extra/malformed input, close the read end, and use documented
-kernel-backed checks to prove that the token
-identifies the live `getppid()` process instance and that this process is the
-expected packaged Desktop executable before pinning it. The pipe ends must be
-non-inheritable except for the intended child read end; token bytes must never
-be logged. For each connection, match the kernel peer token to the pinned
-process instance using PID plus a kernel process-generation identity (such as
-pidversion), obtained and validated through a supported API, or an equivalent
-kernel validation that the token still names the same live process instance.
-Do not read opaque token slots directly from user space, and do not compare
-unspecified mutable audit-token fields as a lifetime-stable byte string.
-Current XNU source uses PID plus the embedded PID version in its internal
-`proc_find_audit_token`; this does not by itself prove that Cryptex can call an
-equivalent supported user-space API. Missing identity fields, failed
-kernel/code-signature validation, a short read, process exit, mismatch, or
-unavailable APIs reject the connection; there is no `LOCAL_PEERPID`-only
-fallback. A daemon restart requires a new parent-bound handoff. Primary XNU
-source confirms the socket/task token constants, the token's opaque nature, and
-an internal PID-version check; the supported user-space process-generation
-validation and token-bound code-signature APIs remain to be identified and
-verified. Native tests must cover unrelated peers, forged handoff bytes, same-PID
-replacement/reuse, credential changes, process exit during a connection, and
-Desktop restart. This remains a review candidate, not an accepted security
-guarantee.
+**Mac review candidate update (2026-11-10; not accepted/activated):**
+Keep the accepted Unix-domain-socket transport. LOCAL_PEERTOKEN is a live socket-
+owner sample, not an audit trailer identifying the writer of an individual frame.
+A transferred/shared connected descriptor remains an unresolved authorization
+boundary; repeated sampling alone cannot close it.
+
+The launch-carrier candidate must use public, runtime-available atomic creation
+with CLOEXEC and CLOFORK together and explicit posix_spawn file-action mapping
+for the one intended child. No pipe()+fcntl, copied flag constants, private SDK
+headers, parent-side clearing or Rust pre_exec fallback is permitted. Prefill the
+fixed-size opaque audit token and close the parent's write end before spawning;
+retain its read end through spawn and drop that parent copy immediately afterward.
+The child receives only its explicitly mapped read end, restores noninheritance
+before threads/helpers, reads exactly the fixed size plus EOF within a bounded
+deadline, and closes the carrier before framework validation. The former wording
+requiring the parent to close its read end before passing it to spawn was not an
+implementable sequence and is superseded by this review candidate.
+
+Never put token bytes in argv, environment, runtime files or logs. Do not inspect
+opaque token slots or compare unspecified mutable audit fields as a lifetime-
+stable byte string. Validate the kernel PID/process-generation binding through
+supported token-bound code/instance APIs and retain the live instance right;
+there is no LOCAL_PEERPID-only fallback. Short/extra/malformed input, unavailable
+APIs, instance exit/replacement and mismatches refuse. Every daemon restart needs
+a fresh parent-bound carrier; unrelated children/grandchildren must not inherit it.
+
+The carrier is not authentication. Under an explicitly trusted launched TCB,
+validate the running self image against a fixed own identifier and Apple code-
+signing anchor before reading its TeamID; revalidate that certified organization
+on self. Derive the counterpart requirement from that immutable self identity
+and the fixed counterpart identifier, never from a sibling or claimed peer.
+Require verified containing-bundle/resource/nested-code and live-self-image
+binding, then authenticate the exact counterpart hash against the live token/
+expected kernel PID and retained process-instance right. Missing/invalid/adhoc
+self, absent certified organization, mismatches or failed kernel checks refuse.
+This same-organization rule is not independent publisher/notarization acceptance.
+Consistent package snapshot/replacement handling must be proven before activation;
+a sequence of separate path reads is not assumed atomic.
+
+The bounded sourceb234322 candidate exercises intended daemon validation of its
+actual getppid parent, public atomic inheritance, malformed handoffs and fresh
+child restart. Its required public atomic surface has macOS27 availability;
+this does not select or raise the product minimum OS. Unsupported targets refuse
+this candidate; an accepted support-floor/compatible implementation decision is
+still required. CI on Mac26 verifies only explicit refusal, not positive custody.
+See [candidate evidence and native owner step](../../evidence/m8/m8-macos-atomic-launch-candidate-20261110.md).
+Bidirectional real Desktop/daemon pinning, lasting instance/session identity,
+forwarded descriptors, same-PID replacement, actual PID reuse and owner-session
+restart acceptance remain separate gates. Mac owner operations stay disabled.
+
 For admission it signs only the local approval message; the canonical
 anchor remains gated on both approvals and the complete transcript. A
 restriction or self-retirement may append its canonical event only after its

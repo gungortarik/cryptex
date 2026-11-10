@@ -1,5 +1,33 @@
 # 34 — Current Implementation Handoff
 
+## Two Mac findings have a reviewed candidate; one personal-Mac run pending (2026-11-10)
+
+Source b234322 adds a product-separated atomic launch/signed-bundle candidate.
+It requires public macOS27 pipe2+CLOEXEC+CLOFORK and explicit posix_spawn mapping;
+no non-atomic fallback or pre_exec. The identity root is strictly verified live
+self/fixed-ID/Apple-anchor/certified TeamID, then a verified same-organization
+bundle/counterpart hash, instead of trusting the sibling to define its own policy.
+[Mechanism, evidence and limits](../evidence/m8/m8-macos-atomic-launch-candidate-20261110.md).
+
+CI42911736801 SUCCESS on macOS26.7.2/SDK26.5: C compile, explicit ad-hoc self refusal,
+supervisor-vs-child-deadline distinction, Python38pass/one platform skip and prior
+scoped regression checks. Atomic headers/runtime unavailable there, so positive
+candidate cases NOT RUN and candidate_complete=false. A native Mac27 run is needed.
+Source-only review corrected false-pass/error-reporting issues; production is untouched.
+
+Next owner action: own Mac extract -> MAC-BAGLANTI.command -> return
+MAC-BAGLANTI-SONUC.zip. Outgoing
+`C:\Users\Tarik\Downloads\cryptex-mac-baglanti-b2343229.zip`, SHA256
+`1f0793e1ddefc137b6baced7e1dbb573d4636d87b4474f95b6f44b1668d1df01`.
+Inspect exact source/native hash and all eleven observations before a positive claim.
+No VM, repeat API/Mach/pairing run or new certificate is requested.
+
+Even a positive result does not accept a macOS27 product minimum or enable Mac
+owner operations. Bidirectional production pinning, persistent lifetime, concurrent
+bundle replacement, Unix forwarded-FD/frame attribution and owner-session restart
+remain unproven. Current task right lasts one validation. This is not release/
+publisher/notarization acceptance or M8 closure. Keep the actual product gates closed.
+
 ## Real Desktop readiness corrected; Mac custody candidate refused review (2026-11-10)
 
 Source4229585 connects the real Desktop startup/restart path to a shared helper

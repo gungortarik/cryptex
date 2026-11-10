@@ -4,6 +4,14 @@ Updated 2026-11-10. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
+Latest reviewed candidate b234322 addresses the two launch-draft findings with
+atomic public Mac27 descriptor creation and a verified-live-self organization/
+sealed-counterpart policy. CI42911736801 passed only compile/refusal/scoped
+regressions on Mac26; eleven positive owner-native observations remain pending.
+See [candidate and exact owner action](../evidence/m8/m8-macos-atomic-launch-candidate-20261110.md).
+No production gate, minimum-OS decision, bidirectional pin or bundle-race acceptance
+is implied by packaging this candidate.
+
 | M8 requirement | Current evidence | Remaining closure evidence |
 | --- | --- | --- |
 | Pairing and explicit local owner actions | Windows signed exchange, durable anchors, cancel/refusal/restart receipts; local journal/IPC tests | Native macOS identity/connection binding and full reviewed protocol acceptance; final product UI review |

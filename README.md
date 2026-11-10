@@ -4,6 +4,12 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
+Latest Mac continuation: a [reviewed atomic launch/self-anchored bundle candidate](evidence/m8/m8-macos-atomic-launch-candidate-20261110.md)
+is packaged on b234322. Native CI42911736801 passed compilation, explicit ad-hoc
+refusal and scoped regressions; its Mac26 host cannot run the public Mac27 atomic
+path. One personal-Mac MAC-BAGLANTI run is pending. Product IPC, owner-operation
+gates and minimum-OS policy are unchanged; this is not production custody acceptance.
+
 ## Implementation status — 2026-11-09
 
 Active branch: `codex/m8-device-trust`. **M8 remains OPEN.** This is an
