@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 import zipfile
 
 import mac_launch_security as probe
@@ -17,7 +19,9 @@ class LaunchSecurityReceiptTests(unittest.TestCase):
         rows = [{"capability": "atomic_api", "headers": supported, "runtime": supported},
                 {"capability": "self_anchored_bundle", "eligible": eligible,
                  "diagnostic": "verified_same_organization_bundle" if eligible else "apple_anchor_or_fixed_self_identifier_refused"}]
-        expected = dict(probe.ANCHOR_CASES) if eligible else {}
+        expected = dict(probe.COMMON_CASES)
+        if eligible:
+            expected.update(probe.ANCHOR_CASES)
         if eligible and supported:
             expected.update(probe.CHANNEL_CASES)
         return rows + [{"case": name, "result": result, "pass": True} for name, result in expected.items()]
@@ -29,7 +33,7 @@ class LaunchSecurityReceiptTests(unittest.TestCase):
     def test_full_inventory_requires_both_mechanisms_and_every_observation(self):
         native = self.parse(self.rows())
         self.assertTrue(probe.complete(native))
-        self.assertEqual(len(native["cases"]), 10)
+        self.assertEqual(len(native["cases"]), 11)
         self.assertEqual(probe.SCOPE, "macos_atomic_launch_same_organization_candidate_only")
 
     def test_ci_adhoc_and_missing_native_api_never_complete(self):
@@ -37,7 +41,7 @@ class LaunchSecurityReceiptTests(unittest.TestCase):
             self.assertFalse(probe.complete(self.parse(self.rows(eligible, supported))))
 
     def test_failed_case_is_preserved_and_never_complete(self):
-        for index in range(2, 12):
+        for index in range(2, len(self.rows())):
             rows = self.rows()
             rows[index]["pass"] = False
             native = self.parse(rows)
@@ -93,6 +97,28 @@ class LaunchSecurityReceiptTests(unittest.TestCase):
             (root / "mac_launch_security.c").write_bytes(b"tampered\n")
             with self.assertRaises(PreflightError):
                 probe.verify_package(root, probe.FILES, probe.SCOPE)
+
+    def test_impossible_ci_acceptance_cannot_leave_a_success_claim(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            def fake_run(args, _timeout=20):
+                output = ""
+                if "-productVersion" in args or "--show-sdk-version" in args:
+                    output = "27.2"
+                elif "--show-sdk-path" in args:
+                    output = "/fake/sdk"
+                elif args[0] == "/usr/bin/uname":
+                    output = "arm64"
+                elif "clang" in args:
+                    Path(args[-1]).write_bytes(b"fixture\n")
+                elif len(args) > 1 and args[1] == "probe":
+                    output = "\n".join(json.dumps(row) for row in self.rows())
+                return SimpleNamespace(code=0, output=output, limited=False, timed_out=False, pipe_failed=False)
+            report = {"candidate_complete": False}
+            with patch.object(probe, "run_bounded", fake_run):
+                with self.assertRaisesRegex(PreflightError, "ci_adhoc_self_was_not_explicitly_refused"):
+                    probe.collect(report, Path(__file__).parent, work, ci=True)
+            self.assertFalse(report["candidate_complete"])
 
 
 if __name__ == "__main__":

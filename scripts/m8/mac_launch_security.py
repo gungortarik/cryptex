@@ -23,6 +23,7 @@ DAEMON = "com.cryptex.m8.custody.daemon"
 FILES = ("MAC-BAGLANTI.command", "MAC-BAGLANTI-BASLA.txt", "mac_launch_security.py",
          "mac_launch_security.c", "mac_xpc_probe.py", "mac_identity_preflight.py")
 ANCHOR_CASES = {"wrong_identifier_refused": "refused", "adhoc_counterpart_refused": "refused"}
+COMMON_CASES = {"supervisor_timeout_distinct": "not_child_deadline"}
 CHANNEL_CASES = {
     "raw_fork_excludes_both_ends": "excluded",
     "unrelated_spawn_excludes_both_ends": "excluded",
@@ -40,7 +41,7 @@ def parse_native(output):
     if len(output.encode("utf-8")) > 65536:
         raise PreflightError("native_output_limit")
     rows = [json.loads(line, object_pairs_hook=unique_object) for line in output.splitlines()]
-    if not 2 <= len(rows) <= 12 or any(type(row) is not dict for row in rows):
+    if not 2 <= len(rows) <= 13 or any(type(row) is not dict for row in rows):
         raise PreflightError("native_inventory_invalid")
     api, anchor = rows[:2]
     if (set(api) != {"capability", "headers", "runtime"} or api["capability"] != "atomic_api"
@@ -53,7 +54,9 @@ def parse_native(output):
             or anchor["eligible"] != (anchor["diagnostic"] == "verified_same_organization_bundle")):
         raise PreflightError("native_anchor_invalid")
     cases = rows[2:]
-    expected = dict(ANCHOR_CASES) if anchor["eligible"] else {}
+    expected = dict(COMMON_CASES)
+    if anchor["eligible"]:
+        expected.update(ANCHOR_CASES)
     if anchor["eligible"] and api["runtime"]:
         expected.update(CHANNEL_CASES)
     if len(cases) != len(expected) or {r.get("case") for r in cases} != set(expected):
@@ -67,7 +70,7 @@ def parse_native(output):
 
 def complete(native):
     return (native["atomic_api"]["runtime"] and native["anchor"]["eligible"]
-            and len(native["cases"]) == len(ANCHOR_CASES) + len(CHANNEL_CASES)
+            and len(native["cases"]) == len(COMMON_CASES) + len(ANCHOR_CASES) + len(CHANNEL_CASES)
             and all(row["pass"] for row in native["cases"]))
 
 
@@ -124,7 +127,7 @@ def collect(report, package, work, ci=False):
     report["native"] = native
     if any(not row["pass"] for row in native["cases"]):
         raise PreflightError("native_candidate_case_failed")
-    report["candidate_complete"] = complete(native)
+    observed = complete(native)
     if ci:
         if native["anchor"]["eligible"] or native["anchor"]["diagnostic"] != "apple_anchor_or_fixed_self_identifier_refused":
             raise PreflightError("ci_adhoc_self_was_not_explicitly_refused")
@@ -135,6 +138,7 @@ def collect(report, package, work, ci=False):
         report["outcome"] = "candidate_incomplete_atomic_public_api_unavailable"
     else:
         report["outcome"] = "atomic_parent_handoff_and_same_organization_bundle_observed"
+    report["candidate_complete"] = observed and not ci
 
 
 def main():
@@ -155,7 +159,9 @@ def main():
               "ci_only": args.ci, "candidate_complete": False, "private_key_use": "not_requested",
               "production_integration": "not_implemented", "production_changed": False, "m8_complete": False,
               "product_minimum_os": "unchanged_unconfirmed", "candidate_atomic_api_os_floor": "27.0",
-              "publisher_or_notarization_acceptance": False, "unix_frame_sender_attribution": "not_proven"}
+              "publisher_or_notarization_acceptance": False, "unix_frame_sender_attribution": "not_proven",
+              "concurrent_bundle_replacement": "not_tested", "bidirectional_daemon_instance_pin": "not_implemented",
+              "owner_session_restart": "not_tested"}
     def interrupted(*_):
         raise KeyboardInterrupt
     for name in ("SIGINT", "SIGTERM", "SIGHUP"):
@@ -166,13 +172,13 @@ def main():
             report["source_commit"] = verify_package(package, FILES, SCOPE)
         collect(report, package, work, args.ci)
     except PreflightError as error:
-        report.update(outcome="candidate_incomplete", diagnostic=str(error))
+        report.update(outcome="candidate_incomplete", diagnostic=str(error), candidate_complete=False)
         code = 2
     except KeyboardInterrupt:
-        report.update(outcome="candidate_interrupted", diagnostic="interrupted")
+        report.update(outcome="candidate_interrupted", diagnostic="interrupted", candidate_complete=False)
         code = 130
     except Exception:
-        report.update(outcome="candidate_incomplete", diagnostic="internal_error")
+        report.update(outcome="candidate_incomplete", diagnostic="internal_error", candidate_complete=False)
         code = 2
     report["runner_exit"] = code
     with (work / "result.json").open("x", encoding="utf-8", newline="\n") as target:

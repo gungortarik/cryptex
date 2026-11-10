@@ -26,6 +26,7 @@ extern char **environ;
 #define MALFORMED 41
 #define DEADLINE 42
 #define INTERNAL 43
+#define SUPERVISOR_DEADLINE 44
 _Static_assert(sizeof(audit_token_t) == 32, "opaque handoff size changed");
 static const char *policy_diagnostic = "untrusted_self";
 
@@ -167,8 +168,8 @@ static bool parent_valid(const audit_token_t *token, Policy *policy) {
     CFDataRef audit = CFDataCreate(NULL, (const UInt8 *)token, sizeof(*token));
     CFNumberRef pid = CFNumberCreate(NULL, kCFNumberIntType, &expected);
     CFDictionaryRef attrs = NULL;
-    SecCodeRef parent = NULL;
-    CFDataRef hash = NULL;
+    SecCodeRef parent = NULL, refreshed = NULL;
+    CFDataRef hash = NULL, refreshed_hash = NULL;
     mach_port_t task = MACH_PORT_NULL;
     bool valid = false;
     if (!audit || !pid) goto done;
@@ -185,10 +186,17 @@ static bool parent_valid(const audit_token_t *token, Policy *policy) {
     valid = getppid() == expected && mach_port_type(mach_task_self(), task, &type) == KERN_SUCCESS &&
         (type & MACH_PORT_TYPE_SEND) && !(type & MACH_PORT_TYPE_DEAD_NAME) &&
         pid_for_task(task, &held_pid) == KERN_SUCCESS && held_pid == expected &&
-        SecCodeCheckValidity(parent, kSecCSStrictValidate, policy->peer) == errSecSuccess;
+        SecCodeCopyGuestWithAttributes(NULL, attrs, 0, &refreshed) == errSecSuccess && refreshed &&
+        SecCodeCheckValidity(refreshed, kSecCSStrictValidate, policy->peer) == errSecSuccess;
+    if (valid) {
+        refreshed_hash = image_hash((SecStaticCodeRef)refreshed);
+        valid = refreshed_hash && CFEqual(refreshed_hash, policy->peer_hash) && getppid() == expected;
+    }
 done:
     if (MACH_PORT_VALID(task)) mach_port_deallocate(mach_task_self(), task);
     if (hash) CFRelease(hash);
+    if (refreshed_hash) CFRelease(refreshed_hash);
+    if (refreshed) CFRelease(refreshed);
     if (parent) CFRelease(parent);
     if (attrs) CFRelease(attrs);
     if (pid) CFRelease(pid);
@@ -208,7 +216,8 @@ static bool atomic_pipe(int fds[2]) {
     if (__builtin_available(macOS 27.0, *)) {
         if (pipe2(fds, O_CLOEXEC | O_CLOFORK | O_NONBLOCK)) return false;
         int expected = FD_CLOEXEC | FD_CLOFORK;
-        if ((fcntl(fds[0], F_GETFD) & expected) == expected && (fcntl(fds[1], F_GETFD) & expected) == expected) return true;
+        int reader = fcntl(fds[0], F_GETFD), writer = fcntl(fds[1], F_GETFD);
+        if (reader >= 0 && writer >= 0 && (reader & expected) == expected && (writer & expected) == expected) return true;
         close(fds[0]); close(fds[1]);
     }
 #else
@@ -229,7 +238,7 @@ static int reap(pid_t pid, int timeout) {
     }
     kill(pid, SIGKILL);
     while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
-    return DEADLINE;
+    return SUPERVISOR_DEADLINE; // Never impersonate the child's own exit42.
 }
 
 static pid_t spawn(const char *binary, char *const args[], int handoff) {
@@ -315,6 +324,7 @@ static bool handoff(const char *daemon, int mode, int expected) {
 }
 
 int main(int argc, char **argv) {
+    if (argc == 2 && !strcmp(argv[1], "hold")) { for (;;) pause(); }
     if (argc == 2 && !strcmp(argv[1], "handoff")) return read_handoff();
     if (argc == 4 && !strcmp(argv[1], "inspect-closed")) {
         int a = atoi(argv[2]), b = atoi(argv[3]);
@@ -325,6 +335,9 @@ int main(int argc, char **argv) {
     bool eligible = policy_open(&policy, true);
     printf("{\"capability\":\"atomic_api\",\"headers\":%s,\"runtime\":%s}\n", HAS_ATOMIC_API ? "true" : "false", atomic_available() ? "true" : "false");
     printf("{\"capability\":\"self_anchored_bundle\",\"eligible\":%s,\"diagnostic\":\"%s\"}\n", eligible ? "true" : "false", policy_diagnostic);
+    char *hold[] = {argv[0], "hold", NULL};
+    pid_t stalled = spawn(argv[0], hold, -1);
+    row("supervisor_timeout_distinct", "not_child_deadline", stalled > 0 && reap(stalled, 150) == SUPERVISOR_DEADLINE);
     if (!eligible) {
         policy_close(&policy);
         return 0; // Explicitly incomplete, never reported as positive custody.
