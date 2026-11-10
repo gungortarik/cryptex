@@ -1,5 +1,30 @@
 # 34 — Current Implementation Handoff
 
+## Owner signed Mac observations received; exact-instance gate remains open (2026-11-10)
+
+MAC-IMZA-SONUC.zip from the personal MacBook reports successful existing-key
+fixture signing/native compilation and runner_exit0 on sourceee5d417. Positive
+nonce controls passed; wrong-ID/ad-hoc senders were explicitly rejected by
+message-derived SecCode validation. Their guarded connection errors remain
+inconclusive; signature-removed executables exited-9 without authorization proof.
+The same-requirement second process successfully used the forwarded endpoint
+after origin exit: signer-only binding is insufficient in that synthetic topology.
+This does not test a parent-launch custody mechanism or show all XPC designs
+infeasible. Full feasibility remains INCOMPLETE, exact-instance binding NOT PROVEN.
+
+Receipt SHA256:
+`21d85852f84d59873137c08ec61ca47aabd35b9730dfe061a55c84237f8a5510`;
+native source hash and case consistency checked. Launchd registration removal
+reported; server exit not independently observed. No production/trust change;
+M8 OPEN. [Detailed owner observations](../evidence/m8/m8-macos-signed-xpc-observations-20261109.md).
+
+Next: continue the existing bounded source/native feasibility investigation of
+exact parent-launch connection custody, stale/cross-connection and restart
+refusal. Do not migrate production IPC, accept ADR changes or substitute PID/
+signer-only identity. Second certified signer, actual stale-connection reuse and
+product minimum OS remain unverified. No new owner package is requested now;
+do not repeat successful signing/API/Windows pairing/transfer tests.
+
 ## Signed synthetic XPC package ready; native harness CI passed (2026-11-09)
 
 MAC-IMZA.command uses the personal Mac's single existing certificate for temporary

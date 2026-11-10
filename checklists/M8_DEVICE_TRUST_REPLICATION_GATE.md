@@ -41,15 +41,19 @@ screenshots or an unrun test package:
   `platform_peer_identity_unavailable` on Mac. Bind the exact live Desktop
   connection/process instance before enabling those operations; a PID match alone
   cannot replace that proof. Preserve stale/cross-connection confirmation refusal.
-  The previously authorized synthetic XPC feasibility probe is still NOT RUN in
-  `evidence/m8/m8-macos-xpc-peer-identity-feasibility-20261025.md`; complete that
-  bounded probe/review first. It does not authorize replacing ADR-0007's production
+  The previously authorized synthetic XPC feasibility probe has partial native
+  owner observations in `evidence/m8/m8-macos-signed-xpc-observations-20261109.md`:
+  signing/positive controls and wrong-ID/ad-hoc message rejection worked, but a
+  same-requirement second process used the forwarded endpoint. Parent-launch
+  exact-instance custody remains unproven; continue the bounded probe/review.
+  This does not authorize replacing ADR-0007's production
   Unix-socket IPC. Any production architecture amendment needs separate acceptance.
   Latest source59411433 personal-Mac prerequisite receipt passed API compile/
   presence and enumerated one valid file-Keychain signing certificate; the
-  earlier borrowed-Mac receipt had zero. Select the existing identity locally;
-  actual signing/private-key use and different-signer fixture availability remain
-  untested. Do not repeat API preflight or completed Windows pairing checks.
+  earlier borrowed-Mac receipt had zero. Existing-key synthetic signing succeeded
+  in the2026-11-10 owner run. Different certified signer, actual stale-connection
+  reuse, connection-negative attribution and product minimum OS remain unverified.
+  Do not repeat signing/API preflight or completed Windows pairing checks.
 - Keep normal startup feeder and peer/folder configuration disabled until the
   complete protocol/security acceptance gate permits activation. Passing Mac CI
   with these paths excluded/refused is useful regression evidence, not parity.

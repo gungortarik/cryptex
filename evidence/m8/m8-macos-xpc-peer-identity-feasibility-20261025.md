@@ -1,6 +1,6 @@
 # M8 macOS XPC peer-identity feasibility — owner-authorized spike
 
-**Status: PRELIMINARY API FEASIBILITY; native spike NOT RUN.** Owner chose a
+**Status: PARTIAL NATIVE OBSERVATIONS; full feasibility INCOMPLETE (2026-11-10).** Owner chose a
 bounded XPC feasibility spike on 2026-10-25. This authorizes investigation and
 synthetic native probes only. It does not accept ADR-0019, amend accepted
 ADR-0007, change production IPC, enable trust/transport, or claim M8 complete.
@@ -85,11 +85,20 @@ peer authentication.
 
 ## Result
 
-**NOT RUN.** This Windows workstation has no macOS SDK/runtime, so there is no
-native XPC compilation or adversarial run in this evidence. Official API
-documentation supports a concrete probe, but does not by itself prove
-same-process-instance binding. The next required action is to build and run the
-synthetic probe on the Mac before any ADR-0007 decision.
+The original2026-10-25 probe was NOT RUN on the Windows workstation. The later
+[signed synthetic package and owner receipt](m8-macos-signed-xpc-observations-20261109.md)
+record partial native results on2026-11-10/sourceee5d417: existing certificate
+signing and expected-client messages worked; wrong-ID/ad-hoc message-derived
+validation rejected. Connection-level negative errors and signature-removed
+execution remain inconclusive. A same-requirement second process successfully
+used the forwarded endpoint after origin exit, so signer validation alone is
+insufficient for exact-instance binding in that tested topology.
+
+**INCOMPLETE.** No parent-launch custody mechanism was tested. Do not generalize
+the courier result to every XPC topology or declare production migration feasible.
+Continue the already authorized bounded custody/lifetime analysis and tests;
+second certified signer, actual stale-connection reuse and the minimum supported
+product OS still need evidence. Accepted ADR-0007 remains unchanged and M8 OPEN.
 
 ## Sources
 

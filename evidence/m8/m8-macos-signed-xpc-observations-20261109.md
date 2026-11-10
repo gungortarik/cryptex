@@ -1,6 +1,7 @@
 # M8 synthetic signed XPC observation package
 
-Status: native harness CI passed; owner certificate run NOT RUN; full matrix INCOMPLETE.
+Status: owner certificate partial run received2026-11-10; signer-only insufficiency
+observed; full matrix INCOMPLETE and exact-instance binding NOT PROVEN.
 This continues the authorized XPC feasibility investigation only. Accepted
 ADR-0007 production Unix-socket IPC, canonical data, trust and transport are unchanged.
 
@@ -99,3 +100,46 @@ confirmed the receipt/authorization precision corrections; owner run remains pen
 Owner next: extract on the personal MacBook, double-click MAC-IMZA.command,
 allow codesign key access once if asked (or cancel), return MAC-IMZA-SONUC.zip.
 No terminal, Windows VM, new certificate or repeated pairing/API preflight needed.
+
+## Personal MacBook signed observations received (2026-11-10)
+
+The owner returned `MAC-IMZA-SONUC.zip`, SHA256
+`21d85852f84d59873137c08ec61ca47aabd35b9730dfe061a55c84237f8a5510`.
+The sole regular member is result.json,4809bytes, collected at
+2026-11-10T20:19:16Z on sourceee5d41764aef396e3064ffb52c1f357e2acca310.
+Receipt source hash matches the committed native C source:
+`9c47fe03a5c5c54556d01dfdb42c60d406f510085d724ac490af4d897f3349df`.
+Duplicate JSON keys, source binding, case consistency and explicit limits were
+checked. The supplied receipt reports macOS27.2/build26B123 arm64, SDK27.2,
+native_compile=pass, single_existing_certificate and
+private_key_use=synthetic_fixture_signing_succeeded. Runner exit0 means the
+observation harness finished, not that every authorization case passed.
+
+| Observation | Owner receipt | Conclusion |
+| --- | --- | --- |
+| Expected guarded/observer client, expected after negatives, fresh process | Echo, exit0, one valid delivered message each | Four positive controls passed |
+| Wrong identifier, observer lane | Explicit message_rejected, delivered validation false | Message-level rejection passed |
+| Ad-hoc signature, observer lane | Explicit message_rejected, delivered validation false | Message-level rejection passed; not a second certified signer |
+| Wrong identifier/ad-hoc, guarded lane | connection_error, no delivered message | Inconclusive; not an attributed connection-level authorization refusal |
+| Signature-removed executable, both lanes | client_launch_or_exit_failure, exit-9 | Inconclusive; does not prove unsigned XPC sender rejection or the cause of termination |
+| Origin endpoint courier | stored, exit0 | Courier control only, not authorization proof |
+| Same-requirement recipient after origin exit | Echo, valid delivered guarded message | Signer-only insufficiency observed |
+
+The synthetic endpoint remained usable by a separately executed same-requirement
+client after the origin exited. Thus certificate/identifier requirements and
+message-derived SecCode validation alone did not establish the expected original
+process instance in this tested courier topology. This is not a bypass of an
+implemented parent-launch custody mechanism: none was implemented or tested.
+Do not claim production IPC infeasible in every topology, or weaken authorization
+to PID/signer-only matching. The already authorized bounded investigation must
+next analyze/test exact parent-launch connection custody and stale/cross-connection
+refusal before any production architecture decision. Keep production Mac owner
+operations fail-closed under accepted ADR-0007.
+
+Full feasibility remains INCOMPLETE: second certified signer not selected/tested,
+actual stale-connection reuse not run, minimum product OS unconfirmed, exact-instance
+binding not proven. Launchd registration removal is reported; server process exit
+was not independently observed. production_changed=false and m8_complete=false.
+These are owner-supplied local observations, not remote attestation. The raw
+receipt/archive stays outside Git. Do not repeat successful signing/API/Windows
+pairing tests; no new owner device batch is requested for this receipt review.

@@ -35,8 +35,8 @@ fixtures remain outside ordinary CI; installer packaging was skipped by design.
 
 **Next continuation point:** the consolidated Mac stage. The previously authorized
 [synthetic connection-identity feasibility probe](evidence/m8/m8-macos-xpc-peer-identity-feasibility-20261025.md)
-remains NOT RUN. It must establish exact process/connection binding before any
-production IPC architecture amendment. Complete the Mac profile/publication
+has partial native observations. Exact process/connection binding must be proven
+before any production IPC architecture amendment. Complete the Mac profile/publication
 adapters and native proof under the accepted contracts; retain fail-closed
 operations and disabled normal feeding until acceptance. Then verify real
 cross-device offline/restriction propagation and consolidate final review.
@@ -46,10 +46,13 @@ is verified on Mac CI42687722399/source59411433. The latest receipt from the
 user's personal MacBook passed API compile/presence checks and enumerated one
 valid file-Keychain signing certificate (the earlier borrowed Mac reported zero).
 The [bounded signed XPC observation package](evidence/m8/m8-macos-signed-xpc-observations-20261109.md)
-is ready on sourceee5d417 after native Mac harness CI42701476626 passed. Next run
-MAC-IMZA.command on the personal MacBook with that existing identity. Owner key
-use/full matrix remain untested; no trust change occurred. Do not repeat completed
-API or Windows VM pairing/transfer checks.
+ran on the personal MacBook/sourceee5d417: fixture signing and positive controls
+passed, and wrong-ID/ad-hoc messages were rejected. A same-requirement second
+process could use the forwarded endpoint; signer-only validation does not establish
+the original process instance in this topology. Next investigate parent-launch
+connection custody under the existing bounded scope. Full feasibility remains
+INCOMPLETE; no production IPC/trust change. Do not repeat completed signing/API or
+Windows VM pairing/transfer checks.
 
 The [M8 completion ledger](checklists/M8_DEVICE_TRUST_REPLICATION_GATE.md) maps
 requirements to evidence and open gates. The [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md)
