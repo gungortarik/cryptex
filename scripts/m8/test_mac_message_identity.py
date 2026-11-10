@@ -1,11 +1,36 @@
 import json
+import hashlib
+import importlib.util
+import io
+from pathlib import Path
+import tempfile
 import unittest
+import zipfile
 
 import mac_message_identity as probe
 from mac_identity_preflight import PreflightError
 
 
 class MessageIdentityReceiptTests(unittest.TestCase):
+    def test_exact_message_package_rejects_tampering_and_other_probe_scope(self):
+        spec = importlib.util.spec_from_file_location('message_packager', Path(__file__).with_name('package-macos-message.py'))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        files = {name: Path(__file__).with_name(name).read_bytes() for name in probe.FILES}
+        payload = module.packager.package_bytes('a' * 40, files, probe.FILES, probe.SCOPE)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                self.assertEqual(archive.namelist(), list(probe.FILES) + ['MANIFEST.json'])
+                self.assertEqual(archive.getinfo('MAC-SUREC.command').external_attr >> 16, 0o100755)
+                archive.extractall(root)
+            self.assertEqual(probe.verify_package(root, probe.FILES, probe.SCOPE), 'a' * 40)
+            with self.assertRaises(PreflightError):
+                probe.verify_package(root)  # XPC scope must not accept a Mach package.
+            (root / 'mac_message_identity.c').write_bytes(b'tampered\n')
+            with self.assertRaises(PreflightError):
+                probe.verify_package(root, probe.FILES, probe.SCOPE)
+
     @staticmethod
     def valid_rows():
         rows = []

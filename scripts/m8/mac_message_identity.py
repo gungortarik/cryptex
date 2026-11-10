@@ -62,9 +62,12 @@ def collect(report, package, work, ci=False):
     binary = work / "message-identity"
     source = package / "mac_message_identity.c"
     report["native_source_sha256"] = hashlib.sha256(source.read_bytes()).hexdigest()
-    checked(run_bounded, ["/usr/bin/xcrun", "clang", "-std=c11", "-Wall", "-Wextra", "-Werror",
-                         "-mmacosx-version-min=12.0", "-isysroot", sdk, str(source), "-framework", "Security",
-                         "-framework", "CoreFoundation", "-lbsm", "-o", str(binary)], "native_compile", 60)
+    compiled = run_bounded(["/usr/bin/xcrun", "clang", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                           "-mmacosx-version-min=12.0", "-isysroot", sdk, str(source), "-framework", "Security",
+                           "-framework", "CoreFoundation", "-lbsm", "-o", str(binary)], 60)
+    if ci:
+        print(compiled.output, file=sys.stderr)
+    checked(lambda *_: compiled, [], "native_compile", 60)
     report["native_compile"] = "pass"
     sign = "-" if ci else select_identity(checked(run_bounded, ["/usr/bin/security", "find-identity", "-v", "-p", "codesigning"], "identity_inventory"))
     report["signing_mode"] = "disposable_ci_adhoc" if ci else "single_existing_certificate"

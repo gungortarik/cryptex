@@ -15,16 +15,16 @@ from mac_xpc_probe import FILES, SCOPE
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def package_bytes(commit, files):
-    if not re.fullmatch(r"[0-9a-f]{40}", commit) or set(files) != set(FILES):
+def package_bytes(commit, files, expected_files=FILES, scope=SCOPE):
+    if not re.fullmatch(r"[0-9a-f]{40}", commit) or set(files) != set(expected_files):
         raise ValueError("source binding invalid")
     for data in files.values():
         if not data or len(data) > 65536 or b"\r" in data:
             raise ValueError("member invalid")
         data.decode("utf-8")
-    manifest = {"schema": 1, "scope": SCOPE, "source_commit": commit,
-                "files": {name: hashlib.sha256(files[name]).hexdigest() for name in FILES}}
-    members = {name: files[name] for name in FILES}
+    manifest = {"schema": 1, "scope": scope, "source_commit": commit,
+                "files": {name: hashlib.sha256(files[name]).hexdigest() for name in expected_files}}
+    members = {name: files[name] for name in expected_files}
     members["MANIFEST.json"] = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:

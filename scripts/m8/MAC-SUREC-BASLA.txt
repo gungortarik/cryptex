@@ -1,0 +1,19 @@
+1. ZIP'i kendi MacBook'unda ayikla.
+2. MAC-SUREC.command dosyasina cift tikla.
+3. Keychain codesign izni sorarsa bu islem icin Allow / Izin Ver sec.
+4. Finder'da gosterilen MAC-SUREC-SONUC.zip dosyasini sohbete ekle.
+
+Bu paket mevcut tek imzalama kimliginle gecici tek bir program imzalar.
+Ayni programin farkli sureclerini, sahte mesaj kimligini, tekrar gonderimi,
+ayni PID altinda yeniden calismayi ve surec cikisindan sonra kuyrukta kalan
+mesaji sinar. Yeni sertifika olusturmaz, ozel anahtar disari aktarmaz.
+
+Bu XPC degil, ayri bir ham Mach mesaji fizibilite denemesidir. Isletim
+sisteminin mesaja ekledigi gercek gonderen kimligini herkese acik API'lerle
+okur. Audit token baytlari, sertifika secicisi ve anahtarlar sonuca konmaz.
+Deneme dosyalari ozel /private/tmp klasorundedir; Cryptex verileri kullanilmaz.
+Kalici servis kurmaz, uretim iletisimini veya sistem guvenligini degistirmez.
+
+Basarili olmasi, XPC'nin cozuldugu veya Cryptex'in uretimde bu yonteme
+gecmesine onay verildigi anlamina gelmez. Uygulama entegrasyonu, asgari
+urun macOS surumu ve tum M8 guvenlik kabulu ayri acik kontrollere sahiptir.

@@ -16,6 +16,7 @@ jobs:
         run: |
           bash -n scripts/m8/MAC-KIMLIK.command
           bash -n scripts/m8/MAC-IMZA.command
+          bash -n scripts/m8/MAC-SUREC.command
           python3 -m unittest discover -s scripts/m8 -p test_mac_identity_preflight.py -v
           python3 -m unittest discover -s scripts/m8 -p test_mac_xpc_probe.py -v
           python3 -m unittest discover -s scripts/m8 -p test_mac_peer_api_audit.py -v
