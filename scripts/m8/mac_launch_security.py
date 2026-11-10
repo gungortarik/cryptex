@@ -37,8 +37,8 @@ DIAGNOSTICS = {"apple_anchor_or_fixed_self_identifier_refused", "certified_team_
 PUBLIC_HEADERS = "#include <fcntl.h>\n#include <unistd.h>\n"
 PUBLIC_ATOMIC_EXPRESSIONS = {
     "pipe2_declaration": "if (__builtin_available(macOS 27.0, *)) { (void)&pipe2; }",
-    "open_clofork_declaration": "(void)O_CLOFORK;",
-    "fd_clofork_declaration": "(void)FD_CLOFORK;",
+    "open_clofork_declaration": "if (__builtin_available(macOS 27.0, *)) { (void)O_CLOFORK; }",
+    "fd_clofork_declaration": "if (__builtin_available(macOS 27.0, *)) { (void)FD_CLOFORK; }",
     "combined_atomic_expression": "if (__builtin_available(macOS 27.0, *)) { int fds[2]; (void)pipe2(fds, O_CLOEXEC | O_CLOFORK | O_NONBLOCK); (void)fcntl(fds[0], F_SETFD, FD_CLOEXEC | FD_CLOFORK); }",
 }
 

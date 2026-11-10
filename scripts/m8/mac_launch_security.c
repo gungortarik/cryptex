@@ -274,7 +274,11 @@ static bool fork_excludes(int first, int second) {
 
 static int read_handoff(void) {
 #if HAS_ATOMIC_API
-    if (fcntl(HANDOFF_FD, F_SETFD, FD_CLOEXEC | FD_CLOFORK) < 0 || !fork_excludes(HANDOFF_FD, -1)) return INTERNAL;
+    if (__builtin_available(macOS 27.0, *)) {
+        if (fcntl(HANDOFF_FD, F_SETFD, FD_CLOEXEC | FD_CLOFORK) < 0 || !fork_excludes(HANDOFF_FD, -1)) return INTERNAL;
+    } else {
+        return INTERNAL;
+    }
 #else
     return INTERNAL;
 #endif
