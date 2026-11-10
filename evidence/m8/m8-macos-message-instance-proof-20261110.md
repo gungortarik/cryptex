@@ -1,6 +1,6 @@
 # M8 raw Mach actual-sender instance experiment
 
-Status: eight synthetic native CI cases PASS; personal-Mac receipt pending.
+Status: eight synthetic native CI cases and eight personal-Mac cases PASS.
 XPC exact-message binding and production integration remain NOT PROVEN/not implemented.
 This is a bounded mechanism experiment under the owner-requested process-binding
 investigation, not acceptance of a new transport or an amendment to ADR-0007.
@@ -109,13 +109,51 @@ executable launcher mode were verified. The package signs one temporary binary
 with the personal Mac's single existing certificate, never exports/imports a key,
 and runs only the synthetic message experiment outside Git in private TEMP.
 
-Owner next: extract on the personal MacBook, run MAC-SUREC.command, allow codesign
-once if asked, return MAC-SUREC-SONUC.zip. No Windows VM/repeated pairing/API test.
-Native personal-certificate behavior is pending. Even if it passes, production
-integration, actual parent custody, receiver restart/session semantics, minimum
+The personal-certificate receipt is now recorded below; do not rerun this package.
+Production integration, actual parent custody, receiver restart/session semantics, minimum
 product OS and protocol/security acceptance remain open. A new Mach production
 channel would require a separately reviewed/accepted ADR-0007 amendment. Do not
 migrate IPC, enable owner operations/trust/transport or close M8 from this result.
+
+## Personal MacBook receipt verified (2026-11-10)
+
+Owner-supplied `MAC-SUREC-SONUC.zip`, SHA256
+`14df58e67aff07697ba9a52d5245b41c494eac34a5011c1437356b2f6e98fddf`,
+contains only regular result.json,2353bytes, collected at2026-11-10T20:51:15Z.
+Source85ef4b13099ebf59b835ff466b897fa6bfe7429d and native C source SHA256
+`9be82cace4229cedde3af0f5cd95e08b8951d4ea8b1a381a67df383070dc4ea6`
+match the committed candidate. Duplicate-key/type checks, exact eight-case
+inventory/results, digest formats and explicit scope limits passed validation.
+
+The receipt reports macOS27.2/SDK27.2 arm64, native_compile=pass,
+signing_mode=single_existing_certificate,
+private_key_use=synthetic_fixture_signing_succeeded and ci_only=false.
+Binary SHA256:
+`6f8fb284a84f758821f69c6751c5c048adb390c014705779288f04beb99044e1`.
+All eight cases in the table above passed on this personal Mac as well:
+the actual same-binary second sender was rejected despite sharing the send right
+and supplying the expected token in its payload; same-PID exec showed a different
+kernel generation and rejected; the queued post-exit message rejected despite
+matching its original send-time PID/generation. Expected controls, explicit fresh
+enrollment, forged-enrollment rejection and sequence replay checks all passed.
+Runner_exit0 is consistent with that complete synthetic inventory.
+
+This establishes the tested raw Mach sender-instance mechanism on this host,
+not production custody. The receiver enrolled its spawned worker; it did not run
+the real Desktop-parent/daemon-child launch, restart or owner-confirmation flow.
+The receipt explicitly retains xpc_exact_message_sender_binding=not_proven,
+production_integration=not_implemented, product_minimum_os=unconfirmed,
+actual_pid_reuse=not_forced, production_changed=false and m8_complete=false.
+This remains owner-supplied local evidence, not remote attestation. Raw archives,
+runtime data, credentials and token bytes are not copied into Git.
+
+Next: review actual Desktop-parent custody and the production adapter boundary.
+ADR-0007's existing Unix-socket transport remains accepted; the newly confirmed
+public audit-generation getter also warrants evaluating that existing route before
+recommending a different transport. This receipt does not select a Mach production
+channel. Any such change requires its own concrete reviewed ADR amendment and
+explicit owner acceptance. No further owner package is requested for this receipt
+review; do not repeat successful API/signing/instance/Windows pairing tests.
 
 ## Primary references
 

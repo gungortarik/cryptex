@@ -54,11 +54,13 @@ connection custody under the existing bounded scope. Full feasibility remains
 INCOMPLETE; no production IPC/trust change.
 
 A separate [raw Mach actual-sender experiment](evidence/m8/m8-macos-message-instance-proof-20261110.md)
-passed eight native CI cases on85ef4b1, including same-binary intrusion and same-PID
-exec replacement. MAC-SUREC.command is ready for personal-Mac verification.
-This proves only the synthetic mechanism on the tested CI host, not XPC binding,
-Desktop-parent custody or production integration. A Mach production channel needs
-separate ADR acceptance. Do not repeat completed Windows pairing/API tests.
+passed eight native CI cases and eight personal-Mac cases on85ef4b1, including
+same-binary intrusion, same-PID exec replacement and queued-message refusal after
+sender exit. This verifies the scoped synthetic mechanism on those hosts, not XPC
+binding, Desktop-parent custody or production integration. Next review actual
+parent custody and the existing accepted Unix-socket adapter before selecting any
+transport change. A Mach production channel needs separate ADR acceptance.
+Do not repeat completed instance/signing/Windows pairing/API tests.
 
 The [M8 completion ledger](checklists/M8_DEVICE_TRUST_REPLICATION_GATE.md) maps
 requirements to evidence and open gates. The [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md)

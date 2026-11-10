@@ -1,5 +1,28 @@
 # 34 — Current Implementation Handoff
 
+## Personal-Mac raw sender-instance receipt passed8/8; production custody remains open (2026-11-10)
+
+MAC-SUREC-SONUC.zip from the personal MacBook passed all eight synthetic cases
+on source85ef4b1: existing-certificate signing/native compile, expected controls,
+same-binary shared-right/forged-payload refusal, replay, same-PID exec generation
+change, fresh explicit enrollment and queued-message refusal after sender exit.
+macOS27.2/SDK27.2 arm64, ci_only=false, runner_exit0. Receipt SHA256:
+`14df58e67aff07697ba9a52d5245b41c494eac34a5011c1437356b2f6e98fddf`.
+Committed C source hash and exact case/scope consistency verified.
+[Owner result and limits](../evidence/m8/m8-macos-message-instance-proof-20261110.md).
+
+Do not call this production Desktop custody: the receiver pins its spawned worker,
+not the actual Desktop-parent/daemon-child launch. XPC exact-message binding,
+integration, receiver-restart owner-session semantics, actual PID reuse and minimum
+product OS remain unproven; production_changed=false and M8 OPEN.
+
+Next: review/test actual parent custody at the production adapter boundary under
+accepted ADR-0007. Evaluate the existing Unix-socket audit-token route using the
+now-confirmed public generation getter before recommending a new transport.
+No Mach production channel or ADR amendment was selected/accepted by this receipt.
+Any transport change needs a concrete reviewed proposal and explicit owner
+acceptance. No new owner action is requested now; do not repeat the passed package.
+
 ## Raw Mach actual-sender experiment passed CI; personal-Mac run pending (2026-11-10)
 
 Public SDK audit confirmed audit_token_to_pidversion is declared in public BSM

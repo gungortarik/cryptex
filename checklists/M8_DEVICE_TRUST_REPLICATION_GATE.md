@@ -1,6 +1,6 @@
 # M8 completion ledger
 
-Updated 2026-11-09. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
+Updated 2026-11-10. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
@@ -54,11 +54,14 @@ screenshots or an unrun test package:
   in the2026-11-10 owner run. Different certified signer, actual stale-connection
   reuse, connection-negative attribution and product minimum OS remain unverified.
   Do not repeat signing/API preflight or completed Windows pairing checks.
-  Separate raw Mach sender experiment: eight CI cases passed on85ef4b1 using
+  Separate raw Mach sender experiment: eight CI and eight personal-Mac cases passed on85ef4b1 using
   public kernel audit-trailer PID/generation getters and retained task liveness;
-  personal-Mac MAC-SUREC receipt pending. This is not an XPC fix or actual
+  personal-Mac MAC-SUREC receipt verified2026-11-10. This is not an XPC fix or actual
   Desktop-parent custody proof. See message-instance evidence20261110; accepted
   production Unix-socket IPC and disabled owner-operation gate stay unchanged.
+  Next evaluate actual Desktop-parent custody on the accepted adapter, including
+  the public audit-generation getter now confirmed in the SDK. Do not infer that
+  this receipt selected or accepted a different production transport.
 - Keep normal startup feeder and peer/folder configuration disabled until the
   complete protocol/security acceptance gate permits activation. Passing Mac CI
   with these paths excluded/refused is useful regression evidence, not parity.
