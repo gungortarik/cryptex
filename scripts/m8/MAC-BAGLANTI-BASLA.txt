@@ -1,0 +1,13 @@
+Mac uzerinde ZIP'i ayikla, MAC-BAGLANTI.command dosyasini ac.
+Sadece yeni, gecici bir sentetik uygulama paketi imzalanir ve test edilir.
+Keychain codesign izni isterse Allow sec. Always Allow secme.
+Mevcut Cryptex, notlar, cihaz profilleri ve guven kayitlari degistirilmez.
+Anahtar, sertifika secicisi, Team ID ve audit-token baytlari sonuca yazilmaz.
+Islem bitince Finder MAC-BAGLANTI-SONUC.zip dosyasini gosterecek; sohbete ekle.
+
+Bu paket iki yeni bulguyu birlikte sinar: atomik pipe mirasi ve canli imzali
+uygulamadan turetilen takim kimligiyle dogrulanmis uygulama/muadil dosya.
+Atomik kanal icin public macOS27 SDK API'leri ve runtime destegi gereklidir.
+Eksik API, uygun olmayan imza veya test hatasi basari olarak raporlanmaz.
+Imzasiz/ad-hoc kabul yolu veya pipe()+fcntl geri donusu yoktur.
+Gecmesi uretim IPC yetkilendirmesini, yayin imzasini veya M8'i tamamlamaz.

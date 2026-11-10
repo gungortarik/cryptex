@@ -17,10 +17,14 @@ jobs:
           bash -n scripts/m8/MAC-KIMLIK.command
           bash -n scripts/m8/MAC-IMZA.command
           bash -n scripts/m8/MAC-SUREC.command
+          bash -n scripts/m8/MAC-BAGLANTI.command
           python3 -m unittest discover -s scripts/m8 -p test_mac_identity_preflight.py -v
           python3 -m unittest discover -s scripts/m8 -p test_mac_xpc_probe.py -v
           python3 -m unittest discover -s scripts/m8 -p test_mac_peer_api_audit.py -v
           python3 -m unittest discover -s scripts/m8 -p test_mac_message_identity.py -v
+          python3 -m unittest discover -s scripts/m8 -p test_mac_launch_security.py -v
+      - name: Verify candidate build and explicit ad-hoc self refusal only
+        run: python3 -B scripts/m8/mac_launch_security.py --package scripts/m8 --ci
       - name: Audit supported public peer-identity SDK surface without private headers
         run: python3 -B scripts/m8/mac_peer_api_audit.py
       - name: Probe actual raw Mach message sender generation with public audit getters
