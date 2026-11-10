@@ -286,8 +286,11 @@ int main(int argc, const char **argv) {
     send_case(other, 2, NULL);
     stop_worker(other); // Reap before receiving the queued old-generation message.
     observe(receive, "queued_message_after_sender_exit", "sender_not_live_or_code_invalid", 1, 1);
-    mach_port_destroy(mach_task_self(), receive);
-    mach_port_deallocate(mach_task_self(), pinned_task);
+    // Drop the receive right explicitly, then the resulting send/dead-name ref.
+    // mach_port_destroy is deprecated as inherently unsafe on modern macOS.
+    if (mach_port_mod_refs(mach_task_self(), receive, MACH_PORT_RIGHT_RECEIVE, -1) != KERN_SUCCESS ||
+        mach_port_deallocate(mach_task_self(), receive) != KERN_SUCCESS ||
+        mach_port_deallocate(mach_task_self(), pinned_task) != KERN_SUCCESS) fail("port_cleanup");
     CFRelease(requirement);
     return failures ? 1 : 0;
 }
