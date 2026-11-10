@@ -25,6 +25,15 @@ protocol scope, then consolidate final native integration/security/human review.
 Any additional owner/device action should be packaged once against a concrete
 candidate. M9 starts only after this milestone gate is green.
 
+Latest launch correction: source4229585 requires real supervised-child readiness
+on Desktop startup/restart, with local Windows evidence; fixture/CI source867c893
+passed scoped native CI42906355843: startup Windows9/Mac10 and Desktop debug
+Windows46/Mac39, all zero failures; native clippy/format passed. The endpoint fixture requires a disposable
+account, with real standard-user token/owner checks on Windows. The Mac custody draft was withdrawn for non-atomic pipe
+inheritance and missing trusted release-image anchor; socket-owner sampling is
+not per-frame sender proof. Owner-operation gates stay closed. See
+[launch review/continuation](../evidence/m8/m8-desktop-startup-review-20261110.md).
+
 ## Next consolidated Mac implementation/verification batch
 
 Source audit at18774b2 confirms these are implementation gaps, not just missing

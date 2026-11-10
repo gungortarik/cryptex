@@ -1,5 +1,35 @@
 # 34 — Current Implementation Handoff
 
+## Real Desktop readiness corrected; Mac custody candidate refused review (2026-11-10)
+
+Source4229585 connects the real Desktop startup/restart path to a shared helper
+requiring a complete ready PID matching its owned Child. Missing readiness no
+longer falls back to success; partial files wait, malformed/oversized/nonregular
+signals fail, and failed children are killed/reaped. Initial local Windows eight tests passed, including actual daemon crash/replacement
+and fresh public health. Refined ordinary suite passed8/0failed/1ignored; its
+endpoint fixture now runs only on an explicit disposable account. Daemon all-target
+clippy/fmt and script parsing passed. Latest fixture/CI source867c893 uses a real
+standard-user Windows token; native CI42906355843 is SUCCESS: startup Windows9/0failed/0ignored, Mac10/0failed/0ignored;
+Desktop debug Windows46/0failed and Mac39/0failed. Both platforms passed
+daemon/Desktop all-target clippy, formatting and frontend build. The actual
+Windows account/profile cleanup reported success.
+[Change, review findings and exact continuation](../evidence/m8/m8-desktop-startup-review-20261110.md).
+
+The new Mac token-pipe integration draft was withdrawn before activation:
+non-atomic CLOEXEC creation could leak an end during concurrent spawning, and
+the sibling-derived signature/hash was not a trusted Cryptex release anchor.
+LOCAL_PEERTOKEN is a socket-owner sample, not exact per-frame sender attribution.
+Mac owner mutation gates and accepted Unix-socket transport remain unchanged.
+This readiness work does not close parent custody, signed/native Tauri acceptance,
+owner-session restart semantics or M8.
+
+Next: review a trusted packaged-image anchor and inheritance-safe custody under
+the accepted adapter; resolve the proposed Mac protocol's launch ordering and
+forwarded-FD boundary before activation. Then Mac profile/publication parity,
+actual offline/restriction propagation, final security/platform/human acceptance.
+Four work blocks remain, not a single last package. No owner VM/Mac action now;
+do not repeat previously passed raw Mach/signing/API/Windows pairing tests.
+
 ## Personal-Mac raw sender-instance receipt passed8/8; production custody remains open (2026-11-10)
 
 MAC-SUREC-SONUC.zip from the personal MacBook passed all eight synthetic cases

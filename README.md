@@ -33,6 +33,13 @@ readiness and Windows different-user IPC ACL passed. Daemon library: Windows596
 passed/0failed/5ignored; Mac464passed/0failed/4ignored. Existing explicit native
 fixtures remain outside ordinary CI; installer packaging was skipped by design.
 
+**Latest scoped change:** [Desktop readiness/restart correction](evidence/m8/m8-desktop-startup-review-20261110.md)
+is wired to the real launch path on source4229585. Local Windows startup/restart
+tests passed; native CI42906355843 on867c893 is SUCCESS: startup Windows9/Mac10,
+Desktop debug Windows46/Mac39, all zero failures; native lint/format passed. A new Mac custody draft was
+withdrawn after review found inheritance and trusted-image-anchor gaps. Mac owner
+gates remain closed; this is not a completed custody integration or M8 closure.
+
 **Next continuation point:** the consolidated Mac stage. The previously authorized
 [synthetic connection-identity feasibility probe](evidence/m8/m8-macos-xpc-peer-identity-feasibility-20261025.md)
 has partial native observations. Exact process/connection binding must be proven
