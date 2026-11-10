@@ -18,6 +18,7 @@ pub mod capture_receipt;
 mod capture_restart;
 pub mod compare;
 pub mod compat;
+pub mod daemon_startup;
 pub mod error;
 pub mod event_signing_key;
 pub mod identity_runtime;

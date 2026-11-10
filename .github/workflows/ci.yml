@@ -9,6 +9,10 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      desktop_startup_only:
+        description: Run scoped Desktop startup/restart tests and native Desktop lint on both platforms
+        type: boolean
+        default: false
       mac_identity_preflight_only:
         description: Run only Mac prerequisite and synthetic XPC harness checks
         type: boolean
@@ -26,8 +30,41 @@ permissions:
   contents: read
 
 jobs:
+  desktop-startup:
+    if: github.event_name == 'workflow_dispatch' && inputs.desktop_startup_only
+    name: Desktop startup (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install pinned toolchain and frontend
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+          pnpm install --frozen-lockfile
+          pnpm --filter @cryptex/desktop build
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint changed daemon and Desktop paths
+        run: cargo clippy --locked -p cryptexd -p cryptex-desktop --all-targets -- -D warnings
+      - name: Test actual child startup, malformed readiness and crash restart
+        run: cargo test --locked -p cryptexd --test desktop_startup -- --test-threads=1
+      - name: Test Desktop Rust foundation
+        run: cargo test --locked -p cryptex-desktop
+
   readiness:
-    if: github.event_name != 'workflow_dispatch' || (!inputs.mac_identity_preflight_only && !inputs.ipc_acl_only && !inputs.windows_desktop_build_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.ipc_acl_only && !inputs.windows_desktop_build_only)
     name: Readiness (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
@@ -163,7 +200,7 @@ jobs:
       # separately. These tests do not certify installed/signed distribution.
 
   ipc-acl:
-    if: github.event_name != 'workflow_dispatch' || (!inputs.mac_identity_preflight_only && !inputs.windows_desktop_build_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.windows_desktop_build_only)
     name: IPC cross-account ACL (Windows)
     runs-on: windows-latest
     timeout-minutes: 10
@@ -183,11 +220,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   mac-identity-preflight:
-    if: github.event_name == 'workflow_dispatch' && inputs.mac_identity_preflight_only
+    if: github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && inputs.mac_identity_preflight_only
     uses: ./.github/workflows/m8-macos-identity-preflight.yml
 
   windows-desktop-build:
-    if: github.event_name == 'workflow_dispatch' && !inputs.mac_identity_preflight_only && inputs.windows_desktop_build_only
+    if: github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && inputs.windows_desktop_build_only
     name: Windows Desktop package (unsigned, manual only)
     runs-on: windows-latest
     timeout-minutes: 25

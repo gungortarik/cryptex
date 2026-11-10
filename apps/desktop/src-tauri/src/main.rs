@@ -2091,7 +2091,8 @@ fn start_daemon_inner(cryptexd: &str, runtime: &Path) -> Result<(u32, Child), St
         return Err("runtime lock already held; refusing second daemon".into());
     }
 
-    let child = background_process::command(cryptexd)
+    let mut command = background_process::command(cryptexd);
+    command
         .args([
             "lifecycle",
             "hold",
@@ -2104,21 +2105,11 @@ fn start_daemon_inner(cryptexd: &str, runtime: &Path) -> Result<(u32, Child), St
         ])
         .args(pilot_runtime::daemon_transport_args(runtime))
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| e.to_string())?;
-
-    for _ in 0..100 {
-        if ready.exists() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(25));
-    }
-    let pid = fs::read_to_string(&ready)
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(child.id());
-    Ok((pid, child))
+        .stderr(Stdio::null());
+    let child = command.spawn().map_err(|e| e.to_string())?;
+    let child = cryptexd::daemon_startup::await_ready(child, &ready, Duration::from_millis(2500))
+        .map_err(|error| error.to_string())?;
+    Ok((child.id(), child))
 }
 
 fn restart_exited_daemon(state: &ProbeState, runtime: &Path) -> Result<(), String> {
