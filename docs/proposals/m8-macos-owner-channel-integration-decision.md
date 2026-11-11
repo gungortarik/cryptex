@@ -1,5 +1,12 @@
 # M8 Mac owner-channel integration: approved disabled candidate
 
+Native candidate continuation (2026-11-11): the daemon crate now includes a
+private Mach backend. It takes a code requirement and CodeDirectory hash from
+outside the message, pins the supervised process and checks the kernel audit
+trailer for each received frame. Only the native tests currently construct
+image policy. The product gate remains closed. See the
+[current implementation handoff](../34_CURRENT_IMPLEMENTATION_HANDOFF.md).
+
 Implementation continuation (2026-11-11): the shared closed request/reply and
 transport-neutral exchange/approval-session seams are implemented. See the
 [domain/session evidence](../../evidence/m8/m8-approval-domain-sessions-20261111.md)

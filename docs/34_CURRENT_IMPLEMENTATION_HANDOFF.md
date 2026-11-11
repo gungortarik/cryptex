@@ -1,5 +1,50 @@
 # 34 — Current Implementation Handoff
 
+## Private macOS Mach transport and process identity
+
+The macOS build of the daemon crate includes a native backend under
+[`m8_owner_channel/native`](../services/cryptexd/src/m8_owner_channel/native).
+The product entry gate still rejects all three M8 owner families. Only the
+test harness supplies a counterpart image policy.
+
+The listening side registers a fresh per-launch name before spawning and accepts
+only the child represented by its unreaped process handle. The child captures
+its actual parent. Only the empty handshake uses the public rendezvous. After
+the first message, the parent closes the named inbox and sends a fresh private
+endpoint in its reply. Each direction uses its own monotonic sequence. Each
+receive checks the kernel audit trailer against the retained task-name right,
+live audit token, signing requirement and CodeDirectory hash before returning
+bytes. Close owns the Mach rights and Core Foundation objects. Data calls take
+the caller's absolute deadline. A late send can have delivered bytes, so its
+timeout is an uncertain outcome.
+
+The backend resolves the live signing identity using Apple's audit-token and
+PID guest attributes. The policy must provide both the expected requirement and
+the expected CodeDirectory hash independently of the peer. Synchronous Security
+framework calls can overrun a deadline; the adapter checks again before
+publishing received bytes or attempting the send.
+[Apple guest attribute keys](https://developer.apple.com/documentation/security/guest-attribute-dictionary-keys).
+
+The signed native tests exercise bidirectional delivery, a different live child
+running the same image, incorrect signing requirement or hash, queued data
+after exit or same-PID exec, caller expiry, a full queue and an old channel
+retained across a fresh session. The C unit tests check replay, wrong epoch,
+truncated or complex envelopes, namespace removal, reference counts after a
+kernel send timeout and cleanup error reporting. Independent source review of
+`a7ae022` closed the findings on right cleanup and test-process cleanup.
+
+[Scoped native CI for `a7ae022`](https://github.com/gungortarik/cryptex/actions/runs/42967877705)
+passed on macOS and Windows. Mac startup passed 10 tests, the owner-channel
+suite passed 10, and IPC passed 71 with four pre-existing ignores. The two
+explicitly invoked subprocess helpers also ran within the signed native test.
+Windows startup passed 9, Desktop passed 46, IPC passed 80, and the shared
+owner-channel suite passed 9. The native C checks, formatting and lint passed.
+
+Before product integration, provide independently trusted release image policy and a reviewed
+stable observation of both signed bundle members under concurrent replacement.
+Then bind the authenticated request and reply lifetime to the domain session
+and test the actual signed Desktop and daemon together. M8 remains open.
+
 ## Remaining approval domain/session boundary implemented (2026-11-11)
 
 Within the already approved disabled ADR-0020 scope, source449dc3c extracts
