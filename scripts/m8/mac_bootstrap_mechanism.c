@@ -22,7 +22,7 @@ extern char **environ;
 enum { OK=0, BAD_LAYOUT=50, WRONG_SESSION, WRONG_PID, WRONG_GENERATION, NOT_LIVE,
        BAD_CODE, REPLAY, PARENT_CHANGED, LOOKUP_FAILED, SEND_FAILED, RECEIVE_FAILED,
        CHILD_DEADLINE, SETUP_FAILED, SUPERVISOR_DEADLINE, CHILD_SIGNAL, WAIT_FAILED,
-       NAMESPACE_PRESENT, SEND_TIMEOUT };
+       NAMESPACE_PRESENT, SEND_TIMEOUT, CLEANUP_REFUSED };
 enum { HELLO=1, ACK, CONFIRM, STOP, REJECT };
 typedef struct {
     mach_msg_header_t header;
@@ -418,26 +418,36 @@ static int reaper_controls(void) {
     }
     return 0;
 }
+static int control_failure(const char *stage, int code) {
+    printf("{\"stage\":\"%s\",\"code\":%d}\n", stage, code);
+    return SETUP_FAILED;
+}
 static int send_failure_control(bool once) {
     mach_port_t receive = MACH_PORT_NULL, reply = MACH_PORT_NULL;
-    if (mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &receive) != KERN_SUCCESS ||
-        mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &reply) != KERN_SUCCESS ||
-        mach_port_insert_right(mach_task_self(), receive, receive, MACH_MSG_TYPE_MAKE_SEND) != KERN_SUCCESS) return SETUP_FAILED;
+    kern_return_t result = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &receive);
+    if (result != KERN_SUCCESS) return control_failure("receive_allocate", result);
+    result = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &reply);
+    if (result != KERN_SUCCESS) return control_failure("reply_allocate", result);
+    result = mach_port_insert_right(mach_task_self(), receive, receive, MACH_MSG_TYPE_MAKE_SEND);
+    if (result != KERN_SUCCESS) return control_failure("insert_send", result);
     mach_port_limits_t limits = {.mpl_qlimit=1};
-    if (mach_port_set_attributes(mach_task_self(), receive, MACH_PORT_LIMITS_INFO,
-            (mach_port_info_t)&limits, MACH_PORT_LIMITS_INFO_COUNT) != KERN_SUCCESS) return SETUP_FAILED;
+    result = mach_port_set_attributes(mach_task_self(), receive, MACH_PORT_LIMITS_INFO,
+            (mach_port_info_t)&limits, MACH_PORT_LIMITS_INFO_COUNT);
+    if (result != KERN_SUCCESS) return control_failure("queue_limit", result);
     mach_msg_header_t seed = {0};
     seed.msgh_bits=MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
     seed.msgh_size=sizeof(seed); seed.msgh_remote_port=receive;
-    if (mach_msg(&seed, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof(seed), 0, MACH_PORT_NULL, 100, MACH_PORT_NULL) != MACH_MSG_SUCCESS) return SETUP_FAILED;
+    result = mach_msg(&seed, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof(seed), 0, MACH_PORT_NULL, 100, MACH_PORT_NULL);
+    if (result != MACH_MSG_SUCCESS) return control_failure("seed_send", result);
     mach_port_t destination = receive;
     if (once) {
         mach_msg_type_name_t type = 0;
-        if (mach_port_extract_right(mach_task_self(), receive, MACH_MSG_TYPE_MAKE_SEND_ONCE, &destination, &type) != KERN_SUCCESS ||
-            type != MACH_MSG_TYPE_PORT_SEND_ONCE) return SETUP_FAILED;
+        result = mach_port_extract_right(mach_task_self(), receive, MACH_MSG_TYPE_MAKE_SEND_ONCE, &destination, &type);
+        if (result != KERN_SUCCESS) return control_failure("extract_right", result);
+        if (type != MACH_MSG_TYPE_PORT_SEND_ONCE) return control_failure("extracted_type", (int)type);
         // Send-once traffic bypasses queue limits. Exercise a genuinely dead
         // destination instead of pretending a full queue forces its timeout.
-        if (!drop_receive(&receive)) return SETUP_FAILED;
+        if (!drop_receive(&receive)) return control_failure("receive_drop", cleanup_error);
     }
     unsigned char session[16] = {0};
     send_message(destination, reply, once, HELLO, 1, session, 0, 0);
@@ -452,8 +462,10 @@ int main(int argc, char **argv) {
         if (mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &receive) != KERN_SUCCESS) return SETUP_FAILED;
         mach_port_t wrong = receive;
         drop_send(&wrong); // Releasing a receive-only right as send must fail.
-        drop_receive(&receive);
-        return cleanup_error ? SETUP_FAILED : 0;
+        int wrong_error = cleanup_error;
+        cleanup_error = 0;
+        bool closed = drop_receive(&receive);
+        return wrong_error == KERN_INVALID_RIGHT && closed && cleanup_error == 0 ? CLEANUP_REFUSED : SETUP_FAILED;
     }
     if (argc == 3 && !strcmp(argv[1], "lookup-missing") && name_valid(argv[2])) return lookup_missing(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "forced-exit") && name_valid(argv[2])) {

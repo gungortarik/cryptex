@@ -35,6 +35,19 @@ OBSERVED = {value[0] for value in EXPECTED.values()} | {
     "child_failed", "receive_deadline", "namespace_not_removed", "cleanup_error",
 }
 STAGES = {value[1] for value in EXPECTED.values()} | {"spawn", "child_exit", "child_signal", "wait", "kill"}
+CONTROL_STAGES = {"receive_allocate", "reply_allocate", "insert_send", "queue_limit", "seed_send",
+                  "extract_right", "extracted_type", "receive_drop"}
+
+
+def control_diagnostic(output):
+    try:
+        value = json.loads(output, object_pairs_hook=unique_object)
+    except (ValueError, PreflightError) as error:
+        raise PreflightError("native_control_diagnostic_invalid") from error
+    if (type(value) is not dict or set(value) != {"stage", "code"} or value["stage"] not in CONTROL_STAGES
+            or type(value["code"]) is not int or not 0 <= value["code"] <= 2147483647):
+        raise PreflightError("native_control_diagnostic_invalid")
+    return value
 
 
 def parse_native(output):
@@ -89,10 +102,12 @@ def collect(work, run=run_bounded):
         checked(run, ["/usr/bin/codesign", "--force", "--timestamp=none", "--sign", "-",
                       "--identifier", IDENTIFIER, str(binary)], "adhoc_fixture_sign")
         report["fault_controls"] = {}
-        for mode, expected in (("reaper-controls", 0), ("cleanup-control", 62),
+        for mode, expected in (("reaper-controls", 0), ("cleanup-control", 68),
                                ("send-timeout-copy", 67), ("send-error-once", 59)):
             control = run([str(binary), mode], 10)
             report["fault_controls"][mode] = {"stage": "child_signal" if control.code < 0 else "child_exit", "code": abs(control.code)}
+            if control.output:
+                report["fault_controls"][mode]["diagnostic"] = control_diagnostic(control.output)
             if (control.code != expected or control.output != "" or control.limited or control.timed_out or control.pipe_failed):
                 raise PreflightError("native_fault_control_failed")
         report["failed_send_cleanup"] = "fixture_exit_releases_ipc_space_supervisor_stops_owned_group"

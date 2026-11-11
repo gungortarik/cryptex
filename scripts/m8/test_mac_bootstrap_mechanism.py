@@ -62,7 +62,8 @@ class BootstrapMechanismTests(unittest.TestCase):
             probe.parse_native("")
 
     def run_collect(self, native_code=0, native_rows=None, forced_code=-9, cleanup_code=0,
-                    native_timeout=False, cleanup_timeout=False, control_failure=None):
+                    native_timeout=False, cleanup_timeout=False, control_failure=None, cleanup_fault_code=68,
+                    control_output=""):
         with tempfile.TemporaryDirectory() as directory:
             def run(args, _timeout=20):
                 output, code, timeout = "", 0, False
@@ -82,9 +83,9 @@ class BootstrapMechanismTests(unittest.TestCase):
                 elif len(args) > 1 and args[1] == "lookup-missing":
                     code, timeout = cleanup_code, cleanup_timeout
                 elif len(args) > 1 and args[1] in {"reaper-controls", "cleanup-control", "send-timeout-copy", "send-error-once"}:
-                    code = {"reaper-controls": 0, "cleanup-control": 62, "send-timeout-copy": 67, "send-error-once": 59}[args[1]]
+                    code = {"reaper-controls": 0, "cleanup-control": cleanup_fault_code, "send-timeout-copy": 67, "send-error-once": 59}[args[1]]
                     if args[1] == control_failure:
-                        code = 1
+                        code, output = 1, control_output
                 return SimpleNamespace(code=code, output=output, limited=False, timed_out=timeout, pipe_failed=False)
             # The collector only executes on Darwin; this mock runner also runs
             # on Windows, which does not define the POSIX signal constant.
@@ -121,6 +122,21 @@ class BootstrapMechanismTests(unittest.TestCase):
             self.assertFalse(report["phase_one_complete"])
             self.assertEqual(report["diagnostic"], "native_fault_control_failed")
             self.assertEqual(report["fault_controls"][mode], {"stage": "child_exit", "code": 1})
+
+    def test_cleanup_setup_failure_cannot_impersonate_observed_wrong_right_refusal(self):
+        report = self.run_collect(cleanup_fault_code=62)
+        self.assertFalse(report["phase_one_complete"])
+        self.assertEqual(report["diagnostic"], "native_fault_control_failed")
+        self.assertEqual(report["fault_controls"]["cleanup-control"]["code"], 62)
+
+    def test_control_actual_stage_is_preserved_without_exporting_extra_data(self):
+        diagnostic = {"stage": "extract_right", "code": 17}
+        report = self.run_collect(control_failure="send-error-once", control_output=json.dumps(diagnostic))
+        self.assertFalse(report["phase_one_complete"])
+        self.assertEqual(report["fault_controls"]["send-error-once"]["diagnostic"], diagnostic)
+        for value in ({**diagnostic, "token": "forbidden"}, {"stage": "unknown", "code": 1}, {"stage": "extract_right", "code": True}):
+            with self.assertRaises(PreflightError):
+                probe.control_diagnostic(json.dumps(value))
 
 
 if __name__ == "__main__":
