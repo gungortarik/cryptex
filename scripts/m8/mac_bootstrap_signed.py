@@ -41,6 +41,7 @@ def parse_signed(output):
     capability = values[0]
     if (set(capability) != {"capability", "eligible", "diagnostic"}
             or capability["capability"] != "certified_two_binary_bundle" or type(capability["eligible"]) is not bool
+            or type(capability["diagnostic"]) is not str
             or capability["diagnostic"] not in DIAGNOSTICS
             or capability["eligible"] != (capability["diagnostic"] == "verified_self_organization_two_binary_bundle")):
         raise PreflightError("bundle_capability_invalid")
@@ -48,12 +49,11 @@ def parse_signed(output):
         if len(values) != 1:
             raise PreflightError("ineligible_bundle_has_cases")
         return {"bundle": capability, "signature_cases": [], "cases": []}
-    if len(values) < 3:
-        raise PreflightError("signature_inventory_missing")
     signature_cases = values[1:3]
     seen = set()
     for row in signature_cases:
         if (type(row) is not dict or set(row) != {"case", "observed", "stage", "code", "pass"}
+                or any(type(row[key]) is not str for key in ("case", "observed", "stage"))
                 or row["case"] not in NEGATIVES or row["case"] in seen
                 or type(row["pass"]) is not bool or type(row["code"]) is not int
                 or row["stage"] != "static_code" or row["code"] not in (55, 62)
@@ -61,9 +61,9 @@ def parse_signed(output):
                 or (row["pass"] and (row["code"] != 55 or row["observed"] != "code_requirement_refused"))):
             raise PreflightError("signature_case_invalid")
         seen.add(row["case"])
-    if seen != NEGATIVES:
-        raise PreflightError("signature_inventory_invalid")
-    cases = mechanism.parse_native("\n".join(json.dumps(row) for row in values[3:]))
+    # A killed native process may leave only a validated prefix. Preserve that
+    # evidence; complete() still requires both controls and the full mechanism.
+    cases = mechanism.parse_native("\n".join(json.dumps(row) for row in values[3:])) if len(values) > 3 else []
     return {"bundle": capability, "signature_cases": signature_cases, "cases": cases}
 
 

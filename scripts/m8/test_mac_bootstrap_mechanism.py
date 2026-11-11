@@ -60,6 +60,11 @@ class BootstrapMechanismTests(unittest.TestCase):
             probe.parse_native("x" * 65537)
         with self.assertRaises(PreflightError):
             probe.parse_native("")
+        for key in ("case", "observed", "stage"):
+            rows = self.rows()
+            rows[0][key] = []
+            with self.assertRaises(PreflightError):
+                self.parse(rows)
 
     def run_collect(self, native_code=0, native_rows=None, forced_code=-9, cleanup_code=0,
                     native_timeout=False, cleanup_timeout=False, control_failure=None, cleanup_fault_code=68,
@@ -134,7 +139,7 @@ class BootstrapMechanismTests(unittest.TestCase):
         report = self.run_collect(control_failure="send-error-once-header", control_output=json.dumps(diagnostic))
         self.assertFalse(report["phase_one_complete"])
         self.assertEqual(report["fault_controls"]["send-error-once-header"]["diagnostic"], diagnostic)
-        for value in ({**diagnostic, "token": "forbidden"}, {"stage": "unknown", "code": 1}, {"stage": "extract_right", "code": True}):
+        for value in ({**diagnostic, "token": "forbidden"}, {"stage": "unknown", "code": 1}, {"stage": [], "code": 1}, {"stage": "extract_right", "code": True}):
             with self.assertRaises(PreflightError):
                 probe.control_diagnostic(json.dumps(value))
 

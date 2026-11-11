@@ -48,7 +48,7 @@ def control_diagnostic(output):
         value = json.loads(output, object_pairs_hook=unique_object)
     except (ValueError, PreflightError) as error:
         raise PreflightError("native_control_diagnostic_invalid") from error
-    if (type(value) is not dict or set(value) != {"stage", "code"} or value["stage"] not in CONTROL_STAGES
+    if (type(value) is not dict or set(value) != {"stage", "code"} or type(value["stage"]) is not str or value["stage"] not in CONTROL_STAGES
             or type(value["code"]) is not int or not 0 <= value["code"] <= 2147483647):
         raise PreflightError("native_control_diagnostic_invalid")
     return value
@@ -64,6 +64,7 @@ def parse_native(output):
     seen = set()
     for row in rows:
         if (type(row) is not dict or set(row) != {"case", "observed", "stage", "code", "pass"}
+                or any(type(row[key]) is not str for key in ("case", "observed", "stage"))
                 or row["case"] not in EXPECTED or row["case"] in seen
                 or row["observed"] not in OBSERVED or row["stage"] not in STAGES
                 or type(row["code"]) is not int or not 0 <= row["code"] <= 2147483647

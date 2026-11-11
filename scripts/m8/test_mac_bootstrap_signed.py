@@ -40,7 +40,7 @@ class SignedBootstrapTests(unittest.TestCase):
         self.assertFalse(probe.complete(self.parse(self.rows()[:-1]), 0, False))
 
     def test_certified_capability_is_literal_and_never_carries_identity_details(self):
-        for key, value in (("eligible", 1), ("team_id", "forbidden"), ("diagnostic", "unknown")):
+        for key, value in (("eligible", 1), ("team_id", "forbidden"), ("diagnostic", "unknown"), ("diagnostic", [])):
             rows = self.rows(False)
             rows[0][key] = value
             with self.assertRaises(PreflightError):
@@ -67,6 +67,17 @@ class SignedBootstrapTests(unittest.TestCase):
         self.assertFalse(native["signature_cases"][0]["pass"])
         self.assertFalse(probe.complete(native, 0, False))
 
+    def test_truncated_native_prefix_is_preserved_but_never_complete(self):
+        for count in (1, 2, 3):
+            native = self.parse(self.rows()[:count])
+            self.assertTrue(native["bundle"]["eligible"])
+            self.assertEqual(len(native["signature_cases"]), count - 1)
+            self.assertEqual(native["cases"], [])
+            self.assertFalse(probe.complete(native, 0, False))
+            report = self.collect(rows=self.rows()[:count], native_code=59)
+            self.assertEqual(report["native"], native)
+            self.assertFalse(report["candidate_complete"])
+
     def test_missing_duplicate_json_or_extra_privacy_fields_refuse(self):
         with self.assertRaises(PreflightError):
             probe.parse_signed('{"eligible":false,"eligible":true}')
@@ -76,6 +87,11 @@ class SignedBootstrapTests(unittest.TestCase):
         rows[1]["certificate"] = "forbidden"
         with self.assertRaises(PreflightError):
             self.parse(rows)
+        for key in ("case", "observed", "stage"):
+            rows = self.rows()
+            rows[1][key] = []
+            with self.assertRaises(PreflightError):
+                self.parse(rows)
 
     def collect(self, ci=False, rows=None, native_code=0, forced_code=-9, cleanup_code=0):
         report = {"candidate_complete": False, "production_changed": False, "m8_complete": False}
