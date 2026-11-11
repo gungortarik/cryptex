@@ -128,7 +128,7 @@ fn snapshot_retains_authenticated_bytes_after_source_replacement() {
         Err(Error::Changed)
     ));
     let image = super::super::image_policy::inventory_image(
-        bundle.inventory(),
+        &bundle,
         super::super::image_policy::Role::Daemon,
     )
     .unwrap();

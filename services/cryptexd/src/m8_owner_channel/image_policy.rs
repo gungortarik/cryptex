@@ -110,11 +110,11 @@ fn expected_image(release: &ReleaseDefinition, role: Role) -> Result<ExpectedIma
 
 #[cfg(target_os = "macos")]
 pub(super) fn inventory_image(
-    inventory: &super::release_inventory::VerifiedInventory,
+    bundle: &super::release_inventory::VerifiedBundle,
     role: Role,
 ) -> Result<ExpectedImage, PolicyError> {
-    let (desktop_cdhash, daemon_cdhash) = inventory.image_hashes();
-    let publisher = inventory.publisher();
+    let (desktop_cdhash, daemon_cdhash) = bundle.image_hashes();
+    let publisher = bundle.publisher();
     expected_image(
         &ReleaseDefinition {
             publisher,

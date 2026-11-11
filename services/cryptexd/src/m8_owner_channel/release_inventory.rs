@@ -170,13 +170,6 @@ impl VerifiedInventory {
         })
     }
 
-    pub(super) fn image_hashes(&self) -> ([u8; 20], [u8; 20]) {
-        (self.desktop, self.daemon)
-    }
-    pub(super) fn publisher(&self) -> PublisherDefinition {
-        self.publisher
-    }
-
     fn snapshot(self, root: &Path, deadline: Instant) -> Result<VerifiedBundle, Error> {
         self.snapshot_with(root, deadline, |_| {})
     }
@@ -248,8 +241,11 @@ impl VerifiedBundle {
     fn content(&self, path: &str) -> Option<&[u8]> {
         self.files.get(path).map(AsRef::as_ref)
     }
-    fn inventory(&self) -> &VerifiedInventory {
-        &self.inventory
+    pub(super) fn image_hashes(&self) -> ([u8; 20], [u8; 20]) {
+        (self.inventory.desktop, self.inventory.daemon)
+    }
+    pub(super) fn publisher(&self) -> PublisherDefinition {
+        self.inventory.publisher
     }
 }
 
