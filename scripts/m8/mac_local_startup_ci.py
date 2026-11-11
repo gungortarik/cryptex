@@ -23,19 +23,30 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     # This build-time pin is independent of adjacent runtime metadata. It is
     # embedded before signing; neither binary embeds the other's final CDHash.
     saved = {key: os.environ.get(key) for key in
-             ("CRYPTEX_M8_LOCAL_STARTUP_CERT_DER", "CARGO_PROFILE_DEV_DEBUG")}
+             ("CRYPTEX_M8_LOCAL_STARTUP_CERT_DER", "CARGO_PROFILE_DEV_DEBUG", "CARGO")}
     try:
+        clippy = shutil.which("cargo-clippy")
+        if not clippy:
+            raise PreflightError("ci_clippy_missing")
         os.environ["CRYPTEX_M8_LOCAL_STARTUP_CERT_DER"] = str(root / "cert.der")
         os.environ["CARGO_PROFILE_DEV_DEBUG"] = "0"
+        os.environ["CARGO"] = str(cargo)
         features = "cryptex-desktop/m8-local-startup-check"
-        run([cargo, "clippy", "--locked", "-p", "cryptexd", "-p", "cryptex-desktop",
+        # run_bounded intentionally removes plugin discovery from PATH.
+        # cargo-clippy expects the Cargo subcommand token, then invokes CARGO.
+        run([clippy, "clippy", "--locked", "-p", "cryptexd", "-p", "cryptex-desktop",
              "--all-targets", "--features", features, "--", "-D", "warnings"],
             "lint_real_signed_startup", 900)
         run([cargo, "build", "--locked", "-p", "cryptexd", "-p", "cryptex-desktop",
              "--features", features], "build_real_signed_startup", 900)
-        run([cargo, "test", "--locked", "-p", "cryptexd", "--features",
-             "m8-local-startup-check", "--lib", "m8_owner_channel::local_startup::tests::"],
-            "test_signed_startup_shapes", 300)
+        tests = run([cargo, "test", "--locked", "-p", "cryptexd", "--features",
+             "m8-local-startup-check", "--lib", "m8_owner_channel::", "--", "--test-threads=1"],
+            "test_signed_startup_shapes_and_closed_gates", 300)
+        for name in ("local_startup::tests::startup_frames_bind_fixed_role_epoch_and_inventory",
+                     "tests::candidate_has_no_enabled_or_configuration_fallback_path",
+                     "image_policy::tests::product_policy_has_no_configured_publisher"):
+            if "test m8_owner_channel::" + name + " ... ok" not in tests:
+                raise PreflightError("signed_startup_gate_test_missing")
     finally:
         for key, value in saved.items():
             if value is None:
