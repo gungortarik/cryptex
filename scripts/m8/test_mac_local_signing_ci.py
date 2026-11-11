@@ -16,7 +16,8 @@ def main():
         raise PreflightError("disposable_macos_ci_required")
     openssl = shutil.which("openssl")
     cargo = shutil.which("cargo")
-    if not openssl or not cargo:
+    rustc = shutil.which("rustc")
+    if not openssl or not cargo or not rustc:
         raise PreflightError("ci_signing_tools_missing")
     with tempfile.TemporaryDirectory(prefix="cx-local-signing-") as directory:
         root = Path(directory)
@@ -27,6 +28,7 @@ def main():
             "CX_NATIVE_TEST_SIGNER": None,
             "CX_NATIVE_TEST_KEYCHAIN": None,
             "CX_NATIVE_TEST_CERT_DER": None,
+            "RUSTC": None,
         }
         saved = {name: os.environ.get(name) for name in controls}
         try:
@@ -67,6 +69,8 @@ def main():
                 "CX_NATIVE_TEST_SIGNER": fingerprint,
                 "CX_NATIVE_TEST_KEYCHAIN": str(keychain),
                 "CX_NATIVE_TEST_CERT_DER": str(root / "cert.der"),
+                # run_bounded intentionally uses a minimal system PATH.
+                "RUSTC": rustc,
             })
             args = [cargo, "test", "--locked", "-p", "cryptexd",
                     "--lib", "m8_owner_channel::native::tests::native_supervised_channel_roundtrip_and_refusals",
