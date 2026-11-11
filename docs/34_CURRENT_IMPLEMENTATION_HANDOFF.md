@@ -11,9 +11,25 @@ ordinary runtime stores and all product owner gates remain unchanged.
 The [bounded contract](proposals/m8-local-content-approval-check.md) records
 content binding, per-message private proof, session/admission ownership,
 cancellation/delivery failure rules, WebKit isolation and evidence limits.
-Implementation/source review and exact native CI are in progress. Do not infer
-interactive WebView acceptance, same-profile durable recovery or M8 completion
-from the pending headless synthetic tests.
+Implementation and independent source review through `efdb877` are complete
+for this disabled scope. Exact-source CI is
+[queued](https://github.com/gungortarik/cryptex/actions/runs/43095500335)
+at this checkpoint; do not report that source as native accepted yet.
+The [evidence/continuation record](../evidence/m8/m8-protected-content-native-approvals-20261111.md)
+includes the earlier passing synthetic markers, failed journal ordering check,
+Windows passes and confirmed native_accept timeout. The latter was traced at
+2638 ms: child snapshot verification was consuming the native 2.5-second HELLO
+window. A bounded, non-authoritative stdout progress hint now schedules that
+handshake after independent verification, under the unchanged outer deadline.
+No image, native message, runtime-ready or owner check is bypassed. The
+immutable frontend catalog is cached per retained Release only.
+
+Resume by checking that exact run rather than dispatching duplicate runs.
+If it fails, inspect the fixed stage/elapsed diagnostic and preserve every
+deadline and negative fixture. If it passes, record the exact scoped results
+and then prepare the signed interactive Mac check. Do not infer interactive
+WebView acceptance, same-profile durable recovery or M8 completion from headless
+synthetic checks. The candidate's other product UI controls are not enabled.
 
 ## Actual signed startup check continuation
 
@@ -47,7 +63,7 @@ product acceptance.
 The [startup evidence](../evidence/m8/m8-local-signed-startup-20261111.md)
 records exact source, scoped tests and remaining product integration.
 The previous test-binary-only continuation below is superseded for startup
-integration, while Tauri content and approval/session integration remain open.
+integration; the default-off content/session continuation is recorded above.
 
 ## Local certificate profile continuation
 
@@ -67,9 +83,9 @@ and refuses owner machines and self-hosted runners. It temporarily includes
 the private keychain in identity discovery and restores the exact original
 search list before deleting the keychain. It does not write OS trust settings.
 
-The headless actual startup binding is implemented above. Next, bind protected
-Tauri content and native requests to pending approval lifetimes, then run the
-signed interactive application pair on the owner's Mac. The earlier
+The headless actual startup binding and default-off protected content/session
+continuation are implemented above. Signed interactive application acceptance
+on the owner's Mac remains separate. The earlier
 parent/child test-binary fixture is component evidence. Native ad-hoc
 processes additionally exercise missing-certificate rejection, while policy
 and CMS tests check DER propagation and signer/profile consistency.

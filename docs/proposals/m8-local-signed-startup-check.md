@@ -62,8 +62,9 @@ before sending or publishing.
 
 This establishes only the tested headless signed-process startup binding.
 The content snapshot does not make an executable path atomic or seal an
-existing webview's resources. The feature constructs no authenticated owner
+existing webview's resources. The startup-only command constructs no authenticated owner
 request, pending approval grant or native domain dispatcher. Product factories,
 ordinary Unix owner refusals and Windows policies remain unchanged. Tauri
-protected-content consumption, approval/session integration, signed interactive
-acceptance and product activation remain open.
+protected-content consumption and isolated approval/session integration are
+now covered by the separate [default-off continuation](m8-local-content-approval-check.md).
+Signed interactive acceptance and product activation remain open.
