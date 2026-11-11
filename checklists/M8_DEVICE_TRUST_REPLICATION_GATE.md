@@ -4,6 +4,13 @@ Updated 2026-11-10. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
+Authorized public message-bootstrap phase one: [exact source8816c04 CI42948812911](../evidence/m8/m8-macos-public-bootstrap-mechanism-20261110.md)
+passed13 native rows, required injected/real fault controls and independent normal/
+forced-exit namespace cleanup. Source review corrections passed exact native CI.
+This ad-hoc same-image mechanism proof is not certified two-binary or owner-session
+acceptance. Hostile endpoint/transferred-right negatives and signed policy remain
+next; both original custody findings stay open. No owner package/run is needed now.
+
 Latest owner receipt888d68a: public SDK/runtime and certified bundle eligibility
 pass, but only five of eleven cases pass. All six mapped-child handoff cases fail.
 The direct CLOFORK + ordinary spawn-duplication carrier is stopped; no unchanged

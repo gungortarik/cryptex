@@ -4,6 +4,11 @@ Status: **authorized isolated research, not a product adapter** (2026-11-10).
 The owner selected Option A in the [carrier reassessment](m8-macos-launch-carrier-reassessment.md).
 Accepted Unix IPC, Mac owner mutation gates and product minimum OS are unchanged.
 
+Phase-one mechanism result: [reviewed exact-source CI passed](../../evidence/m8/m8-macos-public-bootstrap-mechanism-20261110.md)
+13 native rows, required fault controls and independent forced-exit cleanup on
+source8816c04. This is the ad-hoc mechanism scope below, not the remaining signed
+two-binary, hostile-endpoint or product/session acceptance.
+
 ## Phase one and trust boundary
 
 First establish that public `bootstrap_check_in` can create a fresh transient
@@ -46,6 +51,13 @@ session acceptance and M8 completion false. No owner package is produced here.
    receive/send rights are released on all normal paths. A separate lookup
    process must observe UNKNOWN_SERVICE after normal close and forced process
    exit. Closing a receive right alone is not called namespace cleanup.
+
+Failed sends may return port rights under changed names. This disposable fixture
+therefore immediately exits on send failure (typed timeout/other code), with the
+owned-group Python supervisor providing process cleanup. This process-exit policy
+is not a proposed product recovery implementation. Kill/wait completion and all
+tracked normal right-release calls must succeed; injected setup failure cannot be
+counted as an expected refusal. Required native controls exercise those boundaries.
 
 ## Required phase-one observations
 

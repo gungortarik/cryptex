@@ -1,5 +1,28 @@
 # 34 — Current Implementation Handoff
 
+## Reviewed public message-bootstrap phase one passed; no owner action (2026-11-10)
+
+Exact source8816c04 CI42948812911 SUCCESS on macOS26.7.2 arm64. Public transient
+check_in/lookup, kernel-sender actual Child/getppid validation and retained pins
+work without a secret inherited FD or task-registration window. All13 native rows
+pass, plus eight injected reaper paths, real timeout/invalid-header/cleanup fault
+controls and independent namespace removal after SIGKILL. Source-only review
+found/corrected reaping and failed-send cleanup defects; final delta has no further
+actionable finding. Actual final CI JSON/source/hash/inventory were verified.
+[Evidence, limits and corrections](../evidence/m8/m8-macos-public-bootstrap-mechanism-20261110.md).
+
+Eleven new Python tests pass Mac/Windows. Final local Mac-script suite52 total:
+47pass/five native-Mac skips. Existing scoped Mac regressions pass in the same CI.
+The policy is explicitly an ad-hoc fixed-ID/same-image CI fixture, not certified
+two-binary/product custody. Phase-one success leaves both original security
+findings and M8 open; product Unix IPC/owner gates/minimum OS remain unchanged.
+
+Next, within the already authorized isolated experiment: actively substituted
+rendezvous/reply endpoint and transferred-send-right negatives, then certified
+two-binary/self-bundle policy. Review before preparing any owner package. No new
+scope approval is needed for that bounded research; product integration is still
+unapproved. No Mac/VM action or repeat old pipe/pairing/API package is needed now.
+
 ## Owner authorized isolated message-bootstrap research; CI pending (2026-11-10)
 
 The owner explicitly selected the bounded replacement design/isolated experiment.
