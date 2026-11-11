@@ -93,10 +93,10 @@ impl VerifiedInventory {
         deadline: Instant,
     ) -> Result<Self, Error> {
         check_deadline(deadline)?;
-        if let SigningProfile::LocalCertificate { der } = trust.publisher.signing {
-            if der != trust.signer_der {
-                return Err(Error::Signature);
-            }
+        if let SigningProfile::LocalCertificate { der } = trust.publisher.signing
+            && der != trust.signer_der
+        {
+            return Err(Error::Signature);
         }
         if raw.len() > MAX_INVENTORY
             || raw.is_empty()

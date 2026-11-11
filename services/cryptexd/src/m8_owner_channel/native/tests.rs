@@ -187,20 +187,23 @@ fn native_supervised_channel_roundtrip_and_refusals() {
     let _cleanup = Cleanup(dir.clone());
     let binary = dir.join("native-tests");
     fs::copy(std::env::current_exe().unwrap(), &binary).unwrap();
-    TestChild::spawn(
-        Command::new("/usr/bin/codesign")
-            .args([
-                "--force",
-                "--sign",
-                "-",
-                "--timestamp=none",
-                "--identifier",
-                SIGNING_ID,
-            ])
-            .arg(&binary),
-        true,
-    )
-    .finish(Duration::from_secs(30));
+    // These controls exist only in the test binary. The runner provisions a
+    // disposable identity or explicitly selects the owner's existing identity.
+    let signer = std::env::var("CX_NATIVE_TEST_SIGNER").unwrap_or_else(|_| "-".into());
+    let mut signing = Command::new("/usr/bin/codesign");
+    signing.args([
+        "--force",
+        "--sign",
+        &signer,
+        "--timestamp=none",
+        "--identifier",
+        SIGNING_ID,
+    ]);
+    if let Some(keychain) = std::env::var_os("CX_NATIVE_TEST_KEYCHAIN") {
+        signing.arg("--keychain").arg(keychain);
+    }
+    signing.arg(&binary);
+    TestChild::spawn(&mut signing, true).finish(Duration::from_secs(30));
     let mut inspect = TestChild::spawn(
         Command::new("/usr/bin/codesign")
             .args(["-d", "--verbose=4"])
@@ -224,11 +227,14 @@ fn native_supervised_channel_roundtrip_and_refusals() {
         .find_map(|s| s.strip_prefix("CDHash="))
         .unwrap();
     assert_eq!(unhex(hash).len(), 20);
-    TestChild::spawn(
-        helper(&binary, "supervisor").env("CX_TEST_CDHASH", hash),
-        true,
-    )
-    .finish(Duration::from_secs(60));
+    let mut supervisor = helper(&binary, "supervisor");
+    supervisor.env("CX_TEST_CDHASH", hash);
+    if signer != "-" {
+        let cert = fs::read(std::env::var_os("CX_NATIVE_TEST_CERT_DER").unwrap()).unwrap();
+        assert!(!cert.is_empty() && cert.len() <= 65536);
+        supervisor.env("CX_TEST_LEAF_DER", hex(&cert));
+    }
+    TestChild::spawn(&mut supervisor, true).finish(Duration::from_secs(60));
     // An exact test filter with no matching test also exits zero.
     assert_eq!(fs::read(dir.join("supervisor.ok")).unwrap(), b"finished");
 }
@@ -238,6 +244,9 @@ fn native_supervised_channel_roundtrip_and_refusals() {
 fn supervisor() {
     let binary = std::env::current_exe().unwrap();
     let hash = unhex(&std::env::var("CX_TEST_CDHASH").unwrap());
+    let leaf = std::env::var("CX_TEST_LEAF_DER")
+        .ok()
+        .map(|value| unhex(&value));
     let mut previous = None;
     let mut old_channel: Option<Channel> = None;
     for case in [
@@ -267,7 +276,7 @@ fn supervisor() {
             signer_der: if case == "wrong_leaf" {
                 Some(include_bytes!("../release_inventory/fixtures/signer.der"))
             } else {
-                None
+                leaf.as_deref()
             },
             requirement: if case == "wrong_requirement" {
                 c"identifier \"com.cryptex.other\""
@@ -415,10 +424,13 @@ fn worker() {
         .try_into()
         .unwrap();
     let hash = unhex(&std::env::var("CX_TEST_CDHASH").unwrap());
+    let leaf = std::env::var("CX_TEST_LEAF_DER")
+        .ok()
+        .map(|value| unhex(&value));
     let connected = Channel::connect(
         &epoch,
         &ImagePolicy {
-            signer_der: None,
+            signer_der: leaf.as_deref(),
             requirement: REQUIREMENT,
             cdhash: if case == OsStr::new("parent_image") {
                 &[0; 20]
