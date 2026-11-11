@@ -27,6 +27,9 @@ use crate::event_signing_key::{
 };
 use crate::knowledge_materialization::{GuardedSearchError, RetrievalSafetyHold};
 use crate::local_device_identity::LocalDeviceKeyResolver;
+use crate::m8_owner_channel::request::{
+    OwnerOperation as OwnerSecurityOperationRequest, OwnerRequest as BootstrapApprovalIpcRequest,
+};
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 use crate::{
     identity_runtime::load_brain_identity, local_device_identity::load_local_device_identity,
@@ -80,7 +83,7 @@ const MAX_CAPTURE_FRAME_BYTES: usize =
 /// Capture may wait on the device lock; deadline returns Uncertain, not cancelled.
 const IPC_CAPTURE_RESPONSE_DEADLINE: Duration = Duration::from_secs(60);
 const IPC_APPROVAL_SESSION_DEADLINE: Duration = Duration::from_secs(5 * 60);
-const MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES: usize = 1024 * 1024 + 4096;
+const MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES: usize = crate::m8_owner_channel::request::MAX_FRAME_BYTES;
 #[cfg(windows)]
 const ENDPOINT_ID: &str = "cryptexd-v1";
 
@@ -100,46 +103,6 @@ struct Request {
     capture_resolve: Option<DesktopCaptureResolveBody>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     vault: Option<DesktopVaultBody>,
-}
-
-/// Closed wire envelope for the two-phase, connection-bound approval flow.
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct BootstrapApprovalIpcRequest {
-    protocol_version: u32,
-    request_id: String,
-    client_role: String,
-    capabilities: Vec<String>,
-    operation: String,
-    #[serde(default)]
-    role: Option<String>,
-    #[serde(default)]
-    transcript_messages: Option<Vec<String>>,
-    #[serde(default)]
-    approval_request_digest: Option<String>,
-    #[serde(default)]
-    capability: Option<String>,
-    #[serde(default)]
-    transport_device_id: Option<String>,
-    #[serde(default)]
-    offer_message: Option<String>,
-    #[serde(default)]
-    brain_identity_json: Option<String>,
-    #[serde(default)]
-    transaction_id: Option<String>,
-    #[serde(default)]
-    owner_operation: Option<OwnerSecurityOperationRequest>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-enum OwnerSecurityOperationRequest {
-    DeviceRestriction {
-        target_device_id: String,
-        reason: crate::bootstrap_journal::RestrictionReason,
-        cutoff_seq: u64,
-    },
-    SelfRetirement,
 }
 
 #[derive(Serialize)]
@@ -1327,6 +1290,7 @@ pub fn desktop_prepare_bootstrap_approval(
     transcript_messages: Vec<String>,
     timeout: Duration,
 ) -> io::Result<DesktopBootstrapApprovalPrepared> {
+    crate::m8_owner_channel::require_desktop_route("bootstrap.approval.prepare")?;
     let started = Instant::now();
     let name = socket_name()?;
     let mut last_error = None;
@@ -1417,6 +1381,7 @@ pub fn desktop_prepare_owner_security_operation(
     input: DesktopOwnerSecurityOperationInput,
     timeout: Duration,
 ) -> io::Result<DesktopOwnerSecurityOperationPrepared> {
+    crate::m8_owner_channel::require_desktop_route("owner.security.prepare")?;
     let owner_operation = match input.kind.as_str() {
         "device_restriction" => {
             let target_device_id = input
@@ -1544,6 +1509,14 @@ pub fn desktop_cancel_owner_security_operation(
 }
 
 fn finish_desktop_owner_security_operation(
+    session_handle: String,
+    operation: &str,
+) -> io::Result<DesktopOwnerSecurityOperationResult> {
+    crate::m8_owner_channel::require_desktop_route(operation)?;
+    finish_pending_owner_security_operation(session_handle, operation)
+}
+
+fn finish_pending_owner_security_operation(
     session_handle: String,
     operation: &str,
 ) -> io::Result<DesktopOwnerSecurityOperationResult> {
@@ -1687,6 +1660,7 @@ fn desktop_exchange_bootstrap_message(
     transaction_id: Option<String>,
     timeout: Duration,
 ) -> io::Result<DesktopBootstrapExchangeResult> {
+    crate::m8_owner_channel::require_desktop_route(operation)?;
     let started = Instant::now();
     let name = socket_name()?;
     let mut last_error = None;
@@ -1770,6 +1744,7 @@ pub fn desktop_complete_peer_approval(
     transcript_messages: Vec<String>,
     timeout: Duration,
 ) -> io::Result<DesktopBootstrapApprovalResult> {
+    crate::m8_owner_channel::require_desktop_route("bootstrap.approval.complete")?;
     let started = Instant::now();
     let name = socket_name()?;
     let mut last_error = None;
@@ -1816,6 +1791,14 @@ pub fn desktop_complete_peer_approval(
 }
 
 fn finish_desktop_bootstrap_approval(
+    session_handle: String,
+    operation: &str,
+) -> io::Result<DesktopBootstrapApprovalResult> {
+    crate::m8_owner_channel::require_desktop_route(operation)?;
+    finish_pending_bootstrap_approval(session_handle, operation)
+}
+
+fn finish_pending_bootstrap_approval(
     session_handle: String,
     operation: &str,
 ) -> io::Result<DesktopBootstrapApprovalResult> {
@@ -2082,6 +2065,36 @@ fn handle_connection_for_peer(
     desktop_vault_workers: Option<&Arc<AtomicUsize>>,
     peer_is_desktop: bool,
 ) -> io::Result<()> {
+    handle_connection_via(
+        stream,
+        search,
+        desktop_search_workers,
+        desktop_capture_workers,
+        desktop_vault_workers,
+        peer_is_desktop,
+        Delivery::ProductSocket,
+    )
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Delivery {
+    ProductSocket,
+    // Domain protocol fixtures exercise existing handlers without claiming
+    // product transport authentication. This variant does not ship.
+    #[cfg(test)]
+    DomainFixture,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_connection_via(
+    stream: &mut Stream,
+    search: Option<&SearchContext>,
+    desktop_search_workers: Option<&Arc<AtomicUsize>>,
+    desktop_capture_workers: Option<&Arc<AtomicUsize>>,
+    desktop_vault_workers: Option<&Arc<AtomicUsize>>,
+    peer_is_desktop: bool,
+    delivery: Delivery,
+) -> io::Result<()> {
     arm_ipc_stream(stream)?;
     let request_deadline = Instant::now() + IPC_REQUEST_DEADLINE;
     // Authenticate peer before accepting a capture-sized frame.
@@ -2100,6 +2113,32 @@ fn handle_connection_for_peer(
         Err(error) => return Err(error),
     };
     if !frame.is_empty() && is_bootstrap_approval_frame(&frame) {
+        if cfg!(target_os = "macos") && delivery == Delivery::ProductSocket {
+            // Unix cannot redeem a future Mach/session proof. Refuse before
+            // context, secure storage, journal or canonical access, even for
+            // a peer otherwise recognized as Desktop by the Unix adapter.
+            let request_id = serde_json::from_slice::<BootstrapApprovalIpcRequest>(&frame)
+                .ok()
+                .filter(|request| {
+                    !request.request_id.is_empty()
+                        && request.request_id.len() <= 128
+                        && request
+                            .request_id
+                            .bytes()
+                            .all(|byte| byte.is_ascii_graphic())
+                })
+                .map(|request| request.request_id);
+            let response = serde_json::to_vec(&bootstrap_approval_response(
+                request_id,
+                false,
+                Some(crate::m8_owner_channel::ChannelError::Disabled.code()),
+                "bootstrap.approval.result",
+                None,
+                None,
+                None,
+            ))?;
+            return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+        }
         return handle_bootstrap_approval_session(stream, search, peer_is_desktop, &frame);
     }
     // Keep a lease through the actual bounded response write. Cloned worker
@@ -5919,6 +5958,25 @@ pub(crate) mod tests {
 
     const TEST_BRAIN_ID: &str = "11111111-1111-4111-8111-111111111111";
 
+    fn handle_domain_fixture_for_peer(
+        stream: &mut Stream,
+        search: Option<&SearchContext>,
+        search_workers: Option<&Arc<AtomicUsize>>,
+        capture_workers: Option<&Arc<AtomicUsize>>,
+        vault_workers: Option<&Arc<AtomicUsize>>,
+        peer_is_desktop: bool,
+    ) -> io::Result<()> {
+        handle_connection_via(
+            stream,
+            search,
+            search_workers,
+            capture_workers,
+            vault_workers,
+            peer_is_desktop,
+            Delivery::DomainFixture,
+        )
+    }
+
     /// Real named-pipe request, shared admission and verified search for the
     /// opt-in native-transfer integration fixture. Never compiled into an app.
     #[cfg(windows)]
@@ -6428,7 +6486,7 @@ pub(crate) mod tests {
         let (name, listener) = isolated_ipc_listener("bootstrap-approval-auth");
         let server = thread::spawn(move || {
             let mut stream = listener.accept().unwrap();
-            handle_connection_for_peer(&mut stream, None, None, None, None, false).unwrap();
+            handle_domain_fixture_for_peer(&mut stream, None, None, None, None, false).unwrap();
         });
         let mut client = Stream::connect(name.borrow()).unwrap();
         let response = exchange_bootstrap_approval(
@@ -6460,7 +6518,7 @@ pub(crate) mod tests {
         context.expected_desktop = Arc::new(test_connected_process_identity());
         let server = thread::spawn(move || {
             let mut stream = listener.accept().unwrap();
-            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+            handle_domain_fixture_for_peer(&mut stream, Some(&context), None, None, None, true)
                 .unwrap();
         });
         let mut client = Stream::connect(name.borrow()).unwrap();
@@ -6531,7 +6589,7 @@ pub(crate) mod tests {
         context.expected_desktop = Arc::new(test_connected_process_identity());
         let server = thread::spawn(move || {
             let mut stream = listener.accept().unwrap();
-            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+            handle_domain_fixture_for_peer(&mut stream, Some(&context), None, None, None, true)
                 .unwrap();
         });
         let mut client = Stream::connect(name.borrow()).unwrap();
@@ -6614,7 +6672,7 @@ pub(crate) mod tests {
         let server = thread::spawn(move || {
             for _ in 0..3 {
                 let mut stream = listener.accept().unwrap();
-                handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+                handle_domain_fixture_for_peer(&mut stream, Some(&context), None, None, None, true)
                     .unwrap();
             }
         });
@@ -6826,7 +6884,7 @@ pub(crate) mod tests {
         let context = fixture.context.clone();
         let server = thread::spawn(move || {
             let mut stream = listener.accept().unwrap();
-            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+            handle_domain_fixture_for_peer(&mut stream, Some(&context), None, None, None, true)
                 .unwrap();
         });
         let mut client = Stream::connect(name.borrow()).unwrap();
@@ -6870,7 +6928,7 @@ pub(crate) mod tests {
         let context = fixture.context.clone();
         let server = thread::spawn(move || {
             let mut stream = listener.accept().unwrap();
-            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+            handle_domain_fixture_for_peer(&mut stream, Some(&context), None, None, None, true)
                 .unwrap();
         });
         let mut client = Stream::connect(name.borrow()).unwrap();
@@ -7009,7 +7067,7 @@ pub(crate) mod tests {
             let mut stream = listener.accept().unwrap();
             // OS Desktop identity is exercised separately; this fixture injects
             // the decision to cover exact routing/framing and response bytes.
-            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+            handle_domain_fixture_for_peer(&mut stream, Some(&context), None, None, None, true)
                 .unwrap();
         });
         let mut client = Stream::connect(name.borrow()).unwrap();
@@ -7261,7 +7319,7 @@ pub(crate) mod tests {
             let (name, listener) = isolated_ipc_listener("admission-held");
             let server = thread::spawn(move || {
                 let mut stream = listener.accept().unwrap();
-                handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+                handle_domain_fixture_for_peer(&mut stream, Some(&context), None, None, None, true)
                     .unwrap();
             });
             let mut client = Stream::connect(name.borrow()).unwrap();
@@ -7477,7 +7535,7 @@ pub(crate) mod tests {
         let server = thread::spawn(move || {
             let mut stream = listener.accept().unwrap();
             let result =
-                handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true);
+                handle_domain_fixture_for_peer(&mut stream, Some(&context), None, None, None, true);
             done_send.send(result).unwrap();
         });
         let mut client = Stream::connect(name.borrow()).unwrap();
@@ -7602,7 +7660,7 @@ pub(crate) mod tests {
         context.expected_desktop = Arc::new(test_connected_process_identity());
         let server = thread::spawn(move || {
             let mut stream = listener.accept().unwrap();
-            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+            handle_domain_fixture_for_peer(&mut stream, Some(&context), None, None, None, true)
                 .unwrap();
         });
         let mut client = Stream::connect(name.borrow()).unwrap();
@@ -7738,7 +7796,7 @@ pub(crate) mod tests {
         let (name, listener) = isolated_ipc_listener("content-search");
         let server = thread::spawn(move || {
             let mut stream = listener.accept().expect("accept content search client");
-            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, None, true)
+            handle_domain_fixture_for_peer(&mut stream, context.as_ref(), None, None, None, true)
                 .expect("serve content search request");
         });
         let mut client = Stream::connect(name.borrow()).expect("connect content search client");
@@ -7764,7 +7822,7 @@ pub(crate) mod tests {
         let (name, listener) = isolated_ipc_listener("content-timeline");
         let server = thread::spawn(move || {
             let mut stream = listener.accept().expect("accept timeline client");
-            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, None, true)
+            handle_domain_fixture_for_peer(&mut stream, context.as_ref(), None, None, None, true)
                 .expect("serve timeline request");
         });
         let mut client = Stream::connect(name.borrow()).expect("connect timeline client");
@@ -7789,7 +7847,7 @@ pub(crate) mod tests {
         let (name, listener) = isolated_ipc_listener("content-event-detail");
         let server = thread::spawn(move || {
             let mut stream = listener.accept().expect("accept event detail client");
-            handle_connection_for_peer(&mut stream, context.as_ref(), None, None, None, true)
+            handle_domain_fixture_for_peer(&mut stream, context.as_ref(), None, None, None, true)
                 .expect("serve event detail request");
         });
         let mut client = Stream::connect(name.borrow()).expect("connect event detail client");
@@ -8793,18 +8851,124 @@ pub(crate) mod tests {
         (handle, server)
     }
 
+    // Transport-neutral stream lifetime fixtures; product Mac calls are denied
+    // before these helpers until a native owner channel is independently ready.
+    fn confirm_pending_test_approval(handle: String) -> io::Result<DesktopBootstrapApprovalResult> {
+        finish_pending_bootstrap_approval(handle, "bootstrap.approval.confirm")
+    }
+    fn cancel_pending_test_approval(handle: String) -> io::Result<DesktopBootstrapApprovalResult> {
+        finish_pending_bootstrap_approval(handle, "bootstrap.approval.cancel")
+    }
+    fn confirm_pending_test_owner(
+        handle: String,
+    ) -> io::Result<DesktopOwnerSecurityOperationResult> {
+        finish_pending_owner_security_operation(handle, "owner.security.confirm")
+    }
+    fn cancel_pending_test_owner(
+        handle: String,
+    ) -> io::Result<DesktopOwnerSecurityOperationResult> {
+        finish_pending_owner_security_operation(handle, "owner.security.cancel")
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn mac_owner_channel_all_desktop_routes_refuse_before_unix_or_session_access() {
+        let timeout = Duration::ZERO;
+        let results = [
+            desktop_read_bootstrap_brain_identity(timeout).map(|_| ()),
+            desktop_create_bootstrap_offer("ab".repeat(32), "adapter".into(), timeout).map(|_| ()),
+            desktop_create_bootstrap_proof("{}".into(), "{}".into(), "adapter".into(), timeout)
+                .map(|_| ()),
+            desktop_prepare_bootstrap_approval("initiator".into(), vec![], timeout).map(|_| ()),
+            desktop_confirm_bootstrap_approval("not-a-handle".into()).map(|_| ()),
+            desktop_cancel_bootstrap_approval("not-a-handle".into()).map(|_| ()),
+            desktop_complete_peer_approval(vec![], timeout).map(|_| ()),
+            desktop_prepare_owner_security_operation(
+                DesktopOwnerSecurityOperationInput {
+                    kind: "self_retirement".into(),
+                    target_device_id: None,
+                    reason: None,
+                    cutoff_seq: None,
+                },
+                timeout,
+            )
+            .map(|_| ()),
+            desktop_confirm_owner_security_operation("not-a-handle".into()).map(|_| ()),
+            desktop_cancel_owner_security_operation("not-a-handle".into()).map(|_| ()),
+        ];
+        for result in results {
+            let error = result.unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+            assert_eq!(error.to_string(), "mac_owner_channel_disabled");
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn mac_owner_channel_unix_families_refuse_even_for_recognized_desktop_without_context() {
+        for peer_is_desktop in [false, true] {
+            for operation in [
+                "bootstrap.exchange.brain_identity.read",
+                "bootstrap.exchange.offer.create",
+                "bootstrap.exchange.proof.create",
+                "bootstrap.approval.prepare",
+                "bootstrap.approval.confirm",
+                "bootstrap.approval.cancel",
+                "bootstrap.approval.complete",
+                "owner.security.prepare",
+                "owner.security.confirm",
+                "owner.security.cancel",
+                "owner.security.unknown",
+            ] {
+                let (name, listener) = isolated_ipc_listener("disabled-owner");
+                let server = thread::spawn(move || {
+                    let mut stream = listener.accept().unwrap();
+                    handle_connection_for_peer(
+                        &mut stream,
+                        None,
+                        None,
+                        None,
+                        None,
+                        peer_is_desktop,
+                    )
+                    .unwrap();
+                });
+                let mut client = Stream::connect(name.borrow()).unwrap();
+                let response = exchange_bootstrap_approval(
+                    &mut client,
+                    &approval_request(operation),
+                    Instant::now() + IPC_RESPONSE_DEADLINE,
+                )
+                .unwrap();
+                assert!(!response.accepted);
+                assert_eq!(
+                    response.error.as_deref(),
+                    Some("mac_owner_channel_disabled")
+                );
+                assert!(
+                    response.capability.is_none()
+                        && response.snapshot.is_none()
+                        && response.signed_message.is_none()
+                        && response.exchange_message.is_none()
+                        && response.brain_identity_json.is_none()
+                );
+                server.join().unwrap();
+            }
+        }
+    }
+
     #[test]
     fn desktop_pending_approval_burns_handle_on_connection_loss_without_reconnect() {
         for confirm in [true, false] {
             let (handle, server) = pending_approval_test_stream();
             drop(server);
             let result = if confirm {
-                desktop_confirm_bootstrap_approval(handle.clone())
+                confirm_pending_test_approval(handle.clone())
             } else {
-                desktop_cancel_bootstrap_approval(handle.clone())
+                cancel_pending_test_approval(handle.clone())
             };
             assert!(result.is_err(), "closed original stream must not authorize");
-            let retry = desktop_confirm_bootstrap_approval(handle).unwrap_err();
+            let retry = confirm_pending_test_approval(handle).unwrap_err();
             assert_eq!(retry.kind(), io::ErrorKind::InvalidData);
             assert!(retry.to_string().contains("expired or unavailable"));
         }
@@ -8835,12 +8999,12 @@ pub(crate) mod tests {
                 );
             drop(server);
             let result = if confirm {
-                desktop_confirm_owner_security_operation(handle.clone())
+                confirm_pending_test_owner(handle.clone())
             } else {
-                desktop_cancel_owner_security_operation(handle.clone())
+                cancel_pending_test_owner(handle.clone())
             };
             assert!(result.is_err());
-            let retry = desktop_confirm_owner_security_operation(handle).unwrap_err();
+            let retry = confirm_pending_test_owner(handle).unwrap_err();
             assert_eq!(retry.kind(), io::ErrorKind::InvalidData);
             assert!(retry.to_string().contains("expired or unavailable"));
         }
@@ -8913,9 +9077,9 @@ pub(crate) mod tests {
                 .unwrap();
             });
             let result = if confirm {
-                desktop_confirm_bootstrap_approval(handle.clone())
+                confirm_pending_test_approval(handle.clone())
             } else {
-                desktop_cancel_bootstrap_approval(handle.clone())
+                cancel_pending_test_approval(handle.clone())
             };
             assert_eq!(
                 result.is_ok(),
@@ -8927,7 +9091,7 @@ pub(crate) mod tests {
                 assert_eq!(result.signed_message.as_deref(), signed);
             }
             server_task.join().unwrap();
-            assert!(desktop_confirm_bootstrap_approval(handle).is_err());
+            assert!(confirm_pending_test_approval(handle).is_err());
         }
     }
 

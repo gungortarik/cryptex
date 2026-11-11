@@ -1,7 +1,9 @@
-# M8 Mac owner-channel integration: decision needed
+# M8 Mac owner-channel integration: approved disabled candidate
 
-Status: **PROPOSED; no product integration or activation authorized**.
-Date:2026-11-10. This is a scoped continuation proposal, not an accepted ADR.
+Status: **OWNER APPROVED FOR INITIALLY DISABLED CANDIDATE DEVELOPMENT**.
+Date:2026-11-10. The owner explicitly authorized this bounded candidate in chat.
+[ADR-0020](../adr/ADR-0020-macos-m8-owner-channel-candidate.md) records that scope.
+Production activation, release identity and support-floor decisions remain open.
 [ADR-0007](../adr/ADR-0007-local-ipc-implementation-addendum.md), the Master Spec
 and accepted platform/runtime contracts remain authoritative.
 
@@ -60,7 +62,7 @@ Before enabling any operation, the candidate must establish:
 6. **No renderer authority:** the webview keeps only Desktop-local handles and
    review fields; signing capabilities and native rights remain outside it.
 
-This approval would authorize development behind the existing closed product
+This approval authorizes development behind the existing closed product
 gate, not immediate deployment or removal of the gate. Record the resulting
 transport decision through the ADR process before calling it an accepted product
 mechanism. A new release identity or support-floor choice needs its own concrete
@@ -92,7 +94,7 @@ Do not reinterpret a health/restart pass as solving the missing authorization.
 [AGENTS.md](../../AGENTS.md) says: "If a requested change in tool roles, workflow,
 architecture, branch strategy, milestone scope, or integration strategy is
 ambiguous, ask the user before changing direction."
-The owner's prior approval covered a product-separated experiment. Routing real
-M8 requests through a new Mac adapter crosses that boundary. The recommended
-choice is the bounded candidate above; no implementation of that channel is part
-of the current connection-lifetime corrections.
+The owner's earlier approval covered a product-separated experiment. The owner
+has now separately approved the recommended bounded integration candidate,
+initially disabled. No repeat permission is needed for that development scope.
+Activation or an expanded architecture/release-policy decision remains separate.

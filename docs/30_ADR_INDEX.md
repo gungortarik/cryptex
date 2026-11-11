@@ -111,6 +111,12 @@ Production v2 activation remains CLOSED.
 
 ## 5. ADR source records
 
+ADR-0020 records the owner's2026-11-10 approval of an initially disabled Mac M8
+owner-message adapter candidate. It permits bounded candidate development only;
+ordinary ADR-0007 Unix IPC, Windows pipes, product activation, release-image and
+minimum-OS gates are unchanged. See
+[`ADR-0020-macos-m8-owner-channel-candidate.md`](adr/ADR-0020-macos-m8-owner-channel-candidate.md).
+
 Some original ADR source records remain absent. An implementation addendum may
 record evidence for an exact implementation detail without reconstructing a
 missing original record. ADR-0007 has an accepted implementation addendum.
