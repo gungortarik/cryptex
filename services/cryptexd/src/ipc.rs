@@ -27,6 +27,7 @@ use crate::event_signing_key::{
 };
 use crate::knowledge_materialization::{GuardedSearchError, RetrievalSafetyHold};
 use crate::local_device_identity::LocalDeviceKeyResolver;
+use crate::m8_owner_channel::reply::{AdmittedReply, OwnerReply as BootstrapApprovalIpcResponse};
 use crate::m8_owner_channel::request::{
     OwnerOperation as OwnerSecurityOperationRequest, OwnerRequest as BootstrapApprovalIpcRequest,
 };
@@ -103,30 +104,6 @@ struct Request {
     capture_resolve: Option<DesktopCaptureResolveBody>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     vault: Option<DesktopVaultBody>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct BootstrapApprovalIpcResponse {
-    protocol_version: u32,
-    request_id: Option<String>,
-    accepted: bool,
-    error: Option<&'static str>,
-    operation: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    approval_request_digest: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    capability: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    snapshot: Option<crate::bootstrap_journal::ApprovalSnapshot>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    signed_message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    exchange_message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    transaction_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    brain_identity_json: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -2401,33 +2378,49 @@ fn handle_bootstrap_exchange(
     peer_is_desktop: bool,
     request: BootstrapApprovalIpcRequest,
 ) -> io::Result<()> {
-    let Some(_permit) = admit_approval_operation(search, stream, &request.request_id, false)?
-    else {
+    let Some(permit) = admit_approval_operation(search, stream, &request.request_id, false)? else {
         return Ok(());
     };
-    if !peer_is_desktop
+    let (reply, deadline) = if !peer_is_desktop
         || !approval_request_is_authorized(&request)
         || !bootstrap_exchange_request_is_well_shaped(&request)
     {
-        let response = serde_json::to_vec(&bootstrap_exchange_response(
-            Some(request.request_id),
-            false,
-            Some("bootstrap_exchange_request_rejected"),
-            "bootstrap.exchange.result",
-            None,
-            None,
-            None,
-        ))?;
-        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
-    }
+        (
+            bootstrap_exchange_response(
+                Some(request.request_id),
+                false,
+                Some("bootstrap_exchange_request_rejected"),
+                "bootstrap.exchange.result",
+                None,
+                None,
+                None,
+            ),
+            Instant::now() + IPC_REQUEST_DEADLINE,
+        )
+    } else {
+        (
+            execute_bootstrap_exchange(search, request),
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+    };
+    AdmittedReply::new(reply, permit, deadline)?
+        .send_using(|bytes, deadline| write_response(stream, bytes, deadline))
+}
 
+/// Transport-neutral domain execution, reachable only behind the existing
+/// socket authorization above. A future native wrapper needs its own sealed
+/// per-request proof; parsing or calling this function is not peer authentication.
+fn execute_bootstrap_exchange(
+    search: &SearchContext,
+    request: BootstrapApprovalIpcRequest,
+) -> BootstrapApprovalIpcResponse {
     if request.operation == "bootstrap.exchange.brain_identity.read" {
         let result = read_local_brain_identity(search);
         let (accepted, error, identity) = match result {
             Ok(identity) => (true, None, Some(identity)),
             Err(error) => (false, Some(error), None),
         };
-        let response = serde_json::to_vec(&bootstrap_exchange_response(
+        return bootstrap_exchange_response(
             Some(request.request_id),
             accepted,
             error,
@@ -2435,10 +2428,8 @@ fn handle_bootstrap_exchange(
             None,
             None,
             identity,
-        ))?;
-        return write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE);
+        );
     }
-
     let result = match request.operation.as_str() {
         "bootstrap.exchange.offer.create" => create_or_resume_bootstrap_offer(search, &request),
         "bootstrap.exchange.proof.create" => create_or_resume_bootstrap_proof(search, &request),
@@ -2456,7 +2447,7 @@ fn handle_bootstrap_exchange(
             "bootstrap.exchange.result",
         ),
     };
-    let response = serde_json::to_vec(&bootstrap_exchange_response(
+    bootstrap_exchange_response(
         Some(request.request_id),
         accepted,
         error,
@@ -2464,8 +2455,7 @@ fn handle_bootstrap_exchange(
         transaction_id,
         message,
         None,
-    ))?;
-    write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)
+    )
 }
 
 fn read_local_brain_identity(context: &SearchContext) -> Result<String, &'static str> {

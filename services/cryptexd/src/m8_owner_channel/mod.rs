@@ -7,6 +7,7 @@
 
 use std::fmt;
 
+pub(crate) mod reply;
 pub(crate) mod request;
 
 /// Closed operation inventory. A family prefix is routing information, never
