@@ -1,5 +1,5 @@
-//! Candidate release-image policy. Inputs must be compiled, reviewed release
-//! metadata, never a peer claim, runtime file or adjacent executable.
+//! Candidate release-image policy. Inputs require independently authenticated
+//! release metadata, never a peer claim or an unverified adjacent executable.
 //! This module supplies image expectations, not stable bundle evidence.
 
 use std::ffi::{CStr, CString};
@@ -21,23 +21,28 @@ pub(super) enum PolicyError {
 
 /// Candidate distribution constraint. Choosing this for a release still
 /// requires a reviewed publisher decision and signed product acceptance.
-struct ReleaseDefinition {
+struct PublisherDefinition {
     team: &'static str,
     desktop_identifier: &'static str,
     daemon_identifier: &'static str,
+}
+
+// Final image hashes require a future independently authenticated inventory.
+// This representation has no production constructor.
+struct ReleaseDefinition {
+    publisher: PublisherDefinition,
     desktop_cdhash: [u8; 20],
     daemon_cdhash: [u8; 20],
 }
 
-// No certificate, publisher, architecture hash set, or bundle identifier has
-// been approved for release. No environment/wire/file override exists.
-const PRODUCT_RELEASE: Option<ReleaseDefinition> = None;
-
-pub(super) fn configured_image(role: Role) -> Result<ExpectedImage, PolicyError> {
-    expected_image(
-        PRODUCT_RELEASE.as_ref().ok_or(PolicyError::Unconfigured)?,
-        role,
-    )
+// No authenticated release-inventory factory or publisher has been approved.
+// In particular, embedding mutual final CDHashes in both signed executables
+// would create a signing cycle. The eventual inventory provenance must be
+// reviewed independently; this placeholder has no runtime/file override.
+pub(super) fn configured_image(_role: Role) -> Result<ExpectedImage, PolicyError> {
+    // A future sealed inventory verifier must supply the expected final hashes.
+    // Filling a compiled table of mutual CDHashes cannot enable this factory.
+    Err(PolicyError::Unconfigured)
 }
 
 pub(super) struct ExpectedImage {
@@ -64,35 +69,37 @@ fn valid_identifier(id: &str) -> bool {
 }
 
 fn expected_image(release: &ReleaseDefinition, role: Role) -> Result<ExpectedImage, PolicyError> {
-    if release.team.len() != 10
+    if release.publisher.team.len() != 10
         || !release
+            .publisher
             .team
             .bytes()
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
     {
         return Err(PolicyError::InvalidPublisher);
     }
-    if !valid_identifier(release.desktop_identifier) || !valid_identifier(release.daemon_identifier)
+    if !valid_identifier(release.publisher.desktop_identifier)
+        || !valid_identifier(release.publisher.daemon_identifier)
     {
         return Err(PolicyError::InvalidIdentifier);
     }
     if release.desktop_cdhash == [0; 20] || release.daemon_cdhash == [0; 20] {
         return Err(PolicyError::InvalidImageHash);
     }
-    if release.desktop_identifier == release.daemon_identifier
+    if release.publisher.desktop_identifier == release.publisher.daemon_identifier
         || release.desktop_cdhash == release.daemon_cdhash
     {
         return Err(PolicyError::AmbiguousRoles);
     }
     let (identifier, cdhash) = match role {
-        Role::Desktop => (release.desktop_identifier, release.desktop_cdhash),
-        Role::Daemon => (release.daemon_identifier, release.daemon_cdhash),
+        Role::Desktop => (release.publisher.desktop_identifier, release.desktop_cdhash),
+        Role::Daemon => (release.publisher.daemon_identifier, release.daemon_cdhash),
     };
     // Values are validated before interpolation. Both a Developer ID
     // intermediate and an application leaf are required by this candidate.
     let requirement = CString::new(format!(
         "anchor apple generic and identifier \"{identifier}\" and certificate leaf[subject.OU] = \"{}\" and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists",
-        release.team
+        release.publisher.team
     )).map_err(|_| PolicyError::InvalidIdentifier)?;
     Ok(ExpectedImage {
         requirement,
@@ -106,9 +113,11 @@ mod tests {
 
     fn release() -> ReleaseDefinition {
         ReleaseDefinition {
-            team: "TESTTEAM01",
-            desktop_identifier: "com.example.cryptex.desktop",
-            daemon_identifier: "com.example.cryptex.daemon",
+            publisher: PublisherDefinition {
+                team: "TESTTEAM01",
+                desktop_identifier: "com.example.cryptex.desktop",
+                daemon_identifier: "com.example.cryptex.daemon",
+            },
             desktop_cdhash: [1; 20],
             daemon_cdhash: [2; 20],
         }
@@ -130,12 +139,12 @@ mod tests {
         for (role, id, hash) in [
             (
                 Role::Desktop,
-                release.desktop_identifier,
+                release.publisher.desktop_identifier,
                 release.desktop_cdhash,
             ),
             (
                 Role::Daemon,
-                release.daemon_identifier,
+                release.publisher.daemon_identifier,
                 release.daemon_cdhash,
             ),
         ] {
@@ -159,7 +168,7 @@ mod tests {
             "TESTTEAM0\0",
         ] {
             let mut policy = release();
-            policy.team = team;
+            policy.publisher.team = team;
             assert!(matches!(
                 expected_image(&policy, Role::Desktop),
                 Err(PolicyError::InvalidPublisher)
@@ -176,7 +185,7 @@ mod tests {
             "a/b.c",
         ] {
             let mut policy = release();
-            policy.desktop_identifier = id;
+            policy.publisher.desktop_identifier = id;
             assert!(matches!(
                 expected_image(&policy, Role::Daemon),
                 Err(PolicyError::InvalidIdentifier)
@@ -195,7 +204,7 @@ mod tests {
             Err(PolicyError::AmbiguousRoles)
         ));
         let mut policy = release();
-        policy.daemon_identifier = policy.desktop_identifier;
+        policy.publisher.daemon_identifier = policy.publisher.desktop_identifier;
         assert!(matches!(
             expected_image(&policy, Role::Daemon),
             Err(PolicyError::AmbiguousRoles)
