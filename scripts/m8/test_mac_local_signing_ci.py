@@ -30,9 +30,16 @@ def main():
         }
         saved = {name: os.environ.get(name) for name in controls}
         try:
+            config = root / "certificate.cnf"
+            config.write_text(
+                "[req]\ndistinguished_name=dn\n[dn]\n"
+                "[code_signing]\nbasicConstraints=critical,CA:FALSE\n"
+                "keyUsage=critical,digitalSignature\nextendedKeyUsage=codeSigning\n",
+                encoding="ascii")
             checked(run_bounded, [openssl, "req", "-x509", "-newkey", "rsa:2048",
                     "-nodes", "-keyout", str(root / "key.pem"), "-out", str(root / "cert.pem"),
-                    "-days", "1", "-sha256", "-subj", "/CN=Cryptex isolated native CI signer"],
+                    "-days", "1", "-sha256", "-subj", "/CN=Cryptex isolated native CI signer",
+                    "-config", str(config), "-extensions", "code_signing"],
                     "generate_ci_identity", 30)
             checked(run_bounded, [openssl, "x509", "-in", str(root / "cert.pem"),
                     "-outform", "DER", "-out", str(root / "cert.der")], "export_ci_certificate")
