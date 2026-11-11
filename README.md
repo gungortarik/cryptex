@@ -18,6 +18,9 @@ The [private Mach backend](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) now checks
 the kernel sender of each message against the supervised process and an expected
 signed image. Product activation stays closed pending release image policy,
 stable bundle observation and signed Desktop/daemon integration.
+The [release-image policy candidate](docs/proposals/m8-macos-release-image-policy.md)
+validates publisher and role predicates. Its product factory remains unconfigured
+pending independently authenticated release metadata and bundle stability.
 
 Latest product connection check: [session lifetime corrections](evidence/m8/m8-connection-session-lifetime-review-20261110.md)
 passed exact CI42956476071/source9dd0a40 on Windows and Mac: actual daemon crash/

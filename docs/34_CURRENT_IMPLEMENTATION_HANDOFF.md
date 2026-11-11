@@ -1,5 +1,33 @@
 # 34 — Current Implementation Handoff
 
+## Release-image policy candidate
+
+The disabled candidate now has a closed role-specific policy representation.
+It validates the Team ID, both identifiers and both expected image hashes before
+selecting Desktop or daemon. Its proposed certificate constraint is Developer
+ID Application. The product configuration remains absent. Test-only metadata
+cannot select a product publisher.
+
+[The release-policy continuation](proposals/m8-macos-release-image-policy.md)
+records the remaining provenance and bundle-stability design. Mutual embedded
+final CDHashes would create a signing cycle. An independently authenticated
+release inventory and a stable bundle observation must be implemented and
+reviewed before native product authorization. Publisher selection and product
+activation remain open.
+
+Source review of `214c234` found no remaining actionable issue in this bounded
+policy change. Local Windows owner-channel tests passed 12/12. These checks
+cover policy validation and the closed factory. They do not establish an
+authenticated release inventory or stable signed bundle observation.
+
+[Exact-source native CI](https://github.com/gungortarik/cryptex/actions/runs/43046353361)
+passed for `214c234` on macOS and Windows. The Mac owner-channel suite passed 13
+tests, including all three new policy tests and the signed native subprocess
+checks. Its two explicitly invoked helper tests remain marked ignored for
+ordinary direct test discovery. Windows passed 12 owner-channel tests.
+Startup, Desktop, native C ownership checks, selected IPC suites, formatting and
+lint passed. The four pre-existing Mac IPC ignores remain open.
+
 ## Private macOS Mach transport and process identity
 
 The macOS build of the daemon crate includes a native backend under
