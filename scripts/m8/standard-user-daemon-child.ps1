@@ -58,12 +58,13 @@ function Invoke-TestBinary([string]$Exe,[string]$Arguments) {
         return @{code=$process.ExitCode;stdout=$stdout.Result;stderr=$stderr.Result}
     } finally {$process.Dispose()}
 }
-function Assert-CompleteSuite([int]$Code,[string]$Stdout,[int]$Count,[bool]$NoIgnored=$false) {
+function Assert-CompleteSuite([int]$Code,[string]$Stdout,[int]$Count,[bool]$NoIgnored=$false,[int]$Filtered=0) {
     $summary=@($Stdout -split '\r?\n' | Where-Object {$_ -cmatch '^test result:'})
     # Process-interruption tests may print nested harness summaries. The final
     # summary must cover this executable's complete pre-enumerated inventory.
-    if($Code -ne 0 -or $Count -lt 1 -or $summary.Count -eq 0 -or $summary[-1] -cnotmatch '^test result: ok\. ([1-9][0-9]*) passed; 0 failed; ([0-9]+) ignored; 0 measured; 0 filtered out;'){throw 'Daemon test suite failed or incomplete.'}
+    if($Code -ne 0 -or $Count -lt 1 -or $Filtered -lt 0 -or $summary.Count -eq 0 -or $summary[-1] -cnotmatch '^test result: ok\. ([1-9][0-9]*) passed; 0 failed; ([0-9]+) ignored; 0 measured; ([0-9]+) filtered out;'){throw 'Daemon test suite failed or incomplete.'}
     if(([int]$Matches[1]+[int]$Matches[2]) -ne $Count){throw 'Incomplete daemon inventory coverage.'}
+    if([int]$Matches[3] -ne $Filtered){throw 'Unexpected excluded test inventory.'}
     if($NoIgnored -and [int]$Matches[2] -ne 0){throw 'Startup suite must execute every test, including the endpoint fixture.'}
 }
 $suites=0
@@ -75,16 +76,19 @@ if($startupOnly) {
     $testArguments='--include-ignored --test-threads=1'
 }
 foreach($exe in $p.executables) {
+    $fullList=Invoke-TestBinary $exe '--list'
+    $fullCount=@($fullList.stdout -split '\r?\n' | Where-Object {$_ -cmatch ': test$'}).Count
+    if($fullList.code -ne 0 -or $fullCount -eq 0){throw 'Missing full daemon test inventory.'}
     $filters=if($sessionOnly){@('approval_session::tests::','ipc::tests::desktop_pending_')}else{@('')}
     foreach($filter in $filters) {
         $list=Invoke-TestBinary $exe ("$filter --list".Trim())
         $count=@($list.stdout -split '\r?\n' | Where-Object {$_ -cmatch ': test$'}).Count
-        if($list.code -ne 0 -or $count -eq 0){throw 'Missing daemon test inventory.'}
+        if($list.code -ne 0 -or $count -eq 0 -or $count -gt $fullCount){throw 'Missing daemon test inventory.'}
         $arguments=if($sessionOnly){"$filter --test-threads=1"}else{$testArguments}
         $run=Invoke-TestBinary $exe $arguments
         $run.stdout | Write-Output
         $run.stderr | Write-Output
-        Assert-CompleteSuite $run.code $run.stdout $count ($startupOnly -or $sessionOnly)
+        Assert-CompleteSuite $run.code $run.stdout $count ($startupOnly -or $sessionOnly) ($fullCount-$count)
         $suites++
     }
 }

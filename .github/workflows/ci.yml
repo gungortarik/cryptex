@@ -80,6 +80,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          & ./scripts/m8/test-standard-user-summary.ps1
           & ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -DesktopSessionOnly
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
