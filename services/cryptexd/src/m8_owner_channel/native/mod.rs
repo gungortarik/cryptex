@@ -30,6 +30,15 @@ impl ImagePolicy<'_> {
     }
 }
 
+impl<'a> From<&'a super::image_policy::ExpectedImage> for ImagePolicy<'a> {
+    fn from(image: &'a super::image_policy::ExpectedImage) -> Self {
+        Self {
+            requirement: image.requirement(),
+            cdhash: image.cdhash(),
+        }
+    }
+}
+
 unsafe extern "C" {
     fn cx_listen(out: *mut *mut c_void, epoch: *mut u8) -> c_int;
     fn cx_accept(channel: *mut c_void, child: libc::pid_t, policy: &PolicyRef) -> c_int;

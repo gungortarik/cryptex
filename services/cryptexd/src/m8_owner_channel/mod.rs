@@ -7,6 +7,7 @@
 
 use std::fmt;
 
+mod image_policy;
 #[cfg(target_os = "macos")]
 mod native;
 pub(crate) mod reply;
