@@ -24,6 +24,7 @@ def main():
         keychain = root / "fixture.keychain-db"
         password = secrets.token_hex(24)
         created = False
+        trust_attempted = False
         controls = {
             "CX_NATIVE_TEST_SIGNER": None,
             "CX_NATIVE_TEST_KEYCHAIN": None,
@@ -65,6 +66,13 @@ def main():
             checked(run_bounded, ["/usr/bin/security", "set-key-partition-list",
                     "-S", "apple-tool:,apple:,codesign:", "-s", "-k", password, str(keychain)],
                     "authorize_ci_codesign")
+            # A locally generated signing identity must be trusted for code
+            # signing on this disposable runner. Scope trust to this one fresh
+            # certificate and remove it explicitly, even after partial failure.
+            trust_attempted = True
+            checked(run_bounded, ["/usr/bin/security", "add-trusted-cert",
+                    "-r", "trustRoot", "-p", "codeSign", "-k", str(keychain), str(root / "cert.pem")],
+                    "trust_disposable_ci_signer")
             os.environ.update({
                 "CX_NATIVE_TEST_SIGNER": fingerprint,
                 "CX_NATIVE_TEST_KEYCHAIN": str(keychain),
@@ -92,11 +100,16 @@ def main():
                     os.environ.pop(name, None)
                 else:
                     os.environ[name] = value
-            if created and keychain.exists():
-                checked(run_bounded, ["/usr/bin/security", "delete-keychain", str(keychain)],
-                        "delete_ci_keychain")
-                if keychain.exists():
-                    raise PreflightError("ci_keychain_cleanup_failed")
+            try:
+                if trust_attempted:
+                    checked(run_bounded, ["/usr/bin/security", "remove-trusted-cert",
+                            str(root / "cert.pem")], "remove_disposable_ci_trust")
+            finally:
+                if created and keychain.exists():
+                    checked(run_bounded, ["/usr/bin/security", "delete-keychain", str(keychain)],
+                            "delete_ci_keychain")
+                    if keychain.exists():
+                        raise PreflightError("ci_keychain_cleanup_failed")
     if root.exists():
         raise PreflightError("ci_fixture_directory_cleanup_failed")
     print("local_certificate_fixture_cleanup=passed")
@@ -107,4 +120,9 @@ if __name__ == "__main__":
         main()
     except PreflightError as error:
         print(str(error), file=sys.stderr)
+        sys.exit(2)
+    except Exception:
+        # Provisioning argv can contain disposable keychain/P12 passwords.
+        # Cleanup has already run through finally/context exit.
+        print("local_certificate_ci_internal_failure", file=sys.stderr)
         sys.exit(2)
