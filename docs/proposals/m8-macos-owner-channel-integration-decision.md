@@ -70,6 +70,22 @@ evidence/decision; neither is silently chosen here.
 
 ## Acceptance before activation
 
+### Native implementation boundary identified during development
+
+The first implementation intentionally has no constructor for native authority.
+The decoder validates untrusted request shape; the admitted reply owns response
+delivery lifetime. Neither stands in for a kernel-verified message/session.
+
+Apple documents that static signature validation depends on code remaining
+unmodified and warns about concurrent modification. An open file descriptor or
+two repeated path validations alone are not accepted here as an atomic sealed
+bundle snapshot. A stable product-image policy/observation must be designed and
+reviewed before the native authority factory can operate.
+[Apple SecStaticCodeCheckValidity documentation](https://developer.apple.com/documentation/security/secstaticcodecheckvalidity(_:_:_:)).
+Do not port the disposable probe's process-exit-on-send-error cleanup policy into
+the long-lived product, or reuse its development-certificate trust root as release
+acceptance. Those are explicit remaining native-backend design obligations.
+
 Run actual Desktop/daemon native tests for first launch, existing-instance
 handling, crash/restart, old live channel/grant refusal, reconnection, expiry,
 cancel, single use and wrong-role/forwarded-right/changed-image refusals. Verify

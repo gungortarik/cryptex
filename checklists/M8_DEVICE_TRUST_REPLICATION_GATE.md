@@ -4,6 +4,14 @@ Updated 2026-11-10. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
+Owner-approved [disabled Mac adapter foundation](../evidence/m8/m8-disabled-macos-owner-adapter-20261110.md):
+sourceca5665d CI42960387437 and source review passed. Default-off outbound/Unix
+inbound gates cover all M8 families with no fallback. Shared request/reply types
+and admitted exchange replies are implemented; new contract/reply tests9/9 and
+Mac gate2 passed. Native proof/backend, remaining typed approval-session execution,
+stable product-image policy and native product acceptance remain unimplemented.
+ADR-0020 authorizes continued disabled development; activation and M8 stay gated.
+
 Existing product connection/session corrections: [source9dd0a40 CI42956476071](../evidence/m8/m8-connection-session-lifetime-review-20261110.md)
 passed Windows/Mac startup9/10, Desktop46/39, approval registry17/17 and client
 stream/response3/3 with zero failures/ignored; native lint/format/frontend passed.

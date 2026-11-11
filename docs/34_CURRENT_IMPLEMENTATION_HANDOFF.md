@@ -1,5 +1,37 @@
 # 34 — Current Implementation Handoff
 
+## Owner approved disabled Mac adapter; first boundary implemented (2026-11-10)
+
+The owner explicitly approved the proposed initially disabled Mac M8 integration.
+[ADR-0020](adr/ADR-0020-macos-m8-owner-channel-candidate.md) records that limited
+development decision; no repeat approval is needed for this scope. Activation,
+release-image policy and minimum-OS acceptance remain separate.
+
+Source913a5f2 adds shared closed M8 request types/limits and default-off routing:
+all10 Mac Desktop M8 calls refuse before Unix/session/native access; daemon Unix
+inbound refuses M8 even for a recognized Desktop before domain/context access.
+There is no runtime enable switch or fallback. Windows request serialization and
+routes remain unchanged. Domain IPC fixtures are explicitly test-only, distinct
+from product delivery; the new product-gate tests never use that bypass.
+
+Sourceca5665d additionally extracts the exchange identity/offer/proof domain
+executor without a Stream and shared typed replies owning admission through
+actual bounded response delivery (including expiry/error/drop/unwind). Exact
+CI42960387437 SUCCESS: startup Windows9/Mac10, Desktop46/39, registry17/17,
+pending-stream3/3, new contract/reply9/9, Mac product-gate2 and full Mac IPC60pass/
+4preexisting ignored, zero failures. Native lint/format/frontend passed; Windows
+standard-user identity/cleanup and full/selected inventories verified. Independent
+source review has no actionable finding. [Evidence and implementation ledger](../evidence/m8/m8-disabled-macos-owner-adapter-20261110.md).
+
+Native Mach receive/send/process pins, product release-image policy/stable bundle
+observation and a kernel-verified exact-request authority constructor are NOT
+implemented. Prepare/confirm/cancel/complete domain/session extraction also remains.
+Do not call this a complete native adapter or owner authorization. Next authorized
+work: remaining typed domain/session boundary with epoch/grant invalidation, then
+native backend against reviewed image/stability and long-lived right-cleanup policy.
+No repeat permission or device run is needed yet. Mac activation stays CLOSED;
+M8 is OPEN. Older decision-pending/no-integration-authorized notes below are historical.
+
 ## Product connection/session corrections passed; Mac integration decision pending (2026-11-10)
 
 Source9dd0a40 binds approval connection objects to their exact registry allocation,

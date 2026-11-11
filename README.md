@@ -4,6 +4,15 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
+The owner-approved [disabled Mac M8 adapter foundation](evidence/m8/m8-disabled-macos-owner-adapter-20261110.md)
+is implemented on sourceca5665d and passed exact Windows/Mac CI42960387437 and
+source review. All Mac M8 families now refuse on the legacy Unix path, including
+exchange/read/proof; no runtime switch/fallback enables them. Shared wire types,
+exchange domain execution and bounded admitted replies are in place. Native Mach
+authority, remaining session handlers and product image policy are still pending;
+this is not a working native owner channel or Mac parity. Ordinary Unix APIs and
+Windows pipes remain unchanged. No new device run is requested.
+
 Latest product connection check: [session lifetime corrections](evidence/m8/m8-connection-session-lifetime-review-20261110.md)
 passed exact CI42956476071/source9dd0a40 on Windows and Mac: actual daemon crash/
 reconnect, original-stream handle loss, registry lifetime and confirm/cancel response
