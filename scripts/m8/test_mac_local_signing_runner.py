@@ -16,7 +16,7 @@ import mac_identity_preflight
 
 
 class LocalSigningRunnerTests(unittest.TestCase):
-    def test_trust_removal_failure_still_cleans_certificate_keychain_and_directory(self):
+    def test_search_restore_failure_still_cleans_keychain_and_directory(self):
         stages = []
         with tempfile.TemporaryDirectory(prefix="cx-runner-test-") as parent:
             real_directory = tempfile.TemporaryDirectory
@@ -27,13 +27,13 @@ class LocalSigningRunnerTests(unittest.TestCase):
                 if stage == "identify_ci_certificate":
                     return "SHA1 Fingerprint=" + "AA:" * 19 + "AA"
                 if stage == "capture_ci_search_list":
-                    return '"/original/login.keychain-db"'
+                    return '"' + Path(parent, "original login.keychain-db").as_posix() + '"'
                 if stage == "verify_ci_signing_identity":
                     return "A" * 40
                 if stage == "create_ci_keychain":
                     Path(args[-1]).touch()
-                if stage == "remove_disposable_ci_trust":
-                    raise mac_identity_preflight.PreflightError("remove_disposable_ci_trust_failed")
+                if stage == "restore_ci_search_list":
+                    raise mac_identity_preflight.PreflightError("restore_ci_search_list_failed")
                 if stage == "delete_ci_keychain":
                     Path(args[-1]).unlink()
                 return "1 passed; 0 failed"
@@ -52,9 +52,7 @@ class LocalSigningRunnerTests(unittest.TestCase):
                     runpy.run_path(str(Path(__file__).with_name("test_mac_local_signing_ci.py")),
                                    run_name="__main__")
             self.assertEqual(status.exception.code, 2)
-            self.assertLess(stages.index("remove_disposable_ci_trust"),
-                            stages.index("remove_disposable_ci_public_certificate"))
-            self.assertLess(stages.index("remove_disposable_ci_public_certificate"),
+            self.assertLess(stages.index("include_ci_signing_keychain"),
                             stages.index("restore_ci_search_list"))
             self.assertLess(stages.index("restore_ci_search_list"),
                             stages.index("delete_ci_keychain"))

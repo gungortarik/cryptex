@@ -26,7 +26,6 @@ def main():
         keychain = root / "fixture.keychain-db"
         password = secrets.token_hex(24)
         created = False
-        trust_attempted = False
         search_attempted = False
         original_search = shlex.split(checked(run_bounded,
             ["/usr/bin/security", "list-keychains", "-d", "user"], "capture_ci_search_list"))
@@ -76,16 +75,8 @@ def main():
             search_attempted = True
             checked(run_bounded, ["/usr/bin/security", "list-keychains", "-d", "user", "-s",
                     *original_search, str(keychain)], "include_ci_signing_keychain")
-            # A locally generated signing identity must be trusted for code
-            # signing on this disposable runner. Scope trust to this one fresh
-            # certificate and remove it explicitly, even after partial failure.
-            trust_attempted = True
-            checked(run_bounded, ["/usr/bin/sudo", "-n", "/usr/bin/security", "add-trusted-cert",
-                    "-d", "-r", "trustRoot", "-p", "codeSign",
-                    "-k", "/Library/Keychains/System.keychain", str(root / "cert.pem")],
-                    "trust_disposable_ci_signer")
             identities = checked(run_bounded, ["/usr/bin/security", "find-identity",
-                    "-v", "-p", "codesigning", str(keychain)], "verify_ci_signing_identity")
+                    "-p", "codesigning", str(keychain)], "verify_ci_signing_identity")
             if fingerprint not in identities.upper():
                 raise PreflightError("generated_ci_signing_identity_unavailable")
             os.environ.update({
@@ -116,26 +107,15 @@ def main():
                 else:
                     os.environ[name] = value
             try:
-                if trust_attempted:
-                    try:
-                        checked(run_bounded, ["/usr/bin/sudo", "-n", "/usr/bin/security",
-                                "remove-trusted-cert", "-d", str(root / "cert.pem")],
-                                "remove_disposable_ci_trust", 60)
-                    finally:
-                        checked(run_bounded, ["/usr/bin/sudo", "-n", "/usr/bin/security",
-                                "delete-certificate", "-Z", fingerprint, "/Library/Keychains/System.keychain"],
-                                "remove_disposable_ci_public_certificate")
+                if search_attempted:
+                    checked(run_bounded, ["/usr/bin/security", "list-keychains", "-d", "user", "-s",
+                            *original_search], "restore_ci_search_list")
             finally:
-                try:
-                    if search_attempted:
-                        checked(run_bounded, ["/usr/bin/security", "list-keychains", "-d", "user", "-s",
-                                *original_search], "restore_ci_search_list")
-                finally:
-                    if created and keychain.exists():
-                        checked(run_bounded, ["/usr/bin/security", "delete-keychain", str(keychain)],
-                                "delete_ci_keychain")
-                        if keychain.exists():
-                            raise PreflightError("ci_keychain_cleanup_failed")
+                if created and keychain.exists():
+                    checked(run_bounded, ["/usr/bin/security", "delete-keychain", str(keychain)],
+                            "delete_ci_keychain")
+                    if keychain.exists():
+                        raise PreflightError("ci_keychain_cleanup_failed")
     if root.exists():
         raise PreflightError("ci_fixture_directory_cleanup_failed")
     print("local_certificate_fixture_cleanup=passed")
