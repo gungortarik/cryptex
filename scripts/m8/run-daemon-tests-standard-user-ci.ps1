@@ -1,6 +1,7 @@
-param([switch]$DesktopStartupOnly)
+param([switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+if($DesktopStartupOnly -and $DesktopSessionOnly){throw 'Choose one scoped suite.'}
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'Disposable GitHub-hosted Windows runner required.'
 }
@@ -8,6 +9,7 @@ $workspace=(Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
 $manifest=Join-Path $workspace 'services\cryptexd'
 $buildArgs=@('test','--locked','-p','cryptexd','--no-run','--message-format=json')
 if($DesktopStartupOnly){$buildArgs+=@('--test','desktop_startup')}
+if($DesktopSessionOnly){$buildArgs+=@('--lib')}
 $artifacts=@(& cargo @buildArgs)
 if($LASTEXITCODE -ne 0){throw 'Daemon test build failed.'}
 $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Object {
@@ -15,8 +17,9 @@ $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Objec
     $_.target.name -eq $(if($DesktopStartupOnly){'desktop_startup'}else{'cryptexd'}) -and
     $_.profile.test -and $_.executable
 } | ForEach-Object {$_.executable} | Sort-Object -Unique)
-$expectedSuites=if($DesktopStartupOnly){1}else{2}
-if($executables.Count -ne $expectedSuites){throw 'Expected exact daemon test artifacts.'}
+$expectedArtifacts=if($DesktopStartupOnly -or $DesktopSessionOnly){1}else{2}
+$expectedSuites=if($DesktopSessionOnly){2}else{$expectedArtifacts}
+if($executables.Count -ne $expectedArtifacts){throw 'Expected exact daemon test artifacts.'}
 foreach($exe in $executables) {
     $full=(Resolve-Path -LiteralPath $exe).Path
     if(-not $full.StartsWith($workspace+'\target\',[StringComparison]::OrdinalIgnoreCase)){throw 'Test artifact outside workspace target.'}
@@ -43,7 +46,7 @@ try {
         Set-Acl -LiteralPath $entry.path -AclObject $acl
     }
     $payload=Join-Path $scratch 'tests.json'
-    @{schema=1;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly} |
+    @{schema=1;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $payload -Encoding UTF8
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'

@@ -290,8 +290,16 @@ fn actual_daemon_crash_restart_requires_fresh_readiness_and_connection() {
         OwnedChild(await_ready(child, &ready, Duration::from_secs(5)).unwrap())
     };
     let mut first = start();
-    let ping = cryptexd::ipc::desktop_health_ping(Duration::from_secs(2)).unwrap();
-    assert_eq!(ping.daemon_pid, first.0.id());
+    let check_connection_contract = |expected_pid| {
+        for role in ["desktop", "cli", "mcp"] {
+            let ping = cryptexd::ipc::health_ping(role, Duration::from_secs(2)).unwrap();
+            assert_eq!(ping.daemon_pid, expected_pid);
+        }
+        let rejected = cryptexd::ipc::health_ping("unknown", Duration::from_secs(2)).unwrap_err();
+        assert_eq!(rejected.kind(), std::io::ErrorKind::PermissionDenied);
+        assert_eq!(rejected.to_string(), "unauthorized_client_role");
+    };
+    check_connection_contract(first.0.id());
     #[cfg(unix)]
     let mut old = {
         use interprocess::local_socket::{GenericFilePath, Stream, prelude::*};
@@ -304,8 +312,7 @@ fn actual_daemon_crash_restart_requires_fresh_readiness_and_connection() {
     first.0.wait().unwrap();
     let second = start();
     assert_ne!(first.0.id(), second.0.id());
-    let ping = cryptexd::ipc::desktop_health_ping(Duration::from_secs(2)).unwrap();
-    assert_eq!(ping.daemon_pid, second.0.id());
+    check_connection_contract(second.0.id());
     #[cfg(unix)]
     {
         use interprocess::local_socket::prelude::*;

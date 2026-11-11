@@ -124,6 +124,16 @@ impl ApprovalSessionRegistry {
 }
 
 impl ApprovalSessionRegistry {
+    fn require_own_connection(
+        &self,
+        connection: &ApprovalConnection,
+    ) -> Result<(), ApprovalSessionError> {
+        if !Weak::ptr_eq(&connection.registry, &Arc::downgrade(&self.pending)) {
+            return Err(ApprovalSessionError::WrongConnection);
+        }
+        Ok(())
+    }
+
     pub fn issue(
         &self,
         connection: &ApprovalConnection,
@@ -138,6 +148,7 @@ impl ApprovalSessionRegistry {
         snapshot: ApprovalSnapshot,
         lifetime: Duration,
     ) -> Result<ApprovalSessionGrant, ApprovalSessionError> {
+        self.require_own_connection(connection)?;
         let digest = snapshot
             .digest()
             .map_err(|_| ApprovalSessionError::SnapshotInvalid)?;
@@ -191,6 +202,7 @@ impl ApprovalSessionRegistry {
         capability: &str,
         approval_request_digest: &str,
     ) -> Result<ApprovalSnapshot, ApprovalSessionError> {
+        self.require_own_connection(connection)?;
         let capability = decode_hex(capability)?;
         let mut pending = self
             .pending
@@ -251,6 +263,7 @@ impl ApprovalSessionRegistry {
             &cryptex_events::VerifiedBootstrapApprovalRequest,
         ) -> Result<Vec<u8>, ApprovalSessionError>,
     ) -> Result<Vec<u8>, ApprovalSessionError> {
+        self.require_own_connection(connection)?;
         let capability = decode_hex(capability)?;
         {
             let mut pending = self
@@ -320,6 +333,7 @@ impl ApprovalSessionRegistry {
         connection: &ApprovalConnection,
         capability: &str,
     ) -> Result<(), ApprovalSessionError> {
+        self.require_own_connection(connection)?;
         let capability = decode_hex(capability)?;
         let mut pending = self
             .pending
@@ -345,6 +359,7 @@ impl ApprovalSessionRegistry {
         &self,
         connection: &ApprovalConnection,
     ) -> Result<usize, ApprovalSessionError> {
+        self.require_own_connection(connection)?;
         let mut pending = self
             .pending
             .lock()
@@ -1262,6 +1277,124 @@ mod tests {
                     &second,
                     &second_grant.capability,
                     &second_grant.approval_request_digest
+                )
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn replaced_registry_refuses_stale_connection_before_issuing_a_grant() {
+        let old_registry = ApprovalSessionRegistry::default();
+        let old_connection = old_registry.open_connection().unwrap();
+        drop(old_registry);
+
+        let replacement = ApprovalSessionRegistry::default();
+        assert!(matches!(
+            replacement.issue(&old_connection, snapshot()),
+            Err(ApprovalSessionError::WrongConnection)
+        ));
+        assert!(replacement.pending.lock().unwrap().is_empty());
+        let fresh = replacement.open_connection().unwrap();
+        let grant = replacement.issue(&fresh, snapshot()).unwrap();
+        drop(old_connection);
+        assert!(
+            replacement
+                .consume(&fresh, &grant.capability, &grant.approval_request_digest)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn registry_ownership_is_required_even_when_connection_ids_match() {
+        let registry = ApprovalSessionRegistry::default();
+        let owner = registry.open_connection().unwrap();
+        let other_registry = ApprovalSessionRegistry::default();
+        let mut foreign = other_registry.open_connection().unwrap();
+        // Deliberately inject an ID collision. Registry ownership must be a
+        // separate condition, not an assumption about random uniqueness.
+        foreign.id = owner.id;
+        let grant = registry.issue(&owner, snapshot()).unwrap();
+        assert!(matches!(
+            registry.consume(&foreign, &grant.capability, &grant.approval_request_digest),
+            Err(ApprovalSessionError::WrongConnection)
+        ));
+        assert!(matches!(
+            registry.cancel(&foreign, &grant.capability),
+            Err(ApprovalSessionError::WrongConnection)
+        ));
+        assert!(matches!(
+            registry.invalidate_connection(&foreign),
+            Err(ApprovalSessionError::WrongConnection)
+        ));
+        assert!(
+            registry
+                .consume(&owner, &grant.capability, &grant.approval_request_digest)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn replacement_registry_rejects_old_capability_and_accepts_only_fresh_grant() {
+        let old_registry = ApprovalSessionRegistry::default();
+        let old_connection = old_registry.open_connection().unwrap();
+        let old_grant = old_registry.issue(&old_connection, snapshot()).unwrap();
+        drop(old_registry);
+
+        let replacement = ApprovalSessionRegistry::default();
+        let fresh = replacement.open_connection().unwrap();
+        let grant = replacement.issue(&fresh, snapshot()).unwrap();
+        assert!(matches!(
+            replacement.consume(
+                &fresh,
+                &old_grant.capability,
+                &old_grant.approval_request_digest
+            ),
+            Err(ApprovalSessionError::UnknownSession)
+        ));
+        assert!(
+            replacement
+                .consume(&fresh, &grant.capability, &grant.approval_request_digest)
+                .is_ok()
+        );
+        assert!(matches!(
+            replacement.consume(&fresh, &grant.capability, &grant.approval_request_digest),
+            Err(ApprovalSessionError::UnknownSession)
+        ));
+    }
+
+    #[test]
+    fn foreign_registry_connection_cannot_invoke_signer_or_burn_owner_grant() {
+        let (offer, proof, _, _) = signed_prefix();
+        let request = cryptex_events::verify_bootstrap_approval_request(
+            &[offer.as_slice(), proof.as_slice()],
+            cryptex_events::BootstrapApprovalRole::Initiator,
+        )
+        .unwrap();
+        let registry = ApprovalSessionRegistry::default();
+        let owner = registry.open_connection().unwrap();
+        let other = ApprovalSessionRegistry::default();
+        let mut foreign = other.open_connection().unwrap();
+        foreign.id = owner.id;
+        let snapshot = ApprovalSnapshot::from_verified_bootstrap_request(&request).unwrap();
+        let grant = registry.issue(&owner, snapshot).unwrap();
+        assert!(matches!(
+            registry.confirm_bootstrap_approval_with_signer(
+                &foreign,
+                &grant.capability,
+                &grant.approval_request_digest,
+                &request,
+                |_| panic!("foreign connection reached signing material")
+            ),
+            Err(ApprovalSessionError::WrongConnection)
+        ));
+        assert!(
+            registry
+                .confirm_bootstrap_approval_with_signer(
+                    &owner,
+                    &grant.capability,
+                    &grant.approval_request_digest,
+                    &request,
+                    |_| Ok(b"owner signed".to_vec())
                 )
                 .is_ok()
         );

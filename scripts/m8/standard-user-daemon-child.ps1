@@ -69,19 +69,24 @@ function Assert-CompleteSuite([int]$Code,[string]$Stdout,[int]$Count,[bool]$NoIg
 $suites=0
 $testArguments=''
 $startupOnly=[bool]($p.PSObject.Properties['desktop_startup_only'] -and $p.desktop_startup_only)
+$sessionOnly=[bool]($p.PSObject.Properties['desktop_session_only'] -and $p.desktop_session_only)
 if($startupOnly) {
     $env:CRYPTEX_STARTUP_DISPOSABLE_ACCOUNT='1'
     $testArguments='--include-ignored --test-threads=1'
 }
 foreach($exe in $p.executables) {
-    $list=Invoke-TestBinary $exe '--list'
-    $count=@($list.stdout -split '\r?\n' | Where-Object {$_ -cmatch ': test$'}).Count
-    if($list.code -ne 0 -or $count -eq 0){throw 'Missing daemon test inventory.'}
-    $run=Invoke-TestBinary $exe $testArguments
-    $run.stdout | Write-Output
-    $run.stderr | Write-Output
-    Assert-CompleteSuite $run.code $run.stdout $count $startupOnly
-    $suites++
+    $filters=if($sessionOnly){@('approval_session::tests::','ipc::tests::desktop_pending_')}else{@('')}
+    foreach($filter in $filters) {
+        $list=Invoke-TestBinary $exe ("$filter --list".Trim())
+        $count=@($list.stdout -split '\r?\n' | Where-Object {$_ -cmatch ': test$'}).Count
+        if($list.code -ne 0 -or $count -eq 0){throw 'Missing daemon test inventory.'}
+        $arguments=if($sessionOnly){"$filter --test-threads=1"}else{$testArguments}
+        $run=Invoke-TestBinary $exe $arguments
+        $run.stdout | Write-Output
+        $run.stderr | Write-Output
+        Assert-CompleteSuite $run.code $run.stdout $count ($startupOnly -or $sessionOnly)
+        $suites++
+    }
 }
 @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=$suites} | ConvertTo-Json |
     Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8

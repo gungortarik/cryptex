@@ -1859,14 +1859,21 @@ fn finish_desktop_bootstrap_approval(
         &request,
         Instant::now() + IPC_RESPONSE_DEADLINE,
     )?;
+    let expected_operation = if operation == "bootstrap.approval.cancel" {
+        "bootstrap.approval.cancelled"
+    } else {
+        "bootstrap.approval.signed"
+    };
+    let is_rejection = response.operation == "bootstrap.approval.result"
+        && !response.accepted
+        && response.signed_message.is_none();
     if response.protocol_version != PROTOCOL_VERSION
         || response.request_id.as_deref() != Some(session.request_id.as_str())
-        || !matches!(
-            response.operation.as_str(),
-            "bootstrap.approval.signed"
-                | "bootstrap.approval.cancelled"
-                | "bootstrap.approval.result"
-        )
+        || (response.operation != expected_operation && !is_rejection)
+        || (operation == "bootstrap.approval.cancel" && response.signed_message.is_some())
+        || (response.accepted
+            && operation == "bootstrap.approval.confirm"
+            && response.signed_message.as_deref().is_none_or(str::is_empty))
     {
         return Err(invalid_data("approval response did not match the request"));
     }
@@ -8758,6 +8765,170 @@ pub(crate) mod tests {
             .create_sync()
             .expect("test listener");
         (name, listener)
+    }
+
+    fn pending_approval_test_stream() -> (String, Stream) {
+        let (name, listener) = isolated_ipc_listener("pending-approval");
+        let client = Stream::connect(name.borrow()).unwrap();
+        let server = listener.accept().unwrap();
+        arm_ipc_stream(&client).unwrap();
+        arm_ipc_stream(&server).unwrap();
+        let handle = new_bootstrap_event_id().unwrap();
+        DESKTOP_BOOTSTRAP_APPROVAL_SESSIONS
+            .get_or_init(|| Mutex::new(HashMap::new()))
+            .lock()
+            .unwrap()
+            .insert(
+                handle.clone(),
+                PendingDesktopBootstrapApproval {
+                    stream: client,
+                    request_id: handle.clone(),
+                    role: "initiator".into(),
+                    transcript_messages: vec![],
+                    approval_request_digest: "11".repeat(32),
+                    capability: "22".repeat(32),
+                    expires_at: Instant::now() + IPC_APPROVAL_SESSION_DEADLINE,
+                },
+            );
+        (handle, server)
+    }
+
+    #[test]
+    fn desktop_pending_approval_burns_handle_on_connection_loss_without_reconnect() {
+        for confirm in [true, false] {
+            let (handle, server) = pending_approval_test_stream();
+            drop(server);
+            let result = if confirm {
+                desktop_confirm_bootstrap_approval(handle.clone())
+            } else {
+                desktop_cancel_bootstrap_approval(handle.clone())
+            };
+            assert!(result.is_err(), "closed original stream must not authorize");
+            let retry = desktop_confirm_bootstrap_approval(handle).unwrap_err();
+            assert_eq!(retry.kind(), io::ErrorKind::InvalidData);
+            assert!(retry.to_string().contains("expired or unavailable"));
+        }
+    }
+
+    #[test]
+    fn desktop_pending_owner_operation_burns_handle_on_connection_loss() {
+        for confirm in [true, false] {
+            let (name, listener) = isolated_ipc_listener("pending-owner");
+            let client = Stream::connect(name.borrow()).unwrap();
+            let server = listener.accept().unwrap();
+            arm_ipc_stream(&client).unwrap();
+            let handle = new_bootstrap_event_id().unwrap();
+            DESKTOP_OWNER_SECURITY_SESSIONS
+                .get_or_init(|| Mutex::new(HashMap::new()))
+                .lock()
+                .unwrap()
+                .insert(
+                    handle.clone(),
+                    PendingDesktopOwnerSecurityOperation {
+                        stream: client,
+                        request_id: handle.clone(),
+                        transaction_id: "33".repeat(32),
+                        approval_request_digest: "11".repeat(32),
+                        capability: "22".repeat(32),
+                        expires_at: Instant::now() + IPC_APPROVAL_SESSION_DEADLINE,
+                    },
+                );
+            drop(server);
+            let result = if confirm {
+                desktop_confirm_owner_security_operation(handle.clone())
+            } else {
+                desktop_cancel_owner_security_operation(handle.clone())
+            };
+            assert!(result.is_err());
+            let retry = desktop_confirm_owner_security_operation(handle).unwrap_err();
+            assert_eq!(retry.kind(), io::ErrorKind::InvalidData);
+            assert!(retry.to_string().contains("expired or unavailable"));
+        }
+    }
+
+    #[test]
+    fn desktop_pending_approval_requires_the_exact_confirmation_response() {
+        for (confirm, response_operation, accepted, signed, valid) in [
+            (
+                false,
+                "bootstrap.approval.signed",
+                true,
+                Some("signed"),
+                false,
+            ),
+            (true, "bootstrap.approval.cancelled", true, None, false),
+            (
+                true,
+                "bootstrap.approval.result",
+                true,
+                Some("signed"),
+                false,
+            ),
+            (
+                false,
+                "bootstrap.approval.cancelled",
+                true,
+                Some("signed"),
+                false,
+            ),
+            (true, "bootstrap.approval.signed", true, None, false),
+            (
+                true,
+                "bootstrap.approval.signed",
+                true,
+                Some("signed"),
+                true,
+            ),
+            (false, "bootstrap.approval.cancelled", true, None, true),
+            (false, "bootstrap.approval.cancelled", false, None, true),
+            (true, "bootstrap.approval.result", false, None, true),
+        ] {
+            let (handle, mut server) = pending_approval_test_stream();
+            let server_task = thread::spawn(move || {
+                let frame = read_ipc_frame(
+                    &mut server,
+                    MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES,
+                    Instant::now() + IPC_RESPONSE_DEADLINE,
+                )
+                .unwrap();
+                let request: BootstrapApprovalIpcRequest = serde_json::from_slice(&frame).unwrap();
+                let response = bootstrap_approval_response(
+                    Some(request.request_id),
+                    accepted,
+                    if accepted {
+                        None
+                    } else {
+                        Some("approval_confirmation_failed")
+                    },
+                    response_operation,
+                    None,
+                    None,
+                    signed.map(str::to_owned),
+                );
+                write_response(
+                    &mut server,
+                    &serde_json::to_vec(&response).unwrap(),
+                    Instant::now() + IPC_RESPONSE_DEADLINE,
+                )
+                .unwrap();
+            });
+            let result = if confirm {
+                desktop_confirm_bootstrap_approval(handle.clone())
+            } else {
+                desktop_cancel_bootstrap_approval(handle.clone())
+            };
+            assert_eq!(
+                result.is_ok(),
+                valid,
+                "response operation {response_operation}"
+            );
+            if let Ok(result) = result {
+                assert_eq!(result.accepted, accepted);
+                assert_eq!(result.signed_message.as_deref(), signed);
+            }
+            server_task.join().unwrap();
+            assert!(desktop_confirm_bootstrap_approval(handle).is_err());
+        }
     }
 
     #[test]
