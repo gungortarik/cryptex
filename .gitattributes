@@ -17,6 +17,8 @@
 scripts/m8/*.py text eol=lf
 scripts/m8/MAC-IMZA-BASLA.txt text eol=lf
 scripts/m8/MAC-SUREC-BASLA.txt text eol=lf
+scripts/m8/MAC-MESAJ-BASLA.txt text eol=lf
+scripts/m8/mac_bootstrap_bundle.h text eol=lf
 *.ps1 text eol=lf
 
 # Hashed upstream notice text must have identical checkout bytes on both OSes.
