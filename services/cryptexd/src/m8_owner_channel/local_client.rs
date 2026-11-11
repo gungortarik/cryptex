@@ -71,7 +71,7 @@ impl LocalDaemon {
             return Err(Error::Arguments);
         }
         let deadline = Instant::now() + Duration::from_secs(15);
-        let result = (|| {
+        let result = step("owner_exchange", || {
             let channel = self.channel.as_mut().ok_or(Error::Channel)?;
             channel.send(bytes, deadline).map_err(Error::from)?;
             let mut response = vec![0; super::super::request::MAX_FRAME_BYTES];
@@ -79,7 +79,7 @@ impl LocalDaemon {
                 .receive(&mut response, deadline)
                 .map_err(Error::from)?
                 .to_vec())
-        })();
+        });
         if result.is_err() {
             self.burn();
         }

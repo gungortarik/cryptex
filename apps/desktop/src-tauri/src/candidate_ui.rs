@@ -569,15 +569,18 @@ pub fn entry() -> Option<Result<(), String>> {
         let (mut context, binding) = install_context(content, &runtime)?;
         owner.client.call(|reply| Work::Bind(binding, reply))?;
         if args[0] == "--cryptex-m8-local-content-check" {
+            eprintln!("m8_candidate_scenario=synthetic_sessions");
             owner.client.call(Work::Exercise)?;
             owner.close()?;
             let lost_root = runtime.with_extension("lost");
+            eprintln!("m8_candidate_scenario=lost_connection");
             let (lost, content) = Owner::start(&lost_root)?;
             let (_context, binding) = install_context(content, &lost_root)?;
             lost.client.call(|reply| Work::Bind(binding, reply))?;
             let handle = lost.client.call(Work::PendingLoss)?;
             lost.close()?;
             let fresh_root = runtime.with_extension("fresh");
+            eprintln!("m8_candidate_scenario=fresh_handle_refusal");
             let (fresh, content) = Owner::start(&fresh_root)?;
             let (_context, binding) = install_context(content, &fresh_root)?;
             fresh.client.call(|reply| Work::Bind(binding, reply))?;
@@ -589,6 +592,7 @@ pub fn entry() -> Option<Result<(), String>> {
                 ("expired-queue", None, true),
                 ("lost-receiver", None, false),
             ] {
+                eprintln!("m8_candidate_scenario={name}");
                 let root = runtime.with_extension(name);
                 let (fault, content) = Owner::start(&root)?;
                 let (_context, binding) = install_context(content, &root)?;
@@ -603,18 +607,21 @@ pub fn entry() -> Option<Result<(), String>> {
                 fault.close()?;
             }
             let root = runtime.with_extension("cancelled-inflight");
+            eprintln!("m8_candidate_scenario=cancelled_inflight");
             let (fault, content) = Owner::start(&root)?;
             let (_context, binding) = install_context(content, &root)?;
             fault.client.call(|reply| Work::Bind(binding, reply))?;
             fault.client.exercise_cancelled_inflight()?;
             fault.close()?;
             let root = runtime.with_extension("completed-delivery");
+            eprintln!("m8_candidate_scenario=completed_delivery");
             let (success, content) = Owner::start(&root)?;
             let (_context, binding) = install_context(content, &root)?;
             success.client.call(|reply| Work::Bind(binding, reply))?;
             success.client.exercise_completed_delivery()?;
             success.close()?;
             let root = runtime.with_extension("cancelled-handoff");
+            eprintln!("m8_candidate_scenario=cancelled_handoff");
             let (fault, content) = Owner::start(&root)?;
             let (_context, binding) = install_context(content, &root)?;
             fault.client.call(|reply| Work::Bind(binding, reply))?;

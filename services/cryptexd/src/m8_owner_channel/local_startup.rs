@@ -1,5 +1,6 @@
-//! Default-off, headless real-binary startup check. This is NOT an owner-route
-//! authorization factory, an executable-path grant or a Tauri resource seal.
+//! Default-off real-binary startup/content experiment. Startup alone never
+//! grants owner authority. Only the separate content-bound synthetic mode
+//! exposes the private per-message connection used by the fixture domain.
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::Arc;
@@ -112,6 +113,20 @@ fn check_time(deadline: Instant) -> Result<(), Error> {
         Ok(())
     }
 }
+fn step<T>(name: &'static str, action: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
+    let started = Instant::now();
+    let result = action();
+    if let Err(error) = &result {
+        // Fixed stage and typed error only: no runtime path, content, signer
+        // selector, capability or owner snapshot is included.
+        eprintln!(
+            "{}",
+            serde_json::json!({"m8LocalStage": name,
+            "elapsedMs": started.elapsed().as_millis(), "error": error.to_string()})
+        );
+    }
+    result
+}
 
 // Exact binary shape: magic, version, role-bound phase, epoch, inventory hash.
 // Phase 1 = Desktop accept, 2 = daemon hello, 3 = daemon runtime-ready.
@@ -152,7 +167,9 @@ pub struct Prepared {
 impl Prepared {
     pub fn current_desktop(timeout: Duration) -> Result<Self, Error> {
         let deadline = Instant::now().checked_add(timeout).ok_or(Error::Deadline)?;
-        let release = Release::current(Role::Desktop, deadline)?;
+        let release = step("desktop_inventory", || {
+            Release::current(Role::Desktop, deadline)
+        })?;
         check_time(deadline)?;
         let (listener, epoch) = Listener::open().map_err(|_| Error::Channel)?;
         Ok(Self {
@@ -203,41 +220,52 @@ impl Prepared {
             pending_review: None,
             client_cleanup_failed: false,
         };
-        let expected =
-            inventory_image(&owned.release.bundle, Role::Daemon).map_err(|_| Error::Image)?;
-        let mut channel = self
-            .listener
-            .accept_until(
-                owned.child.as_mut().unwrap(),
-                &(&expected).into(),
-                self.deadline,
-            )
-            .map_err(Error::from)?;
+        let expected = step("daemon_image", || {
+            inventory_image(&owned.release.bundle, Role::Daemon).map_err(|_| Error::Image)
+        })?;
+        let mut channel = step("native_accept", || {
+            self.listener
+                .accept_until(
+                    owned.child.as_mut().unwrap(),
+                    &(&expected).into(),
+                    self.deadline,
+                )
+                .map_err(Error::from)
+        })?;
         check_time(self.deadline)?;
         let mut buffer = [0; 54];
-        let hello = channel
-            .receive(&mut buffer, self.deadline)
-            .map_err(Error::from)?;
+        let hello = step("startup_hello", || {
+            channel
+                .receive(&mut buffer, self.deadline)
+                .map_err(Error::from)
+                .map(|bytes| bytes.to_vec())
+        })?;
         if hello != frame(2, &self.epoch, &owned.release.digest) {
             return Err(Error::Channel);
         }
-        channel
-            .send(&frame(1, &self.epoch, &owned.release.digest), self.deadline)
-            .map_err(Error::from)?;
+        step("startup_ack", || {
+            channel
+                .send(&frame(1, &self.epoch, &owned.release.digest), self.deadline)
+                .map_err(Error::from)
+        })?;
         owned.channel = Some(channel);
-        crate::daemon_startup::await_ready_until(
-            owned.child.as_mut().unwrap(),
-            ready,
-            self.deadline,
-        )
-        .map_err(|_| Error::Readiness)?;
-        if owned
-            .channel
-            .as_mut()
-            .unwrap()
-            .receive(&mut buffer, self.deadline)
-            .map_err(Error::from)?
-            != frame(3, &self.epoch, &owned.release.digest)
+        step("ready_file", || {
+            crate::daemon_startup::await_ready_until(
+                owned.child.as_mut().unwrap(),
+                ready,
+                self.deadline,
+            )
+            .map_err(|_| Error::Readiness)
+        })?;
+        if step("runtime_ready", || {
+            owned
+                .channel
+                .as_mut()
+                .unwrap()
+                .receive(&mut buffer, self.deadline)
+                .map_err(Error::from)
+                .map(|bytes| bytes.to_vec())
+        })? != frame(3, &self.epoch, &owned.release.digest)
         {
             return Err(Error::Channel);
         }
@@ -339,7 +367,7 @@ impl Drop for LocalDaemon {
     }
 }
 
-/// Held by the actual daemon main across its ordinary lifecycle. Startup data
+/// Held by the actual daemon main across its lifecycle. Startup data alone
 /// never creates an authenticated owner request or unlocks Unix owner routes.
 pub struct ChildGuard {
     _channel: Channel,
@@ -419,7 +447,9 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
     if content_mode {
         require_fresh_content_runtime(&runtime)?;
     }
-    let release = Release::current(Role::Daemon, deadline)?;
+    let release = step("child_inventory", || {
+        Release::current(Role::Daemon, deadline)
+    })?;
     let expected = inventory_image(&release.bundle, Role::Desktop).map_err(|_| Error::Image)?;
     check_time(deadline)?;
     let mut channel =

@@ -1,5 +1,5 @@
-//! Private Mach transport. Only tests can currently supply an image policy.
-//! Bytes received here do not construct an approval grant or domain authority.
+//! Private Mach transport used by tests and the default-off signed candidate.
+//! Raw bytes alone do not construct an approval grant or domain authority.
 
 use std::ffi::{CStr, c_char, c_int, c_void};
 use std::process::Child;
