@@ -58,6 +58,9 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Lint changed daemon and Desktop paths
         run: cargo clippy --locked -p cryptexd -p cryptex-desktop --all-targets -- -D warnings
+      - name: Verify native Mac frame and right ownership
+        if: runner.os == 'macOS'
+        run: sh scripts/m8/test-mac-owner-native.sh
       - name: Test actual child startup, malformed readiness and crash restart
         if: runner.os != 'Windows'
         env:
@@ -152,6 +155,9 @@ jobs:
 
       - name: Lint Rust workspace
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Verify native Mac frame and right ownership
+        if: runner.os == 'macOS'
+        run: sh scripts/m8/test-mac-owner-native.sh
 
       - name: Check Rust workspace
         run: cargo check --locked --workspace

@@ -49,19 +49,21 @@ static mach_msg_timeout_t remaining_ms(uint64_t deadline) {
     return now < deadline && deadline - now <= UINT32_MAX ? (mach_msg_timeout_t)(deadline - now) : 0;
 }
 
-static void release_send(mach_port_t right) {
-    if (MACH_PORT_VALID(right)) mach_port_deallocate(mach_task_self(), right);
+static bool release_send(mach_port_t right) {
+    return !MACH_PORT_VALID(right) || mach_port_deallocate(mach_task_self(), right) == KERN_SUCCESS;
 }
 
-void cx_close(cx_channel *c) {
-    if (!c) return;
-    release_send(c->peer);
-    release_send(c->task);
-    if (MACH_PORT_VALID(c->inbox))
-        mach_port_mod_refs(mach_task_self(), c->inbox, MACH_PORT_RIGHT_RECEIVE, -1);
+enum cx_result cx_close(cx_channel *c) {
+    if (!c) return CX_OK;
+    bool ok = release_send(c->peer);
+    if (!release_send(c->task)) ok = false;
+    if (MACH_PORT_VALID(c->inbox) &&
+        mach_port_mod_refs(mach_task_self(), c->inbox, MACH_PORT_RIGHT_RECEIVE, -1) != KERN_SUCCESS)
+        ok = false;
     if (c->requirement) CFRelease(c->requirement);
     if (c->cdhash) CFRelease(c->cdhash);
     free(c);
+    return ok ? CX_OK : CX_CLEANUP;
 }
 
 static bool live(cx_channel *c) {
@@ -171,11 +173,36 @@ static enum cx_result transmit(cx_channel *c, mach_port_t destination, uint32_t 
     }
     result = kr == MACH_SEND_TIMED_OUT ? CX_DEADLINE : CX_TRANSPORT;
 release:
-    release_send(h->msgh_remote_port);
-    release_send(h->msgh_local_port);
+    if (!release_send(h->msgh_remote_port)) result = CX_CLEANUP;
+    if (!release_send(h->msgh_local_port)) result = CX_CLEANUP;
 done:
     free(packet);
     return result;
+}
+
+// Pure envelope validation. Received rights still belong to the Mach message
+// until read_frame validates its kernel sender and transfers the endpoint.
+static enum cx_result envelope(const cx_channel *c, const Packet *p, size_t bytes,
+                               uint32_t kind, size_t capacity, audit_token_t *sender) {
+    if (bytes < wire_size(0) + sizeof(mach_msg_audit_trailer_t)) return CX_LAYOUT;
+    const mach_msg_header_t *h = &p->header;
+    if (h->msgh_id != FRAME_ID || h->msgh_local_port != c->inbox ||
+        (h->msgh_bits & MACH_MSGH_BITS_COMPLEX) || h->msgh_voucher_port != MACH_PORT_NULL ||
+        h->msgh_size < offsetof(Packet, body) || p->version != 1 || p->kind != kind ||
+        p->size > capacity || h->msgh_size != wire_size(p->size) ||
+        h->msgh_size > bytes - sizeof(mach_msg_audit_trailer_t)) return CX_LAYOUT;
+    if (kind == DATA) {
+        if (!p->size || h->msgh_remote_port != MACH_PORT_NULL || MACH_MSGH_BITS_REMOTE(h->msgh_bits)) return CX_LAYOUT;
+    } else if (p->size || !MACH_PORT_VALID(h->msgh_remote_port) ||
+               MACH_MSGH_BITS_REMOTE(h->msgh_bits) != MACH_MSG_TYPE_PORT_SEND) return CX_LAYOUT;
+    mach_msg_audit_trailer_t trailer;
+    memcpy(&trailer, (const uint8_t *)p + h->msgh_size, sizeof(trailer));
+    if (trailer.msgh_trailer_type != MACH_MSG_TRAILER_FORMAT_0 ||
+        trailer.msgh_trailer_size != sizeof(trailer)) return CX_LAYOUT;
+    if (memcmp(c->epoch, p->epoch, sizeof(c->epoch))) return CX_EPOCH;
+    if (!p->sequence || p->sequence != c->received + 1) return CX_SEQUENCE;
+    *sender = trailer.msgh_audit;
+    return CX_OK;
 }
 
 static enum cx_result read_frame(cx_channel *c, uint32_t kind, uint8_t *body,
@@ -196,23 +223,11 @@ static enum cx_result read_frame(cx_channel *c, uint32_t kind, uint8_t *body,
         free(p);
         return kr == MACH_RCV_TIMED_OUT ? CX_DEADLINE : CX_TRANSPORT;
     }
-    if (h->msgh_id != FRAME_ID || h->msgh_local_port != c->inbox ||
-        (h->msgh_bits & MACH_MSGH_BITS_COMPLEX) || h->msgh_voucher_port != MACH_PORT_NULL ||
-        h->msgh_size < offsetof(Packet, body) || p->version != 1 || p->kind != kind ||
-        p->size > capacity || h->msgh_size != wire_size(p->size) ||
-        h->msgh_size > bytes - sizeof(mach_msg_audit_trailer_t)) goto done;
-    if (kind == DATA) {
-        if (!p->size || h->msgh_remote_port != MACH_PORT_NULL || MACH_MSGH_BITS_REMOTE(h->msgh_bits)) goto done;
-    } else if (p->size || !MACH_PORT_VALID(h->msgh_remote_port) ||
-               MACH_MSGH_BITS_REMOTE(h->msgh_bits) != MACH_MSG_TYPE_PORT_SEND) goto done;
-    mach_msg_audit_trailer_t trailer;
-    memcpy(&trailer, (uint8_t *)p + h->msgh_size, sizeof(trailer));
-    if (trailer.msgh_trailer_type != MACH_MSG_TRAILER_FORMAT_0 ||
-        trailer.msgh_trailer_size != sizeof(trailer)) goto done;
-    if (memcmp(c->epoch, p->epoch, sizeof(c->epoch))) { result = CX_EPOCH; goto done; }
-    if (!p->sequence || p->sequence != c->received + 1) { result = CX_SEQUENCE; goto done; }
+    audit_token_t sender;
+    result = envelope(c, p, bytes, kind, capacity, &sender);
+    if (result != CX_OK) goto done;
     if (!remaining_ms(deadline)) { result = CX_DEADLINE; goto done; }
-    result = check_sender(c, &trailer.msgh_audit);
+    result = check_sender(c, &sender);
     if (result != CX_OK) goto done;
     if (!remaining_ms(deadline)) { result = CX_DEADLINE; goto done; }
     if (kind == DATA) {
@@ -239,8 +254,7 @@ enum cx_result cx_listen(cx_channel **out, uint8_t epoch[CX_EPOCH_BYTES]) {
     char name[BOOTSTRAP_MAX_NAME_LEN];
     service_name(c->epoch, name);
     if (bootstrap_check_in(bootstrap_port, name, &c->inbox) != BOOTSTRAP_SUCCESS) {
-        cx_close(c);
-        return CX_RENDEZVOUS;
+        return cx_close(c) == CX_OK ? CX_RENDEZVOUS : CX_CLEANUP;
     }
     memcpy(epoch, c->epoch, sizeof(c->epoch));
     *out = c;
@@ -288,9 +302,9 @@ enum cx_result cx_connect(cx_channel **out, const uint8_t epoch[CX_EPOCH_BYTES],
     // Only the public HELLO goes to the lookup result. The ACK must carry the
     // actual parent's send right before any application bytes can be sent.
     if (result == CX_OK) result = transmit(c, service, HELLO, NULL, 0, deadline);
-    release_send(service);
+    if (!release_send(service)) result = CX_CLEANUP;
     if (result == CX_OK) result = read_frame(c, ACK, NULL, 0, NULL, deadline);
-    if (result != CX_OK) { cx_close(c); return result; }
+    if (result != CX_OK) return cx_close(c) == CX_OK ? result : CX_CLEANUP;
     *out = c;
     return CX_OK;
 }

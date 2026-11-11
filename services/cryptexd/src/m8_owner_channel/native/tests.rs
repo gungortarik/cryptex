@@ -23,19 +23,80 @@ fn helper(binary: &Path, test: &str) -> Command {
     cmd
 }
 
-fn finish(child: &mut Child, timeout: Duration) {
-    let deadline = Instant::now() + timeout;
-    loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            assert!(status.success(), "native test child exited with {status}");
-            return;
+// Keep the group leader waitable until its group is cleaned up. This prevents
+// PID reuse between observing its exit and signalling leftover helpers.
+struct TestChild {
+    child: Child,
+    group_leader: bool,
+    reaped: bool,
+}
+
+impl TestChild {
+    fn spawn(cmd: &mut Command, group_leader: bool) -> Self {
+        use std::os::unix::process::CommandExt;
+        if group_leader {
+            cmd.process_group(0);
         }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            child.wait().unwrap();
-            panic!("native test child exceeded its deadline");
+        Self {
+            child: cmd.spawn().unwrap(),
+            group_leader,
+            reaped: false,
         }
-        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    fn stop_group(&self) {
+        if self.group_leader {
+            // SAFETY: this private group was created at spawn and its leader
+            // has not been reaped. We never signal our caller's group.
+            let result = unsafe { libc::killpg(self.child.id() as i32, libc::SIGKILL) };
+            if result != 0 && std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH) {
+                eprintln!("native test process group cleanup failed");
+            }
+        }
+    }
+
+    fn finish(&mut self, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
+            // SAFETY: a writable siginfo and the PID of our unreaped child.
+            let result = unsafe {
+                libc::waitid(
+                    libc::P_PID,
+                    self.child.id() as libc::id_t,
+                    info.as_mut_ptr(),
+                    libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+                )
+            };
+            if result == 0 && unsafe { info.assume_init().si_pid() } != 0 {
+                self.stop_group();
+                let status = self.child.wait().unwrap();
+                self.reaped = true;
+                assert!(status.success(), "native test child exited with {status}");
+                return;
+            }
+            if result != 0 {
+                assert_eq!(
+                    std::io::Error::last_os_error().kind(),
+                    std::io::ErrorKind::Interrupted
+                );
+            }
+            assert!(
+                Instant::now() < deadline,
+                "native test child exceeded its deadline"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+impl Drop for TestChild {
+    fn drop(&mut self) {
+        if !self.reaped {
+            self.stop_group();
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
     }
 }
 
@@ -65,6 +126,7 @@ fn native_supervised_channel_roundtrip_and_refusals() {
     struct Cleanup(std::path::PathBuf);
     impl Drop for Cleanup {
         fn drop(&mut self) {
+            let _ = fs::remove_file(self.0.join("worker-restarting"));
             let _ = fs::remove_file(self.0.join("worker-restarted"));
             let _ = fs::remove_file(self.0.join("supervisor.ok"));
             let _ = fs::remove_file(self.0.join("native-tests"));
@@ -74,7 +136,7 @@ fn native_supervised_channel_roundtrip_and_refusals() {
     let _cleanup = Cleanup(dir.clone());
     let binary = dir.join("native-tests");
     fs::copy(std::env::current_exe().unwrap(), &binary).unwrap();
-    assert!(
+    TestChild::spawn(
         Command::new("/usr/bin/codesign")
             .args([
                 "--force",
@@ -82,30 +144,40 @@ fn native_supervised_channel_roundtrip_and_refusals() {
                 "-",
                 "--timestamp=none",
                 "--identifier",
-                SIGNING_ID
+                SIGNING_ID,
             ])
+            .arg(&binary),
+        true,
+    )
+    .finish(Duration::from_secs(30));
+    let mut inspect = TestChild::spawn(
+        Command::new("/usr/bin/codesign")
+            .args(["-d", "--verbose=4"])
             .arg(&binary)
-            .status()
-            .unwrap()
-            .success()
+            .stderr(Stdio::piped()),
+        true,
     );
-    let output = Command::new("/usr/bin/codesign")
-        .args(["-d", "--verbose=4"])
-        .arg(&binary)
-        .output()
+    inspect.finish(Duration::from_secs(10));
+    let mut info = String::new();
+    inspect
+        .child
+        .stderr
+        .take()
+        .unwrap()
+        .take(16385)
+        .read_to_string(&mut info)
         .unwrap();
-    assert!(output.status.success());
-    let info = String::from_utf8(output.stderr).unwrap();
+    assert!(info.len() <= 16384);
     let hash = info
         .lines()
         .find_map(|s| s.strip_prefix("CDHash="))
         .unwrap();
     assert_eq!(unhex(hash).len(), 20);
-    let mut supervisor = helper(&binary, "supervisor")
-        .env("CX_TEST_CDHASH", hash)
-        .spawn()
-        .unwrap();
-    finish(&mut supervisor, Duration::from_secs(60));
+    TestChild::spawn(
+        helper(&binary, "supervisor").env("CX_TEST_CDHASH", hash),
+        true,
+    )
+    .finish(Duration::from_secs(60));
     // An exact test filter with no matching test also exits zero.
     assert_eq!(fs::read(dir.join("supervisor.ok")).unwrap(), b"finished");
 }
@@ -132,12 +204,13 @@ fn supervisor() {
         let (listener, epoch) = Listener::open().unwrap();
         assert_ne!(Some(epoch), previous);
         previous = Some(epoch);
-        let mut child = helper(&binary, "worker")
-            .env("CX_TEST_EPOCH", hex(&epoch))
-            .env("CX_TEST_CASE", case)
-            .stdin(Stdio::piped())
-            .spawn()
-            .unwrap();
+        let mut child = TestChild::spawn(
+            helper(&binary, "worker")
+                .env("CX_TEST_EPOCH", hex(&epoch))
+                .env("CX_TEST_CASE", case)
+                .stdin(Stdio::piped()),
+            false,
+        );
         let policy = ImagePolicy {
             requirement: if case == "wrong_requirement" {
                 c"identifier \"com.cryptex.other\""
@@ -153,27 +226,28 @@ fn supervisor() {
         if case == "wrong_child" {
             // Both processes use the accepted signed image. Only the handle
             // given to accept is eligible to send this session's HELLO.
-            let mut expected = helper(&binary, "worker")
-                .env("CX_TEST_CASE", "idle")
-                .stdin(Stdio::piped())
-                .spawn()
-                .unwrap();
+            let mut expected = TestChild::spawn(
+                helper(&binary, "worker")
+                    .env("CX_TEST_CASE", "idle")
+                    .stdin(Stdio::piped()),
+                false,
+            );
             assert!(matches!(
-                listener.accept(&mut expected, &policy),
+                listener.accept(&mut expected.child, &policy),
                 Err(Error::Instance)
             ));
-            drop(expected.stdin.take());
-            finish(&mut expected, Duration::from_secs(8));
-            finish(&mut child, Duration::from_secs(8));
+            drop(expected.child.stdin.take());
+            expected.finish(Duration::from_secs(8));
+            child.finish(Duration::from_secs(8));
             continue;
         }
-        let accepted = listener.accept(&mut child, &policy);
+        let accepted = listener.accept(&mut child.child, &policy);
         if case.starts_with("wrong_") {
             assert!(
                 matches!(accepted, Err(Error::Image)),
                 "expected peer image rejection"
             );
-            finish(&mut child, Duration::from_secs(8));
+            child.finish(Duration::from_secs(8));
             continue;
         }
         let mut channel = accepted.unwrap();
@@ -182,11 +256,11 @@ fn supervisor() {
                 channel.send(b"expired", Instant::now()),
                 Err(Error::Deadline)
             );
-            finish(&mut child, Duration::from_secs(8));
+            child.finish(Duration::from_secs(8));
             continue;
         }
         if case == "parent_image" {
-            finish(&mut child, Duration::from_secs(8));
+            child.finish(Duration::from_secs(8));
             assert_eq!(
                 channel.send(b"old session", deadline()),
                 Err(Error::Instance)
@@ -194,7 +268,7 @@ fn supervisor() {
             continue;
         }
         if case == "queued_after_exit" {
-            finish(&mut child, Duration::from_secs(8));
+            child.finish(Duration::from_secs(8));
             let mut buffer = [0; 32];
             assert_eq!(
                 channel.receive(&mut buffer, deadline()),
@@ -209,15 +283,18 @@ fn supervisor() {
             while !receipt.exists() && Instant::now() < until {
                 std::thread::sleep(Duration::from_millis(10));
             }
-            assert_eq!(fs::read_to_string(receipt).unwrap(), child.id().to_string());
+            assert_eq!(
+                fs::read_to_string(receipt).unwrap(),
+                child.child.id().to_string()
+            );
             let mut bytes = [0; 64];
             assert_eq!(
                 channel.receive(&mut bytes, deadline()),
                 Err(Error::Instance)
             );
             assert_eq!(bytes, [0; 64]);
-            drop(child.stdin.take());
-            finish(&mut child, Duration::from_secs(8));
+            drop(child.child.stdin.take());
+            child.finish(Duration::from_secs(8));
             continue;
         }
         if case == "queue_timeout" {
@@ -244,8 +321,8 @@ fn supervisor() {
             channel.send(b"supervisor to worker", deadline()).unwrap();
             assert_eq!(channel.receive(&mut buffer, deadline()).unwrap(), b"ack");
         }
-        drop(child.stdin.take());
-        finish(&mut child, Duration::from_secs(8));
+        drop(child.child.stdin.take());
+        child.finish(Duration::from_secs(8));
         if case == "roundtrip" {
             old_channel = Some(channel);
         } else if case != "queue_timeout" {
@@ -317,7 +394,7 @@ fn worker() {
         channel
             .send(b"from the old generation", deadline())
             .unwrap();
-        drop(channel);
+        channel.close().unwrap();
         let error = helper(&std::env::current_exe().unwrap(), "worker")
             .env("CX_TEST_CASE", "restarted")
             .exec();

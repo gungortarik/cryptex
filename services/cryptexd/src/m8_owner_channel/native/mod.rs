@@ -43,7 +43,7 @@ unsafe extern "C" {
         size: &mut usize,
         deadline: u64,
     ) -> c_int;
-    fn cx_close(channel: *mut c_void);
+    fn cx_close(channel: *mut c_void) -> c_int;
 }
 
 fn native_deadline(deadline: Instant) -> u64 {
@@ -72,6 +72,7 @@ enum Error {
     Instance,
     Image,
     Closed,
+    Cleanup,
     Unknown(c_int),
 }
 
@@ -89,6 +90,7 @@ fn checked(code: c_int) -> Result<(), Error> {
         9 => Error::Instance,
         10 => Error::Image,
         11 => Error::Closed,
+        12 => Error::Cleanup,
         other => Error::Unknown(other),
     })
 }
@@ -96,6 +98,12 @@ fn checked(code: c_int) -> Result<(), Error> {
 struct Handle(NonNull<c_void>);
 
 impl Handle {
+    fn close(self) -> Result<(), Error> {
+        let owned = std::mem::ManuallyDrop::new(self);
+        // SAFETY: this consumes the sole handle, including on release failure.
+        checked(unsafe { cx_close(owned.0.as_ptr()) })
+    }
+
     fn open(f: impl FnOnce(*mut *mut c_void) -> c_int) -> Result<Self, Error> {
         let mut raw = ptr::null_mut();
         checked(f(&mut raw))?;
@@ -106,7 +114,12 @@ impl Handle {
 impl Drop for Handle {
     fn drop(&mut self) {
         // SAFETY: the successful constructor transferred sole ownership.
-        unsafe { cx_close(self.0.as_ptr()) };
+        if unsafe { cx_close(self.0.as_ptr()) } != 0 {
+            // Drop cannot return a typed error. Emit a fixed diagnostic without
+            // disclosing payloads, process identifiers, or session material.
+            use std::io::Write;
+            let _ = writeln!(std::io::stderr().lock(), "mac_owner_channel_cleanup_failed");
+        }
     }
 }
 
@@ -134,6 +147,10 @@ impl Listener {
 }
 
 impl Channel {
+    fn close(self) -> Result<(), Error> {
+        self.0.close()
+    }
+
     fn connect(epoch: &Epoch, policy: &ImagePolicy<'_>) -> Result<Self, Error> {
         // SAFETY: native code copies the epoch/policy and selects getppid itself.
         Handle::open(|out| unsafe { cx_connect(out, epoch.as_ptr(), &policy.as_native()) })
