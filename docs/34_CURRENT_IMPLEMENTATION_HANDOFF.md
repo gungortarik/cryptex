@@ -1,5 +1,17 @@
 # 34 — Current Implementation Handoff
 
+## Signing prerequisite clarification
+
+Paid membership is not required to continue local development or isolated
+signed Desktop/daemon integration. The Developer ID Application policy is an
+unconfigured distribution candidate. The next integration experiment can use
+an explicitly pinned local/development identity under its own reviewed test
+profile. Preserve certificate, inventory and process identity checks.
+Developer ID/notarization and any membership purchase remain a separate owner
+distribution decision. The previous continuation must not be interpreted as a
+mandatory purchase gate for M8 development.
+[Signing scope](proposals/m8-macos-release-image-policy.md).
+
 ## Signed inventory and immutable content snapshot
 
 The disabled Mac candidate now verifies attached CMS signed-data with an

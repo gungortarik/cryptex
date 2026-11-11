@@ -3,6 +3,24 @@
 Status is a disabled implementation candidate under ADR-0020.
 Product publisher provisioning and live bundle integration remain open.
 
+## Development and distribution signing
+
+Paid Apple Developer Program membership is not a prerequisite for continuing
+development, local use or the isolated signed Desktop/daemon candidate tests.
+Those tests can use explicitly pinned development or local test identities,
+including the already verified personal-Mac certificate workflow. Their trust
+and image checks must remain explicit.
+
+The Developer ID Application requirement below is a proposed distribution
+profile. Developer ID and Apple's notarization workflow require the relevant
+program membership. They are a separate distribution decision and must not be
+presented as a newly mandatory M8 development prerequisite. The owner has not
+selected or authorized purchasing that distribution service. Enabling any
+product signing profile still requires its concrete trust and integration
+acceptance.
+[Apple development membership overview](https://developer.apple.com/help/account/membership/programs-overview).
+[Apple Developer ID distribution](https://developer.apple.com/developer-id/).
+
 ## Implemented disabled inventory and content snapshot
 
 The private Mac candidate now verifies an attached CMS signed-data inventory
@@ -86,11 +104,12 @@ all M8 owner operations.
 
 ## Next decisions
 
-The owner needs to identify the intended distribution publisher and approve
-product bundle identifiers. Only public Team ID and identifiers are inputs to
-that decision. Certificate private keys and account credentials stay in their
-existing signing storage. An existing development-certificate experiment does
-not establish the proposed Developer ID release policy.
+For the next isolated Desktop/daemon integration test, use an explicitly
+selected development or local test identity with pinned certificate and image
+expectations. Select an external-distribution publisher and product identifiers
+when that distribution profile is requested. Certificate private keys and
+account credentials stay in their existing signing storage. A development
+experiment establishes evidence for its tested profile only.
 
 Then provision the reviewed signer, route consumers through the protected bytes,
 and bind the live Desktop and daemon to that release inventory. Complete signed
