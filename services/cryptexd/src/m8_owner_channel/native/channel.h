@@ -29,7 +29,8 @@ enum cx_result cx_connect(cx_channel **out, const uint8_t epoch[CX_EPOCH_BYTES],
                           const cx_policy *policy);
 // Errors during an exchange invalidate the session. Close also owns cleanup
 // for partial handshakes. Never share a handle across threads or fork.
-enum cx_result cx_send(cx_channel *c, const uint8_t *body, size_t size);
-enum cx_result cx_receive(cx_channel *c, uint8_t *body, size_t capacity, size_t *size);
+uint64_t cx_now_ms(void);
+enum cx_result cx_send(cx_channel *c, const uint8_t *body, size_t size, uint64_t deadline);
+enum cx_result cx_receive(cx_channel *c, uint8_t *body, size_t capacity, size_t *size, uint64_t deadline);
 void cx_close(cx_channel *c);
 #endif

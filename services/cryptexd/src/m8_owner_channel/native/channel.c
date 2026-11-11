@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 enum { FRAME_ID = 0x43584d38, HELLO = 1, ACK, DATA, WAIT_MS = 2500 };
@@ -29,6 +30,24 @@ struct cx_channel {
     uint64_t sent, received;
     bool parent_is_peer, pinned, closed;
 };
+
+// One monotonic budget per handshake or data call. Signing APIs are
+// synchronous; elapsed time is rechecked before sending or publishing bytes.
+uint64_t cx_now_ms(void) {
+    struct timespec t;
+    if (clock_gettime(CLOCK_MONOTONIC, &t)) return UINT64_MAX;
+    return (uint64_t)t.tv_sec * 1000 + (uint64_t)t.tv_nsec / 1000000;
+}
+
+static uint64_t deadline_ms(void) {
+    uint64_t now = cx_now_ms();
+    return now > UINT64_MAX - WAIT_MS ? 0 : now + WAIT_MS;
+}
+
+static mach_msg_timeout_t remaining_ms(uint64_t deadline) {
+    uint64_t now = cx_now_ms();
+    return now < deadline && deadline - now <= UINT32_MAX ? (mach_msg_timeout_t)(deadline - now) : 0;
+}
 
 static void release_send(mach_port_t right) {
     if (MACH_PORT_VALID(right)) mach_port_deallocate(mach_task_self(), right);
@@ -115,9 +134,10 @@ static size_t wire_size(size_t size) {
 }
 
 static enum cx_result transmit(cx_channel *c, mach_port_t destination, uint32_t kind,
-                               const uint8_t *body, size_t size) {
+                               const uint8_t *body, size_t size, uint64_t deadline) {
+    if (!remaining_ms(deadline)) return CX_DEADLINE;
     size_t bytes = wire_size(size);
-    Packet *packet = calloc(1, bytes);
+    Packet *packet = calloc(1, bytes < sizeof(Packet) ? sizeof(Packet) : bytes);
     if (!packet) return CX_RESOURCE;
     mach_msg_header_t *h = &packet->header;
     // Lend no owned references to mach_msg. Give the syscall dedicated
@@ -140,11 +160,13 @@ static enum cx_result transmit(cx_channel *c, mach_port_t destination, uint32_t 
     memcpy(packet->epoch, c->epoch, sizeof(c->epoch));
     packet->size = (uint32_t)size;
     if (size) memcpy(packet->body, body, size);
+    mach_msg_timeout_t remaining = remaining_ms(deadline);
+    if (!remaining) { result = CX_DEADLINE; goto release; }
     mach_msg_return_t kr = mach_msg(h, MACH_SEND_MSG | MACH_SEND_TIMEOUT | MACH_SEND_INTERRUPT,
-        h->msgh_size, 0, MACH_PORT_NULL, WAIT_MS, MACH_PORT_NULL);
+        h->msgh_size, 0, MACH_PORT_NULL, remaining, MACH_PORT_NULL);
     if (kr == MACH_MSG_SUCCESS) {
         ++c->sent;
-        result = CX_OK;
+        result = remaining_ms(deadline) ? CX_OK : CX_DEADLINE;
         goto done;
     }
     result = kr == MACH_SEND_TIMED_OUT ? CX_DEADLINE : CX_TRANSPORT;
@@ -157,14 +179,17 @@ done:
 }
 
 static enum cx_result read_frame(cx_channel *c, uint32_t kind, uint8_t *body,
-                                 size_t capacity, size_t *size) {
+                                 size_t capacity, size_t *size, uint64_t deadline) {
+    if (!remaining_ms(deadline)) return CX_DEADLINE;
     const size_t bytes = wire_size(capacity) + sizeof(mach_msg_max_trailer_t);
     Packet *p = calloc(1, bytes);
     if (!p) return CX_RESOURCE;
     mach_msg_header_t *h = &p->header;
     mach_msg_option_t options = MACH_RCV_MSG | MACH_RCV_TIMEOUT | MACH_RCV_INTERRUPT |
         MACH_RCV_TRAILER_TYPE(MACH_MSG_TRAILER_FORMAT_0) | MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_AUDIT);
-    mach_msg_return_t kr = mach_msg(h, options, 0, (mach_msg_size_t)bytes, c->inbox, WAIT_MS, MACH_PORT_NULL);
+    mach_msg_timeout_t remaining = remaining_ms(deadline);
+    if (!remaining) { free(p); return CX_DEADLINE; }
+    mach_msg_return_t kr = mach_msg(h, options, 0, (mach_msg_size_t)bytes, c->inbox, remaining, MACH_PORT_NULL);
     enum cx_result result = CX_LAYOUT;
     if (kr != MACH_MSG_SUCCESS) {
         if ((kr & ~MACH_MSG_MASK) == MACH_RCV_BODY_ERROR) mach_msg_destroy(h);
@@ -186,8 +211,10 @@ static enum cx_result read_frame(cx_channel *c, uint32_t kind, uint8_t *body,
         trailer.msgh_trailer_size != sizeof(trailer)) goto done;
     if (memcmp(c->epoch, p->epoch, sizeof(c->epoch))) { result = CX_EPOCH; goto done; }
     if (!p->sequence || p->sequence != c->received + 1) { result = CX_SEQUENCE; goto done; }
+    if (!remaining_ms(deadline)) { result = CX_DEADLINE; goto done; }
     result = check_sender(c, &trailer.msgh_audit);
     if (result != CX_OK) goto done;
+    if (!remaining_ms(deadline)) { result = CX_DEADLINE; goto done; }
     if (kind == DATA) {
         memcpy(body, p->body, p->size);
         *size = p->size;
@@ -222,9 +249,21 @@ enum cx_result cx_listen(cx_channel **out, uint8_t epoch[CX_EPOCH_BYTES]) {
 
 enum cx_result cx_accept(cx_channel *c, pid_t child, const cx_policy *policy) {
     if (!c || c->closed || c->requirement || c->pinned) return CX_CLOSED;
+    uint64_t deadline = deadline_ms();
     enum cx_result result = configure(c, child, policy);
-    if (result == CX_OK) result = read_frame(c, HELLO, NULL, 0, NULL);
-    if (result == CX_OK) result = transmit(c, c->peer, ACK, NULL, 0);
+    if (result == CX_OK) result = read_frame(c, HELLO, NULL, 0, NULL, deadline);
+    if (result == CX_OK) {
+        // The named inbox only receives the public HELLO. Hand the pinned
+        // child a fresh, unregistered endpoint in the sender-attributed ACK.
+        if (mach_port_mod_refs(mach_task_self(), c->inbox, MACH_PORT_RIGHT_RECEIVE, -1)
+            != KERN_SUCCESS) result = CX_RESOURCE;
+        else {
+            c->inbox = MACH_PORT_NULL;
+            if (mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &c->inbox)
+                != KERN_SUCCESS) result = CX_RESOURCE;
+        }
+    }
+    if (result == CX_OK) result = transmit(c, c->peer, ACK, NULL, 0, deadline);
     c->closed = result != CX_OK;
     return result;
 }
@@ -237,6 +276,7 @@ enum cx_result cx_connect(cx_channel **out, const uint8_t epoch[CX_EPOCH_BYTES],
     if (!c) return CX_RESOURCE;
     memcpy(c->epoch, epoch, sizeof(c->epoch));
     c->parent_is_peer = true;
+    uint64_t deadline = deadline_ms();
     enum cx_result result = configure(c, getppid(), policy);
     mach_port_t service = MACH_PORT_NULL;
     char name[BOOTSTRAP_MAX_NAME_LEN];
@@ -247,28 +287,29 @@ enum cx_result cx_connect(cx_channel **out, const uint8_t epoch[CX_EPOCH_BYTES],
         != KERN_SUCCESS) result = CX_RESOURCE;
     // Only the public HELLO goes to the lookup result. The ACK must carry the
     // actual parent's send right before any application bytes can be sent.
-    if (result == CX_OK) result = transmit(c, service, HELLO, NULL, 0);
+    if (result == CX_OK) result = transmit(c, service, HELLO, NULL, 0, deadline);
     release_send(service);
-    if (result == CX_OK) result = read_frame(c, ACK, NULL, 0, NULL);
+    if (result == CX_OK) result = read_frame(c, ACK, NULL, 0, NULL, deadline);
     if (result != CX_OK) { cx_close(c); return result; }
     *out = c;
     return CX_OK;
 }
 
-enum cx_result cx_send(cx_channel *c, const uint8_t *body, size_t size) {
+enum cx_result cx_send(cx_channel *c, const uint8_t *body, size_t size, uint64_t deadline) {
     if (!c || c->closed || !c->pinned) return CX_CLOSED;
-    enum cx_result result = !body || !size || size > CX_MAX_BODY ? CX_ARGUMENT :
+    enum cx_result result = !remaining_ms(deadline) ? CX_DEADLINE :
+        !body || !size || size > CX_MAX_BODY ? CX_ARGUMENT :
         c->sent == UINT64_MAX ? CX_SEQUENCE : check_sender(c, &c->sender);
-    if (result == CX_OK) result = transmit(c, c->peer, DATA, body, size);
+    if (result == CX_OK) result = transmit(c, c->peer, DATA, body, size, deadline);
     c->closed = result != CX_OK;
     return result;
 }
 
-enum cx_result cx_receive(cx_channel *c, uint8_t *body, size_t capacity, size_t *size) {
+enum cx_result cx_receive(cx_channel *c, uint8_t *body, size_t capacity, size_t *size, uint64_t deadline) {
     if (size) *size = 0;
     if (!c || c->closed || !c->pinned) return CX_CLOSED;
     enum cx_result result = !body || !capacity || capacity > CX_MAX_BODY || !size ? CX_ARGUMENT :
-        read_frame(c, DATA, body, capacity, size);
+        read_frame(c, DATA, body, capacity, size, deadline);
     c->closed = result != CX_OK;
     return result;
 }

@@ -4,6 +4,7 @@
 use std::ffi::{CStr, c_char, c_int, c_void};
 use std::process::Child;
 use std::ptr::{self, NonNull};
+use std::time::Instant;
 
 type Epoch = [u8; 16];
 
@@ -33,9 +34,29 @@ unsafe extern "C" {
     fn cx_listen(out: *mut *mut c_void, epoch: *mut u8) -> c_int;
     fn cx_accept(channel: *mut c_void, child: libc::pid_t, policy: &PolicyRef) -> c_int;
     fn cx_connect(out: *mut *mut c_void, epoch: *const u8, policy: &PolicyRef) -> c_int;
-    fn cx_send(channel: *mut c_void, data: *const u8, size: usize) -> c_int;
-    fn cx_receive(channel: *mut c_void, data: *mut u8, capacity: usize, size: &mut usize) -> c_int;
+    fn cx_now_ms() -> u64;
+    fn cx_send(channel: *mut c_void, data: *const u8, size: usize, deadline: u64) -> c_int;
+    fn cx_receive(
+        channel: *mut c_void,
+        data: *mut u8,
+        capacity: usize,
+        size: &mut usize,
+        deadline: u64,
+    ) -> c_int;
     fn cx_close(channel: *mut c_void);
+}
+
+fn native_deadline(deadline: Instant) -> u64 {
+    // Sample the native clock first, then round the caller's remaining budget
+    // down. A scheduling delay during translation can only shorten the budget.
+    let base = unsafe { cx_now_ms() };
+    let remaining = deadline
+        .saturating_duration_since(Instant::now())
+        .as_millis();
+    u32::try_from(remaining)
+        .ok()
+        .and_then(|ms| base.checked_add(u64::from(ms)))
+        .unwrap_or(0)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -119,12 +140,19 @@ impl Channel {
             .map(Self)
     }
 
-    fn send(&mut self, bytes: &[u8]) -> Result<(), Error> {
+    fn send(&mut self, bytes: &[u8], deadline: Instant) -> Result<(), Error> {
         // SAFETY: synchronous bounded copy of a borrowed slice.
-        checked(unsafe { cx_send(self.0.0.as_ptr(), bytes.as_ptr(), bytes.len()) })
+        checked(unsafe {
+            cx_send(
+                self.0.0.as_ptr(),
+                bytes.as_ptr(),
+                bytes.len(),
+                native_deadline(deadline),
+            )
+        })
     }
 
-    fn receive<'a>(&mut self, bytes: &'a mut [u8]) -> Result<&'a [u8], Error> {
+    fn receive<'a>(&mut self, bytes: &'a mut [u8], deadline: Instant) -> Result<&'a [u8], Error> {
         let mut size = 0;
         // SAFETY: the decoder receives the exact capacity and only returns a
         // body after validating its framing, session and live kernel sender.
@@ -134,6 +162,7 @@ impl Channel {
                 bytes.as_mut_ptr(),
                 bytes.len(),
                 &mut size,
+                native_deadline(deadline),
             )
         })?;
         bytes.get(..size).ok_or(Error::Layout)
