@@ -142,6 +142,26 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn startup_metadata_inputs_are_bounded_and_do_not_follow_links_or_block_on_fifo() {
+    let root = Fixture::new();
+    let name = "Contents/Resources/view.html";
+    let path = root.0.join(name);
+    assert_eq!(read_input(&root.0, name, 64).unwrap(), b"verified view");
+    assert!(matches!(read_input(&root.0, name, 3), Err(Error::Limit)));
+    let alias = root.0.join("alias");
+    fs::hard_link(&path, &alias).unwrap();
+    assert!(matches!(read_input(&root.0, name, 64), Err(Error::Limit)));
+    fs::remove_file(&alias).unwrap();
+    fs::remove_file(&path).unwrap();
+    std::os::unix::fs::symlink(root.0.join("Contents/MacOS/Desktop"), &path).unwrap();
+    assert!(matches!(read_input(&root.0, name, 64), Err(Error::Io)));
+    fs::remove_file(&path).unwrap();
+    let fifo = CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+    assert!(matches!(read_input(&root.0, name, 64), Err(Error::Limit)));
+}
+
+#[test]
 fn snapshot_retains_authenticated_bytes_after_source_replacement() {
     let root = Fixture::new();
     let bundle = verified().snapshot(&root.0, deadline()).unwrap();

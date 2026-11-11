@@ -255,6 +255,7 @@ fn supervisor() {
         "wrong_requirement",
         "wrong_leaf",
         "short_handshake",
+        "short_connect",
         "wrong_child",
         "parent_image",
         "queued_after_exit",
@@ -295,6 +296,19 @@ fn supervisor() {
             assert!(start.elapsed() < Duration::from_secs(2));
             drop(child.child.stdin.take());
             child.finish(Duration::from_secs(8));
+            continue;
+        }
+        if case == "short_connect" {
+            let mut child = TestChild::spawn(
+                helper(&binary, "worker")
+                    .env("CX_TEST_EPOCH", hex(&epoch))
+                    .env("CX_TEST_CASE", case)
+                    .stdin(Stdio::piped()),
+                false,
+            );
+            // The real listener remains live but never accepts or sends ACK.
+            child.finish(Duration::from_secs(8));
+            drop(listener);
             continue;
         }
         let mut child = TestChild::spawn(
@@ -459,6 +473,23 @@ fn worker() {
     let leaf = std::env::var("CX_TEST_LEAF_DER")
         .ok()
         .map(|value| unhex(&value));
+    if case == OsStr::new("short_connect") {
+        let start = Instant::now();
+        assert!(matches!(
+            Channel::connect_until(
+                &epoch,
+                &ImagePolicy {
+                    requirement: REQUIREMENT,
+                    cdhash: &hash,
+                    signer_der: leaf.as_deref(),
+                },
+                start + Duration::from_millis(100)
+            ),
+            Err(Error::Deadline)
+        ));
+        assert!(start.elapsed() < Duration::from_secs(2));
+        return;
+    }
     let connected = Channel::connect(
         &epoch,
         &ImagePolicy {
