@@ -37,6 +37,11 @@ The actual daemon is the sole canonical writer in this fixture.
 
 Exact-source CI: https://github.com/gungortarik/cryptex/actions/runs/43095500335
 is pending at this documentation checkpoint.
+On follow-up, its initial dispatch was `completed/startup_failure` with zero
+jobs and zero check runs. No test executed in that dispatch. It was requeued
+using the same source/run, and is queued again. Neither a code-test pass nor
+a code-test failure is inferred from that service startup outcome. No workflow
+or acceptance checks were relaxed, and interactive Mac acceptance has not begun.
 
 The actual signed headless fixture requires all four result markers for actual
 Context/provider installation, synthetic prepare/cancel/confirm, lost native

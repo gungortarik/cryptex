@@ -15,6 +15,11 @@ Implementation and independent source review through `efdb877` are complete
 for this disabled scope. Exact-source CI is
 [queued](https://github.com/gungortarik/cryptex/actions/runs/43095500335)
 at this checkpoint; do not report that source as native accepted yet.
+Follow-up inspection found the initial dispatch ended in `startup_failure`
+without any jobs/check runs being created. The same exact source/run was
+requeued on November 11; it is awaiting execution again. This is not a test
+pass or evidence of a source-test failure. The API exposes no specific startup
+diagnostic; the CLI's generic workflow-file suggestion is not a confirmed cause.
 The [evidence/continuation record](../evidence/m8/m8-protected-content-native-approvals-20261111.md)
 includes the earlier passing synthetic markers, failed journal ordering check,
 Windows passes and confirmed native_accept timeout. The latter was traced at
