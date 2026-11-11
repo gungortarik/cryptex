@@ -584,7 +584,10 @@ static bool attack_flow(const char *binary, const char *prefix, int index, const
                     audit_token_to_pidversion(victim_pin.token) == audit_token_to_pidversion(saved.token);
                 if (code == WRONG_PID && unchanged && MACH_PORT_VALID(frame.reply)) {
                     mach_port_t target=frame.reply;
-                    send_message(target, MACH_PORT_NULL, true, REJECT, 2, session, 0, 0);
+                    // Helper's authenticated control pin has consumed CONFIG1
+                    // and TRANSFER2. Its refusal reply is sequence3; daemon's
+                    // independent pin still uses ACK1/STOP2 below.
+                    send_message(target, MACH_PORT_NULL, true, REJECT, 3, session, 0, 0);
                     frame.reply=MACH_PORT_NULL;
                     helper_exit=reap(helper, WAIT_MS); helper_reaped=true;
                     if (!strcmp(helper_exit.stage, "child_exit") && helper_exit.code == 0) code=OK;

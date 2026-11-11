@@ -98,6 +98,9 @@ and an exact one-right descriptor layout. Send-once rights move; ordinary send
 rights copy. A received descriptor is detached before message destruction, and
 the donor field is cleared only after a successful move. All fifteen owned
 control/data/attack service names require independent removal checks.
+The helper parent pin consumes CONFIG1, TRANSFER2, then REJECT3; the legitimate
+daemon pin independently consumes ACK1 and STOP2. A helper exit56/replay is a
+failed fixture, never a successful attacker rejection.
 
 These fixtures are still CI-only ad-hoc mechanism tests. The own-image versus
 peer-image selector is trusted local policy state, never an imported field; it
