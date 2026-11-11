@@ -113,8 +113,9 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         run([openssl, "cms", "-sign", "-binary", "-nodetach", "-in", manifest,
              "-signer", root / "cert.pem", "-inkey", root / "key.pem", "-outform", "DER",
              "-out", bundle / "Contents/Resources/m8-startup.cms"], "sign_real_inventory")
+        return files
 
-    inventory(template)
+    positive_files = inventory(template)
     positive = root / "positive.app"
     shutil.copytree(template, positive)
     result = run([positive / "Contents/MacOS/cryptex-desktop",
@@ -187,3 +188,10 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                 or (runtime.exists() and any(runtime.iterdir()))):
             raise PreflightError("real_startup_refusal_failed_" + case)
         print("real_signed_startup_refused_" + case + "=passed")
+
+    if source_commit := os.environ.get("CRYPTEX_UI_SOURCE"):
+        from mac_ui_package import export_fixture
+        expires = run([openssl, "x509", "-in", root / "cert.pem", "-enddate", "-noout"],
+                      "read_fixture_expiry").strip()
+        export_fixture(positive, positive_files, Path(os.environ["RUNNER_TEMP"]) / "cryptex-mac-ui.zip",
+                       source_commit, architecture, expires)

@@ -42,8 +42,14 @@ annotation reports an unexpected GitHub error, request ID
 `23DB:165871:D52F90:29E2356:6AF4D39C`. At 20:48 UTC the
 [GitHub incident](https://www.githubstatus.com/incidents/dvy0t3mvh1lg)
 reported degraded Actions availability. The workflow is active and matches
-the workflow from passing run `43090075267`. Native CI on this source and the
-subsequent interactive Mac test remain pending.
+the workflow from passing run `43090075267`. The old run failed again when
+requeued during service recovery. A [new dispatch](https://github.com/gungortarik/cryptex/actions/runs/43101602427)
+at the same full SHA completed successfully. Both Desktop startup matrix jobs
+passed. The Mac log includes all four content/session markers, all eight
+negative startup cases and disposable signing fixture cleanup. Platform counts
+include Mac/Windows startup 11/10, Desktop 39/46, approval 17/17, IPC 71/80
+and owner channel 22/14. Four existing Mac IPC tests were ignored. Interactive
+WebView acceptance still needs an owner run on a real Mac.
 
 The actual signed headless fixture requires all four result markers for actual
 Context/provider installation, synthetic prepare/cancel/confirm, lost native

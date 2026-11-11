@@ -25,10 +25,10 @@ handshake after independent verification, under the unchanged outer deadline.
 No image, native message, runtime-ready or owner check is bypassed. The
 immutable frontend catalog is cached per retained Release only.
 
-After Actions recovers, rerun that exact source and check both platform jobs.
-If it fails, inspect the fixed stage/elapsed diagnostic and preserve every
-deadline and negative fixture. If it passes, record the exact scoped results
-and then prepare the signed interactive Mac check. Do not infer interactive
+After recovery, a [fresh dispatch at the same commit](https://github.com/gungortarik/cryptex/actions/runs/43101602427)
+passed both native platform jobs. The Mac job passed all four content/session
+markers and all eight startup refusal fixtures. The next check is the owner
+Mac WebView using the signed interactive fixture for this source. Do not infer interactive
 WebView acceptance, same-profile durable recovery or M8 completion from headless
 synthetic checks. The candidate's other product UI controls are not enabled.
 
@@ -36,7 +36,7 @@ The Windows M8 pairing form now labels the four signed messages by sender
 and recipient. The guided action assembles the role-specific prefix and opens
 the daemon's owner review. Saved exchanges and completed transcripts can still
 be pasted separately. Local verification covered the frontend build, 23 Node
-tests and both roles in Edge with simulated IPC. The pending native CI run
+tests and both roles in Edge with simulated IPC. The passing native CI run
 above targets the earlier source and does not cover these frontend changes.
 
 ## Actual signed startup check continuation

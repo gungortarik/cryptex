@@ -13,6 +13,9 @@ on:
         description: Run scoped Desktop startup/restart tests and native Desktop lint on both platforms
         type: boolean
         default: false
+      mac_ui_source:
+        description: Optional full product commit for the signed interactive Mac fixture in desktop_startup_only mode
+        type: string
       mac_identity_preflight_only:
         description: Run only Mac prerequisite and synthetic XPC harness checks
         type: boolean
@@ -41,6 +44,17 @@ jobs:
         os: [macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.mac_ui_source || github.sha }}
+          persist-credentials: false
+      - name: Check out interactive fixture tooling
+        if: runner.os == 'macOS' && inputs.mac_ui_source != ''
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .ui-tools
+          sparse-checkout: scripts/m8
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
         with:
           version: 11.28.0
@@ -63,7 +77,15 @@ jobs:
         run: sh scripts/m8/test-mac-owner-native.sh
       - name: Test local certificate native exchange and actual signed startup
         if: runner.os == 'macOS'
-        run: python3 scripts/m8/test_mac_local_signing_ci.py
+        env:
+          CRYPTEX_UI_SOURCE: ${{ inputs.mac_ui_source }}
+        run: |
+          if [[ -n "$CRYPTEX_UI_SOURCE" ]]; then
+            [[ "$(git rev-parse HEAD)" == "$CRYPTEX_UI_SOURCE" ]] || exit 1
+            python3 .ui-tools/scripts/m8/test_mac_local_signing_ci.py
+          else
+            python3 scripts/m8/test_mac_local_signing_ci.py
+          fi
       - name: Test actual child startup, malformed readiness and crash restart
         if: runner.os != 'Windows'
         env:
@@ -93,6 +115,14 @@ jobs:
           & ./scripts/m8/test-standard-user-summary.ps1
           & ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -DesktopSessionOnly
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload signed Mac UI test fixture
+        if: success() && runner.os == 'macOS' && inputs.mac_ui_source != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-interactive-ui
+          path: ${{ runner.temp }}/cryptex-mac-ui.zip
+          if-no-files-found: error
+          retention-days: 1
 
   readiness:
     if: github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.ipc_acl_only && !inputs.windows_desktop_build_only)
