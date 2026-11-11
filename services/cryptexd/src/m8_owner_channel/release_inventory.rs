@@ -10,7 +10,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::time::Instant;
 
-use super::image_policy::PublisherDefinition;
+use super::image_policy::{PublisherDefinition, SigningProfile};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -93,6 +93,11 @@ impl VerifiedInventory {
         deadline: Instant,
     ) -> Result<Self, Error> {
         check_deadline(deadline)?;
+        if let SigningProfile::LocalCertificate { der } = trust.publisher.signing {
+            if der != trust.signer_der {
+                return Err(Error::Signature);
+            }
+        }
         if raw.len() > MAX_INVENTORY
             || raw.is_empty()
             || cms.is_empty()

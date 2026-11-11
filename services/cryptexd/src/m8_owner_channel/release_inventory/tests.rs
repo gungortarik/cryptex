@@ -15,7 +15,7 @@ fn trust() -> ReleaseTrust {
         release_id: "fixture-v1",
         architecture: "arm64",
         publisher: PublisherDefinition {
-            team: "TESTTEAM01",
+            signing: SigningProfile::LocalCertificate { der: CERT },
             desktop_identifier: "com.example.cryptex.desktop",
             daemon_identifier: "com.example.cryptex.daemon",
         },
@@ -43,12 +43,26 @@ fn cms_requires_exact_signed_content_and_independently_pinned_signer() {
     ));
     let mut policy = trust();
     policy.signer_der = b"untrusted certificate";
+    policy.publisher.signing = SigningProfile::LocalCertificate {
+        der: policy.signer_der,
+    };
     assert!(matches!(
         VerifiedInventory::verify(RAW, CMS, policy, deadline()),
         Err(Error::Signature)
     ));
     let mut policy = trust();
     policy.signer_der = include_bytes!("fixtures/other-signer.der");
+    policy.publisher.signing = SigningProfile::LocalCertificate {
+        der: policy.signer_der,
+    };
+    assert!(matches!(
+        VerifiedInventory::verify(RAW, CMS, policy, deadline()),
+        Err(Error::Signature)
+    ));
+    let mut policy = trust();
+    policy.publisher.signing = SigningProfile::LocalCertificate {
+        der: include_bytes!("fixtures/other-signer.der"),
+    };
     assert!(matches!(
         VerifiedInventory::verify(RAW, CMS, policy, deadline()),
         Err(Error::Signature)

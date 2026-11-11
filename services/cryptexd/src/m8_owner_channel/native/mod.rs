@@ -11,6 +11,7 @@ type Epoch = [u8; 16];
 struct ImagePolicy<'a> {
     requirement: &'a CStr,
     cdhash: &'a [u8],
+    signer_der: Option<&'a [u8]>,
 }
 
 #[repr(C)]
@@ -18,6 +19,8 @@ struct PolicyRef {
     requirement: *const c_char,
     cdhash: *const u8,
     hash_size: usize,
+    signer_der: *const u8,
+    signer_size: usize,
 }
 
 impl ImagePolicy<'_> {
@@ -26,6 +29,8 @@ impl ImagePolicy<'_> {
             requirement: self.requirement.as_ptr(),
             cdhash: self.cdhash.as_ptr(),
             hash_size: self.cdhash.len(),
+            signer_der: self.signer_der.map_or(ptr::null(), |der| der.as_ptr()),
+            signer_size: self.signer_der.map_or(0, <[u8]>::len),
         }
     }
 }
@@ -35,6 +40,7 @@ impl<'a> From<&'a super::image_policy::ExpectedImage> for ImagePolicy<'a> {
         Self {
             requirement: image.requirement(),
             cdhash: image.cdhash(),
+            signer_der: image.signer_der(),
         }
     }
 }

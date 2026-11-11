@@ -26,6 +26,7 @@ struct cx_channel {
     audit_token_t sender;
     SecRequirementRef requirement;
     CFDataRef cdhash;
+    CFDataRef signer;
     uint8_t epoch[CX_EPOCH_BYTES];
     uint64_t sent, received;
     bool parent_is_peer, pinned, closed;
@@ -62,6 +63,7 @@ enum cx_result cx_close(cx_channel *c) {
         ok = false;
     if (c->requirement) CFRelease(c->requirement);
     if (c->cdhash) CFRelease(c->cdhash);
+    if (c->signer) CFRelease(c->signer);
     free(c);
     return ok ? CX_OK : CX_CLEANUP;
 }
@@ -78,7 +80,8 @@ static bool live(cx_channel *c) {
 
 static enum cx_result configure(cx_channel *c, pid_t pid, const cx_policy *policy) {
     if (pid <= 1 || !policy || !policy->requirement || !policy->cdhash ||
-        !policy->hash_size || policy->hash_size > 64) return CX_ARGUMENT;
+        !policy->hash_size || policy->hash_size > 64 || policy->signer_size > 65536 ||
+        (policy->signer_size && !policy->signer_der)) return CX_ARGUMENT;
     c->pid = pid;
     CFStringRef text = CFStringCreateWithCString(NULL, policy->requirement, kCFStringEncodingUTF8);
     if (!text) return CX_IMAGE;
@@ -87,6 +90,12 @@ static enum cx_result configure(cx_channel *c, pid_t pid, const cx_policy *polic
     if (status != errSecSuccess || !c->requirement) return CX_IMAGE;
     c->cdhash = CFDataCreate(NULL, policy->cdhash, (CFIndex)policy->hash_size);
     if (!c->cdhash) return CX_RESOURCE;
+    if (policy->signer_size) {
+        c->signer = CFDataCreate(NULL, policy->signer_der, (CFIndex)policy->signer_size);
+        SecCertificateRef cert = c->signer ? SecCertificateCreateWithData(NULL, c->signer) : NULL;
+        if (!cert) return CX_IMAGE;
+        CFRelease(cert);
+    }
     mach_msg_type_number_t count = TASK_AUDIT_TOKEN_COUNT;
     if (task_name_for_pid(mach_task_self(), pid, &c->task) != KERN_SUCCESS ||
         task_info(c->task, TASK_AUDIT_TOKEN, (task_info_t)&c->sender, &count) != KERN_SUCCESS ||
@@ -111,9 +120,21 @@ static enum cx_result check_sender(cx_channel *c, const audit_token_t *token) {
     enum cx_result result = CX_IMAGE;
     if (attrs && SecCodeCopyGuestWithAttributes(NULL, attrs, 0, &code) == errSecSuccess && code &&
         SecCodeCheckValidity(code, kSecCSStrictValidate, c->requirement) == errSecSuccess &&
-        SecCodeCopySigningInformation((SecStaticCodeRef)code, 0, &info) == errSecSuccess && info) {
+        SecCodeCopySigningInformation((SecStaticCodeRef)code, kSecCSSigningInformation, &info) == errSecSuccess && info) {
         CFTypeRef hash = CFDictionaryGetValue(info, kSecCodeInfoUnique);
-        if (hash && CFGetTypeID(hash) == CFDataGetTypeID() && CFEqual(hash, c->cdhash))
+        bool signer_valid = !c->signer;
+        if (c->signer) {
+            CFTypeRef certs = CFDictionaryGetValue(info, kSecCodeInfoCertificates);
+            if (certs && CFGetTypeID(certs) == CFArrayGetTypeID() && CFArrayGetCount(certs) > 0) {
+                CFTypeRef leaf = CFArrayGetValueAtIndex(certs, 0);
+                if (leaf && CFGetTypeID(leaf) == SecCertificateGetTypeID()) {
+                    CFDataRef der = SecCertificateCopyData((SecCertificateRef)leaf);
+                    signer_valid = der && CFEqual(der, c->signer);
+                    if (der) CFRelease(der);
+                }
+            }
+        }
+        if (signer_valid && hash && CFGetTypeID(hash) == CFDataGetTypeID() && CFEqual(hash, c->cdhash))
             result = live(c) ? CX_OK : CX_INSTANCE;
     }
     if (info) CFRelease(info);

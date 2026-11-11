@@ -244,6 +244,7 @@ fn supervisor() {
         "roundtrip",
         "wrong_hash",
         "wrong_requirement",
+        "wrong_leaf",
         "wrong_child",
         "parent_image",
         "queued_after_exit",
@@ -263,6 +264,11 @@ fn supervisor() {
             false,
         );
         let policy = ImagePolicy {
+            signer_der: if case == "wrong_leaf" {
+                Some(include_bytes!("../release_inventory/fixtures/signer.der"))
+            } else {
+                None
+            },
             requirement: if case == "wrong_requirement" {
                 c"identifier \"com.cryptex.other\""
             } else {
@@ -412,6 +418,7 @@ fn worker() {
     let connected = Channel::connect(
         &epoch,
         &ImagePolicy {
+            signer_der: None,
             requirement: REQUIREMENT,
             cdhash: if case == OsStr::new("parent_image") {
                 &[0; 20]

@@ -23,6 +23,8 @@ typedef struct {
     const char *requirement;
     const uint8_t *cdhash;
     size_t hash_size;
+    const uint8_t *signer_der;
+    size_t signer_size;
 } cx_policy;
 enum cx_result cx_accept(cx_channel *c, pid_t child, const cx_policy *policy);
 enum cx_result cx_connect(cx_channel **out, const uint8_t epoch[CX_EPOCH_BYTES],

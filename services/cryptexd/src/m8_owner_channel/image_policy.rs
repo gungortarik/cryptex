@@ -22,8 +22,14 @@ pub(super) enum PolicyError {
 /// Candidate distribution constraint. Choosing this for a release still
 /// requires a reviewed publisher decision and signed product acceptance.
 #[derive(Clone, Copy)]
+pub(super) enum SigningProfile {
+    DeveloperIdApplication { team: &'static str },
+    LocalCertificate { der: &'static [u8] },
+}
+
+#[derive(Clone, Copy)]
 pub(super) struct PublisherDefinition {
-    pub(super) team: &'static str,
+    pub(super) signing: SigningProfile,
     pub(super) desktop_identifier: &'static str,
     pub(super) daemon_identifier: &'static str,
 }
@@ -49,6 +55,7 @@ pub(super) fn configured_image(_role: Role) -> Result<ExpectedImage, PolicyError
 pub(super) struct ExpectedImage {
     requirement: CString,
     cdhash: [u8; 20],
+    signer_der: Option<&'static [u8]>,
 }
 
 impl ExpectedImage {
@@ -58,6 +65,9 @@ impl ExpectedImage {
 
     pub(super) fn cdhash(&self) -> &[u8; 20] {
         &self.cdhash
+    }
+    pub(super) fn signer_der(&self) -> Option<&'static [u8]> {
+        self.signer_der
     }
 }
 
@@ -70,14 +80,19 @@ fn valid_identifier(id: &str) -> bool {
 }
 
 fn expected_image(release: &ReleaseDefinition, role: Role) -> Result<ExpectedImage, PolicyError> {
-    if release.publisher.team.len() != 10
-        || !release
-            .publisher
-            .team
-            .bytes()
-            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
-    {
-        return Err(PolicyError::InvalidPublisher);
+    match release.publisher.signing {
+        SigningProfile::DeveloperIdApplication { team }
+            if team.len() != 10
+                || !team
+                    .bytes()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) =>
+        {
+            return Err(PolicyError::InvalidPublisher);
+        }
+        SigningProfile::LocalCertificate { der } if der.is_empty() || der.len() > 65536 => {
+            return Err(PolicyError::InvalidPublisher);
+        }
+        _ => {}
     }
     if !valid_identifier(release.publisher.desktop_identifier)
         || !valid_identifier(release.publisher.daemon_identifier)
@@ -96,15 +111,24 @@ fn expected_image(release: &ReleaseDefinition, role: Role) -> Result<ExpectedIma
         Role::Desktop => (release.publisher.desktop_identifier, release.desktop_cdhash),
         Role::Daemon => (release.publisher.daemon_identifier, release.daemon_cdhash),
     };
-    // Values are validated before interpolation. Both a Developer ID
-    // intermediate and an application leaf are required by this candidate.
-    let requirement = CString::new(format!(
-        "anchor apple generic and identifier \"{identifier}\" and certificate leaf[subject.OU] = \"{}\" and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists",
-        release.publisher.team
-    )).map_err(|_| PolicyError::InvalidIdentifier)?;
+    let (text, signer_der) = match release.publisher.signing {
+        SigningProfile::DeveloperIdApplication { team } => (
+            format!(
+                "anchor apple generic and identifier \"{identifier}\" and certificate leaf[subject.OU] = \"{team}\" and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
+            ),
+            None,
+        ),
+        // Native validation additionally requires this exact leaf certificate
+        // on every message. An identifier alone never admits a local peer.
+        SigningProfile::LocalCertificate { der } => {
+            (format!("identifier \"{identifier}\""), Some(der))
+        }
+    };
+    let requirement = CString::new(text).map_err(|_| PolicyError::InvalidIdentifier)?;
     Ok(ExpectedImage {
         requirement,
         cdhash,
+        signer_der,
     })
 }
 
@@ -132,7 +156,7 @@ mod tests {
     fn release() -> ReleaseDefinition {
         ReleaseDefinition {
             publisher: PublisherDefinition {
-                team: "TESTTEAM01",
+                signing: SigningProfile::DeveloperIdApplication { team: "TESTTEAM01" },
                 desktop_identifier: "com.example.cryptex.desktop",
                 daemon_identifier: "com.example.cryptex.daemon",
             },
@@ -149,6 +173,29 @@ mod tests {
                 Err(PolicyError::Unconfigured)
             ));
         }
+    }
+
+    #[test]
+    fn local_profile_preserves_exact_certificate_pin_without_team_membership() {
+        const CERT: &[u8] = b"opaque certificate bytes validated by native Security";
+        let mut release = release();
+        release.publisher.signing = SigningProfile::LocalCertificate { der: CERT };
+        for role in [Role::Desktop, Role::Daemon] {
+            let image = expected_image(&release, role).unwrap();
+            assert_eq!(image.signer_der(), Some(CERT));
+            assert!(
+                image
+                    .requirement()
+                    .to_str()
+                    .unwrap()
+                    .starts_with("identifier ")
+            );
+        }
+        release.publisher.signing = SigningProfile::LocalCertificate { der: &[] };
+        assert!(matches!(
+            expected_image(&release, Role::Desktop),
+            Err(PolicyError::InvalidPublisher)
+        ));
     }
 
     #[test]
@@ -186,7 +233,7 @@ mod tests {
             "TESTTEAM0\0",
         ] {
             let mut policy = release();
-            policy.publisher.team = team;
+            policy.publisher.signing = SigningProfile::DeveloperIdApplication { team };
             assert!(matches!(
                 expected_image(&policy, Role::Desktop),
                 Err(PolicyError::InvalidPublisher)
