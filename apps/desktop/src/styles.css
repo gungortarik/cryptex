@@ -260,6 +260,16 @@ button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, va
 .bootstrap-review dd { min-width: 0; margin: 0; font-size: 12px; }
 .bootstrap-review code { overflow-wrap: anywhere; user-select: all; }
 .bootstrap-signed-message { display: grid; gap: 8px; margin-top: 16px; }
+.pairing-exchange { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.pairing-exchange > button { justify-self: start; max-width: 100%; }
+.pairing-exchange > label { margin-top: 10px; font-size: 13px; font-weight: 650; }
+.pairing-exchange > .capture-help { margin: 0; overflow-wrap: anywhere; }
+.pairing-exchange > textarea, .pairing-exchange > input, .pairing-exchange > select { min-width: 0; }
+.pairing-manual { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.pairing-manual summary { cursor: pointer; font-weight: 650; font-size: 14px; }
+.pairing-manual[open] > summary { margin-bottom: 12px; }
+.pairing-manual .capture-help { margin-bottom: 0; }
+.pairing-manual .bootstrap-signed-message { margin-bottom: 8px; }
 @media (max-width: 620px) {
   .bootstrap-review dl { grid-template-columns: 1fr; gap: 4px; }
   .bootstrap-review dd { margin-bottom: 10px; }

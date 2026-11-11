@@ -32,6 +32,13 @@ and then prepare the signed interactive Mac check. Do not infer interactive
 WebView acceptance, same-profile durable recovery or M8 completion from headless
 synthetic checks. The candidate's other product UI controls are not enabled.
 
+The Windows M8 pairing form now labels the four signed messages by sender
+and recipient. The guided action assembles the role-specific prefix and opens
+the daemon's owner review. Saved exchanges and completed transcripts can still
+be pasted separately. Local verification covered the frontend build, 23 Node
+tests and both roles in Edge with simulated IPC. The pending native CI run
+above targets the earlier source and does not cover these frontend changes.
+
 ## Actual signed startup check continuation
 
 The default-off `m8-local-startup-check` feature now connects the local certificate

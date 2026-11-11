@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { completionMessages, pairingRejectionStatus } from "./pairing-status.mjs";
+import { completionMessages, pairingRejectionStatus, reviewMessages, swappedPairingField } from "./pairing-status.mjs";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   CLASSIFICATIONS,
@@ -264,15 +264,20 @@ export function App() {
     }
   }
 
-  async function preparePeerApproval(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const guidedMessages = approvalRole === "initiator"
+    ? reviewMessages(approvalRole, exchangeOffer, incomingProof, "")
+    : reviewMessages(approvalRole, incomingOffer, exchangeProof, incomingInitiatorApproval);
+  const offerHint = useMemo(() => swappedPairingField(incomingOffer, "offer"), [incomingOffer]);
+  const identityHint = useMemo(() => swappedPairingField(incomingBrainIdentity, "identity"), [incomingBrainIdentity]);
+
+  async function preparePeerApproval(messages: string[]) {
+    setApprovalTranscript(messages.join("\n"));
     setApprovalBusy(true);
     setApprovalStatus(null);
     setSignedApproval(null);
     setCompletionTranscript("");
     setApprovedSnapshot(null);
     try {
-      const messages = approvalTranscript.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
       const prepared = await invoke<PeerApprovalPrepared>("m8_prepare_peer_approval", {
         role: approvalRole,
         transcriptMessages: messages,
@@ -360,21 +365,6 @@ export function App() {
     } finally {
       setApprovalBusy(false);
     }
-  }
-
-  function loadExchangeIntoApprovalReview() {
-    const messages = approvalRole === "initiator"
-      ? [exchangeOffer, incomingProof]
-      : [incomingOffer, exchangeProof, incomingInitiatorApproval];
-    if (messages.some((message) => !message.trim())) {
-      setApprovalStatus("Complete the signed-message exchange fields first. Nothing was approved.");
-      return;
-    }
-    setApprovalTranscript(messages.map((message) => message.trim()).join("\n"));
-    setApprovalPrepared(null);
-    setSignedApproval(null);
-    setCompletionTranscript("");
-    setApprovalStatus("Exchange messages loaded for verification. Verify and review will authenticate them before showing an approval.");
   }
 
   async function confirmPeerApproval() {
@@ -1111,28 +1101,28 @@ export function App() {
               </p>
             </div>
             {!approvalPrepared ? (
-              <div className="bootstrap-review" aria-labelledby="bootstrap-exchange-heading">
-                <h3 id="bootstrap-exchange-heading">1. Create or receive the signed exchange</h3>
-                <label htmlFor="bootstrap-role">Your role</label>
+              <div className="bootstrap-review pairing-exchange" aria-labelledby="bootstrap-exchange-heading">
+                <h3 id="bootstrap-exchange-heading">Exchange messages</h3>
+                <label htmlFor="bootstrap-role">This device</label>
                 <select
                   id="bootstrap-role"
                   value={approvalRole}
                   onChange={(event) => setApprovalRole(event.target.value as "initiator" | "responder")}
                   disabled={approvalBusy}
                 >
-                  <option value="initiator">Initiator · create offer</option>
-                  <option value="responder">Responder · create proof</option>
+                  <option value="initiator">Initiator · start the pairing</option>
+                  <option value="responder">Responder · join the pairing</option>
                 </select>
                 <button className="capture-secondary" type="button" onClick={() => void invoke<string>("m8_read_transport_device_id").then((id) => { setExchangeTransportId(id); setApprovalStatus("Adapter identity verified by the daemon’s active local connection."); }).catch(() => { setExchangeTransportId(""); setApprovalStatus("No active, identity-verified adapter is available. Pairing was not created."); })} disabled={approvalBusy || connection !== "active"}>
                   {exchangeTransportId ? "Refresh verified adapter identity" : "Read verified adapter identity"}
                 </button>
                 {exchangeTransportId ? <p className="capture-help">Verified adapter DeviceId: <code>{exchangeTransportId}</code></p> : <p className="capture-help">Pairing requires the configured adapter to be active. Its DeviceId is read and rechecked by the daemon; it cannot be entered manually.</p>}
-                <button className="capture-secondary" type="button" onClick={() => void readBootstrapBrainIdentity()} disabled={approvalBusy || connection !== "active"}>
-                  {approvalBusy ? "Reading…" : "Show public Brain identity to share"}
-                </button>
-                {localBrainIdentity ? <label className="bootstrap-signed-message" htmlFor="bootstrap-brain-identity-output">Public Brain identity JSON · copy exactly<textarea id="bootstrap-brain-identity-output" value={localBrainIdentity} readOnly rows={4} /></label> : null}
                 {approvalRole === "initiator" ? (
                   <>
+                    <button className="capture-secondary" type="button" onClick={() => void readBootstrapBrainIdentity()} disabled={approvalBusy || connection !== "active"}>
+                      Show public Brain identity to share
+                    </button>
+                    {localBrainIdentity ? <label className="bootstrap-signed-message" htmlFor="bootstrap-brain-identity-output">Send to the responder’s “Public Brain identity” field<textarea id="bootstrap-brain-identity-output" value={localBrainIdentity} readOnly rows={4} /></label> : null}
                     <label htmlFor="bootstrap-transaction-id">Transaction ID · keep it to resume after restart</label>
                     <input
                       id="bootstrap-transaction-id"
@@ -1149,49 +1139,72 @@ export function App() {
                       {approvalBusy ? "Creating…" : exchangeTransactionId ? "Create or resume signed offer" : "Create signed offer"}
                     </button>
                     {exchangeTransactionId ? <button className="capture-secondary" type="button" onClick={() => { setExchangeTransactionId(""); setExchangeOffer(""); setIncomingProof(""); setApprovalTranscript(""); }} disabled={approvalBusy}>Start a new transaction</button> : null}
-                    {exchangeOffer ? <label className="bootstrap-signed-message" htmlFor="bootstrap-offer-output">Offer · send to the responder<textarea id="bootstrap-offer-output" value={exchangeOffer} readOnly rows={4} /></label> : null}
-                    <label htmlFor="bootstrap-proof-input">Responder’s signed proof</label>
-                    <textarea id="bootstrap-proof-input" value={incomingProof} onChange={(event) => setIncomingProof(event.target.value)} rows={4} maxLength={65536} disabled={approvalBusy} />
+                    {exchangeOffer ? <label className="bootstrap-signed-message" htmlFor="bootstrap-offer-output">1. Signed offer · send to the responder<textarea id="bootstrap-offer-output" value={exchangeOffer} readOnly rows={4} /></label> : null}
+                    <label htmlFor="bootstrap-proof-input">2. Signed proof · paste from the responder</label>
+                    <textarea id="bootstrap-proof-input" value={incomingProof} onChange={(event) => setIncomingProof(event.target.value)} placeholder="Paste the responder’s proof JSON here" rows={4} maxLength={65536} disabled={approvalBusy} />
                   </>
                 ) : (
                   <>
-                    <label htmlFor="bootstrap-offer-input">Initiator’s signed offer</label>
-                    <textarea id="bootstrap-offer-input" value={incomingOffer} onChange={(event) => setIncomingOffer(event.target.value)} rows={4} maxLength={65536} disabled={approvalBusy} />
-                    <label htmlFor="bootstrap-brain-identity">Existing Brain identity JSON · copy exactly from the initiating device</label>
-                    <textarea id="bootstrap-brain-identity" value={incomingBrainIdentity} onChange={(event) => setIncomingBrainIdentity(event.target.value)} rows={4} maxLength={4096} disabled={approvalBusy} />
+                    <label htmlFor="bootstrap-offer-input">1. Signed offer · paste from the initiator</label>
+                    <textarea
+                      id="bootstrap-offer-input"
+                      value={incomingOffer}
+                      onChange={(event) => { setIncomingOffer(event.target.value); setExchangeProof(""); }}
+                      placeholder="Paste the initiator’s signed offer JSON here"
+                      aria-invalid={Boolean(offerHint)}
+                      aria-describedby={offerHint ? "offer-hint" : undefined}
+                      rows={4} maxLength={65536} disabled={approvalBusy}
+                    />
+                    {offerHint && <p className="capture-status" id="offer-hint" role="status">{offerHint}</p>}
+                    <label htmlFor="bootstrap-brain-identity">Public Brain identity · paste from the initiator</label>
+                    <textarea
+                      id="bootstrap-brain-identity"
+                      value={incomingBrainIdentity}
+                      onChange={(event) => { setIncomingBrainIdentity(event.target.value); setExchangeProof(""); }}
+                      placeholder="On the initiating device, select “Show public Brain identity to share” and copy its output here"
+                      aria-invalid={Boolean(identityHint)}
+                      aria-describedby={identityHint ? "identity-hint" : undefined}
+                      rows={4} maxLength={4096} disabled={approvalBusy}
+                    />
+                    {identityHint && <p className="capture-status" id="identity-hint" role="status">{identityHint}</p>}
                     <p className="capture-help">If this device has no Brain identity, the daemon will create the explicit join-existing-Brain setup from this exact public identity, only when no conflicting local state exists. A different local Brain is never replaced.</p>
-                    <button className="search-button" type="button" onClick={() => void createBootstrapProof()} disabled={approvalBusy || connection !== "active" || !incomingOffer.trim() || !incomingBrainIdentity.trim()}>
+                    <button className="search-button" type="button" onClick={() => void createBootstrapProof()} disabled={approvalBusy || connection !== "active" || !incomingOffer.trim() || !incomingBrainIdentity.trim() || Boolean(offerHint || identityHint)}>
                       {approvalBusy ? "Creating…" : exchangeProof ? "Resume signed proof" : "Verify offer and create proof"}
                     </button>
-                    {exchangeProof ? <label className="bootstrap-signed-message" htmlFor="bootstrap-proof-output">Proof · return to the initiator<textarea id="bootstrap-proof-output" value={exchangeProof} readOnly rows={4} /></label> : null}
-                    <label htmlFor="bootstrap-initiator-approval-input">Initiator’s signed approval</label>
-                    <textarea id="bootstrap-initiator-approval-input" value={incomingInitiatorApproval} onChange={(event) => setIncomingInitiatorApproval(event.target.value)} rows={4} maxLength={65536} disabled={approvalBusy} />
+                    {exchangeProof ? <label className="bootstrap-signed-message" htmlFor="bootstrap-proof-output">2. Signed proof · send to the initiator<textarea id="bootstrap-proof-output" value={exchangeProof} readOnly rows={4} /></label> : null}
+                    <label htmlFor="bootstrap-initiator-approval-input">3. Signed approval · paste from the initiator</label>
+                    <textarea id="bootstrap-initiator-approval-input" value={incomingInitiatorApproval} onChange={(event) => setIncomingInitiatorApproval(event.target.value)} placeholder="After the initiator reviews and signs, paste their approval JSON here" rows={4} maxLength={65536} disabled={approvalBusy} />
                   </>
                 )}
-                <button className="capture-secondary" type="button" onClick={loadExchangeIntoApprovalReview} disabled={approvalBusy}>
-                  Load messages for owner review
+                <button className="search-button" type="button" onClick={() => void preparePeerApproval(guidedMessages)} disabled={approvalBusy || connection !== "active" || !guidedMessages.length}>
+                  {approvalBusy ? "Working…" : "Verify messages and review pairing"}
                 </button>
               </div>
             ) : null}
             {!approvalPrepared ? (
-              <form className="bootstrap-form" onSubmit={(event) => void preparePeerApproval(event)}>
-                <h3>2. Verify and review before signing</h3>
-                <p className="capture-help">The signed offer, proof, and any received approval are shown in this exact order. You can inspect or correct the lines before verification.</p>
-                <label htmlFor="bootstrap-transcript">Signed messages · one compact JSON message per line</label>
-                <textarea
-                  id="bootstrap-transcript"
-                  value={approvalTranscript}
-                  onChange={(event) => setApprovalTranscript(event.target.value)}
-                  placeholder={'Paste one complete signed JSON message per line'}
-                  rows={5}
-                  maxLength={1052672}
-                  required
-                  disabled={approvalBusy}
-                />
-                <button className="search-button" type="submit" disabled={approvalBusy || connection !== "active"}>
-                  {approvalBusy ? "Verifying…" : "Verify and review"}
-                </button>
-              </form>
+              <details className="pairing-manual">
+                <summary>Review a saved exchange</summary>
+                <form className="bootstrap-form" onSubmit={(event) => {
+                  event.preventDefault();
+                  void preparePeerApproval(approvalTranscript.split(/\r?\n/).map(line => line.trim()).filter(Boolean));
+                }}>
+                  <p className="capture-help">{approvalRole === "initiator" ? "Paste the offer on line 1 and the proof on line 2." : "Paste the offer, proof and initiator’s signed approval on lines 1, 2 and 3."}</p>
+                  <label htmlFor="bootstrap-transcript">Signed messages · one compact JSON message per line</label>
+                  <textarea
+                    id="bootstrap-transcript"
+                    value={approvalTranscript}
+                    onChange={(event) => setApprovalTranscript(event.target.value)}
+                    placeholder={'Paste one complete signed JSON message per line'}
+                    rows={5}
+                    maxLength={1052672}
+                    required
+                    disabled={approvalBusy}
+                  />
+                  <button className="search-button" type="submit" disabled={approvalBusy || connection !== "active"}>
+                    {approvalBusy ? "Verifying…" : "Verify and review"}
+                  </button>
+                </form>
+              </details>
             ) : (
               <div className="bootstrap-review" aria-labelledby="bootstrap-review-heading">
                 <h3 id="bootstrap-review-heading">Confirm this exact operation</h3>
@@ -1234,16 +1247,18 @@ export function App() {
                   </div>
                 ) : null}
                 <label className="bootstrap-signed-message" htmlFor="bootstrap-signed-message">
-                  Signed message to return to the other device
+                  {approvedSnapshot?.role === "responder" ? "4. Signed approval · send to the initiator as the final message" : "3. Signed approval · send to the responder"}
                   <textarea id="bootstrap-signed-message" value={signedApproval} readOnly rows={4} />
                 </label>
               </>
             ) : null}
             {!approvalPrepared ? (
-              <>
-                {!signedApproval ? <h3>Resume a signed pairing</h3> : null}
+              <details className="pairing-manual" open={Boolean(signedApproval)}>
+                <summary>{signedApproval ? "Record this pairing" : "Resume a signed pairing"}</summary>
                 <label className="bootstrap-signed-message" htmlFor="bootstrap-complete-transcript">
-                  Complete transcript · paste the peer’s final signed approval as message 4 when needed
+                  {signedApproval && approvedSnapshot?.role === "initiator"
+                    ? "Append the responder’s signed approval on line 4"
+                    : "Complete transcript · offer, proof, initiator approval, responder approval"}
                   <textarea
                     id="bootstrap-complete-transcript"
                     value={completionTranscript}
@@ -1261,7 +1276,7 @@ export function App() {
                 >
                   {approvalBusy ? "Verifying…" : "Add approved device to local trust"}
                 </button>
-              </>
+              </details>
             ) : null}
           </section>
 
