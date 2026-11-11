@@ -21,10 +21,11 @@ pub(super) enum PolicyError {
 
 /// Candidate distribution constraint. Choosing this for a release still
 /// requires a reviewed publisher decision and signed product acceptance.
-struct PublisherDefinition {
-    team: &'static str,
-    desktop_identifier: &'static str,
-    daemon_identifier: &'static str,
+#[derive(Clone, Copy)]
+pub(super) struct PublisherDefinition {
+    pub(super) team: &'static str,
+    pub(super) desktop_identifier: &'static str,
+    pub(super) daemon_identifier: &'static str,
 }
 
 // Final image hashes require a future independently authenticated inventory.
@@ -105,6 +106,23 @@ fn expected_image(release: &ReleaseDefinition, role: Role) -> Result<ExpectedIma
         requirement,
         cdhash,
     })
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn inventory_image(
+    inventory: &super::release_inventory::VerifiedInventory,
+    role: Role,
+) -> Result<ExpectedImage, PolicyError> {
+    let (desktop_cdhash, daemon_cdhash) = inventory.image_hashes();
+    let publisher = inventory.publisher();
+    expected_image(
+        &ReleaseDefinition {
+            publisher,
+            desktop_cdhash,
+            daemon_cdhash,
+        },
+        role,
+    )
 }
 
 #[cfg(test)]

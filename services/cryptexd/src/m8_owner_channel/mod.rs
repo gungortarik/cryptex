@@ -10,6 +10,8 @@ use std::fmt;
 mod image_policy;
 #[cfg(target_os = "macos")]
 mod native;
+#[cfg(target_os = "macos")]
+mod release_inventory;
 pub(crate) mod reply;
 pub(crate) mod request;
 
