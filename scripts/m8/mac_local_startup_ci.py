@@ -1,5 +1,6 @@
 """Feature-only actual Desktop/daemon startup fixture; called inside CI keychain scope."""
 import hashlib
+from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,17 @@ import shutil
 import sys
 
 from mac_identity_preflight import PreflightError
+
+
+def check_session_journal(path, expected):
+    journal = json.loads(path.read_text(encoding="utf-8"))
+    transactions = journal["transactions"]
+    # The journal sorts random transaction IDs, not operation chronology.
+    # Require the entire exact state multiset and one append only for anchored.
+    if (Counter(item["state"] for item in transactions) != Counter(expected)
+            or any(len(item["append_attempts"]) != (1 if item["state"] == "anchored" else 0)
+                   for item in transactions)):
+        raise PreflightError("native_session_journal_outcome_mismatch")
 
 
 def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain,
@@ -122,14 +134,12 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         if marker not in content_result.splitlines():
             raise PreflightError("native_content_session_marker_missing")
         print(marker)
-    for runtime, expected in (("content-runtime", "anchored"), ("content-runtime.lost", "owner_pending")):
-        journal = json.loads((root / runtime / "bootstrap/pending.json").read_text(encoding="utf-8"))
-        if not journal["transactions"] or journal["transactions"][-1]["state"] != expected:
-            raise PreflightError("native_session_journal_outcome_mismatch")
+    check_session_journal(root / "content-runtime/bootstrap/pending.json",
+                          ("cancelled", "owner_pending", "anchored"))
+    check_session_journal(root / "content-runtime.lost/bootstrap/pending.json", ("owner_pending",))
     for suffix in ("missing-snapshot", "handle-allocation", "lost-receiver", "cancelled-inflight", "cancelled-handoff"):
-        journal = json.loads((root / ("content-runtime." + suffix) / "bootstrap/pending.json").read_text(encoding="utf-8"))
-        if len(journal["transactions"]) != 1 or journal["transactions"][0]["state"] != "owner_pending":
-            raise PreflightError("native_failed_delivery_did_not_preserve_pending_journal")
+        check_session_journal(root / ("content-runtime." + suffix) / "bootstrap/pending.json", ("owner_pending",))
+    check_session_journal(root / "content-runtime.completed-delivery/bootstrap/pending.json", ("cancelled",))
     if (root / "content-runtime.expired-queue/bootstrap/pending.json").exists():
         raise PreflightError("native_expired_queue_prepared_a_grant")
 
