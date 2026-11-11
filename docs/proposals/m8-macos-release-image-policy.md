@@ -39,10 +39,12 @@ discovery, restores the exact original search list and deletes the keychain
 before reporting cleanup success. It does not write OS trust settings. Test
 signer selection exists only in the Rust test binary.
 
-This native exchange is component evidence. Actual Desktop/daemon application
-startup, protected content consumption and approval-session integration remain
-open. The earlier signed personal-Mac mechanism evidence does not substitute
-for the new backend's tests.
+This native exchange is component evidence. A separate default-off
+[real-binary headless startup check](m8-local-signed-startup-check.md) now binds
+the local profile to actual Desktop/daemon lifecycle and authenticated readiness.
+Ordinary Tauri startup/resource consumption and approval-session integration
+remain open. The earlier signed personal-Mac mechanism evidence does not
+substitute for the new backend's tests.
 
 ## Implemented disabled inventory and content snapshot
 

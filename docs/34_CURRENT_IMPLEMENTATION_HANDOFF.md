@@ -11,7 +11,26 @@ The product gate remains closed.
 
 See the [bounded contract](proposals/m8-local-signed-startup-check.md) for the
 fresh-runtime, absolute-deadline, retained child/channel/snapshot and restart
-rules. Native execution and review evidence for this continuation are pending.
+rules. [Exact-source CI for `3d0b6c2`](https://github.com/gungortarik/cryptex/actions/runs/43067144663)
+passed on Mac and Windows. The actual signed pair passed startup, forced-exit
+restart, old-channel refusal, authenticated runtime-ready and clean shutdown.
+All eight real-binary negative fixtures passed their exact refusal-stage checks,
+and the disposable signing fixture confirmed complete cleanup without OS trust
+writes. The feature-enabled library run also passed its named closed-gate tests.
+Source-only independent review through `3d0b6c2` has no actionable finding after
+correcting the handshake deadline and distinguishing parent-image rejection
+from missing rendezvous. The final runtime-ready frame is authenticated after
+ordinary lifecycle initialization. Local Windows startup passed 9 with one
+explicitly disposable-account ignore, Desktop passed 46, shared owner-channel
+passed 13, and all-target lint/formatting passed. Three Python runner regressions
+passed. Native CI startup passed Mac 11/Windows 10, Desktop Mac 39/Windows 46,
+shared owner-channel Mac 21/Windows 13 and IPC Mac 71/Windows 80. The two Mac
+subprocess helpers were explicitly invoked, and four existing Mac IPC ignores
+remain. Both Windows standard-user runs confirmed temporary-account/profile
+cleanup. This is scoped startup evidence, not a full workspace or interactive
+product acceptance.
+The [startup evidence](../evidence/m8/m8-local-signed-startup-20261111.md)
+records exact source, scoped tests and remaining product integration.
 The previous test-binary-only continuation below is superseded for startup
 integration, while Tauri content and approval/session integration remain open.
 
@@ -33,9 +52,10 @@ and refuses owner machines and self-hosted runners. It temporarily includes
 the private keychain in identity discovery and restores the exact original
 search list before deleting the keychain. It does not write OS trust settings.
 
-Next, bind the protected inventory/content to actual Desktop/daemon startup and
-pending approval lifetimes, then run that signed application pair on the
-owner's Mac. The parent/child fixture is component evidence. Native ad-hoc
+The headless actual startup binding is implemented above. Next, bind protected
+Tauri content and native requests to pending approval lifetimes, then run the
+signed interactive application pair on the owner's Mac. The earlier
+parent/child test-binary fixture is component evidence. Native ad-hoc
 processes additionally exercise missing-certificate rejection, while policy
 and CMS tests check DER propagation and signer/profile consistency.
 
