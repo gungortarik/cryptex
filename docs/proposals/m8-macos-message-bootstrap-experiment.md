@@ -71,9 +71,10 @@ typed observed stage/code rather than an expected-outcome label alone.
 
 ## Phase-two adversarial fixtures
 
-Exact sourcef117a3b passed CI42950658480 with all17 native rows and fault/namespace
-controls. The separate certified policy integration below still needs its own
-exact-source CI and owner-positive run; the ad-hoc result cannot substitute.
+Exact source8e8fabb passed CI42952782022 with all17 native rows and fault/namespace
+controls. The separate certified policy compiled and refused ad-hoc self explicitly;
+the owner signed-positive run remains pending. [Reviewed evidence and package](../../evidence/m8/m8-macos-hostile-bootstrap-signed-candidate-20261110.md).
+The ad-hoc result cannot substitute for signed-positive or product acceptance.
 
 The root process checks in a separate control service and captures its helper's
 actual spawn PID. The helper checks in an attack service, sends a READY frame,
@@ -111,7 +112,7 @@ peer-image selector is trusted local policy state, never an imported field; it
 prepares separate Desktop/helper and daemon roles without accepting signatures
 from an untrusted sibling. Certified two-binary policy remains a separate gate.
 
-## Certified two-binary candidate (review/native verification pending)
+## Certified two-binary candidate (reviewed; owner-positive run pending)
 
 The same public-message experiment has a separate compile-time certified policy;
 default CI mechanism mode remains ad-hoc and cannot claim certified acceptance.

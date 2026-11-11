@@ -1,5 +1,28 @@
 # 34 — Current Implementation Handoff
 
+## Reviewed hostile bootstrap passed; signed Mac package ready (2026-11-10)
+
+Exact8e8fabb CI42952782022 SUCCESS:17/17 ad-hoc mechanism rows, required fault
+controls and independent normal/forced namespace cleanup. Certified two-binary
+policy compiled and explicitly refused ad-hoc self; positive owner19 cases have
+NOT run. Final source-only review has no actionable finding. Local suite63 total:
+58passed/five native-Mac skips. [Exact evidence and limits](../evidence/m8/m8-macos-hostile-bootstrap-signed-candidate-20261110.md).
+
+Next owner action: same personal Mac, extract
+`C:\Users\Tarik\Downloads\cryptex-mac-mesaj-8e8fabbc.zip` -> **MAC-MESAJ.command**
+-> return **MAC-MESAJ-SONUC.zip**. ZIP33437 bytes, SHA256
+`ea4a5d7527fd1cd6ca45bfffa6e68ac193869ffb6c44f4b9b2372a8485448c20`.
+All eight payload files match source8e8fabb and the source-bound manifest. If
+Keychain asks, select Allow for this operation, not Always Allow. No new
+certificate, VM action or old descriptor/pairing/API rerun is needed.
+
+On receipt verify source/native/header hashes, eligible certified policy, all19
+typed observations and fault/forced cleanup before claiming signed success.
+Product Unix IPC/owner gates/minimum OS remain unchanged. Bundle replacement,
+actual product pins/session restart and Unix frame attribution are unproven;
+Mac publication/transport parity and final M8 review remain open. This section
+supersedes older pending-review/no-owner-action instructions below.
+
 ## Hostile endpoint/right negatives passed; signed candidate in review (2026-11-10)
 
 Exact f117a3b CI42950658480 SUCCESS:17/17 ad-hoc fixture rows, fault controls and
