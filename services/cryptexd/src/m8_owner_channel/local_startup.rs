@@ -109,7 +109,8 @@ fn check_time(deadline: Instant) -> Result<(), Error> {
     }
 }
 
-// Exact binary shape: magic, version, fixed sending role, epoch, inventory hash.
+// Exact binary shape: magic, version, role-bound phase, epoch, inventory hash.
+// Phase 1 = Desktop accept, 2 = daemon hello, 3 = daemon runtime-ready.
 // These bytes have no operation/grant fields and cannot enter owner dispatch.
 fn frame(role: u8, epoch: &[u8; 16], digest: &[u8; 32]) -> Vec<u8> {
     let mut out = b"CXLS\x01".to_vec();
@@ -202,6 +203,16 @@ impl Prepared {
             self.deadline,
         )
         .map_err(|_| Error::Readiness)?;
+        if owned
+            .channel
+            .as_mut()
+            .unwrap()
+            .receive(&mut buffer, self.deadline)
+            .map_err(Error::from)?
+            != frame(3, &self.epoch, &owned.release.digest)
+        {
+            return Err(Error::Channel);
+        }
         check_time(self.deadline)?;
         Ok(owned)
     }
@@ -283,8 +294,15 @@ impl Drop for LocalDaemon {
 pub struct ChildGuard {
     _channel: Channel,
     _release: Release,
+    epoch: [u8; 16],
+    deadline: Instant,
 }
 impl ChildGuard {
+    pub fn runtime_ready(&mut self) -> Result<(), Error> {
+        self._channel
+            .send(&frame(3, &self.epoch, &self._release.digest), self.deadline)
+            .map_err(Error::from)
+    }
     pub fn close(self) -> Result<(), Error> {
         self._channel.close().map_err(|_| Error::Cleanup)
     }
@@ -329,6 +347,8 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
     Ok(Some(ChildGuard {
         _channel: channel,
         _release: release,
+        epoch,
+        deadline,
     }))
 }
 
@@ -340,6 +360,7 @@ mod tests {
         let a = frame(1, &[1; 16], &[2; 32]);
         assert_eq!(a.len(), 54);
         assert_ne!(a, frame(2, &[1; 16], &[2; 32]));
+        assert_ne!(a, frame(3, &[1; 16], &[2; 32]));
         assert_ne!(a, frame(1, &[3; 16], &[2; 32]));
         assert_ne!(a, frame(1, &[1; 16], &[3; 32]));
         assert_eq!(parse_epoch(&epoch_text(&[123; 16])), Ok([123; 16]));

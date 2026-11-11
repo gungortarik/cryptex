@@ -29,7 +29,7 @@ use cryptexd::update::run_update_rollback_proof;
 fn main() {
     let mut args: Vec<String> = env::args().skip(1).collect();
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
-    let _startup_guard = match cryptexd::local_signed_startup::child_gate(&mut args) {
+    let mut _startup_guard = match cryptexd::local_signed_startup::child_gate(&mut args) {
         Ok(guard) => guard,
         Err(error) => {
             eprintln!("{error}");
@@ -37,7 +37,15 @@ fn main() {
         }
     };
     // The guard stays live until run returns; it never enables owner dispatch.
-    let result = run(std::mem::take(&mut args));
+    let result = run_with_ready(std::mem::take(&mut args), &mut || {
+        #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+        if let Some(guard) = _startup_guard.as_mut() {
+            guard
+                .runtime_ready()
+                .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+        }
+        Ok(())
+    });
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
     let result = match _startup_guard.map(|guard| guard.close()).transpose() {
         Ok(_) => result,
@@ -61,14 +69,22 @@ fn main() {
     }
 }
 
+#[cfg(test)]
 fn run(args: Vec<String>) -> Result<(), LifecycleError> {
+    run_with_ready(args, &mut || Ok(()))
+}
+
+fn run_with_ready(
+    args: Vec<String>,
+    ready: &mut dyn FnMut() -> Result<(), LifecycleError>,
+) -> Result<(), LifecycleError> {
     if args.is_empty() {
         println!("cryptexd M0 foundation");
         return Ok(());
     }
 
     match args[0].as_str() {
-        "lifecycle" => run_lifecycle(&args[1..]),
+        "lifecycle" => run_lifecycle(&args[1..], ready),
         "identity" => run_identity(&args[1..]),
         "replication" => run_replication(&args[1..]),
         "pilot-fixture" => run_pilot_fixture(&args[1..]),
@@ -757,7 +773,10 @@ fn enroll_local_with_platform_store(
     ))
 }
 
-fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
+fn run_lifecycle(
+    args: &[String],
+    ready: &mut dyn FnMut() -> Result<(), LifecycleError>,
+) -> Result<(), LifecycleError> {
     let command = args
         .first()
         .ok_or_else(|| LifecycleError::Usage(usage_text()))?;
@@ -857,6 +876,9 @@ fn run_lifecycle(args: &[String]) -> Result<(), LifecycleError> {
                 }
                 fs::write(ready, format!("{}\n", lock.pid()))?;
             }
+            // Readiness remains progress. The disabled signed-startup adapter
+            // independently reattributes the ready phase to this live child.
+            ready()?;
 
             match opts.mode {
                 HoldMode::UntilStopFile(stop) => wait_for_stop_file(&stop),

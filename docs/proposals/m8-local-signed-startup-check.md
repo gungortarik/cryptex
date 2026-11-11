@@ -21,9 +21,13 @@ Both independently verify the same inventory and content snapshot.
 The Desktop opens a fresh rendezvous before spawning. Native checks retain
 the actual child/parent instance and validate the opposite role identifier,
 certificate leaf and signed image hash. The only exchanged application frames
-are 54 bytes: magic, version, fixed sender role, native epoch and inventory
+are 54 bytes: magic, version, role-bound phase, native epoch and inventory
 SHA-256. They have no owner-operation, capability or domain fields.
 Neither peer accepts a different inventory observation.
+After ordinary lifecycle initialization and ready-file publication, the daemon
+sends a separate authenticated runtime-ready phase. The Desktop validates that
+phase against the same live process, epoch, inventory and remaining budget
+before reporting startup success.
 
 The Desktop owns the snapshot, native channel and exact child through
 authentication, strict absolute-deadline readiness and cleanup. The daemon
