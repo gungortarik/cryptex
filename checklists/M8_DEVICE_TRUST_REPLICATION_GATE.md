@@ -4,12 +4,12 @@ Updated 2026-11-10. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
-Authorized public message-bootstrap: [exact source8e8fabb CI42952782022](../evidence/m8/m8-macos-hostile-bootstrap-signed-candidate-20261110.md)
-passed17 ad-hoc native rows including hostile endpoints/transferred rights, required
-fault controls and independent normal/forced namespace cleanup. Certified two-binary
-policy compiled and refused ad-hoc self explicitly. Source review passed; one-click
-MAC-MESAJ package is ready. Owner signed-positive19 cases remain pending. This is
-not product custody, owner-session or M8 acceptance; original product gates stay open.
+Authorized public message-bootstrap: [personal-Mac exact source8e8fabb receipt](../evidence/m8/m8-macos-signed-bootstrap-owner-receipt-20261110.md)
+passed all19 signed native rows, certified two-binary/self-bundle eligibility,
+fault controls and independent normal/forced namespace cleanup on Mac27.2 arm64.
+Exact CI42952782022 and source review passed separately. The isolated experiment
+is complete; no unchanged package rerun is needed. Product custody/session,
+bundle replacement, Unix frame attribution and M8 acceptance remain open.
 
 Latest owner receipt888d68a: public SDK/runtime and certified bundle eligibility
 pass, but only five of eleven cases pass. All six mapped-child handoff cases fail.

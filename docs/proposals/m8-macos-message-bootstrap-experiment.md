@@ -72,9 +72,10 @@ typed observed stage/code rather than an expected-outcome label alone.
 ## Phase-two adversarial fixtures
 
 Exact source8e8fabb passed CI42952782022 with all17 native rows and fault/namespace
-controls. The separate certified policy compiled and refused ad-hoc self explicitly;
-the owner signed-positive run remains pending. [Reviewed evidence and package](../../evidence/m8/m8-macos-hostile-bootstrap-signed-candidate-20261110.md).
-The ad-hoc result cannot substitute for signed-positive or product acceptance.
+controls. The separate certified policy compiled and refused ad-hoc self explicitly.
+The [personal-Mac receipt](../../evidence/m8/m8-macos-signed-bootstrap-owner-receipt-20261110.md)
+then passed all19 signed rows, certified eligibility and required fault/cleanup
+controls on Mac27.2 arm64. This closes the isolated experiment, not product acceptance.
 
 The root process checks in a separate control service and captures its helper's
 actual spawn PID. The helper checks in an attack service, sends a READY frame,
@@ -112,7 +113,7 @@ peer-image selector is trusted local policy state, never an imported field; it
 prepares separate Desktop/helper and daemon roles without accepting signatures
 from an untrusted sibling. Certified two-binary policy remains a separate gate.
 
-## Certified two-binary candidate (reviewed; owner-positive run pending)
+## Certified two-binary candidate (reviewed; owner-positive19/19 passed)
 
 The same public-message experiment has a separate compile-time certified policy;
 default CI mechanism mode remains ad-hoc and cannot claim certified acceptance.
@@ -145,9 +146,9 @@ owner's certified Mac run. Even all19 passes leave publisher/notarization,
 bundle replacement consistency and real owner/product acceptance open.
 
 Remaining research includes concurrent attacker flooding/deadline budgeting,
-broader forwarding/custody cases, bundle
-replacement/snapshot consistency, signed two-binary policy, and the actual product
-owner-session lifecycle. Prior raw-Mach/signing receipts do not satisfy these.
+broader forwarding/custody cases, bundle replacement/snapshot consistency and the
+actual product owner-session lifecycle. The passed signed two-binary experiment
+and prior raw-Mach/signing receipts do not satisfy those product boundaries.
 Successful startup binding also does not solve steady-state Unix forwarded-FD
 or per-frame authorization. No phase-one pass enables owner mutations.
 

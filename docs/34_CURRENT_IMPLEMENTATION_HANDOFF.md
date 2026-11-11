@@ -1,5 +1,22 @@
 # 34 — Current Implementation Handoff
 
+## Personal-Mac signed bootstrap passed19/19; no device action (2026-11-10)
+
+MAC-MESAJ-SONUC.zip matches source8e8fabb/native C/header hashes on Mac27.2/SDK27.2
+arm64. Strict parser and completion recomputation confirm certified self/bundle
+eligibility, two signature refusals plus17 mechanism rows, four fault controls,
+forced signal9 and independent cleanup; native/runner exit0. Existing-certificate
+signing succeeded. [Exact receipt, observations and boundaries](../evidence/m8/m8-macos-signed-bootstrap-owner-receipt-20261110.md).
+
+This exact isolated signed experiment is complete. No Mac/VM action or unchanged
+package rerun is needed. Next: local design/source review of bundle snapshot/change
+consistency and actual product connection/session lifetime under accepted contracts.
+Keep the public-message candidate isolated. Product Unix transport replacement or
+integration still needs separate explicit acceptance; do not enable Mac mutations.
+Owner-session restart, Unix frame attribution, concurrent bundle replacement,
+Mac publication/transport parity and final M8 reviews remain open. M8 is NOT complete.
+This receipt supersedes the pending owner run below.
+
 ## Reviewed hostile bootstrap passed; signed Mac package ready (2026-11-10)
 
 Exact8e8fabb CI42952782022 SUCCESS:17/17 ad-hoc mechanism rows, required fault

@@ -4,13 +4,13 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
-Latest Mac continuation: [hostile public-bootstrap checks and signed candidate](evidence/m8/m8-macos-hostile-bootstrap-signed-candidate-20261110.md)
-passed exact scoped CI42952782022 on source8e8fabb:17 ad-hoc mechanism rows,
-failure/cleanup controls and explicit certified-policy refusal of ad-hoc self.
-Source review passed. The source-bound MAC-MESAJ one-click package is ready;
-19 signed observations on the owner's personal Mac remain pending. The failed
-direct descriptor candidate stays stopped. Product Unix IPC, owner-operation
-gates and minimum-OS policy are unchanged; M8 remains open.
+Latest Mac continuation: [personal-Mac signed bootstrap receipt](evidence/m8/m8-macos-signed-bootstrap-owner-receipt-20261110.md)
+passed all19 observations on exact source8e8fabb, with certified self/bundle
+eligibility, hostile endpoints/transferred rights and fault/forced cleanup controls.
+Scoped CI and source review also passed. This isolated candidate is complete;
+product session lifetime, bundle replacement and Unix frame attribution remain
+open. No unchanged Mac/VM rerun is needed. Product Unix IPC, owner-operation gates
+and minimum-OS policy are unchanged; M8 remains open.
 
 ## Implementation status — 2026-11-09
 

@@ -1,6 +1,9 @@
 # Public bootstrap hostile-endpoint checks and signed Mac candidate
 
-Status: **reviewed isolated experiment; owner signed run pending; M8 OPEN**.
+Status: **reviewed isolated experiment; owner signed run now passed; M8 OPEN**.
+The [subsequent personal-Mac receipt](m8-macos-signed-bootstrap-owner-receipt-20261110.md)
+passed all19 required rows on this exact source. Pending-run language below records
+the outgoing-package checkpoint and is superseded by that receipt.
 The owner authorized this bounded research while retaining accepted Unix product
 IPC. This receipt does not authorize product activation or an architecture change.
 [Design and boundaries](../../docs/proposals/m8-macos-message-bootstrap-experiment.md).

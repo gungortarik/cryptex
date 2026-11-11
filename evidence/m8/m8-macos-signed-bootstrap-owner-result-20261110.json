@@ -1,0 +1,200 @@
+{
+  "schema": 1,
+  "scope": "macos_public_message_bootstrap_signed_two_binary_candidate_only",
+  "ci_only": false,
+  "candidate_complete": true,
+  "collected_utc": "2026-11-11T03:35:59Z",
+  "private_key_use": "isolated_candidate_signing_succeeded",
+  "production_integration": "not_implemented",
+  "production_changed": false,
+  "m8_complete": false,
+  "publisher_or_notarization_acceptance": false,
+  "product_minimum_os": "unchanged_unconfirmed",
+  "owner_session_restart": "not_tested",
+  "concurrent_bundle_replacement": "not_tested",
+  "unix_frame_sender_attribution": "not_proven",
+  "source_commit": "8e8fabbc8e50bcbb65f889a3de5b2156f0cc836b",
+  "macos_version": "27.2",
+  "sdk_version": "27.2",
+  "architecture": "arm64",
+  "native_source_sha256": "d6f66eaa4cdeb6a6395da298ea9e0145a847aac88e4198e09bc10c988c1dab18",
+  "native_policy_source_sha256": "fb36977d15bbef59d4111343d052227e498909b69c872e6c453256b3933d6347",
+  "native_compile": "pass",
+  "signing_mode": "single_existing_certificate",
+  "signed_binary_sha256": {
+    "desktop": "a9af8ab3142ee60084e87c6bb3f85a3dfe805921d419b32f9e82e3ca33684ddc",
+    "daemon": "2ce7788314fb73fc8c2650847788d9b0b79cb440c467b9da33adebb6f15a248f"
+  },
+  "fault_controls": {
+    "reaper-controls": {
+      "stage": "child_exit",
+      "code": 0
+    },
+    "cleanup-control": {
+      "stage": "child_exit",
+      "code": 68
+    },
+    "send-timeout-copy": {
+      "stage": "child_exit",
+      "code": 67
+    },
+    "send-error-once-header": {
+      "stage": "child_exit",
+      "code": 59
+    }
+  },
+  "failed_send_cleanup": "fixture_exit_releases_ipc_space_supervisor_stops_owned_group",
+  "native_exit": 0,
+  "native": {
+    "bundle": {
+      "capability": "certified_two_binary_bundle",
+      "eligible": true,
+      "diagnostic": "verified_self_organization_two_binary_bundle"
+    },
+    "signature_cases": [
+      {
+        "case": "wrong_role_image",
+        "observed": "code_requirement_refused",
+        "stage": "static_code",
+        "code": 55,
+        "pass": true
+      },
+      {
+        "case": "adhoc_peer_image",
+        "observed": "code_requirement_refused",
+        "stage": "static_code",
+        "code": 55,
+        "pass": true
+      }
+    ],
+    "cases": [
+      {
+        "case": "active_name_collision",
+        "observed": "collision_refused",
+        "stage": "check_in",
+        "code": 1103,
+        "pass": true
+      },
+      {
+        "case": "same_image_imposter",
+        "observed": "sender_pid_refused",
+        "stage": "validate",
+        "code": 52,
+        "pass": true
+      },
+      {
+        "case": "two_way_after_imposter",
+        "observed": "authenticated",
+        "stage": "validate",
+        "code": 0,
+        "pass": true
+      },
+      {
+        "case": "same_sender_replay",
+        "observed": "replay_refused",
+        "stage": "validate",
+        "code": 56,
+        "pass": true
+      },
+      {
+        "case": "wrong_session",
+        "observed": "session_refused",
+        "stage": "validate",
+        "code": 51,
+        "pass": true
+      },
+      {
+        "case": "short_frame",
+        "observed": "layout_refused",
+        "stage": "validate",
+        "code": 50,
+        "pass": true
+      },
+      {
+        "case": "complex_frame",
+        "observed": "layout_refused",
+        "stage": "validate",
+        "code": 50,
+        "pass": true
+      },
+      {
+        "case": "same_pid_exec",
+        "observed": "sender_generation_refused",
+        "stage": "validate",
+        "code": 53,
+        "pass": true
+      },
+      {
+        "case": "queued_after_exit",
+        "observed": "sender_not_live",
+        "stage": "validate",
+        "code": 54,
+        "pass": true
+      },
+      {
+        "case": "fresh_child_session",
+        "observed": "authenticated",
+        "stage": "validate",
+        "code": 0,
+        "pass": true
+      },
+      {
+        "case": "supervisor_deadline_distinct",
+        "observed": "supervisor_deadline",
+        "stage": "supervisor",
+        "code": 63,
+        "pass": true
+      },
+      {
+        "case": "substituted_endpoint",
+        "observed": "sender_pid_refused",
+        "stage": "child_exit",
+        "code": 52,
+        "pass": true
+      },
+      {
+        "case": "transferred_reply",
+        "observed": "sender_pid_refused",
+        "stage": "child_exit",
+        "code": 52,
+        "pass": true
+      },
+      {
+        "case": "transferred_service",
+        "observed": "sender_pid_refused",
+        "stage": "validate",
+        "code": 52,
+        "pass": true
+      },
+      {
+        "case": "genuine_after_transfer",
+        "observed": "authenticated",
+        "stage": "validate",
+        "code": 0,
+        "pass": true
+      },
+      {
+        "case": "normal_close_namespace_removal",
+        "observed": "namespace_removed",
+        "stage": "independent_lookup",
+        "code": 1102,
+        "pass": true
+      },
+      {
+        "case": "owned_right_cleanup",
+        "observed": "cleanup_calls_succeeded",
+        "stage": "cleanup",
+        "code": 0,
+        "pass": true
+      }
+    ]
+  },
+  "forced_exit": {
+    "stage": "child_signal",
+    "code": 9
+  },
+  "forced_exit_namespace_removed": true,
+  "forced_cleanup_exit": 0,
+  "outcome": "signed_two_binary_bootstrap_and_hostile_endpoint_cases_observed",
+  "runner_exit": 0
+}
