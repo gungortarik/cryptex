@@ -17,7 +17,8 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         if outcome.code or outcome.timed_out or outcome.limited or outcome.pipe_failed:
             diagnostic = outcome.output.replace(password, "[redacted]").replace(
                 fingerprint, "[fixture]").replace(str(root), "[fixture-root]")
-            print(diagnostic[:8192], file=sys.stderr)
+            # Compiler failures are at the tail after dependency progress.
+            print(diagnostic[-8192:], file=sys.stderr)
         return checked(lambda *_: outcome, [], stage, timeout)
 
     # This build-time pin is independent of adjacent runtime metadata. It is
@@ -125,7 +126,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         journal = json.loads((root / runtime / "bootstrap/pending.json").read_text(encoding="utf-8"))
         if not journal["transactions"] or journal["transactions"][-1]["state"] != expected:
             raise PreflightError("native_session_journal_outcome_mismatch")
-    for suffix in ("missing-snapshot", "handle-allocation", "lost-receiver"):
+    for suffix in ("missing-snapshot", "handle-allocation", "lost-receiver", "cancelled-inflight"):
         journal = json.loads((root / ("content-runtime." + suffix) / "bootstrap/pending.json").read_text(encoding="utf-8"))
         if len(journal["transactions"]) != 1 or journal["transactions"][0]["state"] != "owner_pending":
             raise PreflightError("native_failed_delivery_did_not_preserve_pending_journal")

@@ -259,6 +259,8 @@ fn supervisor() {
         "wrong_child",
         "parent_image",
         "queued_after_exit",
+        "exit_during_receive",
+        "endpoint_during_receive",
         "same_pid_restart",
         "expired",
         "queue_timeout",
@@ -363,6 +365,34 @@ fn supervisor() {
             continue;
         }
         let mut channel = accepted.unwrap();
+        if case == "exit_during_receive" || case == "endpoint_during_receive" {
+            use std::io::Write;
+            // Worker waits for the trigger, then delays its loss so the
+            // receive is already parked with a much longer absolute budget.
+            child
+                .child
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(b"go")
+                .unwrap();
+            let start = Instant::now();
+            let mut bytes = [0; 32];
+            let result = channel.receive(&mut bytes, start + Duration::from_secs(10));
+            assert!(matches!(result, Err(Error::Instance | Error::Closed)));
+            assert!(start.elapsed() < Duration::from_secs(2));
+            assert_eq!(bytes, [0; 32]);
+            assert_eq!(channel.receive(&mut bytes, deadline()), Err(Error::Closed));
+            if case == "endpoint_during_receive" {
+                assert!(
+                    child.child.try_wait().unwrap().is_none(),
+                    "peer process must remain live after endpoint loss"
+                );
+            }
+            drop(child.child.stdin.take());
+            child.finish(Duration::from_secs(8));
+            continue;
+        }
         if case == "expired" {
             assert_eq!(
                 channel.send(b"expired", Instant::now()),
@@ -511,6 +541,17 @@ fn worker() {
         return;
     }
     let mut channel = connected.unwrap();
+    if case == OsStr::new("exit_during_receive") || case == OsStr::new("endpoint_during_receive") {
+        let mut trigger = [0; 2];
+        std::io::stdin().read_exact(&mut trigger).unwrap();
+        assert_eq!(&trigger, b"go");
+        std::thread::sleep(Duration::from_millis(300));
+        if case == OsStr::new("endpoint_during_receive") {
+            channel.close().unwrap();
+            assert_eq!(std::io::stdin().read(&mut [0; 1]).unwrap(), 0);
+        }
+        return;
+    }
     if case == OsStr::new("expired") {
         assert_eq!(
             channel.receive(&mut [0; 32], deadline()),

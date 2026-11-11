@@ -24,6 +24,7 @@ enum Work {
     RejectOld(String, Reply<()>),
     FaultPrepare(bool, Reply<()>),
     VerifyInvalidated(Reply<()>),
+    PrepareGated(Reply<()>, mpsc::Receiver<()>, Reply<Prepared>),
 }
 struct Queued {
     deadline: Instant,
@@ -85,6 +86,31 @@ impl Client {
             .map_err(|_| "candidate_queue")?;
         self.call(Work::VerifyInvalidated)
     }
+    fn exercise_cancelled_inflight(&self) -> Result<(), String> {
+        let (started, prepared) = mpsc::sync_channel(1);
+        let (release, proceed) = mpsc::sync_channel(1);
+        let (reply, receive) = mpsc::sync_channel(1);
+        let interested = Arc::new(AtomicBool::new(true));
+        self.sender
+            .try_send(Queued {
+                deadline: Instant::now() + Duration::from_secs(25),
+                interested: Arc::clone(&interested),
+                work: Work::PrepareGated(started, proceed, reply),
+            })
+            .map_err(|_| "candidate_queue")?;
+        prepared
+            .recv_timeout(Duration::from_secs(25))
+            .map_err(|_| "candidate_prepare_gate")??;
+        // Match cancellation of the async future while spawn_blocking still
+        // retains its receiver. Losing interest must burn the real grant.
+        interested.store(false, Ordering::Release);
+        release.send(()).map_err(|_| "candidate_prepare_gate")?;
+        self.call(Work::VerifyInvalidated)?;
+        if receive.try_recv().is_ok() {
+            return Err("candidate_cancelled_result_delivered".into());
+        }
+        Ok(())
+    }
 }
 fn self_retirement() -> Input {
     Input {
@@ -94,8 +120,22 @@ fn self_retirement() -> Input {
         cutoff_seq: None,
     }
 }
-fn deliver<T>(daemon: &mut LocalDaemon, reply: Reply<T>, result: Result<T, String>) {
-    if reply.send(result).is_err() {
+struct Delivery {
+    deadline: Instant,
+    interested: Arc<AtomicBool>,
+}
+impl Delivery {
+    fn active(&self) -> bool {
+        Instant::now() < self.deadline && self.interested.load(Ordering::Acquire)
+    }
+}
+fn deliver<T>(
+    daemon: &mut LocalDaemon,
+    delivery: &Delivery,
+    reply: Reply<T>,
+    result: Result<T, String>,
+) {
+    if !delivery.active() || reply.send(result).is_err() || !delivery.active() {
         daemon.invalidate_session();
     }
 }
@@ -206,30 +246,34 @@ impl Owner {
                         daemon.invalidate_session();
                         continue;
                     }
+                    let delivery = Delivery {
+                        deadline: queued.deadline,
+                        interested: queued.interested,
+                    };
                     match queued.work {
                         Work::Bind(binding, reply) => {
                             let result = daemon.bind_content(&binding).map_err(|e| e.to_string());
-                            deliver(&mut daemon, reply, result);
+                            deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::Ping(reply) => {
                             let result = daemon.ping().map_err(|e| e.to_string());
-                            deliver(&mut daemon, reply, result);
+                            deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::Prepare(input, reply) => {
                             let result = daemon.prepare_owner(input).map_err(|e| e.to_string());
-                            deliver(&mut daemon, reply, result);
+                            deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::Finish(handle, confirm, reply) => {
                             let result = daemon
                                 .finish_owner(&handle, confirm)
                                 .map_err(|e| e.to_string());
-                            deliver(&mut daemon, reply, result);
+                            deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::Exercise(reply) => {
                             let result = daemon
                                 .exercise_synthetic_owner_sessions()
                                 .map_err(|e| e.to_string());
-                            deliver(&mut daemon, reply, result);
+                            deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::PendingLoss(reply) => {
                             let result = (|| {
@@ -246,7 +290,7 @@ impl Owner {
                                 Ok(prepared.session_handle)
                             })()
                             .map_err(|e| e.to_string());
-                            deliver(&mut daemon, reply, result);
+                            deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::RejectOld(handle, reply) => {
                             let result = if daemon.finish_owner(&handle, true).is_err() {
@@ -254,17 +298,30 @@ impl Owner {
                             } else {
                                 Err("candidate_old_handle_accepted".into())
                             };
-                            deliver(&mut daemon, reply, result);
+                            deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::FaultPrepare(missing, reply) => {
                             let result = daemon
                                 .exercise_prepare_failure(missing)
                                 .map_err(|e| e.to_string());
-                            deliver(&mut daemon, reply, result);
+                            deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::VerifyInvalidated(reply) => {
                             let result = daemon.verify_invalidated().map_err(|e| e.to_string());
-                            deliver(&mut daemon, reply, result);
+                            deliver(&mut daemon, &delivery, reply, result);
+                        }
+                        Work::PrepareGated(started, proceed, reply) => {
+                            let result = daemon
+                                .prepare_owner(self_retirement())
+                                .map_err(|e| e.to_string());
+                            let ready = result.as_ref().map(|_| ()).map_err(Clone::clone);
+                            if started.send(ready).is_err()
+                                || proceed.recv_timeout(Duration::from_secs(25)).is_err()
+                            {
+                                daemon.invalidate_session();
+                            } else {
+                                deliver(&mut daemon, &delivery, reply, result);
+                            }
                         }
                     }
                 }
@@ -398,7 +455,7 @@ pub fn entry() -> Option<Result<(), String>> {
             let (_context, binding) = install_context(content, &lost_root)?;
             lost.client.call(|reply| Work::Bind(binding, reply))?;
             let handle = lost.client.call(Work::PendingLoss)?;
-            drop(lost);
+            lost.close()?;
             let fresh_root = runtime.with_extension("fresh");
             let (fresh, content) = Owner::start(&fresh_root)?;
             let (_context, binding) = install_context(content, &fresh_root)?;
@@ -424,6 +481,12 @@ pub fn entry() -> Option<Result<(), String>> {
                 }
                 fault.close()?;
             }
+            let root = runtime.with_extension("cancelled-inflight");
+            let (fault, content) = Owner::start(&root)?;
+            let (_context, binding) = install_context(content, &root)?;
+            fault.client.call(|reply| Work::Bind(binding, reply))?;
+            fault.client.exercise_cancelled_inflight()?;
+            fault.close()?;
             println!("verified_tauri_assets=passed");
             println!("native_synthetic_approval_sessions=passed");
             println!("native_lost_session_and_old_handle_refused=passed");
