@@ -44,7 +44,7 @@ def main():
             checked(run_bounded, [openssl, "pkcs12", "-export", "-in", str(root / "cert.pem"),
                     "-inkey", str(root / "key.pem"), "-out", str(root / "identity.p12"),
                     "-passout", "pass:" + password, "-keypbe", "PBE-SHA1-3DES",
-                    "-certpbe", "PBE-SHA1-3DES"], "package_ci_identity")
+                    "-certpbe", "PBE-SHA1-3DES", "-macalg", "sha1"], "package_ci_identity")
             # Retain cleanup ownership even if create reports a late failure.
             created = True
             checked(run_bounded, ["/usr/bin/security", "create-keychain", "-p", password, str(keychain)],
