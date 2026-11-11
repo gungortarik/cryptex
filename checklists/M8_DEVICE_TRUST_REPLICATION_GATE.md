@@ -4,6 +4,13 @@ Updated 2026-11-10. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
+Existing product connection/session corrections: [source9dd0a40 CI42956476071](../evidence/m8/m8-connection-session-lifetime-review-20261110.md)
+passed Windows/Mac startup9/10, Desktop46/39, approval registry17/17 and client
+stream/response3/3 with zero failures/ignored; native lint/format/frontend passed.
+Windows standard-user checks/cleanup and exact selected/excluded inventories were
+verified. This does not enable Mac mutations or prove physical UI/signed product
+custody. The proposed Mac owner adapter requires a separate owner/ADR decision.
+
 Authorized public message-bootstrap: [personal-Mac exact source8e8fabb receipt](../evidence/m8/m8-macos-signed-bootstrap-owner-receipt-20261110.md)
 passed all19 signed native rows, certified two-binary/self-bundle eligibility,
 fault controls and independent normal/forced namespace cleanup on Mac27.2 arm64.

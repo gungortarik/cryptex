@@ -1,5 +1,29 @@
 # 34 — Current Implementation Handoff
 
+## Product connection/session corrections passed; Mac integration decision pending (2026-11-10)
+
+Source9dd0a40 binds approval connection objects to their exact registry allocation,
+correlates Desktop confirm/cancel responses and tests one-use handle loss on the
+original socket/pipe. Actual daemon crash/restart now also verifies supported
+read-only roles and server rejection of an unauthenticated content client before
+and after restart. [Changes, corrections and execution limits](../evidence/m8/m8-connection-session-lifetime-review-20261110.md).
+
+Independent source review has no remaining actionable finding. Local format,
+diff and PS5.1/PS7 summary-validator checks pass. Local native build is blocked by
+stale target metadata and then Application Control4551 in a fresh temporary target;
+no exception/policy change was attempted. Exact CI42956476071 on9dd0a40 SUCCESS:
+startup Windows9/Mac10, Desktop46/39, approval registry17/17 and original-stream
+client tests3/3, all zero failures/ignored. Native lint/format/frontend passed.
+Actual logs/inventories were checked; Windows standard-user identity/cleanup passed.
+This is scoped execution evidence, not Mac product owner authorization or a UI proof.
+
+The [Mac M8 owner-channel integration proposal](proposals/m8-macos-owner-channel-integration-decision.md)
+is concrete but NOT accepted. It recommends a bounded, initially disabled native
+adapter for M8 pairing/owner request families while retaining ordinary Unix IPC.
+Separate owner/ADR direction is required before implementation; original experiment
+approval does not authorize product integration. Mac mutation gates stay closed.
+No new owner device run or old package repeat is requested. M8 remains open.
+
 ## Personal-Mac signed bootstrap passed19/19; no device action (2026-11-10)
 
 MAC-MESAJ-SONUC.zip matches source8e8fabb/native C/header hashes on Mac27.2/SDK27.2
