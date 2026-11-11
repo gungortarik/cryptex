@@ -1,5 +1,21 @@
 # 34 — Current Implementation Handoff
 
+## Hostile endpoint/right negatives passed; signed candidate in review (2026-11-10)
+
+Exact f117a3b CI42950658480 SUCCESS:17/17 ad-hoc fixture rows, fault controls and
+independent normal/forced namespace removal. Root spawns the actual victim;
+separately authenticated helpers substitute an endpoint, consume its moved reply
+right, or use a copied service right. Specific kernel-sender WRONG_PID52 refusals
+and subsequent genuine sequence2 success are required. Helper control uses
+CONFIG1/TRANSFER2/REJECT3, independent from daemon ACK1/STOP2. Source review passed.
+An earlier success42950152593 actually used old heade826623 and provides no
+phase-two evidence. Exact-head/source/hash checks were performed on the valid run.
+
+Next candidate adds compile-time certified two-binary/self-bundle policy and a
+source-bound MAC-MESAJ one-click owner collector. Source review and exact native
+CI are pending before packaging. No owner action yet; no product activation,
+support-floor selection or Mac owner-gate change is authorized.
+
 ## Reviewed public message-bootstrap phase one passed; no owner action (2026-11-10)
 
 Exact source8816c04 CI42948812911 SUCCESS on macOS26.7.2 arm64. Public transient

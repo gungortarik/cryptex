@@ -1,0 +1,12 @@
+ZIP'i Mac'te ayikla ve MAC-MESAJ.command dosyasini ac.
+Sadece yeni, gecici bir sentetik Desktop/daemon paketi derlenir ve imzalanir.
+Keychain codesign izni sorarsa bu islem icin Allow sec; Always Allow secme.
+Normal Cryptex, notlar, cihaz profilleri ve guven kayitlari degistirilmez.
+Yeni sertifika veya kalici servis kurulmaz; ozel anahtar disa aktarilmaz.
+Islem bitince Finder MAC-MESAJ-SONUC.zip dosyasini gosterecek; sohbete ekle.
+
+Bu deney public Mach baslangic mesajlarini, gercek surec kimligini, sahte sunucuyu
+ve devredilmis gonderim/yanit haklarini imzali iki ayri kimlikle sinar.
+Sonuca anahtar, sertifika secicisi, Team ID, audit-token baytlari veya not yazilmaz.
+Tamamlanmayan/hatali kontroller basari sayilmaz. Urun IPC'si etkinlestirilmez.
+Gecmesi yayin imzasini, minimum macOS kararini veya M8'i tamamlamaz.

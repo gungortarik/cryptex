@@ -69,7 +69,11 @@ after child exit refused; fresh child/session exchange; distinct supervisor
 timeout; independent normal/forced-exit namespace removal. Reports must preserve
 typed observed stage/code rather than an expected-outcome label alone.
 
-## Phase-two adversarial fixtures (native verification pending)
+## Phase-two adversarial fixtures
+
+Exact sourcef117a3b passed CI42950658480 with all17 native rows and fault/namespace
+controls. The separate certified policy integration below still needs its own
+exact-source CI and owner-positive run; the ad-hoc result cannot substitute.
 
 The root process checks in a separate control service and captures its helper's
 actual spawn PID. The helper checks in an attack service, sends a READY frame,
@@ -107,8 +111,36 @@ peer-image selector is trusted local policy state, never an imported field; it
 prepares separate Desktop/helper and daemon roles without accepting signatures
 from an untrusted sibling. Certified two-binary policy remains a separate gate.
 
-Remaining research includes native verification of these attack fixtures,
-concurrent attacker flooding/deadline budgeting, transferred send rights, bundle
+## Certified two-binary candidate (review/native verification pending)
+
+The same public-message experiment has a separate compile-time certified policy;
+default CI mechanism mode remains ad-hoc and cannot claim certified acceptance.
+The signed mode validates its actual executable path/fixed role identifier and
+Apple anchor before reading signing metadata with kSecCSSigningInformation.
+The bounded certified organization is revalidated on live self, then fixed own,
+counterpart and containing-bundle requirements are derived. The on-disk own hash
+must match live self; strict containing resources/nested code and the counterpart
+hash are checked. No sibling supplies the trust root.
+
+Desktop is the only controller role. It spawns the signed Daemon file for normal
+and imposter workers, and the same Desktop image for control/attacker helpers.
+Daemon pins Desktop as peer; Desktop pins Daemon as peer and Desktop helpers as
+own-image. That selector is set by trusted local call sites, not message payload.
+Workers infer their own fixed role from the verified image/path, never a claimed
+network role. Wrong-role and ad-hoc counterpart fixtures must be valid signed
+code in their own right before a requirement refusal can count, ruling out
+missing/corrupt-file false positives.
+
+The one-click candidate compiles/signs only a new private temporary app with one
+existing local signing certificate. No new key, certificate export, login item,
+service installation or product data is used. Report source binds both C and
+policy-header hashes and all eight package members. CI builds this signed policy
+but requires ad-hoc live self to refuse; positive19-case evidence needs the
+owner's certified Mac run. Even all19 passes leave publisher/notarization,
+bundle replacement consistency and real owner/product acceptance open.
+
+Remaining research includes concurrent attacker flooding/deadline budgeting,
+broader forwarding/custody cases, bundle
 replacement/snapshot consistency, signed two-binary policy, and the actual product
 owner-session lifecycle. Prior raw-Mach/signing receipts do not satisfy these.
 Successful startup binding also does not solve steady-state Unix forwarded-FD

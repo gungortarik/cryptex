@@ -85,7 +85,11 @@ static CFDataRef hash_of(SecCodeRef code) {
     CFRelease(info);
     return result;
 }
+#include "mac_bootstrap_bundle.h"
 static bool fixture_open(void) {
+#if CPX_BUNDLE_IDENTITY
+    return bundle_identity_open();
+#else
     // Explicit ad-hoc CI identity. This is NOT the signed product policy.
     SecCodeRef self = NULL;
     if (SecRequirementCreateWithString(CFSTR("identifier \"" FIXTURE_ID "\""), 0, &fixture_requirement) != errSecSuccess ||
@@ -99,6 +103,10 @@ static bool fixture_open(void) {
         own_hash = CFRetain(fixture_hash);
     }
     return valid && fixture_hash;
+#endif
+}
+static const char *worker_binary(const char *fallback) {
+    return peer_executable[0] ? peer_executable : fallback;
 }
 static void fixture_close(void) {
     if (fixture_hash) CFRelease(fixture_hash);
@@ -364,8 +372,9 @@ static bool flow(const char *binary, const char *prefix, int index, const char *
         emit("active_name_collision", refused ? "collision_refused" : "collision_not_refused", "check_in", result, refused);
         drop_receive(&collision);
     }
-    char *args[] = {(char *)binary, "worker", (char *)mode, name, text, "0", NULL};
-    pid_t child = spawn_fixed(binary, args);
+    const char *worker_path=worker_binary(binary);
+    char *args[] = {(char *)worker_path, "worker", (char *)mode, name, text, "0", NULL};
+    pid_t child = spawn_fixed(worker_path, args);
     if (child < 0) { emit(test, "spawn_error", "spawn", spawn_error, false); drop_receive(&receive); return false; }
     Pin pin = {0}; Frame first = {0}, next = {0};
     int code = receive_message(receive, &first, !strcmp(mode, "silent") ? 100 : WAIT_MS);
@@ -374,8 +383,8 @@ static bool flow(const char *binary, const char *prefix, int index, const char *
     if (!code && !MACH_PORT_VALID(first.reply)) code = BAD_LAYOUT;
     if (!code && intruder) {
         char claimed[32]; snprintf(claimed, sizeof(claimed), "%d", child);
-        char *other_args[] = {(char *)binary, "worker", "imposter", name, text, claimed, NULL};
-        pid_t other = spawn_fixed(binary, other_args);
+        char *other_args[] = {(char *)worker_path, "worker", "imposter", name, text, claimed, NULL};
+        pid_t other = spawn_fixed(worker_path, other_args);
         if (other < 0) { emit("same_image_imposter", "spawn_error", "spawn", spawn_error, false); code=SETUP_FAILED; }
         else {
             int bad = receive_message(receive, &next, WAIT_MS);
@@ -551,8 +560,9 @@ static bool attack_flow(const char *binary, const char *prefix, int index, const
     if (!code) code=admit(&helper_pin, &ready, session, READY);
     if (!code && !MACH_PORT_VALID(ready.reply)) code=BAD_LAYOUT;
     if (!code) {
-        char *victim_args[]={(char *)binary, "worker", "normal", fake ? attack_name : control_name, text, "0", NULL};
-        victim=spawn_fixed(binary, victim_args);
+        const char *worker_path=worker_binary(binary);
+        char *victim_args[]={(char *)worker_path, "worker", "normal", fake ? attack_name : control_name, text, "0", NULL};
+        victim=spawn_fixed(worker_path, victim_args);
         if (victim < 0) code=SETUP_FAILED;
     }
     if (!code) code=pin_check(&helper_pin, &helper_pin.token);
@@ -712,9 +722,35 @@ int main(int argc, char **argv) {
         kill(getpid(), SIGKILL); return SETUP_FAILED;
     }
     if (argc == 6 && !strcmp(argv[1], "worker")) return worker(argv[0], argv[2], argv[3], argv[4], (int32_t)strtol(argv[5], NULL, 10));
+#if CPX_BUNDLE_IDENTITY
+    if (argc != 5 || strcmp(argv[1], "probe") || strlen(argv[2]) != strlen("com.cryptex.m8.bootstrap.") + 24) return SETUP_FAILED;
+#else
     if (argc != 3 || strcmp(argv[1], "probe") || strlen(argv[2]) != strlen("com.cryptex.m8.bootstrap.") + 24) return SETUP_FAILED;
+#endif
     char checked_name[BOOTSTRAP_MAX_NAME_LEN]; snprintf(checked_name, sizeof(checked_name), "%s.0", argv[2]);
-    if (!name_valid(checked_name) || !fixture_open()) return SETUP_FAILED;
+    if (!name_valid(checked_name)) return SETUP_FAILED;
+    bool identity_ok=fixture_open();
+#if CPX_BUNDLE_IDENTITY
+    if (identity_ok && !bundle_is_desktop) { identity_ok=false; bundle_diagnostic="controller_role_refused"; }
+    printf("{\"capability\":\"certified_two_binary_bundle\",\"eligible\":%s,\"diagnostic\":\"%s\"}\n",
+        identity_ok ? "true" : "false", bundle_diagnostic);
+    fflush(stdout);
+#else
+    (void)bundle_diagnostic;
+    (void)bundle_is_desktop;
+#endif
+    if (!identity_ok) { fixture_close(); return 0; }
+#if CPX_BUNDLE_IDENTITY
+    const char *negative_names[]={"wrong_role_image", "adhoc_peer_image"};
+    for (int i=0; i<2; ++i) {
+        SecStaticCodeRef valid_any=bundle_image(argv[3+i], NULL, false);
+        SecStaticCodeRef approved=bundle_image(argv[3+i], fixture_requirement, false);
+        bool refused=valid_any && !approved;
+        emit(negative_names[i], refused ? "code_requirement_refused" : "unexpected", "static_code", refused ? BAD_CODE : SETUP_FAILED, refused);
+        if (valid_any) CFRelease(valid_any);
+        if (approved) CFRelease(approved);
+    }
+#endif
     bool ok = true;
     ok &= flow(argv[0], argv[2], 0, "normal", "two_way_after_imposter", OK, true);
     ok &= flow(argv[0], argv[2], 1, "replay", "same_sender_replay", REPLAY, false);

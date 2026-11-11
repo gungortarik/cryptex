@@ -83,6 +83,19 @@ def complete(rows, native_exit):
             and {row["case"] for row in rows} == set(EXPECTED) and all(row["pass"] for row in rows))
 
 
+def fault_controls(binary, run, report):
+    report["fault_controls"] = {}
+    for mode, expected in (("reaper-controls", 0), ("cleanup-control", 68),
+                           ("send-timeout-copy", 67), ("send-error-once-header", 59)):
+        control = run([str(binary), mode], 10)
+        report["fault_controls"][mode] = {"stage": "child_signal" if control.code < 0 else "child_exit", "code": abs(control.code)}
+        if control.output:
+            report["fault_controls"][mode]["diagnostic"] = control_diagnostic(control.output)
+        if (control.code != expected or control.output != "" or control.limited or control.timed_out or control.pipe_failed):
+            raise PreflightError("native_fault_control_failed")
+    report["failed_send_cleanup"] = "fixture_exit_releases_ipc_space_supervisor_stops_owned_group"
+
+
 def collect(work, run=run_bounded):
     report = {"schema": 1, "scope": SCOPE, "ci_only": True, "phase_one_complete": False,
               "identity_policy": "fixed_identifier_same_image_adhoc_ci_fixture_only",
@@ -91,6 +104,7 @@ def collect(work, run=run_bounded):
               "product_minimum_os": "unchanged", "owner_package": "not_produced"}
     source = Path(__file__).with_suffix(".c")
     report["native_source_sha256"] = hashlib.sha256(source.read_bytes()).hexdigest()
+    report["native_policy_source_sha256"] = hashlib.sha256(source.with_name("mac_bootstrap_bundle.h").read_bytes()).hexdigest()
     binary = work / "bootstrap-mechanism"
     try:
         sdk = checked(run, ["/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-path"], "sdk_path").strip()
@@ -105,16 +119,7 @@ def collect(work, run=run_bounded):
         checked(lambda *_: compiled, [], "native_compile", 60)
         checked(run, ["/usr/bin/codesign", "--force", "--timestamp=none", "--sign", "-",
                       "--identifier", IDENTIFIER, str(binary)], "adhoc_fixture_sign")
-        report["fault_controls"] = {}
-        for mode, expected in (("reaper-controls", 0), ("cleanup-control", 68),
-                               ("send-timeout-copy", 67), ("send-error-once-header", 59)):
-            control = run([str(binary), mode], 10)
-            report["fault_controls"][mode] = {"stage": "child_signal" if control.code < 0 else "child_exit", "code": abs(control.code)}
-            if control.output:
-                report["fault_controls"][mode]["diagnostic"] = control_diagnostic(control.output)
-            if (control.code != expected or control.output != "" or control.limited or control.timed_out or control.pipe_failed):
-                raise PreflightError("native_fault_control_failed")
-        report["failed_send_cleanup"] = "fixture_exit_releases_ipc_space_supervisor_stops_owned_group"
+        fault_controls(binary, run, report)
         prefix = "com.cryptex.m8.bootstrap." + secrets.token_hex(12)
         native = run([str(binary), "probe", prefix], 120)
         report["native_exit"] = native.code

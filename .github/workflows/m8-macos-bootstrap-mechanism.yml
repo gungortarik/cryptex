@@ -13,7 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Test closed mechanism receipts and failure preservation
-        run: python3 -B -m unittest discover -s scripts/m8 -p 'test_mac_bootstrap_mechanism.py' -v
+        run: |
+          bash -n scripts/m8/MAC-MESAJ.command
+          python3 -B -m unittest discover -s scripts/m8 -p 'test_mac_bootstrap_mechanism.py' -v
+          python3 -B -m unittest discover -s scripts/m8 -p 'test_mac_bootstrap_signed.py' -v
       - name: Compile public APIs and run disposable ad-hoc fixture experiment
         run: python3 -B scripts/m8/mac_bootstrap_mechanism.py --ci
         # No owner signing key, launchd installation, product IPC or mutation gate.
+      - name: Compile certified two-binary policy and require explicit ad-hoc refusal
+        run: python3 -B scripts/m8/mac_bootstrap_signed.py --package scripts/m8 --ci-refusal
+        # This negative control cannot substitute for the owner's signed matrix.
