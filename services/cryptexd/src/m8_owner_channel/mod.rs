@@ -12,6 +12,7 @@ mod image_policy;
 pub mod local_startup;
 #[cfg(target_os = "macos")]
 mod native;
+pub mod protected_content;
 #[cfg(target_os = "macos")]
 mod release_inventory;
 pub(crate) mod reply;

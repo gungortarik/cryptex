@@ -1,5 +1,20 @@
 # 34 — Current Implementation Handoff
 
+## Protected UI and native approval continuation
+
+The default-off local feature now has a snapshot-backed actual Tauri Assets
+provider and a native approval-domain driver. A separate candidate UI builder
+routes its three owner review commands through the same native worker, with
+opaque renderer handles. The synthetic TEMP-only mode uses one FakeSecureStore;
+ordinary runtime stores and all product owner gates remain unchanged.
+
+The [bounded contract](proposals/m8-local-content-approval-check.md) records
+content binding, per-message private proof, session/admission ownership,
+cancellation/delivery failure rules, WebKit isolation and evidence limits.
+Implementation/source review and exact native CI are in progress. Do not infer
+interactive WebView acceptance, same-profile durable recovery or M8 completion
+from the pending headless synthetic tests.
+
 ## Actual signed startup check continuation
 
 The default-off `m8-local-startup-check` feature now connects the local certificate

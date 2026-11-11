@@ -37,15 +37,31 @@ fn main() {
         }
     };
     // The guard stays live until run returns; it never enables owner dispatch.
-    let result = run_with_ready(std::mem::take(&mut args), &mut || {
-        #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
-        if let Some(guard) = _startup_guard.as_mut() {
-            guard
-                .runtime_ready()
-                .map_err(|error| LifecycleError::Attention(error.to_string()))?;
-        }
-        Ok(())
-    });
+    #[cfg(not(all(target_os = "macos", feature = "m8-local-startup-check")))]
+    let ordinary_ipc = true;
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    let ordinary_ipc = !_startup_guard
+        .as_ref()
+        .is_some_and(|guard| guard.is_content_mode());
+    let result = run_with_ready(
+        std::mem::take(&mut args),
+        ordinary_ipc,
+        &mut |root, lock| {
+            let _ = (root, lock);
+            #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+            if let Some(guard) = _startup_guard.as_mut() {
+                guard
+                    .runtime_ready()
+                    .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+                if guard.is_content_mode() {
+                    guard
+                        .serve_content(root, lock)
+                        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+                }
+            }
+            Ok(())
+        },
+    );
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
     let result = match _startup_guard.map(|guard| guard.close()).transpose() {
         Ok(_) => result,
@@ -71,12 +87,13 @@ fn main() {
 
 #[cfg(test)]
 fn run(args: Vec<String>) -> Result<(), LifecycleError> {
-    run_with_ready(args, &mut || Ok(()))
+    run_with_ready(args, true, &mut |_, _| Ok(()))
 }
 
 fn run_with_ready(
     args: Vec<String>,
-    ready: &mut dyn FnMut() -> Result<(), LifecycleError>,
+    ordinary_ipc: bool,
+    ready: &mut dyn FnMut(&Path, &cryptexd::instance::InstanceLock) -> Result<(), LifecycleError>,
 ) -> Result<(), LifecycleError> {
     if args.is_empty() {
         println!("cryptexd M0 foundation");
@@ -84,7 +101,7 @@ fn run_with_ready(
     }
 
     match args[0].as_str() {
-        "lifecycle" => run_lifecycle(&args[1..], ready),
+        "lifecycle" => run_lifecycle(&args[1..], ordinary_ipc, ready),
         "identity" => run_identity(&args[1..]),
         "replication" => run_replication(&args[1..]),
         "pilot-fixture" => run_pilot_fixture(&args[1..]),
@@ -775,8 +792,11 @@ fn enroll_local_with_platform_store(
 
 fn run_lifecycle(
     args: &[String],
-    ready: &mut dyn FnMut() -> Result<(), LifecycleError>,
+    ordinary_ipc: bool,
+    ready: &mut dyn FnMut(&Path, &cryptexd::instance::InstanceLock) -> Result<(), LifecycleError>,
 ) -> Result<(), LifecycleError> {
+    #[cfg(windows)]
+    let _ = ordinary_ipc;
     let command = args
         .first()
         .ok_or_else(|| LifecycleError::Usage(usage_text()))?;
@@ -859,7 +879,9 @@ fn run_lifecycle(
                 spawn_platform_ipc_server(&opts.runtime_root, &lock)?;
             }
             #[cfg(not(windows))]
-            spawn_platform_ipc_server(&opts.runtime_root, &lock)?;
+            if ordinary_ipc {
+                spawn_platform_ipc_server(&opts.runtime_root, &lock)?;
+            }
             let report = LifecycleReport::active_holder(
                 &opts.runtime_root,
                 lock.pid(),
@@ -878,7 +900,7 @@ fn run_lifecycle(
             }
             // Readiness remains progress. The disabled signed-startup adapter
             // independently reattributes the ready phase to this live child.
-            ready()?;
+            ready(&opts.runtime_root, &lock)?;
 
             match opts.mode {
                 HoldMode::UntilStopFile(stop) => wait_for_stop_file(&stop),

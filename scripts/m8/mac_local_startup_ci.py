@@ -68,6 +68,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
              "--identifier", "com.cryptex.m8.local-startup." + role,
              "--keychain", keychain, target], "sign_real_" + role)
     (resources / "startup-check.txt").write_bytes(b"Public local startup fixture.\n")
+    shutil.copytree(Path("apps/desktop/dist"), resources / "frontend")
     architecture = {"arm64": "arm64", "x86_64": "x86_64"}[platform.machine()]
 
     def inventory(bundle, *, role_hash=None, parent_hash=None, release="m8-local-startup-v1"):
@@ -84,8 +85,11 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
             images["daemon"]["cdhash"] = role_hash
         if parent_hash:
             images["desktop"]["cdhash"] = parent_hash
-        for relative in ("Contents/MacOS/cryptex-desktop", "Contents/MacOS/cryptexd",
-                         "Contents/Resources/startup-check.txt"):
+        listed = ["Contents/MacOS/cryptex-desktop", "Contents/MacOS/cryptexd",
+                  "Contents/Resources/startup-check.txt"]
+        listed += [path.relative_to(bundle).as_posix()
+                   for path in sorted((bundle / "Contents/Resources/frontend").rglob("*")) if path.is_file()]
+        for relative in listed:
             data = (bundle / relative).read_bytes()
             files.append({"path": relative, "size": len(data),
                           "sha256": hashlib.sha256(data).hexdigest()})
@@ -108,6 +112,25 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     if not all(marker in result.splitlines() for marker in markers):
         raise PreflightError("real_startup_marker_missing")
     print("real_signed_desktop_daemon_startup_restart=passed")
+    content_result = run([positive / "Contents/MacOS/cryptex-desktop",
+                  "--cryptex-m8-local-content-check", root / "content-runtime"],
+                 "real_verified_content_and_native_sessions", 90)
+    for marker in ("verified_tauri_assets=passed", "native_synthetic_approval_sessions=passed",
+                   "native_lost_session_and_old_handle_refused=passed",
+                   "native_prepare_and_actor_failures_burn_grants=passed"):
+        if marker not in content_result.splitlines():
+            raise PreflightError("native_content_session_marker_missing")
+        print(marker)
+    for runtime, expected in (("content-runtime", "anchored"), ("content-runtime.lost", "owner_pending")):
+        journal = json.loads((root / runtime / "bootstrap/pending.json").read_text(encoding="utf-8"))
+        if not journal["transactions"] or journal["transactions"][-1]["state"] != expected:
+            raise PreflightError("native_session_journal_outcome_mismatch")
+    for suffix in ("missing-snapshot", "handle-allocation", "lost-receiver"):
+        journal = json.loads((root / ("content-runtime." + suffix) / "bootstrap/pending.json").read_text(encoding="utf-8"))
+        if len(journal["transactions"]) != 1 or journal["transactions"][0]["state"] != "owner_pending":
+            raise PreflightError("native_failed_delivery_did_not_preserve_pending_journal")
+    if (root / "content-runtime.expired-queue/bootstrap/pending.json").exists():
+        raise PreflightError("native_expired_queue_prepared_a_grant")
 
     cases = ("modified_content", "wrong_release", "wrong_cdhash",
              "wrong_identifier", "missing_leaf", "missing_rendezvous",

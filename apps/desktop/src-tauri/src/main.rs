@@ -26,8 +26,12 @@ use tauri_plugin_autostart::ManagerExt as AutoStartManagerExt;
 use tauri_plugin_opener::OpenerExt;
 
 mod background_process;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+mod candidate_ui;
 mod frontend_build_mode;
 mod pilot_runtime;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+mod protected_assets;
 
 fn runtime_root_path() -> Result<PathBuf, String> {
     if let Some(root) = pilot_runtime::root() {
@@ -2429,6 +2433,16 @@ fn local_signed_startup_check() -> Option<Result<(), String>> {
 }
 
 fn main() {
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    if let Some(result) = candidate_ui::entry() {
+        match result {
+            Ok(()) => std::process::exit(0),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(2);
+            }
+        }
+    }
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
     if let Some(result) = local_signed_startup_check() {
         match result {

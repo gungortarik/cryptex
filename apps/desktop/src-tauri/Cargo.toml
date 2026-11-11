@@ -6,7 +6,7 @@ license.workspace = true
 publish = false
 
 [features]
-m8-local-startup-check = ["cryptexd/m8-local-startup-check"]
+m8-local-startup-check = ["cryptexd/m8-local-startup-check", "tauri/custom-protocol"]
 
 [build-dependencies]
 tauri-build.workspace = true

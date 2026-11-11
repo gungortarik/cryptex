@@ -244,6 +244,19 @@ pub(super) struct VerifiedBundle {
 }
 
 impl VerifiedBundle {
+    pub(super) fn frontend(
+        &self,
+        inventory: &[u8; 32],
+    ) -> Result<super::protected_content::ProtectedContent, Error> {
+        super::protected_content::ProtectedContent::from_snapshot(
+            self.files
+                .iter()
+                .filter(|(name, _)| name.starts_with("Contents/Resources/frontend/"))
+                .map(|(name, bytes)| (name.clone(), bytes.to_vec())),
+            inventory,
+        )
+        .map_err(|_| Error::Schema)
+    }
     fn content(&self, path: &str) -> Option<&[u8]> {
         self.files.get(path).map(AsRef::as_ref)
     }

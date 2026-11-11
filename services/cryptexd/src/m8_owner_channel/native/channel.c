@@ -235,9 +235,24 @@ static enum cx_result read_frame(cx_channel *c, uint32_t kind, uint8_t *body,
     mach_msg_header_t *h = &p->header;
     mach_msg_option_t options = MACH_RCV_MSG | MACH_RCV_TIMEOUT | MACH_RCV_INTERRUPT |
         MACH_RCV_TRAILER_TYPE(MACH_MSG_TRAILER_FORMAT_0) | MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_AUDIT);
-    mach_msg_timeout_t remaining = remaining_ms(deadline);
-    if (!remaining) { free(p); return CX_DEADLINE; }
-    mach_msg_return_t kr = mach_msg(h, options, 0, (mach_msg_size_t)bytes, c->inbox, remaining, MACH_PORT_NULL);
+    mach_msg_return_t kr;
+    for (;;) {
+        mach_msg_timeout_t remaining = remaining_ms(deadline);
+        if (!remaining) { free(p); return CX_DEADLINE; }
+        if (c->pinned && !live(c)) { free(p); return CX_INSTANCE; }
+        if (kind == DATA && MACH_PORT_VALID(c->peer)) {
+            mach_port_type_t type = 0;
+            if (mach_port_type(mach_task_self(), c->peer, &type) != KERN_SUCCESS ||
+                !(type & MACH_PORT_TYPE_SEND) || (type & MACH_PORT_TYPE_DEAD_NAME)) {
+                free(p); return CX_CLOSED;
+            }
+        }
+        // A parked approval owns no admission lease, but peer loss must burn
+        // it promptly instead of waiting the full owner think-time deadline.
+        mach_msg_timeout_t slice = remaining < 100 ? remaining : 100;
+        kr = mach_msg(h, options, 0, (mach_msg_size_t)bytes, c->inbox, slice, MACH_PORT_NULL);
+        if (kr != MACH_RCV_TIMED_OUT) break;
+    }
     enum cx_result result = CX_LAYOUT;
     if (kr != MACH_MSG_SUCCESS) {
         if ((kr & ~MACH_MSG_MASK) == MACH_RCV_BODY_ERROR) mach_msg_destroy(h);

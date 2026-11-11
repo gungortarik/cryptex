@@ -2,6 +2,8 @@
 //! operations; the daemon owns canonical verification and SQLite access.
 
 mod approval_domain;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+pub(crate) mod local_native;
 
 use std::collections::HashMap;
 use std::fs;
@@ -1353,14 +1355,9 @@ pub fn desktop_prepare_bootstrap_approval(
     })
 }
 
-/// Prepare a frozen owner-security operation request. All identity and trust
-/// fields are supplied by cryptexd; this input contains only the requested
-/// action and its public cutoff parameters.
-pub fn desktop_prepare_owner_security_operation(
+pub(crate) fn parse_owner_operation(
     input: DesktopOwnerSecurityOperationInput,
-    timeout: Duration,
-) -> io::Result<DesktopOwnerSecurityOperationPrepared> {
-    crate::m8_owner_channel::require_desktop_route("owner.security.prepare")?;
+) -> io::Result<OwnerSecurityOperationRequest> {
     let owner_operation = match input.kind.as_str() {
         "device_restriction" => {
             let target_device_id = input
@@ -1392,6 +1389,18 @@ pub fn desktop_prepare_owner_security_operation(
         }
         _ => return Err(invalid_data("unsupported owner-security operation")),
     };
+    Ok(owner_operation)
+}
+
+/// Prepare a frozen owner-security operation request. All identity and trust
+/// fields are supplied by cryptexd; this input contains only the requested
+/// action and its public cutoff parameters.
+pub fn desktop_prepare_owner_security_operation(
+    input: DesktopOwnerSecurityOperationInput,
+    timeout: Duration,
+) -> io::Result<DesktopOwnerSecurityOperationPrepared> {
+    crate::m8_owner_channel::require_desktop_route("owner.security.prepare")?;
+    let owner_operation = parse_owner_operation(input)?;
     let started = Instant::now();
     let name = socket_name()?;
     let mut last_error = None;

@@ -2,6 +2,7 @@
 //! authorization factory, an executable-path grant or a Tauri resource seal.
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
@@ -14,7 +15,10 @@ const CERT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/m8-local-signer.de
 const DESKTOP: &str = "Contents/MacOS/cryptex-desktop";
 const DAEMON: &str = "Contents/MacOS/cryptexd";
 const EPOCH_FLAG: &str = "--m8-local-startup-epoch";
+const CONTENT_EPOCH_FLAG: &str = "--m8-local-content-epoch";
 const RELEASE: &str = "m8-local-startup-v1";
+#[path = "local_client.rs"]
+mod client;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -143,6 +147,7 @@ pub struct Prepared {
     listener: Listener,
     epoch: [u8; 16],
     deadline: Instant,
+    content_mode: bool,
 }
 impl Prepared {
     pub fn current_desktop(timeout: Duration) -> Result<Self, Error> {
@@ -155,7 +160,18 @@ impl Prepared {
             listener,
             epoch,
             deadline,
+            content_mode: false,
         })
+    }
+    pub fn current_content(timeout: Duration) -> Result<Self, Error> {
+        let mut prepared = Self::current_desktop(timeout)?;
+        prepared
+            .release
+            .bundle
+            .frontend(&prepared.release.digest)
+            .map_err(|_| Error::Inventory)?;
+        prepared.content_mode = true;
+        Ok(prepared)
     }
     pub fn daemon_path(&self) -> PathBuf {
         self.release.root.join(DAEMON)
@@ -168,12 +184,24 @@ impl Prepared {
         if Path::new(command.get_program()) != self.daemon_path() {
             return Err(Error::Arguments);
         }
-        command.args([EPOCH_FLAG, &epoch_text(&self.epoch)]);
+        command.args([
+            if self.content_mode {
+                CONTENT_EPOCH_FLAG
+            } else {
+                EPOCH_FLAG
+            },
+            &epoch_text(&self.epoch),
+        ]);
         let child = command.spawn().map_err(|_| Error::Spawn)?;
         let mut owned = LocalDaemon {
             child: Some(child),
             channel: None,
             release: self.release,
+            epoch: self.epoch,
+            content_mode: self.content_mode,
+            bound: false,
+            pending_review: None,
+            client_cleanup_failed: false,
         };
         let expected =
             inventory_image(&owned.release.bundle, Role::Daemon).map_err(|_| Error::Image)?;
@@ -224,6 +252,11 @@ pub struct LocalDaemon {
     child: Option<Child>,
     channel: Option<Channel>,
     release: Release,
+    epoch: [u8; 16],
+    content_mode: bool,
+    bound: bool,
+    pending_review: Option<client::PendingReview>,
+    client_cleanup_failed: bool,
 }
 impl LocalDaemon {
     pub fn terminate_for_restart(&mut self) -> Result<(), Error> {
@@ -250,7 +283,18 @@ impl LocalDaemon {
         }
     }
     pub fn shutdown(mut self, stop: &Path) -> Result<(), Error> {
+        if self.content_mode && (!self.bound || self.child.is_none()) {
+            return self.close();
+        }
         std::fs::write(stop, b"stop\n").map_err(|_| Error::Cleanup)?;
+        if self.bound {
+            self.channel
+                .as_mut()
+                .ok_or(Error::Channel)?
+                .send(CLOSE, Instant::now() + Duration::from_secs(2))
+                .map_err(Error::from)?;
+            self.pending_review.take();
+        }
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             match self.child.as_mut().ok_or(Error::Arguments)?.try_wait() {
@@ -274,9 +318,15 @@ impl LocalDaemon {
     }
     fn close_channel(&mut self) -> Result<(), Error> {
         if let Some(channel) = self.channel.take() {
-            channel.close().map_err(|_| Error::Cleanup)?;
+            if channel.close().is_err() {
+                self.client_cleanup_failed = true;
+            }
         }
-        Ok(())
+        if self.client_cleanup_failed {
+            Err(Error::Cleanup)
+        } else {
+            Ok(())
+        }
     }
 }
 impl Drop for LocalDaemon {
@@ -296,8 +346,43 @@ pub struct ChildGuard {
     _release: Release,
     epoch: [u8; 16],
     deadline: Instant,
+    content_mode: bool,
+    runtime: PathBuf,
 }
 impl ChildGuard {
+    pub fn is_content_mode(&self) -> bool {
+        self.content_mode
+    }
+    pub fn serve_content(
+        &mut self,
+        root: &Path,
+        lock: &crate::instance::InstanceLock,
+    ) -> Result<(), Error> {
+        if !self.content_mode || root != self.runtime {
+            return Err(Error::Arguments);
+        }
+        let content = self
+            ._release
+            .bundle
+            .frontend(&self._release.digest)
+            .map_err(|_| Error::Inventory)?;
+        let mut bytes = [0; 54];
+        if self
+            ._channel
+            .receive(&mut bytes, self.deadline)
+            .map_err(Error::from)?
+            != frame(4, &self.epoch, content.binding())
+        {
+            return Err(Error::Channel);
+        }
+        let mut connection = BoundConnection {
+            channel: &mut self._channel,
+            seal: Arc::new(()),
+            ready: frame(5, &self.epoch, content.binding()),
+            _content: content,
+        };
+        crate::ipc::local_native::serve(&mut connection, root, lock).map_err(|_| Error::Channel)
+    }
     pub fn runtime_ready(&mut self) -> Result<(), Error> {
         self._channel
             .send(&frame(3, &self.epoch, &self._release.digest), self.deadline)
@@ -308,7 +393,10 @@ impl ChildGuard {
     }
 }
 pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
-    if !args.iter().any(|arg| arg == EPOCH_FLAG) {
+    if !args
+        .iter()
+        .any(|arg| arg == EPOCH_FLAG || arg == CONTENT_EPOCH_FLAG)
+    {
         return Ok(None);
     }
     if args.len() != 10
@@ -317,7 +405,7 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
         || args[2] != "--runtime-root"
         || args[4] != "--ready-file"
         || args[6] != "--stop-file"
-        || args[8] != EPOCH_FLAG
+        || !matches!(args[8].as_str(), EPOCH_FLAG | CONTENT_EPOCH_FLAG)
         || !Path::new(&args[3]).is_absolute()
         || Path::new(&args[5]) != Path::new(&args[3]).join("ready")
         || Path::new(&args[7]) != Path::new(&args[3]).join("stop")
@@ -326,6 +414,11 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
     }
     let deadline = Instant::now() + Duration::from_secs(10);
     let epoch = parse_epoch(&args[9])?;
+    let content_mode = args[8] == CONTENT_EPOCH_FLAG;
+    let runtime = PathBuf::from(&args[3]);
+    if content_mode {
+        require_fresh_content_runtime(&runtime)?;
+    }
     let release = Release::current(Role::Daemon, deadline)?;
     let expected = inventory_image(&release.bundle, Role::Desktop).map_err(|_| Error::Image)?;
     check_time(deadline)?;
@@ -349,7 +442,97 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
         _release: release,
         epoch,
         deadline,
+        content_mode,
+        runtime,
     }))
+}
+
+pub const CONTENT_MARKER: &str = "m8-isolated-native-content-v1\n";
+fn require_fresh_content_runtime(root: &Path) -> Result<(), Error> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = std::fs::symlink_metadata(root).map_err(|_| Error::Arguments)?;
+    let temp = std::env::temp_dir()
+        .canonicalize()
+        .map_err(|_| Error::Arguments)?;
+    if !metadata.is_dir()
+        || metadata.file_type().is_symlink()
+        || metadata.uid() != unsafe { libc::getuid() }
+        || metadata.mode() & 0o077 != 0
+        || !root
+            .canonicalize()
+            .map_err(|_| Error::Arguments)?
+            .starts_with(temp)
+        || std::fs::read_dir(root)
+            .map_err(|_| Error::Arguments)?
+            .count()
+            != 1
+        || std::fs::read(root.join("m8-content.marker")).map_err(|_| Error::Arguments)?
+            != CONTENT_MARKER.as_bytes()
+    {
+        return Err(Error::Arguments);
+    }
+    Ok(())
+}
+
+const CLOSE: &[u8] = b"CXLC\x01";
+const PING: &[u8] = b"CXLP\x01";
+const STATUS: &[u8] = b"CXLS-status\x01";
+pub(crate) struct BoundConnection<'a> {
+    channel: &'a mut Channel,
+    seal: Arc<()>,
+    ready: Vec<u8>,
+    _content: crate::ProtectedContent,
+}
+pub(crate) struct ReceivedRequest {
+    decoded: super::request::DecodedRequest,
+    seal: Arc<()>,
+}
+pub(crate) enum Incoming {
+    Request(ReceivedRequest),
+    Close,
+    Ping,
+    Status,
+}
+impl BoundConnection<'_> {
+    pub(crate) fn ready(&mut self, deadline: Instant) -> std::io::Result<()> {
+        self.channel.send(&self.ready, deadline).map_err(native_io)
+    }
+    pub(crate) fn receive(&mut self, deadline: Instant) -> std::io::Result<Incoming> {
+        let mut bytes = vec![0; super::request::MAX_FRAME_BYTES];
+        let bytes = self
+            .channel
+            .receive(&mut bytes, deadline)
+            .map_err(native_io)?;
+        if bytes == CLOSE {
+            return Ok(Incoming::Close);
+        }
+        if bytes == PING {
+            return Ok(Incoming::Ping);
+        }
+        if bytes == STATUS {
+            return Ok(Incoming::Status);
+        }
+        let decoded = super::request::decode_untrusted(bytes).map_err(std::io::Error::other)?;
+        Ok(Incoming::Request(ReceivedRequest {
+            decoded,
+            seal: Arc::clone(&self.seal),
+        }))
+    }
+    pub(crate) fn consume(
+        &self,
+        request: ReceivedRequest,
+    ) -> std::io::Result<super::request::DecodedRequest> {
+        if !Arc::ptr_eq(&self.seal, &request.seal) {
+            return Err(std::io::Error::other("native_request_connection_mismatch"));
+        }
+        Ok(request.decoded)
+    }
+    pub(crate) fn send(&mut self, bytes: &[u8], deadline: Instant) -> std::io::Result<()> {
+        self.channel.send(bytes, deadline).map_err(native_io)
+    }
+}
+fn native_io(error: super::native::Error) -> std::io::Error {
+    std::io::Error::other(Error::from(error))
 }
 
 #[cfg(test)]
