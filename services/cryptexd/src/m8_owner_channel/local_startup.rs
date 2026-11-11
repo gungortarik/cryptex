@@ -656,6 +656,13 @@ mod tests {
     fn untrusted_progress_hint_is_bounded_exact_and_never_startup_success() {
         use std::io::Write;
         use std::process::Stdio;
+        struct Probe(Child);
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
         for case in [
             "exact",
             "malformed",
@@ -665,11 +672,13 @@ mod tests {
             "absent",
             "expired",
         ] {
-            let mut child = Command::new("/bin/cat")
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .spawn()
-                .unwrap();
+            let mut child = Probe(
+                Command::new("/bin/cat")
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .unwrap(),
+            );
             if case != "absent" && case != "eof" {
                 let mut bytes = VERIFICATION_HINT.to_vec();
                 if case == "malformed" {
@@ -681,14 +690,14 @@ mod tests {
                 if case == "extra" {
                     bytes.push(b'!');
                 }
-                child.stdin.as_mut().unwrap().write_all(&bytes).unwrap();
+                child.0.stdin.as_mut().unwrap().write_all(&bytes).unwrap();
             }
             if case != "absent" {
-                drop(child.stdin.take());
+                drop(child.0.stdin.take());
             }
             let start = Instant::now();
             let result = await_verification_hint(
-                &mut child,
+                &mut child.0,
                 if case == "expired" {
                     start
                 } else if case == "absent" {
@@ -706,10 +715,10 @@ mod tests {
                 "eof" => assert_eq!(result, Err(Error::Image)),
                 _ => assert_eq!(result, Err(Error::Deadline)),
             }
-            if child.try_wait().unwrap().is_none() {
-                child.kill().unwrap();
+            if child.0.try_wait().unwrap().is_none() {
+                child.0.kill().unwrap();
             }
-            child.wait().unwrap();
+            child.0.wait().unwrap();
         }
     }
     #[test]
