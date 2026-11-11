@@ -1,7 +1,29 @@
 // Native unit coverage for the private decoder and Mach ownership rules.
 // Build separately so test controls are never part of the daemon archive.
-#include "../src/m8_owner_channel/native/channel.c"
+#include <mach/mach.h>
 #include <assert.h>
+
+static unsigned timed_out_sends;
+static mach_msg_return_t observed_message(mach_msg_header_t *msg, mach_msg_option_t options,
+    mach_msg_size_t sent, mach_msg_size_t capacity, mach_port_name_t inbox,
+    mach_msg_timeout_t timeout, mach_port_name_t notify) {
+    mach_msg_return_t kr = mach_msg(msg, options, sent, capacity, inbox, timeout, notify);
+    if ((options & MACH_SEND_MSG) && kr == MACH_SEND_TIMED_OUT) ++timed_out_sends;
+    return kr;
+}
+
+static mach_port_t report_release_failure;
+static kern_return_t observed_release(ipc_space_t space, mach_port_name_t name) {
+    kern_return_t kr = mach_port_deallocate(space, name);
+    if (name == report_release_failure && kr == KERN_SUCCESS) return KERN_FAILURE;
+    return kr;
+}
+
+#define mach_msg observed_message
+#define mach_port_deallocate observed_release
+#include "../src/m8_owner_channel/native/channel.c"
+#undef mach_port_deallocate
+#undef mach_msg
 
 static void check_envelopes(void) {
     cx_channel c = {.inbox = 1, .received = 1};
@@ -67,12 +89,18 @@ static void check_send_ownership(void) {
     assert(c && mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &c->inbox) == KERN_SUCCESS);
     assert(transmit(c, queue, DATA, (const uint8_t *)"a", 1, deadline_ms()) == CX_OK);
     // A failed handshake send holds dedicated references to *both* endpoints.
-    assert(transmit(c, queue, ACK, NULL, 0, cx_now_ms() + 50) == CX_DEADLINE);
+    assert(transmit(c, queue, ACK, NULL, 0, cx_now_ms() + 250) == CX_DEADLINE);
+    assert(timed_out_sends == 1);
     mach_port_urefs_t refs = 0;
     assert(mach_port_get_refs(mach_task_self(), queue, MACH_PORT_RIGHT_SEND, &refs) == KERN_SUCCESS && refs == 1);
     assert(mach_port_get_refs(mach_task_self(), c->inbox, MACH_PORT_RIGHT_SEND, &refs) == KERN_SUCCESS && refs == 0);
-    assert(cx_close(c) == CX_OK);
-    assert(release_send(queue));
+    mach_port_t inbox = c->inbox;
+    c->peer = queue; // Transfer the remaining single send reference.
+    report_release_failure = queue;
+    assert(cx_close(c) == CX_CLEANUP);
+    mach_port_type_t type = 0;
+    assert(mach_port_type(mach_task_self(), inbox, &type) == KERN_INVALID_NAME);
+    assert(mach_port_get_refs(mach_task_self(), queue, MACH_PORT_RIGHT_SEND, &refs) == KERN_SUCCESS && refs == 0);
     assert(mach_port_mod_refs(mach_task_self(), queue, MACH_PORT_RIGHT_RECEIVE, -1) == KERN_SUCCESS);
 }
 

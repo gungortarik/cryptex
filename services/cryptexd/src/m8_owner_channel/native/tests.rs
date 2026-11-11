@@ -44,18 +44,27 @@ impl TestChild {
         }
     }
 
-    fn stop_group(&self) {
+    fn stop_group(&self) -> std::io::Result<()> {
         if self.group_leader {
             // SAFETY: this private group was created at spawn and its leader
             // has not been reaped. We never signal our caller's group.
             let result = unsafe { libc::killpg(self.child.id() as i32, libc::SIGKILL) };
-            if result != 0 && std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH) {
-                eprintln!("native test process group cleanup failed");
+            if result != 0 {
+                let error = std::io::Error::last_os_error();
+                if error.raw_os_error() != Some(libc::ESRCH) {
+                    return Err(error);
+                }
             }
         }
+        Ok(())
     }
 
     fn finish(&mut self, timeout: Duration) {
+        let status = self.wait_status(timeout);
+        assert!(status.success(), "native test child exited with {status}");
+    }
+
+    fn wait_status(&mut self, timeout: Duration) -> std::process::ExitStatus {
         let deadline = Instant::now() + timeout;
         loop {
             let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
@@ -69,11 +78,15 @@ impl TestChild {
                 )
             };
             if result == 0 && unsafe { info.assume_init().si_pid() } != 0 {
-                self.stop_group();
+                if let Err(error) = self.stop_group() {
+                    // Darwin may return EPERM when the only remaining group
+                    // members are zombies. Check while the PGID is reserved.
+                    assert_eq!(error.raw_os_error(), Some(libc::EPERM));
+                    assert!(all_group_members_dead(self.child.id()));
+                }
                 let status = self.child.wait().unwrap();
                 self.reaped = true;
-                assert!(status.success(), "native test child exited with {status}");
-                return;
+                return status;
             }
             if result != 0 {
                 assert_eq!(
@@ -93,11 +106,49 @@ impl TestChild {
 impl Drop for TestChild {
     fn drop(&mut self) {
         if !self.reaped {
-            self.stop_group();
+            let _ = self.stop_group();
             let _ = self.child.kill();
             let _ = self.child.wait();
         }
     }
+}
+
+fn all_group_members_dead(pgid: u32) -> bool {
+    let pgid = pgid.to_string();
+    let mut ps = TestChild::spawn(
+        Command::new("/bin/ps")
+            .args(["-x", "-g", &pgid, "-o", "pgid=,stat="])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+        false,
+    );
+    let status = ps.wait_status(Duration::from_secs(2));
+    let mut states = String::new();
+    let mut unexpected = [0u8; 1];
+    matches!(status.code(), Some(0 | 1))
+        && ps
+            .child
+            .stderr
+            .take()
+            .unwrap()
+            .read(&mut unexpected)
+            .unwrap()
+            == 0
+        && ps
+            .child
+            .stdout
+            .take()
+            .unwrap()
+            .take(16385)
+            .read_to_string(&mut states)
+            .is_ok()
+        && states.len() <= 16384
+        && states.lines().all(|line| {
+            let mut fields = line.split_whitespace();
+            fields.next() == Some(pgid.as_str())
+                && fields.next().is_some_and(|s| s.starts_with('Z'))
+                && fields.next().is_none()
+        })
 }
 
 fn unhex(text: &str) -> Vec<u8> {
