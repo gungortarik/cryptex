@@ -13,11 +13,16 @@ import zipfile
 
 
 def summarize(runtime):
-    receipt = json.loads((runtime / "ui-receipt.json").read_text(encoding="utf-8"))
     journal = json.loads((runtime / "bootstrap/pending.json").read_text(encoding="utf-8"))
     operations = sorted((item["state"], len(item["append_attempts"])) for item in journal["transactions"])
+    try:
+        receipt = json.loads((runtime / "ui-receipt.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        receipt = None
     return {
-        "two_events_original_prefix_preserved": receipt.get("eventCount") == 2 and receipt.get("prefixPreserved") is True,
+        "two_events_original_prefix_preserved": None if receipt is None else (
+            receipt.get("eventCount") == 2 and receipt.get("prefixPreserved") is True
+        ),
         "one_cancel_and_one_confirm": operations == [("anchored", 1), ("cancelled", 0)],
     }
 
@@ -47,6 +52,8 @@ def main():
                 report.update(summarize(runtime))
                 if result.returncode == 0 and report["one_cancel_and_one_confirm"] and report["two_events_original_prefix_preserved"]:
                     report["outcome"] = "expected_local_events"
+                elif result.returncode == 0 and report["one_cancel_and_one_confirm"] and report["two_events_original_prefix_preserved"] is None:
+                    report["outcome"] = "journal_verified_shutdown_receipt_missing"
             except (OSError, ValueError, TypeError, KeyError):
                 report["outcome"] = "launch_or_receipt_incomplete"
     output = package / ("MAC-ARAYUZ-SONUC-" + uuid.uuid4().hex[:8] + ".zip")

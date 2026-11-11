@@ -47,3 +47,7 @@ class InteractiveFixtureTests(unittest.TestCase):
                 (root / "bootstrap/pending.json").write_text(json.dumps({"transactions": rows}))
                 self.assertEqual(summarize(root), {"two_events_original_prefix_preserved": True,
                                                   "one_cancel_and_one_confirm": accepted})
+            (root / "ui-receipt.json").unlink()
+            (root / "bootstrap/pending.json").write_text(json.dumps({"transactions": states}))
+            self.assertEqual(summarize(root), {"two_events_original_prefix_preserved": None,
+                                              "one_cancel_and_one_confirm": True})

@@ -51,6 +51,17 @@ include Mac/Windows startup 11/10, Desktop 39/46, approval 17/17, IPC 71/80
 and owner channel 22/14. Four existing Mac IPC tests were ignored. Interactive
 WebView acceptance still needs an owner run on a real Mac.
 
+The [interactive fixture build](https://github.com/gungortarik/cryptex/actions/runs/43104045850)
+exported the tested arm64 bundle at the same product SHA. Its disposable signing
+certificate expires on 2026-11-12 at 21:34:20 UTC. The delivered ZIP has SHA-256
+`e33e15b054e060137f64bd884eaa4c0e6c6975cf53e28151c7931a84daa684cc`.
+Only the external result collector changed after export. Every signed bundle
+member matched the downloaded artifact byte for byte. On this revision the
+interactive entry calls Tauri's `run`. The macOS Tao loop exits the process
+before control can return to `owner.close()` on ordinary quit. The collector
+reports the journal independently when the shutdown receipt is absent and
+leaves event-prefix verification incomplete in that case.
+
 The actual signed headless fixture requires all four result markers for actual
 Context/provider installation, synthetic prepare/cancel/confirm, lost native
 session/old local-handle refusal and failed delivery cleanup. It verifies the
