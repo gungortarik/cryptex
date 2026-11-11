@@ -47,10 +47,26 @@ fn cms_requires_exact_signed_content_and_independently_pinned_signer() {
         VerifiedInventory::verify(RAW, CMS, policy, deadline()),
         Err(Error::Signature)
     ));
+    let mut policy = trust();
+    policy.signer_der = include_bytes!("fixtures/other-signer.der");
+    assert!(matches!(
+        VerifiedInventory::verify(RAW, CMS, policy, deadline()),
+        Err(Error::Signature)
+    ));
     assert!(matches!(
         VerifiedInventory::verify(RAW, &[], trust(), deadline()),
         Err(Error::Limit)
     ));
+    for malformed in [
+        b"\x30\x80".as_slice(),
+        b"\x30\x84\xff\xff\xff\xff",
+        b"\x30\x03\x06\x01\x00",
+    ] {
+        assert!(matches!(
+            VerifiedInventory::verify(RAW, malformed, trust(), deadline()),
+            Err(Error::Signature)
+        ));
+    }
     assert!(matches!(
         VerifiedInventory::verify(RAW, CMS, trust(), Instant::now()),
         Err(Error::Deadline)

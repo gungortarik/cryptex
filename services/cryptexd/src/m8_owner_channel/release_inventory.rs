@@ -162,6 +162,7 @@ impl VerifiedInventory {
         if desktop == [0; 20] || daemon == [0; 20] || desktop == daemon {
             return Err(Error::Schema);
         }
+        check_deadline(deadline)?;
         Ok(Self {
             inventory,
             publisher: trust.publisher,
