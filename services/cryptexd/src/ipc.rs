@@ -1,6 +1,8 @@
 //! Local daemon IPC. Health and guarded Desktop retrieval are the only exposed
 //! operations; the daemon owns canonical verification and SQLite access.
 
+mod approval_domain;
+
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -3092,76 +3094,33 @@ fn handle_bootstrap_approval_session(
     else {
         return Ok(());
     };
-    let (verified, messages) = match verify_approval_prefix(&request) {
-        Ok(prefix) => prefix,
-        Err(error) => {
-            let response = serde_json::to_vec(&bootstrap_approval_response(
-                Some(request.request_id),
-                false,
-                Some(error),
-                "bootstrap.approval.result",
-                None,
-                None,
-                None,
-            ))?;
-            return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
-        }
-    };
-    if let Err(error) = validate_local_bootstrap_identity(context, &verified) {
-        let response = serde_json::to_vec(&bootstrap_approval_response(
-            Some(request.request_id),
-            false,
-            Some(error),
-            "bootstrap.approval.result",
-            None,
-            None,
-            None,
-        ))?;
-        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
-    }
-
-    let snapshot =
-        crate::bootstrap_journal::ApprovalSnapshot::from_verified_bootstrap_request(&verified)
-            .map_err(|_| invalid_data("approval snapshot invalid"))?;
-    let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&context.runtime_root)
-        .map_err(|_| invalid_data("approval journal unavailable"))?;
-    let event_id = new_bootstrap_event_id().map_err(invalid_data)?;
-    if journal
-        .begin_verified_approval_prefix(&verified, &messages, &event_id)
-        .is_err()
-    {
-        let response = serde_json::to_vec(&bootstrap_approval_response(
-            Some(request.request_id),
-            false,
-            Some("approval_transaction_conflict"),
-            "bootstrap.approval.result",
-            None,
-            None,
-            None,
-        ))?;
-        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
-    }
-
     let registry = BOOTSTRAP_APPROVAL_SESSIONS
         .get_or_init(crate::approval_session::ApprovalSessionRegistry::default);
-    let connection = registry
-        .open_connection()
-        .map_err(|_| invalid_data("approval session unavailable"))?;
-    let grant = registry
-        .issue(&connection, snapshot.clone())
-        .map_err(|_| invalid_data("approval session unavailable"))?;
-    let prepared = serde_json::to_vec(&bootstrap_approval_response(
-        Some(request.request_id.clone()),
-        true,
-        None,
-        "bootstrap.approval.prepared",
-        Some(grant.clone()),
-        Some(snapshot),
-        None,
-    ))?;
-    write_response(stream, &prepared, Instant::now() + IPC_RESPONSE_DEADLINE)?;
-    drop(permit); // Owner think-time holds no runtime or canonical admission.
+    let preparation = approval_domain::prepare_bootstrap(context, registry, request, &permit)?;
+    deliver_approval_session(stream, preparation, permit)
+}
 
+/// Socket delivery only: domain sessions own their frozen runtime/registry,
+/// never an open stream or think-time admission permit. A native adapter cannot
+/// reuse this wrapper as a peer-authentication shortcut.
+fn deliver_approval_session(
+    stream: &mut Stream,
+    preparation: approval_domain::Preparation<'_>,
+    permit: crate::runtime_admission::OperationPermit,
+) -> io::Result<()> {
+    let approval_domain::Preparation { reply, session } = preparation;
+    let timeout = if session.is_some() {
+        IPC_RESPONSE_DEADLINE
+    } else {
+        IPC_REQUEST_DEADLINE
+    };
+    AdmittedReply::new(reply, permit, Instant::now() + timeout)?
+        .send_using(|bytes, deadline| write_response(stream, bytes, deadline))?;
+    // Both the prepared reply and its permit have left scope before owner think-time.
+    // Any error above drops session as well, burning its ephemeral grants.
+    let Some(session) = session else {
+        return Ok(());
+    };
     let followup_frame = match read_ipc_frame(
         stream,
         MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES,
@@ -3172,184 +3131,53 @@ fn handle_bootstrap_approval_session(
         Err(error) if error.kind() == io::ErrorKind::TimedOut => return Ok(()),
         Err(error) => return Err(error),
     };
-    let Some(_permit) = admit_approval_operation(
-        context,
-        stream,
-        &request.request_id,
-        request.operation.starts_with("owner.security."),
-    )?
-    else {
-        return Ok(());
+    let permit = match session.admit_followup() {
+        Ok(permit) => permit,
+        Err(error) => {
+            let response = session.reject(error.code());
+            return write_response(
+                stream,
+                &serde_json::to_vec(&response)?,
+                Instant::now() + IPC_RESPONSE_DEADLINE,
+            );
+        }
     };
     let followup: BootstrapApprovalIpcRequest = match serde_json::from_slice(&followup_frame) {
         Ok(request) => request,
         Err(_) => {
-            let response = serde_json::to_vec(&bootstrap_approval_response(
-                Some(request.request_id),
-                false,
-                Some("malformed_confirmation"),
-                "bootstrap.approval.result",
-                None,
-                None,
-                None,
-            ))?;
-            return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+            return AdmittedReply::new(
+                session.reject("malformed_confirmation"),
+                permit,
+                Instant::now() + IPC_REQUEST_DEADLINE,
+            )?
+            .send_using(|bytes, deadline| write_response(stream, bytes, deadline));
         }
     };
-    if !approval_request_is_authorized(&followup)
-        || !approval_request_has_followup_shape(&followup)
-        || followup.request_id != request.request_id
-        || followup.role != request.role
+    if !session.matches_followup(&followup) {
+        return AdmittedReply::new(
+            session.reject("approval_session_mismatch"),
+            permit,
+            Instant::now() + IPC_REQUEST_DEADLINE,
+        )?
+        .send_using(|bytes, deadline| write_response(stream, bytes, deadline));
+    }
+    // Preserve the actual owner-operation followup peer recheck. Domain work
+    // never receives or manufactures an authenticated-peer boolean.
+    if session.is_owner()
+        && !peer_process_id(stream)
+            .ok()
+            .is_some_and(|pid| session.matches_expected_peer_pid(pid))
     {
-        let response = serde_json::to_vec(&bootstrap_approval_response(
-            Some(request.request_id),
-            false,
-            Some("approval_session_mismatch"),
-            "bootstrap.approval.result",
-            None,
-            None,
-            None,
-        ))?;
-        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
+        return AdmittedReply::new(
+            session.reject("desktop_authentication_required"),
+            permit,
+            Instant::now() + IPC_REQUEST_DEADLINE,
+        )?
+        .send_using(|bytes, deadline| write_response(stream, bytes, deadline));
     }
-    let capability = followup.capability.as_deref().unwrap_or_default();
-    let digest = followup
-        .approval_request_digest
-        .as_deref()
-        .unwrap_or_default();
-    let (confirm_request, _) = match verify_approval_prefix(&followup) {
-        Ok(prefix) => prefix,
-        Err(error) => {
-            let response = serde_json::to_vec(&bootstrap_approval_response(
-                Some(request.request_id),
-                false,
-                Some(error),
-                "bootstrap.approval.result",
-                None,
-                None,
-                None,
-            ))?;
-            return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
-        }
-    };
-    if confirm_request != verified
-        || followup.approval_request_digest.as_deref()
-            != Some(grant.approval_request_digest.as_str())
-    {
-        let response = serde_json::to_vec(&bootstrap_approval_response(
-            Some(request.request_id),
-            false,
-            Some("approval_snapshot_changed"),
-            "bootstrap.approval.result",
-            None,
-            None,
-            None,
-        ))?;
-        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
-    }
-    if followup.operation == "bootstrap.approval.cancel" {
-        let result = registry
-            .cancel(&connection, capability)
-            .map_err(|_| invalid_data("approval cancellation rejected"))
-            .and_then(|()| {
-                journal
-                    .cancel_pending_approval(verified.transaction_id())
-                    .map_err(|_| invalid_data("approval cancellation could not be persisted"))
-            });
-        let response = serde_json::to_vec(&bootstrap_approval_response(
-            Some(request.request_id),
-            result.is_ok(),
-            result.err().map(|_| "approval_cancellation_rejected"),
-            "bootstrap.approval.cancelled",
-            None,
-            None,
-            None,
-        ))?;
-        return write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE);
-    }
-    if followup.operation != "bootstrap.approval.confirm" {
-        let response = serde_json::to_vec(&bootstrap_approval_response(
-            Some(request.request_id),
-            false,
-            Some("invalid_approval_action"),
-            "bootstrap.approval.result",
-            None,
-            None,
-            None,
-        ))?;
-        return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
-    }
-    let signed = registry.confirm_bootstrap_approval_journaled(
-        &connection,
-        capability,
-        digest,
-        &confirm_request,
-        &journal,
-        |verified_request| {
-            let brain = load_brain_identity(&context.runtime_root).map_err(|_| {
-                crate::approval_session::ApprovalSessionError::ApprovalSigningFailed
-            })?;
-            let local = load_local_device_identity(&context.runtime_root, &brain.brain_id)
-                .map_err(|_| {
-                    crate::approval_session::ApprovalSessionError::ApprovalSigningFailed
-                })?;
-            let device = DeviceId::new(local.device_id).map_err(|_| {
-                crate::approval_session::ApprovalSessionError::ApprovalSigningFailed
-            })?;
-            let ready = load_existing_event_signing_key(
-                context.store.as_ref(),
-                context.environment,
-                &context.runtime_root,
-                &device,
-            )
-            .map_err(|_| crate::approval_session::ApprovalSessionError::ApprovalSigningFailed)?;
-            if brain.brain_id != verified_request.brain_id()
-                || device.as_str() != verified_request.local_identity().device_id.as_str()
-                || ready.public.signing_key_id
-                    != verified_request.local_identity().signing_key_id.as_str()
-                || ready.signing_key.verifying_key().to_bytes()
-                    != verified_request.local_identity().public_key
-            {
-                return Err(crate::approval_session::ApprovalSessionError::ApprovalSigningFailed);
-            }
-            cryptex_events::sign_bootstrap_approval(verified_request, &ready.signing_key)
-                .map_err(|_| crate::approval_session::ApprovalSessionError::ApprovalSigningFailed)
-        },
-    );
-    let response = match signed {
-        Ok(bytes) => {
-            let signed_message = String::from_utf8(bytes)
-                .map_err(|_| invalid_data("signed approval encoding invalid"))?;
-            bootstrap_approval_response(
-                Some(request.request_id),
-                true,
-                None,
-                "bootstrap.approval.signed",
-                None,
-                None,
-                Some(signed_message),
-            )
-        }
-        Err(error) => bootstrap_approval_response(
-            Some(request.request_id),
-            false,
-            Some(match error {
-                crate::approval_session::ApprovalSessionError::ApprovalJournalFailed => {
-                    "approval_journal_failed"
-                }
-                crate::approval_session::ApprovalSessionError::SnapshotMismatch => {
-                    "approval_snapshot_changed"
-                }
-                _ => "approval_confirmation_failed",
-            }),
-            "bootstrap.approval.result",
-            None,
-            None,
-            None,
-        ),
-    };
-    let response = serde_json::to_vec(&response)?;
-    write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)
+    let finished = session.finish(followup, &permit)?;
+    AdmittedReply::new(finished.reply, permit, Instant::now() + finished.timeout)?
+        .send_using(|bytes, deadline| write_response(stream, bytes, deadline))
 }
 
 fn admit_approval_operation(
@@ -3403,17 +3231,6 @@ fn handle_owner_security_operation_session(
     peer_is_desktop: bool,
     request: BootstrapApprovalIpcRequest,
 ) -> io::Result<()> {
-    let reply = |accepted, error, operation, grant, snapshot| {
-        bootstrap_approval_response(
-            Some(request.request_id.clone()),
-            accepted,
-            error,
-            operation,
-            grant,
-            snapshot,
-            None,
-        )
-    };
     if cfg!(target_os = "macos") {
         return write_owner_security_rejection(
             stream,
@@ -3439,260 +3256,10 @@ fn handle_owner_security_operation_session(
     let Some(permit) = admit_approval_operation(context, stream, &request.request_id, true)? else {
         return Ok(());
     };
-    let transaction_id = request.transaction_id.as_deref().unwrap_or_default();
-    let (operation, target, reason, cutoff) = match request.owner_operation.as_ref() {
-        Some(OwnerSecurityOperationRequest::DeviceRestriction {
-            target_device_id,
-            reason,
-            cutoff_seq,
-        }) => (
-            crate::bootstrap_journal::BootstrapOperation::DeviceRestriction,
-            Some(target_device_id.as_str()),
-            Some(*reason),
-            Some(*cutoff_seq),
-        ),
-        Some(OwnerSecurityOperationRequest::SelfRetirement) => (
-            crate::bootstrap_journal::BootstrapOperation::SelfRetirement,
-            None,
-            None,
-            None,
-        ),
-        None => {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "owner_operation_request_rejected",
-            );
-        }
-    };
-    let brain = match load_brain_identity(&context.runtime_root) {
-        Ok(brain) => brain,
-        Err(_) => {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "local_identity_unavailable",
-            );
-        }
-    };
-    let snapshot = match crate::knowledge_materialization::build_owner_security_operation_snapshot(
-        &context.runtime_root,
-        &brain.brain_id,
-        context.store.as_ref(),
-        context.environment,
-        crate::knowledge_materialization::OwnerSecuritySnapshotRequest {
-            transaction_id: transaction_id.to_owned(),
-            operation,
-            target_device_id: target,
-            reason,
-            cutoff_seq: cutoff,
-        },
-    ) {
-        Ok(snapshot) => snapshot,
-        Err(_) => {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "owner_operation_policy_held",
-            );
-        }
-    };
-    let journal = match crate::bootstrap_journal::BootstrapJournalStore::new(&context.runtime_root)
-    {
-        Ok(journal) => journal,
-        Err(_) => {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "approval_journal_unavailable",
-            );
-        }
-    };
-    let existing = match journal.load() {
-        Ok(journal) => journal
-            .transactions
-            .into_iter()
-            .find(|transaction| transaction.snapshot.transaction_id == transaction_id),
-        Err(_) => {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "approval_journal_unavailable",
-            );
-        }
-    };
-    if let Some(existing) = existing {
-        if existing.snapshot != snapshot
-            || existing.state != crate::bootstrap_journal::BootstrapState::OwnerPending
-        {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "approval_transaction_conflict",
-            );
-        }
-    } else {
-        let event_id = match new_bootstrap_event_id() {
-            Ok(event_id) => event_id,
-            Err(error) => {
-                return write_owner_security_rejection(stream, &request.request_id, error);
-            }
-        };
-        if journal
-            .begin_owner_operation(snapshot.clone(), &event_id)
-            .is_err()
-        {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "approval_transaction_conflict",
-            );
-        }
-    }
     let registry = BOOTSTRAP_APPROVAL_SESSIONS
         .get_or_init(crate::approval_session::ApprovalSessionRegistry::default);
-    let connection = match registry.open_connection() {
-        Ok(connection) => connection,
-        Err(_) => {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "approval_session_unavailable",
-            );
-        }
-    };
-    let grant = match registry.issue(&connection, snapshot.clone()) {
-        Ok(grant) => grant,
-        Err(_) => {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "approval_session_unavailable",
-            );
-        }
-    };
-    let prepared = serde_json::to_vec(&reply(
-        true,
-        None,
-        "owner.security.prepared",
-        Some(grant.clone()),
-        Some(snapshot.clone()),
-    ))?;
-    write_response(stream, &prepared, Instant::now() + IPC_RESPONSE_DEADLINE)?;
-    drop(permit); // Owner think-time holds no runtime or canonical admission.
-
-    let followup_frame = match read_ipc_frame(
-        stream,
-        MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES,
-        Instant::now() + IPC_APPROVAL_SESSION_DEADLINE,
-    ) {
-        Ok(frame) if !frame.is_empty() => frame,
-        Ok(_) => return Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::TimedOut => return Ok(()),
-        Err(error) => return Err(error),
-    };
-    let Some(_permit) = admit_approval_operation(
-        context,
-        stream,
-        &request.request_id,
-        request.operation.starts_with("owner.security."),
-    )?
-    else {
-        return Ok(());
-    };
-    let followup: BootstrapApprovalIpcRequest = match serde_json::from_slice(&followup_frame) {
-        Ok(request) => request,
-        Err(_) => {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "malformed_confirmation",
-            );
-        }
-    };
-    if !approval_request_is_authorized(&followup)
-        || !owner_security_followup_has_shape(&followup)
-        || followup.request_id != request.request_id
-        || followup.transaction_id.as_deref() != Some(transaction_id)
-        || !matches!(
-            followup.operation.as_str(),
-            "owner.security.confirm" | "owner.security.cancel"
-        )
-    {
-        return write_owner_security_rejection(
-            stream,
-            &request.request_id,
-            "approval_session_mismatch",
-        );
-    }
-    if !peer_process_id(stream)
-        .ok()
-        .is_some_and(|pid| context.expected_desktop.matches_peer(pid))
-    {
-        return write_owner_security_rejection(
-            stream,
-            &request.request_id,
-            "desktop_authentication_required",
-        );
-    }
-    let capability = followup.capability.as_deref().unwrap_or_default();
-    let digest = followup
-        .approval_request_digest
-        .as_deref()
-        .unwrap_or_default();
-    match registry.consume(&connection, capability, digest) {
-        Ok(consumed) if consumed == snapshot => {}
-        Ok(_) => {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "approval_snapshot_changed",
-            );
-        }
-        Err(_) => {
-            return write_owner_security_rejection(
-                stream,
-                &request.request_id,
-                "approval_confirmation_failed",
-            );
-        }
-    }
-    if followup.operation == "owner.security.cancel" {
-        let result = journal.cancel_pending_approval(transaction_id);
-        let response = serde_json::to_vec(&reply(
-            result.is_ok(),
-            result.err().map(|_| "approval_cancellation_rejected"),
-            "owner.security.cancelled",
-            None,
-            None,
-        ))?;
-        return write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE);
-    }
-    if journal
-        .confirm_owner_operation(transaction_id, digest)
-        .is_err()
-    {
-        return write_owner_security_rejection(
-            stream,
-            &request.request_id,
-            "approval_journal_failed",
-        );
-    }
-    let result = crate::knowledge_materialization::append_confirmed_owner_security_operation(
-        &context.runtime_root,
-        &brain.brain_id,
-        context.store.as_ref(),
-        context.environment,
-        transaction_id,
-    );
-    let response = serde_json::to_vec(&reply(
-        result.is_ok(),
-        result.err().map(|_| "owner_operation_append_held"),
-        "owner.security.result",
-        None,
-        None,
-    ))?;
-    write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)
+    let preparation = approval_domain::prepare_owner(context, registry, request, &permit)?;
+    deliver_approval_session(stream, preparation, permit)
 }
 
 fn handle_bootstrap_approval_completion(
@@ -3701,94 +3268,32 @@ fn handle_bootstrap_approval_completion(
     peer_is_desktop: bool,
     request: BootstrapApprovalIpcRequest,
 ) -> io::Result<()> {
-    let Some(_permit) = admit_approval_operation(context, stream, &request.request_id, false)?
+    let Some(permit) = admit_approval_operation(context, stream, &request.request_id, false)?
     else {
         return Ok(());
     };
-    let reject = |error| {
-        serde_json::to_vec(&bootstrap_approval_response(
-            Some(request.request_id.clone()),
+    let error = if cfg!(target_os = "macos") {
+        Some("platform_peer_identity_unavailable")
+    } else if !peer_is_desktop {
+        Some("approval_request_rejected")
+    } else {
+        None
+    };
+    let reply = if let Some(error) = error {
+        bootstrap_approval_response(
+            Some(request.request_id),
             false,
             Some(error),
             "bootstrap.approval.anchored",
             None,
             None,
             None,
-        ))
-    };
-    // macOS currently exposes only PID-level peer credentials in this IPC
-    // adapter. Do not let a previously confirmed transcript create a durable
-    // trust anchor until the platform can bind the completion connection to
-    // the same live Desktop process instance.
-    if cfg!(target_os = "macos") {
-        let response = reject("platform_peer_identity_unavailable")?;
-        return write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE);
-    }
-    let response = if !peer_is_desktop
-        || !approval_request_is_authorized(&request)
-        || request.operation != "bootstrap.approval.complete"
-        || request.role.is_some()
-        || request.approval_request_digest.is_some()
-        || request.capability.is_some()
-    {
-        reject("approval_request_rejected")?
-    } else {
-        let Some(transcript_messages) = request.transcript_messages.as_ref() else {
-            let bytes = reject("approval_request_rejected")?;
-            return write_response(stream, &bytes, Instant::now() + IPC_RESPONSE_DEADLINE);
-        };
-        let messages = transcript_messages
-            .iter()
-            .map(|message| message.as_bytes().to_vec())
-            .collect::<Vec<_>>();
-        let verified =
-            if messages.len() == 4 && messages.iter().all(|message| message.len() <= 64 * 1024) {
-                let refs = messages.iter().map(Vec::as_slice).collect::<Vec<_>>();
-                cryptex_events::verify_bootstrap_transcript(&refs).ok()
-            } else {
-                None
-            };
-        let Some(verified) = verified else {
-            let bytes = reject("invalid_transcript")?;
-            return write_response(stream, &bytes, Instant::now() + IPC_RESPONSE_DEADLINE);
-        };
-        let journal =
-            match crate::bootstrap_journal::BootstrapJournalStore::new(&context.runtime_root) {
-                Ok(journal) => journal,
-                Err(_) => {
-                    let bytes = reject("approval_journal_unavailable")?;
-                    return write_response(stream, &bytes, Instant::now() + IPC_RESPONSE_DEADLINE);
-                }
-            };
-        if journal
-            .record_verified_complete_transcript(verified.transaction_id(), &messages)
-            .is_err()
-        {
-            reject("approval_transaction_conflict")?
-        } else if crate::knowledge_materialization::append_local_peer_approval_anchor(
-            &context.runtime_root,
-            verified.brain_id(),
-            context.store.as_ref(),
-            context.environment,
-            verified.transaction_id(),
-            &messages,
         )
-        .is_err()
-        {
-            reject("approval_anchor_held")?
-        } else {
-            serde_json::to_vec(&bootstrap_approval_response(
-                Some(request.request_id.clone()),
-                true,
-                None,
-                "bootstrap.approval.anchored",
-                None,
-                None,
-                None,
-            ))?
-        }
+    } else {
+        approval_domain::complete(context, request, &permit)
     };
-    write_response(stream, &response, Instant::now() + IPC_RESPONSE_DEADLINE)
+    AdmittedReply::new(reply, permit, Instant::now() + IPC_RESPONSE_DEADLINE)?
+        .send_using(|bytes, deadline| write_response(stream, bytes, deadline))
 }
 
 fn response_write_deadline_for_operation(operation: &str) -> Instant {
@@ -5927,6 +5432,7 @@ fn desktop_capture_exchange(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    mod approval_domain_tests;
     use std::fs;
 
     use cryptex_core::BrainIdentity;

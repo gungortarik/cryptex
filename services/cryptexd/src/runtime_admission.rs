@@ -64,6 +64,20 @@ struct Inner {
 pub(crate) struct RuntimeAdmission(Arc<Inner>);
 
 impl RuntimeAdmission {
+    /// Bind domain work to this exact instance-owned admission allocation.
+    /// A valid lease from another root or another incarnation is not authority
+    /// for this runtime. Existing admitted work can still drain after stop.
+    pub(crate) fn validate_operation(
+        &self,
+        root: &Path,
+        permit: &OperationPermit,
+    ) -> Result<(), AdmissionError> {
+        if self.0.root != root || !Arc::ptr_eq(&self.0, &permit._lease.admission.0) {
+            return Err(AdmissionError::WrongRuntime);
+        }
+        Ok(())
+    }
+
     pub(crate) fn new(root: &Path, owner: Weak<File>) -> Self {
         Self(Arc::new(Inner {
             root: root.to_owned(),
