@@ -445,18 +445,18 @@ static int send_failure_control(bool once) {
         result = mach_port_extract_right(mach_task_self(), receive, MACH_MSG_TYPE_MAKE_SEND_ONCE, &destination, &type);
         if (result != KERN_SUCCESS) return control_failure("extract_right", result);
         if (type != MACH_MSG_TYPE_PORT_SEND_ONCE) return control_failure("extracted_type", (int)type);
-        // Send-once traffic bypasses queue limits. Exercise a genuinely dead
-        // destination instead of pretending a full queue forces its timeout.
-        if (!drop_receive(&receive)) return control_failure("receive_drop", cleanup_error);
+        // Send-once messages bypass queue limits; even an inactive destination
+        // can report success. Use a deliberately invalid identical destination/
+        // reply name instead: MOVE_SEND_ONCE + MAKE_SEND_ONCE cannot alias.
     }
     unsigned char session[16] = {0};
-    send_message(destination, reply, once, HELLO, 1, session, 0, 0);
-    return SETUP_FAILED; // Both controls must fail through the send-error exit.
+    send_message(destination, once ? destination : reply, once, HELLO, 1, session, 0, 0);
+    return control_failure("unexpected_send_success", 0);
 }
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "reaper-controls")) return reaper_controls();
     if (argc == 2 && !strcmp(argv[1], "send-timeout-copy")) return send_failure_control(false);
-    if (argc == 2 && !strcmp(argv[1], "send-error-once")) return send_failure_control(true);
+    if (argc == 2 && !strcmp(argv[1], "send-error-once-header")) return send_failure_control(true);
     if (argc == 2 && !strcmp(argv[1], "cleanup-control")) {
         mach_port_t receive = MACH_PORT_NULL;
         if (mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &receive) != KERN_SUCCESS) return SETUP_FAILED;

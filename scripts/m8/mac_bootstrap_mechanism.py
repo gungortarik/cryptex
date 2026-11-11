@@ -36,7 +36,7 @@ OBSERVED = {value[0] for value in EXPECTED.values()} | {
 }
 STAGES = {value[1] for value in EXPECTED.values()} | {"spawn", "child_exit", "child_signal", "wait", "kill"}
 CONTROL_STAGES = {"receive_allocate", "reply_allocate", "insert_send", "queue_limit", "seed_send",
-                  "extract_right", "extracted_type", "receive_drop"}
+                  "extract_right", "extracted_type", "receive_drop", "unexpected_send_success"}
 
 
 def control_diagnostic(output):
@@ -103,7 +103,7 @@ def collect(work, run=run_bounded):
                       "--identifier", IDENTIFIER, str(binary)], "adhoc_fixture_sign")
         report["fault_controls"] = {}
         for mode, expected in (("reaper-controls", 0), ("cleanup-control", 68),
-                               ("send-timeout-copy", 67), ("send-error-once", 59)):
+                               ("send-timeout-copy", 67), ("send-error-once-header", 59)):
             control = run([str(binary), mode], 10)
             report["fault_controls"][mode] = {"stage": "child_signal" if control.code < 0 else "child_exit", "code": abs(control.code)}
             if control.output:

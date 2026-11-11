@@ -82,8 +82,8 @@ class BootstrapMechanismTests(unittest.TestCase):
                     code = forced_code
                 elif len(args) > 1 and args[1] == "lookup-missing":
                     code, timeout = cleanup_code, cleanup_timeout
-                elif len(args) > 1 and args[1] in {"reaper-controls", "cleanup-control", "send-timeout-copy", "send-error-once"}:
-                    code = {"reaper-controls": 0, "cleanup-control": cleanup_fault_code, "send-timeout-copy": 67, "send-error-once": 59}[args[1]]
+                elif len(args) > 1 and args[1] in {"reaper-controls", "cleanup-control", "send-timeout-copy", "send-error-once-header"}:
+                    code = {"reaper-controls": 0, "cleanup-control": cleanup_fault_code, "send-timeout-copy": 67, "send-error-once-header": 59}[args[1]]
                     if args[1] == control_failure:
                         code, output = 1, control_output
                 return SimpleNamespace(code=code, output=output, limited=False, timed_out=timeout, pipe_failed=False)
@@ -117,7 +117,7 @@ class BootstrapMechanismTests(unittest.TestCase):
         self.assertFalse(report["phase_one_complete"])
 
     def test_each_native_cleanup_fault_control_is_required(self):
-        for mode in ("reaper-controls", "cleanup-control", "send-timeout-copy", "send-error-once"):
+        for mode in ("reaper-controls", "cleanup-control", "send-timeout-copy", "send-error-once-header"):
             report = self.run_collect(control_failure=mode)
             self.assertFalse(report["phase_one_complete"])
             self.assertEqual(report["diagnostic"], "native_fault_control_failed")
@@ -131,9 +131,9 @@ class BootstrapMechanismTests(unittest.TestCase):
 
     def test_control_actual_stage_is_preserved_without_exporting_extra_data(self):
         diagnostic = {"stage": "extract_right", "code": 17}
-        report = self.run_collect(control_failure="send-error-once", control_output=json.dumps(diagnostic))
+        report = self.run_collect(control_failure="send-error-once-header", control_output=json.dumps(diagnostic))
         self.assertFalse(report["phase_one_complete"])
-        self.assertEqual(report["fault_controls"]["send-error-once"]["diagnostic"], diagnostic)
+        self.assertEqual(report["fault_controls"]["send-error-once-header"]["diagnostic"], diagnostic)
         for value in ({**diagnostic, "token": "forbidden"}, {"stage": "unknown", "code": 1}, {"stage": "extract_right", "code": True}):
             with self.assertRaises(PreflightError):
                 probe.control_diagnostic(json.dumps(value))
