@@ -48,8 +48,7 @@ at the same full SHA completed successfully. Both Desktop startup matrix jobs
 passed. The Mac log includes all four content/session markers, all eight
 negative startup cases and disposable signing fixture cleanup. Platform counts
 include Mac/Windows startup 11/10, Desktop 39/46, approval 17/17, IPC 71/80
-and owner channel 22/14. Four existing Mac IPC tests were ignored. Interactive
-WebView acceptance still needs an owner run on a real Mac.
+and owner channel 22/14. Four existing Mac IPC tests were ignored.
 
 The [interactive fixture build](https://github.com/gungortarik/cryptex/actions/runs/43104045850)
 exported the tested arm64 bundle at the same product SHA. Its disposable signing
@@ -61,6 +60,15 @@ interactive entry calls Tauri's `run`. The macOS Tao loop exits the process
 before control can return to `owner.close()` on ordinary quit. The collector
 reports the journal independently when the shutdown receipt is absent and
 leaves event-prefix verification incomplete in that case.
+
+The owner returned `MAC-ARAYUZ-SONUC-272703d4.zip` (SHA-256
+`5e556a53140576014a89d0f914140942c83bc09cbfe05e3dde167a1dcc86c4b2`).
+The single `result.json` identifies source `efdb877719cc64f34c612d92f6bfce364a167f62`.
+The owner reported Active after relaunch. The journal check returned true for
+one cancellation with zero append attempts and one anchored confirmation with
+one attempt. Desktop exited with code 0. The outcome was
+`journal_verified_shutdown_receipt_missing` and
+`two_events_original_prefix_preserved` was null.
 
 The actual signed headless fixture requires all four result markers for actual
 Context/provider installation, synthetic prepare/cancel/confirm, lost native
@@ -115,7 +123,7 @@ runner regressions passed. A later local daemon test executable was refused by
 Windows Application Control (4551), before execution; security settings were
 not changed and that attempted run is not reported as a pass.
 
-Open gates: actual interactive WebView rendering and human review on the Mac,
+Open gates: the native UI shutdown receipt and its verified event-prefix check,
 same-profile durable restart with the intended platform secure store, product
 publisher/OS-floor decisions and explicit activation. The fresh-runtime lost
 handle test does not establish same-profile restart or old wire-capability

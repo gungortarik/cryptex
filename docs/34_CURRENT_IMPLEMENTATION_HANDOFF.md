@@ -27,10 +27,12 @@ immutable frontend catalog is cached per retained Release only.
 
 After recovery, a [fresh dispatch at the same commit](https://github.com/gungortarik/cryptex/actions/runs/43101602427)
 passed both native platform jobs. The Mac job passed all four content/session
-markers and all eight startup refusal fixtures. The next check is the owner
-Mac WebView using the signed interactive fixture for this source. Do not infer interactive
-WebView acceptance, same-profile durable recovery or M8 completion from headless
-synthetic checks. The candidate's other product UI controls are not enabled.
+markers and all eight startup refusal fixtures. On the owner's Mac the signed
+WebView opened, showed Active after relaunch, and recorded one cancellation
+and one confirmation. The app exited with code 0, but the shutdown receipt was
+missing. The next check is to return from the candidate's event loop, finish
+owner cleanup, and verify the event count and preserved prefix on native quit.
+Same-profile durable recovery and M8 acceptance remain open.
 
 The Windows M8 pairing form now labels the four signed messages by sender
 and recipient. The guided action assembles the role-specific prefix and opens
