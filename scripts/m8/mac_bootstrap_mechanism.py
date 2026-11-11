@@ -28,12 +28,13 @@ EXPECTED = {
     "fresh_child_session": ("authenticated", "validate", (0,)),
     "supervisor_deadline_distinct": ("supervisor_deadline", "supervisor", (63,)),
     "normal_close_namespace_removal": ("namespace_removed", "independent_lookup", (1102,)),
+    "owned_right_cleanup": ("cleanup_calls_succeeded", "cleanup", (0,)),
 }
 OBSERVED = {value[0] for value in EXPECTED.values()} | {
     "bootstrap_error", "collision_not_refused", "spawn_error", "unexpected",
-    "child_failed", "receive_deadline", "namespace_not_removed",
+    "child_failed", "receive_deadline", "namespace_not_removed", "cleanup_error",
 }
-STAGES = {value[1] for value in EXPECTED.values()} | {"spawn", "child_exit", "child_signal", "wait"}
+STAGES = {value[1] for value in EXPECTED.values()} | {"spawn", "child_exit", "child_signal", "wait", "kill"}
 
 
 def parse_native(output):
@@ -87,6 +88,14 @@ def collect(work, run=run_bounded):
         checked(lambda *_: compiled, [], "native_compile", 60)
         checked(run, ["/usr/bin/codesign", "--force", "--timestamp=none", "--sign", "-",
                       "--identifier", IDENTIFIER, str(binary)], "adhoc_fixture_sign")
+        report["fault_controls"] = {}
+        for mode, expected in (("reaper-controls", 0), ("cleanup-control", 62),
+                               ("send-timeout-copy", 67), ("send-error-once", 59)):
+            control = run([str(binary), mode], 10)
+            report["fault_controls"][mode] = {"stage": "child_signal" if control.code < 0 else "child_exit", "code": abs(control.code)}
+            if (control.code != expected or control.output != "" or control.limited or control.timed_out or control.pipe_failed):
+                raise PreflightError("native_fault_control_failed")
+        report["failed_send_cleanup"] = "fixture_exit_releases_ipc_space_supervisor_stops_owned_group"
         prefix = "com.cryptex.m8.bootstrap." + secrets.token_hex(12)
         native = run([str(binary), "probe", prefix], 120)
         report["native_exit"] = native.code

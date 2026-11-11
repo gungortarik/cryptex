@@ -62,7 +62,7 @@ class BootstrapMechanismTests(unittest.TestCase):
             probe.parse_native("")
 
     def run_collect(self, native_code=0, native_rows=None, forced_code=-9, cleanup_code=0,
-                    native_timeout=False, cleanup_timeout=False):
+                    native_timeout=False, cleanup_timeout=False, control_failure=None):
         with tempfile.TemporaryDirectory() as directory:
             def run(args, _timeout=20):
                 output, code, timeout = "", 0, False
@@ -81,6 +81,10 @@ class BootstrapMechanismTests(unittest.TestCase):
                     code = forced_code
                 elif len(args) > 1 and args[1] == "lookup-missing":
                     code, timeout = cleanup_code, cleanup_timeout
+                elif len(args) > 1 and args[1] in {"reaper-controls", "cleanup-control", "send-timeout-copy", "send-error-once"}:
+                    code = {"reaper-controls": 0, "cleanup-control": 62, "send-timeout-copy": 67, "send-error-once": 59}[args[1]]
+                    if args[1] == control_failure:
+                        code = 1
                 return SimpleNamespace(code=code, output=output, limited=False, timed_out=timeout, pipe_failed=False)
             # The collector only executes on Darwin; this mock runner also runs
             # on Windows, which does not define the POSIX signal constant.
@@ -110,6 +114,13 @@ class BootstrapMechanismTests(unittest.TestCase):
         report = self.run_collect(native_code=2, native_rows=[failure])
         self.assertEqual(report["cases"], [failure])
         self.assertFalse(report["phase_one_complete"])
+
+    def test_each_native_cleanup_fault_control_is_required(self):
+        for mode in ("reaper-controls", "cleanup-control", "send-timeout-copy", "send-error-once"):
+            report = self.run_collect(control_failure=mode)
+            self.assertFalse(report["phase_one_complete"])
+            self.assertEqual(report["diagnostic"], "native_fault_control_failed")
+            self.assertEqual(report["fault_controls"][mode], {"stage": "child_exit", "code": 1})
 
 
 if __name__ == "__main__":
