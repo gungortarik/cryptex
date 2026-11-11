@@ -27,6 +27,10 @@ EXPECTED = {
     "queued_after_exit": ("sender_not_live", "validate", (54,)),
     "fresh_child_session": ("authenticated", "validate", (0,)),
     "supervisor_deadline_distinct": ("supervisor_deadline", "supervisor", (63,)),
+    "substituted_endpoint": ("sender_pid_refused", "child_exit", (52,)),
+    "transferred_reply": ("sender_pid_refused", "child_exit", (52,)),
+    "transferred_service": ("sender_pid_refused", "validate", (52,)),
+    "genuine_after_transfer": ("authenticated", "validate", (0,)),
     "normal_close_namespace_removal": ("namespace_removed", "independent_lookup", (1102,)),
     "owned_right_cleanup": ("cleanup_calls_succeeded", "cleanup", (0,)),
 }

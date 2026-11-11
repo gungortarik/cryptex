@@ -138,6 +138,19 @@ class BootstrapMechanismTests(unittest.TestCase):
             with self.assertRaises(PreflightError):
                 probe.control_diagnostic(json.dumps(value))
 
+    def test_attack_timeout_or_setup_refusal_cannot_count_as_identity_rejection(self):
+        for name in ("substituted_endpoint", "transferred_reply", "transferred_service"):
+            for stage, code in (("child_exit", 61), ("child_exit", 62), ("supervisor", 63), ("child_signal", 9)):
+                row = next(row for row in self.rows() if row["case"] == name)
+                row.update(stage=stage, code=code, **{"pass": True})
+                with self.assertRaises(PreflightError):
+                    self.parse([row])
+
+    def test_transfer_rejection_requires_independent_genuine_continuation(self):
+        rows = self.rows()
+        rows = [row for row in rows if row["case"] != "genuine_after_transfer"]
+        self.assertFalse(probe.complete(self.parse(rows), 0))
+
 
 if __name__ == "__main__":
     unittest.main()

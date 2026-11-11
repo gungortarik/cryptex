@@ -69,7 +69,42 @@ after child exit refused; fresh child/session exchange; distinct supervisor
 timeout; independent normal/forced-exit namespace removal. Reports must preserve
 typed observed stage/code rather than an expected-outcome label alone.
 
-Remaining research includes a malicious substituted rendezvous/reply endpoint,
+## Phase-two adversarial fixtures (native verification pending)
+
+The root process checks in a separate control service and captures its helper's
+actual spawn PID. The helper checks in an attack service, sends a READY frame,
+and accepts configuration only from its actual parent authenticated through the
+kernel trailer. Root authenticates that captured helper and spawns the victim
+itself; the victim's getppid therefore remains the real root. Only then does root
+send the exact captured victim PID as authenticated helper configuration.
+
+Three fixed fixtures preserve this control/data separation:
+
+- Substituted endpoint: victim discovers the helper's service. Helper validates
+  the actual configured victim HELLO and sends a correctly formed ACK over its
+  real reply right, claiming the root PID. Only victim exit WRONG_PID52 plus
+  helper normal exit0 can pass; timeout/layout/setup refusal cannot.
+- Transferred reply: root validates the victim HELLO, then moves its real
+  send-once reply right to the authenticated helper via a one-descriptor control
+  message. The helper sends the valid-looking ACK. Victim must again reject the
+  actual kernel sender specifically as WRONG_PID52.
+- Transferred service: root copies an actual service send right to the helper.
+  Helper sends the exact valid next sequence/session/op with the victim's claimed
+  PID. Root requires WRONG_PID52 and unchanged retained pin/generation/sequence;
+  the legitimate victim must subsequently succeed using sequence2.
+
+Control messages have a distinct message ID, fixed operation/sequence/session,
+and an exact one-right descriptor layout. Send-once rights move; ordinary send
+rights copy. A received descriptor is detached before message destruction, and
+the donor field is cleared only after a successful move. All fifteen owned
+control/data/attack service names require independent removal checks.
+
+These fixtures are still CI-only ad-hoc mechanism tests. The own-image versus
+peer-image selector is trusted local policy state, never an imported field; it
+prepares separate Desktop/helper and daemon roles without accepting signatures
+from an untrusted sibling. Certified two-binary policy remains a separate gate.
+
+Remaining research includes native verification of these attack fixtures,
 concurrent attacker flooding/deadline budgeting, transferred send rights, bundle
 replacement/snapshot consistency, signed two-binary policy, and the actual product
 owner-session lifecycle. Prior raw-Mach/signing receipts do not satisfy these.
