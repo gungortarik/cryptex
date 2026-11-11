@@ -1,5 +1,54 @@
 # 34 — Current Implementation Handoff
 
+## Local certificate profile continuation
+
+Source `4138184` adds a local/development certificate profile independently of
+the Developer ID distribution profile. The local profile pins exact signer DER,
+role identifiers and image hashes. CMS policy must pin that same certificate.
+The native channel retains the certificate and compares each kernel-attributed
+sender's actual signing leaf before accepting its bytes.
+
+This prepares fee-free signed integration. It does not activate product routes.
+The scoped Mac CI also runs a certificate-positive parent/child exchange using
+a disposable local identity. Its test-only selector signs a copy of the native
+test executable and propagates an independent exact DER pin to both peers.
+The CI-only runner owns a fresh private keychain and deletes its signing
+material before reporting fixture cleanup. It checks hosted macOS runner scope
+and refuses owner machines and self-hosted runners. It temporarily includes
+the private keychain in identity discovery and restores the exact original
+search list before deleting the keychain. It does not write OS trust settings.
+
+Next, bind the protected inventory/content to actual Desktop/daemon startup and
+pending approval lifetimes, then run that signed application pair on the
+owner's Mac. The parent/child fixture is component evidence. Native ad-hoc
+processes additionally exercise missing-certificate rejection, while policy
+and CMS tests check DER propagation and signer/profile consistency.
+
+Independent source reviews covered native certificate ownership/FFI and the
+disposable runner's creation-failure cleanup, hosted-runner scope and final
+cleanup reporting. The final runner review of `88185c7` found no actionable
+issue; this is source review, not native execution.
+The initial import attempt exposed a PKCS12 compatibility issue. The fixture
+uses an explicitly CodeSigning certificate and a macOS-compatible PKCS12
+container. Exact native certificate and CodeDirectory checks retain their
+original strength. The container's legacy MAC is test transport only.
+
+The no-OS-trust runner source is `88185c7`. Two local Python regressions check
+redacted unexpected failure and cleanup after search-list restoration failure.
+The earlier `af85833` run completed the native exchange but failed fixture
+cleanup; it is not passing acceptance evidence.
+
+[Exact-source CI for `88185c7`](https://github.com/gungortarik/cryptex/actions/runs/43061253818)
+passed on Mac and Windows. It passed the Mac certificate-pinned exchange and fixture cleanup without OS trust
+writes. Mac startup passed 10, Desktop passed 39, owner-channel passed 20 with
+two explicitly invoked helper ignores, and IPC passed 71 with its four existing
+ignores. The selected approval-session and runtime-admission checks, native C
+ownership checks, formatting and lint also passed.
+Windows startup passed 9, Desktop passed 46, approval-session passed 17, IPC
+passed 80 and shared owner-channel passed 13. Both standard-user test runs
+confirmed removal of their temporary account/profile. This scoped run does not
+claim a full workspace or real signed Desktop/daemon product-path acceptance.
+
 ## Signing prerequisite clarification
 
 Paid membership is not required to continue local development or isolated

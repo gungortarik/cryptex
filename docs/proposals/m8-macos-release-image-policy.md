@@ -21,6 +21,29 @@ acceptance.
 [Apple development membership overview](https://developer.apple.com/help/account/membership/programs-overview).
 [Apple Developer ID distribution](https://developer.apple.com/developer-id/).
 
+The source now has a separate `LocalCertificate` profile. It requires a nonempty
+independently pinned certificate DER, distinct identifiers and exact image
+hashes. The CMS signer pin must equal the profile's certificate. Native channel
+configuration copies and validates that certificate, and every sender check
+compares its actual leaf certificate DER, identifier and image hash to policy.
+This profile does not require an Apple Team ID or a Developer ID chain.
+The existing Developer ID distribution profile retains its own constraints.
+
+The candidate product factory remains closed. Native CI checks local policy
+propagation and rejects an ad-hoc sender when a certificate pin is required.
+A separate CI runner provisions an isolated disposable identity and signs the
+native test executable, then repeats the supervised parent/child exchange with
+the exact certificate pin. Its keychain and private key are temporary. The
+hosted CI runner temporarily includes that private keychain in identity
+discovery, restores the exact original search list and deletes the keychain
+before reporting cleanup success. It does not write OS trust settings. Test
+signer selection exists only in the Rust test binary.
+
+This native exchange is component evidence. Actual Desktop/daemon application
+startup, protected content consumption and approval-session integration remain
+open. The earlier signed personal-Mac mechanism evidence does not substitute
+for the new backend's tests.
+
 ## Implemented disabled inventory and content snapshot
 
 The private Mac candidate now verifies an attached CMS signed-data inventory
