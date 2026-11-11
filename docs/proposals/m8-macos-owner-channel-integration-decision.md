@@ -1,5 +1,12 @@
 # M8 Mac owner-channel integration: approved disabled candidate
 
+Implementation continuation (2026-11-11): the shared closed request/reply and
+transport-neutral exchange/approval-session seams are implemented. See the
+[domain/session evidence](../../evidence/m8/m8-approval-domain-sessions-20261111.md)
+for exact source, verification and remaining backend/image-policy work. Parsing,
+admission and domain fixtures do not establish a native authenticated request.
+The product channel remains disabled; ADR-0020's activation limits still apply.
+
 Status: **OWNER APPROVED FOR INITIALLY DISABLED CANDIDATE DEVELOPMENT**.
 Date:2026-11-10. The owner explicitly authorized this bounded candidate in chat.
 [ADR-0020](../adr/ADR-0020-macos-m8-owner-channel-candidate.md) records that scope.

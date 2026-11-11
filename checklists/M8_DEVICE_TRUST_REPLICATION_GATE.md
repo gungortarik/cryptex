@@ -1,6 +1,6 @@
 # M8 completion ledger
 
-Updated 2026-11-10. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
+Updated 2026-11-11. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
@@ -8,7 +8,11 @@ Owner-approved [disabled Mac adapter foundation](../evidence/m8/m8-disabled-maco
 sourceca5665d CI42960387437 and source review passed. Default-off outbound/Unix
 inbound gates cover all M8 families with no fallback. Shared request/reply types
 and admitted exchange replies are implemented; new contract/reply tests9/9 and
-Mac gate2 passed. Native proof/backend, remaining typed approval-session execution,
+Mac gate2 passed. The remaining [typed approval domain/session boundary](../evidence/m8/m8-approval-domain-sessions-20261111.md)
+is implemented on `449dc3c` (final tests `e0da25e`), with11 new regressions and no
+actionable source-review finding. Exact CI42963863735 passed both platforms:
+complete IPC Windows80/Mac71pass, four preexisting Mac ignores, zero failures.
+All11 new tests passed on both; native lint/format/frontend passed. Native proof/backend,
 stable product-image policy and native product acceptance remain unimplemented.
 ADR-0020 authorizes continued disabled development; activation and M8 stay gated.
 
@@ -17,7 +21,7 @@ passed Windows/Mac startup9/10, Desktop46/39, approval registry17/17 and client
 stream/response3/3 with zero failures/ignored; native lint/format/frontend passed.
 Windows standard-user checks/cleanup and exact selected/excluded inventories were
 verified. This does not enable Mac mutations or prove physical UI/signed product
-custody. The proposed Mac owner adapter requires a separate owner/ADR decision.
+custody. ADR-0020 now records the separate disabled-integration owner decision.
 
 Authorized public message-bootstrap: [personal-Mac exact source8e8fabb receipt](../evidence/m8/m8-macos-signed-bootstrap-owner-receipt-20261110.md)
 passed all19 signed native rows, certified two-binary/self-bundle eligibility,

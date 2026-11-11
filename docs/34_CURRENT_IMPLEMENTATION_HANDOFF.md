@@ -1,5 +1,36 @@
 # 34 — Current Implementation Handoff
 
+## Remaining approval domain/session boundary implemented (2026-11-11)
+
+Within the already approved disabled ADR-0020 scope, source449dc3c extracts
+prepare/confirm/cancel/complete into a private transport-neutral domain module.
+Pending sessions freeze their original root/store/registry/admission allocation
+and verified operation. Each finish/rejection/abandonment burns the ephemeral
+grant without durably cancelling or rolling back an uncertain result. Bounded
+prepared/final sends retain admission; owner think-time does not. A foreign
+admission incarnation is rejected even with the same runtime path. Existing
+socket peer checks and all Mac product refusals remain in place.
+
+Final test source `e0da25e` adds11 domain/wrapper regressions, including a context
+already carrying a lease, journaled signing/completion, unchanged canonical
+prefixes and one-append/no-op replay. Source-only independent review has no
+actionable finding. Exact native CI42963863735 SUCCESS: startup Windows9/Mac10,
+Desktop46/39, registry17/17, complete IPC80pass/71pass, closed request/reply9/9,
+Mac runtime-admission5 and Mac product-gate2 passed. All11 new tests passed on
+both; the four existing native Mac owner IPC ignores remain open. Native lint,
+format/frontend, exact selected/excluded inventories and both Windows actual
+standard-user/temporary-profile cleanup checks were verified. This is scoped
+domain/socket evidence, not native Mac authenticated owner-channel acceptance.
+[Current evidence and continuation](../evidence/m8/m8-approval-domain-sessions-20261111.md).
+
+Next authorized work: review product-image/stability and long-lived native-right
+ownership policy, then implement the disabled backend with kernel-verified exact
+request authority. Native backend, product signer/minimum-OS selection, signed
+product acceptance and activation are still open; M8 is OPEN. No new device run
+or repeated owner permission is needed for this completed domain extraction.
+The remaining-session continuation in the older foundation snapshot below is
+superseded by this section.
+
 ## Owner approved disabled Mac adapter; first boundary implemented (2026-11-10)
 
 The owner explicitly approved the proposed initially disabled Mac M8 integration.

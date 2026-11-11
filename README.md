@@ -5,19 +5,24 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
 The owner-approved [disabled Mac M8 adapter foundation](evidence/m8/m8-disabled-macos-owner-adapter-20261110.md)
-is implemented on sourceca5665d and passed exact Windows/Mac CI42960387437 and
-source review. All Mac M8 families now refuse on the legacy Unix path, including
+passed exact Windows/Mac CI42960387437 and source review. The remaining
+[approval domain/session boundary](evidence/m8/m8-approval-domain-sessions-20261111.md)
+is implemented on `449dc3c` (final tests `e0da25e`) and passed
+[Windows/Mac CI42963863735](https://github.com/gungortarik/cryptex/actions/runs/42963863735)
+and independent source review. All11 new tests passed on both platforms;
+complete IPC: Windows80passed, Mac71passed/4preexisting ignored, zero failures.
+All Mac M8 families refuse on the legacy Unix path, including
 exchange/read/proof; no runtime switch/fallback enables them. Shared wire types,
-exchange domain execution and bounded admitted replies are in place. Native Mach
-authority, remaining session handlers and product image policy are still pending;
+exchange/approval domain execution and bounded admitted replies are in place.
+Native Mach authority and product image policy are still pending;
 this is not a working native owner channel or Mac parity. Ordinary Unix APIs and
 Windows pipes remain unchanged. No new device run is requested.
 
 Latest product connection check: [session lifetime corrections](evidence/m8/m8-connection-session-lifetime-review-20261110.md)
 passed exact CI42956476071/source9dd0a40 on Windows and Mac: actual daemon crash/
 reconnect, original-stream handle loss, registry lifetime and confirm/cancel response
-correlation. Product Unix IPC is unchanged. A [proposed Mac M8 owner adapter](docs/proposals/m8-macos-owner-channel-integration-decision.md)
-needs a separate integration decision; Mac mutation gates remain closed.
+correlation. Ordinary Unix IPC is unchanged. The [Mac M8 owner adapter](docs/proposals/m8-macos-owner-channel-integration-decision.md)
+is approved for disabled development under ADR-0020; Mac mutation gates remain closed.
 
 Latest Mac continuation: [personal-Mac signed bootstrap receipt](evidence/m8/m8-macos-signed-bootstrap-owner-receipt-20261110.md)
 passed all19 observations on exact source8e8fabb, with certified self/bundle

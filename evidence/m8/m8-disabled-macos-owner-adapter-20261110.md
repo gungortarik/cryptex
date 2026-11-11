@@ -1,6 +1,8 @@
 # Initially disabled Mac M8 adapter: boundary and first domain seam
 
 Status: **candidate foundation implemented; native authority NOT implemented**.
+The remaining approval-session seam has since been extracted; its exact source,
+tests and current continuation are in the [2026-11-11 session receipt](m8-approval-domain-sessions-20261111.md).
 Owner approval and bounds: [ADR-0020](../../docs/adr/ADR-0020-macos-m8-owner-channel-candidate.md).
 This receipt does not enable a Mach channel, select a product signer or close M8.
 
@@ -111,14 +113,13 @@ The native CI is the execution evidence. No new Mac/VM owner package is needed.
 | Approval/ADR scope and fixed default-off product boundary | implemented |
 | Shared closed request/response wire contracts and bounded reply admission | implemented |
 | Exchange identity/offer/proof domain executor without Stream | extracted, behind existing authorized Windows wrapper |
-| Transport-neutral prepare/confirm/cancel/complete domain/session execution | remaining; do not call legacy Stream handlers with fabricated peer authority |
+| Transport-neutral prepare/confirm/cancel/complete domain/session execution | extracted in449dc3c; see the2026-11-11 receipt for final test/review evidence; no fabricated peer authority |
 | Private kernel-verified exact-request proof and native Mach receive/send/pins | NOT implemented; no production proof constructor exists |
 | Configured product signing authority and stable bundle/live-image observation | NOT configured/proven |
 | Product native restart/forwarding/bundle-change/cleanup acceptance | NOT run |
 | Mac activation, publication/transport parity and M8 completion | CLOSED / OPEN work, respectively |
 
-Next authorized work: extract the remaining typed domain/session boundary with
-real epoch/grant invalidation and retained admission, then develop the native
+Next authorized work after the session extraction: develop the native
 backend only against a reviewed product-image/stability policy and correct
 long-lived failure/right cleanup. The disposable probe's _exit cleanup and local
 development signer must not be silently promoted into production. Static
