@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+# Isolated, headless real-binary startup experiment. Never enables owner routes.
+m8-local-startup-check = []
+
 [[bin]]
 name = "cryptexd"
 path = "src/main.rs"

@@ -34,7 +34,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.desktop_startup_only
     name: Desktop startup (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -61,7 +61,7 @@ jobs:
       - name: Verify native Mac frame and right ownership
         if: runner.os == 'macOS'
         run: sh scripts/m8/test-mac-owner-native.sh
-      - name: Test certificate-pinned local Mac native exchange
+      - name: Test local certificate native exchange and actual signed startup
         if: runner.os == 'macOS'
         run: python3 scripts/m8/test_mac_local_signing_ci.py
       - name: Test actual child startup, malformed readiness and crash restart

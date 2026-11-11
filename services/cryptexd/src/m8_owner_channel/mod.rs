@@ -8,6 +8,8 @@
 use std::fmt;
 
 mod image_policy;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+pub mod local_startup;
 #[cfg(target_os = "macos")]
 mod native;
 #[cfg(target_os = "macos")]

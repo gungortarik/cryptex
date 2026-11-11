@@ -1,0 +1,47 @@
+# Local signed Desktop/daemon startup check
+
+This is the default-off, headless continuation of ADR-0020. The owner authorized
+the existing fee-free local certificate profile for actual Desktop-to-daemon
+startup. It does not activate Mac owner operations or select a distribution
+publisher.
+
+The `m8-local-startup-check` Cargo feature is absent from ordinary builds.
+It requires macOS and an explicit build-time certificate DER pin. Missing,
+oversized or invalid certificate input fails the build; Cargo tracks both
+the selection and file content. The pin is embedded before signing the two
+distinct role images. Runtime arguments provide locators, never trust policy.
+
+The feature-only Desktop entry runs before Tauri. It exclusively creates a
+fresh temporary runtime, verifies a CMS inventory against the embedded pin,
+and retains the verified content snapshot. It uses the ordinary Desktop
+lifecycle-hold command constructor to launch the actual daemon. The daemon's
+feature-only hook runs before ordinary lifecycle/runtime initialization.
+Both independently verify the same inventory and content snapshot.
+
+The Desktop opens a fresh rendezvous before spawning. Native checks retain
+the actual child/parent instance and validate the opposite role identifier,
+certificate leaf and signed image hash. The only exchanged application frames
+are 54 bytes: magic, version, fixed sender role, native epoch and inventory
+SHA-256. They have no owner-operation, capability or domain fields.
+Neither peer accepts a different inventory observation.
+
+The Desktop owns the snapshot, native channel and exact child through
+authentication, strict absolute-deadline readiness and cleanup. The daemon
+retains its channel/snapshot across its ordinary lifecycle and closes it before
+exiting. An existing runtime is refused. Crash/restart uses a fresh verified
+inventory observation, child and epoch; the old live channel must refuse.
+
+The hosted-Mac fixture builds and locally signs both real executables and the
+inventory inside its disposable keychain scope, without OS trust writes.
+It tests startup, forced child exit, restart, old-channel refusal and clean
+shutdown. Negatives cover changed listed content, wrong release/hash/role,
+absent signing leaf and a foreign launching parent. Shared readiness tests
+include a complete PID file observed only after the absolute budget expired.
+
+This establishes only the tested headless signed-process startup binding.
+The content snapshot does not make an executable path atomic or seal an
+existing webview's resources. The feature constructs no authenticated owner
+request, pending approval grant or native domain dispatcher. Product factories,
+ordinary Unix owner refusals and Windows policies remain unchanged. Tauri
+protected-content consumption, approval/session integration, signed interactive
+acceptance and product activation remain open.

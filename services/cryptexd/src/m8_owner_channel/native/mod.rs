@@ -8,7 +8,7 @@ use std::time::Instant;
 
 type Epoch = [u8; 16];
 
-struct ImagePolicy<'a> {
+pub(super) struct ImagePolicy<'a> {
     requirement: &'a CStr,
     cdhash: &'a [u8],
     signer_der: Option<&'a [u8]>,
@@ -75,7 +75,7 @@ fn native_deadline(deadline: Instant) -> u64 {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Error {
+pub(super) enum Error {
     Argument,
     Resource,
     Rendezvous,
@@ -138,18 +138,22 @@ impl Drop for Handle {
     }
 }
 
-struct Listener(Handle);
-struct Channel(Handle);
+pub(super) struct Listener(Handle);
+pub(super) struct Channel(Handle);
 
 impl Listener {
-    fn open() -> Result<(Self, Epoch), Error> {
+    pub(super) fn open() -> Result<(Self, Epoch), Error> {
         let mut epoch = [0; 16];
         // SAFETY: the output slots are valid for the entire native call.
         let listener = Handle::open(|out| unsafe { cx_listen(out, epoch.as_mut_ptr()) })?;
         Ok((Self(listener), epoch))
     }
 
-    fn accept(self, child: &mut Child, policy: &ImagePolicy<'_>) -> Result<Channel, Error> {
+    pub(super) fn accept(
+        self,
+        child: &mut Child,
+        policy: &ImagePolicy<'_>,
+    ) -> Result<Channel, Error> {
         if child.try_wait().map_err(|_| Error::Instance)?.is_some() {
             return Err(Error::Instance);
         }
@@ -162,17 +166,17 @@ impl Listener {
 }
 
 impl Channel {
-    fn close(self) -> Result<(), Error> {
+    pub(super) fn close(self) -> Result<(), Error> {
         self.0.close()
     }
 
-    fn connect(epoch: &Epoch, policy: &ImagePolicy<'_>) -> Result<Self, Error> {
+    pub(super) fn connect(epoch: &Epoch, policy: &ImagePolicy<'_>) -> Result<Self, Error> {
         // SAFETY: native code copies the epoch/policy and selects getppid itself.
         Handle::open(|out| unsafe { cx_connect(out, epoch.as_ptr(), &policy.as_native()) })
             .map(Self)
     }
 
-    fn send(&mut self, bytes: &[u8], deadline: Instant) -> Result<(), Error> {
+    pub(super) fn send(&mut self, bytes: &[u8], deadline: Instant) -> Result<(), Error> {
         // SAFETY: synchronous bounded copy of a borrowed slice.
         checked(unsafe {
             cx_send(
@@ -184,7 +188,11 @@ impl Channel {
         })
     }
 
-    fn receive<'a>(&mut self, bytes: &'a mut [u8], deadline: Instant) -> Result<&'a [u8], Error> {
+    pub(super) fn receive<'a>(
+        &mut self,
+        bytes: &'a mut [u8],
+        deadline: Instant,
+    ) -> Result<&'a [u8], Error> {
         let mut size = 0;
         // SAFETY: the decoder receives the exact capacity and only returns a
         // body after validating its framing, session and live kernel sender.

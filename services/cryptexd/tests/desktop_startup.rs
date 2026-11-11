@@ -1,7 +1,7 @@
 //! Shared production Desktop launch/readiness path with real child processes.
 //! This does not establish macOS owner-operation authorization.
 
-use cryptexd::daemon_startup::{StartupError, await_ready};
+use cryptexd::daemon_startup::{StartupError, await_ready, await_ready_until};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -148,6 +148,26 @@ fn held_incomplete_readiness_reaches_deadline_instead_of_refusal_or_success() {
             StartupError::Deadline
         );
     }
+}
+
+#[test]
+fn absolute_startup_budget_refuses_complete_readiness_after_expiry() {
+    let root = Runtime::new("absolute-budget");
+    let mut child = OwnedChild(worker(&root, "fixed-partial"));
+    wait_file(&root.0.join("fixture-prepared"));
+    fs::write(root.0.join("ready"), format!("{}\n", child.0.id())).unwrap();
+    assert_eq!(
+        await_ready_until(&mut child.0, &root.0.join("ready"), Instant::now()),
+        Err(StartupError::Deadline)
+    );
+    // Borrowed API leaves cleanup with its owner's other startup guards.
+    assert!(child.0.try_wait().unwrap().is_none());
+    await_ready_until(
+        &mut child.0,
+        &root.0.join("ready"),
+        Instant::now() + Duration::from_secs(2),
+    )
+    .unwrap();
 }
 
 #[test]

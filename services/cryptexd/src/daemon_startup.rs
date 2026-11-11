@@ -78,7 +78,37 @@ pub fn await_ready(
     timeout: Duration,
 ) -> Result<Child, StartupError> {
     let deadline = Instant::now() + timeout;
-    let result = loop {
+    match observe_ready(&mut child, ready, deadline, false) {
+        Ok(()) => Ok(child),
+        Err(error) => {
+            let _ = child.kill();
+            child.wait().map_err(|_| StartupError::ChildCleanup)?;
+            Err(error)
+        }
+    }
+}
+
+/// Strict absolute-budget variant. The caller retains ownership and must
+/// terminate/reap the child on refusal, including when another startup guard
+/// (such as the disabled Mac candidate's channel) is still alive.
+pub fn await_ready_until(
+    child: &mut Child,
+    ready: &Path,
+    deadline: Instant,
+) -> Result<(), StartupError> {
+    observe_ready(child, ready, deadline, true)
+}
+
+fn observe_ready(
+    child: &mut Child,
+    ready: &Path,
+    deadline: Instant,
+    strict: bool,
+) -> Result<(), StartupError> {
+    loop {
+        if strict && Instant::now() >= deadline {
+            return Err(StartupError::Deadline);
+        }
         // Observe exit before trusting a leftover ready file.
         match child.try_wait() {
             Ok(Some(_)) => break Err(StartupError::ExitedBeforeReady),
@@ -96,7 +126,8 @@ pub fn await_ready(
                 // Close the exit-versus-read observation window as far as a
                 // readiness check can. Later exit is handled by supervision.
                 match child.try_wait() {
-                    Ok(None) => break Ok(()),
+                    Ok(None) if !strict || Instant::now() < deadline => break Ok(()),
+                    Ok(None) => break Err(StartupError::Deadline),
                     Ok(Some(_)) => break Err(StartupError::ExitedBeforeReady),
                     Err(_) => break Err(StartupError::ChildObservation),
                 }
@@ -108,15 +139,5 @@ pub fn await_ready(
             break Err(StartupError::Deadline);
         }
         thread::sleep(Duration::from_millis(10));
-    };
-    match result {
-        Ok(()) => Ok(child),
-        Err(error) => {
-            // kill may lose a race to normal exit; wait is authoritative and
-            // also reaps an already observed exit. Never kill a PID by number.
-            let _ = child.kill();
-            child.wait().map_err(|_| StartupError::ChildCleanup)?;
-            Err(error)
-        }
     }
 }

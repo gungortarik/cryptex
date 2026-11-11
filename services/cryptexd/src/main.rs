@@ -27,7 +27,23 @@ use cryptexd::supervision::selected_supervision;
 use cryptexd::update::run_update_rollback_proof;
 
 fn main() {
-    match run(env::args().skip(1).collect()) {
+    let mut args: Vec<String> = env::args().skip(1).collect();
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    let _startup_guard = match cryptexd::local_signed_startup::child_gate(&mut args) {
+        Ok(guard) => guard,
+        Err(error) => {
+            eprintln!("{error}");
+            process::exit(2);
+        }
+    };
+    // The guard stays live until run returns; it never enables owner dispatch.
+    let result = run(std::mem::take(&mut args));
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    let result = match _startup_guard.map(|guard| guard.close()).transpose() {
+        Ok(_) => result,
+        Err(error) => Err(LifecycleError::Attention(error.to_string())),
+    };
+    match result {
         Ok(()) => process::exit(0),
         Err(error) => {
             eprintln!("cryptexd: {error}");

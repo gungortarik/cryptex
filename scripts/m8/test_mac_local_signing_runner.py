@@ -13,6 +13,7 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mac_identity_preflight
+import mac_local_startup_ci
 
 
 class LocalSigningRunnerTests(unittest.TestCase):
@@ -47,6 +48,7 @@ class LocalSigningRunnerTests(unittest.TestCase):
                   patch("tempfile.TemporaryDirectory", side_effect=directory),
                   patch.object(mac_identity_preflight, "checked", side_effect=checked),
                   patch.object(mac_identity_preflight, "run_bounded", return_value=outcome),
+                  patch.object(mac_local_startup_ci, "run_real_startup_checks"),
                   contextlib.redirect_stderr(stderr), contextlib.redirect_stdout(stdout)):
                 with self.assertRaises(SystemExit) as status:
                     runpy.run_path(str(Path(__file__).with_name("test_mac_local_signing_ci.py")),

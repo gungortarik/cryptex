@@ -1,5 +1,20 @@
 # 34 — Current Implementation Handoff
 
+## Actual signed startup check continuation
+
+The default-off `m8-local-startup-check` feature now connects the local certificate
+and CMS inventory checks to the actual headless Desktop executable launching
+the actual daemon's ordinary lifecycle. It shares the Desktop hold-command
+constructor and readiness implementation. Its native frames bind both roles
+to the same inventory and epoch; no owner-request authority is constructed.
+The product gate remains closed.
+
+See the [bounded contract](proposals/m8-local-signed-startup-check.md) for the
+fresh-runtime, absolute-deadline, retained child/channel/snapshot and restart
+rules. Native execution and review evidence for this continuation are pending.
+The previous test-binary-only continuation below is superseded for startup
+integration, while Tauri content and approval/session integration remain open.
+
 ## Local certificate profile continuation
 
 Source `4138184` adds a local/development certificate profile independently of

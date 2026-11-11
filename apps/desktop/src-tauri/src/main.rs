@@ -2091,6 +2091,18 @@ fn start_daemon_inner(cryptexd: &str, runtime: &Path) -> Result<(u32, Child), St
         return Err("runtime lock already held; refusing second daemon".into());
     }
 
+    let mut command = daemon_hold_command(cryptexd, runtime)?;
+    let child = command.spawn().map_err(|e| e.to_string())?;
+    let child = cryptexd::daemon_startup::await_ready(child, &ready, Duration::from_millis(2500))
+        .map_err(|error| error.to_string())?;
+    Ok((child.id(), child))
+}
+
+/// Shared actual lifecycle command for ordinary launch and the default-off
+/// signed startup check. Neither construction nor readiness is authentication.
+fn daemon_hold_command(cryptexd: &str, runtime: &Path) -> Result<std::process::Command, String> {
+    let ready = runtime.join("ready");
+    let stop = runtime.join("stop");
     let mut command = background_process::command(cryptexd);
     command
         .args([
@@ -2106,10 +2118,7 @@ fn start_daemon_inner(cryptexd: &str, runtime: &Path) -> Result<(u32, Child), St
         .args(pilot_runtime::daemon_transport_args(runtime))
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    let child = command.spawn().map_err(|e| e.to_string())?;
-    let child = cryptexd::daemon_startup::await_ready(child, &ready, Duration::from_millis(2500))
-        .map_err(|error| error.to_string())?;
-    Ok((child.id(), child))
+    Ok(command)
 }
 
 fn restart_exited_daemon(state: &ProbeState, runtime: &Path) -> Result<(), String> {
@@ -2350,7 +2359,83 @@ fn spawn_control_file_watcher(app: AppHandle, state: ProbeState) {
     });
 }
 
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+fn local_signed_startup_check() -> Option<Result<(), String>> {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if !args.first().is_some_and(|arg| {
+        arg.to_string_lossy()
+            .starts_with("--cryptex-m8-local-startup")
+    }) {
+        return None;
+    }
+    Some((|| {
+        use cryptexd::local_signed_startup::Prepared;
+        use std::os::unix::fs::DirBuilderExt;
+        if args.len() != 2 || args[0] != "--cryptex-m8-local-startup-check" {
+            return Err("local_signed_startup_arguments".into());
+        }
+        let runtime = PathBuf::from(&args[1]);
+        if !runtime.is_absolute() {
+            return Err("local_signed_startup_runtime".into());
+        }
+        cryptexd::paths::assert_outside_repository(&runtime)
+            .map_err(|_| "local_signed_startup_runtime")?;
+        let parent = runtime
+            .parent()
+            .ok_or("local_signed_startup_runtime")?
+            .canonicalize()
+            .map_err(|_| "local_signed_startup_runtime")?;
+        let temp = std::env::temp_dir()
+            .canonicalize()
+            .map_err(|_| "local_signed_startup_runtime")?;
+        if !parent.starts_with(temp) {
+            return Err("local_signed_startup_runtime".into());
+        }
+        // Exclusive creation refuses an existing product profile or live daemon.
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&runtime)
+            .map_err(|_| "local_signed_startup_runtime")?;
+        let launch = || -> Result<_, String> {
+            let prepared =
+                Prepared::current_desktop(Duration::from_secs(10)).map_err(|e| e.to_string())?;
+            let daemon = prepared.daemon_path();
+            let command = daemon_hold_command(
+                daemon.to_str().ok_or("local_signed_startup_path")?,
+                &runtime,
+            )?;
+            prepared
+                .launch(command, &runtime.join("ready"))
+                .map_err(|e| e.to_string())
+        };
+        let mut first = launch()?;
+        first.terminate_for_restart().map_err(|e| e.to_string())?;
+        fs::remove_file(runtime.join("ready")).map_err(|_| "local_signed_startup_cleanup")?;
+        let second = launch()?;
+        first.require_stale_rejection().map_err(|e| e.to_string())?;
+        first.close().map_err(|e| e.to_string())?;
+        second
+            .shutdown(&runtime.join("stop"))
+            .map_err(|e| e.to_string())?;
+        println!("local_signed_startup=passed");
+        println!("local_signed_restart=passed");
+        println!("local_signed_old_channel_refused=passed");
+        println!("local_signed_cleanup=passed");
+        Ok(())
+    })())
+}
+
 fn main() {
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    if let Some(result) = local_signed_startup_check() {
+        match result {
+            Ok(()) => std::process::exit(0),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(2);
+            }
+        }
+    }
     if let Err(error) = pilot_runtime::initialize() {
         eprintln!("PILOT_RUNTIME_REJECTED: {error:?}");
         std::process::exit(2);

@@ -9,6 +9,7 @@ import tempfile
 
 sys.dont_write_bytecode = True
 from mac_identity_preflight import PreflightError, checked, run_bounded
+from mac_local_startup_ci import run_real_startup_checks
 
 
 def main():
@@ -100,6 +101,8 @@ def main():
             if "1 passed; 0 failed" not in result or "0 passed; 0 failed" in result:
                 raise PreflightError("native_test_inventory_mismatch")
             print("local_certificate_native_exchange=passed")
+            run_real_startup_checks(root, checked, run_bounded, cargo, openssl,
+                                    keychain, password, fingerprint)
         finally:
             for name, value in saved.items():
                 if value is None:

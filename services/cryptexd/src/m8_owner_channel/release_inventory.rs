@@ -44,11 +44,11 @@ pub(super) enum Error {
 
 // Provisioning these values is a separate reviewed release decision.
 // No product factory, environment variable or wire field supplies this type.
-struct ReleaseTrust {
-    signer_der: &'static [u8],
-    release_id: &'static str,
-    architecture: &'static str,
-    publisher: PublisherDefinition,
+pub(super) struct ReleaseTrust {
+    pub(super) signer_der: &'static [u8],
+    pub(super) release_id: &'static str,
+    pub(super) architecture: &'static str,
+    pub(super) publisher: PublisherDefinition,
 }
 
 #[derive(Deserialize)]
@@ -86,7 +86,7 @@ pub(super) struct VerifiedInventory {
 }
 
 impl VerifiedInventory {
-    fn verify(
+    pub(super) fn verify(
         raw: &[u8],
         cms: &[u8],
         trust: ReleaseTrust,
@@ -176,7 +176,7 @@ impl VerifiedInventory {
         })
     }
 
-    fn snapshot(self, root: &Path, deadline: Instant) -> Result<VerifiedBundle, Error> {
+    pub(super) fn snapshot(self, root: &Path, deadline: Instant) -> Result<VerifiedBundle, Error> {
         self.snapshot_with(root, deadline, |_| {})
     }
 
@@ -253,6 +253,41 @@ impl VerifiedBundle {
     pub(super) fn publisher(&self) -> PublisherDefinition {
         self.inventory.publisher
     }
+    pub(super) fn image_paths(&self) -> (&str, &str) {
+        (
+            &self.inventory.inventory.desktop.path,
+            &self.inventory.inventory.daemon.path,
+        )
+    }
+}
+
+/// Fixed candidate metadata inputs; signature verification supplies integrity.
+/// No caller-supplied trust is read from these adjacent files.
+pub(super) fn read_input(root: &Path, name: &str, limit: u64) -> Result<Vec<u8>, Error> {
+    let root = CString::new(root.as_os_str().as_encoded_bytes()).map_err(|_| Error::Path)?;
+    let fd = unsafe {
+        libc::open(
+            root.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return Err(Error::Io);
+    }
+    let root = unsafe { File::from_raw_fd(fd) };
+    let file = open_member(&root, name)?;
+    let metadata = file.metadata().map_err(|_| Error::Io)?;
+    if !metadata.is_file() || metadata.nlink() != 1 || metadata.len() > limit {
+        return Err(Error::Limit);
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| Error::Io)?;
+    if bytes.len() as u64 > limit {
+        return Err(Error::Limit);
+    }
+    Ok(bytes)
 }
 
 fn validate_path(path: &str) -> Result<(), Error> {
