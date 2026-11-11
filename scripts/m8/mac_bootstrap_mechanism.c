@@ -94,7 +94,8 @@ static bool fixture_open(void) {
     if (valid) fixture_hash = hash_of(self);
     CFRelease(self);
     if (valid && fixture_hash) {
-        own_requirement = CFRetain(fixture_requirement);
+        own_requirement = fixture_requirement;
+        CFRetain(own_requirement);
         own_hash = CFRetain(fixture_hash);
     }
     return valid && fixture_hash;
