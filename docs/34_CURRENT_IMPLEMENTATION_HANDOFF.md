@@ -12,14 +12,10 @@ The [bounded contract](proposals/m8-local-content-approval-check.md) records
 content binding, per-message private proof, session/admission ownership,
 cancellation/delivery failure rules, WebKit isolation and evidence limits.
 Implementation and independent source review through `efdb877` are complete
-for this disabled scope. Exact-source CI is
-[queued](https://github.com/gungortarik/cryptex/actions/runs/43095500335)
-at this checkpoint; do not report that source as native accepted yet.
-Follow-up inspection found the initial dispatch ended in `startup_failure`
-without any jobs/check runs being created. The same exact source/run was
-requeued on November 11; it is awaiting execution again. This is not a test
-pass or evidence of a source-test failure. The API exposes no specific startup
-diagnostic; the CLI's generic workflow-file suggestion is not a confirmed cause.
+for this disabled scope. The [exact-source CI run](https://github.com/gungortarik/cryptex/actions/runs/43095500335)
+ended in `startup_failure` again after its requeue on November 11 at 20:47 UTC.
+GitHub created zero jobs. At 20:48 UTC GitHub reported degraded Actions
+availability in its [service incident](https://www.githubstatus.com/incidents/dvy0t3mvh1lg).
 The [evidence/continuation record](../evidence/m8/m8-protected-content-native-approvals-20261111.md)
 includes the earlier passing synthetic markers, failed journal ordering check,
 Windows passes and confirmed native_accept timeout. The latter was traced at
@@ -29,7 +25,7 @@ handshake after independent verification, under the unchanged outer deadline.
 No image, native message, runtime-ready or owner check is bypassed. The
 immutable frontend catalog is cached per retained Release only.
 
-Resume by checking that exact run rather than dispatching duplicate runs.
+After Actions recovers, rerun that exact source and check both platform jobs.
 If it fails, inspect the fixed stage/elapsed diagnostic and preserve every
 deadline and negative fixture. If it passes, record the exact scoped results
 and then prepare the signed interactive Mac check. Do not infer interactive

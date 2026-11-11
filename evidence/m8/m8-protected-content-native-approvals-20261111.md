@@ -35,13 +35,15 @@ The actual daemon is the sole canonical writer in this fixture.
 
 ## Verification and limits
 
-Exact-source CI: https://github.com/gungortarik/cryptex/actions/runs/43095500335
-is pending at this documentation checkpoint.
-On follow-up, its initial dispatch was `completed/startup_failure` with zero
-jobs and zero check runs. No test executed in that dispatch. It was requeued
-using the same source/run, and is queued again. Neither a code-test pass nor
-a code-test failure is inferred from that service startup outcome. No workflow
-or acceptance checks were relaxed, and interactive Mac acceptance has not begun.
+The [exact-source CI run](https://github.com/gungortarik/cryptex/actions/runs/43095500335)
+ended in `startup_failure` on initial dispatch and after requeue. At 20:47 UTC
+on November 11 the final response listed zero jobs and zero check runs. Its
+annotation reports an unexpected GitHub error, request ID
+`23DB:165871:D52F90:29E2356:6AF4D39C`. At 20:48 UTC the
+[GitHub incident](https://www.githubstatus.com/incidents/dvy0t3mvh1lg)
+reported degraded Actions availability. The workflow is active and matches
+the workflow from passing run `43090075267`. Native CI on this source and the
+subsequent interactive Mac test remain pending.
 
 The actual signed headless fixture requires all four result markers for actual
 Context/provider installation, synthetic prepare/cancel/confirm, lost native
