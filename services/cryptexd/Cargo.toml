@@ -9,6 +9,9 @@ publish = false
 name = "cryptexd"
 path = "src/main.rs"
 
+[build-dependencies]
+cc = "=1.5.1"
+
 [dependencies]
 cryptex-core = { path = "../../crates/core" }
 cryptex-events = { path = "../../crates/events" }

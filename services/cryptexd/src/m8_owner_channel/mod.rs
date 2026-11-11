@@ -7,6 +7,8 @@
 
 use std::fmt;
 
+#[cfg(target_os = "macos")]
+mod native;
 pub(crate) mod reply;
 pub(crate) mod request;
 
