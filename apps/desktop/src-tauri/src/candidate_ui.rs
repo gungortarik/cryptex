@@ -25,21 +25,27 @@ enum Work {
     FaultPrepare(bool, Reply<()>),
     VerifyInvalidated(Reply<()>),
     PrepareGated(Reply<()>, mpsc::Receiver<()>, Reply<Prepared>),
+    PrepareDelivered(mpsc::Receiver<()>, Reply<Prepared>),
 }
 struct Queued {
     deadline: Instant,
     interested: Arc<AtomicBool>,
     work: Work,
 }
-struct Interest(Arc<AtomicBool>);
+struct Interest(Arc<AtomicBool>, bool);
 impl Interest {
     fn new() -> Self {
-        Self(Arc::new(AtomicBool::new(true)))
+        Self(Arc::new(AtomicBool::new(true)), false)
+    }
+    fn complete(mut self) {
+        self.1 = true;
     }
 }
 impl Drop for Interest {
     fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
+        if !self.1 {
+            self.0.store(false, Ordering::Release);
+        }
     }
 }
 #[derive(Clone)]
@@ -49,7 +55,11 @@ struct Client {
 impl Client {
     fn call<T>(&self, make: impl FnOnce(Reply<T>) -> Work) -> Result<T, String> {
         let interest = Interest::new();
-        self.call_with(Arc::clone(&interest.0), make)
+        let result = self.call_with(Arc::clone(&interest.0), make);
+        if result.is_ok() {
+            interest.complete();
+        }
+        result
     }
     fn call_with<T>(
         &self,
@@ -111,6 +121,26 @@ impl Client {
         }
         Ok(())
     }
+    fn exercise_completed_delivery(&self) -> Result<(), String> {
+        let (release, proceed) = mpsc::sync_channel(1);
+        let (reply, receive) = mpsc::sync_channel(1);
+        let interest = Interest::new();
+        self.sender
+            .try_send(Queued {
+                deadline: Instant::now() + Duration::from_secs(25),
+                interested: Arc::clone(&interest.0),
+                work: Work::PrepareDelivered(proceed, reply),
+            })
+            .map_err(|_| "candidate_queue")?;
+        let prepared = receive
+            .recv_timeout(Duration::from_secs(25))
+            .map_err(|_| "candidate_delivery_gate")??;
+        // Force normal completion before the worker's post-send check.
+        interest.complete();
+        release.send(()).map_err(|_| "candidate_delivery_gate")?;
+        self.call(|reply| Work::Finish(prepared.session_handle, false, reply))?;
+        Ok(())
+    }
 }
 fn self_retirement() -> Input {
     Input {
@@ -135,7 +165,16 @@ fn deliver<T>(
     reply: Reply<T>,
     result: Result<T, String>,
 ) {
-    if !delivery.active() || reply.send(result).is_err() || !delivery.active() {
+    deliver_with(daemon, delivery, reply, result, || true);
+}
+fn deliver_with<T>(
+    daemon: &mut LocalDaemon,
+    delivery: &Delivery,
+    reply: Reply<T>,
+    result: Result<T, String>,
+    after_send: impl FnOnce() -> bool,
+) {
+    if !delivery.active() || reply.send(result).is_err() || !after_send() || !delivery.active() {
         daemon.invalidate_session();
     }
 }
@@ -147,9 +186,13 @@ async fn async_call<T: Send + 'static>(
     // worker has not reached the queue yet.
     let interest = Interest::new();
     let interested = Arc::clone(&interest.0);
-    tauri::async_runtime::spawn_blocking(move || client.call_with(interested, make))
+    let result = tauri::async_runtime::spawn_blocking(move || client.call_with(interested, make))
         .await
-        .map_err(|_| "candidate_worker")?
+        .map_err(|_| "candidate_worker")?;
+    if result.is_ok() {
+        interest.complete();
+    }
+    result
 }
 struct Owner {
     client: Client,
@@ -323,6 +366,14 @@ impl Owner {
                                 deliver(&mut daemon, &delivery, reply, result);
                             }
                         }
+                        Work::PrepareDelivered(proceed, reply) => {
+                            let result = daemon
+                                .prepare_owner(self_retirement())
+                                .map_err(|e| e.to_string());
+                            deliver_with(&mut daemon, &delivery, reply, result, || {
+                                proceed.recv_timeout(Duration::from_secs(25)).is_ok()
+                            });
+                        }
                     }
                 }
             })
@@ -487,6 +538,12 @@ pub fn entry() -> Option<Result<(), String>> {
             fault.client.call(|reply| Work::Bind(binding, reply))?;
             fault.client.exercise_cancelled_inflight()?;
             fault.close()?;
+            let root = runtime.with_extension("completed-delivery");
+            let (success, content) = Owner::start(&root)?;
+            let (_context, binding) = install_context(content, &root)?;
+            success.client.call(|reply| Work::Bind(binding, reply))?;
+            success.client.exercise_completed_delivery()?;
+            success.close()?;
             println!("verified_tauri_assets=passed");
             println!("native_synthetic_approval_sessions=passed");
             println!("native_lost_session_and_old_handle_refused=passed");
