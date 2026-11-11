@@ -1,5 +1,44 @@
 # 34 — Current Implementation Handoff
 
+## Signed inventory and immutable content snapshot
+
+The disabled Mac candidate now verifies attached CMS signed-data with an
+independently pinned signer certificate. Native Security checks the actual
+signature and exact content, then evaluates offline CodeSigning trust with only
+the pinned certificate as anchor. An outer DER filter refuses encrypted
+wrappers before native decoding.
+
+The strict inventory binds purpose, schema, expected release and architecture,
+role hashes and paths, member lengths and SHA-256 digests. Rooted no-follow
+reads reject changed, missing, symlinked, hardlinked or oversized listed members. Successful
+reads return immutable owned bytes. Image expectations can only be obtained
+from a completed verified content snapshot.
+
+The snapshot protects the listed content consumed from its byte buffers. It
+does not freeze the source filesystem, grant an executable path or establish the
+resources of an existing Desktop process. Product signer provisioning, live
+process/resource/session binding and activation remain open. Read the
+[candidate contract and limits](proposals/m8-macos-release-image-policy.md)
+before connecting this to the product. The earlier absent-verifier continuation
+below is superseded by this section.
+
+Source-only independent review of `e43b3f5` found no remaining actionable code
+issue in this candidate after correcting the final verification deadline.
+The fixture suite checks real CMS signature/content binding, alternate signer
+refusal, malformed DER, signed duplicate keys and traversal, wrong release and
+architecture, member replacement/growth/truncation, symlinks/hardlinks, expiry,
+change between read and publication and immutable content after path replacement.
+Local native testing was blocked by Windows Application Control4551.
+
+[Exact-source CI for `e43b3f5`](https://github.com/gungortarik/cryptex/actions/runs/43049868298)
+passed on Mac and Windows. Mac owner-channel tests passed 19, including the six
+new inventory/snapshot tests, with two separately invoked subprocess helpers.
+Mac IPC passed 71 with its four pre-existing ignores. Windows owner-channel
+tests passed 12 and IPC passed 80. Startup, Desktop, native right-ownership
+checks, formatting and all-target lint passed. Test-only self-signed CMS
+credentials establish this implementation's behavior, while product publisher
+acceptance remains open.
+
 ## Release-image policy candidate
 
 The disabled candidate now has a closed role-specific policy representation.

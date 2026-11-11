@@ -20,7 +20,11 @@ signed image. Product activation stays closed pending release image policy,
 stable bundle observation and signed Desktop/daemon integration.
 The [release-image policy candidate](docs/proposals/m8-macos-release-image-policy.md)
 validates publisher and role predicates. Its product factory remains unconfigured
-pending independently authenticated release metadata and bundle stability.
+pending publisher provisioning and live process/resource binding.
+The [signed inventory and content snapshot](docs/proposals/m8-macos-release-image-policy.md)
+now verifies Apple CMS signatures against a pinned certificate and retains
+authenticated member bytes in memory. Product trust provisioning and live
+Desktop/daemon resource binding remain open.
 
 Latest product connection check: [session lifetime corrections](evidence/m8/m8-connection-session-lifetime-review-20261110.md)
 passed exact CI42956476071/source9dd0a40 on Windows and Mac: actual daemon crash/
