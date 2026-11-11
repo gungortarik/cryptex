@@ -10,7 +10,9 @@ from mac_identity_preflight import PreflightError, checked, run_bounded
 
 
 def main():
-    if sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true":
+    if (sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true"
+            or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted"
+            or os.environ.get("RUNNER_OS") != "macOS"):
         raise PreflightError("disposable_macos_ci_required")
     openssl = shutil.which("openssl")
     cargo = shutil.which("cargo")
@@ -43,9 +45,10 @@ def main():
                     "-inkey", str(root / "key.pem"), "-out", str(root / "identity.p12"),
                     "-passout", "pass:" + password, "-keypbe", "PBE-SHA1-3DES",
                     "-certpbe", "PBE-SHA1-3DES"], "package_ci_identity")
+            # Retain cleanup ownership even if create reports a late failure.
+            created = True
             checked(run_bounded, ["/usr/bin/security", "create-keychain", "-p", password, str(keychain)],
                     "create_ci_keychain")
-            created = True
             checked(run_bounded, ["/usr/bin/security", "unlock-keychain", "-p", password, str(keychain)],
                     "unlock_ci_keychain")
             checked(run_bounded, ["/usr/bin/security", "import", str(root / "identity.p12"),
@@ -70,12 +73,14 @@ def main():
                     os.environ.pop(name, None)
                 else:
                     os.environ[name] = value
-            if created:
+            if created and keychain.exists():
                 checked(run_bounded, ["/usr/bin/security", "delete-keychain", str(keychain)],
                         "delete_ci_keychain")
                 if keychain.exists():
                     raise PreflightError("ci_keychain_cleanup_failed")
-            print("local_certificate_fixture_cleanup=passed")
+    if root.exists():
+        raise PreflightError("ci_fixture_directory_cleanup_failed")
+    print("local_certificate_fixture_cleanup=passed")
 
 
 if __name__ == "__main__":
