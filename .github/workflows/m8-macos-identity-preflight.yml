@@ -5,6 +5,8 @@ on:
 permissions:
   contents: read
 jobs:
+  bootstrap-mechanism:
+    uses: ./.github/workflows/m8-macos-bootstrap-mechanism.yml
   prerequisites:
     runs-on: macos-latest
     timeout-minutes: 5
