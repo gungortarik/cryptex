@@ -295,9 +295,23 @@ fn actual_daemon_crash_restart_requires_fresh_readiness_and_connection() {
             let ping = cryptexd::ipc::health_ping(role, Duration::from_secs(2)).unwrap();
             assert_eq!(ping.daemon_pid, expected_pid);
         }
+        // The public health client rejects an unknown role before opening a
+        // stream. Keep that local guard distinct from a server-side refusal.
         let rejected = cryptexd::ipc::health_ping("unknown", Duration::from_secs(2)).unwrap_err();
-        assert_eq!(rejected.kind(), std::io::ErrorKind::PermissionDenied);
-        assert_eq!(rejected.to_string(), "unauthorized_client_role");
+        assert_eq!(rejected.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(rejected.to_string(), "unsupported local client role");
+        // This real wire request claims the Desktop role but the harness is
+        // not the packaged Desktop. A successful health reconnect must never
+        // turn it into an authenticated content client.
+        let denied = cryptexd::ipc::desktop_search(
+            cryptexd::ipc::DesktopSearchQuery::default(),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        assert!(!denied.accepted);
+        assert_eq!(denied.daemon_pid, expected_pid);
+        assert_eq!(denied.error.as_deref(), Some("unauthorized_client_process"));
+        assert!(denied.hits.is_none());
     };
     check_connection_contract(first.0.id());
     #[cfg(unix)]
