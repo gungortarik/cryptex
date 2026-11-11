@@ -503,7 +503,10 @@ static int attack_helper(const char *mode, const char *control_name, const char 
     send_message_id(control, reply, false, READY, 1, session, 0, 0, CONTROL_ID);
     code=receive_message_id(reply, &frame, WAIT_MS, CONTROL_ID);
     if (!code && getppid() != parent_pid) code=PARENT_CHANGED;
-    if (!code) code=pin_open(&parent, &frame.sender, parent_pid, true);
+    // Reply/endpoint attackers are Desktop images; the service-right attacker
+    // is a Daemon image, matching the victim's signer/role/hash policy.
+    bool parent_is_own_image = fake || once;
+    if (!code) code=pin_open(&parent, &frame.sender, parent_pid, parent_is_own_image);
     if (!code) code=admit(&parent, &frame, session, CONFIG);
     pid_t child_pid = frame.message.claimed_pid; // Configuration only from the authenticated root.
     if (!code && (child_pid <= 1 || child_pid == parent_pid || MACH_PORT_VALID(frame.reply))) code=BAD_LAYOUT;
@@ -550,13 +553,14 @@ static bool attack_flow(const char *binary, const char *prefix, int index, const
     mach_port_t receive=MACH_PORT_NULL, attack=MACH_PORT_NULL, service=MACH_PORT_NULL;
     kern_return_t registered=bootstrap_check_in(bootstrap_port, control_name, &receive);
     if (registered != BOOTSTRAP_SUCCESS) { emit(test, "bootstrap_error", "check_in", registered, false); return false; }
-    char *helper_args[]={(char *)binary, "attack-helper", (char *)mode, control_name, attack_name, text, NULL};
-    pid_t helper=spawn_fixed(binary, helper_args), victim=-1;
+    const char *helper_binary = fake || once ? binary : worker_binary(binary);
+    char *helper_args[]={(char *)helper_binary, "attack-helper", (char *)mode, control_name, attack_name, text, NULL};
+    pid_t helper=spawn_fixed(helper_binary, helper_args), victim=-1;
     if (helper < 0) { emit(test, "spawn_error", "spawn", spawn_error, false); drop_receive(&receive); return false; }
     Frame ready={0}, hello={0}, frame={0}; Pin helper_pin={0}, victim_pin={0};
     bool helper_reaped=false; Exit helper_exit={"wait", WAIT_FAILED}, victim_exit={"spawn", SETUP_FAILED};
     int code=receive_message_id(receive, &ready, WAIT_MS, CONTROL_ID);
-    if (!code) code=pin_open(&helper_pin, &ready.sender, helper, true);
+    if (!code) code=pin_open(&helper_pin, &ready.sender, helper, fake || once);
     if (!code) code=admit(&helper_pin, &ready, session, READY);
     if (!code && !MACH_PORT_VALID(ready.reply)) code=BAD_LAYOUT;
     if (!code) {

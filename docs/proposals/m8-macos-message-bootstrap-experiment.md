@@ -123,9 +123,13 @@ must match live self; strict containing resources/nested code and the counterpar
 hash are checked. No sibling supplies the trust root.
 
 Desktop is the only controller role. It spawns the signed Daemon file for normal
-and imposter workers, and the same Desktop image for control/attacker helpers.
+and imposter workers and for the transferred-service attacker; that attacker
+therefore matches the victim's actual role, requirement and image hash. Fake
+endpoint/reply helpers use the same Desktop image as the parent they impersonate.
 Daemon pins Desktop as peer; Desktop pins Daemon as peer and Desktop helpers as
-own-image. That selector is set by trusted local call sites, not message payload.
+own-image. Helper control also must pass the corresponding role/hash policy
+before the attack can count. That selector is set by trusted local call sites,
+not message payload.
 Workers infer their own fixed role from the verified image/path, never a claimed
 network role. Wrong-role and ad-hoc counterpart fixtures must be valid signed
 code in their own right before a requirement refusal can count, ruling out
