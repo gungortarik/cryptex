@@ -1,5 +1,18 @@
 # 34 — Current Implementation Handoff
 
+## Owner authorized isolated message-bootstrap research; CI pending (2026-11-10)
+
+The owner explicitly selected the bounded replacement design/isolated experiment.
+No repeat decision is needed for that scope. Product integration remains unapproved.
+[Phase-one design](proposals/m8-macos-message-bootstrap-experiment.md) and
+scripts/m8/mac_bootstrap_mechanism.c/.py add a disposable CI-only public
+check_in/lookup and actual Mach-sender fixture. It passes no synthetic descriptor
+or token through inheritance and changes no Mach registration list. Both sides
+bind kernel trailer identity to their actual Child/getppid and retain a task/
+generation pin across frames. The CI ad-hoc same-image policy is deliberately not
+certified product/bundle acceptance. Eight local report/failure tests pass;
+native CI and source review are pending. No owner package is produced.
+
 ## Second owner receipt: 5/11; direct descriptor carrier stopped (2026-11-10)
 
 New MAC-BAGLANTI-SONUC (2).zip matches source888d68a and the native hash.

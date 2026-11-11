@@ -1,6 +1,6 @@
 # M8 macOS launch carrier reassessment
 
-Status: **DRAFT, decision required; no implementation or transport activation**.
+Status: **BOUNDED DESIGN / ISOLATED EXPERIMENT AUTHORIZED; no product activation**.
 Date: 2026-11-10. Authority remains the Master Spec and accepted ADRs, especially
 ADR-0007's Unix-domain local IPC. This proposal does not raise the minimum OS,
 enable Mac owner operations or authorize canonical writes.
@@ -65,4 +65,5 @@ design. M8 remains open; Windows evidence is preserved.
 workflow, architecture, branch strategy, milestone scope, or integration strategy
 is ambiguous, ask the user before changing direction." Moving away from the
 failed inherited-descriptor strategy is a material integration choice here.
-No choice is inferred from the uploaded receipt alone.
+The owner subsequently selected Option A explicitly in chat. This authorizes only
+the bounded design and isolated experiment; product integration remains unapproved.
