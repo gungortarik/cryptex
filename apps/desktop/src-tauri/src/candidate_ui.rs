@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU8, Ordering},
 };
 use std::time::{Duration, Instant};
 
@@ -26,26 +26,30 @@ enum Work {
     VerifyInvalidated(Reply<()>),
     PrepareGated(Reply<()>, mpsc::Receiver<()>, Reply<Prepared>),
     PrepareDelivered(mpsc::Receiver<()>, Reply<Prepared>),
+    PrepareHandoff(Reply<()>, Reply<Prepared>),
 }
 struct Queued {
     deadline: Instant,
-    interested: Arc<AtomicBool>,
+    interested: Arc<AtomicU8>,
     work: Work,
 }
-struct Interest(Arc<AtomicBool>, bool);
+const ACTIVE: u8 = 0;
+const CANCELLED: u8 = 1;
+const COMPLETED: u8 = 2;
+struct Interest(Arc<AtomicU8>);
 impl Interest {
     fn new() -> Self {
-        Self(Arc::new(AtomicBool::new(true)), false)
+        Self(Arc::new(AtomicU8::new(ACTIVE)))
     }
-    fn complete(mut self) {
-        self.1 = true;
+    fn complete(self) {
+        self.0.store(COMPLETED, Ordering::Release);
     }
 }
 impl Drop for Interest {
     fn drop(&mut self) {
-        if !self.1 {
-            self.0.store(false, Ordering::Release);
-        }
+        let _ = self
+            .0
+            .compare_exchange(ACTIVE, CANCELLED, Ordering::AcqRel, Ordering::Acquire);
     }
 }
 #[derive(Clone)]
@@ -63,7 +67,7 @@ impl Client {
     }
     fn call_with<T>(
         &self,
-        interested: Arc<AtomicBool>,
+        interested: Arc<AtomicU8>,
         make: impl FnOnce(Reply<T>) -> Work,
     ) -> Result<T, String> {
         let (reply, receive) = mpsc::sync_channel(1);
@@ -90,7 +94,7 @@ impl Client {
                 } else {
                     Instant::now() + Duration::from_secs(25)
                 },
-                interested: Arc::new(AtomicBool::new(true)),
+                interested: Arc::new(AtomicU8::new(ACTIVE)),
                 work: Work::Prepare(self_retirement(), reply),
             })
             .map_err(|_| "candidate_queue")?;
@@ -100,7 +104,7 @@ impl Client {
         let (started, prepared) = mpsc::sync_channel(1);
         let (release, proceed) = mpsc::sync_channel(1);
         let (reply, receive) = mpsc::sync_channel(1);
-        let interested = Arc::new(AtomicBool::new(true));
+        let interested = Arc::new(AtomicU8::new(ACTIVE));
         self.sender
             .try_send(Queued {
                 deadline: Instant::now() + Duration::from_secs(25),
@@ -113,7 +117,7 @@ impl Client {
             .map_err(|_| "candidate_prepare_gate")??;
         // Match cancellation of the async future while spawn_blocking still
         // retains its receiver. Losing interest must burn the real grant.
-        interested.store(false, Ordering::Release);
+        interested.store(CANCELLED, Ordering::Release);
         release.send(()).map_err(|_| "candidate_prepare_gate")?;
         self.call(Work::VerifyInvalidated)?;
         if receive.try_recv().is_ok() {
@@ -138,8 +142,32 @@ impl Client {
         // Force normal completion before the worker's post-send check.
         interest.complete();
         release.send(()).map_err(|_| "candidate_delivery_gate")?;
-        self.call(|reply| Work::Finish(prepared.session_handle, false, reply))?;
+        if !self
+            .call(|reply| Work::Finish(prepared.session_handle, false, reply))?
+            .accepted
+        {
+            return Err("candidate_delivered_cancel_refused".into());
+        }
         Ok(())
+    }
+    fn exercise_cancelled_handoff(&self) -> Result<(), String> {
+        let (sent, delivered) = mpsc::sync_channel(1);
+        let (reply, _receive) = mpsc::sync_channel(1);
+        let interest = Interest::new();
+        self.sender
+            .try_send(Queued {
+                deadline: Instant::now() + Duration::from_secs(25),
+                interested: Arc::clone(&interest.0),
+                work: Work::PrepareHandoff(sent, reply),
+            })
+            .map_err(|_| "candidate_queue")?;
+        delivered
+            .recv_timeout(Duration::from_secs(25))
+            .map_err(|_| "candidate_handoff_gate")??;
+        // Worker has finished both delivery checks; async awaiter has not
+        // consumed its result. Its cancellation must still be observed.
+        drop(interest);
+        self.call(Work::VerifyInvalidated)
     }
 }
 fn self_retirement() -> Input {
@@ -150,13 +178,27 @@ fn self_retirement() -> Input {
         cutoff_seq: None,
     }
 }
+#[derive(Clone)]
 struct Delivery {
     deadline: Instant,
-    interested: Arc<AtomicBool>,
+    interested: Arc<AtomicU8>,
 }
 impl Delivery {
     fn active(&self) -> bool {
-        Instant::now() < self.deadline && self.interested.load(Ordering::Acquire)
+        match self.interested.load(Ordering::Acquire) {
+            COMPLETED => true,
+            ACTIVE => Instant::now() < self.deadline,
+            _ => false,
+        }
+    }
+}
+fn check_pending_delivery(daemon: &mut LocalDaemon, pending: &mut Option<Delivery>) {
+    if let Some(delivery) = pending.take() {
+        if !delivery.active() {
+            daemon.invalidate_session();
+        } else if delivery.interested.load(Ordering::Acquire) == ACTIVE {
+            *pending = Some(delivery);
+        }
     }
 }
 fn deliver<T>(
@@ -259,7 +301,9 @@ impl Owner {
                 if init.send(Ok(content)).is_err() {
                     return;
                 }
+                let mut pending_delivery = None;
                 loop {
+                    check_pending_delivery(&mut daemon, &mut pending_delivery);
                     if stop_worker.load(Ordering::Acquire) {
                         let receipt = daemon
                             .fixture_status()
@@ -283,8 +327,9 @@ impl Owner {
                             continue;
                         }
                     };
+                    check_pending_delivery(&mut daemon, &mut pending_delivery);
                     if Instant::now() >= queued.deadline
-                        || !queued.interested.load(Ordering::Acquire)
+                        || queued.interested.load(Ordering::Acquire) != ACTIVE
                     {
                         daemon.invalidate_session();
                         continue;
@@ -304,6 +349,9 @@ impl Owner {
                         }
                         Work::Prepare(input, reply) => {
                             let result = daemon.prepare_owner(input).map_err(|e| e.to_string());
+                            if result.is_ok() {
+                                pending_delivery = Some(delivery.clone());
+                            }
                             deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::Finish(handle, confirm, reply) => {
@@ -357,6 +405,9 @@ impl Owner {
                             let result = daemon
                                 .prepare_owner(self_retirement())
                                 .map_err(|e| e.to_string());
+                            if result.is_ok() {
+                                pending_delivery = Some(delivery.clone());
+                            }
                             let ready = result.as_ref().map(|_| ()).map_err(Clone::clone);
                             if started.send(ready).is_err()
                                 || proceed.recv_timeout(Duration::from_secs(25)).is_err()
@@ -370,9 +421,25 @@ impl Owner {
                             let result = daemon
                                 .prepare_owner(self_retirement())
                                 .map_err(|e| e.to_string());
+                            if result.is_ok() {
+                                pending_delivery = Some(delivery.clone());
+                            }
                             deliver_with(&mut daemon, &delivery, reply, result, || {
                                 proceed.recv_timeout(Duration::from_secs(25)).is_ok()
                             });
+                        }
+                        Work::PrepareHandoff(sent, reply) => {
+                            let result = daemon
+                                .prepare_owner(self_retirement())
+                                .map_err(|e| e.to_string());
+                            let ready = result.as_ref().map(|_| ()).map_err(Clone::clone);
+                            if result.is_ok() {
+                                pending_delivery = Some(delivery.clone());
+                            }
+                            deliver(&mut daemon, &delivery, reply, result);
+                            if sent.send(ready).is_err() {
+                                daemon.invalidate_session();
+                            }
                         }
                     }
                 }
@@ -544,6 +611,12 @@ pub fn entry() -> Option<Result<(), String>> {
             success.client.call(|reply| Work::Bind(binding, reply))?;
             success.client.exercise_completed_delivery()?;
             success.close()?;
+            let root = runtime.with_extension("cancelled-handoff");
+            let (fault, content) = Owner::start(&root)?;
+            let (_context, binding) = install_context(content, &root)?;
+            fault.client.call(|reply| Work::Bind(binding, reply))?;
+            fault.client.exercise_cancelled_handoff()?;
+            fault.close()?;
             println!("verified_tauri_assets=passed");
             println!("native_synthetic_approval_sessions=passed");
             println!("native_lost_session_and_old_handle_refused=passed");

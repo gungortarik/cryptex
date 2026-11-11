@@ -88,10 +88,10 @@ impl LocalDaemon {
     fn burn(&mut self) {
         self.pending_review.take();
         self.bound = false;
-        if let Some(channel) = self.channel.take() {
-            if channel.close().is_err() {
-                self.client_cleanup_failed = true;
-            }
+        if let Some(channel) = self.channel.take()
+            && channel.close().is_err()
+        {
+            self.client_cleanup_failed = true;
         }
     }
     pub fn ping(&mut self) -> Result<(), Error> {

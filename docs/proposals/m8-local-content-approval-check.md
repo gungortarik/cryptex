@@ -39,7 +39,9 @@ No failure invents durable cancellation or rolls back an uncertain append.
 
 Desktop retains wire capabilities privately and returns opaque local handles.
 Queued calls have an absolute deadline and interest lease; cancelled or expired
-work cannot start later. Failed result delivery and all post-prepare failures
+work cannot start later. Interest is checked again after native work and delivery;
+successful callers disarm cancellation before dropping their interest guard.
+Failed result delivery and all post-prepare failures
 burn pending local state and the connection. Shutdown uses an out-of-band flag,
 so a full work queue cannot prevent cleanup.
 
@@ -56,7 +58,13 @@ The native fixture creates one public synthetic event, then exercises real
 domain prepare/cancel/confirm. It verifies unchanged canonical prefixes,
 one append, mismatched digest/replay refusal, lost connection and old local
 handle isolation. Additional faults cover accepted prepare without its snapshot,
-failed handle allocation, expired queued work and lost result receivers.
+failed handle allocation, expired queued work and lost result receivers. A gated
+real prepare cancels the caller while keeping the blocking receiver alive; a
+second gate completes normal receipt before the worker's post-send check. The
+first burns the connection/grant and the second still permits real cancellation.
+Native subprocess tests also exercise concurrent process and endpoint loss
+against a long receive deadline; the delayed loss is scheduling-based rather
+than a deterministic observation of entry into the Mach receive syscall.
 The synthetic fault dispatcher is not registered as a renderer command.
 
 Headless Context/provider checks do not establish WebView loading or human

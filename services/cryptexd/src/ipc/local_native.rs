@@ -89,7 +89,7 @@ pub(crate) fn serve(
                 connection.send(&body, Instant::now() + IPC_RESPONSE_DEADLINE)?;
                 continue;
             }
-            Incoming::Request(request) => connection.consume(request)?,
+            Incoming::Request(request) => connection.consume(*request)?,
         };
         // Consumption above is one-use and tied to this native allocation;
         // ordinary parsed JSON/roles/PIDs cannot construct the sealed value.

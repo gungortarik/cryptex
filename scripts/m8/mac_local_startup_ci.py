@@ -126,7 +126,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         journal = json.loads((root / runtime / "bootstrap/pending.json").read_text(encoding="utf-8"))
         if not journal["transactions"] or journal["transactions"][-1]["state"] != expected:
             raise PreflightError("native_session_journal_outcome_mismatch")
-    for suffix in ("missing-snapshot", "handle-allocation", "lost-receiver", "cancelled-inflight"):
+    for suffix in ("missing-snapshot", "handle-allocation", "lost-receiver", "cancelled-inflight", "cancelled-handoff"):
         journal = json.loads((root / ("content-runtime." + suffix) / "bootstrap/pending.json").read_text(encoding="utf-8"))
         if len(journal["transactions"]) != 1 or journal["transactions"][0]["state"] != "owner_pending":
             raise PreflightError("native_failed_delivery_did_not_preserve_pending_journal")

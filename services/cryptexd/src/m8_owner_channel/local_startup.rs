@@ -317,10 +317,10 @@ impl LocalDaemon {
         self.close_channel()
     }
     fn close_channel(&mut self) -> Result<(), Error> {
-        if let Some(channel) = self.channel.take() {
-            if channel.close().is_err() {
-                self.client_cleanup_failed = true;
-            }
+        if let Some(channel) = self.channel.take()
+            && channel.close().is_err()
+        {
+            self.client_cleanup_failed = true;
         }
         if self.client_cleanup_failed {
             Err(Error::Cleanup)
@@ -488,7 +488,7 @@ pub(crate) struct ReceivedRequest {
     seal: Arc<()>,
 }
 pub(crate) enum Incoming {
-    Request(ReceivedRequest),
+    Request(Box<ReceivedRequest>),
     Close,
     Ping,
     Status,
@@ -513,10 +513,10 @@ impl BoundConnection<'_> {
             return Ok(Incoming::Status);
         }
         let decoded = super::request::decode_untrusted(bytes).map_err(std::io::Error::other)?;
-        Ok(Incoming::Request(ReceivedRequest {
+        Ok(Incoming::Request(Box::new(ReceivedRequest {
             decoded,
             seal: Arc::clone(&self.seal),
-        }))
+        })))
     }
     pub(crate) fn consume(
         &self,
