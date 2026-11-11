@@ -18,6 +18,18 @@ lifecycle-hold command constructor to launch the actual daemon. The daemon's
 feature-only hook runs before ordinary lifecycle/runtime initialization.
 Both independently verify the same inventory and content snapshot.
 
+Before the short native handshake starts, the child emits one fixed public
+verification-progress hint through its private stdout pipe, flushes it and
+restores stdout to a discard sink. The parent reads exactly that bounded hint
+and EOF nonblockingly under the original outer startup deadline. This is only
+scheduling progress: arbitrary programs can emit it, and it grants no image,
+ready, request or owner authority. Missing, extra, partial or late bytes fail
+closed. Every existing native sender/image/epoch/frame check must still pass.
+The 2.5-second native handshake and 10/15-second outer budgets are unchanged;
+child inventory verification no longer consumes the native HELLO wait itself.
+Each retained verified release caches its immutable frontend catalog once;
+fresh restart observations never share that cache.
+
 The Desktop opens a fresh rendezvous before spawning. Native checks retain
 the actual child/parent instance and validate the opposite role identifier,
 certificate leaf and signed image hash. The only exchanged application frames

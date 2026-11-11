@@ -3,7 +3,7 @@
 //! exposes the private per-message connection used by the fixture domain.
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
@@ -18,6 +18,7 @@ const DAEMON: &str = "Contents/MacOS/cryptexd";
 const EPOCH_FLAG: &str = "--m8-local-startup-epoch";
 const CONTENT_EPOCH_FLAG: &str = "--m8-local-content-epoch";
 const RELEASE: &str = "m8-local-startup-v1";
+const VERIFICATION_HINT: &[u8] = b"cryptex-m8-verification-progress-v1\n";
 #[path = "local_client.rs"]
 mod client;
 
@@ -57,6 +58,7 @@ struct Release {
     root: PathBuf,
     bundle: VerifiedBundle,
     digest: [u8; 32],
+    frontend: OnceLock<Result<crate::ProtectedContent, Error>>,
 }
 impl Release {
     fn current(role: Role, deadline: Instant) -> Result<Self, Error> {
@@ -102,7 +104,17 @@ impl Release {
             root,
             bundle,
             digest: Sha256::digest(&raw).into(),
+            frontend: OnceLock::new(),
         })
+    }
+    fn frontend(&self) -> Result<crate::ProtectedContent, Error> {
+        self.frontend
+            .get_or_init(|| {
+                self.bundle
+                    .frontend(&self.digest)
+                    .map_err(|_| Error::Inventory)
+            })
+            .clone()
     }
 }
 
@@ -125,6 +137,57 @@ fn step<T>(name: &'static str, action: impl FnOnce() -> Result<T, Error>) -> Res
             "elapsedMs": started.elapsed().as_millis(), "error": error.to_string()})
         );
     }
+    result
+}
+// Scheduling only. This pipe has no identity, ready or approval authority.
+// The same child must subsequently pass every native/image/startup check.
+fn await_verification_hint(child: &mut Child, deadline: Instant) -> Result<(), Error> {
+    use std::io::Read;
+    use std::os::fd::AsRawFd;
+    let mut pipe = child.stdout.take().ok_or(Error::Arguments)?;
+    let result = (|| {
+        let fd = pipe.as_raw_fd();
+        // SAFETY: exclusive owned stdout read descriptor; flags only affect
+        // this private parent reader, not peer identity or canonical files.
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+            return Err(Error::Channel);
+        }
+        let mut bytes = [0u8; VERIFICATION_HINT.len() + 1];
+        let mut offset = 0;
+        loop {
+            check_time(deadline)?;
+            match pipe.read(&mut bytes[offset..]) {
+                Ok(0) => break,
+                Ok(count) => {
+                    offset += count;
+                    if offset > VERIFICATION_HINT.len() {
+                        return Err(Error::Channel);
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    // Observe the exact child; drain any final buffered hint
+                    // before EOF. An exited child can never pass native accept.
+                    child.try_wait().map_err(|_| Error::Instance)?;
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(_) => return Err(Error::Channel),
+            }
+        }
+        check_time(deadline)?;
+        if offset == 0 {
+            return Err(Error::Image);
+        }
+        if &bytes[..offset] != VERIFICATION_HINT {
+            return Err(Error::Channel);
+        }
+        Ok(())
+    })();
+    // Retain the reader until exact-child cleanup. The child restores stdout
+    // to a discard sink after its fixed hint, so lifecycle output cannot fill
+    // this pipe or expose runtime paths through the scheduling channel.
+    child.stdout = Some(pipe);
     result
 }
 
@@ -182,11 +245,7 @@ impl Prepared {
     }
     pub fn current_content(timeout: Duration) -> Result<Self, Error> {
         let mut prepared = Self::current_desktop(timeout)?;
-        prepared
-            .release
-            .bundle
-            .frontend(&prepared.release.digest)
-            .map_err(|_| Error::Inventory)?;
+        prepared.release.frontend()?;
         prepared.content_mode = true;
         Ok(prepared)
     }
@@ -209,6 +268,7 @@ impl Prepared {
             },
             &epoch_text(&self.epoch),
         ]);
+        command.stdout(std::process::Stdio::piped());
         let child = command.spawn().map_err(|_| Error::Spawn)?;
         let mut owned = LocalDaemon {
             child: Some(child),
@@ -222,6 +282,9 @@ impl Prepared {
         };
         let expected = step("daemon_image", || {
             inventory_image(&owned.release.bundle, Role::Daemon).map_err(|_| Error::Image)
+        })?;
+        step("verification_hint", || {
+            await_verification_hint(owned.child.as_mut().unwrap(), self.deadline)
         })?;
         let mut channel = step("native_accept", || {
             self.listener
@@ -389,11 +452,7 @@ impl ChildGuard {
         if !self.content_mode || root != self.runtime {
             return Err(Error::Arguments);
         }
-        let content = self
-            ._release
-            .bundle
-            .frontend(&self._release.digest)
-            .map_err(|_| Error::Inventory)?;
+        let content = self._release.frontend()?;
         let mut bytes = [0; 54];
         if self
             ._channel
@@ -450,8 +509,33 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
     let release = step("child_inventory", || {
         Release::current(Role::Daemon, deadline)
     })?;
+    if content_mode {
+        release.frontend()?;
+    }
     let expected = inventory_image(&release.bundle, Role::Desktop).map_err(|_| Error::Image)?;
     check_time(deadline)?;
+    // No authority is conveyed by this untrusted progress hint. It only lets
+    // the parent schedule its unchanged short native handshake after our
+    // independently completed snapshot/image policy preparation.
+    step("child_verification_hint", || {
+        use std::io::Write;
+        let mut stdout = std::io::stdout().lock();
+        stdout
+            .write_all(VERIFICATION_HINT)
+            .and_then(|_| stdout.flush())
+            .map_err(|_| Error::Channel)?;
+        use std::os::fd::AsRawFd;
+        let discard = std::fs::OpenOptions::new()
+            .write(true)
+            .open("/dev/null")
+            .map_err(|_| Error::Channel)?;
+        // SAFETY: feature-only pre-runtime child gate, with stdout locked.
+        // Preserve the previous discard behavior after exactly one public hint.
+        if unsafe { libc::dup2(discard.as_raw_fd(), libc::STDOUT_FILENO) } < 0 {
+            return Err(Error::Channel);
+        }
+        Ok(())
+    })?;
     let mut channel =
         Channel::connect_until(&epoch, &(&expected).into(), deadline).map_err(Error::from)?;
     channel
@@ -568,6 +652,66 @@ fn native_io(error: super::native::Error) -> std::io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn untrusted_progress_hint_is_bounded_exact_and_never_startup_success() {
+        use std::io::Write;
+        use std::process::Stdio;
+        for case in [
+            "exact",
+            "malformed",
+            "partial",
+            "extra",
+            "eof",
+            "absent",
+            "expired",
+        ] {
+            let mut child = Command::new("/bin/cat")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+            if case != "absent" && case != "eof" {
+                let mut bytes = VERIFICATION_HINT.to_vec();
+                if case == "malformed" {
+                    bytes[0] ^= 1;
+                }
+                if case == "partial" {
+                    bytes.truncate(bytes.len() / 2);
+                }
+                if case == "extra" {
+                    bytes.push(b'!');
+                }
+                child.stdin.as_mut().unwrap().write_all(&bytes).unwrap();
+            }
+            if case != "absent" {
+                drop(child.stdin.take());
+            }
+            let start = Instant::now();
+            let result = await_verification_hint(
+                &mut child,
+                if case == "expired" {
+                    start
+                } else if case == "absent" {
+                    start + Duration::from_millis(100)
+                } else {
+                    start + Duration::from_secs(2)
+                },
+            );
+            assert!(start.elapsed() < Duration::from_secs(3));
+            // Even this arbitrary unsigned program can echo the hint. The
+            // return type is unit, never Channel, ready or domain authority.
+            match case {
+                "exact" => assert_eq!(result, Ok(())),
+                "malformed" | "partial" | "extra" => assert_eq!(result, Err(Error::Channel)),
+                "eof" => assert_eq!(result, Err(Error::Image)),
+                _ => assert_eq!(result, Err(Error::Deadline)),
+            }
+            if child.try_wait().unwrap().is_none() {
+                child.kill().unwrap();
+            }
+            child.wait().unwrap();
+        }
+    }
     #[test]
     fn startup_frames_bind_fixed_role_epoch_and_inventory() {
         let a = frame(1, &[1; 16], &[2; 32]);

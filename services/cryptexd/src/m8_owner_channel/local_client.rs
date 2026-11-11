@@ -40,14 +40,14 @@ impl LocalDaemon {
         if !self.content_mode {
             return Err(Error::Arguments);
         }
-        self.release
-            .bundle
-            .frontend(&self.release.digest)
-            .map_err(|_| Error::Inventory)
+        self.release.frontend()
     }
     /// Called by signed Desktop backend only after installing the provider.
     /// The renderer has no command for supplying this binding.
     pub fn bind_content(&mut self, binding: &[u8; 32]) -> Result<(), Error> {
+        step("content_bind", || self.bind_content_inner(binding))
+    }
+    fn bind_content_inner(&mut self, binding: &[u8; 32]) -> Result<(), Error> {
         if self.bound || self.content()?.binding() != binding {
             return Err(Error::Arguments);
         }

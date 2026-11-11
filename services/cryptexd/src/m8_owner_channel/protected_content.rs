@@ -81,6 +81,11 @@ mod tests {
             assert!(content.get(key).is_none());
         }
         assert_eq!(content.iter().count(), 1);
+        let retained = content.clone();
+        assert!(std::ptr::eq(
+            content.get("/index.html").unwrap(),
+            retained.get("/index.html").unwrap()
+        ));
         assert_ne!(
             content.binding(),
             ProtectedContent::from_snapshot(source.into_iter(), &[2; 32])
@@ -88,5 +93,7 @@ mod tests {
                 .binding()
         );
         assert!(ProtectedContent::from_snapshot(std::iter::empty(), &[1; 32]).is_err());
+        drop(content);
+        assert_eq!(retained.get("/index.html"), Some(b"verified".as_slice()));
     }
 }
