@@ -61,6 +61,9 @@ jobs:
       - name: Verify native Mac frame and right ownership
         if: runner.os == 'macOS'
         run: sh scripts/m8/test-mac-owner-native.sh
+      - name: Test certificate-pinned local Mac native exchange
+        if: runner.os == 'macOS'
+        run: python3 scripts/m8/test_mac_local_signing_ci.py
       - name: Test actual child startup, malformed readiness and crash restart
         if: runner.os != 'Windows'
         env:
@@ -90,9 +93,6 @@ jobs:
           & ./scripts/m8/test-standard-user-summary.ps1
           & ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -DesktopSessionOnly
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Test certificate-pinned local Mac native exchange
-        if: runner.os == 'macOS'
-        run: python3 scripts/m8/test_mac_local_signing_ci.py
 
   readiness:
     if: github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.ipc_acl_only && !inputs.windows_desktop_build_only)

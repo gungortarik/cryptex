@@ -68,9 +68,17 @@ def main():
                 "CX_NATIVE_TEST_KEYCHAIN": str(keychain),
                 "CX_NATIVE_TEST_CERT_DER": str(root / "cert.der"),
             })
-            result = checked(run_bounded, [cargo, "test", "--locked", "-p", "cryptexd",
+            args = [cargo, "test", "--locked", "-p", "cryptexd",
                     "--lib", "m8_owner_channel::native::tests::native_supervised_channel_roundtrip_and_refusals",
-                    "--", "--exact", "--test-threads=1"], "local_certificate_native_exchange", 180)
+                    "--", "--exact", "--test-threads=1"]
+            outcome = run_bounded(args, 180)
+            if outcome.code or outcome.timed_out or outcome.limited or outcome.pipe_failed:
+                # Disposable fixture diagnostics only. Never print private
+                # material, passwords or a reusable certificate selector.
+                diagnostic = outcome.output.replace(password, "[redacted]").replace(
+                    fingerprint, "[fixture]").replace(str(root), "[fixture-root]")
+                print(diagnostic[:8192], file=sys.stderr)
+            result = checked(lambda *_: outcome, [], "local_certificate_native_exchange", 180)
             if "1 passed; 0 failed" not in result or "0 passed; 0 failed" in result:
                 raise PreflightError("native_test_inventory_mismatch")
             print("local_certificate_native_exchange=passed")
