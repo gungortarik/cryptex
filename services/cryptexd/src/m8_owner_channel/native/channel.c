@@ -282,9 +282,11 @@ enum cx_result cx_listen(cx_channel **out, uint8_t epoch[CX_EPOCH_BYTES]) {
     return CX_OK;
 }
 
-enum cx_result cx_accept(cx_channel *c, pid_t child, const cx_policy *policy) {
+enum cx_result cx_accept(cx_channel *c, pid_t child, const cx_policy *policy, uint64_t deadline) {
     if (!c || c->closed || c->requirement || c->pinned) return CX_CLOSED;
-    uint64_t deadline = deadline_ms();
+    uint64_t cap = deadline_ms();
+    if (deadline > cap) deadline = cap;
+    if (!remaining_ms(deadline)) { c->closed = true; return CX_DEADLINE; }
     enum cx_result result = configure(c, child, policy);
     if (result == CX_OK) result = read_frame(c, HELLO, NULL, 0, NULL, deadline);
     if (result == CX_OK) {
@@ -304,14 +306,16 @@ enum cx_result cx_accept(cx_channel *c, pid_t child, const cx_policy *policy) {
 }
 
 enum cx_result cx_connect(cx_channel **out, const uint8_t epoch[CX_EPOCH_BYTES],
-                          const cx_policy *policy) {
+                          const cx_policy *policy, uint64_t deadline) {
     if (!out || !epoch) return CX_ARGUMENT;
     *out = NULL;
+    uint64_t cap = deadline_ms();
+    if (deadline > cap) deadline = cap;
+    if (!remaining_ms(deadline)) return CX_DEADLINE;
     cx_channel *c = calloc(1, sizeof(*c));
     if (!c) return CX_RESOURCE;
     memcpy(c->epoch, epoch, sizeof(c->epoch));
     c->parent_is_peer = true;
-    uint64_t deadline = deadline_ms();
     enum cx_result result = configure(c, getppid(), policy);
     mach_port_t service = MACH_PORT_NULL;
     char name[BOOTSTRAP_MAX_NAME_LEN];

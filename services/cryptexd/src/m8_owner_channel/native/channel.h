@@ -26,9 +26,9 @@ typedef struct {
     const uint8_t *signer_der;
     size_t signer_size;
 } cx_policy;
-enum cx_result cx_accept(cx_channel *c, pid_t child, const cx_policy *policy);
+enum cx_result cx_accept(cx_channel *c, pid_t child, const cx_policy *policy, uint64_t deadline);
 enum cx_result cx_connect(cx_channel **out, const uint8_t epoch[CX_EPOCH_BYTES],
-                          const cx_policy *policy);
+                           const cx_policy *policy, uint64_t deadline);
 // Errors during an exchange invalidate the session. Close also owns cleanup
 // for partial handshakes. Never share a handle across threads or fork.
 uint64_t cx_now_ms(void);

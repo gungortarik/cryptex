@@ -35,8 +35,14 @@ The hosted-Mac fixture builds and locally signs both real executables and the
 inventory inside its disposable keychain scope, without OS trust writes.
 It tests startup, forced child exit, restart, old-channel refusal and clean
 shutdown. Negatives cover changed listed content, wrong release/hash/role,
-absent signing leaf and a foreign launching parent. Shared readiness tests
+absent signing leaf, missing rendezvous and wrong live parent role/image hash.
+Each refusal must expose its expected fixed stage code, not only an exit status.
+Shared readiness tests
 include a complete PID file observed only after the absolute budget expired.
+Native short-budget tests leave HELLO/ACK unanswered and ensure caller budget
+is retained rather than opening a new handshake wait. Synchronous platform
+identity calls still cannot be forcibly preempted; deadlines are rechecked
+before sending or publishing.
 
 This establishes only the tested headless signed-process startup binding.
 The content snapshot does not make an executable path atomic or seal an

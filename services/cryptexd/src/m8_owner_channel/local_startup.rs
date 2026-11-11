@@ -22,6 +22,8 @@ pub enum Error {
     Inventory,
     Image,
     Channel,
+    Rendezvous,
+    Instance,
     Deadline,
     Spawn,
     Readiness,
@@ -34,6 +36,17 @@ impl std::fmt::Display for Error {
     }
 }
 impl std::error::Error for Error {}
+impl From<super::native::Error> for Error {
+    fn from(error: super::native::Error) -> Self {
+        match error {
+            super::native::Error::Image => Self::Image,
+            super::native::Error::Instance => Self::Instance,
+            super::native::Error::Rendezvous => Self::Rendezvous,
+            super::native::Error::Deadline => Self::Deadline,
+            _ => Self::Channel,
+        }
+    }
+}
 
 struct Release {
     root: PathBuf,
@@ -165,19 +178,23 @@ impl Prepared {
             inventory_image(&owned.release.bundle, Role::Daemon).map_err(|_| Error::Image)?;
         let mut channel = self
             .listener
-            .accept(owned.child.as_mut().unwrap(), &(&expected).into())
-            .map_err(|_| Error::Image)?;
+            .accept_until(
+                owned.child.as_mut().unwrap(),
+                &(&expected).into(),
+                self.deadline,
+            )
+            .map_err(Error::from)?;
         check_time(self.deadline)?;
         let mut buffer = [0; 54];
         let hello = channel
             .receive(&mut buffer, self.deadline)
-            .map_err(|_| Error::Channel)?;
+            .map_err(Error::from)?;
         if hello != frame(2, &self.epoch, &owned.release.digest) {
             return Err(Error::Channel);
         }
         channel
             .send(&frame(1, &self.epoch, &owned.release.digest), self.deadline)
-            .map_err(|_| Error::Channel)?;
+            .map_err(Error::from)?;
         owned.channel = Some(channel);
         crate::daemon_startup::await_ready_until(
             owned.child.as_mut().unwrap(),
@@ -294,14 +311,15 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
     let release = Release::current(Role::Daemon, deadline)?;
     let expected = inventory_image(&release.bundle, Role::Desktop).map_err(|_| Error::Image)?;
     check_time(deadline)?;
-    let mut channel = Channel::connect(&epoch, &(&expected).into()).map_err(|_| Error::Image)?;
+    let mut channel =
+        Channel::connect_until(&epoch, &(&expected).into(), deadline).map_err(Error::from)?;
     channel
         .send(&frame(2, &epoch, &release.digest), deadline)
-        .map_err(|_| Error::Channel)?;
+        .map_err(Error::from)?;
     let mut buffer = [0; 54];
     if channel
         .receive(&mut buffer, deadline)
-        .map_err(|_| Error::Channel)?
+        .map_err(Error::from)?
         != frame(1, &epoch, &release.digest)
     {
         return Err(Error::Channel);

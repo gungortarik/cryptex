@@ -59,7 +59,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     (resources / "startup-check.txt").write_bytes(b"Public local startup fixture.\n")
     architecture = {"arm64": "arm64", "x86_64": "x86_64"}[platform.machine()]
 
-    def inventory(bundle, *, role_hash=None, release="m8-local-startup-v1"):
+    def inventory(bundle, *, role_hash=None, parent_hash=None, release="m8-local-startup-v1"):
         images, files = {}, []
         for name, role in (("cryptex-desktop", "desktop"), ("cryptexd", "daemon")):
             relative = "Contents/MacOS/" + name
@@ -71,6 +71,8 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
             images[role] = {"path": relative, "cdhash": hashes[0]}
         if role_hash:
             images["daemon"]["cdhash"] = role_hash
+        if parent_hash:
+            images["desktop"]["cdhash"] = parent_hash
         for relative in ("Contents/MacOS/cryptex-desktop", "Contents/MacOS/cryptexd",
                          "Contents/Resources/startup-check.txt"):
             data = (bundle / relative).read_bytes()
@@ -97,7 +99,8 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     print("real_signed_desktop_daemon_startup_restart=passed")
 
     cases = ("modified_content", "wrong_release", "wrong_cdhash",
-             "wrong_identifier", "missing_leaf", "foreign_parent")
+             "wrong_identifier", "missing_leaf", "missing_rendezvous",
+             "wrong_desktop_identifier", "wrong_parent_cdhash")
     for case in cases:
         bundle = root / (case + ".app")
         shutil.copytree(template, bundle)
@@ -108,18 +111,22 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
             inventory(bundle, release="foreign-release")
         elif case == "wrong_cdhash":
             inventory(bundle, role_hash="ab" * 20)
-        elif case in ("wrong_identifier", "missing_leaf"):
+        elif case == "wrong_parent_cdhash":
+            inventory(bundle, parent_hash="ab" * 20)
+        elif case in ("wrong_identifier", "missing_leaf", "wrong_desktop_identifier"):
             signer = "-" if case == "missing_leaf" else fingerprint
-            identifier = ("com.cryptex.wrong-role" if case == "wrong_identifier"
+            identifier = ("com.cryptex.wrong-role" if case != "missing_leaf"
                           else "com.cryptex.m8.local-startup.daemon")
+            target = (bundle / "Contents/MacOS/cryptex-desktop"
+                      if case == "wrong_desktop_identifier" else daemon)
             args = ["/usr/bin/codesign", "--force", "--sign", signer,
                     "--timestamp=none", "--identifier", identifier]
             if signer != "-":
                 args.extend(["--keychain", keychain])
-            run([*args, daemon], "resign_" + case)
+            run([*args, target], "resign_" + case)
             inventory(bundle)
         runtime = root / (case + "-runtime")
-        if case == "foreign_parent":
+        if case == "missing_rendezvous":
             args = [daemon, "lifecycle", "hold", "--runtime-root", runtime,
                     "--ready-file", runtime / "ready", "--stop-file", runtime / "stop",
                     "--m8-local-startup-epoch", "01" * 16]
@@ -127,7 +134,10 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
             args = [bundle / "Contents/MacOS/cryptex-desktop",
                     "--cryptex-m8-local-startup-check", runtime]
         outcome = run_bounded([str(arg) for arg in args], 20)
+        expected = ("Inventory" if case in ("modified_content", "wrong_release") else
+                    "Rendezvous" if case == "missing_rendezvous" else "Image")
         if (outcome.code != 2 or outcome.timed_out or outcome.limited or outcome.pipe_failed
+                or "local_signed_startup_" + expected not in outcome.output.splitlines()
                 or any(marker in outcome.output for marker in markers)
                 or (runtime.exists() and any(runtime.iterdir()))):
             raise PreflightError("real_startup_refusal_failed_" + case)

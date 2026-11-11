@@ -47,8 +47,18 @@ impl<'a> From<&'a super::image_policy::ExpectedImage> for ImagePolicy<'a> {
 
 unsafe extern "C" {
     fn cx_listen(out: *mut *mut c_void, epoch: *mut u8) -> c_int;
-    fn cx_accept(channel: *mut c_void, child: libc::pid_t, policy: &PolicyRef) -> c_int;
-    fn cx_connect(out: *mut *mut c_void, epoch: *const u8, policy: &PolicyRef) -> c_int;
+    fn cx_accept(
+        channel: *mut c_void,
+        child: libc::pid_t,
+        policy: &PolicyRef,
+        deadline: u64,
+    ) -> c_int;
+    fn cx_connect(
+        out: *mut *mut c_void,
+        epoch: *const u8,
+        policy: &PolicyRef,
+        deadline: u64,
+    ) -> c_int;
     fn cx_now_ms() -> u64;
     fn cx_send(channel: *mut c_void, data: *const u8, size: usize, deadline: u64) -> c_int;
     fn cx_receive(
@@ -154,13 +164,33 @@ impl Listener {
         child: &mut Child,
         policy: &ImagePolicy<'_>,
     ) -> Result<Channel, Error> {
+        self.accept_until(
+            child,
+            policy,
+            Instant::now() + std::time::Duration::from_millis(2500),
+        )
+    }
+
+    pub(super) fn accept_until(
+        self,
+        child: &mut Child,
+        policy: &ImagePolicy<'_>,
+        deadline: Instant,
+    ) -> Result<Channel, Error> {
         if child.try_wait().map_err(|_| Error::Instance)?.is_some() {
             return Err(Error::Instance);
         }
         let pid = i32::try_from(child.id()).map_err(|_| Error::Instance)?;
         // SAFETY: the listener is exclusively owned, the policy lives through
         // configuration, and the child handle is still supervised and unreaped.
-        checked(unsafe { cx_accept(self.0.0.as_ptr(), pid, &policy.as_native()) })?;
+        checked(unsafe {
+            cx_accept(
+                self.0.0.as_ptr(),
+                pid,
+                &policy.as_native(),
+                native_deadline(deadline),
+            )
+        })?;
         Ok(Channel(self.0))
     }
 }
@@ -171,9 +201,28 @@ impl Channel {
     }
 
     pub(super) fn connect(epoch: &Epoch, policy: &ImagePolicy<'_>) -> Result<Self, Error> {
+        Self::connect_until(
+            epoch,
+            policy,
+            Instant::now() + std::time::Duration::from_millis(2500),
+        )
+    }
+
+    pub(super) fn connect_until(
+        epoch: &Epoch,
+        policy: &ImagePolicy<'_>,
+        deadline: Instant,
+    ) -> Result<Self, Error> {
         // SAFETY: native code copies the epoch/policy and selects getppid itself.
-        Handle::open(|out| unsafe { cx_connect(out, epoch.as_ptr(), &policy.as_native()) })
-            .map(Self)
+        Handle::open(|out| unsafe {
+            cx_connect(
+                out,
+                epoch.as_ptr(),
+                &policy.as_native(),
+                native_deadline(deadline),
+            )
+        })
+        .map(Self)
     }
 
     pub(super) fn send(&mut self, bytes: &[u8], deadline: Instant) -> Result<(), Error> {

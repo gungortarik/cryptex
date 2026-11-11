@@ -254,6 +254,7 @@ fn supervisor() {
         "wrong_hash",
         "wrong_requirement",
         "wrong_leaf",
+        "short_handshake",
         "wrong_child",
         "parent_image",
         "queued_after_exit",
@@ -265,6 +266,37 @@ fn supervisor() {
         let (listener, epoch) = Listener::open().unwrap();
         assert_ne!(Some(epoch), previous);
         previous = Some(epoch);
+        if case == "short_handshake" {
+            let mut child = TestChild::spawn(
+                helper(&binary, "worker")
+                    .env("CX_TEST_CASE", "idle")
+                    .stdin(Stdio::piped()),
+                false,
+            );
+            let policy = ImagePolicy {
+                requirement: REQUIREMENT,
+                cdhash: &hash,
+                signer_der: leaf.as_deref(),
+            };
+            assert!(matches!(
+                Channel::connect_until(&epoch, &policy, Instant::now()),
+                Err(Error::Deadline)
+            ));
+            let start = Instant::now();
+            assert!(matches!(
+                listener.accept_until(
+                    &mut child.child,
+                    &policy,
+                    start + Duration::from_millis(100)
+                ),
+                Err(Error::Deadline)
+            ));
+            // The default handshake budget is 2.5s. No HELLO is ever sent.
+            assert!(start.elapsed() < Duration::from_secs(2));
+            drop(child.child.stdin.take());
+            child.finish(Duration::from_secs(8));
+            continue;
+        }
         let mut child = TestChild::spawn(
             helper(&binary, "worker")
                 .env("CX_TEST_EPOCH", hex(&epoch))

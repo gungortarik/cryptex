@@ -2400,10 +2400,13 @@ fn local_signed_startup_check() -> Option<Result<(), String>> {
             let prepared =
                 Prepared::current_desktop(Duration::from_secs(10)).map_err(|e| e.to_string())?;
             let daemon = prepared.daemon_path();
-            let command = daemon_hold_command(
+            let mut command = daemon_hold_command(
                 daemon.to_str().ok_or("local_signed_startup_path")?,
                 &runtime,
             )?;
+            // Feature-only synthetic runtime: preserve fixed child gate error
+            // codes so negative fixtures prove their actual refusal stage.
+            command.stderr(Stdio::inherit());
             prepared
                 .launch(command, &runtime.join("ready"))
                 .map_err(|e| e.to_string())
