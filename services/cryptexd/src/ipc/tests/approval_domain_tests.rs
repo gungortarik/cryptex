@@ -83,10 +83,16 @@ fn assert_burned(registry: &ApprovalSessionRegistry, reply: &BootstrapApprovalIp
 
 #[test]
 fn domain_abandonment_burns_grant_without_durable_cancellation_or_append() {
-    let fixture = prepared_search_fixture("domain-abandon");
+    let mut fixture = prepared_search_fixture("domain-abandon");
     let before = events(&fixture);
     let registry = ApprovalSessionRegistry::default();
+    // Real request contexts can already carry a lease. A parked domain session
+    // must not retain it by copying the entire SearchContext.
+    let external = fixture.context.admission.enter(&fixture.root).unwrap();
+    fixture.context.operation = Some(external.clone());
     let (session, reply, _) = prepared_bootstrap(&fixture, &registry);
+    fixture.context.operation = None;
+    drop(external);
     assert!(!format!("{session:?}").contains(reply.capability.as_deref().unwrap()));
     let exclusive = fixture
         .context
