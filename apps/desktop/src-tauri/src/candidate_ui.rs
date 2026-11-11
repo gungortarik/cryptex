@@ -194,10 +194,13 @@ impl Delivery {
 }
 fn check_pending_delivery(daemon: &mut LocalDaemon, pending: &mut Option<Delivery>) {
     if let Some(delivery) = pending.take() {
-        if !delivery.active() {
-            daemon.invalidate_session();
-        } else if delivery.interested.load(Ordering::Acquire) == ACTIVE {
-            *pending = Some(delivery);
+        // One state snapshot: if ACTIVE changes to CANCELLED immediately
+        // after this load, retaining the lease guarantees the next check
+        // observes it. A second load must never silently retire cancellation.
+        match delivery.interested.load(Ordering::Acquire) {
+            COMPLETED => {}
+            ACTIVE if Instant::now() < delivery.deadline => *pending = Some(delivery),
+            _ => daemon.invalidate_session(),
         }
     }
 }
