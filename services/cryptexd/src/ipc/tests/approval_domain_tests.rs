@@ -4,16 +4,30 @@ use crate::approval_session::{ApprovalSessionError, ApprovalSessionRegistry};
 use crate::bootstrap_journal::{BootstrapJournalStore, BootstrapState};
 
 fn events(fixture: &SearchFixture) -> Vec<String> {
-    crate::canonical_writer::load_verified_events(
+    // Security operations append v3 records. Use the existing lock-scoped,
+    // version-aware verifier rather than the intentionally v1-only reader.
+    let key = load_existing_event_signing_key(
         fixture.store.as_ref(),
         SecureStoreEnvironment::Dev,
         &fixture.root,
         &fixture.device,
     )
-    .unwrap()
-    .into_iter()
-    .map(|event| event.content_hash.as_str().to_owned())
-    .collect()
+    .unwrap();
+    let snapshot = crate::knowledge_materialization::scan_verified_trust_policy(
+        &fixture.root,
+        &fixture.brain_id,
+        &fixture.device,
+        &cryptex_events::SigningKeyId::parse(&key.public.signing_key_id).unwrap(),
+        &key.signing_key.verifying_key().to_bytes(),
+        std::slice::from_ref(&fixture.device),
+    )
+    .unwrap();
+    snapshot
+        .history
+        .records()
+        .iter()
+        .map(|event| event.content_hash().as_str().to_owned())
+        .collect()
 }
 
 fn owner_request(transaction: &str, operation: &str) -> BootstrapApprovalIpcRequest {
@@ -110,7 +124,7 @@ fn domain_abandonment_burns_grant_without_durable_cancellation_or_append() {
         .unwrap()
         .load()
         .unwrap();
-    assert_eq!(journal.transactions[0].state, BootstrapState::OwnerPending);
+    assert_eq!(journal.transactions[0].state, BootstrapState::ProofReceived);
     assert!(!journal.transactions[0].local_approval_signature_generated);
     assert_eq!(events(&fixture), before);
     fs::remove_dir_all(fixture.root).unwrap();
@@ -399,7 +413,7 @@ fn domain_prepare_delivery_failure_drops_session_without_durable_cancel() {
         .unwrap()
         .load()
         .unwrap();
-    assert_eq!(journal.transactions[0].state, BootstrapState::OwnerPending);
+    assert_eq!(journal.transactions[0].state, BootstrapState::ProofReceived);
     assert!(!journal.transactions[0].local_approval_signature_generated);
     fs::remove_dir_all(fixture.root).unwrap();
 }
