@@ -70,8 +70,9 @@ def main():
             # signing on this disposable runner. Scope trust to this one fresh
             # certificate and remove it explicitly, even after partial failure.
             trust_attempted = True
-            checked(run_bounded, ["/usr/bin/security", "add-trusted-cert",
-                    "-r", "trustRoot", "-p", "codeSign", "-k", str(keychain), str(root / "cert.pem")],
+            checked(run_bounded, ["/usr/bin/sudo", "-n", "/usr/bin/security", "add-trusted-cert",
+                    "-d", "-r", "trustRoot", "-p", "codeSign",
+                    "-k", "/Library/Keychains/System.keychain", str(root / "cert.pem")],
                     "trust_disposable_ci_signer")
             os.environ.update({
                 "CX_NATIVE_TEST_SIGNER": fingerprint,
@@ -102,8 +103,14 @@ def main():
                     os.environ[name] = value
             try:
                 if trust_attempted:
-                    checked(run_bounded, ["/usr/bin/security", "remove-trusted-cert",
-                            str(root / "cert.pem")], "remove_disposable_ci_trust")
+                    try:
+                        checked(run_bounded, ["/usr/bin/sudo", "-n", "/usr/bin/security",
+                                "remove-trusted-cert", "-d", str(root / "cert.pem")],
+                                "remove_disposable_ci_trust")
+                    finally:
+                        checked(run_bounded, ["/usr/bin/sudo", "-n", "/usr/bin/security",
+                                "delete-certificate", "-Z", fingerprint, "/Library/Keychains/System.keychain"],
+                                "remove_disposable_ci_public_certificate")
             finally:
                 if created and keychain.exists():
                     checked(run_bounded, ["/usr/bin/security", "delete-keychain", str(keychain)],
