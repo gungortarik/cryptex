@@ -123,7 +123,16 @@ runner regressions passed. A later local daemon test executable was refused by
 Windows Application Control (4551), before execution; security settings were
 not changed and that attempted run is not reported as a pass.
 
-Open gates: the native UI shutdown receipt and its verified event-prefix check,
+The [scoped CI run for the exit fix](https://github.com/gungortarik/cryptex/actions/runs/43147508139)
+passed on macOS and Windows at `a7b41a22f7d178030c8ad8f1fdf86d1ef9550007`.
+The Mac driver launched the signed interactive binary and requested normal
+AppKit termination of that PID. It exited successfully and the daemon reported
+one event with the original prefix preserved (`native_ui_quit_preserved_seed=passed`).
+The exported arm64 archive SHA-256 is
+`17cca4f1dde137d0974cad67a353b1781b49913cae306272750ac53ed3539c3d`.
+Its fixture signing certificate expires 2026-11-13 03:22:54 UTC.
+
+Open gates: the revised owner Mac receipt after UI cancellation and confirmation,
 same-profile durable restart with the intended platform secure store, product
 publisher/OS-floor decisions and explicit activation. The fresh-runtime lost
 handle test does not establish same-profile restart or old wire-capability
