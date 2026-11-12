@@ -21,6 +21,7 @@ const HINT: &[u8] = b"cryptex-m8-transport-verified-v1\n";
 const PROFILE: &str = "00000000000000000000000000000001";
 const BUDGET: Duration = Duration::from_secs(4);
 const REFUSAL_ACK: &[u8] = b"m8-transport-refusal-ack-v1";
+const STOP_ACK: &[u8] = b"m8-transport-stop-ack-v1";
 fn channel_error(stage: &'static str, error: super::native::Error) -> Error {
     eprintln!(
         "component=mac_transport operation=native_channel stage={stage} status=failed error={error:?}"
@@ -410,6 +411,17 @@ fn serve(root: &Path, release: &Release, channel: &mut Channel) -> Result<(), Er
                         Instant::now() + BUDGET,
                     )
                     .map_err(|_| Error::Channel)?;
+                // Keep the authenticated helper live until its supervisor has
+                // actually consumed the stop result. A queued reply from an
+                // exited sender must remain invalid under the native policy.
+                let mut ack = [0; 128];
+                if channel
+                    .receive(&mut ack, Instant::now() + BUDGET)
+                    .map_err(|error| channel_error("stop_ack", error))?
+                    != STOP_ACK
+                {
+                    return Err(Error::Channel);
+                }
                 return Ok(());
             }
         }
@@ -677,12 +689,12 @@ impl Helper {
                 &serde_json::to_vec(&request).map_err(|_| Error::Channel)?,
                 deadline,
             )
-            .map_err(|_| Error::Channel)?;
+            .map_err(|error| channel_error("request_send", error))?;
         let mut buffer = [0; 1024];
         let reply: Reply = decode(
             channel
                 .receive(&mut buffer, deadline)
-                .map_err(|_| Error::Channel)?,
+                .map_err(|error| channel_error("request_receive", error))?,
         )?;
         if reply.sequence != self.sequence
             || reply.error.is_some()
@@ -698,10 +710,19 @@ impl Helper {
     }
     fn close(&mut self) -> Result<(), Error> {
         self.request(Operation::Stop)?;
+        self.channel
+            .as_mut()
+            .ok_or(Error::Channel)?
+            .send(STOP_ACK, Instant::now() + BUDGET)
+            .map_err(|error| channel_error("stop_ack_send", error))?;
+        // Retain the parent's endpoint while the live helper consumes the ACK
+        // and exits; closing it first would invalidate even an already queued
+        // ACK. Reap only after verified group death, then release the channel.
+        self.cleanup(false)?;
         if let Some(channel) = self.channel.take() {
             channel.close().map_err(|_| Error::Cleanup)?;
         }
-        self.cleanup(false)
+        Ok(())
     }
     fn cleanup(&mut self, kill: bool) -> Result<(), Error> {
         let Some(child) = self.child.as_mut() else {
@@ -979,6 +1000,7 @@ pub fn check(root: &Path) -> Result<(), Error> {
             return Err(Error::Engine);
         }
         first.close()?;
+        eprintln!("mac_transport_clean_stop_ack=passed");
         let second = Worker::spawn(root.to_owned(), false)?;
         if wait_identity(second.status_reader())? != identity
             || second.fixture_credential()? != credential

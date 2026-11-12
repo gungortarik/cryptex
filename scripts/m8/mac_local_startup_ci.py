@@ -125,6 +125,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                             "--m8-local-transport-driver", root / "transport-runtime"],
                            "real_managed_mac_transport_identity", 180)
     for marker in ("mac_transport_foreign_socket_no_credentials=passed",
+                   "mac_transport_clean_stop_ack=passed",
                    "mac_transport_owned_identity_restart=passed",
                    "mac_transport_helper_loss_cleanup=passed",
                    "mac_transport_missing_key_no_regeneration=passed"):

@@ -43,6 +43,7 @@ def main():
                          "managed_identity_restart", 180)
             if not all(marker in output.splitlines() for marker in (
                     "mac_transport_foreign_socket_no_credentials=passed",
+                    "mac_transport_clean_stop_ack=passed",
                     "mac_transport_owned_identity_restart=passed",
                     "mac_transport_helper_loss_cleanup=passed",
                     "mac_transport_missing_key_no_regeneration=passed")):
