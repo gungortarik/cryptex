@@ -17,9 +17,10 @@ embedded or development-server content through this provider.
 
 The candidate has its own identifier and app-data directory inside the owned
 temporary runtime. The actual window forces incognito WKWebView storage and
-rejects navigation outside its local Tauri origin. Its builder registers only
-health and the three owner review commands, not arbitrary filesystem, shell,
-ordinary capture/retrieval, autostart or product lifecycle commands.
+rejects navigation outside its local Tauri origin. Its builder registers health,
+the three owner review commands and the bounded pairing exchange/approval
+commands. It does not register arbitrary filesystem, shell, ordinary
+capture/retrieval, autostart or product lifecycle commands.
 
 ## Bound requests and sessions
 
@@ -38,6 +39,20 @@ mismatched or replayed followups, and delivery loss invalidate ephemeral grants.
 No failure invents durable cancellation or rolls back an uncertain append.
 
 Desktop retains wire capabilities privately and returns opaque local handles.
+Pairing preparation independently verifies the signed role-specific prefix and
+compares the entire returned snapshot, including both transport IDs, before
+issuing a local handle. Confirmation/cancellation uses the saved exact prefix,
+request ID and grant; renderer calls supply only the local handle. Owner and
+pairing handles cannot cross families. All commands use the existing worker's
+deadline, interest and failed-delivery invalidation rules, with no Unix fallback.
+
+Native transport-identity reading is a closed, read-only exchange method; it
+accepts no renderer-supplied identity or grant. It uses the same daemon getter
+as offer/proof validation. There is no authenticated Mac managed-transport
+status reader yet, so native transport read, offer and proof return
+`transport_identity_unavailable`. This change must not manufacture an adapter
+ID or count its refusal fixtures as successful end-to-end pairing.
+
 Queued calls have an absolute deadline and interest lease; cancelled or expired
 work cannot start later. Interest is checked again after native work and delivery;
 successful callers disarm cancellation before dropping their interest guard.

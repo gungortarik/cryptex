@@ -2698,6 +2698,13 @@ fn require_current_transport_device_id(
     context: &SearchContext,
     supplied: &str,
 ) -> Result<(), &'static str> {
+    if current_transport_device_id(context)? != supplied {
+        return Err("transport_identity_mismatch");
+    }
+    Ok(())
+}
+
+fn current_transport_device_id(context: &SearchContext) -> Result<String, &'static str> {
     #[cfg(test)]
     {
         let actual = context
@@ -2707,10 +2714,7 @@ fn require_current_transport_device_id(
         if !crate::syncthing_rest::native_id_shape(actual) {
             return Err("transport_identity_unavailable");
         }
-        if actual != supplied {
-            return Err("transport_identity_mismatch");
-        }
-        Ok(())
+        Ok(actual.to_owned())
     }
     #[cfg(all(windows, not(test)))]
     {
@@ -2721,14 +2725,11 @@ fn require_current_transport_device_id(
         let actual = reader
             .try_transport_device_id()
             .map_err(|_| "transport_identity_unavailable")?;
-        if actual != supplied {
-            return Err("transport_identity_mismatch");
-        }
-        Ok(())
+        Ok(actual)
     }
     #[cfg(all(not(windows), not(test)))]
     {
-        let _ = (context, supplied);
+        let _ = context;
         Err("transport_identity_unavailable")
     }
 }

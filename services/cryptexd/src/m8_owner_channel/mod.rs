@@ -23,6 +23,7 @@ pub(crate) mod request;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Method {
     ReadBrainIdentity,
+    ReadTransportIdentity,
     CreateOffer,
     CreateProof,
     PrepareApproval,
@@ -38,6 +39,7 @@ impl Method {
     pub(crate) fn parse(operation: &str) -> Result<Self, ChannelError> {
         match operation {
             "bootstrap.exchange.brain_identity.read" => Ok(Self::ReadBrainIdentity),
+            "bootstrap.exchange.transport_identity.read" => Ok(Self::ReadTransportIdentity),
             "bootstrap.exchange.offer.create" => Ok(Self::CreateOffer),
             "bootstrap.exchange.proof.create" => Ok(Self::CreateProof),
             "bootstrap.approval.prepare" => Ok(Self::PrepareApproval),
@@ -121,8 +123,9 @@ pub(crate) fn require_desktop_route(operation: &str) -> std::io::Result<()> {
 mod tests {
     use super::*;
 
-    const METHODS: [&str; 10] = [
+    const METHODS: [&str; 11] = [
         "bootstrap.exchange.brain_identity.read",
+        "bootstrap.exchange.transport_identity.read",
         "bootstrap.exchange.offer.create",
         "bootstrap.exchange.proof.create",
         "bootstrap.approval.prepare",

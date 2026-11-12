@@ -133,6 +133,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                   "--cryptex-m8-local-content-check", root / "content-runtime"],
                  "real_verified_content_and_native_sessions", 90)
     for marker in ("verified_tauri_assets=passed", "native_synthetic_approval_sessions=passed",
+                   "native_pairing_boundary_refusals=passed",
                    "native_lost_session_and_old_handle_refused=passed",
                    "native_prepare_and_actor_failures_burn_grants=passed"):
         if marker not in content_result.splitlines():

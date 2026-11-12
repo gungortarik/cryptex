@@ -153,6 +153,21 @@ pub(crate) fn serve(
                     approval_domain::complete(&context, request, &permit),
                     IPC_RESPONSE_DEADLINE,
                 ),
+                Method::ReadTransportIdentity => {
+                    let result = current_transport_device_id(&context);
+                    (
+                        bootstrap_exchange_response(
+                            Some(request.request_id),
+                            result.is_ok(),
+                            result.as_ref().err().copied(),
+                            "bootstrap.exchange.transport_identity.read",
+                            None,
+                            result.ok(),
+                            None,
+                        ),
+                        IPC_RESPONSE_DEADLINE,
+                    )
+                }
                 Method::ReadBrainIdentity | Method::CreateOffer | Method::CreateProof => (
                     execute_bootstrap_exchange(&context, request),
                     IPC_RESPONSE_DEADLINE,
@@ -162,7 +177,12 @@ pub(crate) fn serve(
                         Some(request.request_id),
                         false,
                         Some("approval_session_missing"),
-                        "owner.security.result",
+                        match received.method {
+                            Method::ConfirmApproval | Method::CancelApproval => {
+                                "bootstrap.approval.result"
+                            }
+                            _ => "owner.security.result",
+                        },
                         None,
                         None,
                         None,

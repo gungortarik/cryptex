@@ -78,10 +78,21 @@ Both are corrected at `b7b6f9b`. The marker must be an owned single-link regular
 file, and synthetic Brain/device/probe validation now precedes lifecycle
 recovery and repeats under the domain guard. Both platform jobs passed in
 [run 43284483019](https://github.com/gungortarik/cryptex/actions/runs/43284483019).
-Next, implement the pairing exchange/approval methods in the disabled native
-Desktop client, reusing the existing daemon domain services. Final independent
-security/human review and the publisher/support-floor/activation decisions
-remain open under ADR-0020.
+The disabled native Desktop client now wires Brain identity, transport identity,
+offer/proof, peer prepare/confirm/cancel and durable completion through its
+content-bound worker to the existing daemon domain services. Native private
+grants remain backend-only; peer snapshots are checked against the full signed
+prefix and handles cannot cross owner/peer families. The new transport read
+accepts no caller-supplied identity. The Mac managed-transport status backend
+is still absent: transport read, offer and proof refuse with
+`transport_identity_unavailable`, without creating a trust record. End-to-end
+Mac pairing is not established by this wiring or its refusal tests.
+Validation and exact-source CI status are recorded in the
+[native pairing integration record](../evidence/m8/m8-native-pairing-wiring-20261112.md).
+Next, bind an authenticated managed-transport status reader before exercising
+successful Mac offer/proof and the complete native peer flow. Final independent
+security/human review and publisher/support-floor/activation decisions remain
+open under ADR-0020.
 
 The Windows M8 pairing form now labels the four signed messages by sender
 and recipient. The guided action assembles the role-specific prefix and opens

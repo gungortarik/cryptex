@@ -1,6 +1,8 @@
 //! Explicit feature-only UI/native-session harness. Native rights never leave
 //! one owner thread. Renderer results contain opaque local handles only.
 use cryptexd::ipc::{
+    DesktopBootstrapApprovalPrepared as PeerPrepared,
+    DesktopBootstrapApprovalResult as PeerFinished, DesktopBootstrapExchangeResult as Exchange,
     DesktopOwnerSecurityOperationInput as Input, DesktopOwnerSecurityOperationPrepared as Prepared,
     DesktopOwnerSecurityOperationResult as Finished,
 };
@@ -21,6 +23,13 @@ enum Work {
     Ping(Reply<()>),
     Prepare(Input, Reply<Prepared>),
     Finish(String, bool, Reply<Finished>),
+    Brain(Reply<String>),
+    Transport(Reply<Exchange>),
+    Offer(String, String, Reply<Exchange>),
+    Proof(String, String, String, Reply<Exchange>),
+    PreparePeer(String, Vec<String>, Reply<PeerPrepared>),
+    FinishPeer(String, bool, Reply<PeerFinished>),
+    CompletePeer(Vec<String>, Reply<PeerFinished>),
     Exercise(Reply<()>),
     PendingLoss(Reply<String>),
     RejectOld(String, Reply<()>),
@@ -384,9 +393,54 @@ impl Owner {
                                 .map_err(|e| e.to_string());
                             deliver(&mut daemon, &delivery, reply, result);
                         }
+                        Work::Brain(reply) => {
+                            let result = daemon
+                                .read_pairing_brain_identity()
+                                .map_err(|e| e.to_string());
+                            deliver(&mut daemon, &delivery, reply, result);
+                        }
+                        Work::Transport(reply) => {
+                            let result = daemon
+                                .read_pairing_transport_identity()
+                                .map_err(|e| e.to_string());
+                            deliver(&mut daemon, &delivery, reply, result);
+                        }
+                        Work::Offer(transaction, transport, reply) => {
+                            let result = daemon
+                                .create_pairing_offer(transaction, transport)
+                                .map_err(|e| e.to_string());
+                            deliver(&mut daemon, &delivery, reply, result);
+                        }
+                        Work::Proof(offer, brain, transport, reply) => {
+                            let result = daemon
+                                .create_pairing_proof(offer, brain, transport)
+                                .map_err(|e| e.to_string());
+                            deliver(&mut daemon, &delivery, reply, result);
+                        }
+                        Work::PreparePeer(role, messages, reply) => {
+                            let result = daemon
+                                .prepare_peer(role, messages)
+                                .map_err(|e| e.to_string());
+                            if result.is_ok() {
+                                pending_delivery = Some(delivery.clone());
+                            }
+                            deliver(&mut daemon, &delivery, reply, result);
+                        }
+                        Work::FinishPeer(handle, confirm, reply) => {
+                            let result = daemon
+                                .finish_peer(&handle, confirm)
+                                .map_err(|e| e.to_string());
+                            deliver(&mut daemon, &delivery, reply, result);
+                        }
+                        Work::CompletePeer(messages, reply) => {
+                            let result =
+                                daemon.complete_pairing(messages).map_err(|e| e.to_string());
+                            deliver(&mut daemon, &delivery, reply, result);
+                        }
                         Work::Exercise(reply) => {
                             let result = daemon
-                                .exercise_synthetic_owner_sessions()
+                                .exercise_pairing_boundary()
+                                .and_then(|_| daemon.exercise_synthetic_owner_sessions())
                                 .map_err(|e| e.to_string());
                             deliver(&mut daemon, &delivery, reply, result);
                         }
@@ -506,6 +560,97 @@ impl Drop for Owner {
             }
         }
     }
+}
+#[tauri::command]
+fn m8_new_bootstrap_transaction_id() -> Result<String, String> {
+    cryptexd::ipc::desktop_new_bootstrap_transaction_id().map_err(|e| e.to_string())
+}
+#[tauri::command]
+async fn m8_read_bootstrap_brain_identity(
+    state: tauri::State<'_, Client>,
+) -> Result<String, String> {
+    async_call(state.inner().clone(), Work::Brain).await
+}
+#[tauri::command]
+async fn m8_read_transport_device_id(state: tauri::State<'_, Client>) -> Result<String, String> {
+    let result = async_call(state.inner().clone(), Work::Transport).await?;
+    if !result.accepted {
+        return Err(result
+            .error
+            .unwrap_or("transport_identity_unavailable".into()));
+    }
+    result
+        .exchange_message
+        .ok_or("transport_identity_unavailable".into())
+}
+#[tauri::command]
+async fn m8_create_bootstrap_offer(
+    state: tauri::State<'_, Client>,
+    transaction_id: String,
+    transport_device_id: String,
+) -> Result<Exchange, String> {
+    async_call(state.inner().clone(), move |reply| {
+        Work::Offer(transaction_id, transport_device_id, reply)
+    })
+    .await
+}
+#[tauri::command]
+async fn m8_create_bootstrap_proof(
+    state: tauri::State<'_, Client>,
+    offer_message: String,
+    brain_identity_json: String,
+    transport_device_id: String,
+) -> Result<Exchange, String> {
+    async_call(state.inner().clone(), move |reply| {
+        Work::Proof(
+            offer_message,
+            brain_identity_json,
+            transport_device_id,
+            reply,
+        )
+    })
+    .await
+}
+#[tauri::command]
+async fn m8_prepare_peer_approval(
+    state: tauri::State<'_, Client>,
+    role: String,
+    transcript_messages: Vec<String>,
+) -> Result<PeerPrepared, String> {
+    async_call(state.inner().clone(), move |reply| {
+        Work::PreparePeer(role, transcript_messages, reply)
+    })
+    .await
+}
+#[tauri::command]
+async fn m8_confirm_peer_approval(
+    state: tauri::State<'_, Client>,
+    session_handle: String,
+) -> Result<PeerFinished, String> {
+    async_call(state.inner().clone(), move |reply| {
+        Work::FinishPeer(session_handle, true, reply)
+    })
+    .await
+}
+#[tauri::command]
+async fn m8_cancel_peer_approval(
+    state: tauri::State<'_, Client>,
+    session_handle: String,
+) -> Result<PeerFinished, String> {
+    async_call(state.inner().clone(), move |reply| {
+        Work::FinishPeer(session_handle, false, reply)
+    })
+    .await
+}
+#[tauri::command]
+async fn m8_complete_peer_approval(
+    state: tauri::State<'_, Client>,
+    transcript_messages: Vec<String>,
+) -> Result<PeerFinished, String> {
+    async_call(state.inner().clone(), move |reply| {
+        Work::CompletePeer(transcript_messages, reply)
+    })
+    .await
 }
 #[tauri::command]
 async fn m8_prepare_owner_security_operation(
@@ -796,6 +941,15 @@ pub fn entry() -> Option<Result<(), String>> {
         let app = tauri::Builder::default()
             .manage(owner.client.clone())
             .invoke_handler(tauri::generate_handler![
+                m8_new_bootstrap_transaction_id,
+                m8_read_bootstrap_brain_identity,
+                m8_read_transport_device_id,
+                m8_create_bootstrap_offer,
+                m8_create_bootstrap_proof,
+                m8_prepare_peer_approval,
+                m8_confirm_peer_approval,
+                m8_cancel_peer_approval,
+                m8_complete_peer_approval,
                 m8_prepare_owner_security_operation,
                 m8_confirm_owner_security_operation,
                 m8_cancel_owner_security_operation,

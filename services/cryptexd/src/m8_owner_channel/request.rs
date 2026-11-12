@@ -139,13 +139,18 @@ pub(crate) fn decode_untrusted(bytes: &[u8]) -> Result<DecodedRequest, ChannelEr
         digest(request.approval_request_digest.as_deref()) && digest(request.capability.as_deref());
     let exchange = matches!(
         method,
-        Method::ReadBrainIdentity | Method::CreateOffer | Method::CreateProof
+        Method::ReadBrainIdentity
+            | Method::ReadTransportIdentity
+            | Method::CreateOffer
+            | Method::CreateProof
     );
     if exchange && (request.role.is_some() || request.transcript_messages.is_some() || !no_grant) {
         return Err(ChannelError::InvalidRequestShape);
     }
     let valid = match method {
-        Method::ReadBrainIdentity => request.transaction_id.is_none(),
+        Method::ReadBrainIdentity | Method::ReadTransportIdentity => {
+            request.transaction_id.is_none()
+        }
         Method::CreateOffer => {
             transport(request.transport_device_id.as_deref())
                 && digest(request.transaction_id.as_deref())
@@ -293,6 +298,29 @@ mod tests {
             decode(&complete),
             Err(ChannelError::InvalidRequestShape)
         ));
+    }
+
+    #[test]
+    fn native_transport_read_accepts_no_renderer_claims_or_grants() {
+        let request = base("bootstrap.exchange.transport_identity.read");
+        assert_eq!(
+            decode(&request).unwrap().method,
+            Method::ReadTransportIdentity
+        );
+        for (field, value) in [
+            ("transportDeviceId", json!(["AAAAAAA"; 8].join("-"))),
+            ("transactionId", json!("aa".repeat(32))),
+            ("role", json!("initiator")),
+            ("capability", json!("aa".repeat(32))),
+            ("transcriptMessages", json!(["{}", "{}"])),
+        ] {
+            let mut supplied = request.clone();
+            supplied[field] = value;
+            assert!(matches!(
+                decode(&supplied),
+                Err(ChannelError::InvalidRequestShape)
+            ));
+        }
     }
 
     #[test]
