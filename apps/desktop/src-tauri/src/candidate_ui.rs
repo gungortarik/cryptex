@@ -19,7 +19,7 @@ type Reply<T> = SyncSender<Result<T, String>>;
 enum Work {
     Bind([u8; 32], Reply<()>),
     Ping(Reply<()>),
-    Status(Reply<serde_json::Value>),
+    VerifyTwoEvents(Reply<()>),
     Prepare(Input, Reply<Prepared>),
     Finish(String, bool, Reply<Finished>),
     Exercise(Reply<()>),
@@ -364,8 +364,19 @@ impl Owner {
                             let result = daemon.bind_content(&binding).map_err(|e| e.to_string());
                             deliver(&mut daemon, &delivery, reply, result);
                         }
-                        Work::Status(reply) => {
-                            let result = daemon.fixture_status().map_err(|e| e.to_string());
+                        Work::VerifyTwoEvents(reply) => {
+                            let result = daemon
+                                .fixture_status()
+                                .map_err(|e| e.to_string())
+                                .and_then(|status| {
+                                    if status["eventCount"] == 2
+                                        && status["prefixPreserved"] == true
+                                    {
+                                        Ok(())
+                                    } else {
+                                        Err("candidate_restart_event_mismatch".into())
+                                    }
+                                });
                             deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::Ping(reply) => {
@@ -622,11 +633,8 @@ fn check_durable_restart(root: &Path) -> Result<(), String> {
     resumed.close()?;
     let confirmed = durable_snapshot(root)?;
     let reopened = durable_owner(root, ContentProfile::KeychainResume)?;
-    let status = reopened.client.call(Work::Status)?;
-    if status["eventCount"] != 2
-        || status["prefixPreserved"] != true
-        || durable_snapshot(root)? != confirmed
-    {
+    reopened.client.call(Work::VerifyTwoEvents)?;
+    if durable_snapshot(root)? != confirmed {
         return Err("candidate_restart_mutated_confirmation".into());
     }
     reopened.close()?;
