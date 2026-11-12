@@ -169,7 +169,7 @@ The actual daemon refused earlier during anchored journal recovery with
 `secure_store_missing_item`, exit 2 and unchanged files. The harness now
 accepts either exact missing-key diagnostic, retaining every other assertion.
 
-Open gates: owner-Mac durable native acceptance, product
+Open gates: product
 publisher/OS-floor decisions and explicit activation. Raw wire-capability
 replay across new daemons remains unverified. This is selected candidate evidence, not a full
 workspace, production distribution or M8 acceptance claim.
@@ -190,4 +190,13 @@ arm64 Mach-O headers, executable permissions and byte-identical collector
 scripts against tooling `39f45ab`. The signer expires
 2026-11-13 04:59:28 UTC. The result ZIP exports aggregate statuses and the source
 SHA. The native exercise uses automatic approvals on a synthetic TEMP profile.
-An owner-Mac return for this package remains pending.
+The owner returned `MAC-KALICI-SONUC-fc006133.zip`, SHA-256
+`ba0685f5cbc09e8dca7a39d3540a5f229a098dacef41fc05bff4d45e3b82d196`.
+Its single `result.json` matches the exact product source
+`e22e0ee62dc8c477f25eac575371c3c563e4228e` and reports `outcome=passed`.
+All four required flags are true: `restart_and_confirmation_verified`,
+`missing_key_refusal_verified`, `credential_cleanup_verified` and
+`runtime_cleanup_verified`. This closes the owner-Mac automated durable
+native fixture acceptance at this source. The scope is the isolated signed
+Keychain profile with automatic approvals. Raw wire-capability replay across
+new daemon instances remains a separate gate.
