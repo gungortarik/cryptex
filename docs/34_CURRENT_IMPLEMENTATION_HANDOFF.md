@@ -58,7 +58,16 @@ Its source matches `e22e0ee62dc8c477f25eac575371c3c563e4228e`, outcome is
 refusal, credential cleanup and runtime cleanup. This closes the owner-Mac
 automated durable native fixture check at that source. The disposable signer
 expires 2026-11-13 04:59:28 UTC.
-Next, verify raw wire-capability replay refusal across new daemon instances.
+The replay extension at `5b6f863` passed Mac and Windows CI in
+[run 43279002497](https://github.com/gungortarik/cryptex/actions/runs/43279002497).
+It resends exact pending and completed confirmation requests over new native
+connections to the same profile, requires missing-session refusals, and verifies
+unchanged event/identity and journal bytes. The exported launcher also passed.
+Next, collect the owner Mac replay result from
+`cryptex-mac-tekrar-5b6f863-43279002497.zip` using `MAC-KALICI.command`.
+Require source `5b6f8635bca726cc6637fc47000e9972928f3826`, outcome passed and
+`wire_replay_refusal_verified=true` with all four earlier verification flags.
+The disposable signer expires 2026-11-13 18:22:46 UTC.
 Publisher/OS-floor decisions, explicit activation and M8 completion remain open.
 
 The Windows M8 pairing form now labels the four signed messages by sender

@@ -169,9 +169,8 @@ The actual daemon refused earlier during anchored journal recovery with
 `secure_store_missing_item`, exit 2 and unchanged files. The harness now
 accepts either exact missing-key diagnostic, retaining every other assertion.
 
-Open gates: product
-publisher/OS-floor decisions and explicit activation. Raw wire-capability
-replay across new daemons remains unverified. This is selected candidate evidence, not a full
+Open gates: owner-Mac replay-extension acceptance, product
+publisher/OS-floor decisions and explicit activation. This is selected candidate evidence, not a full
 workspace, production distribution or M8 acceptance claim.
 
 The one-click durable owner package is built from product source `e22e0ee`
@@ -199,4 +198,25 @@ All four required flags are true: `restart_and_confirmation_verified`,
 `runtime_cleanup_verified`. This closes the owner-Mac automated durable
 native fixture acceptance at this source. The scope is the isolated signed
 Keychain profile with automatic approvals. Raw wire-capability replay across
-new daemon instances remains a separate gate.
+new daemon instances was a separate gate at that source.
+
+## Exact confirmation replay after daemon restart
+
+At `5b6f8635bca726cc6637fc47000e9972928f3826`, the signed native driver retains
+confirmation probes on the same native owner thread in memory. One request has
+a live grant when its daemon is killed. Another is captured before successful
+confirmation and retained after a clean shutdown. Both are replayed byte for
+byte over newly authenticated native connections. The completed request is
+sent twice to the final daemon. Each attempt requires an explicit
+`approval_session_missing` response, successful status checks and unchanged
+canonical/identity and journal bytes.
+
+Both platform jobs in [run 43279002497](https://github.com/gungortarik/cryptex/actions/runs/43279002497)
+passed. The Mac job logged `native_keychain_cross_daemon_wire_replay_refused=passed`
+and `exported_durable_launcher=passed`. Python collector tests also passed
+locally (72 total, 5 platform-specific skips).
+The archive `cryptex-mac-tekrar-5b6f863-43279002497.zip` has SHA-256
+`0f652484d5513e4188b9c212305115f783a37fbbad1b9d1c822fff29276136da`.
+Its exact manifest member hashes, executable modes, arm64 headers and collector
+source bytes were checked after download. The disposable signer expires
+2026-11-13 18:22:46 UTC. The owner Mac replay receipt remains pending.

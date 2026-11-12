@@ -107,5 +107,14 @@ retain the same absolute startup deadline.
 
 The existing ephemeral UI continues to use its fresh-profile fixture. The new
 Keychain experiment is currently invoked by the headless native Desktop check.
-Owner hardware acceptance and cross-daemon raw wire-capability replay remain
-separate checks.
+The durable check also captures exact confirmation requests in a non-Send,
+non-serializable replay probe retained on the same native owner thread.
+It retains one pending request across a forced daemon exit and one successfully
+used confirmation across a clean exit. New authenticated connections resend the
+identical serialized request, including its request ID, transaction, digest and
+capability. The adapter must reply with an explicit missing-session refusal.
+The completed request is repeated twice in the final daemon. Every refusal is
+followed by a status check and byte comparisons of canonical/identity files and
+the journal. Fresh approvals remain exercised between these replay attempts.
+The harness retains probes only in memory and exposes no renderer command.
+Owner hardware acceptance of this replay extension remains a separate check.
