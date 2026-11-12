@@ -81,3 +81,31 @@ A separate process must report Missing after that fixture key is deleted,
 leaving all profile files intact. The test removes its unique development
 credential and runtime. It does not change the content-mode profile guard or
 select a persistent store for the native candidate.
+
+## Isolated native Keychain restart
+
+The feature-only Desktop check now has separate Keychain-create and
+Keychain-resume startup modes. The daemon authenticates the signed parent,
+release snapshot, native connection and frontend binding on every launch.
+Create accepts a fresh private TEMP root with the distinct durable test marker.
+Resume requires that marker, the fixed synthetic Brain and a verified original
+signed probe. It loads the existing development Keychain seed and verifies
+canonical history before admitting native owner operations.
+
+The check kills a daemon with a pending owner review, reopens that same profile
+and rejects the previous local handle. It exercises cancellation and one
+confirmation, then reopens again to verify the two events and byte-identical
+canonical and identity files. The CI harness deletes that unique fixture seed
+and requires a subsequent launch to fail with Missing while keeping profile
+files intact and leaving the seed absent. Anchored journal recovery may detect
+this loss before the content driver runs.
+
+Runtime-ready attribution now precedes reading the ready file. The daemon sends
+that native phase after replacing the progress file, preventing a leftover
+previous PID from racing the new launch. The live-child and expected-PID checks
+retain the same absolute startup deadline.
+
+The existing ephemeral UI continues to use its fresh-profile fixture. The new
+Keychain experiment is currently invoked by the headless native Desktop check.
+Owner hardware acceptance and cross-daemon raw wire-capability replay remain
+separate checks.

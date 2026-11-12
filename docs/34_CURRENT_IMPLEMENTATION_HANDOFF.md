@@ -42,10 +42,15 @@ A test process seeds an isolated profile through daemon library code, then
 two fresh processes load its existing OS-backed signing key and verify its
 history. All profile bytes remain identical. Deleting only that fixture key
 makes a later process report Missing without recreating the key or files.
-The next step is to connect durable profile reopening to the authenticated
-native Desktop/daemon candidate. Its current content mode still requires a
-fresh profile and uses FakeSecureStore. End-to-end durable recovery and M8
-acceptance remain open.
+The authenticated native candidate now has separate Keychain-create and
+Keychain-resume modes. Both platform jobs at `e22e0ee` in
+[run 43156563156](https://github.com/gungortarik/cryptex/actions/runs/43156563156)
+passed. The Mac job verified actual signed Desktop/daemon same-profile restart, confirmed-history
+preservation, previous-local-handle refusal and missing-key refusal.
+The existing UI still uses its ephemeral fresh-profile mode. Next, prepare a
+one-click owner-Mac durable check from this signed native candidate. Raw
+wire-capability replay across new daemons, owner hardware acceptance and M8
+completion remain open.
 
 The Windows M8 pairing form now labels the four signed messages by sender
 and recipient. The guided action assembles the role-specific prefix and opens

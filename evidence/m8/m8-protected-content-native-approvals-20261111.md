@@ -149,11 +149,27 @@ invocations cover seed, two independent reloads and a Missing-key refusal.
 Both reloads verify the existing signed history from the real Keychain.
 The parent compares all profile file bytes before and after successful reads
 and after the missing-key attempt, and confirms the credential stays absent.
-This exercises the daemon library in separate test processes. Native candidate
-reopening and Keychain behavior of the separately signed app remain unverified.
+This prerequisite exercised the daemon library in separate test processes.
 
-Open gates: native same-profile durable restart with the intended platform secure store, product
-publisher/OS-floor decisions and explicit activation. The fresh-runtime lost
-handle test does not establish same-profile restart or old wire-capability
-replay across new daemons. This is selected candidate evidence, not a full
+The signed native restart integration is implemented at
+`e22e0ee62dc8c477f25eac575371c3c563e4228e`. Both platform jobs in
+[run 43156563156](https://github.com/gungortarik/cryptex/actions/runs/43156563156)
+passed. The Mac log includes all four new markers: `native_keychain_same_profile_restart`,
+`native_keychain_confirmed_history_preserved`,
+`native_keychain_old_local_handle_refused` and
+`native_keychain_missing_key_refused`, each reporting passed.
+The exact four-transaction journal multiset and append counts are required.
+The missing-key attempt must exit 2, report Missing, preserve canonical and
+identity bytes and leave the credential absent.
+
+The first integration run caught a Desktop-only result-type dependency error,
+which was removed by validating the result inside the existing native worker.
+The negative test initially expected a diagnostic from the content driver.
+The actual daemon refused earlier during anchored journal recovery with
+`secure_store_missing_item`, exit 2 and unchanged files. The harness now
+accepts either exact missing-key diagnostic, retaining every other assertion.
+
+Open gates: owner-Mac durable native acceptance, product
+publisher/OS-floor decisions and explicit activation. Raw wire-capability
+replay across new daemons remains unverified. This is selected candidate evidence, not a full
 workspace, production distribution or M8 acceptance claim.
