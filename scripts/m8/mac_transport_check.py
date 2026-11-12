@@ -8,7 +8,16 @@ import subprocess
 import time
 import uuid
 
-from mac_identity_preflight import PreflightError, darwin_group_is_dead
+from mac_identity_preflight import PreflightError, darwin_group_is_dead, run_bounded
+
+IDENTITY_MARKERS = (
+    "mac_transport_foreign_socket_no_credentials=passed",
+    "mac_transport_clean_stop_ack=passed",
+    "mac_transport_owned_identity_restart=passed",
+    "mac_transport_helper_loss_cleanup=passed",
+    "mac_transport_live_profile_package_changes_refused=passed",
+    "mac_transport_missing_key_no_regeneration=passed",
+)
 
 MARKERS = ("native_managed_transport_pairing=passed",
            "native_managed_pairing_clean_shutdown=passed",
@@ -20,6 +29,33 @@ def _metadata(path):
     if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_size > 8192:
         raise PreflightError("native_pairing_cleanup_metadata_unsafe")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def check_identity(binary, root, run, cleanup_runner=run_bounded):
+    try:
+        output = run([binary, "--m8-local-transport-driver", root],
+                     "real_managed_mac_transport_identity", 180)
+        if not all(marker in output.splitlines() for marker in IDENTITY_MARKERS):
+            raise PreflightError("native_transport_identity_marker_missing")
+        return output
+    finally:
+        # Rust tail cleanup cannot run after SIGKILL/timeout. This fresh root's
+        # exact captured metadata is the only account namespace considered.
+        path = root / "00000000000000000000000000000001/profile.json"
+        if path.exists() or path.is_symlink():
+            try:
+                credential = _metadata(path)["credential_id"]
+                if not isinstance(credential, str) or not re.fullmatch(r"[0-9a-f]{32}", credential):
+                    raise ValueError("credential shape")
+                labels = ["-s", "Cryptex-Dev-ManagedSyncthing", "-a", "api:" + credential]
+                deleted = cleanup_runner(["/usr/bin/security", "delete-generic-password", *labels], 20)
+                if (deleted.code not in (0, 44) or deleted.timed_out or deleted.limited or deleted.pipe_failed):
+                    raise PreflightError("identity_key_delete_failed")
+                missing = cleanup_runner(["/usr/bin/security", "find-generic-password", *labels], 20)
+                if (missing.code != 44 or missing.timed_out or missing.limited or missing.pipe_failed):
+                    raise PreflightError("identity_key_absence_unverified")
+            except (PreflightError, OSError, ValueError, TypeError, KeyError) as error:
+                raise PreflightError("native_transport_identity_cleanup_failed") from error
 
 
 def check_native_pairing(binary, root, run):

@@ -13,7 +13,7 @@ import uuid
 import zipfile
 
 from mac_identity_preflight import PreflightError, run_bounded
-from mac_transport_check import check_native_pairing, check_parent_loss
+from mac_transport_check import check_identity, check_native_pairing, check_parent_loss
 
 
 def main():
@@ -39,15 +39,7 @@ def main():
 
         try:
             binary = package / "positive.app/Contents/MacOS"
-            output = run([binary / "cryptexd", "--m8-local-transport-driver", temp / "identity"],
-                         "managed_identity_restart", 180)
-            if not all(marker in output.splitlines() for marker in (
-                    "mac_transport_foreign_socket_no_credentials=passed",
-                    "mac_transport_clean_stop_ack=passed",
-                    "mac_transport_owned_identity_restart=passed",
-                    "mac_transport_helper_loss_cleanup=passed",
-                    "mac_transport_missing_key_no_regeneration=passed")):
-                raise PreflightError("managed_identity_marker_missing")
+            check_identity(binary / "cryptexd", temp / "identity", run)
             report["identity_restart_and_refusals_verified"] = True
             check_native_pairing(binary / "cryptex-desktop", temp / "pairing", run)
             report["native_pairing_and_reopen_verified"] = True

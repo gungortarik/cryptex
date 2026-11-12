@@ -121,14 +121,9 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     positive_files = inventory(template)
     positive = root / "positive.app"
     shutil.copytree(template, positive)
-    transport_result = run([positive / "Contents/MacOS/cryptexd",
-                            "--m8-local-transport-driver", root / "transport-runtime"],
-                           "real_managed_mac_transport_identity", 180)
-    for marker in ("mac_transport_foreign_socket_no_credentials=passed",
-                   "mac_transport_clean_stop_ack=passed",
-                   "mac_transport_owned_identity_restart=passed",
-                   "mac_transport_helper_loss_cleanup=passed",
-                   "mac_transport_missing_key_no_regeneration=passed"):
+    from mac_transport_check import IDENTITY_MARKERS, check_identity
+    transport_result = check_identity(positive / "Contents/MacOS/cryptexd", root / "transport-runtime", run)
+    for marker in IDENTITY_MARKERS:
         if marker not in transport_result.splitlines():
             raise PreflightError("native_transport_identity_marker_missing")
         print(marker)

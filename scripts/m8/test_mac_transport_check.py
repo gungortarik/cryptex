@@ -3,8 +3,47 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from mac_identity_preflight import PreflightError
-from mac_transport_check import MARKERS, check_native_pairing, loss_group_snapshot
+from mac_identity_preflight import CommandResult, PreflightError
+from mac_transport_check import IDENTITY_MARKERS, MARKERS, check_identity, check_native_pairing, loss_group_snapshot
+
+
+class IdentityCleanupTests(unittest.TestCase):
+    def test_timeout_or_crash_after_key_creation_still_deletes_and_verifies_exact_key(self):
+        for diagnostic in ("bounded_timeout", "driver_crash"):
+            with self.subTest(diagnostic=diagnostic), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                metadata = root / "00000000000000000000000000000001/profile.json"
+                calls = []
+                def run(args, stage, timeout):
+                    metadata.parent.mkdir()
+                    metadata.write_text(json.dumps({"credential_id": "a" * 32}))
+                    raise PreflightError(diagnostic)
+                def cleanup(args, timeout):
+                    calls.append(args)
+                    return CommandResult(0 if args[1].startswith("delete") else 44, "")
+                with self.assertRaisesRegex(PreflightError, diagnostic):
+                    check_identity(Path("signed-driver"), root, run, cleanup)
+                self.assertEqual([call[1] for call in calls], ["delete-generic-password", "find-generic-password"])
+                self.assertTrue(all(call[-1] == "api:" + "a" * 32 for call in calls))
+                self.assertTrue(metadata.exists())  # failure evidence is retained
+
+    def test_already_deleted_key_is_verified_and_unsafe_label_never_reaches_security(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            metadata = root / "00000000000000000000000000000001/profile.json"
+            metadata.parent.mkdir()
+            metadata.write_text(json.dumps({"credential_id": "b" * 32}))
+            calls = []
+            def cleanup(args, timeout):
+                calls.append(args)
+                return CommandResult(44, "")
+            check_identity(Path("driver"), root, lambda *args: "\n".join(IDENTITY_MARKERS), cleanup)
+            self.assertEqual(len(calls), 2)
+            metadata.write_text(json.dumps({"credential_id": "unrelated-account"}))
+            calls.clear()
+            with self.assertRaisesRegex(PreflightError, "cleanup_failed"):
+                check_identity(Path("driver"), root, lambda *args: "\n".join(IDENTITY_MARKERS), cleanup)
+            self.assertEqual(calls, [])
 
 
 class PairingCleanupTests(unittest.TestCase):

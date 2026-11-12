@@ -377,10 +377,14 @@ fn serve(root: &Path, release: &Release, channel: &mut Channel) -> Result<(), Er
         }
         match request.operation {
             Operation::Observe => {
+                let _before_package = PinnedSyncthingPackage::open(&root.join("package"))
+                    .map_err(|_| Error::Package)?;
                 session
                     .observe(&store)
                     .inspect_err(|e| eprintln!("component=mac_transport stage=observe error={e}"))
                     .map_err(|_| Error::Engine)?;
+                let _after_package = PinnedSyncthingPackage::open(&root.join("package"))
+                    .map_err(|_| Error::Package)?;
                 if !role_active() {
                     crate::owned_process::macos::kill_helper_group();
                 }
@@ -1020,6 +1024,71 @@ pub fn check(root: &Path) -> Result<(), Error> {
             return Err(Error::Engine);
         }
         third.close()?;
+        // Out-of-band fixture corruption must invalidate a running identity
+        // reader. The observer must leave the changed bytes intact, and only
+        // this explicit isolated fixture restores them after verified cleanup.
+        for leaf in [
+            "native/config.xml",
+            "native/cert.pem",
+            "native/key.pem",
+            "profile.json",
+            "native-init.json",
+            "native-ready.json",
+            "native-generation-started",
+            "native-generation-complete",
+            "api-ready",
+            "api-binding.json",
+            "package/AUTHORS.txt",
+        ] {
+            use std::os::unix::fs::PermissionsExt;
+            let worker = Worker::spawn(root.to_owned(), false)?;
+            if wait_identity(worker.status_reader())? != identity {
+                return Err(Error::Engine);
+            }
+            let path = if leaf.starts_with("package/") {
+                root.join(leaf)
+            } else {
+                root.join(PROFILE).join(leaf)
+            };
+            let original = std::fs::read(&path).map_err(|_| Error::Profile)?;
+            let permissions = std::fs::metadata(&path)
+                .map_err(|_| Error::Profile)?
+                .permissions();
+            let mut changed = original.clone();
+            if leaf == "native/config.xml" {
+                let text = std::str::from_utf8(&original).map_err(|_| Error::Profile)?;
+                let bad = text.replace(
+                    "<globalAnnounceEnabled>false</globalAnnounceEnabled>",
+                    "<globalAnnounceEnabled>true</globalAnnounceEnabled>",
+                );
+                if bad.as_bytes() == original {
+                    return Err(Error::Profile);
+                }
+                changed = bad.into_bytes();
+            } else if leaf.ends_with(".json") {
+                let mut json: serde_json::Value =
+                    serde_json::from_slice(&original).map_err(|_| Error::Profile)?;
+                json["schema"] = 2.into();
+                changed = serde_json::to_vec(&json).map_err(|_| Error::Profile)?;
+            } else {
+                changed.extend_from_slice(b"\nchanged-fixture\n");
+            }
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|_| Error::Profile)?;
+            std::fs::write(&path, &changed).map_err(|_| Error::Profile)?;
+            let refused = worker.reader.try_transport_device_id().is_err();
+            let failed = worker.close().is_err();
+            if !refused
+                || !failed
+                || root.join("transport.active").exists()
+                || std::fs::read(&path).map_err(|_| Error::Profile)? != changed
+            {
+                return Err(Error::Policy);
+            }
+            std::fs::write(&path, &original).map_err(|_| Error::Profile)?;
+            std::fs::set_permissions(&path, permissions).map_err(|_| Error::Profile)?;
+        }
+        eprintln!("mac_transport_live_profile_package_changes_refused=passed");
         // Missing existing credentials must not regenerate native identity or
         // rewrite the bound configuration. Keep private snapshot bytes in RAM.
         let snapshot = || -> Result<Vec<Vec<u8>>, Error> {

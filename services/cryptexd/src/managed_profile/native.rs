@@ -86,7 +86,7 @@ struct Intent {
     ports: NativePorts,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 struct Receipt {
@@ -499,6 +499,36 @@ impl<'profile> PreparedNativeProfile<'profile> {
         Ok(())
     }
     fn validate<S: SecureStore + ?Sized>(&self, store: &S) -> Result<(), NativeConfigError> {
+        let current_identity: super::Identity = decode(
+            &self
+                .profile
+                .read("profile.json")?
+                .ok_or(NativeConfigError::InvalidState)?,
+        )?;
+        let intent: Intent = decode(
+            &self
+                .profile
+                .read("native-init.json")?
+                .ok_or(NativeConfigError::InvalidState)?,
+        )?;
+        let receipt: Receipt = decode(
+            &self
+                .profile
+                .read("native-ready.json")?
+                .ok_or(NativeConfigError::InvalidState)?,
+        )?;
+        if current_identity != self.profile.identity
+            || intent.schema != 1
+            || intent.ports != self.receipt.ports
+            || receipt != self.receipt
+            || !self.profile.is_ready()?
+            || self.profile.read("native-generation-started")?.as_deref()
+                != Some(b"m8-native-generation-started-v1\n")
+            || self.profile.read("native-generation-complete")?.as_deref()
+                != Some(b"m8-native-generation-complete-v1\n")
+        {
+            return Err(NativeConfigError::InvalidState);
+        }
         let cert = read_required(&self.home, "cert.pem", 16 * 1024)?;
         let key = read_required(&self.home, "key.pem", 16 * 1024)?;
         if blake3::hash(&cert).to_hex().as_str() != self.receipt.cert_blake3
@@ -703,7 +733,13 @@ impl NativeSession<'_, '_> {
         &self,
         store: &S,
     ) -> Result<crate::syncthing_rest::TransportObservation, NativeConfigError> {
-        self.rest(store)?.observe().map_err(NativeConfigError::Rest)
+        self.prepared.validate(store)?;
+        let observation = self
+            .rest(store)?
+            .observe()
+            .map_err(NativeConfigError::Rest)?;
+        self.prepared.validate(store)?;
+        Ok(observation)
     }
     pub fn stop<S: SecureStore + ?Sized>(
         &mut self,
