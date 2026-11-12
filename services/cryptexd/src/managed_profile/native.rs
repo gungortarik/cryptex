@@ -613,7 +613,6 @@ impl NativeSession<'_, '_> {
         &self,
         store: &S,
     ) -> Result<(), NativeConfigError> {
-        use std::io::Read;
         let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
             .map_err(|_| NativeConfigError::InvalidState)?;
         let endpoint = listener
@@ -624,7 +623,7 @@ impl NativeSession<'_, '_> {
             .map_err(|_| NativeConfigError::InvalidState)?;
         let thread = std::thread::spawn(move || {
             let deadline = std::time::Instant::now() + Duration::from_secs(5);
-            let mut stream = loop {
+            let stream = loop {
                 match listener.accept() {
                     Ok((s, _)) => break s,
                     Err(e)
@@ -636,14 +635,7 @@ impl NativeSession<'_, '_> {
                     Err(_) => return false,
                 }
             };
-            if stream
-                .set_read_timeout(Some(Duration::from_secs(3)))
-                .is_err()
-            {
-                return false;
-            }
-            let mut byte = [0; 1];
-            matches!(stream.read(&mut byte), Ok(0))
+            super::macos::foreign_socket_received_no_bytes(stream)
         });
         let credential = self.prepared.profile.load_api_credential(store)?;
         let observed = OwnedSyncthingRest::new(
@@ -662,6 +654,15 @@ impl NativeSession<'_, '_> {
             ))
         ) || !no_bytes
         {
+            if let Err(error) = observed {
+                eprintln!(
+                    "component=mac_transport operation=foreign_socket_refusal status=failed error={error} no_bytes={no_bytes}"
+                );
+            } else {
+                eprintln!(
+                    "component=mac_transport operation=foreign_socket_refusal status=unexpected_success no_bytes={no_bytes}"
+                );
+            }
             return Err(NativeConfigError::InvalidState);
         }
         eprintln!("mac_transport_foreign_socket_no_credentials=passed");

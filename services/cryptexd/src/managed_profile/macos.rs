@@ -200,10 +200,44 @@ impl PrivateDirectory {
     }
 }
 
+// Darwin may inherit O_NONBLOCK from the listening socket. A read timeout
+// alone does not clear it: WouldBlock is not evidence that no bytes arrived.
+pub(super) fn foreign_socket_received_no_bytes(mut stream: std::net::TcpStream) -> bool {
+    use std::io::Read;
+    if stream.set_nonblocking(false).is_err()
+        || stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+            .is_err()
+    {
+        return false;
+    }
+    let mut byte = [0; 1];
+    matches!(stream.read(&mut byte), Ok(0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
+    #[test]
+    fn foreign_socket_probe_waits_for_eof_and_rejects_any_byte() {
+        use std::io::Write;
+        for send_byte in [false, true] {
+            let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let mut client = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+            let (accepted, _) = listener.accept().unwrap();
+            // Exercise the inherited nonblocking state explicitly, on every OS.
+            accepted.set_nonblocking(true).unwrap();
+            let reader = std::thread::spawn(move || foreign_socket_received_no_bytes(accepted));
+            std::thread::sleep(std::time::Duration::from_millis(30));
+            if send_byte {
+                client.write_all(b"x").unwrap();
+            }
+            drop(client);
+            assert_eq!(reader.join().unwrap(), !send_byte);
+        }
+    }
+
     #[test]
     fn retained_private_profile_refuses_links_permissions_and_competing_session() {
         let mut nonce = [0; 16];
