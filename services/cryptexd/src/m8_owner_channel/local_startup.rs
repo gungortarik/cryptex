@@ -604,6 +604,8 @@ pub const DURABLE_MARKER: &str = "m8-isolated-native-keychain-v1\n";
 fn require_content_runtime(root: &Path, profile: ContentProfile) -> Result<(), Error> {
     use std::os::unix::fs::MetadataExt;
     let metadata = std::fs::symlink_metadata(root).map_err(|_| Error::Arguments)?;
+    let marker =
+        std::fs::symlink_metadata(root.join("m8-content.marker")).map_err(|_| Error::Arguments)?;
     let temp = std::env::temp_dir()
         .canonicalize()
         .map_err(|_| Error::Arguments)?;
@@ -611,6 +613,11 @@ fn require_content_runtime(root: &Path, profile: ContentProfile) -> Result<(), E
         || metadata.file_type().is_symlink()
         || metadata.uid() != unsafe { libc::getuid() }
         || metadata.mode() & 0o077 != 0
+        || !marker.is_file()
+        || marker.file_type().is_symlink()
+        || marker.uid() != unsafe { libc::getuid() }
+        || marker.nlink() != 1
+        || marker.mode() & 0o022 != 0
         || !root
             .canonicalize()
             .map_err(|_| Error::Arguments)?
@@ -629,7 +636,46 @@ fn require_content_runtime(root: &Path, profile: ContentProfile) -> Result<(), E
     {
         return Err(Error::Arguments);
     }
+    if profile == ContentProfile::KeychainResume {
+        verified_resume_device(root)?;
+    }
     Ok(())
+}
+
+/// Read-only synthetic identity check before lifecycle recovery. The domain
+/// repeats it under its instance/admission guard before accessing the key.
+pub(crate) fn verified_resume_device(root: &Path) -> Result<cryptex_core::DeviceId, Error> {
+    let brain = crate::identity_runtime::load_brain_identity(root).map_err(|_| Error::Arguments)?;
+    if brain.brain_id != "aa5d7ae0-5321-4f53-a91e-36a411d88591" {
+        return Err(Error::Arguments);
+    }
+    let local = crate::local_device_identity::load_local_device_identity(root, &brain.brain_id)
+        .map_err(|_| Error::Arguments)?;
+    let device = cryptex_core::DeviceId::new(local.device_id).map_err(|_| Error::Arguments)?;
+    use std::io::Read;
+    let mut descriptor = Vec::new();
+    std::fs::File::open(root.join("signed-probe.json"))
+        .map_err(|_| Error::Arguments)?
+        .take(4097)
+        .read_to_end(&mut descriptor)
+        .map_err(|_| Error::Arguments)?;
+    if descriptor.len() > 4096 {
+        return Err(Error::Arguments);
+    }
+    let descriptor: crate::signed_transfer_probe::ProbeDescriptor =
+        serde_json::from_slice(&descriptor).map_err(|_| Error::Arguments)?;
+    if descriptor.brain_id != brain.brain_id
+        || descriptor.device_id != device.as_str()
+        || descriptor.event_id != "d9885c8e-6a01-48bc-8488-cd52c4c1f725"
+    {
+        return Err(Error::Arguments);
+    }
+    crate::signed_transfer_probe::verify_files(
+        &cryptex_storage::sealed_segment_path(root, &device, 0),
+        &root.join("signed-probe.json"),
+    )
+    .map_err(|_| Error::Arguments)?;
+    Ok(device)
 }
 
 const CLOSE: &[u8] = b"CXLC\x01";
@@ -710,11 +756,63 @@ mod tests {
         assert!(require_content_runtime(&root, ContentProfile::KeychainCreate).is_ok());
         std::fs::write(root.join("existing"), b"fixture").unwrap();
         assert!(require_content_runtime(&root, ContentProfile::KeychainCreate).is_err());
+        assert!(require_content_runtime(&root, ContentProfile::KeychainResume).is_err());
+        crate::signed_transfer_probe::create(
+            &root,
+            &crate::FakeSecureStore::new(),
+            "aa5d7ae0-5321-4f53-a91e-36a411d88591",
+            "d9885c8e-6a01-48bc-8488-cd52c4c1f725",
+        )
+        .unwrap();
         assert!(require_content_runtime(&root, ContentProfile::KeychainResume).is_ok());
+        let brain_path = crate::identity_runtime::brain_identity_path(&root);
+        let original = std::fs::read_to_string(&brain_path).unwrap();
+        let foreign = original.replace(
+            "aa5d7ae0-5321-4f53-a91e-36a411d88591",
+            "bb5d7ae0-5321-4f53-a91e-36a411d88591",
+        );
+        std::fs::write(&brain_path, &foreign).unwrap();
+        assert!(require_content_runtime(&root, ContentProfile::KeychainResume).is_err());
+        assert_eq!(std::fs::read_to_string(&brain_path).unwrap(), foreign);
+        std::fs::write(&brain_path, original).unwrap();
+        let descriptor_path = root.join("signed-probe.json");
+        let descriptor = std::fs::read_to_string(&descriptor_path).unwrap();
+        let device = crate::local_device_identity::load_local_device_identity(
+            &root,
+            "aa5d7ae0-5321-4f53-a91e-36a411d88591",
+        )
+        .unwrap()
+        .device_id;
+        let foreign_descriptor =
+            descriptor.replace(&device, "bb5d7ae0-5321-4f53-a91e-36a411d88591");
+        std::fs::write(&descriptor_path, &foreign_descriptor).unwrap();
+        assert!(require_content_runtime(&root, ContentProfile::KeychainResume).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&descriptor_path).unwrap(),
+            foreign_descriptor
+        );
+        std::fs::write(&descriptor_path, descriptor).unwrap();
         assert!(require_content_runtime(&root, ContentProfile::Ephemeral).is_err());
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert!(require_content_runtime(&root, ContentProfile::KeychainResume).is_err());
         std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn profile_marker_refuses_symbolic_and_shared_hard_links() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let base = crate::test_temp::exclusive_temp_dir("m8-marker-links");
+        let root = base.join("runtime");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let target = base.join("external-marker");
+        std::fs::write(&target, CONTENT_MARKER).unwrap();
+        let marker = root.join("m8-content.marker");
+        symlink(&target, &marker).unwrap();
+        assert!(require_content_runtime(&root, ContentProfile::Ephemeral).is_err());
+        std::fs::remove_file(&marker).unwrap();
+        std::fs::hard_link(&target, &marker).unwrap();
+        assert!(require_content_runtime(&root, ContentProfile::Ephemeral).is_err());
+        std::fs::remove_dir_all(base).unwrap();
     }
     #[test]
     fn untrusted_progress_hint_is_bounded_exact_and_never_startup_success() {

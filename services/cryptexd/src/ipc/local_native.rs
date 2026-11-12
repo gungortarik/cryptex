@@ -79,13 +79,8 @@ pub(crate) fn serve(
         transport_device_id_override: None,
     };
     if profile == ContentProfile::KeychainResume {
-        let brain = load_brain_identity(root).map_err(|_| invalid_data("fixture_brain"))?;
-        if brain.brain_id != "aa5d7ae0-5321-4f53-a91e-36a411d88591" {
-            return Err(invalid_data("native_fixture_brain"));
-        }
-        let local = load_local_device_identity(root, &brain.brain_id)
-            .map_err(|_| invalid_data("fixture_identity"))?;
-        let device = DeviceId::new(local.device_id).map_err(|_| invalid_data("fixture_device"))?;
+        let device = crate::m8_owner_channel::local_startup::verified_resume_device(root)
+            .map_err(|_| invalid_data("native_fixture_profile"))?;
         match load_existing_event_signing_key(
             context.store.as_ref(),
             context.environment,
@@ -101,11 +96,6 @@ pub(crate) fn serve(
             }
             Err(_) => return Err(invalid_data("native_keychain_seed_unavailable")),
         }
-        crate::signed_transfer_probe::verify_files(
-            &cryptex_storage::sealed_segment_path(root, &device, 0),
-            &root.join("signed-probe.json"),
-        )
-        .map_err(|_| invalid_data("native_fixture_seed"))?;
     }
     let original = event_hashes(&context)?;
     let registry = ApprovalSessionRegistry::default();
