@@ -8,7 +8,7 @@ import subprocess
 import time
 import uuid
 
-from mac_identity_preflight import PreflightError, darwin_group_is_dead, run_bounded
+from mac_identity_preflight import PreflightError, darwin_group_is_dead
 
 IDENTITY_MARKERS = (
     "mac_transport_foreign_socket_no_credentials=passed",
@@ -31,7 +31,7 @@ def _metadata(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def check_identity(binary, root, run, cleanup_runner=run_bounded):
+def check_identity(binary, root, run):
     try:
         output = run([binary, "--m8-local-transport-driver", root],
                      "real_managed_mac_transport_identity", 180)
@@ -47,12 +47,13 @@ def check_identity(binary, root, run, cleanup_runner=run_bounded):
                 credential = _metadata(path)["credential_id"]
                 if not isinstance(credential, str) or not re.fullmatch(r"[0-9a-f]{32}", credential):
                     raise ValueError("credential shape")
-                labels = ["-s", "Cryptex-Dev-ManagedSyncthing", "-a", "api:" + credential]
-                deleted = cleanup_runner(["/usr/bin/security", "delete-generic-password", *labels], 20)
-                if (deleted.code not in (0, 44) or deleted.timed_out or deleted.limited or deleted.pipe_failed):
-                    raise PreflightError("identity_key_delete_failed")
-                missing = cleanup_runner(["/usr/bin/security", "find-generic-password", *labels], 20)
-                if (missing.code != 44 or missing.timed_out or missing.limited or missing.pipe_failed):
+                # The signed driver holds the producer's exclusive profile
+                # lease through deletion and typed Missing verification. A
+                # delayed helper must reject its dead parent after acquisition.
+                # No PID adoption or raw security CLI fallback bypasses this.
+                cleaned = run([binary, "--m8-local-transport-fixture-key-cleanup", root],
+                              "identity_key_cleanup_fenced", 45)
+                if "mac_transport_fixture_key_cleanup=passed" not in cleaned.splitlines():
                     raise PreflightError("identity_key_absence_unverified")
             except (PreflightError, OSError, ValueError, TypeError, KeyError) as error:
                 raise PreflightError("native_transport_identity_cleanup_failed") from error

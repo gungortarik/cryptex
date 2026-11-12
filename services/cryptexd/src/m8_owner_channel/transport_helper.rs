@@ -328,16 +328,21 @@ fn serve(root: &Path, release: &Release, channel: &mut Channel) -> Result<(), Er
         ManagedProfile::create(&path, SecureStoreEnvironment::Dev)
     }
     .map_err(|_| Error::Profile)?;
+    // The profile lease fences all provisioning writes against fixture cleanup.
+    // A helper delayed on acquisition must recheck its captured parent AFTER
+    // obtaining the lease, before staged generation can enroll any OS key.
     let credential = profile.credential_profile_id().to_owned();
-    let mut prepared = profile
-        .prepare_native(&_package, &store, ports)
-        .inspect_err(|e| eprintln!("component=mac_transport stage=prepare error={e}"))
-        .map_err(|error| match error {
-            crate::managed_profile::native::NativeConfigError::Profile(
-                crate::managed_profile::ProfileError::CredentialUnavailable,
-            ) => Error::CredentialUnavailable,
-            _ => Error::Profile,
-        })?;
+    let mut prepared = provision_if_parent_live(role_active, || {
+        profile
+            .prepare_native(&_package, &store, ports)
+            .inspect_err(|e| eprintln!("component=mac_transport stage=prepare error={e}"))
+            .map_err(|error| match error {
+                crate::managed_profile::native::NativeConfigError::Profile(
+                    crate::managed_profile::ProfileError::CredentialUnavailable,
+                ) => Error::CredentialUnavailable,
+                _ => Error::Profile,
+            })
+    })?;
     let identity = prepared.configured_transport_device_id().to_owned();
     let mut session = prepared
         .start(&_package, &store)
@@ -432,7 +437,80 @@ fn serve(root: &Path, release: &Release, channel: &mut Channel) -> Result<(), Er
     }
 }
 
+fn provision_if_parent_live<T>(
+    live: impl FnOnce() -> bool,
+    provision: impl FnOnce() -> Result<T, Error>,
+) -> Result<T, Error> {
+    if !live() {
+        return Err(Error::Policy);
+    }
+    provision()
+}
+
+fn cleanup_fixture_key<S: SecureStore + ?Sized>(root: &Path, store: &S) -> Result<(), Error> {
+    cleanup_fixture_key_with_busy(root, store, || {})
+}
+
+fn cleanup_fixture_key_with_busy<S: SecureStore + ?Sized>(
+    root: &Path,
+    store: &S,
+    mut busy: impl FnMut(),
+) -> Result<(), Error> {
+    private_root(root)?;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let profile = loop {
+        match ManagedProfile::open(&root.join(PROFILE), SecureStoreEnvironment::Dev) {
+            Ok(profile) => break profile,
+            Err(crate::managed_profile::ProfileError::Busy) if Instant::now() < deadline => {
+                busy();
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(_) => return Err(Error::Cleanup),
+        }
+    };
+    let (service, account) = crate::syncthing_rest::credential_labels(
+        SecureStoreEnvironment::Dev,
+        profile.credential_profile_id(),
+    )
+    .map_err(|_| Error::Cleanup)?;
+    let result = (|| {
+        match store.get(&service, &account) {
+            Ok(_) => store
+                .delete(&service, &account)
+                .map_err(|_| Error::Cleanup)?,
+            Err(crate::SecureStoreError::Missing) => {}
+            Err(_) => return Err(Error::Cleanup),
+        }
+        if !matches!(
+            store.get(&service, &account),
+            Err(crate::SecureStoreError::Missing)
+        ) {
+            return Err(Error::Cleanup);
+        }
+        Ok(())
+    })();
+    // Keep exclusion through the final Missing verification, including the
+    // already-absent case. No raw CLI deletion is a fallback for lock failure.
+    drop(profile);
+    result
+}
+
 pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
+    if args
+        .first()
+        .is_some_and(|arg| arg == "--m8-local-transport-fixture-key-cleanup")
+    {
+        return Some((|| {
+            if args.len() != 2 {
+                return Err(Error::Arguments);
+            }
+            let _release = Release::current(Role::Daemon, Instant::now() + Duration::from_secs(15))
+                .map_err(|_| Error::Policy)?;
+            cleanup_fixture_key(Path::new(&args[1]), &MacosKeychainStore::new())?;
+            println!("mac_transport_fixture_key_cleanup=passed");
+            Ok(())
+        })());
+    }
     if args.first().is_some_and(|a| {
         a == "--m8-local-transport-loss-driver" || a == "--m8-local-transport-blocked-check"
     }) {
@@ -1169,6 +1247,97 @@ pub fn check(root: &Path) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn cleanup_root() -> PathBuf {
+        let mut nonce = [0; 16];
+        getrandom::getrandom(&mut nonce).unwrap();
+        create_root(
+            &std::env::temp_dir()
+                .canonicalize()
+                .unwrap()
+                .join(format!("cx-key-fence-{}", epoch_text(&nonce))),
+        )
+        .unwrap()
+    }
+    #[test]
+    fn fixture_cleanup_waits_for_late_writer_and_refuses_delayed_dead_parent() {
+        let root = cleanup_root();
+        let producer =
+            ManagedProfile::create(&root.join(PROFILE), SecureStoreEnvironment::Dev).unwrap();
+        let (service, account) = crate::syncthing_rest::credential_labels(
+            SecureStoreEnvironment::Dev,
+            producer.credential_profile_id(),
+        )
+        .unwrap();
+        let store = Arc::new(crate::FakeSecureStore::new());
+        let (busy, observed_busy) = mpsc::sync_channel(1);
+        let cleanup_root = root.clone();
+        let cleanup_store = store.clone();
+        let cleanup = std::thread::spawn(move || {
+            cleanup_fixture_key_with_busy(&cleanup_root, cleanup_store.as_ref(), || {
+                let _ = busy.try_send(());
+            })
+        });
+        observed_busy.recv_timeout(Duration::from_secs(3)).unwrap();
+        // The producer's late put must precede cleanup, not race its Missing.
+        store
+            .put(&service, &account, b"isolated late fixture key")
+            .unwrap();
+        drop(producer);
+        cleanup.join().unwrap().unwrap();
+        assert!(matches!(
+            store.get(&service, &account),
+            Err(crate::SecureStoreError::Missing)
+        ));
+        let delayed =
+            ManagedProfile::open(&root.join(PROFILE), SecureStoreEnvironment::Dev).unwrap();
+        assert_eq!(
+            provision_if_parent_live(
+                || false,
+                || store
+                    .put(&service, &account, b"must not be written")
+                    .map_err(|_| Error::Engine)
+            ),
+            Err(Error::Policy)
+        );
+        assert!(matches!(
+            store.get(&service, &account),
+            Err(crate::SecureStoreError::Missing)
+        ));
+        drop(delayed);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn already_missing_verification_still_holds_the_profile_lease() {
+        struct Missing {
+            root: PathBuf,
+            checks: std::sync::atomic::AtomicUsize,
+        }
+        impl SecureStore for Missing {
+            fn put(&self, _: &str, _: &str, _: &[u8]) -> crate::SecureStoreResult<()> {
+                panic!("unexpected put")
+            }
+            fn delete(&self, _: &str, _: &str) -> crate::SecureStoreResult<()> {
+                panic!("unexpected delete")
+            }
+            fn get(&self, _: &str, _: &str) -> crate::SecureStoreResult<Vec<u8>> {
+                assert!(matches!(
+                    ManagedProfile::open(&self.root.join(PROFILE), SecureStoreEnvironment::Dev),
+                    Err(crate::managed_profile::ProfileError::Busy)
+                ));
+                self.checks.fetch_add(1, Ordering::SeqCst);
+                Err(crate::SecureStoreError::Missing)
+            }
+        }
+        let root = cleanup_root();
+        drop(ManagedProfile::create(&root.join(PROFILE), SecureStoreEnvironment::Dev).unwrap());
+        let store = Missing {
+            root: root.clone(),
+            checks: std::sync::atomic::AtomicUsize::new(0),
+        };
+        cleanup_fixture_key(&root, &store).unwrap();
+        assert_eq!(store.checks.load(Ordering::SeqCst), 2);
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn helper_protocol_has_no_owner_commands_or_ambient_role() {
         assert!(!role_entered());

@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from mac_identity_preflight import CommandResult, PreflightError
+from mac_identity_preflight import PreflightError
 from mac_transport_check import IDENTITY_MARKERS, MARKERS, check_identity, check_native_pairing, loss_group_snapshot
 
 
@@ -15,16 +15,16 @@ class IdentityCleanupTests(unittest.TestCase):
                 metadata = root / "00000000000000000000000000000001/profile.json"
                 calls = []
                 def run(args, stage, timeout):
-                    metadata.parent.mkdir()
-                    metadata.write_text(json.dumps({"credential_id": "a" * 32}))
-                    raise PreflightError(diagnostic)
-                def cleanup(args, timeout):
                     calls.append(args)
-                    return CommandResult(0 if args[1].startswith("delete") else 44, "")
+                    if args[1] == "--m8-local-transport-driver":
+                        metadata.parent.mkdir()
+                        metadata.write_text(json.dumps({"credential_id": "a" * 32}))
+                        raise PreflightError(diagnostic)
+                    return "mac_transport_fixture_key_cleanup=passed"
                 with self.assertRaisesRegex(PreflightError, diagnostic):
-                    check_identity(Path("signed-driver"), root, run, cleanup)
-                self.assertEqual([call[1] for call in calls], ["delete-generic-password", "find-generic-password"])
-                self.assertTrue(all(call[-1] == "api:" + "a" * 32 for call in calls))
+                    check_identity(Path("signed-driver"), root, run)
+                self.assertEqual([call[1] for call in calls], ["--m8-local-transport-driver", "--m8-local-transport-fixture-key-cleanup"])
+                self.assertTrue(all(call[0] == Path("signed-driver") and call[-1] == root for call in calls))
                 self.assertTrue(metadata.exists())  # failure evidence is retained
 
     def test_already_deleted_key_is_verified_and_unsafe_label_never_reaches_security(self):
@@ -34,16 +34,34 @@ class IdentityCleanupTests(unittest.TestCase):
             metadata.parent.mkdir()
             metadata.write_text(json.dumps({"credential_id": "b" * 32}))
             calls = []
-            def cleanup(args, timeout):
+            def run(args, stage, timeout):
                 calls.append(args)
-                return CommandResult(44, "")
-            check_identity(Path("driver"), root, lambda *args: "\n".join(IDENTITY_MARKERS), cleanup)
+                return "mac_transport_fixture_key_cleanup=passed" if "cleanup" in args[1] else "\n".join(IDENTITY_MARKERS)
+            check_identity(Path("driver"), root, run)
             self.assertEqual(len(calls), 2)
             metadata.write_text(json.dumps({"credential_id": "unrelated-account"}))
             calls.clear()
             with self.assertRaisesRegex(PreflightError, "cleanup_failed"):
-                check_identity(Path("driver"), root, lambda *args: "\n".join(IDENTITY_MARKERS), cleanup)
-            self.assertEqual(calls, [])
+                check_identity(Path("driver"), root, run)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0][1], "--m8-local-transport-driver")
+
+    def test_unresolved_writer_fence_never_falls_back_to_raw_security_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            metadata = root / "00000000000000000000000000000001/profile.json"
+            metadata.parent.mkdir()
+            metadata.write_text(json.dumps({"credential_id": "c" * 32}))
+            calls = []
+            def run(args, stage, timeout):
+                calls.append(args)
+                if "cleanup" in args[1]:
+                    raise PreflightError("writer_lock_timeout")
+                return "\n".join(IDENTITY_MARKERS)
+            with self.assertRaisesRegex(PreflightError, "cleanup_failed"):
+                check_identity(Path("driver"), root, run)
+            self.assertEqual(len(calls), 2)
+            self.assertTrue(all(call[0] == Path("driver") for call in calls))
 
 
 class PairingCleanupTests(unittest.TestCase):
