@@ -1,5 +1,6 @@
 // Default-off Mac transport candidate. Public SDK only; never a PID-adoption API.
 #include <Security/Security.h>
+#include <AvailabilityMacros.h>
 #include <bsm/libbsm.h>
 #include <errno.h>
 #include <libproc.h>
@@ -51,7 +52,15 @@ int cx_transport_spawn_suspended(const char *path, const char *cwd,
         if (result) break;
         result = posix_spawnattr_setsigdefault(&attr, &defaults);
         if (result) break;
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 260000
+        if (__builtin_available(macOS 26.0, *)) {
+            result = posix_spawn_file_actions_addchdir(&actions, cwd);
+        } else {
+            result = posix_spawn_file_actions_addchdir_np(&actions, cwd);
+        }
+#else
         result = posix_spawn_file_actions_addchdir_np(&actions, cwd);
+#endif
         if (result) break;
         result = posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDWR, 0);
         if (result) break;
