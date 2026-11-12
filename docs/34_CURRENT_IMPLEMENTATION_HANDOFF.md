@@ -68,10 +68,20 @@ Its source matches `5b6f8635bca726cc6637fc47000e9972928f3826`, outcome is
 passed and `wire_replay_refusal_verified=true` with all four earlier flags
 true for restart/confirmation, missing-key refusal and both cleanup checks.
 This closes the owner-Mac automated cross-daemon confirmation replay fixture
-at this source. Next, review the current candidate's security boundary and the
-remaining publisher/OS-floor and product integration decisions.
+at this source.
 The disposable signer expires 2026-11-13 18:22:46 UTC.
 Publisher/OS-floor decisions, explicit activation and M8 completion remain open.
+
+The [focused profile-boundary review](../evidence/m8/m8-native-profile-boundary-review-20261112.md)
+identified linked-marker acceptance and a late synthetic-resume identity check.
+Both are corrected at `b7b6f9b`. The marker must be an owned single-link regular
+file, and synthetic Brain/device/probe validation now precedes lifecycle
+recovery and repeats under the domain guard. Both platform jobs passed in
+[run 43284483019](https://github.com/gungortarik/cryptex/actions/runs/43284483019).
+Next, implement the pairing exchange/approval methods in the disabled native
+Desktop client, reusing the existing daemon domain services. Final independent
+security/human review and the publisher/support-floor/activation decisions
+remain open under ADR-0020.
 
 The Windows M8 pairing form now labels the four signed messages by sender
 and recipient. The guided action assembles the role-specific prefix and opens
