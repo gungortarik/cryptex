@@ -37,6 +37,30 @@ class InteractiveFixtureTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "changed after test"):
                 export_fixture(root, files, root / "changed.zip", *args)
 
+    def test_durable_export_includes_collector_dependencies_and_executable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            files = []
+            for name in ("Contents/MacOS/cryptex-desktop", "Contents/MacOS/cryptexd",
+                         "Contents/Resources/startup-check.txt", "Contents/Resources/frontend/index.html"):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"fixture")
+                files.append({"path": name, "size": 7, "sha256": hashlib.sha256(b"fixture").hexdigest()})
+            for name in ("m8-startup.json", "m8-startup.cms"):
+                (root / "Contents/Resources" / name).write_bytes(b"public")
+            package = root / "durable.zip"
+            export_fixture(root, files, package, "0" * 40, "arm64",
+                           "notAfter=Nov 12 01:00:00 2026 GMT", durable=True)
+            with zipfile.ZipFile(package) as archive:
+                prefix = "Cryptex-Mac-Kalici/"
+                self.assertEqual(len(archive.namelist()), 10)
+                for helper in ("mac_durable_check.py", "mac_identity_preflight.py"):
+                    self.assertEqual(archive.read(prefix + helper),
+                                     Path(__file__).with_name(helper).read_bytes())
+                command = archive.getinfo(prefix + "MAC-KALICI.command")
+                self.assertTrue(command.external_attr >> 16 & 0o100)
+
     def test_exact_owner_outcome_and_duplicate_or_missing_operation(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

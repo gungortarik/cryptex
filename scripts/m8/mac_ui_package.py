@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 
-def export_fixture(bundle, files, destination, source, architecture, expires):
+def export_fixture(bundle, files, destination, source, architecture, expires, *, durable=False):
     if not re.fullmatch(r"[0-9a-f]{40}", source) or architecture not in ("arm64", "x86_64"):
         raise ValueError("invalid fixture source or architecture")
     if not expires.startswith("notAfter="):
@@ -22,7 +22,7 @@ def export_fixture(bundle, files, destination, source, architecture, expires):
         raise ValueError("incomplete fixture inventory")
 
     def add(archive, name, data, executable=False):
-        info = zipfile.ZipInfo("Cryptex-Mac-UI/" + name)
+        info = zipfile.ZipInfo(("Cryptex-Mac-Kalici/" if durable else "Cryptex-Mac-UI/") + name)
         info.create_system = 3
         info.external_attr = (0o100700 if executable else 0o100600) << 16
         archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED)
@@ -44,4 +44,9 @@ def export_fixture(bundle, files, destination, source, architecture, expires):
         add(archive, "fixture.json", json.dumps({
             "source": source, "architecture": architecture, "expires_utc": expiry.isoformat(),
         }).encode())
-        add(archive, "MAC-ARAYUZ.command", Path(__file__).with_name("mac_ui_owner.py").read_bytes(), True)
+        if durable:
+            add(archive, "MAC-KALICI.command", Path(__file__).with_name("mac_durable_owner.py").read_bytes(), True)
+            for helper in ("mac_durable_check.py", "mac_identity_preflight.py"):
+                add(archive, helper, Path(__file__).with_name(helper).read_bytes())
+        else:
+            add(archive, "MAC-ARAYUZ.command", Path(__file__).with_name("mac_ui_owner.py").read_bytes(), True)

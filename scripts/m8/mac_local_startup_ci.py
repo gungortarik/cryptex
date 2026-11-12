@@ -1,26 +1,15 @@
 """Feature-only actual Desktop/daemon startup fixture; called inside CI keychain scope."""
 import hashlib
-from collections import Counter
 import json
 import os
 from pathlib import Path
 import platform
 import shutil
 import sys
-import uuid
+import zipfile
 
 from mac_identity_preflight import PreflightError
-
-
-def check_session_journal(path, expected):
-    journal = json.loads(path.read_text(encoding="utf-8"))
-    transactions = journal["transactions"]
-    # The journal sorts random transaction IDs, not operation chronology.
-    # Require the entire exact state multiset and one append only for anchored.
-    if (Counter(item["state"] for item in transactions) != Counter(expected)
-            or any(len(item["append_attempts"]) != (1 if item["state"] == "anchored" else 0)
-                   for item in transactions)):
-        raise PreflightError("native_session_journal_outcome_mismatch")
+from mac_durable_check import MARKERS, check_durable_profile, check_session_journal
 
 
 def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain,
@@ -134,55 +123,11 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     if receipt.get("eventCount") != 1 or receipt.get("prefixPreserved") is not True:
         raise PreflightError("native_ui_quit_receipt_mismatch")
     print("native_ui_quit_preserved_seed=passed")
-    durable_root = root / "durable-runtime"
-    try:
-        durable = run([positive / "Contents/MacOS/cryptex-desktop",
-                       "--cryptex-m8-local-content-durable-check", durable_root],
-                      "real_native_keychain_restart", 120)
-        for marker in ("native_keychain_same_profile_restart=passed",
-                       "native_keychain_confirmed_history_preserved=passed",
-                       "native_keychain_old_local_handle_refused=passed"):
-            if marker not in durable.splitlines():
-                raise PreflightError("native_keychain_restart_marker_missing")
-            print(marker)
-        check_session_journal(durable_root / "bootstrap/pending.json",
-                              ("owner_pending", "cancelled", "owner_pending", "anchored"))
-    finally:
-        identity = durable_root / "identity/local_device.json"
-        if identity.exists():
-            device = json.loads(identity.read_text(encoding="utf-8"))["device_id"]
-            device = str(uuid.UUID(device))
-            run(["/usr/bin/security", "delete-generic-password", "-s",
-                 "Cryptex-Dev-DeviceCredentials", "-a", "device-event-signing-seed:" + device],
-                "remove_native_restart_fixture_key")
-    before_missing = {path.relative_to(durable_root): path.read_bytes()
-                      for folder in ("identity", "canonical")
-                      for path in (durable_root / folder).rglob("*") if path.is_file()}
-    missing = run_bounded([str(positive / "Contents/MacOS/cryptex-desktop"),
-                          "--cryptex-m8-local-content-durable-resume-check", str(durable_root)], 30)
-    after_missing = {path.relative_to(durable_root): path.read_bytes()
-                     for folder in ("identity", "canonical")
-                     for path in (durable_root / folder).rglob("*") if path.is_file()}
-    # Anchored journal recovery can reject the missing seed before runtime-ready
-    # and therefore before the content driver can emit its own refusal marker.
-    missing_marker = any(line in (
-        "native_keychain_seed_missing",
-        "cryptexd: peer approval recovery conflict: canonical history verification failed: secure_store_missing_item",
-    ) for line in missing.output.splitlines())
-    if (missing.code != 2 or missing.timed_out or missing.limited or missing.pipe_failed
-            or not missing_marker
-            or before_missing != after_missing):
-        print(json.dumps({"nativeMissingKey": {
-            "exit": missing.code, "timeout": missing.timed_out, "limited": missing.limited,
-            "pipeFailed": missing.pipe_failed, "unchanged": before_missing == after_missing,
-            "missingMarker": missing_marker,
-            "output": missing.output.replace(str(root), "[fixture-root]")[-4096:],
-        }}), file=sys.stderr)
-        raise PreflightError("native_keychain_missing_key_refusal_failed")
-    absent = run_bounded(["/usr/bin/security", "delete-generic-password", "-s",
-                         "Cryptex-Dev-DeviceCredentials", "-a", "device-event-signing-seed:" + device], 10)
-    if absent.code != 44 or absent.timed_out or absent.limited or absent.pipe_failed:
-        raise PreflightError("native_keychain_missing_key_recreated")
+    durable_report = {}
+    check_durable_profile(positive / "Contents/MacOS/cryptex-desktop",
+                          root / "durable-runtime", durable_report, run_bounded)
+    for marker in MARKERS:
+        print(marker)
     print("native_keychain_missing_key_refused=passed")
     content_result = run([positive / "Contents/MacOS/cryptex-desktop",
                   "--cryptex-m8-local-content-check", root / "content-runtime"],
@@ -253,3 +198,25 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                       "read_fixture_expiry").strip()
         export_fixture(positive, positive_files, Path(os.environ["RUNNER_TEMP"]) / "cryptex-mac-ui.zip",
                        source_commit, architecture, expires)
+        export_fixture(positive, positive_files, Path(os.environ["RUNNER_TEMP"]) / "cryptex-mac-durable.zip",
+                       source_commit, architecture, expires, durable=True)
+        # Execute the exported launcher and helpers, including archive permissions.
+        archive_path = Path(os.environ["RUNNER_TEMP"]) / "cryptex-mac-durable.zip"
+        with zipfile.ZipFile(archive_path) as archive:
+            destination = root / "export-check"
+            archive.extractall(destination)
+            for member in archive.infolist():
+                (destination / member.filename).chmod((member.external_attr >> 16) & 0o777)
+        owner = destination / "Cryptex-Mac-Kalici"
+        run([owner / "MAC-KALICI.command"], "exported_durable_launcher", 180)
+        results = list(owner.glob("MAC-KALICI-SONUC-*.zip"))
+        if len(results) != 1:
+            raise PreflightError("exported_durable_result_missing")
+        with zipfile.ZipFile(results[0]) as result:
+            report = json.loads(result.read("result.json"))
+        if (report.get("source") != source_commit or report.get("outcome") != "passed"
+                or not all(report.get(key) is True for key in (
+                    "credential_cleanup_verified", "runtime_cleanup_verified",
+                    "restart_and_confirmation_verified", "missing_key_refusal_verified"))):
+            raise PreflightError("exported_durable_result_failed")
+        print("exported_durable_launcher=passed")
