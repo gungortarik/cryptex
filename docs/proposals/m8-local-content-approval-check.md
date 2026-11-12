@@ -72,3 +72,12 @@ review. Fresh-connection handle tests do not establish same-runtime restart
 recovery because the fixture store is intentionally ephemeral and the content
 mode refuses existing profiles. Signed interactive acceptance, durable recovery
 with the intended platform store and product activation remain separate gates.
+
+The OS-store restart prerequisite is exercised independently by
+`platform_restart_tests` on macOS. It seeds an isolated profile through daemon
+library code, reloads the Keychain-backed key in two fresh processes, verifies
+the canonical signatures, and compares every profile file byte for byte.
+A separate process must report Missing after that fixture key is deleted,
+leaving all profile files intact. The test removes its unique development
+credential and runtime. It does not change the content-mode profile guard or
+select a persistent store for the native candidate.

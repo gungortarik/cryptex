@@ -36,9 +36,16 @@ passed. A real AppKit quit produced a receipt with the one seed event preserved.
 The revised owner Mac result `MAC-ARAYUZ-SONUC-bf755756.zip` passed after
 Cancel, Confirm and Cmd+Q: two events, original prefix preserved, one cancellation
 with zero append attempts, one anchored confirmation with one attempt, exit 0.
-The next integration gate is same-profile durable restart using the intended
-platform secure store.
-Same-profile durable recovery and M8 acceptance remain open.
+The real Keychain prerequisite now passes at `4662171` in
+[scoped native CI](https://github.com/gungortarik/cryptex/actions/runs/43151946676).
+A test process seeds an isolated profile through daemon library code, then
+two fresh processes load its existing OS-backed signing key and verify its
+history. All profile bytes remain identical. Deleting only that fixture key
+makes a later process report Missing without recreating the key or files.
+The next step is to connect durable profile reopening to the authenticated
+native Desktop/daemon candidate. Its current content mode still requires a
+fresh profile and uses FakeSecureStore. End-to-end durable recovery and M8
+acceptance remain open.
 
 The Windows M8 pairing form now labels the four signed messages by sender
 and recipient. The guided action assembles the role-specific prefix and opens

@@ -142,7 +142,17 @@ multiset of one cancelled operation with zero append attempts and one anchored
 operation with one attempt. This closes the owner interactive cancellation,
 confirmation and normal-quit receipt check for this isolated fixture.
 
-Open gates: same-profile durable restart with the intended platform secure store, product
+The [OS-store prerequisite run](https://github.com/gungortarik/cryptex/actions/runs/43151946676)
+passed both native platform jobs at `4662171`. The macOS log records the explicit
+`platform_restart_tests` run with 2 passed and zero ignored. Its four worker
+invocations cover seed, two independent reloads and a Missing-key refusal.
+Both reloads verify the existing signed history from the real Keychain.
+The parent compares all profile file bytes before and after successful reads
+and after the missing-key attempt, and confirms the credential stays absent.
+This exercises the daemon library in separate test processes. Native candidate
+reopening and Keychain behavior of the separately signed app remain unverified.
+
+Open gates: native same-profile durable restart with the intended platform secure store, product
 publisher/OS-floor decisions and explicit activation. The fresh-runtime lost
 handle test does not establish same-profile restart or old wire-capability
 replay across new daemons. This is selected candidate evidence, not a full
