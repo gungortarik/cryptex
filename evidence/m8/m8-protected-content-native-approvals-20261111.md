@@ -173,3 +173,21 @@ Open gates: owner-Mac durable native acceptance, product
 publisher/OS-floor decisions and explicit activation. Raw wire-capability
 replay across new daemons remains unverified. This is selected candidate evidence, not a full
 workspace, production distribution or M8 acceptance claim.
+
+The one-click durable owner package is built from product source `e22e0ee`
+with collector tooling `39f45ab` in
+[run 43158034824](https://github.com/gungortarik/cryptex/actions/runs/43158034824).
+Both platform jobs passed. The Mac log includes
+`exported_durable_launcher=passed` after running the extracted executable
+launcher under system Python. Its result requires all four verification flags
+for restart/confirmation, missing-key refusal, credential cleanup and runtime
+cleanup. CI and the owner collector now share those exact checks.
+
+The delivered archive `cryptex-mac-kalici-e22e0ee-43158034824.zip` has SHA-256
+`bba0cc97a020cbe7dc8dc10d0893855ccc8f5d8e3d12f91c206773a5dd670e8e`.
+Local verification checked its exact member set, manifest file sizes/hashes,
+arm64 Mach-O headers, executable permissions and byte-identical collector
+scripts against tooling `39f45ab`. The signer expires
+2026-11-13 04:59:28 UTC. The result ZIP exports aggregate statuses and the source
+SHA. The native exercise uses automatic approvals on a synthetic TEMP profile.
+An owner-Mac return for this package remains pending.

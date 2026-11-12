@@ -47,10 +47,17 @@ Keychain-resume modes. Both platform jobs at `e22e0ee` in
 [run 43156563156](https://github.com/gungortarik/cryptex/actions/runs/43156563156)
 passed. The Mac job verified actual signed Desktop/daemon same-profile restart, confirmed-history
 preservation, previous-local-handle refusal and missing-key refusal.
-The existing UI still uses its ephemeral fresh-profile mode. Next, prepare a
-one-click owner-Mac durable check from this signed native candidate. Raw
-wire-capability replay across new daemons, owner hardware acceptance and M8
-completion remain open.
+The one-click owner Mac package is ready from product source `e22e0ee` and
+collector tooling `39f45ab`. Both native platform jobs passed in
+[package run 43158034824](https://github.com/gungortarik/cryptex/actions/runs/43158034824).
+The exported `MAC-KALICI.command` was extracted and executed on the Mac runner,
+producing a passing result with credential and runtime cleanup verified.
+The owner should extract `cryptex-mac-kalici-e22e0ee-43158034824.zip` on their
+Apple Silicon Mac, launch `MAC-KALICI.command`, and return
+`MAC-KALICI-SONUC-*.zip`. The disposable signer expires
+2026-11-13 04:59:28 UTC. Next, inspect that owner's result and source binding.
+Raw wire-capability replay across new daemons, owner hardware acceptance and
+M8 completion remain open.
 
 The Windows M8 pairing form now labels the four signed messages by sender
 and recipient. The guided action assembles the role-specific prefix and opens
