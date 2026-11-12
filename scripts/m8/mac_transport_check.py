@@ -1,5 +1,6 @@
 """Default-off signed native pairing fixture, with exact fixture-key cleanup."""
 import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 import re
 import selectors
@@ -15,7 +16,6 @@ IDENTITY_MARKERS = (
     "mac_transport_clean_stop_ack=passed",
     "mac_transport_owned_identity_restart=passed",
     "mac_transport_helper_loss_cleanup=passed",
-    "mac_transport_live_profile_package_changes_refused=passed",
     "mac_transport_missing_key_no_regeneration=passed",
 )
 
@@ -31,54 +31,88 @@ def _metadata(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def check_identity(binary, root, run):
+def _cleanup_api(binary, root, run):
+    path = root / "00000000000000000000000000000001/profile.json"
+    if not path.exists() and not path.is_symlink():
+        return
+    credential = _metadata(path)["credential_id"]
+    if not isinstance(credential, str) or not re.fullmatch(r"[0-9a-f]{32}", credential):
+        raise PreflightError("native_cleanup_credential_invalid")
+    cleaned = run([binary, "--m8-local-transport-fixture-key-cleanup", root],
+                  "identity_key_cleanup_fenced", 45)
+    if "mac_transport_fixture_key_cleanup=passed" not in cleaned.splitlines():
+        raise PreflightError("identity_key_absence_unverified")
+
+
+def _identity_stage(binary, root, run, args, markers):
     writer_stopped = False
     try:
         try:
-            output = run([binary, "--m8-local-transport-driver", root],
-                         "real_managed_mac_transport_identity", 180)
+            output = run([binary, *args], "real_managed_mac_transport_identity", 180)
             writer_stopped = True
         except PreflightError:
-            # Internal run wrappers raise this typed result only after the
-            # bounded owner has waited/reaped its exact driver. Raw wait/OS
-            # exceptions provide no such proof and must not start cleanup.
+            # These internal wrappers return typed failure only after reaping
+            # their exact bounded driver. Raw wait/OS errors prove no such exit.
             writer_stopped = True
             raise
-        if not all(marker in output.splitlines() for marker in IDENTITY_MARKERS):
+        if not all(marker in output.splitlines() for marker in markers):
             raise PreflightError("native_transport_identity_marker_missing")
         return output
     finally:
-        # Rust tail cleanup cannot run after SIGKILL/timeout. This fresh root's
-        # exact captured metadata is the only account namespace considered.
-        path = root / "00000000000000000000000000000001/profile.json"
-        if path.exists() or path.is_symlink():
+        try:
+            if not writer_stopped:
+                raise PreflightError("identity_writer_exit_unresolved")
+            _cleanup_api(binary, root, run)
+        except (PreflightError, OSError, ValueError, TypeError, KeyError) as error:
+            raise PreflightError("native_transport_identity_cleanup_failed") from error
+
+
+MUTATION_BATCH_MARKERS = {
+    "profile": "mac_transport_mutation_batch_profile_cases_6=passed",
+    "receipts": "mac_transport_mutation_batch_receipts_cases_5=passed",
+}
+
+
+def check_identity(binary, root, run):
+    output = _identity_stage(binary, root, run, ["--m8-local-transport-driver", root], IDENTITY_MARKERS)
+    outputs, failures = [], []
+    # Two closed independent inventories, each with its own captured process,
+    # fresh root/account and fenced finally cleanup. Settle BOTH even on failure;
+    # Future.cancel is never mistaken for stopping a native producer.
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = []
+        for batch, marker in MUTATION_BATCH_MARKERS.items():
+            selected = root / ("mutation-" + batch)
+            futures.append(executor.submit(_identity_stage, binary, selected, run,
+                ["--m8-local-transport-mutation-driver", selected, batch], (marker,)))
+        for future in futures:
             try:
-                if not writer_stopped:
-                    raise PreflightError("identity_writer_exit_unresolved")
-                credential = _metadata(path)["credential_id"]
-                if not isinstance(credential, str) or not re.fullmatch(r"[0-9a-f]{32}", credential):
-                    raise ValueError("credential shape")
-                # The signed driver holds the producer's exclusive profile
-                # lease through deletion and typed Missing verification. A
-                # delayed helper must reject its dead parent after acquisition.
-                # No PID adoption or raw security CLI fallback bypasses this.
-                cleaned = run([binary, "--m8-local-transport-fixture-key-cleanup", root],
-                              "identity_key_cleanup_fenced", 45)
-                if "mac_transport_fixture_key_cleanup=passed" not in cleaned.splitlines():
-                    raise PreflightError("identity_key_absence_unverified")
-            except (PreflightError, OSError, ValueError, TypeError, KeyError) as error:
-                raise PreflightError("native_transport_identity_cleanup_failed") from error
+                outputs.append(future.result())
+            except (PreflightError, OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
+                failures.append(error)
+    if failures:
+        raise PreflightError("native_transport_mutation_batch_failed") from failures[0]
+    print("mac_transport_live_profile_package_changes_refused=passed")
+    return output + "\n" + "\n".join(outputs)
 
 
 def check_native_pairing(binary, root, run):
+    writer_stopped = False
     try:
-        output = run([binary, "--cryptex-m8-local-content-transport-check", root],
-                     "real_native_managed_pairing", 240)
+        try:
+            output = run([binary, "--cryptex-m8-local-content-transport-check", root],
+                         "real_native_managed_pairing", 240)
+            writer_stopped = True
+        except PreflightError:
+            writer_stopped = True
+            raise
         if not all(marker in output.splitlines() for marker in MARKERS):
             raise PreflightError("native_managed_pairing_marker_missing")
     finally:
         # These are fresh CI-only roots. Never enumerate/adopt the login user's
         # other credentials, and never export keys or full transcripts.
+        if not writer_stopped:
+            raise PreflightError("native_pairing_cleanup_writer_unresolved")
         failures = []
         for role in ("initiator", "responder"):
             profile = root / role
@@ -97,7 +131,8 @@ def check_native_pairing(binary, root, run):
                         credential = _metadata(path)["credential_id"]
                         if not isinstance(credential, str) or not re.fullmatch(r"[0-9a-f]{32}", credential):
                             raise PreflightError("native_pairing_cleanup_credential_invalid")
-                        service, account = "Cryptex-Dev-ManagedSyncthing", "api:" + credential
+                        _cleanup_api(binary.with_name("cryptexd"), profile / "managed-transport", run)
+                        continue
                     run(["/usr/bin/security", "delete-generic-password", "-s", service, "-a", account],
                         "cleanup_native_pairing_" + kind + "_key")
                 except (PreflightError, OSError, ValueError, KeyError, TypeError) as error:
@@ -188,10 +223,4 @@ def check_parent_loss(binary, root, run):
             process.kill()
         process.wait(timeout=10)
         process.stdout.close()
-        metadata = root / "00000000000000000000000000000001/profile.json"
-        if metadata.exists():
-            credential = _metadata(metadata)["credential_id"]
-            if not isinstance(credential, str) or not re.fullmatch(r"[0-9a-f]{32}", credential):
-                raise PreflightError("native_transport_loss_cleanup_metadata_unsafe")
-            run(["/usr/bin/security", "delete-generic-password", "-s", "Cryptex-Dev-ManagedSyncthing",
-                 "-a", "api:" + credential], "cleanup_native_transport_parent_loss_key")
+        _cleanup_api(binary, root, run)
