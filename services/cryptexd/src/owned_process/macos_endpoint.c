@@ -56,7 +56,10 @@ int cx_transport_spawn_suspended(const char *path, const char *cwd,
         if (__builtin_available(macOS 26.0, *)) {
             result = posix_spawn_file_actions_addchdir(&actions, cwd);
         } else {
-            result = posix_spawn_file_actions_addchdir_np(&actions, cwd);
+            // This disabled SDK-26 candidate has no validated older-OS
+            // compatibility shim. Refuse rather than suppress deprecations,
+            // mutate the parent's cwd or invent a product support floor.
+            result = ENOTSUP;
         }
 #else
         result = posix_spawn_file_actions_addchdir_np(&actions, cwd);
