@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::{ChannelError, Method};
 
 pub(crate) const MAX_FRAME_BYTES: usize = 1024 * 1024 + 4096;
-const MAX_MESSAGE_BYTES: usize = 64 * 1024;
+pub(super) const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
