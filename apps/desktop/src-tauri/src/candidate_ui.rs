@@ -946,6 +946,7 @@ fn check_transport_pairing(root: &Path) -> Result<(), String> {
     }
     first.close().map_err(|e| e.to_string())?;
     second.close().map_err(|e| e.to_string())?;
+    eprintln!("native_managed_pairing_clean_shutdown=passed");
     for (path, identity) in [(&a, id_a), (&b, id_b)] {
         let before = durable_snapshot(path)?;
         let mut reopened = durable_daemon(path, ContentProfile::TransportResume)?;

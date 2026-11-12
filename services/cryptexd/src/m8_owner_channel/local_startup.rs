@@ -313,6 +313,7 @@ impl Prepared {
             epoch: self.epoch,
             content_mode: self.content_profile.is_some(),
             transport_mode: self.content_profile.is_some_and(ContentProfile::transport),
+            stop_file: ready.with_file_name("stop"),
             bound: false,
             pending_review: None,
             client_cleanup_failed: false,
@@ -385,6 +386,9 @@ pub struct LocalDaemon {
     epoch: [u8; 16],
     content_mode: bool,
     transport_mode: bool,
+    // Backend-selected sibling of the authenticated startup's ready file.
+    // Never supplied by a renderer or received in a native request.
+    stop_file: PathBuf,
     bound: bool,
     pending_review: Option<client::PendingReview>,
     client_cleanup_failed: bool,
@@ -445,33 +449,12 @@ impl LocalDaemon {
         }
     }
     pub fn close(mut self) -> Result<(), Error> {
-        if self.transport_mode {
-            if self.bound {
-                self.channel
-                    .as_mut()
-                    .ok_or(Error::Channel)?
-                    .send(CLOSE, Instant::now() + Duration::from_secs(2))
-                    .map_err(Error::from)?;
-                self.pending_review.take();
-                self.bound = false;
-            }
-            let deadline = Instant::now() + Duration::from_secs(35);
-            while let Some(child) = self.child.as_mut() {
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        self.child.take();
-                        if !status.success() {
-                            return Err(Error::Cleanup);
-                        }
-                        break;
-                    }
-                    Ok(None) if Instant::now() < deadline => {
-                        std::thread::sleep(Duration::from_millis(10))
-                    }
-                    _ => return Err(Error::Cleanup),
-                }
-            }
-            return self.close_channel();
+        if self.transport_mode && self.bound && self.child.is_some() {
+            // Native Close drains the helper; the existing lifecycle hold also
+            // needs its fixed stop file before it can exit. Reuse the real
+            // shutdown path, retaining the endpoint and unchanged exit budget.
+            let stop = self.stop_file.clone();
+            return self.shutdown(&stop);
         }
         self.terminate_for_restart()?;
         self.close_channel()

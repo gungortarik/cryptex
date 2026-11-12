@@ -11,6 +11,7 @@ import uuid
 from mac_identity_preflight import PreflightError, darwin_group_is_dead
 
 MARKERS = ("native_managed_transport_pairing=passed",
+           "native_managed_pairing_clean_shutdown=passed",
            "native_managed_pairing_restart_idempotent=passed")
 
 
