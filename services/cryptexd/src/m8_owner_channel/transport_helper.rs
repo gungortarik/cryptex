@@ -101,12 +101,23 @@ fn private_root(root: &Path) -> Result<(), Error> {
     if !m.is_dir() || m.uid() != unsafe { libc::geteuid() } || m.mode() & 0o077 != 0 {
         return Err(Error::Profile);
     }
+    let directory = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(root)
+        .map_err(|_| Error::Profile)?;
+    if !crate::owned_process::macos::private_acl(&directory) {
+        return Err(Error::Profile);
+    }
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
         .open(root.join("transport.marker"))
         .map_err(|_| Error::Profile)?;
     let m = file.metadata().map_err(|_| Error::Profile)?;
+    if !crate::owned_process::macos::private_acl(&file) {
+        return Err(Error::Profile);
+    }
     let mut bytes = Vec::new();
     file.take(128)
         .read_to_end(&mut bytes)
@@ -488,6 +499,14 @@ impl Helper {
                 root.to_str().ok_or(Error::Arguments)?,
             ])
             .env_clear()
+            // Root validation must use the same backend-selected temporary
+            // directory in both roles; no inherited command/search variables.
+            .env(
+                "TMPDIR",
+                std::env::temp_dir()
+                    .canonicalize()
+                    .map_err(|_| Error::Profile)?,
+            )
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
@@ -877,8 +896,53 @@ pub fn check(root: &Path) -> Result<(), Error> {
             return Err(Error::Engine);
         }
         third.close()?;
+        // Missing existing credentials must not regenerate native identity or
+        // rewrite the bound configuration. Keep private snapshot bytes in RAM.
+        let snapshot = || -> Result<Vec<Vec<u8>>, Error> {
+            let base = root.join(PROFILE);
+            let mut bytes = Vec::new();
+            for leaf in [
+                "profile.json",
+                "api-binding.json",
+                "native-init.json",
+                "native-ready.json",
+                "native-generation-started",
+                "native-generation-complete",
+                "native/config.xml",
+                "native/cert.pem",
+                "native/key.pem",
+            ] {
+                let path = base.join(leaf);
+                let metadata = std::fs::symlink_metadata(&path).map_err(|_| Error::Profile)?;
+                if !metadata.is_file() || metadata.nlink() != 1 || metadata.len() > 256 * 1024 {
+                    return Err(Error::Profile);
+                }
+                bytes.push(std::fs::read(path).map_err(|_| Error::Profile)?);
+            }
+            Ok(bytes)
+        };
+        let before = snapshot()?;
+        let (service, account) =
+            crate::syncthing_rest::credential_labels(SecureStoreEnvironment::Dev, &credential)
+                .map_err(|_| Error::Profile)?;
+        let store = MacosKeychainStore::new();
+        store
+            .delete(&service, &account)
+            .map_err(|_| Error::Cleanup)?;
+        let missing = Worker::spawn(root.to_owned(), false)?;
+        if wait(missing.status_reader()).is_ok()
+            || missing.close().is_ok()
+            || snapshot()? != before
+            || !matches!(
+                store.get(&service, &account),
+                Err(crate::SecureStoreError::Missing)
+            )
+        {
+            return Err(Error::Profile);
+        }
         eprintln!("mac_transport_owned_identity_restart=passed");
         eprintln!("mac_transport_helper_loss_cleanup=passed");
+        eprintln!("mac_transport_missing_key_no_regeneration=passed");
         Ok(())
     })();
     let deleted = (|| {
@@ -890,9 +954,20 @@ pub fn check(root: &Path) -> Result<(), Error> {
         let (service, account) =
             crate::syncthing_rest::credential_labels(SecureStoreEnvironment::Dev, &id)
                 .map_err(|_| Error::Cleanup)?;
-        MacosKeychainStore::new()
-            .delete(&service, &account)
-            .map_err(|_| Error::Cleanup)?;
+        let store = MacosKeychainStore::new();
+        match store.get(&service, &account) {
+            Ok(_) => store
+                .delete(&service, &account)
+                .map_err(|_| Error::Cleanup)?,
+            Err(crate::SecureStoreError::Missing) => {}
+            Err(_) => return Err(Error::Cleanup),
+        }
+        if !matches!(
+            store.get(&service, &account),
+            Err(crate::SecureStoreError::Missing)
+        ) {
+            return Err(Error::Cleanup);
+        }
         Ok(())
     })();
     result.and(deleted)

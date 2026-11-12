@@ -11,6 +11,7 @@ import zipfile
 from mac_identity_preflight import PreflightError
 from mac_durable_check import MARKERS, check_durable_profile, check_session_journal
 from mac_transport_package import prepare as prepare_transport
+from mac_transport_check import check_native_pairing
 
 
 def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain,
@@ -99,6 +100,8 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                   "Contents/Resources/startup-check.txt"]
         listed += [path.relative_to(bundle).as_posix()
                    for path in sorted((bundle / "Contents/Resources/frontend").rglob("*")) if path.is_file()]
+        listed += [path.relative_to(bundle).as_posix()
+                   for path in sorted((bundle / "Contents/Resources/transport").iterdir()) if path.is_file()]
         for relative in listed:
             data = (bundle / relative).read_bytes()
             files.append({"path": relative, "size": len(data),
@@ -118,11 +121,15 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     transport_result = run([positive / "Contents/MacOS/cryptexd",
                             "--m8-local-transport-driver", root / "transport-runtime"],
                            "real_managed_mac_transport_identity", 180)
-    for marker in ("mac_transport_owned_identity_restart=passed",
-                   "mac_transport_helper_loss_cleanup=passed"):
+    for marker in ("mac_transport_foreign_socket_no_credentials=passed",
+                   "mac_transport_owned_identity_restart=passed",
+                   "mac_transport_helper_loss_cleanup=passed",
+                   "mac_transport_missing_key_no_regeneration=passed"):
         if marker not in transport_result.splitlines():
             raise PreflightError("native_transport_identity_marker_missing")
         print(marker)
+    check_native_pairing(positive / "Contents/MacOS/cryptex-desktop",
+                         root / "pairing-runtime", run)
     result = run([positive / "Contents/MacOS/cryptex-desktop",
                   "--cryptex-m8-local-startup-check", root / "positive-runtime"],
                  "real_signed_startup_restart", 45)

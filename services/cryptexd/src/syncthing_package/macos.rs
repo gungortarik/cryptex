@@ -50,6 +50,9 @@ pub(super) fn open_pinned(directory: &Path) -> Result<Vec<File>, PackageError> {
         .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(directory)
         .map_err(|_| PackageError::Io)?;
+    if !crate::owned_process::macos::private_acl(&dir) {
+        return Err(PackageError::UnsafeObject);
+    }
     let mut files = vec![dir];
     for (name, size, expected) in [
         ("syncthing", BINARY.0, BINARY.1),
@@ -75,6 +78,7 @@ pub(super) fn open_pinned(directory: &Path) -> Result<Vec<File>, PackageError> {
             || before.nlink() != 1
             || before.uid() != unsafe { libc::geteuid() }
             || before.mode() & 0o022 != 0
+            || !crate::owned_process::macos::private_acl(&file)
         {
             return Err(PackageError::UnsafeObject);
         }

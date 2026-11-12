@@ -278,7 +278,10 @@ impl Owner {
         ) {
             return Err("candidate_runtime".into());
         }
-        if profile != ContentProfile::KeychainResume {
+        if !matches!(
+            profile,
+            ContentProfile::KeychainResume | ContentProfile::TransportResume
+        ) {
             std::fs::DirBuilder::new()
                 .mode(0o700)
                 .create(runtime)
@@ -839,6 +842,129 @@ fn check_durable_restart(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn pairing_transport(daemon: &mut LocalDaemon) -> Result<String, String> {
+    let until = Instant::now() + Duration::from_secs(45);
+    loop {
+        let reply = daemon
+            .read_pairing_transport_identity()
+            .map_err(|e| e.to_string())?;
+        if reply.accepted {
+            return reply
+                .exchange_message
+                .ok_or("candidate_transport_shape".into());
+        }
+        if reply.error.as_deref() != Some("transport_identity_unavailable")
+            || Instant::now() >= until
+        {
+            return Err("candidate_transport_unavailable".into());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// Actual signed Desktop/native daemon pairs; two isolated local engines.
+/// This fixture proves pairing and reopen, not cross-device data replication.
+fn check_transport_pairing(root: &Path) -> Result<(), String> {
+    Owner::prepare_root(root, ContentProfile::Ephemeral)?;
+    let a = root.join("initiator");
+    let b = root.join("responder");
+    let mut first = durable_daemon(&a, ContentProfile::TransportCreate)?;
+    let mut second = durable_daemon(&b, ContentProfile::TransportCreate)?;
+    let id_a = pairing_transport(&mut first)?;
+    let id_b = pairing_transport(&mut second)?;
+    if id_a == id_b {
+        return Err("candidate_transport_identity_collision".into());
+    }
+    let brain = first
+        .read_pairing_brain_identity()
+        .map_err(|e| e.to_string())?;
+    if second
+        .read_pairing_brain_identity()
+        .map_err(|e| e.to_string())?
+        != brain
+    {
+        return Err("candidate_pairing_brain_mismatch".into());
+    }
+    let txn = cryptexd::ipc::desktop_new_bootstrap_transaction_id().map_err(|e| e.to_string())?;
+    let offer = first
+        .create_pairing_offer(txn, id_a.clone())
+        .map_err(|e| e.to_string())?;
+    if !offer.accepted {
+        return Err("candidate_offer_refused".into());
+    }
+    let offer = offer.exchange_message.ok_or("candidate_offer_missing")?;
+    let proof = second
+        .create_pairing_proof(offer.clone(), brain, id_b.clone())
+        .map_err(|e| e.to_string())?;
+    if !proof.accepted {
+        return Err("candidate_proof_refused".into());
+    }
+    let mut messages = vec![
+        offer,
+        proof.exchange_message.ok_or("candidate_proof_missing")?,
+    ];
+    let pending = first
+        .prepare_peer("initiator".into(), messages.clone())
+        .map_err(|e| e.to_string())?;
+    let approval = first
+        .finish_peer(&pending.session_handle, true)
+        .map_err(|e| e.to_string())?;
+    if !approval.accepted {
+        return Err("candidate_initiator_refused".into());
+    }
+    messages.push(
+        approval
+            .signed_message
+            .ok_or("candidate_approval_missing")?,
+    );
+    let pending = second
+        .prepare_peer("responder".into(), messages.clone())
+        .map_err(|e| e.to_string())?;
+    let approval = second
+        .finish_peer(&pending.session_handle, true)
+        .map_err(|e| e.to_string())?;
+    if !approval.accepted {
+        return Err("candidate_responder_refused".into());
+    }
+    messages.push(
+        approval
+            .signed_message
+            .ok_or("candidate_approval_missing")?,
+    );
+    for daemon in [&mut first, &mut second] {
+        if !daemon
+            .complete_pairing(messages.clone())
+            .map_err(|e| e.to_string())?
+            .accepted
+        {
+            return Err("candidate_pairing_not_recorded".into());
+        }
+        let status = daemon.fixture_status().map_err(|e| e.to_string())?;
+        if status["eventCount"] != 2 || status["prefixPreserved"] != true {
+            return Err("candidate_pairing_history".into());
+        }
+    }
+    first.close().map_err(|e| e.to_string())?;
+    second.close().map_err(|e| e.to_string())?;
+    for (path, identity) in [(&a, id_a), (&b, id_b)] {
+        let before = durable_snapshot(path)?;
+        let mut reopened = durable_daemon(path, ContentProfile::TransportResume)?;
+        if pairing_transport(&mut reopened)? != identity
+            || !reopened
+                .complete_pairing(messages.clone())
+                .map_err(|e| e.to_string())?
+                .accepted
+            || durable_snapshot(path)? != before
+        {
+            return Err("candidate_pairing_reopen_changed_history".into());
+        }
+        reopened.close().map_err(|e| e.to_string())?;
+    }
+    println!("native_managed_transport_pairing=passed");
+    println!("native_managed_pairing_restart_idempotent=passed");
+    Ok(())
+}
+
 pub fn entry() -> Option<Result<(), String>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if !args.first().is_some_and(|arg| {
@@ -848,6 +974,9 @@ pub fn entry() -> Option<Result<(), String>> {
         return None;
     }
     Some((|| {
+        if args.len() == 2 && args[0] == "--cryptex-m8-local-content-transport-check" {
+            return check_transport_pairing(Path::new(&args[1]));
+        }
         if args.len() == 2 && args[0] == "--cryptex-m8-local-content-durable-check" {
             return check_durable_restart(Path::new(&args[1]));
         }

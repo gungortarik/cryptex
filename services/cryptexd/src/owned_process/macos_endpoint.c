@@ -25,10 +25,14 @@ int cx_transport_private_acl(int fd) {
     errno = 0;
     acl_t acl = acl_get_fd_np(fd, ACL_TYPE_EXTENDED);
     if (!acl) return (errno == ENOENT || errno == ENOATTR) ? 0 : 1;
+    if (acl_valid(acl) != 0) { acl_free(acl); return 1; }
     acl_entry_t entry;
+    errno = 0;
     int present = acl_get_entry(acl, ACL_FIRST_ENTRY, &entry);
+    int saved = errno;
     acl_free(acl);
-    return present == 0 ? 0 : 1;
+    // Darwin returns zero for an entry, -1/EINVAL for an empty valid ACL.
+    return present == -1 && saved == EINVAL ? 0 : 1;
 }
 
 int cx_transport_pin_live(const cx_transport_pin *pin) {

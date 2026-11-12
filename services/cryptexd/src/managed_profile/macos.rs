@@ -220,6 +220,18 @@ mod tests {
         drop(directory.create_file("fixture").unwrap());
         std::fs::hard_link(root.join("fixture"), root.join("alias")).unwrap();
         assert!(directory.open_read("fixture").is_err());
+        std::fs::set_permissions(root.join("fixture"), std::fs::Permissions::from_mode(0o600))
+            .unwrap();
+        assert!(directory.open_read("fixture").unwrap().is_some());
+        assert!(
+            std::process::Command::new("/bin/chmod")
+                .args(["+a", "everyone allow read"])
+                .arg(root.join("fixture"))
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert!(directory.open_read("fixture").is_err());
         std::fs::remove_file(root.join("alias")).unwrap();
         symlink(root.join("fixture"), root.join("link")).unwrap();
         assert!(directory.open_read("link").is_err());
