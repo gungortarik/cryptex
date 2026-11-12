@@ -4,7 +4,9 @@ use cryptexd::ipc::{
     DesktopOwnerSecurityOperationInput as Input, DesktopOwnerSecurityOperationPrepared as Prepared,
     DesktopOwnerSecurityOperationResult as Finished,
 };
-use cryptexd::local_signed_startup::{CONTENT_MARKER, LocalDaemon, Prepared as Startup};
+use cryptexd::local_signed_startup::{
+    CONTENT_MARKER, ContentProfile, DURABLE_MARKER, LocalDaemon, Prepared as Startup,
+};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{
@@ -17,6 +19,7 @@ type Reply<T> = SyncSender<Result<T, String>>;
 enum Work {
     Bind([u8; 32], Reply<()>),
     Ping(Reply<()>),
+    Status(Reply<serde_json::Value>),
     Prepare(Input, Reply<Prepared>),
     Finish(String, bool, Reply<Finished>),
     Exercise(Reply<()>),
@@ -247,6 +250,12 @@ struct Owner {
 }
 impl Owner {
     fn start(runtime: &Path) -> Result<(Self, cryptexd::ProtectedContent), String> {
+        Self::start_profile(runtime, ContentProfile::Ephemeral)
+    }
+    fn start_profile(
+        runtime: &Path,
+        profile: ContentProfile,
+    ) -> Result<(Self, cryptexd::ProtectedContent), String> {
         use std::os::unix::fs::DirBuilderExt;
         if !runtime.is_absolute() {
             return Err("candidate_runtime".into());
@@ -264,12 +273,21 @@ impl Owner {
         ) {
             return Err("candidate_runtime".into());
         }
-        std::fs::DirBuilder::new()
-            .mode(0o700)
-            .create(runtime)
+        if profile != ContentProfile::KeychainResume {
+            std::fs::DirBuilder::new()
+                .mode(0o700)
+                .create(runtime)
+                .map_err(|_| "candidate_runtime")?;
+            std::fs::write(
+                runtime.join("m8-content.marker"),
+                if profile == ContentProfile::Ephemeral {
+                    CONTENT_MARKER
+                } else {
+                    DURABLE_MARKER
+                },
+            )
             .map_err(|_| "candidate_runtime")?;
-        std::fs::write(runtime.join("m8-content.marker"), CONTENT_MARKER)
-            .map_err(|_| "candidate_runtime")?;
+        }
         let runtime = runtime.to_path_buf();
         let (sender, receiver) = mpsc::sync_channel::<Queued>(8);
         let (init, ready) = mpsc::sync_channel(1);
@@ -280,7 +298,7 @@ impl Owner {
             .name("cryptex-native-ui-owner".into())
             .spawn(move || {
                 let startup = (|| {
-                    let prepared = Startup::current_content(Duration::from_secs(15))
+                    let prepared = Startup::current_profile(Duration::from_secs(15), profile)
                         .map_err(|e| e.to_string())?;
                     let path = prepared.daemon_path();
                     let mut command = super::daemon_hold_command(
@@ -344,6 +362,10 @@ impl Owner {
                     match queued.work {
                         Work::Bind(binding, reply) => {
                             let result = daemon.bind_content(&binding).map_err(|e| e.to_string());
+                            deliver(&mut daemon, &delivery, reply, result);
+                        }
+                        Work::Status(reply) => {
+                            let result = daemon.fixture_status().map_err(|e| e.to_string());
                             deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::Ping(reply) => {
@@ -549,6 +571,71 @@ fn install_context(
     }
     Ok((context, binding))
 }
+fn durable_snapshot(root: &Path) -> Result<std::collections::BTreeMap<PathBuf, Vec<u8>>, String> {
+    fn collect(
+        path: &Path,
+        files: &mut std::collections::BTreeMap<PathBuf, Vec<u8>>,
+    ) -> Result<(), String> {
+        for entry in std::fs::read_dir(path).map_err(|_| "candidate_snapshot")? {
+            let entry = entry.map_err(|_| "candidate_snapshot")?;
+            let kind = entry.file_type().map_err(|_| "candidate_snapshot")?;
+            if kind.is_symlink() {
+                return Err("candidate_snapshot".into());
+            }
+            if kind.is_dir() {
+                collect(&entry.path(), files)?;
+            } else {
+                files.insert(
+                    entry.path(),
+                    std::fs::read(entry.path()).map_err(|_| "candidate_snapshot")?,
+                );
+            }
+        }
+        Ok(())
+    }
+    let mut files = std::collections::BTreeMap::new();
+    collect(&root.join("identity"), &mut files)?;
+    collect(&root.join("canonical"), &mut files)?;
+    Ok(files)
+}
+
+fn durable_owner(root: &Path, profile: ContentProfile) -> Result<Owner, String> {
+    let (owner, content) = Owner::start_profile(root, profile)?;
+    let (_context, binding) = install_context(content, root)?;
+    owner.client.call(|reply| Work::Bind(binding, reply))?;
+    Ok(owner)
+}
+
+fn check_durable_restart(root: &Path) -> Result<(), String> {
+    let owner = durable_owner(root, ContentProfile::KeychainCreate)?;
+    let seed = durable_snapshot(root)?;
+    let handle = owner.client.call(Work::PendingLoss)?;
+    owner.close()?;
+    let resumed = durable_owner(root, ContentProfile::KeychainResume)?;
+    if durable_snapshot(root)? != seed {
+        return Err("candidate_restart_mutated_seed".into());
+    }
+    resumed
+        .client
+        .call(|reply| Work::RejectOld(handle, reply))?;
+    resumed.client.call(Work::Exercise)?;
+    resumed.close()?;
+    let confirmed = durable_snapshot(root)?;
+    let reopened = durable_owner(root, ContentProfile::KeychainResume)?;
+    let status = reopened.client.call(Work::Status)?;
+    if status["eventCount"] != 2
+        || status["prefixPreserved"] != true
+        || durable_snapshot(root)? != confirmed
+    {
+        return Err("candidate_restart_mutated_confirmation".into());
+    }
+    reopened.close()?;
+    println!("native_keychain_same_profile_restart=passed");
+    println!("native_keychain_confirmed_history_preserved=passed");
+    println!("native_keychain_old_local_handle_refused=passed");
+    Ok(())
+}
+
 pub fn entry() -> Option<Result<(), String>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     if !args.first().is_some_and(|arg| {
@@ -558,6 +645,12 @@ pub fn entry() -> Option<Result<(), String>> {
         return None;
     }
     Some((|| {
+        if args.len() == 2 && args[0] == "--cryptex-m8-local-content-durable-check" {
+            return check_durable_restart(Path::new(&args[1]));
+        }
+        if args.len() == 2 && args[0] == "--cryptex-m8-local-content-durable-resume-check" {
+            return durable_owner(Path::new(&args[1]), ContentProfile::KeychainResume)?.close();
+        }
         if args.len() != 2
             || (args[0] != "--cryptex-m8-local-content-check"
                 && args[0] != "--cryptex-m8-local-content-ui")

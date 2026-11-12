@@ -77,7 +77,7 @@ pub struct ProbeReport {
 }
 
 /// Caller owns the fresh marked pilot runtime's instance guard. No keys exported.
-pub fn create<S: SecureStore>(
+pub fn create<S: SecureStore + ?Sized>(
     root: &Path,
     store: &S,
     brain_id: &str,

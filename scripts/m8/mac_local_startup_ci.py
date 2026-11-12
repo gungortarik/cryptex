@@ -7,6 +7,7 @@ from pathlib import Path
 import platform
 import shutil
 import sys
+import uuid
 
 from mac_identity_preflight import PreflightError
 
@@ -133,6 +134,44 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     if receipt.get("eventCount") != 1 or receipt.get("prefixPreserved") is not True:
         raise PreflightError("native_ui_quit_receipt_mismatch")
     print("native_ui_quit_preserved_seed=passed")
+    durable_root = root / "durable-runtime"
+    try:
+        durable = run([positive / "Contents/MacOS/cryptex-desktop",
+                       "--cryptex-m8-local-content-durable-check", durable_root],
+                      "real_native_keychain_restart", 120)
+        for marker in ("native_keychain_same_profile_restart=passed",
+                       "native_keychain_confirmed_history_preserved=passed",
+                       "native_keychain_old_local_handle_refused=passed"):
+            if marker not in durable.splitlines():
+                raise PreflightError("native_keychain_restart_marker_missing")
+            print(marker)
+        check_session_journal(durable_root / "bootstrap/pending.json",
+                              ("owner_pending", "cancelled", "owner_pending", "anchored"))
+    finally:
+        identity = durable_root / "identity/local_device.json"
+        if identity.exists():
+            device = json.loads(identity.read_text(encoding="utf-8"))["device_id"]
+            device = str(uuid.UUID(device))
+            run(["/usr/bin/security", "delete-generic-password", "-s",
+                 "Cryptex-Dev-DeviceCredentials", "-a", "device-event-signing-seed:" + device],
+                "remove_native_restart_fixture_key")
+    before_missing = {path.relative_to(durable_root): path.read_bytes()
+                      for folder in ("identity", "canonical")
+                      for path in (durable_root / folder).rglob("*") if path.is_file()}
+    missing = run_bounded([str(positive / "Contents/MacOS/cryptex-desktop"),
+                          "--cryptex-m8-local-content-durable-resume-check", str(durable_root)], 30)
+    after_missing = {path.relative_to(durable_root): path.read_bytes()
+                     for folder in ("identity", "canonical")
+                     for path in (durable_root / folder).rglob("*") if path.is_file()}
+    if (missing.code != 2 or missing.timed_out or missing.limited or missing.pipe_failed
+            or "native_keychain_seed_missing" not in missing.output.splitlines()
+            or before_missing != after_missing):
+        raise PreflightError("native_keychain_missing_key_refusal_failed")
+    absent = run_bounded(["/usr/bin/security", "delete-generic-password", "-s",
+                         "Cryptex-Dev-DeviceCredentials", "-a", "device-event-signing-seed:" + device], 10)
+    if absent.code != 44 or absent.timed_out or absent.limited or absent.pipe_failed:
+        raise PreflightError("native_keychain_missing_key_recreated")
+    print("native_keychain_missing_key_refused=passed")
     content_result = run([positive / "Contents/MacOS/cryptex-desktop",
                   "--cryptex-m8-local-content-check", root / "content-runtime"],
                  "real_verified_content_and_native_sessions", 90)

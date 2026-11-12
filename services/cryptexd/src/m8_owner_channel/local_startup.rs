@@ -17,6 +17,23 @@ const DESKTOP: &str = "Contents/MacOS/cryptex-desktop";
 const DAEMON: &str = "Contents/MacOS/cryptexd";
 const EPOCH_FLAG: &str = "--m8-local-startup-epoch";
 const CONTENT_EPOCH_FLAG: &str = "--m8-local-content-epoch";
+const DURABLE_CREATE_FLAG: &str = "--m8-local-durable-create-epoch";
+const DURABLE_RESUME_FLAG: &str = "--m8-local-durable-resume-epoch";
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContentProfile {
+    Ephemeral,
+    KeychainCreate,
+    KeychainResume,
+}
+impl ContentProfile {
+    fn flag(self) -> &'static str {
+        match self {
+            Self::Ephemeral => CONTENT_EPOCH_FLAG,
+            Self::KeychainCreate => DURABLE_CREATE_FLAG,
+            Self::KeychainResume => DURABLE_RESUME_FLAG,
+        }
+    }
+}
 const RELEASE: &str = "m8-local-startup-v1";
 const VERIFICATION_HINT: &[u8] = b"cryptex-m8-verification-progress-v1\n";
 #[path = "local_client.rs"]
@@ -225,7 +242,7 @@ pub struct Prepared {
     listener: Listener,
     epoch: [u8; 16],
     deadline: Instant,
-    content_mode: bool,
+    content_profile: Option<ContentProfile>,
 }
 impl Prepared {
     pub fn current_desktop(timeout: Duration) -> Result<Self, Error> {
@@ -240,13 +257,16 @@ impl Prepared {
             listener,
             epoch,
             deadline,
-            content_mode: false,
+            content_profile: None,
         })
     }
     pub fn current_content(timeout: Duration) -> Result<Self, Error> {
+        Self::current_profile(timeout, ContentProfile::Ephemeral)
+    }
+    pub fn current_profile(timeout: Duration, profile: ContentProfile) -> Result<Self, Error> {
         let mut prepared = Self::current_desktop(timeout)?;
         prepared.release.frontend()?;
-        prepared.content_mode = true;
+        prepared.content_profile = Some(profile);
         Ok(prepared)
     }
     pub fn daemon_path(&self) -> PathBuf {
@@ -261,11 +281,8 @@ impl Prepared {
             return Err(Error::Arguments);
         }
         command.args([
-            if self.content_mode {
-                CONTENT_EPOCH_FLAG
-            } else {
-                EPOCH_FLAG
-            },
+            self.content_profile
+                .map_or(EPOCH_FLAG, ContentProfile::flag),
             &epoch_text(&self.epoch),
         ]);
         command.stdout(std::process::Stdio::piped());
@@ -275,7 +292,7 @@ impl Prepared {
             channel: None,
             release: self.release,
             epoch: self.epoch,
-            content_mode: self.content_mode,
+            content_mode: self.content_profile.is_some(),
             bound: false,
             pending_review: None,
             client_cleanup_failed: false,
@@ -312,14 +329,6 @@ impl Prepared {
                 .map_err(Error::from)
         })?;
         owned.channel = Some(channel);
-        step("ready_file", || {
-            crate::daemon_startup::await_ready_until(
-                owned.child.as_mut().unwrap(),
-                ready,
-                self.deadline,
-            )
-            .map_err(|_| Error::Readiness)
-        })?;
         if step("runtime_ready", || {
             owned
                 .channel
@@ -332,6 +341,16 @@ impl Prepared {
         {
             return Err(Error::Channel);
         }
+        // The child sends this attributed phase after replacing its ready file.
+        // A previous process's progress file must not race the new writer.
+        step("ready_file", || {
+            crate::daemon_startup::await_ready_until(
+                owned.child.as_mut().unwrap(),
+                ready,
+                self.deadline,
+            )
+            .map_err(|_| Error::Readiness)
+        })?;
         check_time(self.deadline)?;
         Ok(owned)
     }
@@ -437,19 +456,20 @@ pub struct ChildGuard {
     _release: Release,
     epoch: [u8; 16],
     deadline: Instant,
-    content_mode: bool,
+    content_profile: Option<ContentProfile>,
     runtime: PathBuf,
 }
 impl ChildGuard {
     pub fn is_content_mode(&self) -> bool {
-        self.content_mode
+        self.content_profile.is_some()
     }
     pub fn serve_content(
         &mut self,
         root: &Path,
         lock: &crate::instance::InstanceLock,
     ) -> Result<(), Error> {
-        if !self.content_mode || root != self.runtime {
+        let profile = self.content_profile.ok_or(Error::Arguments)?;
+        if root != self.runtime {
             return Err(Error::Arguments);
         }
         let content = self._release.frontend()?;
@@ -468,7 +488,8 @@ impl ChildGuard {
             ready: frame(5, &self.epoch, content.binding()),
             _content: content,
         };
-        crate::ipc::local_native::serve(&mut connection, root, lock).map_err(|_| Error::Channel)
+        crate::ipc::local_native::serve(&mut connection, root, lock, profile)
+            .map_err(|_| Error::Channel)
     }
     pub fn runtime_ready(&mut self) -> Result<(), Error> {
         self._channel
@@ -480,10 +501,12 @@ impl ChildGuard {
     }
 }
 pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
-    if !args
-        .iter()
-        .any(|arg| arg == EPOCH_FLAG || arg == CONTENT_EPOCH_FLAG)
-    {
+    if !args.iter().any(|arg| {
+        matches!(
+            arg.as_str(),
+            EPOCH_FLAG | CONTENT_EPOCH_FLAG | DURABLE_CREATE_FLAG | DURABLE_RESUME_FLAG
+        )
+    }) {
         return Ok(None);
     }
     if args.len() != 10
@@ -492,7 +515,10 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
         || args[2] != "--runtime-root"
         || args[4] != "--ready-file"
         || args[6] != "--stop-file"
-        || !matches!(args[8].as_str(), EPOCH_FLAG | CONTENT_EPOCH_FLAG)
+        || !matches!(
+            args[8].as_str(),
+            EPOCH_FLAG | CONTENT_EPOCH_FLAG | DURABLE_CREATE_FLAG | DURABLE_RESUME_FLAG
+        )
         || !Path::new(&args[3]).is_absolute()
         || Path::new(&args[5]) != Path::new(&args[3]).join("ready")
         || Path::new(&args[7]) != Path::new(&args[3]).join("stop")
@@ -501,15 +527,20 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
     }
     let deadline = Instant::now() + Duration::from_secs(10);
     let epoch = parse_epoch(&args[9])?;
-    let content_mode = args[8] == CONTENT_EPOCH_FLAG;
+    let content_profile = match args[8].as_str() {
+        CONTENT_EPOCH_FLAG => Some(ContentProfile::Ephemeral),
+        DURABLE_CREATE_FLAG => Some(ContentProfile::KeychainCreate),
+        DURABLE_RESUME_FLAG => Some(ContentProfile::KeychainResume),
+        _ => None,
+    };
     let runtime = PathBuf::from(&args[3]);
-    if content_mode {
-        require_fresh_content_runtime(&runtime)?;
+    if let Some(profile) = content_profile {
+        require_content_runtime(&runtime, profile)?;
     }
     let release = step("child_inventory", || {
         Release::current(Role::Daemon, deadline)
     })?;
-    if content_mode {
+    if content_profile.is_some() {
         release.frontend()?;
     }
     let expected = inventory_image(&release.bundle, Role::Desktop).map_err(|_| Error::Image)?;
@@ -556,13 +587,14 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
         _release: release,
         epoch,
         deadline,
-        content_mode,
+        content_profile,
         runtime,
     }))
 }
 
 pub const CONTENT_MARKER: &str = "m8-isolated-native-content-v1\n";
-fn require_fresh_content_runtime(root: &Path) -> Result<(), Error> {
+pub const DURABLE_MARKER: &str = "m8-isolated-native-keychain-v1\n";
+fn require_content_runtime(root: &Path, profile: ContentProfile) -> Result<(), Error> {
     use std::os::unix::fs::MetadataExt;
     let metadata = std::fs::symlink_metadata(root).map_err(|_| Error::Arguments)?;
     let temp = std::env::temp_dir()
@@ -576,12 +608,17 @@ fn require_fresh_content_runtime(root: &Path) -> Result<(), Error> {
             .canonicalize()
             .map_err(|_| Error::Arguments)?
             .starts_with(temp)
-        || std::fs::read_dir(root)
-            .map_err(|_| Error::Arguments)?
-            .count()
-            != 1
+        || (profile != ContentProfile::KeychainResume
+            && std::fs::read_dir(root)
+                .map_err(|_| Error::Arguments)?
+                .count()
+                != 1)
         || std::fs::read(root.join("m8-content.marker")).map_err(|_| Error::Arguments)?
-            != CONTENT_MARKER.as_bytes()
+            != if profile == ContentProfile::Ephemeral {
+                CONTENT_MARKER.as_bytes()
+            } else {
+                DURABLE_MARKER.as_bytes()
+            }
     {
         return Err(Error::Arguments);
     }
@@ -652,6 +689,26 @@ fn native_io(error: super::native::Error) -> std::io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn durable_profiles_require_owned_temp_root_and_distinct_marker() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = crate::test_temp::exclusive_temp_dir("m8-profile-gate");
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let marker = root.join("m8-content.marker");
+        std::fs::write(&marker, CONTENT_MARKER).unwrap();
+        assert!(require_content_runtime(&root, ContentProfile::Ephemeral).is_ok());
+        assert!(require_content_runtime(&root, ContentProfile::KeychainCreate).is_err());
+        assert!(require_content_runtime(&root, ContentProfile::KeychainResume).is_err());
+        std::fs::write(&marker, DURABLE_MARKER).unwrap();
+        assert!(require_content_runtime(&root, ContentProfile::KeychainCreate).is_ok());
+        std::fs::write(root.join("existing"), b"fixture").unwrap();
+        assert!(require_content_runtime(&root, ContentProfile::KeychainCreate).is_err());
+        assert!(require_content_runtime(&root, ContentProfile::KeychainResume).is_ok());
+        assert!(require_content_runtime(&root, ContentProfile::Ephemeral).is_err());
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(require_content_runtime(&root, ContentProfile::KeychainResume).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn untrusted_progress_hint_is_bounded_exact_and_never_startup_success() {
         use std::io::Write;
@@ -737,6 +794,8 @@ mod tests {
     fn malformed_child_mode_refuses_before_native_or_runtime_work() {
         for mut args in [
             vec![EPOCH_FLAG.into()],
+            vec![DURABLE_CREATE_FLAG.into()],
+            vec![DURABLE_RESUME_FLAG.into()],
             vec!["lifecycle".into(), EPOCH_FLAG.into(), "bad".into()],
         ] {
             assert!(matches!(child_gate(&mut args), Err(Error::Arguments)));
