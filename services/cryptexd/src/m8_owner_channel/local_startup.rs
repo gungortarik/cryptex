@@ -393,6 +393,23 @@ pub struct LocalDaemon {
     pending_review: Option<client::PendingReview>,
     client_cleanup_failed: bool,
 }
+fn write_stop_request(stop: &Path) -> Result<(), Error> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    // A lifecycle marker must never truncate an existing file or follow an
+    // alias to canonical data. Each authenticated startup removes its stale
+    // stop marker, so this one-owner shutdown creates a fresh fixed leaf.
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(stop)
+        .map_err(|_| Error::Cleanup)?;
+    file.write_all(b"stop\n")
+        .and_then(|()| file.sync_all())
+        .map_err(|_| Error::Cleanup)
+}
 impl LocalDaemon {
     pub fn terminate_for_restart(&mut self) -> Result<(), Error> {
         if let Some(mut child) = self.child.take() {
@@ -421,7 +438,7 @@ impl LocalDaemon {
         if self.content_mode && (!self.bound || self.child.is_none()) {
             return self.close();
         }
-        std::fs::write(stop, b"stop\n").map_err(|_| Error::Cleanup)?;
+        write_stop_request(stop)?;
         if self.bound {
             self.channel
                 .as_mut()
@@ -780,6 +797,22 @@ fn native_io(error: super::native::Error) -> std::io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn stop_request_never_truncates_existing_data_or_follows_a_link() {
+        use std::os::unix::fs::symlink;
+        let root = crate::test_temp::exclusive_temp_dir("m8-stop-marker");
+        let stop = root.join("stop");
+        write_stop_request(&stop).unwrap();
+        assert_eq!(std::fs::read(&stop).unwrap(), b"stop\n");
+        assert_eq!(write_stop_request(&stop), Err(Error::Cleanup));
+        std::fs::remove_file(&stop).unwrap();
+        let preserved = root.join("preserved-data");
+        std::fs::write(&preserved, b"immutable fixture").unwrap();
+        symlink(&preserved, &stop).unwrap();
+        assert_eq!(write_stop_request(&stop), Err(Error::Cleanup));
+        assert_eq!(std::fs::read(&preserved).unwrap(), b"immutable fixture");
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn durable_profiles_require_owned_temp_root_and_distinct_marker() {
         use std::os::unix::fs::PermissionsExt;
