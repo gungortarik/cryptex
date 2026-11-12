@@ -39,6 +39,13 @@ const VERIFICATION_HINT: &[u8] = b"cryptex-m8-verification-progress-v1\n";
 #[path = "local_client.rs"]
 mod client;
 
+/// Native fixture-only replay evidence. It cannot be serialized, logged with
+/// Debug, or moved away from the thread that owns the native connection.
+pub struct ConfirmationReplayProbe {
+    bytes: Vec<u8>,
+    _thread: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
     Arguments,

@@ -19,7 +19,6 @@ type Reply<T> = SyncSender<Result<T, String>>;
 enum Work {
     Bind([u8; 32], Reply<()>),
     Ping(Reply<()>),
-    VerifyTwoEvents(Reply<()>),
     Prepare(Input, Reply<Prepared>),
     Finish(String, bool, Reply<Finished>),
     Exercise(Reply<()>),
@@ -252,10 +251,7 @@ impl Owner {
     fn start(runtime: &Path) -> Result<(Self, cryptexd::ProtectedContent), String> {
         Self::start_profile(runtime, ContentProfile::Ephemeral)
     }
-    fn start_profile(
-        runtime: &Path,
-        profile: ContentProfile,
-    ) -> Result<(Self, cryptexd::ProtectedContent), String> {
+    fn prepare_root(runtime: &Path, profile: ContentProfile) -> Result<(), String> {
         use std::os::unix::fs::DirBuilderExt;
         if !runtime.is_absolute() {
             return Err("candidate_runtime".into());
@@ -288,6 +284,13 @@ impl Owner {
             )
             .map_err(|_| "candidate_runtime")?;
         }
+        Ok(())
+    }
+    fn start_profile(
+        runtime: &Path,
+        profile: ContentProfile,
+    ) -> Result<(Self, cryptexd::ProtectedContent), String> {
+        Self::prepare_root(runtime, profile)?;
         let runtime = runtime.to_path_buf();
         let (sender, receiver) = mpsc::sync_channel::<Queued>(8);
         let (init, ready) = mpsc::sync_channel(1);
@@ -362,21 +365,6 @@ impl Owner {
                     match queued.work {
                         Work::Bind(binding, reply) => {
                             let result = daemon.bind_content(&binding).map_err(|e| e.to_string());
-                            deliver(&mut daemon, &delivery, reply, result);
-                        }
-                        Work::VerifyTwoEvents(reply) => {
-                            let result = daemon
-                                .fixture_status()
-                                .map_err(|e| e.to_string())
-                                .and_then(|status| {
-                                    if status["eventCount"] == 2
-                                        && status["prefixPreserved"] == true
-                                    {
-                                        Ok(())
-                                    } else {
-                                        Err("candidate_restart_event_mismatch".into())
-                                    }
-                                });
                             deliver(&mut daemon, &delivery, reply, result);
                         }
                         Work::Ping(reply) => {
@@ -617,30 +605,92 @@ fn durable_owner(root: &Path, profile: ContentProfile) -> Result<Owner, String> 
     Ok(owner)
 }
 
+fn durable_daemon(root: &Path, profile: ContentProfile) -> Result<LocalDaemon, String> {
+    Owner::prepare_root(root, profile)?;
+    let prepared =
+        Startup::current_profile(Duration::from_secs(15), profile).map_err(|e| e.to_string())?;
+    let path = prepared.daemon_path();
+    let mut command = super::daemon_hold_command(path.to_str().ok_or("candidate_path")?, root)?;
+    command.stderr(std::process::Stdio::inherit());
+    let mut daemon = prepared
+        .launch(command, &root.join("ready"))
+        .map_err(|e| e.to_string())?;
+    let content = daemon.content().map_err(|e| e.to_string())?;
+    let (_context, binding) = install_context(content, root)?;
+    daemon.bind_content(&binding).map_err(|e| e.to_string())?;
+    Ok(daemon)
+}
+
 fn check_durable_restart(root: &Path) -> Result<(), String> {
-    let owner = durable_owner(root, ContentProfile::KeychainCreate)?;
+    // All replay bytes stay on this one native owner thread, including across
+    // process restart. They are never renderer input or persisted to disk.
+    let mut daemon = durable_daemon(root, ContentProfile::KeychainCreate)?;
     let seed = durable_snapshot(root)?;
-    let handle = owner.client.call(Work::PendingLoss)?;
-    owner.close()?;
-    let resumed = durable_owner(root, ContentProfile::KeychainResume)?;
+    let pending = daemon
+        .prepare_owner(self_retirement())
+        .map_err(|e| e.to_string())?;
+    let pending_probe = daemon
+        .capture_confirmation_probe()
+        .map_err(|e| e.to_string())?;
+    daemon.terminate_for_restart().map_err(|e| e.to_string())?;
+    daemon
+        .require_stale_rejection()
+        .map_err(|e| e.to_string())?;
+    daemon.close().map_err(|e| e.to_string())?;
+
+    let mut resumed = durable_daemon(root, ContentProfile::KeychainResume)?;
     if durable_snapshot(root)? != seed {
-        return Err("candidate_restart_mutated_seed".into());
+        return Err("candidate_restart_mutated_seed".to_owned());
     }
+    if resumed.finish_owner(&pending.session_handle, true).is_ok() {
+        return Err("candidate_old_handle_accepted".to_owned());
+    }
+    let journal_before =
+        std::fs::read(root.join("bootstrap/pending.json")).map_err(|_| "candidate_snapshot")?;
     resumed
-        .client
-        .call(|reply| Work::RejectOld(handle, reply))?;
-    resumed.client.call(Work::Exercise)?;
-    resumed.close()?;
-    let confirmed = durable_snapshot(root)?;
-    let reopened = durable_owner(root, ContentProfile::KeychainResume)?;
-    reopened.client.call(Work::VerifyTwoEvents)?;
-    if durable_snapshot(root)? != confirmed {
-        return Err("candidate_restart_mutated_confirmation".into());
+        .require_wire_replay_refusal(&pending_probe)
+        .map_err(|e| e.to_string())?;
+    if durable_snapshot(root)? != seed
+        || std::fs::read(root.join("bootstrap/pending.json")).map_err(|_| "candidate_snapshot")?
+            != journal_before
+    {
+        return Err("candidate_pending_replay_mutated_history".to_owned());
     }
-    reopened.close()?;
+    let confirmed_probe = resumed
+        .exercise_and_capture_confirmation()
+        .map_err(|e| e.to_string())?;
+    resumed
+        .shutdown(&root.join("stop"))
+        .map_err(|e| e.to_string())?;
+    let confirmed = durable_snapshot(root)?;
+    let mut reopened = durable_daemon(root, ContentProfile::KeychainResume)?;
+    let journal_confirmed =
+        std::fs::read(root.join("bootstrap/pending.json")).map_err(|_| "candidate_snapshot")?;
+    for probe in [&pending_probe, &confirmed_probe, &confirmed_probe] {
+        reopened
+            .require_wire_replay_refusal(probe)
+            .map_err(|e| e.to_string())?;
+        let status = reopened.fixture_status().map_err(|e| e.to_string())?;
+        if status["eventCount"] != 2
+            || status["prefixPreserved"] != true
+            || durable_snapshot(root)? != confirmed
+            || std::fs::read(root.join("bootstrap/pending.json"))
+                .map_err(|_| "candidate_snapshot")?
+                != journal_confirmed
+        {
+            return Err("candidate_replay_mutated_confirmation".to_owned());
+        }
+    }
+    let status = reopened.fixture_status().map_err(|e| e.to_string())?;
+    std::fs::write(root.join("ui-receipt.json"), status.to_string())
+        .map_err(|_| "candidate_receipt_write")?;
+    reopened
+        .shutdown(&root.join("stop"))
+        .map_err(|e| e.to_string())?;
     println!("native_keychain_same_profile_restart=passed");
     println!("native_keychain_confirmed_history_preserved=passed");
     println!("native_keychain_old_local_handle_refused=passed");
+    println!("native_keychain_cross_daemon_wire_replay_refused=passed");
     Ok(())
 }
 
@@ -741,7 +791,7 @@ pub fn entry() -> Option<Result<(), String>> {
             .first()
             .cloned()
             .ok_or("candidate_window")?;
-        window.title = "Cryptex · İzole onay testi".into();
+        window.title = "Cryptex Ã‚Â· Ã„Â°zole onay testi".into();
         context.config_mut().app.windows.clear();
         let app = tauri::Builder::default()
             .manage(owner.client.clone())

@@ -53,6 +53,7 @@ class DurableCollectorTests(unittest.TestCase):
                 check_durable_profile(Path("/fixture/desktop"), root, report, runner)
                 self.assertEqual(report, {"credential_cleanup_verified": True,
                                           "restart_and_confirmation_verified": True,
+                                          "wire_replay_refusal_verified": True,
                                           "missing_key_refusal_verified": True})
             else:
                 with self.assertRaises(PreflightError):

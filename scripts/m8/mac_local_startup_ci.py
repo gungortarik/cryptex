@@ -217,6 +217,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         if (report.get("source") != source_commit or report.get("outcome") != "passed"
                 or not all(report.get(key) is True for key in (
                     "credential_cleanup_verified", "runtime_cleanup_verified",
-                    "restart_and_confirmation_verified", "missing_key_refusal_verified"))):
+                    "restart_and_confirmation_verified", "missing_key_refusal_verified",
+                    "wire_replay_refusal_verified"))):
             raise PreflightError("exported_durable_result_failed")
         print("exported_durable_launcher=passed")

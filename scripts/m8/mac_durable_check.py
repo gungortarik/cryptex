@@ -9,6 +9,7 @@ MARKERS = (
     "native_keychain_same_profile_restart=passed",
     "native_keychain_confirmed_history_preserved=passed",
     "native_keychain_old_local_handle_refused=passed",
+    "native_keychain_cross_daemon_wire_replay_refused=passed",
 )
 
 
@@ -40,6 +41,7 @@ def check_durable_profile(binary, root, report, runner=run_bounded):
         if receipt.get("eventCount") != 2 or receipt.get("prefixPreserved") is not True:
             raise PreflightError("native_keychain_restart_receipt_mismatch")
         report["restart_and_confirmation_verified"] = True
+        report["wire_replay_refusal_verified"] = True
     finally:
         identity = root / "identity/local_device.json"
         if identity.exists():

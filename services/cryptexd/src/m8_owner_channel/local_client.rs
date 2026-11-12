@@ -33,6 +33,35 @@ fn random_id() -> Result<String, Error> {
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 impl LocalDaemon {
+    pub fn capture_confirmation_probe(&self) -> Result<ConfirmationReplayProbe, Error> {
+        let pending = self.pending_review.as_ref().ok_or(Error::Arguments)?;
+        let mut request: OwnerRequest = serde_json::from_slice(
+            &serde_json::to_vec(&pending.request).map_err(|_| Error::Arguments)?,
+        )
+        .map_err(|_| Error::Arguments)?;
+        request.operation = "owner.security.confirm".into();
+        Ok(ConfirmationReplayProbe {
+            bytes: serde_json::to_vec(&request).map_err(|_| Error::Arguments)?,
+            _thread: std::marker::PhantomData,
+        })
+    }
+    pub fn require_wire_replay_refusal(
+        &mut self,
+        probe: &ConfirmationReplayProbe,
+    ) -> Result<(), Error> {
+        let request: OwnerRequest =
+            serde_json::from_slice(&probe.bytes).map_err(|_| Error::Arguments)?;
+        // rpc serializes this same struct. Assert the exact recorded bytes,
+        // including request ID, digest, transaction and capability, are reused.
+        if serde_json::to_vec(&request).map_err(|_| Error::Arguments)? != probe.bytes {
+            return Err(Error::Arguments);
+        }
+        let reply = self.rpc(&request, "owner.security.result")?;
+        if reply.accepted || reply.error.as_deref() != Some("approval_session_missing") {
+            return Err(Error::StaleAccepted);
+        }
+        Ok(())
+    }
     pub fn invalidate_session(&mut self) {
         self.burn();
     }
@@ -249,6 +278,9 @@ impl LocalDaemon {
     /// Synthetic driver only: real domain prepare/cancel/confirm, mismatch and
     /// replay over this actual native channel. Never claimed as human approval.
     pub fn exercise_synthetic_owner_sessions(&mut self) -> Result<(), Error> {
+        self.exercise_and_capture_confirmation().map(|_| ())
+    }
+    pub fn exercise_and_capture_confirmation(&mut self) -> Result<ConfirmationReplayProbe, Error> {
         let input = || DesktopOwnerSecurityOperationInput {
             kind: "self_retirement".into(),
             target_device_id: None,
@@ -287,17 +319,12 @@ impl LocalDaemon {
         }
         check(self.fixture_status()?, 1)?;
         let prepared = self.prepare_owner(input())?;
-        let mut raw =
-            serde_json::to_value(&self.pending_review.as_ref().ok_or(Error::Channel)?.request)
-                .map_err(|_| Error::Channel)?;
-        raw["operation"] = "owner.security.confirm".into();
+        let confirmed = self.capture_confirmation_probe()?;
         if !self.finish_owner(&prepared.session_handle, true)?.accepted {
             return Err(Error::Channel);
         }
-        let replay: OwnerRequest = serde_json::from_value(raw).map_err(|_| Error::Channel)?;
-        if self.rpc(&replay, "owner.security.result")?.accepted {
-            return Err(Error::Channel);
-        }
-        check(self.fixture_status()?, 2)
+        self.require_wire_replay_refusal(&confirmed)?;
+        check(self.fixture_status()?, 2)?;
+        Ok(confirmed)
     }
 }
