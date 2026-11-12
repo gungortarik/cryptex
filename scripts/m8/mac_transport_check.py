@@ -32,6 +32,7 @@ def _metadata(path):
 
 
 def _cleanup_api(binary, root, run):
+    root = root.resolve()
     path = root / "00000000000000000000000000000001/profile.json"
     if not path.exists() and not path.is_symlink():
         return
@@ -74,6 +75,9 @@ MUTATION_BATCH_MARKERS = {
 
 
 def check_identity(binary, root, run):
+    # tempfile on Mac can use the OS /var alias; pass the backend-selected
+    # physical root. Do not weaken the daemon's no-alias root validator.
+    root = root.resolve()
     output = _identity_stage(binary, root, run, ["--m8-local-transport-driver", root], IDENTITY_MARKERS)
     outputs, failures = [], []
     # Two closed independent inventories, each with its own captured process,

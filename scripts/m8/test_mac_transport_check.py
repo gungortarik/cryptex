@@ -9,6 +9,23 @@ from mac_transport_check import IDENTITY_MARKERS, MUTATION_BATCH_MARKERS, MARKER
 
 
 class IdentityCleanupTests(unittest.TestCase):
+    def test_backend_fixture_paths_are_resolved_before_driver_and_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            metadata = root / "00000000000000000000000000000001/profile.json"
+            metadata.parent.mkdir()
+            metadata.write_text(json.dumps({"credential_id": "a" * 32}))
+            calls = []
+            def run(args, stage, timeout):
+                calls.append(args)
+                self.assertEqual(args[2], args[2].resolve())
+                if args[1] == "--m8-local-transport-fixture-key-cleanup":
+                    return "mac_transport_fixture_key_cleanup=passed"
+                if args[1] == "--m8-local-transport-mutation-driver":
+                    return MUTATION_BATCH_MARKERS[args[-1]]
+                return "\n".join(IDENTITY_MARKERS)
+            check_identity(Path("driver"), root / "uncreated" / "..", run)
+            self.assertEqual(calls[0][2], root)
     def test_failed_mutation_batch_still_settles_and_cleans_both_batches(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
