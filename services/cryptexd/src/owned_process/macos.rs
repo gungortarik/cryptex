@@ -16,7 +16,11 @@ unsafe extern "C" {
     fn cx_transport_pin_live(pin: *const c_void) -> c_int;
     fn cx_transport_pin_close(pin: *mut c_void) -> c_int;
     fn cx_transport_socket_peer(root: *const c_void, fd: c_int, out: *mut *mut c_void) -> c_int;
-    fn cx_transport_group_empty(group: libc::pid_t, except: libc::pid_t) -> c_int;
+    fn cx_transport_group_empty(
+        group: libc::pid_t,
+        except: libc::pid_t,
+        exited_child: libc::pid_t,
+    ) -> c_int;
     fn cx_transport_private_acl(fd: c_int) -> c_int;
 }
 
@@ -160,7 +164,9 @@ impl NativeProcess {
         if unsafe { info.assume_init().si_pid() } == 0 {
             return Ok(None);
         }
-        match unsafe { cx_transport_group_empty(libc::getpgrp(), libc::getpid()) } {
+        match unsafe {
+            cx_transport_group_empty(libc::getpgrp(), libc::getpid(), child.id() as i32)
+        } {
             0 => return Ok(None),
             1 => {}
             _ => return Err(failure("mac_engine_group")),

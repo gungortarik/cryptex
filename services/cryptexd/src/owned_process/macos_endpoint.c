@@ -205,13 +205,15 @@ int cx_transport_socket_peer(const cx_transport_pin *root, int fd, cx_transport_
 
 // Caller retains the unreaped group leader. Ignore only observed zombies;
 // unavailable or truncated membership data is never interpreted as empty.
-int cx_transport_group_empty(pid_t group, pid_t except) {
+int cx_transport_group_empty(pid_t group, pid_t except, pid_t exited_child) {
     pid_t members[65];
     errno = 0;
     int count = proc_listpgrppids(group, members, sizeof(members));
     if (count < 0 || (!count && errno) || count >= (int)(sizeof(members) / sizeof(members[0]))) return -1;
     for (int i = 0; i < count; ++i) {
-        if (members[i] == except) continue;
+        // Callers retain the exact unreaped child and establish its exit with
+        // waitid(WNOWAIT). Zombie pidinfo can already be unavailable on Darwin.
+        if (members[i] == except || members[i] == exited_child) continue;
         struct proc_bsdinfo info;
         if (proc_pidinfo(members[i], PROC_PIDTBSDINFO, 0, &info, sizeof(info)) != (int)sizeof(info)) return -1;
         if (info.pbi_pgid != (uint32_t)group || info.pbi_status != SZOMB) return 0;

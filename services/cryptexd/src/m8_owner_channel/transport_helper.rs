@@ -646,7 +646,7 @@ impl Helper {
                 return Err(Error::Cleanup);
             }
             if unsafe { info.assume_init().si_pid() } != 0
-                && unsafe { cx_transport_group_empty(group, 0) } == 1
+                && unsafe { cx_transport_group_empty(group, 0, group) } == 1
             {
                 let status = child.wait().map_err(|_| Error::Cleanup)?;
                 self.child.take();
@@ -675,7 +675,7 @@ impl Helper {
     }
 }
 unsafe extern "C" {
-    fn cx_transport_group_empty(group: i32, except: i32) -> i32;
+    fn cx_transport_group_empty(group: i32, except: i32, exited_child: i32) -> i32;
 }
 impl Drop for Helper {
     fn drop(&mut self) {
