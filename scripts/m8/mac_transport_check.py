@@ -32,9 +32,18 @@ def _metadata(path):
 
 
 def check_identity(binary, root, run):
+    writer_stopped = False
     try:
-        output = run([binary, "--m8-local-transport-driver", root],
-                     "real_managed_mac_transport_identity", 180)
+        try:
+            output = run([binary, "--m8-local-transport-driver", root],
+                         "real_managed_mac_transport_identity", 180)
+            writer_stopped = True
+        except PreflightError:
+            # Internal run wrappers raise this typed result only after the
+            # bounded owner has waited/reaped its exact driver. Raw wait/OS
+            # exceptions provide no such proof and must not start cleanup.
+            writer_stopped = True
+            raise
         if not all(marker in output.splitlines() for marker in IDENTITY_MARKERS):
             raise PreflightError("native_transport_identity_marker_missing")
         return output
@@ -44,6 +53,8 @@ def check_identity(binary, root, run):
         path = root / "00000000000000000000000000000001/profile.json"
         if path.exists() or path.is_symlink():
             try:
+                if not writer_stopped:
+                    raise PreflightError("identity_writer_exit_unresolved")
                 credential = _metadata(path)["credential_id"]
                 if not isinstance(credential, str) or not re.fullmatch(r"[0-9a-f]{32}", credential):
                     raise ValueError("credential shape")

@@ -8,6 +8,19 @@ from mac_transport_check import IDENTITY_MARKERS, MARKERS, check_identity, check
 
 
 class IdentityCleanupTests(unittest.TestCase):
+    def test_unresolved_driver_wait_does_not_start_any_cleanup_writer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            metadata = root / "00000000000000000000000000000001/profile.json"
+            metadata.parent.mkdir()
+            metadata.write_text(json.dumps({"credential_id": "d" * 32}))
+            calls = []
+            def run(args, stage, timeout):
+                calls.append(args)
+                raise TimeoutError("driver exit unverified")
+            with self.assertRaisesRegex(PreflightError, "cleanup_failed"):
+                check_identity(Path("driver"), root, run)
+            self.assertEqual(len(calls), 1)
     def test_timeout_or_crash_after_key_creation_still_deletes_and_verifies_exact_key(self):
         for diagnostic in ("bounded_timeout", "driver_crash"):
             with self.subTest(diagnostic=diagnostic), tempfile.TemporaryDirectory() as directory:
