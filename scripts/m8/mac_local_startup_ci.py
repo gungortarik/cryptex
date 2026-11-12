@@ -163,13 +163,19 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     after_missing = {path.relative_to(durable_root): path.read_bytes()
                      for folder in ("identity", "canonical")
                      for path in (durable_root / folder).rglob("*") if path.is_file()}
+    # Anchored journal recovery can reject the missing seed before runtime-ready
+    # and therefore before the content driver can emit its own refusal marker.
+    missing_marker = any(line in (
+        "native_keychain_seed_missing",
+        "cryptexd: peer approval recovery conflict: canonical history verification failed: secure_store_missing_item",
+    ) for line in missing.output.splitlines())
     if (missing.code != 2 or missing.timed_out or missing.limited or missing.pipe_failed
-            or "native_keychain_seed_missing" not in missing.output.splitlines()
+            or not missing_marker
             or before_missing != after_missing):
         print(json.dumps({"nativeMissingKey": {
             "exit": missing.code, "timeout": missing.timed_out, "limited": missing.limited,
             "pipeFailed": missing.pipe_failed, "unchanged": before_missing == after_missing,
-            "missingMarker": "native_keychain_seed_missing" in missing.output.splitlines(),
+            "missingMarker": missing_marker,
             "output": missing.output.replace(str(root), "[fixture-root]")[-4096:],
         }}), file=sys.stderr)
         raise PreflightError("native_keychain_missing_key_refusal_failed")
