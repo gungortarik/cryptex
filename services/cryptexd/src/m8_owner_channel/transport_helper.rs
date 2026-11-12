@@ -342,8 +342,14 @@ fn serve(root: &Path, release: &Release, channel: &mut Channel) -> Result<(), Er
         .start(&_package, &store)
         .inspect_err(|e| eprintln!("component=mac_transport stage=start error={e}"))
         .map_err(|_| Error::Engine)?;
+    eprintln!("component=mac_transport stage=owned_rest_ready status=passed");
     session
         .exercise_foreign_socket_refusal(&store)
+        .inspect_err(|error| {
+            eprintln!(
+                "component=mac_transport stage=foreign_socket_check status=failed error={error}"
+            )
+        })
         .map_err(|_| Error::Engine)?;
     let ready = Reply {
         sequence: 0,

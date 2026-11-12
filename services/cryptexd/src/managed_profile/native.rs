@@ -548,6 +548,7 @@ impl<'profile> PreparedNativeProfile<'profile> {
         // the owned socket. This is transport readiness, never peer trust or
         // incoming canonical-data authorization. Use a blocking backend worker.
         let deadline = std::time::Instant::now() + Duration::from_secs(12);
+        let mut first_wait = true;
         loop {
             if session.try_exit()?.is_some() {
                 return Err(NativeConfigError::StartExited);
@@ -555,23 +556,34 @@ impl<'profile> PreparedNativeProfile<'profile> {
             let remaining = deadline
                 .checked_duration_since(std::time::Instant::now())
                 .filter(|d| !d.is_zero())
-                .ok_or(NativeConfigError::StartDeadline)?;
+                .ok_or_else(|| {
+                    eprintln!("component=managed_transport operation=start status=deadline");
+                    NativeConfigError::StartDeadline
+                })?;
             match session
-                .rest(store)?
+                .rest(store)
+                .inspect_err(|error| eprintln!("component=managed_transport operation=start_rest status=failed error={error}"))?
                 .observe_with_budget(remaining.min(Duration::from_secs(3)))
             {
                 Ok(_) => return Ok(session),
-                Err(
+                Err(error @ (
                     OwnedRestError::Endpoint(
                         crate::syncthing_owned_rest::EndpointError::Unavailable,
                     )
                     | OwnedRestError::Unavailable
-                    | OwnedRestError::Deadline,
-                ) => {
+                    | OwnedRestError::Deadline
+                )) => {
+                    if first_wait {
+                        eprintln!("component=managed_transport operation=start_observation status=waiting error={error}");
+                        first_wait = false;
+                    }
                     let remaining = deadline
                         .checked_duration_since(std::time::Instant::now())
                         .filter(|d| !d.is_zero())
-                        .ok_or(NativeConfigError::StartDeadline)?;
+                        .ok_or_else(|| {
+                            eprintln!("component=managed_transport operation=start status=deadline");
+                            NativeConfigError::StartDeadline
+                        })?;
                     std::thread::sleep(remaining.min(Duration::from_millis(50)));
                 }
                 Err(error) => {
