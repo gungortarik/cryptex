@@ -20,6 +20,7 @@ const MARKER: &[u8] = b"m8-native-transport-helper-v1\n";
 const HINT: &[u8] = b"cryptex-m8-transport-verified-v1\n";
 const PROFILE: &str = "00000000000000000000000000000001";
 const BUDGET: Duration = Duration::from_secs(4);
+const REFUSAL_ACK: &[u8] = b"m8-transport-refusal-ack-v1";
 thread_local! {static PARENT:RefCell<Option<Rc<PeerLiveness>>>=const{RefCell::new(None)};}
 pub(crate) fn role_entered() -> bool {
     PARENT.with(|p| p.borrow().is_some())
@@ -58,6 +59,7 @@ pub enum Error {
     Deadline,
     Cleanup,
     Unavailable,
+    CredentialUnavailable,
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -268,6 +270,15 @@ fn ports(root: &Path) -> Result<NativePorts, Error> {
             .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
             .open(file)
             .map_err(|_| Error::Profile)?;
+        let m = file.metadata().map_err(|_| Error::Profile)?;
+        if !m.is_file()
+            || m.nlink() != 1
+            || m.uid() != unsafe { libc::geteuid() }
+            || m.mode() & 0o077 != 0
+            || !crate::owned_process::macos::private_acl(&file)
+        {
+            return Err(Error::Profile);
+        }
         let mut raw = Vec::new();
         file.take(1025)
             .read_to_end(&mut raw)
@@ -292,6 +303,9 @@ fn ports(root: &Path) -> Result<NativePorts, Error> {
     f.write_all(&serde_json::to_vec(&ports).map_err(|_| Error::Profile)?)
         .and_then(|_| f.sync_all())
         .map_err(|_| Error::Profile)?;
+    File::open(root)
+        .and_then(|f| f.sync_all())
+        .map_err(|_| Error::Profile)?;
     Ok(ports)
 }
 
@@ -311,7 +325,12 @@ fn serve(root: &Path, release: &Release, channel: &mut Channel) -> Result<(), Er
     let mut prepared = profile
         .prepare_native(&_package, &store, ports)
         .inspect_err(|e| eprintln!("component=mac_transport stage=prepare error={e}"))
-        .map_err(|_| Error::Profile)?;
+        .map_err(|error| match error {
+            crate::managed_profile::native::NativeConfigError::Profile(
+                crate::managed_profile::ProfileError::CredentialUnavailable,
+            ) => Error::CredentialUnavailable,
+            _ => Error::Profile,
+        })?;
     let identity = prepared.configured_transport_device_id().to_owned();
     let mut session = prepared
         .start(&_package, &store)
@@ -386,6 +405,26 @@ fn serve(root: &Path, release: &Release, channel: &mut Channel) -> Result<(), Er
 }
 
 pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
+    if args.first().is_some_and(|a| {
+        a == "--m8-local-transport-loss-driver" || a == "--m8-local-transport-blocked-check"
+    }) {
+        return Some(if args.len() != 2 {
+            Err(Error::Arguments)
+        } else if args[0] == "--m8-local-transport-loss-driver" {
+            loss_driver(Path::new(&args[1]))
+        } else {
+            (|| {
+                let worker = Worker::spawn(PathBuf::from(&args[1]), false)?;
+                if wait_identity(worker.status_reader()).is_ok()
+                    || worker.close() != Err(Error::Profile)
+                {
+                    return Err(Error::Policy);
+                }
+                println!("mac_transport_unresolved_restart_refused=passed");
+                Ok(())
+            })()
+        });
+    }
     if args
         .first()
         .is_some_and(|a| a == "--m8-local-transport-driver")
@@ -435,6 +474,26 @@ pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
             return Err(Error::Channel);
         }
         let result = serve(root, &release, &mut channel);
+        if let Err(error) = result {
+            let refusal = Reply {
+                sequence: 0,
+                identity: None,
+                credential_profile: None,
+                error: Some(error),
+            };
+            let bytes = serde_json::to_vec(&refusal).map_err(|_| Error::Channel)?;
+            channel
+                .send(&bytes, Instant::now() + BUDGET)
+                .map_err(|_| Error::Channel)?;
+            let mut ack = [0; 128];
+            if channel
+                .receive(&mut ack, Instant::now() + BUDGET)
+                .map_err(|_| Error::Channel)?
+                != REFUSAL_ACK
+            {
+                return Err(Error::Channel);
+            }
+        }
         let closed = channel.close().map_err(|_| Error::Cleanup);
         result.and(closed)
     })())
@@ -556,6 +615,16 @@ impl Helper {
                 .receive(&mut buffer, Instant::now() + Duration::from_secs(35))
                 .map_err(|_| Error::Channel)?,
         )?;
+        if let Some(error) = ready.error {
+            if ready.sequence != 0 || ready.identity.is_some() || ready.credential_profile.is_some()
+            {
+                return Err(Error::Channel);
+            }
+            channel
+                .send(REFUSAL_ACK, Instant::now() + BUDGET)
+                .map_err(|_| Error::Channel)?;
+            return Err(error);
+        }
         let id = ready
             .identity
             .filter(|s| crate::syncthing_rest::native_id_shape(s))
@@ -698,6 +767,7 @@ const FINISHED: u8 = 3;
 enum Work {
     Observe,
     CrashHelper,
+    FixtureGroup,
 }
 struct Query {
     work: Work,
@@ -787,6 +857,11 @@ impl Worker {
                                     let _ = query.reply.try_send(Err(Error::Engine));
                                     return Err(Error::Engine);
                                 }
+                                if matches!(query.work, Work::FixtureGroup) {
+                                    let group = helper.child.as_ref().ok_or(Error::Engine)?.id();
+                                    let _ = query.reply.try_send(Ok(group.to_string()));
+                                    continue;
+                                }
                                 let result = helper
                                     .request(Operation::Observe)
                                     .map(|_| helper.identity.clone());
@@ -854,33 +929,46 @@ impl Drop for Worker {
 }
 
 /// Exact signed daemon driver; no canonical profile, approval or UI route.
+fn wait_identity(reader: StatusReader) -> Result<String, Error> {
+    let until = Instant::now() + Duration::from_secs(45);
+    loop {
+        match reader.try_transport_device_id() {
+            Ok(id) => return Ok(id),
+            Err(_) if reader.state.load(Ordering::Acquire) == OPENING && Instant::now() < until => {
+                std::thread::sleep(Duration::from_millis(50))
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+fn loss_driver(root: &Path) -> Result<(), Error> {
+    let worker = Worker::spawn(root.to_owned(), true)?;
+    wait_identity(worker.status_reader())?;
+    let group = worker.reader.call(Work::FixtureGroup)?;
+    println!("mac_transport_loss_ready={group}");
+    std::io::stdout().flush().map_err(|_| Error::Channel)?;
+    // The external bounded fixture kills this exact captured driver child.
+    // There is no request/renderer route for this pause or the group number.
+    std::thread::sleep(Duration::from_secs(60));
+    worker.close()?;
+    Err(Error::Deadline)
+}
+
 pub fn check(root: &Path) -> Result<(), Error> {
     let first = Worker::spawn(root.to_owned(), true)?;
     let cleanup = first.credential.clone();
     let result = (|| {
-        let wait = |reader: StatusReader| -> Result<String, Error> {
-            let until = Instant::now() + Duration::from_secs(45);
-            loop {
-                match reader.try_transport_device_id() {
-                    Ok(id) => return Ok(id),
-                    Err(_)
-                        if reader.state.load(Ordering::Acquire) == OPENING
-                            && Instant::now() < until =>
-                    {
-                        std::thread::sleep(Duration::from_millis(50))
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-        };
-        let identity = wait(first.status_reader())?;
+        let identity = wait_identity(first.status_reader())?;
         let credential = first.fixture_credential()?;
         if first.reader.try_transport_device_id()? != identity {
             return Err(Error::Engine);
         }
         first.close()?;
         let second = Worker::spawn(root.to_owned(), false)?;
-        if wait(second.status_reader())? != identity || second.fixture_credential()? != credential {
+        if wait_identity(second.status_reader())? != identity
+            || second.fixture_credential()? != credential
+        {
             return Err(Error::Engine);
         }
         second
@@ -892,7 +980,7 @@ pub fn check(root: &Path) -> Result<(), Error> {
             return Err(Error::Cleanup);
         }
         let third = Worker::spawn(root.to_owned(), false)?;
-        if wait(third.status_reader())? != identity {
+        if wait_identity(third.status_reader())? != identity {
             return Err(Error::Engine);
         }
         third.close()?;
@@ -930,8 +1018,8 @@ pub fn check(root: &Path) -> Result<(), Error> {
             .delete(&service, &account)
             .map_err(|_| Error::Cleanup)?;
         let missing = Worker::spawn(root.to_owned(), false)?;
-        if wait(missing.status_reader()).is_ok()
-            || missing.close().is_ok()
+        if wait_identity(missing.status_reader()).is_ok()
+            || missing.close() != Err(Error::CredentialUnavailable)
             || snapshot()? != before
             || !matches!(
                 store.get(&service, &account),

@@ -365,6 +365,13 @@ fn supervisor() {
             continue;
         }
         let mut channel = accepted.unwrap();
+        #[cfg(feature = "m8-local-startup-check")]
+        let liveness = matches!(case, "roundtrip" | "endpoint_during_receive")
+            .then(|| channel.peer_liveness().unwrap());
+        #[cfg(feature = "m8-local-startup-check")]
+        if let Some(pin) = &liveness {
+            assert!(pin.live());
+        }
         if case == "exit_during_receive" || case == "endpoint_during_receive" {
             use std::io::Write;
             // Worker waits for the trigger, then delays its loss so the
@@ -388,9 +395,15 @@ fn supervisor() {
                     child.child.try_wait().unwrap().is_none(),
                     "peer process must remain live after endpoint loss"
                 );
+                #[cfg(feature = "m8-local-startup-check")]
+                assert!(liveness.as_ref().unwrap().live());
             }
             drop(child.child.stdin.take());
             child.finish(Duration::from_secs(8));
+            #[cfg(feature = "m8-local-startup-check")]
+            if let Some(pin) = &liveness {
+                assert!(!pin.live());
+            }
             continue;
         }
         if case == "expired" {
@@ -465,6 +478,10 @@ fn supervisor() {
         }
         drop(child.child.stdin.take());
         child.finish(Duration::from_secs(8));
+        #[cfg(feature = "m8-local-startup-check")]
+        if let Some(pin) = &liveness {
+            assert!(!pin.live());
+        }
         if case == "roundtrip" {
             old_channel = Some(channel);
         } else if case != "queue_timeout" {

@@ -132,7 +132,19 @@ impl OwnedProcess {
             if stream.peer_addr().map_err(|_| EndpointError::Unavailable)? != endpoint {
                 return Err(EndpointError::InvalidEndpoint);
             }
-            let peer = self.native.retain_socket_peer(&stream)?;
+            // Darwin exposes the serving socket only after accept() installs
+            // its FD. Reobserve this SAME untouched connection briefly; never
+            // reconnect, send credentials, or accept a listener-only row.
+            let accept_until = deadline.min(Instant::now() + std::time::Duration::from_millis(250));
+            let peer = loop {
+                match self.native.retain_socket_peer(&stream) {
+                    Ok(peer) => break peer,
+                    Err(EndpointError::PeerNotOwned) if Instant::now() < accept_until => {
+                        std::thread::sleep(std::time::Duration::from_millis(2));
+                    }
+                    Err(error) => return Err(error),
+                }
+            };
             self.native.require_root_alive()?;
             if Instant::now() >= deadline {
                 return Err(EndpointError::Deadline);

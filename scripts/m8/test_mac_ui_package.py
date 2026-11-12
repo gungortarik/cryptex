@@ -10,6 +10,36 @@ from mac_ui_package import export_fixture
 
 
 class InteractiveFixtureTests(unittest.TestCase):
+    def test_transport_export_keeps_only_exact_members_and_engine_mode(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            names = ["Contents/MacOS/cryptex-desktop", "Contents/MacOS/cryptexd",
+                     "Contents/Resources/startup-check.txt", "Contents/Resources/frontend/index.html"]
+            names += ["Contents/Resources/transport/" + name for name in ("syncthing", "LICENSE.txt", "AUTHORS.txt")]
+            files = []
+            for name in names:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"fixture")
+                files.append({"path": name, "size": 7, "sha256": hashlib.sha256(b"fixture").hexdigest()})
+            for name in ("m8-startup.json", "m8-startup.cms"):
+                (root / "Contents/Resources" / name).write_bytes(b"public")
+            args = ("0" * 40, "arm64", "notAfter=Nov 12 01:00:00 2026 GMT")
+            export_fixture(root, files, root / "ok.zip", *args)
+            with zipfile.ZipFile(root / "ok.zip") as archive:
+                for name in ("syncthing", "LICENSE.txt", "AUTHORS.txt"):
+                    item = archive.getinfo("Cryptex-Mac-UI/positive.app/Contents/Resources/transport/" + name)
+                    self.assertEqual(bool(item.external_attr >> 16 & 0o100), name == "syncthing")
+            export_fixture(root, files, root / "transport.zip", *args, transport_check=True)
+            with zipfile.ZipFile(root / "transport.zip") as archive:
+                prefix = "Cryptex-Mac-Aktarim/"
+                for name in ("mac_transport_check.py", "mac_identity_preflight.py"):
+                    self.assertEqual(archive.read(prefix + name), Path(__file__).with_name(name).read_bytes())
+                self.assertTrue(archive.getinfo(prefix + "MAC-AKTARIM.command").external_attr >> 16 & 0o100)
+            files.append({**files[-1], "path": "Contents/Resources/transport/other"})
+            with self.assertRaisesRegex(ValueError, "invalid fixture member"):
+                export_fixture(root, files, root / "refused.zip", *args)
+
     def test_export_contains_only_tested_files_and_public_metadata(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

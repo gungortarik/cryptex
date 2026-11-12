@@ -4,10 +4,17 @@ import tempfile
 import unittest
 
 from mac_identity_preflight import PreflightError
-from mac_transport_check import MARKERS, check_native_pairing
+from mac_transport_check import MARKERS, check_native_pairing, loss_group_snapshot
 
 
 class PairingCleanupTests(unittest.TestCase):
+    def test_loss_evidence_requires_the_exact_driver_and_private_group(self):
+        valid = b"20 10 20 S\n21 20 20 S\n22 21 20 S\n"
+        loss_group_snapshot(valid, 10, 20)
+        for data in (valid.replace(b"20 10", b"20 11"), valid.replace(b"22 21 20", b"22 21 30"),
+                     b"20 10 20 S\n", b"20 10 20 Z\n21 20 20 S\n22 21 20 S\n"):
+            with self.assertRaises(PreflightError):
+                loss_group_snapshot(data, 10, 20)
     def fixture(self, root):
         for index, role in enumerate(("initiator", "responder"), 1):
             identity = root / role / "identity/local_device.json"
@@ -59,9 +66,10 @@ class PairingCleanupTests(unittest.TestCase):
                 calls.append(args)
                 return "\n".join(MARKERS)
 
-            with self.assertRaisesRegex(PreflightError, "credential_invalid"):
+            with self.assertRaisesRegex(PreflightError, "cleanup_failed"):
                 check_native_pairing(Path("signed-desktop"), root, run)
             self.assertFalse(any("api:other-account" in call for call in calls))
+            self.assertTrue(any("api:" + "2" * 32 in call for call in calls))
 
 
 if __name__ == "__main__":

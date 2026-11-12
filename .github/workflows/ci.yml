@@ -127,6 +127,7 @@ jobs:
           path: |
             ${{ runner.temp }}/cryptex-mac-ui.zip
             ${{ runner.temp }}/cryptex-mac-durable.zip
+            ${{ runner.temp }}/cryptex-mac-transport.zip
           if-no-files-found: error
           retention-days: 1
 

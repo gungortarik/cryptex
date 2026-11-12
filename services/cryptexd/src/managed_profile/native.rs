@@ -244,6 +244,7 @@ impl ManagedProfile {
                     }
                 };
                 if !exit.is_clean() {
+                    eprintln!("component=managed_transport operation=generation status=nonzero exit_code={:?}", exit.exit_code);
                     return Err(NativeConfigError::GenerationFailed);
                 }
                 Ok(())

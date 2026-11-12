@@ -50,9 +50,7 @@ impl LaunchSpec {
         packaged_binary: &Path,
         isolated_profile: &Path,
     ) -> Result<Self, OwnedProcessError> {
-        let mut environment = minimal_system_environment();
-        environment.push(("STHOMEDIR".into(), isolated_profile.as_os_str().to_owned()));
-        environment.push(("STNODEFAULTFOLDER".into(), "1".into()));
+        let environment = syncthing_environment(isolated_profile);
         Self::validate(
             packaged_binary,
             isolated_profile,
@@ -81,9 +79,7 @@ impl LaunchSpec {
             "--log-file".into(),
             isolated_profile.join("native.log").into_os_string(),
         ];
-        let mut environment = minimal_system_environment();
-        environment.push(("STHOMEDIR".into(), isolated_profile.as_os_str().to_owned()));
-        environment.push(("STNODEFAULTFOLDER".into(), "1".into()));
+        let environment = syncthing_environment(isolated_profile);
         Self::validate(packaged_binary, isolated_profile, arguments, environment)
     }
 
@@ -137,6 +133,20 @@ fn ordinary_absolute_path(path: &Path) -> bool {
         && !path
             .components()
             .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
+}
+
+fn syncthing_environment(profile: &Path) -> Vec<(OsString, OsString)> {
+    let mut environment = minimal_system_environment();
+    environment.push(("STHOMEDIR".into(), profile.as_os_str().to_owned()));
+    environment.push(("STNODEFAULTFOLDER".into(), "1".into()));
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    {
+        // Upstream resolves HOME during package init, before --home parsing.
+        // Point it at this private profile, never the user's global profile.
+        environment.push(("HOME".into(), profile.as_os_str().to_owned()));
+        environment.push(("TMPDIR".into(), profile.as_os_str().to_owned()));
+    }
+    environment
 }
 
 fn minimal_system_environment() -> Vec<(OsString, OsString)> {

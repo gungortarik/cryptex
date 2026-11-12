@@ -204,3 +204,29 @@ pub(crate) fn kill_helper_group() -> ! {
     unsafe { libc::killpg(libc::getpid(), libc::SIGKILL) };
     std::process::abort()
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn engine_environment_has_only_private_home_and_no_monitor_or_loader_override() {
+        let root = std::path::Path::new("/private/tmp/isolated-native-home");
+        let environment = super::super::syncthing_environment(root);
+        for name in ["HOME", "TMPDIR", "STHOMEDIR"] {
+            assert_eq!(
+                environment
+                    .iter()
+                    .find(|(key, _)| key == name)
+                    .map(|(_, value)| value.as_os_str()),
+                Some(root.as_os_str())
+            );
+        }
+        for (name, _) in environment {
+            let name = name.to_str().unwrap();
+            assert!(!name.starts_with("DYLD_"));
+            assert!(!matches!(
+                name,
+                "STMONITORED" | "STRESTART" | "PATH" | "HTTP_PROXY" | "HTTPS_PROXY"
+            ));
+        }
+    }
+}

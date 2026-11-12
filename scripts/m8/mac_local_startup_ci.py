@@ -11,7 +11,7 @@ import zipfile
 from mac_identity_preflight import PreflightError
 from mac_durable_check import MARKERS, check_durable_profile, check_session_journal
 from mac_transport_package import prepare as prepare_transport
-from mac_transport_check import check_native_pairing
+from mac_transport_check import check_native_pairing, check_parent_loss
 
 
 def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain,
@@ -57,6 +57,9 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                      "image_policy::tests::product_policy_has_no_configured_publisher"):
             if "test m8_owner_channel::" + name + " ... ok" not in tests:
                 raise PreflightError("signed_startup_gate_test_missing")
+        for selection in ("managed_profile::macos::tests::", "owned_process::macos::tests::"):
+            run([cargo, "test", "--locked", "-p", "cryptexd", "--features", "m8-local-startup-check",
+                 "--lib", selection, "--", "--test-threads=1"], "test_mac_transport_private_adapters", 60)
     finally:
         for key, value in saved.items():
             if value is None:
@@ -130,6 +133,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         print(marker)
     check_native_pairing(positive / "Contents/MacOS/cryptex-desktop",
                          root / "pairing-runtime", run)
+    check_parent_loss(positive / "Contents/MacOS/cryptexd", root / "parent-loss-runtime", run)
     result = run([positive / "Contents/MacOS/cryptex-desktop",
                   "--cryptex-m8-local-startup-check", root / "positive-runtime"],
                  "real_signed_startup_restart", 45)
@@ -244,3 +248,25 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                     "wire_replay_refusal_verified"))):
             raise PreflightError("exported_durable_result_failed")
         print("exported_durable_launcher=passed")
+        archive_path = Path(os.environ["RUNNER_TEMP"]) / "cryptex-mac-transport.zip"
+        export_fixture(positive, positive_files, archive_path, source_commit, architecture,
+                       expires, transport_check=True)
+        destination = root / "transport-export-check"
+        with zipfile.ZipFile(archive_path) as archive:
+            archive.extractall(destination)
+            for member in archive.infolist():
+                (destination / member.filename).chmod((member.external_attr >> 16) & 0o777)
+        owner = destination / "Cryptex-Mac-Aktarim"
+        run([owner / "MAC-AKTARIM.command"], "exported_transport_launcher", 360)
+        results = list(owner.glob("MAC-AKTARIM-SONUC-*.zip"))
+        if len(results) != 1:
+            raise PreflightError("exported_transport_result_missing")
+        with zipfile.ZipFile(results[0]) as result:
+            report = json.loads(result.read("result.json"))
+        if (report.get("source") != source_commit or report.get("outcome") != "passed"
+                or not all(report.get(key) is True for key in (
+                    "identity_restart_and_refusals_verified", "native_pairing_and_reopen_verified",
+                    "daemon_loss_and_unresolved_refusal_verified", "credential_cleanup_verified",
+                    "runtime_cleanup_verified"))):
+            raise PreflightError("exported_transport_result_failed")
+        print("exported_transport_launcher=passed")
