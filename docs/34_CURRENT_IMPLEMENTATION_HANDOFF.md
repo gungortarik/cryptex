@@ -95,8 +95,16 @@ The actual signed Mac driver reported `native_pairing_boundary_refusals=passed`
 and retained all existing owner, restart, private-grant and raw-replay checks.
 An earlier signing-child timeout and the temporary CI keychain re-unlock are
 recorded separately in that evidence file; no native deadline was relaxed.
-Next, bind an authenticated managed-transport status reader before exercising
-successful Mac offer/proof and the complete native peer flow. Final independent
+The next investigation found that the Mac owned process/package/private-profile
+and established-socket adapters are absent, including daemon-crash cleanup
+equivalent to the existing Windows Job. A direct child plus Drop is insufficient.
+The [concrete disabled transport proposal](proposals/m8-macos-transport-identity-binding.md)
+recommends a separate helper role using the existing signed daemon executable,
+with fresh process/socket observations and explicit loss/cleanup gates. This new
+process-role/integration decision is pending user selection under AGENTS.md;
+no implementation or product gate changed during that investigation.
+After that decision, implement/prove supervision and the authenticated status
+reader before successful Mac offer/proof and the complete native peer flow. Final independent
 security/human review and publisher/support-floor/activation decisions remain
 open under ADR-0020.
 
