@@ -89,6 +89,12 @@ is still absent: transport read, offer and proof refuse with
 Mac pairing is not established by this wiring or its refusal tests.
 Validation and exact-source CI status are recorded in the
 [native pairing integration record](../evidence/m8/m8-native-pairing-wiring-20261112.md).
+Both platform jobs passed at `6ee4893` in
+[run 43291468456](https://github.com/gungortarik/cryptex/actions/runs/43291468456).
+The actual signed Mac driver reported `native_pairing_boundary_refusals=passed`
+and retained all existing owner, restart, private-grant and raw-replay checks.
+An earlier signing-child timeout and the temporary CI keychain re-unlock are
+recorded separately in that evidence file; no native deadline was relaxed.
 Next, bind an authenticated managed-transport status reader before exercising
 successful Mac offer/proof and the complete native peer flow. Final independent
 security/human review and publisher/support-floor/activation decisions remain
@@ -98,8 +104,9 @@ The Windows M8 pairing form now labels the four signed messages by sender
 and recipient. The guided action assembles the role-specific prefix and opens
 the daemon's owner review. Saved exchanges and completed transcripts can still
 be pasted separately. Local verification covered the frontend build, 23 Node
-tests and both roles in Edge with simulated IPC. The passing native CI run
-above targets the earlier source and does not cover these frontend changes.
+tests and both roles in Edge with simulated IPC. Those simulated role checks
+do not establish successful guided native Mac pairing. The latest native CI
+above covers the current source and its bounded refusal/restart fixtures.
 
 ## Actual signed startup check continuation
 

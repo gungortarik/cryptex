@@ -49,7 +49,27 @@ signing-child wait, not a native message timeout. A disposable-keychain idle
 lock after the long feature build is suspected, not independently established.
 The CI harness now explicitly unlocks only its temporary fixture keychain again
 after feature build and before feature tests. Existing signing/native deadlines
-and refusal assertions remain unchanged. The followup run is pending.
+and refusal assertions remain unchanged.
+
+The followup [run 43291468456](https://github.com/gungortarik/cryptex/actions/runs/43291468456)
+at `6ee4893f3441212d13098b1b8d487a631b04ff01` passed both platform jobs.
+The Mac log explicitly reports all of:
+
+- `real_signed_desktop_daemon_startup_restart=passed`
+- `native_pairing_boundary_refusals=passed`
+- `verified_tauri_assets=passed`
+- `native_synthetic_approval_sessions=passed`
+- `native_lost_session_and_old_handle_refused=passed`
+- `native_prepare_and_actor_failures_burn_grants=passed`
+- `native_keychain_same_profile_restart=passed`
+- `native_keychain_confirmed_history_preserved=passed`
+- `native_keychain_old_local_handle_refused=passed`
+- `native_keychain_cross_daemon_wire_replay_refused=passed`
+- `native_keychain_missing_key_refused=passed`
+
+Remaining ordinary Desktop, approval connection/correlation and runtime admission
+checks passed. This confirms the followup source and fixture run; it does not
+independently prove the suspected idle-lock cause of the earlier signing timeout.
 No new owner device run is requested until a meaningful positive native flow is ready.
 
 ## Remaining gates
