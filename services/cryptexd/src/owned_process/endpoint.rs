@@ -52,6 +52,8 @@ pub(crate) struct EndpointGuard<'a> {
     _owner: &'a OwnedProcess,
     #[cfg(windows)]
     _peer: super::windows::PeerHandle,
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    _peer: super::macos::PeerPin,
 }
 
 pub(crate) struct VerifiedConnection<'a> {
@@ -118,7 +120,35 @@ impl OwnedProcess {
                 },
             })
         }
-        #[cfg(not(windows))]
+        #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+        {
+            self.native.require_root_alive()?;
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .filter(|d| !d.is_zero())
+                .ok_or(EndpointError::Deadline)?;
+            let stream = TcpStream::connect_timeout(&endpoint, remaining)
+                .map_err(|_| EndpointError::Unavailable)?;
+            if stream.peer_addr().map_err(|_| EndpointError::Unavailable)? != endpoint {
+                return Err(EndpointError::InvalidEndpoint);
+            }
+            let peer = self.native.retain_socket_peer(&stream)?;
+            self.native.require_root_alive()?;
+            if Instant::now() >= deadline {
+                return Err(EndpointError::Deadline);
+            }
+            stream
+                .set_nonblocking(true)
+                .map_err(|_| EndpointError::Unavailable)?;
+            Ok(VerifiedConnection {
+                stream,
+                guard: EndpointGuard {
+                    _owner: self,
+                    _peer: peer,
+                },
+            })
+        }
+        #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
         {
             let _ = deadline;
             Err(EndpointError::UnsupportedPlatform)

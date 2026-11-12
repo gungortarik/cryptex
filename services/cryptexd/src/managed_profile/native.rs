@@ -10,9 +10,9 @@ use crate::secure_store::SecureStore;
 use crate::syncthing_owned_rest::OwnedRestError;
 use crate::syncthing_package::{PackageError, PinnedSyncthingPackage};
 
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 use {
-    super::{native_xml, windows::PrivateDirectory},
+    super::{native_xml, platform::PrivateDirectory},
     crate::owned_process::ExitObservation,
     crate::syncthing_owned_rest::OwnedSyncthingRest,
     crate::syncthing_package::PackagedProcess,
@@ -80,7 +80,7 @@ impl NativePorts {
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 struct Intent {
     schema: u32,
     ports: NativePorts,
@@ -88,7 +88,7 @@ struct Intent {
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 struct Receipt {
     schema: u32,
     ports: NativePorts,
@@ -102,19 +102,19 @@ struct Receipt {
 pub struct PreparedNativeProfile<'profile> {
     #[cfg(all(test, windows))]
     transfer_test: Option<native_xml::TransferTestPolicy>,
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     profile: &'profile mut ManagedProfile,
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     home: Arc<PrivateDirectory>,
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     receipt: Receipt,
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     _root_pin: Arc<PrivateDirectory>,
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     in_use: bool,
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     cleanup_unresolved: bool,
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
     _profile: std::marker::PhantomData<&'profile mut ManagedProfile>,
 }
 impl fmt::Debug for PreparedNativeProfile<'_> {
@@ -160,12 +160,12 @@ impl ManagedProfile {
     ) -> Result<PreparedNativeProfile<'profile>, NativeConfigError> {
         ports.validate()?;
         let _ = package;
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
         {
             let _ = store;
             Err(NativeConfigError::UnsupportedPlatform)
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
         {
             // No call into provisioning, including if a file disappears between
             // reads. Missing markers/receipt always refuse without creating it.
@@ -196,7 +196,7 @@ impl ManagedProfile {
             }
             let home = Arc::new(self.directory.child("native", false)?);
             let prepared = PreparedNativeProfile {
-                #[cfg(test)]
+                #[cfg(all(test, windows))]
                 transfer_test,
                 _root_pin: self.directory.clone(),
                 profile: self,
@@ -220,12 +220,12 @@ impl ManagedProfile {
         ports: NativePorts,
     ) -> Result<PreparedNativeProfile<'profile>, NativeConfigError> {
         ports.validate()?;
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
         {
             let _ = (package, store);
             Err(NativeConfigError::UnsupportedPlatform)
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
         {
             let root_pin = self.directory.clone();
             self.prepare_with_generator(store, ports, |generation| {
@@ -251,7 +251,7 @@ impl ManagedProfile {
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     fn prepare_with_generator<'profile, S: SecureStore + ?Sized>(
         &'profile mut self,
         store: &S,
@@ -294,7 +294,7 @@ impl ManagedProfile {
             }
             let home = Arc::new(self.directory.child("native", false)?);
             let prepared = PreparedNativeProfile {
-                #[cfg(test)]
+                #[cfg(all(test, windows))]
                 transfer_test: None,
                 _root_pin: self.directory.clone(),
                 profile: self,
@@ -387,7 +387,7 @@ impl ManagedProfile {
         };
         self.write_new("native-ready.json", &json(&receipt)?)?;
         let prepared = PreparedNativeProfile {
-            #[cfg(test)]
+            #[cfg(all(test, windows))]
             transfer_test: None,
             _root_pin: self.directory.clone(),
             profile: self,
@@ -401,11 +401,11 @@ impl ManagedProfile {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 fn json(value: &impl Serialize) -> Result<Vec<u8>, NativeConfigError> {
     serde_json::to_vec(value).map_err(|_| NativeConfigError::InvalidState)
 }
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, NativeConfigError> {
     cryptex_events::reject_duplicate_json_keys(
         std::str::from_utf8(bytes).map_err(|_| NativeConfigError::InvalidState)?,
@@ -413,7 +413,7 @@ fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, NativeConfi
     .map_err(|_| NativeConfigError::InvalidState)?;
     serde_json::from_slice(bytes).map_err(|_| NativeConfigError::InvalidState)
 }
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 fn read_required(
     home: &PrivateDirectory,
     name: &str,
@@ -431,7 +431,7 @@ fn read_required(
     }
     Ok(bytes)
 }
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 fn ensure_same_or_new(
     home: &PrivateDirectory,
     name: &str,
@@ -450,10 +450,10 @@ fn ensure_same_or_new(
     Ok(())
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 impl<'profile> PreparedNativeProfile<'profile> {
     /// Test-only exact peer/folder exception. Product reopen still rejects it.
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(crate) fn configure_transfer_test<S: SecureStore + ?Sized>(
         &mut self,
         store: &S,
@@ -505,7 +505,7 @@ impl<'profile> PreparedNativeProfile<'profile> {
             return Err(NativeConfigError::IdentityChanged);
         }
         let bytes = read_required(&self.home, "config.xml", 256 * 1024)?;
-        #[cfg(test)]
+        #[cfg(all(test, windows))]
         let bytes = match &self.transfer_test {
             Some(policy) => policy.checked_bootstrap_config(&bytes)?,
             None => bytes,
@@ -578,7 +578,7 @@ impl<'profile> PreparedNativeProfile<'profile> {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 pub struct NativeSession<'session, 'profile> {
     owned: PackagedProcess,
     // Independent ownership, not just a borrowed profile: mem::forget of this
@@ -587,11 +587,70 @@ pub struct NativeSession<'session, 'profile> {
     _home_pin: Arc<PrivateDirectory>,
     prepared: &'session mut PreparedNativeProfile<'profile>,
 }
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 impl NativeSession<'_, '_> {
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    pub(crate) fn exercise_foreign_socket_refusal<S: SecureStore + ?Sized>(
+        &self,
+        store: &S,
+    ) -> Result<(), NativeConfigError> {
+        use std::io::Read;
+        let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .map_err(|_| NativeConfigError::InvalidState)?;
+        let endpoint = listener
+            .local_addr()
+            .map_err(|_| NativeConfigError::InvalidState)?;
+        listener
+            .set_nonblocking(true)
+            .map_err(|_| NativeConfigError::InvalidState)?;
+        let thread = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((s, _)) => break s,
+                    Err(e)
+                        if e.kind() == std::io::ErrorKind::WouldBlock
+                            && std::time::Instant::now() < deadline =>
+                    {
+                        std::thread::sleep(Duration::from_millis(5))
+                    }
+                    Err(_) => return false,
+                }
+            };
+            if stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .is_err()
+            {
+                return false;
+            }
+            let mut byte = [0; 1];
+            matches!(stream.read(&mut byte), Ok(0))
+        });
+        let credential = self.prepared.profile.load_api_credential(store)?;
+        let observed = OwnedSyncthingRest::new(
+            self.owned.process(),
+            endpoint,
+            &self.prepared.receipt.native_id,
+            credential,
+        )
+        .map_err(NativeConfigError::Rest)?
+        .observe();
+        let no_bytes = thread.join().map_err(|_| NativeConfigError::InvalidState)?;
+        if !matches!(
+            observed,
+            Err(OwnedRestError::Endpoint(
+                crate::syncthing_owned_rest::EndpointError::PeerNotOwned
+            ))
+        ) || !no_bytes
+        {
+            return Err(NativeConfigError::InvalidState);
+        }
+        eprintln!("mac_transport_foreign_socket_no_credentials=passed");
+        Ok(())
+    }
     /// Test-only fault injection targets this retained owned job, never a PID
     /// lookup or an unrelated/user-global process. Not exposed in product builds.
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     pub(super) fn crash_owned_job_for_test(&mut self) -> Result<(), NativeConfigError> {
         let exit = self
             .owned
@@ -648,7 +707,7 @@ impl NativeSession<'_, '_> {
         Ok(exit)
     }
 }
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 impl Drop for NativeSession<'_, '_> {
     fn drop(&mut self) {
         if matches!(self.owned.try_exit(), Ok(Some(_))) {

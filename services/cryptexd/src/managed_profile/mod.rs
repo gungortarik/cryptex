@@ -6,7 +6,7 @@
 //! The caller supplies a native-generated API key, never a renderer credential.
 
 use std::fmt;
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -24,12 +24,18 @@ pub(crate) mod incoming;
 pub mod native;
 #[cfg(all(test, windows))]
 mod native_transfer_test;
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 mod native_xml;
 #[cfg(all(test, windows))]
 mod tests;
 #[cfg(windows)]
 mod windows;
+#[cfg(windows)]
+use windows as platform;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+mod macos;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+use macos as platform;
 #[cfg(windows)]
 pub mod worker;
 
@@ -75,8 +81,8 @@ struct Binding {
 /// Owns an exclusive session lock and pinned non-reparse directory handles.
 /// Not serializable, cloneable, or usable to adopt an arbitrary running process.
 pub struct ManagedProfile {
-    #[cfg(windows)]
-    directory: std::sync::Arc<windows::PrivateDirectory>,
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    directory: std::sync::Arc<platform::PrivateDirectory>,
     identity: Identity,
     environment: SecureStoreEnvironment,
 }
@@ -127,9 +133,9 @@ impl ManagedProfile {
                 String::new()
             },
         };
-        #[cfg(windows)]
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
         {
-            let directory = windows::PrivateDirectory::acquire(path, create)?;
+            let directory = platform::PrivateDirectory::acquire(path, create)?;
             let mut result = Self {
                 directory: std::sync::Arc::new(directory),
                 identity,
@@ -166,7 +172,7 @@ impl ManagedProfile {
             }
             Ok(result)
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
         {
             let _ = (identity, create, environment);
             Err(ProfileError::UnsupportedPlatform)
@@ -297,7 +303,7 @@ impl ManagedProfile {
     }
 
     fn read(&self, name: &str) -> Result<Option<Vec<u8>>, ProfileError> {
-        #[cfg(windows)]
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
         {
             let Some(file) = self.directory.open_read(name)? else {
                 return Ok(None);
@@ -311,7 +317,7 @@ impl ManagedProfile {
             }
             Ok(Some(bytes))
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
         {
             let _ = name;
             Err(ProfileError::UnsupportedPlatform)
@@ -319,14 +325,14 @@ impl ManagedProfile {
     }
 
     fn write_new(&self, name: &str, bytes: &[u8]) -> Result<(), ProfileError> {
-        #[cfg(windows)]
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
         {
             let mut file = self.directory.create_file(name)?;
             file.write_all(bytes)
                 .and_then(|()| file.sync_all())
                 .map_err(|_| ProfileError::Io)
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
         {
             let _ = (name, bytes);
             Err(ProfileError::UnsupportedPlatform)

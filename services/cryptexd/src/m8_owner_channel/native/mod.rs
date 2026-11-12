@@ -69,6 +69,12 @@ unsafe extern "C" {
         deadline: u64,
     ) -> c_int;
     fn cx_close(channel: *mut c_void) -> c_int;
+    #[cfg(feature = "m8-local-startup-check")]
+    fn cx_peer_liveness(channel: *mut c_void, out: *mut *mut c_void) -> c_int;
+    #[cfg(feature = "m8-local-startup-check")]
+    fn cx_peer_still_live(pin: *const c_void) -> c_int;
+    #[cfg(feature = "m8-local-startup-check")]
+    fn cx_liveness_close(pin: *mut c_void) -> c_int;
 }
 
 fn native_deadline(deadline: Instant) -> u64 {
@@ -151,6 +157,25 @@ impl Drop for Handle {
 pub(super) struct Listener(Handle);
 pub(super) struct Channel(Handle);
 
+#[cfg(feature = "m8-local-startup-check")]
+pub(super) struct PeerLiveness(NonNull<c_void>);
+#[cfg(feature = "m8-local-startup-check")]
+impl PeerLiveness {
+    pub(super) fn live(&self) -> bool {
+        // SAFETY: immutable read-only native allocation retained by this owner.
+        unsafe { cx_peer_still_live(self.0.as_ptr()) != 0 }
+    }
+}
+#[cfg(feature = "m8-local-startup-check")]
+impl Drop for PeerLiveness {
+    fn drop(&mut self) {
+        // SAFETY: the unique allocation is released once after all local Rc pins.
+        if unsafe { cx_liveness_close(self.0.as_ptr()) } != 0 {
+            eprintln!("mac_peer_liveness_cleanup_failed");
+        }
+    }
+}
+
 impl Listener {
     pub(super) fn open() -> Result<(Self, Epoch), Error> {
         let mut epoch = [0; 16];
@@ -196,6 +221,13 @@ impl Listener {
 }
 
 impl Channel {
+    #[cfg(feature = "m8-local-startup-check")]
+    pub(super) fn peer_liveness(&self) -> Result<PeerLiveness, Error> {
+        let mut out = ptr::null_mut();
+        // SAFETY: only an already authenticated channel can duplicate its peer pin.
+        checked(unsafe { cx_peer_liveness(self.0.0.as_ptr(), &mut out) })?;
+        Ok(PeerLiveness(NonNull::new(out).ok_or(Error::Resource)?))
+    }
     pub(super) fn close(self) -> Result<(), Error> {
         self.0.close()
     }

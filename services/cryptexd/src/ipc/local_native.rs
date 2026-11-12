@@ -45,16 +45,17 @@ pub(crate) fn serve(
     // This factory is reachable only after the feature-specific child gate,
     // fresh marked runtime check, native startup and matching content binding.
     let existing = crate::identity_runtime::brain_identity_path(root).exists();
-    if existing != (profile == ContentProfile::KeychainResume) {
+    if existing != profile.resumes() {
         return Err(invalid_data("native_fixture_profile_state"));
     }
     let store: Arc<dyn SecureStore> = match profile {
         ContentProfile::Ephemeral => Arc::new(crate::FakeSecureStore::new()),
-        ContentProfile::KeychainCreate | ContentProfile::KeychainResume => {
-            Arc::new(crate::MacosKeychainStore::new())
-        }
+        ContentProfile::KeychainCreate
+        | ContentProfile::KeychainResume
+        | ContentProfile::TransportCreate
+        | ContentProfile::TransportResume => Arc::new(crate::MacosKeychainStore::new()),
     };
-    if profile != ContentProfile::KeychainResume {
+    if !profile.resumes() {
         crate::signed_transfer_probe::create(
             root,
             store.as_ref(),
@@ -63,7 +64,7 @@ pub(crate) fn serve(
         )
         .map_err(|_| invalid_data("native_fixture_seed"))?;
     }
-    let context = SearchContext {
+    let mut context = SearchContext {
         runtime_root: root.to_path_buf(),
         admission: bound_runtime_admission(root, instance)?,
         operation: None,
@@ -75,10 +76,11 @@ pub(crate) fn serve(
             pid: unsafe { libc::getppid() } as u32,
         }),
         projection_sync: None,
+        transport_identity: None,
         #[cfg(test)]
         transport_device_id_override: None,
     };
-    if profile == ContentProfile::KeychainResume {
+    if profile.resumes() {
         let device = crate::m8_owner_channel::local_startup::verified_resume_device(root)
             .map_err(|_| invalid_data("native_fixture_profile"))?;
         match load_existing_event_signing_key(
@@ -98,13 +100,30 @@ pub(crate) fn serve(
         }
     }
     let original = event_hashes(&context)?;
+    let mut transport = if profile.transport() {
+        Some(
+            crate::m8_owner_channel::transport_helper::Worker::spawn(
+                root.join("managed-transport"),
+                !profile.resumes(),
+            )
+            .map_err(io::Error::other)?,
+        )
+    } else {
+        None
+    };
+    context.transport_identity = transport.as_ref().map(|w| w.status_reader());
     let registry = ApprovalSessionRegistry::default();
     let mut pending = None;
     connection.ready(Instant::now() + IPC_RESPONSE_DEADLINE)?;
     loop {
         let incoming = connection.receive(Instant::now() + IPC_APPROVAL_SESSION_DEADLINE)?;
         let received = match incoming {
-            Incoming::Close => return Ok(()), // pending Drop burns grants, not durable cancellation.
+            Incoming::Close => {
+                if let Some(worker) = transport.take() {
+                    worker.close().map_err(io::Error::other)?;
+                }
+                return Ok(()); // pending Drop burns grants, not durable cancellation.
+            }
             Incoming::Ping => {
                 connection.send(b"pong", Instant::now() + IPC_RESPONSE_DEADLINE)?;
                 continue;

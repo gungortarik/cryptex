@@ -257,7 +257,7 @@ impl VerifiedBundle {
         )
         .map_err(|_| Error::Schema)
     }
-    fn content(&self, path: &str) -> Option<&[u8]> {
+    pub(super) fn content(&self, path: &str) -> Option<&[u8]> {
         self.files.get(path).map(AsRef::as_ref)
     }
     pub(super) fn image_hashes(&self) -> ([u8; 20], [u8; 20]) {

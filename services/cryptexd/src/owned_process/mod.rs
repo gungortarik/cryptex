@@ -14,6 +14,8 @@ use crate::paths::assert_outside_repository;
 
 pub(crate) mod endpoint;
 
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+pub(crate) mod macos;
 #[cfg(windows)]
 mod windows;
 
@@ -171,6 +173,8 @@ impl ExitObservation {
 pub struct OwnedProcess {
     #[cfg(windows)]
     native: windows::NativeProcess,
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    native: macos::NativeProcess,
     forced: bool,
 }
 
@@ -185,7 +189,14 @@ impl OwnedProcess {
                 forced: false,
             })
         }
-        #[cfg(not(windows))]
+        #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+        {
+            Ok(Self {
+                native: macos::NativeProcess::spawn(spec)?,
+                forced: false,
+            })
+        }
+        #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
         {
             let _ = (
                 &spec.program,
@@ -198,11 +209,11 @@ impl OwnedProcess {
     }
 
     pub fn pid(&self) -> u32 {
-        #[cfg(windows)]
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
         {
             self.native.pid()
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
         {
             0
         }
@@ -217,7 +228,14 @@ impl OwnedProcess {
                 forced: self.forced,
             }))
         }
-        #[cfg(not(windows))]
+        #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+        {
+            Ok(self.native.try_exit()?.map(|exit_code| ExitObservation {
+                exit_code: Some(exit_code),
+                forced: self.forced,
+            }))
+        }
+        #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
         {
             Err(OwnedProcessError::UnsupportedPlatform)
         }
@@ -251,12 +269,12 @@ impl OwnedProcess {
         timeout: Duration,
     ) -> Result<ExitObservation, OwnedProcessError> {
         self.forced = true;
-        #[cfg(windows)]
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
         {
             self.native.terminate_job()?;
             self.wait_for_exit(timeout)
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
         {
             let _ = timeout;
             Err(OwnedProcessError::UnsupportedPlatform)

@@ -17,6 +17,8 @@ pub mod protected_content;
 mod release_inventory;
 pub(crate) mod reply;
 pub(crate) mod request;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+pub(crate) mod transport_helper;
 
 /// Closed operation inventory. A family prefix is routing information, never
 /// authentication; unknown methods in these families must not fall back.

@@ -593,6 +593,8 @@ pub fn spawn_retrieval_server(
         projection_sync: None,
         #[cfg(windows)]
         transport_status: None,
+        #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+        transport_identity: None,
         #[cfg(test)]
         transport_device_id_override: None,
     };
@@ -660,6 +662,8 @@ fn spawn_daemon_ipc_server_inner(
         projection_sync: None,
         #[cfg(windows)]
         transport_status: None,
+        #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+        transport_identity: None,
         #[cfg(test)]
         transport_device_id_override: None,
     };
@@ -682,6 +686,8 @@ struct SearchContext {
     projection_sync: Option<SyncSender<()>>,
     #[cfg(windows)]
     transport_status: Option<crate::managed_profile::worker::StatusReader>,
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    transport_identity: Option<crate::m8_owner_channel::transport_helper::StatusReader>,
     #[cfg(test)]
     transport_device_id_override: Option<String>,
 }
@@ -2727,7 +2733,19 @@ fn current_transport_device_id(context: &SearchContext) -> Result<String, &'stat
             .map_err(|_| "transport_identity_unavailable")?;
         Ok(actual)
     }
-    #[cfg(all(not(windows), not(test)))]
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check", not(test)))]
+    {
+        context
+            .transport_identity
+            .as_ref()
+            .ok_or("transport_identity_unavailable")?
+            .try_transport_device_id()
+            .map_err(|_| "transport_identity_unavailable")
+    }
+    #[cfg(all(
+        not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))),
+        not(test)
+    ))]
     {
         let _ = context;
         Err("transport_identity_unavailable")
@@ -5501,6 +5519,8 @@ pub(crate) mod tests {
             expected_desktop: Arc::new(test_connected_process_identity()),
             projection_sync: None,
             transport_status: None,
+            #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+            transport_identity: None,
             transport_device_id_override: None,
         };
         let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
@@ -5815,6 +5835,8 @@ pub(crate) mod tests {
             projection_sync: None,
             #[cfg(windows)]
             transport_status: None,
+            #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+            transport_identity: None,
             #[cfg(test)]
             transport_device_id_override: None,
         };
@@ -6781,6 +6803,8 @@ pub(crate) mod tests {
             projection_sync: None,
             #[cfg(windows)]
             transport_status: None,
+            #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+            transport_identity: None,
             #[cfg(test)]
             transport_device_id_override: Some(
                 "AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA".into(),
@@ -6937,6 +6961,8 @@ pub(crate) mod tests {
             expected_desktop: Arc::new(test_connected_process_identity()),
             projection_sync: None,
             transport_status: None,
+            #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+            transport_identity: None,
             transport_device_id_override: None,
         };
         let (started_send, started_recv) = sync_channel(1);
@@ -7602,6 +7628,8 @@ pub(crate) mod tests {
             projection_sync: None,
             #[cfg(windows)]
             transport_status: None,
+            #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+            transport_identity: None,
             #[cfg(test)]
             transport_device_id_override: None,
         };
@@ -7638,6 +7666,8 @@ pub(crate) mod tests {
             projection_sync: None,
             #[cfg(windows)]
             transport_status: None,
+            #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+            transport_identity: None,
             #[cfg(test)]
             transport_device_id_override: None,
         };
@@ -7867,6 +7897,8 @@ pub(crate) mod tests {
             projection_sync: None,
             #[cfg(windows)]
             transport_status: None,
+            #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+            transport_identity: None,
             #[cfg(test)]
             transport_device_id_override: None,
         };

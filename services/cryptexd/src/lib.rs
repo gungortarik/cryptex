@@ -38,6 +38,8 @@ pub(crate) mod m8_owner_channel;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
 pub use m8_owner_channel::local_startup as local_signed_startup;
 pub use m8_owner_channel::protected_content::ProtectedContent;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+pub use m8_owner_channel::transport_helper::entry as mac_transport_helper_entry;
 pub mod managed_profile;
 mod metadata_persistence;
 pub mod owned_process;

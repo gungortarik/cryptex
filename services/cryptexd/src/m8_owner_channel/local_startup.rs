@@ -19,11 +19,15 @@ const EPOCH_FLAG: &str = "--m8-local-startup-epoch";
 const CONTENT_EPOCH_FLAG: &str = "--m8-local-content-epoch";
 const DURABLE_CREATE_FLAG: &str = "--m8-local-durable-create-epoch";
 const DURABLE_RESUME_FLAG: &str = "--m8-local-durable-resume-epoch";
+const TRANSPORT_CREATE_FLAG: &str = "--m8-local-transport-create-epoch";
+const TRANSPORT_RESUME_FLAG: &str = "--m8-local-transport-resume-epoch";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContentProfile {
     Ephemeral,
     KeychainCreate,
     KeychainResume,
+    TransportCreate,
+    TransportResume,
 }
 impl ContentProfile {
     fn flag(self) -> &'static str {
@@ -31,7 +35,15 @@ impl ContentProfile {
             Self::Ephemeral => CONTENT_EPOCH_FLAG,
             Self::KeychainCreate => DURABLE_CREATE_FLAG,
             Self::KeychainResume => DURABLE_RESUME_FLAG,
+            Self::TransportCreate => TRANSPORT_CREATE_FLAG,
+            Self::TransportResume => TRANSPORT_RESUME_FLAG,
         }
+    }
+    pub(crate) fn resumes(self) -> bool {
+        matches!(self, Self::KeychainResume | Self::TransportResume)
+    }
+    pub(crate) fn transport(self) -> bool {
+        matches!(self, Self::TransportCreate | Self::TransportResume)
     }
 }
 const RELEASE: &str = "m8-local-startup-v1";
@@ -78,14 +90,14 @@ impl From<super::native::Error> for Error {
     }
 }
 
-struct Release {
-    root: PathBuf,
-    bundle: VerifiedBundle,
-    digest: [u8; 32],
+pub(super) struct Release {
+    pub(super) root: PathBuf,
+    pub(super) bundle: VerifiedBundle,
+    pub(super) digest: [u8; 32],
     frontend: OnceLock<Result<crate::ProtectedContent, Error>>,
 }
 impl Release {
-    fn current(role: Role, deadline: Instant) -> Result<Self, Error> {
+    pub(super) fn current(role: Role, deadline: Instant) -> Result<Self, Error> {
         let executable = std::env::current_exe().map_err(|_| Error::Image)?;
         let root = executable
             .ancestors()
@@ -300,6 +312,7 @@ impl Prepared {
             release: self.release,
             epoch: self.epoch,
             content_mode: self.content_profile.is_some(),
+            transport_mode: self.content_profile.is_some_and(ContentProfile::transport),
             bound: false,
             pending_review: None,
             client_cleanup_failed: false,
@@ -371,6 +384,7 @@ pub struct LocalDaemon {
     release: Release,
     epoch: [u8; 16],
     content_mode: bool,
+    transport_mode: bool,
     bound: bool,
     pending_review: Option<client::PendingReview>,
     client_cleanup_failed: bool,
@@ -412,7 +426,8 @@ impl LocalDaemon {
                 .map_err(Error::from)?;
             self.pending_review.take();
         }
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline =
+            Instant::now() + Duration::from_secs(if self.transport_mode { 35 } else { 5 });
         loop {
             match self.child.as_mut().ok_or(Error::Arguments)?.try_wait() {
                 Ok(Some(status)) => {
@@ -430,6 +445,34 @@ impl LocalDaemon {
         }
     }
     pub fn close(mut self) -> Result<(), Error> {
+        if self.transport_mode {
+            if self.bound {
+                self.channel
+                    .as_mut()
+                    .ok_or(Error::Channel)?
+                    .send(CLOSE, Instant::now() + Duration::from_secs(2))
+                    .map_err(Error::from)?;
+                self.pending_review.take();
+                self.bound = false;
+            }
+            let deadline = Instant::now() + Duration::from_secs(35);
+            while let Some(child) = self.child.as_mut() {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        self.child.take();
+                        if !status.success() {
+                            return Err(Error::Cleanup);
+                        }
+                        break;
+                    }
+                    Ok(None) if Instant::now() < deadline => {
+                        std::thread::sleep(Duration::from_millis(10))
+                    }
+                    _ => return Err(Error::Cleanup),
+                }
+            }
+            return self.close_channel();
+        }
         self.terminate_for_restart()?;
         self.close_channel()
     }
@@ -511,7 +554,12 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
     if !args.iter().any(|arg| {
         matches!(
             arg.as_str(),
-            EPOCH_FLAG | CONTENT_EPOCH_FLAG | DURABLE_CREATE_FLAG | DURABLE_RESUME_FLAG
+            EPOCH_FLAG
+                | CONTENT_EPOCH_FLAG
+                | DURABLE_CREATE_FLAG
+                | DURABLE_RESUME_FLAG
+                | TRANSPORT_CREATE_FLAG
+                | TRANSPORT_RESUME_FLAG
         )
     }) {
         return Ok(None);
@@ -524,7 +572,12 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
         || args[6] != "--stop-file"
         || !matches!(
             args[8].as_str(),
-            EPOCH_FLAG | CONTENT_EPOCH_FLAG | DURABLE_CREATE_FLAG | DURABLE_RESUME_FLAG
+            EPOCH_FLAG
+                | CONTENT_EPOCH_FLAG
+                | DURABLE_CREATE_FLAG
+                | DURABLE_RESUME_FLAG
+                | TRANSPORT_CREATE_FLAG
+                | TRANSPORT_RESUME_FLAG
         )
         || !Path::new(&args[3]).is_absolute()
         || Path::new(&args[5]) != Path::new(&args[3]).join("ready")
@@ -538,6 +591,8 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
         CONTENT_EPOCH_FLAG => Some(ContentProfile::Ephemeral),
         DURABLE_CREATE_FLAG => Some(ContentProfile::KeychainCreate),
         DURABLE_RESUME_FLAG => Some(ContentProfile::KeychainResume),
+        TRANSPORT_CREATE_FLAG => Some(ContentProfile::TransportCreate),
+        TRANSPORT_RESUME_FLAG => Some(ContentProfile::TransportResume),
         _ => None,
     };
     let runtime = PathBuf::from(&args[3]);
@@ -622,7 +677,7 @@ fn require_content_runtime(root: &Path, profile: ContentProfile) -> Result<(), E
             .canonicalize()
             .map_err(|_| Error::Arguments)?
             .starts_with(temp)
-        || (profile != ContentProfile::KeychainResume
+        || (!profile.resumes()
             && std::fs::read_dir(root)
                 .map_err(|_| Error::Arguments)?
                 .count()
@@ -636,7 +691,7 @@ fn require_content_runtime(root: &Path, profile: ContentProfile) -> Result<(), E
     {
         return Err(Error::Arguments);
     }
-    if profile == ContentProfile::KeychainResume {
+    if profile.resumes() {
         verified_resume_device(root)?;
     }
     Ok(())

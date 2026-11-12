@@ -78,6 +78,46 @@ static bool live(cx_channel *c) {
         count == TASK_AUDIT_TOKEN_COUNT && !memcmp(&observed, &c->sender, sizeof(observed));
 }
 
+struct cx_liveness {
+    mach_port_t task;
+    pid_t pid;
+    audit_token_t token;
+    bool parent;
+};
+
+enum cx_result cx_peer_liveness(cx_channel *c, cx_liveness **out) {
+    if (!out) return CX_ARGUMENT;
+    *out = NULL;
+    if (!c || !c->pinned || c->closed || !live(c)) return CX_INSTANCE;
+    cx_liveness *pin = calloc(1, sizeof(*pin));
+    if (!pin) return CX_RESOURCE;
+    if (mach_port_mod_refs(mach_task_self(), c->task, MACH_PORT_RIGHT_SEND, 1) != KERN_SUCCESS) {
+        free(pin);
+        return CX_RESOURCE;
+    }
+    pin->task = c->task;
+    pin->pid = c->pid;
+    pin->token = c->sender;
+    pin->parent = c->parent_is_peer;
+    *out = pin;
+    return CX_OK;
+}
+int cx_peer_still_live(const cx_liveness *pin) {
+    pid_t pid = 0;
+    audit_token_t token;
+    mach_msg_type_number_t count = TASK_AUDIT_TOKEN_COUNT;
+    return pin && (!pin->parent || getppid() == pin->pid) &&
+        pid_for_task(pin->task, &pid) == KERN_SUCCESS && pid == pin->pid &&
+        task_info(pin->task, TASK_AUDIT_TOKEN, (task_info_t)&token, &count) == KERN_SUCCESS &&
+        count == TASK_AUDIT_TOKEN_COUNT && !memcmp(&token, &pin->token, sizeof(token));
+}
+enum cx_result cx_liveness_close(cx_liveness *pin) {
+    if (!pin) return CX_ARGUMENT;
+    bool ok = release_send(pin->task);
+    free(pin);
+    return ok ? CX_OK : CX_CLEANUP;
+}
+
 static enum cx_result configure(cx_channel *c, pid_t pid, const cx_policy *policy) {
     if (pid <= 1 || !policy || !policy->requirement || !policy->cdhash ||
         !policy->hash_size || policy->hash_size > 64 || policy->signer_size > 65536 ||

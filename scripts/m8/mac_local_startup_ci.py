@@ -10,6 +10,7 @@ import zipfile
 
 from mac_identity_preflight import PreflightError
 from mac_durable_check import MARKERS, check_durable_profile, check_session_journal
+from mac_transport_package import prepare as prepare_transport
 
 
 def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain,
@@ -77,6 +78,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
              "--keychain", keychain, target], "sign_real_" + role)
     (resources / "startup-check.txt").write_bytes(b"Public local startup fixture.\n")
     shutil.copytree(Path("apps/desktop/dist"), resources / "frontend")
+    prepare_transport(resources / "transport", run)
     architecture = {"arm64": "arm64", "x86_64": "x86_64"}[platform.machine()]
 
     def inventory(bundle, *, role_hash=None, parent_hash=None, release="m8-local-startup-v1"):
@@ -113,6 +115,14 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     positive_files = inventory(template)
     positive = root / "positive.app"
     shutil.copytree(template, positive)
+    transport_result = run([positive / "Contents/MacOS/cryptexd",
+                            "--m8-local-transport-driver", root / "transport-runtime"],
+                           "real_managed_mac_transport_identity", 180)
+    for marker in ("mac_transport_owned_identity_restart=passed",
+                   "mac_transport_helper_loss_cleanup=passed"):
+        if marker not in transport_result.splitlines():
+            raise PreflightError("native_transport_identity_marker_missing")
+        print(marker)
     result = run([positive / "Contents/MacOS/cryptex-desktop",
                   "--cryptex-m8-local-startup-check", root / "positive-runtime"],
                  "real_signed_startup_restart", 45)

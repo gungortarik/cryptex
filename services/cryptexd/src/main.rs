@@ -29,6 +29,13 @@ use cryptexd::update::run_update_rollback_proof;
 fn main() {
     let mut args: Vec<String> = env::args().skip(1).collect();
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    if let Some(result) = cryptexd::mac_transport_helper_entry(&args) {
+        if let Err(error) = &result {
+            eprintln!("{error}");
+        }
+        process::exit(if result.is_ok() { 0 } else { 2 });
+    }
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
     let mut _startup_guard = match cryptexd::local_signed_startup::child_gate(&mut args) {
         Ok(guard) => guard,
         Err(error) => {

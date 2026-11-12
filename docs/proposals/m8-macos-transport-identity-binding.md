@@ -1,13 +1,15 @@
 # Mac managed transport identity binding — proposed disabled extension
 
-Status: **PROPOSED; process-role decision required before implementation.**
-Date: 2026-11-12. This does not amend ADR-0020 or enable a product route.
+Status: **SELECTED FOR DISABLED DEVELOPMENT**, recorded in
+[ADR-0021](../adr/ADR-0021-disabled-macos-transport-helper.md).
+Date: 2026-11-12. This does not enable a product route.
 
 Karar özeti: Öneri, mevcut imzalı `cryptexd` ikilisini ayrı bir taşıma yardımcısı
 rolünde çalıştırmak. Yardımcı yalnızca izole Syncthing süreçlerini ve yerel API
 kimliğini yönetir; kalıcı hafıza veya eşleştirme onayı yazmaz. Önce kapalı test
 kapsamında süreç kaybı/temizlik ve gerçek socket sahipliği kanıtlanır. Bu yeni
-süreç rolünün seçilmesi gerekiyor; yayınlama veya üründe etkinleştirme istenmiyor.
+süreç rolü, kullanıcının uygun seçeneği uygulama yönlendirmesiyle seçildi;
+yayınlama veya üründe etkinleştirme istenmiyor.
 
 ## Concrete finding
 
@@ -51,7 +53,8 @@ flowchart LR
 This is a new process role and integration strategy, rather than just exposing
 the Windows status cache on Mac. Repository `AGENTS.md` requires clarification
 before changing an ambiguous process/workflow/integration direction. The user
-should select this concrete proposal before the role or launch path is added.
+selected this proposal by delegating the suitable option; ADR-0021 records the
+bounded development decision before the role and launch path are added.
 
 An OS-managed transient service is an alternative if helper supervision cannot
 meet the failure criteria. That would need its own launchd/service lifecycle

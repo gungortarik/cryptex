@@ -13,6 +13,8 @@ use std::time::Duration;
 
 use crate::owned_process::{ExitObservation, LaunchSpec, OwnedProcess, OwnedProcessError};
 
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+pub(crate) mod macos;
 #[cfg(all(windows, target_arch = "x86_64"))]
 #[path = "syncthing_package/windows.rs"]
 mod windows;
@@ -43,7 +45,7 @@ impl std::error::Error for PackageError {}
 
 struct PackagePins {
     binary: PathBuf,
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     _files: Vec<std::fs::File>,
 }
 
@@ -61,7 +63,18 @@ impl PinnedSyncthingPackage {
                 _files: files,
             })))
         }
-        #[cfg(not(all(windows, target_arch = "x86_64")))]
+        #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+        {
+            let files = macos::open_pinned(directory)?;
+            Ok(Self(Arc::new(PackagePins {
+                binary: directory.join("syncthing"),
+                _files: files,
+            })))
+        }
+        #[cfg(not(any(
+            all(windows, target_arch = "x86_64"),
+            all(target_os = "macos", feature = "m8-local-startup-check")
+        )))]
         {
             let _ = directory;
             Err(PackageError::UnsupportedTarget)
@@ -85,6 +98,9 @@ impl PinnedSyncthingPackage {
         &self,
         spec: Result<LaunchSpec, OwnedProcessError>,
     ) -> Result<PackagedProcess, PackageError> {
+        #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+        let _fresh_pins =
+            macos::open_pinned(self.0.binary.parent().ok_or(PackageError::InvalidPath)?)?;
         let process = OwnedProcess::spawn(&spec.map_err(PackageError::Launch)?)
             .map_err(PackageError::Launch)?;
         Ok(PackagedProcess {
@@ -96,7 +112,7 @@ impl PinnedSyncthingPackage {
 
 impl fmt::Debug for PinnedSyncthingPackage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("PinnedSyncthingPackage(<pinned Windows amd64 2.1.5>)")
+        f.write_str("PinnedSyncthingPackage(<pinned native 2.1.5>)")
     }
 }
 

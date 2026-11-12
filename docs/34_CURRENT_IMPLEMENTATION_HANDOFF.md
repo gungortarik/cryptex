@@ -101,9 +101,10 @@ equivalent to the existing Windows Job. A direct child plus Drop is insufficient
 The [concrete disabled transport proposal](proposals/m8-macos-transport-identity-binding.md)
 recommends a separate helper role using the existing signed daemon executable,
 with fresh process/socket observations and explicit loss/cleanup gates. This new
-process-role/integration decision is pending user selection under AGENTS.md;
-no implementation or product gate changed during that investigation.
-After that decision, implement/prove supervision and the authenticated status
+process-role/integration decision was delegated by the owner and the recommended
+helper selected in [ADR-0021](adr/ADR-0021-disabled-macos-transport-helper.md).
+Implementation is in progress behind the local feature; product gates remain closed.
+Implement/prove supervision and the authenticated status
 reader before successful Mac offer/proof and the complete native peer flow. Final independent
 security/human review and publisher/support-floor/activation decisions remain
 open under ADR-0020.
