@@ -169,7 +169,7 @@ The actual daemon refused earlier during anchored journal recovery with
 `secure_store_missing_item`, exit 2 and unchanged files. The harness now
 accepts either exact missing-key diagnostic, retaining every other assertion.
 
-Open gates: owner-Mac replay-extension acceptance, product
+Open gates: current-candidate security/product review, product
 publisher/OS-floor decisions and explicit activation. This is selected candidate evidence, not a full
 workspace, production distribution or M8 acceptance claim.
 
@@ -219,4 +219,13 @@ The archive `cryptex-mac-tekrar-5b6f863-43279002497.zip` has SHA-256
 `0f652484d5513e4188b9c212305115f783a37fbbad1b9d1c822fff29276136da`.
 Its exact manifest member hashes, executable modes, arm64 headers and collector
 source bytes were checked after download. The disposable signer expires
-2026-11-13 18:22:46 UTC. The owner Mac replay receipt remains pending.
+2026-11-13 18:22:46 UTC.
+
+The owner returned `MAC-KALICI-SONUC-be33e9c4.zip`, SHA-256
+`5e27dbd1a803929105cb4bb18ff01265ee75cae4c2df94b74d458b18919b76e0`.
+Its single `result.json` matches exact source
+`5b6f8635bca726cc6637fc47000e9972928f3826` and reports `outcome=passed`.
+All five verification flags are true, including
+`wire_replay_refusal_verified`, restart/confirmation, missing-key refusal,
+credential cleanup and runtime cleanup. This closes the owner-Mac automated
+replay-extension fixture acceptance for that source and isolated profile.

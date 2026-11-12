@@ -63,10 +63,13 @@ The replay extension at `5b6f863` passed Mac and Windows CI in
 It resends exact pending and completed confirmation requests over new native
 connections to the same profile, requires missing-session refusals, and verifies
 unchanged event/identity and journal bytes. The exported launcher also passed.
-Next, collect the owner Mac replay result from
-`cryptex-mac-tekrar-5b6f863-43279002497.zip` using `MAC-KALICI.command`.
-Require source `5b6f8635bca726cc6637fc47000e9972928f3826`, outcome passed and
-`wire_replay_refusal_verified=true` with all four earlier verification flags.
+The owner returned `MAC-KALICI-SONUC-be33e9c4.zip` from the real Mac.
+Its source matches `5b6f8635bca726cc6637fc47000e9972928f3826`, outcome is
+passed and `wire_replay_refusal_verified=true` with all four earlier flags
+true for restart/confirmation, missing-key refusal and both cleanup checks.
+This closes the owner-Mac automated cross-daemon confirmation replay fixture
+at this source. Next, review the current candidate's security boundary and the
+remaining publisher/OS-floor and product integration decisions.
 The disposable signer expires 2026-11-13 18:22:46 UTC.
 Publisher/OS-floor decisions, explicit activation and M8 completion remain open.
 
