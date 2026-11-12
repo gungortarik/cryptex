@@ -166,6 +166,12 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     if (missing.code != 2 or missing.timed_out or missing.limited or missing.pipe_failed
             or "native_keychain_seed_missing" not in missing.output.splitlines()
             or before_missing != after_missing):
+        print(json.dumps({"nativeMissingKey": {
+            "exit": missing.code, "timeout": missing.timed_out, "limited": missing.limited,
+            "pipeFailed": missing.pipe_failed, "unchanged": before_missing == after_missing,
+            "missingMarker": "native_keychain_seed_missing" in missing.output.splitlines(),
+            "output": missing.output.replace(str(root), "[fixture-root]")[-4096:],
+        }}), file=sys.stderr)
         raise PreflightError("native_keychain_missing_key_refusal_failed")
     absent = run_bounded(["/usr/bin/security", "delete-generic-password", "-s",
                          "Cryptex-Dev-DeviceCredentials", "-a", "device-event-signing-seed:" + device], 10)
