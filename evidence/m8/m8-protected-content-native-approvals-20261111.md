@@ -132,8 +132,17 @@ The exported arm64 archive SHA-256 is
 `17cca4f1dde137d0974cad67a353b1781b49913cae306272750ac53ed3539c3d`.
 Its fixture signing certificate expires 2026-11-13 03:22:54 UTC.
 
-Open gates: the revised owner Mac receipt after UI cancellation and confirmation,
-same-profile durable restart with the intended platform secure store, product
+The revised owner result `MAC-ARAYUZ-SONUC-bf755756.zip` has SHA-256
+`72016f4f5638d67d18754b7159e5044f3d1dc69980fb42135374d6958e92f385`.
+Its single `result.json` identifies source
+`a7b41a22f7d178030c8ad8f1fdf86d1ef9550007`, exit code 0 and
+`outcome=expected_local_events`. Both outcome checks are true: exactly two
+verified events with the original prefix preserved, and the exact journal
+multiset of one cancelled operation with zero append attempts and one anchored
+operation with one attempt. This closes the owner interactive cancellation,
+confirmation and normal-quit receipt check for this isolated fixture.
+
+Open gates: same-profile durable restart with the intended platform secure store, product
 publisher/OS-floor decisions and explicit activation. The fresh-runtime lost
 handle test does not establish same-profile restart or old wire-capability
 replay across new daemons. This is selected candidate evidence, not a full

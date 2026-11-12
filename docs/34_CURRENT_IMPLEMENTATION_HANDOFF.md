@@ -33,8 +33,11 @@ and one confirmation. The app exited with code 0, but the shutdown receipt was
 missing. Candidate `a7b41a2` now finishes owner cleanup in the native exit
 callback. Its [Mac and Windows CI](https://github.com/gungortarik/cryptex/actions/runs/43147508139)
 passed. A real AppKit quit produced a receipt with the one seed event preserved.
-Next, collect the revised owner Mac package result after Cancel, Confirm and
-Cmd+Q. Expect two events, the original prefix and one anchored append attempt.
+The revised owner Mac result `MAC-ARAYUZ-SONUC-bf755756.zip` passed after
+Cancel, Confirm and Cmd+Q: two events, original prefix preserved, one cancellation
+with zero append attempts, one anchored confirmation with one attempt, exit 0.
+The next integration gate is same-profile durable restart using the intended
+platform secure store.
 Same-profile durable recovery and M8 acceptance remain open.
 
 The Windows M8 pairing form now labels the four signed messages by sender
