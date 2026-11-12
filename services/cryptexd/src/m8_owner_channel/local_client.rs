@@ -60,7 +60,9 @@ fn valid_reply(reply: &WireReply, request: &OwnerRequest, operation: &str) -> bo
         "bootstrap.exchange.offer.create" | "bootstrap.exchange.proof.create" => {
             "bootstrap.exchange.result"
         }
-        "bootstrap.approval.prepare" | "bootstrap.approval.cancel" => "bootstrap.approval.result",
+        "bootstrap.approval.prepare"
+        | "bootstrap.approval.confirm"
+        | "bootstrap.approval.cancel" => "bootstrap.approval.result",
         "owner.security.prepare" | "owner.security.cancel" => "owner.security.result",
         _ => operation,
     };
@@ -77,6 +79,11 @@ fn valid_reply(reply: &WireReply, request: &OwnerRequest, operation: &str) -> bo
         && if reply.accepted {
             reply.error.is_none()
                 && reply.operation == operation
+                && (operation != "bootstrap.approval.signed"
+                    || reply.signed_message.as_ref().is_some_and(|message| {
+                        !message.is_empty()
+                            && message.len() <= super::super::request::MAX_MESSAGE_BYTES
+                    }))
                 && (matches!(
                     request.operation.as_str(),
                     "owner.security.prepare" | "bootstrap.approval.prepare"
@@ -367,7 +374,7 @@ impl LocalDaemon {
         let reply = self.rpc(
             &request,
             if confirm {
-                "bootstrap.approval.result"
+                "bootstrap.approval.signed"
             } else {
                 "bootstrap.approval.cancelled"
             },
@@ -648,6 +655,29 @@ mod tests {
             &request,
             "bootstrap.exchange.offer.created"
         ));
+    }
+    #[test]
+    fn peer_confirmation_requires_signed_success_and_accepts_only_empty_refusal() {
+        let request = request("bootstrap.approval.confirm").unwrap();
+        let mut reply = refusal(&request);
+        reply.operation = "bootstrap.approval.signed".into();
+        reply.accepted = true;
+        reply.error = None;
+        reply.signed_message = Some("signed-message-fixture".into());
+        assert!(valid_reply(&reply, &request, "bootstrap.approval.signed"));
+        reply.signed_message = None;
+        assert!(!valid_reply(&reply, &request, "bootstrap.approval.signed"));
+        reply.signed_message = Some("signed-message-fixture".into());
+        // The generic result is a refusal envelope, never successful signing.
+        reply.operation = "bootstrap.approval.result".into();
+        assert!(!valid_reply(&reply, &request, "bootstrap.approval.signed"));
+        reply.accepted = false;
+        reply.error = Some("approval_confirmation_failed".into());
+        assert!(!valid_reply(&reply, &request, "bootstrap.approval.signed"));
+        reply.signed_message = None;
+        assert!(valid_reply(&reply, &request, "bootstrap.approval.signed"));
+        reply.request_id = Some("another-request".into());
+        assert!(!valid_reply(&reply, &request, "bootstrap.approval.signed"));
     }
     #[test]
     fn pending_handles_cannot_cross_owner_and_peer_operations() {
