@@ -5,11 +5,19 @@ use std::ffi::{CString, c_int, c_void};
 use std::marker::PhantomData;
 use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
-use std::process::{Child, Command, Stdio};
+use std::os::unix::process::ExitStatusExt;
+use std::process::ExitStatus;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
 unsafe extern "C" {
+    fn cx_transport_spawn_suspended(
+        path: *const libc::c_char,
+        cwd: *const libc::c_char,
+        argv: *const *const libc::c_char,
+        envp: *const *const libc::c_char,
+        out: *mut libc::pid_t,
+    ) -> c_int;
     fn cx_transport_image_hash(path: *const libc::c_char, hash: *mut u8) -> c_int;
     fn cx_transport_retain_child(pid: libc::pid_t, hash: *const u8, out: *mut *mut c_void)
     -> c_int;
@@ -53,10 +61,103 @@ impl Drop for PeerPin {
     }
 }
 pub(super) struct NativeProcess {
-    child: Option<Child>,
+    child: Option<CapturedChild>,
     pin: PeerPin,
     pid: u32,
     exit: Option<i64>,
+}
+
+struct CapturedChild {
+    pid: libc::pid_t,
+    reaped: bool,
+}
+impl CapturedChild {
+    fn spawn(spec: &LaunchSpec) -> Result<Self, OwnedProcessError> {
+        let string =
+            |bytes: &[u8]| CString::new(bytes).map_err(|_| OwnedProcessError::InvalidLaunch);
+        let path = string(spec.program.as_os_str().as_bytes())?;
+        let cwd = string(spec.working_directory.as_os_str().as_bytes())?;
+        let mut args = vec![path.clone()];
+        for arg in &spec.arguments {
+            args.push(string(arg.as_os_str().as_bytes())?);
+        }
+        let mut env = Vec::new();
+        for (key, value) in &spec.environment {
+            let mut bytes = key.as_os_str().as_bytes().to_vec();
+            bytes.push(b'=');
+            bytes.extend_from_slice(value.as_os_str().as_bytes());
+            env.push(string(&bytes)?);
+        }
+        let pointers = |values: &[CString]| {
+            values
+                .iter()
+                .map(|value| value.as_ptr())
+                .chain(std::iter::once(std::ptr::null()))
+                .collect::<Vec<_>>()
+        };
+        let argv = pointers(&args);
+        let envp = pointers(&env);
+        let mut pid = 0;
+        let code = unsafe {
+            cx_transport_spawn_suspended(
+                path.as_ptr(),
+                cwd.as_ptr(),
+                argv.as_ptr(),
+                envp.as_ptr(),
+                &mut pid,
+            )
+        };
+        if code != 0 {
+            if pid > 1 {
+                let mut child = Self { pid, reaped: false };
+                if child.kill().and_then(|_| child.wait()).is_err() {
+                    eprintln!("mac_engine_partial_spawn_cleanup_failed");
+                    kill_helper_group();
+                }
+            }
+            return Err(OwnedProcessError::Platform {
+                operation: "mac_engine_suspended_spawn",
+                code: i64::from(code),
+            });
+        }
+        if pid <= 1 {
+            eprintln!("mac_engine_spawn_returned_invalid_child");
+            kill_helper_group();
+        }
+        Ok(Self { pid, reaped: false })
+    }
+    fn id(&self) -> u32 {
+        self.pid as u32
+    }
+    fn kill(&mut self) -> std::io::Result<()> {
+        if unsafe { libc::kill(self.pid, libc::SIGKILL) } == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+    fn wait(&mut self) -> std::io::Result<ExitStatus> {
+        loop {
+            let mut status = 0;
+            let result = unsafe { libc::waitpid(self.pid, &mut status, 0) };
+            if result == self.pid {
+                self.reaped = true;
+                return Ok(ExitStatus::from_raw(status));
+            }
+            let error = std::io::Error::last_os_error();
+            if error.kind() != std::io::ErrorKind::Interrupted {
+                return Err(error);
+            }
+        }
+    }
+}
+impl Drop for CapturedChild {
+    fn drop(&mut self) {
+        if !self.reaped && self.kill().and_then(|_| self.wait()).is_err() {
+            eprintln!("mac_engine_captured_child_cleanup_failed");
+            kill_helper_group();
+        }
+    }
 }
 impl NativeProcess {
     pub(super) fn spawn(spec: &LaunchSpec) -> Result<Self, OwnedProcessError> {
@@ -76,27 +177,28 @@ impl NativeProcess {
         if hash != crate::syncthing_package::macos::CDHASH {
             return Err(OwnedProcessError::InvalidLaunch);
         }
-        let mut child = Command::new(&spec.program)
-            .args(&spec.arguments)
-            .current_dir(&spec.working_directory)
-            .env_clear()
-            .envs(spec.environment.iter().map(|(k, v)| (k, v)))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|_| failure("mac_engine_spawn"))?;
+        let mut child = CapturedChild::spawn(spec)?;
         let mut raw = std::ptr::null_mut();
         // SAFETY: child is captured by this spawn and is still unreaped. C also
         // checks direct parent, private group, live task generation and image.
-        if unsafe { cx_transport_retain_child(child.id() as i32, hash.as_ptr(), &mut raw) } != 0 {
+        let code = unsafe { cx_transport_retain_child(child.id() as i32, hash.as_ptr(), &mut raw) };
+        if code != 0 {
+            eprintln!("component=mac_transport operation=engine_pin status=refused code={code}");
             let _ = child.kill();
             let _ = child.wait();
-            // Root could have forked before a late validation failure. The parent
-            // owns this helper's unreaped group leader and will verify group exit.
+            // The new image is still stopped. Its helper parent remains the
+            // unreaped group leader until the daemon verifies group exit.
             kill_helper_group();
         }
         let raw = NonNull::new(raw).ok_or(OwnedProcessError::InvalidLaunch)?;
+        // Even an instantaneous `generate` cannot exit before image capture.
+        // The stopped image must match the independent package hash first.
+        if !crate::m8_owner_channel::transport_helper::role_active()
+            || unsafe { libc::kill(child.pid, libc::SIGCONT) } != 0
+        {
+            eprintln!("mac_engine_validated_resume_failed");
+            kill_helper_group();
+        }
         Ok(Self {
             pid: child.id(),
             child: Some(child),
@@ -142,6 +244,7 @@ impl NativeProcess {
     }
     pub(super) fn try_exit(&mut self) -> Result<Option<i64>, OwnedProcessError> {
         if !crate::m8_owner_channel::transport_helper::role_active() {
+            eprintln!("mac_engine_parent_generation_lost");
             kill_helper_group();
         }
         let Some(child) = self.child.as_mut() else {
@@ -183,12 +286,14 @@ impl NativeProcess {
         Ok(self.exit)
     }
     pub(super) fn terminate_job(&self) -> Result<(), OwnedProcessError> {
+        eprintln!("mac_engine_forced_group_cleanup");
         kill_helper_group()
     }
 }
 impl Drop for NativeProcess {
     fn drop(&mut self) {
         if self.child.is_some() {
+            eprintln!("mac_engine_drop_requires_group_cleanup");
             kill_helper_group();
         }
     }

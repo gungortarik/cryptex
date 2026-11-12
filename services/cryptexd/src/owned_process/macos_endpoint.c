@@ -3,10 +3,13 @@
 #include <bsm/libbsm.h>
 #include <errno.h>
 #include <libproc.h>
+#include <fcntl.h>
 #include <mach/mach.h>
 #include <netinet/in.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <spawn.h>
+#include <signal.h>
 #include <string.h>
 #include <sys/proc.h>
 #include <sys/proc_info.h>
@@ -20,6 +23,50 @@ typedef struct {
     audit_token_t token;
     uint8_t hash[20];
 } cx_transport_pin;
+
+// SDK spawn flags stop the new image before dyld/user code runs. The caller
+// retains this exact child and validates its live image before SIGCONT.
+int cx_transport_spawn_suspended(const char *path, const char *cwd,
+                                char *const argv[], char *const envp[], pid_t *out) {
+    *out = 0;
+    if (getpgrp() != getpid() || getsid(0) != getpid()) return EPERM;
+    posix_spawnattr_t attr;
+    posix_spawn_file_actions_t actions;
+    int result = posix_spawnattr_init(&attr);
+    if (result) return result;
+    result = posix_spawn_file_actions_init(&actions);
+    if (result) {
+        int cleanup = posix_spawnattr_destroy(&attr);
+        return cleanup ? cleanup : result;
+    }
+    sigset_t mask, defaults;
+    sigemptyset(&mask);
+    sigemptyset(&defaults);
+    sigaddset(&defaults, SIGPIPE);
+    do {
+        result = posix_spawnattr_setflags(&attr, POSIX_SPAWN_START_SUSPENDED |
+            POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF);
+        if (result) break;
+        result = posix_spawnattr_setsigmask(&attr, &mask);
+        if (result) break;
+        result = posix_spawnattr_setsigdefault(&attr, &defaults);
+        if (result) break;
+        result = posix_spawn_file_actions_addchdir_np(&actions, cwd);
+        if (result) break;
+        result = posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDWR, 0);
+        if (result) break;
+        result = posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDOUT_FILENO);
+        if (result) break;
+        result = posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDERR_FILENO);
+        if (result) break;
+        result = posix_spawn(out, path, &actions, &attr, argv, envp);
+    } while (false);
+    int first = posix_spawn_file_actions_destroy(&actions);
+    int second = posix_spawnattr_destroy(&attr);
+    // A nonzero result may still carry a captured suspended child if only
+    // attribute cleanup failed. Rust must terminate/reap that child as well.
+    return result ? result : first ? first : second;
+}
 
 int cx_transport_private_acl(int fd) {
     errno = 0;
@@ -81,10 +128,11 @@ static bool image_matches(const cx_transport_pin *pin) {
     if (!cx_transport_pin_live(pin)) return false;
     CFDataRef token = CFDataCreate(NULL, (const UInt8 *)&pin->token, sizeof(pin->token));
     if (!token) return false;
-    const void *key = kSecGuestAttributeAudit;
-    const void *value = token;
-    CFDictionaryRef attributes = CFDictionaryCreate(NULL, &key, &value, 1,
-        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFNumberRef pid = CFNumberCreate(NULL, kCFNumberIntType, &pin->pid);
+    const void *keys[] = {kSecGuestAttributeAudit, kSecGuestAttributePid};
+    const void *values[] = {token, pid};
+    CFDictionaryRef attributes = pid ? CFDictionaryCreate(NULL, keys, values, 2,
+        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks) : NULL;
     SecCodeRef code = NULL;
     uint8_t hash[20];
     bool ok = attributes && SecCodeCopyGuestWithAttributes(NULL, attributes, 0, &code) == errSecSuccess &&
@@ -93,36 +141,46 @@ static bool image_matches(const cx_transport_pin *pin) {
         cx_transport_pin_live(pin);
     if (code) CFRelease(code);
     if (attributes) CFRelease(attributes);
+    if (pid) CFRelease(pid);
     CFRelease(token);
     return ok;
 }
 
 // Caller supplies only a captured child, or a member of the helper's private
 // session/group found below. Never exported to a renderer/ordinary product API.
-static cx_transport_pin *retain(pid_t pid, const uint8_t hash[20]) {
+static cx_transport_pin *retain(pid_t pid, const uint8_t hash[20], int *stage) {
+    *stage = 1;
     cx_transport_pin *pin = calloc(1, sizeof(*pin));
     if (!pin) return NULL;
     pin->pid = pid;
     memcpy(pin->hash, hash, 20);
     mach_msg_type_number_t count = TASK_AUDIT_TOKEN_COUNT;
-    if (task_name_for_pid(mach_task_self(), pid, &pin->task) != KERN_SUCCESS ||
-        task_info(pin->task, TASK_AUDIT_TOKEN, (task_info_t)&pin->token, &count) != KERN_SUCCESS ||
-        count != TASK_AUDIT_TOKEN_COUNT || audit_token_to_pid(pin->token) != pid ||
-        audit_token_to_euid(pin->token) != geteuid() || !image_matches(pin)) {
-        cx_transport_pin_close(pin);
-        return NULL;
-    }
+    *stage = 2;
+    if (task_name_for_pid(mach_task_self(), pid, &pin->task) != KERN_SUCCESS) goto failed;
+    *stage = 3;
+    if (task_info(pin->task, TASK_AUDIT_TOKEN, (task_info_t)&pin->token, &count) != KERN_SUCCESS ||
+        count != TASK_AUDIT_TOKEN_COUNT) goto failed;
+    *stage = 4;
+    if (audit_token_to_pid(pin->token) != pid || audit_token_to_euid(pin->token) != geteuid()) goto failed;
+    *stage = 5;
+    if (!image_matches(pin)) goto failed;
+    *stage = 0;
     return pin;
+failed:
+    cx_transport_pin_close(pin);
+    return NULL;
 }
 
 int cx_transport_retain_child(pid_t pid, const uint8_t hash[20], cx_transport_pin **out) {
     *out = NULL;
     struct proc_bsdinfo info;
-    if (getpgrp() != getpid() || getsid(0) != getpid() || pid <= 1 ||
-        proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, sizeof(info)) != (int)sizeof(info) ||
-        info.pbi_ppid != (uint32_t)getpid() || info.pbi_pgid != (uint32_t)getpid()) return 1;
-    *out = retain(pid, hash);
-    return *out ? 0 : 1;
+    if (getpgrp() != getpid() || getsid(0) != getpid() || pid <= 1) return 1;
+    if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, sizeof(info)) != (int)sizeof(info)) return 2;
+    if (info.pbi_ppid != (uint32_t)getpid() || info.pbi_pgid != (uint32_t)getpid()) return 3;
+    if (info.pbi_status != SSTOP) return 4;
+    int stage;
+    *out = retain(pid, hash, &stage);
+    return *out ? 0 : 100 + stage;
 }
 
 static bool tuple(const struct socket_fdinfo *info, const struct sockaddr_storage *local,
@@ -190,7 +248,8 @@ int cx_transport_socket_peer(const cx_transport_pin *root, int fd, cx_transport_
         int found = find_socket(members[i], &local, &remote);
         if (found == 2) return 2;
         if (found) continue;
-        cx_transport_pin *peer = retain(members[i], root->hash);
+        int stage;
+        cx_transport_pin *peer = retain(members[i], root->hash, &stage);
         if (!peer || !image_matches(root) ||
             proc_pidinfo(members[i], PROC_PIDTBSDINFO, 0, &info, sizeof(info)) != (int)sizeof(info) ||
             info.pbi_pgid != (uint32_t)getpid()) {

@@ -202,7 +202,7 @@ impl Listener {
         policy: &ImagePolicy<'_>,
         deadline: Instant,
     ) -> Result<Channel, Error> {
-        if child.try_wait().map_err(|_| Error::Instance)?.is_some() {
+        if child_exited_unreaped(child)? {
             return Err(Error::Instance);
         }
         let pid = i32::try_from(child.id()).map_err(|_| Error::Instance)?;
@@ -218,6 +218,24 @@ impl Listener {
         })?;
         Ok(Channel(self.0))
     }
+}
+
+fn child_exited_unreaped(child: &Child) -> Result<bool, Error> {
+    let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
+    // Never release a captured child's PID before its owner completes group
+    // cleanup. This observation carries no authority to adopt another process.
+    if unsafe {
+        libc::waitid(
+            libc::P_PID,
+            child.id(),
+            info.as_mut_ptr(),
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        )
+    } != 0
+    {
+        return Err(Error::Instance);
+    }
+    Ok(unsafe { info.assume_init().si_pid() } != 0)
 }
 
 impl Channel {

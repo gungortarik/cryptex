@@ -235,6 +235,7 @@ impl ManagedProfile {
                 let exit = match generated.wait_for_exit(Duration::from_secs(15)) {
                     Ok(exit) => exit,
                     Err(error) => {
+                        eprintln!("component=managed_transport operation=generation_wait status=failed error={error}");
                         if let Err(cleanup) = generated.force_cleanup(Duration::from_secs(3)) {
                             std::mem::forget(root_pin);
                             std::mem::forget(generation.clone());
@@ -573,7 +574,12 @@ impl<'profile> PreparedNativeProfile<'profile> {
                         .ok_or(NativeConfigError::StartDeadline)?;
                     std::thread::sleep(remaining.min(Duration::from_millis(50)));
                 }
-                Err(error) => return Err(NativeConfigError::Rest(error)),
+                Err(error) => {
+                    eprintln!(
+                        "component=managed_transport operation=start_observation status=failed error={error}"
+                    );
+                    return Err(NativeConfigError::Rest(error));
+                }
             }
         }
     }

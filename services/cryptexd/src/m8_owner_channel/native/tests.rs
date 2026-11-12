@@ -256,6 +256,7 @@ fn supervisor() {
         "wrong_leaf",
         "short_handshake",
         "short_connect",
+        "exited_before_accept",
         "wrong_child",
         "parent_image",
         "queued_after_exit",
@@ -311,6 +312,35 @@ fn supervisor() {
             // The real listener remains live but never accepts or sends ACK.
             child.finish(Duration::from_secs(8));
             drop(listener);
+            continue;
+        }
+        if case == "exited_before_accept" {
+            let mut child = TestChild::spawn(
+                helper(&binary, "worker")
+                    .env("CX_TEST_CASE", "idle")
+                    .stdin(Stdio::piped()),
+                false,
+            );
+            drop(child.child.stdin.take());
+            let until = Instant::now() + Duration::from_secs(8);
+            while !child_exited_unreaped(&child.child).unwrap() {
+                assert!(Instant::now() < until);
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let policy = ImagePolicy {
+                requirement: REQUIREMENT,
+                cdhash: &hash,
+                signer_der: leaf.as_deref(),
+            };
+            assert!(matches!(
+                listener.accept(&mut child.child, &policy),
+                Err(Error::Instance)
+            ));
+            assert!(
+                child_exited_unreaped(&child.child).unwrap(),
+                "failed accept must leave the exact child unreaped"
+            );
+            child.finish(Duration::from_secs(8));
             continue;
         }
         let mut child = TestChild::spawn(

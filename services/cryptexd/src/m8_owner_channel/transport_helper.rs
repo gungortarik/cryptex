@@ -21,6 +21,12 @@ const HINT: &[u8] = b"cryptex-m8-transport-verified-v1\n";
 const PROFILE: &str = "00000000000000000000000000000001";
 const BUDGET: Duration = Duration::from_secs(4);
 const REFUSAL_ACK: &[u8] = b"m8-transport-refusal-ack-v1";
+fn channel_error(stage: &'static str, error: super::native::Error) -> Error {
+    eprintln!(
+        "component=mac_transport operation=native_channel stage={stage} status=failed error={error:?}"
+    );
+    Error::Channel
+}
 thread_local! {static PARENT:RefCell<Option<Rc<PeerLiveness>>>=const{RefCell::new(None)};}
 pub(crate) fn role_entered() -> bool {
     PARENT.with(|p| p.borrow().is_some())
@@ -597,7 +603,7 @@ impl Helper {
                 &(&expected).into(),
                 deadline,
             )
-            .map_err(|_| Error::Channel)?;
+            .map_err(|error| channel_error("helper_accept", error))?;
         let mut buffer = [0; 128];
         if channel
             .receive(&mut buffer, deadline)
@@ -613,7 +619,7 @@ impl Helper {
         let ready: Reply = decode(
             channel
                 .receive(&mut buffer, Instant::now() + Duration::from_secs(35))
-                .map_err(|_| Error::Channel)?,
+                .map_err(|error| channel_error("helper_ready", error))?,
         )?;
         if let Some(error) = ready.error {
             if ready.sequence != 0 || ready.identity.is_some() || ready.credential_profile.is_some()
