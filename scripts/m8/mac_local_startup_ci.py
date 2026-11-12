@@ -126,6 +126,13 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     if not all(marker in result.splitlines() for marker in markers):
         raise PreflightError("real_startup_marker_missing")
     print("real_signed_desktop_daemon_startup_restart=passed")
+    quit_root = root / "ui-quit-runtime"
+    run(["/usr/bin/swift", Path(__file__).with_name("mac_ui_quit_check.swift"),
+         positive / "Contents/MacOS/cryptex-desktop", quit_root], "real_appkit_ui_quit", 120)
+    receipt = json.loads((quit_root / "ui-receipt.json").read_text(encoding="utf-8"))
+    if receipt.get("eventCount") != 1 or receipt.get("prefixPreserved") is not True:
+        raise PreflightError("native_ui_quit_receipt_mismatch")
+    print("native_ui_quit_preserved_seed=passed")
     content_result = run([positive / "Contents/MacOS/cryptex-desktop",
                   "--cryptex-m8-local-content-check", root / "content-runtime"],
                  "real_verified_content_and_native_sessions", 90)

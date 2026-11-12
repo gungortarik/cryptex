@@ -642,7 +642,7 @@ pub fn entry() -> Option<Result<(), String>> {
             .ok_or("candidate_window")?;
         window.title = "Cryptex · İzole onay testi".into();
         context.config_mut().app.windows.clear();
-        tauri::Builder::default()
+        let app = tauri::Builder::default()
             .manage(owner.client.clone())
             .invoke_handler(tauri::generate_handler![
                 m8_prepare_owner_security_operation,
@@ -661,8 +661,19 @@ pub fn entry() -> Option<Result<(), String>> {
                 Ok(())
             })
             .build(context)
-            .map_err(|_| "candidate_window")?
-            .run(|_, _| {});
-        owner.close()
+            .map_err(|_| "candidate_window")?;
+        // AppKit may terminate the process directly after the Exit callback.
+        // Finish the receipt and reap the owned child while the callback is live.
+        let mut owner = Some(owner);
+        app.run(move |_, event| {
+            if matches!(event, tauri::RunEvent::Exit)
+                && let Some(owner) = owner.take()
+                && let Err(error) = owner.close()
+            {
+                eprintln!("candidate_ui_shutdown: {error}");
+                std::process::exit(2);
+            }
+        });
+        Ok(())
     })())
 }
