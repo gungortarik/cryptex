@@ -922,12 +922,10 @@ impl Worker {
 }
 impl Drop for Worker {
     fn drop(&mut self) {
-        if self.thread.is_some() {
-            if let Err(error) = self.join() {
-                eprintln!(
-                    "component=mac_transport operation=worker_exit status=failed error={error}"
-                );
-            }
+        if self.thread.is_some()
+            && let Err(error) = self.join()
+        {
+            eprintln!("component=mac_transport operation=worker_exit status=failed error={error}");
         }
     }
 }
