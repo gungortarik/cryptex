@@ -39,8 +39,18 @@ the feature executable. Successful end-to-end native pairing is still open.
   unchanged canonical event count/prefix. Existing owner/restart/raw-replay
   checks remain required. This marker does not establish positive peer pairing.
 
-Exact-source Mac/Windows CI is pending dispatch at this checkpoint. No new
-owner device run is requested until a meaningful positive native flow is ready.
+At source `3208d21`, [CI run 43289373287](https://github.com/gungortarik/cryptex/actions/runs/43289373287)
+passed Windows, including the new transport-read decoder test. Mac feature lint
+and all four new client unit tests passed. The existing native supervised test
+failed at its 30-second child deadline immediately after codesign reported
+signature replacement (31 passed, 1 failed, 2 ignored); the actual startup and
+pairing-boundary driver had not run yet. The failure duration identifies the
+signing-child wait, not a native message timeout. A disposable-keychain idle
+lock after the long feature build is suspected, not independently established.
+The CI harness now explicitly unlocks only its temporary fixture keychain again
+after feature build and before feature tests. Existing signing/native deadlines
+and refusal assertions remain unchanged. The followup run is pending.
+No new owner device run is requested until a meaningful positive native flow is ready.
 
 ## Remaining gates
 

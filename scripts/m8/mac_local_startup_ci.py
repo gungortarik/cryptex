@@ -42,6 +42,11 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
             "lint_real_signed_startup", 900)
         run([cargo, "build", "--locked", "-p", "cryptexd", "-p", "cryptex-desktop",
              "--features", features], "build_real_signed_startup", 900)
+        # Feature builds can outlast the disposable keychain's idle window.
+        # Refresh only this fixture before the test executable is codesigned;
+        # do not disable locking or lengthen native/signing test deadlines.
+        run(["/usr/bin/security", "unlock-keychain", "-p", password, keychain],
+            "unlock_ci_keychain_after_build")
         tests = run([cargo, "test", "--locked", "-p", "cryptexd", "--features",
              "m8-local-startup-check", "--lib", "m8_owner_channel::", "--", "--test-threads=1"],
             "test_signed_startup_shapes_and_closed_gates", 300)
