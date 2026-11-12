@@ -62,6 +62,8 @@ pub mod syncthing_rest;
 pub(crate) mod trust_reducer;
 pub mod trusted_import_probe;
 
+#[cfg(all(test, target_os = "macos"))]
+mod platform_restart_tests;
 pub mod supervisor;
 #[cfg(test)]
 mod test_interrupt;

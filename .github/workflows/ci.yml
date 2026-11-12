@@ -91,6 +91,9 @@ jobs:
         env:
           CRYPTEX_STARTUP_DISPOSABLE_ACCOUNT: '1'
         run: cargo test --locked -p cryptexd --test desktop_startup -- --include-ignored --test-threads=1
+      - name: Verify Mac OS-store reload across separate daemon-library processes
+        if: runner.os == 'macOS'
+        run: cargo test --locked -p cryptexd --lib platform_restart_tests:: -- --include-ignored --test-threads=1
       - name: Test startup with an actual standard-user Windows token
         if: runner.os == 'Windows'
         shell: pwsh
