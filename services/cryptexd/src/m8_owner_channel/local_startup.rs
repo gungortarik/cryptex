@@ -394,18 +394,46 @@ pub struct LocalDaemon {
     client_cleanup_failed: bool,
 }
 fn write_stop_request(stop: &Path) -> Result<(), Error> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
+    use std::io::{Read, Write};
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
     // A lifecycle marker must never truncate an existing file or follow an
-    // alias to canonical data. Each authenticated startup removes its stale
-    // stop marker, so this one-owner shutdown creates a fresh fixed leaf.
-    let mut file = std::fs::OpenOptions::new()
+    // alias to canonical data. Resume may retain an earlier marker: accept it
+    // read-only only if it is exactly this private, single-link regular leaf.
+    let created = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(stop)
-        .map_err(|_| Error::Cleanup)?;
+        .open(stop);
+    let mut file = match created {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+                .open(stop)
+                .map_err(|_| Error::Cleanup)?;
+            let metadata = file.metadata().map_err(|_| Error::Cleanup)?;
+            if !metadata.is_file()
+                || metadata.nlink() != 1
+                || metadata.uid() != unsafe { libc::geteuid() }
+                || metadata.mode() & 0o022 != 0
+                || metadata.len() != 5
+            {
+                return Err(Error::Cleanup);
+            }
+            let mut bytes = Vec::new();
+            file.take(6)
+                .read_to_end(&mut bytes)
+                .map_err(|_| Error::Cleanup)?;
+            return if bytes == b"stop\n" {
+                Ok(())
+            } else {
+                Err(Error::Cleanup)
+            };
+        }
+        Err(_) => return Err(Error::Cleanup),
+    };
     file.write_all(b"stop\n")
         .and_then(|()| file.sync_all())
         .map_err(|_| Error::Cleanup)
@@ -804,10 +832,14 @@ mod tests {
         let stop = root.join("stop");
         write_stop_request(&stop).unwrap();
         assert_eq!(std::fs::read(&stop).unwrap(), b"stop\n");
-        assert_eq!(write_stop_request(&stop), Err(Error::Cleanup));
+        write_stop_request(&stop).unwrap(); // read-only idempotent shutdown
         std::fs::remove_file(&stop).unwrap();
         let preserved = root.join("preserved-data");
         std::fs::write(&preserved, b"immutable fixture").unwrap();
+        std::fs::write(&stop, b"other").unwrap();
+        assert_eq!(write_stop_request(&stop), Err(Error::Cleanup));
+        assert_eq!(std::fs::read(&stop).unwrap(), b"other");
+        std::fs::remove_file(&stop).unwrap();
         symlink(&preserved, &stop).unwrap();
         assert_eq!(write_stop_request(&stop), Err(Error::Cleanup));
         assert_eq!(std::fs::read(&preserved).unwrap(), b"immutable fixture");
