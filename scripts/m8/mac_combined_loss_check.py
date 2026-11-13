@@ -44,7 +44,7 @@ def guardian_identity(root):
     return group, guard
 
 
-def live_engine_snapshot(data, group, guard, driver=None, engines=None):
+def live_engine_snapshot(data, group, guard, driver=None, engines=None, helper_exited=True):
     """Read-only evidence; none of these identifiers is ever a signal target."""
     if len(data) > 16384:
         raise PreflightError("combined_loss_group_shape")
@@ -61,9 +61,9 @@ def live_engine_snapshot(data, group, guard, driver=None, engines=None):
     if not any(pid == guard and "Z" not in state for pid, _, _, state in parsed):
         raise PreflightError("combined_loss_guardian_not_live")
     leaders = [r for r in parsed if r[0] == group]
-    if driver is not None and not any(parent == driver and "Z" in state for _, parent, _, state in leaders):
+    if driver is not None and not any(parent == driver and ("Z" in state) == helper_exited for _, parent, _, state in leaders):
         raise PreflightError("combined_loss_helper_not_exited")
-    if any("Z" not in row[3] for row in leaders):
+    if helper_exited and any("Z" not in row[3] for row in leaders):
         raise PreflightError("combined_loss_helper_not_exited")
     living = {pid for pid, _, _, state in parsed if pid not in (group, guard) and "Z" not in state}
     if len(living) < 2 or (engines is not None and not engines.issubset(living)):
@@ -80,8 +80,9 @@ def profile_snapshot(root):
     return {name: capture_fixed(root / name) for name in names}
 
 
-def verify_exclusion(binary, root, run, engine_live):
-    before = profile_snapshot(root)
+def verify_exclusion(binary, root, run, engine_live, before):
+    if profile_snapshot(root) != before:
+        raise PreflightError("combined_loss_transition_mutated_profile")
     if not re.fullmatch(rb"[0-9a-f]{32}", before["transport.active"][1]):
         raise PreflightError("combined_loss_marker_shape")
     def credential():
@@ -119,23 +120,25 @@ def check_combined_loss(binary, root, run):
     stopped = False
     passed = False
     try:
-        output = bytearray()
         deadline = time.monotonic() + 55
-        with selectors.DefaultSelector() as selector:
-            selector.register(process.stdout, selectors.EVENT_READ)
-            while group is None:
-                if time.monotonic() >= deadline:
-                    raise PreflightError("combined_loss_ready_timeout")
-                if not selector.select(0.1):
-                    continue
-                block = os.read(process.stdout.fileno(), 1024)
-                if not block or len(output) + len(block) > 8192:
-                    raise PreflightError("combined_loss_ready_failed")
-                output.extend(block)
-                for line in output.splitlines():
-                    match = re.fullmatch(rb"mac_transport_combined_ready=([0-9]{1,10})", line)
-                    if match:
-                        group = int(match[1])
+        def ready_line(prefix):
+            output = bytearray()
+            with selectors.DefaultSelector() as selector:
+                selector.register(process.stdout, selectors.EVENT_READ)
+                while True:
+                    if time.monotonic() >= deadline:
+                        raise PreflightError("combined_loss_ready_timeout")
+                    if not selector.select(0.1):
+                        continue
+                    block = os.read(process.stdout.fileno(), 1024)
+                    if not block or len(output) + len(block) > 8192:
+                        raise PreflightError("combined_loss_ready_failed")
+                    output.extend(block)
+                    for line in output.splitlines():
+                        match = re.fullmatch(prefix + rb"=([0-9]{1,10})", line)
+                        if match:
+                            return int(match[1])
+        group = ready_line(b"mac_transport_combined_prepared")
         actual_group, guard = guardian_identity(root)
         if group != actual_group or group == process.pid or guard == process.pid:
             raise PreflightError("combined_loss_group_mismatch")
@@ -152,7 +155,13 @@ def check_combined_loss(binary, root, run):
                 raise PreflightError("combined_loss_group_unavailable")
             return data.stdout
 
-        engines = live_engine_snapshot(snapshot(), group, guard, driver=process.pid)
+        engines = live_engine_snapshot(snapshot(), group, guard, driver=process.pid, helper_exited=False)
+        before = profile_snapshot(root)  # BEFORE either supervisor is killed.
+        process.stdin.write(b"X")
+        process.stdin.flush()
+        if ready_line(b"mac_transport_combined_ready") != group:
+            raise PreflightError("combined_loss_group_mismatch")
+        live_engine_snapshot(snapshot(), group, guard, driver=process.pid, engines=engines)
         process.kill()  # ONLY the captured, still-unreaped daemon Popen child.
         stopped = True
         if process.wait(timeout=5) != -signal.SIGKILL:
@@ -167,7 +176,7 @@ def check_combined_loss(binary, root, run):
         def engine_live():
             live_engine_snapshot(snapshot(), group, guard, engines=engines)
         engine_live()
-        before = verify_exclusion(binary, root, run, engine_live)
+        verify_exclusion(binary, root, run, engine_live, before)
         process.stdin.write(b"K")
         process.stdin.flush()
         process.stdin.close()

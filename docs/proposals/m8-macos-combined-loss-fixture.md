@@ -17,7 +17,10 @@ the guardian retains its native inbox throughout its armed lifetime. Its
 inherited stdin is an anonymous pipe, not a terminal or arbitrary control path.
 No credential, managed-profile lease or canonical writer is delegated to it.
 
-The daemon worker kills only its exact captured helper, observes its exit with
+After identity readiness the driver pauses for a fixed X byte. The collector
+captures the full file/marker baseline and live engine rows BEFORE either loss;
+the guardian does not read stdin while its helper parent is alive. Only after
+that baseline does the collector send X. The daemon worker kills its exact helper, observes its exit with
 waitid(WNOWAIT), and parks retaining that Child without normal cleanup/Drop. The
 collector then kills only its own captured Popen daemon. Read-only group evidence
 and the guardian's retained parent liveness establish helper loss separately.

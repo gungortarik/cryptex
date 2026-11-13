@@ -48,7 +48,7 @@ class CombinedLossTests(unittest.TestCase):
                 return ("mac_transport_combined_credential_continuity=passed" if "integrity" in args[1]
                         else "mac_transport_unresolved_restart_refused=passed")
             before = profile_snapshot(root)
-            self.assertEqual(verify_exclusion(Path("daemon"), root, run, lambda: live.append(True)), before)
+            self.assertEqual(verify_exclusion(Path("daemon"), root, run, lambda: live.append(True), before), before)
             self.assertEqual(calls.count('--m8-local-transport-blocked-check'), 2)
             self.assertEqual(calls.count('--m8-local-transport-combined-integrity-check'), 3)
             self.assertEqual(len(live), 4)
@@ -66,8 +66,20 @@ class CombinedLossTests(unittest.TestCase):
                     leaf = 'transport.active' if fault == 'marker' else '00000000000000000000000000000001/api-binding.json'
                     (root / leaf).write_bytes(b'changed')
                     return 'mac_transport_unresolved_restart_refused=passed'
+                before = profile_snapshot(root)
                 with self.assertRaises(PreflightError):
-                    verify_exclusion(Path('daemon'), root, run, lambda: None)
+                    verify_exclusion(Path('daemon'), root, run, lambda: None, before)
+
+    def test_mutation_during_loss_cannot_become_the_accepted_baseline(self):
+        with tempfile.TemporaryDirectory() as directory, patch('os.geteuid', return_value=Path(directory).stat().st_uid, create=True):
+            root = Path(directory)
+            self.fixture(root)
+            before = profile_snapshot(root)
+            (root / 'transport.active').write_bytes(b'b' * 32)
+            with self.assertRaisesRegex(PreflightError, 'transition_mutated_profile'):
+                verify_exclusion(Path('daemon'), root,
+                    lambda *_: self.fail('no native command before checking preloss continuity'),
+                    lambda: None, before)
 
     def test_guardian_metadata_is_bounded_and_distinct(self):
         with tempfile.TemporaryDirectory() as directory, patch('os.geteuid', return_value=Path(directory).stat().st_uid, create=True):

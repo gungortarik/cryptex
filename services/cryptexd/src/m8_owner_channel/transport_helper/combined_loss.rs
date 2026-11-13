@@ -256,7 +256,22 @@ fn driver(root: &Path) -> Result<(), Error> {
     let _pipe_check = input_pipe()?;
     let worker = Worker::spawn_inner(root.to_owned(), true, true)?;
     wait_identity(worker.status_reader())?;
+    let prepared_group = worker.reader.call(Work::FixtureGroup)?;
+    println!("mac_transport_combined_prepared={prepared_group}");
+    std::io::stdout().flush().map_err(|_| Error::Channel)?;
+    // Guardian does not read this shared pipe until its actual helper parent
+    // dies. Consume X completely before injecting the first supervisor loss.
+    let mut trigger = [0];
+    std::io::stdin()
+        .read_exact(&mut trigger)
+        .map_err(|_| Error::Channel)?;
+    if trigger != [b'X'] {
+        return Err(Error::Arguments);
+    }
     let group = worker.reader.call(Work::FixtureCombinedLoss)?;
+    if group != prepared_group {
+        return Err(Error::Policy);
+    }
     println!("mac_transport_combined_ready={group}");
     std::io::stdout().flush().map_err(|_| Error::Channel)?;
     // Worker owns the exact exited helper unreaped and parks without Drop.
