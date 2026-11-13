@@ -429,7 +429,9 @@ fn serve(
                 observe_phase("session", || {
                     session
                         .observe(&store)
-                        .inspect_err(|e| eprintln!("component=mac_transport stage=observe error={e}"))
+                        .inspect_err(|e| {
+                            eprintln!("component=mac_transport stage=observe error={e}")
+                        })
                         .map_err(|_| Error::Engine)
                 })?;
                 let _after_package = observe_phase("package_after", || {
