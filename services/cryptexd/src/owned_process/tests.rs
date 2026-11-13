@@ -77,7 +77,10 @@ fn fixture_spec(root: &Path, mode: &str) -> LaunchSpec {
 }
 
 fn wait_file(path: &Path) {
-    let deadline = Instant::now() + TEST_TIMEOUT;
+    wait_file_until(path, Instant::now() + TEST_TIMEOUT);
+}
+
+fn wait_file_until(path: &Path, deadline: Instant) {
     while !path.is_file() {
         assert!(
             Instant::now() < deadline,
@@ -388,7 +391,8 @@ fn exited_root_with_live_descendant_is_not_reported_as_clean() {
 fn abrupt_owner_exit_without_destructors_still_stops_its_nested_job() {
     let fixture = Fixture::new();
     let mut owner = OwnedProcess::spawn(&fixture.spec("owner-crash")).unwrap();
-    wait_file(&fixture.0.join("descendant.pid"));
+    let deadline = Instant::now() + TEST_TIMEOUT;
+    wait_file_until(&fixture.0.join("descendant.pid"), deadline);
     let child: u32 = fs::read_to_string(fixture.0.join("descendant.pid"))
         .unwrap()
         .parse()
@@ -399,7 +403,6 @@ fn abrupt_owner_exit_without_destructors_still_stops_its_nested_job() {
     let child = RetainedTestProcess::open(child);
     assert!(!child.is_signaled(Duration::ZERO));
     assert_eq!(owner.try_exit().unwrap(), None);
-    let deadline = Instant::now() + TEST_TIMEOUT;
     publish(&fixture.0, "crash.request", b"crash");
     let exit = owner
         .wait_for_exit(deadline.saturating_duration_since(Instant::now()))

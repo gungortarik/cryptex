@@ -2,9 +2,7 @@
 //! These public synthetic keys must never be used for real identities.
 
 use cryptex_core::ids::DeviceId;
-use cryptex_events::security_v3::{
-    sign_device_restricted_event, sign_device_self_retired_event,
-};
+use cryptex_events::security_v3::{sign_device_restricted_event, sign_device_self_retired_event};
 use cryptex_events::*;
 use ed25519_dalek::SigningKey;
 use serde_json::Value;
@@ -69,10 +67,19 @@ fn independent_bootstrap_bytes_signatures_hashes_and_both_roles_match() {
         (verified.initiator_approval_hash(), 2),
         (verified.responder_approval_hash(), 3),
     ] {
-        assert_eq!(actual, text(&data["bootstrap"]["messages"][index], "message_hash"));
+        assert_eq!(
+            actual,
+            text(&data["bootstrap"]["messages"][index], "message_hash")
+        );
     }
-    assert_eq!(verified.agreement_hash(), text(&data["bootstrap"], "agreement_hash"));
-    assert_eq!(verified.transcript_hash(), text(&data["bootstrap"], "transcript_hash"));
+    assert_eq!(
+        verified.agreement_hash(),
+        text(&data["bootstrap"], "agreement_hash")
+    );
+    assert_eq!(
+        verified.transcript_hash(),
+        text(&data["bootstrap"], "transcript_hash")
+    );
     let mut reordered = raw.clone();
     reordered.swap(2, 3);
     assert!(verify_bootstrap_transcript(&reordered).is_err());
@@ -92,12 +99,36 @@ fn independent_v3_all_operations_and_cutoff_extremes_match_exact_writer_bytes() 
     let key = SigningKey::from_bytes(&[0x11; 32]);
     let transcript = verify_bootstrap_transcript(&messages(&data)).unwrap();
     let events = data["security_events"].as_array().unwrap();
+    assert_eq!(events.len(), 5, "required fixed security vector inventory");
+    let inventory: Vec<_> = events
+        .iter()
+        .map(|fixture| {
+            let wire: Value = serde_json::from_str(text(fixture, "wire")).unwrap();
+            (wire["event_type"].clone(), wire["payload"]["cutoff_seq"].clone())
+        })
+        .collect();
+    assert_eq!(
+        serde_json::to_value(inventory).unwrap(),
+        serde_json::json!([
+            ["security.peer_approved", null],
+            ["security.device_restricted", "0"],
+            ["security.device_restricted", "1"],
+            ["security.device_restricted", "18446744073709551615"],
+            ["security.device_self_retired", null]
+        ])
+    );
     for fixture in events {
         let raw = text(fixture, "wire").as_bytes();
         let wire: Value = serde_json::from_slice(raw).unwrap();
         let verified = read_security_v3_event(raw, &key.verifying_key()).unwrap();
-        assert_eq!(verified.content_hash().as_str(), text(fixture, "content_hash"));
-        assert_eq!(verified.operation_digest(), text(fixture, "operation_digest"));
+        assert_eq!(
+            verified.content_hash().as_str(),
+            text(fixture, "content_hash")
+        );
+        assert_eq!(
+            verified.operation_digest(),
+            text(fixture, "operation_digest")
+        );
         let device = DeviceId::new(text(&wire, "device_id")).unwrap();
         let seq = DeviceSeq::parse(text(&wire, "device_seq")).unwrap();
         let key_id = SigningKeyId::parse(text(&wire, "signing_key_id")).unwrap();
@@ -107,28 +138,49 @@ fn independent_v3_all_operations_and_cutoff_extremes_match_exact_writer_bytes() 
         let time = text(&wire, "created_at");
         let tx = text(payload, "transaction_id");
         let generated = match text(&wire, "event_type") {
-            "security.peer_approved" => sign_peer_approved_event(
-                &transcript, event_id, seq, time, &key_id, &previous, &key,
-            ),
+            "security.peer_approved" => {
+                sign_peer_approved_event(&transcript, event_id, seq, time, &key_id, &previous, &key)
+            }
             "security.device_restricted" => sign_device_restricted_event(
-                event_id, text(&wire, "brain_id"), &device, seq, time, &key_id, &previous,
-                tx, &DeviceId::new(text(payload, "target_device_id")).unwrap(),
+                event_id,
+                text(&wire, "brain_id"),
+                &device,
+                seq,
+                time,
+                &key_id,
+                &previous,
+                tx,
+                &DeviceId::new(text(payload, "target_device_id")).unwrap(),
                 &SigningKeyId::parse(text(payload, "target_signing_key_id")).unwrap(),
-                &SigningKey::from_bytes(&[0x22; 32]).verifying_key().to_bytes(),
+                &SigningKey::from_bytes(&[0x22; 32])
+                    .verifying_key()
+                    .to_bytes(),
                 RestrictionReasonV3::Compromised,
                 text(payload, "cutoff_seq").parse().unwrap(),
-                &ContentHashHex::parse(text(payload, "cutoff_content_hash")).unwrap(), &key,
+                &ContentHashHex::parse(text(payload, "cutoff_content_hash")).unwrap(),
+                &key,
             ),
             "security.device_self_retired" => sign_device_self_retired_event(
-                event_id, text(&wire, "brain_id"), &device, seq, time, &key_id, &previous,
-                tx, text(payload, "last_authorized_seq").parse().unwrap(),
-                &ContentHashHex::parse(text(payload, "last_authorized_content_hash")).unwrap(), &key,
+                event_id,
+                text(&wire, "brain_id"),
+                &device,
+                seq,
+                time,
+                &key_id,
+                &previous,
+                tx,
+                text(payload, "last_authorized_seq").parse().unwrap(),
+                &ContentHashHex::parse(text(payload, "last_authorized_content_hash")).unwrap(),
+                &key,
             ),
             _ => unreachable!(),
         }
         .unwrap();
         assert_eq!(generated, raw);
-        assert!(read_security_v3_event(raw, &SigningKey::from_bytes(&[0x22; 32]).verifying_key()).is_err());
+        assert!(
+            read_security_v3_event(raw, &SigningKey::from_bytes(&[0x22; 32]).verifying_key())
+                .is_err()
+        );
         let error = validate_accepted_record_bytes(raw, &key.verifying_key()).unwrap_err();
         assert_eq!(error.reason.as_str(), "unsupported_schema");
     }
@@ -137,15 +189,22 @@ fn independent_v3_all_operations_and_cutoff_extremes_match_exact_writer_bytes() 
     }
     let last = &events[4];
     let wire: Value = serde_json::from_str(text(last, "wire")).unwrap();
-    assert!(sign_device_self_retired_event(
-        text(&wire, "event_id"), text(&wire, "brain_id"),
-        &DeviceId::new(text(&wire, "device_id")).unwrap(),
-        DeviceSeq::parse("18446744073709551615").unwrap(), text(&wire, "created_at"),
-        &SigningKeyId::parse(text(&wire, "signing_key_id")).unwrap(),
-        &ContentHashHex::parse(text(&wire, "prev_content_hash")).unwrap(),
-        text(&wire["payload"], "transaction_id"), u64::MAX,
-        &ContentHashHex::parse(text(&wire["payload"], "last_authorized_content_hash")).unwrap(), &key,
-    ).is_err());
+    assert!(
+        sign_device_self_retired_event(
+            text(&wire, "event_id"),
+            text(&wire, "brain_id"),
+            &DeviceId::new(text(&wire, "device_id")).unwrap(),
+            DeviceSeq::parse("18446744073709551615").unwrap(),
+            text(&wire, "created_at"),
+            &SigningKeyId::parse(text(&wire, "signing_key_id")).unwrap(),
+            &ContentHashHex::parse(text(&wire, "prev_content_hash")).unwrap(),
+            text(&wire["payload"], "transaction_id"),
+            u64::MAX,
+            &ContentHashHex::parse(text(&wire["payload"], "last_authorized_content_hash")).unwrap(),
+            &key,
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -156,15 +215,24 @@ fn independent_mixed_chain_preserves_v1_v2_v3_v1_links_and_sequence_gaps() {
     for (index, fixture) in data["mixed_chain"].as_array().unwrap().iter().enumerate() {
         let raw = text(fixture, "wire").as_bytes();
         let record = read_versioned_record(raw, &key).unwrap();
-        assert!(matches!((index, &record),
+        assert!(matches!(
+            (index, &record),
             (0 | 3, VersionedRecord::VerifiedV1(_))
-            | (1, VersionedRecord::VerifiedV2Supported(_))
-            | (2, VersionedRecord::VerifiedSecurityV3(_))));
+                | (1, VersionedRecord::VerifiedV2Supported(_))
+                | (2, VersionedRecord::VerifiedSecurityV3(_))
+        ));
         chain.verify_next(&record).unwrap();
-        assert!(chain.verify_next(&record).is_err(), "same sequence replay cannot advance chain");
+        assert!(
+            chain.verify_next(&record).is_err(),
+            "same sequence replay cannot advance chain"
+        );
     }
     let raw = text(&data["mixed_chain"][3], "wire").as_bytes();
     let record = read_versioned_record(raw, &key).unwrap();
-    assert!(VersionedChainVerifier::new(text(&data["identities"][0], "device_id"))
-        .verify_next(&record).is_err(), "missing prefix cannot form a complete chain");
+    assert!(
+        VersionedChainVerifier::new(text(&data["identities"][0], "device_id"))
+            .verify_next(&record)
+            .is_err(),
+        "missing prefix cannot form a complete chain"
+    );
 }

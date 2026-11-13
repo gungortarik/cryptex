@@ -15,6 +15,8 @@
 *.sh text eol=lf
 *.command text eol=lf
 scripts/m8/*.py text eol=lf
+tools/m8-protocol-vectors/*.py text eol=lf
+tools/m8-protocol-vectors/requirements.txt text eol=lf
 scripts/m8/MAC-IMZA-BASLA.txt text eol=lf
 scripts/m8/MAC-SUREC-BASLA.txt text eol=lf
 scripts/m8/MAC-MESAJ-BASLA.txt text eol=lf
