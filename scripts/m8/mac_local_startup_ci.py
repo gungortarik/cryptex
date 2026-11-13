@@ -14,6 +14,19 @@ from mac_transport_package import prepare as prepare_transport
 from mac_transport_check import check_native_pairing, check_parent_loss
 
 
+def sign_fixture_image(run, target, signer, identifier, keychain, password, stage):
+    args = ["/usr/bin/codesign", "--force", "--sign", signer,
+            "--timestamp=none", "--identifier", identifier]
+    if signer != "-":
+        # Long native checks can outlast the disposable keychain's idle window.
+        # Unlock this exact CI keychain just before each use, without changing
+        # its locking policy, key ACL or any native/signing command deadline.
+        run(["/usr/bin/security", "unlock-keychain", "-p", password, keychain],
+            "unlock_ci_keychain_before_" + stage)
+        args.extend(["--keychain", keychain])
+    run([*args, target], stage)
+
+
 def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain,
                             password, fingerprint):
     def run(args, stage, timeout=30):
@@ -77,9 +90,8 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         target = binaries / name
         shutil.copyfile(source, target)
         target.chmod(0o700)
-        run(["/usr/bin/codesign", "--force", "--sign", fingerprint, "--timestamp=none",
-             "--identifier", "com.cryptex.m8.local-startup." + role,
-             "--keychain", keychain, target], "sign_real_" + role)
+        sign_fixture_image(run, target, fingerprint, "com.cryptex.m8.local-startup." + role,
+                           keychain, password, "sign_real_" + role)
     (resources / "startup-check.txt").write_bytes(b"Public local startup fixture.\n")
     shutil.copytree(Path("apps/desktop/dist"), resources / "frontend")
     prepare_transport(resources / "transport", run)
@@ -191,11 +203,8 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                           else "com.cryptex.m8.local-startup.daemon")
             target = (bundle / "Contents/MacOS/cryptex-desktop"
                       if case == "wrong_desktop_identifier" else daemon)
-            args = ["/usr/bin/codesign", "--force", "--sign", signer,
-                    "--timestamp=none", "--identifier", identifier]
-            if signer != "-":
-                args.extend(["--keychain", keychain])
-            run([*args, target], "resign_" + case)
+            sign_fixture_image(run, target, signer, identifier, keychain, password,
+                               "resign_" + case)
             inventory(bundle)
         runtime = root / (case + "-runtime")
         if case == "missing_rendezvous":

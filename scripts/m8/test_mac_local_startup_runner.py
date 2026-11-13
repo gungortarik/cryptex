@@ -11,10 +11,47 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mac_identity_preflight import PreflightError
-from mac_local_startup_ci import run_real_startup_checks, check_session_journal
+from mac_local_startup_ci import run_real_startup_checks, check_session_journal, sign_fixture_image
 
 
 class StartupRunnerTests(unittest.TestCase):
+    def test_each_certificate_signature_unlocks_only_its_fixture_immediately_before_use(self):
+        calls = []
+        def run(args, stage):
+            calls.append((args, stage))
+        for stage in ("sign_real_daemon", "resign_wrong_identifier"):
+            sign_fixture_image(run, "/fixture/daemon", "A" * 40, "fixture.identifier",
+                               "/fixture/test.keychain-db", "fixture-password", stage)
+        self.assertEqual(len(calls), 4)
+        for unlock, signing in (calls[:2], calls[2:]):
+            self.assertEqual(unlock[0], ["/usr/bin/security", "unlock-keychain", "-p",
+                                        "fixture-password", "/fixture/test.keychain-db"])
+            self.assertEqual(unlock[1], "unlock_ci_keychain_before_" + signing[1])
+            self.assertEqual(signing[0][-3:], ["--keychain", "/fixture/test.keychain-db", "/fixture/daemon"])
+            self.assertNotIn("fixture-password", signing[0])
+            self.assertNotIn("set-keychain-settings", unlock[0])
+
+    def test_unlock_failure_never_attempts_certificate_signing(self):
+        calls = []
+        def run(args, _stage):
+            calls.append(args)
+            raise PreflightError("fixture_unlock_failed")
+        with self.assertRaisesRegex(PreflightError, "fixture_unlock_failed"):
+            sign_fixture_image(run, "/fixture/daemon", "A" * 40, "fixture.identifier",
+                               "/fixture/test.keychain-db", "fixture-password", "sign_fixture")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][1], "unlock-keychain")
+
+    def test_adhoc_negative_fixture_never_uses_a_keychain(self):
+        calls = []
+        sign_fixture_image(lambda args, stage: calls.append((args, stage)),
+                           "/fixture/daemon", "-", "fixture.identifier",
+                           "/fixture/test.keychain-db", "fixture-password", "resign_missing_leaf")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0][0], "/usr/bin/codesign")
+        self.assertNotIn("--keychain", calls[0][0])
+        self.assertNotIn("fixture-password", calls[0][0])
+
     def test_session_outcomes_are_order_independent_and_exact(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "pending.json"
