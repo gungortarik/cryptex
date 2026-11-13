@@ -4388,7 +4388,7 @@ mod tests {
         assert!(recovered.transactions[0].verified_anchor.is_some());
         let receipt_path = root.join("bootstrap/pending.json");
         let receipt_bytes = fs::read(&receipt_path).unwrap();
-        let receipt: Value = serde_json::from_slice(&receipt_bytes).unwrap();
+        let receipt: serde_json::Value = serde_json::from_slice(&receipt_bytes).unwrap();
         assert!(receipt["transactions"].as_array().unwrap().is_empty());
         assert_eq!(receipt["terminal_receipts"].as_array().unwrap().len(), 1);
         reconcile_peer_approval_anchors_before_startup(&root, &store, SecureStoreEnvironment::Dev)
@@ -4426,10 +4426,10 @@ mod tests {
             let mut altered = receipt.clone();
             if tamper_digest {
                 altered["terminal_receipts"][0]["verified_anchor"]["operation_digest"] =
-                    Value::String("ff".repeat(32));
+                    serde_json::Value::String("ff".repeat(32));
             } else {
                 altered["terminal_receipts"][0]["stable_event_id"] =
-                    Value::String("99999999-9999-4999-8999-999999999999".into());
+                    serde_json::Value::String("99999999-9999-4999-8999-999999999999".into());
             }
             let bytes = serde_json::to_vec(&altered).unwrap();
             fs::write(&receipt_path, &bytes).unwrap();
