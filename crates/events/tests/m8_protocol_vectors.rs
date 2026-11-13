@@ -104,7 +104,10 @@ fn independent_v3_all_operations_and_cutoff_extremes_match_exact_writer_bytes() 
         .iter()
         .map(|fixture| {
             let wire: Value = serde_json::from_str(text(fixture, "wire")).unwrap();
-            (wire["event_type"].clone(), wire["payload"]["cutoff_seq"].clone())
+            (
+                wire["event_type"].clone(),
+                wire["payload"]["cutoff_seq"].clone(),
+            )
         })
         .collect();
     assert_eq!(
