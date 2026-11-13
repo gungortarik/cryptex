@@ -1696,7 +1696,8 @@ fn append_local_peer_approval_anchor_with_mode<S: SecureStore + ?Sized>(
         if initial_transaction.state == crate::bootstrap_journal::BootstrapState::Anchored {
             // Stored receipts still require the unique current canonical event.
             // Legacy anchors gain a witness only after this locked reread.
-            journal.record_verified_anchor_event(transaction_id, event)
+            journal
+                .record_verified_anchor_event(transaction_id, event)
                 .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
             return Ok(SecurityAnchorAppendOutcome {
                 event_id: event.event_id().to_owned(),
@@ -2007,7 +2008,10 @@ fn reconcile_owner_security_operation_before_startup<S: SecureStore + ?Sized>(
         ));
     }
 
-    if matches!(transaction.state, BootstrapState::AppendUnknown | BootstrapState::Anchored) {
+    if matches!(
+        transaction.state,
+        BootstrapState::AppendUnknown | BootstrapState::Anchored
+    ) {
         let journal = crate::bootstrap_journal::BootstrapJournalStore::new(runtime_root)
             .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
         let current = journal
@@ -4429,9 +4433,15 @@ mod tests {
             }
             let bytes = serde_json::to_vec(&altered).unwrap();
             fs::write(&receipt_path, &bytes).unwrap();
-            assert!(reconcile_peer_approval_anchors_before_startup(
-                &root, &store, SecureStoreEnvironment::Dev,
-            ).is_err(), "stored receipt cannot authorize a changed or absent canonical anchor");
+            assert!(
+                reconcile_peer_approval_anchors_before_startup(
+                    &root,
+                    &store,
+                    SecureStoreEnvironment::Dev,
+                )
+                .is_err(),
+                "stored receipt cannot authorize a changed or absent canonical anchor"
+            );
             assert_eq!(fs::read(&receipt_path).unwrap(), bytes);
         }
         fs::write(&receipt_path, &receipt_bytes).unwrap();

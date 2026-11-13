@@ -39,7 +39,15 @@ mod terminal;
 
 #[cfg(test)]
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum JournalWriteFault { Write, Flush, Replace, Reopen, ReopenSync, #[cfg(unix)] ParentSync }
+enum JournalWriteFault {
+    Write,
+    Flush,
+    Replace,
+    Reopen,
+    ReopenSync,
+    #[cfg(unix)]
+    ParentSync,
+}
 
 #[cfg(test)]
 thread_local! {
@@ -52,7 +60,9 @@ fn journal_fault(stage: JournalWriteFault) -> io::Result<()> {
         if fault.get() == Some(stage) {
             fault.set(None);
             Err(io::Error::other("injected bootstrap journal write failure"))
-        } else { Ok(()) }
+        } else {
+            Ok(())
+        }
     })
 }
 
@@ -72,7 +82,9 @@ impl std::fmt::Display for BootstrapJournalError {
             Self::Io(error) => write!(f, "bootstrap journal I/O failed: {error}"),
             Self::Corrupt(reason) => write!(f, "bootstrap journal is invalid: {reason}"),
             Self::Limit(reason) => write!(f, "bootstrap journal limit exceeded: {reason}"),
-            Self::TerminalHistoryCapacity => write!(f, "bootstrap terminal history capacity exhausted"),
+            Self::TerminalHistoryCapacity => {
+                write!(f, "bootstrap terminal history capacity exhausted")
+            }
             Self::Conflict(reason) => write!(f, "bootstrap transaction conflict: {reason}"),
             Self::Durability(error) => {
                 write!(f, "bootstrap journal durability is unconfirmed: {error}")
@@ -854,13 +866,19 @@ impl PendingBootstrapTransaction {
         self.validate()?;
         let expected_type = match self.snapshot.operation {
             BootstrapOperation::PeerAdmission => cryptex_events::SecurityEventTypeV3::PeerApproved,
-            BootstrapOperation::DeviceRestriction => cryptex_events::SecurityEventTypeV3::DeviceRestricted,
-            BootstrapOperation::SelfRetirement => cryptex_events::SecurityEventTypeV3::DeviceSelfRetired,
+            BootstrapOperation::DeviceRestriction => {
+                cryptex_events::SecurityEventTypeV3::DeviceRestricted
+            }
+            BootstrapOperation::SelfRetirement => {
+                cryptex_events::SecurityEventTypeV3::DeviceSelfRetired
+            }
         };
         let transaction_id = match event.payload() {
             cryptex_events::SecurityPayloadV3::PeerApproved { transaction_id, .. }
             | cryptex_events::SecurityPayloadV3::DeviceRestricted { transaction_id, .. }
-            | cryptex_events::SecurityPayloadV3::DeviceSelfRetired { transaction_id, .. } => transaction_id,
+            | cryptex_events::SecurityPayloadV3::DeviceSelfRetired { transaction_id, .. } => {
+                transaction_id
+            }
         };
         if event.event_type() != expected_type
             || event.event_id() != self.stable_event_id
@@ -869,29 +887,48 @@ impl PendingBootstrapTransaction {
             || event.signing_key_id().as_str() != self.snapshot.local_identity.signing_key_id
             || transaction_id != &self.snapshot.transaction_id
         {
-            return Err(BootstrapJournalError::Conflict("verified anchor identity or operation differs"));
+            return Err(BootstrapJournalError::Conflict(
+                "verified anchor identity or operation differs",
+            ));
         }
-        let sequence = event.device_seq().to_u64()
+        let sequence = event
+            .device_seq()
+            .to_u64()
             .map_err(|_| BootstrapJournalError::Corrupt("verified anchor sequence invalid"))?;
-        let attempt = self.append_attempts.iter().find(|attempt| attempt.reserved_sequence == sequence)
-            .ok_or(BootstrapJournalError::Conflict("verified anchor attempt absent"))?;
+        let attempt = self
+            .append_attempts
+            .iter()
+            .find(|attempt| attempt.reserved_sequence == sequence)
+            .ok_or(BootstrapJournalError::Conflict(
+                "verified anchor attempt absent",
+            ))?;
         if attempt.predecessor_hash != event.prev_content_hash().as_str()
             || attempt.candidate_content_hash.as_deref() != Some(event.content_hash().as_str())
         {
-            return Err(BootstrapJournalError::Conflict("verified anchor differs from append evidence"));
+            return Err(BootstrapJournalError::Conflict(
+                "verified anchor differs from append evidence",
+            ));
         }
         let witness = terminal::VerifiedAnchor {
             attempt: attempt.clone(),
             operation_digest: event.operation_digest().to_owned(),
         };
-        if self.verified_anchor.as_ref().is_some_and(|saved| saved != &witness) {
-            return Err(BootstrapJournalError::Conflict("stored anchor witness differs from canonical record"));
+        if self
+            .verified_anchor
+            .as_ref()
+            .is_some_and(|saved| saved != &witness)
+        {
+            return Err(BootstrapJournalError::Conflict(
+                "stored anchor witness differs from canonical record",
+            ));
         }
         let mut candidate = self.clone();
         if candidate.state == BootstrapState::AppendUnknown {
             candidate.record_verified_anchor(sequence, event.content_hash().as_str())?;
         } else if candidate.state != BootstrapState::Anchored {
-            return Err(BootstrapJournalError::Conflict("verified anchor has no uncertain or anchored state"));
+            return Err(BootstrapJournalError::Conflict(
+                "verified anchor has no uncertain or anchored state",
+            ));
         }
         candidate.verified_anchor = Some(witness);
         candidate.validate()?;
@@ -996,7 +1033,9 @@ impl PendingBootstrapTransaction {
                 || anchor.attempt.candidate_content_hash.is_none()
                 || !self.append_attempts.contains(&anchor.attempt)
             {
-                return Err(BootstrapJournalError::Corrupt("anchor witness lacks its terminal append evidence"));
+                return Err(BootstrapJournalError::Corrupt(
+                    "anchor witness lacks its terminal append evidence",
+                ));
             }
         }
         if self.transcript_messages.len() > MAX_TRANSCRIPT_MESSAGES {
@@ -1528,7 +1567,12 @@ impl PendingBootstrapJournal {
     }
 
     fn active_count(&self) -> usize {
-        self.exchanges.len() + self.transactions.iter().filter(|item| !terminal::compactable(item)).count()
+        self.exchanges.len()
+            + self
+                .transactions
+                .iter()
+                .filter(|item| !terminal::compactable(item))
+                .count()
     }
 
     fn payload_capacity_error(&self) -> BootstrapJournalError {
@@ -1970,9 +2014,13 @@ impl BootstrapJournalStore {
         event: &cryptex_events::SecurityEventV3,
     ) -> Result<(), BootstrapJournalError> {
         self.update(|journal| {
-            let transaction = journal.transactions.iter_mut()
+            let transaction = journal
+                .transactions
+                .iter_mut()
                 .find(|item| item.snapshot.transaction_id == transaction_id)
-                .ok_or(BootstrapJournalError::Conflict("anchor transaction is not journaled"))?;
+                .ok_or(BootstrapJournalError::Conflict(
+                    "anchor transaction is not journaled",
+                ))?;
             transaction.record_verified_anchor_event(event)
         })
     }
@@ -2028,7 +2076,9 @@ impl BootstrapJournalStore {
             return Err(BootstrapJournalError::Limit("journal payload bytes"));
         }
         let mut bytes = Vec::with_capacity(metadata.len() as usize);
-        file.take((MAX_JOURNAL_BYTES + 1) as u64).read_to_end(&mut bytes).map_err(io_error)?;
+        file.take((MAX_JOURNAL_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(io_error)?;
         if bytes.len() > MAX_JOURNAL_BYTES {
             return Err(BootstrapJournalError::Limit("journal payload bytes"));
         }
@@ -2042,10 +2092,18 @@ impl BootstrapJournalStore {
             BootstrapJournalError::Corrupt("journal schema version missing"),
         )?;
         if matches!(version, 1 | 2)
-            && value.get("transactions").and_then(Value::as_array)
-                .is_some_and(|items| items.iter().any(|item| item.get("verified_anchor").is_some()))
+            && value
+                .get("transactions")
+                .and_then(Value::as_array)
+                .is_some_and(|items| {
+                    items
+                        .iter()
+                        .any(|item| item.get("verified_anchor").is_some())
+                })
         {
-            return Err(BootstrapJournalError::Corrupt("legacy journal contains a future anchor witness"));
+            return Err(BootstrapJournalError::Corrupt(
+                "legacy journal contains a future anchor witness",
+            ));
         }
         let journal = if version == u64::from(LEGACY_JOURNAL_SCHEMA_VERSION) {
             let legacy: PendingBootstrapJournalV1 = serde_json::from_value(value)
@@ -2056,7 +2114,9 @@ impl BootstrapJournalStore {
                 ));
             }
             if legacy.transactions.len() > MAX_PENDING_TRANSACTIONS {
-                return Err(BootstrapJournalError::Limit("legacy pending transaction count"));
+                return Err(BootstrapJournalError::Limit(
+                    "legacy pending transaction count",
+                ));
             }
             PendingBootstrapJournal {
                 schema_version: JOURNAL_SCHEMA_VERSION,
@@ -2064,10 +2124,14 @@ impl BootstrapJournalStore {
                 exchanges: Vec::new(),
             }
         } else if version == u64::from(EXCHANGE_JOURNAL_SCHEMA_VERSION) {
-            let legacy: PendingBootstrapJournalV2 = serde_json::from_value(value)
-                .map_err(|_| BootstrapJournalError::Corrupt("legacy exchange journal schema invalid"))?;
+            let legacy: PendingBootstrapJournalV2 =
+                serde_json::from_value(value).map_err(|_| {
+                    BootstrapJournalError::Corrupt("legacy exchange journal schema invalid")
+                })?;
             if legacy.transactions.len() + legacy.exchanges.len() > MAX_PENDING_TRANSACTIONS {
-                return Err(BootstrapJournalError::Limit("legacy pending transaction count"));
+                return Err(BootstrapJournalError::Limit(
+                    "legacy pending transaction count",
+                ));
             }
             PendingBootstrapJournal {
                 schema_version: JOURNAL_SCHEMA_VERSION,
@@ -2095,9 +2159,11 @@ impl BootstrapJournalStore {
             .open(&tmp)
             .map_err(io_error)?;
         let staged = (|| {
-            #[cfg(test)] journal_fault(JournalWriteFault::Write)?;
+            #[cfg(test)]
+            journal_fault(JournalWriteFault::Write)?;
             file.write_all(bytes)?;
-            #[cfg(test)] journal_fault(JournalWriteFault::Flush)?;
+            #[cfg(test)]
+            journal_fault(JournalWriteFault::Flush)?;
             file.sync_all()
         })();
         if let Err(error) = staged {
@@ -2111,7 +2177,8 @@ impl BootstrapJournalStore {
         }
         drop(file);
         let replacement = (|| {
-            #[cfg(test)] journal_fault(JournalWriteFault::Replace)?;
+            #[cfg(test)]
+            journal_fault(JournalWriteFault::Replace)?;
             replace_atomic(&tmp, &path)
         })();
         replacement.map_err(|error| {
@@ -2124,9 +2191,11 @@ impl BootstrapJournalStore {
             }
         })?;
         let resynced = (|| {
-            #[cfg(test)] journal_fault(JournalWriteFault::Reopen)?;
+            #[cfg(test)]
+            journal_fault(JournalWriteFault::Reopen)?;
             let replaced = open_no_follow_regular(&path, true)?;
-            #[cfg(test)] journal_fault(JournalWriteFault::ReopenSync)?;
+            #[cfg(test)]
+            journal_fault(JournalWriteFault::ReopenSync)?;
             replaced.sync_all()
         })();
         resynced.map_err(|error| {
@@ -2134,12 +2203,13 @@ impl BootstrapJournalStore {
         })?;
         #[cfg(unix)]
         (|| {
-            #[cfg(test)] journal_fault(JournalWriteFault::ParentSync)?;
+            #[cfg(test)]
+            journal_fault(JournalWriteFault::ParentSync)?;
             File::open(&self.root).and_then(|directory| directory.sync_all())
         })()
-            .map_err(|error| {
-                BootstrapJournalError::Durability(format!("sync journal directory: {error}"))
-            })?;
+        .map_err(|error| {
+            BootstrapJournalError::Durability(format!("sync journal directory: {error}"))
+        })?;
         Ok(())
     }
 
