@@ -1,8 +1,22 @@
 # M8 completion ledger
 
-Updated 2026-11-11. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
+Updated 2026-11-12. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
+
+Latest disabled integration: the [Mac transport helper evidence](../evidence/m8/m8-macos-transport-helper-20261112.md)
+and [independent review](../evidence/m8/m8-macos-transport-independent-review-20261112.md)
+record fresh owned engine identity, native pairing/reopen, helper/daemon loss,
+eleven live drift refusals and profile-lease-fenced fixture credential cleanup.
+Review through `0d98a16` found no actionable blocker; exact-source
+[CI 43334196206](https://github.com/gungortarik/cryptex/actions/runs/43334196206)
+passed both selected platform jobs and the exported transport launcher. One
+matching owner-Mac run remains pending. See the
+[structured receipt](../evidence/m8/macos-transport-native-0d98a16-ci.json). The prior passing artifact is
+superseded and withheld. Combined supervisor loss, other endpoint/exec races,
+product publisher/support floor, normal activation and cross-device acceptance
+remain open. Read the [current handoff](../docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md)
+before the historical source checkpoints below.
 
 Owner-approved [disabled Mac adapter foundation](../evidence/m8/m8-disabled-macos-owner-adapter-20261110.md):
 sourceca5665d CI42960387437 and source review passed. Default-off outbound/Unix

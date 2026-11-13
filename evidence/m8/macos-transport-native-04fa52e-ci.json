@@ -1,0 +1,34 @@
+{
+  "source": "04fa52eb6b8ba527036a07b9eee5b49a89b80d15",
+  "workflow_run": "https://github.com/gungortarik/cryptex/actions/runs/43323149190",
+  "scope": "default-off local native transport and pairing; not cross-device replication or product activation",
+  "macos_job": {
+    "id": 131548744756,
+    "conclusion": "success"
+  },
+  "windows_job": {
+    "id": 131548745169,
+    "conclusion": "success"
+  },
+  "macos_markers": [
+    "exported_transport_launcher=passed",
+    "local_certificate_fixture_cleanup=passed",
+    "mac_transport_clean_stop_ack=passed",
+    "mac_transport_daemon_loss_group_exit=passed",
+    "mac_transport_foreign_socket_no_credentials=passed",
+    "mac_transport_helper_loss_cleanup=passed",
+    "mac_transport_missing_key_no_regeneration=passed",
+    "mac_transport_owned_identity_restart=passed",
+    "mac_transport_unresolved_restart_refused=passed",
+    "native_managed_pairing_clean_shutdown=passed",
+    "native_managed_pairing_restart_idempotent=passed",
+    "native_managed_transport_pairing=passed"
+  ],
+  "transport_zip_sha256": "a5fdc1723b460d61bcd281988b4ffc6161d94a22881a9b7d5393ff8621cabdcc",
+  "transport_zip_bytes": 25290975,
+  "architecture": "arm64",
+  "fixture_expires_utc": "2026-11-13T17:48:45-05:00",
+  "owner_mac_execution": "pending",
+  "independent_source_review": "two P2 findings accepted; superseded by reviewed corrections through 0d98a16d075ca317b208c6e3dd6b0c66b64df707, scoped CI43334196206 passed",
+  "artifact_delivery": "withheld; do not deliver this superseded artifact as the reviewed candidate"
+}

@@ -1,5 +1,55 @@
 # 34 — Current Implementation Handoff
 
+## Disabled Mac transport identity continuation — November 12
+
+The owner delegated the helper choice. ADR-0021 selects the existing signed
+cryptexd in a separate transport-only role, behind the default-off local feature.
+Mac private-profile, pinned-package, process-generation and established-socket
+adapters are implemented. Read/offer/proof in the native fixture context require
+a fresh authenticated helper observation. Ordinary product Mac/Unix gates stay closed.
+
+Current reviewed code is `0d98a16d075ca317b208c6e3dd6b0c66b64df707`.
+Both selected Mac/Windows jobs passed in
+[CI 43334196206](https://github.com/gungortarik/cryptex/actions/runs/43334196206)
+(`desktop_startup_only`; other milestone jobs were not run).
+[Independent source review](../evidence/m8/m8-macos-transport-independent-review-20261112.md)
+is complete through this code, with no remaining actionable finding. This is a
+separate agent source review, not an external human audit.
+
+Actual Mac execution passed owned established-socket REST, foreign-server refusal
+before credential bytes, clean-stop ACK, same-identity reopen, helper loss,
+missing-key refusal, eleven live profile/package/receipt drift refusals, native
+Desktop pairing, clean shutdown, idempotent restart, daemon loss and unresolved
+replacement refusal. The exported MAC-AKTARIM launcher itself ran and its
+matching-source receipt verified identity/pairing/loss, credential cleanup and
+runtime cleanup. Earlier content, Keychain, replay and startup refusal checks
+also passed. Local Python tests total 90 (5 platform skips); format, diff and
+strict native lint passed. The [machine-readable receipt](../evidence/m8/macos-transport-native-0d98a16-ci.json)
+records jobs, markers and package SHA-256. The [transport record](../evidence/m8/m8-macos-transport-helper-20261112.md)
+retains failed attempts, corrections and evidence limits.
+
+The older passing `04fa52e` artifact was withheld after review found two P2 issues:
+live profile/package continuity and crash-safe fixture credential cleanup. The
+current code revalidates continuity before/after observations and fences cleanup
+with the same exclusive profile lease, including a post-acquisition parent check.
+Both `74b95bd` CI attempts passed the new checks but hit an older codesign fixture
+deadline. `0d98a16` unlocks only the exact disposable CI signing keychain immediately
+before certificate use; no locking policy, ACL or test deadline changed. The
+latest entire scoped run and exported launcher passed after that correction.
+
+Next owner action: use `CRYPTEX-MAC-AKTARIM-0d98a16.zip`, extract it on the owner's
+Apple Silicon Mac (macOS 26 or later), double-click MAC-AKTARIM.command, keep the
+window open and return MAC-AKTARIM-SONUC-<nonce>.zip. This one-click package is
+arm64 and expires **2026-11-14 00:06:25 UTC**. Its exact hash and source are in the
+receipt above. If it has expired, rebuild the reviewed exact source; do not send
+the superseded ZIP or repeat terminal/JSON pairing loops. The new-SDK candidate
+refuses the unvalidated older-OS spawn branch; no product OS floor is selected.
+
+Owner-Mac execution remains pending. Combined supervisor-loss acceptance, other
+endpoint/exec races, product publisher/OS-floor and activation decisions remain
+open. This local-engine/native-pairing receipt does not establish cross-device
+replication, human WebView pairing acceptance or M8 completion.
+
 ## Protected UI and native approval continuation
 
 The default-off local feature now has a snapshot-backed actual Tauri Assets

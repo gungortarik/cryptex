@@ -1,0 +1,88 @@
+{
+  "source": "0d98a16d075ca317b208c6e3dd6b0c66b64df707",
+  "workflow_run": "https://github.com/gungortarik/cryptex/actions/runs/43334196206",
+  "workflow_attempt": 1,
+  "workflow_scope": "desktop_startup_only; other milestone jobs not run",
+  "scope": "default-off local native transport and pairing; not cross-device replication, human WebView pairing or product activation",
+  "macos_job": {
+    "id": 131586116554,
+    "conclusion": "success"
+  },
+  "windows_job": {
+    "id": 131586115017,
+    "conclusion": "success"
+  },
+  "macos_markers": [
+    "exported_durable_launcher=passed",
+    "exported_transport_launcher=passed",
+    "local_certificate_fixture_cleanup=passed",
+    "local_certificate_native_exchange=passed",
+    "mac_transport_clean_stop_ack=passed",
+    "mac_transport_daemon_loss_group_exit=passed",
+    "mac_transport_foreign_socket_no_credentials=passed",
+    "mac_transport_helper_loss_cleanup=passed",
+    "mac_transport_live_profile_package_changes_refused=passed",
+    "mac_transport_missing_key_no_regeneration=passed",
+    "mac_transport_owned_identity_restart=passed",
+    "mac_transport_unresolved_restart_refused=passed",
+    "native_keychain_confirmed_history_preserved=passed",
+    "native_keychain_cross_daemon_wire_replay_refused=passed",
+    "native_keychain_missing_key_refused=passed",
+    "native_keychain_old_local_handle_refused=passed",
+    "native_keychain_same_profile_restart=passed",
+    "native_lost_session_and_old_handle_refused=passed",
+    "native_managed_pairing_clean_shutdown=passed",
+    "native_managed_pairing_restart_idempotent=passed",
+    "native_managed_transport_pairing=passed",
+    "native_pairing_boundary_refusals=passed",
+    "native_prepare_and_actor_failures_burn_grants=passed",
+    "native_synthetic_approval_sessions=passed",
+    "native_ui_quit_preserved_seed=passed",
+    "real_signed_desktop_daemon_startup_restart=passed",
+    "real_signed_startup_refused_missing_leaf=passed",
+    "real_signed_startup_refused_missing_rendezvous=passed",
+    "real_signed_startup_refused_modified_content=passed",
+    "real_signed_startup_refused_wrong_cdhash=passed",
+    "real_signed_startup_refused_wrong_desktop_identifier=passed",
+    "real_signed_startup_refused_wrong_identifier=passed",
+    "real_signed_startup_refused_wrong_parent_cdhash=passed",
+    "real_signed_startup_refused_wrong_release=passed",
+    "verified_tauri_assets=passed"
+  ],
+  "live_mutation_inventory": {
+    "profile_cases": 6,
+    "receipt_package_cases": 5,
+    "evidence": "aggregate marker requires both exact count markers; fixed closed inventories in reviewed source"
+  },
+  "exported_transport_receipt": {
+    "evidence": "matching source and passed outcome plus all five fields required by executed CI collector",
+    "identity_restart_and_refusals_verified": true,
+    "native_pairing_and_reopen_verified": true,
+    "daemon_loss_and_unresolved_refusal_verified": true,
+    "credential_cleanup_verified": true,
+    "runtime_cleanup_verified": true
+  },
+  "artifact_id": 13997720218,
+  "transport_zip_sha256": "747f53476cc23c7ed10da4a4d047b052d9d0bd47f8b3dae861d29aeeb352a154",
+  "transport_zip_bytes": 25307258,
+  "transport_zip_member_count": 15,
+  "transport_zip_manifest_member_hashes": "all matched",
+  "architecture": "arm64",
+  "minimum_fixture_macos": "26; not a product support floor",
+  "fixture_expires_utc": "2026-11-14T00:06:25+00:00",
+  "owner_package_filename": "CRYPTEX-MAC-AKTARIM-0d98a16.zip",
+  "owner_mac_execution": "pending",
+  "independent_source_review": "complete through this source, no remaining actionable finding; separate agent source review, not external human audit",
+  "superseded_candidates": [
+    "04fa52eb6b8ba527036a07b9eee5b49a89b80d15",
+    "74b95bd711c89277d360dc68861a1089bf1be2ac"
+  ],
+  "remaining_gates": [
+    "owner Mac execution",
+    "combined supervisor loss",
+    "other endpoint and exec races",
+    "product publisher and minimum OS decisions",
+    "normal product activation",
+    "cross-device product acceptance"
+  ]
+}
