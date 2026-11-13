@@ -116,3 +116,16 @@ class InteractiveFixtureTests(unittest.TestCase):
             (root / "bootstrap/pending.json").write_text(json.dumps({"transactions": states}))
             self.assertEqual(summarize(root), {"two_events_original_prefix_preserved": None,
                                               "one_cancel_and_one_confirm": True})
+
+    def test_v3_terminal_ui_summary_preserves_confirm_and_cancel_checks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "bootstrap").mkdir()
+            rows = [{"kind": "cancelled"}, {"kind": "anchored", "verified_anchor": {"attempt": 1}}]
+            (root / "bootstrap/pending.json").write_text(json.dumps({
+                "schema_version": 3, "transactions": [], "terminal_receipts": rows}))
+            self.assertTrue(summarize(root)["one_cancel_and_one_confirm"])
+            rows.append({"kind": "cancelled"})
+            (root / "bootstrap/pending.json").write_text(json.dumps({
+                "schema_version": 3, "transactions": [], "terminal_receipts": rows}))
+            self.assertFalse(summarize(root)["one_cancel_and_one_confirm"])

@@ -14,7 +14,17 @@ import zipfile
 
 def summarize(runtime):
     journal = json.loads((runtime / "bootstrap/pending.json").read_text(encoding="utf-8"))
-    operations = sorted((item["state"], len(item["append_attempts"])) for item in journal["transactions"])
+    version = journal.get("schema_version", 2)
+    if type(version) is not int or version not in (1, 2, 3):
+        raise ValueError("unsupported journal schema")
+    transactions = list(journal["transactions"])
+    if journal.get("schema_version") == 3:
+        for receipt in journal["terminal_receipts"]:
+            if receipt["kind"] not in ("cancelled", "anchored"):
+                raise ValueError("invalid terminal receipt kind")
+            attempts = [receipt["verified_anchor"]["attempt"]] if receipt["kind"] == "anchored" else []
+            transactions.append({"state": receipt["kind"], "append_attempts": attempts})
+    operations = sorted((item["state"], len(item["append_attempts"])) for item in transactions)
     try:
         receipt = json.loads((runtime / "ui-receipt.json").read_text(encoding="utf-8"))
     except FileNotFoundError:

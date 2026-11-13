@@ -3,8 +3,8 @@
 //! The journal contains public protocol data only. It is never a trust source:
 //! the canonical local approval event remains authoritative. The Windows
 //! approval IPC, local canonical append, and startup reconciliation consume
-//! this journal; none treats journal state alone as trust authority. macOS
-//! completion remains fail-closed pending process-instance peer binding.
+//! this journal; none treats journal state alone as trust authority. Ordinary
+//! Mac product routes remain closed; the native development backend is gated.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
@@ -22,8 +22,9 @@ use serde_json::Value;
 
 use crate::paths::assert_outside_repository;
 
-const JOURNAL_SCHEMA_VERSION: u32 = 2;
+const JOURNAL_SCHEMA_VERSION: u32 = 3;
 const LEGACY_JOURNAL_SCHEMA_VERSION: u32 = 1;
+const EXCHANGE_JOURNAL_SCHEMA_VERSION: u32 = 2;
 const MAX_JOURNAL_BYTES: usize = 1024 * 1024;
 const MAX_PENDING_TRANSACTIONS: usize = 16;
 const MAX_TRANSCRIPT_MESSAGES: usize = 16;
@@ -33,11 +34,34 @@ const JOURNAL_FILE: &str = "pending.json";
 const JOURNAL_LOCK: &str = "pending.lock";
 const SNAPSHOT_DIGEST_DOMAIN: &[u8] = b"cryptex-owner-approval-request-v1";
 
+#[path = "bootstrap_journal/terminal.rs"]
+mod terminal;
+
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum JournalWriteFault { Write, Flush, Replace, Reopen, ReopenSync, #[cfg(unix)] ParentSync }
+
+#[cfg(test)]
+thread_local! {
+    static JOURNAL_WRITE_FAULT: std::cell::Cell<Option<JournalWriteFault>> = const { std::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+fn journal_fault(stage: JournalWriteFault) -> io::Result<()> {
+    JOURNAL_WRITE_FAULT.with(|fault| {
+        if fault.get() == Some(stage) {
+            fault.set(None);
+            Err(io::Error::other("injected bootstrap journal write failure"))
+        } else { Ok(()) }
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BootstrapJournalError {
     Io(String),
     Corrupt(&'static str),
     Limit(&'static str),
+    TerminalHistoryCapacity,
     Conflict(&'static str),
     Durability(String),
 }
@@ -48,6 +72,7 @@ impl std::fmt::Display for BootstrapJournalError {
             Self::Io(error) => write!(f, "bootstrap journal I/O failed: {error}"),
             Self::Corrupt(reason) => write!(f, "bootstrap journal is invalid: {reason}"),
             Self::Limit(reason) => write!(f, "bootstrap journal limit exceeded: {reason}"),
+            Self::TerminalHistoryCapacity => write!(f, "bootstrap terminal history capacity exhausted"),
             Self::Conflict(reason) => write!(f, "bootstrap transaction conflict: {reason}"),
             Self::Durability(error) => {
                 write!(f, "bootstrap journal durability is unconfirmed: {error}")
@@ -368,6 +393,10 @@ pub struct PendingBootstrapTransaction {
     pub local_approval_signature_released: bool,
     pub stable_event_id: String,
     pub append_attempts: Vec<AppendAttempt>,
+    /// Cache evidence, never authority. Startup/retry still reverify canonical
+    /// history. Legacy anchored entries have no witness until that reread.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified_anchor: Option<terminal::VerifiedAnchor>,
 }
 
 impl PendingBootstrapTransaction {
@@ -409,6 +438,7 @@ impl PendingBootstrapTransaction {
             local_approval_signature_released: false,
             stable_event_id,
             append_attempts: Vec::new(),
+            verified_anchor: None,
         })
     }
 
@@ -817,6 +847,58 @@ impl PendingBootstrapTransaction {
         Ok(())
     }
 
+    fn record_verified_anchor_event(
+        &mut self,
+        event: &cryptex_events::SecurityEventV3,
+    ) -> Result<(), BootstrapJournalError> {
+        self.validate()?;
+        let expected_type = match self.snapshot.operation {
+            BootstrapOperation::PeerAdmission => cryptex_events::SecurityEventTypeV3::PeerApproved,
+            BootstrapOperation::DeviceRestriction => cryptex_events::SecurityEventTypeV3::DeviceRestricted,
+            BootstrapOperation::SelfRetirement => cryptex_events::SecurityEventTypeV3::DeviceSelfRetired,
+        };
+        let transaction_id = match event.payload() {
+            cryptex_events::SecurityPayloadV3::PeerApproved { transaction_id, .. }
+            | cryptex_events::SecurityPayloadV3::DeviceRestricted { transaction_id, .. }
+            | cryptex_events::SecurityPayloadV3::DeviceSelfRetired { transaction_id, .. } => transaction_id,
+        };
+        if event.event_type() != expected_type
+            || event.event_id() != self.stable_event_id
+            || event.brain_id() != self.snapshot.brain_id
+            || event.device_id().as_str() != self.snapshot.local_identity.device_id
+            || event.signing_key_id().as_str() != self.snapshot.local_identity.signing_key_id
+            || transaction_id != &self.snapshot.transaction_id
+        {
+            return Err(BootstrapJournalError::Conflict("verified anchor identity or operation differs"));
+        }
+        let sequence = event.device_seq().to_u64()
+            .map_err(|_| BootstrapJournalError::Corrupt("verified anchor sequence invalid"))?;
+        let attempt = self.append_attempts.iter().find(|attempt| attempt.reserved_sequence == sequence)
+            .ok_or(BootstrapJournalError::Conflict("verified anchor attempt absent"))?;
+        if attempt.predecessor_hash != event.prev_content_hash().as_str()
+            || attempt.candidate_content_hash.as_deref() != Some(event.content_hash().as_str())
+        {
+            return Err(BootstrapJournalError::Conflict("verified anchor differs from append evidence"));
+        }
+        let witness = terminal::VerifiedAnchor {
+            attempt: attempt.clone(),
+            operation_digest: event.operation_digest().to_owned(),
+        };
+        if self.verified_anchor.as_ref().is_some_and(|saved| saved != &witness) {
+            return Err(BootstrapJournalError::Conflict("stored anchor witness differs from canonical record"));
+        }
+        let mut candidate = self.clone();
+        if candidate.state == BootstrapState::AppendUnknown {
+            candidate.record_verified_anchor(sequence, event.content_hash().as_str())?;
+        } else if candidate.state != BootstrapState::Anchored {
+            return Err(BootstrapJournalError::Conflict("verified anchor has no uncertain or anchored state"));
+        }
+        candidate.verified_anchor = Some(witness);
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
+    }
+
     pub fn transition(&mut self, next: BootstrapState) -> Result<(), BootstrapJournalError> {
         let allowed = match (self.snapshot.role, self.state, next) {
             (
@@ -907,6 +989,15 @@ impl PendingBootstrapTransaction {
             return Err(BootstrapJournalError::Corrupt(
                 "approval snapshot digest differs",
             ));
+        }
+        if let Some(anchor) = &self.verified_anchor {
+            validate_lower_hex(&anchor.operation_digest, 64, "anchor operation digest")?;
+            if self.state != BootstrapState::Anchored
+                || anchor.attempt.candidate_content_hash.is_none()
+                || !self.append_attempts.contains(&anchor.attempt)
+            {
+                return Err(BootstrapJournalError::Corrupt("anchor witness lacks its terminal append evidence"));
+            }
         }
         if self.transcript_messages.len() > MAX_TRANSCRIPT_MESSAGES {
             return Err(BootstrapJournalError::Limit("transcript message count"));
@@ -1360,8 +1451,7 @@ impl PendingBootstrapExchange {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingBootstrapJournal {
     pub schema_version: u32,
     pub transactions: Vec<PendingBootstrapTransaction>,
@@ -1373,6 +1463,14 @@ pub struct PendingBootstrapJournal {
 struct PendingBootstrapJournalV1 {
     schema_version: u32,
     transactions: Vec<PendingBootstrapTransaction>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PendingBootstrapJournalV2 {
+    schema_version: u32,
+    transactions: Vec<PendingBootstrapTransaction>,
+    exchanges: Vec<PendingBootstrapExchange>,
 }
 
 impl Default for PendingBootstrapJournal {
@@ -1390,19 +1488,21 @@ impl PendingBootstrapJournal {
         if self.schema_version != JOURNAL_SCHEMA_VERSION {
             return Err(BootstrapJournalError::Corrupt("unsupported journal schema"));
         }
-        if self.transactions.len() > MAX_PENDING_TRANSACTIONS {
-            return Err(BootstrapJournalError::Limit("pending transaction count"));
+        let bytes = serde_json::to_vec(self)
+            .map_err(|_| BootstrapJournalError::Corrupt("journal serialization failed"))?;
+        if bytes.len() > MAX_JOURNAL_BYTES {
+            return Err(self.payload_capacity_error());
         }
+        terminal::validate_view_bounds(self)?;
         if self.exchanges.len() > MAX_PENDING_TRANSACTIONS {
             return Err(BootstrapJournalError::Limit("pending exchange count"));
         }
-        if self.transactions.len() + self.exchanges.len() > MAX_PENDING_TRANSACTIONS {
+        if self.active_count() > MAX_PENDING_TRANSACTIONS {
             return Err(BootstrapJournalError::Limit("pending transaction count"));
         }
         let mut seen = std::collections::BTreeSet::new();
         let mut seen_event_ids = std::collections::BTreeSet::new();
         for transaction in &self.transactions {
-            transaction.validate()?;
             if !seen.insert(transaction.snapshot.transaction_id.as_str()) {
                 return Err(BootstrapJournalError::Conflict("duplicate transaction ID"));
             }
@@ -1411,7 +1511,6 @@ impl PendingBootstrapJournal {
             }
         }
         for exchange in &self.exchanges {
-            exchange.validate()?;
             if !seen.insert(exchange.transaction_id.as_str()) {
                 return Err(BootstrapJournalError::Conflict("duplicate transaction ID"));
             }
@@ -1419,12 +1518,25 @@ impl PendingBootstrapJournal {
                 return Err(BootstrapJournalError::Conflict("duplicate stable event ID"));
             }
         }
-        let bytes = serde_json::to_vec(self)
-            .map_err(|_| BootstrapJournalError::Corrupt("journal serialization failed"))?;
-        if bytes.len() > MAX_JOURNAL_BYTES {
-            return Err(BootstrapJournalError::Limit("journal payload bytes"));
+        for transaction in &self.transactions {
+            transaction.validate()?;
+        }
+        for exchange in &self.exchanges {
+            exchange.validate()?;
         }
         Ok(())
+    }
+
+    fn active_count(&self) -> usize {
+        self.exchanges.len() + self.transactions.iter().filter(|item| !terminal::compactable(item)).count()
+    }
+
+    fn payload_capacity_error(&self) -> BootstrapJournalError {
+        if self.transactions.iter().any(terminal::compactable) {
+            BootstrapJournalError::TerminalHistoryCapacity
+        } else {
+            BootstrapJournalError::Limit("journal payload bytes")
+        }
     }
 
     pub fn insert(
@@ -1443,7 +1555,7 @@ impl PendingBootstrapJournal {
                 "transaction or event ID already exists",
             ));
         }
-        if self.transactions.len() + self.exchanges.len() >= MAX_PENDING_TRANSACTIONS {
+        if self.active_count() >= MAX_PENDING_TRANSACTIONS {
             return Err(BootstrapJournalError::Limit("pending transaction count"));
         }
         self.transactions.push(transaction);
@@ -1472,7 +1584,7 @@ impl PendingBootstrapJournal {
                 "transaction or event ID already exists",
             ));
         }
-        if self.transactions.len() + self.exchanges.len() >= MAX_PENDING_TRANSACTIONS {
+        if self.active_count() >= MAX_PENDING_TRANSACTIONS {
             return Err(BootstrapJournalError::Limit("pending transaction count"));
         }
         self.exchanges.push(exchange);
@@ -1515,7 +1627,7 @@ impl BootstrapJournalStore {
             let bytes = serde_json::to_vec(&journal)
                 .map_err(|_| BootstrapJournalError::Corrupt("journal serialization failed"))?;
             if bytes.len() > MAX_JOURNAL_BYTES {
-                return Err(BootstrapJournalError::Limit("journal payload bytes"));
+                return Err(journal.payload_capacity_error());
             }
             self.write_unlocked(&bytes)?;
             Ok(result)
@@ -1850,6 +1962,21 @@ impl BootstrapJournalStore {
         })
     }
 
+    /// Only existing canonical-locked unique-record reread paths may call this.
+    /// A deserialized witness never substitutes for current canonical evidence.
+    pub(crate) fn record_verified_anchor_event(
+        &self,
+        transaction_id: &str,
+        event: &cryptex_events::SecurityEventV3,
+    ) -> Result<(), BootstrapJournalError> {
+        self.update(|journal| {
+            let transaction = journal.transactions.iter_mut()
+                .find(|item| item.snapshot.transaction_id == transaction_id)
+                .ok_or(BootstrapJournalError::Conflict("anchor transaction is not journaled"))?;
+            transaction.record_verified_anchor_event(event)
+        })
+    }
+
     fn with_lock<T>(
         &self,
         operation: impl FnOnce() -> Result<T, BootstrapJournalError>,
@@ -1889,7 +2016,7 @@ impl BootstrapJournalStore {
             }
         }
         let path = self.root.join(JOURNAL_FILE);
-        let mut file = match open_no_follow_regular(&path, false) {
+        let file = match open_no_follow_regular(&path, false) {
             Ok(file) => file,
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 return Ok(PendingBootstrapJournal::default());
@@ -1901,7 +2028,7 @@ impl BootstrapJournalStore {
             return Err(BootstrapJournalError::Limit("journal payload bytes"));
         }
         let mut bytes = Vec::with_capacity(metadata.len() as usize);
-        file.read_to_end(&mut bytes).map_err(io_error)?;
+        file.take((MAX_JOURNAL_BYTES + 1) as u64).read_to_end(&mut bytes).map_err(io_error)?;
         if bytes.len() > MAX_JOURNAL_BYTES {
             return Err(BootstrapJournalError::Limit("journal payload bytes"));
         }
@@ -1914,6 +2041,12 @@ impl BootstrapJournalStore {
         let version = value.get("schema_version").and_then(Value::as_u64).ok_or(
             BootstrapJournalError::Corrupt("journal schema version missing"),
         )?;
+        if matches!(version, 1 | 2)
+            && value.get("transactions").and_then(Value::as_array)
+                .is_some_and(|items| items.iter().any(|item| item.get("verified_anchor").is_some()))
+        {
+            return Err(BootstrapJournalError::Corrupt("legacy journal contains a future anchor witness"));
+        }
         let journal = if version == u64::from(LEGACY_JOURNAL_SCHEMA_VERSION) {
             let legacy: PendingBootstrapJournalV1 = serde_json::from_value(value)
                 .map_err(|_| BootstrapJournalError::Corrupt("legacy journal schema invalid"))?;
@@ -1922,10 +2055,24 @@ impl BootstrapJournalStore {
                     "legacy journal schema version mismatch",
                 ));
             }
+            if legacy.transactions.len() > MAX_PENDING_TRANSACTIONS {
+                return Err(BootstrapJournalError::Limit("legacy pending transaction count"));
+            }
             PendingBootstrapJournal {
                 schema_version: JOURNAL_SCHEMA_VERSION,
                 transactions: legacy.transactions,
                 exchanges: Vec::new(),
+            }
+        } else if version == u64::from(EXCHANGE_JOURNAL_SCHEMA_VERSION) {
+            let legacy: PendingBootstrapJournalV2 = serde_json::from_value(value)
+                .map_err(|_| BootstrapJournalError::Corrupt("legacy exchange journal schema invalid"))?;
+            if legacy.transactions.len() + legacy.exchanges.len() > MAX_PENDING_TRANSACTIONS {
+                return Err(BootstrapJournalError::Limit("legacy pending transaction count"));
+            }
+            PendingBootstrapJournal {
+                schema_version: JOURNAL_SCHEMA_VERSION,
+                transactions: legacy.transactions,
+                exchanges: legacy.exchanges,
             }
         } else if version == u64::from(JOURNAL_SCHEMA_VERSION) {
             serde_json::from_value(value)
@@ -1947,7 +2094,13 @@ impl BootstrapJournalStore {
             .create_new(true)
             .open(&tmp)
             .map_err(io_error)?;
-        if let Err(error) = file.write_all(bytes).and_then(|()| file.sync_all()) {
+        let staged = (|| {
+            #[cfg(test)] journal_fault(JournalWriteFault::Write)?;
+            file.write_all(bytes)?;
+            #[cfg(test)] journal_fault(JournalWriteFault::Flush)?;
+            file.sync_all()
+        })();
+        if let Err(error) = staged {
             drop(file);
             cleanup_temp(&tmp, &error).map_err(|cleanup| {
                 BootstrapJournalError::Durability(format!(
@@ -1957,7 +2110,11 @@ impl BootstrapJournalStore {
             return Err(io_error(error));
         }
         drop(file);
-        replace_atomic(&tmp, &path).map_err(|error| {
+        let replacement = (|| {
+            #[cfg(test)] journal_fault(JournalWriteFault::Replace)?;
+            replace_atomic(&tmp, &path)
+        })();
+        replacement.map_err(|error| {
             let cleanup = cleanup_temp(&tmp, &error);
             match cleanup {
                 Ok(()) => io_error(error),
@@ -1966,13 +2123,20 @@ impl BootstrapJournalStore {
                 )),
             }
         })?;
-        let replaced = open_no_follow_regular(&path, true).map_err(io_error)?;
-        replaced.sync_all().map_err(|error| {
+        let resynced = (|| {
+            #[cfg(test)] journal_fault(JournalWriteFault::Reopen)?;
+            let replaced = open_no_follow_regular(&path, true)?;
+            #[cfg(test)] journal_fault(JournalWriteFault::ReopenSync)?;
+            replaced.sync_all()
+        })();
+        resynced.map_err(|error| {
             BootstrapJournalError::Durability(format!("reopen/sync replaced journal: {error}"))
         })?;
         #[cfg(unix)]
-        File::open(&self.root)
-            .and_then(|directory| directory.sync_all())
+        (|| {
+            #[cfg(test)] journal_fault(JournalWriteFault::ParentSync)?;
+            File::open(&self.root).and_then(|directory| directory.sync_all())
+        })()
             .map_err(|error| {
                 BootstrapJournalError::Durability(format!("sync journal directory: {error}"))
             })?;

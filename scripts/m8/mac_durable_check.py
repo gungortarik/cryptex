@@ -14,7 +14,17 @@ MARKERS = (
 
 
 def check_session_journal(path, expected):
-    transactions = json.loads(path.read_text(encoding="utf-8"))["transactions"]
+    journal = json.loads(path.read_text(encoding="utf-8"))
+    version = journal.get("schema_version", 2)
+    if type(version) is not int or version not in (1, 2, 3):
+        raise PreflightError("native_session_journal_schema_invalid")
+    transactions = list(journal["transactions"])
+    if journal.get("schema_version") == 3:
+        for receipt in journal["terminal_receipts"]:
+            if receipt["kind"] not in ("cancelled", "anchored"):
+                raise PreflightError("native_session_journal_receipt_invalid")
+            attempts = [receipt["verified_anchor"]["attempt"]] if receipt["kind"] == "anchored" else []
+            transactions.append({"state": receipt["kind"], "append_attempts": attempts})
     if (Counter(item["state"] for item in transactions) != Counter(expected)
             or any(len(item["append_attempts"]) != (1 if item["state"] == "anchored" else 0)
                    for item in transactions)):

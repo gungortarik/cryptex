@@ -3,11 +3,34 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from mac_durable_check import MARKERS, check_durable_profile
+from mac_durable_check import MARKERS, check_durable_profile, check_session_journal
 from mac_identity_preflight import CommandResult, PreflightError
 
 
 class DurableCollectorTests(unittest.TestCase):
+    def test_v3_terminal_receipts_preserve_exact_outcome_inventory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pending.json"
+            journal = {"schema_version": 3, "transactions": [], "terminal_receipts": [
+                {"kind": "anchored", "verified_anchor": {"attempt": {"reserved_sequence": 2}}},
+                {"kind": "cancelled"},
+            ]}
+            path.write_text(json.dumps(journal), encoding="utf-8")
+            check_session_journal(path, ("anchored", "cancelled"))
+            journal["terminal_receipts"].append({"kind": "cancelled"})
+            path.write_text(json.dumps(journal), encoding="utf-8")
+            with self.assertRaises(PreflightError):
+                check_session_journal(path, ("anchored", "cancelled"))
+            journal["terminal_receipts"] = [{"kind": "append_unknown"}]
+            path.write_text(json.dumps(journal), encoding="utf-8")
+            with self.assertRaises(PreflightError):
+                check_session_journal(path, ("anchored",))
+            journal["schema_version"] = 4
+            journal["terminal_receipts"] = []
+            path.write_text(json.dumps(journal), encoding="utf-8")
+            with self.assertRaises(PreflightError):
+                check_session_journal(path, ())
+
     def exercise(self, fault=None):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "runtime"

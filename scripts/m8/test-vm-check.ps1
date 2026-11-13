@@ -29,6 +29,24 @@ if ($serialized -match 'SECRET|Users\\|CommandLine') { throw 'Private content le
 if ($before -ne (Get-FileHash -LiteralPath $event).Hash -or
     $journalBefore -ne (Get-FileHash -LiteralPath $journal).Hash) { throw 'Pilot files changed' }
 Write-Output 'PASS: summary counts, redaction, canonical and journal preservation'
+$compact = @{
+    schema_version = 3; transactions = @(); exchanges = @()
+    terminal_receipts = @(
+        @{ kind = 'anchored'; snapshot = $tx.snapshot; transcript_messages = $tx.transcript_messages
+           verified_anchor = @{ attempt = @{ secret = 'SECRET-ATTEMPT' } } },
+        @{ kind = 'cancelled'; snapshot = @{ transaction_id = ('b' * 64) } }
+    )
+}
+[IO.File]::WriteAllText($journal, ($compact | ConvertTo-Json -Depth 12))
+$compactBefore = (Get-FileHash -LiteralPath $journal).Hash
+$result = Get-PilotSummary $pilot
+if ($result.status -ne 'observed' -or $result.transactions.Count -ne 2 -or
+    $result.transactions[0].state -ne 'anchored' -or $result.transactions[0].message_count -ne 4 -or
+    $result.transactions[0].append_attempt_count -ne 1 -or $result.transactions[1].state -ne 'cancelled' -or
+    $result.transactions[1].append_attempt_count -ne 0) { throw 'Compact receipt summary regression' }
+if (($result | ConvertTo-Json -Depth 8) -match 'SECRET|Users\\|CommandLine') { throw 'Compact private data leaked' }
+if ($compactBefore -ne (Get-FileHash -LiteralPath $journal).Hash) { throw 'Compact journal modified' }
+Write-Output 'PASS: compact terminal receipts retain states and redact content'
 [IO.File]::WriteAllText($journal, 'malformed SECRET-CORRUPTION')
 $result = Get-PilotSummary $pilot
 if ($result.status -ne 'read_failed' -or ($result | ConvertTo-Json) -match 'SECRET') { throw 'Invalid journal not safely reported' }
@@ -52,4 +70,4 @@ $linked = Join-Path $root 'cx-m8-linked'
 New-Item -ItemType Junction -Path $linked -Target $pilot | Out-Null
 if ((Get-PilotSummary $linked).error_code -ne 'unsafe_path') { throw 'Junction followed' }
 Write-Output 'PASS: reparse profile refused'
-Write-Output 'PASS 7 groups. Synthetic fixtures retained under LocalAppData/Cryptex-Dev/vm-check-tests.'
+Write-Output 'PASS 8 groups. Synthetic fixtures retained under LocalAppData/Cryptex-Dev/vm-check-tests.'

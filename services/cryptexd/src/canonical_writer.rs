@@ -813,11 +813,7 @@ pub(crate) fn append_peer_approved_anchor_with_lock(
     }
     persist_tip_from_state(runtime_root, device_id, &state, signing_key_id.as_str())?;
     journal
-        .record_verified_anchor(
-            transaction_id,
-            sequence,
-            verified_candidate.content_hash().as_str(),
-        )
+        .record_verified_anchor_event(transaction_id, &verified_candidate)
         .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))?;
 
     Ok(SecurityAnchorAppendOutcome {
@@ -1075,11 +1071,7 @@ pub(crate) fn append_owner_security_operation_with_lock(
     }
     persist_tip_from_state(runtime_root, device_id, &state, signing_key_id.as_str())?;
     journal
-        .record_verified_anchor(
-            &snapshot.transaction_id,
-            sequence,
-            verified_candidate.content_hash().as_str(),
-        )
+        .record_verified_anchor_event(&snapshot.transaction_id, &verified_candidate)
         .map_err(|error| CanonicalWriterError::Invalid(error.to_string()))?;
 
     Ok(SecurityAnchorAppendOutcome {

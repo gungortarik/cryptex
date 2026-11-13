@@ -1694,6 +1694,10 @@ fn append_local_peer_approval_anchor_with_mode<S: SecureStore + ?Sized>(
             ));
         }
         if initial_transaction.state == crate::bootstrap_journal::BootstrapState::Anchored {
+            // Stored receipts still require the unique current canonical event.
+            // Legacy anchors gain a witness only after this locked reread.
+            journal.record_verified_anchor_event(transaction_id, event)
+                .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
             return Ok(SecurityAnchorAppendOutcome {
                 event_id: event.event_id().to_owned(),
                 device_seq: event.device_seq().to_u64().map_err(|error| {
@@ -1708,13 +1712,7 @@ fn append_local_peer_approval_anchor_with_mode<S: SecureStore + ?Sized>(
             ));
         }
         journal
-            .record_verified_anchor(
-                transaction_id,
-                event.device_seq().to_u64().map_err(|error| {
-                    KnowledgeMaterializationError::Verification(error.to_string())
-                })?,
-                event.content_hash().as_str(),
-            )
+            .record_verified_anchor_event(transaction_id, event)
             .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
         return Ok(SecurityAnchorAppendOutcome {
             event_id: event.event_id().to_owned(),
@@ -2009,7 +2007,7 @@ fn reconcile_owner_security_operation_before_startup<S: SecureStore + ?Sized>(
         ));
     }
 
-    if transaction.state == BootstrapState::AppendUnknown {
+    if matches!(transaction.state, BootstrapState::AppendUnknown | BootstrapState::Anchored) {
         let journal = crate::bootstrap_journal::BootstrapJournalStore::new(runtime_root)
             .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
         let current = journal
@@ -2026,11 +2024,7 @@ fn reconcile_owner_security_operation_before_startup<S: SecureStore + ?Sized>(
             ));
         }
         journal
-            .record_verified_anchor(
-                &snapshot.transaction_id,
-                attempt.reserved_sequence,
-                event.content_hash().as_str(),
-            )
+            .record_verified_anchor_event(&snapshot.transaction_id, event)
             .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
     }
     Ok(())
@@ -4387,6 +4381,15 @@ mod tests {
         assert_eq!(recovered.transactions.len(), 1);
         assert_eq!(recovered.transactions[0].state, BootstrapState::Anchored);
         assert_eq!(recovered.transactions[0].append_attempts.len(), 1);
+        assert!(recovered.transactions[0].verified_anchor.is_some());
+        let receipt_path = root.join("bootstrap/pending.json");
+        let receipt_bytes = fs::read(&receipt_path).unwrap();
+        let receipt: Value = serde_json::from_slice(&receipt_bytes).unwrap();
+        assert!(receipt["transactions"].as_array().unwrap().is_empty());
+        assert_eq!(receipt["terminal_receipts"].as_array().unwrap().len(), 1);
+        reconcile_peer_approval_anchors_before_startup(&root, &store, SecureStoreEnvironment::Dev)
+            .expect("compact receipt still requires and matches the existing canonical event");
+        assert_eq!(fs::read(&receipt_path).unwrap(), receipt_bytes);
 
         let inventory = read_canonical_device_inventory(&root, None).unwrap();
         let recovered_policy = scan_verified_trust_policy(
@@ -4415,6 +4418,23 @@ mod tests {
                 } if found == &transaction_id)
         ));
         drop(recovered_policy);
+        for tamper_digest in [true, false] {
+            let mut altered = receipt.clone();
+            if tamper_digest {
+                altered["terminal_receipts"][0]["verified_anchor"]["operation_digest"] =
+                    Value::String("ff".repeat(32));
+            } else {
+                altered["terminal_receipts"][0]["stable_event_id"] =
+                    Value::String("99999999-9999-4999-8999-999999999999".into());
+            }
+            let bytes = serde_json::to_vec(&altered).unwrap();
+            fs::write(&receipt_path, &bytes).unwrap();
+            assert!(reconcile_peer_approval_anchors_before_startup(
+                &root, &store, SecureStoreEnvironment::Dev,
+            ).is_err(), "stored receipt cannot authorize a changed or absent canonical anchor");
+            assert_eq!(fs::read(&receipt_path).unwrap(), bytes);
+        }
+        fs::write(&receipt_path, &receipt_bytes).unwrap();
         fs::remove_dir_all(root).unwrap();
     }
 

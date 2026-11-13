@@ -40,8 +40,9 @@ cancellation event. Existing canonical event bytes remain immutable.
   discarded to make room. No raw full entry disappears before its replacement
   receipt is durably installed under the same lock/replace transaction.
 * The overall byte bound still applies. If compact receipts eventually fill it,
-  return a distinct typed terminal-history-capacity error before new signing or
-  writes. Do not erase old cancellation/replay protection or call the operation
+  return a distinct typed terminal-history-capacity error before any new signed
+  message/capability is released or canonical event published. Do not erase old
+  cancellation/replay protection or call the operation
   successful. This is finite storage, not an infinite-retention guarantee.
 
 Migration must validate the entire old journal first, preserve all uncertain
@@ -51,6 +52,47 @@ both active entries and terminal receipts; no route may silently treat a compact
 terminal ID as new. A failed write/replace preserves the previous representation.
 
 ## Acceptance before implementation is complete
+
+### Selected implementation details
+
+Journal wire schema3 separates active transactions/exchanges from terminal
+receipts. Decoding moves them into one bounded in-memory transaction view, so
+existing cancellation, collision, startup and exact-retry routes continue to
+observe every terminal ID. Encoding borrows data instead of duplicating strings.
+Cancelled receipts retain the generated-but-unreleased flag but no reusable
+prefix or completeness hash. Anchored admission receipts retain four exact public
+messages for existing resume checks; only the matched attempt and explicit
+canonical-position/operation-digest witness remain. The witness is data, not
+authority: startup/retry rechecks the unique current canonical record under the
+existing lock order. Legacy anchors remain full until that fresh proof exists.
+
+Legacy1/2 files are first validated with their original sixteen-total cap. Load
+does not rewrite them or claim durable migration: the next successful atomic
+update writes schema3. Unsupported/corrupt input and failed migration are held
+with evidence preserved. No canonical locks are acquired by loading/encoding.
+
+The raw read is bounded to one MiB plus one overflow-detection byte. Persisted
+payload remains one MiB; the expanded unified serialized view is bounded to two
+MiB before signature verification. A4096-record pre-hydration resource bound is
+conservative because a valid terminal receipt's mandatory IDs/field names alone
+exceed256bytes; it cannot reduce valid one-MiB capacity. There is no compression
+or unbounded expansion. JSON parser/tree overhead is additional, bounded by raw
+input and closed typed collection limits; these are serialized-resource bounds,
+not a platform-exact heap-allocation measurement.
+
+The earlier pre-signing wording is refined explicitly under the owner's
+delegation: ephemeral in-memory signature computation may precede persistence,
+as in existing R3. Capacity or persistence failure releases no signature or
+capability, restores no consumed confirmation token and publishes no canonical
+event. A new reservation protocol is not introduced merely to avoid computation.
+Canonical publication still requires its durable AppendUnknown evidence first.
+
+Injected pre-replacement write/flush/replace failures must preserve old bytes;
+post-replacement reopen/sync/directory-sync failures report typed unconfirmed
+durability and preserve the visible candidate rather than falsely claim rollback.
+Windows replacement/reopen semantics do not establish Unix parent-directory sync.
+
+Native verification/source review of the implementation is still pending.
 
 Exercise sixteen cancelled and sixteen anchored operations followed by a new
 operation, migration/reopen, exact retry and changed-request rejection, cancelled

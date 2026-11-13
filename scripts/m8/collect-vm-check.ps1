@@ -46,8 +46,27 @@ function Get-PilotSummary {
         if (Test-Path -LiteralPath $pending) {
             $journal = Read-BoundedJson $pending
             if ($null -eq $journal.transactions) { throw 'invalid_journal' }
+            if ($null -ne $journal.schema_version -and $journal.schema_version -notin @(1,2,3)) {
+                throw 'invalid_journal'
+            }
             $transactions = @($journal.transactions)
-            if ($transactions.Count -gt 1000) { throw 'size_limit' }
+            if ($journal.schema_version -eq 3) {
+                if ($null -eq $journal.terminal_receipts) { throw 'invalid_journal' }
+                foreach ($receipt in @($journal.terminal_receipts)) {
+                    if ($receipt.kind -notin @('anchored', 'cancelled')) { throw 'invalid_journal' }
+                    $attempts = @()
+                    if ($receipt.kind -eq 'anchored') {
+                        if ($null -eq $receipt.verified_anchor.attempt) { throw 'invalid_journal' }
+                        $attempts = @($receipt.verified_anchor.attempt)
+                    }
+                    $transactions += [pscustomobject]@{
+                        snapshot = $receipt.snapshot; state = $receipt.kind
+                        transcript_messages = @($receipt.transcript_messages | Where-Object { $null -ne $_ })
+                        append_attempts = $attempts
+                    }
+                }
+            }
+            if ($transactions.Count -gt 4096) { throw 'size_limit' }
             $result.transactions = @($transactions | ForEach-Object {
                 $tx = $_
                 $txId = [string]$tx.snapshot.transaction_id
