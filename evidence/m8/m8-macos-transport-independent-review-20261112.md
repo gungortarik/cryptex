@@ -75,5 +75,7 @@ subsequently passed both selected platform jobs, all native/mutation/refusal
 checks and the exported transport launcher, including all five matching-source
 receipt fields. The codesign negative fixtures passed on that run. The
 [structured execution receipt](macos-transport-native-0d98a16-ci.json) records this
-separately from source review. Owner-Mac execution and declared product gates
-remain pending.
+separately from source review. The subsequently returned
+[owner receipt](m8-macos-transport-owner-receipt-0616b9b2.md) passed all five
+aggregate checks on the exact source. Combined supervisor loss and the declared
+product gates remain open; this receipt does not change the review's scope.

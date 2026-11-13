@@ -37,18 +37,20 @@ deadline. `0d98a16` unlocks only the exact disposable CI signing keychain immedi
 before certificate use; no locking policy, ACL or test deadline changed. The
 latest entire scoped run and exported launcher passed after that correction.
 
-Next owner action: use `CRYPTEX-MAC-AKTARIM-0d98a16.zip`, extract it on the owner's
-Apple Silicon Mac (macOS 26 or later), double-click MAC-AKTARIM.command, keep the
-window open and return MAC-AKTARIM-SONUC-<nonce>.zip. This one-click package is
-arm64 and expires **2026-11-14 00:06:25 UTC**. Its exact hash and source are in the
-receipt above. If it has expired, rebuild the reviewed exact source; do not send
-the superseded ZIP or repeat terminal/JSON pairing loops. The new-SDK candidate
-refuses the unvalidated older-OS spawn branch; no product OS floor is selected.
+The owner returned `MAC-AKTARIM-SONUC-0616b9b2.zip`: exact source matched, outcome
+was passed and all five identity/pairing/loss/credential/runtime checks were true.
+The [owner receipt](../evidence/m8/m8-macos-transport-owner-receipt-0616b9b2.md)
+records its ZIP hash, closed-schema validation and evidence limits. This closes
+the owner-Mac run for this default-off candidate; do not repeat the package or
+manual signed-JSON exchange. The returned aggregate report does not independently
+attest the device, OS version or architecture.
 
-Owner-Mac execution remains pending. Combined supervisor-loss acceptance, other
-endpoint/exec races, product publisher/OS-floor and activation decisions remain
-open. This local-engine/native-pairing receipt does not establish cross-device
-replication, human WebView pairing acceptance or M8 completion.
+Next implementation/acceptance gate: combined daemon/helper supervisor loss in
+the existing disabled scope, preserving unresolved-marker exclusion and refusal
+to adopt orphan engines. Other endpoint/exec races, product publisher/OS-floor,
+normal activation and final M8 protocol/platform/security/human gates remain
+open. The local-engine/native-pairing evidence does not establish cross-device
+replication or human WebView pairing acceptance; M8 remains open.
 
 ## Protected UI and native approval continuation
 

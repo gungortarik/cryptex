@@ -8,9 +8,11 @@ Current implementation milestone: **M8 — Device trust and replication (in prog
 binds fresh engine identity to the verified native Desktop/daemon pairing path.
 Independent source review and exact-source Mac/Windows
 [CI 43334196206](https://github.com/gungortarik/cryptex/actions/runs/43334196206)
-passed on `0d98a16`, including the exported transport launcher. The next owner
-action is the matching one-click Mac package; that device run remains pending. See the [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md)
-for evidence and remaining gates. Normal product routes remain closed; older
+passed on `0d98a16`, including the exported transport launcher. The matching
+[owner-Mac result](evidence/m8/m8-macos-transport-owner-receipt-0616b9b2.md)
+also passed all five checks. Next is combined daemon/helper supervisor-loss
+acceptance; no unchanged package rerun is needed. See the
+[current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) for remaining gates. Normal product routes remain closed; older
 dated implementation notes below are historical checkpoints.
 
 The owner-approved [disabled Mac M8 adapter foundation](evidence/m8/m8-disabled-macos-owner-adapter-20261110.md)

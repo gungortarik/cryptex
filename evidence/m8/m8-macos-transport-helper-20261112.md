@@ -385,3 +385,14 @@ headless native Desktop pairing evidence, not cross-device replication, human
 WebView pairing or production activation. Combined supervisor-loss acceptance,
 other endpoint/exec races, product publisher/support floor and ordinary activation
 remain open. ADR-0021 and all default-off product gates remain unchanged; M8 is open.
+
+## Subsequent owner-Mac result
+
+The owner returned `MAC-AKTARIM-SONUC-0616b9b2.zip` for the exact reviewed source.
+Its single bounded JSON report has passed outcome and all five collector checks
+true. The [receipt](m8-macos-transport-owner-receipt-0616b9b2.md) records its hash,
+source/schema checks and aggregate-only evidence limit. The owner-device gate
+for this candidate is now closed; no unchanged package or JSON-loop rerun is
+required. This does not close combined supervisor-loss, other endpoint/exec,
+cross-device or product activation gates. Continue with combined daemon/helper
+supervisor-loss acceptance within the existing default-off scope.

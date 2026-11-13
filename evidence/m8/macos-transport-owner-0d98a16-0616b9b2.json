@@ -1,0 +1,30 @@
+{
+  "evidence_kind": "owner-supplied aggregate report; not independent cryptographic device attestation",
+  "checked_at_utc": "2026-11-13T02:38:06.198036+00:00",
+  "archive_filename": "MAC-AKTARIM-SONUC-0616b9b2.zip",
+  "archive_sha256": "b9ec5641117ee3b2c676ce2750d625aa36abac48f9058b6a90ddf89d5141bea3",
+  "archive_bytes": 519,
+  "archive_members": [
+    "result.json"
+  ],
+  "expected_package_source": "0d98a16d075ca317b208c6e3dd6b0c66b64df707",
+  "matching_ci_run": "https://github.com/gungortarik/cryptex/actions/runs/43334196206",
+  "expected_package_sha256": "747f53476cc23c7ed10da4a4d047b052d9d0bd47f8b3dae861d29aeeb352a154",
+  "validation": "exact source, closed result schema, passed outcome and five strict boolean checks matched the reviewed collector",
+  "report": {
+    "source": "0d98a16d075ca317b208c6e3dd6b0c66b64df707",
+    "outcome": "passed",
+    "scope": "isolated real local engines and signed native pairing; not cross-device sync",
+    "identity_restart_and_refusals_verified": true,
+    "native_pairing_and_reopen_verified": true,
+    "daemon_loss_and_unresolved_refusal_verified": true,
+    "credential_cleanup_verified": true,
+    "runtime_cleanup_verified": true
+  },
+  "evidence_limits": [
+    "aggregate report contains no OS version, architecture or raw runtime journal for separate verification",
+    "not cross-device replication or human WebView pairing acceptance",
+    "does not close combined supervisor-loss, other endpoint/exec race or production activation gates"
+  ],
+  "next_gate": "combined daemon/helper supervisor-loss acceptance within the default-off isolated scope"
+}

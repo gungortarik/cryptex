@@ -10,9 +10,11 @@ record fresh owned engine identity, native pairing/reopen, helper/daemon loss,
 eleven live drift refusals and profile-lease-fenced fixture credential cleanup.
 Review through `0d98a16` found no actionable blocker; exact-source
 [CI 43334196206](https://github.com/gungortarik/cryptex/actions/runs/43334196206)
-passed both selected platform jobs and the exported transport launcher. One
-matching owner-Mac run remains pending. See the
-[structured receipt](../evidence/m8/macos-transport-native-0d98a16-ci.json). The prior passing artifact is
+passed both selected platform jobs and the exported transport launcher. The
+matching [owner-Mac receipt](../evidence/m8/m8-macos-transport-owner-receipt-0616b9b2.md)
+passed all five aggregate checks, closing this candidate's owner-device run.
+Do not repeat that package. See the
+[structured CI receipt](../evidence/m8/macos-transport-native-0d98a16-ci.json). The prior passing artifact is
 superseded and withheld. Combined supervisor loss, other endpoint/exec races,
 product publisher/support floor, normal activation and cross-device acceptance
 remain open. Read the [current handoff](../docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md)

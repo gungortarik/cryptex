@@ -71,18 +71,18 @@
   "minimum_fixture_macos": "26; not a product support floor",
   "fixture_expires_utc": "2026-11-14T00:06:25+00:00",
   "owner_package_filename": "CRYPTEX-MAC-AKTARIM-0d98a16.zip",
-  "owner_mac_execution": "pending",
+  "owner_mac_execution": "passed, matching-source owner-supplied aggregate report",
   "independent_source_review": "complete through this source, no remaining actionable finding; separate agent source review, not external human audit",
   "superseded_candidates": [
     "04fa52eb6b8ba527036a07b9eee5b49a89b80d15",
     "74b95bd711c89277d360dc68861a1089bf1be2ac"
   ],
   "remaining_gates": [
-    "owner Mac execution",
     "combined supervisor loss",
     "other endpoint and exec races",
     "product publisher and minimum OS decisions",
     "normal product activation",
     "cross-device product acceptance"
-  ]
+  ],
+  "owner_result_receipt": "macos-transport-owner-0d98a16-0616b9b2.json"
 }
