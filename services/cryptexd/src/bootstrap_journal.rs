@@ -2176,12 +2176,7 @@ impl BootstrapJournalStore {
             return Err(io_error(error));
         }
         drop(file);
-        let replacement = (|| {
-            #[cfg(test)]
-            journal_fault(JournalWriteFault::Replace)?;
-            replace_atomic(&tmp, &path)
-        })();
-        replacement.map_err(|error| {
+        replace_atomic(&tmp, &path).map_err(|error| {
             let cleanup = cleanup_temp(&tmp, &error);
             match cleanup {
                 Ok(()) => io_error(error),
@@ -2202,12 +2197,7 @@ impl BootstrapJournalStore {
             BootstrapJournalError::Durability(format!("reopen/sync replaced journal: {error}"))
         })?;
         #[cfg(unix)]
-        (|| {
-            #[cfg(test)]
-            journal_fault(JournalWriteFault::ParentSync)?;
-            File::open(&self.root).and_then(|directory| directory.sync_all())
-        })()
-        .map_err(|error| {
+        sync_journal_directory(&self.root).map_err(|error| {
             BootstrapJournalError::Durability(format!("sync journal directory: {error}"))
         })?;
         Ok(())
@@ -2230,7 +2220,16 @@ impl BootstrapJournalStore {
     }
 }
 
+#[cfg(unix)]
+fn sync_journal_directory(root: &Path) -> io::Result<()> {
+    #[cfg(test)]
+    journal_fault(JournalWriteFault::ParentSync)?;
+    File::open(root).and_then(|directory| directory.sync_all())
+}
+
 fn replace_atomic(tmp: &Path, destination: &Path) -> io::Result<()> {
+    #[cfg(test)]
+    journal_fault(JournalWriteFault::Replace)?;
     #[cfg(unix)]
     {
         fs::rename(tmp, destination)
