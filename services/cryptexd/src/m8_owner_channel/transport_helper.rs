@@ -25,6 +25,15 @@ const PROFILE: &str = "00000000000000000000000000000001";
 const BUDGET: Duration = Duration::from_secs(4);
 const REFUSAL_ACK: &[u8] = b"m8-transport-refusal-ack-v1";
 const STOP_ACK: &[u8] = b"m8-transport-stop-ack-v1";
+fn startup_phase(stage: &'static str, started: Instant) {
+    // Fixed stage/timing fields only; no paths, identities or credentials.
+    // Logging failure must not interrupt captured-child/group cleanup.
+    let _ = writeln!(
+        std::io::stderr().lock(),
+        "component=mac_transport operation=startup stage={stage} elapsed_ms={}",
+        started.elapsed().as_millis()
+    );
+}
 fn channel_error(stage: &'static str, error: super::native::Error) -> Error {
     eprintln!(
         "component=mac_transport operation=native_channel stage={stage} status=failed error={error:?}"
@@ -581,9 +590,12 @@ pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
         let epoch = epoch(&args[1])?;
         let root = Path::new(&args[2]);
         private_root(root)?;
-        let deadline = Instant::now() + Duration::from_secs(15);
+        let started = Instant::now();
+        let deadline = started + Duration::from_secs(15);
         let release = Release::current(Role::Daemon, deadline).map_err(|_| Error::Policy)?;
+        startup_phase("child_release_verified", started);
         let expected = inventory_image(&release.bundle, Role::Daemon).map_err(|_| Error::Policy)?;
+        startup_phase("child_expected_image_verified", started);
         std::io::stdout()
             .write_all(HINT)
             .and_then(|_| std::io::stdout().flush())
@@ -596,8 +608,10 @@ pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
         if unsafe { libc::dup2(discard.as_raw_fd(), libc::STDOUT_FILENO) } < 0 {
             return Err(Error::Channel);
         }
+        startup_phase("child_connect_begin", started);
         let mut channel = Channel::connect_until(&epoch, &(&expected).into(), deadline)
-            .map_err(|_| Error::Channel)?;
+            .map_err(|error| channel_error("helper_connect", error))?;
+        startup_phase("child_native_connected", started);
         channel
             .send(
                 &combined_loss::helper_hello(combined, 2, &epoch, &release, root),
@@ -673,9 +687,12 @@ impl Helper {
         let credential = profile.credential_profile_id().to_owned();
         drop(profile);
         *credential_record.lock().map_err(|_| Error::Unavailable)? = Some(credential.clone());
-        let deadline = Instant::now() + Duration::from_secs(15);
+        let started = Instant::now();
+        let deadline = started + Duration::from_secs(15);
         let release = Release::current(Role::Daemon, deadline).map_err(|_| Error::Policy)?;
+        startup_phase("parent_release_verified", started);
         let expected = inventory_image(&release.bundle, Role::Daemon).map_err(|_| Error::Policy)?;
+        startup_phase("parent_expected_image_verified", started);
         let (listener, epoch) = Listener::open().map_err(|_| Error::Channel)?;
         let mut active = OpenOptions::new()
             .write(true)
@@ -723,6 +740,7 @@ impl Helper {
             command.stdin(combined_loss::input_pipe()?);
         }
         let child = command.spawn().map_err(|_| Error::Engine)?;
+        startup_phase("parent_child_spawned", started);
         let mut result = Self {
             child: Some(child),
             channel: None,
@@ -734,6 +752,7 @@ impl Helper {
             active,
         };
         await_hint(result.child.as_mut().unwrap(), deadline)?;
+        startup_phase("parent_hint_received", started);
         let mut channel = listener
             .accept_until(
                 result.child.as_mut().unwrap(),
@@ -741,6 +760,7 @@ impl Helper {
                 deadline,
             )
             .map_err(|error| channel_error("helper_accept", error))?;
+        startup_phase("parent_native_accepted", started);
         let mut buffer = [0; 128];
         if channel
             .receive(&mut buffer, deadline)

@@ -37,6 +37,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.desktop_startup_only
     name: Desktop startup (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Match the signed-fixture runner's existing profile from the first build;
+    # avoid compiling every dependency twice with different debug-info settings.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
     timeout-minutes: 40
     strategy:
       fail-fast: false
