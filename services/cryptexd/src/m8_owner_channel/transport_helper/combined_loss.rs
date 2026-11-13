@@ -157,7 +157,10 @@ fn record(root: &Path, leaf: &str, bytes: &[u8]) -> Result<(), Error> {
 
 fn diagnostic(out: &mut impl Write, error: Error) {
     // A closed collector pipe must never panic before mandatory group cleanup.
-    let _ = writeln!(out, "component=combined_loss_guard status=failed error={error}");
+    let _ = writeln!(
+        out,
+        "component=combined_loss_guard status=failed error={error}"
+    );
 }
 
 fn guard(root: &Path, epoch: &[u8; 16]) -> Result<(), Error> {
