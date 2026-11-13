@@ -219,11 +219,12 @@ int main(int argc, char **argv) {
     REQUIRE(known, "case_selection");
     uint8_t hash[20];
     REQUIRE(cx_transport_image_hash(executable, hash) == 0, "fixture_signature");
-    Worker *root = spawn_worker(!strcmp(argv[1], "root_loss") ? "idle" : !strcmp(argv[1], "ipv6_close") ? "v6" : "v4", hash);
+    bool separate_server = !strcmp(argv[1], "root_loss") || !strcmp(argv[1], "pre_send_exec") || !strcmp(argv[1], "queued_exec");
+    Worker *root = spawn_worker(separate_server ? "idle" : !strcmp(argv[1], "ipv6_close") ? "v6" : "v4", hash);
     Message ready;
     transfer(root->control, &ready, sizeof(ready), false);
     Worker *server = root;
-    if (!strcmp(argv[1], "root_loss")) {
+    if (separate_server) {
         server = spawn_worker("v4", hash);
         transfer(server->control, &ready, sizeof(ready), false);
     }
@@ -259,7 +260,8 @@ int main(int argc, char **argv) {
             REQUIRE(cx_transport_peer_validate(root->pin, peer, 1) == 0, "fresh_pre_send");
             if (!strcmp(argv[1], "pre_send_exec")) {
                 command(server->control, 'E', 'e');
-                REQUIRE(cx_transport_peer_validate(root->pin, peer, 1) == 3, "old_exec_generation_refused");
+                REQUIRE(cx_transport_pin_live(root->pin) &&
+                    cx_transport_peer_validate(root->pin, peer, 1) == 3, "old_peer_exec_generation_refused");
                 command(server->control, 'D', 'z');
             } else if (!strcmp(argv[1], "root_loss")) {
                 REQUIRE(kill(root->pid, SIGKILL) == 0, "kill_captured_root");
@@ -284,7 +286,8 @@ int main(int argc, char **argv) {
                     char ack;
                     transfer(server->control, &ack, 1, false);
                     REQUIRE(ack == (op == 'Q' ? 'e' : 'n'), "post_body_transition");
-                    REQUIRE(cx_transport_peer_validate(root->pin, peer, 0) == (op == 'Q' ? 3 : 0), "response_generation_gate");
+                    REQUIRE(cx_transport_pin_live(root->pin) &&
+                        cx_transport_peer_validate(root->pin, peer, 0) == (op == 'Q' ? 3 : 0), "response_generation_gate");
                 }
             }
         }
