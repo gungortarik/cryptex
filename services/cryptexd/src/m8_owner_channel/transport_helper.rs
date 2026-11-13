@@ -34,6 +34,22 @@ fn startup_phase(stage: &'static str, started: Instant) {
         started.elapsed().as_millis()
     );
 }
+fn observe_phase<T>(
+    stage: &'static str,
+    operation: impl FnOnce() -> Result<T, Error>,
+) -> Result<T, Error> {
+    let started = Instant::now();
+    let result = operation();
+    if started.elapsed() >= Duration::from_secs(1) {
+        let _ = writeln!(
+            std::io::stderr().lock(),
+            "component=mac_transport operation=observe stage={stage} elapsed_ms={} succeeded={}",
+            started.elapsed().as_millis(),
+            result.is_ok()
+        );
+    }
+    result
+}
 fn channel_error(stage: &'static str, error: super::native::Error) -> Error {
     eprintln!(
         "component=mac_transport operation=native_channel stage={stage} status=failed error={error:?}"
@@ -407,14 +423,18 @@ fn serve(
         }
         match request.operation {
             Operation::Observe => {
-                let _before_package = PinnedSyncthingPackage::open(&root.join("package"))
-                    .map_err(|_| Error::Package)?;
-                session
-                    .observe(&store)
-                    .inspect_err(|e| eprintln!("component=mac_transport stage=observe error={e}"))
-                    .map_err(|_| Error::Engine)?;
-                let _after_package = PinnedSyncthingPackage::open(&root.join("package"))
-                    .map_err(|_| Error::Package)?;
+                let _before_package = observe_phase("package_before", || {
+                    PinnedSyncthingPackage::open(&root.join("package")).map_err(|_| Error::Package)
+                })?;
+                observe_phase("session", || {
+                    session
+                        .observe(&store)
+                        .inspect_err(|e| eprintln!("component=mac_transport stage=observe error={e}"))
+                        .map_err(|_| Error::Engine)
+                })?;
+                let _after_package = observe_phase("package_after", || {
+                    PinnedSyncthingPackage::open(&root.join("package")).map_err(|_| Error::Package)
+                })?;
                 if !role_active() {
                     crate::owned_process::macos::kill_helper_group();
                 }
@@ -1345,6 +1365,14 @@ pub fn check(root: &Path) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn observation_diagnostics_preserve_success_and_typed_failures() {
+        assert_eq!(observe_phase("session", || Ok(17)), Ok(17));
+        for error in [Error::Deadline, Error::Package, Error::Channel] {
+            let observed = observe_phase::<()>("package_before", || Err(error));
+            assert_eq!(observed, Err(error));
+        }
+    }
     fn cleanup_root() -> PathBuf {
         let mut nonce = [0; 16];
         getrandom::getrandom(&mut nonce).unwrap();

@@ -15,6 +15,18 @@ from mac_transport_check import check_native_pairing, check_parent_loss
 from mac_combined_loss_check import check_combined_loss
 
 
+def fixture_rust_command(executable, command, *args):
+    # Scoped fixture artifacts only: optimize the existing full hash routines
+    # and their generic caller, never skip bytes, assertions or deadline checks.
+    flags = []
+    for profile in ("dev", "test"):
+        for package, level in (("sha2:0.10.9", 3), ("blake3:1.8.2", 3), ("cryptexd", 1)):
+            prefix = f'profile.{profile}.package."{package}".'
+            for key, value in (("opt-level", level), ("debug-assertions", "true"), ("overflow-checks", "true")):
+                flags.extend(["--config", f"{prefix}{key}={value}"])
+    return [executable, command, *flags, *args]
+
+
 def sign_fixture_image(run, target, signer, identifier, keychain, password, stage):
     args = ["/usr/bin/codesign", "--force", "--sign", signer,
             "--timestamp=none", "--identifier", identifier]
@@ -53,18 +65,18 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         features = "cryptex-desktop/m8-local-startup-check"
         # run_bounded intentionally removes plugin discovery from PATH.
         # cargo-clippy expects the Cargo subcommand token, then invokes CARGO.
-        run([clippy, "clippy", "--locked", "-p", "cryptexd", "-p", "cryptex-desktop",
-             "--all-targets", "--features", features, "--", "-D", "warnings"],
+        run(fixture_rust_command(clippy, "clippy", "--locked", "-p", "cryptexd", "-p", "cryptex-desktop",
+             "--all-targets", "--features", features, "--", "-D", "warnings"),
             "lint_real_signed_startup", 900)
-        run([cargo, "build", "--locked", "-p", "cryptexd", "-p", "cryptex-desktop",
-             "--features", features], "build_real_signed_startup", 900)
+        run(fixture_rust_command(cargo, "build", "--locked", "-p", "cryptexd", "-p", "cryptex-desktop",
+             "--features", features), "build_real_signed_startup", 900)
         # Feature builds can outlast the disposable keychain's idle window.
         # Refresh only this fixture before the test executable is codesigned;
         # do not disable locking or lengthen native/signing test deadlines.
         run(["/usr/bin/security", "unlock-keychain", "-p", password, keychain],
             "unlock_ci_keychain_after_build")
-        tests = run([cargo, "test", "--locked", "-p", "cryptexd", "--features",
-             "m8-local-startup-check", "--lib", "m8_owner_channel::", "--", "--test-threads=1"],
+        tests = run(fixture_rust_command(cargo, "test", "--locked", "-p", "cryptexd", "--features",
+             "m8-local-startup-check", "--lib", "m8_owner_channel::", "--", "--test-threads=1"),
             "test_signed_startup_shapes_and_closed_gates", 300)
         for name in ("local_startup::tests::startup_frames_bind_fixed_role_epoch_and_inventory",
                      "tests::candidate_has_no_enabled_or_configuration_fallback_path",
@@ -72,8 +84,8 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
             if "test m8_owner_channel::" + name + " ... ok" not in tests:
                 raise PreflightError("signed_startup_gate_test_missing")
         for selection in ("managed_profile::macos::tests::", "owned_process::macos::tests::"):
-            run([cargo, "test", "--locked", "-p", "cryptexd", "--features", "m8-local-startup-check",
-                 "--lib", selection, "--", "--test-threads=1"], "test_mac_transport_private_adapters", 60)
+            run(fixture_rust_command(cargo, "test", "--locked", "-p", "cryptexd", "--features", "m8-local-startup-check",
+                 "--lib", selection, "--", "--test-threads=1"), "test_mac_transport_private_adapters", 60)
     finally:
         for key, value in saved.items():
             if value is None:

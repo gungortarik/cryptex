@@ -11,10 +11,26 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mac_identity_preflight import PreflightError
-from mac_local_startup_ci import run_real_startup_checks, check_session_journal, sign_fixture_image
+from mac_local_startup_ci import run_real_startup_checks, check_session_journal, sign_fixture_image, fixture_rust_command
 
 
 class StartupRunnerTests(unittest.TestCase):
+    def test_optimized_fixture_profile_is_closed_and_preserves_assertions_and_overflow_checks(self):
+        expected = {}
+        for profile in ('dev','test'):
+            for package, level in (('sha2:0.10.9',3),('blake3:1.8.2',3),('cryptexd',1)):
+                prefix = f'profile.{profile}.package."{package}".'
+                expected.update({prefix+'opt-level':str(level), prefix+'debug-assertions':'true',
+                                 prefix+'overflow-checks':'true'})
+        for executable, command in (('cargo-clippy','clippy'),('cargo','build'),('cargo','test')):
+            args = fixture_rust_command(executable, command, '--locked')
+            self.assertEqual(args[:2], [executable,command])
+            self.assertEqual(args[-1], '--locked')
+            pairs = args[2:-1]
+            self.assertEqual(pairs[::2], ['--config']*18)
+            actual = dict(value.split('=',1) for value in pairs[1::2])
+            self.assertEqual(actual, expected)
+
     def test_each_certificate_signature_unlocks_only_its_fixture_immediately_before_use(self):
         calls = []
         def run(args, stage):
