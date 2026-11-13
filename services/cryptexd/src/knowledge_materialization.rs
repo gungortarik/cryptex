@@ -41,6 +41,14 @@ use crate::event_signing_key::load_existing_event_signing_key;
 use crate::local_device_identity::load_local_device_identity;
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 
+#[path = "knowledge_materialization/anchor_recovery.rs"]
+mod anchor_recovery;
+
+#[cfg(test)]
+thread_local! {
+    static POLICY_SCAN_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 #[derive(Debug)]
 pub enum KnowledgeMaterializationError {
     Canonical(CanonicalWriterError),
@@ -734,6 +742,9 @@ impl VerifiedTrustPolicySnapshot {
             let cryptex_events::AuthenticatedSecurityRecord::SecurityV3(event) = record else {
                 return false;
             };
+            if event.device_id() != &self.verified_trust_history.local_device {
+                return false;
+            }
             match event.payload() {
                 cryptex_events::SecurityPayloadV3::PeerApproved {
                     transaction_id: existing,
@@ -1110,6 +1121,8 @@ pub(crate) fn scan_verified_trust_policy(
     local_public_key: &[u8; 32],
     complete_devices: &[DeviceId],
 ) -> KnowledgeMaterializationResult<VerifiedTrustPolicySnapshot> {
+    #[cfg(test)]
+    POLICY_SCAN_COUNT.with(|count| count.set(count.get() + 1));
     crate::paths::assert_outside_repository(runtime_root)
         .map_err(|error| KnowledgeMaterializationError::InvalidInput(error.to_string()))?;
     let mut devices = complete_devices.to_vec();
@@ -1660,6 +1673,7 @@ fn append_local_peer_approval_anchor_with_mode<S: SecureStore + ?Sized>(
             event_id_records.push(record);
         }
         if let AuthenticatedSecurityRecord::SecurityV3(event) = record
+            && event.device_id() == &local_device
             && matches!(event.payload(), SecurityPayloadV3::PeerApproved { transaction_id: id, .. }
                 | SecurityPayloadV3::DeviceRestricted { transaction_id: id, .. }
                 | SecurityPayloadV3::DeviceSelfRetired { transaction_id: id, .. } if id == transaction_id)
@@ -1750,288 +1764,12 @@ fn append_local_peer_approval_anchor_with_mode<S: SecureStore + ?Sized>(
     .map_err(KnowledgeMaterializationError::Canonical)
 }
 
-/// Reconcile journal entries whose append outcome could have crossed a crash
-/// boundary before the daemon exposes IPC, retrieval, or managed transport.
-/// The journal is only a hint: each result is checked through the same full
-/// canonical trust scan and lock-scoped exact-match path as an append retry.
+/// Reconcile uncertain and completed operations against one complete locked
+/// canonical history before IPC, retrieval or transport. This never appends.
 pub fn reconcile_peer_approval_anchors_before_startup<S: SecureStore + ?Sized>(
-    runtime_root: &Path,
-    store: &S,
-    env: SecureStoreEnvironment,
+    runtime_root: &Path, store: &S, env: SecureStoreEnvironment,
 ) -> KnowledgeMaterializationResult<()> {
-    let journal = crate::bootstrap_journal::BootstrapJournalStore::new(runtime_root)
-        .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
-    let pending = journal
-        .load()
-        .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
-    let transactions = pending
-        .transactions
-        .into_iter()
-        .filter(|transaction| {
-            matches!(
-                transaction.state,
-                crate::bootstrap_journal::BootstrapState::AppendUnknown
-                    | crate::bootstrap_journal::BootstrapState::Anchored
-            )
-        })
-        .map(|transaction| {
-            let messages = transaction
-                .transcript_messages
-                .iter()
-                .cloned()
-                .map(String::into_bytes)
-                .collect::<Vec<_>>();
-            (transaction, messages)
-        })
-        .collect::<Vec<_>>();
-    if transactions.is_empty() {
-        return Ok(());
-    }
-
-    let brain = crate::identity_runtime::load_brain_identity(runtime_root)
-        .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
-    for (transaction, messages) in transactions {
-        if transaction.snapshot.operation
-            != crate::bootstrap_journal::BootstrapOperation::PeerAdmission
-        {
-            reconcile_owner_security_operation_before_startup(
-                runtime_root,
-                &brain.brain_id,
-                store,
-                env,
-                &transaction,
-            )?;
-            continue;
-        }
-        let transaction_id = transaction.snapshot.transaction_id;
-        if messages.len() != 4 {
-            return Err(KnowledgeMaterializationError::Verification(
-                "append-state journal transaction lacks a complete transcript; startup held".into(),
-            ));
-        }
-        append_local_peer_approval_anchor_with_mode(
-            runtime_root,
-            &brain.brain_id,
-            store,
-            env,
-            &transaction_id,
-            &messages,
-            AnchorAppendMode::StartupReconciliation,
-        )?;
-    }
-    Ok(())
-}
-
-fn reconcile_owner_security_operation_before_startup<S: SecureStore + ?Sized>(
-    runtime_root: &Path,
-    expected_brain_id: &str,
-    store: &S,
-    env: SecureStoreEnvironment,
-    transaction: &crate::bootstrap_journal::PendingBootstrapTransaction,
-) -> KnowledgeMaterializationResult<()> {
-    use crate::bootstrap_journal::{BootstrapOperation, BootstrapState};
-    use crate::trust_reducer::TrustReduction;
-
-    if !matches!(
-        transaction.snapshot.operation,
-        BootstrapOperation::DeviceRestriction | BootstrapOperation::SelfRetirement
-    ) || !matches!(
-        transaction.state,
-        BootstrapState::AppendUnknown | BootstrapState::Anchored
-    ) || transaction.append_attempts.len() != 1
-        || transaction.snapshot.brain_id != expected_brain_id
-    {
-        return Err(KnowledgeMaterializationError::Verification(
-            "owner-operation recovery journal shape is invalid; startup held".into(),
-        ));
-    }
-    let local_identity = load_local_device_identity(runtime_root, expected_brain_id)
-        .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
-    let local_device = DeviceId::new(local_identity.device_id)
-        .map_err(|error| KnowledgeMaterializationError::InvalidInput(error.to_string()))?;
-    let ready = load_existing_event_signing_key(store, env, runtime_root, &local_device)
-        .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
-    let local_key_id = SigningKeyId::parse(&ready.public.signing_key_id)
-        .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
-    if transaction.snapshot.local_identity.device_id != local_device.as_str()
-        || transaction.snapshot.local_identity.signing_key_id != local_key_id.as_str()
-    {
-        return Err(KnowledgeMaterializationError::Verification(
-            "owner-operation recovery identity differs from the enrolled device".into(),
-        ));
-    }
-
-    let complete_devices = read_canonical_device_inventory(runtime_root, None)?;
-    let policy = scan_verified_trust_policy(
-        runtime_root,
-        expected_brain_id,
-        &local_device,
-        &local_key_id,
-        &ready.signing_key.verifying_key().to_bytes(),
-        &complete_devices,
-    )?;
-    let TrustReduction::Ready(trust) = &policy.reduction else {
-        return Err(KnowledgeMaterializationError::Verification(
-            "owner-operation recovery trust policy is held".into(),
-        ));
-    };
-    if policy
-        .devices
-        .iter()
-        .any(|device| !trust.trusted_devices.contains(device))
-    {
-        return Err(KnowledgeMaterializationError::Verification(
-            "owner-operation recovery found an untrusted canonical stream".into(),
-        ));
-    }
-
-    let attempt = &transaction.append_attempts[0];
-    let mut event_id_records = Vec::new();
-    let mut transaction_records = Vec::new();
-    for record in policy.history.records() {
-        if record.event_id() == transaction.stable_event_id {
-            event_id_records.push(record);
-        }
-        if let AuthenticatedSecurityRecord::SecurityV3(event) = record
-            && matches!(event.payload(),
-                SecurityPayloadV3::DeviceRestricted { transaction_id: id, .. }
-                | SecurityPayloadV3::DeviceSelfRetired { transaction_id: id, .. }
-                if id == &transaction.snapshot.transaction_id)
-        {
-            transaction_records.push(event);
-        }
-    }
-    if event_id_records.len() != 1 || transaction_records.len() != 1 {
-        return Err(KnowledgeMaterializationError::Verification(
-            "uncertain owner append has no unique exact canonical match; startup held".into(),
-        ));
-    }
-    let AuthenticatedSecurityRecord::SecurityV3(event) = event_id_records[0] else {
-        return Err(KnowledgeMaterializationError::Verification(
-            "owner-operation event ID is occupied by a non-security record".into(),
-        ));
-    };
-    if !std::ptr::eq(event, transaction_records[0])
-        || event.device_id() != &local_device
-        || event.brain_id() != expected_brain_id
-        || event.signing_key_id() != &local_key_id
-        || event.device_seq().to_u64().ok() != Some(attempt.reserved_sequence)
-        || event.prev_content_hash().as_str() != attempt.predecessor_hash
-        || event.content_hash().as_str()
-            != attempt
-                .candidate_content_hash
-                .as_deref()
-                .unwrap_or_default()
-    {
-        return Err(KnowledgeMaterializationError::Verification(
-            "canonical owner-operation event differs from the pinned append attempt".into(),
-        ));
-    }
-
-    let snapshot = &transaction.snapshot;
-    let payload_matches = match (snapshot.operation, event.payload()) {
-        (
-            BootstrapOperation::DeviceRestriction,
-            SecurityPayloadV3::DeviceRestricted {
-                transaction_id,
-                target_device_id,
-                target_signing_key_id,
-                target_public_key,
-                reason,
-                cutoff_seq,
-                cutoff_content_hash,
-            },
-        ) => {
-            let target = snapshot.restriction_target.as_deref().unwrap_or_default();
-            let peer = snapshot.peer_identity.as_ref();
-            let binding = DeviceId::new(target.to_owned())
-                .ok()
-                .and_then(|device| policy.verified_trust_history.approved_peer_binding(&device));
-            let (expected_reason, expected_public_key) =
-                match (snapshot.restriction_reason, binding) {
-                    (Some(crate::bootstrap_journal::RestrictionReason::Retired), Some(binding)) => {
-                        (
-                            cryptex_events::RestrictionReasonV3::Retired,
-                            lower_hex(&binding.public_key),
-                        )
-                    }
-                    (
-                        Some(crate::bootstrap_journal::RestrictionReason::Compromised),
-                        Some(binding),
-                    ) => (
-                        cryptex_events::RestrictionReasonV3::Compromised,
-                        lower_hex(&binding.public_key),
-                    ),
-                    _ => {
-                        return Err(KnowledgeMaterializationError::Verification(
-                            "owner-operation recovery lacks its approved target binding".into(),
-                        ));
-                    }
-                };
-            let expected_cutoff = snapshot
-                .cutoff_seq
-                .as_deref()
-                .and_then(|value| value.parse::<u64>().ok());
-            transaction_id == &snapshot.transaction_id
-                && peer.is_some_and(|peer| {
-                    peer.device_id == target
-                        && peer.signing_key_id == target_signing_key_id.as_str()
-                })
-                && target_device_id.as_str() == target
-                && target_public_key == &expected_public_key
-                && *reason == expected_reason
-                && Some(*cutoff_seq) == expected_cutoff
-                && snapshot.cutoff_content_hash.as_deref() == Some(cutoff_content_hash.as_str())
-        }
-        (
-            BootstrapOperation::SelfRetirement,
-            SecurityPayloadV3::DeviceSelfRetired {
-                transaction_id,
-                last_authorized_seq,
-                last_authorized_content_hash,
-            },
-        ) => {
-            transaction_id == &snapshot.transaction_id
-                && snapshot
-                    .last_authorized_seq
-                    .as_deref()
-                    .and_then(|value| value.parse::<u64>().ok())
-                    == Some(*last_authorized_seq)
-                && snapshot.last_authorized_content_hash.as_deref()
-                    == Some(last_authorized_content_hash.as_str())
-        }
-        _ => false,
-    };
-    if !payload_matches {
-        return Err(KnowledgeMaterializationError::Verification(
-            "canonical owner-operation payload differs from the frozen owner snapshot".into(),
-        ));
-    }
-
-    if matches!(
-        transaction.state,
-        BootstrapState::AppendUnknown | BootstrapState::Anchored
-    ) {
-        let journal = crate::bootstrap_journal::BootstrapJournalStore::new(runtime_root)
-            .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
-        let current = journal
-            .load()
-            .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
-        if current
-            .transactions
-            .iter()
-            .find(|item| item.snapshot.transaction_id == snapshot.transaction_id)
-            != Some(transaction)
-        {
-            return Err(KnowledgeMaterializationError::Verification(
-                "owner-operation journal changed during recovery".into(),
-            ));
-        }
-        journal
-            .record_verified_anchor_event(&snapshot.transaction_id, event)
-            .map_err(|error| KnowledgeMaterializationError::Verification(error.to_string()))?;
-    }
-    Ok(())
+    anchor_recovery::reconcile_before_startup(runtime_root, store, env)
 }
 
 fn ensure_anchor_append_retry_is_safe(
@@ -3892,6 +3630,10 @@ fn build_progress(
     }
     Ok(output)
 }
+
+#[cfg(test)]
+#[path = "knowledge_materialization/pairing_recovery_tests.rs"]
+mod pairing_recovery_tests;
 
 #[cfg(test)]
 mod tests {

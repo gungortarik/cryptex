@@ -702,7 +702,7 @@ pub(crate) fn append_memory_note_with_lock<S: SecureStore + ?Sized>(
 /// device lock (which must retain the canonical inventory lock). This helper
 /// persists the exact append attempt before touching the canonical pack and
 /// advances the journal only after a full chain reread confirms the candidate.
-/// The caller must perform exhaustive Brain-wide event/transaction lookup
+/// The caller must perform exhaustive Brain-wide event-ID and author-scoped transaction lookup
 /// under the same inventory lock before invoking it.
 #[allow(dead_code)] // Connected after the startup reconciliation gate is wired.
 pub(crate) fn append_peer_approved_anchor_with_lock(

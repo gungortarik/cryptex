@@ -52,6 +52,7 @@ enum JournalWriteFault {
 #[cfg(test)]
 thread_local! {
     static JOURNAL_WRITE_FAULT: std::cell::Cell<Option<JournalWriteFault>> = const { std::cell::Cell::new(None) };
+    pub(crate) static JOURNAL_WRITES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -2013,7 +2014,8 @@ impl BootstrapJournalStore {
         transaction_id: &str,
         event: &cryptex_events::SecurityEventV3,
     ) -> Result<(), BootstrapJournalError> {
-        self.update(|journal| {
+        self.with_lock(|| {
+            let mut journal = self.load_unlocked()?;
             let transaction = journal
                 .transactions
                 .iter_mut()
@@ -2021,8 +2023,71 @@ impl BootstrapJournalStore {
                 .ok_or(BootstrapJournalError::Conflict(
                     "anchor transaction is not journaled",
                 ))?;
-            transaction.record_verified_anchor_event(event)
+            let before = transaction.clone();
+            transaction.record_verified_anchor_event(event)?;
+            let changed = *transaction != before;
+            self.persist_verified_anchors(&journal, changed)
         })
+    }
+
+    /// The caller keeps the complete canonical snapshot locked. Compare the
+    /// entire pre-scan journal before applying any freshly proved witnesses;
+    /// a later mismatch cannot leave earlier entries partially committed.
+    pub(crate) fn reconcile_verified_anchor_events(
+        &self,
+        expected: &PendingBootstrapJournal,
+        anchors: &[(&PendingBootstrapTransaction, &cryptex_events::SecurityEventV3)],
+    ) -> Result<(), BootstrapJournalError> {
+        self.with_lock(|| {
+            let mut journal = self.load_unlocked()?;
+            if &journal != expected {
+                return Err(BootstrapJournalError::Conflict(
+                    "bootstrap journal changed during canonical reconciliation",
+                ));
+            }
+            let positions = journal.transactions.iter().enumerate()
+                .map(|(index, item)| (item.snapshot.transaction_id.clone(), index))
+                .collect::<std::collections::BTreeMap<_, _>>();
+            let mut seen = std::collections::BTreeSet::new();
+            let mut changed = false;
+            for (initial, event) in anchors {
+                let id = &initial.snapshot.transaction_id;
+                if !seen.insert(id) {
+                    return Err(BootstrapJournalError::Conflict("duplicate canonical proof"));
+                }
+                let index = positions.get(id).copied().ok_or(BootstrapJournalError::Conflict(
+                    "canonical proof transaction is not journaled",
+                ))?;
+                let transaction = &mut journal.transactions[index];
+                if transaction != *initial {
+                    return Err(BootstrapJournalError::Conflict("canonical proof snapshot changed"));
+                }
+                transaction.record_verified_anchor_event(event)?;
+                changed |= transaction != *initial;
+            }
+            let required = expected.transactions.iter().filter(|item| matches!(item.state,
+                BootstrapState::Anchored | BootstrapState::AppendUnknown)).count();
+            if seen.len() != required {
+                return Err(BootstrapJournalError::Conflict("incomplete canonical recovery proofs"));
+            }
+            self.persist_verified_anchors(&journal, changed)
+        })
+    }
+
+    fn persist_verified_anchors(&self, journal: &PendingBootstrapJournal, changed: bool)
+        -> Result<(), BootstrapJournalError> {
+        if changed {
+            journal.validate()?;
+            let bytes = serde_json::to_vec(journal)
+                .map_err(|_| BootstrapJournalError::Corrupt("journal serialization failed"))?;
+            if bytes.len() > MAX_JOURNAL_BYTES { return Err(journal.payload_capacity_error()); }
+            self.write_unlocked(&bytes)
+        } else {
+            // A previous post-replacement failure may have left visible but
+            // uncertain bytes. Re-establish durability without replacing an
+            // unchanged journal. Never turn a sync refusal into success.
+            self.sync_current_unlocked()
+        }
     }
 
     fn with_lock<T>(
@@ -2151,6 +2216,8 @@ impl BootstrapJournalStore {
     }
 
     fn write_unlocked(&self, bytes: &[u8]) -> Result<(), BootstrapJournalError> {
+        #[cfg(test)]
+        JOURNAL_WRITES.with(|count| count.set(count.get() + 1));
         let path = self.root.join(JOURNAL_FILE);
         let tmp = self.unique_temp_path()?;
         let mut file = OpenOptions::new()
@@ -2185,6 +2252,11 @@ impl BootstrapJournalStore {
                 )),
             }
         })?;
+        self.sync_current_unlocked()
+    }
+
+    fn sync_current_unlocked(&self) -> Result<(), BootstrapJournalError> {
+        let path = self.root.join(JOURNAL_FILE);
         let resynced = (|| {
             #[cfg(test)]
             journal_fault(JournalWriteFault::Reopen)?;
