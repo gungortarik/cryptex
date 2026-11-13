@@ -12,7 +12,8 @@ from mac_transport_check import _cleanup_api
 
 MARKERS = ("mac_transport_combined_supervisors_dead_engine_live=passed",
            "mac_transport_combined_restart_refused_unchanged=passed",
-           "mac_transport_combined_guardian_cleanup=passed")
+           "mac_transport_combined_guardian_cleanup=passed",
+           "mac_transport_combined_lost_output_cleanup=passed")
 
 
 def capture_fixed(path, limit=262144):
@@ -104,7 +105,7 @@ def verify_exclusion(binary, root, run, engine_live, before):
     return before
 
 
-def check_combined_loss(binary, root, run):
+def _check_case(binary, root, run, *, lost_output):
     root = root.resolve()
     env = os.environ.copy()
     env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -177,7 +178,11 @@ def check_combined_loss(binary, root, run):
             live_engine_snapshot(snapshot(), group, guard, engines=engines)
         engine_live()
         verify_exclusion(binary, root, run, engine_live, before)
-        process.stdin.write(b"K")
+        if lost_output:
+            # An invalid byte must be refused, but its failed diagnostic write
+            # to this now-closed pipe must not bypass own-group cleanup.
+            process.stdout.close()
+        process.stdin.write(b"!" if lost_output else b"K")
         process.stdin.flush()
         process.stdin.close()
         until = time.monotonic() + 8
@@ -209,6 +214,14 @@ def check_combined_loss(binary, root, run):
         elif (root / "00000000000000000000000000000001/profile.json").exists():
             raise PreflightError("combined_loss_cleanup_ownership_unresolved")
         _cleanup_api(binary, root, run)
-    if passed:
-        for marker in MARKERS:
-            print(marker)
+    if not passed:
+        raise PreflightError("combined_loss_case_incomplete")
+
+
+def check_combined_loss(binary, root, run):
+    # Fresh independent profiles, no repeat of accepted identity/pairing flows.
+    root.mkdir(mode=0o700)
+    _check_case(binary, root / "normal", run, lost_output=False)
+    _check_case(binary, root / "lost-output", run, lost_output=True)
+    for marker in MARKERS:
+        print(marker)

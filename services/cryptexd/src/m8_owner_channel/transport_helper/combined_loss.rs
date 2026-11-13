@@ -155,6 +155,11 @@ fn record(root: &Path, leaf: &str, bytes: &[u8]) -> Result<(), Error> {
         .map_err(|_| Error::Profile)
 }
 
+fn diagnostic(out: &mut impl Write, error: Error) {
+    // A closed collector pipe must never panic before mandatory group cleanup.
+    let _ = writeln!(out, "component=combined_loss_guard status=failed error={error}");
+}
+
 fn guard(root: &Path, epoch: &[u8; 16]) -> Result<(), Error> {
     private_root(root)?;
     let parent = unsafe { libc::getppid() };
@@ -242,7 +247,7 @@ fn guard(root: &Path, epoch: &[u8; 16]) -> Result<(), Error> {
         }
     })();
     if let Err(error) = result {
-        eprintln!("component=combined_loss_guard status=failed error={error}");
+        diagnostic(&mut std::io::stderr().lock(), error);
     }
     // Apple kill(2): pid 0 addresses the sender's CURRENT process group.
     // We cannot accidentally signal a recycled numeric group identifier.
@@ -319,6 +324,19 @@ pub(super) fn entry(args: &[String]) -> Option<Result<(), Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn lost_diagnostic_pipe_does_not_interrupt_cleanup_control_flow() {
+        struct Closed;
+        impl Write for Closed {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        diagnostic(&mut Closed, Error::Channel);
+    }
     #[test]
     fn fixture_purposes_and_roles_never_match_the_transport_protocol() {
         // Independent of a Release object, the fixed purpose prefixes cannot

@@ -1,15 +1,36 @@
 import os
+import contextlib
+import io
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from mac_combined_loss_check import (guardian_identity, live_engine_snapshot,
-    profile_snapshot, verify_exclusion)
+    profile_snapshot, verify_exclusion, check_combined_loss, MARKERS)
 from mac_identity_preflight import PreflightError
 
 
 class CombinedLossTests(unittest.TestCase):
+    def test_aggregate_requires_normal_and_lost_output_cases_before_any_pass_marker(self):
+        for fail in (False, True):
+            with self.subTest(fail=fail), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / 'cases'
+                calls = []
+                output = io.StringIO()
+                def case(_binary, selected, _run, *, lost_output):
+                    calls.append((selected.name,lost_output))
+                    if fail and lost_output:
+                        raise PreflightError('injected_closed_output_cleanup_failure')
+                with patch('mac_combined_loss_check._check_case', side_effect=case), contextlib.redirect_stdout(output):
+                    if fail:
+                        with self.assertRaises(PreflightError):
+                            check_combined_loss(Path('daemon'), root, None)
+                    else:
+                        check_combined_loss(Path('daemon'), root, None)
+                self.assertEqual(calls, [('normal',False),('lost-output',True)])
+                self.assertEqual(output.getvalue().splitlines(), [] if fail else list(MARKERS))
+
     def test_requires_dead_helper_live_guardian_and_distinct_live_engine_processes(self):
         before = b"20 10 20 Z\n21 1 20 S\n22 1 20 S\n23 22 20 S\n"
         engines = live_engine_snapshot(before, 20, 21, driver=10)

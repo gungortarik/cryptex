@@ -52,8 +52,9 @@ class CombinedOwnerTests(unittest.TestCase):
             self.assertEqual(report['outcome'], 'passed')
             self.assertEqual(report['source'], 'a'*40)
             self.assertTrue(all(report.get(key) is True for key in (
-                'combined_supervisor_loss_and_refusal_verified','credential_cleanup_verified','runtime_cleanup_verified')))
-            self.assertEqual(len(report), 6)
+                'combined_supervisor_loss_and_refusal_verified','credential_cleanup_verified','runtime_cleanup_verified',
+                'guardian_output_loss_cleanup_verified')))
+            self.assertEqual(len(report), 7)
             self.assertEqual([p.name for p in root.iterdir()], ['package'])
 
     def test_failed_scenario_preserves_evidence_and_never_claims_cleanup(self):

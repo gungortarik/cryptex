@@ -52,8 +52,15 @@ or unsafe metadata fails and preserves evidence; there is no PID adoption or raw
 Keychain deletion fallback. Group containment does not promise automatic Keychain
 cleanup if the collector itself is killed.
 
-The new MAC-BIRLIKTE one-click package runs only this new scenario. It returns an
-aggregate receipt with the exact source and separate scenario/credential/runtime
+The new MAC-BIRLIKTE one-click package runs two fresh variants of only this new
+scenario: ordinary K cleanup, then invalid control with the collector's output
+reader closed. The latter must still clean its own group even when writing its
+refusal diagnostic fails. The diagnostic uses a non-panicking best-effort writer;
+it cannot skip mandatory cleanup. [Rust's eprintln documentation](https://doc.rust-lang.org/std/macro.eprintln.html)
+specifies that a stderr write failure can panic, so it is not used at that point.
+The exported launcher keeps its fixed 180-second outer watchdog.
+It returns an aggregate receipt with the exact source and separate scenario,
+closed-output cleanup, credential and runtime
 booleans. Required acceptance: source review, exact-source native Mac/Windows CI
 and execution of the exported launcher, followed by one owner-Mac result. Earlier
 Mac identity/pairing owner receipts remain accepted without an unchanged rerun.

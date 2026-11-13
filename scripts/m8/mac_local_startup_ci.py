@@ -295,6 +295,6 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         if (report.get("source") != source_commit or report.get("outcome") != "passed"
                 or not all(report.get(key) is True for key in (
                     "combined_supervisor_loss_and_refusal_verified", "credential_cleanup_verified",
-                    "runtime_cleanup_verified"))):
+                    "runtime_cleanup_verified", "guardian_output_loss_cleanup_verified"))):
             raise PreflightError("exported_combined_loss_result_failed")
         print("exported_combined_loss_launcher=passed")

@@ -38,6 +38,7 @@ def main():
         try:
             check_combined_loss(package / "positive.app/Contents/MacOS/cryptexd", root / "transport", run)
             report["combined_supervisor_loss_and_refusal_verified"] = True
+            report["guardian_output_loss_cleanup_verified"] = True
             report["credential_cleanup_verified"] = True
             shutil.rmtree(root)
             report["runtime_cleanup_verified"] = True
