@@ -1,0 +1,191 @@
+{
+  "receipt_version": 1,
+  "scope": "Terminal journal wire3 retention and canonical-locked startup recovery; not product activation or M8 completion",
+  "source_commit": "40da5f7dc0a3139828b915f37eecab9f2d9c1a15",
+  "baseline": {
+    "source_commit": "adad524623352dbcdc94b478040886637a777df0",
+    "run_id": 43514494333,
+    "conclusion": "success"
+  },
+  "ordinary_readiness": {
+    "run_id": 43518226858,
+    "run_url": "https://github.com/gungortarik/cryptex/actions/runs/43518226858",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 132205579429,
+        "name": "Readiness (macos-latest)",
+        "conclusion": "success",
+        "daemon_library_passed": 532,
+        "daemon_library_ignored": 7,
+        "terminal_tests_passed": 14,
+        "pairing_recovery_tests_passed": 4
+      },
+      {
+        "id": 132205579873,
+        "name": "Readiness (windows-latest)",
+        "conclusion": "success",
+        "daemon_library_passed": 653,
+        "daemon_library_ignored": 5,
+        "terminal_tests_passed": 14,
+        "pairing_recovery_tests_passed": 4
+      },
+      {
+        "id": 132205579179,
+        "name": "IPC cross-account ACL (Windows)",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "default_off_native_regression": {
+    "run_id": 43518652758,
+    "run_url": "https://github.com/gungortarik/cryptex/actions/runs/43518652758",
+    "workflow_input_desktop_startup_only": true,
+    "workflow_input_mac_ui_source": "40da5f7dc0a3139828b915f37eecab9f2d9c1a15",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 132207022218,
+        "name": "Desktop startup (macos-latest)",
+        "conclusion": "success"
+      },
+      {
+        "id": 132207021938,
+        "name": "Desktop startup (windows-latest)",
+        "conclusion": "success"
+      }
+    ],
+    "macos_markers": [
+      "exported_combined_loss_launcher=passed",
+      "exported_durable_launcher=passed",
+      "exported_transport_launcher=passed",
+      "local_certificate_fixture_cleanup=passed",
+      "local_certificate_native_exchange=passed",
+      "mac_transport_clean_stop_ack=passed",
+      "mac_transport_combined_guardian_cleanup=passed",
+      "mac_transport_combined_lost_output_cleanup=passed",
+      "mac_transport_combined_restart_refused_unchanged=passed",
+      "mac_transport_combined_supervisors_dead_engine_live=passed",
+      "mac_transport_daemon_loss_group_exit=passed",
+      "mac_transport_endpoint_fd_reuse=passed",
+      "mac_transport_endpoint_ipv4_close=passed",
+      "mac_transport_endpoint_ipv6_close=passed",
+      "mac_transport_endpoint_listener_only=passed",
+      "mac_transport_endpoint_pre_send_exec=passed",
+      "mac_transport_endpoint_queued_exec=passed",
+      "mac_transport_endpoint_races=passed",
+      "mac_transport_endpoint_root_loss=passed",
+      "mac_transport_endpoint_shutdown_exit=passed",
+      "mac_transport_foreign_socket_no_credentials=passed",
+      "mac_transport_helper_loss_cleanup=passed",
+      "mac_transport_live_profile_package_changes_refused=passed",
+      "mac_transport_missing_key_no_regeneration=passed",
+      "mac_transport_owned_identity_restart=passed",
+      "mac_transport_unresolved_restart_refused=passed",
+      "native_keychain_confirmed_history_preserved=passed",
+      "native_keychain_cross_daemon_wire_replay_refused=passed",
+      "native_keychain_missing_key_refused=passed",
+      "native_keychain_old_local_handle_refused=passed",
+      "native_keychain_same_profile_restart=passed",
+      "native_lost_session_and_old_handle_refused=passed",
+      "native_managed_pairing_clean_shutdown=passed",
+      "native_managed_pairing_restart_idempotent=passed",
+      "native_managed_transport_pairing=passed",
+      "native_pairing_boundary_refusals=passed",
+      "native_prepare_and_actor_failures_burn_grants=passed",
+      "native_synthetic_approval_sessions=passed",
+      "native_ui_quit_preserved_seed=passed",
+      "real_signed_desktop_daemon_startup_restart=passed",
+      "real_signed_startup_refused_missing_leaf=passed",
+      "real_signed_startup_refused_missing_rendezvous=passed",
+      "real_signed_startup_refused_modified_content=passed",
+      "real_signed_startup_refused_wrong_cdhash=passed",
+      "real_signed_startup_refused_wrong_desktop_identifier=passed",
+      "real_signed_startup_refused_wrong_identifier=passed",
+      "real_signed_startup_refused_wrong_parent_cdhash=passed",
+      "real_signed_startup_refused_wrong_release=passed",
+      "verified_tauri_assets=passed"
+    ],
+    "macos_marker_count": 49,
+    "http_boundary_cases": [
+      "ordinary_http_close_preserves_live_observation",
+      "queued_valid_body_cannot_authorize_a_lost_generation",
+      "shutdown_ack_does_not_claim_live_identity_after_exit",
+      "stale_or_changed_peer_refuses_before_any_http_bytes",
+      "synchronous_validation_never_resets_the_request_deadline"
+    ],
+    "http_boundary_passed_per_platform": 5,
+    "exported_durable_transport_and_combined_loss_launchers_passed": true,
+    "artifact": {
+      "id": 14082556539,
+      "name": "mac-interactive-ui",
+      "archive_digest": "sha256:82189826ecfda3332de7f5ea2372f23de4010c1536185d9fea02de6cc2dcd2fb",
+      "digest_source": "GitHub Actions artifact metadata; not independently downloaded and rehashed",
+      "size_in_bytes": 95115553
+    }
+  },
+  "new_native_test_names": [
+    "bootstrap_journal::terminal::tests::proof_batch_is_complete_compares_current_journal_and_commits_once",
+    "bootstrap_journal::terminal::tests::unchanged_canonical_witness_resyncs_without_replacement_and_reports_uncertainty",
+    "knowledge_materialization::pairing_recovery_tests::imported_bilateral_counterpart_allows_local_retry_and_startup_without_another_append",
+    "knowledge_materialization::pairing_recovery_tests::imported_counterpart_does_not_relax_global_event_id_uniqueness",
+    "knowledge_materialization::pairing_recovery_tests::an_already_trusted_peers_anchor_may_arrive_before_the_local_completion",
+    "knowledge_materialization::pairing_recovery_tests::seventeen_real_anchors_reopen_with_one_scan_no_rewrite_and_no_duplicate_append"
+  ],
+  "seventeen_actual_anchors": {
+    "canonical_writer": "daemon writer with actual enrolled signing keys",
+    "fresh_transaction_and_nonce_pairs": 17,
+    "reconciliations_after_reopen": 2,
+    "policy_scans_per_reconciliation": 1,
+    "journal_rewrites_per_unchanged_reconciliation": 0,
+    "canonical_and_journal_bytes_preserved": true,
+    "each_domain_reconciliation_below_existing_native_startup_budget_seconds": 10,
+    "fixture_setup_is_outside_that_budget": true,
+    "complete_desktop_process_startup_test": false,
+    "transport_arrival": "new sealed destination created by a daemon-owned locked fixture; not live Syncthing delivery",
+    "late_forged_witness_cannot_partially_commit_earlier_legacy_upgrade": true
+  },
+  "local_checks": {
+    "python_tests": 105,
+    "python_platform_skips": 5,
+    "powershell_test_groups": 8,
+    "failures": 0,
+    "rust_execution": "Application Control4551 blocked local tools; exact-source native CI used without bypass"
+  },
+  "independent_agent_source_review": {
+    "implementation_commit": "2a1af78e5e37fbb7e36950b3fa7650e9b2b7f9fd",
+    "remaining_actionable_findings": 0,
+    "followup": "40da5f7 is native rustfmt output only",
+    "external_human_audit": false
+  },
+  "failed_attempts": [
+    {
+      "run_id": 43512759064,
+      "source": "30504aa",
+      "reason": "Rust formatting"
+    },
+    {
+      "run_id": 43513157963,
+      "source": "277849b",
+      "reason": "strict clippy redundant closure calls in non-test build"
+    },
+    {
+      "run_id": 43513743214,
+      "source": "5e1c1c2",
+      "reason": "missing serde_json::Value test import"
+    },
+    {
+      "run_id": 43518008167,
+      "source": "2a1af78",
+      "reason": "Rust formatting; both readiness jobs refused before tests"
+    }
+  ],
+  "limits": [
+    "Existing ignored tests are not counted as passed ordinary readiness.",
+    "No physical power-loss guarantee; injected I/O failures preserve documented uncertainty.",
+    "No new owner Mac or host/VM manual acceptance run requested.",
+    "Stored witnesses never replace fresh canonical verification.",
+    "Ordinary Mac product routes and configured publisher factory remain disabled.",
+    "Strict candidate schema artifacts, old-product signed-v3 Brain hold, signed target-history extrema, product-path integration and final M8 acceptance remain open."
+  ]
+}

@@ -1,7 +1,8 @@
 # M8 terminal journal retention decision
 
-Status: ACCEPTED FOR IMPLEMENTATION on 2026-11-13; migration not yet implemented.
-Source reviewed: `06b0c29b4333942a10f54db216fc5843795eaaa9`.
+Status: SELECTED IMPLEMENTATION VERIFIED on 2026-11-13 through `40da5f7`.
+This closes the terminal-retention/recovery slice, not M8. Original problem source:
+`06b0c29b4333942a10f54db216fc5843795eaaa9`.
 
 The owner delegated the choice ("hangisi iyiyse sen onu sec") after receiving
 the concrete proposal below. The selected option is compact terminal receipts
@@ -12,7 +13,7 @@ The owner separately selected macOS 26+ as sufficient for the application.
 
 ## Problem
 
-`PendingBootstrapJournal` currently counts completed/cancelled transactions
+The original `PendingBootstrapJournal` counted completed/cancelled transactions
 against the sixteen-pending-operation bound. Sixteen terminal entries therefore
 prevent another pairing/restriction/retirement even with no active operation.
 R3 in the ADR-0019 addendum bounds pending operations and the whole journal to
@@ -92,7 +93,42 @@ post-replacement reopen/sync/directory-sync failures report typed unconfirmed
 durability and preserve the visible candidate rather than falsely claim rollback.
 Windows replacement/reopen semantics do not establish Unix parent-directory sync.
 
-Native verification/source review of the implementation is still pending.
+Baseline wire3 implementation through `adad524` passed full ordinary Mac and
+Windows readiness plus the Windows cross-account IPC ACL in
+[CI43514494333](https://github.com/gungortarik/cryptex/actions/runs/43514494333).
+Daemon library: Mac526passed/7ignored, Windows647passed/5ignored, zero failures.
+This includes the twelve terminal tests, actual multi-process serialization and
+existing self-retirement durable-append recovery. Local collectors pass105Python
+tests with5pre-existing platform skips and8PowerShell groups. It is a codec and
+recovery baseline, not acceptance of seventeen real canonical approvals or
+default-off native Desktop integration.
+
+Subsequent independent review found a pre-existing cross-author transaction
+lookup bug and startup's repeated full-history scans/journal replacements.
+The follow-up uses the specified local-author transaction namespace while
+retaining global event-ID collision refusal. Startup verifies every selected
+receipt against one complete inventory/device-locked canonical snapshot, then
+compares the entire journal under its lock and commits changes once. Unchanged
+witnesses re-sync the existing file and Unix parent without replacement; a
+previous post-replacement durability failure is not silently forgotten. Generic
+journal updates retain their original durability behavior.
+
+The follow-up adds genuine bilateral anchors, an imported counterpart before
+and after local completion, global-ID refusal and seventeen actual daemon-written
+anchors with fresh per-transaction nonces. Two fresh domain reconciliations must
+use one scan and zero journal writes, preserve canonical and journal bytes and
+finish inside the existing ten-second native startup budget. This measures the
+domain phase, not a complete Desktop process restart. A forged final witness
+alongside an earlier legacy upgrade must fail without any partial commit. Native
+execution of this follow-up passed on both platforms in full
+[CI43518226858](https://github.com/gungortarik/cryptex/actions/runs/43518226858):
+Mac532passed/7ignored and Windows653passed/5ignored, including fourteen terminal
+tests and four real-pairing recovery tests each. The same source passed scoped
+[native CI43518652758](https://github.com/gungortarik/cryptex/actions/runs/43518652758),
+including49Mac markers, five HTTP boundary cases per platform and all three
+exported launchers. Independent agent review has no remaining actionable finding.
+See the [machine receipt](../../evidence/m8/m8-terminal-journal-native-40da5f7.json)
+and [review record](../../evidence/m8/m8-terminal-journal-review-20261113.md).
 
 Exercise sixteen cancelled and sixteen anchored operations followed by a new
 operation, migration/reopen, exact retry and changed-request rejection, cancelled

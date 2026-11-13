@@ -1,5 +1,56 @@
 # 34 — Current Implementation Handoff
 
+## Terminal retention and bilateral recovery — November 13
+
+The owner selected macOS26+ and delegated the concrete journal decision; both
+decisions are recorded. The selected terminal-retention/recovery implementation
+is independently source-reviewed and native-verified through
+`40da5f7dc0a3139828b915f37eecab9f2d9c1a15`. This slice is COMPLETE; M8 is OPEN.
+Do not repeat the terminal migration or ask the owner to choose it again.
+
+Wire3 keeps permanent cancellation receipts, canonical-proved anchors, uncertain
+evidence and the existing one-MiB bound. Legacy1/2 files are validated before
+lazy durable migration. Terminal data never grants trust. Independent review also
+found and corrected the pre-existing cross-author transaction lookup bug:
+transaction IDs are local-author scoped across security types, while event IDs
+remain global. Startup now performs one complete canonical-locked scan and one
+journal compare/batch update. Unchanged witnesses are re-synced without file
+replacement; prior durability uncertainty is not silently forgotten.
+
+Exact-source [full CI43518226858](https://github.com/gungortarik/cryptex/actions/runs/43518226858)
+passed Mac/Windows readiness and Windows cross-account IPC ACL. Daemon library:
+Mac532passed/7ignored, Windows653passed/5ignored, zero failures; fourteen terminal
+tests and four genuine bilateral/recovery tests passed each platform. Seventeen
+actual daemon-written local anchors reopen twice with one scan, no journal
+rewrite and unchanged canonical bytes inside the existing per-reconciliation
+ten-second native startup budget. Fixture setup is outside that budget; this
+does not prove full Desktop process startup with seventeen operations.
+
+Same-source [native CI43518652758](https://github.com/gungortarik/cryptex/actions/runs/43518652758)
+also passed both platforms:49required Mac markers, eight SDK endpoint cases,
+five HTTP boundary tests per platform, actual signed startup, Syncthing
+identity/pairing/restart/loss and the three exported launchers. No unchanged
+owner package is requested. Local105Python tests (5platform skips),8PowerShell
+groups and diff checks passed. Local Rust remains blocked by Application
+Control4551; exact native CI was used without bypass.
+
+See the [review](../evidence/m8/m8-terminal-journal-review-20261113.md),
+[machine receipt](../evidence/m8/m8-terminal-journal-native-40da5f7.json) and
+[nine-row recovery coverage map](../evidence/m8/m8-recovery-coverage-map-20261113.md).
+Incoming publication is Windows-only; ordinary Mac readiness must not be cited
+as its execution. The map preserves that limitation and actual remaining gaps.
+
+**Next bounded implementation:** strict candidate v3/bootstrap JSON Schema and
+TypeScript artifacts from the Rust wire definitions, preserving frozen v1/v2
+and exact golden bytes. Existing generation lives in `crates/events/src/schema.rs`,
+`crates/events/src/bin/schema_gen.rs` and `packages/schemas/scripts/generate-ts.mjs`.
+Then continue the explicit old-product Brain-hold/byte-preservation and signed
+target-history boundary gates in [M8_REMAINING_ACCEPTANCE.md](M8_REMAINING_ACCEPTANCE.md).
+Full addendum acceptance, Mac product image policy, OS-floor enforcement,
+supported product-path integration and final scope/security/platform/human
+acceptance remain open. Default product gates stay closed; M9 has not begun.
+Preserve untracked `scripts/m8/__pycache__/`.
+
 ## Protocol closeout continuation — November 13
 
 The owner asked to continue toward M8 closure. Independent source review found
@@ -45,12 +96,10 @@ diff checks pass. Local Rust execution remains blocked by Application Control
 4551; no bypass was attempted. Dependencies/runtime stay outside the repository.
 Preserve the existing untracked `scripts/m8/__pycache__/`.
 
-**Next continuation:** the owner selected macOS 26+ and delegated the journal
-choice on November 13. The recommended
-[compact terminal-receipt decision](proposals/m8-terminal-journal-retention.md)
-is selected for implementation; do not ask again. It preserves cancelled-ID
-refusal and canonical retry binding under the existing one-MiB bound, retaining
-uncertain evidence. Implement/verify that migration and continue the finite protocol
+**Later continuation:** the owner selected macOS26+ and delegated the journal
+choice. The [compact terminal-receipt decision](proposals/m8-terminal-journal-retention.md)
+is implemented and verified as recorded above; do not ask again or repeat it.
+Continue the finite protocol
 gates in [M8_REMAINING_ACCEPTANCE.md](M8_REMAINING_ACCEPTANCE.md): schema artifacts,
 old-product Brain hold/byte preservation, signed target-history boundary proofs,
 uncovered durability/rebuild/key-loss cases and complete protocol acceptance.

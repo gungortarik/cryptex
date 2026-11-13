@@ -28,12 +28,15 @@ accepted [ADR-0019](adr/ADR-0019-m8-peer-trust-design-proposal.md),
 
    November 13 protocol review makes the remaining items explicit:
 
-   - Fix the sixteen-terminal-entry availability cap while preserving permanent
-     cancellation refusal, canonical retry binding and uncertain-append evidence.
-     The [bounded terminal-receipt proposal](proposals/m8-terminal-journal-retention.md)
-     is concrete and independently source-reviewed. The owner delegated the
-     choice on November 13; compact receipts were selected for implementation.
-     Migration implementation/verification remains pending.
+   - **Terminal-retention/recovery slice COMPLETE through40da5f7.** The
+     [selected compact receipts](proposals/m8-terminal-journal-retention.md)
+     preserve cancellation refusal, uncertain evidence and canonical retry
+     binding under the existing one-MiB cap. Fourteen terminal and four real
+     bilateral recovery tests passed each platform; seventeen genuine local
+     anchors reopen with one scan/no journal rewrite and unchanged canonical
+     bytes. Full [CI43518226858](https://github.com/gungortarik/cryptex/actions/runs/43518226858)
+     and same-source default-off [native CI43518652758](https://github.com/gungortarik/cryptex/actions/runs/43518652758)
+     passed. This is not final product integration acceptance.
    - Independent bootstrap/v3/owner-digest wire fixtures passed full native
      [CI43505609309](https://github.com/gungortarik/cryptex/actions/runs/43505609309)
      on `e49e318`; that slice is complete. Strict candidate
@@ -41,8 +44,9 @@ accepted [ADR-0019](adr/ADR-0019-m8-peer-trust-design-proposal.md),
    - Finish the old-product Brain-hold/immutable-byte downgrade proof and signed
      target-history cutoff `0`/`1`/`u64::MAX` before/at/after checks. Envelope-only
      refusals and cutoff string vectors do not establish those higher layers.
-   - Map the existing recovery/import/concurrency/platform receipts to each §5
-     crash row. Fill only uncovered write/flush/replace/readback/torn-journal,
+   - The [§5 recovery coverage map](../evidence/m8/m8-recovery-coverage-map-20261113.md)
+     now links existing checks and precise platform limits to all nine rows.
+     Fill only its uncovered write/flush/replace/readback/torn-journal,
      derived rebuild and missing-key cases; do not repeat completed VM packages
      or relabel process-kill tests as power-loss durability.
    - Accept the complete independently reviewed protocol and its explicit SCC

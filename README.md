@@ -9,10 +9,15 @@ now pin the exact bootstrap/v3 writer bytes, hashes, owner display digests and
 mixed-version chain. The Windows crash test now captures the original child
 process handle and requires actual termination within one unchanged budget.
 The [review record](evidence/m8/m8-protocol-vectors-review-20261113.md) separates
-native execution evidence from protocol/product acceptance. A remaining
-sixteen-terminal-entry journal cap has a concrete
-[retention decision](docs/proposals/m8-terminal-journal-retention.md), selected
-for implementation after owner delegation. The owner selected macOS 26+; its
+native execution evidence from protocol/product acceptance. The selected
+[terminal-retention/recovery implementation](docs/proposals/m8-terminal-journal-retention.md)
+now passes full [Mac/Windows CI43518226858](https://github.com/gungortarik/cryptex/actions/runs/43518226858)
+and same-source [native CI43518652758](https://github.com/gungortarik/cryptex/actions/runs/43518652758)
+on `40da5f7`: seventeen real canonical anchors reopen without duplicate append,
+and bilateral transaction IDs reconcile in their correct author namespace.
+The [review and receipt](evidence/m8/m8-terminal-journal-review-20261113.md)
+record evidence and limits. Next are strict v3/bootstrap schema artifacts and
+the remaining protocol/product gates. The owner selected macOS 26+; its
 enforcement and ordinary product integration remain open. Full native
 [Mac/Windows CI43505609309](https://github.com/gungortarik/cryptex/actions/runs/43505609309)
 passed on `e49e318`. No completed VM package is being repeated.
