@@ -1,0 +1,32 @@
+{
+  "evidence_kind": "owner-supplied aggregate report; not independent cryptographic device attestation",
+  "checked_at_utc": "2026-11-13T13:20:12.673122+00:00",
+  "archive_filename": "MAC-BIRLIKTE-SONUC-7c8abb94.zip",
+  "archive_sha256": "75285290e4349b91b20fa41738a20412e6d8cb76573baa124b83f7fcc970f3b1",
+  "archive_bytes": 494,
+  "archive_members": [
+    "result.json"
+  ],
+  "result_json_bytes": 374,
+  "expected_package_source": "2890ad24359705ef34775422bccf6198d274a171",
+  "matching_ci_run": "https://github.com/gungortarik/cryptex/actions/runs/43364276809",
+  "expected_package_sha256": "f8d844c2d6a14b49d0471a274e6f26e04d858892c64808fec99db0d2787a3d8f",
+  "validation": "exact source, closed result schema without duplicate keys, passed outcome and four strict boolean checks matched the reviewed collector",
+  "report": {
+    "source": "2890ad24359705ef34775422bccf6198d274a171",
+    "outcome": "passed",
+    "scope": "combined supervisor-loss exclusion under fixture-only containment; not production orphan cleanup",
+    "combined_supervisor_loss_and_refusal_verified": true,
+    "guardian_output_loss_cleanup_verified": true,
+    "credential_cleanup_verified": true,
+    "runtime_cleanup_verified": true
+  },
+  "gate_status": "owner-Mac combined supervisor-loss acceptance passed for this default-off fixture",
+  "evidence_limits": [
+    "aggregate report contains no OS version, architecture, run timestamp or raw runtime journal for independent verification",
+    "scope is the exact optimized default-off fixture, not production orphan cleanup or cross-device replication",
+    "EOF/watchdog fallback remains source-inspected; no distinct native case is asserted by this report",
+    "does not close other endpoint/exec races, product publisher/OS-floor decisions, normal activation or M8 final acceptance"
+  ],
+  "next_gate": "select and bound the next remaining endpoint/exec race acceptance case; no unchanged owner package rerun"
+}

@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Disabled Mac transport identity and combined-loss continuation — November 12
+## Disabled Mac transport identity and combined-loss continuation — November 13
 
 The owner delegated the helper choice. ADR-0021 selects the existing signed
 cryptexd in a separate transport-only role, behind the default-off local feature.
@@ -69,16 +69,22 @@ unchanged. The pass applies to that optimized artifact; it does not establish
 opt0 performance. See the [chronological record](../evidence/m8/m8-macos-combined-loss-20261112.md)
 and [machine receipt](../evidence/m8/macos-combined-loss-native-2890ad2-ci.json).
 
-**Exact next step:** owner-Mac execution only of the NEW
-`CRYPTEX-MAC-BIRLIKTE-2890ad2.zip` in Downloads (23,791,841 bytes; SHA-256
-`f8d844c2d6a14b49d0471a274e6f26e04d858892c64808fec99db0d2787a3d8f`).
-Move it to the Apple Silicon Mac with macOS 26+, extract, double-click
-`Cryptex-Mac-Birlikte/MAC-BIRLIKTE.command`, and return its generated
-`MAC-BIRLIKTE-SONUC-*.zip`. The short-lived development certificate expires
-**2026-11-14 04:17:07 UTC**. No manual signed JSON or old identity/pairing owner
-rerun is needed. Require matching source, passed outcome and all four true fields:
-combined loss/refusal, broken-output cleanup, credential cleanup and runtime
-cleanup. A returned aggregate report is not independent device/OS attestation.
+The owner returned `MAC-BIRLIKTE-SONUC-7c8abb94.zip` on November 13. Its closed
+report matches exact source `2890ad24359705ef34775422bccf6198d274a171`, has outcome
+passed, and all four checks are strict true: combined loss/refusal, broken-output
+cleanup, credential cleanup and runtime cleanup. The
+[owner receipt](../evidence/m8/m8-macos-combined-loss-owner-receipt-7c8abb94.md)
+and [structured validation](../evidence/m8/macos-combined-loss-owner-2890ad2-7c8abb94.json)
+record ZIP hash, source/package/CI binding and evidence limits. This closes the
+owner-Mac combined-loss execution gate for this default-off fixture. Do not ask
+for another unchanged Mac package run or manual signed-JSON exchange. The report
+is owner-supplied aggregate evidence, not independent device/OS attestation.
+
+**Next continuation:** bound and inspect the next remaining endpoint/exec race
+acceptance case within the existing default-off scope. No new test package or
+owner action is requested by this receipt. Any implementation must first check
+the authoritative spec/ADR and current code; no product activation is authorized
+by this test pass.
 
 Other endpoint/exec races, product publisher/OS-floor decisions, normal activation
 and final M8 protocol/platform/security/human gates remain open. The local-engine

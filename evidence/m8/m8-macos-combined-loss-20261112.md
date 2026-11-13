@@ -1,8 +1,8 @@
 # Disabled Mac combined supervisor-loss acceptance record
 
 Current state: exact-source native Mac/Windows CI and exported launcher passed
-on `2890ad2`; independent source review complete, owner-Mac combined receipt
-pending. See the final acceptance section and machine receipt below. Earlier
+on `2890ad2`; independent source review complete, matching owner-Mac combined
+receipt passed on November 13. See the final acceptance section and machine receipt below. Earlier
 sections retain chronological checkpoints and superseded initial inventories.
 
 The owner requested completion of the next combined daemon/helper loss test
@@ -249,7 +249,7 @@ CI evidence, distinct from the local member-hash check.
 Owner package in Downloads: `CRYPTEX-MAC-BIRLIKTE-2890ad2.zip`, SHA-256
 `f8d844c2d6a14b49d0471a274e6f26e04d858892c64808fec99db0d2787a3d8f`.
 Architecture arm64, fixture macOS 26+ (no product OS-floor decision), development
-certificate expiry **2026-11-14 04:17:07 UTC**. Owner execution is still pending:
+certificate expiry **2026-11-14 04:17:07 UTC**. At initial delivery, owner execution was pending:
 extract on the Mac and double-click `Cryptex-Mac-Birlikte/MAC-BIRLIKTE.command`,
 then return `MAC-BIRLIKTE-SONUC-*.zip`. Require source `2890ad2...`, outcome passed
 and all four booleans true. Do not repeat old owner identity/pairing checks.
@@ -259,3 +259,24 @@ The new native acceptance applies only to this optimized disabled fixture.
 Production orphan cleanup, EOF/watchdog native cases, other endpoint/exec races,
 publisher/OS floor, product activation, cross-device product acceptance and final
 M8 gates are not closed by these results. M8 remains open.
+
+
+## Owner-Mac acceptance — November 13
+
+The owner returned `MAC-BIRLIKTE-SONUC-7c8abb94.zip` (494 bytes, exactly one
+374-byte `result.json`), SHA-256
+`75285290e4349b91b20fa41738a20412e6d8cb76573baa124b83f7fcc970f3b1`.
+Closed-schema validation rejected duplicate keys and required the exact reviewed
+source, fixed scope, passed outcome and all four strict boolean checks true.
+All matched the reviewed collector and passing native CI candidate. The
+[owner receipt](m8-macos-combined-loss-owner-receipt-7c8abb94.md) and
+[structured validation](macos-combined-loss-owner-2890ad2-7c8abb94.json) preserve
+the returned report and source/package binding.
+
+This closes the owner-Mac combined supervisor-loss execution gate for this
+optimized default-off fixture. Do not request an unchanged rerun. This aggregate
+report does not independently attest device/OS, execution time or raw runtime
+journal. It adds no separate EOF/watchdog native case, production orphan cleanup,
+cross-device replication or product activation evidence. Other endpoint/exec
+races and final M8 gates remain open. Next work must bound an actual remaining
+case within the existing authorized scope before preparing any new owner test.

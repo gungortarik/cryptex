@@ -4,17 +4,19 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
-**Latest continuation — November 12:** the default-off Mac transport identity and
+**Latest continuation — November 13:** the default-off Mac transport identity and
 pairing owner test passed. The new combined daemon/helper loss fixture is
 implemented and independently source-reviewed through `2890ad2`; exact-source
 Mac/Windows [CI 43364276809](https://github.com/gungortarik/cryptex/actions/runs/43364276809)
 passed, including both loss variants and the exported one-click launcher.
 Replacement refuses unchanged orphan state; broken-output containment and fenced
 credential/runtime cleanup passed. This is disabled test containment, not product
-orphan cleanup. The new `CRYPTEX-MAC-BIRLIKTE-2890ad2.zip` is ready; its owner-Mac
-receipt is the next gate. See the [current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md)
-for exact instructions, certificate expiry, build configuration and remaining
-gates. Normal product routes remain closed; M8 is open. Older dated notes below
+orphan cleanup. The matching
+[owner-Mac combined result](evidence/m8/m8-macos-combined-loss-owner-receipt-7c8abb94.md)
+also passed all four checks; this owner execution gate is closed, with no
+unchanged package rerun needed. See the
+[current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) for build
+configuration and remaining endpoint/exec race and acceptance gates. Normal product routes remain closed; M8 is open. Older dated notes below
 are historical checkpoints.
 
 The owner-approved [disabled Mac M8 adapter foundation](evidence/m8/m8-disabled-macos-owner-adapter-20261110.md)

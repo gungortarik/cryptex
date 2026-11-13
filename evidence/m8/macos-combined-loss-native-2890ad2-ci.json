@@ -117,13 +117,13 @@
   },
   "minimum_fixture_macos": "26; not a product support floor",
   "owner_package_filename": "CRYPTEX-MAC-BIRLIKTE-2890ad2.zip",
-  "owner_mac_execution": "pending matching-source aggregate receipt",
+  "owner_mac_execution": "passed, matching-source owner-supplied aggregate report",
   "independent_source_review": "complete through exact source, no remaining actionable finding; separate technical agent source review, not human certification; reviewer performed no execution",
   "remaining_gates": [
-    "owner-Mac combined receipt",
     "other endpoint/exec races",
     "product publisher and minimum OS decisions",
     "normal product activation",
     "final M8 protocol/platform/security/human acceptance"
-  ]
+  ],
+  "owner_result_receipt": "macos-combined-loss-owner-2890ad2-7c8abb94.json"
 }
