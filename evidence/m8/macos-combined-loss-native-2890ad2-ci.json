@@ -1,0 +1,129 @@
+{
+  "source": "2890ad24359705ef34775422bccf6198d274a171",
+  "workflow_run": "https://github.com/gungortarik/cryptex/actions/runs/43364276809",
+  "workflow_attempt": 1,
+  "workflow_scope": "desktop_startup_only; other milestone jobs not run",
+  "scope": "default-off combined supervisor-loss exclusion under fixture-only containment; not production orphan cleanup, cross-device replication or M8 closure",
+  "macos_job": {
+    "id": 131684883357,
+    "conclusion": "success"
+  },
+  "windows_job": {
+    "id": 131684883575,
+    "conclusion": "success"
+  },
+  "macos_markers": [
+    "exported_combined_loss_launcher=passed",
+    "exported_durable_launcher=passed",
+    "exported_transport_launcher=passed",
+    "local_certificate_fixture_cleanup=passed",
+    "local_certificate_native_exchange=passed",
+    "mac_transport_clean_stop_ack=passed",
+    "mac_transport_combined_guardian_cleanup=passed",
+    "mac_transport_combined_lost_output_cleanup=passed",
+    "mac_transport_combined_restart_refused_unchanged=passed",
+    "mac_transport_combined_supervisors_dead_engine_live=passed",
+    "mac_transport_daemon_loss_group_exit=passed",
+    "mac_transport_foreign_socket_no_credentials=passed",
+    "mac_transport_helper_loss_cleanup=passed",
+    "mac_transport_live_profile_package_changes_refused=passed",
+    "mac_transport_missing_key_no_regeneration=passed",
+    "mac_transport_owned_identity_restart=passed",
+    "mac_transport_unresolved_restart_refused=passed",
+    "native_keychain_confirmed_history_preserved=passed",
+    "native_keychain_cross_daemon_wire_replay_refused=passed",
+    "native_keychain_missing_key_refused=passed",
+    "native_keychain_old_local_handle_refused=passed",
+    "native_keychain_same_profile_restart=passed",
+    "native_lost_session_and_old_handle_refused=passed",
+    "native_managed_pairing_clean_shutdown=passed",
+    "native_managed_pairing_restart_idempotent=passed",
+    "native_managed_transport_pairing=passed",
+    "native_pairing_boundary_refusals=passed",
+    "native_prepare_and_actor_failures_burn_grants=passed",
+    "native_synthetic_approval_sessions=passed",
+    "native_ui_quit_preserved_seed=passed",
+    "real_signed_desktop_daemon_startup_restart=passed",
+    "real_signed_startup_refused_missing_leaf=passed",
+    "real_signed_startup_refused_missing_rendezvous=passed",
+    "real_signed_startup_refused_modified_content=passed",
+    "real_signed_startup_refused_wrong_cdhash=passed",
+    "real_signed_startup_refused_wrong_desktop_identifier=passed",
+    "real_signed_startup_refused_wrong_identifier=passed",
+    "real_signed_startup_refused_wrong_parent_cdhash=passed",
+    "real_signed_startup_refused_wrong_release=passed",
+    "verified_tauri_assets=passed"
+  ],
+  "combined_variants": [
+    "K control cleanup",
+    "invalid control with collector output reader closed before diagnostic"
+  ],
+  "exported_combined_receipt": {
+    "evidence": "matching source, passed outcome and all four booleans required by executed CI collector",
+    "combined_supervisor_loss_and_refusal_verified": true,
+    "guardian_output_loss_cleanup_verified": true,
+    "credential_cleanup_verified": true,
+    "runtime_cleanup_verified": true
+  },
+  "pre_loss_baseline": "full pinned file bytes/metadata and same engine identities captured before either supervisor loss",
+  "cleanup_boundaries": {
+    "signal_target": "only captured daemon/helper Child and guardian own current group",
+    "credential_cleanup": "same exclusive profile lease after observed group exit",
+    "EOF_and_watchdog": "source-inspected only; not separately exercised native cases",
+    "collector_kill": "does not promise automatic Keychain cleanup"
+  },
+  "fixture_build": {
+    "scope": "CLI-only overrides on five feature fixture Cargo commands; no normal manifest/product profile change",
+    "dev_and_test": {
+      "sha2:0.10.9": {
+        "opt-level": 3,
+        "debug-assertions": true,
+        "overflow-checks": true
+      },
+      "blake3:1.8.2": {
+        "opt-level": 3,
+        "debug-assertions": true,
+        "overflow-checks": true
+      },
+      "cryptexd": {
+        "opt-level": 1,
+        "debug-assertions": true,
+        "overflow-checks": true
+      }
+    },
+    "validation_and_deadlines": "unchanged; no skipped bytes, hashes or assertions",
+    "timing_limit": "success is specific to this optimized artifact; no opt0/product-performance claim"
+  },
+  "local_python_tests": {
+    "run": 100,
+    "platform_skips": 5,
+    "failures": 0
+  },
+  "format_and_feature_lint": "passed on exact-source native CI; local rustfmt blocked by Application Control",
+  "artifact_id": 14010440338,
+  "artifact_verification": {
+    "source": "2890ad24359705ef34775422bccf6198d274a171",
+    "architecture": "arm64",
+    "expires_utc": "2026-11-14T04:17:07+00:00",
+    "zip_sha256": "f8d844c2d6a14b49d0471a274e6f26e04d858892c64808fec99db0d2787a3d8f",
+    "zip_bytes": 23791841,
+    "member_count": 16,
+    "manifest_member_hashes": "all matched",
+    "launcher_dependencies": "exact current source bytes",
+    "safe_regular_unique_members": true,
+    "executable_permissions_verified": true,
+    "manifest_sha256": "99b92b8c9af4e9c36785db3c1e554be0843c3415bf7b1cb12bbe2818c1599739",
+    "cms_sha256": "3bda71d1e656d092f428e292893e57ddfa2ea987280ab2afe44acbf05ff13ae2"
+  },
+  "minimum_fixture_macos": "26; not a product support floor",
+  "owner_package_filename": "CRYPTEX-MAC-BIRLIKTE-2890ad2.zip",
+  "owner_mac_execution": "pending matching-source aggregate receipt",
+  "independent_source_review": "complete through exact source, no remaining actionable finding; separate technical agent source review, not human certification; reviewer performed no execution",
+  "remaining_gates": [
+    "owner-Mac combined receipt",
+    "other endpoint/exec races",
+    "product publisher and minimum OS decisions",
+    "normal product activation",
+    "final M8 protocol/platform/security/human acceptance"
+  ]
+}

@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Disabled Mac transport identity continuation — November 12
+## Disabled Mac transport identity and combined-loss continuation — November 12
 
 The owner delegated the helper choice. ADR-0021 selects the existing signed
 cryptexd in a separate transport-only role, behind the default-off local feature.
@@ -8,7 +8,7 @@ Mac private-profile, pinned-package, process-generation and established-socket
 adapters are implemented. Read/offer/proof in the native fixture context require
 a fresh authenticated helper observation. Ordinary product Mac/Unix gates stay closed.
 
-Current reviewed code is `0d98a16d075ca317b208c6e3dd6b0c66b64df707`.
+The accepted identity/pairing candidate is `0d98a16d075ca317b208c6e3dd6b0c66b64df707`.
 Both selected Mac/Windows jobs passed in
 [CI 43334196206](https://github.com/gungortarik/cryptex/actions/runs/43334196206)
 (`desktop_startup_only`; other milestone jobs were not run).
@@ -45,12 +45,45 @@ the owner-Mac run for this default-off candidate; do not repeat the package or
 manual signed-JSON exchange. The returned aggregate report does not independently
 attest the device, OS version or architecture.
 
-Next implementation/acceptance gate: combined daemon/helper supervisor loss in
-the existing disabled scope, preserving unresolved-marker exclusion and refusal
-to adopt orphan engines. Other endpoint/exec races, product publisher/OS-floor,
-normal activation and final M8 protocol/platform/security/human gates remain
-open. The local-engine/native-pairing evidence does not establish cross-device
-replication or human WebView pairing acceptance; M8 remains open.
+The new combined daemon/helper loss fixture is implemented and independently
+source-reviewed through `2890ad24359705ef34775422bccf6198d274a171`, with no
+remaining actionable source finding in this disabled scope. Both selected
+Mac/Windows jobs passed in
+[CI 43364276809](https://github.com/gungortarik/cryptex/actions/runs/43364276809).
+The Mac run passed both actual loss variants and the exported MAC-BIRLIKTE
+launcher: after captured helper and daemon loss, the same real engine processes
+remain alive; replacement is refused twice with the pre-loss files and OS-key
+binding unchanged; fixture containment cleans only its own current process group.
+Invalid control with the collector output reader closed also cleans up. Existing
+native pairing, mutation, restart, replay and platform checks remain passing.
+This is test containment, not production orphan adoption/cleanup. EOF/watchdog
+fallbacks remain source-inspected, not separately exercised native cases.
+
+Local Python checks: 100 tests, 5 platform skips, no failures; Cargo override
+parsing and diff checks pass. Exact-source native CI establishes format and strict
+feature lint/tests; local rustfmt is blocked by Application Control. All five
+feature fixture Cargo commands use the same CLI-only dev/test sha2+blake3 opt3,
+cryptexd opt1 overrides with assertions/overflow checks explicitly retained.
+Full byte validation, typed errors, package-pin lifetimes and every deadline are
+unchanged. The pass applies to that optimized artifact; it does not establish
+opt0 performance. See the [chronological record](../evidence/m8/m8-macos-combined-loss-20261112.md)
+and [machine receipt](../evidence/m8/macos-combined-loss-native-2890ad2-ci.json).
+
+**Exact next step:** owner-Mac execution only of the NEW
+`CRYPTEX-MAC-BIRLIKTE-2890ad2.zip` in Downloads (23,791,841 bytes; SHA-256
+`f8d844c2d6a14b49d0471a274e6f26e04d858892c64808fec99db0d2787a3d8f`).
+Move it to the Apple Silicon Mac with macOS 26+, extract, double-click
+`Cryptex-Mac-Birlikte/MAC-BIRLIKTE.command`, and return its generated
+`MAC-BIRLIKTE-SONUC-*.zip`. The short-lived development certificate expires
+**2026-11-14 04:17:07 UTC**. No manual signed JSON or old identity/pairing owner
+rerun is needed. Require matching source, passed outcome and all four true fields:
+combined loss/refusal, broken-output cleanup, credential cleanup and runtime
+cleanup. A returned aggregate report is not independent device/OS attestation.
+
+Other endpoint/exec races, product publisher/OS-floor decisions, normal activation
+and final M8 protocol/platform/security/human gates remain open. The local-engine
+and native-pairing receipts do not establish cross-device replication or human
+WebView pairing acceptance; M8 remains open.
 
 ## Protected UI and native approval continuation
 
