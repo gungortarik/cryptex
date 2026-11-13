@@ -23,6 +23,10 @@ typedef struct {
     mach_port_t task;
     audit_token_t token;
     uint8_t hash[20];
+    bool has_socket;
+    int socket_fd;
+    struct sockaddr_storage local, remote;
+    struct socket_fdinfo socket;
 } cx_transport_pin;
 
 // SDK spawn flags stop the new image before dyld/user code runs. The caller
@@ -220,7 +224,8 @@ static bool tuple(const struct socket_fdinfo *info, const struct sockaddr_storag
 
 // 0 found, 1 no match, 2 unavailable/invalid/bounded table. No application bytes.
 static int find_socket(pid_t pid, const struct sockaddr_storage *local,
-                       const struct sockaddr_storage *remote) {
+                       const struct sockaddr_storage *remote, int *fd,
+                       struct socket_fdinfo *witness) {
     struct proc_fdinfo fds[4096];
     int required = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, NULL, 0);
     if (required <= 0 || required >= (int)sizeof(fds) || required % sizeof(fds[0])) return 2;
@@ -238,9 +243,37 @@ static int find_socket(pid_t pid, const struct sockaddr_storage *local,
             !tuple(&second, local, remote) || first.psi.soi_so != second.psi.soi_so ||
             first.psi.soi_pcb != second.psi.soi_pcb ||
             first.psi.soi_proto.pri_tcp.tcpsi_ini.insi_gencnt != second.psi.soi_proto.pri_tcp.tcpsi_ini.insi_gencnt) return 2;
+        *fd = fds[i].proc_fd;
+        *witness = second;
         return 0;
     }
     return 1;
+}
+
+// Recheck the exact retained generation and original FD/object, never rescan
+// for a different matching endpoint. Normal HTTP close is allowed AFTER the
+// response; its publication still requires both retained generations/images.
+int cx_transport_peer_validate(const cx_transport_pin *root, const cx_transport_pin *peer,
+                               int require_socket) {
+    if (!peer || !peer->has_socket || (require_socket != 0 && require_socket != 1)) return 2;
+    if (getpgrp() != getpid() || getsid(0) != getpid() ||
+        !image_matches(root) || !image_matches(peer)) return 3;
+    struct proc_bsdinfo info;
+    if (proc_pidinfo(peer->pid, PROC_PIDTBSDINFO, 0, &info, sizeof(info)) != (int)sizeof(info)) return 3;
+    if (info.pbi_pgid != (uint32_t)getpid() || info.pbi_status == SZOMB) return 3;
+    if (require_socket) {
+        struct socket_fdinfo current = {0};
+        if (proc_pidfdinfo(peer->pid, peer->socket_fd, PROC_PIDFDSOCKETINFO,
+                           &current, sizeof(current)) != (int)sizeof(current)) {
+            return (errno == EBADF || errno == ENOENT || errno == ESRCH) ? 1 : 2;
+        }
+        if (!tuple(&current, &peer->local, &peer->remote) ||
+            current.psi.soi_so != peer->socket.psi.soi_so ||
+            current.psi.soi_pcb != peer->socket.psi.soi_pcb ||
+            current.psi.soi_proto.pri_tcp.tcpsi_ini.insi_gencnt !=
+                peer->socket.psi.soi_proto.pri_tcp.tcpsi_ini.insi_gencnt) return 1;
+    }
+    return image_matches(root) && image_matches(peer) ? 0 : 3;
 }
 
 int cx_transport_socket_peer(const cx_transport_pin *root, int fd, cx_transport_pin **out) {
@@ -257,16 +290,26 @@ int cx_transport_socket_peer(const cx_transport_pin *root, int fd, cx_transport_
         struct proc_bsdinfo info;
         if (proc_pidinfo(members[i], PROC_PIDTBSDINFO, 0, &info, sizeof(info)) != (int)sizeof(info)) continue;
         if (info.pbi_pgid != (uint32_t)getpid() || info.pbi_status == SZOMB) continue;
-        int found = find_socket(members[i], &local, &remote);
+        int server_fd = -1;
+        struct socket_fdinfo witness = {0};
+        int found = find_socket(members[i], &local, &remote, &server_fd, &witness);
         if (found == 2) return 2;
         if (found) continue;
         int stage;
         cx_transport_pin *peer = retain(members[i], root->hash, &stage);
-        if (!peer || !image_matches(root) ||
-            proc_pidinfo(members[i], PROC_PIDTBSDINFO, 0, &info, sizeof(info)) != (int)sizeof(info) ||
-            info.pbi_pgid != (uint32_t)getpid()) {
+        if (!peer) return 3;
+        peer->has_socket = true;
+        peer->socket_fd = server_fd;
+        peer->local = local;
+        peer->remote = remote;
+        peer->socket = witness;
+        int verified = cx_transport_peer_validate(root, peer, 1);
+        if (verified) {
             cx_transport_pin_close(peer);
-            return 3;
+            // Distinguish lost original evidence from an accept() which has
+            // not installed a server FD yet. The Rust caller must not retry
+            // this changed witness by accepting some newly discovered FD.
+            return verified == 1 ? 4 : verified;
         }
         *out = peer;
         return 0;

@@ -3,7 +3,7 @@
 //! Owning a job is not a package pin, Cryptex peer trust or incoming admission.
 
 use std::fmt;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
@@ -17,7 +17,7 @@ use serde::Deserialize;
 
 use crate::owned_process::OwnedProcess;
 pub use crate::owned_process::endpoint::EndpointError;
-use crate::owned_process::endpoint::validate_loopback;
+use crate::owned_process::endpoint::{EndpointGuard, validate_loopback};
 use crate::syncthing_rest::{ApiCredential, TransportObservation, native_id_shape};
 
 const BUDGET: Duration = Duration::from_secs(3);
@@ -150,97 +150,146 @@ impl<'a> OwnedSyncthingRest<'a> {
             .owner
             .connect_owned_loopback(self.endpoint, deadline)
             .map_err(OwnedRestError::Endpoint)?;
-        let (stream, _guard) = verified.into_parts();
-        let _remaining = deadline
-            .checked_duration_since(Instant::now())
-            .filter(|v| !v.is_zero())
-            .ok_or(OwnedRestError::Deadline)?;
-        // Synchronous controller API; refuse nested runtimes rather than panic.
-        if tokio::runtime::Handle::try_current().is_ok() {
-            return Err(OwnedRestError::RuntimeUnavailable);
-        }
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|_| OwnedRestError::RuntimeUnavailable)?;
-        runtime.block_on(async {
-            tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), async {
-                let stream = tokio::net::TcpStream::from_std(stream)
-                    .map_err(|_| OwnedRestError::Unavailable)?;
-                let (mut sender, connection) = hyper::client::conn::http1::Builder::new()
-                    .max_headers(64)
-                    .max_buf_size(16 * 1024)
-                    .handshake(TokioIo::new(stream))
+        let (stream, guard) = verified.into_parts();
+        request_on_connection(
+            stream,
+            &guard,
+            operation,
+            self.endpoint,
+            &self.credential,
+            deadline,
+        )
+    }
+}
+
+// Private seam for the exact same connected HTTP path in native and boundary
+// tests. It has no URL connector, arbitrary operation or public guard factory.
+trait ConnectionCheck {
+    fn before_send(&self) -> Result<(), EndpointError>;
+    fn observation_complete(&self) -> Result<(), EndpointError>;
+}
+impl ConnectionCheck for EndpointGuard<'_> {
+    fn before_send(&self) -> Result<(), EndpointError> {
+        EndpointGuard::before_send(self)
+    }
+    fn observation_complete(&self) -> Result<(), EndpointError> {
+        EndpointGuard::observation_complete(self)
+    }
+}
+fn check_before_send(check: &impl ConnectionCheck, deadline: Instant) -> Result<(), OwnedRestError> {
+    check.before_send().map_err(OwnedRestError::Endpoint)?;
+    if Instant::now() >= deadline {
+        return Err(OwnedRestError::Deadline);
+    }
+    Ok(())
+}
+fn request_on_connection(
+    stream: TcpStream,
+    check: &impl ConnectionCheck,
+    operation: Operation,
+    endpoint: SocketAddr,
+    credential: &ApiCredential,
+    deadline: Instant,
+) -> Result<Vec<u8>, OwnedRestError> {
+    let _remaining = deadline
+        .checked_duration_since(Instant::now())
+        .filter(|v| !v.is_zero())
+        .ok_or(OwnedRestError::Deadline)?;
+    // Synchronous controller API; refuse nested runtimes rather than panic.
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return Err(OwnedRestError::RuntimeUnavailable);
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|_| OwnedRestError::RuntimeUnavailable)?;
+    runtime.block_on(async {
+        tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), async {
+            let stream = tokio::net::TcpStream::from_std(stream)
+                .map_err(|_| OwnedRestError::Unavailable)?;
+            let (mut sender, connection) = hyper::client::conn::http1::Builder::new()
+                .max_headers(64)
+                .max_buf_size(16 * 1024)
+                .handshake(TokioIo::new(stream))
+                .await
+                .map_err(|_| OwnedRestError::InvalidResponse)?;
+            let method = if matches!(operation, Operation::Shutdown) {
+                Method::POST
+            } else {
+                Method::GET
+            };
+            let request = Request::builder()
+                .method(method)
+                .uri(operation.path())
+                .header(HOST, endpoint.to_string())
+                .header(ACCEPT, "application/json")
+                .header(CONNECTION, "close")
+                .header("X-API-Key", credential.0.clone())
+                .body(Empty::<Bytes>::new())
+                .map_err(|_| OwnedRestError::Unavailable)?;
+            let response = async move {
+                check_before_send(check, deadline)?;
+                let response = sender
+                    .send_request(request)
                     .await
                     .map_err(|_| OwnedRestError::InvalidResponse)?;
-                let method = if matches!(operation, Operation::Shutdown) {
-                    Method::POST
-                } else {
-                    Method::GET
-                };
-                let request = Request::builder()
-                    .method(method)
-                    .uri(operation.path())
-                    .header(HOST, self.endpoint.to_string())
-                    .header(ACCEPT, "application/json")
-                    .header(CONNECTION, "close")
-                    .header("X-API-Key", self.credential.0.clone())
-                    .body(Empty::<Bytes>::new())
-                    .map_err(|_| OwnedRestError::Unavailable)?;
-                let response = async move {
-                    let response = sender
-                        .send_request(request)
-                        .await
-                        .map_err(|_| OwnedRestError::InvalidResponse)?;
-                    drop(sender);
-                    let code = response.status().as_u16();
-                    if (300..400).contains(&code) {
-                        return Err(OwnedRestError::RedirectRefused);
+                drop(sender);
+                let code = response.status().as_u16();
+                if (300..400).contains(&code) {
+                    return Err(OwnedRestError::RedirectRefused);
+                }
+                if matches!(code, 401 | 403) {
+                    return Err(OwnedRestError::Unauthorized(code));
+                }
+                if code != 200 {
+                    return Err(OwnedRestError::HttpStatus(code));
+                }
+                if response.headers().contains_key(CONTENT_ENCODING) {
+                    return Err(OwnedRestError::InvalidResponse);
+                }
+                if let Some(value) = response.headers().get(CONTENT_LENGTH) {
+                    let size = value
+                        .to_str()
+                        .ok()
+                        .and_then(|v| v.parse::<u64>().ok())
+                        .ok_or(OwnedRestError::InvalidResponse)?;
+                    if size > MAX_BODY as u64 {
+                        return Err(OwnedRestError::ResponseTooLarge);
                     }
-                    if matches!(code, 401 | 403) {
-                        return Err(OwnedRestError::Unauthorized(code));
-                    }
-                    if code != 200 {
-                        return Err(OwnedRestError::HttpStatus(code));
-                    }
-                    if response.headers().contains_key(CONTENT_ENCODING) {
-                        return Err(OwnedRestError::InvalidResponse);
-                    }
-                    if let Some(value) = response.headers().get(CONTENT_LENGTH) {
-                        let size = value
-                            .to_str()
-                            .ok()
-                            .and_then(|v| v.parse::<u64>().ok())
-                            .ok_or(OwnedRestError::InvalidResponse)?;
-                        if size > MAX_BODY as u64 {
+                }
+                let mut body = response.into_body();
+                let mut bytes = Vec::new();
+                while let Some(frame) = body.frame().await {
+                    let frame = frame.map_err(|_| OwnedRestError::InvalidResponse)?;
+                    if let Some(chunk) = frame.data_ref() {
+                        if chunk.len() > MAX_BODY - bytes.len() {
                             return Err(OwnedRestError::ResponseTooLarge);
                         }
+                        bytes.extend_from_slice(chunk);
                     }
-                    let mut body = response.into_body();
-                    let mut bytes = Vec::new();
-                    while let Some(frame) = body.frame().await {
-                        let frame = frame.map_err(|_| OwnedRestError::InvalidResponse)?;
-                        if let Some(chunk) = frame.data_ref() {
-                            if chunk.len() > MAX_BODY - bytes.len() {
-                                return Err(OwnedRestError::ResponseTooLarge);
-                            }
-                            bytes.extend_from_slice(chunk);
-                        }
-                    }
-                    Ok(bytes)
-                };
-                // Drive standard HTTP parsing on the SAME verified socket.
-                // If the driver completes first, finish consuming its queued
-                // response/body result under the shared deadline. Never reconnect.
-                match select(Box::pin(response), Box::pin(connection)).await {
-                    Either::Left((result, _driver)) => result,
-                    Either::Right((_driver_result, response)) => response.await,
                 }
-            })
-            .await
-            .map_err(|_| OwnedRestError::Deadline)?
+                if !matches!(operation, Operation::Shutdown) {
+                    // A normal Connection:close may already remove the server
+                    // FD. Observation success still requires live root/peer
+                    // generations and images; shutdown ACK conveys no identity.
+                    check.observation_complete().map_err(OwnedRestError::Endpoint)?;
+                    if Instant::now() >= deadline {
+                        return Err(OwnedRestError::Deadline);
+                    }
+                }
+                Ok(bytes)
+            };
+            // Drive standard HTTP parsing on the SAME verified socket.
+            // If the driver completes first, finish consuming its queued
+            // response/body result under the shared deadline. Never reconnect.
+            match select(Box::pin(response), Box::pin(connection)).await {
+                Either::Left((result, _driver)) => result,
+                Either::Right((_driver_result, response)) => response.await,
+            }
         })
-    }
+        .await
+        .map_err(|_| OwnedRestError::Deadline)?
+    })
 }
 
 fn json<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, OwnedRestError> {
@@ -257,3 +306,6 @@ struct Status {
     #[serde(rename = "myID")]
     my_id: String,
 }
+
+#[cfg(test)]
+mod boundary_tests;

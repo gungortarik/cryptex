@@ -24,6 +24,7 @@ unsafe extern "C" {
     fn cx_transport_pin_live(pin: *const c_void) -> c_int;
     fn cx_transport_pin_close(pin: *mut c_void) -> c_int;
     fn cx_transport_socket_peer(root: *const c_void, fd: c_int, out: *mut *mut c_void) -> c_int;
+    fn cx_transport_peer_validate(root: *const c_void, peer: *const c_void, socket: c_int) -> c_int;
     fn cx_transport_group_empty(
         group: libc::pid_t,
         except: libc::pid_t,
@@ -237,6 +238,28 @@ impl NativeProcess {
                 raw: NonNull::new(raw).ok_or(endpoint::EndpointError::Unavailable)?,
                 _thread: PhantomData,
             }),
+            1 => Err(endpoint::EndpointError::PeerNotOwned),
+            2 => Err(endpoint::EndpointError::TableUnavailable),
+            4 => Err(endpoint::EndpointError::PeerChanged),
+            _ => Err(endpoint::EndpointError::OwnerExited),
+        }
+    }
+    pub(super) fn validate_peer(
+        &self,
+        peer: &PeerPin,
+        require_socket: bool,
+    ) -> Result<(), endpoint::EndpointError> {
+        self.require_root_alive()?;
+        // Both retained task rights stay live. Native validation brackets the
+        // original FD/object witness with generation and expected-image checks.
+        match unsafe {
+            cx_transport_peer_validate(
+                self.pin.raw.as_ptr(),
+                peer.raw.as_ptr(),
+                i32::from(require_socket),
+            )
+        } {
+            0 => Ok(()),
             1 => Err(endpoint::EndpointError::PeerNotOwned),
             2 => Err(endpoint::EndpointError::TableUnavailable),
             _ => Err(endpoint::EndpointError::OwnerExited),

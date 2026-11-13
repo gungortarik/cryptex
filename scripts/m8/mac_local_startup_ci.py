@@ -13,6 +13,7 @@ from mac_durable_check import MARKERS, check_durable_profile, check_session_jour
 from mac_transport_package import prepare as prepare_transport
 from mac_transport_check import check_native_pairing, check_parent_loss
 from mac_combined_loss_check import check_combined_loss
+from mac_endpoint_check import check_native_endpoints
 
 
 def fixture_rust_command(executable, command, *args):
@@ -93,6 +94,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
             else:
                 os.environ[key] = value
 
+    check_native_endpoints(root / "endpoint-probe", run)
     template = root / "template"
     binaries = template / "Contents" / "MacOS"
     resources = template / "Contents" / "Resources"

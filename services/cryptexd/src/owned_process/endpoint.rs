@@ -20,6 +20,9 @@ pub enum EndpointError {
     /// The exact socket tuple exists, but the OS does not attest ESTABLISHED.
     PeerNotEstablished,
     PeerNotOwned,
+    /// A discovered endpoint changed during task retention; never retry it as
+    /// an ordinary accept() installation delay on the same request.
+    PeerChanged,
     TableUnavailable,
     TableTooLarge,
     InvalidTable,
@@ -54,6 +57,30 @@ pub(crate) struct EndpointGuard<'a> {
     _peer: super::windows::PeerHandle,
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
     _peer: super::macos::PeerPin,
+}
+
+impl EndpointGuard<'_> {
+    pub(crate) fn before_send(&self) -> Result<(), EndpointError> {
+        #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+        {
+            self._owner.native.validate_peer(&self._peer, true)
+        }
+        #[cfg(not(all(target_os = "macos", feature = "m8-local-startup-check")))]
+        {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn observation_complete(&self) -> Result<(), EndpointError> {
+        #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+        {
+            self._owner.native.validate_peer(&self._peer, false)
+        }
+        #[cfg(not(all(target_os = "macos", feature = "m8-local-startup-check")))]
+        {
+            Ok(())
+        }
+    }
 }
 
 pub(crate) struct VerifiedConnection<'a> {

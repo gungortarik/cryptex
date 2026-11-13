@@ -107,6 +107,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test Desktop Rust foundation
         run: cargo test --locked -p cryptex-desktop
+      - name: Test credential send and observation lifetime boundaries
+        run: cargo test --locked -p cryptexd --lib syncthing_owned_rest::boundary_tests:: -- --test-threads=1
       - name: Test approval connection lifetime and Desktop response correlation
         if: runner.os != 'Windows'
         run: |
