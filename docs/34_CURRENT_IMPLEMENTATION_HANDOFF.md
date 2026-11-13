@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Disabled Mac transport identity and combined-loss continuation — November 13
+## Disabled Mac transport security continuation — November 13
 
 The owner delegated the helper choice. ADR-0021 selects the existing signed
 cryptexd in a separate transport-only role, behind the default-off local feature.
@@ -80,16 +80,42 @@ owner-Mac combined-loss execution gate for this default-off fixture. Do not ask
 for another unchanged Mac package run or manual signed-JSON exchange. The report
 is owner-supplied aggregate evidence, not independent device/OS attestation.
 
-**Next continuation:** bound and inspect the next remaining endpoint/exec race
-acceptance case within the existing default-off scope. No new test package or
-owner action is requested by this receipt. Any implementation must first check
-the authoritative spec/ADR and current code; no product activation is authorized
-by this test pass.
+**Endpoint/generation acceptance:** the two bounded P2 lifetime findings are
+corrected and independently source-reviewed through
+`3a12bcb6d6d1d2705081d367e9b561b12082a452`. Both selected Mac/Windows jobs passed
+[CI 43438187261](https://github.com/gungortarik/cryptex/actions/runs/43438187261).
+The exact original FD/socket witness is retained and revalidated; root/server
+generations and images are checked before credential send and observation
+publication. Changed original evidence is terminal PeerChanged, not accept-lag
+retry. Normal HTTP close and explicit Shutdown ACK remain distinct.
 
-Other endpoint/exec races, product publisher/OS-floor decisions, normal activation
-and final M8 protocol/platform/security/human gates remain open. The local-engine
-and native-pairing receipts do not establish cross-device replication or human
-WebView pairing acceptance; M8 remains open.
+All [eight native SDK cases](proposals/m8-macos-endpoint-lifetime-check.md) passed.
+Both exec cases keep a distinct captured root live while only the server execs;
+root-loss coverage proves the converse. Five HTTP boundary tests passed on each
+platform. Existing real Syncthing, native Desktop pairing, restart/replay, eleven
+mutations, single/combined loss, protected content and exported regression
+launchers remain passing. No deadline, validation, assertion or product gate was
+relaxed. Local Python103 tests pass (5 platform skips); exact native CI verifies
+format/strict lint/tests because local Rust execution is blocked by Application
+Control4551. The same optimized development fixture recipe remains in use.
+
+The [execution record](../evidence/m8/m8-macos-endpoint-lifetime-20261113.md),
+[machine receipt](../evidence/m8/macos-endpoint-lifetime-native-3a12bcb-ci.json)
+and [independent source review](../evidence/m8/m8-macos-endpoint-independent-review-20261113.md)
+separate source review, SDK contract evidence and actual Syncthing regressions.
+This closes the bounded correction, not atomic per-byte attribution against
+voluntary FD handoff or exec after a last userspace check. New SDK negatives ran
+in native CI; the earlier owner-Mac receipt remains accepted only for its original
+source. No unchanged owner rerun or new test package is requested here.
+
+**Next continuation:** prepare the concrete remaining protocol/Mac product-path
+integration and activation decision against accepted ADRs, including configured
+image policy and supported OS floor. Ordinary product routes stay closed until
+that decision/integration acceptance exists. Then complete the seven milestone
+scope areas on the accepted product paths, required CI/security/platform/human
+review. The [remaining acceptance checklist](M8_REMAINING_ACCEPTANCE.md) marks
+the bounded safety slice complete and these two broader areas open. There is no
+reliable day/date or percentage estimate yet. M8 remains open; M9 has not begun.
 
 ## Protected UI and native approval continuation
 

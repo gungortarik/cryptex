@@ -4,20 +4,22 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
-**Latest continuation — November 13:** the default-off Mac transport identity and
-pairing owner test passed. The new combined daemon/helper loss fixture is
-implemented and independently source-reviewed through `2890ad2`; exact-source
-Mac/Windows [CI 43364276809](https://github.com/gungortarik/cryptex/actions/runs/43364276809)
-passed, including both loss variants and the exported one-click launcher.
-Replacement refuses unchanged orphan state; broken-output containment and fenced
-credential/runtime cleanup passed. This is disabled test containment, not product
-orphan cleanup. The matching
-[owner-Mac combined result](evidence/m8/m8-macos-combined-loss-owner-receipt-7c8abb94.md)
-also passed all four checks; this owner execution gate is closed, with no
-unchanged package rerun needed. See the
-[current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) for build
-configuration and remaining endpoint/exec race and acceptance gates. Normal product routes remain closed; M8 is open. Older dated notes below
-are historical checkpoints.
+**Latest continuation — November 13:** the default-off Mac transport identity,
+pairing and combined-loss owner receipts passed. Two further endpoint/generation
+P2 findings are corrected and independently source-reviewed through `3a12bcb`.
+Exact-source [Mac/Windows CI43438187261](https://github.com/gungortarik/cryptex/actions/runs/43438187261)
+passed eight native socket cases, five HTTP boundary tests per platform and the
+existing real Syncthing/Desktop/restart/loss/exported-launcher regressions.
+Exact FD witnesses and retained process generations are revalidated before
+credential send and observation publication. No product route is activated.
+
+The bounded safety slice is complete; the
+[M8 remaining checklist](docs/M8_REMAINING_ACCEPTANCE.md) records two broader
+open areas: protocol/Mac product integration decisions, then final integrated
+platform/security/human acceptance. See the
+[current handoff](docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) for exact evidence
+and continuation. No unchanged owner package rerun is requested. M8 remains open;
+older dated notes below are historical checkpoints.
 
 The owner-approved [disabled Mac M8 adapter foundation](evidence/m8/m8-disabled-macos-owner-adapter-20261110.md)
 passed exact Windows/Mac CI42960387437 and source review. The remaining
