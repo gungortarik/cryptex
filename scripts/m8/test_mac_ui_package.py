@@ -36,6 +36,17 @@ class InteractiveFixtureTests(unittest.TestCase):
                 for name in ("mac_transport_check.py", "mac_identity_preflight.py"):
                     self.assertEqual(archive.read(prefix + name), Path(__file__).with_name(name).read_bytes())
                 self.assertTrue(archive.getinfo(prefix + "MAC-AKTARIM.command").external_attr >> 16 & 0o100)
+            export_fixture(root, files, root / "combined.zip", *args, combined_loss=True)
+            with zipfile.ZipFile(root / "combined.zip") as archive:
+                prefix = "Cryptex-Mac-Birlikte/"
+                for name in ("mac_combined_loss_check.py", "mac_transport_check.py", "mac_identity_preflight.py"):
+                    self.assertEqual(archive.read(prefix + name), Path(__file__).with_name(name).read_bytes())
+                self.assertTrue(archive.getinfo(prefix + "MAC-BIRLIKTE.command").external_attr >> 16 & 0o100)
+                self.assertNotIn(prefix + "MAC-AKTARIM.command", archive.namelist())
+            for options in ({"combined_loss": True, "transport_check": True},
+                            {"combined_loss": True, "durable": True}):
+                with self.assertRaisesRegex(ValueError, "choose one fixture mode"):
+                    export_fixture(root, files, root / "mixed.zip", *args, **options)
             files.append({**files[-1], "path": "Contents/Resources/transport/other"})
             with self.assertRaisesRegex(ValueError, "invalid fixture member"):
                 export_fixture(root, files, root / "refused.zip", *args)

@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 
-def export_fixture(bundle, files, destination, source, architecture, expires, *, durable=False, transport_check=False):
-    if durable and transport_check:
+def export_fixture(bundle, files, destination, source, architecture, expires, *, durable=False, transport_check=False, combined_loss=False):
+    if sum((durable, transport_check, combined_loss)) > 1:
         raise ValueError("choose one fixture mode")
     if not re.fullmatch(r"[0-9a-f]{40}", source) or architecture not in ("arm64", "x86_64"):
         raise ValueError("invalid fixture source or architecture")
@@ -25,9 +25,9 @@ def export_fixture(bundle, files, destination, source, architecture, expires, *,
     cms = "Contents/Resources/m8-startup.cms"
     if not required.issubset(item["path"] for item in files):
         raise ValueError("incomplete fixture inventory")
-    if transport_check and not transport.issubset(item["path"] for item in files):
+    if (transport_check or combined_loss) and not transport.issubset(item["path"] for item in files):
         raise ValueError("incomplete transport inventory")
-    prefix = "Cryptex-Mac-Aktarim/" if transport_check else "Cryptex-Mac-Kalici/" if durable else "Cryptex-Mac-UI/"
+    prefix = "Cryptex-Mac-Birlikte/" if combined_loss else "Cryptex-Mac-Aktarim/" if transport_check else "Cryptex-Mac-Kalici/" if durable else "Cryptex-Mac-UI/"
 
     def add(archive, name, data, executable=False):
         info = zipfile.ZipInfo(prefix + name)
@@ -52,7 +52,11 @@ def export_fixture(bundle, files, destination, source, architecture, expires, *,
         add(archive, "fixture.json", json.dumps({
             "source": source, "architecture": architecture, "expires_utc": expiry.isoformat(),
         }).encode())
-        if transport_check:
+        if combined_loss:
+            add(archive, "MAC-BIRLIKTE.command", Path(__file__).with_name("mac_combined_loss_owner.py").read_bytes(), True)
+            for helper in ("mac_combined_loss_check.py", "mac_transport_check.py", "mac_identity_preflight.py"):
+                add(archive, helper, Path(__file__).with_name(helper).read_bytes())
+        elif transport_check:
             add(archive, "MAC-AKTARIM.command", Path(__file__).with_name("mac_transport_owner.py").read_bytes(), True)
             for helper in ("mac_transport_check.py", "mac_identity_preflight.py"):
                 add(archive, helper, Path(__file__).with_name(helper).read_bytes())

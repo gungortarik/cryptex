@@ -15,7 +15,10 @@ use std::process::{Child, Command, Stdio};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+mod combined_loss;
+
 const FLAG: &str = "--m8-local-transport-helper";
+const COMBINED_FLAG: &str = "--m8-local-transport-combined-helper";
 const MARKER: &[u8] = b"m8-native-transport-helper-v1\n";
 const HINT: &[u8] = b"cryptex-m8-transport-verified-v1\n";
 const PROFILE: &str = "00000000000000000000000000000001";
@@ -316,7 +319,12 @@ fn ports(root: &Path) -> Result<NativePorts, Error> {
     Ok(ports)
 }
 
-fn serve(root: &Path, release: &Release, channel: &mut Channel) -> Result<(), Error> {
+fn serve(
+    root: &Path,
+    release: &Release,
+    channel: &mut Channel,
+    combined: bool,
+) -> Result<(), Error> {
     let _scope = Scope::enter(channel)?;
     let _package = package(release, root)?;
     let ports = ports(root)?;
@@ -357,6 +365,14 @@ fn serve(root: &Path, release: &Release, channel: &mut Channel) -> Result<(), Er
             )
         })
         .map_err(|_| Error::Engine)?;
+    // Start only after engine generation has finished: a group member must not
+    // interfere with the generation child's normal whole-group exit check.
+    // Only CLOEXEC descriptors remain apart from the explicit fixture stdin.
+    let _guardian = if combined {
+        Some(combined_loss::Guardian::start(root, release)?)
+    } else {
+        None
+    };
     let ready = Reply {
         sequence: 0,
         identity: Some(identity.clone()),
@@ -496,6 +512,9 @@ fn cleanup_fixture_key_with_busy<S: SecureStore + ?Sized>(
 }
 
 pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
+    if let Some(result) = combined_loss::entry(args) {
+        return Some(result);
+    }
     if args
         .first()
         .is_some_and(|arg| arg == "--m8-local-transport-mutation-driver")
@@ -551,13 +570,14 @@ pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
             Err(Error::Arguments)
         });
     }
-    if args.first().is_none_or(|a| a != FLAG) {
+    if args.first().is_none_or(|a| a != FLAG && a != COMBINED_FLAG) {
         return None;
     }
     Some((|| {
         if args.len() != 3 {
             return Err(Error::Arguments);
         }
+        let combined = args[0] == COMBINED_FLAG;
         let epoch = epoch(&args[1])?;
         let root = Path::new(&args[2]);
         private_root(root)?;
@@ -579,17 +599,20 @@ pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
         let mut channel = Channel::connect_until(&epoch, &(&expected).into(), deadline)
             .map_err(|_| Error::Channel)?;
         channel
-            .send(&hello(2, &epoch, &release, root), deadline)
+            .send(
+                &combined_loss::helper_hello(combined, 2, &epoch, &release, root),
+                deadline,
+            )
             .map_err(|_| Error::Channel)?;
         let mut buffer = [0; 128];
         if channel
             .receive(&mut buffer, deadline)
             .map_err(|_| Error::Channel)?
-            != hello(1, &epoch, &release, root)
+            != combined_loss::helper_hello(combined, 1, &epoch, &release, root)
         {
             return Err(Error::Channel);
         }
-        let result = serve(root, &release, &mut channel);
+        let result = serve(root, &release, &mut channel, combined);
         if let Err(error) = result {
             let refusal = Reply {
                 sequence: 0,
@@ -629,6 +652,7 @@ impl Helper {
     fn start(
         root: &Path,
         credential_record: &std::sync::Mutex<Option<String>>,
+        combined: bool,
     ) -> Result<Self, Error> {
         use std::os::unix::process::CommandExt;
         private_root(root)?;
@@ -669,7 +693,7 @@ impl Helper {
         let mut command = Command::new(release.root.join("Contents/MacOS/cryptexd"));
         command
             .args([
-                FLAG,
+                if combined { COMBINED_FLAG } else { FLAG },
                 &epoch_text(&epoch),
                 root.to_str().ok_or(Error::Arguments)?,
             ])
@@ -695,6 +719,9 @@ impl Helper {
                 }
             });
         }
+        if combined {
+            command.stdin(combined_loss::input_pipe()?);
+        }
         let child = command.spawn().map_err(|_| Error::Engine)?;
         let mut result = Self {
             child: Some(child),
@@ -718,12 +745,15 @@ impl Helper {
         if channel
             .receive(&mut buffer, deadline)
             .map_err(|_| Error::Channel)?
-            != hello(2, &epoch, &result._release, root)
+            != combined_loss::helper_hello(combined, 2, &epoch, &result._release, root)
         {
             return Err(Error::Channel);
         }
         channel
-            .send(&hello(1, &epoch, &result._release, root), deadline)
+            .send(
+                &combined_loss::helper_hello(combined, 1, &epoch, &result._release, root),
+                deadline,
+            )
             .map_err(|_| Error::Channel)?;
         let mut buffer = [0; 1024];
         let ready: Reply = decode(
@@ -893,6 +923,7 @@ enum Work {
     Observe,
     CrashHelper,
     FixtureGroup,
+    FixtureCombinedLoss,
 }
 struct Query {
     work: Work,
@@ -940,6 +971,9 @@ pub(crate) struct Worker {
 }
 impl Worker {
     pub(crate) fn spawn(root: PathBuf, create: bool) -> Result<Self, Error> {
+        Self::spawn_inner(root, create, false)
+    }
+    fn spawn_inner(root: PathBuf, create: bool, combined: bool) -> Result<Self, Error> {
         let root = if create {
             create_root(&root)?
         } else {
@@ -961,7 +995,7 @@ impl Worker {
             .name("mac-transport-native-owner".into())
             .spawn(move || {
                 let result = (|| {
-                    let mut helper = Helper::start(&root, &record)?;
+                    let mut helper = Helper::start(&root, &record, combined)?;
                     state.store(READY, Ordering::Release);
                     while !worker_stop.load(Ordering::Acquire) {
                         match receive.recv_timeout(Duration::from_millis(250)) {
@@ -981,6 +1015,22 @@ impl Worker {
                                     state.store(FAILED, Ordering::Release);
                                     let _ = query.reply.try_send(Err(Error::Engine));
                                     return Err(Error::Engine);
+                                }
+                                if matches!(query.work, Work::FixtureCombinedLoss) {
+                                    if !combined {
+                                        return Err(Error::Policy);
+                                    }
+                                    let child = helper.child.as_mut().ok_or(Error::Engine)?;
+                                    child.kill().map_err(|_| Error::Engine)?;
+                                    combined_loss::await_exit_unreaped(
+                                        child,
+                                        Duration::from_secs(2),
+                                    )?;
+                                    let _ = query.reply.try_send(Ok(child.id().to_string()));
+                                    // Preserve the exact child unreaped and bypass Helper Drop.
+                                    // The external fixture kills only its captured daemon driver.
+                                    std::thread::sleep(Duration::from_secs(60));
+                                    return Err(Error::Deadline);
                                 }
                                 if matches!(query.work, Work::FixtureGroup) {
                                     let group = helper.child.as_ref().ok_or(Error::Engine)?.id();

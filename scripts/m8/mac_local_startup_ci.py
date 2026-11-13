@@ -12,6 +12,7 @@ from mac_identity_preflight import PreflightError
 from mac_durable_check import MARKERS, check_durable_profile, check_session_journal
 from mac_transport_package import prepare as prepare_transport
 from mac_transport_check import check_native_pairing, check_parent_loss
+from mac_combined_loss_check import check_combined_loss
 
 
 def sign_fixture_image(run, target, signer, identifier, keychain, password, stage):
@@ -142,6 +143,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     check_native_pairing(positive / "Contents/MacOS/cryptex-desktop",
                          root / "pairing-runtime", run)
     check_parent_loss(positive / "Contents/MacOS/cryptexd", root / "parent-loss-runtime", run)
+    check_combined_loss(positive / "Contents/MacOS/cryptexd", root / "combined-loss-runtime", run)
     result = run([positive / "Contents/MacOS/cryptex-desktop",
                   "--cryptex-m8-local-startup-check", root / "positive-runtime"],
                  "real_signed_startup_restart", 45)
@@ -275,3 +277,24 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                     "runtime_cleanup_verified"))):
             raise PreflightError("exported_transport_result_failed")
         print("exported_transport_launcher=passed")
+        archive_path = Path(os.environ["RUNNER_TEMP"]) / "cryptex-mac-combined-loss.zip"
+        export_fixture(positive, positive_files, archive_path, source_commit, architecture,
+                       expires, combined_loss=True)
+        destination = root / "combined-export-check"
+        with zipfile.ZipFile(archive_path) as archive:
+            archive.extractall(destination)
+            for member in archive.infolist():
+                (destination / member.filename).chmod((member.external_attr >> 16) & 0o777)
+        owner = destination / "Cryptex-Mac-Birlikte"
+        run([owner / "MAC-BIRLIKTE.command"], "exported_combined_loss_launcher", 180)
+        results = list(owner.glob("MAC-BIRLIKTE-SONUC-*.zip"))
+        if len(results) != 1:
+            raise PreflightError("exported_combined_loss_result_missing")
+        with zipfile.ZipFile(results[0]) as result:
+            report = json.loads(result.read("result.json"))
+        if (report.get("source") != source_commit or report.get("outcome") != "passed"
+                or not all(report.get(key) is True for key in (
+                    "combined_supervisor_loss_and_refusal_verified", "credential_cleanup_verified",
+                    "runtime_cleanup_verified"))):
+            raise PreflightError("exported_combined_loss_result_failed")
+        print("exported_combined_loss_launcher=passed")
