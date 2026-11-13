@@ -40,6 +40,16 @@ Cross-platform equivalence does not require identical OS implementation mechanis
 
 It requires equivalent product and architecture guarantees.
 
+### 3.1 Owner-selected Mac support baseline — 2026-11-13
+
+The owner selected **macOS 26 and newer** as sufficient for the Mac application.
+Use that baseline for the remaining M8 native/product integration. Packaging,
+deployment-target and runtime-admission enforcement require implementation and
+verification before product activation. This does not select a release signer,
+activate M8 routes, change Windows support or accept the complete protocol. The
+separate [terminal-retention decision](proposals/m8-terminal-journal-retention.md)
+records implementation authority for the journal migration.
+
 ## 4. Application shell
 
 Cryptex Desktop uses Tauri as the cross-platform application shell.

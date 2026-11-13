@@ -1275,26 +1275,58 @@ and canonical identity rules before acceptance.
 
 ## 7. Current status
 
-This document is a concrete review candidate, not an accepted protocol. In
-particular, the new schema/domain labels and causal graph rule remain
-unaccepted. The 2026-10-22 independent re-review recommended NOT READY; a
-documentation follow-up pinned SCC/condensation-ordered eligibility filtering,
-self-retirement as a per-identity cap, a competing-fork predicate, and reducer
-vectors. That follow-up is not a new independent review and does not close the
-importer lock-participation or per-platform IPC binding gates. The 2026-10-25
-Cursor follow-up also returned NOT READY: macOS handoff authenticity and
-supported user-space process-generation/code-signature validation remain
-underspecified; Windows peer binding is not the R1 approval-session protocol;
-publish/recovery must rebind policy on the locked snapshot, revalidate subset
-finish, and cover marker ambiguity and Windows marker-parent durability. Apple
-XNU source confirms the opaque token warning and internal PID-version check,
-but these do not establish a supported user-space identity API or native
-guarantee. No code, schema,
-writer, resolver, IPC mutation, pairing UI, or peer transport activation is
-authorized by this proposal as a whole. The owner's 2026-10-23 approval in
-§5.1.1 separately authorizes implementation of that Windows publication-flow
-slice only; it does not accept the proposed trust schema, authorize trust or
-peer transport activation, or close the independent review, durability, or
-macOS gates. Existing Windows lifecycle receipts remain scoped to their tested
-gates. M8 and the consolidated Mac stage remain open; M7 stays deferred; no
-Actions are requested.
+**Updated November 13.** The full addendum remains PROPOSED. The owner accepted
+§§2–4 as the Windows implementation basis on October 29, in addition to the
+separately approved publication/recovery slices above. Implementation permission
+is not final protocol acceptance or ordinary product activation. Preserve v1/v2
+bytes and their strict readers. The version-dispatched candidate reader now
+authenticates strict v3 envelopes; a legacy reader still refuses them.
+
+The October 22/25 NOT READY reviews are historical findings, not a description
+of all current source. Bootstrap signing/parser bounds, operation-specific
+display digests, journal transitions, guarded publication/recovery, live Windows
+approval sessions, v3 policy verification and the seven SCC reducer cases now
+have implementations and scoped evidence. Independent agent review on November
+13 found a concrete remaining availability defect: sixteen terminal journal
+entries exhaust the pending-operation count. The
+[terminal-retention proposal](../proposals/m8-terminal-journal-retention.md)
+was selected for implementation after owner delegation on November 13. Migration
+is not yet implemented; complete protocol acceptance is unchanged. Do not
+discard cancellation or uncertain-append evidence to reclaim space.
+
+Mac identity is no longer limited to the earlier feasibility notes. Accepted
+ADR-0020/0021 permit a default-off native development candidate with authenticated
+sender/image/generation checks and the transport helper. Scoped
+[CI43438187261](https://github.com/gungortarik/cryptex/actions/runs/43438187261)
+on `3a12bcb` passed its native endpoint, real Syncthing/Desktop, restart/replay and
+loss regressions, with independent source review and earlier source-bound owner
+Mac receipts. That closes those specific native findings. It does not select a
+product signer, enable ordinary Mac routes, or prove atomic
+attribution against a voluntary accepted-FD handoff after the last observation.
+The owner separately selected macOS 26+; its product enforcement remains open.
+
+The independent wire-reference corpus now pins bootstrap messages/hashes,
+all three v3 event types, cutoff wire extrema, owner display digests and a mixed
+v1/v2/v3 chain without generating expectations from candidate Rust code. See
+`tools/m8-protocol-vectors/README.md` and the
+[current handoff](../34_CURRENT_IMPLEMENTATION_HANDOFF.md) for exact-source CI
+status: full native CI43505609309 passed on `e49e318`. Its frozen-v1 envelope
+refusal is not the entire old-product Brain-hold
+gate; cutoff wire vectors are not signed target-history before/at/after proofs.
+
+Remaining protocol gates are finite: resolve terminal retention; deliver strict
+v3/bootstrap schema and TypeScript drift artifacts; finish the signed boundary
+and old-product downgrade/byte-preservation fixtures; map every §5 crash row to
+existing evidence and fill only uncovered journal durability/rebuild/key-loss
+cases; and independently review/accept the complete protocol, including the
+Brain-wide SCC hold and compromised-issuer availability consequence. Process
+interruption is not a power-loss or parent-directory durability guarantee.
+
+Product image/OS decisions and supported product-path integration remain
+separate. Final M8 acceptance must exercise all seven milestone scope areas
+together on the accepted paths, with required CI and human diff/flow review.
+No new product activation, transitive trust, canonical cancellation event,
+M11 recovery override or M16 stress scope is authorized here. M8 remains OPEN,
+M7 deferred, and M9 has not started. Older dated implementation paragraphs above
+remain scoped historical records; use this status and the current handoff when
+continuing work.

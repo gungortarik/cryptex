@@ -1,7 +1,14 @@
 # M8 terminal journal retention decision
 
-Status: PROPOSED, not an accepted protocol amendment or implemented migration.
+Status: ACCEPTED FOR IMPLEMENTATION on 2026-11-13; migration not yet implemented.
 Source reviewed: `06b0c29b4333942a10f54db216fc5843795eaaa9`.
+
+The owner delegated the choice ("hangisi iyiyse sen onu sec") after receiving
+the concrete proposal below. The selected option is compact terminal receipts
+in one atomically replaced journal, preserving cancelled-ID refusal and uncertain
+evidence under the existing one-MiB bound. This authorizes that implementation
+and migration, not the complete ADR-0019 addendum or ordinary product activation.
+The owner separately selected macOS 26+ as sufficient for the application.
 
 ## Problem
 
@@ -60,12 +67,13 @@ rebuild rules. It is a larger architecture change and is not selected here.
 Keeping the present sixteen-total lifetime cap preserves current behavior but
 leaves the availability defect unresolved and M8 open.
 
-## Why an owner decision is pending
+## Decision authority
 
 Repository [AGENTS.md](../../AGENTS.md) says: “If a requested change in tool
 roles, workflow, architecture, branch strategy, milestone scope, or integration
 strategy is ambiguous, ask the user before changing direction.” This proposal
 introduces a persisted terminal-receipt format and retention/capacity behavior;
-the existing implementation basis does not select those semantics. Read-only
-independent review recommends this bounded option, but that review does not
-authorize an amendment or product activation.
+the existing implementation basis did not select those semantics. Independent
+review recommended this option; subsequent owner delegation authorized the choice
+above. Review alone did not authorize an amendment or product activation. No
+further permission question is needed for the selected implementation.

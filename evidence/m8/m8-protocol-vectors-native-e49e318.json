@@ -1,0 +1,36 @@
+{
+  "receipt_version": 1,
+  "scope": "full ordinary readiness and independent protocol vectors; not product activation or M8 completion",
+  "source_commit": "e49e3182bcbced7080b841b7fa3a2c7812793533",
+  "run_id": 43505609309,
+  "run_url": "https://github.com/gungortarik/cryptex/actions/runs/43505609309",
+  "conclusion": "success",
+  "jobs": [
+    {"id": 132162368158, "name": "Readiness (macos-latest)", "conclusion": "success", "daemon_library_passed": 514, "daemon_library_ignored": 7},
+    {"id": 132162368204, "name": "Readiness (windows-latest)", "conclusion": "success", "daemon_library_passed": 635, "daemon_library_ignored": 5},
+    {"id": 132162367932, "name": "IPC cross-account ACL (Windows)", "conclusion": "success"}
+  ],
+  "new_tests_passed_on_both_platforms": [
+    "independent_bootstrap_bytes_signatures_hashes_and_both_roles_match",
+    "independent_v3_all_operations_and_cutoff_extremes_match_exact_writer_bytes",
+    "independent_mixed_chain_preserves_v1_v2_v3_v1_links_and_sequence_gaps",
+    "bootstrap_journal::reference_tests::independent_snapshots_bind_both_pairing_roles_and_owner_operations"
+  ],
+  "windows_captured_child_termination_passed": "owned_process::tests::abrupt_owner_exit_without_destructors_still_stops_its_nested_job",
+  "events_unit_tests_passed_per_platform": 86,
+  "events_reference_integration_tests_passed_per_platform": 3,
+  "fixture_sha256": "a61357dd60be32d5d0a6cda6c8df2c0167562e8c4984961e01bcf1d8defd3b2e",
+  "format_strict_workspace_lint_release_build_tests_and_node_checks_passed": true,
+  "local_reference_regeneration_and_frozen_v1_v2_ts_drift_passed": true,
+  "independent_agent_source_review_commit": "6574462d82ee7728902ac5431d0ceb76fb63fec5",
+  "followup_is_native_format_only": true,
+  "not_executed_by_this_run": [
+    "default-off Desktop startup native feature suite and owner Mac launchers",
+    "manual Windows installer packaging",
+    "ignored native tests",
+    "old-product Brain-wide downgrade hold and on-disk byte preservation",
+    "signed target-history cutoff before/at/after policy vectors",
+    "terminal journal migration",
+    "ordinary Mac product activation and final seven-area milestone acceptance"
+  ]
+}

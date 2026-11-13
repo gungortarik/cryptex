@@ -25,6 +25,30 @@ accepted [ADR-0019](adr/ADR-0019-m8-peer-trust-design-proposal.md),
    image policy, supported OS floor, product-path integration and explicit
    activation acceptance. Development/test certificates do not establish those
    decisions. Do not silently activate ordinary routes from a fixture pass.
+
+   November 13 protocol review makes the remaining items explicit:
+
+   - Fix the sixteen-terminal-entry availability cap while preserving permanent
+     cancellation refusal, canonical retry binding and uncertain-append evidence.
+     The [bounded terminal-receipt proposal](proposals/m8-terminal-journal-retention.md)
+     is concrete and independently source-reviewed. The owner delegated the
+     choice on November 13; compact receipts were selected for implementation.
+     Migration implementation/verification remains pending.
+   - Independent bootstrap/v3/owner-digest wire fixtures passed full native
+     [CI43505609309](https://github.com/gungortarik/cryptex/actions/runs/43505609309)
+     on `e49e318`; that slice is complete. Strict candidate
+     v3/bootstrap JSON Schema and TypeScript artifacts remain outstanding.
+   - Finish the old-product Brain-hold/immutable-byte downgrade proof and signed
+     target-history cutoff `0`/`1`/`u64::MAX` before/at/after checks. Envelope-only
+     refusals and cutoff string vectors do not establish those higher layers.
+   - Map the existing recovery/import/concurrency/platform receipts to each §5
+     crash row. Fill only uncovered write/flush/replace/readback/torn-journal,
+     derived rebuild and missing-key cases; do not repeat completed VM packages
+     or relabel process-kill tests as power-loss durability.
+   - Accept the complete independently reviewed protocol and its explicit SCC
+     Brain-wide hold/availability boundary, then choose the product image policy
+     and connect the supported product paths. The owner selected macOS 26+;
+     packaging/deployment/runtime enforcement remains to be done.
 3. **Final milestone acceptance.** On the actual accepted product paths, verify
    all seven scope areas together: pairing, transport controller, incoming
    validation, offline/reconnect convergence, revoke/retire/compromise, sequence

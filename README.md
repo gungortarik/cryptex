@@ -4,6 +4,19 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
+**Protocol closeout checkpoint — November 13:** independent reference fixtures
+now pin the exact bootstrap/v3 writer bytes, hashes, owner display digests and
+mixed-version chain. The Windows crash test now captures the original child
+process handle and requires actual termination within one unchanged budget.
+The [review record](evidence/m8/m8-protocol-vectors-review-20261113.md) separates
+native execution evidence from protocol/product acceptance. A remaining
+sixteen-terminal-entry journal cap has a concrete
+[retention decision](docs/proposals/m8-terminal-journal-retention.md), selected
+for implementation after owner delegation. The owner selected macOS 26+; its
+enforcement and ordinary product integration remain open. Full native
+[Mac/Windows CI43505609309](https://github.com/gungortarik/cryptex/actions/runs/43505609309)
+passed on `e49e318`. No completed VM package is being repeated.
+
 **Latest continuation — November 13:** the default-off Mac transport identity,
 pairing and combined-loss owner receipts passed. Two further endpoint/generation
 P2 findings are corrected and independently source-reviewed through `3a12bcb`.

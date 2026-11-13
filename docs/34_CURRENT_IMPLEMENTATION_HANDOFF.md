@@ -1,5 +1,64 @@
 # 34 — Current Implementation Handoff
 
+## Protocol closeout continuation — November 13
+
+The owner asked to continue toward M8 closure. Independent source review found
+two concrete protocol gaps: missing independently computed exact wire vectors
+and terminal journal entries exhausting the sixteen-pending-operation cap.
+The current full addendum remains PROPOSED; its Windows §§2–4 implementation
+basis remains accepted. Its §7 now reconciles obsolete October findings with
+the actual implementations and exact-source native evidence. No authority or
+product gate was silently changed.
+
+Reference vectors are implemented through `6574462`, with native formatter-only
+follow-up `e49e318`. The developer tool invokes no Cryptex Rust code: independent
+RFC8785 wire/preimage assembly, official BLAKE3 binding and Node/OpenSSL Ed25519.
+All identities/keys/content are public synthetic fixtures. Three events tests
+and one daemon snapshot test pin four bootstrap signatures/message hashes,
+agreement/transcript hashes, all v3 types/cutoff wire extrema/operation digests,
+four owner display digests and a mixed v1→v2→v3→v1 chain. Inventory assertions
+prevent silent removal of required fixtures. Independent agent source review
+has no remaining actionable finding in this slice. See the
+[review and evidence record](../evidence/m8/m8-protocol-vectors-review-20261113.md).
+
+Full baseline CI43502575940 on `06b0c29` passed Mac readiness and Windows
+cross-account IPC ACL, but the old Windows crash test sampled a descendant PID
+immediately after owner exit and failed. The corrected fixture retains the
+original child handle before triggering owner exit, proves it initially live,
+and requires owner97/nonclean plus original-child signaling within one shared
+ten-second deadline from spawn. It sends no cleanup before assertions and
+changes no production lifecycle code. The first two new-vector CI attempts
+failed formatting; native formatter corrections were applied without modifying
+expected wire bytes. Full exact-source
+[CI43505609309](https://github.com/gungortarik/cryptex/actions/runs/43505609309)
+on `e49e318` is SUCCESS: Mac/Windows readiness and Windows cross-account IPC ACL.
+All four new reference tests passed per platform; the Windows crash case passed.
+Daemon library: Mac514passed/7ignored, Windows635passed/5ignored, zero failures.
+Events86unit+3reference integration tests passed per platform. Release Desktop
+build/tests/strict lint and Node recovery/packaging passed. Existing ignored
+tests remain outside ordinary readiness. The
+[machine receipt](../evidence/m8/m8-protocol-vectors-native-e49e318.json)
+separates exact source and job scope; no unchanged owner package is needed.
+
+Local deterministic reference regeneration, frozen v1/v2 TypeScript drift and
+diff checks pass. Local Rust execution remains blocked by Application Control
+4551; no bypass was attempted. Dependencies/runtime stay outside the repository.
+Preserve the existing untracked `scripts/m8/__pycache__/`.
+
+**Next continuation:** the owner selected macOS 26+ and delegated the journal
+choice on November 13. The recommended
+[compact terminal-receipt decision](proposals/m8-terminal-journal-retention.md)
+is selected for implementation; do not ask again. It preserves cancelled-ID
+refusal and canonical retry binding under the existing one-MiB bound, retaining
+uncertain evidence. Implement/verify that migration and continue the finite protocol
+gates in [M8_REMAINING_ACCEPTANCE.md](M8_REMAINING_ACCEPTANCE.md): schema artifacts,
+old-product Brain hold/byte preservation, signed target-history boundary proofs,
+uncovered durability/rebuild/key-loss cases and complete protocol acceptance.
+The wire vectors alone do not close those higher layers. Product image/OS
+decisions, supported product-path integration and final combined scope/human
+acceptance remain separate. No unchanged Mac/VM package rerun is requested.
+M8 remains OPEN and M9 has not begun.
+
 ## Disabled Mac transport security continuation — November 13
 
 The owner delegated the helper choice. ADR-0021 selects the existing signed
