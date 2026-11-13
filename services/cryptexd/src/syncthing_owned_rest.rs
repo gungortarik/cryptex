@@ -176,7 +176,10 @@ impl ConnectionCheck for EndpointGuard<'_> {
         EndpointGuard::observation_complete(self)
     }
 }
-fn check_before_send(check: &impl ConnectionCheck, deadline: Instant) -> Result<(), OwnedRestError> {
+fn check_before_send(
+    check: &impl ConnectionCheck,
+    deadline: Instant,
+) -> Result<(), OwnedRestError> {
     check.before_send().map_err(OwnedRestError::Endpoint)?;
     if Instant::now() >= deadline {
         return Err(OwnedRestError::Deadline);
@@ -205,8 +208,8 @@ fn request_on_connection(
         .map_err(|_| OwnedRestError::RuntimeUnavailable)?;
     runtime.block_on(async {
         tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), async {
-            let stream = tokio::net::TcpStream::from_std(stream)
-                .map_err(|_| OwnedRestError::Unavailable)?;
+            let stream =
+                tokio::net::TcpStream::from_std(stream).map_err(|_| OwnedRestError::Unavailable)?;
             let (mut sender, connection) = hyper::client::conn::http1::Builder::new()
                 .max_headers(64)
                 .max_buf_size(16 * 1024)
@@ -272,7 +275,9 @@ fn request_on_connection(
                     // A normal Connection:close may already remove the server
                     // FD. Observation success still requires live root/peer
                     // generations and images; shutdown ACK conveys no identity.
-                    check.observation_complete().map_err(OwnedRestError::Endpoint)?;
+                    check
+                        .observation_complete()
+                        .map_err(OwnedRestError::Endpoint)?;
                     if Instant::now() >= deadline {
                         return Err(OwnedRestError::Deadline);
                     }

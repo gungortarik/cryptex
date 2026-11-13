@@ -24,7 +24,8 @@ unsafe extern "C" {
     fn cx_transport_pin_live(pin: *const c_void) -> c_int;
     fn cx_transport_pin_close(pin: *mut c_void) -> c_int;
     fn cx_transport_socket_peer(root: *const c_void, fd: c_int, out: *mut *mut c_void) -> c_int;
-    fn cx_transport_peer_validate(root: *const c_void, peer: *const c_void, socket: c_int) -> c_int;
+    fn cx_transport_peer_validate(root: *const c_void, peer: *const c_void, socket: c_int)
+    -> c_int;
     fn cx_transport_group_empty(
         group: libc::pid_t,
         except: libc::pid_t,

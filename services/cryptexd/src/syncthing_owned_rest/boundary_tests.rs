@@ -96,7 +96,10 @@ fn stale_or_changed_peer_refuses_before_any_http_bytes() {
 fn queued_valid_body_cannot_authorize_a_lost_generation() {
     let check = check(None, Some(EndpointError::OwnerExited));
     let (result, request) = exchange(&check, Operation::Status, BUDGET);
-    assert_eq!(result, Err(OwnedRestError::Endpoint(EndpointError::OwnerExited)));
+    assert_eq!(
+        result,
+        Err(OwnedRestError::Endpoint(EndpointError::OwnerExited))
+    );
     assert!(!request.is_empty());
     assert_eq!(check.calls.get(), (1, 1));
 }
@@ -129,6 +132,9 @@ fn synchronous_validation_never_resets_the_request_deadline() {
     // Invoke the same pre-send boundary directly with a known expired budget.
     // No thread scheduling or runtime setup can bypass the intended callback.
     let expired = Instant::now() - Duration::from_secs(1);
-    assert_eq!(check_before_send(&check, expired), Err(OwnedRestError::Deadline));
+    assert_eq!(
+        check_before_send(&check, expired),
+        Err(OwnedRestError::Deadline)
+    );
     assert_eq!(check.calls.get(), (1, 0));
 }
