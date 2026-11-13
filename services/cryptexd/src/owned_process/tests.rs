@@ -117,6 +117,31 @@ fn process_is_running(pid: u32) -> bool {
     }
 }
 
+struct RetainedTestProcess(windows_sys::Win32::Foundation::HANDLE);
+
+impl RetainedTestProcess {
+    fn open(pid: u32) -> Self {
+        let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+        assert!(!handle.is_null(), "capture original synthetic descendant");
+        Self(handle)
+    }
+
+    fn is_signaled(&self, timeout: Duration) -> bool {
+        let millis = u32::try_from(timeout.as_millis()).unwrap();
+        match unsafe { WaitForSingleObject(self.0, millis) } {
+            WAIT_OBJECT_0 => true,
+            WAIT_TIMEOUT => false,
+            _ => panic!("retained synthetic process observation failed"),
+        }
+    }
+}
+
+impl Drop for RetainedTestProcess {
+    fn drop(&mut self) {
+        unsafe { CloseHandle(self.0) };
+    }
+}
+
 fn wait_stopped(pid: u32) {
     let deadline = Instant::now() + TEST_TIMEOUT;
     while process_is_running(pid) {
@@ -207,6 +232,9 @@ fn worker_entry() {
         // Deliberately bypass Rust destructors. Windows must close the last
         // non-inherited job handle and terminate the nested tree itself.
         if mode == "owner-crash" {
+            // Let the observer retain the original descendant handle before
+            // this worker exits; a later PID lookup can observe a reused PID.
+            wait_file(&root.join("crash.request"));
             std::process::exit(97);
         }
         wait_for_stop(&root);
@@ -360,14 +388,25 @@ fn exited_root_with_live_descendant_is_not_reported_as_clean() {
 fn abrupt_owner_exit_without_destructors_still_stops_its_nested_job() {
     let fixture = Fixture::new();
     let mut owner = OwnedProcess::spawn(&fixture.spec("owner-crash")).unwrap();
-    let exit = owner.wait_for_exit(TEST_TIMEOUT).unwrap();
-    assert_eq!(exit.exit_code, Some(97));
-    assert!(!exit.is_clean());
+    wait_file(&fixture.0.join("descendant.pid"));
     let child: u32 = fs::read_to_string(fixture.0.join("descendant.pid"))
         .unwrap()
         .parse()
         .unwrap();
-    assert!(!process_is_running(child));
+    // Job teardown/accounting and process-handle signaling are distinct
+    // observations. Require actual termination of this captured generation,
+    // within the original budget, without killing it or sampling its PID again.
+    let child = RetainedTestProcess::open(child);
+    assert!(!child.is_signaled(Duration::ZERO));
+    assert_eq!(owner.try_exit().unwrap(), None);
+    let deadline = Instant::now() + TEST_TIMEOUT;
+    publish(&fixture.0, "crash.request", b"crash");
+    let exit = owner
+        .wait_for_exit(deadline.saturating_duration_since(Instant::now()))
+        .unwrap();
+    assert_eq!(exit.exit_code, Some(97));
+    assert!(!exit.is_clean());
+    assert!(child.is_signaled(deadline.saturating_duration_since(Instant::now())));
 }
 
 #[test]

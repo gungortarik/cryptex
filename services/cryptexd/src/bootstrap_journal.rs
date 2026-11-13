@@ -2240,6 +2240,10 @@ fn hex_lower(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
+#[path = "bootstrap_journal/reference_tests.rs"]
+mod reference_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use ed25519_dalek::SigningKey;
