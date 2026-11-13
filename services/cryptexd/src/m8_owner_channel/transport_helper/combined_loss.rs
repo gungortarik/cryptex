@@ -235,7 +235,7 @@ fn guard(root: &Path, epoch: &[u8; 16]) -> Result<(), Error> {
                 let mut byte = [0];
                 return match std::io::stdin().read(&mut byte) {
                     Ok(0) => Ok(()), // Collector loss still cleans our own group.
-                    Ok(1) if byte == [b'K'] => Ok(()),
+                    Ok(1) if byte == *b"K" => Ok(()),
                     _ => Err(Error::Channel),
                 };
             }
@@ -265,7 +265,7 @@ fn driver(root: &Path) -> Result<(), Error> {
     std::io::stdin()
         .read_exact(&mut trigger)
         .map_err(|_| Error::Channel)?;
-    if trigger != [b'X'] {
+    if trigger != *b"X" {
         return Err(Error::Arguments);
     }
     let group = worker.reader.call(Work::FixtureCombinedLoss)?;
