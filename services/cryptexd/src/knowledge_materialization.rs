@@ -1767,7 +1767,9 @@ fn append_local_peer_approval_anchor_with_mode<S: SecureStore + ?Sized>(
 /// Reconcile uncertain and completed operations against one complete locked
 /// canonical history before IPC, retrieval or transport. This never appends.
 pub fn reconcile_peer_approval_anchors_before_startup<S: SecureStore + ?Sized>(
-    runtime_root: &Path, store: &S, env: SecureStoreEnvironment,
+    runtime_root: &Path,
+    store: &S,
+    env: SecureStoreEnvironment,
 ) -> KnowledgeMaterializationResult<()> {
     anchor_recovery::reconcile_before_startup(runtime_root, store, env)
 }

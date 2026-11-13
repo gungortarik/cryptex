@@ -3,8 +3,9 @@
 //! until every selected receipt has been rechecked and the journal reconciled.
 
 use super::*;
-use crate::bootstrap_journal::{BootstrapJournalStore, BootstrapOperation, BootstrapState,
-    PendingBootstrapTransaction};
+use crate::bootstrap_journal::{
+    BootstrapJournalStore, BootstrapOperation, BootstrapState, PendingBootstrapTransaction,
+};
 use std::collections::BTreeMap;
 
 fn held(reason: &str) -> KnowledgeMaterializationError {
@@ -12,43 +13,67 @@ fn held(reason: &str) -> KnowledgeMaterializationError {
 }
 
 pub(super) fn reconcile_before_startup<S: SecureStore + ?Sized>(
-    runtime_root: &Path, store: &S, env: SecureStoreEnvironment,
+    runtime_root: &Path,
+    store: &S,
+    env: SecureStoreEnvironment,
 ) -> KnowledgeMaterializationResult<()> {
-    let journal = BootstrapJournalStore::new(runtime_root)
-        .map_err(|error| held(&error.to_string()))?;
+    let journal =
+        BootstrapJournalStore::new(runtime_root).map_err(|error| held(&error.to_string()))?;
     // Drop the journal lock before acquiring any canonical locks.
     let pending = journal.load().map_err(|error| held(&error.to_string()))?;
-    let transactions = pending.transactions.iter().filter(|transaction| matches!(
-        transaction.state, BootstrapState::AppendUnknown | BootstrapState::Anchored
-    )).collect::<Vec<_>>();
-    if transactions.is_empty() { return Ok(()); }
+    let transactions = pending
+        .transactions
+        .iter()
+        .filter(|transaction| {
+            matches!(
+                transaction.state,
+                BootstrapState::AppendUnknown | BootstrapState::Anchored
+            )
+        })
+        .collect::<Vec<_>>();
+    if transactions.is_empty() {
+        return Ok(());
+    }
     let brain = crate::identity_runtime::load_brain_identity(runtime_root)
         .map_err(|error| held(&error.to_string()))?;
     let identity = load_local_device_identity(runtime_root, &brain.brain_id)
         .map_err(|error| held(&error.to_string()))?;
-    let local_device = DeviceId::new(identity.device_id).map_err(|error| held(&error.to_string()))?;
+    let local_device =
+        DeviceId::new(identity.device_id).map_err(|error| held(&error.to_string()))?;
     let ready = load_existing_event_signing_key(store, env, runtime_root, &local_device)
         .map_err(|error| held(&error.to_string()))?;
     let local_key_id = SigningKeyId::parse(&ready.public.signing_key_id)
         .map_err(|error| held(&error.to_string()))?;
     let devices = read_canonical_device_inventory(runtime_root, None)?;
-    let policy = scan_verified_trust_policy(runtime_root, &brain.brain_id,
-        &local_device, &local_key_id, &ready.signing_key.verifying_key().to_bytes(), &devices)?;
+    let policy = scan_verified_trust_policy(
+        runtime_root,
+        &brain.brain_id,
+        &local_device,
+        &local_key_id,
+        &ready.signing_key.verifying_key().to_bytes(),
+        &devices,
+    )?;
     let crate::trust_reducer::TrustReduction::Ready(trust) = &policy.reduction else {
         return Err(held("startup recovery trust policy is held"));
     };
-    if policy.devices.iter().any(|device| !trust.trusted_devices.contains(device)) {
+    if policy
+        .devices
+        .iter()
+        .any(|device| !trust.trusted_devices.contains(device))
+    {
         return Err(held("startup recovery found an untrusted canonical stream"));
     }
 
     // Event IDs are global. Security transaction IDs span security types
     // within one author stream; a bilateral counterpart has the same ID.
     let mut event_ids: BTreeMap<&str, Vec<&AuthenticatedSecurityRecord>> = BTreeMap::new();
-    let mut local_transactions: BTreeMap<&str, Vec<&cryptex_events::SecurityEventV3>> = BTreeMap::new();
+    let mut local_transactions: BTreeMap<&str, Vec<&cryptex_events::SecurityEventV3>> =
+        BTreeMap::new();
     for record in policy.history.records() {
         event_ids.entry(record.event_id()).or_default().push(record);
         if let AuthenticatedSecurityRecord::SecurityV3(event) = record
-            && event.device_id() == &local_device {
+            && event.device_id() == &local_device
+        {
             let id = match event.payload() {
                 SecurityPayloadV3::PeerApproved { transaction_id, .. }
                 | SecurityPayloadV3::DeviceRestricted { transaction_id, .. }
@@ -63,17 +88,27 @@ pub(super) fn reconcile_before_startup<S: SecureStore + ?Sized>(
         let snapshot = &transaction.snapshot;
         if snapshot.brain_id != brain.brain_id
             || snapshot.local_identity.device_id != local_device.as_str()
-            || snapshot.local_identity.signing_key_id != local_key_id.as_str() {
-            return Err(held("startup recovery identity differs from the enrolled device"));
+            || snapshot.local_identity.signing_key_id != local_key_id.as_str()
+        {
+            return Err(held(
+                "startup recovery identity differs from the enrolled device",
+            ));
         }
         let records = event_ids.get(transaction.stable_event_id.as_str());
         let matching = local_transactions.get(snapshot.transaction_id.as_str());
         let (Some(records), Some(matching)) = (records, matching) else {
-            ensure_anchor_append_retry_is_safe(transaction.state, AnchorAppendMode::StartupReconciliation)?;
-            return Err(held("journaled anchor absent from canonical history; startup will not append"));
+            ensure_anchor_append_retry_is_safe(
+                transaction.state,
+                AnchorAppendMode::StartupReconciliation,
+            )?;
+            return Err(held(
+                "journaled anchor absent from canonical history; startup will not append",
+            ));
         };
         if records.len() != 1 || matching.len() != 1 {
-            return Err(held("canonical event or local security transaction ID duplicated; startup held"));
+            return Err(held(
+                "canonical event or local security transaction ID duplicated; startup held",
+            ));
         }
         let AuthenticatedSecurityRecord::SecurityV3(event) = records[0] else {
             return Err(held("stable event ID occupied by a non-security record"));
@@ -81,32 +116,49 @@ pub(super) fn reconcile_before_startup<S: SecureStore + ?Sized>(
         if !std::ptr::eq(event, matching[0])
             || event.device_id() != &local_device
             || event.brain_id() != brain.brain_id
-            || event.signing_key_id() != &local_key_id {
-            return Err(held("canonical anchor identity differs from the approved operation"));
+            || event.signing_key_id() != &local_key_id
+        {
+            return Err(held(
+                "canonical anchor identity differs from the approved operation",
+            ));
         }
         match snapshot.operation {
             BootstrapOperation::PeerAdmission => verify_peer(transaction, event)?,
-            BootstrapOperation::DeviceRestriction | BootstrapOperation::SelfRetirement =>
-                verify_owner(transaction, event, &policy)?,
+            BootstrapOperation::DeviceRestriction | BootstrapOperation::SelfRetirement => {
+                verify_owner(transaction, event, &policy)?
+            }
         }
         anchors.push((transaction, event));
     }
     // Keep canonical locks throughout this compare-and-batch commit. The
     // store reloads under its own lock and refuses concurrent journal changes.
-    journal.reconcile_verified_anchor_events(&pending, &anchors)
+    journal
+        .reconcile_verified_anchor_events(&pending, &anchors)
         .map_err(|error| held(&error.to_string()))
 }
 
-fn verify_peer(transaction: &PendingBootstrapTransaction, event: &cryptex_events::SecurityEventV3)
-    -> KnowledgeMaterializationResult<()> {
-    let raw = transaction.transcript_messages.iter().map(|s| s.as_bytes().to_vec()).collect::<Vec<_>>();
+fn verify_peer(
+    transaction: &PendingBootstrapTransaction,
+    event: &cryptex_events::SecurityEventV3,
+) -> KnowledgeMaterializationResult<()> {
+    let raw = transaction
+        .transcript_messages
+        .iter()
+        .map(|s| s.as_bytes().to_vec())
+        .collect::<Vec<_>>();
     if raw.len() != 4 || !transaction.local_approval_signature_released {
-        return Err(held("peer recovery lacks the released complete owner-approved transcript"));
+        return Err(held(
+            "peer recovery lacks the released complete owner-approved transcript",
+        ));
     }
     let mut checked = transaction.clone();
-    checked.record_verified_complete_transcript(&raw).map_err(|error| held(&error.to_string()))?;
+    checked
+        .record_verified_complete_transcript(&raw)
+        .map_err(|error| held(&error.to_string()))?;
     if &checked != transaction {
-        return Err(held("peer recovery transcript changes its frozen journal entry"));
+        return Err(held(
+            "peer recovery transcript changes its frozen journal entry",
+        ));
     }
     let refs = raw.iter().map(Vec::as_slice).collect::<Vec<_>>();
     let transcript = cryptex_events::verify_bootstrap_transcript(&refs)
@@ -114,27 +166,48 @@ fn verify_peer(transaction: &PendingBootstrapTransaction, event: &cryptex_events
     let snapshot = &transaction.snapshot;
     let key = SigningKeyId::parse(&snapshot.local_identity.signing_key_id)
         .map_err(|error| held(&error.to_string()))?;
-    let digest = cryptex_events::peer_approval_operation_digest(&snapshot.brain_id,
-        &snapshot.local_identity.device_id, &key, &snapshot.transaction_id, transcript.transcript())
-        .map_err(|error| held(&error.to_string()))?;
-    if event.event_type() != SecurityEventTypeV3::PeerApproved || event.operation_digest() != digest
+    let digest = cryptex_events::peer_approval_operation_digest(
+        &snapshot.brain_id,
+        &snapshot.local_identity.device_id,
+        &key,
+        &snapshot.transaction_id,
+        transcript.transcript(),
+    )
+    .map_err(|error| held(&error.to_string()))?;
+    if event.event_type() != SecurityEventTypeV3::PeerApproved
+        || event.operation_digest() != digest
         || !matches!(event.payload(), SecurityPayloadV3::PeerApproved { transaction_id, transcript: recorded }
-            if transaction_id == &snapshot.transaction_id && recorded == transcript.transcript()) {
-        return Err(held("canonical peer anchor differs from exact owner-approved transcript"));
+            if transaction_id == &snapshot.transaction_id && recorded == transcript.transcript())
+    {
+        return Err(held(
+            "canonical peer anchor differs from exact owner-approved transcript",
+        ));
     }
     Ok(())
 }
 
-fn verify_owner(transaction: &PendingBootstrapTransaction, event: &cryptex_events::SecurityEventV3,
-    policy: &VerifiedTrustPolicySnapshot) -> KnowledgeMaterializationResult<()> {
+fn verify_owner(
+    transaction: &PendingBootstrapTransaction,
+    event: &cryptex_events::SecurityEventV3,
+    policy: &VerifiedTrustPolicySnapshot,
+) -> KnowledgeMaterializationResult<()> {
     if transaction.append_attempts.len() != 1 {
-        return Err(held("owner-operation recovery append evidence is ambiguous"));
+        return Err(held(
+            "owner-operation recovery append evidence is ambiguous",
+        ));
     }
     let attempt = &transaction.append_attempts[0];
     if event.device_seq().to_u64().ok() != Some(attempt.reserved_sequence)
         || event.prev_content_hash().as_str() != attempt.predecessor_hash
-        || event.content_hash().as_str() != attempt.candidate_content_hash.as_deref().unwrap_or_default() {
-        return Err(held("canonical owner-operation event differs from pinned append attempt"));
+        || event.content_hash().as_str()
+            != attempt
+                .candidate_content_hash
+                .as_deref()
+                .unwrap_or_default()
+    {
+        return Err(held(
+            "canonical owner-operation event differs from pinned append attempt",
+        ));
     }
     let snapshot = &transaction.snapshot;
     let payload_matches = match (snapshot.operation, event.payload()) {

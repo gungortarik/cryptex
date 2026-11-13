@@ -2036,7 +2036,10 @@ impl BootstrapJournalStore {
     pub(crate) fn reconcile_verified_anchor_events(
         &self,
         expected: &PendingBootstrapJournal,
-        anchors: &[(&PendingBootstrapTransaction, &cryptex_events::SecurityEventV3)],
+        anchors: &[(
+            &PendingBootstrapTransaction,
+            &cryptex_events::SecurityEventV3,
+        )],
     ) -> Result<(), BootstrapJournalError> {
         self.with_lock(|| {
             let mut journal = self.load_unlocked()?;
@@ -2045,7 +2048,10 @@ impl BootstrapJournalStore {
                     "bootstrap journal changed during canonical reconciliation",
                 ));
             }
-            let positions = journal.transactions.iter().enumerate()
+            let positions = journal
+                .transactions
+                .iter()
+                .enumerate()
                 .map(|(index, item)| (item.snapshot.transaction_id.clone(), index))
                 .collect::<std::collections::BTreeMap<_, _>>();
             let mut seen = std::collections::BTreeSet::new();
@@ -2055,32 +2061,52 @@ impl BootstrapJournalStore {
                 if !seen.insert(id) {
                     return Err(BootstrapJournalError::Conflict("duplicate canonical proof"));
                 }
-                let index = positions.get(id).copied().ok_or(BootstrapJournalError::Conflict(
-                    "canonical proof transaction is not journaled",
-                ))?;
+                let index = positions
+                    .get(id)
+                    .copied()
+                    .ok_or(BootstrapJournalError::Conflict(
+                        "canonical proof transaction is not journaled",
+                    ))?;
                 let transaction = &mut journal.transactions[index];
                 if transaction != *initial {
-                    return Err(BootstrapJournalError::Conflict("canonical proof snapshot changed"));
+                    return Err(BootstrapJournalError::Conflict(
+                        "canonical proof snapshot changed",
+                    ));
                 }
                 transaction.record_verified_anchor_event(event)?;
                 changed |= transaction != *initial;
             }
-            let required = expected.transactions.iter().filter(|item| matches!(item.state,
-                BootstrapState::Anchored | BootstrapState::AppendUnknown)).count();
+            let required = expected
+                .transactions
+                .iter()
+                .filter(|item| {
+                    matches!(
+                        item.state,
+                        BootstrapState::Anchored | BootstrapState::AppendUnknown
+                    )
+                })
+                .count();
             if seen.len() != required {
-                return Err(BootstrapJournalError::Conflict("incomplete canonical recovery proofs"));
+                return Err(BootstrapJournalError::Conflict(
+                    "incomplete canonical recovery proofs",
+                ));
             }
             self.persist_verified_anchors(&journal, changed)
         })
     }
 
-    fn persist_verified_anchors(&self, journal: &PendingBootstrapJournal, changed: bool)
-        -> Result<(), BootstrapJournalError> {
+    fn persist_verified_anchors(
+        &self,
+        journal: &PendingBootstrapJournal,
+        changed: bool,
+    ) -> Result<(), BootstrapJournalError> {
         if changed {
             journal.validate()?;
             let bytes = serde_json::to_vec(journal)
                 .map_err(|_| BootstrapJournalError::Corrupt("journal serialization failed"))?;
-            if bytes.len() > MAX_JOURNAL_BYTES { return Err(journal.payload_capacity_error()); }
+            if bytes.len() > MAX_JOURNAL_BYTES {
+                return Err(journal.payload_capacity_error());
+            }
             self.write_unlocked(&bytes)
         } else {
             // A previous post-replacement failure may have left visible but

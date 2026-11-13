@@ -666,11 +666,17 @@ mod tests {
         let path = root.join(JOURNAL_DIR).join(JOURNAL_FILE);
         let before = fs::read(&path).unwrap();
         let writes = JOURNAL_WRITES.with(|count| count.get());
-        for stage in [JournalWriteFault::Reopen, JournalWriteFault::ReopenSync,
-            #[cfg(unix)] JournalWriteFault::ParentSync] {
+        for stage in [
+            JournalWriteFault::Reopen,
+            JournalWriteFault::ReopenSync,
+            #[cfg(unix)]
+            JournalWriteFault::ParentSync,
+        ] {
             JOURNAL_WRITE_FAULT.with(|fault| fault.set(Some(stage)));
-            assert!(matches!(store.record_verified_anchor_event(&id, &event),
-                Err(BootstrapJournalError::Durability(_))));
+            assert!(matches!(
+                store.record_verified_anchor_event(&id, &event),
+                Err(BootstrapJournalError::Durability(_))
+            ));
             assert_eq!(fs::read(&path).unwrap(), before);
         }
         store.record_verified_anchor_event(&id, &event).unwrap();
@@ -684,30 +690,66 @@ mod tests {
         let (root, store) = store();
         let (a, event_a) = uncertain(0);
         let (b, event_b) = uncertain(1);
-        store.update(|journal| { journal.insert(a)?; journal.insert(b) }).unwrap();
+        store
+            .update(|journal| {
+                journal.insert(a)?;
+                journal.insert(b)
+            })
+            .unwrap();
         let expected = store.load().unwrap();
         let path = root.join(JOURNAL_DIR).join(JOURNAL_FILE);
         let before = fs::read(&path).unwrap();
-        assert!(matches!(store.reconcile_verified_anchor_events(&expected,
-            &[(&expected.transactions[0], &event_a)]), Err(BootstrapJournalError::Conflict(_))));
+        assert!(matches!(
+            store.reconcile_verified_anchor_events(
+                &expected,
+                &[(&expected.transactions[0], &event_a)]
+            ),
+            Err(BootstrapJournalError::Conflict(_))
+        ));
         assert_eq!(fs::read(&path).unwrap(), before);
         let other_store = BootstrapJournalStore::new(&root).unwrap();
-        other_store.update(|journal| journal.insert(cancelled(2))).unwrap();
+        other_store
+            .update(|journal| journal.insert(cancelled(2)))
+            .unwrap();
         let current_bytes = fs::read(&path).unwrap();
-        assert!(matches!(store.reconcile_verified_anchor_events(&expected,
-            &[(&expected.transactions[0], &event_a), (&expected.transactions[1], &event_b)]),
-            Err(BootstrapJournalError::Conflict(_))));
+        assert!(matches!(
+            store.reconcile_verified_anchor_events(
+                &expected,
+                &[
+                    (&expected.transactions[0], &event_a),
+                    (&expected.transactions[1], &event_b)
+                ]
+            ),
+            Err(BootstrapJournalError::Conflict(_))
+        ));
         assert_eq!(fs::read(&path).unwrap(), current_bytes);
         let current = store.load().unwrap();
         let writes = JOURNAL_WRITES.with(|count| count.get());
-        store.reconcile_verified_anchor_events(&current,
-            &[(&current.transactions[0], &event_a), (&current.transactions[1], &event_b)]).unwrap();
+        store
+            .reconcile_verified_anchor_events(
+                &current,
+                &[
+                    (&current.transactions[0], &event_a),
+                    (&current.transactions[1], &event_b),
+                ],
+            )
+            .unwrap();
         assert_eq!(JOURNAL_WRITES.with(|count| count.get()) - writes, 1);
         let current = store.load().unwrap();
         let after = fs::read(&path).unwrap();
-        assert_eq!(wire(&root)["terminal_receipts"].as_array().unwrap().len(), 3);
-        store.reconcile_verified_anchor_events(&current,
-            &[(&current.transactions[0], &event_a), (&current.transactions[1], &event_b)]).unwrap();
+        assert_eq!(
+            wire(&root)["terminal_receipts"].as_array().unwrap().len(),
+            3
+        );
+        store
+            .reconcile_verified_anchor_events(
+                &current,
+                &[
+                    (&current.transactions[0], &event_a),
+                    (&current.transactions[1], &event_b),
+                ],
+            )
+            .unwrap();
         assert_eq!(JOURNAL_WRITES.with(|count| count.get()) - writes, 1);
         assert_eq!(fs::read(&path).unwrap(), after);
         cleanup(&root);
