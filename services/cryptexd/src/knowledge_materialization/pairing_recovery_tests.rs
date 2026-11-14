@@ -447,8 +447,15 @@ fn restriction_projection_recovery(cutoff: u64) {
     // A partially refreshed derived DB must still hold every guarded surface.
     db.connection().execute_batch("CREATE TRIGGER synthetic_m4_rebuild_failure BEFORE DELETE ON knowledge_materialization_state BEGIN SELECT RAISE(ABORT, 'synthetic M4 rebuild interruption'); END;").unwrap();
     let failure = refresh(&profiles, &mut db).unwrap_err();
-    assert!(matches!(failure, KnowledgeMaterializationError::Knowledge(_)));
-    assert!(failure.to_string().contains("synthetic M4 rebuild interruption"));
+    assert!(matches!(
+        failure,
+        KnowledgeMaterializationError::Knowledge(_)
+    ));
+    assert!(
+        failure
+            .to_string()
+            .contains("synthetic M4 rebuild interruption")
+    );
     assert!(
         event_detail(db.connection(), BRAIN, &excluded)
             .unwrap()
