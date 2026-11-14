@@ -4,6 +4,15 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
+**Recovery checkpoint — November 14:** three new daemon tests cover durable
+signed restrictions, stale/partially rebuilt on-disk SQLite and guarded vault
+reopen, plus torn-journal/missing-key refusal. Exact-source
+[Mac/Windows CI43626437079](https://github.com/gungortarik/cryptex/actions/runs/43626437079)
+passed on `c6e07d6`. The [review](evidence/m8/m8-restriction-derived-recovery-review-20261114.md)
+and revised recovery map distinguish covered domain invariants from remaining
+product approval/session, incoming publication and protection-status integration.
+Default product gates remain closed; no unchanged owner package is requested.
+
 **Schema/compatibility checkpoint — November 14:** generated bootstrap and v3
 JSON Schema/TypeScript contracts, 495 independent conformance cases and the
 actual historical product-service Brain-hold check passed

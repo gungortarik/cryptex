@@ -723,10 +723,12 @@ durable append; it never holds them across UI confirmation, clipboard/QR work,
 or transport waits. The Windows implementation slice now routes local
 append/seal/recovery operations through a shared lock-set API that holds the
 inventory lock through the device operation and acquires multi-device locks in
-sorted DeviceId byte order. It does not yet add an importer publication barrier
-or startup journal recovery. Section 5.1 remains a required M8 contract; the
-remaining writer/importer paths and platform durability still require
-verification. Transport and guarded-content visibility are enabled only after
+sorted DeviceId byte order. The importer publication barrier and startup journal
+reconciliation were subsequently implemented in the separately owner-approved
+publication/recovery slices below; the earlier absence is a historical checkpoint.
+Section 5.1 remains a required M8 contract. Connecting those primitives on all
+supported product paths and verifying their observable failure behavior remains
+separate. Transport and guarded-content visibility are enabled only after
 durable bilateral approval and a successful full rebuild. Incoming files
 remain untrusted until validation.
 
@@ -1322,10 +1324,19 @@ history covers cutoff0/1/u64::MAX, wrong hashes, unoccupied positions and overfl
 Those are historical service-guard and reducer/content-selection proofs, not
 installed old Desktop/secure-store or full SQLite/Obsidian product acceptance.
 
-Remaining protocol gates are finite: use the nine-row §5 coverage map and fill
-only uncovered durability/rebuild/key-loss product cases; complete the supported
-product-path compatibility/restriction recovery acceptance; and independently
-review/accept the complete protocol, including the
+The nine-row §5 coverage map now separates covered domain invariants from
+supported-product failure acceptance. The c6e07d6 test slice adds real on-disk
+partial-derived-rebuild/reopen and torn-journal/missing-key-facade checks;
+exact-source CI43626437079 passed both native platforms and Windows IPC ACL.
+This is daemon-service/domain evidence, not full product-flow crash acceptance.
+Existing journal
+write/flush/replace/readback/sync fault coverage must not be reopened as a generic
+new campaign without a change/failure. Evidence limits do not automatically add
+installed old Desktop, OS-store reinstall or physical power-loss campaigns.
+
+Remaining protocol gates are finite: complete supported-product integration and
+its observable crash/uncertainty behavior, and independently review/accept the
+complete protocol, including the
 Brain-wide SCC hold and compromised-issuer availability consequence. Process
 interruption is not a power-loss or parent-directory durability guarantee.
 

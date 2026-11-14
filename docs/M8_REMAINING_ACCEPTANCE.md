@@ -52,17 +52,31 @@ accepted [ADR-0019](adr/ADR-0019-m8-peer-trust-design-proposal.md),
      cutoff `0`/`1`/`u64::MAX`, wrong hash, missing position and overflow tests
      cover reducer/content selection. See the
      [review/limits](../evidence/m8/m8-protocol-schemas-compat-review-20261114.md).
-     Installed old Desktop/secure-store acceptance and complete supported
-     product-path SQLite/Obsidian restriction recovery remain separate.
+     These historical service-guard results do not claim an installed old
+     Desktop or OS-store reinstall campaign. Supported product-path integration
+     remains separate from the completed domain compatibility proof.
    - The [§5 recovery coverage map](../evidence/m8/m8-recovery-coverage-map-20261113.md)
-     now links existing checks and precise platform limits to all nine rows.
-     Fill only its uncovered write/flush/replace/readback/torn-journal,
-     derived rebuild and missing-key cases; do not repeat completed VM packages
-     or relabel process-kill tests as power-loss durability.
+     now reconciles covered domain invariants for all nine rows. New c6e07d6
+     tests add durable cutoff0/1, partial on-disk SQLite rebuild, guarded-vault
+     domain reopen and torn-journal/missing-key-facade refusal. This bounded
+     daemon-service recovery slice is COMPLETE: exact-source
+     [CI43626437079](https://github.com/gungortarik/cryptex/actions/runs/43626437079)
+     passed Mac/Windows readiness and Windows cross-account IPC ACL. See the
+     [recovery receipt](../evidence/m8/m8-restriction-derived-recovery-native.json).
+     Existing write/flush/replace/readback/sync fault tests were already covered.
+     Do not reopen those lower layers or repeat completed VM packages without
+     a new change/failure. Process interruption is not physical power loss.
    - Accept the complete independently reviewed protocol and its explicit SCC
      Brain-wide hold/availability boundary, then choose the product image policy
      and connect the supported product paths. The owner selected macOS 26+;
      packaging/deployment/runtime enforcement remains to be done.
+   - Remaining supported-product work is concrete: authenticated approval/session
+     routes with truthful local/peer durability and uncertainty; incoming
+     publication, canonical trust reconstruction and guarded derived refresh on
+     each platform; controller clean-stop/uncertain outcomes in replication
+     protection status. `incoming_publication` remains Windows-only. These
+     connections require integrated failure checks; they are not another generic
+     lower-layer test campaign.
 3. **Final milestone acceptance.** On the actual accepted product paths, verify
    all seven scope areas together: pairing, transport controller, incoming
    validation, offline/reconnect convergence, revoke/retire/compromise, sequence

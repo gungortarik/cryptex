@@ -1,5 +1,43 @@
 # 34 — Current Implementation Handoff
 
+## Durable restriction and derived recovery — November 14
+
+Verified source: `c6e07d6ab5acccabd73258780bc1acf95ede6333`; exact-source
+[CI43626437079](https://github.com/gungortarik/cryptex/actions/runs/43626437079)
+passed Mac/Windows readiness and Windows cross-account IPC ACL. Daemon library:
+Mac538passed/7ignored, Windows659passed/5ignored, zero failures. All three new
+tests passed each platform. The implementation change is tests only; this
+bounded daemon-service recovery slice is COMPLETE.
+
+Three mandatory daemon tests use actual bilateral approval anchors, signed v3
+restrictions, sealed peer-pack fixture transport, on-disk SQLite and a selected
+guarded vault. Cutoff0/1 must hold search/timeline/detail/vault while derived
+state is stale, reconcile the uncertain durable append without another attempt,
+survive an exact injected M4 failure after M3 commits, and reopen/rebuild twice
+to the exact admitted note set. Canonical prefixes remain immutable; owner-owned
+vault content survives. Torn journals and a missing fake-store signing seed
+must refuse startup without rewriting evidence or minting a replacement key.
+See the [review](../evidence/m8/m8-restriction-derived-recovery-review-20261114.md)
+and [receipt](../evidence/m8/m8-restriction-derived-recovery-native.json).
+
+Independent read-only review reconciled all nine §5 domain invariants with
+existing evidence. It found no new lower-layer algorithm campaign. Common
+approval-domain failed-delivery/completion tests strengthen cross-platform
+coverage; journal write/flush/replace/readback/sync cases were already covered.
+This is distinct from every crash boundary through an accepted product UI and
+transport. Installed old Desktop, OS-store reinstall, physical power-loss and
+seventeen-operation full Desktop launches are evidence limits, not automatic
+new campaigns. Domain reopen/fake-store tests must retain those exact labels.
+
+**Continuation:** complete protocol review/acceptance and
+supported-product wiring: authenticated approval/session routes with truthful
+local/peer durability; incoming publication, canonical trust reconstruction and
+guarded derived refresh on each platform; controller uncertainty/clean stop
+reflected in replication protection status. Mac image policy and macOS26+
+enforcement remain product prerequisites. Default product routes stay closed;
+M8 is OPEN and M9 has not begun. Do not repeat completed lower-layer or owner
+package tests without a new change/failure. Older sections below are historical.
+
 ## Protocol schemas and compatibility — November 14
 
 Current tested source: `1f5e6dcbc6c855f6a44c614bf415586b23f91882`.

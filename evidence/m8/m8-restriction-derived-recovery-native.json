@@ -1,0 +1,77 @@
+{
+  "receipt_version": 1,
+  "headSha": "c6e07d6ab5acccabd73258780bc1acf95ede6333",
+  "scope": "Daemon-service durable v3 restriction, real on-disk SQLite/guarded vault recovery and torn-journal/missing-key facade refusal; no product activation",
+  "status": "completed",
+  "conclusion": "success",
+  "test_file_sha256": "4920a1dd011ac25acdbc748e3d76e41841595ffed5f64df292e7bc572cd7c3b9",
+  "jobs": [
+    {
+      "id": 132543196529,
+      "name": "Readiness (macos-latest)",
+      "conclusion": "success",
+      "daemon_library": {"passed": 538, "ignored": 7, "failed": 0}
+    },
+    {
+      "id": 132543196238,
+      "name": "Readiness (windows-latest)",
+      "conclusion": "success",
+      "daemon_library": {"passed": 659, "ignored": 5, "failed": 0}
+    },
+    {
+      "id": 132543196445,
+      "name": "IPC cross-account ACL (Windows)",
+      "conclusion": "success"
+    }
+  ],
+  "all_three_new_tests_passed_both_platforms": true,
+  "run_id": 43626437079,
+  "run_url": "https://github.com/gungortarik/cryptex/actions/runs/43626437079",
+  "tests": [
+    "knowledge_materialization::pairing_recovery_tests::durable_zero_cutoff_holds_stale_views_and_reopens_after_partial_sqlite_rebuild",
+    "knowledge_materialization::pairing_recovery_tests::durable_prefix_cutoff_holds_stale_views_and_reopens_after_partial_sqlite_rebuild",
+    "knowledge_materialization::pairing_recovery_tests::paired_startup_refuses_torn_journal_and_missing_key_without_rewriting_evidence"
+  ],
+  "verified_checks": [
+    "Actual bilateral daemon-written approval anchors and complete signed peer history",
+    "Actual confirmed signed restriction durably appended with AppendUnknown and one attempt",
+    "Canonical prefixes immutable and later startup/rebuild never duplicate or rewrite events",
+    "All four guarded surfaces reject stale on-disk state",
+    "Exact injected M4 error after separately committed M3 cutoff filtering",
+    "Repeated on-disk DB reopen/rebuild and exact search/timeline/detail/managed-vault ID sets",
+    "Owner-owned vault file preserved",
+    "Empty/truncated/garbage journal refusal and original evidence preservation",
+    "Missing local seed facade refuses startup without any replacement key minting"
+  ],
+  "review": {
+    "source": "c6e07d6ab5acccabd73258780bc1acf95ede6333",
+    "method": "Existing independent read-only agent",
+    "finding_fixed": "Compare regular managed files and exact <event_id>.md names instead of stems",
+    "remaining_actionable_findings": 0,
+    "external_human_audit": false
+  },
+  "failed_or_superseded_runs": [
+    {
+      "id": 43626119302,
+      "source": "1cf1a4b",
+      "outcome": "Native Rust formatting failure"
+    },
+    {
+      "id": 43626304661,
+      "source": "4397a51",
+      "outcome": "Native formatting failure for strengthened exact-error assertion"
+    }
+  ],
+  "local_rust_execution": "Application Control4551; native CI used without bypass",
+  "limitations": [
+    "Fixture import-visible transport, not a new live Syncthing transfer",
+    "Domain reopen using real on-disk SQLite, not Desktop process restart or physical power loss",
+    "FakeSecureStore loss simulation, not actual OS credential deletion/reinstall",
+    "Old exported files remain until authorized refresh; hold does not remotely erase them",
+    "Product route/session/publication/protection-status integration and final acceptance remain open",
+    "Incoming publication is Windows-only; ordinary Mac readiness does not execute it",
+    "Dedicated default-off Desktop startup/native suite, identity preflight and unsigned installer were not rerun"
+  ],
+  "product_activation": false,
+  "m8_complete": false
+}
