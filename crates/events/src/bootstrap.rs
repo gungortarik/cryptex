@@ -1217,19 +1217,51 @@ fn parse_and_verify_message(raw: &[u8]) -> Result<ParsedMessage, BootstrapError>
     })
 }
 
+// Shared parser/schema definitions. Signature and transcript verification stay
+// mandatory; JSON Schema describes shape, never approval authority.
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OfferPayload {
+    #[schemars(regex(pattern = "^[0-9a-f]{64}$"), length(min = 64, max = 64))]
+    initiator_nonce: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ProofPayload {
+    #[schemars(regex(pattern = "^[0-9a-f]{64}$"), length(min = 64, max = 64))]
+    offer_hash: String,
+    #[schemars(regex(pattern = "^[0-9a-f]{64}$"), length(min = 64, max = 64))]
+    responder_nonce: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PayloadApprovalRole {
+    Initiator,
+    Responder,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ApprovalPayload {
+    #[schemars(regex(pattern = "^[0-9a-f]{64}$"), length(min = 64, max = 64))]
+    agreement_hash: String,
+    role: PayloadApprovalRole,
+}
+
 fn parse_payload(
     message_type: MessageType,
     payload: &Value,
 ) -> Result<ParsedPayload, BootstrapError> {
-    let object = payload
-        .as_object()
-        .ok_or(BootstrapError("bootstrap payload must be an object"))?;
+    if !payload.is_object() {
+        return Err(BootstrapError("bootstrap payload must be an object"));
+    }
     match message_type {
         MessageType::Offer => {
-            require_exact_keys(object, &["initiator_nonce"])?;
-            let nonce = string_field(object, "initiator_nonce")?;
-            validate_lower_hex(&nonce, 64)?;
-            let _ = nonce;
+            let typed = OfferPayload::deserialize(payload)
+                .map_err(|_| BootstrapError("bootstrap offer payload is malformed"))?;
+            validate_lower_hex(&typed.initiator_nonce, 64)?;
             Ok(ParsedPayload {
                 hash: None,
                 approval_role: None,
@@ -1237,31 +1269,28 @@ fn parse_payload(
             })
         }
         MessageType::Proof => {
-            require_exact_keys(object, &["offer_hash", "responder_nonce"])?;
-            let hash = string_field(object, "offer_hash")?;
-            let nonce = string_field(object, "responder_nonce")?;
-            validate_lower_hex(&hash, 64)?;
-            validate_lower_hex(&nonce, 64)?;
-            let _ = nonce;
+            let typed = ProofPayload::deserialize(payload)
+                .map_err(|_| BootstrapError("bootstrap proof payload is malformed"))?;
+            validate_lower_hex(&typed.offer_hash, 64)?;
+            validate_lower_hex(&typed.responder_nonce, 64)?;
             Ok(ParsedPayload {
-                hash: Some(hash),
+                hash: Some(typed.offer_hash),
                 approval_role: None,
                 agreement_hash: None,
             })
         }
         MessageType::Approval => {
-            require_exact_keys(object, &["agreement_hash", "role"])?;
-            let hash = string_field(object, "agreement_hash")?;
-            validate_lower_hex(&hash, 64)?;
-            let role = match string_field(object, "role")?.as_str() {
-                "initiator" => "initiator",
-                "responder" => "responder",
-                _ => return Err(BootstrapError("bootstrap approval role is invalid")),
+            let typed = ApprovalPayload::deserialize(payload)
+                .map_err(|_| BootstrapError("bootstrap approval payload is malformed"))?;
+            validate_lower_hex(&typed.agreement_hash, 64)?;
+            let role = match typed.role {
+                PayloadApprovalRole::Initiator => "initiator",
+                PayloadApprovalRole::Responder => "responder",
             };
             Ok(ParsedPayload {
                 hash: None,
                 approval_role: Some(role),
-                agreement_hash: Some(hash),
+                agreement_hash: Some(typed.agreement_hash),
             })
         }
     }
@@ -1430,19 +1459,68 @@ fn require_exact_keys(
     Ok(())
 }
 
-fn string_field(object: &Map<String, Value>, key: &str) -> Result<String, BootstrapError> {
-    object
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .ok_or(BootstrapError("bootstrap payload field has the wrong type"))
-}
-
 #[cfg(test)]
 mod tests {
     use ed25519_dalek::{Signer, SigningKey};
 
     use super::*;
+
+    #[test]
+    fn typed_payloads_reject_unknown_missing_wrong_type_and_positional_arrays() {
+        for (kind, valid) in [
+            (MessageType::Offer, serde_json::json!({"initiator_nonce": "11".repeat(32)})),
+            (MessageType::Proof, serde_json::json!({"offer_hash": "22".repeat(32), "responder_nonce": "33".repeat(32)})),
+            (MessageType::Approval, serde_json::json!({"agreement_hash": "44".repeat(32), "role": "initiator"})),
+        ] {
+            assert!(parse_payload(kind, &valid).is_ok());
+            let mut extra = valid.clone();
+            extra["unexpected"] = Value::Bool(true);
+            assert!(parse_payload(kind, &extra).is_err());
+            for name in valid.as_object().unwrap().keys() {
+                let mut missing = valid.clone();
+                missing.as_object_mut().unwrap().remove(name);
+                assert!(parse_payload(kind, &missing).is_err());
+                let mut wrong_type = valid.clone();
+                wrong_type[name] = Value::Null;
+                assert!(parse_payload(kind, &wrong_type).is_err());
+            }
+            let array = Value::Array(valid.as_object().unwrap().values().cloned().collect());
+            assert!(parse_payload(kind, &array).is_err());
+        }
+        for role in ["issuer", "Initiator", "", "responder "] {
+            assert!(parse_payload(MessageType::Approval, &serde_json::json!({
+                "agreement_hash": "44".repeat(32), "role": role,
+            })).is_err());
+        }
+        for nonce in ["AA".repeat(32), "11".repeat(31), "11".repeat(33)] {
+            assert!(parse_payload(MessageType::Offer,
+                &serde_json::json!({"initiator_nonce": nonce})).is_err());
+        }
+    }
+
+    #[test]
+    fn payload_schema_definitions_are_closed_and_have_required_hash_patterns() {
+        for (schema, fields) in [
+            (schemars::schema_for!(OfferPayload), vec!["initiator_nonce"]),
+            (schemars::schema_for!(ProofPayload), vec!["offer_hash", "responder_nonce"]),
+            (schemars::schema_for!(ApprovalPayload), vec!["agreement_hash", "role"]),
+        ] {
+            let value = serde_json::to_value(schema).unwrap();
+            assert_eq!(value["additionalProperties"], false);
+            assert_eq!(value["properties"].as_object().unwrap().len(), fields.len());
+            assert_eq!(value["required"].as_array().unwrap().len(), fields.len());
+            for field in fields {
+                assert!(value["required"].as_array().unwrap().contains(&Value::String(field.into())));
+                if field != "role" {
+                    assert_eq!(value["properties"][field]["pattern"], "^[0-9a-f]{64}$");
+                    assert_eq!(value["properties"][field]["minLength"], 64);
+                    assert_eq!(value["properties"][field]["maxLength"], 64);
+                }
+            }
+        }
+        let role = serde_json::to_value(schemars::schema_for!(PayloadApprovalRole)).unwrap();
+        assert_eq!(role["enum"], serde_json::json!(["initiator", "responder"]));
+    }
 
     const BRAIN: &str = "22222222-2222-4222-8222-222222222222";
     const INITIATOR_TRANSPORT: &str =
