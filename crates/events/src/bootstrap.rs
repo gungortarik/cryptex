@@ -1235,11 +1235,23 @@ pub(crate) struct ProofPayload {
     responder_nonce: String,
 }
 
-#[derive(Deserialize, schemars::JsonSchema)]
+#[derive(schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum PayloadApprovalRole {
     Initiator,
     Responder,
+}
+
+impl<'de> Deserialize<'de> for PayloadApprovalRole {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Serde's derived unit-enum reader also accepts externally tagged
+        // objects. The signed protocol permits string role tokens only.
+        match String::deserialize(deserializer)?.as_str() {
+            "initiator" => Ok(Self::Initiator),
+            "responder" => Ok(Self::Responder),
+            _ => Err(serde::de::Error::custom("invalid bootstrap approval role")),
+        }
+    }
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -1506,6 +1518,17 @@ mod tests {
                 )
                 .is_err()
             );
+        }
+        for role in [
+            serde_json::json!({"initiator": null}),
+            serde_json::json!({"responder": null}),
+            serde_json::json!(["initiator"]),
+            Value::Bool(true),
+            serde_json::json!(1),
+        ] {
+            assert!(parse_payload(MessageType::Approval, &serde_json::json!({
+                "agreement_hash": "44".repeat(32), "role": role,
+            })).is_err());
         }
         for nonce in ["AA".repeat(32), "11".repeat(31), "11".repeat(33)] {
             assert!(
