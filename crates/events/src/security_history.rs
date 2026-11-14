@@ -293,10 +293,14 @@ where
             })?;
         let version = value.get("schema_version").and_then(Value::as_u64);
         let authenticated = if version == Some(3) {
-            AuthenticatedSecurityRecord::SecurityV3(crate::security_v3::read_security_v3_event(
+            let event = crate::security_v3::read_security_v3_event(
                 bytes,
                 &verifying_key,
-            )?)
+            )?;
+            // Remote approval records are validated too. This proves protocol
+            // integrity only; direct local anchors still exclusively grant trust.
+            crate::security_v3::verify_peer_approval_protocol_binding(&event, &verifying_key)?;
+            AuthenticatedSecurityRecord::SecurityV3(event)
         } else {
             match read_versioned_record(bytes, &verifying_key)? {
                 VersionedRecord::VerifiedV1(event) => AuthenticatedSecurityRecord::V1(event),

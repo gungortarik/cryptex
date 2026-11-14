@@ -1,0 +1,442 @@
+{
+  "$comment": "Candidate M8 structural contract. Duplicate keys, raw JSON limits/JCS, cryptographic keys/signatures, hash links, cross-field identity/sequence/history constraints and owner authority MUST still be checked by the Rust protocol verifier. Schema acceptance grants no trust.",
+  "$id": "https://cryptex.local/schemas/cryptex-bootstrap-v1.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "brain_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "message_type": {
+          "const": "offer"
+        },
+        "payload": {
+          "additionalProperties": false,
+          "properties": {
+            "initiator_nonce": {
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "initiator_nonce"
+          ],
+          "type": "object"
+        },
+        "peer_device_id": {
+          "type": "null"
+        },
+        "peer_public_key": {
+          "type": "null"
+        },
+        "peer_signing_key_id": {
+          "type": "null"
+        },
+        "peer_transport_device_id": {
+          "type": "null"
+        },
+        "previous_hash": {
+          "const": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "protocol_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "sender_device_id": {
+          "pattern": "^(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])$)[A-Za-z0-9_-]{1,64}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "sender_public_key": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "sender_signing_key_id": {
+          "maxLength": 32,
+          "minLength": 32,
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "sender_transport_device_id": {
+          "pattern": "^[A-Z2-7]{7}(?:-[A-Z2-7]{7}){7}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "signature": {
+          "maxLength": 128,
+          "minLength": 128,
+          "pattern": "^[0-9a-f]{128}$",
+          "type": "string"
+        },
+        "transaction_id": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "brain_id",
+        "message_type",
+        "payload",
+        "peer_device_id",
+        "peer_public_key",
+        "peer_signing_key_id",
+        "peer_transport_device_id",
+        "previous_hash",
+        "protocol_version",
+        "sender_device_id",
+        "sender_public_key",
+        "sender_signing_key_id",
+        "sender_transport_device_id",
+        "signature",
+        "transaction_id"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "brain_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "message_type": {
+          "const": "proof"
+        },
+        "payload": {
+          "additionalProperties": false,
+          "properties": {
+            "offer_hash": {
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "responder_nonce": {
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "offer_hash",
+            "responder_nonce"
+          ],
+          "type": "object"
+        },
+        "peer_device_id": {
+          "pattern": "^(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])$)[A-Za-z0-9_-]{1,64}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "peer_public_key": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "peer_signing_key_id": {
+          "maxLength": 32,
+          "minLength": 32,
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "peer_transport_device_id": {
+          "pattern": "^[A-Z2-7]{7}(?:-[A-Z2-7]{7}){7}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "previous_hash": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "sender_device_id": {
+          "pattern": "^(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])$)[A-Za-z0-9_-]{1,64}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "sender_public_key": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "sender_signing_key_id": {
+          "maxLength": 32,
+          "minLength": 32,
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "sender_transport_device_id": {
+          "pattern": "^[A-Z2-7]{7}(?:-[A-Z2-7]{7}){7}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "signature": {
+          "maxLength": 128,
+          "minLength": 128,
+          "pattern": "^[0-9a-f]{128}$",
+          "type": "string"
+        },
+        "transaction_id": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "brain_id",
+        "message_type",
+        "payload",
+        "peer_device_id",
+        "peer_public_key",
+        "peer_signing_key_id",
+        "peer_transport_device_id",
+        "previous_hash",
+        "protocol_version",
+        "sender_device_id",
+        "sender_public_key",
+        "sender_signing_key_id",
+        "sender_transport_device_id",
+        "signature",
+        "transaction_id"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "brain_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "message_type": {
+          "const": "approval"
+        },
+        "payload": {
+          "additionalProperties": false,
+          "properties": {
+            "agreement_hash": {
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "role": {
+              "const": "initiator",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agreement_hash",
+            "role"
+          ],
+          "type": "object"
+        },
+        "peer_device_id": {
+          "pattern": "^(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])$)[A-Za-z0-9_-]{1,64}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "peer_public_key": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "peer_signing_key_id": {
+          "maxLength": 32,
+          "minLength": 32,
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "peer_transport_device_id": {
+          "pattern": "^[A-Z2-7]{7}(?:-[A-Z2-7]{7}){7}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "previous_hash": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "sender_device_id": {
+          "pattern": "^(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])$)[A-Za-z0-9_-]{1,64}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "sender_public_key": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "sender_signing_key_id": {
+          "maxLength": 32,
+          "minLength": 32,
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "sender_transport_device_id": {
+          "pattern": "^[A-Z2-7]{7}(?:-[A-Z2-7]{7}){7}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "signature": {
+          "maxLength": 128,
+          "minLength": 128,
+          "pattern": "^[0-9a-f]{128}$",
+          "type": "string"
+        },
+        "transaction_id": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "brain_id",
+        "message_type",
+        "payload",
+        "peer_device_id",
+        "peer_public_key",
+        "peer_signing_key_id",
+        "peer_transport_device_id",
+        "previous_hash",
+        "protocol_version",
+        "sender_device_id",
+        "sender_public_key",
+        "sender_signing_key_id",
+        "sender_transport_device_id",
+        "signature",
+        "transaction_id"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "brain_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "message_type": {
+          "const": "approval"
+        },
+        "payload": {
+          "additionalProperties": false,
+          "properties": {
+            "agreement_hash": {
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "role": {
+              "const": "responder",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agreement_hash",
+            "role"
+          ],
+          "type": "object"
+        },
+        "peer_device_id": {
+          "pattern": "^(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])$)[A-Za-z0-9_-]{1,64}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "peer_public_key": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "peer_signing_key_id": {
+          "maxLength": 32,
+          "minLength": 32,
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "peer_transport_device_id": {
+          "pattern": "^[A-Z2-7]{7}(?:-[A-Z2-7]{7}){7}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "previous_hash": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "sender_device_id": {
+          "pattern": "^(?!(?:[cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][mM][1-9]|[lL][pP][tT][1-9])$)[A-Za-z0-9_-]{1,64}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "sender_public_key": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "sender_signing_key_id": {
+          "maxLength": 32,
+          "minLength": 32,
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "sender_transport_device_id": {
+          "pattern": "^[A-Z2-7]{7}(?:-[A-Z2-7]{7}){7}$(?![\\s\\S])",
+          "type": "string"
+        },
+        "signature": {
+          "maxLength": 128,
+          "minLength": 128,
+          "pattern": "^[0-9a-f]{128}$",
+          "type": "string"
+        },
+        "transaction_id": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "brain_id",
+        "message_type",
+        "payload",
+        "peer_device_id",
+        "peer_public_key",
+        "peer_signing_key_id",
+        "peer_transport_device_id",
+        "previous_hash",
+        "protocol_version",
+        "sender_device_id",
+        "sender_public_key",
+        "sender_signing_key_id",
+        "sender_transport_device_id",
+        "signature",
+        "transaction_id"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "CryptexBootstrapMessageV1"
+}

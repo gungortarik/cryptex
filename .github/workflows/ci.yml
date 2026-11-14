@@ -245,6 +245,14 @@ jobs:
       - name: Check M2 schema TypeScript drift
         run: pnpm --filter @cryptex/schemas check:drift
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check independent M8 schema and signed-case conformance
+        run: |
+          python -m pip install -r tools/m8-protocol-vectors/schema-requirements.txt
+          python -B tools/m8-protocol-vectors/check_schemas.py
+
       - name: Test M0 lifecycle compare harness
         run: cargo test --locked -p m0-lifecycle-compare
 

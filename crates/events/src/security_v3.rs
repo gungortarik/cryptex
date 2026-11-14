@@ -570,6 +570,30 @@ fn operation_digest_from_record(value: &Value) -> Result<String, ValidationFailu
     Ok(encode_hex(hasher.finalize().as_bytes()))
 }
 
+/// Validate embedded approvals against an already authenticated outer author.
+/// This checks protocol integrity only and never grants local trust.
+pub fn verify_peer_approval_protocol_binding(
+    event: &SecurityEventV3,
+    author_key: &VerifyingKey,
+) -> Result<(), ValidationFailure> {
+    let SecurityPayloadV3::PeerApproved { transaction_id, transcript } = event.payload() else {
+        return Ok(());
+    };
+    let messages = transcript.as_array()
+        .ok_or_else(|| failure("invalid_record", "peer transcript is not an array"))?;
+    let verified = crate::bootstrap::verify_bootstrap_transcript_values(messages)
+        .map_err(|_| failure("invalid_record", "embedded peer transcript failed verification"))?;
+    let participants = [verified.initiator(), verified.responder()];
+    let matching = participants.iter().filter(|identity| identity.device_id == *event.device_id()
+        && identity.signing_key_id == *event.signing_key_id()
+        && identity.public_key == author_key.to_bytes()).count();
+    if verified.brain_id() != event.brain_id() || verified.transaction_id() != transaction_id
+        || matching != 1 {
+        return Err(failure("invalid_record", "peer transcript differs from authenticated author, Brain or transaction"));
+    }
+    Ok(())
+}
+
 /// Compute the ADR-0019 stable operation digest for a peer-approval anchor.
 /// Append-position fields are absent by construction, allowing exact retries
 /// to compare the same operation after a permanently consumed sequence gap.

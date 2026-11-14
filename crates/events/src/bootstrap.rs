@@ -1478,6 +1478,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn independently_resigned_schema_messages_match_the_protocol_reader() {
+        let manifest: Value = serde_json::from_str(include_str!("../tests/fixtures/m8-schema-conformance.json")).unwrap();
+        let mut checked = 0;
+        for case in manifest["cases"].as_array().unwrap() {
+            if case["kind"] != "message" { continue; }
+            let result = parse_and_verify_message(case["wire"].as_str().unwrap());
+            assert_eq!(result.is_ok(), case["runtime_accepts"].as_bool().unwrap(),
+                "{}", case["name"].as_str().unwrap());
+            checked += 1;
+        }
+        assert!(checked >= 100, "message mutation inventory unexpectedly reduced");
+    }
+
+    #[test]
     fn typed_payloads_reject_unknown_missing_wrong_type_and_positional_arrays() {
         for (kind, valid) in [
             (

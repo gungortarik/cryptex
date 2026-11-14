@@ -24,6 +24,9 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Install pinned dependencies
         run: |
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
@@ -36,9 +39,11 @@ jobs:
         run: |
           pnpm --filter @cryptex/schemas generate:ts
           pnpm --filter @cryptex/schemas check:drift
-          git diff --exit-code -- packages/schemas/cryptex-event-v1.schema.json packages/schemas/cryptex-event-v1.ts packages/schemas/cryptex-event-v2.schema.json packages/schemas/cryptex-event-v2.ts
+          git diff --exit-code -- packages/schemas
       - name: Strict lint and event compatibility tests
         run: |
+          python -m pip install -r tools/m8-protocol-vectors/schema-requirements.txt
+          python -B tools/m8-protocol-vectors/check_schemas.py
           cargo clippy --locked -p cryptex-events --all-targets -- -D warnings
           cargo test --locked -p cryptex-events
       - uses: actions/upload-artifact@v4
