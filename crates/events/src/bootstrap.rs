@@ -1487,7 +1487,7 @@ mod tests {
             if case["kind"] != "message" {
                 continue;
             }
-            let result = parse_and_verify_message(case["wire"].as_str().unwrap());
+            let result = parse_and_verify_message(case["wire"].as_str().unwrap().as_bytes());
             assert_eq!(
                 result.is_ok(),
                 case["runtime_accepts"].as_bool().unwrap(),

@@ -13,6 +13,7 @@ from jsonschema import Draft7Validator, FormatChecker
 from generate import ROOT, ZERO, digest, jcs, preimage, sign
 
 OUTPUT = ROOT / "crates/events/tests/fixtures/m8-schema-conformance.json"
+OLD_READER = ROOT / "crates/events/tests/fixtures/m8-old-reader-v1-v3.json"
 
 
 def main():
@@ -146,10 +147,23 @@ def main():
         add(f"cutoff-bound-{cutoff}", "event", value, identities[0], True, True, True)
     document = {"format_version": 1, "scope": "PUBLIC SYNTHETIC structural/cryptographic conformance; not canonical target-history or trust acceptance", "cases": cases}
     encoded = json.dumps(document, ensure_ascii=False, indent=2) + "\n"
+    baseline = json.loads(data["mixed_chain"][0]["wire"])
+    next_record = json.loads(data["security_events"][0]["wire"])
+    next_record["device_seq"] = "3"
+    next_record["prev_content_hash"] = baseline["content_hash"]
+    next_record = resign("event", next_record, identities[0])
+    assert validators["event"].is_valid(next_record)
+    old_reader = json.dumps({"format_version": 1,
+        "scope": "PUBLIC SYNTHETIC v1 positive old-product baseline followed by independently signed valid v3; not an installed Desktop test",
+        "brain_id": baseline["brain_id"], "device_id": baseline["device_id"],
+        "event_id": baseline["event_id"], "public_key": identities[0]["public_key"],
+        "baseline_wire": jcs(baseline).decode(), "v3_wire": jcs(next_record).decode()}, indent=2) + "\n"
     if args.write_cases:
         OUTPUT.write_text(encoded, encoding="utf-8", newline="\n")
+        OLD_READER.write_text(old_reader, encoding="utf-8", newline="\n")
     else:
         assert OUTPUT.read_text(encoding="utf-8") == encoded, "schema conformance fixture drift"
+        assert OLD_READER.read_text(encoding="utf-8") == old_reader, "old-product fixture drift"
     print(f"m8_schema_structural_and_resigned_cases={len(cases)}")
 
 
