@@ -110,6 +110,7 @@ fn old_product_holds_signed_v3_without_mutation() {
     let _fixture = Fixture(root.clone());
     let runtime = root.join("runtime");
     let vault = root.join("vault");
+    fs::create_dir(&vault).unwrap(); // Match an owner's selected existing vault.
     let brain = data["brain_id"].as_str().unwrap();
     let device = DeviceId::new(data["device_id"].as_str().unwrap()).unwrap();
     let devices = [device.clone()];
