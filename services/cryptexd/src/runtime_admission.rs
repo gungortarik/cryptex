@@ -327,10 +327,15 @@ mod tests {
         let owner = try_acquire_instance(&root).unwrap();
         let gate = owner.admission();
         let clone = gate.clone();
-        gate.exclusive(&root, deadline(), false).unwrap().finish(Some(RuntimeHold::IncomingPolicyConflict));
+        gate.exclusive(&root, deadline(), false)
+            .unwrap()
+            .finish(Some(RuntimeHold::IncomingPolicyConflict));
         for shared in [gate, clone] {
             let error = shared.enter(&root).err().unwrap();
-            assert_eq!(error, AdmissionError::Held(RuntimeHold::IncomingPolicyConflict));
+            assert_eq!(
+                error,
+                AdmissionError::Held(RuntimeHold::IncomingPolicyConflict)
+            );
             assert_eq!(error.code(), "runtime_policy_conflict");
         }
         drop(owner);

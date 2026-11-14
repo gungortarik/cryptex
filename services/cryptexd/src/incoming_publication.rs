@@ -195,11 +195,16 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
         Ok(result) => result,
         Err(error) => {
             if let ImportStagingError::PolicyConflict(reason) = error {
-                session.retain_policy_hold(reason).map_err(RecoveryRequired)?;
+                session
+                    .retain_policy_hold(reason)
+                    .map_err(RecoveryRequired)?;
                 return Err(IncomingPublicationError::PolicyHeld(reason));
             }
             if session.has_policy_review() {
-                if !matches!(error, ImportStagingError::Invalid(_) | ImportStagingError::Limit(_)) {
+                if !matches!(
+                    error,
+                    ImportStagingError::Invalid(_) | ImportStagingError::Limit(_)
+                ) {
                     return Err(RecoveryRequired(error));
                 }
                 session.finish_policy_review().map_err(RecoveryRequired)?;
@@ -299,8 +304,7 @@ pub(crate) fn recover_live_with_instance<S: SecureStore + ?Sized>(
         instance,
         store,
         environment,
-    )
-    {
+    ) {
         let hold = if matches!(error, ImportStagingError::PolicyConflict(_)) {
             RuntimeHold::IncomingPolicyConflict
         } else {

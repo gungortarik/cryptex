@@ -434,14 +434,20 @@ fn verify_post_import_policy(
     Ok(PostImportRetrievalSafetyState { trust, content })
 }
 
-fn post_import_hold(hold: crate::trust_reducer::TrustHold) -> crate::import_staging::ImportStagingError {
+fn post_import_hold(
+    hold: crate::trust_reducer::TrustHold,
+) -> crate::import_staging::ImportStagingError {
     use crate::import_staging::{AuthenticatedPolicyConflict as Conflict, ImportStagingError};
     use crate::trust_reducer::TrustHold;
     let conflict = match hold {
         TrustHold::UnresolvedRestrictionCycle => Conflict::RestrictionCycle,
         TrustHold::UnresolvedAdmissionDependency => Conflict::AdmissionDependency,
         TrustHold::TerminalRetirementTail => Conflict::TerminalRetirementTail,
-        _ => return ImportStagingError::Invalid(format!("post-import trust history is held: {hold:?}")),
+        _ => {
+            return ImportStagingError::Invalid(format!(
+                "post-import trust history is held: {hold:?}"
+            ));
+        }
     };
     ImportStagingError::PolicyConflict(conflict)
 }
@@ -455,13 +461,25 @@ pub(crate) fn revalidate_incoming_policy_evidence(
     session: &crate::import_staging::ImportStagingSession,
 ) -> Result<(), crate::import_staging::ImportStagingError> {
     use crate::import_staging::ImportStagingError;
-    let mut devices = session.candidates().iter().map(|c| c.device_id.clone()).collect::<Vec<_>>();
-    devices.sort_by(|a,b| a.as_str().cmp(b.as_str()));
+    let mut devices = session
+        .candidates()
+        .iter()
+        .map(|c| c.device_id.clone())
+        .collect::<Vec<_>>();
+    devices.sort_by(|a, b| a.as_str().cmp(b.as_str()));
     devices.dedup();
-    let snapshot = scan_verified_canonical_from_local_anchor_with_import_devices_until(root, brain, anchor, &devices, None)
-        .map_err(|_| ImportStagingError::RecoveryConflict("canonical policy evidence cannot be authenticated".into()))?;
+    let snapshot = scan_verified_canonical_from_local_anchor_with_import_devices_until(
+        root, brain, anchor, &devices, None,
+    )
+    .map_err(|_| {
+        ImportStagingError::RecoveryConflict(
+            "canonical policy evidence cannot be authenticated".into(),
+        )
+    })?;
     if snapshot.verified_trust_context().is_none() {
-        return Err(ImportStagingError::RecoveryConflict("canonical policy is held during evidence replay".into()));
+        return Err(ImportStagingError::RecoveryConflict(
+            "canonical policy is held during evidence replay".into(),
+        ));
     }
     let verified = session.verify_batch_against_snapshot(brain, &snapshot)?;
     verify_post_import_policy(&snapshot, &verified).map(|_| ())

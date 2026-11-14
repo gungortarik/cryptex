@@ -66,7 +66,9 @@ impl std::fmt::Display for ImportStagingError {
             Self::Invalid(message) => write!(f, "import staging rejected: {message}"),
             Self::Limit(error) => write!(f, "import staging limit: {error}"),
             Self::RecoveryConflict(message) => f.write_str(message),
-            Self::PolicyConflict(reason) => write!(f, "authenticated incoming policy hold: {reason:?}"),
+            Self::PolicyConflict(reason) => {
+                write!(f, "authenticated incoming policy hold: {reason:?}")
+            }
         }
     }
 }
