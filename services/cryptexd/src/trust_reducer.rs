@@ -1753,7 +1753,7 @@ mod tests {
                 anchor["content_hash"].as_str().unwrap(),
             ),
         ] {
-            for (named_key, should_accept) in [(target_key, true), (&unrelated_key, false)] {
+            for (named_key, matching_key) in [(target_key, true), (&unrelated_key, false)] {
                 // Both cases are genuine signatures with internally consistent
                 // target key IDs. Only the device-to-pinned-key binding differs.
                 let restriction = make_v3(
@@ -1780,13 +1780,22 @@ mod tests {
                     signing_key_id_from_verifying_key(&local_key.verifying_key()).unwrap(),
                     local_key.verifying_key().to_bytes(),
                 );
-                if should_accept {
-                    assert!(result.is_ok(), "matching target {target} must be accepted");
-                } else {
+                if !matching_key {
                     assert!(
                         matches!(result, Err(TrustHold::InvalidPolicyHistory)),
                         "unrelated key must not restrict pinned target {target}"
                     );
+                } else if target == "local" {
+                    // The peer's only grant is local@1. A peer->local cutoff0
+                    // makes its own authority depend on the grant it removes.
+                    // The owner-selected policy requires this precise hold.
+                    assert!(matches!(
+                        result,
+                        Err(TrustHold::UnresolvedAdmissionDependency)
+                    ));
+                } else {
+                    let (_, reduction) = result.expect("matching independently eligible target");
+                    assert_eq!(cutoff(&reduction, target), 0);
                 }
             }
         }
