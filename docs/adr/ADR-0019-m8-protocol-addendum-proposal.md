@@ -4,6 +4,12 @@
 implementation basis on 2026-10-29, including the operation-specific owner
 approval digest fields below. This does not accept the full addendum or enable
 trust, transport, retrieval, or publication.
+**Owner clarification (2026-11-14):** "Önerilen kuralları uygula" selects
+admission anchors obeying effective cutoffs, unresolved admission dependencies
+holding the whole Brain, and strict terminal-tail refusal, including possibly
+indefinite unavailability/no routine M8 override. See the
+[selected decision](../proposals/m8-final-protocol-acceptance-decision-20261114.md).
+This authorizes implementation and verification, not full protocol activation.
 **Date:** 2026-10-22  
 **Scope:** Concrete candidate for the remaining ADR-0019 §8 gates. The accepted
 product permissions in ADR-0019 and its restriction-authority addendum remain
@@ -463,9 +469,10 @@ reservations. If there is no preceding record, use cutoff zero and the
 all-zero hash. The self-retirement control event is validated as policy
 metadata as the sole terminal control exception; it does not authorize
 ordinary content at or after its own sequence and cannot authorize another
-device. Any later record in that identity's stream is ineligible for content
-or policy authority; a fork, inconsistent boundary, or ambiguous retirement
-causes a guarded-content hold.
+device. Under the owner-selected strict-terminal rule, any later authenticated
+record in that identity's stream is an invalid terminal tail and causes a typed
+whole-Brain hold; it is not automatically filtered. A fork, inconsistent boundary
+or ambiguous retirement also holds. No canonical event is deleted to clear it.
 
 Every security-event `transaction_id` is a fresh 32-byte random value encoded
 as 64 lowercase hex characters. It is unique within the local author's stream
@@ -535,16 +542,30 @@ compromised key.
 
 Candidate deterministic reduction:
 
+Local peer-admission anchors are policy actions and are not exempt from the
+local author's effective cutoff. Provisional pins from verified transcripts may
+authenticate the complete input but cannot alone confer admission, transport,
+content or restriction-issuer authority. Use only an eligible local grant for
+each exact peer binding; a provably eligible earlier equivalent grant suffices.
+If admission eligibility depends on authority introduced by that admission and
+cannot be independently resolved, return a typed whole-Brain dependency hold.
+Mere key verification is not such a dependency. Do not choose an assumed roster
+or resolve it by arrival order or an unreviewed fixed point. The selected
+[implementation design](../proposals/m8-admission-cutoff-resolution-20261114.md)
+requires independent soundness and genuine signed-history verification before
+its results can feed the existing restriction SCC procedure below.
+
 1. First validate every candidate restriction's exact schema, event signature,
    chain, Brain, issuer identity, target binding, and boundary hash. Build a
    directed candidate graph with edge `I -> T` for each structurally and
    cryptographically valid restriction authored by a locally directly approved
    issuer. Edges from issuers not directly approved locally are excluded from
    the authority graph. A known, directly anchored issuer that is now ineligible
-   because its valid history was later restricted or self-retired remains
+   because its valid history was later cross-restricted remains
    cryptographically verifiable; its actions are filtered by its effective
    prefix and do not become invalid input merely because its current authority
-   changed. An unknown/unresolvable device stream or failed chain/signature
+   changed by a cross-restriction cutoff. Strict post-retirement tails remain
+   invalid input under §3 and hold before graph reduction. An unknown/unresolvable device stream or failed chain/signature
    remains subject to the existing Brain-wide fail-closed rule. Merely finding
    a well-formed policy event from a known but currently ineligible issuer is
    not itself a hold condition.
@@ -1200,8 +1221,11 @@ discover the durable result. Journal/canonical mismatches fail closed.
   resolves without hold; (2) ineligible external breaker
   `C→D(cutoff 2), D@5→A(cutoff 9), A@10→B, B@10→A` must hold `{A,B}` and must
   not apply `B@10→A` alone; (3) nested SCC where `{C,D}` unresolved holds the
-  Brain before `{A,B}` is filtered; (4) self-retirement cap inside an SCC that
-  drops a post-retirement outgoing edge and leaves an acyclic remainder;
+  Brain before `{A,B}` is filtered; (4) genuine signed self-retirement at an
+  exact preceding boundary, including allocation gaps, plus later signed
+  content/policy tails and ambiguity causing the strict terminal hold. A
+  reducer-only retirement breaker with an inconsistent preceding record does
+  not satisfy this requirement;
    (5) identical verified unions under shuffled file-arrival orders converge on
    the same cutoffs or the same hold; (6) for an eligible, fully resolved
    `X→A(cutoff 2)`,

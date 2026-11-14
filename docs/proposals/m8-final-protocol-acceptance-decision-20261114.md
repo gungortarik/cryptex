@@ -1,7 +1,11 @@
 # M8 final protocol acceptance decision — November 14
 
-Status: PROPOSED; owner decision required. No protocol acceptance or product
-activation is recorded here. Reviewed implementation: `93406122a5ca99e22f65885b923060ed43490fbe`.
+Status: OWNER-SELECTED RULES; implementation and final acceptance pending.
+On November14 the owner answered "Önerilen kuralları uygula" after the explicit
+cutoff/strict-retirement choice, including possible indefinite whole-Brain hold
+and absence of a routine M8 override. This selects A plus strict-terminal B for
+implementation/review. It is not final protocol acceptance or product activation.
+Reviewed baseline: `93406122a5ca99e22f65885b923060ed43490fbe`.
 
 The user requested final protocol acceptance and Mac product approval/incoming/
 protection-status integration. The independent full closeout review found two
@@ -125,8 +129,8 @@ device, transitive grant, custom crypto or M11 override is authorized.
 
 ## Decision and execution order
 
-The owner is asked to select A plus strict-terminal B, including the stated
-availability consequence, or request the filtering alternative. Selection is
+The owner selected A plus strict-terminal B, including the stated availability
+consequence. Selection is
 permission to amend/design/implement those exact rules, not immediate full
 protocol acceptance or product activation. Then implement genuine signed
 regressions, independently review the authority algorithm, run exact-source
@@ -136,5 +140,6 @@ Mac product wiring and integrated acceptance separately.
 Repository authority: `AGENTS.md` says "If requirements conflict, stop
 implementation and report the conflict. Do not invent a new architecture."
 It also requires asking before an ambiguous architecture/integration direction
-changes. Those rules are why this concrete decision is required before changes
-to authority/availability or activation; completed tests are not reopened.
+changes. This concrete selection now authorizes implementation of the selected
+rules without requesting the same choice again. Completed unrelated tests are
+not reopened; final activation still has its separate acceptance gate.

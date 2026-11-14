@@ -16,6 +16,12 @@ use cryptex_events::{
 };
 use ed25519_dalek::VerifyingKey;
 
+#[path = "trust_reducer/admission.rs"]
+mod admission;
+#[cfg(test)]
+#[path = "trust_reducer/admission_tests.rs"]
+mod admission_tests;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct VerifiedRestriction {
     pub issuer: DeviceId,
@@ -122,6 +128,8 @@ pub(crate) enum TrustHold {
     CompetingFork,
     InvalidPolicyHistory,
     UnresolvedRestrictionCycle,
+    UnresolvedAdmissionDependency,
+    TerminalRetirementTail,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,6 +147,7 @@ pub(crate) enum TrustReduction {
 /// Derive reducer input from authenticated records. `history_state` must be
 /// supplied by the caller that enumerated the complete lock-scoped canonical
 /// snapshot; this function cannot establish source completeness itself.
+#[cfg(test)]
 pub(crate) fn build_verified_trust_history(
     history: &VerifiedSecurityHistory,
     local_device: DeviceId,
@@ -146,12 +155,25 @@ pub(crate) fn build_verified_trust_history(
     local_public_key: &[u8; 32],
     history_state: VerifiedHistoryState,
 ) -> Result<VerifiedTrustHistory, TrustHold> {
-    let approved_peer_bindings = derive_local_approval_roster(
+    build_verified_trust_history_cancellable(history, local_device, local_signing_key_id, local_public_key, history_state, &mut || false)
+}
+
+fn build_verified_trust_history_cancellable<C: FnMut() -> bool>(
+    history: &VerifiedSecurityHistory,
+    local_device: DeviceId,
+    local_signing_key_id: &SigningKeyId,
+    local_public_key: &[u8; 32],
+    history_state: VerifiedHistoryState,
+    cancelled: &mut C,
+) -> Result<VerifiedTrustHistory, TrustHold> {
+    let evidence = derive_local_approval_roster(
         history,
         &local_device,
         local_signing_key_id,
         local_public_key,
+        cancelled,
     )?;
+    let approved_peer_bindings = evidence.bindings;
     let mut known_devices = BTreeSet::from([local_device.clone()]);
     let mut restrictions = Vec::new();
     let mut self_retirements = Vec::new();
@@ -162,6 +184,9 @@ pub(crate) fn build_verified_trust_history(
     // stream even when its restriction is chronologically later. A single
     // interleaved pass would then silently drop an authorized restriction.
     for record in history.records() {
+        if cancelled() {
+            return Err(TrustHold::Cancelled);
+        }
         let device = DeviceId::new(record.device_id().to_owned())
             .map_err(|_| TrustHold::InvalidPolicyHistory)?;
         known_devices.insert(device.clone());
@@ -218,7 +243,7 @@ pub(crate) fn build_verified_trust_history(
                 if history.records().iter().any(|candidate| {
                     candidate.device_id() == device.as_str() && candidate.device_seq() > event_seq
                 }) {
-                    return Err(TrustHold::InvalidPolicyHistory);
+                    return Err(TrustHold::TerminalRetirementTail);
                 }
                 self_retirements.push(VerifiedSelfRetirement {
                     device,
@@ -232,6 +257,9 @@ pub(crate) fn build_verified_trust_history(
     // Evaluate restrictions only after the complete local approval roster has
     // been derived from verified local anchors.
     for record in history.records() {
+        if cancelled() {
+            return Err(TrustHold::Cancelled);
+        }
         let AuthenticatedSecurityRecord::SecurityV3(event) = record else {
             continue;
         };
@@ -302,7 +330,7 @@ pub(crate) fn build_verified_trust_history(
     }
 
     let directly_approved_peers = approved_peer_bindings.keys().cloned().collect();
-    Ok(VerifiedTrustHistory {
+    let mut verified = VerifiedTrustHistory {
         local_device,
         local_signing_key_id: local_signing_key_id.clone(),
         local_public_key: *local_public_key,
@@ -312,17 +340,29 @@ pub(crate) fn build_verified_trust_history(
         restrictions,
         self_retirements,
         state: history_state,
-    })
+    };
+    admission::resolve(&mut verified, &evidence.first_grants, cancelled)?;
+    Ok(verified)
 }
 
-fn derive_local_approval_roster(
+struct LocalApprovalEvidence {
+    bindings: BTreeMap<DeviceId, ApprovedPeerBinding>,
+    first_grants: BTreeMap<DeviceId, u64>,
+}
+
+fn derive_local_approval_roster<C: FnMut() -> bool>(
     history: &VerifiedSecurityHistory,
     local_device: &DeviceId,
     local_signing_key_id: &SigningKeyId,
     local_public_key: &[u8; 32],
-) -> Result<BTreeMap<DeviceId, ApprovedPeerBinding>, TrustHold> {
+    cancelled: &mut C,
+) -> Result<LocalApprovalEvidence, TrustHold> {
     let mut bindings = BTreeMap::<DeviceId, ApprovedPeerBinding>::new();
+    let mut first_grants = BTreeMap::<DeviceId, u64>::new();
     for record in history.records() {
+        if cancelled() {
+            return Err(TrustHold::Cancelled);
+        }
         if record.device_id() != local_device.as_str() {
             continue;
         }
@@ -398,9 +438,10 @@ fn derive_local_approval_roster(
         {
             return Err(TrustHold::InvalidPolicyHistory);
         }
+        first_grants.entry(binding.device_id.clone()).and_modify(|seq| *seq = (*seq).min(record.device_seq())).or_insert(record.device_seq());
         bindings.insert(binding.device_id.clone(), binding);
     }
-    Ok(bindings)
+    Ok(LocalApprovalEvidence { bindings, first_grants })
 }
 
 /// Authenticate a complete lock-scoped canonical snapshot from this
@@ -511,11 +552,12 @@ where
     if cancelled() {
         return Err(TrustHold::Cancelled);
     }
-    let peers = derive_local_approval_roster(
+    let evidence = derive_local_approval_roster(
         &local_history,
         &local_device,
         &local_signing_key_id,
         &local_public_key,
+        &mut cancelled,
     )?;
     let history = verify_security_history_cancellable(
         raw_records,
@@ -524,7 +566,9 @@ where
             local_device: local_device.clone(),
             local_key_id: local_signing_key_id.clone(),
             local_key,
-            peers,
+            // Signature evidence only. Admission is decided after the complete
+            // authenticated union, and these provisional pins never escape.
+            peers: evidence.bindings,
         },
         &mut cancelled,
     )
@@ -537,12 +581,13 @@ where
     if cancelled() {
         return Err(TrustHold::Cancelled);
     }
-    let verified = build_verified_trust_history(
+    let verified = build_verified_trust_history_cancellable(
         &history,
         local_device,
         &local_signing_key_id,
         &local_public_key,
         VerifiedHistoryState::Complete,
+        &mut cancelled,
     )?;
     let reduction = reduce_trust_history(&verified);
     if cancelled() {
@@ -560,6 +605,18 @@ struct Edge {
 }
 
 pub(crate) fn reduce_trust_history(history: &VerifiedTrustHistory) -> TrustReduction {
+    let mut result = reduce_authority_history(history);
+    if let TrustReduction::Ready(snapshot) = &mut result {
+        for (device, cutoff) in &mut snapshot.effective_cutoffs {
+            if !snapshot.trusted_devices.contains(device) {
+                *cutoff = 0;
+            }
+        }
+    }
+    result
+}
+
+fn reduce_authority_history(history: &VerifiedTrustHistory) -> TrustReduction {
     match history.state {
         VerifiedHistoryState::Complete => {}
         VerifiedHistoryState::MissingOrUnverifiable => {
@@ -917,7 +974,7 @@ mod tests {
         signing_key_id_from_verifying_key, verify_security_history,
     };
 
-    const BRAIN: &str = "22222222-2222-4222-8222-222222222222";
+    pub(super) const BRAIN: &str = "22222222-2222-4222-8222-222222222222";
     const TEST_SEED: [u8; 32] = [0x63; 32];
 
     fn device(value: &str) -> DeviceId {
@@ -959,7 +1016,7 @@ mod tests {
         }
     }
 
-    fn make_v1(device_id: &str, seq: u64, prev_hash: &str, key: &SigningKey) -> Vec<u8> {
+    pub(super) fn make_v1(device_id: &str, seq: u64, prev_hash: &str, key: &SigningKey) -> Vec<u8> {
         let device_prefix = device_id.bytes().fold(0_u32, |value, byte| {
             value.wrapping_mul(31).wrapping_add(u32::from(byte))
         });
@@ -984,7 +1041,7 @@ mod tests {
         serde_json_canonicalizer::to_vec(&event).unwrap()
     }
 
-    fn make_v3(
+    pub(super) fn make_v3(
         device_id: &str,
         event_id: &str,
         seq: u64,
@@ -1213,7 +1270,7 @@ mod tests {
         Value::Array(messages)
     }
 
-    fn history(
+    pub(super) fn history(
         peers: &[&str],
         restrictions: &[(&str, u64, &str, u64)],
         retirements: &[(&str, u64, u64)],
@@ -1314,7 +1371,8 @@ mod tests {
         )
         .unwrap();
         let reduced = reduce_trust_history(&derived);
-        assert_eq!(cutoff(&reduced, "target"), 1);
+        assert_eq!(cutoff(&reduce_authority_history(&derived), "target"), 1);
+        assert_eq!(cutoff(&reduced, "target"), 0);
 
         let mismatched = make_v3(
             "local",
@@ -1866,7 +1924,7 @@ mod tests {
                 &key.verifying_key().to_bytes(),
                 VerifiedHistoryState::Complete,
             ),
-            Err(TrustHold::InvalidPolicyHistory)
+            Err(TrustHold::TerminalRetirementTail)
         );
     }
 
@@ -1917,18 +1975,6 @@ mod tests {
             reduce_trust_history(&input),
             TrustReduction::Held(TrustHold::UnresolvedRestrictionCycle)
         );
-    }
-
-    #[test]
-    fn self_retirement_filters_post_retirement_edge_inside_cycle() {
-        let input = history(
-            &["A", "B"],
-            &[("A", 3, "B", 1), ("B", 1, "A", 9)],
-            &[("A", 4, 2)],
-        );
-        let result = reduce_trust_history(&input);
-        assert_eq!(cutoff(&result, "A"), 2);
-        assert_eq!(cutoff(&result, "B"), u64::MAX);
     }
 
     #[test]

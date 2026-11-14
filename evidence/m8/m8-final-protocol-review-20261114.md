@@ -54,6 +54,26 @@ of R3, not product policy provisioning or R1/R2 acceptance.
 
 ## Other reviewed boundaries and product gaps
 
+### M8-FINAL-R4 — authenticated staged policy conflict is a product blocker
+
+Follow-up composition review found that `verify_post_import_policy` maps an
+authenticated held union or removal of an admitted canonical device to ordinary
+`ImportStagingError::Invalid`; `publish_exclusively` discards the staging session
+and returns `Rejected`, and ordinary admission is reopened. An incoming valid
+SCC conflict or newly invalidated grant can therefore disappear while the old
+canonical content stays readable. This is source-derived, not a newly executed
+incoming regression; the product publication/controller gates remain closed.
+
+Before activation, distinguish authenticated policy holds from malformed,
+unknown-key or mixed-malformed input. Hold shared ordinary admission, retain
+bounded verified evidence and revalidate it after restart. A process-local latch
+or recovery from old canonical alone is insufficient. Do not publish a held
+union or silently repurpose a publication-ready prepared manifest. The durable
+evidence/resumption contract must be concretely reviewed before a storage
+mechanism is selected. Required cases are authenticated SCC conflict, grant
+invalidation, restart persistence and ordinary rejection without policy authority
+for malformed/unknown-key candidates. No new persistence design is selected here.
+
 No further concrete defect was identified in the reviewed bootstrap/parser
 bounds, hash/signing domains, session consumption, cancellation/replay, remote
 approval metadata binding or reader rollout controls. This bounded review is not
