@@ -1,0 +1,50 @@
+name: M8 schema candidate
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  schemas:
+    name: Schema candidate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install pinned dependencies
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+          pnpm install --frozen-lockfile
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Generate schemas from actual Rust wire types
+        run: cargo run --locked -p cryptex-events --bin cryptex-events-schema-gen
+      - name: Generate and check TypeScript
+        run: |
+          pnpm --filter @cryptex/schemas generate:ts
+          pnpm --filter @cryptex/schemas check:drift
+          git diff --exit-code -- packages/schemas/cryptex-event-v1.schema.json packages/schemas/cryptex-event-v1.ts packages/schemas/cryptex-event-v2.schema.json packages/schemas/cryptex-event-v2.ts
+      - name: Strict lint and event compatibility tests
+        run: |
+          cargo clippy --locked -p cryptex-events --all-targets -- -D warnings
+          cargo test --locked -p cryptex-events
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m8-schemas-${{ matrix.os }}-${{ github.sha }}
+          path: |
+            packages/schemas/cryptex*.schema.json
+            packages/schemas/cryptex*.ts
+          if-no-files-found: error

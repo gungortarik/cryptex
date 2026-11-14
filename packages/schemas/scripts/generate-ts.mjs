@@ -7,10 +7,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
 const check = process.argv.includes("--check");
 
-for (const version of ["v1", "v2"]) {
-  const schemaName = `cryptex-event-${version}.schema.json`;
+for (const name of ["cryptex-event-v1", "cryptex-event-v2", "cryptex-event-v3", "cryptex-bootstrap-v1", "cryptex-bootstrap-transcript-v1"]) {
+  const schemaName = `${name}.schema.json`;
   const schemaPath = join(root, schemaName);
-  const outPath = join(root, `cryptex-event-${version}.ts`);
+  const outPath = join(root, `${name}.ts`);
   const banner =
     "/* eslint-disable */\n" +
     "/**\n" +

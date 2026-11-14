@@ -9,6 +9,10 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      schema_candidate_only:
+        description: Generate and validate candidate M8 protocol schemas on both native platforms
+        type: boolean
+        default: false
       desktop_startup_only:
         description: Run scoped Desktop startup/restart tests and native Desktop lint on both platforms
         type: boolean
@@ -33,8 +37,11 @@ permissions:
   contents: read
 
 jobs:
+  schema-candidate:
+    if: github.event_name == 'workflow_dispatch' && inputs.schema_candidate_only
+    uses: ./.github/workflows/m8-schema-candidate.yml
   desktop-startup:
-    if: github.event_name == 'workflow_dispatch' && inputs.desktop_startup_only
+    if: ${{ !inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && inputs.desktop_startup_only) }}
     name: Desktop startup (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     # Match the signed-fixture runner's existing profile from the first build;
@@ -140,7 +147,7 @@ jobs:
           retention-days: 1
 
   readiness:
-    if: github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.ipc_acl_only && !inputs.windows_desktop_build_only)
+    if: ${{ !inputs.schema_candidate_only && (github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.ipc_acl_only && !inputs.windows_desktop_build_only)) }}
     name: Readiness (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
@@ -279,7 +286,7 @@ jobs:
       # separately. These tests do not certify installed/signed distribution.
 
   ipc-acl:
-    if: github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.windows_desktop_build_only)
+    if: ${{ !inputs.schema_candidate_only && (github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.windows_desktop_build_only)) }}
     name: IPC cross-account ACL (Windows)
     runs-on: windows-latest
     timeout-minutes: 10
@@ -299,11 +306,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   mac-identity-preflight:
-    if: github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && inputs.mac_identity_preflight_only
+    if: ${{ !inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && inputs.mac_identity_preflight_only) }}
     uses: ./.github/workflows/m8-macos-identity-preflight.yml
 
   windows-desktop-build:
-    if: github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && inputs.windows_desktop_build_only
+    if: ${{ !inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && inputs.windows_desktop_build_only) }}
     name: Windows Desktop package (unsigned, manual only)
     runs-on: windows-latest
     timeout-minutes: 25

@@ -143,9 +143,9 @@ pub enum RestrictionReasonV3 {
     Compromised,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct SecurityV3Envelope {
+pub(crate) struct SecurityV3Envelope {
     schema_version: u32,
     event_id: String,
     brain_id: String,
@@ -609,19 +609,43 @@ pub fn peer_approval_operation_digest(
     operation_digest_from_record(&operation)
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PeerApprovedPayload {
+    transaction_id: String,
+    transcript: Value,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeviceRestrictedPayload {
+    transaction_id: String,
+    target_device_id: String,
+    target_signing_key_id: SigningKeyId,
+    target_public_key: String,
+    reason: String,
+    cutoff_seq: String,
+    cutoff_content_hash: ContentHashHex,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeviceSelfRetiredPayload {
+    transaction_id: String,
+    last_authorized_seq: String,
+    last_authorized_content_hash: ContentHashHex,
+}
+
 fn parse_payload(
     event_type: SecurityEventTypeV3,
     payload: Value,
 ) -> Result<SecurityPayloadV3, ValidationFailure> {
+    if !payload.is_object() {
+        return Err(failure("invalid_record", "security payload must be an object"));
+    }
     match event_type {
         SecurityEventTypeV3::PeerApproved => {
-            #[derive(Deserialize)]
-            #[serde(deny_unknown_fields)]
-            struct Payload {
-                transaction_id: String,
-                transcript: Value,
-            }
-            let payload: Payload = serde_json::from_value(payload)
+            let payload: PeerApprovedPayload = serde_json::from_value(payload)
                 .map_err(|_| failure("invalid_record", "peer_approved payload is malformed"))?;
             validate_transaction_id(&payload.transaction_id)?;
             if !payload.transcript.as_array().is_some_and(|messages| {
@@ -638,18 +662,7 @@ fn parse_payload(
             })
         }
         SecurityEventTypeV3::DeviceRestricted => {
-            #[derive(Deserialize)]
-            #[serde(deny_unknown_fields)]
-            struct Payload {
-                transaction_id: String,
-                target_device_id: String,
-                target_signing_key_id: SigningKeyId,
-                target_public_key: String,
-                reason: String,
-                cutoff_seq: String,
-                cutoff_content_hash: ContentHashHex,
-            }
-            let payload: Payload = serde_json::from_value(payload)
+            let payload: DeviceRestrictedPayload = serde_json::from_value(payload)
                 .map_err(|_| failure("invalid_record", "device_restricted payload is malformed"))?;
             validate_transaction_id(&payload.transaction_id)?;
             let target_device_id = DeviceId::new(payload.target_device_id)
@@ -695,14 +708,7 @@ fn parse_payload(
             })
         }
         SecurityEventTypeV3::DeviceSelfRetired => {
-            #[derive(Deserialize)]
-            #[serde(deny_unknown_fields)]
-            struct Payload {
-                transaction_id: String,
-                last_authorized_seq: String,
-                last_authorized_content_hash: ContentHashHex,
-            }
-            let payload: Payload = serde_json::from_value(payload).map_err(|_| {
+            let payload: DeviceSelfRetiredPayload = serde_json::from_value(payload).map_err(|_| {
                 failure("invalid_record", "device_self_retired payload is malformed")
             })?;
             validate_transaction_id(&payload.transaction_id)?;

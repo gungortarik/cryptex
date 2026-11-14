@@ -14,6 +14,12 @@ fn main() {
     let mut root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     root.pop();
     root.pop();
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    let destination = match args.as_slice() {
+        [] => root.join("packages/schemas"),
+        [flag, directory] if flag == "--output-dir" => PathBuf::from(directory),
+        _ => { eprintln!("usage: cryptex-events-schema-gen [--output-dir DIRECTORY]"); process::exit(2); }
+    };
     for (rel_path, json) in [
         (
             CHECKED_IN_SCHEMA_REL_PATH,
@@ -23,8 +29,11 @@ fn main() {
             CHECKED_IN_V2_SCHEMA_REL_PATH,
             render_v2_knowledge_assertion_schema_json(),
         ),
+        ("packages/schemas/cryptex-bootstrap-v1.schema.json", cryptex_events::schema::m8::bootstrap_schema_json()),
+        ("packages/schemas/cryptex-bootstrap-transcript-v1.schema.json", cryptex_events::schema::m8::transcript_schema_json()),
+        ("packages/schemas/cryptex-event-v3.schema.json", cryptex_events::schema::m8::security_schema_json()),
     ] {
-        let out = root.join(rel_path);
+        let out = destination.join(PathBuf::from(rel_path).file_name().expect("schema filename"));
         if let Some(parent) = out.parent()
             && let Err(error) = fs::create_dir_all(parent)
         {
@@ -40,5 +49,4 @@ fn main() {
         }
         println!("wrote {}", out.display());
     }
-    let _ = env::args().collect::<Vec<_>>();
 }

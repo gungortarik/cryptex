@@ -269,9 +269,9 @@ enum MessageType {
     Approval,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct WireMessage {
+pub(crate) struct WireMessage {
     protocol_version: u64,
     message_type: String,
     transaction_id: String,

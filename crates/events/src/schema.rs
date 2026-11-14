@@ -6,6 +6,8 @@ use serde_json::{Value, json};
 use crate::envelope::AcceptedEvent;
 use crate::v2_payload::V2KnowledgeAssertionEvent;
 
+pub mod m8;
+
 /// Render the checked-in production AcceptedEvent schema document as pretty JSON + LF.
 pub fn render_accepted_event_schema_json() -> String {
     let schema = schema_for!(AcceptedEvent);
