@@ -73,7 +73,7 @@ fn database_state(db: &ProjectionDb) -> BTreeMap<String, Vec<Vec<String>>> {
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     let mut result = BTreeMap::new();
-    for name in names {
+    for name in std::iter::once("sqlite_master".to_owned()).chain(names) {
         let mut statement = db
             .connection()
             .prepare(&format!("SELECT * FROM \"{}\"", name.replace('"', "\"\"")))

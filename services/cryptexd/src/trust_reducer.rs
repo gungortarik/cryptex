@@ -1502,6 +1502,37 @@ mod tests {
     }
 
     #[test]
+    fn signed_restrictions_cannot_name_an_unoccupied_or_overflowed_target_boundary() {
+        let local = SigningKey::from_bytes(&TEST_SEED);
+        let peer = SigningKey::from_bytes(&[0x27; 32]);
+        let first = make_v1("peer", 1, ZERO_CONTENT_HASH_HEX, &peer);
+        let first_value: Value = serde_json::from_slice(&first).unwrap();
+        let first_hash = first_value["content_hash"].as_str().unwrap();
+        let last = make_v1("peer", u64::MAX, first_hash, &peer);
+        let anchor = make_v3("local", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", 1,
+            ZERO_CONTENT_HASH_HEX, "security.peer_approved", serde_json::json!({
+                "transaction_id": "ab".repeat(32),
+                "transcript": valid_bootstrap_transcript("local", &local, "peer", &peer),
+            }), &local);
+        let anchor_value: Value = serde_json::from_slice(&anchor).unwrap();
+        for cutoff in ["2".to_owned(), (u128::from(u64::MAX) + 1).to_string()] {
+            let restriction = make_v3("local", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 2,
+                anchor_value["content_hash"].as_str().unwrap(), "security.device_restricted", serde_json::json!({
+                    "transaction_id": "cd".repeat(32), "target_device_id": "peer",
+                    "target_signing_key_id": signing_key_id_from_verifying_key(&peer.verifying_key()).unwrap().as_str(),
+                    "target_public_key": hex(&peer.verifying_key().to_bytes()), "reason": "compromised",
+                    "cutoff_seq": cutoff, "cutoff_content_hash": first_hash,
+                }), &local);
+            let records = [anchor.clone(), first.clone(), last.clone(), restriction];
+            let snapshot = records.clone();
+            let refs = records.iter().map(Vec::as_slice).collect::<Vec<_>>();
+            assert!(verify_history_from_local_anchors(&refs, BRAIN, device("local"),
+                signing_key_id_from_verifying_key(&local.verifying_key()).unwrap(), local.verifying_key().to_bytes()).is_err());
+            assert_eq!(records, snapshot);
+        }
+    }
+
+    #[test]
     fn only_a_verified_local_peer_approval_anchor_builds_the_direct_roster() {
         let local_key = SigningKey::from_bytes(&TEST_SEED);
         let peer_key = SigningKey::from_bytes(&[0x27; 32]);
