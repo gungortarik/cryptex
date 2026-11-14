@@ -1526,9 +1526,15 @@ mod tests {
             Value::Bool(true),
             serde_json::json!(1),
         ] {
-            assert!(parse_payload(MessageType::Approval, &serde_json::json!({
-                "agreement_hash": "44".repeat(32), "role": role,
-            })).is_err());
+            assert!(
+                parse_payload(
+                    MessageType::Approval,
+                    &serde_json::json!({
+                        "agreement_hash": "44".repeat(32), "role": role,
+                    })
+                )
+                .is_err()
+            );
         }
         for nonce in ["AA".repeat(32), "11".repeat(31), "11".repeat(33)] {
             assert!(
