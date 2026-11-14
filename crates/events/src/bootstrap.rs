@@ -1468,9 +1468,18 @@ mod tests {
     #[test]
     fn typed_payloads_reject_unknown_missing_wrong_type_and_positional_arrays() {
         for (kind, valid) in [
-            (MessageType::Offer, serde_json::json!({"initiator_nonce": "11".repeat(32)})),
-            (MessageType::Proof, serde_json::json!({"offer_hash": "22".repeat(32), "responder_nonce": "33".repeat(32)})),
-            (MessageType::Approval, serde_json::json!({"agreement_hash": "44".repeat(32), "role": "initiator"})),
+            (
+                MessageType::Offer,
+                serde_json::json!({"initiator_nonce": "11".repeat(32)}),
+            ),
+            (
+                MessageType::Proof,
+                serde_json::json!({"offer_hash": "22".repeat(32), "responder_nonce": "33".repeat(32)}),
+            ),
+            (
+                MessageType::Approval,
+                serde_json::json!({"agreement_hash": "44".repeat(32), "role": "initiator"}),
+            ),
         ] {
             assert!(parse_payload(kind, &valid).is_ok());
             let mut extra = valid.clone();
@@ -1488,13 +1497,24 @@ mod tests {
             assert!(parse_payload(kind, &array).is_err());
         }
         for role in ["issuer", "Initiator", "", "responder "] {
-            assert!(parse_payload(MessageType::Approval, &serde_json::json!({
-                "agreement_hash": "44".repeat(32), "role": role,
-            })).is_err());
+            assert!(
+                parse_payload(
+                    MessageType::Approval,
+                    &serde_json::json!({
+                        "agreement_hash": "44".repeat(32), "role": role,
+                    })
+                )
+                .is_err()
+            );
         }
         for nonce in ["AA".repeat(32), "11".repeat(31), "11".repeat(33)] {
-            assert!(parse_payload(MessageType::Offer,
-                &serde_json::json!({"initiator_nonce": nonce})).is_err());
+            assert!(
+                parse_payload(
+                    MessageType::Offer,
+                    &serde_json::json!({"initiator_nonce": nonce})
+                )
+                .is_err()
+            );
         }
     }
 
@@ -1502,15 +1522,26 @@ mod tests {
     fn payload_schema_definitions_are_closed_and_have_required_hash_patterns() {
         for (schema, fields) in [
             (schemars::schema_for!(OfferPayload), vec!["initiator_nonce"]),
-            (schemars::schema_for!(ProofPayload), vec!["offer_hash", "responder_nonce"]),
-            (schemars::schema_for!(ApprovalPayload), vec!["agreement_hash", "role"]),
+            (
+                schemars::schema_for!(ProofPayload),
+                vec!["offer_hash", "responder_nonce"],
+            ),
+            (
+                schemars::schema_for!(ApprovalPayload),
+                vec!["agreement_hash", "role"],
+            ),
         ] {
             let value = serde_json::to_value(schema).unwrap();
             assert_eq!(value["additionalProperties"], false);
             assert_eq!(value["properties"].as_object().unwrap().len(), fields.len());
             assert_eq!(value["required"].as_array().unwrap().len(), fields.len());
             for field in fields {
-                assert!(value["required"].as_array().unwrap().contains(&Value::String(field.into())));
+                assert!(
+                    value["required"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&Value::String(field.into()))
+                );
                 if field != "role" {
                     assert_eq!(value["properties"][field]["pattern"], "^[0-9a-f]{64}$");
                     assert_eq!(value["properties"][field]["minLength"], 64);
