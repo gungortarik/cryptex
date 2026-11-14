@@ -1,7 +1,9 @@
 //! Conservative proof of local grant eligibility, never an assumed roster.
 //! Provisional signature pins do not escape as admitted authority.
 
-use super::{TrustHold, TrustReduction, VerifiedHistoryState, VerifiedTrustHistory, reduce_authority_history};
+use super::{
+    TrustHold, TrustReduction, VerifiedHistoryState, VerifiedTrustHistory, reduce_authority_history,
+};
 use cryptex_core::DeviceId;
 use std::collections::BTreeMap;
 
@@ -18,33 +20,52 @@ pub(super) fn resolve<C: FnMut() -> bool>(
 ) -> Result<(), TrustHold> {
     match history.state {
         VerifiedHistoryState::Complete => {}
-        VerifiedHistoryState::MissingOrUnverifiable => return Err(TrustHold::MissingOrUnverifiableHistory),
+        VerifiedHistoryState::MissingOrUnverifiable => {
+            return Err(TrustHold::MissingOrUnverifiableHistory);
+        }
         VerifiedHistoryState::CompetingFork => return Err(TrustHold::CompetingFork),
     }
     history.known_devices.insert(history.local_device.clone());
     history.known_devices.extend(first_grants.keys().cloned());
-    let mut caps = history.known_devices.iter().cloned().map(|device| (device, u64::MAX)).collect::<BTreeMap<_, _>>();
+    let mut caps = history
+        .known_devices
+        .iter()
+        .cloned()
+        .map(|device| (device, u64::MAX))
+        .collect::<BTreeMap<_, _>>();
     for retirement in &history.self_retirements {
-        let cap = caps.get_mut(&retirement.device).ok_or(TrustHold::InvalidPolicyHistory)?;
+        let cap = caps
+            .get_mut(&retirement.device)
+            .ok_or(TrustHold::InvalidPolicyHistory)?;
         *cap = (*cap).min(retirement.last_authorized_seq);
     }
-    let mut bounds = caps.iter().map(|(device, cap)| (device.clone(), Bounds { lo: 0, hi: *cap })).collect::<BTreeMap<_, _>>();
+    let mut bounds = caps
+        .iter()
+        .map(|(device, cap)| (device.clone(), Bounds { lo: 0, hi: *cap }))
+        .collect::<BTreeMap<_, _>>();
     loop {
         if cancelled() {
             return Err(TrustHold::Cancelled);
         }
         let local = bounds[&history.local_device];
-        let mut next = caps.iter().map(|(device, cap)| (device.clone(), Bounds { lo: *cap, hi: *cap })).collect::<BTreeMap<_, _>>();
+        let mut next = caps
+            .iter()
+            .map(|(device, cap)| (device.clone(), Bounds { lo: *cap, hi: *cap }))
+            .collect::<BTreeMap<_, _>>();
         for restriction in &history.restrictions {
             if cancelled() {
                 return Err(TrustHold::Cancelled);
             }
-            let issuer = bounds.get(&restriction.issuer).ok_or(TrustHold::InvalidPolicyHistory)?;
+            let issuer = bounds
+                .get(&restriction.issuer)
+                .ok_or(TrustHold::InvalidPolicyHistory)?;
             let is_local = restriction.issuer == history.local_device;
             let grant = first_grants.get(&restriction.issuer);
             let possible = is_local || grant.is_some_and(|seq| *seq <= local.hi);
             let definite = is_local || grant.is_some_and(|seq| *seq <= local.lo);
-            let target = next.get_mut(&restriction.target).ok_or(TrustHold::InvalidPolicyHistory)?;
+            let target = next
+                .get_mut(&restriction.target)
+                .ok_or(TrustHold::InvalidPolicyHistory)?;
             if possible && restriction.issuer_seq <= issuer.hi {
                 target.lo = target.lo.min(restriction.cutoff_seq);
             }
@@ -79,7 +100,9 @@ pub(super) fn resolve<C: FnMut() -> bool>(
             return Err(TrustHold::UnresolvedAdmissionDependency);
         }
     }
-    history.approved_peer_bindings.retain(|peer, _| admitted.contains(peer));
+    history
+        .approved_peer_bindings
+        .retain(|peer, _| admitted.contains(peer));
     history.directly_approved_peers = admitted;
     if cancelled() {
         return Err(TrustHold::Cancelled);
@@ -89,14 +112,20 @@ pub(super) fn resolve<C: FnMut() -> bool>(
         return Err(TrustHold::Cancelled);
     }
     if let TrustReduction::Ready(authority) = result {
-        let local_cutoff = authority.effective_cutoffs.get(&history.local_device).ok_or(TrustHold::UnresolvedAdmissionDependency)?;
+        let local_cutoff = authority
+            .effective_cutoffs
+            .get(&history.local_device)
+            .ok_or(TrustHold::UnresolvedAdmissionDependency)?;
         for (peer, seq) in first_grants {
             if authority.trusted_devices.contains(peer) != (*seq <= *local_cutoff) {
                 return Err(TrustHold::UnresolvedAdmissionDependency);
             }
         }
         for (device, interval) in &bounds {
-            let cutoff = authority.effective_cutoffs.get(device).ok_or(TrustHold::UnresolvedAdmissionDependency)?;
+            let cutoff = authority
+                .effective_cutoffs
+                .get(device)
+                .ok_or(TrustHold::UnresolvedAdmissionDependency)?;
             if *cutoff < interval.lo || *cutoff > interval.hi {
                 return Err(TrustHold::UnresolvedAdmissionDependency);
             }

@@ -155,7 +155,14 @@ pub(crate) fn build_verified_trust_history(
     local_public_key: &[u8; 32],
     history_state: VerifiedHistoryState,
 ) -> Result<VerifiedTrustHistory, TrustHold> {
-    build_verified_trust_history_cancellable(history, local_device, local_signing_key_id, local_public_key, history_state, &mut || false)
+    build_verified_trust_history_cancellable(
+        history,
+        local_device,
+        local_signing_key_id,
+        local_public_key,
+        history_state,
+        &mut || false,
+    )
 }
 
 fn build_verified_trust_history_cancellable<C: FnMut() -> bool>(
@@ -438,10 +445,16 @@ fn derive_local_approval_roster<C: FnMut() -> bool>(
         {
             return Err(TrustHold::InvalidPolicyHistory);
         }
-        first_grants.entry(binding.device_id.clone()).and_modify(|seq| *seq = (*seq).min(record.device_seq())).or_insert(record.device_seq());
+        first_grants
+            .entry(binding.device_id.clone())
+            .and_modify(|seq| *seq = (*seq).min(record.device_seq()))
+            .or_insert(record.device_seq());
         bindings.insert(binding.device_id.clone(), binding);
     }
-    Ok(LocalApprovalEvidence { bindings, first_grants })
+    Ok(LocalApprovalEvidence {
+        bindings,
+        first_grants,
+    })
 }
 
 /// Authenticate a complete lock-scoped canonical snapshot from this
