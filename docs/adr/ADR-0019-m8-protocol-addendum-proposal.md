@@ -225,79 +225,46 @@ cancellation wins, it invalidates the token. Confirmation consumes the token
 before signature generation or canonical append. Any later error requires a
 new displayed confirmation and token; a consumed token is never restored.
 
-**Proposed OS peer-credential pins (not yet accepted or natively verified):**
-On Windows, for every named-pipe connection, obtain the peer PID from the
-connected pipe handle using the kernel peer-credential API
-(`GetNamedPipeClientProcessId`); compare it to the Desktop PID captured when
-`cryptexd` was launched, and require the retained process handle for that exact
-Desktop process to remain live. Resolve and validate the packaged Desktop image
-through that pinned process identity at daemon startup. A missing PID,
-mismatched PID, exited process, or unavailable process handle rejects the
-connection; do not trust a PID in the request. The retained process handle
-makes PID reuse fail closed.
+**Connection and per-message peer binding — reviewed candidate, activation gated:**
+Windows retains the kernel named-pipe peer PID and the exact supervised Desktop
+process handle. Resolve the packaged image from that retained instance; reject
+missing/mismatched/exited/reused identities. Request-supplied PIDs, same-user
+claims and health replies are never authority. Preserve the separate immutable
+snapshot, session, one-use consumption and cancellation requirements above.
 
-This paragraph specifies only OS peer binding. It does not implement or close
-the separate M8-R1 approval-session protocol: displayed digest binding,
-one-time session consumption, cancellation serialization, and consume-before-
-append remain independent requirements.
+On macOS, the stopped CLOFORK/ordinary-spawn carrier is historical, not a launch
+recipe. Its failed owner receipts and rationale remain in the
+[carrier reassessment](../proposals/m8-macos-launch-carrier-reassessment.md).
+Accepted [ADR-0020](ADR-0020-macos-m8-owner-channel-candidate.md) and
+[ADR-0021](ADR-0021-disabled-macos-transport-helper.md) define the separate,
+initially disabled native direction. Every M8 exchange/approval/security message
+must carry actual kernel sender evidence, checked against retained process
+instance/generation, expected signed role/image and fresh channel epoch/sequence.
+Bounded request/reply work retains that authenticated connection and domain
+admission through consumption and actual delivery. A successful handshake alone
+is not authority for later frames; old grants never reconnect after loss/restart.
 
-**Mac review candidate update (2026-11-10; not accepted/activated):**
-The subsequent [owner run](../../evidence/m8/m8-macos-launch-owner-receipt-2-20261110.md)
-failed all six intended-child handoff cases despite eligible public APIs and
-certified bundle validation. The direct CLOFORK/ordinary spawn-duplication
-candidate below is stopped, not an implementable accepted launch recipe.
-Published kernel ordering supports the conflict; actual native errno was not
-captured. A [replacement-design decision](../proposals/m8-macos-launch-carrier-reassessment.md)
-is pending. No fallback, private mapping API or production activation is allowed.
+Ordinary Unix IPC remains the accepted transport for other families. M8 owner
+families must not fall back to it or become enabled through a health response,
+JSON/environment switch, shared/forwarded socket or claimed local identity.
+No LOCAL_PEERPID/UID-only or repeatedly sampled socket-owner substitute is
+accepted for per-message native evidence. A transport helper cannot grant owner
+permission or write canonical memory.
 
-Keep the accepted Unix-domain-socket transport. LOCAL_PEERTOKEN is a live socket-
-owner sample, not an audit trailer identifying the writer of an individual frame.
-A transferred/shared connected descriptor remains an unresolved authorization
-boundary; repeated sampling alone cannot close it.
+Expected images require an independently pinned publisher/certificate and a
+verified signed release inventory, protected frontend bytes and live supervised
+image consistency. An adjacent unverified executable, fixture certificate or
+request cannot provision product trust. Existing local-development certificate
+use does not select a public distribution publisher. Product policy is currently
+unconfigured and default gates remain closed. The selected macOS26+ floor still
+requires packaging/runtime enforcement on the supported product path.
 
-The launch-carrier candidate must use public, runtime-available atomic creation
-with CLOEXEC and CLOFORK together and explicit posix_spawn file-action mapping
-for the one intended child. No pipe()+fcntl, copied flag constants, private SDK
-headers, parent-side clearing or Rust pre_exec fallback is permitted. Prefill the
-fixed-size opaque audit token and close the parent's write end before spawning;
-retain its read end through spawn and drop that parent copy immediately afterward.
-The child receives only its explicitly mapped read end, restores noninheritance
-before threads/helpers, reads exactly the fixed size plus EOF within a bounded
-deadline, and closes the carrier before framework validation. The former wording
-requiring the parent to close its read end before passing it to spawn was not an
-implementable sequence and is superseded by this review candidate.
-
-Never put token bytes in argv, environment, runtime files or logs. Do not inspect
-opaque token slots or compare unspecified mutable audit fields as a lifetime-
-stable byte string. Validate the kernel PID/process-generation binding through
-supported token-bound code/instance APIs and retain the live instance right;
-there is no LOCAL_PEERPID-only fallback. Short/extra/malformed input, unavailable
-APIs, instance exit/replacement and mismatches refuse. Every daemon restart needs
-a fresh parent-bound carrier; unrelated children/grandchildren must not inherit it.
-
-The carrier is not authentication. Under an explicitly trusted launched TCB,
-validate the running self image against a fixed own identifier and Apple code-
-signing anchor before reading its TeamID; revalidate that certified organization
-on self. Derive the counterpart requirement from that immutable self identity
-and the fixed counterpart identifier, never from a sibling or claimed peer.
-Require verified containing-bundle/resource/nested-code and live-self-image
-binding, then authenticate the exact counterpart hash against the live token/
-expected kernel PID and retained process-instance right. Missing/invalid/adhoc
-self, absent certified organization, mismatches or failed kernel checks refuse.
-This same-organization rule is not independent publisher/notarization acceptance.
-Consistent package snapshot/replacement handling must be proven before activation;
-a sequence of separate path reads is not assumed atomic.
-
-The bounded sourceb234322 candidate exercises intended daemon validation of its
-actual getppid parent, public atomic inheritance, malformed handoffs and fresh
-child restart. Its required public atomic surface has macOS27 availability;
-this does not select or raise the product minimum OS. Unsupported targets refuse
-this candidate; an accepted support-floor/compatible implementation decision is
-still required. CI on Mac26 verifies only explicit refusal, not positive custody.
-See [candidate evidence and native owner step](../../evidence/m8/m8-macos-atomic-launch-candidate-20261110.md).
-Bidirectional real Desktop/daemon pinning, lasting instance/session identity,
-forwarded descriptors, same-PID replacement, actual PID reuse and owner-session
-restart acceptance remain separate gates. Mac owner operations stay disabled.
+Source-bound component, signed Desktop/daemon and owner receipts are recorded
+in the [current handoff](../34_CURRENT_IMPLEMENTATION_HANDOFF.md). They establish
+their tested candidate scopes, not final ordinary product activation. Full
+native product/session/publication acceptance and independent review remain
+required. Missing APIs, identity uncertainty, replacement, replay, deadline or
+policy failure must refuse without fallback or pending-grant reuse.
 
 For admission it signs only the local approval message; the canonical
 anchor remains gated on both approvals and the complete transcript. A
@@ -341,8 +308,16 @@ role, state, whether a local approval signature has been generated and whether
 it has been released externally, a stable event ID, and every append attempt's
 reserved sequence, predecessor hash, and candidate content hash if append
 outcome is uncertain. It never stores a private key or grants trust. At most 16
-pending transactions and 1 MiB of journal payload are retained;
-overflow refuses a new transaction before mutation. Allowed initiator
+active pending transactions are retained. The selected
+[wire3 compact-receipt decision](../proposals/m8-terminal-journal-retention.md)
+is the current retention contract: active rows and permanent terminal receipts
+share the existing one-MiB bound. Cancelled IDs remain reserved; compact anchors
+require canonical re-verification; uncertain/released-unanchored evidence keeps
+its complete representation. Legacy1/2 migration validates before durable
+replacement. Terminal capacity refuses a new transaction before a new signed
+message/capability is released or a canonical event is published. Ephemeral
+in-memory signing may precede persistence. No age-based eviction or canonical
+cancellation event is introduced. Allowed initiator
 transitions are `offer_created -> proof_received -> local_approval_signed ->
 transcript_ready`; allowed responder transitions are `offer_received ->
 proof_created -> peer_approval_received -> local_approval_signed ->
@@ -1283,6 +1258,16 @@ separately approved publication/recovery slices above. Implementation permission
 is not final protocol acceptance or ordinary product activation. Preserve v1/v2
 bytes and their strict readers. The version-dispatched candidate reader now
 authenticates strict v3 envelopes; a legacy reader still refuses them.
+
+Full closeout review of9340612 is NOT READY for unconditional acceptance:
+local admission anchors are not checked against the local effective cutoff,
+and the retirement-tail contract/evidence differs from actual strict behavior.
+The [decision proposal](../proposals/m8-final-protocol-acceptance-decision-20261114.md)
+and [review](../../evidence/m8/m8-final-protocol-review-20261114.md) require explicit
+policy selection and genuine signed regressions before implementation/activation.
+The stale stopped Mac carrier recipe has been consolidated with the reviewed
+per-message candidate direction and selected wire3 retention. Neither edit
+accepts the two pending policy changes or configures a product publisher.
 
 The October 22/25 NOT READY reviews are historical findings, not a description
 of all current source. Bootstrap signing/parser bounds, operation-specific

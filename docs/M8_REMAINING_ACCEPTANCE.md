@@ -9,6 +9,14 @@ accepted [ADR-0019](adr/ADR-0019-m8-peer-trust-design-proposal.md),
 
 ## Three closure areas: bounded slice complete, two broader areas open
 
+**Current protocol acceptance blocker:** full read-only review at9340612 found
+local grants above the local effective cutoff remain authorized, and retirement
+tail behavior/its synthetic SCC claim disagree with the proposed contract. The
+[decision proposal](proposals/m8-final-protocol-acceptance-decision-20261114.md)
+must be selected before authority/availability changes or activation. The stale
+Mac carrier text has been consolidated; existing native receipts do not waive
+the two protocol findings. See the [review](../evidence/m8/m8-final-protocol-review-20261114.md).
+
 1. **Bounded native safety checks — COMPLETE for this slice.** Combined
    supervisor-loss native CI and owner-Mac acceptance are complete for their
    recorded source. The two endpoint/exec P2 findings and fixed

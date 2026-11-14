@@ -1,5 +1,42 @@
 # 34 — Current Implementation Handoff
 
+## Final protocol review — November 14: NOT READY
+
+Reviewed implementation: `93406122a5ca99e22f65885b923060ed43490fbe`.
+The user requested final protocol acceptance and Mac product wiring. The full
+independent source review found two authority/availability decisions that block
+unconditional acceptance. Do not activate ordinary Mac routes or silently invent
+a grant-dependency algorithm. Existing schema/recovery CI stays valid within
+its recorded scope, not as proof these newly identified cases passed.
+
+* R1/P1: local peer grants are derived before cutoff reduction. L@1 admits A,
+  L@2 admits C, and A restricts L to1/hashL1; current source still admits C.
+  This is a source-derived counterexample, not a newly executed signed fixture.
+  Specify grant eligibility/dependency and typed whole-Brain conflict behavior.
+* R2/P2: the signed-history builder holds on any retirement tail, but proposed
+  §§3–4 describe filtering. Its reducer-only retirement SCC breaker also names
+  an impossible prior record. Choose exact terminal-tail semantics and replace
+  the claim with genuine signed-history cases; do not silently relax the guard.
+* R3/P2 stale Mac carrier text has been consolidated with the reviewed native
+  per-message direction, historical links and selected wire3 retention. Product
+  provisioning/activation is still closed.
+
+The [full review](../evidence/m8/m8-final-protocol-review-20261114.md) and
+[concrete decision](proposals/m8-final-protocol-acceptance-decision-20261114.md)
+contain the exact counterexample, recommended wording, alternatives, required
+regressions and availability consequence. Recommended owner selection: local
+admissions obey effective cutoffs; unresolved grant dependencies hold the Brain;
+explicit strict terminal-tail hold, with potentially indefinite unavailability
+and no routine M8 override. This is not selected or fully accepted yet.
+
+**Resume:** obtain the concrete policy selection required by AGENTS conflict/
+architecture rules, then amend/design/implement and independently verify it.
+No production code or test expectation changed during this review. Mac's safe
+incoming filesystem adapter, configured identity policy/OS floor, approval/session
+consumer wiring and truthful protection status remain product work after the
+protocol choices. Do not remove Windows cfg/owner checks as a Mac port. M8 is
+OPEN; M9 has not begun. Preserve `scripts/m8/__pycache__/`.
+
 ## Durable restriction and derived recovery — November 14
 
 Verified source: `c6e07d6ab5acccabd73258780bc1acf95ede6333`; exact-source

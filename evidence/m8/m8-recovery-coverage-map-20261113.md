@@ -2,6 +2,11 @@
 
 This maps the nine crash boundaries in ADR-0019 addendum §5 to existing checks.
 It is a gap inventory, not complete M8 acceptance or a power-loss certification.
+The later [full protocol review](m8-final-protocol-review-20261114.md) identifies
+grant-cutoff eligibility and retirement-contract issues outside the completed
+scoped recovery proofs. The rows below do not certify those missing cases or
+unconditional protocol acceptance. New targeted signed regressions are required
+after the concrete policy decision; passed recovery tests are not discarded.
 The baseline source `adad524623352dbcdc94b478040886637a777df0` passed ordinary
 [CI43514494333](https://github.com/gungortarik/cryptex/actions/runs/43514494333),
 including Mac/Windows readiness and Windows cross-account IPC ACL. New bilateral
