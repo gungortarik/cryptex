@@ -1509,25 +1509,47 @@ mod tests {
         let first_value: Value = serde_json::from_slice(&first).unwrap();
         let first_hash = first_value["content_hash"].as_str().unwrap();
         let last = make_v1("peer", u64::MAX, first_hash, &peer);
-        let anchor = make_v3("local", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", 1,
-            ZERO_CONTENT_HASH_HEX, "security.peer_approved", serde_json::json!({
+        let anchor = make_v3(
+            "local",
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            1,
+            ZERO_CONTENT_HASH_HEX,
+            "security.peer_approved",
+            serde_json::json!({
                 "transaction_id": "ab".repeat(32),
                 "transcript": valid_bootstrap_transcript("local", &local, "peer", &peer),
-            }), &local);
+            }),
+            &local,
+        );
         let anchor_value: Value = serde_json::from_slice(&anchor).unwrap();
         for cutoff in ["2".to_owned(), (u128::from(u64::MAX) + 1).to_string()] {
-            let restriction = make_v3("local", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 2,
-                anchor_value["content_hash"].as_str().unwrap(), "security.device_restricted", serde_json::json!({
+            let restriction = make_v3(
+                "local",
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                2,
+                anchor_value["content_hash"].as_str().unwrap(),
+                "security.device_restricted",
+                serde_json::json!({
                     "transaction_id": "cd".repeat(32), "target_device_id": "peer",
                     "target_signing_key_id": signing_key_id_from_verifying_key(&peer.verifying_key()).unwrap().as_str(),
                     "target_public_key": hex(&peer.verifying_key().to_bytes()), "reason": "compromised",
                     "cutoff_seq": cutoff, "cutoff_content_hash": first_hash,
-                }), &local);
+                }),
+                &local,
+            );
             let records = [anchor.clone(), first.clone(), last.clone(), restriction];
             let snapshot = records.clone();
             let refs = records.iter().map(Vec::as_slice).collect::<Vec<_>>();
-            assert!(verify_history_from_local_anchors(&refs, BRAIN, device("local"),
-                signing_key_id_from_verifying_key(&local.verifying_key()).unwrap(), local.verifying_key().to_bytes()).is_err());
+            assert!(
+                verify_history_from_local_anchors(
+                    &refs,
+                    BRAIN,
+                    device("local"),
+                    signing_key_id_from_verifying_key(&local.verifying_key()).unwrap(),
+                    local.verifying_key().to_bytes()
+                )
+                .is_err()
+            );
             assert_eq!(records, snapshot);
         }
     }
