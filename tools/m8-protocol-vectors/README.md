@@ -27,3 +27,24 @@ impossible self-retirement at `u64::MAX`, replay and a missing chain prefix.
 The frozen v1 reader rejects v3. These are wire/envelope contracts, not a claim
 that the entire trust/cutoff reducer, old product Brain hold, durability matrix,
 schema artifacts or final M8 acceptance have passed.
+
+## Schema and historical-reader compatibility
+
+Install `schema-requirements.txt` into an isolated test environment and run
+`python -B tools/m8-protocol-vectors/check_schemas.py`. It checks 495 fixed
+public synthetic cases: 188 messages, 303 events and four transcripts, using
+Draft7 validation with RFC3339 format checking. Mutations are independently
+re-signed where appropriate. Rust executes the same corpus through actual
+protocol readers; structurally valid bad signatures/bindings must still fail
+protocol verification. `--write-cases` intentionally regenerates this additional
+corpus and the v1→v3 historical fixture; it does not rewrite the original golden
+wire corpus.
+
+Native schema-candidate CI checks all five generated contracts and runs
+`run_old_reader_compat.py` against the exact historical source recorded in that
+script. Only a test driver and fixture are added; historical tracked source and
+dependencies remain unchanged. The old services must first expose trusted v1
+content, then hold search/timeline/detail/vault/rebuild after valid signed v3,
+preserving canonical bytes, database state and vault contents. This is a real
+historical product-service guard check, not installed old Desktop/secure-store
+acceptance. See the [source-bound review](../../evidence/m8/m8-protocol-schemas-compat-review-20261114.md).

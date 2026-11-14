@@ -1,4 +1,4 @@
-# M8 remaining acceptance — November 13
+# M8 remaining acceptance — November 14
 
 This is an operational checklist, not an amendment or percentage estimate.
 Authority: [M8 contract](milestones/M8_DEVICE_TRUST_REPLICATION.md),
@@ -26,7 +26,7 @@ accepted [ADR-0019](adr/ADR-0019-m8-peer-trust-design-proposal.md),
    activation acceptance. Development/test certificates do not establish those
    decisions. Do not silently activate ordinary routes from a fixture pass.
 
-   November 13 protocol review makes the remaining items explicit:
+   November 14 protocol review makes the remaining items explicit:
 
    - **Terminal-retention/recovery slice COMPLETE through40da5f7.** The
      [selected compact receipts](proposals/m8-terminal-journal-retention.md)
@@ -39,15 +39,21 @@ accepted [ADR-0019](adr/ADR-0019-m8-peer-trust-design-proposal.md),
      passed. This is not final product integration acceptance.
    - Independent bootstrap/v3/owner-digest wire fixtures passed full native
      [CI43505609309](https://github.com/gungortarik/cryptex/actions/runs/43505609309)
-     on `e49e318`; that slice is complete. Strict candidate
-     v3/bootstrap JSON Schema and TypeScript artifacts remain outstanding.
-     Shared Rust parser/JsonSchema payload definitions are now verified through
-     `c060d5c` in [CI43558441754](https://github.com/gungortarik/cryptex/actions/runs/43558441754).
-     This is the first prerequisite, not complete envelope/transcript/v3
-     artifact generation or full schema-reader conformance acceptance.
-   - Finish the old-product Brain-hold/immutable-byte downgrade proof and signed
-     target-history cutoff `0`/`1`/`u64::MAX` before/at/after checks. Envelope-only
-     refusals and cutoff string vectors do not establish those higher layers.
+     on `e49e318`; that slice is complete. **Candidate schema/compatibility
+     slice COMPLETE through1f5e6dc:** bootstrap envelope/transcript and v3
+     JSON Schema/TypeScript generation, frozen v1/v2 preservation and 495
+     independent structural/re-signed cases passed exact-source
+     [Mac/Windows CI43563383271](https://github.com/gungortarik/cryptex/actions/runs/43563383271).
+     All ten generated files match across platforms. Schema acceptance alone
+     never establishes signatures, history or owner authority.
+   - Actual historical pre-v3 services now demonstrate typed whole-Brain hold
+     on valid signed v3 and preserve canonical bytes, database state and vault
+     contents, following a successful v1-only baseline. Signed target-history
+     cutoff `0`/`1`/`u64::MAX`, wrong hash, missing position and overflow tests
+     cover reducer/content selection. See the
+     [review/limits](../evidence/m8/m8-protocol-schemas-compat-review-20261114.md).
+     Installed old Desktop/secure-store acceptance and complete supported
+     product-path SQLite/Obsidian restriction recovery remain separate.
    - The [§5 recovery coverage map](../evidence/m8/m8-recovery-coverage-map-20261113.md)
      now links existing checks and precise platform limits to all nine rows.
      Fill only its uncovered write/flush/replace/readback/torn-journal,

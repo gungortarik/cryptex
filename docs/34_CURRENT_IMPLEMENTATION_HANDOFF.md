@@ -1,5 +1,49 @@
 # 34 — Current Implementation Handoff
 
+## Protocol schemas and compatibility — November 14
+
+Current tested source: `1f5e6dcbc6c855f6a44c614bf415586b23f91882`.
+The bootstrap message, four-message transcript and v3 security-event candidate
+JSON Schema/TypeScript artifacts are generated from actual Rust wire types.
+Frozen v1/v2 contracts and original signed golden bytes remain unchanged.
+All ten generated files are byte-identical on Mac/Windows and to checked-in
+artifacts. Schema validation is structural; Rust signatures, history, full
+author-key bindings and owner authority remain mandatory.
+
+Exact-source [schema/compatibility CI43563383271](https://github.com/gungortarik/cryptex/actions/runs/43563383271)
+passed both platforms: 495 independent structural/re-signed cases, 90 events
+unit tests, three original wire tests and three schema/chain integration tests.
+Actual pre-v3 product services at `ae61603b517f68b63d559ccb5ee77d744176e6a6`
+first expose valid v1 content, then hold all guarded reads and vault rebuild on
+valid signed v3, preserving canonical bytes, database state and vault contents.
+This is historical service-guard evidence, not installed old Desktop/secure-store
+acceptance. Signed target-history tests cover cutoff 0/1/u64::MAX, wrong hashes,
+unoccupied positions and overflow at reducer/content-selection scope.
+
+Remote peer-approval metadata now checks its complete transcript against the
+authenticated author's full key. It never grants transitive trust. Source review
+has no remaining actionable finding in this slice. See the
+[review](../evidence/m8/m8-protocol-schemas-compat-review-20261114.md) and
+[native receipt](../evidence/m8/m8-protocol-schemas-native-1f5e6dc.json)
+for full readiness results and exact evidence limits. Local Rust remains blocked
+by Application Control4551; no bypass was used.
+
+Same-source [full CI43563385315](https://github.com/gungortarik/cryptex/actions/runs/43563385315)
+passed Mac/Windows readiness and Windows cross-account IPC ACL. Daemon library:
+Mac 535 passed/7 ignored, Windows 656 passed/5 ignored, zero failures. All three
+new daemon regressions and the seventeen-real-anchor startup check passed both
+platforms. Separate default-off Desktop startup/native acceptance is not claimed
+as an execution of this ordinary readiness run.
+
+**Continuation:** finish uncovered §5 durability/rebuild/key-loss product cases,
+independently review/accept the complete protocol, then configure the Mac product
+image policy, enforce the selected macOS 26+ floor and connect supported product
+paths. Final seven-area platform/security/human acceptance is separate. Default
+product routes remain closed; M8 is OPEN and M9 has not begun. Do not repeat the
+completed schema, historical service-guard, cutoff-domain or terminal-retention
+checks as new owner Mac/VM packages. Older sections below are historical snapshots.
+Preserve untracked `scripts/m8/__pycache__/`.
+
 ## Bootstrap schema prerequisite — November 13
 
 Verified prerequisite: `c060d5ce59a70c7efd64305a4ec6a3c14b5083ad`. Bootstrap

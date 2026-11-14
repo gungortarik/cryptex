@@ -1275,7 +1275,7 @@ and canonical identity rules before acceptance.
 
 ## 7. Current status
 
-**Updated November 13.** The full addendum remains PROPOSED. The owner accepted
+**Updated November 14.** The full addendum remains PROPOSED. The owner accepted
 §§2–4 as the Windows implementation basis on October 29, in addition to the
 separately approved publication/recovery slices above. Implementation permission
 is not final protocol acceptance or ordinary product activation. Preserve v1/v2
@@ -1290,9 +1290,11 @@ have implementations and scoped evidence. Independent agent review on November
 13 found a concrete remaining availability defect: sixteen terminal journal
 entries exhaust the pending-operation count. The
 [terminal-retention proposal](../proposals/m8-terminal-journal-retention.md)
-was selected for implementation after owner delegation on November 13. Migration
-is not yet implemented; complete protocol acceptance is unchanged. Do not
-discard cancellation or uncertain-append evidence to reclaim space.
+was selected after owner delegation on November 13 and is implemented through
+40da5f7 with exact-source full/native Mac/Windows CI. Compact receipts preserve
+cancellation and uncertain-append evidence under the existing one-MiB cap;
+seventeen actual anchors reopen without duplicate append. Complete protocol
+acceptance is unchanged. See the current handoff for the source-bound receipt.
 
 Mac identity is no longer limited to the earlier feasibility notes. Accepted
 ADR-0020/0021 permit a default-off native development candidate with authenticated
@@ -1310,15 +1312,20 @@ all three v3 event types, cutoff wire extrema, owner display digests and a mixed
 v1/v2/v3 chain without generating expectations from candidate Rust code. See
 `tools/m8-protocol-vectors/README.md` and the
 [current handoff](../34_CURRENT_IMPLEMENTATION_HANDOFF.md) for exact-source CI
-status: full native CI43505609309 passed on `e49e318`. Its frozen-v1 envelope
-refusal is not the entire old-product Brain-hold
-gate; cutoff wire vectors are not signed target-history before/at/after proofs.
+status: full native CI43505609309 passed on `e49e318`. The later1f5e6dc slice
+adds generated bootstrap/v3 JSON Schema and TypeScript, 495 independently
+re-signed/structural conformance cases and identical Mac/Windows artifacts.
+Exact-source CI43563383271 also exercises unchanged historical pre-v3 product
+services: successful v1 reads precede typed Brain-wide hold on valid signed v3,
+preserving canonical bytes, database state and vault contents. Signed target
+history covers cutoff0/1/u64::MAX, wrong hashes, unoccupied positions and overflow.
+Those are historical service-guard and reducer/content-selection proofs, not
+installed old Desktop/secure-store or full SQLite/Obsidian product acceptance.
 
-Remaining protocol gates are finite: resolve terminal retention; deliver strict
-v3/bootstrap schema and TypeScript drift artifacts; finish the signed boundary
-and old-product downgrade/byte-preservation fixtures; map every §5 crash row to
-existing evidence and fill only uncovered journal durability/rebuild/key-loss
-cases; and independently review/accept the complete protocol, including the
+Remaining protocol gates are finite: use the nine-row §5 coverage map and fill
+only uncovered durability/rebuild/key-loss product cases; complete the supported
+product-path compatibility/restriction recovery acceptance; and independently
+review/accept the complete protocol, including the
 Brain-wide SCC hold and compromised-issuer availability consequence. Process
 interruption is not a power-loss or parent-directory durability guarantee.
 

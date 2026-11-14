@@ -4,6 +4,18 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
+**Schema/compatibility checkpoint — November 14:** generated bootstrap and v3
+JSON Schema/TypeScript contracts, 495 independent conformance cases and the
+actual historical product-service Brain-hold check passed
+[Mac/Windows CI43563383271](https://github.com/gungortarik/cryptex/actions/runs/43563383271)
+on `1f5e6dc`. Frozen contracts remain unchanged. Signed cutoff extrema, gap and
+overflow checks cover authenticated history/reducer selection. The
+[review and limits](evidence/m8/m8-protocol-schemas-compat-review-20261114.md)
+separate these results from installed Desktop and final product acceptance.
+Next are uncovered recovery/product cases, full protocol acceptance and Mac
+product integration; default product gates remain closed. Earlier notes below
+are historical checkpoints, not new work requests.
+
 **Protocol closeout checkpoint — November 13:** independent reference fixtures
 now pin the exact bootstrap/v3 writer bytes, hashes, owner display digests and
 mixed-version chain. The Windows crash test now captures the original child

@@ -1,0 +1,247 @@
+{
+  "receipt_version": 1,
+  "conclusion": "success",
+  "date": "2026-11-14",
+  "headSha": "1f5e6dcbc6c855f6a44c614bf415586b23f91882",
+  "scope": "Candidate protocol schemas, historical product-service Brain guard, and authenticated target-history cutoff/reducer compatibility; not complete M8 product acceptance",
+  "schema_historical_run": {
+    "id": 43563383271,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/43563383271",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 132351807929,
+        "platform": "macOS",
+        "conclusion": "success"
+      },
+      {
+        "id": 132351807656,
+        "platform": "Windows",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "conformance": {
+    "independent_cases": 495,
+    "messages": 188,
+    "events": 303,
+    "transcripts": 4,
+    "events_unit_passed_per_platform": 90,
+    "original_wire_integration_passed_per_platform": 3,
+    "schema_chain_integration_passed_per_platform": 3,
+    "schema_acceptance_grants_authority": false,
+    "fixture_sha256": "8642514eb9c29923572f05638ed4994f9d2c333ce0a71fe6f7e89183865103eb",
+    "original_wire_fixture_unchanged_sha256": "a61357dd60be32d5d0a6cda6c8df2c0167562e8c4984961e01bcf1d8defd3b2e"
+  },
+  "artifacts": [
+    {
+      "digest": "sha256:315d9719849a196f52d7b5cfc7616a0829ac8cb533167afc116a4fdb5700aaa9",
+      "id": 14101501609,
+      "name": "m8-schemas-windows-latest-1f5e6dcbc6c855f6a44c614bf415586b23f91882",
+      "size_in_bytes": 12466
+    },
+    {
+      "digest": "sha256:f6c9690075209c8de0e0294605dbf26fd283197a01ccb0aa614e12740308cfbb",
+      "id": 14101229694,
+      "name": "m8-old-reader-windows-latest-1f5e6dcbc6c855f6a44c614bf415586b23f91882",
+      "size_in_bytes": 618
+    },
+    {
+      "digest": "sha256:d3edeaf956760c4648679751d389ab2ba49463cf33f904e38e0a0f4bd8782ad9",
+      "id": 14101019414,
+      "name": "m8-schemas-macos-latest-1f5e6dcbc6c855f6a44c614bf415586b23f91882",
+      "size_in_bytes": 12466
+    },
+    {
+      "digest": "sha256:36738a2e01a23ee73aa417ece664e12013bb85d5873bc486521fb539f78b9a8d",
+      "id": 14100999455,
+      "name": "m8-old-reader-macos-latest-1f5e6dcbc6c855f6a44c614bf415586b23f91882",
+      "size_in_bytes": 618
+    }
+  ],
+  "artifact_archive_digest_source": "GitHub artifact metadata; extracted individual schema/TS files and historical receipt independently hashed locally",
+  "generated_files_match_macos_windows_and_checkout": true,
+  "generated_files": [
+    {
+      "file": "cryptex-bootstrap-transcript-v1.schema.json",
+      "sha256": "cb7c5ec9efb19060c1ba871f7100cc281a45392d7f0b15169a5deeb7e667dd2b"
+    },
+    {
+      "file": "cryptex-bootstrap-transcript-v1.ts",
+      "sha256": "6958bb9aec83583ef1cc02e1fa0fe39e26122e95a860a852c6f8bcf285695d67"
+    },
+    {
+      "file": "cryptex-bootstrap-v1.schema.json",
+      "sha256": "6fcb240fe34088eee567035a663d8b92e7f112fff04959c7098f35995522139f"
+    },
+    {
+      "file": "cryptex-bootstrap-v1.ts",
+      "sha256": "62befd097cedfd414ddfc7912d2d50f60acfb223ac173f58eaf5c79267aee3fd"
+    },
+    {
+      "file": "cryptex-event-v1.schema.json",
+      "sha256": "4416721d7a227b7483d02ab03bdf2b03752c82cc8a375c49b28d0565ba273f5b"
+    },
+    {
+      "file": "cryptex-event-v1.ts",
+      "sha256": "01c9072b176186718b0a77974c9c368d2352c336e68e0e38f210eaa63e25738a"
+    },
+    {
+      "file": "cryptex-event-v2.schema.json",
+      "sha256": "b4ce0f67bb1896baf10174670b2ed00facf94ca2e843e04d2dc730bf7f75f307"
+    },
+    {
+      "file": "cryptex-event-v2.ts",
+      "sha256": "b8604455be70da3d42b05dc19cd874e961e31c81ef9c3df33ce440b3a4f18a3e"
+    },
+    {
+      "file": "cryptex-event-v3.schema.json",
+      "sha256": "6e0763393d122e7246879eadd897e64c9e6b21e1d04df4fdfdff9e68328827d8"
+    },
+    {
+      "file": "cryptex-event-v3.ts",
+      "sha256": "b27762718ccedf09f42f20a82da028d6e308e6b7099b3e0c884650131c6153ec"
+    }
+  ],
+  "historical_product": {
+    "source_commit": "1f5e6dcbc6c855f6a44c614bf415586b23f91882",
+    "historical_product_commit": "ae61603b517f68b63d559ccb5ee77d744176e6a6",
+    "historical_tracked_source_unchanged": true,
+    "harness_sha256": "2593afc8bd585c28e680d50012ce553b3851af0db40a8f3914289831ef42c6ce",
+    "fixture_sha256": "d4deea5e986f2c8ce322aea1dbe1505237438e1304a89bbd745c7fbb67826da2",
+    "outcome": "passed",
+    "scope": "historical product-service Brain guard; not installed old Desktop/secure-store acceptance",
+    "positive_baseline": "v1 only; older v2-semantic hold is not credited as a v3 refusal",
+    "guarded_surfaces": [
+      "search",
+      "timeline",
+      "detail",
+      "vault",
+      "rebuild"
+    ],
+    "canonical_bytes_database_state_and_vault_tree_preserved": true
+  },
+  "historical_receipt_sha256_both_platforms": "770539bb72ff0da0aba399b08e68ea362248161c1ae7d966a2cf9ee5f393b316",
+  "daemon_regressions": [
+    "trust_reducer::tests::remote_approval_metadata_is_verified_but_never_grants_transitive_trust",
+    "trust_reducer::tests::signed_target_history_cutoffs_zero_one_and_u64_max_filter_exact_boundaries",
+    "trust_reducer::tests::signed_restrictions_cannot_name_an_unoccupied_or_overflowed_target_boundary"
+  ],
+  "review": {
+    "source": "1f5e6dcbc6c855f6a44c614bf415586b23f91882",
+    "method": "Independent read-only existing agent source review",
+    "remaining_actionable_findings": 0,
+    "external_human_audit": false
+  },
+  "failed_or_superseded_runs": [
+    {
+      "id": 43560698264,
+      "source": "f572560",
+      "outcome": "native formatting failure"
+    },
+    {
+      "id": 43560833027,
+      "source": "10a191b",
+      "outcome": "initial schema generation succeeded on both platforms; superseded"
+    },
+    {
+      "id": 43561658485,
+      "source": "93881bd",
+      "outcome": "native formatting failure"
+    },
+    {
+      "id": 43561839933,
+      "source": "6959b67",
+      "outcome": "conformance test &str/&[u8] compile mismatch"
+    },
+    {
+      "id": 43561842107,
+      "source": "6959b67",
+      "outcome": "same conformance compile mismatch in ordinary readiness"
+    },
+    {
+      "id": 43562633798,
+      "source": "b047d0b",
+      "outcome": "native formatting failure"
+    },
+    {
+      "id": 43562790671,
+      "source": "93d9ff0",
+      "outcome": "historical test driver native formatting failure"
+    },
+    {
+      "id": 43562887557,
+      "source": "c73503e",
+      "outcome": "new schemas/events passed; historical positive vault fixture lacked selected directory"
+    },
+    {
+      "id": 43562889584,
+      "source": "c73503e",
+      "outcome": "superseded ordinary readiness; not final-source acceptance"
+    },
+    {
+      "id": 43563168503,
+      "source": "472ec04",
+      "outcome": "both platforms schema/historical succeeded after fixture preparation; superseded"
+    },
+    {
+      "id": 43563284560,
+      "source": "b79bc3e",
+      "outcome": "new signed target-gap test native formatting failure"
+    }
+  ],
+  "local_rust_execution": "Blocked by Application Control4551; native CI used without bypass",
+  "limits": [
+    "Schemas are structural, not signature/history/owner validation",
+    "Historical services are not installed old Desktop or OS secure-store acceptance",
+    "Signed cutoff tests cover verified history/reducer/content selection, not complete SQLite/Obsidian product recovery",
+    "incoming_publication is Windows-only; ordinary Mac readiness is not its execution",
+    "Full protocol acceptance, Mac product image/OS policy, supported paths and final integrated human/security/platform acceptance remain open"
+  ],
+  "full_addendum_status": "PROPOSED; Windows implementation basis preserved",
+  "product_activation": false,
+  "m8_complete": false,
+  "m9_started": false,
+  "full_readiness": {
+    "id": 43563385315,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/43563385315",
+    "status": "completed",
+    "conclusion": "success",
+    "headSha": "1f5e6dcbc6c855f6a44c614bf415586b23f91882",
+    "jobs": [
+      {
+        "id": 132351813676,
+        "name": "IPC cross-account ACL (Windows)",
+        "conclusion": "success"
+      },
+      {
+        "id": 132351813895,
+        "name": "Readiness (macos-latest)",
+        "conclusion": "success",
+        "daemon_library": {
+          "passed": 535,
+          "ignored": 7,
+          "failed": 0
+        }
+      },
+      {
+        "id": 132351813827,
+        "name": "Readiness (windows-latest)",
+        "conclusion": "success",
+        "daemon_library": {
+          "passed": 656,
+          "ignored": 5,
+          "failed": 0
+        }
+      }
+    ],
+    "all_three_new_daemon_regressions_passed_each_platform": true,
+    "seventeen_real_anchors_reopen_regression_passed_each_platform": true,
+    "manual_jobs_not_executed": [
+      "Unsigned Windows Desktop package",
+      "Dedicated default-off Desktop startup/native suite",
+      "Mac identity preflight",
+      "Schema-candidate (executed separately in43563383271)"
+    ]
+  }
+}

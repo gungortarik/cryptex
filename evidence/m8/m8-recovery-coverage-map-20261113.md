@@ -18,7 +18,7 @@ on `40da5f7`; the [receipt](m8-terminal-journal-native-40da5f7.json) records sco
 | Approval durable, roster stale | Incoming publication rebuild tests plus existing complete-inventory and guarded-vault/search tests distinguish canonical truth from derived freshness. | `incoming_publication` is Windows-only (`lib.rs` cfg); ordinary Mac readiness does not execute it. Final supported Mac incoming/rebuild/product path remains open. |
 | Both owner approvals, local record not durable | Journal complete-transcript tests and real Windows pairing fixtures keep four signatures separate from durable local approval. | Final product-flow failure proof, including truthful local/peer status; a signed transcript alone is never sufficient. |
 | Local approval durable | Windows `incoming_publication::tests::publishes_peer_batch_persists_reopens_and_replays_without_rewriting`; source-bound host/VM/controller receipts cover their recorded paths. | Final cross-platform flow and truthful peer-durability/protection status; separate receipts do not imply an unexecuted combined run. |
-| Restriction durable, projection incomplete | Windows `incoming_publication::tests::live_commit_rebuild_failure_holds_all_clones_until_verified_repair` and `post_commit_refresh_failure_never_reports_a_clean_rejection`; trust reducer's signed cutoff/retirement cases. | Finish signed target-history extrema/before-at-after matrix and accepted product-path projection recovery. Existing v1 guarded-search checks alone do not prove this row for every v3 policy case. |
+| Restriction durable, projection incomplete | Windows `incoming_publication::tests::live_commit_rebuild_failure_holds_all_clones_until_verified_repair` and `post_commit_refresh_failure_never_reports_a_clean_rejection`; signed target-history 0/1/u64::MAX, wrong-hash, gap and overflow reducer/content-selection tests on1f5e6dc. | Accepted product-path SQLite/Obsidian projection recovery remains open. Domain cutoff checks and existing v1 guarded-search checks do not prove this row for every v3 product policy case. |
 | Worker shutdown uncertain | `managed_profile::controller::tests::failed_shutdown_never_reports_clean`; source-bound native combined-loss receipts and controller transfer/restart receipts. | Preserve unresolved status in final integrated product flow. Previously passed unchanged owner packages are not automatically repeated. |
 
 ## Additional evidence and precise limits
@@ -34,9 +34,13 @@ on `40da5f7`; the [receipt](m8-terminal-journal-native-40da5f7.json) records sco
 - `canonical_writer::tests::fail_closed_when_packs_exist_but_signing_keys_missing_does_not_mint`
   covers existing-history missing-key refusal. It does not establish every
   OS-secure-store loss/reinstall/recovery path on an enabled M8 product.
-- Current compatibility tests use unsupported version99 and preserve canonical
-  bytes/derived sentinels. Frozen v1 envelope refusal plus those current-reader
-  tests still do not prove a real old-product whole-Brain hold on signed v3.
+- November14 [compatibility evidence](m8-protocol-schemas-compat-review-20261114.md)
+  adds actual pre-v3 product services at ae61603: successful trusted v1 reads
+  precede typed Brain-wide hold on independently signed valid v3. Search,
+  timeline, detail, vault and rebuild preserve canonical bytes, database state
+  and vault contents on both native platforms. This supersedes the earlier
+  envelope-only/version99 coverage gap at historical service-guard scope;
+  installed old Desktop/secure-store acceptance remains separate.
 - Full backup/restore implementation belongs to M11. M8 still needs its own
   schema rollout/downgrade and trust reconstruction acceptance; this map does
   not add the unrelated M11 or M16 campaigns as new M8 requirements.
