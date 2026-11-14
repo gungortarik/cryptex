@@ -18,6 +18,7 @@ pub(crate) enum IncomingPublicationError {
     /// Preparation may have reached disk, or publication may be partially
     /// visible. Preserve transaction evidence; never report a clean rollback.
     RecoveryRequired(ImportStagingError),
+    PolicyHeld(crate::import_staging::AuthenticatedPolicyConflict),
     /// The final canonical commit exists. Only derived-state refresh failed.
     CommittedNeedsRebuild(String),
 }
@@ -30,6 +31,7 @@ impl std::fmt::Display for IncomingPublicationError {
             Self::RecoveryRequired(error) => {
                 write!(f, "incoming import requires recovery: {error}")
             }
+            Self::PolicyHeld(reason) => write!(f, "incoming authenticated policy hold: {reason:?}"),
             Self::CommittedNeedsRebuild(error) => write!(
                 f,
                 "incoming import committed; derived rebuild required: {error}"
@@ -108,6 +110,8 @@ fn publish_incoming_until<S: SecureStore + ?Sized>(
     let result = publish_exclusively(root, paths, instance, store, environment);
     exclusive.finish(match &result {
         Ok(_) | Err(IncomingPublicationError::Rejected(_)) => None,
+        Err(IncomingPublicationError::RecoveryRequired(ImportStagingError::PolicyConflict(_)))
+        | Err(IncomingPublicationError::PolicyHeld(_)) => Some(RuntimeHold::IncomingPolicyConflict),
         Err(IncomingPublicationError::RecoveryRequired(_)) => Some(RuntimeHold::RecoveryRequired),
         Err(IncomingPublicationError::CommittedNeedsRebuild(_)) => {
             Some(RuntimeHold::DerivedRebuildRequired)
@@ -149,11 +153,10 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
             environment,
         )
         .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
-        let local_device = resolver
+        let anchor = resolver
             .local_trust_anchor()
-            .ok_or_else(|| ImportStagingError::Invalid("local trust anchor unavailable".into()))?
-            .device_id()
-            .clone();
+            .ok_or_else(|| ImportStagingError::Invalid("local trust anchor unavailable".into()))?;
+        let local_device = anchor.device_id().clone();
         let db = cryptex_projection::ProjectionDb::open_existing_read_only(root)
             .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
         let mut devices = session
@@ -183,6 +186,7 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
         let verified = if session.candidates().is_empty() {
             None
         } else {
+            session.begin_policy_review(&brain.brain_id, &anchor)?;
             Some(safety.verify_import_batch(&session, &brain.brain_id)?)
         };
         Ok::<_, ImportStagingError>((brain.brain_id, identical, verified))
@@ -190,6 +194,16 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
     let (brain, identical, verified) = match admission {
         Ok(result) => result,
         Err(error) => {
+            if let ImportStagingError::PolicyConflict(reason) = error {
+                session.retain_policy_hold(reason).map_err(RecoveryRequired)?;
+                return Err(IncomingPublicationError::PolicyHeld(reason));
+            }
+            if session.has_policy_review() {
+                if !matches!(error, ImportStagingError::Invalid(_) | ImportStagingError::Limit(_)) {
+                    return Err(RecoveryRequired(error));
+                }
+                session.finish_policy_review().map_err(RecoveryRequired)?;
+            }
             if let Err(cleanup) = session.discard() {
                 return Err(RecoveryRequired(ImportStagingError::RecoveryConflict(
                     format!("admission failed: {error}; staging cleanup failed: {cleanup}"),
@@ -198,6 +212,7 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
             return Err(Rejected(error));
         }
     };
+    session.finish_policy_review().map_err(RecoveryRequired)?;
     let Some(verified) = verified else {
         session.discard().map_err(RecoveryRequired)?;
         return Ok(IncomingPublicationReport {
@@ -279,13 +294,21 @@ pub(crate) fn recover_live_with_instance<S: SecureStore + ?Sized>(
             true,
         )
         .map_err(IncomingPublicationError::Admission)?;
-    crate::import_staging::recover_import_staging_with_local_state(
+    if let Err(error) = crate::import_staging::recover_import_staging_with_local_state(
         root,
         instance,
         store,
         environment,
     )
-    .map_err(IncomingPublicationError::RecoveryRequired)?;
+    {
+        let hold = if matches!(error, ImportStagingError::PolicyConflict(_)) {
+            RuntimeHold::IncomingPolicyConflict
+        } else {
+            RuntimeHold::RecoveryRequired
+        };
+        exclusive.finish(Some(hold));
+        return Err(IncomingPublicationError::RecoveryRequired(error));
+    }
     let brain = crate::identity_runtime::load_brain_identity(root)
         .map_err(|error| IncomingPublicationError::CommittedNeedsRebuild(error.to_string()))?;
     if let Err(error) = rebuild_imported_state(root, &brain.brain_id, store, environment) {

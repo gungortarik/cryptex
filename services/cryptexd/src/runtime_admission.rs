@@ -10,6 +10,8 @@ use std::time::Instant;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RuntimeHold {
     RecoveryRequired,
+    #[cfg(any(windows, test))]
+    IncomingPolicyConflict,
     #[cfg(any(windows, test))] // Production publication remains Windows-only.
     DerivedRebuildRequired,
     Stopped,
@@ -27,6 +29,8 @@ impl AdmissionError {
         match self {
             Self::Busy => "runtime_busy",
             Self::Held(RuntimeHold::RecoveryRequired) => "runtime_recovery_required",
+            #[cfg(any(windows, test))]
+            Self::Held(RuntimeHold::IncomingPolicyConflict) => "runtime_policy_conflict",
             #[cfg(any(windows, test))]
             Self::Held(RuntimeHold::DerivedRebuildRequired) => "runtime_rebuild_required",
             Self::Held(RuntimeHold::Stopped) => "runtime_stopped",
@@ -315,6 +319,22 @@ mod tests {
 
     fn deadline() -> Instant {
         Instant::now() + Duration::from_secs(3)
+    }
+
+    #[test]
+    fn incoming_policy_hold_denies_all_shared_ordinary_admission() {
+        let root = crate::test_temp::exclusive_temp_dir("admission-policy-hold");
+        let owner = try_acquire_instance(&root).unwrap();
+        let gate = owner.admission();
+        let clone = gate.clone();
+        gate.exclusive(&root, deadline(), false).unwrap().finish(Some(RuntimeHold::IncomingPolicyConflict));
+        for shared in [gate, clone] {
+            let error = shared.enter(&root).err().unwrap();
+            assert_eq!(error, AdmissionError::Held(RuntimeHold::IncomingPolicyConflict));
+            assert_eq!(error.code(), "runtime_policy_conflict");
+        }
+        drop(owner);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     fn wait_pending(gate: &RuntimeAdmission) {

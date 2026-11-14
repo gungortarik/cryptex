@@ -185,6 +185,7 @@ fn build_verified_trust_history_cancellable<C: FnMut() -> bool>(
     let mut restrictions = Vec::new();
     let mut self_retirements = Vec::new();
     let mut transactions = BTreeMap::<DeviceId, BTreeSet<String>>::new();
+    let mut terminal_tail = false;
 
     // Derive the direct roster before interpreting policy issuers. Records are
     // sorted by device stream, so a peer stream may sort before the local
@@ -250,7 +251,7 @@ fn build_verified_trust_history_cancellable<C: FnMut() -> bool>(
                 if history.records().iter().any(|candidate| {
                     candidate.device_id() == device.as_str() && candidate.device_seq() > event_seq
                 }) {
-                    return Err(TrustHold::TerminalRetirementTail);
+                    terminal_tail = true;
                 }
                 self_retirements.push(VerifiedSelfRetirement {
                     device,
@@ -336,6 +337,11 @@ fn build_verified_trust_history_cancellable<C: FnMut() -> bool>(
         });
     }
 
+    // Complete all static policy validation before reporting an authenticated
+    // terminal conflict. A later invalid restriction must not be hidden by it.
+    if terminal_tail {
+        return Err(TrustHold::TerminalRetirementTail);
+    }
     let directly_approved_peers = approved_peer_bindings.keys().cloned().collect();
     let mut verified = VerifiedTrustHistory {
         local_device,

@@ -45,6 +45,18 @@ pub enum ImportStagingError {
     Invalid(String),
     Limit(ImportLimitError),
     RecoveryConflict(String),
+    PolicyConflict(AuthenticatedPolicyConflict),
+}
+
+/// Created only after the complete staged batch has passed authentication.
+/// This diagnostic is not a publication or trust-grant token.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthenticatedPolicyConflict {
+    RestrictionCycle,
+    AdmissionDependency,
+    TerminalRetirementTail,
+    AdmissionRemoved,
 }
 
 impl std::fmt::Display for ImportStagingError {
@@ -54,6 +66,7 @@ impl std::fmt::Display for ImportStagingError {
             Self::Invalid(message) => write!(f, "import staging rejected: {message}"),
             Self::Limit(error) => write!(f, "import staging limit: {error}"),
             Self::RecoveryConflict(message) => f.write_str(message),
+            Self::PolicyConflict(reason) => write!(f, "authenticated incoming policy hold: {reason:?}"),
         }
     }
 }
@@ -196,6 +209,7 @@ struct CommittedImportMarker {
 }
 
 mod cleanup;
+pub(crate) mod policy_hold;
 
 impl VerifiedStagedBatch {
     #[must_use]
@@ -228,6 +242,7 @@ pub struct ImportStagingSession {
     candidates: Vec<StagedSegment>,
     failed: bool,
     prepared: bool,
+    policy_review: bool,
 }
 
 impl ImportStagingSession {
@@ -325,6 +340,7 @@ impl ImportStagingSession {
             candidates: Vec::new(),
             failed: false,
             prepared: false,
+            policy_review: false,
         })
     }
 
@@ -443,7 +459,7 @@ impl ImportStagingSession {
     /// Explicitly discard this unprepared staging transaction. Cleanup errors
     /// are returned; callers must not proceed to canonical locks after failure.
     pub fn discard(mut self) -> Result<(), ImportStagingError> {
-        if self.prepared {
+        if self.prepared || self.policy_review {
             return Err(ImportStagingError::RecoveryConflict(
                 "a prepared import transaction requires startup reconciliation".into(),
             ));
@@ -1686,6 +1702,7 @@ pub fn recover_import_staging_with_local_state<S: crate::secure_store::SecureSto
             "startup instance belongs to another runtime".into(),
         ));
     }
+    policy_hold::recover(runtime_root, store, env)?;
     let mut finish = |root: &Path, id: &str, temporary: Option<&Path>| {
         finish_prepared_recovery(root, id, instance, store, env, temporary)?;
         recover_import_staging(root)

@@ -349,9 +349,7 @@ fn verify_post_import_policy(
             local_history.local_public_key,
             || false,
         )
-        .map_err(|hold| {
-            ImportStagingError::Invalid(format!("post-import trust history is held: {hold:?}"))
-        })?;
+        .map_err(post_import_hold)?;
     if history.records().len() != raw_records.len() {
         return Err(ImportStagingError::Invalid(
             "post-import policy union contains duplicate canonical records".into(),
@@ -360,9 +358,7 @@ fn verify_post_import_policy(
     let trust = match reduction {
         crate::trust_reducer::TrustReduction::Ready(trust) => trust,
         crate::trust_reducer::TrustReduction::Held(hold) => {
-            return Err(ImportStagingError::Invalid(format!(
-                "post-import trust reduction is held: {hold:?}"
-            )));
+            return Err(post_import_hold(hold));
         }
     };
     if snapshot
@@ -373,9 +369,8 @@ fn verify_post_import_policy(
             !trust.trusted_devices.contains(device) || !trust.effective_cutoffs.contains_key(device)
         })
     {
-        return Err(ImportStagingError::Invalid(
-            "post-import policy removes a canonical or candidate device from the trusted cutoff set"
-                .into(),
+        return Err(ImportStagingError::PolicyConflict(
+            crate::import_staging::AuthenticatedPolicyConflict::AdmissionRemoved,
         ));
     }
 
@@ -437,6 +432,39 @@ fn verify_post_import_policy(
     }
 
     Ok(PostImportRetrievalSafetyState { trust, content })
+}
+
+fn post_import_hold(hold: crate::trust_reducer::TrustHold) -> crate::import_staging::ImportStagingError {
+    use crate::import_staging::{AuthenticatedPolicyConflict as Conflict, ImportStagingError};
+    use crate::trust_reducer::TrustHold;
+    let conflict = match hold {
+        TrustHold::UnresolvedRestrictionCycle => Conflict::RestrictionCycle,
+        TrustHold::UnresolvedAdmissionDependency => Conflict::AdmissionDependency,
+        TrustHold::TerminalRetirementTail => Conflict::TerminalRetirementTail,
+        _ => return ImportStagingError::Invalid(format!("post-import trust history is held: {hold:?}")),
+    };
+    ImportStagingError::PolicyConflict(conflict)
+}
+
+/// Recovery-only authentication and policy replay. Does not consult derived
+/// SQLite state, issue a publication proof, or rebuild anything from held data.
+pub(crate) fn revalidate_incoming_policy_evidence(
+    root: &Path,
+    brain: &str,
+    anchor: &cryptex_events::LocalTrustAnchor,
+    session: &crate::import_staging::ImportStagingSession,
+) -> Result<(), crate::import_staging::ImportStagingError> {
+    use crate::import_staging::ImportStagingError;
+    let mut devices = session.candidates().iter().map(|c| c.device_id.clone()).collect::<Vec<_>>();
+    devices.sort_by(|a,b| a.as_str().cmp(b.as_str()));
+    devices.dedup();
+    let snapshot = scan_verified_canonical_from_local_anchor_with_import_devices_until(root, brain, anchor, &devices, None)
+        .map_err(|_| ImportStagingError::RecoveryConflict("canonical policy evidence cannot be authenticated".into()))?;
+    if snapshot.verified_trust_context().is_none() {
+        return Err(ImportStagingError::RecoveryConflict("canonical policy is held during evidence replay".into()));
+    }
+    let verified = session.verify_batch_against_snapshot(brain, &snapshot)?;
+    verify_post_import_policy(&snapshot, &verified).map(|_| ())
 }
 
 #[derive(Debug)]
