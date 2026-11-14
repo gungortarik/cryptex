@@ -32,9 +32,7 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
           pnpm install --frozen-lockfile
       - name: Check formatting
-        run: |
-          cargo fmt --all -- --check
-          rustfmt --edition 2024 --check tools/m8-protocol-vectors/old_reader_compat.rs
+        run: python -B tools/m8-protocol-vectors/check_format.py
       - name: Generate schemas from actual Rust wire types
         run: cargo run --locked -p cryptex-events --bin cryptex-events-schema-gen
       - name: Generate and check TypeScript

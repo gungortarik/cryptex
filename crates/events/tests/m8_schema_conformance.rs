@@ -7,17 +7,35 @@ use serde_json::Value;
 
 #[test]
 fn current_protocol_accepts_the_signed_chain_that_the_frozen_product_must_hold() {
-    let data: Value = serde_json::from_str(include_str!("fixtures/m8-old-reader-v1-v3.json")).unwrap();
-    struct Resolver { device: String, key: VerifyingKey }
+    let data: Value =
+        serde_json::from_str(include_str!("fixtures/m8-old-reader-v1-v3.json")).unwrap();
+    struct Resolver {
+        device: String,
+        key: VerifyingKey,
+    }
     impl cryptex_events::TrustedDaemonKeyResolver for Resolver {
         fn trusted_daemon_key(&mut self, device: &str, key_id: &str) -> Option<VerifyingKey> {
-            (device == self.device && key_id == cryptex_events::signing_key_id_from_verifying_key(&self.key).ok()?.as_str()).then_some(self.key)
+            (device == self.device
+                && key_id
+                    == cryptex_events::signing_key_id_from_verifying_key(&self.key)
+                        .ok()?
+                        .as_str())
+            .then_some(self.key)
         }
     }
-    let records = [data["baseline_wire"].as_str().unwrap().as_bytes(), data["v3_wire"].as_str().unwrap().as_bytes()];
-    let history = cryptex_events::verify_security_history(&records, data["brain_id"].as_str().unwrap(), Resolver {
-        device: data["device_id"].as_str().unwrap().into(), key: key(data["public_key"].as_str().unwrap()),
-    }).unwrap();
+    let records = [
+        data["baseline_wire"].as_str().unwrap().as_bytes(),
+        data["v3_wire"].as_str().unwrap().as_bytes(),
+    ];
+    let history = cryptex_events::verify_security_history(
+        &records,
+        data["brain_id"].as_str().unwrap(),
+        Resolver {
+            device: data["device_id"].as_str().unwrap().into(),
+            key: key(data["public_key"].as_str().unwrap()),
+        },
+    )
+    .unwrap();
     assert_eq!(history.records().len(), 2);
     assert_eq!(history.records()[0].device_seq(), 1);
     assert_eq!(history.records()[1].device_seq(), 3);
@@ -64,7 +82,8 @@ fn independently_signed_schema_cases_match_complete_protocol_validation() {
             structural_without_authority += 1;
         }
     }
-    assert!(events >= 100 && transcripts >= 4);
+    assert_eq!(events, 303);
+    assert_eq!(transcripts, 4);
     assert!(structural_without_authority >= 5);
 }
 

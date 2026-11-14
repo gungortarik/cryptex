@@ -6,6 +6,7 @@ writer/verifier is called to compute this test oracle.
 """
 import argparse
 import copy
+from collections import Counter
 import json
 from pathlib import Path
 
@@ -145,6 +146,7 @@ def main():
         value["payload"]["cutoff_seq"] = str(cutoff)
         value["payload"]["cutoff_content_hash"] = ZERO if cutoff == 0 else "cc" * 32
         add(f"cutoff-bound-{cutoff}", "event", value, identities[0], True, True, True)
+    assert Counter(case["kind"] for case in cases) == {"message": 188, "event": 303, "transcript": 4}, "conformance inventory changed"
     document = {"format_version": 1, "scope": "PUBLIC SYNTHETIC structural/cryptographic conformance; not canonical target-history or trust acceptance", "cases": cases}
     encoded = json.dumps(document, ensure_ascii=False, indent=2) + "\n"
     baseline = json.loads(data["mixed_chain"][0]["wire"])

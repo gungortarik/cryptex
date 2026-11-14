@@ -1496,10 +1496,7 @@ mod tests {
             );
             checked += 1;
         }
-        assert!(
-            checked >= 100,
-            "message mutation inventory unexpectedly reduced"
-        );
+        assert_eq!(checked, 188, "message mutation inventory changed");
     }
 
     #[test]
