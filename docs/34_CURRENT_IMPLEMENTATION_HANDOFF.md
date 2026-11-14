@@ -1,24 +1,40 @@
 # 34 — Current Implementation Handoff
 
-## Owner-selected cutoff/terminal rules — November 14
+## Cutoff/terminal correction verified — November 14
 
 The owner selected "Önerilen kuralları uygula" after the concrete decision,
 including possibly indefinite Brain-wide hold and no routine M8 override.
-Implement admission-prefix eligibility/unresolved-dependency holds and strict
-terminal retirement under the
+Admission-prefix eligibility/unresolved-dependency holds and strict terminal
+retirement are implemented under the
 [selected decision](proposals/m8-final-protocol-acceptance-decision-20261114.md).
 Do not ask the same policy choice again. This is implementation permission,
 not full protocol or ordinary product activation acceptance.
 
-The [interval-proof implementation design](proposals/m8-admission-cutoff-resolution-20261114.md)
-is under independent review. Keep provisional signature pins separate from
-eligible peer grants, preserve existing SCC holds and verify genuine signed
-histories before reporting the findings fixed. Product gates stay closed.
-Follow-up composition review also records R4: authenticated staged policy
+Verified source: `22766528093889363abe38905911b058af0836be`. Exact-source
+[CI43646684219](https://github.com/gungortarik/cryptex/actions/runs/43646684219)
+passed Mac/Windows readiness and Windows cross-account IPC ACL. Daemon library:
+Mac546passed/7ignored, Windows667passed/5ignored, zero failures. All nine new
+tests passed both platforms. See the [review](../evidence/m8/m8-admission-terminal-review-20261114.md)
+and [receipt](../evidence/m8/m8-admission-terminal-native.json).
+
+The [interval-proof design](proposals/m8-admission-cutoff-resolution-20261114.md)
+is independently source-reviewed with no remaining actionable correction finding.
+Provisional signature pins never escape as eligible bindings; raw SCC cutoff/
+grant consistency is checked before non-admitted content is masked to0. Existing
+SCC holds remain. Genuine signed tests cover the L/A/C flaw, earlier equivalent
+grants, dependency/strict-tail holds and entry-point cancellation; a64-graph
+numeric oracle checks all consistent assignments for each Ready result without
+claiming completeness. The impossible retirement breaker was replaced under
+the selected strict rule. Original schema artifacts/golden bytes are unchanged.
+
+**Resume at R4, not the already fixed A/B choice:** authenticated staged policy
 conflicts are currently discarded as clean rejection, reopening old content.
 Before incoming product activation, review a bounded durable verified-evidence/
 restart-hold contract; do not use a volatile latch or publish a held union.
-That separate product blocker does not reopen the already selected A/B choice.
+Then complete Mac filesystem adapters, configured image/OS policy, supported
+approval/session/incoming/protection-status wiring and integrated acceptance.
+Product gates stay closed; M8 is OPEN/M9 not begun. Older sections below retain
+their historical source scopes. Preserve `scripts/m8/__pycache__/`.
 
 ## Final protocol review — November 14: NOT READY
 

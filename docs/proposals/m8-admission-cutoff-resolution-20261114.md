@@ -1,7 +1,7 @@
 # M8 local-admission cutoff resolution
 
-Status: independently reviewed conservative design; implementation verification
-pending. The owner
+Status: independently source-reviewed conservative implementation, native-verified
+through2276652 in Mac/Windows CI43646684219. The owner
 selected the [cutoff and strict-retirement rules](m8-final-protocol-acceptance-decision-20261114.md).
 This design implements those rules inside the existing daemon trust builder;
 it creates no new authority source, wire format or product activation.
@@ -43,8 +43,10 @@ On convergence, classify each grant using the proven local bounds. If any
 admission remains unresolved, return typed UnresolvedAdmissionDependency for the
 whole Brain. Do not choose a roster by arrival order or an assumed stable
 assignment. This is monotone proof of definite/possible facts, not selection
-among potentially oscillating roster fixed points. Its soundness still requires
-independent review and tests before it becomes implementation acceptance.
+among potentially oscillating roster fixed points. The source-bound
+[correction receipt](../../evidence/m8/m8-admission-terminal-native.json) records
+completed independent source review and native regression verification. This is
+not a formal proof over all possible histories or full product acceptance.
 
 When all admissions are decided, retain only eligible peer bindings and the
 eligible direct roster. Run the existing restriction SCC procedure on that roster.

@@ -1,11 +1,16 @@
 # M8 final protocol acceptance decision — November 14
 
-Status: OWNER-SELECTED RULES; implementation and final acceptance pending.
+Status: OWNER-SELECTED RULES; canonical-history correction native-verified,
+full protocol/product acceptance pending.
 On November14 the owner answered "Önerilen kuralları uygula" after the explicit
 cutoff/strict-retirement choice, including possible indefinite whole-Brain hold
 and absence of a routine M8 override. This selects A plus strict-terminal B for
 implementation/review. It is not final protocol acceptance or product activation.
 Reviewed baseline: `93406122a5ca99e22f65885b923060ed43490fbe`.
+The [correction review](../../evidence/m8/m8-admission-terminal-review-20261114.md)
+records verified source2276652 and exact Mac/Windows CI43646684219. The selected
+A/B choice is not pending and must not be requested again. R4's durable incoming
+policy-hold contract and ordinary product activation remain separate work.
 
 The user requested final protocol acceptance and Mac product approval/incoming/
 protection-status integration. The independent full closeout review found two
@@ -14,8 +19,9 @@ the choices concrete; implementation must not invent an authority algorithm.
 
 ## A. Local admission anchors must obey the local cutoff
 
-Counterexample reconstructed from current source (not a natively executed new
-test):
+Historical counterexample reconstructed from review baseline9340612 (source-only
+at that review). Its genuine signed regression now passes on2276652 as recorded
+in the correction review:
 
 | Signed record | Meaning |
 |---|---|
@@ -32,7 +38,7 @@ content can therefore pass although its only admission is L@2, beyond L's cutoff
 The full proposal says the effective prefix caps ordinary content and policy
 actions, but does not specify the grant/cutoff dependency algorithm.
 
-Recommended policy text for explicit acceptance:
+Owner-selected policy text for implementation:
 
 > Peer-admission anchors are policy actions and are not exempt from their
 > author's effective cutoff. An anchor above that cutoff cannot add admission,
@@ -66,7 +72,7 @@ availability contracts. The existing reducer-only retirement-cycle fixture is
 also unrealizable as a signed stream: A@3 is a restriction followed by A@4
 retirement naming predecessor2; the mandatory prior verified record is A@3.
 
-Recommended minimal safe closeout policy:
+Owner-selected minimal safe closeout policy:
 
 > Self-retirement seals that identity's chain. The control event binds the
 > immediately preceding verified record/hash, including valid allocation gaps.

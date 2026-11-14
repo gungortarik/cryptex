@@ -1,0 +1,102 @@
+{
+  "receipt_version": 1,
+  "status": "completed",
+  "conclusion": "success",
+  "jobs": [
+    {"id": 132605952975, "name": "Readiness (macos-latest)", "conclusion": "success", "daemon_library": {"passed": 546, "ignored": 7, "failed": 0}},
+    {"id": 132605952763, "name": "Readiness (windows-latest)", "conclusion": "success", "daemon_library": {"passed": 667, "ignored": 5, "failed": 0}},
+    {"id": 132605953053, "name": "IPC cross-account ACL (Windows)", "conclusion": "success"}
+  ],
+  "all_nine_new_tests_passed_both_platforms": true,
+  "existing_exact_key_zero_cutoff_and_terminal_boundary_tests_passed_both_platforms": true,
+  "manual_jobs_not_executed": ["Dedicated default-off Desktop startup/native suite", "Mac identity preflight", "Unsigned Windows installer", "Separate schema/historical-reader workflow"],
+  "headSha": "22766528093889363abe38905911b058af0836be",
+  "run_id": 43646684219,
+  "run_url": "https://github.com/gungortarik/cryptex/actions/runs/43646684219",
+  "scope": "Owner-selected local admission cutoff and strict-terminal canonical-history correction; not authenticated staged-policy persistence or product activation",
+  "owner_selection": "Önerilen kuralları uygula",
+  "selected_rules": [
+    "Local peer admissions obey the local effective prefix",
+    "Unresolved admission dependencies cause typed whole-Brain hold",
+    "Authenticated terminal retirement tails cause typed whole-Brain hold; no routine M8 override"
+  ],
+  "source_files": [
+    {
+      "path": "services/cryptexd/src/trust_reducer.rs",
+      "sha256": "d82129f3ca9c80b1a9ab04d567611fa21aa0844c6a961c37b595b91c4e0ad9fb"
+    },
+    {
+      "path": "services/cryptexd/src/trust_reducer/admission.rs",
+      "sha256": "abf671b6e7992bf5161f2ee7c2f1241da2896b9d69cc00d9d6bb81d9dcdd3e15"
+    },
+    {
+      "path": "services/cryptexd/src/trust_reducer/admission_tests.rs",
+      "sha256": "d59fad8d9b15062b5329be6be39036d851c42ee7818e944ab4197288df45bae9"
+    },
+    {
+      "path": "crates/events/tests/fixtures/m8-protocol-v1.json",
+      "sha256": "a61357dd60be32d5d0a6cda6c8df2c0167562e8c4984961e01bcf1d8defd3b2e"
+    }
+  ],
+  "new_tests": [
+    "a_signed_earlier_equivalent_grant_stays_eligible_after_the_later_grant_is_cut_off",
+    "a_signed_ineligible_issuer_cannot_restrict_a_still_eligible_peer",
+    "admission_bound_proof_can_be_cancelled_without_exporting_authority",
+    "conservative_admission_results_agree_with_every_bounded_consistent_assignment",
+    "signed_direct_indirect_and_conservative_unique_model_dependencies_hold_without_a_roster_guess",
+    "signed_history_entry_propagates_cancellation_at_every_observed_boundary",
+    "signed_local_grant_above_cutoff_never_admits_its_peer_or_exports_a_resolver_pin",
+    "signed_retirement_cannot_name_an_earlier_record_to_manufacture_an_scc_breaker",
+    "signed_retirement_gap_content_policy_and_ambiguous_tails_enforce_the_terminal_contract"
+  ],
+  "numeric_reference": {
+    "policy_graphs": 64,
+    "cutoff_values": [
+      0,
+      1,
+      2,
+      "u64::MAX"
+    ],
+    "method": "Enumerate all numeric assignments and compare every consistent model for each Ready result",
+    "signed_history_claim": false,
+    "completeness_claim": false
+  },
+  "composition": [
+    "Only provisional signature pins in the initial complete authenticator",
+    "Returned approval bindings/direct roster/key resolver contain only eligible grants",
+    "Existing SCC cycle holds remain mandatory",
+    "Raw SCC cutoff intervals and grant roster consistency checked before content masks",
+    "Non-admitted content receives cutoff0; untrusted-inventory safety gate retained",
+    "Cancellation propagated through actual signed-history entry"
+  ],
+  "review": {
+    "method": "Existing independent read-only source reviewer",
+    "production_source_reviewed": "67f83362856344b29566e299ab09f9589049179d",
+    "followup": "2276652 changes only old zero-cutoff expectation to selected policy; separately reviewed without weakening wrong-key checks",
+    "remaining_actionable_findings_in_correction": 0,
+    "external_human_audit": false
+  },
+  "failed_or_superseded_runs": [
+    {
+      "id": 43645853627,
+      "source": "772f8e1",
+      "outcome": "Native Rust formatting failure; exact native output applied"
+    },
+    {
+      "id": 43646175067,
+      "source": "67f8336",
+      "outcome": "All9new Mac tests passed; old preselection self-invalidating zero-cutoff expectation failed. Corrected under explicit owner policy; remaining Windows work cancelled as superseded."
+    }
+  ],
+  "local_rust_execution": "Application Control4551; native CI used without bypass",
+  "limits": [
+    "Conservative dependency proof may hold even with a unique consistent model",
+    "Original independent wire corpus and generated schema contracts unchanged",
+    "R4 authenticated staged conflicts still become clean rejection; bounded durable verified evidence/restart admission contract remains unimplemented",
+    "No Mac incoming filesystem adapter or ordinary product image/OS policy activation",
+    "No full protocol acceptance, product activation or M8 completion"
+  ],
+  "product_activation": false,
+  "full_protocol_accepted": false,
+  "m8_complete": false
+}

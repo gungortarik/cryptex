@@ -4,12 +4,13 @@ Cryptex is a cross-platform, local-first personal memory and knowledge system fo
 
 Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
 
-**Final protocol review — November 14: NOT READY.** The full review found a local
-grant/cutoff authority gap and a retirement-tail contract/evidence mismatch.
-The [concrete decision](docs/proposals/m8-final-protocol-acceptance-decision-20261114.md)
-records the counterexample, safe recommendation and availability consequence.
-No authority algorithm or product gate is changed before that selection.
-Existing green CI below retains its narrower scope; it is not full acceptance.
+**Selected authority correction — November 14:** cutoff-bound local admissions
+and strict terminal-tail holds passed independent source review and exact
+[Mac/Windows CI43646684219](https://github.com/gungortarik/cryptex/actions/runs/43646684219)
+on2276652. Nine new tests passed each platform. The [review](evidence/m8/m8-admission-terminal-review-20261114.md)
+records the source-bound correction and limits. Authenticated staged policy
+conflicts still need a durable restart-safe hold before incoming/product
+activation. Default gates remain closed; this is not full M8 acceptance.
 
 **Recovery checkpoint — November 14:** three new daemon tests cover durable
 signed restrictions, stale/partially rebuilt on-disk SQLite and guarded vault

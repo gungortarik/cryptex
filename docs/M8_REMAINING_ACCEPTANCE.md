@@ -9,13 +9,20 @@ accepted [ADR-0019](adr/ADR-0019-m8-peer-trust-design-proposal.md),
 
 ## Three closure areas: bounded slice complete, two broader areas open
 
-**Current protocol acceptance blocker:** full read-only review at9340612 found
-local grants above the local effective cutoff remain authorized, and retirement
-tail behavior/its synthetic SCC claim disagree with the proposed contract. The
-[decision proposal](proposals/m8-final-protocol-acceptance-decision-20261114.md)
-must be selected before authority/availability changes or activation. The stale
-Mac carrier text has been consolidated; existing native receipts do not waive
-the two protocol findings. See the [review](../evidence/m8/m8-final-protocol-review-20261114.md).
+**Selected A/B correction COMPLETE at canonical-history scope:** the owner chose
+cutoff-bound local admissions and strict terminal-tail holds. Source2276652
+passed exact [Mac/Windows CI43646684219](https://github.com/gungortarik/cryptex/actions/runs/43646684219),
+nine new tests per platform and independent source review. See the
+[correction](../evidence/m8/m8-admission-terminal-review-20261114.md). Do not ask
+the same policy choice again or treat earlier NOT READY snapshots as its status.
+
+**Current activation blocker R4:** authenticated staged policy conflicts still
+become clean rejection and can reopen old canonical content. Define/review a
+bounded durable verified-evidence/restart-hold contract before connecting
+publication; neither a volatile latch nor publication of a held union is safe.
+Malformed/unknown-key candidates must not acquire policy authority. Mac adapters,
+product identity/OS policy and final integrated acceptance remain separate.
+See the [full review/disposition](../evidence/m8/m8-final-protocol-review-20261114.md).
 
 1. **Bounded native safety checks — COMPLETE for this slice.** Combined
    supervisor-loss native CI and owner-Mac acceptance are complete for their

@@ -5,6 +5,17 @@ Outcome: NOT READY for unconditional full-protocol acceptance or Mac activation.
 This is independent read-only agent source review, not an external human audit
 or a new native execution. Existing exact-source CI/receipts retain their scopes.
 
+## November14 correction disposition
+
+The owner explicitly selected A/B. The [correction review](m8-admission-terminal-review-20261114.md)
+and [receipt](m8-admission-terminal-native.json) bind source2276652 to successful
+Mac/Windows CI43646684219 and nine new tests each. R1/R2 are corrected and
+independently source-reviewed at canonical-history scope; do not repeat their
+policy-choice question. R3's stale candidate text is consolidated. R4 remains an
+incoming/product activation blocker; this is not unconditional final acceptance.
+Findings below retain the original9340612 source observations and their exact
+scope rather than implying the old source counterexample was natively executed.
+
 ## Findings
 
 ### M8-FINAL-R1 — P1: local grants bypass the local effective prefix

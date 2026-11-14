@@ -1283,15 +1283,18 @@ is not final protocol acceptance or ordinary product activation. Preserve v1/v2
 bytes and their strict readers. The version-dispatched candidate reader now
 authenticates strict v3 envelopes; a legacy reader still refuses them.
 
-Full closeout review of9340612 is NOT READY for unconditional acceptance:
-local admission anchors are not checked against the local effective cutoff,
-and the retirement-tail contract/evidence differs from actual strict behavior.
-The [decision proposal](../proposals/m8-final-protocol-acceptance-decision-20261114.md)
-and [review](../../evidence/m8/m8-final-protocol-review-20261114.md) require explicit
-policy selection and genuine signed regressions before implementation/activation.
+Full closeout review of9340612 identified a local-grant cutoff gap and a
+retirement-contract mismatch. The owner selected the
+[A/B correction](../proposals/m8-final-protocol-acceptance-decision-20261114.md);
+source2276652 now passes exact Mac/Windows CI43646684219, genuine signed
+regressions and independent source review at canonical-history scope. This
+selection must not be requested again. The [review/disposition](../../evidence/m8/m8-final-protocol-review-20261114.md)
+retains R4: authenticated staged policy conflicts can become clean rejection.
+A bounded durable verified-evidence/restart-hold contract is required before
+incoming activation; no storage mechanism is silently selected here.
 The stale stopped Mac carrier recipe has been consolidated with the reviewed
 per-message candidate direction and selected wire3 retention. Neither edit
-accepts the two pending policy changes or configures a product publisher.
+configures a product publisher or supplies full protocol/product acceptance.
 
 The October 22/25 NOT READY reviews are historical findings, not a description
 of all current source. Bootstrap signing/parser bounds, operation-specific
