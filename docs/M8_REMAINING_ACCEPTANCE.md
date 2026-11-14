@@ -41,6 +41,10 @@ accepted [ADR-0019](adr/ADR-0019-m8-peer-trust-design-proposal.md),
      [CI43505609309](https://github.com/gungortarik/cryptex/actions/runs/43505609309)
      on `e49e318`; that slice is complete. Strict candidate
      v3/bootstrap JSON Schema and TypeScript artifacts remain outstanding.
+     Shared Rust parser/JsonSchema payload definitions are now verified through
+     `c060d5c` in [CI43558441754](https://github.com/gungortarik/cryptex/actions/runs/43558441754).
+     This is the first prerequisite, not complete envelope/transcript/v3
+     artifact generation or full schema-reader conformance acceptance.
    - Finish the old-product Brain-hold/immutable-byte downgrade proof and signed
      target-history cutoff `0`/`1`/`u64::MAX` before/at/after checks. Envelope-only
      refusals and cutoff string vectors do not establish those higher layers.

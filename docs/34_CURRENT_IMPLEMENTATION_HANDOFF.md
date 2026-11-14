@@ -1,5 +1,36 @@
 # 34 — Current Implementation Handoff
 
+## Bootstrap schema prerequisite — November 13
+
+Verified prerequisite: `c060d5ce59a70c7efd64305a4ec6a3c14b5083ad`. Bootstrap
+offer/proof/approval payloads now use shared Rust Deserialize/JsonSchema types
+instead of separate manual field extraction. The explicit object guard, closed
+fields, exact lowercase-hex widths and string-only approval roles are preserved.
+Message writers/signature preimages and full transcript verification are unchanged.
+
+Independent review found that Serde's derived unit-enum reader would also accept
+an object-shaped role. The candidate fixes this with String::deserialize followed
+by exact token matching; tests cover both unit-map forms, arrays, booleans,
+numbers, null/missing/unknown fields and invalid nonce widths/case. Schema tests
+require closed properties, all required fields and exact hash/role shape.
+Source review has no remaining actionable finding. Full
+[CI43558441754](https://github.com/gungortarik/cryptex/actions/runs/43558441754)
+passed Mac/Windows readiness and Windows cross-account IPC ACL. Both platforms
+passed88events unit tests (including the two new cases) and all three independent
+signed-wire integration tests; frozen v1/v2 drift, required lint and release checks
+also passed. See the [review](../evidence/m8/m8-bootstrap-schema-prerequisite-20261113.md)
+and [machine receipt](../evidence/m8/m8-bootstrap-schema-native-c060d5c.json).
+Local Rust remains blocked; no bypass was used. This completes the shared-payload
+prerequisite only, not the full schema artifact gate.
+
+**Remaining schema work:** complete bootstrap envelope/transcript and v3 payload
+wire definitions, generate checked-in JSON Schema/TypeScript and verify complete
+schema-reader conformance against independent signed fixtures. No complete new
+schema artifacts are claimed yet, and no product route was activated. The three
+remaining closure groups are protocol acceptance, Mac product integration and
+final integrated platform/security/human acceptance; no reliable date or percent
+estimate is established. Earlier completed terminal work below must not repeat.
+
 ## Terminal retention and bilateral recovery — November 13
 
 The owner selected macOS26+ and delegated the concrete journal decision; both

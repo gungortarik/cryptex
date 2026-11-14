@@ -1,0 +1,59 @@
+{
+  "receipt_version": 1,
+  "scope": "Shared typed bootstrap payload parser/schema prerequisite only; complete artifacts and M8 acceptance remain open",
+  "conclusion": "success",
+  "headSha": "c060d5ce59a70c7efd64305a4ec6a3c14b5083ad",
+  "jobs": [
+    {
+      "conclusion": "success",
+      "id": 132336504616,
+      "name": "IPC cross-account ACL (Windows)"
+    },
+    {
+      "conclusion": "success",
+      "id": 132336504637,
+      "name": "Readiness (windows-latest)"
+    },
+    {
+      "conclusion": "success",
+      "id": 132336504727,
+      "name": "Readiness (macos-latest)"
+    }
+  ],
+  "status": "completed",
+  "run_id": 43558441754,
+  "run_url": "https://github.com/gungortarik/cryptex/actions/runs/43558441754",
+  "events_unit_tests_passed_per_platform": 88,
+  "independent_wire_integration_tests_passed_per_platform": 3,
+  "new_tests": [
+    "bootstrap::tests::payload_schema_definitions_are_closed_and_have_required_hash_patterns",
+    "bootstrap::tests::typed_payloads_reject_unknown_missing_wrong_type_and_positional_arrays"
+  ],
+  "review": {
+    "source": "82062957163fe6fdacb03733f427f2430d86793c",
+    "finding": "derived role enum accepted object-shaped roles; replaced with string-only Deserialize and regression cases",
+    "remaining_actionable_findings": 0,
+    "followup": "c060d5c is native formatting only",
+    "external_human_audit": false
+  },
+  "new_complete_json_schema_or_typescript_artifacts": false,
+  "product_activation": false,
+  "local_rust_execution": "Application Control4551; native CI used without bypass",
+  "failed_or_superseded_runs": [
+    {
+      "id": 43558108304,
+      "source": "60cab84",
+      "outcome": "formatting refusal"
+    },
+    {
+      "id": 43558241251,
+      "source": "3e004af",
+      "outcome": "cancelled after source review found role widening"
+    },
+    {
+      "id": 43558273292,
+      "source": "8206295",
+      "outcome": "formatting refusal"
+    }
+  ]
+}
