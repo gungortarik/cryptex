@@ -249,7 +249,10 @@ fn vault_bytes(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
                 visit(root, &entry.path(), files);
             } else {
                 assert!(kind.is_file());
-                files.insert(entry.path().strip_prefix(root).unwrap().to_owned(), fs::read(entry.path()).unwrap());
+                files.insert(
+                    entry.path().strip_prefix(root).unwrap().to_owned(),
+                    fs::read(entry.path()).unwrap(),
+                );
             }
         }
     }
@@ -259,32 +262,64 @@ fn vault_bytes(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 }
 
 fn resolver(profiles: &PairProfiles) -> LocalDeviceKeyResolver {
-    LocalDeviceKeyResolver::load(&profiles.profiles[0], BRAIN, &profiles.store, SecureStoreEnvironment::Dev).unwrap()
+    LocalDeviceKeyResolver::load(
+        &profiles.profiles[0],
+        BRAIN,
+        &profiles.store,
+        SecureStoreEnvironment::Dev,
+    )
+    .unwrap()
 }
 
-fn refresh(profiles: &PairProfiles, db: &mut ProjectionDb) -> KnowledgeMaterializationResult<KnowledgeRebuildReport> {
+fn refresh(
+    profiles: &PairProfiles,
+    db: &mut ProjectionDb,
+) -> KnowledgeMaterializationResult<KnowledgeRebuildReport> {
     let anchor = resolver(profiles).local_trust_anchor().unwrap();
     rebuild_knowledge_from_local_approval_history(&profiles.profiles[0], BRAIN, &anchor, db)
 }
 
 fn guarded_ids(profiles: &PairProfiles, db: &ProjectionDb) -> BTreeSet<String> {
-    search_events_with_retrieval_safety(&profiles.profiles[0], BRAIN, &[], &mut resolver(profiles), db, &SearchQuery::default())
-        .unwrap().into_iter().map(|hit| hit.event_id).collect()
+    search_events_with_retrieval_safety(
+        &profiles.profiles[0],
+        BRAIN,
+        &[],
+        &mut resolver(profiles),
+        db,
+        &SearchQuery::default(),
+    )
+    .unwrap()
+    .into_iter()
+    .map(|hit| hit.event_id)
+    .collect()
 }
 
-fn assert_stale_views_hold(profiles: &PairProfiles, db: &ProjectionDb, vault: &Path, excluded: &str) {
+fn assert_stale_views_hold(
+    profiles: &PairProfiles,
+    db: &ProjectionDb,
+    vault: &Path,
+    excluded: &str,
+) {
     let root = &profiles.profiles[0];
     let mut key = resolver(profiles);
     let expected = RetrievalSafetyHold::MaterializationStateMissingOrStale;
-    assert!(matches!(search_events_with_retrieval_safety(root, BRAIN, &[], &mut key, db, &SearchQuery::default()),
-        Err(GuardedSearchError::BrainWideHold(reason)) if reason == expected));
-    assert!(matches!(timeline_events_with_retrieval_safety_deadline(root, BRAIN, &[], &mut key, db,
+    assert!(
+        matches!(search_events_with_retrieval_safety(root, BRAIN, &[], &mut key, db, &SearchQuery::default()),
+        Err(GuardedSearchError::BrainWideHold(reason)) if reason == expected)
+    );
+    assert!(
+        matches!(timeline_events_with_retrieval_safety_deadline(root, BRAIN, &[], &mut key, db,
         &TimelineQuery { limit: 50, ..TimelineQuery::default() }, None),
-        Err(GuardedSearchError::BrainWideHold(reason)) if reason == expected));
-    assert!(matches!(event_detail_with_retrieval_safety_deadline(root, BRAIN, &[], &mut key, db, excluded, None),
-        Err(GuardedSearchError::BrainWideHold(reason)) if reason == expected));
-    assert!(matches!(rebuild_vault_with_retrieval_safety(root, BRAIN, &[], &mut key, db, vault),
-        Err(GuardedVaultError::BrainWideHold(reason)) if reason == expected));
+        Err(GuardedSearchError::BrainWideHold(reason)) if reason == expected)
+    );
+    assert!(
+        matches!(event_detail_with_retrieval_safety_deadline(root, BRAIN, &[], &mut key, db, excluded, None),
+        Err(GuardedSearchError::BrainWideHold(reason)) if reason == expected)
+    );
+    assert!(
+        matches!(rebuild_vault_with_retrieval_safety(root, BRAIN, &[], &mut key, db, vault),
+        Err(GuardedVaultError::BrainWideHold(reason)) if reason == expected)
+    );
 }
 
 fn restriction_projection_recovery(cutoff: u64) {
@@ -296,35 +331,93 @@ fn restriction_projection_recovery(cutoff: u64) {
     let root = &profiles.profiles[0];
     let (mut db, _) = crate::projection::open_projection_db(root).unwrap();
     refresh(&profiles, &mut db).unwrap();
-    let original = search_events_with_retrieval_safety(root, BRAIN, &[], &mut resolver(&profiles), &db, &SearchQuery::default()).unwrap();
+    let original = search_events_with_retrieval_safety(
+        root,
+        BRAIN,
+        &[],
+        &mut resolver(&profiles),
+        &db,
+        &SearchQuery::default(),
+    )
+    .unwrap();
     assert_eq!(original.len(), 3);
-    let excluded = original.iter().find(|hit| hit.device_id == profiles.devices[1].as_str() && hit.device_seq == "3").unwrap().event_id.clone();
-    let admitted = original.iter().filter(|hit| hit.device_id != profiles.devices[1].as_str() || hit.device_seq.parse::<u64>().unwrap() <= cutoff)
-        .map(|hit| hit.event_id.clone()).collect::<BTreeSet<_>>();
+    let excluded = original
+        .iter()
+        .find(|hit| hit.device_id == profiles.devices[1].as_str() && hit.device_seq == "3")
+        .unwrap()
+        .event_id
+        .clone();
+    let admitted = original
+        .iter()
+        .filter(|hit| {
+            hit.device_id != profiles.devices[1].as_str()
+                || hit.device_seq.parse::<u64>().unwrap() <= cutoff
+        })
+        .map(|hit| hit.event_id.clone())
+        .collect::<BTreeSet<_>>();
     let vault = root.join("selected-vault");
     fs::create_dir(&vault).unwrap();
     fs::write(vault.join("owner-note.txt"), b"synthetic owner-owned note").unwrap();
-    assert_eq!(rebuild_vault_with_retrieval_safety(root, BRAIN, &[], &mut resolver(&profiles), &db, &vault).unwrap().note_count, 3);
+    assert_eq!(
+        rebuild_vault_with_retrieval_safety(
+            root,
+            BRAIN,
+            &[],
+            &mut resolver(&profiles),
+            &db,
+            &vault
+        )
+        .unwrap()
+        .note_count,
+        3
+    );
     let old_vault = vault_bytes(&vault);
     let before = canonical_bytes(root);
     let transaction = "cd".repeat(32);
     let policy = profiles.policy();
-    let request = policy.device_restriction_approval_snapshot(transaction.clone(), &profiles.devices[1], RestrictionReason::Compromised, cutoff).unwrap();
+    let request = policy
+        .device_restriction_approval_snapshot(
+            transaction.clone(),
+            &profiles.devices[1],
+            RestrictionReason::Compromised,
+            cutoff,
+        )
+        .unwrap();
     drop(policy);
     let journal = BootstrapJournalStore::new(root).unwrap();
     let event_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
-    journal.begin_owner_operation(request.clone(), event_id).unwrap();
-    journal.confirm_owner_operation(&transaction, &request.digest().unwrap()).unwrap();
+    journal
+        .begin_owner_operation(request.clone(), event_id)
+        .unwrap();
+    journal
+        .confirm_owner_operation(&transaction, &request.digest().unwrap())
+        .unwrap();
     crate::canonical_writer::fail_after_append_before_tip();
-    assert!(append_confirmed_owner_security_operation(root, BRAIN, &profiles.store, SecureStoreEnvironment::Dev, &transaction).is_err());
+    assert!(
+        append_confirmed_owner_security_operation(
+            root,
+            BRAIN,
+            &profiles.store,
+            SecureStoreEnvironment::Dev,
+            &transaction
+        )
+        .is_err()
+    );
     let pending = journal.load().unwrap();
-    let operation = pending.transactions.iter().find(|t| t.snapshot.transaction_id == transaction).unwrap();
+    let operation = pending
+        .transactions
+        .iter()
+        .find(|t| t.snapshot.transaction_id == transaction)
+        .unwrap();
     assert_eq!(operation.state, BootstrapState::AppendUnknown);
     assert_eq!(operation.append_attempts.len(), 1);
     let durable = canonical_bytes(root);
     assert_ne!(durable, before);
     for (path, bytes) in before {
-        assert!(durable[&path].starts_with(&bytes), "canonical prefix must remain immutable");
+        assert!(
+            durable[&path].starts_with(&bytes),
+            "canonical prefix must remain immutable"
+        );
     }
     assert_stale_views_hold(&profiles, &db, &vault, &excluded);
     assert_eq!(vault_bytes(&vault), old_vault);
@@ -332,10 +425,19 @@ fn restriction_projection_recovery(cutoff: u64) {
 
     // Reopen the real on-disk SQLite DB and journal; this is domain restart,
     // not a claim of Desktop process or physical power-loss testing.
-    reconcile_peer_approval_anchors_before_startup(root, &profiles.store, SecureStoreEnvironment::Dev).unwrap();
+    reconcile_peer_approval_anchors_before_startup(
+        root,
+        &profiles.store,
+        SecureStoreEnvironment::Dev,
+    )
+    .unwrap();
     let (mut db, _) = crate::projection::open_projection_db(root).unwrap();
     let recovered = journal.load().unwrap();
-    let operation = recovered.transactions.iter().find(|t| t.snapshot.transaction_id == transaction).unwrap();
+    let operation = recovered
+        .transactions
+        .iter()
+        .find(|t| t.snapshot.transaction_id == transaction)
+        .unwrap();
     assert_eq!(operation.state, BootstrapState::Anchored);
     assert_eq!(operation.append_attempts.len(), 1);
     assert_eq!(canonical_bytes(root), durable);
@@ -344,35 +446,96 @@ fn restriction_projection_recovery(cutoff: u64) {
     // Fail the M4 transaction after M3 has committed the cutoff-aware rows.
     // A partially refreshed derived DB must still hold every guarded surface.
     db.connection().execute_batch("CREATE TRIGGER synthetic_m4_rebuild_failure BEFORE DELETE ON knowledge_materialization_state BEGIN SELECT RAISE(ABORT, 'synthetic M4 rebuild interruption'); END;").unwrap();
-    assert!(matches!(refresh(&profiles, &mut db), Err(KnowledgeMaterializationError::Knowledge(_))));
-    assert!(event_detail(db.connection(), BRAIN, &excluded).unwrap().is_none(), "the preceding M3 transaction really committed");
+    let failure = refresh(&profiles, &mut db).unwrap_err();
+    assert!(matches!(failure, KnowledgeMaterializationError::Knowledge(_)));
+    assert!(failure.to_string().contains("synthetic M4 rebuild interruption"));
+    assert!(
+        event_detail(db.connection(), BRAIN, &excluded)
+            .unwrap()
+            .is_none(),
+        "the preceding M3 transaction really committed"
+    );
     assert_stale_views_hold(&profiles, &db, &vault, &excluded);
     assert_eq!(vault_bytes(&vault), old_vault);
     assert_eq!(canonical_bytes(root), durable);
-    db.connection().execute_batch("DROP TRIGGER synthetic_m4_rebuild_failure;").unwrap();
+    db.connection()
+        .execute_batch("DROP TRIGGER synthetic_m4_rebuild_failure;")
+        .unwrap();
     drop(db);
 
     for _ in 0..2 {
         let (mut db, _) = crate::projection::open_projection_db(root).unwrap();
         refresh(&profiles, &mut db).unwrap();
         assert_eq!(guarded_ids(&profiles, &db), admitted);
-        let page = timeline_events_with_retrieval_safety_deadline(root, BRAIN, &[], &mut resolver(&profiles), &db,
-            &TimelineQuery { limit: 50, ..TimelineQuery::default() }, None).unwrap();
-        assert_eq!(page.hits.into_iter().map(|hit| hit.event_id).collect::<BTreeSet<_>>(), admitted);
+        let page = timeline_events_with_retrieval_safety_deadline(
+            root,
+            BRAIN,
+            &[],
+            &mut resolver(&profiles),
+            &db,
+            &TimelineQuery {
+                limit: 50,
+                ..TimelineQuery::default()
+            },
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            page.hits
+                .into_iter()
+                .map(|hit| hit.event_id)
+                .collect::<BTreeSet<_>>(),
+            admitted
+        );
         for hit in &original {
-            let detail = event_detail_with_retrieval_safety_deadline(root, BRAIN, &[], &mut resolver(&profiles), &db, &hit.event_id, None).unwrap();
+            let detail = event_detail_with_retrieval_safety_deadline(
+                root,
+                BRAIN,
+                &[],
+                &mut resolver(&profiles),
+                &db,
+                &hit.event_id,
+                None,
+            )
+            .unwrap();
             assert_eq!(detail.is_some(), admitted.contains(&hit.event_id));
         }
-        assert_eq!(rebuild_vault_with_retrieval_safety(root, BRAIN, &[], &mut resolver(&profiles), &db, &vault).unwrap().note_count, admitted.len());
-        let notes = fs::read_dir(vault.join("Cryptex/notes")).unwrap().map(|entry| {
-            let entry = entry.unwrap();
-            assert!(entry.file_type().unwrap().is_file());
-            entry.file_name().to_string_lossy().into_owned()
-        }).collect::<BTreeSet<_>>();
-        assert_eq!(notes, admitted.iter().map(|id| format!("{id}.md")).collect());
-        assert_eq!(fs::read(vault.join("owner-note.txt")).unwrap(), b"synthetic owner-owned note");
+        assert_eq!(
+            rebuild_vault_with_retrieval_safety(
+                root,
+                BRAIN,
+                &[],
+                &mut resolver(&profiles),
+                &db,
+                &vault
+            )
+            .unwrap()
+            .note_count,
+            admitted.len()
+        );
+        let notes = fs::read_dir(vault.join("Cryptex/notes"))
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                assert!(entry.file_type().unwrap().is_file());
+                entry.file_name().to_string_lossy().into_owned()
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            notes,
+            admitted.iter().map(|id| format!("{id}.md")).collect()
+        );
+        assert_eq!(
+            fs::read(vault.join("owner-note.txt")).unwrap(),
+            b"synthetic owner-owned note"
+        );
         assert_eq!(canonical_bytes(root), durable);
-        reconcile_peer_approval_anchors_before_startup(root, &profiles.store, SecureStoreEnvironment::Dev).unwrap();
+        reconcile_peer_approval_anchors_before_startup(
+            root,
+            &profiles.store,
+            SecureStoreEnvironment::Dev,
+        )
+        .unwrap();
         assert_eq!(canonical_bytes(root), durable);
         drop(db);
     }
@@ -405,12 +568,21 @@ fn paired_startup_refuses_torn_journal_and_missing_key_without_rewriting_evidenc
     trailing.extend_from_slice(b"synthetic torn suffix");
     for torn in [Vec::new(), good[..good.len() / 2].to_vec(), trailing] {
         fs::write(&path, &torn).unwrap();
-        assert!(matches!(reconcile_peer_approval_anchors_before_startup(root, &profiles.store, SecureStoreEnvironment::Dev),
-            Err(KnowledgeMaterializationError::Verification(_))));
+        assert!(matches!(
+            reconcile_peer_approval_anchors_before_startup(
+                root,
+                &profiles.store,
+                SecureStoreEnvironment::Dev
+            ),
+            Err(KnowledgeMaterializationError::Verification(_))
+        ));
         assert_eq!(fs::read(&path).unwrap(), torn);
         assert_eq!(canonical_bytes(root), original);
         assert_eq!(profiles.store.put_count(), puts);
-        assert_eq!(crate::bootstrap_journal::JOURNAL_WRITES.with(|count| count.get()), writes);
+        assert_eq!(
+            crate::bootstrap_journal::JOURNAL_WRITES.with(|count| count.get()),
+            writes
+        );
     }
     fs::write(&path, &good).unwrap();
 
@@ -418,24 +590,50 @@ fn paired_startup_refuses_torn_journal_and_missing_key_without_rewriting_evidenc
     // deletion/reinstall test. A new startup cannot mint over signed history.
     let service = ServiceLabel::device_credentials(SecureStoreEnvironment::Dev);
     let account = AccountLabel::device_event_signing_seed(profiles.devices[0].as_str());
-    let seed = profiles.store.get(service.as_str(), account.as_str()).unwrap();
+    let seed = profiles
+        .store
+        .get(service.as_str(), account.as_str())
+        .unwrap();
     let public_path = cryptex_storage::event_signing_key_path(root, &profiles.devices[0]);
     let public = fs::read(&public_path).unwrap();
-    profiles.store.delete(service.as_str(), account.as_str()).unwrap();
+    profiles
+        .store
+        .delete(service.as_str(), account.as_str())
+        .unwrap();
     for _ in 0..2 {
-        assert!(LocalDeviceKeyResolver::load(root, BRAIN, &profiles.store, SecureStoreEnvironment::Dev).is_err());
-        assert!(matches!(reconcile_peer_approval_anchors_before_startup(root, &profiles.store, SecureStoreEnvironment::Dev),
-            Err(KnowledgeMaterializationError::Verification(_))));
+        assert!(
+            LocalDeviceKeyResolver::load(root, BRAIN, &profiles.store, SecureStoreEnvironment::Dev)
+                .is_err()
+        );
+        assert!(matches!(
+            reconcile_peer_approval_anchors_before_startup(
+                root,
+                &profiles.store,
+                SecureStoreEnvironment::Dev
+            ),
+            Err(KnowledgeMaterializationError::Verification(_))
+        ));
         assert_eq!(profiles.store.put_count(), puts);
         assert_eq!(fs::read(&public_path).unwrap(), public);
         assert_eq!(fs::read(&path).unwrap(), good);
         assert_eq!(canonical_bytes(root), original);
-        assert_eq!(crate::bootstrap_journal::JOURNAL_WRITES.with(|count| count.get()), writes);
+        assert_eq!(
+            crate::bootstrap_journal::JOURNAL_WRITES.with(|count| count.get()),
+            writes
+        );
     }
     // Restore only this synthetic fixture's exact original seed. Recovery
     // must prove canonical authority again; journal rows are never sufficient.
-    profiles.store.put(service.as_str(), account.as_str(), &seed).unwrap();
-    reconcile_peer_approval_anchors_before_startup(root, &profiles.store, SecureStoreEnvironment::Dev).unwrap();
+    profiles
+        .store
+        .put(service.as_str(), account.as_str(), &seed)
+        .unwrap();
+    reconcile_peer_approval_anchors_before_startup(
+        root,
+        &profiles.store,
+        SecureStoreEnvironment::Dev,
+    )
+    .unwrap();
     assert_eq!(canonical_bytes(root), original);
     assert_eq!(fs::read(&path).unwrap(), good);
 }
