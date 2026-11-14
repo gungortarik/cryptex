@@ -641,7 +641,10 @@ fn parse_payload(
     payload: Value,
 ) -> Result<SecurityPayloadV3, ValidationFailure> {
     if !payload.is_object() {
-        return Err(failure("invalid_record", "security payload must be an object"));
+        return Err(failure(
+            "invalid_record",
+            "security payload must be an object",
+        ));
     }
     match event_type {
         SecurityEventTypeV3::PeerApproved => {
@@ -708,9 +711,10 @@ fn parse_payload(
             })
         }
         SecurityEventTypeV3::DeviceSelfRetired => {
-            let payload: DeviceSelfRetiredPayload = serde_json::from_value(payload).map_err(|_| {
-                failure("invalid_record", "device_self_retired payload is malformed")
-            })?;
+            let payload: DeviceSelfRetiredPayload =
+                serde_json::from_value(payload).map_err(|_| {
+                    failure("invalid_record", "device_self_retired payload is malformed")
+                })?;
             validate_transaction_id(&payload.transaction_id)?;
             let last_authorized_seq = parse_cutoff_seq(&payload.last_authorized_seq)?;
             validate_cutoff_hash(last_authorized_seq, &payload.last_authorized_content_hash)?;
