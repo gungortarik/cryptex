@@ -1352,29 +1352,55 @@ mod tests {
         let local = SigningKey::from_bytes(&TEST_SEED);
         let peer = SigningKey::from_bytes(&[0x27; 32]);
         let third = SigningKey::from_bytes(&[0x28; 32]);
-        let local_anchor = make_v3("local", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", 1,
-            ZERO_CONTENT_HASH_HEX, "security.peer_approved", serde_json::json!({
+        let local_anchor = make_v3(
+            "local",
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            1,
+            ZERO_CONTENT_HASH_HEX,
+            "security.peer_approved",
+            serde_json::json!({
                 "transaction_id": "ab".repeat(32),
                 "transcript": valid_bootstrap_transcript("local", &local, "peer", &peer),
-            }), &local);
+            }),
+            &local,
+        );
         let valid_remote = valid_bootstrap_transcript("peer", &peer, "third", &third);
         let outsider = valid_bootstrap_transcript("local", &local, "third", &third);
         for (label, transcript, transaction, accepted) in [
             ("valid remote", valid_remote.clone(), "ab".repeat(32), true),
-            ("empty objects", serde_json::json!([{}, {}, {}, {}]), "ab".repeat(32), false),
+            (
+                "empty objects",
+                serde_json::json!([{}, {}, {}, {}]),
+                "ab".repeat(32),
+                false,
+            ),
             ("wrong participant", outsider, "ab".repeat(32), false),
             ("wrong transaction", valid_remote, "cd".repeat(32), false),
         ] {
-            let remote = make_v3("peer", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 1,
-                ZERO_CONTENT_HASH_HEX, "security.peer_approved", serde_json::json!({
+            let remote = make_v3(
+                "peer",
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                1,
+                ZERO_CONTENT_HASH_HEX,
+                "security.peer_approved",
+                serde_json::json!({
                     "transaction_id": transaction, "transcript": transcript,
-                }), &peer);
-            let result = verify_history_from_local_anchors(&[&local_anchor, &remote], BRAIN,
-                device("local"), signing_key_id_from_verifying_key(&local.verifying_key()).unwrap(),
-                local.verifying_key().to_bytes());
+                }),
+                &peer,
+            );
+            let result = verify_history_from_local_anchors(
+                &[&local_anchor, &remote],
+                BRAIN,
+                device("local"),
+                signing_key_id_from_verifying_key(&local.verifying_key()).unwrap(),
+                local.verifying_key().to_bytes(),
+            );
             assert_eq!(result.is_ok(), accepted, "{label}");
             if let Ok((_, TrustReduction::Ready(trust))) = result {
-                assert_eq!(trust.trusted_devices, BTreeSet::from([device("local"), device("peer")]));
+                assert_eq!(
+                    trust.trusted_devices,
+                    BTreeSet::from([device("local"), device("peer")])
+                );
                 assert!(!trust.trusted_devices.contains(&device("third")));
             } else if accepted {
                 panic!("valid remote metadata must not hold the directly approved roster");
@@ -1386,12 +1412,24 @@ mod tests {
     fn signed_target_history_cutoffs_zero_one_and_u64_max_filter_exact_boundaries() {
         let local = SigningKey::from_bytes(&TEST_SEED);
         let peer = SigningKey::from_bytes(&[0x27; 32]);
-        let anchor = make_v3("local", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", 1,
-            ZERO_CONTENT_HASH_HEX, "security.peer_approved", serde_json::json!({
+        let anchor = make_v3(
+            "local",
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            1,
+            ZERO_CONTENT_HASH_HEX,
+            "security.peer_approved",
+            serde_json::json!({
                 "transaction_id": "ab".repeat(32),
                 "transcript": valid_bootstrap_transcript("local", &local, "peer", &peer),
-            }), &local);
-        let hash = |bytes: &[u8]| serde_json::from_slice::<Value>(bytes).unwrap()["content_hash"].as_str().unwrap().to_owned();
+            }),
+            &local,
+        );
+        let hash = |bytes: &[u8]| {
+            serde_json::from_slice::<Value>(bytes).unwrap()["content_hash"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        };
         let first = make_v1("peer", 1, ZERO_CONTENT_HASH_HEX, &peer);
         let before_max = make_v1("peer", u64::MAX - 1, &hash(&first), &peer);
         let at_max = make_v1("peer", u64::MAX, &hash(&before_max), &peer);
@@ -1401,31 +1439,64 @@ mod tests {
             (u64::MAX, hash(&at_max), vec![1, u64::MAX - 1, u64::MAX]),
         ] {
             for wrong_hash in [false, true] {
-                let restriction = make_v3("local", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", 2,
-                    &hash(&anchor), "security.device_restricted", serde_json::json!({
+                let restriction = make_v3(
+                    "local",
+                    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    2,
+                    &hash(&anchor),
+                    "security.device_restricted",
+                    serde_json::json!({
                         "transaction_id": "cd".repeat(32), "target_device_id": "peer",
                         "target_signing_key_id": signing_key_id_from_verifying_key(&peer.verifying_key()).unwrap().as_str(),
                         "target_public_key": hex(&peer.verifying_key().to_bytes()), "reason": "compromised",
                         "cutoff_seq": boundary.to_string(),
                         "cutoff_content_hash": if wrong_hash { "ff".repeat(32) } else { bound_hash.clone() },
-                    }), &local);
-                let records = vec![anchor.clone(), restriction, first.clone(), before_max.clone(), at_max.clone()];
+                    }),
+                    &local,
+                );
+                let records = vec![
+                    anchor.clone(),
+                    restriction,
+                    first.clone(),
+                    before_max.clone(),
+                    at_max.clone(),
+                ];
                 let snapshot = records.clone();
                 let refs = records.iter().map(Vec::as_slice).collect::<Vec<_>>();
-                let result = verify_history_from_local_anchors(&refs, BRAIN, device("local"),
-                    signing_key_id_from_verifying_key(&local.verifying_key()).unwrap(), local.verifying_key().to_bytes());
+                let result = verify_history_from_local_anchors(
+                    &refs,
+                    BRAIN,
+                    device("local"),
+                    signing_key_id_from_verifying_key(&local.verifying_key()).unwrap(),
+                    local.verifying_key().to_bytes(),
+                );
                 if wrong_hash {
-                    assert!(result.is_err(), "cutoff {boundary} must match exact target hash");
+                    assert!(
+                        result.is_err(),
+                        "cutoff {boundary} must match exact target hash"
+                    );
                 } else {
                     let (history, reduction) = result.unwrap();
                     assert_eq!(cutoff(&reduction, "peer"), boundary);
-                    let TrustReduction::Ready(trust) = reduction else { panic!("expected ready"); };
-                    let cutoffs = trust.effective_cutoffs.iter().map(|(device, cutoff)| (device.as_str().to_owned(), *cutoff)).collect();
-                    let retained = history.content_records_through_cutoffs(&cutoffs)
-                        .filter(|record| record.device_id() == "peer").map(|record| record.device_seq()).collect::<Vec<_>>();
+                    let TrustReduction::Ready(trust) = reduction else {
+                        panic!("expected ready");
+                    };
+                    let cutoffs = trust
+                        .effective_cutoffs
+                        .iter()
+                        .map(|(device, cutoff)| (device.as_str().to_owned(), *cutoff))
+                        .collect();
+                    let retained = history
+                        .content_records_through_cutoffs(&cutoffs)
+                        .filter(|record| record.device_id() == "peer")
+                        .map(|record| record.device_seq())
+                        .collect::<Vec<_>>();
                     assert_eq!(retained, expected);
                 }
-                assert_eq!(records, snapshot, "policy reduction cannot change source bytes");
+                assert_eq!(
+                    records, snapshot,
+                    "policy reduction cannot change source bytes"
+                );
             }
         }
     }
