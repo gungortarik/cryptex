@@ -1,5 +1,36 @@
 # 34 — Current Implementation Handoff
 
+## Owner helper observer baseline failure; read-only diagnostic ready — November15
+
+Owner `MAC-AKTARIM-SONUC-f6e60eb8.zip` FAILED with inventory_unavailable, before
+the pairing driver was spawned. CRC/source/launcher hash match the delivered
+f7fe55f package. Three prior transport identity stages and their fenced API-key
+cleanup commands pass; identity_restart_and_refusals_verified=true. Independent
+shutdown has no exit_code and the no-child default flags. Source order confirms
+ObservedCommand.start's initial inventory.require_empty precedes Popen. This is
+not independent shutdown acceptance, nor proof of a product leak/Keychain denial.
+The original probe returned code2 without the failing stage/errno; cause is unknown.
+The collector preserved its scratch as designed. Do not rerun the long transfer
+package or delete that scratch blindly. [Failure receipt](../evidence/m8/m8-owner-helper-inventory-failure-20261115.json).
+
+Correction ef28d58 only adds closed probe failure labels, numeric errno and API
+return size; it does not relax any refusal. A standalone read-only collector
+compiles the probe and performs three same-user queries against unused paths.
+No Cryptex process, profile or Keychain is opened. Per-process rows/names/arguments
+never enter its result. Native CI43767799632 passed29 window/inventory tests
+(including actual standalone probe and existing orphan negatives),2 product-key
+helper tests and3 isolated credential tests. Product/native application rerun
+was unnecessary for this diagnostic-only change.
+
+Owner handoff: Cryptex-Mac-Kapanis-Tani-ef28d58.zip (8717 bytes), SHA256
+81cca9ee236a63b224f2d33d2338edc6097d692d494a9a295606db6e11cf9288. All4 members,
+CRC, collector bytes/hashes, modes and Python syntax verified. Open ZIP on Mac,
+double-click MAC-KAPANIS-TANI.command and send MAC-KAPANIS-TANI-SONUC-*.zip.
+No application image/certificate is shipped, so there is no signing-expiry gate.
+Next: use returned typed query failure to correct observation without treating
+unreadable processes as absent. Helper owner acceptance and the already authorized
+real-network product integration below remain open; prior CI passes stay scoped.
+
 ## Independent helper shutdown and real-network continuation — November15
 
 Collector f7fe55f adds a read-only, user-wide Darwin libproc inventory. It observes

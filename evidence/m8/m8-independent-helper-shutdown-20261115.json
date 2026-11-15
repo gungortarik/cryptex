@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "native_application_and_collector_passed_owner_packet_ready",
+  "status": "native_ci_passed_owner_baseline_observation_failed",
   "source": "f7fe55f5390af4840c6e67ceb4ef448d88d49b27",
   "scope": "Read-only independent Darwin process observation around signed local pairing/import/restart driver; not cross-device transport or normal managed-profile UI acceptance",
   "collector_ci": 43763552289,
@@ -39,7 +39,7 @@
     "status": "cancelled",
     "reason": "incorrect manually entered source SHA; replaced by verified git rev-parse source"
   },
-  "owner_acceptance": "pending",
+  "owner_acceptance": "failed before pairing driver launch: inventory_unavailable; see m8-owner-helper-inventory-failure-20261115.json",
   "remaining": [
     "product trust-derived peer/folder configuration",
     "daemon verified sealed export and local-tail checkpoint",

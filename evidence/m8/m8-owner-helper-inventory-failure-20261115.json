@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "status": "owner_observer_baseline_failed_before_pairing_launch",
+  "receipt": "MAC-AKTARIM-SONUC-f6e60eb8.zip",
+  "receipt_sha256": "f3dbc62e0330ed2f7e9977a3ab999f675fc508c2babd4446e5d6abd6dd2aca86",
+  "result_json_sha256": "c4acd611f4de4437ca98291cdfadc6e21f02fb0c5fc506a1135cbe54b8d4ca12",
+  "source": "f7fe55f5390af4840c6e67ceb4ef448d88d49b27",
+  "collector_sha256": "348808e09c49bdf04aaa78a65827585cd11376204996fb99514268fedbe964cd",
+  "archive_crc": "passed",
+  "package_source_and_collector_match": true,
+  "observation": {
+    "source": "f7fe55f5390af4840c6e67ceb4ef448d88d49b27",
+    "outcome": "failed",
+    "collector_sha256": "348808e09c49bdf04aaa78a65827585cd11376204996fb99514268fedbe964cd",
+    "scope": "isolated real local engines and signed native pairing; not cross-device sync",
+    "descriptor_soft_limit": 256,
+    "diagnostic_schema": 2,
+    "command_diagnostics": [
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 8550,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_clean_stop_ack=passed",
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_helper_loss_cleanup=passed",
+          "mac_transport_missing_key_no_regeneration=passed",
+          "mac_transport_owned_identity_restart=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 242,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 8014,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_mutation_batch_receipts_cases_5=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 248,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 9376,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_mutation_batch_profile_cases_6=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 236,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      }
+    ],
+    "identity_restart_and_refusals_verified": true,
+    "independent_shutdown": {
+      "group_reaped": true,
+      "natural_exit": false,
+      "observer_failed": true,
+      "independent_helper_topology_observed": false,
+      "user_wide_absent_before_group_cleanup": false,
+      "user_wide_quiet_after_exit": false
+    },
+    "diagnostic": "inventory_unavailable"
+  },
+  "interpretation": "ObservedCommand.start calls inventory.require_empty before WindowProcess.start/Popen. Missing exit_code with default no-child finish fields identifies failure of initial inventory before pairing driver spawn. The three prior identity stages and their exact API-key cleanup commands succeeded. No independent helper shutdown acceptance; retained scratch is not reported cleaned.",
+  "cause": "Unknown libproc failure; original probe returns only code2 without stage/errno. Do not infer Keychain denial, password failure, product leak or successful absence.",
+  "next": "Read-only three-sample staged libproc diagnostic; no Cryptex launch, profile access or Keychain operation; do not repeat full transfer package until cause known.",
+  "diagnostic_followup": {
+    "source": "ef28d58e726e438aed9f19fd19b1d51d71ad8100",
+    "ci": 43767799632,
+    "job": 132976722361,
+    "ci_result": "passed:29 window/inventory tests including actual Darwin standalone probe and prior orphan negatives;2 product-key helper and3 CI credential tests",
+    "package": "Cryptex-Mac-Kapanis-Tani-ef28d58.zip",
+    "package_sha256": "81cca9ee236a63b224f2d33d2338edc6097d692d494a9a295606db6e11cf9288",
+    "package_bytes": 8717,
+    "entry": "MAC-KAPANIS-TANI.command",
+    "result": "MAC-KAPANIS-TANI-SONUC-*.zip",
+    "package_validation": "all4 members, CRC, source bytes/hashes, executable modes and Python syntax checked",
+    "behavior": "Probe refuses exactly as before; adds closed stage, errno and returned API size on refusal. Diagnostic performs only compile and three queries with unused targets; aggregate counts only. No application/key/profile operations.",
+    "owner_result": "pending"
+  }
+}

@@ -1,5 +1,12 @@
 # M8 completion ledger
 
+Latest owner helper result f6e60eb8 FAILED at inventory_unavailable before pairing
+driver spawn. Earlier native CI stays passed; real-owner independent shutdown is
+not accepted. Three identity/refusal stages passed, but the full result did not.
+Read-only diagnostic ef28d58 passes native CI43767799632 and is ready for the
+owner. It adds fixed stage/errno metadata without relaxing process visibility or
+launching Cryptex. See [failure and handoff](../evidence/m8/m8-owner-helper-inventory-failure-20261115.json).
+
 Latest helper observation slice: [receipt](../evidence/m8/m8-independent-helper-shutdown-20261115.json)
 binds f7fe55f to passed Darwin collector CI43763552289 and scoped Mac/Windows
 application CI43763653794. The exported signed local pairing/import/reopen driver
