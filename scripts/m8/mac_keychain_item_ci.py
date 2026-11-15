@@ -34,8 +34,8 @@ def sanitize_probe(raw):
     return value
 
 
-def extract(archive, root):
-    if hashlib.sha256(archive.read_bytes()).hexdigest() != ARCHIVE_HASH:
+def extract(archive, root, expected_hash=ARCHIVE_HASH):
+    if hashlib.sha256(archive.read_bytes()).hexdigest() != expected_hash:
         raise PreflightError('archive_changed')
     with zipfile.ZipFile(archive) as source:
         infos = source.infolist()

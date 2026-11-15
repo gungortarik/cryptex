@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       mac_keychain_diagnostic_only:
-        description: Inspect exact synthetic credential metadata using pinned signed images; no ACL changes
+        description: Test exact synthetic CI Keychain permissions and startup using pinned signed images
         type: boolean
         default: false
       mac_window_collector_only:
@@ -65,19 +65,15 @@ jobs:
         with:
           persist-credentials: false
       - name: Test metadata output boundary
-        run: python3 -B -m unittest discover -s scripts/m8 -p 'test_mac_keychain_item_ci.py' -v
+        run: |
+          python3 -B -m unittest discover -s scripts/m8 -p 'test_mac_keychain_item_ci.py' -v
+          python3 -B -m unittest discover -s scripts/m8 -p 'test_mac_ci_credential*.py' -v
       - name: Download pinned development images
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download 43748758699 --repo gungortarik/cryptex --name mac-development-diagnostic --dir "$RUNNER_TEMP/keychain-artifact"
-      - name: Inspect generated item and reproduce headless startup
-        run: python3 -B scripts/m8/mac_keychain_item_ci.py "$RUNNER_TEMP/keychain-artifact/cryptex-mac-development-diagnostic.zip" "$RUNNER_TEMP/keychain-probe"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: mac-keychain-metadata
-          path: ${{ runner.temp }}/keychain-probe/keychain-item.json
-          retention-days: 2
+        run: gh run download 43759501863 --repo gungortarik/cryptex --name mac-development-diagnostic --dir "$RUNNER_TEMP/keychain-artifact"
+      - name: Test provisioned nonempty profile and exact cleanup
+        run: python3 -B scripts/m8/mac_ci_existing_profile_only.py "$RUNNER_TEMP/keychain-artifact/cryptex-mac-development-diagnostic.zip"
   mac-window-collector:
     if: github.event_name == 'workflow_dispatch' && inputs.mac_window_collector_only && !inputs.mac_keychain_diagnostic_only
     runs-on: macos-latest

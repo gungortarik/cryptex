@@ -108,8 +108,12 @@ class CredentialTests(unittest.TestCase):
                                  ('expected_keychain_status', -1), ('creator_cdhash_allowed', False),
                                  ('product_cdhash_allowed', not provisioned), ('match_count', True),
                                  ('secret', 'unexpected')):
-                with self.subTest(provisioned=provisioned, key=key, changed=changed), self.assertRaises(PreflightError):
-                    require_item(json.dumps(metadata(provisioned) | {key: changed}), provisioned)
+                captured = io.StringIO()
+                with self.subTest(provisioned=provisioned, key=key, changed=changed), redirect_stdout(captured):
+                    with self.assertRaises(PreflightError):
+                        require_item(json.dumps(metadata(provisioned) | {key: changed}), provisioned)
+                    self.assertNotIn('unexpected', captured.getvalue())
+                    self.assertNotIn('secret', captured.getvalue())
         for output in ('', 'CDHash=' + 'g' * 40, ('CDHash=' + 'a' * 40 + '\n') * 2):
             with self.assertRaises(PreflightError):
                 image_hash(output)

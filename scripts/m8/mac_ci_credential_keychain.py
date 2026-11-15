@@ -53,6 +53,12 @@ def require_item(output, provisioned):
             or value.get('product_cdhash_allowed') is not provisioned
             or any(type(value.get(k)) is not int or value[k] != expected for k, expected in (
                 ('match_count', 1), ('partition_acl_count', 1), ('partition_count', 2 if provisioned else 1)))):
+        # Fixed metadata only. Unknown fields and non-scalar values never leave
+        # the process, even when the probe response itself is malformed.
+        safe = {key: item for key, item in value.items()
+                if key in allowed and (type(item) is bool or
+                                       type(item) is int and -(2**31) <= item < 2**31)} if isinstance(value, dict) else {}
+        print(json.dumps({'ciCredentialMetadata': safe, 'provisioned': provisioned}), flush=True)
         raise PreflightError('ci_credential_item_not_exact')
 
 
