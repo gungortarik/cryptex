@@ -982,13 +982,17 @@ pub(crate) struct StatusReader {
     sender: mpsc::SyncSender<Query>,
     state: Arc<AtomicU8>,
     profile_root: PathBuf,
+    namespace: Arc<crate::import_staging::macos_fs::Directory>,
 }
 impl StatusReader {
     pub(crate) fn belongs_to_runtime(&self, root: &Path) -> bool {
-        self.profile_root == root.join("managed-transport")
+        self.profile_root == root.join("managed-transport") && self.namespace.validate().is_ok()
     }
     pub(crate) fn try_transport_device_id(&self) -> Result<String, Error> {
-        self.call(Work::Observe)
+        self.namespace.validate().map_err(|_| Error::Profile)?;
+        let identity = self.call(Work::Observe)?;
+        self.namespace.validate().map_err(|_| Error::Profile)?;
+        Ok(identity)
     }
     fn call(&self, work: Work) -> Result<String, Error> {
         if self.state.load(Ordering::Acquire) != READY {
@@ -1024,13 +1028,24 @@ impl Worker {
         Self::spawn_inner(root, create, false)
     }
     fn spawn_inner(root: PathBuf, create: bool, combined: bool) -> Result<Self, Error> {
-        let root = if create {
-            create_root(&root)?
+        let requested_root = root.clone();
+        let (root, namespace) = if create {
+            let canonical = create_root(&root)?;
+            let namespace = crate::import_staging::macos_fs::Directory::open(&root, true)
+                .map_err(|_| Error::Profile)?;
+            (canonical, namespace)
         } else {
-            let root = root.canonicalize().map_err(|_| Error::Profile)?;
-            private_root(&root)?;
-            root
+            // Check the requested spelling before canonicalizing a launch
+            // locator. Only the adapter's exact OS-owned aliases may pass;
+            // a user-controlled symlink cannot acquire a runtime association.
+            let namespace = crate::import_staging::macos_fs::Directory::open(&root, true)
+                .map_err(|_| Error::Profile)?;
+            let canonical = root.canonicalize().map_err(|_| Error::Profile)?;
+            private_root(&canonical)?;
+            (canonical, namespace)
         };
+        namespace.validate().map_err(|_| Error::Profile)?;
+        let namespace = Arc::new(namespace);
         let (sender, receive) = mpsc::sync_channel::<Query>(8);
         let state = Arc::new(AtomicU8::new(OPENING));
         let stop = Arc::new(AtomicBool::new(false));
@@ -1038,7 +1053,8 @@ impl Worker {
         let read = StatusReader {
             sender,
             state: state.clone(),
-            profile_root: root.clone(),
+            profile_root: requested_root,
+            namespace: Arc::clone(&namespace),
         };
         let worker_stop = stop.clone();
         let record = credential.clone();
@@ -1046,7 +1062,9 @@ impl Worker {
             .name("mac-transport-native-owner".into())
             .spawn(move || {
                 let result = (|| {
+                    namespace.validate().map_err(|_| Error::Profile)?;
                     let mut helper = Helper::start(&root, &record, combined)?;
+                    namespace.validate().map_err(|_| Error::Profile)?;
                     state.store(READY, Ordering::Release);
                     while !worker_stop.load(Ordering::Acquire) {
                         match receive.recv_timeout(Duration::from_millis(250)) {
@@ -1376,6 +1394,28 @@ pub fn check(root: &Path) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn requested_runtime_binding_retains_its_namespace_and_never_grants_readiness() {
+        use std::os::unix::fs::{DirBuilderExt, symlink};
+        let parent = crate::test_temp::exclusive_temp_dir("mac-reader-runtime-binding");
+        let root = parent.join("runtime");
+        let profile = root.join("managed-transport");
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&profile).unwrap();
+        let namespace = Arc::new(crate::import_staging::macos_fs::Directory::open(&profile, true).unwrap());
+        let (sender, _receiver) = mpsc::sync_channel(1);
+        let reader = StatusReader { sender, state: Arc::new(AtomicU8::new(OPENING)), profile_root: profile.clone(), namespace };
+        assert!(reader.belongs_to_runtime(&root));
+        assert!(reader.try_transport_device_id().is_err()); // Association is not readiness/authority.
+        assert!(!reader.belongs_to_runtime(&parent));
+        std::fs::rename(&profile, root.join("preserved")).unwrap();
+        std::fs::DirBuilder::new().mode(0o700).create(&profile).unwrap();
+        assert!(!reader.belongs_to_runtime(&root));
+        assert!(reader.try_transport_device_id().is_err());
+        let link = parent.join("untrusted-alias");
+        symlink(&profile, &link).unwrap();
+        assert!(crate::import_staging::macos_fs::Directory::open(&link, true).is_err());
+        std::fs::remove_dir_all(parent).unwrap();
+    }
     #[test]
     fn observation_diagnostics_preserve_success_and_typed_failures() {
         assert_eq!(observe_phase("session", || Ok(17)), Ok(17));
