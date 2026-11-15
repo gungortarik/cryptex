@@ -262,7 +262,9 @@ impl Directory {
         self.validate()?;
         let normalized = normalize(path)?;
         let base = normalize(&self.path)?;
-        let suffix = normalized.strip_prefix(&base).map_err(|_| unsafe_object())?;
+        let suffix = normalized
+            .strip_prefix(&base)
+            .map_err(|_| unsafe_object())?;
         let mut result = Self {
             path: path.to_owned(),
             files: self.files.clone(),
@@ -302,7 +304,10 @@ impl Directory {
     }
 
     fn last(&self) -> io::Result<&File> {
-        self.files.last().map(AsRef::as_ref).ok_or_else(unsafe_object)
+        self.files
+            .last()
+            .map(AsRef::as_ref)
+            .ok_or_else(unsafe_object)
     }
 
     pub(crate) fn validate(&self) -> io::Result<()> {
@@ -754,7 +759,9 @@ mod tests {
     fn runtime_pins_share_original_ancestors_and_release_descriptors() {
         let root = root();
         let identity = RuntimeIdentity::capture(&root).unwrap();
-        let initial = identity.pins.borrow()[&normalize(&root).unwrap()].files.len();
+        let initial = identity.pins.borrow()[&normalize(&root).unwrap()]
+            .files
+            .len();
         for index in 0..32 {
             let child = root.join(format!("child-{index}"));
             create_dir(&child).unwrap();
@@ -763,10 +770,16 @@ mod tests {
         }
         let weak = {
             let pins = identity.pins.borrow();
-            let distinct = pins.values().flat_map(|p| p.files.iter())
-                .map(Arc::as_ptr).collect::<std::collections::HashSet<_>>();
+            let distinct = pins
+                .values()
+                .flat_map(|p| p.files.iter())
+                .map(Arc::as_ptr)
+                .collect::<std::collections::HashSet<_>>();
             assert_eq!(distinct.len(), initial + 32);
-            pins.values().flat_map(|p| p.files.iter()).map(Arc::downgrade).collect::<Vec<_>>()
+            pins.values()
+                .flat_map(|p| p.files.iter())
+                .map(Arc::downgrade)
+                .collect::<Vec<_>>()
         };
         identity.validate().unwrap();
         drop(identity);

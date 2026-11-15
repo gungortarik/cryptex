@@ -244,7 +244,7 @@ pub(super) fn resume(root: &Path, path: &Path) -> Result<(), ImportStagingError>
     )
 }
 
-fn pin_roots(root: &Path) -> Result<Vec<File>, ImportStagingError> {
+fn pin_roots(root: &Path) -> Result<Vec<DirectoryPin>, ImportStagingError> {
     ensure_existing_plain_directory(&root.join("canonical/events"))?;
     let mut pins = inspect_directory_chain(root, true)?;
     for relative in [
