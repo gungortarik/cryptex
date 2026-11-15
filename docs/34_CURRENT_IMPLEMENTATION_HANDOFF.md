@@ -1,5 +1,33 @@
 # 34 — Current Implementation Handoff
 
+## Owner Mac window lifecycle passed — November15
+
+Latest owner return `MAC-PENCERE-SONUC-4692ce47.zip` PASSES the bounded window test
+on binary/collectord3927b4. CRC, source IDs and all acceptance fields were checked
+against the delivered package and collector. See
+[owner acceptance](../evidence/m8/m8-mac-window-owner-acceptance-20261115.json).
+All10 owner visual observations are positive: opening/draft, menu and Dock reopen,
+second launch, Quit Cancel, confirmed discard/Quit, restart without discarded draft,
+clean Quit, and explanation Quit. First opening and restart each complete5 Keychain
+reads and sample1 daemon. All3 launches naturally exit0 with no live same-group
+child before cleanup and no timeout/output/observer failure. Explanation Quit
+samples0 daemons. Sampled daemon PID sets stay stable through reopen/Cancel;
+canonical bytes and device UUID checks pass. Exact generated-key and temporary
+runtime cleanup pass. Helper shutdown relies on the product exit0 contract, not
+independent out-of-group enumeration. Evidence is owner-supplied aggregates and
+E/H observations, not independent physical attestation.
+
+This closes ONLY the explicit-existing-profile shared-UI window test with real
+HOME retained. Do NOT rerun the unchanged package. It does not establish normal
+no-argument/default-profile acceptance, OS permission denial, independent helper
+disappearance, fresh-session replay, personal-profile migration or cross-device
+sync. Native CI43748758699's headless Keychain wait/Deadline remains FAILED and
+is not superseded by interactive owner success. M8 remains OPEN. Next continuation:
+normal default-profile/product acceptance and the headless OS-access prerequisite,
+then the remaining real cross-device durable sync gates. Earlier failed receipts
+below remain historical; the current return supports the context correction but
+does not reveal the earlier missing/platform OSStatus retroactively.
+
 ## Window test Keychain context correction — November15
 
 Returned `MAC-PENCERE-SONUC-930b7dfe.zip` FAILED after fixture creation succeeded.
@@ -35,15 +63,14 @@ The headless ExistingProfile startup still FAILED: key_store begin without retur
 content_bind Deadline, exit2; no collector timeout/output/pipe failure. Do not
 relabel this as passing CI or confuse it with the owner's synchronous store error.
 
-NEW owner package READY in Downloads: `Cryptex-Mac-Pencere-d3927b4.zip`.
+Owner package (bounded execution now passed; see latest receipt above): `Cryptex-Mac-Pencere-d3927b4.zip`.
 Apple Silicon/macOS26+; expires2026-11-16T18:50:13Z (13:50 New York).
 CRC/all20 member hashes/executable modes/Python syntax and byte-identical signed
 images from artifact14175866410 verified. See
 [package evidence](../evidence/m8/m8-mac-window-context-package-20261115.json).
-Next owner step: extract the NEW ZIP, open MAC-PENCERE.command, choose Open local
-memory on the first opening and follow E/H prompts; return result ZIP even if it
-fails. The collector uses the explicit UI diagnostic and keeps OS HOME intact.
-No owner success is established yet. Do not send/rerun old temporary-HOME packages.
+The collector uses the explicit UI diagnostic and keeps OS HOME intact. The
+returned owner acceptance above supersedes this package's pending execution state.
+Do not rerun it or send the old temporary-HOME packages.
 
 ## Window owner receipt and corrected first step — November15
 

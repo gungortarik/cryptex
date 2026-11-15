@@ -4,6 +4,17 @@ Updated 2026-11-15. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
+Latest bounded window acceptance: [owner return4692ce47](../evidence/m8/m8-mac-window-owner-acceptance-20261115.json)
+passes the explicit-existing-profile shared product UI on d3927b4 with real HOME
+retained:10 positive owner observations,3 natural exit0 launches,10 completed
+Keychain reads, unchanged canonical bytes and exact test-key/runtime cleanup.
+Reopen/Cancel preserve the sampled daemon PID set and owner-reported draft.
+This closes that window exercise only; do not repeat the unchanged package.
+Normal default-profile acceptance, headless CI Keychain startup, OS denial,
+independent helper enumeration, fresh-session replay and cross-device sync are
+not established by this receipt. Full M8 status remains OPEN. Follow the current
+handoff for the continuation point; earlier source-specific notes remain historical.
+
 Latest bounded integration: [Darwin filesystem/native existing-profile review](../evidence/m8/m8-macos-filesystem-native-integration-review-20261114.md)
 and [receipt](../evidence/m8/m8-macos-filesystem-native-integration.json) bind
 `d9561d8` to passed full43671790009 and native43671787980. Mac589/Windows682daemon

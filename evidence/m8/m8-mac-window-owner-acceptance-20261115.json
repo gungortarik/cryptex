@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "status": "bounded_owner_window_acceptance_passed",
+  "receipt": "MAC-PENCERE-SONUC-4692ce47.zip",
+  "receipt_sha256": "bc189bcb7c21f1fc4d794d5577f9e3b64aae306b64cfa1ca7407c9ab7b7ab142",
+  "binary_source": "d3927b4083d192e80e3d5ca736e41fd35705bf2e",
+  "collector_source": "d3927b4083d192e80e3d5ca736e41fd35705bf2e",
+  "scope": "shared product UI through explicit existing-profile diagnostic; real HOME retained; not normal default-profile or M8 acceptance",
+  "evidence_origin": "Owner-supplied collector aggregates and E/H visual observations; archive inspected locally, no independent physical observation or attestation.",
+  "owner_observations": {
+    "opened_and_draft_entered": true,
+    "menu_reopen_kept_draft": true,
+    "dock_reopen_kept_draft": true,
+    "ready_for_second_launch": true,
+    "second_launch_kept_draft": true,
+    "quit_cancel_kept_draft": true,
+    "quit_discard_confirmed": true,
+    "restart_opened_without_draft": true,
+    "clean_quit_without_discard_prompt": true,
+    "opening_explanation_cancel": true
+  },
+  "launches": {
+    "window_session": {
+      "exit_code": 0,
+      "natural_exit": true,
+      "same_group_live_descendants_before_cleanup": 0,
+      "group_reaped": true,
+      "timed_out": false,
+      "output_limited": false,
+      "observer_failed": false,
+      "sampled_daemon_count": 1,
+      "key_store_reads_completed": 5
+    },
+    "restart": {
+      "exit_code": 0,
+      "natural_exit": true,
+      "same_group_live_descendants_before_cleanup": 0,
+      "group_reaped": true,
+      "timed_out": false,
+      "output_limited": false,
+      "observer_failed": false,
+      "sampled_daemon_count": 1,
+      "key_store_reads_completed": 5
+    },
+    "opening_cancel": {
+      "exit_code": 0,
+      "natural_exit": true,
+      "same_group_live_descendants_before_cleanup": 0,
+      "group_reaped": true,
+      "timed_out": false,
+      "output_limited": false,
+      "observer_failed": false,
+      "sampled_daemon_count": 0,
+      "key_store_reads_completed": 0
+    }
+  },
+  "commands": [
+    {
+      "stage": "create_isolated_profile",
+      "exit_code": 0,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "progress": []
+    },
+    {
+      "stage": "second_window_launch",
+      "exit_code": 0,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "progress": []
+    },
+    {
+      "stage": "cleanup_exact_test_key",
+      "exit_code": 0,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "progress": []
+    }
+  ],
+  "checks": {
+    "captured_groups_reaped": true,
+    "menu_reopen_same_observed_daemon_pids": true,
+    "dock_reopen_same_observed_daemon_pids": true,
+    "second_launch_same_observed_daemon_pids": true,
+    "quit_cancel_same_observed_daemon_pids": true,
+    "canonical_unchanged_after_quit": true,
+    "canonical_unchanged_after_restart": true,
+    "cancel_no_daemon_sampled": true,
+    "cancel_canonical_and_device_id_unchanged": true,
+    "service_shutdown_via_product_exit_verified": true,
+    "credential_cleanup_verified": true,
+    "runtime_cleanup_verified": true
+  },
+  "ci_startup_passed": false,
+  "not_established": [
+    "independent out-of-group helper enumeration",
+    "OS permission denial",
+    "fresh native session replay",
+    "real personal-profile migration",
+    "cross-device sync",
+    "public signing/distribution",
+    "normal default-profile acceptance",
+    "headless CI startup success",
+    "full M8 completion"
+  ],
+  "interpretation": "The corrected real-HOME explicit-profile UI diagnostic succeeds on the owner Mac. This supports the context correction, but does not retroactively establish the exact OSStatus of the earlier failed receipt. All earlier failures remain historical. Helper shutdown relies on product exit0 contract; no independent out-of-group enumeration was performed.",
+  "next": "Do not rerun this unchanged window package. Continue with normal default-profile/product acceptance and unresolved headless Keychain startup, then cross-device durable sync gates."
+}

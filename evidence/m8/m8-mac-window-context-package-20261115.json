@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "owner_execution_pending",
+  "status": "bounded_owner_execution_passed",
   "scope": "same product UI/native gates through explicit existing private temporary profile; OS HOME retained; not normal default-profile or M8 acceptance",
   "source": "d3927b4083d192e80e3d5ca736e41fd35705bf2e",
   "collector_source": "d3927b4083d192e80e3d5ca736e41fd35705bf2e",
@@ -25,7 +25,6 @@
   },
   "review": "Independent read-only review of7be9d96: no actionable finding; subsequent changes formatting and test selection only.",
   "not_established": [
-    "owner UI success on this package",
     "normal default-profile acceptance",
     "headless normal startup success",
     "independent out-of-group helper enumeration",
@@ -34,5 +33,6 @@
     "personal-profile migration",
     "cross-device sync",
     "M8 completion"
-  ]
+  ],
+  "owner_acceptance": "m8-mac-window-owner-acceptance-20261115.json"
 }
