@@ -1,0 +1,75 @@
+{
+  "status": "passed_bounded_interactive_owner_startup",
+  "evidence_kind": "owner-returned aggregate report; ZIP/schema/source/command outcomes inspected locally; physical execution not independently observed",
+  "archive": "MAC-BASLANGIC-TANI-SONUC-0540d16b.zip",
+  "archive_sha256": "17330bd05d9e86efcb6c21299e2a91b9d5dd338c54f90e52c07bddc4ff71892a",
+  "result_sha256": "d34647b21ed49d942a4a70326f0645f5ef7e46a96ae6d42032982dae7983ec0e",
+  "binary_source": "2af7bcc50f0a586a7f6303b0f186554ee0e2096e",
+  "collector_source": "52c5e071cc8d3b1e5a2189ad2b53766174c08229",
+  "reported_outcome": "cold_start_and_restart_passed",
+  "commands": [
+    {
+      "stage": "create_isolated_profile",
+      "exit_code": 0,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "key_store_completions": 0
+    },
+    {
+      "stage": "cold_start",
+      "exit_code": 0,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "key_store_completions": 5
+    },
+    {
+      "stage": "restart_1",
+      "exit_code": 0,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "key_store_completions": 5
+    },
+    {
+      "stage": "restart_2",
+      "exit_code": 0,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "key_store_completions": 5
+    },
+    {
+      "stage": "cleanup_exact_test_key",
+      "exit_code": 0,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "key_store_completions": 0
+    }
+  ],
+  "verified_report_flags": {
+    "captured_group_reaped": true,
+    "cold_start_passed": true,
+    "canonical_unchanged": true,
+    "credential_cleanup_verified": true,
+    "runtime_cleanup_verified": true
+  },
+  "separate_existing_identity_access_used": false,
+  "owner_observation": {
+    "macos_keychain_prompt_appeared": true,
+    "owner_entered_password": true,
+    "password_acceptance_not_directly_observed": true,
+    "interpretation": "The run included OS interaction and native cold-start/restarts completed. The collector cold_start label does not establish zero OS interaction; the prompt phase was not reported.",
+    "prompt_stage": "not reported; may have been during profile creation or native startup"
+  },
+  "limits": [
+    "CI OS-store wait remains unresolved; owner interaction supports but does not prove its precise cause",
+    "No unattended first-start acceptance",
+    "No installed window/tray/single-instance/reopen acceptance",
+    "No peer/folder product export or Windows-Mac durable network acceptance",
+    "M8 remains open"
+  ],
+  "next": "Implement explicit credential-readiness/startup UX and installed lifecycle; retain native image/session deadlines and existing-profile no-regeneration rules. Do not repeat this owner diagnostic unchanged."
+}

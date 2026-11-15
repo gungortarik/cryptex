@@ -1,5 +1,5 @@
 {
-  "status": "native_development_startup_blocked_in_keychain_read",
+  "status": "bounded_interactive_owner_startup_passed_ci_keychain_gate_open",
   "source": "7928539",
   "scope": "controlled local-certificate development startup; not public release or M8 completion",
   "review": {
@@ -78,13 +78,15 @@
     "source": "2af7bcc50f0a586a7f6303b0f186554ee0e2096e",
     "scope": "fresh isolated profile; cold startup before any explicit product identity access; no ACL changes or secret export",
     "result_rule": "post-access success cannot replace failed cold startup; original generated identity is frozen before work; changed/missing metadata refuses key cleanup; verified exact key, captured group and runtime cleanup required",
-    "delivery": "prepared locally; physical execution pending",
+    "delivery": "returned and inspected: MAC-BASLANGIC-TANI-SONUC-0540d16b.zip",
     "collector_source": "52c5e071cc8d3b1e5a2189ad2b53766174c08229",
     "artifact_id": 14170299457,
     "file": "Cryptex-Mac-Baslangic-Tani-2af7bcc-52c5e07.zip",
     "sha256": "2f40c3a94829868f8bf7da7d437740d2ffe392e85103b68426b0a8570c64f85d",
     "architecture": "arm64",
     "expires_utc": "2026-11-16T16:33:09+00:00",
-    "packaging_check": "Downloaded CI public candidate; immutable signed files verified against manifest; collector updated separately; all delivered member SHA256 and ZIP CRC checks passed"
+    "packaging_check": "Downloaded CI public candidate; immutable signed files verified against manifest; collector updated separately; all delivered member SHA256 and ZIP CRC checks passed",
+    "owner_receipt": "evidence/m8/m8-development-owner-startup-20261115.json",
+    "owner_outcome": "cold_start_and_restart_passed, with owner-reported OS permission/password interaction during run; not unattended startup"
   }
 }

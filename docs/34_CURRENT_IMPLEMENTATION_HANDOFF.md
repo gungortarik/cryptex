@@ -2,6 +2,27 @@
 
 ## Normal product-flow continuation — November15
 
+Latest owner return: MAC-BASLANGIC-TANI-SONUC-0540d16b.zip PASSED the bounded
+existing-profile startup diagnostic on binary2af7bcc / collector52c5e07.
+All five commands exit0 without timeout/output/pipe failure; first startup and two
+restarts each complete five Keychain reads and native/Unix setup. Canonical bytes,
+exact generated-key cleanup, captured-group reaping and runtime cleanup all pass.
+The separate existing-identity access branch was NOT used. The owner explicitly
+reported a macOS permission window and entering a password, unsure of its result.
+The prompt phase was not reported (profile creation versus native startup).
+Accept this INTERACTIVE run, not unattended/headless startup; the password result
+itself is not in the receipt. Owner-reported aggregate evidence,
+not independently observed physical execution. See
+[evidence](../evidence/m8/m8-development-owner-startup-20261115.json).
+
+Do not repeat this unchanged diagnostic. Next: explicit credential-readiness /
+startup UX and installed window/tray/single-instance/reopen lifecycle, then the
+already-authorized peer/export integration. CI's OS-store wait remains unresolved;
+owner interaction supports an authorization-related hypothesis but does not prove
+the precise CI cause. Keep native deadlines and no-regeneration behavior; do not
+relax ACLs or call M8 complete. The historical handoff below describes the packet
+that produced this accepted bounded owner return.
+
 Owner decision received: "Önerilen ürün entegrasyonunu uygula". The proposal and
 ADR-0020/0021 scope amendment now authorize controlled development integration.
 Do not ask again. Implementation/CI/review, not authority, is the current gate.
@@ -53,17 +74,17 @@ were verified. Owner package in Downloads:
 Cryptex-Mac-Baslangic-Tani-2af7bcc-52c5e07.zip (arm64; expires
 2026-11-16T16:33:09Z). SHA256:
 2f40c3a94829868f8bf7da7d437740d2ffe392e85103b68426b0a8570c64f85d.
-Next external step: owner runs MAC-BASLANGIC-TANI.command on their Mac and returns
-MAC-BASLANGIC-TANI-SONUC-*.zip plus whether a system permission dialog appeared.
-Do not repeat old transfer fixtures or relabel post-access success as cold-start
-success. If expired, regenerate the candidate with the same reviewed collector.
+Owner return is now recorded above. No further run of this packet is needed.
+The archive was only a startup diagnostic; its expiry does not invalidate the
+already received evidence.
 
 Local Rust remains blocked by Application Control4551. Six Python startup-checker,
 six diagnostic-package, two content-diagnostic and six bounded-runner tests
-passed locally. No native product acceptance is established. See the review
+passed locally. Interactive bounded owner startup is accepted above; installed
+product and unattended startup remain unaccepted. See the review
 receipt for exact CI source/results.
 
-Still pending in this slice: native acceptance and installed normal-window UX
+Still pending in this slice: unattended startup and installed normal-window UX
 (including close-to-tray/single-instance/reopen), fresh-profile provisioning and
 owner publisher packaging. Do not substitute the diagnostic for those checks.
 Peer/folder policy, outgoing export and the combined real-device package are not
