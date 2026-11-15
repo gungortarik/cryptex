@@ -329,10 +329,15 @@ fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
     }
     if args.first().map(String::as_str) == Some("brain-only-v1") {
         let [_, flag, root, confirm] = args else {
-            return Err(LifecycleError::Usage("brain-only-v1 requires --runtime-root <fresh-pilot> --confirm-isolated-pilot".into()));
+            return Err(LifecycleError::Usage(
+                "brain-only-v1 requires --runtime-root <fresh-pilot> --confirm-isolated-pilot"
+                    .into(),
+            ));
         };
         if flag != "--runtime-root" || confirm != "--confirm-isolated-pilot" {
-            return Err(LifecycleError::Usage("invalid brain fixture arguments".into()));
+            return Err(LifecycleError::Usage(
+                "invalid brain fixture arguments".into(),
+            ));
         }
         let root = Path::new(root);
         validate_pilot_fixture_root(root)?;
@@ -1792,13 +1797,15 @@ mod tests {
 
     #[test]
     fn brain_only_fixture_requires_explicit_confirmation() {
-        assert!(run(vec![
-            "pilot-fixture".into(),
-            "brain-only-v1".into(),
-            "--runtime-root".into(),
-            "unused".into(),
-        ])
-        .is_err());
+        assert!(
+            run(vec![
+                "pilot-fixture".into(),
+                "brain-only-v1".into(),
+                "--runtime-root".into(),
+                "unused".into(),
+            ])
+            .is_err()
+        );
     }
 
     #[test]
