@@ -21,7 +21,9 @@ IDENTITY_MARKERS = (
 
 MARKERS = ("native_managed_transport_pairing=passed",
            "native_managed_pairing_clean_shutdown=passed",
-           "native_managed_pairing_restart_idempotent=passed")
+           "native_managed_pairing_restart_idempotent=passed",
+           "native_existing_profile_signed_import=passed",
+           "native_existing_profile_restart_replay_and_local_status=passed")
 
 
 def _metadata(path):

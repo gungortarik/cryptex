@@ -4,6 +4,10 @@
 mod approval_domain;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
 pub(crate) mod local_native;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+mod native_domain;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+pub(crate) mod native_profile;
 
 use std::collections::HashMap;
 use std::fs;

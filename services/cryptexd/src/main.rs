@@ -100,7 +100,7 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
 fn run_with_ready(
     args: Vec<String>,
     ordinary_ipc: bool,
-    ready: &mut dyn FnMut(&Path, &cryptexd::instance::InstanceLock) -> Result<(), LifecycleError>,
+    ready: &mut dyn FnMut(&Path, &mut cryptexd::instance::InstanceLock) -> Result<(), LifecycleError>,
 ) -> Result<(), LifecycleError> {
     if args.is_empty() {
         println!("cryptexd M0 foundation");
@@ -803,7 +803,7 @@ fn enroll_local_with_platform_store(
 fn run_lifecycle(
     args: &[String],
     ordinary_ipc: bool,
-    ready: &mut dyn FnMut(&Path, &cryptexd::instance::InstanceLock) -> Result<(), LifecycleError>,
+    ready: &mut dyn FnMut(&Path, &mut cryptexd::instance::InstanceLock) -> Result<(), LifecycleError>,
 ) -> Result<(), LifecycleError> {
     #[cfg(windows)]
     let _ = ordinary_ipc;
@@ -870,7 +870,7 @@ fn run_lifecycle(
             }
             ensure_runtime_root(&opts.runtime_root)?;
             // Acquire the single-instance lock before any durable identity writes.
-            let lock = try_acquire_instance(&opts.runtime_root)?;
+            let mut lock = try_acquire_instance(&opts.runtime_root)?;
             recover_writer_state_before_start(&opts.runtime_root, &lock)?;
             let install = prepare_m1_runtime_foundation(&opts.runtime_root)
                 .map_err(|e| e.into_lifecycle())?;
@@ -910,7 +910,7 @@ fn run_lifecycle(
             }
             // Readiness remains progress. The disabled signed-startup adapter
             // independently reattributes the ready phase to this live child.
-            ready(&opts.runtime_root, &lock)?;
+            ready(&opts.runtime_root, &mut lock)?;
 
             match opts.mode {
                 HoldMode::UntilStopFile(stop) => wait_for_stop_file(&stop),

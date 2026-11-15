@@ -6,7 +6,10 @@ use std::path::{Component, Path, PathBuf};
 
 use cryptex_events::TrustedDaemonKeyResolver;
 
+#[cfg(windows)]
 use super::worker::StatusReader;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+use crate::m8_owner_channel::transport_helper::StatusReader;
 use crate::incoming_publication::{IncomingPublicationError, IncomingPublicationReport};
 use crate::instance::InstanceLock;
 use crate::runtime_admission::AdmissionError;
@@ -109,6 +112,10 @@ impl IncomingController {
         if instance.path() != crate::paths::lock_path(&self.root) {
             return Err(IncomingControllerError::WrongRuntime);
         }
+        #[cfg(target_os = "macos")]
+        if !transport.belongs_to_runtime(&self.root) {
+            return Err(IncomingControllerError::WrongRuntime);
+        }
         let Some(paths) = self.pending.as_ref() else {
             return Ok(IncomingTick::Idle);
         };
@@ -195,5 +202,5 @@ fn require_transport_binding<S: SecureStore + ?Sized>(
     verify().ok_or(IncomingControllerError::BindingUnavailable)
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests;

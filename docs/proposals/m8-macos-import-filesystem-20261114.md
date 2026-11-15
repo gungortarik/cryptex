@@ -59,3 +59,49 @@ Keep ordinary activation closed until the required reviewed configured image
 policy and native/product acceptance are satisfied. Prepare a concrete native
 Desktop/daemon package and acceptance evidence; do not count an isolated helper
 or a source-only integration as full installed-product/M8 completion.
+
+## Default-off existing-profile integration candidate
+
+`ExistingProfile` is a distinct, explicitly selected local-development mode. The
+normal product gate stays disabled. It uses the independently pinned signer,
+CMS inventory, protected frontend and per-message native allocation seal, with
+an explicit SDK/runtime macOS26 refusal before profile preparation. The daemon
+opens an already initialized, private, outside-repository Keychain profile; it
+never enrolls/replaces a Brain, generates a signing key, seeds a note, trusts an
+incoming role/PID, recognizes a fixture fault request ID or falls back to Unix.
+The shared dispatcher owns connection-local pending sessions and retains the
+actual admission permit through the bounded send. The isolated test driver is
+only a wrapper and keeps its seeding/status/fault behavior outside that core.
+
+One mutable instance owner serializes domain work and incoming publication.
+Before native readiness, authenticated peer identities establish empty canonical
+lock slots and full R4 recovery plus M3/M4 rebuild establishes derived watermarks.
+The original namespace is retained; startup failure never enables a reader.
+Already enrolled transport helpers can reopen outside the temporary directory
+only with private no-follow ancestor/ACL checks, the original directory capability,
+image/native ownership and exact active-file cleanup identity. No implicit helper
+profile creation or peer/folder configuration is added by the product mode.
+
+The real helper StatusReader allocation is runtime-bound; fresh observations and
+canonical local transport bindings precede exclusive incoming publication.
+Bounded, descriptor-based inbox discovery produces hints only. A process-local
+ctime/inode/size/mtime cache suppresses unchanged completed/rejected hints, never
+supplies trust or bytes, and is discarded on restart. Publisher verification and
+idempotent replay remain mandatory. Waiting/deferred/held hints stay pending;
+unknown or overflowing discovery remains explicit attention. Ordinary admission
+is released before exclusive import. Native backend heartbeat and owner requests
+run on one serialized owner, not a second instance or a cloned writer lease.
+
+Native status has no protected/replicated success state and always reports remote
+durability as unverified. Held/rejected/unavailable outcomes are attention; loss
+of status replaces earlier success with unavailable. The normal legacy CLI
+metadata diagnostic is unchanged. No renderer command supplies import hints,
+paths, native content binding, signing keys or filesystem access.
+
+The extended signed pairing harness must open this existing-profile mode, copy
+only untrusted transport bytes, publish through the real owned controller,
+restart/replay without event changes, and reject an old on-wire confirmation and
+Desktop-local handle. This is a local two-engine integration receipt, not another
+physical Mac/device transfer or power-loss certification. Full installed-product
+activation, actual peer/folder synchronization and remote durability acceptance
+remain distinct gates.

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { parseNativeProfileStatus, nativeProfileMessage, type NativeProfileStatus } from "./native-profile-status.mjs";
 import { completionMessages, pairingRejectionStatus, reviewMessages, swappedPairingField } from "./pairing-status.mjs";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -169,6 +170,27 @@ function displayTimelineDate(value: string): string {
 }
 
 export function App() {
+  const [nativeProfile, setNativeProfile] = useState<{ active: boolean; status: NativeProfileStatus | null }>({ active: false, status: null });
+  useEffect(() => {
+    let disposed = false;
+    let active = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      try {
+        const status = parseNativeProfileStatus(await invoke<unknown>("m8_native_profile_status"));
+        if (!status) throw new Error("native_profile_status_unavailable");
+        active = true;
+        if (!disposed) setNativeProfile({ active: true, status });
+      } catch {
+        if (!disposed && active) setNativeProfile({ active: true, status: null });
+      }
+      // Normal/unsupported modes have no native profile route. Do not poll or
+      // claim that their metadata-only diagnostics are product protection.
+      if (!disposed && active) timer = setTimeout(refresh, 5000);
+    };
+    void refresh();
+    return () => { disposed = true; if (timer !== undefined) clearTimeout(timer); };
+  }, []);
   const isMac = navigator.platform.toLowerCase().includes("mac");
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -1056,6 +1078,12 @@ export function App() {
       </aside>
 
       <section className="workspace" id="home">
+        {nativeProfile.active && (
+          <section className="vault-panel" aria-label="Device status" role="status">
+            <p className="panel-kicker">Device status</p>
+            <p>{nativeProfileMessage(nativeProfile.status)}</p>
+          </section>
+        )}
         <header className="topbar">
           <div className="wordmark">Cryptex</div>
           <div className={`connection-state state-${connection}`} role="status">

@@ -19,6 +19,7 @@ const EPOCH_FLAG: &str = "--m8-local-startup-epoch";
 const CONTENT_EPOCH_FLAG: &str = "--m8-local-content-epoch";
 const DURABLE_CREATE_FLAG: &str = "--m8-local-durable-create-epoch";
 const DURABLE_RESUME_FLAG: &str = "--m8-local-durable-resume-epoch";
+const EXISTING_PROFILE_FLAG: &str = "--m8-local-existing-profile-epoch";
 const TRANSPORT_CREATE_FLAG: &str = "--m8-local-transport-create-epoch";
 const TRANSPORT_RESUME_FLAG: &str = "--m8-local-transport-resume-epoch";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,6 +29,8 @@ pub enum ContentProfile {
     KeychainResume,
     TransportCreate,
     TransportResume,
+    /// Default-off development integration: existing Keychain profile, no seed.
+    ExistingProfile,
 }
 impl ContentProfile {
     fn flag(self) -> &'static str {
@@ -37,13 +40,14 @@ impl ContentProfile {
             Self::KeychainResume => DURABLE_RESUME_FLAG,
             Self::TransportCreate => TRANSPORT_CREATE_FLAG,
             Self::TransportResume => TRANSPORT_RESUME_FLAG,
+            Self::ExistingProfile => EXISTING_PROFILE_FLAG,
         }
     }
     pub(crate) fn resumes(self) -> bool {
-        matches!(self, Self::KeychainResume | Self::TransportResume)
+        matches!(self, Self::KeychainResume | Self::TransportResume | Self::ExistingProfile)
     }
     pub(crate) fn transport(self) -> bool {
-        matches!(self, Self::TransportCreate | Self::TransportResume)
+        matches!(self, Self::TransportCreate | Self::TransportResume | Self::ExistingProfile)
     }
 }
 const RELEASE: &str = "m8-local-startup-v1";
@@ -283,6 +287,9 @@ impl Prepared {
         Self::current_profile(timeout, ContentProfile::Ephemeral)
     }
     pub fn current_profile(timeout: Duration, profile: ContentProfile) -> Result<Self, Error> {
+        if profile == ContentProfile::ExistingProfile {
+            crate::import_staging::macos_fs::require_product_os().map_err(|_| Error::Image)?;
+        }
         let mut prepared = Self::current_desktop(timeout)?;
         prepared.release.frontend()?;
         prepared.content_profile = Some(profile);
@@ -312,6 +319,7 @@ impl Prepared {
             release: self.release,
             epoch: self.epoch,
             content_mode: self.content_profile.is_some(),
+            existing_profile: self.content_profile == Some(ContentProfile::ExistingProfile),
             transport_mode: self.content_profile.is_some_and(ContentProfile::transport),
             stop_file: ready.with_file_name("stop"),
             bound: false,
@@ -385,6 +393,7 @@ pub struct LocalDaemon {
     release: Release,
     epoch: [u8; 16],
     content_mode: bool,
+    existing_profile: bool,
     transport_mode: bool,
     // Backend-selected sibling of the authenticated startup's ready file.
     // Never supplied by a renderer or received in a native request.
@@ -544,7 +553,7 @@ impl ChildGuard {
     pub fn serve_content(
         &mut self,
         root: &Path,
-        lock: &crate::instance::InstanceLock,
+        lock: &mut crate::instance::InstanceLock,
     ) -> Result<(), Error> {
         let profile = self.content_profile.ok_or(Error::Arguments)?;
         if root != self.runtime {
@@ -566,8 +575,11 @@ impl ChildGuard {
             ready: frame(5, &self.epoch, content.binding()),
             _content: content,
         };
-        crate::ipc::local_native::serve(&mut connection, root, lock, profile)
-            .map_err(|_| Error::Channel)
+        if profile == ContentProfile::ExistingProfile {
+            crate::ipc::native_profile::serve(&mut connection, root, lock)
+        } else {
+            crate::ipc::local_native::serve(&mut connection, root, lock, profile)
+        }.map_err(|_| Error::Channel)
     }
     pub fn runtime_ready(&mut self) -> Result<(), Error> {
         self._channel
@@ -588,6 +600,7 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
                 | DURABLE_RESUME_FLAG
                 | TRANSPORT_CREATE_FLAG
                 | TRANSPORT_RESUME_FLAG
+                | EXISTING_PROFILE_FLAG
         )
     }) {
         return Ok(None);
@@ -606,6 +619,7 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
                 | DURABLE_RESUME_FLAG
                 | TRANSPORT_CREATE_FLAG
                 | TRANSPORT_RESUME_FLAG
+                | EXISTING_PROFILE_FLAG
         )
         || !Path::new(&args[3]).is_absolute()
         || Path::new(&args[5]) != Path::new(&args[3]).join("ready")
@@ -621,6 +635,7 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
         DURABLE_RESUME_FLAG => Some(ContentProfile::KeychainResume),
         TRANSPORT_CREATE_FLAG => Some(ContentProfile::TransportCreate),
         TRANSPORT_RESUME_FLAG => Some(ContentProfile::TransportResume),
+        EXISTING_PROFILE_FLAG => Some(ContentProfile::ExistingProfile),
         _ => None,
     };
     let runtime = PathBuf::from(&args[3]);
@@ -682,9 +697,14 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
     }))
 }
 
+pub use crate::ipc::native_profile::{Status as NativeProfileStatus, Protection as NativeProtection, IncomingState as NativeIncomingState};
+
 pub const CONTENT_MARKER: &str = "m8-isolated-native-content-v1\n";
 pub const DURABLE_MARKER: &str = "m8-isolated-native-keychain-v1\n";
 fn require_content_runtime(root: &Path, profile: ContentProfile) -> Result<(), Error> {
+    if profile == ContentProfile::ExistingProfile {
+        return crate::ipc::native_profile::validate_existing(root).map_err(|_| Error::Arguments);
+    }
     use std::os::unix::fs::MetadataExt;
     let metadata = std::fs::symlink_metadata(root).map_err(|_| Error::Arguments)?;
     let marker =

@@ -1,0 +1,213 @@
+//! Default-off existing-profile owner. No synthetic seed, credential creation,
+//! repair override, fixture status or request-ID fault exists on this path.
+use super::*;
+use crate::approval_session::ApprovalSessionRegistry;
+use crate::import_staging::macos_fs::{Directory, RuntimeIdentity, require_product_os};
+use crate::import_staging::macos_inbox::Inbox;
+use crate::m8_owner_channel::local_startup::{BoundConnection, Incoming};
+use crate::m8_owner_channel::transport_helper::{StatusReader, Worker};
+use crate::managed_profile::incoming::{IncomingController, IncomingControllerError, IncomingTick};
+use std::os::unix::fs::MetadataExt;
+
+/// This read-only preflight is not publication/owner authority. The live domain
+/// repeats anchor/policy verification under the actual instance admission.
+pub(crate) fn validate_existing(root: &Path) -> io::Result<()> {
+    require_product_os()?;
+    crate::paths::assert_outside_repository(root).map_err(io::Error::other)?;
+    let directory = Directory::open(root, true)?;
+    let metadata = std::fs::symlink_metadata(root)?;
+    if metadata.mode() & 0o077 != 0 { return Err(invalid_data("native_profile_not_private")); }
+    let brain = load_brain_identity(root).map_err(|_| invalid_data("native_profile_brain"))?;
+    let local = load_local_device_identity(root, &brain.brain_id).map_err(|_| invalid_data("native_profile_identity"))?;
+    let device = DeviceId::new(local.device_id).map_err(|_| invalid_data("native_profile_device"))?;
+    load_existing_event_signing_key(&crate::MacosKeychainStore::new(), SecureStoreEnvironment::Dev, root, &device)
+        .map_err(|_| invalid_data("native_profile_existing_key_unavailable"))?;
+    directory.validate()
+}
+
+fn prepare_existing_runtime(root: &Path, instance: &mut crate::instance::InstanceLock, namespace: &RuntimeIdentity) -> io::Result<()> {
+    use cryptex_events::TrustedDaemonKeyResolver;
+    let store = crate::MacosKeychainStore::new();
+    let exclusive = instance.admission().exclusive(root, Instant::now() + IPC_RESPONSE_DEADLINE, false).map_err(io::Error::other)?;
+    namespace.validate()?;
+    let brain = load_brain_identity(root).map_err(|_| invalid_data("native_profile_brain"))?;
+    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(root, &brain.brain_id, &store, SecureStoreEnvironment::Dev).map_err(io::Error::other)?;
+    let anchor = resolver.local_trust_anchor().ok_or_else(|| invalid_data("native_profile_anchor"))?;
+    let snapshot = crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(root, &brain.brain_id, &anchor, None).map_err(io::Error::other)?;
+    let (history, _) = snapshot.verified_trust_context().ok_or_else(|| invalid_data("native_profile_policy_held"))?;
+    let mut devices = history.approved_peer_bindings.keys().cloned().collect::<Vec<_>>();
+    devices.push(anchor.device_id().clone());
+    for device in snapshot.locked_devices() { namespace.pin(&cryptex_storage::canonical_events_device_dir(root, device))?; }
+    drop(snapshot);
+    // Empty slots are derived from verified approvals, never incoming names.
+    // Establish them before M4 watermark construction, through the normal
+    // canonical lock API, while no native domain/ordinary reader exists yet.
+    let slots = crate::canonical_writer::acquire_canonical_write_lock_set(root, &devices).map_err(io::Error::other)?;
+    namespace.validate()?;
+    for device in &devices { namespace.pin(&cryptex_storage::canonical_events_device_dir(root, device))?; }
+    drop(slots);
+    exclusive.finish(None);
+    // Reuses the actual instance, full R4 recovery and cutoff-aware M3/M4
+    // rebuild. Any failure closes shared admission before native readiness.
+    crate::incoming_publication::recover_live_with_instance(root, instance, &store, SecureStoreEnvironment::Dev).map_err(io::Error::other)?;
+    namespace.validate()
+}
+
+fn context(root: &Path, instance: &crate::instance::InstanceLock, transport: Option<StatusReader>) -> io::Result<SearchContext> {
+    validate_existing(root)?;
+    let context = SearchContext {
+        runtime_root: root.to_owned(), admission: bound_runtime_admission(root, instance)?, operation: None,
+        store: Arc::new(crate::MacosKeychainStore::new()), environment: SecureStoreEnvironment::Dev,
+        expected_desktop: Arc::new(DesktopProcessIdentity { pid: unsafe { libc::getppid() } as u32 }),
+        projection_sync: None, transport_identity: transport,
+        #[cfg(test)] transport_device_id_override: None,
+    };
+    let _permit = context.admission.enter(root).map_err(io::Error::other)?;
+    let brain = load_brain_identity(root).map_err(|_| invalid_data("native_profile_brain"))?;
+    use cryptex_events::TrustedDaemonKeyResolver;
+    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(root, &brain.brain_id, context.store.as_ref(), context.environment)
+        .map_err(|_| invalid_data("native_profile_anchor"))?;
+    let anchor = resolver.local_trust_anchor().ok_or_else(|| invalid_data("native_profile_anchor"))?;
+    let snapshot = crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(root, &brain.brain_id, &anchor, None)
+        .map_err(|_| invalid_data("native_profile_canonical_unavailable"))?;
+    if snapshot.verified_trust_context().is_none() { return Err(invalid_data("native_profile_policy_held")); }
+    drop(snapshot);
+    drop(_permit);
+    Ok(context)
+}
+
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum Protection { LocalOnly, Attention }
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum IncomingState { Idle, WaitingForTransport, Deferred, Published, Rejected, Held, Unavailable }
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Status {
+    pub schema_version: u32,
+    pub protection: Protection,
+    pub incoming: IncomingState,
+    pub transport_observed: bool,
+    // M8 has no authenticated remote durable receipt here. Never expose
+    // 'protected' or 'replicated' from helper readiness/local publication.
+    pub remote_durability_verified: bool,
+}
+impl Status {
+    fn new(incoming: IncomingState, transport_observed: bool) -> Self {
+        Self { schema_version: 1, protection: if matches!(incoming, IncomingState::Held | IncomingState::Unavailable | IncomingState::Rejected) { Protection::Attention } else { Protection::LocalOnly },
+            incoming, transport_observed, remote_durability_verified: false }
+    }
+}
+
+struct Backend {
+    namespace: RuntimeIdentity,
+    inbox: Inbox,
+    controller: IncomingController,
+    status: Status,
+}
+impl Backend {
+    fn new(root: &Path) -> io::Result<Self> {
+        let namespace = RuntimeIdentity::capture(root)?;
+        namespace.pin(&root.join("canonical/events"))?;
+        Ok(Self { namespace, inbox: Inbox::new(root)?, controller: IncomingController::new(root.to_owned(), SecureStoreEnvironment::Dev).map_err(io::Error::other)?,
+            status: Status::new(IncomingState::Idle, false) })
+    }
+    fn tick(&mut self, context: &SearchContext, instance: &mut crate::instance::InstanceLock) -> io::Result<Status> {
+        self.namespace.validate()?;
+        let observed = context.transport_identity.as_ref().is_some_and(|reader| reader.belongs_to_runtime(&context.runtime_root) && reader.try_transport_device_id().is_ok());
+        // Inspect the shared barrier before discovery; held bytes remain exactly
+        // where R4 recovery retained them, and this route cannot clear a hold.
+        match context.admission.enter(&context.runtime_root) {
+            Ok(permit) => drop(permit),
+            Err(crate::runtime_admission::AdmissionError::Held(_)) => {
+                self.status = Status::new(IncomingState::Held, observed); return Ok(self.status.clone());
+            }
+            Err(_) => { self.status = Status::new(IncomingState::Deferred, observed); return Ok(self.status.clone()); }
+        }
+        let Some(transport) = context.transport_identity.as_ref() else {
+            self.status = Status::new(IncomingState::WaitingForTransport, false); return Ok(self.status.clone());
+        };
+        let paths = match self.inbox.discover() {
+            Ok(paths) => paths,
+            Err(_) => { self.status = Status::new(IncomingState::Unavailable, observed); return Ok(self.status.clone()); }
+        };
+        if !paths.is_empty() {
+            self.controller.enqueue(paths).map_err(io::Error::other)?;
+        }
+        self.status = match self.controller.poll(transport, instance, context.store.as_ref()) {
+            Ok(IncomingTick::Published(_)) => { self.inbox.consumed()?; Status::new(IncomingState::Published, observed) }
+            Ok(IncomingTick::Idle) => Status::new(IncomingState::Idle, observed),
+            Ok(IncomingTick::Deferred) => Status::new(IncomingState::Deferred, observed),
+            Ok(IncomingTick::WaitingForTransport) => Status::new(IncomingState::WaitingForTransport, false),
+            Err(IncomingControllerError::Publication(crate::incoming_publication::IncomingPublicationError::Rejected(_))) => {
+                self.inbox.consumed()?; Status::new(IncomingState::Rejected, observed)
+            }
+            Err(IncomingControllerError::Publication(_)) | Err(IncomingControllerError::Admission(_)) => Status::new(IncomingState::Held, observed),
+            Err(_) => Status::new(IncomingState::Unavailable, observed),
+        };
+        self.namespace.validate()?;
+        Ok(self.status.clone())
+    }
+}
+
+pub(crate) fn serve(connection: &mut BoundConnection<'_>, root: &Path, instance: &mut crate::instance::InstanceLock) -> io::Result<()> {
+    validate_existing(root)?;
+    let mut backend = Backend::new(root)?;
+    prepare_existing_runtime(root, instance, &backend.namespace)?;
+    // Open an explicitly enrolled owned helper only. Absence is local-only;
+    // never generate/adopt a profile or infer peer trust during native startup.
+    let helper_root = root.join("managed-transport");
+    let mut worker = if helper_root.try_exists()? { Some(Worker::spawn(helper_root, false).map_err(io::Error::other)?) } else { None };
+    let context = context(root, instance, worker.as_ref().map(Worker::status_reader))?;
+    let registry = ApprovalSessionRegistry::default();
+    let mut domain = super::native_domain::Domain::from_context(context.clone(), &registry);
+    connection.ready(Instant::now() + IPC_RESPONSE_DEADLINE)?;
+    loop {
+        backend.namespace.validate()?;
+        match connection.receive(Instant::now() + IPC_APPROVAL_SESSION_DEADLINE)? {
+            Incoming::Close => {
+                // Drop pending grants before stopping the helper. No grant or
+                // derived-worker lease survives into a replacement process.
+                drop(domain);
+                if let Some(worker) = worker.take() { worker.close().map_err(io::Error::other)?; }
+                return Ok(());
+            }
+            Incoming::Ping => {
+                backend.tick(&context, instance)?;
+                connection.send(b"pong", Instant::now() + IPC_RESPONSE_DEADLINE)?;
+            }
+            Incoming::Status => {
+                let status = backend.tick(&context, instance)?;
+                connection.send(&serde_json::to_vec(&status)?, Instant::now() + IPC_RESPONSE_DEADLINE)?;
+            }
+            Incoming::Request(received) => {
+                backend.tick(&context, instance)?;
+                domain.dispatch(connection, *received)?.send(connection)?;
+            }
+        }
+        backend.namespace.validate()?;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn transport_readiness_and_local_publication_never_claim_remote_protection() {
+        for incoming in [IncomingState::Idle, IncomingState::Published, IncomingState::Held, IncomingState::Rejected, IncomingState::Unavailable] {
+            let status = Status::new(incoming, true);
+            assert!(!status.remote_durability_verified);
+            assert_ne!(serde_json::to_value(&status).unwrap()["protection"], "protected");
+            assert_eq!(status.protection == Protection::Attention, matches!(incoming, IncomingState::Held | IncomingState::Rejected | IncomingState::Unavailable));
+        }
+    }
+    #[test]
+    fn missing_existing_profile_is_refused_without_creating_runtime_data() {
+        let parent = crate::test_temp::exclusive_temp_dir("native-existing-missing");
+        let missing = parent.join("missing");
+        assert!(validate_existing(&missing).is_err());
+        assert!(!missing.exists());
+        std::fs::remove_dir_all(parent).unwrap();
+    }
+}

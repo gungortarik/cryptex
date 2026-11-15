@@ -125,13 +125,8 @@ struct Reply {
 
 fn private_root(root: &Path) -> Result<(), Error> {
     crate::paths::assert_outside_repository(root).map_err(|_| Error::Arguments)?;
-    let temp = std::env::temp_dir()
-        .canonicalize()
-        .map_err(|_| Error::Arguments)?;
-    if !root.is_absolute()
-        || root.canonicalize().map_err(|_| Error::Arguments)? != root
-        || !root.starts_with(temp)
-    {
+    let namespace = crate::import_staging::macos_fs::Directory::open(root, true).map_err(|_| Error::Profile)?;
+    if !root.is_absolute() || root.canonicalize().map_err(|_| Error::Arguments)? != root {
         return Err(Error::Arguments);
     }
     let m = std::fs::symlink_metadata(root).map_err(|_| Error::Profile)?;
@@ -167,7 +162,7 @@ fn private_root(root: &Path) -> Result<(), Error> {
     {
         return Err(Error::Profile);
     }
-    Ok(())
+    namespace.validate().map_err(|_| Error::Profile)
 }
 fn create_root(root: &Path) -> Result<PathBuf, Error> {
     let parent = root
@@ -683,6 +678,7 @@ struct Helper {
     credential: String,
     root: PathBuf,
     active: File,
+    namespace: crate::import_staging::macos_fs::Directory,
 }
 impl Helper {
     fn start(
@@ -692,6 +688,7 @@ impl Helper {
     ) -> Result<Self, Error> {
         use std::os::unix::process::CommandExt;
         private_root(root)?;
+        let namespace = crate::import_staging::macos_fs::Directory::open(root, true).map_err(|_| Error::Profile)?;
         if root
             .join("transport.active")
             .try_exists()
@@ -772,6 +769,7 @@ impl Helper {
             credential: credential.clone(),
             root: root.to_owned(),
             active,
+            namespace,
         };
         await_hint(result.child.as_mut().unwrap(), deadline)?;
         startup_phase("parent_hint_received", started);
@@ -836,6 +834,7 @@ impl Helper {
         Ok(result)
     }
     fn request(&mut self, op: Operation) -> Result<(), Error> {
+        if matches!(op, Operation::Observe) { self.namespace.validate().map_err(|_| Error::Profile)?; }
         self.sequence = self.sequence.checked_add(1).ok_or(Error::Channel)?;
         let request = Request {
             sequence: self.sequence,
@@ -870,6 +869,7 @@ impl Helper {
         {
             return Err(Error::Channel);
         }
+        if matches!(op, Operation::Observe) { self.namespace.validate().map_err(|_| Error::Profile)?; }
         Ok(())
     }
     fn close(&mut self) -> Result<(), Error> {
@@ -922,10 +922,7 @@ impl Helper {
                 if retained.dev() != current.dev() || retained.ino() != current.ino() {
                     return Err(Error::Cleanup);
                 }
-                std::fs::remove_file(self.root.join("transport.active"))
-                    .map_err(|_| Error::Cleanup)?;
-                File::open(&self.root)
-                    .and_then(|f| f.sync_all())
+                self.namespace.remove_owned_file(std::ffi::OsStr::new("transport.active"), &self.active)
                     .map_err(|_| Error::Cleanup)?;
                 return if kill || status.success() {
                     Ok(())
@@ -977,8 +974,12 @@ struct Query {
 pub(crate) struct StatusReader {
     sender: mpsc::SyncSender<Query>,
     state: Arc<AtomicU8>,
+    profile_root: PathBuf,
 }
 impl StatusReader {
+    pub(crate) fn belongs_to_runtime(&self, root: &Path) -> bool {
+        self.profile_root == root.join("managed-transport")
+    }
     pub(crate) fn try_transport_device_id(&self) -> Result<String, Error> {
         self.call(Work::Observe)
     }
@@ -1030,6 +1031,7 @@ impl Worker {
         let read = StatusReader {
             sender,
             state: state.clone(),
+            profile_root: root.clone(),
         };
         let worker_stop = stop.clone();
         let record = credential.clone();

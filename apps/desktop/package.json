@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc --noEmit && vite build",
+    "test:native-profile-status": "node --test src/native-profile-status.test.mjs",
     "test:search-policy": "node --test src/search-policy.test.mjs",
     "test:capture-policy": "node --test src/capture-policy.test.mjs",
     "tauri": "tauri",

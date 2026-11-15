@@ -14,6 +14,8 @@ use std::path::{Component, Path, PathBuf};
 pub(super) use std::fs::{copy, create_dir_all, hard_link, read, remove_dir_all, rename, write};
 
 unsafe extern "C" {
+    #[cfg(feature = "m8-local-startup-check")]
+    fn cx_import_product_os_supported() -> libc::c_int;
     fn cx_import_acl_safe(fd: libc::c_int) -> libc::c_int;
     fn cx_import_rename_exclusive(
         source: libc::c_int,
@@ -134,12 +136,12 @@ pub(crate) struct Directory {
     names: Vec<CString>,
 }
 
-pub(super) struct RuntimeIdentity {
+pub(crate) struct RuntimeIdentity {
     root: PathBuf,
     pins: std::cell::RefCell<std::collections::BTreeMap<PathBuf, Directory>>,
 }
 impl RuntimeIdentity {
-    pub(super) fn capture(root: &Path) -> io::Result<Self> {
+    pub(crate) fn capture(root: &Path) -> io::Result<Self> {
         let directory = Directory::open(root, true)?;
         let root = normalize(root)?;
         Ok(Self {
@@ -147,7 +149,7 @@ impl RuntimeIdentity {
             pins: std::cell::RefCell::new(std::collections::BTreeMap::from([(root, directory)])),
         })
     }
-    pub(super) fn pin(&self, path: &Path) -> io::Result<()> {
+    pub(crate) fn pin(&self, path: &Path) -> io::Result<()> {
         self.validate()?;
         let key = normalize(path)?;
         if !key.starts_with(&self.root) {
@@ -159,7 +161,7 @@ impl RuntimeIdentity {
         }
         self.validate()
     }
-    pub(super) fn validate(&self) -> io::Result<()> {
+    pub(crate) fn validate(&self) -> io::Result<()> {
         for directory in self.pins.borrow().values() {
             directory.validate()?;
         }
@@ -210,7 +212,7 @@ impl LockBinding {
 }
 
 impl Directory {
-    pub(super) fn open(path: &Path, current_owner: bool) -> io::Result<Self> {
+    pub(crate) fn open(path: &Path, current_owner: bool) -> io::Result<Self> {
         let requested = path.to_path_buf();
         let path = normalize(path)?;
         crate::paths::assert_outside_repository(&path).map_err(|_| unsafe_object())?;
@@ -257,7 +259,7 @@ impl Directory {
         self.files.last().ok_or_else(unsafe_object)
     }
 
-    pub(super) fn validate(&self) -> io::Result<()> {
+    pub(crate) fn validate(&self) -> io::Result<()> {
         for (index, name) in self.names.iter().enumerate() {
             let visible = stat_at(&self.files[index], name)?;
             let pinned = self.files[index + 1].metadata()?;
@@ -270,6 +272,24 @@ impl Directory {
             directory_permissions(&self.files[index + 1], false)?;
         }
         Ok(())
+    }
+
+    /// Remove only this captured file in the original captured directory.
+    /// A replacement namespace/file is uncertainty, never a cleanup target.
+    #[cfg(feature = "m8-local-startup-check")]
+    pub(crate) fn remove_owned_file(&self, name: &OsStr, expected: &File) -> io::Result<()> {
+        self.validate()?;
+        let current = self.open_file(name, libc::O_RDONLY)?;
+        let a = current.metadata()?;
+        let b = expected.metadata()?;
+        if (a.dev(), a.ino()) != (b.dev(), b.ino()) { return Err(unsafe_object()); }
+        let name = leaf(name)?;
+        if unsafe { libc::unlinkat(self.last()?.as_raw_fd(), name.as_ptr(), 0) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        self.validate()?;
+        self.last()?.sync_all()?;
+        self.validate()
     }
 
     pub(super) fn into_files(self) -> Vec<File> {
@@ -796,4 +816,12 @@ mod tests {
         assert!(Directory::open(&selected, true).is_ok());
         fixture_fs::remove_dir_all(root).unwrap();
     }
+}
+
+#[cfg(feature = "m8-local-startup-check")]
+pub(crate) fn require_product_os() -> io::Result<()> {
+    // SAFETY: no pointer arguments; the native SDK/runtime availability guard
+    // refuses older systems instead of choosing a weaker transport fallback.
+    if unsafe { cx_import_product_os_supported() } == 1 { Ok(()) }
+    else { Err(io::Error::new(io::ErrorKind::Unsupported, "native_profile_requires_macos_26")) }
 }

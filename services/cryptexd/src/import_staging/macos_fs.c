@@ -30,3 +30,11 @@ int cx_import_acl_safe(int fd) {
 int cx_import_rename_exclusive(int source, const char *from, int target, const char *to) {
     return renameatx_np(source, from, target, to, RENAME_EXCL);
 }
+
+#include <AvailabilityMacros.h>
+int cx_import_product_os_supported(void) {
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 260000
+    if (__builtin_available(macOS 26.0, *)) return 1;
+#endif
+    return 0;
+}

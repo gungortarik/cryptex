@@ -18,7 +18,7 @@ use crate::syncthing_rest::{ApiCredential, credential_labels};
 
 #[cfg(any(windows, test))]
 pub mod controller;
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 #[allow(dead_code)] // Gated bridge; native activation/review is a separate release gate.
 pub(crate) mod incoming;
 pub mod native;

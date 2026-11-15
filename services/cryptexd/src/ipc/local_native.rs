@@ -2,7 +2,6 @@
 //! is changed. Only a content-bound kernel-attributed connection can enter.
 use super::*;
 use crate::approval_session::ApprovalSessionRegistry;
-use crate::m8_owner_channel::Method;
 use crate::m8_owner_channel::local_startup::{BoundConnection, ContentProfile, Incoming};
 
 fn event_hashes(context: &SearchContext) -> io::Result<Vec<String>> {
@@ -49,6 +48,7 @@ pub(crate) fn serve(
         return Err(invalid_data("native_fixture_profile_state"));
     }
     let store: Arc<dyn SecureStore> = match profile {
+        ContentProfile::ExistingProfile => return Err(invalid_data("existing_profile_is_not_a_fixture")),
         ContentProfile::Ephemeral => Arc::new(crate::FakeSecureStore::new()),
         ContentProfile::KeychainCreate
         | ContentProfile::KeychainResume
@@ -56,11 +56,13 @@ pub(crate) fn serve(
         | ContentProfile::TransportResume => Arc::new(crate::MacosKeychainStore::new()),
     };
     if !profile.resumes() {
+        let event_id = if profile.transport() { new_bootstrap_event_id().map_err(invalid_data)? }
+            else { "d9885c8e-6a01-48bc-8488-cd52c4c1f725".to_owned() };
         crate::signed_transfer_probe::create(
             root,
             store.as_ref(),
             "aa5d7ae0-5321-4f53-a91e-36a411d88591",
-            "d9885c8e-6a01-48bc-8488-cd52c4c1f725",
+            &event_id,
         )
         .map_err(|_| invalid_data("native_fixture_seed"))?;
     }
@@ -113,7 +115,7 @@ pub(crate) fn serve(
     };
     context.transport_identity = transport.as_ref().map(|w| w.status_reader());
     let registry = ApprovalSessionRegistry::default();
-    let mut pending = None;
+    let mut domain = super::native_domain::Domain::from_context(context.clone(), &registry);
     connection.ready(Instant::now() + IPC_RESPONSE_DEADLINE)?;
     loop {
         let incoming = connection.receive(Instant::now() + IPC_APPROVAL_SESSION_DEADLINE)?;
@@ -136,82 +138,15 @@ pub(crate) fn serve(
                 connection.send(&body, Instant::now() + IPC_RESPONSE_DEADLINE)?;
                 continue;
             }
-            Incoming::Request(request) => connection.consume(*request)?,
+            Incoming::Request(request) => *request,
         };
-        // Consumption above is one-use and tied to this native allocation;
-        // ordinary parsed JSON/roles/PIDs cannot construct the sealed value.
-        let request = received.request;
-        if let Some(session) = pending.take() {
-            let session: approval_domain::PendingSession<'_> = session;
-            // Reacquire the frozen admission, not a lease from another context.
-            let permit = session.admit_followup().map_err(io::Error::other)?;
-            let finished = session.finish(request, &permit)?;
-            AdmittedReply::new(finished.reply, permit, Instant::now() + finished.timeout)?
-                .send_using(|bytes, deadline| connection.send(bytes, deadline))?;
-            continue;
+        let mut response = domain.dispatch(connection, received)?;
+        // This mutation belongs only to the isolated fixture. Shared/product
+        // dispatch never recognizes magic request IDs or removes snapshots.
+        if response.reply.request_id.as_deref() == Some("test-accepted-without-snapshot") {
+            response.reply.snapshot = None;
         }
-        let permit = context.admission.enter(root).map_err(io::Error::other)?;
-        let (reply, timeout) = {
-            match received.method {
-                Method::PrepareOwnerOperation | Method::PrepareApproval => {
-                    let missing_snapshot = request.request_id == "test-accepted-without-snapshot";
-                    let mut prepared = if received.method == Method::PrepareOwnerOperation {
-                        approval_domain::prepare_owner(&context, &registry, request, &permit)?
-                    } else {
-                        approval_domain::prepare_bootstrap(&context, &registry, request, &permit)?
-                    };
-                    // Authenticated synthetic fixture fault, never a product
-                    // route or a renderer-selectable request ID.
-                    if missing_snapshot {
-                        prepared.reply.snapshot = None;
-                    }
-                    pending = prepared.session;
-                    (prepared.reply, IPC_RESPONSE_DEADLINE)
-                }
-                Method::CompleteApproval => (
-                    approval_domain::complete(&context, request, &permit),
-                    IPC_RESPONSE_DEADLINE,
-                ),
-                Method::ReadTransportIdentity => {
-                    let result = current_transport_device_id(&context);
-                    (
-                        bootstrap_exchange_response(
-                            Some(request.request_id),
-                            result.is_ok(),
-                            result.as_ref().err().copied(),
-                            "bootstrap.exchange.transport_identity.read",
-                            None,
-                            result.ok(),
-                            None,
-                        ),
-                        IPC_RESPONSE_DEADLINE,
-                    )
-                }
-                Method::ReadBrainIdentity | Method::CreateOffer | Method::CreateProof => (
-                    execute_bootstrap_exchange(&context, request),
-                    IPC_RESPONSE_DEADLINE,
-                ),
-                _ => (
-                    bootstrap_approval_response(
-                        Some(request.request_id),
-                        false,
-                        Some("approval_session_missing"),
-                        match received.method {
-                            Method::ConfirmApproval | Method::CancelApproval => {
-                                "bootstrap.approval.result"
-                            }
-                            _ => "owner.security.result",
-                        },
-                        None,
-                        None,
-                        None,
-                    ),
-                    IPC_REQUEST_DEADLINE,
-                ),
-            }
-        };
-        AdmittedReply::new(reply, permit, Instant::now() + timeout)?
-            .send_using(|bytes, deadline| connection.send(bytes, deadline))?;
+        response.send(connection)?;
         // The response owns admission through the actual send. No lease is
         // retained while waiting for the owner's next native message.
     }

@@ -202,6 +202,9 @@ jobs:
       - name: Test Desktop retrieval response policy
         run: pnpm --filter @cryptex/desktop test:search-policy
 
+      - name: Test truthful native profile status
+        run: pnpm --filter @cryptex/desktop test:native-profile-status
+
       - name: Validate Cargo workspace manifest
         run: cargo metadata --locked --format-version 1 --no-deps
 
