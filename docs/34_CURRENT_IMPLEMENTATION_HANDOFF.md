@@ -1,5 +1,36 @@
 # 34 — Current Implementation Handoff
 
+## One-click Mac window owner package — November15
+
+READY for owner execution; no owner result yet. Downloads package:
+`Cryptex-Mac-Pencere-5290689-fc6d35a.zip` (arm64, macOS26+; expires
+2026-11-16T17:50:45Z). Open ZIP, then `MAC-PENCERE.command` in the extracted folder.
+Owner follows bounded E/H prompts; return `MAC-PENCERE-SONUC-*.zip` even on failure.
+No pasted shell commands or password collection. Original signed binaries5290689
+are byte-identical; collectorfc6d35a adds normal no-argument launch in a private
+temporary HOME, preserving the product's fixed relative profile path. This is
+NOT a real personal-profile installation or a publisher-identity migration.
+
+The steps cover explanation Quit, existing-profile opening, unsaved draft across
+menu-bar/Dock/second-launch reopening, Quit Cancel, confirmed Quit, and reopening
+without the discarded draft. Canonical bytes stay unchanged. Visual observations
+are owner-reported; same-group process state and natural exit precede collector
+cleanup. No forced cleanup can become successful Quit. Helper has its own session:
+its closure is delegated to the product's successful exit contract, not independently
+enumerated. Failed/forced/uncertain launches retain the synthetic key/HOME. Cleanup
+of a successful run freezes and rechecks only its generated signing-key identity.
+No new-session replay, OS denial, network or full-M8 claim is made.
+
+Independent source review fixed a process/thread-start ownership P2 and found no
+remaining actionable finding. Six local collector tests plus six existing diagnostic
+regressions passed. CI43746122573 onfc6d35a passed all9 tests including actual Darwin
+clean exit, lingering-child refusal and timeout cleanup (no UI/Keychain accessed).
+The package's19 member hashes, ZIP CRC, executable modes, Python syntax and original
+public signed-image bytes were checked. See
+[package evidence](../evidence/m8/m8-mac-window-package-20261115.json).
+The failed headless native CI43743142364 below remains failed. Do not rerun the old
+headless owner diagnostic or treat the new collector-only CI as product acceptance.
+
 ## Development opening/window lifecycle — November15
 
 Implementation source `5290689` adds the normal Mac development shell's native
@@ -43,8 +74,8 @@ repeat the prior unchanged owner diagnostic. See
 Failed-candidate artifact14173284246 was retained under the system temporary
 folder cryptex-window-ci-43743142364 (source5290689; ZIP CRC/source checked; expires
 2026-11-16T17:50:45Z). It is the HEADLESS diagnostic exporter, not a prepared normal
-window test packet. A new physical normal-entry window/lifecycle acceptance
-runner/package is still needed; do not send this archive as UI acceptance.
+window test packet. The new normal-entry window/lifecycle package is recorded above;
+do not send this original headless archive as UI acceptance.
 The earlier two runs stopped at formatting. The shutdown message no longer
 refers to a diagnostic artifact that the normal shell does not generate. Local
 Rust remains blocked by Application Control4551; use native CI, never bypass it.

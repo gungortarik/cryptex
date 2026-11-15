@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "status": "one_click_package_ready_owner_execution_pending",
+  "scope": "normal development entry in isolated temporary HOME; not installed-product or M8 acceptance",
+  "binary_source": "529068950f497eb61a56e9ed30a0d8bae77383ce",
+  "collector_source": "fc6d35a082e1a3278d8ae12bebfa4e19d66f7114",
+  "package": "Cryptex-Mac-Pencere-5290689-fc6d35a.zip",
+  "package_sha256": "3a17fc0ee26ce43fbf86390b2bc4b633e49f03512d5253dee43ca321fa49a55f",
+  "architecture": "arm64",
+  "minimum_macos": 26,
+  "expires_utc": "2026-11-16T17:50:45Z",
+  "ci": {
+    "run": 43746122573,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/43746122573",
+    "result": "passed",
+    "tests": 9,
+    "scope": "collector packaging, failures and real Darwin process groups; no Cryptex UI or Keychain use"
+  },
+  "local_checks": {
+    "collector_tests_passed": 6,
+    "darwin_tests_skipped_on_windows": 3,
+    "existing_diagnostic_regression_tests_passed": 6,
+    "zip_crc": "passed",
+    "all_member_hashes": "passed",
+    "public_images_equal_original_signed_bytes": true,
+    "python_syntax_and_executable_modes": "passed",
+    "verified_members": 19
+  },
+  "review": {
+    "mode": "independent read-only source review; no execution by reviewer",
+    "corrected": "Register process ownership before child/thread startup; injected both thread-start failure paths",
+    "final": "no remaining actionable source finding"
+  },
+  "evidence_contract": [
+    "Visual behavior is explicitly owner-reported E/H, never inferred from daemon state",
+    "Natural Desktop exit0 and no live same-group child are observed before forced collector cleanup",
+    "Helper is a separate session; successful helper shutdown relies on product exit0 contract, not independent helper enumeration",
+    "Every failed, forced or uncertain launch retains its key and HOME even if captured group cleanup succeeds",
+    "Daemon PID-set continuity is sampled only; no independent process-generation or fresh native session proof",
+    "Result ZIP contains only allowlisted aggregate data and public source IDs; no raw output, notes, paths or credentials"
+  ],
+  "not_established": [
+    "owner Mac UI execution",
+    "headless native startup CI success",
+    "OS permission denial behavior",
+    "independent helper disappearance",
+    "installed personal-profile migration",
+    "fresh-session replay refusal",
+    "two-device synchronization",
+    "M8 completion"
+  ],
+  "prior_native_ci": {
+    "run": 43743142364,
+    "result": "failed at unchanged key_store/content_bind Deadline; preserved, not overridden"
+  }
+}
