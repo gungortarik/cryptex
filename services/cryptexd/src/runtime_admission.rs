@@ -125,7 +125,7 @@ impl RuntimeAdmission {
     /// Block new operations first, then drain existing leases. A deadline or
     /// competing import returns before any canonical mutation. No unbounded
     /// writer starvation and no admission mutex held during disk/network work.
-    #[cfg(any(windows, test))]
+    #[cfg(any(windows, target_os = "macos", test))]
     pub(crate) fn exclusive(
         &self,
         root: &Path,
@@ -271,14 +271,14 @@ impl Drop for OperationLease {
     }
 }
 
-#[cfg(any(windows, test))]
+#[cfg(any(windows, target_os = "macos", test))]
 pub(crate) struct ExclusivePermit {
     admission: RuntimeAdmission,
     _owner: Option<Arc<File>>,
     finished: bool,
 }
 
-#[cfg(any(windows, test))]
+#[cfg(any(windows, target_os = "macos", test))]
 impl ExclusivePermit {
     /// Called only by transaction orchestration after verified recovery and
     /// rebuild, a clean pre-prepare rejection, or a classified failure.
@@ -295,7 +295,7 @@ impl ExclusivePermit {
     }
 }
 
-#[cfg(any(windows, test))]
+#[cfg(any(windows, target_os = "macos", test))]
 impl Drop for ExclusivePermit {
     fn drop(&mut self) {
         drop(self._owner.take());
