@@ -39,7 +39,7 @@ def exercise(root, desktop, creator, manifest, runner, run):
     try:
         fence.checked([creator, 'pilot-fixture', 'brain-only-v1', '--runtime-root', profile,
                        '--confirm-isolated-pilot'], 'prepare_public_brain_only', 45)
-        if (profile / 'identity/local_device.json').exists() or (profile / 'canonical/events').exists():
+        if (profile / 'identity/local_device.json').exists() or canonical_hashes(profile):
             raise PreflightError('brain_only_fixture_created_device_or_events')
         daemon = Path(desktop).with_name('cryptexd')
         try:

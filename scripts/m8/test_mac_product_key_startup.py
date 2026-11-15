@@ -41,6 +41,7 @@ class ProductKeyTests(unittest.TestCase):
                     if args[0] == 'creator':
                         (profile / 'identity').mkdir()
                         (profile / 'identity/brain_identity.json').write_bytes(b'public-brain')
+                        (profile / 'canonical/events').mkdir(parents=True)
                         return CommandResult(0, '')
                     if 'enroll-local' in args:
                         self.assertEqual(Path(args[0]).name, 'cryptexd')

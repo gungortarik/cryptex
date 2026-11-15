@@ -348,6 +348,7 @@ fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
             .map_err(|_| LifecycleError::Attention("probe_setup_failed".into()))?;
         write_brain_identity(root, &brain)
             .map_err(|_| LifecycleError::Attention("probe_setup_failed".into()))?;
+        fs::create_dir_all(root.join("canonical/events"))?;
         println!("brain_only_fixture=ready");
         return Ok(());
     }
@@ -1789,7 +1790,7 @@ mod tests {
         let path = cryptexd::identity_runtime::brain_identity_path(&root);
         let before = fs::read(&path).unwrap();
         assert!(!cryptexd::local_device_identity::local_device_identity_path(&root).exists());
-        assert!(!root.join("canonical/events").exists());
+        assert_eq!(fs::read_dir(root.join("canonical/events")).unwrap().count(), 0);
         assert!(run(args).is_err());
         assert_eq!(fs::read(path).unwrap(), before);
         fs::remove_dir_all(root).unwrap();
