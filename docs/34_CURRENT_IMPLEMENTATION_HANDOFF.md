@@ -1,5 +1,33 @@
 # 34 — Current Implementation Handoff
 
+## Current stop point: key read works; existing history prerequisite — November15
+
+Native CI43757075897 at560f175 **FAILED overall**. Windows passed all scoped
+checks (2+1 fixture,10 standard-user startup,52 Desktop,5+17+80+17 daemon tests,
+3 positive/6 refusal schema cases; temporary account cleanup passed). Mac fixture
+physical path and local stream preparation succeeded. Actual signed product
+key_store read completed without an interactive wait, then slot_scan failed and
+Desktop exited2 without timeout/output/pipe failure. The source explicitly rejects
+empty local history with MissingOrUnverifiableHistory. The attempted empty-profile
+positive fixture is invalid for ExistingProfile; do NOT relax the reducer, mark CI
+green, or claim full startup acceptance. Earlier directory corrections alone did
+not satisfy the history prerequisite. Collector43757078756 passed20+2 Darwin tests.
+
+Independent read-only reviewer confirmed there is no existing supported product
+capture route before this readiness gate. An external caller is not attributed
+Desktop; product fixture commands remain refused. Review ran no tests.
+
+Concrete next proposal: [dedicated disposable CI credential Keychain](proposals/m8-ci-existing-profile-keychain-fixture.md),
+exact synthetic-item creator/product permissions, nonempty daemon-signed history,
+complete restoration and cleanup. Owner selection requested because this changes
+the previous no-key-ACL-edit test workflow; **not implemented or authorized yet**.
+Do not change owner's Keychain or product permissions. No further CI is running.
+Evidence: [current receipt](../evidence/m8/m8-mac-keychain-partition-20261115.json).
+
+Normal owner package below remains ready and unchanged; owner execution is pending.
+Two no-argument opening/Command-Q cycles are required. Existing default profiles
+must be refused without replacement. Full M8 remains OPEN.
+
 ## Default-profile package and headless Keychain prerequisite — November15
 
 Read-only native CI43752041981 on81f2de5 inspected the exact generated item's
@@ -33,7 +61,13 @@ locks, no OS key reads and no events. Exact zero-byte inventory.lock is treated 
 coordination metadata, never an event; all actual event files remain compared.
 Independent source review found no actionable issue. Collector CI43755622287
 passed20+2 tests. Formatting-only43755618865 was corrected atd61de65; native
-CI43755815895 atd61de65 is pending, including valid-input product fixture refusal.
+CI43755815895 atd61de65 passed Windows; Mac empty-stream preparation refused the
+runtime path (UnsafeRuntimePath/exit4), before product startup. The CI temporary
+parent can use macOS /var alias. Collector560f175 resolves only its exclusively
+owned temporary parent before fresh runtime creation; daemon path refusal remains
+unchanged. Darwin regression supplies an alias and asserts physical runtime paths.
+Collector43757078756 at560f175 passed20+2 native Darwin tests, including alias
+and dangling-link cases. Native CI43757075897 at560f175 failed the empty-history prerequisite; see current stop point above.
 Collector CI43752669142 at1c0e3c3 passed20 window/package/Darwin tests plus2
 product-key collector tests. Earlier43752431589 failed formatting only, corrected.
 

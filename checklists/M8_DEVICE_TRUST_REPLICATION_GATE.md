@@ -1,14 +1,14 @@
 # M8 completion ledger
 
 November15 continuation: normal no-argument/default-location owner package is
-ready but execution is pending. Read-only CI43752041981 confirms an unlocked
-Keychain with creator-only CDHash partition; same designated requirement does
-not grant the actual daemon access. Product-owned-key positive startup uses a
-fresh initialized empty Brain, separately from prior nonempty owner window
-acceptance. CI43752532500 passed Windows but found an absent canonical directory in the new
-empty fixture on Mac; daemon-only fixture correction3fe5bf3 proved actual Keychain read success in CI43754026423, then
-refused a missing local stream. Empty stream fixture90af620/d61de65 uses existing
-canonical writer locks; native CI43755815895 is pending. See the current handoff and
+ready; execution is pending. Native CI43757075897 at560f175 FAILED overall:
+Windows passed; Mac actual product Keychain read completed, then slot_scan correctly
+refused an empty local history. Empty enrollment is not a valid ExistingProfile
+positive fixture. Keep the history gate and product fixture refusal unchanged.
+Collector43757078756 passed20+2 tests. A separate disposable CI Keychain with exact
+synthetic-item permissions is proposed, not implemented; owner selection pending.
+See [proposal](../docs/proposals/m8-ci-existing-profile-keychain-fixture.md),
+[current handoff](../docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) and
 [evidence](../evidence/m8/m8-mac-keychain-partition-20261115.json). M8 remains OPEN.
 
 Updated 2026-11-15. Status: **OPEN**. Authority: Master Spec, accepted ADRs,

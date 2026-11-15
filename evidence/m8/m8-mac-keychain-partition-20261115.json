@@ -165,7 +165,7 @@
     "No default/search-list changes",
     "No product deadline or authentication changes"
   ],
-  "next_positive_scope": "Actual product daemon enrolls its own key in a fresh initialized empty Brain; test separately from nonempty canonical history and upgrade access.",
+  "next_positive_scope": "Pending owner choice: dedicated disposable CI credential Keychain with exact synthetic-item creator/product permissions, nonempty signed history and complete restoration; see docs/proposals/m8-ci-existing-profile-keychain-fixture.md. Not implemented.",
   "positive_followup": {
     "ci_run": 43752532500,
     "source": "3e170af",
@@ -184,7 +184,51 @@
     "collector_ci": 43755622287,
     "collector_result": "20 window/package/Darwin +2 product-key tests passed",
     "native_ci": 43755815895,
-    "native_status": "pending",
+    "native_status": "Windows passed; Mac fixture preparation refused runtime path with exit4 (UnsafeRuntimePath), before product startup",
     "review": "Independent read-only review found no actionable issue; reviewer ran no tests."
+  },
+  "physical_fixture_parent_followup": {
+    "source": "560f175",
+    "scope": "Resolve exclusively owned CI temporary parent to physical path before fresh runtime creation; daemon still rejects runtime symlink ancestors",
+    "native_ci": 43757075897,
+    "native_status": "FAILED: Windows passed; Mac fixture preparation and actual product key_store read completed, then slot_scan refused empty local history",
+    "collector_ci": 43757078756,
+    "collector_status": "passed: 20 window/package/Darwin +2 product-key tests, including physical path through alias and dangling event directory refusal",
+    "local_validation": "2 product-key tests: 1 passed, Darwin symlink test skipped; existing pass case plus failure/cleanup cases passed; diff check passed",
+    "windows_job": 132943398753,
+    "windows_test_counts": [
+      2,
+      1,
+      10,
+      52,
+      5,
+      17,
+      80,
+      17
+    ],
+    "windows_suite_validation": {
+      "positive": 3,
+      "refusal": 6
+    },
+    "windows_temporary_account_cleanup": true,
+    "mac_job": 132943398407,
+    "mac_observed": {
+      "fixture_preparation_passed": true,
+      "product_key_store_read_completed": true,
+      "startup_passed": false,
+      "failed_stage": "slot_scan",
+      "desktop_exit_code": 2,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false
+    },
+    "source_explanation": "trust_reducer::verify_history_from_local_anchors_with_verified_cancellable rejects local_records.is_empty() with MissingOrUnverifiableHistory. Empty enrolled Brain is not a valid positive ExistingProfile fixture; directory setup alone is insufficient.",
+    "independent_review": "Read-only reviewer confirmed no supported pre-ready product capture route; no tests run. Do not impersonate Desktop, relax history policy or expose fixture commands in product."
+  },
+  "acceptance": {
+    "keychain_read_under_same_product_image": "observed complete",
+    "full_native_ci": "failed",
+    "normal_default_profile_owner": "pending",
+    "m8": "open"
   }
 }
