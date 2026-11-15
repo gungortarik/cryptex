@@ -239,7 +239,10 @@ impl Backend {
         };
         let paths = match self.inbox.discover() {
             Ok(paths) => paths,
-            Err(_) => {
+            Err(error) => {
+                // Discovery errors contain fixed adapter stages/OS codes only;
+                // no parsed record bodies, paths or credential data enter them.
+                eprintln!("component=mac_native_incoming stage=discovery status=unavailable kind={:?} diagnostic={error}", error.kind());
                 self.status = Status::new(IncomingState::Unavailable, observed);
                 return Ok(self.status.clone());
             }
@@ -280,7 +283,11 @@ impl Backend {
             | Err(IncomingControllerError::Admission(_)) => {
                 Status::new(IncomingState::Held, observed)
             }
-            Err(_) => Status::new(IncomingState::Unavailable, observed),
+            Err(error) => {
+                // IncomingController::Display is a closed static code inventory.
+                eprintln!("component=mac_native_incoming stage=controller status=unavailable code={error}");
+                Status::new(IncomingState::Unavailable, observed)
+            }
         };
         self.namespace.validate()?;
         Ok(self.status.clone())
