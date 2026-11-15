@@ -22,7 +22,18 @@ No product ACL, OS default/search list, authentication or deadline change was ma
 Product still refuses all pilot-fixture commands, including the new fixture.
 Independent review findings (valid-input refusal test and dangling-link inventory)
 are fixed at1c0e3c3; final source review has no actionable finding and ran no tests.
-Native CI43752532500 at3e170af is pending; product Rust bytes match1c0e3c3.
+Native CI43752532500 at3e170af passed Windows and actual product key enrollment,
+but Mac stopped earlier than key reading: Backend::new could not pin the absent
+canonical/events directory. Fixture-only8f34c0f adds that empty directory through
+the daemon and verifies zero records. CI43753931004 stopped only on assertion formatting, corrected at3fe5bf3.
+Native CI43754026423 at3fe5bf3 passed Windows; Mac actual key_store read completed,
+then slot_scan correctly refused the missing local device stream. Fixture90af620
+now initializes that empty local stream using existing instance/inventory/device
+locks, no OS key reads and no events. Exact zero-byte inventory.lock is treated as
+coordination metadata, never an event; all actual event files remain compared.
+Independent source review found no actionable issue. Collector CI43755622287
+passed20+2 tests. Formatting-only43755618865 was corrected atd61de65; native
+CI43755815895 atd61de65 is pending, including valid-input product fixture refusal.
 Collector CI43752669142 at1c0e3c3 passed20 window/package/Darwin tests plus2
 product-key collector tests. Earlier43752431589 failed formatting only, corrected.
 

@@ -165,5 +165,26 @@
     "No default/search-list changes",
     "No product deadline or authentication changes"
   ],
-  "next_positive_scope": "Actual product daemon enrolls its own key in a fresh initialized empty Brain; test separately from nonempty canonical history and upgrade access."
+  "next_positive_scope": "Actual product daemon enrolls its own key in a fresh initialized empty Brain; test separately from nonempty canonical history and upgrade access.",
+  "positive_followup": {
+    "ci_run": 43752532500,
+    "source": "3e170af",
+    "windows": "passed",
+    "mac": "product key enrollment passed; Desktop failed backend pin before any key_store read because empty fixture omitted canonical/events",
+    "correction": "8f34c0f daemon creates empty canonical directory; no record, key, ACL or product authorization change",
+    "next_ci": 43754026423,
+    "next_ci_status": "Windows passed; Mac actual key_store read completed, then slot_scan refused missing local stream",
+    "format_only_run": 43753931004,
+    "next_ci_source": "3fe5bf3"
+  },
+  "empty_stream_followup": {
+    "implementation": "90af620",
+    "format_correction": "d61de65",
+    "scope": "Initialize empty local stream through existing canonical writer locks without key reads/events; exact zero-byte inventory lock is coordination metadata",
+    "collector_ci": 43755622287,
+    "collector_result": "20 window/package/Darwin +2 product-key tests passed",
+    "native_ci": 43755815895,
+    "native_status": "pending",
+    "review": "Independent read-only review found no actionable issue; reviewer ran no tests."
+  }
 }
