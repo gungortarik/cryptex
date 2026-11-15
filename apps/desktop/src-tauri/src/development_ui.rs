@@ -175,7 +175,7 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
                 invoke.resolver.reject("development_not_ready");
                 return true;
             }
-            tauri::generate_handler![
+            let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 m8_native_profile_status,
                 m8_new_bootstrap_transaction_id,
                 m8_read_bootstrap_brain_identity,
@@ -197,7 +197,8 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
                 crate::p0_5_capture_memory,
                 crate::p0_5_resolve_capture,
                 crate::p0_6_materialize_and_open_vault,
-            ](invoke)
+            ];
+            handler(invoke)
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -211,7 +212,7 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
             // This is information, not Keychain authorization. Do not cache it
             // as proof of access. Each primary launch explains possible OS prompts.
             if !explain_access() {
-                app.exit(0);
+                app.handle().exit(0);
                 return Ok(());
             }
             let setup = (|| -> Result<(), String> {
@@ -263,7 +264,7 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
                 if let Ok(mut state) = app.state::<Mutex<Lifecycle>>().lock() {
                     state.shutdown_complete();
                 }
-                app.exit(2);
+                app.handle().exit(2);
             }
             Ok(())
         })
