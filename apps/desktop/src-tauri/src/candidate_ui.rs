@@ -1344,6 +1344,11 @@ pub fn entry() -> Option<Result<(), String>> {
 /// through to fixture commands, environment daemon overrides or legacy startup.
 #[cfg(feature = "m8-development-product")]
 pub fn development_entry() -> Option<Result<(), String>> {
+    fn stage<T>(name: &'static str, result: Result<T, String>) -> Result<T, String> {
+        result.inspect_err(|_| {
+            eprintln!("{}", serde_json::json!({"developmentStage": name}));
+        })
+    }
     Some((|| {
         use tauri::Manager;
         let args: Vec<_> = std::env::args_os().skip(1).collect();
@@ -1355,14 +1360,17 @@ pub fn development_entry() -> Option<Result<(), String>> {
             ),
             super::development_launch::Mode::Check(root) => (root, true),
         };
-        let (owner, content) = Owner::start_profile(&runtime, ContentProfile::ExistingProfile)?;
-        let (mut context, binding) = install_context(content, &runtime)?;
-        owner.client.call(|reply| Work::Bind(binding, reply))?;
-        owner.client.call(Work::Ping)?;
+        let (owner, content) = stage(
+            "start",
+            Owner::start_profile(&runtime, ContentProfile::ExistingProfile),
+        )?;
+        let (mut context, binding) = stage("content", install_context(content, &runtime))?;
+        stage("bind", owner.client.call(|reply| Work::Bind(binding, reply)))?;
+        stage("ping", owner.client.call(Work::Ping))?;
         if check_only {
-            owner.client.call(Work::ProfileStatus)?;
-            super::p0_3_ipc_health()?;
-            owner.close()?;
+            stage("profile_status", owner.client.call(Work::ProfileStatus))?;
+            stage("unix_health", super::p0_3_ipc_health())?;
+            stage("close", owner.close())?;
             println!("development_existing_profile_startup_and_cleanup=passed");
             return Ok(());
         }

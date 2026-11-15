@@ -3,11 +3,13 @@ from pathlib import Path
 from types import SimpleNamespace
 import unittest
 import tempfile
+import io
+from contextlib import redirect_stdout
 import json
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mac_development_startup_check import require_refusal, canonical_hashes, exercise_profile
+from mac_development_startup_check import require_refusal, canonical_hashes, exercise_profile, FencedRun
 from mac_identity_preflight import PreflightError
 
 
@@ -21,6 +23,27 @@ class RefusalTests(unittest.TestCase):
                        dict(output="some_other_error\n")):
             with self.subTest(change=change), self.assertRaises(PreflightError):
                 require_refusal(SimpleNamespace(**(base | change)), "local_signed_startup_Inventory")
+
+
+class DiagnosticTests(unittest.TestCase):
+    def test_failure_output_only_contains_allowlisted_stages(self):
+        output = "\n".join([
+            "private note and runtime path", "local_signed_startup_Channel",
+            json.dumps({"m8LocalStage": "content_bind", "error": "local_signed_startup_Instance", "secret": "private"}),
+            json.dumps({"m8ProfileStage": "prepare", "kind": "Other", "path": "private"}),
+            json.dumps({"developmentStage": "unix_health", "path": "private"}),
+            json.dumps({"m8LocalStage": "private path", "error": "private key"})])
+        result = SimpleNamespace(code=2, timed_out=False, limited=False, pipe_failed=False, output=output)
+        fence = FencedRun(lambda *_: result)
+        captured = io.StringIO()
+        with redirect_stdout(captured), self.assertRaises(PreflightError):
+            fence.checked(["desktop"], "development_check", 10)
+        diagnostic = captured.getvalue()
+        self.assertNotIn("private", diagnostic)
+        self.assertIn("unix_health", diagnostic)
+        self.assertIn("prepare", diagnostic)
+        self.assertIn("local_signed_startup_Instance", diagnostic)
+        self.assertTrue(fence.stopped)
 
 
 class ProfileTests(unittest.TestCase):

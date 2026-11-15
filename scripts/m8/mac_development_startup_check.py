@@ -4,6 +4,7 @@ No owner signing identity is provisioned and no public release is produced.
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -45,7 +46,37 @@ class FencedRun:
         return result
 
     def checked(self, args, label, timeout):
-        return checked(self.outcome, args, label, timeout)
+        outcome = self.outcome(args, timeout)
+        try:
+            return checked(lambda *_: outcome, args, label, timeout)
+        except PreflightError:
+            # Preserve only fixed native diagnostics, never arbitrary process
+            # output (which can include paths, notes or identity material).
+            print(json.dumps({"developmentStage": label, "exitCode": outcome.code,
+                              "timedOut": outcome.timed_out, "outputLimited": outcome.limited,
+                              "pipeFailed": outcome.pipe_failed}), flush=True)
+            for line in outcome.output.splitlines():
+                if re.fullmatch(r"(?:local_signed_startup|existing_profile|development)_[A-Za-z0-9_]+", line):
+                    print(line, flush=True)
+                elif line.startswith("{"):
+                    try:
+                        value = json.loads(line)
+                    except ValueError:
+                        continue
+                    stage = value.get("developmentStage")
+                    if isinstance(stage, str) and re.fullmatch(r"[a-z_]{1,64}", stage):
+                        print(json.dumps({"developmentStage": stage}), flush=True)
+                    stage = value.get("m8LocalStage")
+                    error = value.get("error")
+                    if (isinstance(stage, str) and re.fullmatch(r"[a-z_]{1,64}", stage)
+                            and isinstance(error, str) and re.fullmatch(r"local_signed_startup_[A-Za-z0-9_]+", error)):
+                        print(json.dumps({"m8LocalStage": stage, "error": error}), flush=True)
+                    stage = value.get("m8ProfileStage")
+                    kind = value.get("kind")
+                    if (isinstance(stage, str) and re.fullmatch(r"[a-z_]{1,64}", stage)
+                            and isinstance(kind, str) and re.fullmatch(r"[A-Za-z]{1,64}", kind)):
+                        print(json.dumps({"m8ProfileStage": stage, "kind": kind}), flush=True)
+            raise
 
 
 def exercise_profile(root, desktop, fixture_daemon, manifest, run_bounded, run):

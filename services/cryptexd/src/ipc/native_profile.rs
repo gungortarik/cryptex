@@ -313,12 +313,23 @@ pub(crate) fn serve(
     root: &Path,
     instance: &mut crate::instance::InstanceLock,
 ) -> io::Result<()> {
-    validate_existing(root)?;
-    let mut backend = Backend::new(root)?;
+    fn stage<T>(name: &'static str, result: io::Result<T>) -> io::Result<T> {
+        result.inspect_err(|error| {
+            eprintln!(
+                "{}",
+                serde_json::json!({"m8ProfileStage": name, "kind": format!("{:?}", error.kind())})
+            );
+        })
+    }
+    stage("validate", validate_existing(root))?;
+    let mut backend = stage("backend", Backend::new(root))?;
     bound_runtime_admission(root, instance)?
         .bind_namespace(backend.namespace.clone())
         .map_err(io::Error::other)?;
-    prepare_existing_runtime(root, instance, &backend.namespace)?;
+    stage(
+        "prepare",
+        prepare_existing_runtime(root, instance, &backend.namespace),
+    )?;
     // Open an explicitly enrolled owned helper only. Absence is local-only;
     // never generate/adopt a profile or infer peer trust during native startup.
     let helper_root = root.join("managed-transport");
@@ -327,11 +338,17 @@ pub(crate) fn serve(
     } else {
         None
     };
-    let context = context(root, instance, worker.as_ref().map(Worker::status_reader))?;
+    let context = stage(
+        "context",
+        context(root, instance, worker.as_ref().map(Worker::status_reader)),
+    )?;
     // No Unix or derived worker is exposed until it shares the original
     // native namespace capability set and verified device pins.
     #[cfg(feature = "m8-development-product")]
-    super::spawn_retrieval_server(root, instance, context.store.clone(), context.environment)?;
+    stage(
+        "unix_data",
+        super::spawn_retrieval_server(root, instance, context.store.clone(), context.environment),
+    )?;
     let registry = ApprovalSessionRegistry::default();
     let mut domain = super::native_domain::Domain::from_context(context.clone(), &registry);
     send_checked(&backend.namespace, || {
