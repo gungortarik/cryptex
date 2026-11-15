@@ -32,6 +32,10 @@ fn unsafe_object() -> io::Error {
     )
 }
 
+fn at_stage(stage: &'static str, error: io::Error) -> io::Error {
+    io::Error::new(error.kind(), format!("import filesystem {stage}: {error}"))
+}
+
 fn leaf(name: &OsStr) -> io::Result<CString> {
     let bytes = name.as_bytes();
     if bytes.is_empty()
@@ -47,7 +51,7 @@ fn leaf(name: &OsStr) -> io::Result<CString> {
 
 fn owned(fd: libc::c_int) -> io::Result<File> {
     if fd < 0 {
-        return Err(io::Error::last_os_error());
+        return Err(at_stage("open_fd", io::Error::last_os_error()));
     }
     // SAFETY: successful open/openat transfers one uniquely owned descriptor.
     Ok(unsafe { File::from_raw_fd(fd) })
@@ -66,7 +70,7 @@ fn stat_at(parent: &File, name: &CStr) -> io::Result<libc::stat> {
         )
     } != 0
     {
-        return Err(io::Error::last_os_error());
+        return Err(at_stage("stat_at", io::Error::last_os_error()));
     }
     Ok(unsafe { result.assume_init() })
 }
@@ -397,15 +401,18 @@ pub(crate) fn create_dir_all_owned(path: &Path) -> io::Result<()> {
             Err(error) => return Err(error),
         }
     }
-    let original = Directory::open(ancestor, false)?;
+    let original = Directory::open(ancestor, false)
+        .map_err(|error| at_stage("create_existing_ancestor", error))?;
     for directory in missing.iter().rev() {
         original.validate()?;
         match create_dir(directory) {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(error),
+            Err(error) => return Err(at_stage("create_directory", error)),
         }
-        Directory::open(directory, true)?.validate()?;
+        Directory::open(directory, true)
+            .and_then(|directory| directory.validate())
+            .map_err(|error| at_stage("validate_created_directory", error))?;
     }
     original.validate()
 }
