@@ -254,6 +254,12 @@ pub(crate) struct ImportPolicyVerifiedBatch {
 }
 
 impl ImportPolicyVerifiedBatch {
+    pub(crate) fn validate_recovery_namespace(&self, root: &Path) -> Result<(), crate::import_staging::ImportStagingError> {
+        if !self.safety.snapshot.as_ref().is_some_and(|snapshot| snapshot.locks_runtime(root)) {
+            return Err(crate::import_staging::ImportStagingError::RecoveryConflict("recovery policy lock namespace changed".into()));
+        }
+        Ok(())
+    }
     #[allow(dead_code)] // Read by the not-yet-enabled canonical publisher.
     pub(crate) fn verified(&self) -> &crate::import_staging::VerifiedStagedBatch {
         &self.verified
@@ -830,14 +836,22 @@ impl VerifiedCanonicalSnapshot {
     }
 
     pub(crate) fn locks_runtime(&self, root: &Path) -> bool {
-        if self.runtime_root != root { return false; }
+        if self.runtime_root != root {
+            return false;
+        }
         #[cfg(target_os = "macos")]
-        if !self._inventory_lock.namespace_valid() || self._locks.iter().any(|lock| !lock.namespace_valid()) { return false; }
+        if !self._inventory_lock.namespace_valid()
+            || self._locks.iter().any(|lock| !lock.namespace_valid())
+        {
+            return false;
+        }
         true
     }
 
     #[cfg(target_os = "macos")]
-    pub(crate) fn locked_devices(&self) -> &[DeviceId] { &self.devices }
+    pub(crate) fn locked_devices(&self) -> &[DeviceId] {
+        &self.devices
+    }
 
     pub(crate) fn locks_devices(&self, devices: &[DeviceId]) -> bool {
         devices.iter().all(|device| {

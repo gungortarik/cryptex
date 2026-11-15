@@ -192,7 +192,9 @@ fn verify_state(
 }
 
 pub(super) fn resume(root: &Path, path: &Path) -> Result<(), ImportStagingError> {
+    let namespace = ImportNamespace::capture(root)?;
     let receipt = read_receipt(path)?;
+    namespace.bind_manifest(&receipt.prepared_manifest)?;
     let mut _pins = pin_roots(root)?;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     let _inventory =
@@ -225,11 +227,14 @@ pub(super) fn resume(root: &Path, path: &Path) -> Result<(), ImportStagingError>
     let _slot = lock_slot(root)?;
     let (final_path, _) = receipt_paths(root, &receipt.transaction_id);
     verify_state(root, path, &receipt, path != final_path)?;
+    namespace.validate()?;
+    validate_lock_namespace(&_inventory, &_devices)?;
     if path != final_path {
         publish_staged_no_replace(path, &final_path)?;
         sync_staged_parent(&final_path)?;
     }
-    cleanup_locked(root, &final_path, &receipt)
+    namespace.validate()?;
+    cleanup_locked(root, &final_path, &receipt, &namespace, &_inventory, &_devices)
 }
 
 fn pin_roots(root: &Path) -> Result<Vec<File>, ImportStagingError> {
@@ -253,7 +258,12 @@ pub(super) fn complete_locked(
     marker_path: &Path,
     marker: &CommittedImportMarker,
     manifest: &PreparedImportManifest,
+    namespace: &ImportNamespace,
+    inventory: &crate::canonical_writer::CanonicalInventoryLock,
+    devices: &[crate::canonical_writer::DeviceCanonicalLock],
 ) -> Result<(), ImportStagingError> {
+    namespace.bind_manifest(manifest)?;
+    validate_lock_namespace(inventory, devices)?;
     let _pins = pin_roots(root)?;
     let receipt = Receipt {
         protocol_version: 1,
@@ -283,23 +293,31 @@ pub(super) fn complete_locked(
     #[cfg(test)]
     interrupt(root, "m8_cleanup_receipt_temp_synced");
     verify_state(root, &temporary, &receipt, true)?;
+    namespace.validate()?;
     publish_staged_no_replace(&temporary, &final_path)?;
     #[cfg(test)]
     interrupt(root, "m8_cleanup_receipt_moved");
     sync_staged_parent(&final_path)?;
     #[cfg(test)]
     interrupt(root, "m8_cleanup_receipt_final_synced");
-    cleanup_locked(root, &final_path, &receipt)
+    namespace.validate()?;
+    cleanup_locked(root, &final_path, &receipt, namespace, inventory, devices)
 }
 
-fn cleanup_locked(root: &Path, path: &Path, receipt: &Receipt) -> Result<(), ImportStagingError> {
+fn cleanup_locked(root: &Path, path: &Path, receipt: &Receipt, namespace: &ImportNamespace, inventory: &crate::canonical_writer::CanonicalInventoryLock, devices: &[crate::canonical_writer::DeviceCanonicalLock]) -> Result<(), ImportStagingError> {
+    namespace.validate()?;
+    validate_lock_namespace(inventory, devices)?;
     verify_state(root, path, receipt, false)?;
+    #[cfg(all(test, target_os = "macos"))]
+    namespace_fault::run(namespace_fault::Point::CleanupValidated);
     let transaction = root
         .join("canonical/import-staging")
         .join(&receipt.transaction_id);
     if entry_exists(&transaction)? {
         // Delete only manifest-bound leaves; empty directories are valid after a crash.
         for segment in &receipt.prepared_manifest.segments {
+            namespace.validate()?;
+            validate_lock_namespace(inventory, devices)?;
             let staged = transaction.join(&segment.staged_relative_path);
             if entry_exists(&staged)? {
                 manifest_file_matches(&staged, segment, false)?;
@@ -307,6 +325,8 @@ fn cleanup_locked(root: &Path, path: &Path, receipt: &Receipt) -> Result<(), Imp
                 #[cfg(test)]
                 interrupt(root, "m8_cleanup_staged_file_removed_before_sync");
                 sync_staged_parent(&staged)?;
+                namespace.validate()?;
+                validate_lock_namespace(inventory, devices)?;
                 #[cfg(test)]
                 interrupt(root, "m8_during_committed_staging_cleanup");
             }
@@ -324,15 +344,19 @@ fn cleanup_locked(root: &Path, path: &Path, receipt: &Receipt) -> Result<(), Imp
             })
             .collect::<std::collections::BTreeSet<_>>();
         for directory in directories {
+            namespace.validate()?;
+            validate_lock_namespace(inventory, devices)?;
             if entry_exists(&directory)? {
                 ensure_existing_plain_directory(&directory)?;
                 fs::remove_dir(&directory)?;
+                namespace.forget_removed(&directory)?;
                 #[cfg(test)]
                 interrupt(root, "m8_cleanup_staged_directory_removed_before_sync");
                 sync_staged_parent(&directory)?;
             }
         }
         fs::remove_dir(&transaction)?;
+        namespace.forget_removed(&transaction)?;
         #[cfg(test)]
         interrupt(root, "m8_cleanup_transaction_removed_before_sync");
     }
@@ -350,7 +374,9 @@ fn cleanup_locked(root: &Path, path: &Path, receipt: &Receipt) -> Result<(), Imp
         verify_state(root, path, receipt, false)?;
         let companion = path.with_file_name(format!("{}.{suffix}", receipt.transaction_id));
         if entry_exists(&companion)? {
+            namespace.validate()?;
             fs::remove_file(&companion)?;
+            validate_lock_namespace(inventory, devices)?;
             #[cfg(test)]
             interrupt(root, &format!("{_boundary}_before_sync"));
         }
@@ -359,10 +385,14 @@ fn cleanup_locked(root: &Path, path: &Path, receipt: &Receipt) -> Result<(), Imp
         interrupt(root, _boundary);
     }
     verify_state(root, path, receipt, false)?;
+    namespace.validate()?;
+    validate_lock_namespace(inventory, devices)?;
     fs::remove_file(path)?;
     #[cfg(test)]
     interrupt(root, "m8_cleanup_receipt_removed_before_sync");
     sync_staged_parent(path)?;
+    namespace.validate()?;
+    validate_lock_namespace(inventory, devices)?;
     #[cfg(test)]
     interrupt(root, "m8_after_cleanup_receipt_removed");
     Ok(())

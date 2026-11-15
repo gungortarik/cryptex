@@ -289,9 +289,13 @@ struct CanonicalLockFile {
 }
 fn ensure_lock_directory(path: &Path) -> std::io::Result<()> {
     #[cfg(target_os = "macos")]
-    { crate::import_staging::macos_fs::create_dir_all_owned(path) }
+    {
+        crate::import_staging::macos_fs::create_dir_all_owned(path)
+    }
     #[cfg(not(target_os = "macos"))]
-    { fs::create_dir_all(path) }
+    {
+        fs::create_dir_all(path)
+    }
 }
 fn open_canonical_lock_file(path: &Path) -> CanonicalWriterResult<CanonicalLockFile> {
     #[cfg(target_os = "macos")]
@@ -302,7 +306,12 @@ fn open_canonical_lock_file(path: &Path) -> CanonicalWriterResult<CanonicalLockF
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let file = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(path)
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(path)
             .map_err(|error| CanonicalWriterError::Path(error.to_string()))?;
         Ok(CanonicalLockFile { file })
     }
@@ -310,7 +319,9 @@ fn open_canonical_lock_file(path: &Path) -> CanonicalWriterResult<CanonicalLockF
 
 impl CanonicalInventoryLock {
     #[cfg(target_os = "macos")]
-    pub(crate) fn namespace_valid(&self) -> bool { self._file.binding.validate(&self._file.file).is_ok() }
+    pub(crate) fn namespace_valid(&self) -> bool {
+        self._file.binding.validate(&self._file.file).is_ok()
+    }
 }
 
 /// Serializes canonical writes against stable inventory readers and imports.
@@ -358,7 +369,8 @@ pub(crate) fn acquire_canonical_write_lock_set(
     let mut devices = Vec::with_capacity(ordered.len());
     for device_id in &ordered {
         let device_dir = canonical_events_device_dir(runtime_root, device_id);
-        ensure_lock_directory(&device_dir).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+        ensure_lock_directory(&device_dir)
+            .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
         devices.push(acquire_device_lock_in_existing_dir(device_id, &device_dir)?);
     }
     Ok(CanonicalWriteLockSet {
@@ -397,7 +409,9 @@ pub(crate) fn acquire_canonical_inventory_lock_until(
 
 impl DeviceCanonicalLock {
     #[cfg(target_os = "macos")]
-    pub(crate) fn namespace_valid(&self) -> bool { self._file.binding.validate(&self._file.file).is_ok() }
+    pub(crate) fn namespace_valid(&self) -> bool {
+        self._file.binding.validate(&self._file.file).is_ok()
+    }
 
     pub(crate) fn device_id(&self) -> &DeviceId {
         &self.device_id
@@ -1928,7 +1942,7 @@ mod tests {
     #[test]
     fn long_windows_writer_appends_seals_reopens_and_preserves_prior_segments() {
         let base = temp_root("long-path");
-        let root = base.join("uzun-ÃƒÂ§alÃ„Â±Ã…Å¸ma-".repeat(16));
+        let root = base.join("uzun-çalışma-".repeat(16));
         let store = FakeSecureStore::new();
         let device = DeviceId::new("33333333-3333-4333-8333-333333333333").unwrap();
         let brain = "33333333-3333-4333-8333-333333333333";

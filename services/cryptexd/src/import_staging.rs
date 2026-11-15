@@ -247,6 +247,97 @@ fn sync_import_file(file: &File) -> io::Result<()> {
     }
 }
 
+/// One retained namespace for a complete recovery/cleanup operation. This is
+/// continuity evidence, not a publication or policy token.
+struct ImportNamespace {
+    #[cfg(target_os = "macos")]
+    root: PathBuf,
+    #[cfg(target_os = "macos")]
+    identity: macos_fs::RuntimeIdentity,
+}
+
+impl ImportNamespace {
+    fn capture(root: &Path) -> Result<Self, ImportStagingError> {
+        #[cfg(target_os = "macos")]
+        {
+            let result = Self { root: root.to_path_buf(), identity: macos_fs::RuntimeIdentity::capture(root)? };
+            for relative in ["canonical", "canonical/events", "canonical/import-staging", "canonical/import-journal"] {
+                let path = root.join(relative);
+                if entry_exists(&path)? { result.identity.pin(&path)?; }
+            }
+            result.validate()?;
+            Ok(result)
+        }
+        #[cfg(not(target_os = "macos"))]
+        { let _ = root; Ok(Self {}) }
+    }
+
+    fn bind_manifest(&self, manifest: &PreparedImportManifest) -> Result<(), ImportStagingError> {
+        #[cfg(target_os = "macos")]
+        {
+            let transaction = self.root.join("canonical/import-staging").join(&manifest.transaction_id);
+            if entry_exists(&transaction)? { self.identity.pin(&transaction)?; }
+            for segment in &manifest.segments {
+                let device = DeviceId::new(segment.device_id.clone()).map_err(|_| ImportStagingError::RecoveryConflict("invalid namespace device".into()))?;
+                for path in [transaction.join(device.as_filename_stem()), canonical_events_device_dir(&self.root, &device)] {
+                    if entry_exists(&path)? { self.identity.pin(&path)?; }
+                }
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = manifest;
+        self.validate()
+    }
+
+    fn validate(&self) -> Result<(), ImportStagingError> {
+        #[cfg(target_os = "macos")]
+        self.identity.validate().map_err(|_| ImportStagingError::RecoveryConflict("recovery namespace changed; preserve evidence".into()))?;
+        Ok(())
+    }
+
+    fn forget_removed(&self, path: &Path) -> Result<(), ImportStagingError> {
+        #[cfg(target_os = "macos")]
+        self.identity.forget_removed(path)?;
+        #[cfg(not(target_os = "macos"))]
+        let _ = path;
+        self.validate()
+    }
+}
+
+fn validate_lock_namespace(
+    inventory: &crate::canonical_writer::CanonicalInventoryLock,
+    devices: &[crate::canonical_writer::DeviceCanonicalLock],
+) -> Result<(), ImportStagingError> {
+    #[cfg(target_os = "macos")]
+    if !inventory.namespace_valid() || devices.iter().any(|lock| !lock.namespace_valid()) {
+        return Err(ImportStagingError::RecoveryConflict("canonical lock namespace changed during cleanup".into()));
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (inventory, devices);
+    Ok(())
+}
+
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) mod namespace_fault {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub(crate) enum Point { RecoveryPolicy, CleanupValidated }
+    type Hook = Option<(Point, Box<dyn FnOnce()>)>;
+    thread_local! { static HOOK: std::cell::RefCell<Hook> = const { std::cell::RefCell::new(None) }; }
+    pub(crate) struct Guard(std::marker::PhantomData<std::rc::Rc<()>>);
+    impl Drop for Guard { fn drop(&mut self) { HOOK.with(|h| *h.borrow_mut() = None); } }
+    pub(crate) fn install(point: Point, hook: impl FnOnce() + 'static) -> Guard {
+        HOOK.with(|h| { assert!(h.borrow().is_none()); *h.borrow_mut() = Some((point, Box::new(hook))); });
+        Guard(std::marker::PhantomData)
+    }
+    pub(crate) fn run(point: Point) {
+        let hook = HOOK.with(|h| {
+            let selected = h.borrow().as_ref().is_some_and(|(p,_)| *p == point);
+            if selected { h.borrow_mut().take() } else { None }
+        });
+        if let Some((_, hook)) = hook { hook(); }
+    }
+}
+
 impl VerifiedStagedBatch {
     #[must_use]
     pub fn segments(&self) -> &[VerifiedStagedSegment] {
@@ -394,21 +485,33 @@ impl ImportStagingSession {
 
     fn validate_runtime_identity(&self) -> Result<(), ImportStagingError> {
         #[cfg(target_os = "macos")]
-        self.runtime_identity.validate().map_err(|_| ImportStagingError::RecoveryConflict("import namespace changed; preserve transaction evidence".into()))?;
+        self.runtime_identity.validate().map_err(|_| {
+            ImportStagingError::RecoveryConflict(
+                "import namespace changed; preserve transaction evidence".into(),
+            )
+        })?;
         Ok(())
     }
 
-    fn bind_snapshot_namespace(&self, snapshot: &crate::knowledge_materialization::VerifiedCanonicalSnapshot) -> Result<(), ImportStagingError> {
+    fn bind_snapshot_namespace(
+        &self,
+        snapshot: &crate::knowledge_materialization::VerifiedCanonicalSnapshot,
+    ) -> Result<(), ImportStagingError> {
         self.validate_runtime_identity()?;
         if !snapshot.locks_runtime(&self.runtime_root) {
-            return Err(ImportStagingError::RecoveryConflict("import snapshot runtime or lock namespace changed".into()));
+            return Err(ImportStagingError::RecoveryConflict(
+                "import snapshot runtime or lock namespace changed".into(),
+            ));
         }
         #[cfg(target_os = "macos")]
         for device in snapshot.locked_devices() {
-            self.runtime_identity.pin(&canonical_events_device_dir(&self.runtime_root, device))?;
+            self.runtime_identity
+                .pin(&canonical_events_device_dir(&self.runtime_root, device))?;
         }
         if !snapshot.locks_runtime(&self.runtime_root) {
-            return Err(ImportStagingError::RecoveryConflict("canonical lock namespace changed during import binding".into()));
+            return Err(ImportStagingError::RecoveryConflict(
+                "canonical lock namespace changed during import binding".into(),
+            ));
         }
         Ok(())
     }
@@ -445,8 +548,9 @@ impl ImportStagingSession {
                     #[cfg(target_os = "macos")]
                     self.runtime_identity.forget_removed(&self.staging_dir)?;
                     Err(ImportStagingError::Invalid(
-                    "batch contains a duplicate device and segment index".into(),
-                ))},
+                        "batch contains a duplicate device and segment index".into(),
+                    ))
+                }
                 Err(cleanup) => Err(ImportStagingError::Invalid(format!(
                     "batch contains a duplicate device and segment index; staging rollback also failed: {cleanup}"
                 ))),
@@ -465,7 +569,7 @@ impl ImportStagingSession {
                     #[cfg(target_os = "macos")]
                     self.runtime_identity.forget_removed(&self.staging_dir)?;
                     Err(primary)
-                },
+                }
                 Err(cleanup) => Err(ImportStagingError::Invalid(format!(
                     "{primary}; staging rollback also failed: {cleanup}"
                 ))),
@@ -2323,6 +2427,7 @@ fn inspect_committed_marker_companion(
     marker_path: &Path,
     marker: &CommittedImportMarker,
 ) -> Result<&'static str, ImportStagingError> {
+    let namespace = ImportNamespace::capture(runtime_root)?;
     let transaction = runtime_root
         .join("canonical/import-staging")
         .join(&marker.transaction_id);
@@ -2353,6 +2458,7 @@ fn inspect_committed_marker_companion(
     }
 
     let manifest = read_prepared_manifest(&manifest_path)?;
+    namespace.bind_manifest(&manifest)?;
     if manifest.transaction_id != marker.transaction_id {
         return Err(ImportStagingError::RecoveryConflict(
             "committed marker transaction does not match its prepared companion".into(),
@@ -2465,7 +2571,9 @@ fn inspect_committed_marker_companion(
         }
         let cleanup_marker_path = final_marker_path;
 
-        cleanup::complete_locked(runtime_root, &cleanup_marker_path, marker, &locked_manifest)?;
+        namespace.validate()?;
+        validate_lock_namespace(&inventory_lock, &device_locks)?;
+        cleanup::complete_locked(runtime_root, &cleanup_marker_path, marker, &locked_manifest, &namespace, &inventory_lock, &device_locks)?;
         return Ok("all destinations match; transaction cleanup completed");
     }
 
@@ -3053,6 +3161,7 @@ fn finish_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
     env: crate::secure_store::SecureStoreEnvironment,
     temporary: Option<&Path>,
 ) -> Result<PathBuf, ImportStagingError> {
+    let namespace = ImportNamespace::capture(runtime_root)?;
     let _root_pins = ImportStagingSession::pin_existing_runtime(runtime_root)?;
     if instance.path() != crate::paths::lock_path(runtime_root) {
         return Err(ImportStagingError::RecoveryConflict(
@@ -3075,6 +3184,7 @@ fn finish_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
         ));
     }
     let manifest = read_prepared_manifest(&manifest_path)?;
+    namespace.bind_manifest(&manifest)?;
     let expected_marker = CommittedImportMarker {
         protocol_version: 1,
         transaction_id: manifest.transaction_id.clone(),
@@ -3115,6 +3225,11 @@ fn finish_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
             "recovery policy is held".into(),
         ));
     }
+    namespace.bind_manifest(&manifest)?;
+    namespace.validate()?;
+    policy.validate_recovery_namespace(runtime_root)?;
+    #[cfg(all(test, target_os = "macos"))]
+    namespace_fault::run(namespace_fault::Point::RecoveryPolicy);
     // Canonical locks precede the import mutex. Never wait for canonical locks
     // while holding the staging slot.
     let slot_path = journal.join("import.lock");
@@ -3127,6 +3242,8 @@ fn finish_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
     slot.try_lock_exclusive()
         .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
     let check_journal = || -> Result<(), ImportStagingError> {
+        namespace.validate()?;
+        policy.validate_recovery_namespace(runtime_root)?;
         for entry in fs::read_dir(&journal)? {
             let path = entry?.path();
             if path != journal.join("import.lock")
@@ -3157,8 +3274,12 @@ fn finish_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
     };
     check_journal()?;
     let check_locations = || -> Result<usize, ImportStagingError> {
+        namespace.validate()?;
+        policy.validate_recovery_namespace(runtime_root)?;
         let mut visible = 0;
         for segment in &manifest.segments {
+        namespace.validate()?;
+        policy.validate_recovery_namespace(runtime_root)?;
             let device = DeviceId::new(segment.device_id.clone())
                 .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
             let staged = transaction.join(&segment.staged_relative_path);
@@ -3205,6 +3326,8 @@ fn finish_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
         ));
     }
     for segment in &manifest.segments {
+        namespace.validate()?;
+        policy.validate_recovery_namespace(runtime_root)?;
         // Recheck the entire batch, including previously visible destinations,
         // before each additive move, not just the next staged source.
         check_journal()?;
@@ -3226,6 +3349,8 @@ fn finish_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
             );
         }
         sync_staged_parent(&destination)?;
+        namespace.validate()?;
+        policy.validate_recovery_namespace(runtime_root)?;
     }
     check_journal()?;
     if check_locations()? != manifest.segments.len() {
@@ -3234,7 +3359,7 @@ fn finish_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
         ));
     }
     // policy, slot, directory pins and instance ownership outlive this write.
-    if let Some(path) = temporary {
+    let result = if let Some(path) = temporary {
         let final_path = journal.join(format!("{transaction_id}.committed.json"));
         publish_staged_no_replace(path, &final_path)?;
         #[cfg(test)]
@@ -3258,7 +3383,10 @@ fn finish_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
         Ok(final_path)
     } else {
         write_committed_marker(runtime_root, &expected_marker)
-    }
+    };
+    namespace.validate()?;
+    policy.validate_recovery_namespace(runtime_root)?;
+    result
 }
 
 /// Build the local read-only policy context for a startup-visible prepared
@@ -4521,7 +4649,7 @@ mod tests {
     #[cfg(windows)]
     fn long_windows_publication_preserves_no_replace_and_directory_checks() {
         let root = crate::test_temp::exclusive_temp_dir("long-staging-adapter");
-        let parent = root.join("long-path-".repeat(20)).join("unicode-Ã©");
+        let parent = root.join("long-path-".repeat(20)).join("unicode-é");
         fs::create_dir_all(&parent).unwrap();
         let source = parent.join("source.seg");
         let destination = parent.join("destination.seg");

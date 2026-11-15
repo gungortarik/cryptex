@@ -137,12 +137,17 @@ impl RuntimeIdentity {
     pub(super) fn capture(root: &Path) -> io::Result<Self> {
         let directory = Directory::open(root, true)?;
         let root = normalize(root)?;
-        Ok(Self { root: root.clone(), pins: std::cell::RefCell::new(std::collections::BTreeMap::from([(root, directory)])) })
+        Ok(Self {
+            root: root.clone(),
+            pins: std::cell::RefCell::new(std::collections::BTreeMap::from([(root, directory)])),
+        })
     }
     pub(super) fn pin(&self, path: &Path) -> io::Result<()> {
         self.validate()?;
         let key = normalize(path)?;
-        if !key.starts_with(&self.root) { return Err(unsafe_object()); }
+        if !key.starts_with(&self.root) {
+            return Err(unsafe_object());
+        }
         if !self.pins.borrow().contains_key(&key) {
             let directory = Directory::open(path, true)?;
             self.pins.borrow_mut().insert(key, directory);
@@ -150,25 +155,34 @@ impl RuntimeIdentity {
         self.validate()
     }
     pub(super) fn validate(&self) -> io::Result<()> {
-        for directory in self.pins.borrow().values() { directory.validate()?; }
+        for directory in self.pins.borrow().values() {
+            directory.validate()?;
+        }
         Ok(())
     }
     // Only called after the daemon's authorized bounded cleanup removed this
     // exact subtree. Other original capabilities are never replaced/refreshed.
     pub(super) fn forget_removed(&self, path: &Path) -> io::Result<()> {
         let key = normalize(path)?;
-        if key == self.root || !key.starts_with(&self.root) { return Err(unsafe_object()); }
+        if key == self.root || !key.starts_with(&self.root) {
+            return Err(unsafe_object());
+        }
         match symlink_metadata(path) {
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             _ => return Err(unsafe_object()),
         }
-        self.pins.borrow_mut().retain(|path, _| !path.starts_with(&key));
+        self.pins
+            .borrow_mut()
+            .retain(|path, _| !path.starts_with(&key));
         self.validate()
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct LockBinding { directory: Directory, name: OsString }
+pub(crate) struct LockBinding {
+    directory: Directory,
+    name: OsString,
+}
 impl LockBinding {
     pub(crate) fn open(path: &Path) -> io::Result<(File, Self)> {
         let directory = Directory::open(path.parent().ok_or_else(unsafe_object)?, true)?;
@@ -183,7 +197,9 @@ impl LockBinding {
         regular_permissions(file)?;
         let observed = stat_at(self.directory.last()?, &leaf(&self.name)?)?;
         let pinned = file.metadata()?;
-        if (observed.st_dev as u64, observed.st_ino) != (pinned.dev(), pinned.ino()) { return Err(unsafe_object()); }
+        if (observed.st_dev as u64, observed.st_ino) != (pinned.dev(), pinned.ino()) {
+            return Err(unsafe_object());
+        }
         self.directory.validate()
     }
 }
@@ -358,8 +374,8 @@ pub(crate) fn create_dir_all_owned(path: &Path) -> io::Result<()> {
     for directory in missing.iter().rev() {
         original.validate()?;
         match create_dir(directory) {
-            Ok(()) => {},
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {},
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(error),
         }
         Directory::open(directory, true)?.validate()?;
@@ -679,8 +695,14 @@ mod tests {
         fixture_fs::create_dir_all(selected.join(device.as_filename_stem())).unwrap();
         let bait = selected.join(&relative);
         fixture_fs::write(&bait, b"replacement must survive refusal").unwrap();
-        assert!(matches!(session.stage_segment(&relative, &device, 0), Err(super::super::ImportStagingError::RecoveryConflict(_))));
-        assert_eq!(fixture_fs::read(&bait).unwrap(), b"replacement must survive refusal");
+        assert!(matches!(
+            session.stage_segment(&relative, &device, 0),
+            Err(super::super::ImportStagingError::RecoveryConflict(_))
+        ));
+        assert_eq!(
+            fixture_fs::read(&bait).unwrap(),
+            b"replacement must survive refusal"
+        );
         assert_eq!(fixture_fs::read_dir(&moved).unwrap().count(), 0);
         drop(session);
         fixture_fs::remove_dir_all(root).unwrap();
