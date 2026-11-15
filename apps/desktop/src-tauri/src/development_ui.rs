@@ -272,7 +272,10 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
     app.run(move |app, event| match event {
         tauri::RunEvent::ExitRequested { api, code, .. } => {
             let state = app.state::<Mutex<Lifecycle>>();
-            if state.lock().is_ok_and(|state| *state == Lifecycle::ExitReady) {
+            if state
+                .lock()
+                .is_ok_and(|state| *state == Lifecycle::ExitReady)
+            {
                 return;
             }
             // Every initial request is held. Only a second, explicit request
