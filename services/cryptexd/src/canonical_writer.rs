@@ -339,6 +339,14 @@ pub(crate) struct CanonicalWriteLockSet {
     inventory: Option<CanonicalInventoryLock>,
 }
 
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+impl CanonicalWriteLockSet {
+    pub(crate) fn namespace_valid(&self) -> bool {
+        self.inventory.as_ref().is_some_and(CanonicalInventoryLock::namespace_valid)
+            && self.devices.iter().all(DeviceCanonicalLock::namespace_valid)
+    }
+}
+
 impl Drop for CanonicalWriteLockSet {
     fn drop(&mut self) {
         // Explicitly release device locks in reverse DeviceId order before the

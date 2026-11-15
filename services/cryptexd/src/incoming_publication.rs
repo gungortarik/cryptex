@@ -320,15 +320,19 @@ fn initialize_admitted_stream_slots<S: SecureStore + ?Sized>(
             .cloned()
             .collect::<Vec<_>>();
         devices.push(anchor.device_id().clone());
+        if !snapshot.locks_runtime(root) { return Err("native profile snapshot namespace changed".into()); }
         for device in snapshot.locked_devices() {
             namespace.pin(&cryptex_storage::canonical_events_device_dir(root, device))?;
         }
+        if !snapshot.locks_runtime(root) { return Err("native profile snapshot namespace changed".into()); }
         drop(snapshot);
         let slots = crate::canonical_writer::acquire_canonical_write_lock_set(root, &devices)?;
+        if !slots.namespace_valid() { return Err("native profile slot namespace changed".into()); }
         namespace.validate()?;
         for device in &devices {
             namespace.pin(&cryptex_storage::canonical_events_device_dir(root, device))?;
         }
+        if !slots.namespace_valid() { return Err("native profile slot namespace changed".into()); }
         drop(slots);
         namespace.validate()?;
         Ok(())
