@@ -9,6 +9,10 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      mac_import_diagnostics_only:
+        description: Run only bounded Darwin import filesystem and capture concurrency diagnostics; not release acceptance
+        type: boolean
+        default: false
       schema_candidate_only:
         description: Generate and validate candidate M8 protocol schemas on both native platforms
         type: boolean
@@ -37,11 +41,32 @@ permissions:
   contents: read
 
 jobs:
+  mac-import-diagnostics:
+    if: github.event_name == 'workflow_dispatch' && inputs.mac_import_diagnostics_only
+    name: Darwin import filesystem diagnostics
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Check source formatting
+        run: cargo fmt --all -- --check
+      - name: Test actual concurrent Darwin directory and lock creation
+        run: cargo test --locked -p cryptexd --lib import_staging::macos_fs::tests:: -- --test-threads=1
+      - name: Test actual concurrent canonical capture
+        run: cargo test --locked -p cryptexd --lib capture::tests::concurrent_matching_capture_ids_append_once -- --test-threads=1
+
   schema-candidate:
-    if: github.event_name == 'workflow_dispatch' && inputs.schema_candidate_only
+    if: ${{ !inputs.mac_import_diagnostics_only && (github.event_name == 'workflow_dispatch' && inputs.schema_candidate_only) }}
     uses: ./.github/workflows/m8-schema-candidate.yml
   desktop-startup:
-    if: ${{ !inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && inputs.desktop_startup_only) }}
+    if: ${{ !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && inputs.desktop_startup_only)) }}
     name: Desktop startup (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     # Match the signed-fixture runner's existing profile from the first build;
@@ -147,7 +172,7 @@ jobs:
           retention-days: 1
 
   readiness:
-    if: ${{ !inputs.schema_candidate_only && (github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.ipc_acl_only && !inputs.windows_desktop_build_only)) }}
+    if: ${{ !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.ipc_acl_only && !inputs.windows_desktop_build_only))) }}
     name: Readiness (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
@@ -297,7 +322,7 @@ jobs:
       # separately. These tests do not certify installed/signed distribution.
 
   ipc-acl:
-    if: ${{ !inputs.schema_candidate_only && (github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.windows_desktop_build_only)) }}
+    if: ${{ !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.windows_desktop_build_only))) }}
     name: IPC cross-account ACL (Windows)
     runs-on: windows-latest
     timeout-minutes: 10
@@ -317,11 +342,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   mac-identity-preflight:
-    if: ${{ !inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && inputs.mac_identity_preflight_only) }}
+    if: ${{ !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && inputs.mac_identity_preflight_only)) }}
     uses: ./.github/workflows/m8-macos-identity-preflight.yml
 
   windows-desktop-build:
-    if: ${{ !inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && inputs.windows_desktop_build_only) }}
+    if: ${{ !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && inputs.windows_desktop_build_only)) }}
     name: Windows Desktop package (unsigned, manual only)
     runs-on: windows-latest
     timeout-minutes: 25

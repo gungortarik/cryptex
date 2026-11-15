@@ -683,7 +683,8 @@ mod tests {
                             .map_err(|error| at_stage("stress_open", error))?;
                         fs2::FileExt::lock_exclusive(&file)
                             .map_err(|error| at_stage("stress_lock", error))?;
-                        binding.validate(&file)
+                        binding
+                            .validate(&file)
                             .map_err(|error| at_stage("stress_binding", error))
                     })
                 })
