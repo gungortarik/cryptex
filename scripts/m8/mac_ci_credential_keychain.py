@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import secrets
 import shlex
+import stat
 import sys
 import uuid
 
@@ -64,9 +65,10 @@ def require_item(output, provisioned):
 
 class CredentialKeychain:
     def __init__(self, root, runner):
-        # Separate from the outer signing TemporaryDirectory: if a producer is
-        # unresolved, its default Keychain must survive that outer cleanup.
-        self.root = root.resolve(strict=True).parent / ('cx-ci-credential-' + uuid.uuid4().hex)
+        # Apple's partition protection requires a Library/Keychains location.
+        # This unique hosted-runner scope also survives outer signing cleanup
+        # if a producer remains unresolved. Never alter the real HOME value.
+        self.root = Path.home() / 'Library/Keychains' / ('cx-ci-credential-' + uuid.uuid4().hex)
         self.path = self.root / 'credentials.keychain-db'
         self.password = secrets.token_hex(32)
         self.fence = FencedRun(runner)
@@ -81,6 +83,13 @@ class CredentialKeychain:
 
     def __enter__(self):
         require_hosted_mac()
+        parent = self.root.parent
+        if not parent.is_dir() or parent.resolve(strict=True) != parent:
+            raise PreflightError('ci_credential_parent_unsafe')
+        if sys.platform == 'darwin':
+            info = parent.lstat()
+            if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o022:
+                raise PreflightError('ci_credential_parent_permissions')
         self.root.mkdir(mode=0o700)  # Exclusive; never accept an existing scope.
         try:
             self.original_default = keychain_paths(self.run(

@@ -135,11 +135,12 @@ class CredentialTests(unittest.TestCase):
         for failure in failures:
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory).resolve()
+                (root / 'Library/Keychains').mkdir(parents=True, mode=0o700)
                 manifest = root / 'manifest'
                 manifest.write_bytes(b'{}')
                 fake = Fake(root, failure)
                 captured = io.StringIO()
-                with patch('mac_ci_credential_keychain.require_hosted_mac'), redirect_stdout(captured):
+                with patch('mac_ci_credential_keychain.require_hosted_mac'), patch('pathlib.Path.home', return_value=root), redirect_stdout(captured):
                     if failure is None:
                         exercise(root, root / 'cryptex-desktop', root / 'creator', manifest, fake)
                     else:
