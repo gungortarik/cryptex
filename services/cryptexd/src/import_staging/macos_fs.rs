@@ -200,7 +200,7 @@ impl LockBinding {
             .map_err(|error| at_stage("lock_parent_open", error))?;
         let name = path.file_name().ok_or_else(unsafe_object)?.to_owned();
         let file = directory
-            .open_file(&name, libc::O_RDWR | libc::O_CREAT)
+            .open_lock(&name)
             .map_err(|error| at_stage("lock_leaf_open", error))?;
         let binding = Self { directory, name };
         binding.validate(&file)?;
@@ -311,6 +311,27 @@ impl Directory {
         self.validate()
     }
 
+    fn open_lock(&self, name: &OsStr) -> io::Result<File> {
+        // Separate an existing-object lookup from atomic first creation. Do not
+        // issue a nonexclusive O_CREAT against a concurrently created leaf.
+        // Missing parents/replacements still fail the original capability
+        // checks on every operation; no failed create is retried as ENOENT.
+        match self.open_file(name, libc::O_RDWR) {
+            Ok(file) => Ok(file),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                match self.open_file(name, libc::O_RDWR | libc::O_CREAT | libc::O_EXCL) {
+                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                        // One other supported creator won. Open that one
+                        // ordinary, owned, single-link leaf without create.
+                        self.open_file(name, libc::O_RDWR)
+                    }
+                    result => result,
+                }
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     fn open_file(&self, name: &OsStr, flags: libc::c_int) -> io::Result<File> {
         self.validate()?;
         let name = leaf(name)?;
@@ -352,7 +373,7 @@ pub(super) fn open_new(path: &Path) -> io::Result<File> {
 
 pub(super) fn open_lock(path: &Path) -> io::Result<File> {
     let (directory, name) = parent(path)?;
-    directory.open_file(name, libc::O_RDWR | libc::O_CREAT)
+    directory.open_lock(name)
 }
 
 pub(super) fn read_child(files: &[File], path: &Path) -> io::Result<File> {
@@ -664,6 +685,23 @@ mod tests {
         crate::test_temp::exclusive_temp_dir("mac-import-capability")
     }
 
+    #[test]
+    fn existing_lock_bytes_are_preserved_and_link_aliases_are_refused() {
+        use std::os::unix::fs::symlink;
+        let root = crate::test_temp::exclusive_temp_dir("mac-lock-create-existing");
+        let path = root.join("writer.lock");
+        std::fs::write(&path, b"preserved lock metadata").unwrap();
+        let (file, binding) = LockBinding::open(&path).unwrap();
+        binding.validate(&file).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"preserved lock metadata");
+        drop((file, binding));
+        std::fs::hard_link(&path, root.join("hard-link")).unwrap();
+        assert!(LockBinding::open(&path).is_err());
+        symlink(&path, root.join("symlink")).unwrap();
+        assert!(LockBinding::open(&root.join("symlink")).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"preserved lock metadata");
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn concurrent_canonical_directory_and_lock_creation_preserves_one_namespace() {
         use std::sync::{Arc, Barrier};
