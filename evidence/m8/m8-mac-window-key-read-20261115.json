@@ -144,5 +144,51 @@
     "Window lifecycle acceptance",
     "M8 completion"
   ],
-  "source_hypothesis": "Fixture creator inherits original HOME; normal Desktop/daemon receive temporary HOME; Keychain adapter does not specify an explicit search list. Read-only CI discovery comparison is pending; do not change ACLs or repeat owner run unchanged."
+  "source_hypothesis": "CI confirms HOME override changes Keychain discovery. Owner missing/platform cause remains unrecorded; correction preserves real HOME and uses explicit existing temporary profile for shared UI.",
+  "discovery_ci": {
+    "run": 43747827435,
+    "source": "58859f3",
+    "result": "passed",
+    "tests": 12,
+    "original_context_stable": true,
+    "default_discovery_equal": false,
+    "search_list_discovery_equal": false,
+    "original_exit_codes": [
+      0,
+      0
+    ],
+    "temporary_exit_codes": [
+      1,
+      0
+    ],
+    "original_search_list_count": 1,
+    "temporary_search_list_count": 0,
+    "scope": "Read-only security default-keychain/list-keychains; no item access or OS settings mutation"
+  },
+  "correction": {
+    "implementation": "7be9d96",
+    "formatting": "49db12d",
+    "review": "Independent read-only source review: no actionable finding; no tests executed by reviewer.",
+    "collector_ci": 43748133061,
+    "collector_result": "passed",
+    "collector_tests": 13,
+    "native_first_run": {
+      "run": 43748130279,
+      "result": "formatting failure only, corrected"
+    },
+    "native_current_run": 43748758699,
+    "native_current_result": {
+      "windows": "all scoped checks passed;52 Desktop tests including new runtime refusal;10 standard-user startup checks",
+      "mac": "format/lint/build and selected development tests/refusals passed; normal headless existing-profile startup still failed at key_store begin/content_bind Deadline; no completed store error returned",
+      "artifact_id": 14175866410,
+      "no_full_ci_or_product_acceptance": true
+    },
+    "native_current_source": "d3927b4",
+    "superseded_native_run": {
+      "run": 43748241968,
+      "source": "49db12d",
+      "windows": "passed",
+      "mac": "cancelled while signed checks were still running; replaced to include key-store redaction test in selected native tests"
+    }
+  }
 }

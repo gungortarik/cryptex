@@ -23,7 +23,27 @@ Collector provisions a generated fixture outside the repo and personal profile;
 failed/uncertain shutdown still retains it. Test scope is now shared product UI
 through explicit existing-profile diagnostic, NOT normal default-root acceptance.
 Closed key-store diagnostics preserve only error kind and numeric OSStatus, never
-account/service/operation/path/secret payload. Native validation/package pending.
+account/service/operation/path/secret payload. Independent source review of7be9d96
+found no actionable finding; review did not execute tests. Collector CI43748133061
+passed13 tests. Native43748130279 stopped only at formatting;49db12d fixes that.
+Native43748241968 passed Windows and was superseded/cancelled while Mac signed
+checks were running. d3927b4 includes the key-store redaction test in the selected
+native development_product_ test filter. Native CI43748758699 ond3927b4 PASSED Windows (52 Desktop tests;10 standard-user
+startup checks and all other scoped steps). Mac format/lint, development build,
+selected entry/refusal/redaction tests and actual missing-profile refusals passed.
+The headless ExistingProfile startup still FAILED: key_store begin without return,
+content_bind Deadline, exit2; no collector timeout/output/pipe failure. Do not
+relabel this as passing CI or confuse it with the owner's synchronous store error.
+
+NEW owner package READY in Downloads: `Cryptex-Mac-Pencere-d3927b4.zip`.
+Apple Silicon/macOS26+; expires2026-11-16T18:50:13Z (13:50 New York).
+CRC/all20 member hashes/executable modes/Python syntax and byte-identical signed
+images from artifact14175866410 verified. See
+[package evidence](../evidence/m8/m8-mac-window-context-package-20261115.json).
+Next owner step: extract the NEW ZIP, open MAC-PENCERE.command, choose Open local
+memory on the first opening and follow E/H prompts; return result ZIP even if it
+fails. The collector uses the explicit UI diagnostic and keeps OS HOME intact.
+No owner success is established yet. Do not send/rerun old temporary-HOME packages.
 
 ## Window owner receipt and corrected first step — November15
 
