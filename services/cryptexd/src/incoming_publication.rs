@@ -1,7 +1,8 @@
 //! Internal incoming-to-canonical integration with verified platform adapters.
 //!
-//! No CLI, IPC, watcher or managed-transport caller enables this path. Activation
-//! still requires the ADR-0019 native durability and independent review gates.
+//! Only gated internal controllers and the default-off native existing-profile
+//! candidate call this path. Ordinary product activation still requires the
+//! ADR-0019/0020 native durability, configured-image and independent review gates.
 
 use std::path::{Path, PathBuf};
 
@@ -70,7 +71,8 @@ pub(crate) fn publish_incoming<S: SecureStore + ?Sized>(
 /// Long-lived daemon integration must reuse its existing instance ownership.
 /// Reuses that instance's shared IPC/derived-worker admission barrier. It drains
 /// ordinary work before staging and latches failure before reopening admission.
-/// This entry point is not connected to a transport controller yet.
+/// The gated owned controller reuses this entry point; ordinary activation
+/// remains separate from the explicit development integration candidate.
 /// Exclusive borrowing also prevents two import/recovery operations from
 /// concurrently using one instance guard through this safe-Rust API.
 pub(crate) fn publish_incoming_with_instance<S: SecureStore + ?Sized>(

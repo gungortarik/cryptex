@@ -2,8 +2,8 @@
 //!
 //! This module snapshots and verifies candidate bytes, records a prepared
 //! manifest, and reconciles import transactions. The internal publisher
-//! requires the local trust/cutoff and M3/M4 proof token; managed transport
-//! does not call it yet.
+//! requires the local trust/cutoff and M3/M4 proof token. Gated daemon-side
+//! coordination supplies hints; transport never supplies publication authority.
 
 #[cfg(not(target_os = "macos"))]
 use std::fs;

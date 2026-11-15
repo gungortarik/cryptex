@@ -1,9 +1,10 @@
 //! Initially disabled Mac M8 owner-message adapter.
 //!
-//! The approved candidate does not select a release signer, establish a stable
-//! bundle snapshot, or activate native IPC. No environment variable, wire field
-//! or successful Unix health request can enable it. Ordinary Unix APIs and the
-//! Windows named-pipe implementation keep their existing policies.
+//! Ordinary product policy has no configured release signer or native activation.
+//! The separate default-off local-development feature independently pins its
+//! test signer, bundle/content inventory and exact native process/message. No
+//! wire field or successful Unix health request enables ordinary activation.
+//! Unix APIs and Windows named pipes retain their existing policies.
 
 use std::fmt;
 

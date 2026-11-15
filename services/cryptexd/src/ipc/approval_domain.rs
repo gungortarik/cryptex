@@ -1,6 +1,7 @@
 //! Transport-neutral M8 approval work. These private functions do not authenticate
-//! a peer. The socket wrapper retains its platform checks; Mac product routes
-//! remain closed until an independent native exact-request authority exists.
+//! a peer. The socket wrapper retains its platform checks; the gated Mac native
+//! dispatcher consumes an independently authenticated exact request first.
+//! Ordinary Mac product activation remains closed.
 
 use crate::approval_session::{ApprovalConnection, ApprovalSessionRegistry};
 use crate::bootstrap_journal::{
