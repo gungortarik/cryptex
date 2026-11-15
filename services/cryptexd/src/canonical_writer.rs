@@ -274,18 +274,50 @@ pub struct AppendMemoryNoteArgs<'a> {
 #[derive(Debug)]
 pub(crate) struct DeviceCanonicalLock {
     device_id: DeviceId,
-    _file: File,
+    _file: CanonicalLockFile,
     // Keep inventory ownership until the device lock is released. Field order
     // matters: Rust drops `_file` before `_inventory`, preserving reverse lock
     // release order (device, then inventory).
     _inventory: Option<CanonicalInventoryLock>,
 }
 
+#[derive(Debug)]
+struct CanonicalLockFile {
+    file: File,
+    #[cfg(target_os = "macos")]
+    binding: crate::import_staging::macos_fs::LockBinding,
+}
+fn ensure_lock_directory(path: &Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    { crate::import_staging::macos_fs::create_dir_all_owned(path) }
+    #[cfg(not(target_os = "macos"))]
+    { fs::create_dir_all(path) }
+}
+fn open_canonical_lock_file(path: &Path) -> CanonicalWriterResult<CanonicalLockFile> {
+    #[cfg(target_os = "macos")]
+    {
+        let (file, binding) = crate::import_staging::macos_fs::LockBinding::open(path)
+            .map_err(|error| CanonicalWriterError::Path(error.to_string()))?;
+        Ok(CanonicalLockFile { file, binding })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let file = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(path)
+            .map_err(|error| CanonicalWriterError::Path(error.to_string()))?;
+        Ok(CanonicalLockFile { file })
+    }
+}
+
+impl CanonicalInventoryLock {
+    #[cfg(target_os = "macos")]
+    pub(crate) fn namespace_valid(&self) -> bool { self._file.binding.validate(&self._file.file).is_ok() }
+}
+
 /// Serializes canonical writes against stable inventory readers and imports.
 /// Every writer acquires this before any device writer lock.
 #[derive(Debug)]
 pub(crate) struct CanonicalInventoryLock {
-    _file: File,
+    _file: CanonicalLockFile,
 }
 
 /// Canonical write lock set for operations that touch multiple device streams.
@@ -326,7 +358,7 @@ pub(crate) fn acquire_canonical_write_lock_set(
     let mut devices = Vec::with_capacity(ordered.len());
     for device_id in &ordered {
         let device_dir = canonical_events_device_dir(runtime_root, device_id);
-        fs::create_dir_all(&device_dir).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+        ensure_lock_directory(&device_dir).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
         devices.push(acquire_device_lock_in_existing_dir(device_id, &device_dir)?);
     }
     Ok(CanonicalWriteLockSet {
@@ -341,15 +373,9 @@ pub(crate) fn acquire_canonical_inventory_lock(
     assert_outside_repository(runtime_root)
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
     let events_root = runtime_root.join("canonical").join("events");
-    fs::create_dir_all(&events_root).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
-    let file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(events_root.join("inventory.lock"))
-        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
-    fs2::FileExt::lock_exclusive(&file)
+    ensure_lock_directory(&events_root).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let file = open_canonical_lock_file(&events_root.join("inventory.lock"))?;
+    fs2::FileExt::lock_exclusive(&file.file)
         .map_err(|e| CanonicalWriterError::Path(format!("canonical inventory lock failed: {e}")))?;
     Ok(CanonicalInventoryLock { _file: file })
 }
@@ -363,19 +389,16 @@ pub(crate) fn acquire_canonical_inventory_lock_until(
     assert_outside_repository(runtime_root)
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
     let events_root = runtime_root.join("canonical").join("events");
-    fs::create_dir_all(&events_root).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
-    let file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(events_root.join("inventory.lock"))
-        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
-    lock_exclusive_until(&file, deadline, "canonical inventory")?;
+    ensure_lock_directory(&events_root).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    let file = open_canonical_lock_file(&events_root.join("inventory.lock"))?;
+    lock_exclusive_until(&file.file, deadline, "canonical inventory")?;
     Ok(CanonicalInventoryLock { _file: file })
 }
 
 impl DeviceCanonicalLock {
+    #[cfg(target_os = "macos")]
+    pub(crate) fn namespace_valid(&self) -> bool { self._file.binding.validate(&self._file.file).is_ok() }
+
     pub(crate) fn device_id(&self) -> &DeviceId {
         &self.device_id
     }
@@ -423,7 +446,7 @@ pub(crate) fn acquire_device_canonical_lock_under_inventory(
     assert_outside_repository(runtime_root)
         .map_err(|error| CanonicalWriterError::Path(error.to_string()))?;
     let device_dir = canonical_events_device_dir(runtime_root, device_id);
-    fs::create_dir_all(&device_dir)
+    ensure_lock_directory(&device_dir)
         .map_err(|error| CanonicalWriterError::Path(error.to_string()))?;
     acquire_device_lock_in_existing_dir(device_id, &device_dir)
 }
@@ -438,14 +461,8 @@ pub(crate) fn acquire_existing_device_canonical_lock_until(
         return Ok(None);
     }
     let lock_path = device_dir.join("writer.lock");
-    let file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(lock_path)
-        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
-    lock_exclusive_until(&file, deadline, "device canonical")?;
+    let file = open_canonical_lock_file(&lock_path)?;
+    lock_exclusive_until(&file.file, deadline, "device canonical")?;
     Ok(Some(DeviceCanonicalLock {
         device_id: device_id.clone(),
         _file: file,
@@ -479,14 +496,8 @@ fn acquire_device_lock_in_existing_dir(
     device_dir: &Path,
 ) -> CanonicalWriterResult<DeviceCanonicalLock> {
     let lock_path = device_dir.join("writer.lock");
-    let file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(&lock_path)
-        .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
-    fs2::FileExt::lock_exclusive(&file)
+    let file = open_canonical_lock_file(&lock_path)?;
+    fs2::FileExt::lock_exclusive(&file.file)
         .map_err(|e| CanonicalWriterError::Path(format!("device canonical lock failed: {e}")))?;
     Ok(DeviceCanonicalLock {
         device_id: device_id.clone(),
@@ -1917,7 +1928,7 @@ mod tests {
     #[test]
     fn long_windows_writer_appends_seals_reopens_and_preserves_prior_segments() {
         let base = temp_root("long-path");
-        let root = base.join("uzun-çalışma-".repeat(16));
+        let root = base.join("uzun-ÃƒÂ§alÃ„Â±Ã…Å¸ma-".repeat(16));
         let store = FakeSecureStore::new();
         let device = DeviceId::new("33333333-3333-4333-8333-333333333333").unwrap();
         let brain = "33333333-3333-4333-8333-333333333333";

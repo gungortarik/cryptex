@@ -24,6 +24,14 @@ namespace drift before/after an operation is uncertainty/hold, never clean
 rollback or permission to follow a replacement. Supported private staging writers
 remain serialized by the existing import slot and runtime/canonical locks.
 
+Retain the original canonical/events, journal, staging/transaction and affected
+device directory capabilities through the import, not just the runtime root.
+Canonical inventory/device locks also retain their original parent and leaf
+identity; a proof bound to an old lock tree cannot publish into a replacement.
+An observed namespace refusal must skip eager staging rollback. Intentional
+bounded cleanup may forget only the successfully removed private subtree;
+remaining original capabilities are never refreshed to a new namespace.
+
 Publication uses Darwin `renameatx_np(..., RENAME_EXCL)` between checked parents,
 single-link regular sources, same-volume validation and destination identity
 readback. Refuse an existing destination even for same-object/case aliases. No

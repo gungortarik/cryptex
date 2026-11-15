@@ -407,6 +407,10 @@ pub(super) fn recover<S: SecureStore + ?Sized>(
     }
     #[cfg(target_os = "macos")]
     let runtime_identity = super::macos_fs::RuntimeIdentity::capture(root)?;
+    #[cfg(target_os = "macos")]
+    for path in [root.join("canonical"), root.join("canonical/events"), journal.clone()] {
+        runtime_identity.pin(&path)?;
+    }
     let _pins = inspect_directory_chain(&journal, true)?;
     let mut intent_id = None;
     let mut names = Vec::new();
@@ -451,6 +455,15 @@ pub(super) fn recover<S: SecureStore + ?Sized>(
     }
     let intent = read_intent_pair(root, &id)?;
     let staging = root.join("canonical/import-staging").join(&id);
+    #[cfg(target_os = "macos")]
+    {
+        runtime_identity.pin(&root.join("canonical/import-staging"))?;
+        runtime_identity.pin(&staging)?;
+        for segment in &intent.segments {
+            let device = DeviceId::new(segment.device_id.clone()).map_err(|_| recovery("invalid policy evidence device"))?;
+            runtime_identity.pin(&staging.join(device.as_filename_stem()))?;
+        }
+    }
     let staging_pins = inspect_directory_chain(&staging, true)?;
     let latch_path = staging.join(LATCH_NAME);
     let held_path = journal_path(root, &id, LATCH_NAME);

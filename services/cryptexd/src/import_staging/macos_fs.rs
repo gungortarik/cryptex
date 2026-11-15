@@ -15,23 +15,38 @@ pub(super) use std::fs::{copy, create_dir_all, hard_link, read, remove_dir_all, 
 
 unsafe extern "C" {
     fn cx_import_acl_safe(fd: libc::c_int) -> libc::c_int;
-    fn cx_import_rename_exclusive(source: libc::c_int, from: *const libc::c_char, target: libc::c_int, to: *const libc::c_char) -> libc::c_int;
+    fn cx_import_rename_exclusive(
+        source: libc::c_int,
+        from: *const libc::c_char,
+        target: libc::c_int,
+        to: *const libc::c_char,
+    ) -> libc::c_int;
 }
 
 fn unsafe_object() -> io::Error {
-    io::Error::new(io::ErrorKind::PermissionDenied, "unsafe or changed import filesystem object")
+    io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        "unsafe or changed import filesystem object",
+    )
 }
 
 fn leaf(name: &OsStr) -> io::Result<CString> {
     let bytes = name.as_bytes();
-    if bytes.is_empty() || bytes.len() > 255 || bytes == b"." || bytes == b".." || bytes.contains(&b'/') {
+    if bytes.is_empty()
+        || bytes.len() > 255
+        || bytes == b"."
+        || bytes == b".."
+        || bytes.contains(&b'/')
+    {
         return Err(unsafe_object());
     }
     CString::new(bytes).map_err(|_| unsafe_object())
 }
 
 fn owned(fd: libc::c_int) -> io::Result<File> {
-    if fd < 0 { return Err(io::Error::last_os_error()); }
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
     // SAFETY: successful open/openat transfers one uniquely owned descriptor.
     Ok(unsafe { File::from_raw_fd(fd) })
 }
@@ -40,14 +55,26 @@ fn stat_at(parent: &File, name: &CStr) -> io::Result<libc::stat> {
     let mut result = std::mem::MaybeUninit::uninit();
     // SAFETY: name is terminated; the live parent owns its descriptor; stat is
     // initialized by the kernel only when the syscall succeeds.
-    if unsafe { libc::fstatat(parent.as_raw_fd(), name.as_ptr(), result.as_mut_ptr(), libc::AT_SYMLINK_NOFOLLOW) } != 0 {
+    if unsafe {
+        libc::fstatat(
+            parent.as_raw_fd(),
+            name.as_ptr(),
+            result.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    } != 0
+    {
         return Err(io::Error::last_os_error());
     }
     Ok(unsafe { result.assume_init() })
 }
 
 fn normalize(path: &Path) -> io::Result<PathBuf> {
-    if !path.is_absolute() || path.components().any(|c| matches!(c, Component::ParentDir | Component::CurDir)) {
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
+    {
         return Err(unsafe_object());
     }
     // macOS's OS-owned aliases are not an invitation to canonicalize user
@@ -55,8 +82,10 @@ fn normalize(path: &Path) -> io::Result<PathBuf> {
     for (alias, target) in [("/var", "/private/var"), ("/tmp", "/private/tmp")] {
         if let Ok(suffix) = path.strip_prefix(alias) {
             let metadata = std::fs::symlink_metadata(alias)?;
-            if metadata.uid() != 0 || !metadata.file_type().is_symlink()
-                || std::fs::canonicalize(alias)? != Path::new(target) {
+            if metadata.uid() != 0
+                || !metadata.file_type().is_symlink()
+                || std::fs::canonicalize(alias)? != Path::new(target)
+            {
                 return Err(unsafe_object());
             }
             return Ok(Path::new(target).join(suffix));
@@ -69,9 +98,12 @@ fn directory_permissions(file: &File, current_owner: bool) -> io::Result<()> {
     let m = file.metadata()?;
     let uid = unsafe { libc::geteuid() };
     let trusted_sticky = m.uid() == 0 && m.mode() & libc::S_ISVTX as u32 != 0;
-    if !m.is_dir() || (m.uid() != uid && m.uid() != 0) || (current_owner && m.uid() != uid)
+    if !m.is_dir()
+        || (m.uid() != uid && m.uid() != 0)
+        || (current_owner && m.uid() != uid)
         || (m.mode() & 0o022 != 0 && !trusted_sticky)
-        || unsafe { cx_import_acl_safe(file.as_raw_fd()) } != 0 {
+        || unsafe { cx_import_acl_safe(file.as_raw_fd()) } != 0
+    {
         return Err(unsafe_object());
     }
     Ok(())
@@ -79,23 +111,81 @@ fn directory_permissions(file: &File, current_owner: bool) -> io::Result<()> {
 
 fn regular_permissions(file: &File) -> io::Result<()> {
     let m = file.metadata()?;
-    if !m.is_file() || m.nlink() != 1 || m.uid() != unsafe { libc::geteuid() }
-        || m.mode() & 0o022 != 0 || unsafe { cx_import_acl_safe(file.as_raw_fd()) } != 0 {
+    if !m.is_file()
+        || m.nlink() != 1
+        || m.uid() != unsafe { libc::geteuid() }
+        || m.mode() & 0o022 != 0
+        || unsafe { cx_import_acl_safe(file.as_raw_fd()) } != 0
+    {
         return Err(unsafe_object());
     }
     Ok(())
 }
 
-pub(super) struct Directory {
+#[derive(Debug)]
+pub(crate) struct Directory {
     path: PathBuf,
     files: Vec<File>,
     names: Vec<CString>,
 }
 
-pub(super) struct RuntimeIdentity(Directory);
+pub(super) struct RuntimeIdentity {
+    root: PathBuf,
+    pins: std::cell::RefCell<std::collections::BTreeMap<PathBuf, Directory>>,
+}
 impl RuntimeIdentity {
-    pub(super) fn capture(root: &Path) -> io::Result<Self> { Ok(Self(Directory::open(root, true)?)) }
-    pub(super) fn validate(&self) -> io::Result<()> { self.0.validate() }
+    pub(super) fn capture(root: &Path) -> io::Result<Self> {
+        let directory = Directory::open(root, true)?;
+        let root = normalize(root)?;
+        Ok(Self { root: root.clone(), pins: std::cell::RefCell::new(std::collections::BTreeMap::from([(root, directory)])) })
+    }
+    pub(super) fn pin(&self, path: &Path) -> io::Result<()> {
+        self.validate()?;
+        let key = normalize(path)?;
+        if !key.starts_with(&self.root) { return Err(unsafe_object()); }
+        if !self.pins.borrow().contains_key(&key) {
+            let directory = Directory::open(path, true)?;
+            self.pins.borrow_mut().insert(key, directory);
+        }
+        self.validate()
+    }
+    pub(super) fn validate(&self) -> io::Result<()> {
+        for directory in self.pins.borrow().values() { directory.validate()?; }
+        Ok(())
+    }
+    // Only called after the daemon's authorized bounded cleanup removed this
+    // exact subtree. Other original capabilities are never replaced/refreshed.
+    pub(super) fn forget_removed(&self, path: &Path) -> io::Result<()> {
+        let key = normalize(path)?;
+        if key == self.root || !key.starts_with(&self.root) { return Err(unsafe_object()); }
+        match symlink_metadata(path) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+            _ => return Err(unsafe_object()),
+        }
+        self.pins.borrow_mut().retain(|path, _| !path.starts_with(&key));
+        self.validate()
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct LockBinding { directory: Directory, name: OsString }
+impl LockBinding {
+    pub(crate) fn open(path: &Path) -> io::Result<(File, Self)> {
+        let directory = Directory::open(path.parent().ok_or_else(unsafe_object)?, true)?;
+        let name = path.file_name().ok_or_else(unsafe_object)?.to_owned();
+        let file = directory.open_file(&name, libc::O_RDWR | libc::O_CREAT)?;
+        let binding = Self { directory, name };
+        binding.validate(&file)?;
+        Ok((file, binding))
+    }
+    pub(crate) fn validate(&self, file: &File) -> io::Result<()> {
+        self.directory.validate()?;
+        regular_permissions(file)?;
+        let observed = stat_at(self.directory.last()?, &leaf(&self.name)?)?;
+        let pinned = file.metadata()?;
+        if (observed.st_dev as u64, observed.st_ino) != (pinned.dev(), pinned.ino()) { return Err(unsafe_object()); }
+        self.directory.validate()
+    }
 }
 
 impl Directory {
@@ -103,18 +193,35 @@ impl Directory {
         let requested = path.to_path_buf();
         let path = normalize(path)?;
         crate::paths::assert_outside_repository(&path).map_err(|_| unsafe_object())?;
-        let root = owned(unsafe { libc::open(c"/".as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC) })?;
+        let root = owned(unsafe {
+            libc::open(
+                c"/".as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+            )
+        })?;
         directory_permissions(&root, false)?;
-        let mut result = Self { path: requested, files: vec![root], names: Vec::new() };
+        let mut result = Self {
+            path: requested,
+            files: vec![root],
+            names: Vec::new(),
+        };
         for part in path.components() {
-            let Component::Normal(part) = part else { continue; };
+            let Component::Normal(part) = part else {
+                continue;
+            };
             let name = leaf(part)?;
             let parent = result.files.last().ok_or_else(unsafe_object)?;
-            let next = owned(unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) })?;
+            let next = owned(unsafe {
+                libc::openat(
+                    parent.as_raw_fd(),
+                    name.as_ptr(),
+                    libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                )
+            })?;
             directory_permissions(&next, false)?;
             match stat_at(&next, c".git") {
                 Ok(_) => return Err(unsafe_object()),
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error),
             }
             result.files.push(next);
@@ -125,14 +232,18 @@ impl Directory {
         Ok(result)
     }
 
-    fn last(&self) -> io::Result<&File> { self.files.last().ok_or_else(unsafe_object) }
+    fn last(&self) -> io::Result<&File> {
+        self.files.last().ok_or_else(unsafe_object)
+    }
 
     pub(super) fn validate(&self) -> io::Result<()> {
         for (index, name) in self.names.iter().enumerate() {
             let visible = stat_at(&self.files[index], name)?;
             let pinned = self.files[index + 1].metadata()?;
-            if (visible.st_dev as u64) != pinned.dev() || visible.st_ino != pinned.ino()
-                || visible.st_mode & libc::S_IFMT != libc::S_IFDIR {
+            if (visible.st_dev as u64) != pinned.dev()
+                || visible.st_ino != pinned.ino()
+                || visible.st_mode & libc::S_IFMT != libc::S_IFDIR
+            {
                 return Err(unsafe_object());
             }
             directory_permissions(&self.files[index + 1], false)?;
@@ -140,7 +251,9 @@ impl Directory {
         Ok(())
     }
 
-    pub(super) fn into_files(self) -> Vec<File> { self.files }
+    pub(super) fn into_files(self) -> Vec<File> {
+        self.files
+    }
 
     fn sync(&self) -> io::Result<()> {
         self.validate()?;
@@ -151,18 +264,30 @@ impl Directory {
     fn open_file(&self, name: &OsStr, flags: libc::c_int) -> io::Result<File> {
         self.validate()?;
         let name = leaf(name)?;
-        let file = owned(unsafe { libc::openat(self.last()?.as_raw_fd(), name.as_ptr(), flags | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC, 0o600) })?;
+        let file = owned(unsafe {
+            libc::openat(
+                self.last()?.as_raw_fd(),
+                name.as_ptr(),
+                flags | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+                0o600,
+            )
+        })?;
         regular_permissions(&file)?;
         self.validate()?;
         let visible = stat_at(self.last()?, &name)?;
         let metadata = file.metadata()?;
-        if (visible.st_dev as u64) != metadata.dev() || visible.st_ino != metadata.ino() { return Err(unsafe_object()); }
+        if (visible.st_dev as u64) != metadata.dev() || visible.st_ino != metadata.ino() {
+            return Err(unsafe_object());
+        }
         Ok(file)
     }
 }
 
 fn parent(path: &Path) -> io::Result<(Directory, &OsStr)> {
-    Ok((Directory::open(path.parent().ok_or_else(unsafe_object)?, false)?, path.file_name().ok_or_else(unsafe_object)?))
+    Ok((
+        Directory::open(path.parent().ok_or_else(unsafe_object)?, false)?,
+        path.file_name().ok_or_else(unsafe_object)?,
+    ))
 }
 
 pub(super) fn open_read(path: &Path) -> io::Result<File> {
@@ -182,14 +307,24 @@ pub(super) fn open_lock(path: &Path) -> io::Result<File> {
 
 pub(super) fn read_child(files: &[File], path: &Path) -> io::Result<File> {
     let directory = Directory::open(path.parent().ok_or_else(unsafe_object)?, true)?;
-    if files.len() != directory.files.len() { return Err(unsafe_object()); }
+    if files.len() != directory.files.len() {
+        return Err(unsafe_object());
+    }
     for (expected, actual) in files.iter().zip(&directory.files) {
         let e = expected.metadata()?;
         let a = actual.metadata()?;
-        if (e.dev(),e.ino()) != (a.dev(),a.ino()) { return Err(unsafe_object()); }
+        if (e.dev(), e.ino()) != (a.dev(), a.ino()) {
+            return Err(unsafe_object());
+        }
     }
     let name = leaf(path.file_name().ok_or_else(unsafe_object)?)?;
-    let file = owned(unsafe { libc::openat(files.last().ok_or_else(unsafe_object)?.as_raw_fd(), name.as_ptr(), libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC) })?;
+    let file = owned(unsafe {
+        libc::openat(
+            files.last().ok_or_else(unsafe_object)?.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+        )
+    })?;
     regular_permissions(&file)?;
     directory.validate()?;
     Ok(file)
@@ -199,19 +334,58 @@ pub(super) fn create_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {
     let (directory, name) = parent(path.as_ref())?;
     let name = leaf(name)?;
     directory.validate()?;
-    if unsafe { libc::mkdirat(directory.last()?.as_raw_fd(), name.as_ptr(), 0o700) } != 0 { return Err(io::Error::last_os_error()); }
+    if unsafe { libc::mkdirat(directory.last()?.as_raw_fd(), name.as_ptr(), 0o700) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
     directory.sync()
 }
 
-pub(super) fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> { remove(path.as_ref(), false) }
-pub(super) fn remove_dir<P: AsRef<Path>>(path: P) -> io::Result<()> { remove(path.as_ref(), true) }
+pub(crate) fn create_dir_all_owned(path: &Path) -> io::Result<()> {
+    let mut missing = Vec::new();
+    let mut ancestor = path;
+    loop {
+        match symlink_metadata(ancestor) {
+            Ok(metadata) if metadata.is_dir() => break,
+            Ok(_) => return Err(unsafe_object()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                missing.push(ancestor.to_path_buf());
+                ancestor = ancestor.parent().ok_or_else(unsafe_object)?;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    let original = Directory::open(ancestor, false)?;
+    for directory in missing.iter().rev() {
+        original.validate()?;
+        match create_dir(directory) {
+            Ok(()) => {},
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {},
+            Err(error) => return Err(error),
+        }
+        Directory::open(directory, true)?.validate()?;
+    }
+    original.validate()
+}
+
+pub(super) fn remove_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
+    remove(path.as_ref(), false)
+}
+pub(super) fn remove_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {
+    remove(path.as_ref(), true)
+}
 
 fn remove(path: &Path, is_directory: bool) -> io::Result<()> {
     let (parent, name) = parent(path)?;
     let name = leaf(name)?;
     parent.validate()?;
     let file = if is_directory {
-        let file = owned(unsafe { libc::openat(parent.last()?.as_raw_fd(), name.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC) })?;
+        let file = owned(unsafe {
+            libc::openat(
+                parent.last()?.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        })?;
         directory_permissions(&file, true)?;
         file
     } else {
@@ -219,14 +393,27 @@ fn remove(path: &Path, is_directory: bool) -> io::Result<()> {
     };
     let observed = stat_at(parent.last()?, &name)?;
     let pinned = file.metadata()?;
-    if (observed.st_dev as u64, observed.st_ino) != (pinned.dev(), pinned.ino()) { return Err(unsafe_object()); }
-    if unsafe { libc::unlinkat(parent.last()?.as_raw_fd(), name.as_ptr(), if is_directory {libc::AT_REMOVEDIR} else {0}) } != 0 { return Err(io::Error::last_os_error()); }
+    if (observed.st_dev as u64, observed.st_ino) != (pinned.dev(), pinned.ino()) {
+        return Err(unsafe_object());
+    }
+    if unsafe {
+        libc::unlinkat(
+            parent.last()?.as_raw_fd(),
+            name.as_ptr(),
+            if is_directory { libc::AT_REMOVEDIR } else { 0 },
+        )
+    } != 0
+    {
+        return Err(io::Error::last_os_error());
+    }
     parent.sync()
 }
 
 pub(super) fn flush(file: &File) -> io::Result<()> {
     file.sync_all()?;
-    if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_FULLFSYNC) } != 0 { return Err(io::Error::last_os_error()); }
+    if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_FULLFSYNC) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
     Ok(())
 }
 
@@ -241,33 +428,63 @@ pub(super) fn promote(source: &Path, destination: &Path) -> io::Result<()> {
     let source_meta = source_file.metadata()?;
     let from_name = leaf(from_name)?;
     let to_name = leaf(to_name)?;
-    if from.last()?.metadata()?.dev() != to.last()?.metadata()?.dev() { return Err(io::Error::from_raw_os_error(libc::EXDEV)); }
+    if from.last()?.metadata()?.dev() != to.last()?.metadata()?.dev() {
+        return Err(io::Error::from_raw_os_error(libc::EXDEV));
+    }
     match stat_at(to.last()?, &to_name) {
         Ok(_) => return Err(io::Error::from(io::ErrorKind::AlreadyExists)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
     flush(&source_file)?;
     from.validate()?;
     to.validate()?;
-    if unsafe { cx_import_rename_exclusive(from.last()?.as_raw_fd(), from_name.as_ptr(), to.last()?.as_raw_fd(), to_name.as_ptr()) } != 0 { return Err(io::Error::last_os_error()); }
+    if unsafe {
+        cx_import_rename_exclusive(
+            from.last()?.as_raw_fd(),
+            from_name.as_ptr(),
+            to.last()?.as_raw_fd(),
+            to_name.as_ptr(),
+        )
+    } != 0
+    {
+        return Err(io::Error::last_os_error());
+    }
     from.sync()?;
     to.sync()?;
     let published = stat_at(to.last()?, &to_name)?;
-    if (published.st_dev as u64, published.st_ino) != (source_meta.dev(), source_meta.ino()) || published.st_nlink != 1 { return Err(unsafe_object()); }
+    if (published.st_dev as u64, published.st_ino) != (source_meta.dev(), source_meta.ino())
+        || published.st_nlink != 1
+    {
+        return Err(unsafe_object());
+    }
     from.validate()?;
     to.validate()
 }
 
 pub(super) struct Metadata(libc::stat);
 pub(super) struct FileType(libc::mode_t);
-impl FileType { pub(super) fn is_symlink(&self) -> bool { self.0 & libc::S_IFMT == libc::S_IFLNK } }
+impl FileType {
+    pub(super) fn is_symlink(&self) -> bool {
+        self.0 & libc::S_IFMT == libc::S_IFLNK
+    }
+}
 impl Metadata {
-    pub(super) fn dev(&self) -> u64 { self.0.st_dev as u64 }
-    pub(super) fn is_dir(&self) -> bool { self.0.st_mode & libc::S_IFMT == libc::S_IFDIR }
-    pub(super) fn is_file(&self) -> bool { self.0.st_mode & libc::S_IFMT == libc::S_IFREG }
-    pub(super) fn file_type(&self) -> FileType { FileType(self.0.st_mode) }
-    pub(super) fn len(&self) -> u64 { self.0.st_size.max(0) as u64 }
+    pub(super) fn dev(&self) -> u64 {
+        self.0.st_dev as u64
+    }
+    pub(super) fn is_dir(&self) -> bool {
+        self.0.st_mode & libc::S_IFMT == libc::S_IFDIR
+    }
+    pub(super) fn is_file(&self) -> bool {
+        self.0.st_mode & libc::S_IFMT == libc::S_IFREG
+    }
+    pub(super) fn file_type(&self) -> FileType {
+        FileType(self.0.st_mode)
+    }
+    pub(super) fn len(&self) -> u64 {
+        self.0.st_size.max(0) as u64
+    }
 }
 pub(super) fn symlink_metadata<P: AsRef<Path>>(path: P) -> io::Result<Metadata> {
     let (parent, name) = parent(path.as_ref())?;
@@ -278,48 +495,96 @@ pub(super) fn symlink_metadata<P: AsRef<Path>>(path: P) -> io::Result<Metadata> 
 
 pub(super) fn metadata<P: AsRef<Path>>(path: P) -> io::Result<Metadata> {
     let result = symlink_metadata(path)?;
-    if result.file_type().is_symlink() { return Err(unsafe_object()); }
+    if result.file_type().is_symlink() {
+        return Err(unsafe_object());
+    }
     Ok(result)
 }
 
-pub(super) struct DirEntry { path: PathBuf, name: OsString }
-impl DirEntry {
-    pub(super) fn path(&self) -> PathBuf { self.path.clone() }
-    pub(super) fn file_name(&self) -> OsString { self.name.clone() }
+pub(super) struct DirEntry {
+    path: PathBuf,
+    name: OsString,
 }
-pub(super) struct ReadDir { stream: *mut libc::DIR, directory: Directory, finished: bool }
-impl Drop for ReadDir { fn drop(&mut self) { unsafe { libc::closedir(self.stream); } } }
+impl DirEntry {
+    pub(super) fn path(&self) -> PathBuf {
+        self.path.clone()
+    }
+    pub(super) fn file_name(&self) -> OsString {
+        self.name.clone()
+    }
+}
+pub(super) struct ReadDir {
+    stream: *mut libc::DIR,
+    directory: Directory,
+    finished: bool,
+}
+impl Drop for ReadDir {
+    fn drop(&mut self) {
+        unsafe {
+            libc::closedir(self.stream);
+        }
+    }
+}
 impl Iterator for ReadDir {
     type Item = io::Result<DirEntry>;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.finished { return None; }
-        if let Err(error) = self.directory.validate() { self.finished = true; return Some(Err(error)); }
+        if self.finished {
+            return None;
+        }
+        if let Err(error) = self.directory.validate() {
+            self.finished = true;
+            return Some(Err(error));
+        }
         loop {
             // readdir's result belongs to this stream and is consumed/copied
             // before the next call; errno distinguishes EOF from read failure.
-            unsafe { *libc::__error() = 0; }
+            unsafe {
+                *libc::__error() = 0;
+            }
             let entry = unsafe { libc::readdir(self.stream) };
             if entry.is_null() {
                 self.finished = true;
                 let error = io::Error::last_os_error();
-                if error.raw_os_error() != Some(0) { return Some(Err(error)); }
+                if error.raw_os_error() != Some(0) {
+                    return Some(Err(error));
+                }
                 return self.directory.validate().err().map(Err);
             }
             let bytes = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) }.to_bytes();
-            if bytes == b"." || bytes == b".." { continue; }
+            if bytes == b"." || bytes == b".." {
+                continue;
+            }
             let name = OsString::from_vec(bytes.to_vec());
-            if let Err(error) = leaf(&name) { self.finished = true; return Some(Err(error)); }
-            return Some(Ok(DirEntry { path: self.directory.path.join(&name), name }));
+            if let Err(error) = leaf(&name) {
+                self.finished = true;
+                return Some(Err(error));
+            }
+            return Some(Ok(DirEntry {
+                path: self.directory.path.join(&name),
+                name,
+            }));
         }
     }
 }
 pub(super) fn read_dir<P: AsRef<Path>>(path: P) -> io::Result<ReadDir> {
     let directory = Directory::open(path.as_ref(), true)?;
     let fd = unsafe { libc::fcntl(directory.last()?.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
-    if fd < 0 { return Err(io::Error::last_os_error()); }
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
     let stream = unsafe { libc::fdopendir(fd) };
-    if stream.is_null() { let error = io::Error::last_os_error(); unsafe {libc::close(fd); } return Err(error); }
-    Ok(ReadDir { stream, directory, finished: false })
+    if stream.is_null() {
+        let error = io::Error::last_os_error();
+        unsafe {
+            libc::close(fd);
+        }
+        return Err(error);
+    }
+    Ok(ReadDir {
+        stream,
+        directory,
+        finished: false,
+    })
 }
 
 #[cfg(test)]
@@ -328,7 +593,9 @@ mod tests {
     use std::fs as fixture_fs;
     use std::os::unix::fs::{PermissionsExt, symlink};
 
-    fn root() -> PathBuf { crate::test_temp::exclusive_temp_dir("mac-import-capability") }
+    fn root() -> PathBuf {
+        crate::test_temp::exclusive_temp_dir("mac-import-capability")
+    }
 
     #[test]
     fn private_descriptor_promotion_is_atomic_and_never_replaces_an_occupied_destination() {
@@ -342,12 +609,21 @@ mod tests {
         fixture_fs::write(&source, b"verified staged bytes").unwrap();
         fixture_fs::write(&destination, b"immutable existing bytes").unwrap();
         assert!(promote(&source, &destination).is_err());
-        assert_eq!(fixture_fs::read(&destination).unwrap(), b"immutable existing bytes");
+        assert_eq!(
+            fixture_fs::read(&destination).unwrap(),
+            b"immutable existing bytes"
+        );
         remove_file(&destination).unwrap();
         promote(&source, &destination).unwrap();
         assert!(!source.exists());
-        assert_eq!(fixture_fs::read(&destination).unwrap(), b"verified staged bytes");
-        assert_eq!(fixture_fs::metadata(&staging).unwrap().permissions().mode() & 0o777, 0o700);
+        assert_eq!(
+            fixture_fs::read(&destination).unwrap(),
+            b"verified staged bytes"
+        );
+        assert_eq!(
+            fixture_fs::metadata(&staging).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
         fixture_fs::remove_dir_all(root).unwrap();
     }
 
@@ -364,7 +640,10 @@ mod tests {
         fixture_fs::write(selected.join("note.seg"), b"replacement").unwrap();
         assert!(identity.validate().is_err());
         assert!(read_child(&pins, &selected.join("note.seg")).is_err());
-        assert_eq!(fixture_fs::read(root.join("moved/note.seg")).unwrap(), b"original");
+        assert_eq!(
+            fixture_fs::read(root.join("moved/note.seg")).unwrap(),
+            b"original"
+        );
         drop(identity);
         drop(pins);
         fixture_fs::remove_dir_all(root).unwrap();
@@ -386,6 +665,28 @@ mod tests {
     }
 
     #[test]
+    fn staging_refusal_never_rolls_back_a_replacement_transaction() {
+        let root = root();
+        let device = cryptex_core::DeviceId::new("peer").unwrap();
+        let relative = PathBuf::from(device.as_filename_stem()).join("00000000000000000000.seg");
+        let input = root.join("transport/incoming").join(&relative);
+        fixture_fs::create_dir_all(input.parent().unwrap()).unwrap();
+        fixture_fs::write(input, b"untrusted candidate").unwrap();
+        let mut session = super::super::ImportStagingSession::begin(&root).unwrap();
+        let selected = session.staging_dir.clone();
+        let moved = root.join("original-transaction");
+        fixture_fs::rename(&selected, &moved).unwrap();
+        fixture_fs::create_dir_all(selected.join(device.as_filename_stem())).unwrap();
+        let bait = selected.join(&relative);
+        fixture_fs::write(&bait, b"replacement must survive refusal").unwrap();
+        assert!(matches!(session.stage_segment(&relative, &device, 0), Err(super::super::ImportStagingError::RecoveryConflict(_))));
+        assert_eq!(fixture_fs::read(&bait).unwrap(), b"replacement must survive refusal");
+        assert_eq!(fixture_fs::read_dir(&moved).unwrap().count(), 0);
+        drop(session);
+        fixture_fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn symlink_hardlink_and_fifo_sources_never_become_regular_snapshots() {
         let root = root();
         let source = root.join("original.seg");
@@ -399,7 +700,7 @@ mod tests {
         assert!(open_read(&source).is_err());
         fixture_fs::remove_file(&alias).unwrap();
         let fifo = CString::new(alias.as_os_str().as_bytes()).unwrap();
-        assert_eq!(unsafe {libc::mkfifo(fifo.as_ptr(), 0o600)}, 0);
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
         assert!(open_read(&alias).is_err());
         fixture_fs::remove_file(&alias).unwrap();
         symlink(&root, root.join("redirect")).unwrap();
@@ -415,9 +716,23 @@ mod tests {
         fixture_fs::set_permissions(&selected, fixture_fs::Permissions::from_mode(0o770)).unwrap();
         assert!(Directory::open(&selected, true).is_err());
         fixture_fs::set_permissions(&selected, fixture_fs::Permissions::from_mode(0o700)).unwrap();
-        assert!(std::process::Command::new("/bin/chmod").args(["+a", "everyone allow read,write"]).arg(&selected).status().unwrap().success());
+        assert!(
+            std::process::Command::new("/bin/chmod")
+                .args(["+a", "everyone allow read,write"])
+                .arg(&selected)
+                .status()
+                .unwrap()
+                .success()
+        );
         assert!(Directory::open(&selected, true).is_err());
-        assert!(std::process::Command::new("/bin/chmod").arg("-N").arg(&selected).status().unwrap().success());
+        assert!(
+            std::process::Command::new("/bin/chmod")
+                .arg("-N")
+                .arg(&selected)
+                .status()
+                .unwrap()
+                .success()
+        );
         assert!(Directory::open(&selected, true).is_ok());
         fixture_fs::remove_dir_all(root).unwrap();
     }

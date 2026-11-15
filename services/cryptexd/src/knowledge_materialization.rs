@@ -830,8 +830,14 @@ impl VerifiedCanonicalSnapshot {
     }
 
     pub(crate) fn locks_runtime(&self, root: &Path) -> bool {
-        self.runtime_root == root
+        if self.runtime_root != root { return false; }
+        #[cfg(target_os = "macos")]
+        if !self._inventory_lock.namespace_valid() || self._locks.iter().any(|lock| !lock.namespace_valid()) { return false; }
+        true
     }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn locked_devices(&self) -> &[DeviceId] { &self.devices }
 
     pub(crate) fn locks_devices(&self, devices: &[DeviceId]) -> bool {
         devices.iter().all(|device| {

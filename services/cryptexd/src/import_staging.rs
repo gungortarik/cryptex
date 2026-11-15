@@ -5,13 +5,13 @@
 //! requires the local trust/cutoff and M3/M4 proof token; managed transport
 //! does not call it yet.
 
+#[cfg(not(target_os = "macos"))]
+use std::fs;
 use std::fs::File;
 #[cfg(any(not(target_os = "macos"), test))]
 use std::fs::OpenOptions;
-#[cfg(not(target_os = "macos"))]
-use std::fs;
 #[cfg(target_os = "macos")]
-mod macos_fs;
+pub(crate) mod macos_fs;
 #[cfg(target_os = "macos")]
 use macos_fs as fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -223,16 +223,28 @@ pub(crate) mod policy_hold;
 
 fn create_import_file(path: &Path) -> io::Result<File> {
     #[cfg(target_os = "macos")]
-    { macos_fs::open_new(path) }
+    {
+        macos_fs::open_new(path)
+    }
     #[cfg(not(target_os = "macos"))]
-    { OpenOptions::new().read(true).write(true).create_new(true).open(path) }
+    {
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(path)
+    }
 }
 
 fn sync_import_file(file: &File) -> io::Result<()> {
     #[cfg(target_os = "macos")]
-    { macos_fs::flush(file) }
+    {
+        macos_fs::flush(file)
+    }
     #[cfg(not(target_os = "macos"))]
-    { file.sync_all() }
+    {
+        file.sync_all()
+    }
 }
 
 impl VerifiedStagedBatch {
@@ -312,6 +324,10 @@ impl ImportStagingSession {
         ensure_directory_chain(&events_root)?;
         ensure_directory_chain(&staging_root)?;
         ensure_directory_chain(&journal_root)?;
+        #[cfg(target_os = "macos")]
+        for path in [&canonical, &events_root, &staging_root, &journal_root] {
+            runtime_identity.pin(path)?;
+        }
         if !same_volume(&events_root, &staging_root)? {
             return Err(ImportStagingError::Invalid(
                 "canonical events and import staging must be on the same volume".into(),
@@ -355,6 +371,8 @@ impl ImportStagingSession {
         let transaction_id = random_transaction_id()?;
         let transaction_dir = staging_root.join(&transaction_id);
         fs::create_dir(&transaction_dir)?;
+        #[cfg(target_os = "macos")]
+        runtime_identity.pin(&transaction_dir)?;
         ensure_plain_directory(&transaction_dir)?;
         directory_handles.extend(inspect_directory_chain(&transaction_dir, true)?);
 
@@ -376,7 +394,22 @@ impl ImportStagingSession {
 
     fn validate_runtime_identity(&self) -> Result<(), ImportStagingError> {
         #[cfg(target_os = "macos")]
-        self.runtime_identity.validate()?;
+        self.runtime_identity.validate().map_err(|_| ImportStagingError::RecoveryConflict("import namespace changed; preserve transaction evidence".into()))?;
+        Ok(())
+    }
+
+    fn bind_snapshot_namespace(&self, snapshot: &crate::knowledge_materialization::VerifiedCanonicalSnapshot) -> Result<(), ImportStagingError> {
+        self.validate_runtime_identity()?;
+        if !snapshot.locks_runtime(&self.runtime_root) {
+            return Err(ImportStagingError::RecoveryConflict("import snapshot runtime or lock namespace changed".into()));
+        }
+        #[cfg(target_os = "macos")]
+        for device in snapshot.locked_devices() {
+            self.runtime_identity.pin(&canonical_events_device_dir(&self.runtime_root, device))?;
+        }
+        if !snapshot.locks_runtime(&self.runtime_root) {
+            return Err(ImportStagingError::RecoveryConflict("canonical lock namespace changed during import binding".into()));
+        }
         Ok(())
     }
 
@@ -390,6 +423,7 @@ impl ImportStagingSession {
         device_id: &DeviceId,
         segment_index: u64,
     ) -> Result<&StagedSegment, ImportStagingError> {
+        self.validate_runtime_identity()?;
         if self._single_flight.is_none() || self.prepared {
             return Err(ImportStagingError::Invalid(
                 "staging is closed or already prepared; no new candidates may be added".into(),
@@ -404,11 +438,15 @@ impl ImportStagingSession {
             candidate.device_id == *device_id && candidate.segment_index == segment_index
         }) {
             self.failed = true;
+            self.validate_runtime_identity()?;
             self._directory_handles.pop();
             return match remove_unprepared_transaction(&self.staging_dir) {
-                Ok(()) => Err(ImportStagingError::Invalid(
+                Ok(()) => {
+                    #[cfg(target_os = "macos")]
+                    self.runtime_identity.forget_removed(&self.staging_dir)?;
+                    Err(ImportStagingError::Invalid(
                     "batch contains a duplicate device and segment index".into(),
-                )),
+                ))},
                 Err(cleanup) => Err(ImportStagingError::Invalid(format!(
                     "batch contains a duplicate device and segment index; staging rollback also failed: {cleanup}"
                 ))),
@@ -417,12 +455,17 @@ impl ImportStagingSession {
         let result = self.stage_segment_inner(incoming_relative_path, device_id, segment_index);
         if let Err(primary) = result {
             self.failed = true;
+            self.validate_runtime_identity()?;
             // Keep the pinned ancestors through rollback so a path-based cleanup
             // cannot be redirected by replacing the transaction's parent chain.
             // The transaction directory itself must be unpinned for removal.
             self._directory_handles.pop();
             return match remove_unprepared_transaction(&self.staging_dir) {
-                Ok(()) => Err(primary),
+                Ok(()) => {
+                    #[cfg(target_os = "macos")]
+                    self.runtime_identity.forget_removed(&self.staging_dir)?;
+                    Err(primary)
+                },
                 Err(cleanup) => Err(ImportStagingError::Invalid(format!(
                     "{primary}; staging rollback also failed: {cleanup}"
                 ))),
@@ -555,6 +598,8 @@ impl ImportStagingSession {
 
         let device_dir = self.staging_dir.join(device_id.as_filename_stem());
         ensure_directory_chain(&device_dir)?;
+        #[cfg(target_os = "macos")]
+        self.runtime_identity.pin(&device_dir)?;
         let _device_handles = inspect_directory_chain(&device_dir, true)?;
         let final_path = device_dir.join(format!("{segment_index:020}.seg"));
         let temp_path = device_dir.join(format!(".{}.tmp", random_hex_16()?));
@@ -613,6 +658,7 @@ impl ImportStagingSession {
         &mut self,
         snapshot: &crate::knowledge_materialization::VerifiedCanonicalSnapshot,
     ) -> Result<usize, ImportStagingError> {
+        self.bind_snapshot_namespace(snapshot)?;
         let devices = self
             .candidates
             .iter()
@@ -677,6 +723,8 @@ impl ImportStagingSession {
             if !self.candidates.iter().any(|c| c.device_id == device) {
                 let parent = self.staging_dir.join(device.as_filename_stem());
                 fs::remove_dir(&parent)?;
+                #[cfg(target_os = "macos")]
+                self.runtime_identity.forget_removed(&parent)?;
             }
         }
         Ok(duplicates.len())
@@ -921,6 +969,7 @@ impl ImportStagingSession {
         expected_brain_id: &str,
         snapshot: &crate::knowledge_materialization::VerifiedCanonicalSnapshot,
     ) -> Result<VerifiedStagedBatch, ImportStagingError> {
+        self.bind_snapshot_namespace(snapshot)?;
         if !snapshot.locks_runtime(&self.runtime_root) {
             return Err(ImportStagingError::Invalid(
                 "retrieval safety snapshot belongs to another runtime".into(),
@@ -4252,7 +4301,10 @@ fn inspect_directory_chain(
 }
 
 #[cfg(target_os = "macos")]
-fn inspect_directory_chain(path: &Path, require_current_user_owner: bool) -> Result<Vec<File>, ImportStagingError> {
+fn inspect_directory_chain(
+    path: &Path,
+    require_current_user_owner: bool,
+) -> Result<Vec<File>, ImportStagingError> {
     Ok(macos_fs::Directory::open(path, require_current_user_owner)?.into_files())
 }
 

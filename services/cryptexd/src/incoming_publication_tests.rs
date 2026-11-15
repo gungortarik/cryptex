@@ -440,6 +440,44 @@ fn import_policy_proofs_cannot_cross_runtime_boundaries() {
 const ENV: SecureStoreEnvironment = SecureStoreEnvironment::Dev;
 const PROBE: &str = "44444444-4444-4444-8444-444444444444";
 
+#[cfg(target_os = "macos")]
+#[test]
+fn original_mac_policy_and_lock_capabilities_refuse_replaced_canonical_subtrees() {
+    for replace_device_only in [false, true] {
+        let fixture = Fixture::new();
+        let mut session = ImportStagingSession::begin(&fixture.receiver).unwrap();
+        let devices = session.stage_batch_from_transport_paths(&fixture.paths).unwrap()
+            .iter().map(|c| c.device_id.clone()).collect::<Vec<_>>();
+        session.release_staging_slot().unwrap();
+        let db = cryptex_projection::ProjectionDb::open_existing_read_only(&fixture.receiver).unwrap();
+        let mut resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+            &fixture.receiver, &fixture.report.brain_id, &fixture.store, ENV,
+        ).unwrap();
+        let safety = crate::knowledge_materialization::evaluate_import_retrieval_safety(
+            &fixture.receiver, &fixture.report.brain_id, &devices, &mut resolver, &db,
+        );
+        let proof = safety.verify_import_batch(&session, &fixture.report.brain_id).unwrap();
+        session.prepare_verified_manifest(proof.verified()).unwrap();
+        let local = DeviceId::new(fixture.report.receiver_device.clone()).unwrap();
+        let selected = if replace_device_only {
+            cryptex_storage::layout::canonical_events_device_dir(&fixture.receiver, &local)
+        } else { fixture.receiver.join("canonical/events") };
+        let moved = fixture.receiver.join("original-locked-subtree");
+        fs::rename(&selected, &moved).unwrap();
+        fs::create_dir(&selected).unwrap();
+        let bait = selected.join("replacement-marker");
+        fs::write(&bait, b"replacement must not receive canonical publication").unwrap();
+        let original_entries = fs::read_dir(&moved).unwrap().count();
+        assert!(session.publish_verified_batch(&proof).is_err());
+        assert_eq!(fs::read_dir(&selected).unwrap().count(), 1);
+        assert_eq!(fs::read(&bait).unwrap(), b"replacement must not receive canonical publication");
+        assert_eq!(fs::read_dir(&moved).unwrap().count(), original_entries);
+        assert_eq!(fs::read_dir(fixture.receiver.join("canonical/import-staging")).unwrap().count(), 1);
+        drop(proof);
+        drop(session);
+    }
+}
+
 struct Fixture {
     source: PathBuf,
     receiver: PathBuf,
