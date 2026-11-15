@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "status": "ready_owner_execution_pending",
+  "package": "Cryptex-Mac-Normal-d3927b4-1c0e3c3.zip",
+  "package_sha256": "1fd5177910521ad1c58503b3ab4a3a29c21f51a46b9b01e62b277e6bd052dee9",
+  "product_source": "d3927b4083d192e80e3d5ca736e41fd35705bf2e",
+  "collector_source": "1c0e3c36d4164c44816a34a241654808aefe7b21",
+  "source_artifact_sha256": "25f50a847c9bbce23891ffd1bbd9e53c42f85b49d86a51918350a9bd04c6e3cf",
+  "expires_utc": "2026-11-16T18:50:13Z",
+  "minimum_macos": 26,
+  "architecture": "arm64",
+  "scope": "No-argument development opening/restart using nonempty synthetic fixture at absent real default root; real HOME retained. Existing profiles are refused, never adopted/moved/replaced.",
+  "validation": {
+    "zip_crc": "passed",
+    "all_22_member_hashes": "passed",
+    "python_syntax": "passed",
+    "signed_public_images_byte_identical": true,
+    "collector_ci": 43752669142,
+    "collector_ci_result": "passed",
+    "darwin_window_tests": 20,
+    "product_key_collector_tests": 2
+  },
+  "cleanup": "Only after both natural product exits and unchanged canonical/device identity: exact generated key and FD-pinned synthetic leaf. On uncertainty retain profile/key; never delete ancestors.",
+  "not_established": [
+    "Owner normal-profile acceptance",
+    "Personal-profile migration",
+    "Independent out-of-group helper disappearance",
+    "Cross-device sync",
+    "Public distribution",
+    "Full M8 acceptance"
+  ],
+  "related_owner_ui_receipt": "m8-mac-window-owner-acceptance-20261115.json"
+}

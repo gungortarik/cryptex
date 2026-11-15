@@ -1,5 +1,13 @@
 # M8 completion ledger
 
+November15 continuation: normal no-argument/default-location owner package is
+ready but execution is pending. Read-only CI43752041981 confirms an unlocked
+Keychain with creator-only CDHash partition; same designated requirement does
+not grant the actual daemon access. Product-owned-key positive startup uses a
+fresh initialized empty Brain, separately from prior nonempty owner window
+acceptance. Native CI43752532500 is pending. See the current handoff and
+[evidence](../evidence/m8/m8-mac-keychain-partition-20261115.json). M8 remains OPEN.
+
 Updated 2026-11-15. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.

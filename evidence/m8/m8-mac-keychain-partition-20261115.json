@@ -1,0 +1,169 @@
+{
+  "schema": 1,
+  "status": "cross_image_keychain_partition_mismatch_observed",
+  "ci_run": 43752041981,
+  "collector_source": "81f2de5",
+  "product_source": "d3927b4083d192e80e3d5ca736e41fd35705bf2e",
+  "source_artifact_sha256": "25f50a847c9bbce23891ffd1bbd9e53c42f85b49d86a51918350a9bd04c6e3cf",
+  "receipt_sha256": "6ddf6d5197aa5d2fd8dd6bc4337a0aca8ec77ccad090f4e351b2390eb2a49a6f",
+  "observation": {
+    "scope": "read-only synthetic item metadata and bounded headless startup; not product acceptance",
+    "archive_sha256": "25f50a847c9bbce23891ffd1bbd9e53c42f85b49d86a51918350a9bd04c6e3cf",
+    "outcome": "metadata_collected",
+    "product_source": "d3927b4083d192e80e3d5ca736e41fd35705bf2e",
+    "commands": [
+      {
+        "stage": "compile_probe",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false
+      },
+      {
+        "stage": "inspect_development_designated_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false
+      },
+      {
+        "stage": "inspect_development_designated_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false
+      },
+      {
+        "stage": "verify_development_designated_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false
+      },
+      {
+        "stage": "verify_development_designated_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false
+      },
+      {
+        "stage": "create_test_profile",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false
+      },
+      {
+        "stage": "read_metadata",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false
+      },
+      {
+        "stage": "cleanup_exact_generated_key",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false
+      }
+    ],
+    "captured_groups_reaped": true,
+    "item_metadata": {
+      "partition_count": 1,
+      "copy_access_status": 0,
+      "default_keychain_status": 0,
+      "match_count": 1,
+      "partition_format_recognized": true,
+      "keychain_state_status": 0,
+      "interaction_disabled_status": 0,
+      "creator_cdhash_allowed": true,
+      "product_cdhash_allowed": false,
+      "partition_acl_count": 1,
+      "keychain_unlocked": true,
+      "item_in_default_keychain": true,
+      "lookup_status": 0,
+      "different_image_cdhash": true,
+      "partition_contents_status": 0,
+      "containing_keychain_status": 0
+    },
+    "startup": {
+      "exit_code": 2,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "progress": [
+        {
+          "stage": "validate",
+          "phase": "begin"
+        },
+        {
+          "stage": "validate",
+          "phase": "complete"
+        },
+        {
+          "stage": "backend",
+          "phase": "begin"
+        },
+        {
+          "stage": "backend",
+          "phase": "complete"
+        },
+        {
+          "stage": "prepare",
+          "phase": "begin"
+        },
+        {
+          "stage": "recover",
+          "phase": "begin"
+        },
+        {
+          "stage": "recover_evidence",
+          "phase": "begin"
+        },
+        {
+          "stage": "recover_evidence",
+          "phase": "complete"
+        },
+        {
+          "stage": "initialize_slots",
+          "phase": "begin"
+        },
+        {
+          "stage": "slot_key",
+          "phase": "begin"
+        },
+        {
+          "stage": "key_lock",
+          "phase": "begin"
+        },
+        {
+          "stage": "key_lock",
+          "phase": "complete"
+        },
+        {
+          "stage": "key_store",
+          "phase": "begin"
+        },
+        {
+          "error": "local_signed_startup_Deadline"
+        },
+        {
+          "development_stage": "bind"
+        }
+      ],
+      "passed": false
+    },
+    "canonical_unchanged": true,
+    "credential_cleanup_verified": true
+  },
+  "interpretation": "Default Keychain is unlocked. Generated item has one recognized partition, allowing creator CDHash but not actual product daemon CDHash despite matching designated requirements. Headless startup still fails at key_store/Deadline. This is an observed OS access boundary, not successful startup.",
+  "changes_not_made": [
+    "No item value read by metadata probe",
+    "No key or ACL changes by metadata probe",
+    "No default/search-list changes",
+    "No product deadline or authentication changes"
+  ],
+  "next_positive_scope": "Actual product daemon enrolls its own key in a fresh initialized empty Brain; test separately from nonempty canonical history and upgrade access."
+}

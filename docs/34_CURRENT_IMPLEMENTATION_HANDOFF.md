@@ -1,5 +1,44 @@
 # 34 — Current Implementation Handoff
 
+## Default-profile package and headless Keychain prerequisite — November15
+
+Read-only native CI43752041981 on81f2de5 inspected the exact generated item's
+metadata, never its value. Default Keychain was unlocked; the sole partition
+allowed the external creator CDHash but not the actual product daemon CDHash,
+although their designated requirements matched. Headless startup reproduced
+key_store begin/Deadline/exit2 with unchanged canonical data and exact-key cleanup.
+This is an access-boundary observation, NOT successful startup. See
+[receipt](../evidence/m8/m8-mac-keychain-partition-20261115.json). Prior owner4692ce47
+interactive success remains valid; no password failure is inferred.
+
+CI positive fixture now separates public Brain preparation from key enrollment:
+external daemon-only `brain-only-v1` accepts only a fresh marked root and writes
+no local device/key/event. The actual signed product daemon's existing explicit
+`identity enroll-local` command creates its own OS key. Desktop startup/restart
+and tampered-inventory refusal compare Brain/local/public-key bytes and an empty
+canonical inventory. This is initialized-empty-profile acceptance, not nonempty
+history recovery. The previous nonempty fixture and owner receipts are preserved.
+No product ACL, OS default/search list, authentication or deadline change was made.
+Product still refuses all pilot-fixture commands, including the new fixture.
+Independent review findings (valid-input refusal test and dangling-link inventory)
+are fixed at1c0e3c3; final source review has no actionable finding and ran no tests.
+Native CI43752532500 at3e170af is pending; product Rust bytes match1c0e3c3.
+Collector CI43752669142 at1c0e3c3 passed20 window/package/Darwin tests plus2
+product-key collector tests. Earlier43752431589 failed formatting only, corrected.
+
+Owner handoff READY: `Cryptex-Mac-Normal-d3927b4-1c0e3c3.zip`, Apple Silicon,
+macOS26+, expires2026-11-16T18:50:13Z. Open `MAC-NORMAL.command`; two normal
+no-argument Open local memory / Command-Q cycles. Actual HOME retained; default
+root must be absent. Existing directory/file/symlink is refused, never moved or
+adopted. Fresh synthetic test data is daemon-created. Cleanup requires unchanged
+canonical/device state, natural product exits and captured directory identity;
+only exact generated key/leaf is removed, never ancestors. Uncertainty retains
+profile/key. Send `MAC-NORMAL-SONUC-*.zip`, including refusal results. Package CRC,
+all22 hashes/modes/syntax and byte-identical previously owner-tested d3927b4 signed
+images verified. [Package evidence](../evidence/m8/m8-mac-normal-package-20261115.json).
+Owner execution is pending; personal-profile migration, independent out-of-group
+helper disappearance, real cross-device sync and full M8 acceptance remain OPEN.
+
 ## Owner Mac window lifecycle passed — November15
 
 Latest owner return `MAC-PENCERE-SONUC-4692ce47.zip` PASSES the bounded window test
