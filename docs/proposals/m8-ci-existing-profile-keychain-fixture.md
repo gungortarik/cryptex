@@ -1,6 +1,9 @@
 # CI existing-profile Keychain prerequisite
 
-Status: PROPOSED; not enabled. November 15, 2026.
+Status: ACCEPTED FOR ISOLATED CI IMPLEMENTATION. November 15, 2026.
+Owner decision: "İzole CI Keychain yöntemiyle devam et (Önerilen)".
+This authorizes the disposable GitHub-hosted CI workflow below, not owner-Mac
+Keychain changes or product authorization changes. Native acceptance is pending.
 
 ## Evidence and boundary
 

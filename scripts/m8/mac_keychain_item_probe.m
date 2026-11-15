@@ -47,7 +47,7 @@ static NSArray *partitions(CFStringRef description) {
 
 int main(int argc, const char **argv) {
     @autoreleasepool {
-        if (argc != 4) return 2;
+        if (argc != 4 && argc != 5) return 2;
         NSMutableDictionary *report = [NSMutableDictionary dictionary];
         NSString *creatorHash = imageHash(argv[2]), *productHash = imageHash(argv[3]);
         if (!creatorHash || !productHash) return 4;
@@ -74,6 +74,15 @@ int main(int argc, const char **argv) {
                 status = SecKeychainItemCopyKeychain(item, &keychain);
                 report[@"containing_keychain_status"] = @(status);
                 if (status == errSecSuccess) {
+                    if (argc == 5) {
+                        SecKeychainRef expected = NULL;
+                        OSStatus opened = SecKeychainOpen(argv[4], &expected);
+                        report[@"expected_keychain_status"] = @(opened);
+                        if (opened == errSecSuccess) {
+                            report[@"item_in_expected_keychain"] = CFEqual(keychain, expected) ? @YES : @NO;
+                            CFRelease(expected);
+                        }
+                    }
                     SecKeychainStatus bits = 0;
                     status = SecKeychainGetStatus(keychain, &bits);
                     report[@"keychain_state_status"] = @(status);

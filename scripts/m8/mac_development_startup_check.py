@@ -231,17 +231,16 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
     if missing.exists():
         raise PreflightError("development_window_check_created_profile")
 
-    # Equal designated requirements do not imply equal Keychain partitions for
-    # our self-signed, different images. The external fixture creates only a
-    # public Brain; the actual product daemon enrolls its OWN key. Existing
-    # different-image/signed-event fixtures remain separate diagnostic cases.
+    # Equal designated requirements do not imply equal Keychain partitions.
+    # Owner-approved CI-only provisioning grants the exact synthetic credential
+    # to these two images in a separate disposable Keychain. No product fallback.
     creator = root / "development-profile-creator"
     shutil.copy2(fixture_daemon, creator)
     sign(creator, "com.cryptex.development.daemon")
     require_same_designated_identity(creator, daemon, run)
     try:
-        from mac_product_key_startup import exercise
-        exercise(root, desktop, creator, bundle / "Contents/Resources/m8-startup.json", run_bounded, run)
+        from mac_ci_existing_profile import exercise
+        exercise(root, desktop, creator, bundle / "Contents/Resources/m8-startup.json", run_bounded)
     except PreflightError:
         destination = os.environ.get("CRYPTEX_DEVELOPMENT_DIAGNOSTIC_EXPORT")
         if destination:
@@ -252,4 +251,4 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
                          "diagnostic_expiry", 30).strip()
             export_failed(bundle, files, creator, Path(destination), source, platform.machine(), expiry)
         raise  # Exporting a diagnostic never turns native startup failure into success.
-    print("development_native_product_owned_key_restart_and_refusals=passed")
+    print("development_native_provisioned_existing_profile_restart_and_refusals=passed")

@@ -1,7 +1,8 @@
-"""Positive startup fixture: the actual product daemon enrolls its own OS key.
+"""Historical empty-profile diagnostic: actual product enrolls its own OS key.
 
-This checks an empty, initialized Brain. Existing signed-event retention and the
-different-image Keychain access boundary remain separate acceptance cases.
+Not used as positive native acceptance: an empty Brain correctly fails the
+ExistingProfile history prerequisite. profile_snapshot is shared with the valid
+nonempty CI fixture. Retain the original experiment and its failure evidence.
 """
 import hashlib
 from pathlib import Path

@@ -90,6 +90,7 @@ jobs:
         run: |
           /usr/bin/python3 -B -m unittest discover -s scripts/m8 -p 'test_mac_window*.py' -v
           /usr/bin/python3 -B -m unittest discover -s scripts/m8 -p 'test_mac_product_key_startup.py' -v
+          /usr/bin/python3 -B -m unittest discover -s scripts/m8 -p 'test_mac_ci_credential*.py' -v
       - name: Compare read-only Keychain discovery with isolated HOME (no item access)
         run: /usr/bin/python3 -B scripts/m8/mac_keychain_context_check.py
   mac-fd-repro:
