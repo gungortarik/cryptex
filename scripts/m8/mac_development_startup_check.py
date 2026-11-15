@@ -200,7 +200,7 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
         target = bundle / "Contents/MacOS" / name
         shutil.copy2(Path("target/debug") / name, target)
         sign(target, "com.cryptex.development." + role)
-    inventory(bundle, release=release)
+    files = inventory(bundle, release=release)
     desktop = bundle / "Contents/MacOS/cryptex-desktop"
     daemon = bundle / "Contents/MacOS/cryptexd"
     for binary, args, code in (
@@ -224,6 +224,17 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
     shutil.copy2(fixture_daemon, creator)
     sign(creator, "com.cryptex.development.daemon")
     require_same_designated_identity(creator, daemon, run)
-    exercise_profile(root, desktop, creator, bundle / "Contents/Resources/m8-startup.json",
-                     run_bounded, run)
+    try:
+        exercise_profile(root, desktop, creator, bundle / "Contents/Resources/m8-startup.json",
+                         run_bounded, run)
+    except PreflightError:
+        destination = os.environ.get("CRYPTEX_DEVELOPMENT_DIAGNOSTIC_EXPORT")
+        if destination:
+            from mac_development_diagnostic_package import export_failed
+            import platform
+            source = run(["/usr/bin/git", "rev-parse", "HEAD"], "diagnostic_source", 30).strip()
+            expiry = run(["/usr/bin/openssl", "x509", "-in", root / "cert.pem", "-noout", "-enddate"],
+                         "diagnostic_expiry", 30).strip()
+            export_failed(bundle, files, creator, Path(destination), source, platform.machine(), expiry)
+        raise  # Exporting a diagnostic never turns native startup failure into success.
     print("development_native_existing_profile_restart_and_refusals=passed")

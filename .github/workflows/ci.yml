@@ -147,6 +147,7 @@ jobs:
         if: runner.os == 'macOS'
         env:
           CRYPTEX_UI_SOURCE: ${{ inputs.mac_ui_source }}
+          CRYPTEX_DEVELOPMENT_DIAGNOSTIC_EXPORT: ${{ runner.temp }}/cryptex-mac-development-diagnostic.zip
         run: |
           if [[ -n "$CRYPTEX_UI_SOURCE" ]]; then
             [[ "$(git rev-parse HEAD)" == "$CRYPTEX_UI_SOURCE" ]] || exit 1
@@ -154,6 +155,14 @@ jobs:
           else
             python3 scripts/m8/test_mac_local_signing_ci.py
           fi
+      - name: Upload failed development startup diagnostic
+        if: always() && runner.os == 'macOS' && inputs.mac_ui_source == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-development-diagnostic
+          path: ${{ runner.temp }}/cryptex-mac-development-diagnostic.zip
+          if-no-files-found: ignore
+          retention-days: 1
       - name: Test actual child startup, malformed readiness and crash restart
         if: runner.os != 'Windows'
         env:
