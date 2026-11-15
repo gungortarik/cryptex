@@ -165,7 +165,7 @@
     "No default/search-list changes",
     "No product deadline or authentication changes"
   ],
-  "next_positive_scope": "Pending owner choice: dedicated disposable CI credential Keychain with exact synthetic-item creator/product permissions, nonempty signed history and complete restoration; see docs/proposals/m8-ci-existing-profile-keychain-fixture.md. Not implemented.",
+  "next_positive_scope": "Scoped latest-source Mac+Windows startup CI43761233562 passed; normal owner default-locator receipt remains pending.",
   "positive_followup": {
     "ci_run": 43752532500,
     "source": "3e170af",
@@ -227,8 +227,71 @@
   },
   "acceptance": {
     "keychain_read_under_same_product_image": "observed complete",
-    "full_native_ci": "failed",
+    "full_native_ci": "scoped desktop-startup workflow passed on Mac and Windows; not full repository matrix",
     "normal_default_profile_owner": "pending",
     "m8": "open"
+  },
+  "isolated_ci_keychain_followup": {
+    "owner_authorization": "\u0130zole CI Keychain y\u00f6ntemiyle devam et (\u00d6nerilen)",
+    "implementation": "7334727",
+    "cleanup_correction": "21f6bf7",
+    "scope": "Disposable hosted Mac only; exact generated item, exactly creator/product CDHash partitions, nonempty daemon-created history; no product or owner-key changes",
+    "local_tests": {
+      "new_credential_tests": 3,
+      "exercise_cases": 15,
+      "existing_startup_tests": 6,
+      "metadata_tests": 3,
+      "outcome": "passed"
+    },
+    "review": "Two cleanup races corrected: unresolved producer must not restore default underneath late put; raw cleanup uncertainty monotonic. Dedicated credential scope survives outer temp cleanup. Final read-only review no remaining actionable finding; no tests run.",
+    "superseded_collector_ci": 43759227005,
+    "superseded_collector_status": "passed",
+    "cancelled_native_ci": 43759229090,
+    "cancel_reason": "cleanup review findings before signed native stage",
+    "collector_ci": 43759499408,
+    "collector_status": "passed:20 window/package/Darwin,2 product-key diagnostic helper,3 isolated credential tests",
+    "native_ci": 43759501863,
+    "native_status": "Windows passed; Mac failed strict pre-edit item metadata check (no partition ACL in temp-directory Keychain); not product startup success",
+    "pinned_diagnostic_ci": 43760805718,
+    "pinned_diagnostic_source": "21dbc5a",
+    "pinned_diagnostic_result": "Exact item/default/expected Keychain confirmed, but partition_acl_count=0; stopped before permission edit",
+    "location_correction": "59f9ba5: fresh private child under hosted-runner real Library/Keychains; strict partition checks retained, HOME unchanged",
+    "pinned_acceptance_ci": 43761107215,
+    "pinned_acceptance_result": "passed: exact two-image credential permission, nonempty actual signed product startup/restart, tampered inventory refusal, unchanged canonical/public identity, exact key deletion and original preferences restoration, disposable Keychain deletion",
+    "pinned_product_source": "21f6bf757ed6c9d6d2fdaf399e75fdc2ae98bd94",
+    "pinned_artifact_sha256": "11637fe468663bf6b1c731279e20077aaee08a9e2ad277cf079fd4293880aad7",
+    "pinned_collector_source": "59f9ba5",
+    "final_native_ci": 43761233562,
+    "final_native_status": "passed",
+    "location_review": "Independent source review of59f9ba5 found no actionable concern; no execution by reviewer",
+    "final_native_source": "59f9ba5381e41c17589856943c2ad57c41043d2d",
+    "final_native_url": "https://github.com/gungortarik/cryptex/actions/runs/43761233562",
+    "final_mac_job": 132956300386,
+    "final_windows_job": 132956300730,
+    "final_mac_verified_markers": [
+      "real_signed_startup_refused_wrong_parent_cdhash=passed",
+      "ci_exact_synthetic_key_access_provisioned=passed",
+      "ci_authorized_nonempty_profile_startup_restart_refusals=passed",
+      "ci_credential_preferences_restored_and_keychain_removed=passed",
+      "development_native_provisioned_existing_profile_restart_and_refusals=passed",
+      "local_certificate_fixture_cleanup=passed"
+    ],
+    "final_mac_later_suites": "startup, Desktop, approval, owner-channel, IPC and runtime-admission passed; six explicitly ignored tests not claimed passed",
+    "final_windows_test_counts": [
+      2,
+      1,
+      10,
+      52,
+      5,
+      17,
+      80,
+      17
+    ],
+    "final_windows_suite_validation": {
+      "positive": 3,
+      "refusal": 6
+    },
+    "final_windows_temporary_account_profile_removed": true,
+    "completed_logs_inspected": true
   }
 }

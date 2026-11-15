@@ -1,5 +1,70 @@
 # 34 — Current Implementation Handoff
 
+## Native provisioned-profile CI passed; owner normal opening next — November15
+
+Pinned native CI43761107215 PASSED on collector59f9ba5 with byte-identical product
+images21f6bf757ed6c9d6d2fdaf399e75fdc2ae98bd94. Artifact SHA256:
+11637fe468663bf6b1c731279e20077aaee08a9e2ad277cf079fd4293880aad7.
+All four expected markers passed: exact synthetic two-image credential access,
+nonempty signed product startup/restart and modified-inventory refusal, original
+credential preferences restored/disposable Keychain removed, final pinned
+acceptance. Canonical/public identity snapshots remain unchanged; exact test-key
+cleanup passed. This uses explicit test access provisioning, not proof of automatic
+owner permission or unattended future self-signed upgrades.
+
+Initial native43759501863 passed Windows but Mac pre-edit metadata refused an
+absent partition ACL. Fast pinned43760805718 confirmed the item was exactly in the
+intended private default Keychain but partition_acl_count=0. Apple's ssblob.cpp
+selects legacy format outside Library/Keychains. Correction59f9ba5 creates only a
+fresh private random child beneath hosted-runner real ~/Library/Keychains; parent
+must be ordinary, owned and not writable by other users. Actual HOME retained;
+login/existing keychains are never permission-edited. Strict pre/post partition
+checks remain; zero ACL is NOT accepted. Independent review found no actionable
+concern in this correction; reviewer ran no tests. The fast native run passed6
+collector tests before actual application acceptance. Credential scope remains
+outside the signing tempdir for unresolved-producer retention.
+
+Final scoped Mac+Windows startup [CI43761233562](https://github.com/gungortarik/cryptex/actions/runs/43761233562)
+PASSED on exact source59f9ba5381e41c17589856943c2ad57c41043d2d. Both completed
+job logs were inspected: Mac132956300386 and Windows132956300730. Mac passed
+all four provisioned-profile markers plus signing fixture cleanup and wrong-parent
+CDHash refusal. The later approval/IPC suites passed (six explicitly ignored
+Mac tests remain ignored, not accepted). Windows standard-user startup and
+approval suites passed with temporary account/profile removal verified.
+This is the scoped desktop-startup workflow, not the entire repository test matrix.
+Normal owner default-location package remains d3927b4/1c0e3c3 and its result is
+pending; do not infer owner acceptance or full M8 completion from these CI passes.
+
+## Isolated CI Keychain implementation — November15
+
+Owner accepted the [dedicated CI credential Keychain proposal](proposals/m8-ci-existing-profile-keychain-fixture.md):
+"İzole CI Keychain yöntemiyle devam et (Önerilen)". Implemented7334727 with cleanup
+correction21f6bf7. Only disposable GitHub-hosted macOS CI may enter the new scope.
+An external daemon creates nonempty signed synthetic history in a fresh profile;
+value-free metadata must show exactly one generated service/account item in the
+exact disposable default Keychain. Only exact creator/product CDHash partitions
+are granted; metadata is checked again before actual signed product startup,
+restart and modified-inventory refusal. Canonical and public identity hashes must
+remain unchanged. Product code, history/authentication rules and owner Mac keys
+are unchanged; no seed value is read/exported by the collector.
+
+Normal cleanup removes the exact generated item, restores and verifies original
+default/search-list preferences and deletes the dedicated Keychain. Unresolved
+producer means no preference restoration underneath a possible late write; retain
+the dedicated Keychain outside the outer signing tempdir and fail. Unresolved
+cleanup commands latch uncertainty, suppressing every later mutation/deletion.
+Hosted-runner teardown is the last boundary for these failed cases. Independent
+read-only review found two cleanup races, both fixed; no remaining actionable
+finding in this bounded source review. Reviewer ran no tests.
+
+Local validation:3 CI credential tests covering15 success/failure cases,6 existing
+startup tests and3 metadata tests passed. Collector43759227005 at7334727 passed;
+its native43759229090 was CANCELLED before signed startup after review findings.
+Corrected collector43759499408 at21f6bf7 passed25 tests; native43759501863
+at21f6bf7 failed strict pre-edit metadata validation as recorded above. Corrected
+pinned and latest-source native acceptance subsequently passed. Normal owner package remains unchanged;
+MAC-NORMAL-SONUC return is still pending. Full M8 remains OPEN.
+
 ## Current stop point: key read works; existing history prerequisite — November15
 
 Native CI43757075897 at560f175 **FAILED overall**. Windows passed all scoped
@@ -20,8 +85,10 @@ Desktop; product fixture commands remain refused. Review ran no tests.
 Concrete next proposal: [dedicated disposable CI credential Keychain](proposals/m8-ci-existing-profile-keychain-fixture.md),
 exact synthetic-item creator/product permissions, nonempty daemon-signed history,
 complete restoration and cleanup. Owner selection requested because this changes
-the previous no-key-ACL-edit test workflow; **not implemented or authorized yet**.
-Do not change owner's Keychain or product permissions. No further CI is running.
+the previous no-key-ACL-edit test workflow. This decision was subsequently
+authorized and implemented as recorded above; this section preserves the failed
+empty-profile attempt.
+Do not change owner's Keychain or product permissions.
 Evidence: [current receipt](../evidence/m8/m8-mac-keychain-partition-20261115.json).
 
 Normal owner package below remains ready and unchanged; owner execution is pending.

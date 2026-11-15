@@ -1,13 +1,16 @@
 # M8 completion ledger
 
-November15 continuation: normal no-argument/default-location owner package is
-ready; execution is pending. Native CI43757075897 at560f175 FAILED overall:
-Windows passed; Mac actual product Keychain read completed, then slot_scan correctly
-refused an empty local history. Empty enrollment is not a valid ExistingProfile
-positive fixture. Keep the history gate and product fixture refusal unchanged.
-Collector43757078756 passed20+2 tests. A separate disposable CI Keychain with exact
-synthetic-item permissions is proposed, not implemented; owner selection pending.
-See [proposal](../docs/proposals/m8-ci-existing-profile-keychain-fixture.md),
+November15 continuation: normal default-location owner result remains pending.
+Pinned native43761107215 passed actual nonempty signed product startup/restart,
+modified-inventory refusal, unchanged canonical/public identity, exact synthetic
+credential permissions and full Keychain preference restoration/deletion. Product
+images21f6bf7; collector59f9ba5. This uses owner-approved test access provisioning,
+not automatic owner permission. The CI Keychain is a new isolated child under the
+hosted runner's Library/Keychains; zero/missing/extra partition ACL is refused.
+Final scoped Mac+Windows startup CI43761233562 PASSED on59f9ba5; actual
+signed startup/restart, tampered inventory refusal, both Keychain cleanup markers
+and Windows standard-user/account cleanup are verified in completed job logs.
+Six explicitly ignored Mac tests are not claimed passed. See
 [current handoff](../docs/34_CURRENT_IMPLEMENTATION_HANDOFF.md) and
 [evidence](../evidence/m8/m8-mac-keychain-partition-20261115.json). M8 remains OPEN.
 

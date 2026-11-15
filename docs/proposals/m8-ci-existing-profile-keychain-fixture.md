@@ -3,7 +3,8 @@
 Status: ACCEPTED FOR ISOLATED CI IMPLEMENTATION. November 15, 2026.
 Owner decision: "İzole CI Keychain yöntemiyle devam et (Önerilen)".
 This authorizes the disposable GitHub-hosted CI workflow below, not owner-Mac
-Keychain changes or product authorization changes. Native acceptance is pending.
+Keychain changes or product authorization changes. Bounded native acceptance
+passed in scoped Mac+Windows CI43761233562 on59f9ba5.
 
 ## Evidence and boundary
 
@@ -58,8 +59,15 @@ Keychain. This changes test credential provisioning, not product authorization.
 Apple's security tool supports an explicit Keychain plus service/account filters
 for generic-password partition edits and a separate default-Keychain command:
 [primary command definitions](https://raw.githubusercontent.com/apple-oss-distributions/Security/main/SecurityTool/macOS/security.c).
-Implementation must validate actual tool behavior on the disposable runner and
-redact provisioning argv/output; that verification has not yet run.
+Native validation43761107215 passed with product images21f6bf7 and collector59f9ba5.
+The dedicated credential Keychain is a fresh private child under hosted-runner
+Library/Keychains: Apple selects partition-protected format there; the earlier
+temporary-directory attempt produced no partition ACL and was correctly refused.
+See [Apple format selection](https://raw.githubusercontent.com/apple-oss-distributions/Security/main/OSX/libsecurityd/lib/ssblob.cpp).
+Provisioning argv/output remains redacted; the value-free probe validates the exact
+pre/post partition sets. Latest-source two-platform startup CI43761233562 passed
+on59f9ba5, including actual signed nonempty profile opening/restart, inventory
+refusal, credential preference restoration and disposable Keychain deletion.
 
 ## Acceptance and limits
 
