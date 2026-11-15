@@ -19,7 +19,8 @@ pub fn mode(args: &[OsString]) -> Result<Mode, &'static str> {
             Ok(Mode::Check(PathBuf::from(root)))
         }
         [argument, root]
-            if argument == "--cryptex-development-window-check" && Path::new(root).is_absolute() =>
+            if argument == "--cryptex-development-window-check"
+                && Path::new(root).is_absolute() =>
         {
             Ok(Mode::WindowCheck(PathBuf::from(root)))
         }
@@ -221,7 +222,10 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = temporary.join(format!("cryptex-window-check-{}-{nonce}", std::process::id()));
+        let root = temporary.join(format!(
+            "cryptex-window-check-{}-{nonce}",
+            std::process::id()
+        ));
         std::fs::create_dir(&root).unwrap();
         #[cfg(unix)]
         {
