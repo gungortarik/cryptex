@@ -728,7 +728,11 @@ mod tests {
         let path = root.join("writer.lock");
         let preserved = root.join("preserved.lock");
         std::fs::write(&path, b"original held lock").unwrap();
-        let holder = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
+        let holder = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
         fs2::FileExt::lock_exclusive(&holder).unwrap();
         let moved_path = path.clone();
         let moved_preserved = preserved.clone();
@@ -739,8 +743,17 @@ mod tests {
         assert!(LockBinding::open(&path).is_err());
         assert!(!path.exists());
         assert_eq!(std::fs::read(&preserved).unwrap(), b"original held lock");
-        let contender = std::fs::OpenOptions::new().read(true).write(true).open(&preserved).unwrap();
-        assert_eq!(fs2::FileExt::try_lock_exclusive(&contender).unwrap_err().kind(), io::ErrorKind::WouldBlock);
+        let contender = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&preserved)
+            .unwrap();
+        assert_eq!(
+            fs2::FileExt::try_lock_exclusive(&contender)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::WouldBlock
+        );
         drop((contender, holder));
         std::fs::remove_dir_all(root).unwrap();
     }
