@@ -1,4 +1,5 @@
 """Observe normal window launches without confusing collector cleanup with Quit."""
+import json
 import os
 from pathlib import Path
 import signal
@@ -9,6 +10,31 @@ import time
 from mac_identity_preflight import (PreflightError, OUTPUT_LIMIT, wait_without_reaping,
                                     darwin_group_is_dead)
 from mac_development_diagnostic_owner import progress
+from mac_development_startup_check import NATIVE_ERRORS
+
+
+def window_progress(output):
+    """Export fixed diagnostic codes only, never raw error strings or fields."""
+    result = progress(output)
+    stages = {'content_preflight', 'content', 'start', 'bind', 'ping', 'close',
+              'window_reopen', 'window_hide', 'exit_cleanup'}
+    errors = {'existing_profile_missing', 'development_content_changed',
+              'development_startup_cancelled', 'development_lifecycle_lock',
+              'development_owner_lock', 'development_window', 'development_tray'} | NATIVE_ERRORS
+    for line in output.splitlines():
+        if line.startswith('development_startup: '):
+            code = line.removeprefix('development_startup: ')
+            if code in errors:
+                result.append({'startup_error': code})
+        elif line.startswith('{') and len(line) <= 512:
+            try:
+                value = json.loads(line)
+            except (ValueError, RecursionError):
+                continue
+            name = value.get('developmentStage')
+            if isinstance(name, str) and name in stages:
+                result.append({'development_stage': name})
+    return result
 
 
 def parse_group(raw, leader):
@@ -182,5 +208,5 @@ class WindowProcess:
                        'same_group_live_descendants_before_cleanup': live, 'group_reaped': True,
                        'timed_out': self.timed_out, 'output_limited': self.limited,
                        'observer_failed': self.failed, 'sampled_daemon_count': len(self.seen_daemons),
-                       'progress': progress(bytes(self.output).decode('utf-8', 'replace'))}
+                       'progress': window_progress(bytes(self.output).decode('utf-8', 'replace'))}
         return self.result

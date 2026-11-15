@@ -98,16 +98,7 @@ def exercise(package, home, report, ask=answer, runner=run_bounded, process_type
             existing = fence.outcome(['/usr/bin/pgrep', '-x', name], 5)
             if existing.code != 1 or existing.timed_out or existing.limited or existing.pipe_failed:
                 raise PreflightError('close_existing_cryptex_first')
-        print('\n1. Açılacak açıklamada "Quit" seç. Henüz "Open local memory" seçme.', flush=True)
-        first = launch('opening_cancel')
-        observe('opening_explanation_cancel', 'Açıklama göründü mü ve Quit ile kapattın mı?')
-        result = finish('opening_cancel', first)
-        report['cancel_no_daemon_sampled'] = result['sampled_daemon_count'] == 0
-        report['cancel_no_identity_or_canonical_created'] = not metadata.exists() and not (profile / 'canonical').exists()
-        if not report['cancel_no_daemon_sampled'] or not report['cancel_no_identity_or_canonical_created']:
-            raise PreflightError('cancel_created_runtime_identity')
-
-        print('\n2. Ayrı test profili hazırlanıyor. macOS izin penceresi açarsa şifreyi yalnızca oraya yaz.\n'
+        print('\n1. Ayrı test profili hazırlanıyor. macOS izin penceresi açarsa şifreyi yalnızca oraya yaz.\n'
               'Sonraki Cryptex açıklamasında Open local memory seç.\n'
               'Ana pencere açılınca Inbox Note alanına "Cryptex pencere testi" yaz; KAYDETME.', flush=True)
         profile.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -134,7 +125,7 @@ def exercise(package, home, report, ask=answer, runner=run_bounded, process_type
         observe('dock_reopen_kept_draft', 'Pencereyi tekrar kırmızı düğmeyle kapat. Dock içindeki Cryptex simgesine tıkla.\n'
                 'Aynı taslak geri geldi mi?')
         stable(main, pins, 'dock_reopen_same_observed_daemon_pids')
-        print('\n3. Pencereyi tekrar kapat, sonra bu Terminale dön.', flush=True)
+        print('\n2. Pencereyi tekrar kapat, sonra bu Terminale dön.', flush=True)
         observe('ready_for_second_launch', 'Cryptex penceresini kapattın mı?')
         command(['/usr/bin/env', 'HOME=' + str(home), binary], 'second_normal_launch', 30)
         observe('second_launch_kept_draft', 'İkinci başlatma mevcut pencereyi aynı taslakla geri getirdi mi?')
@@ -148,7 +139,7 @@ def exercise(package, home, report, ask=answer, runner=run_bounded, process_type
         if not report['canonical_unchanged_after_quit']:
             raise PreflightError('canonical_changed')
 
-        print('\n4. Yeniden açılıyor. Açıklamada Open local memory seç. Bu kez not yazma.', flush=True)
+        print('\n3. Yeniden açılıyor. Açıklamada Open local memory seç. Bu kez not yazma.', flush=True)
         restarted = launch('restart')
         observe('restart_opened_without_draft', 'Ana pencere açıldı mı ve eski kaydedilmemiş taslak boş mu?')
         restarted.daemon_pin()
@@ -158,6 +149,20 @@ def exercise(package, home, report, ask=answer, runner=run_bounded, process_type
         report['canonical_unchanged_after_restart'] = canonical_hashes(profile) == baseline
         if not report['canonical_unchanged_after_restart']:
             raise PreflightError('canonical_changed')
+        print('\n4. Son kontrol: açıklama tekrar açılacak. Bu kez Quit seç; belleği AÇMA.', flush=True)
+        cancelled = launch('opening_cancel')
+        observe('opening_explanation_cancel', 'Açıklamada Quit seçtin mi ve pencere kapandı mı?')
+        result = finish('opening_cancel', cancelled)
+        report['cancel_no_daemon_sampled'] = result['sampled_daemon_count'] == 0
+        report['cancel_canonical_and_device_id_unchanged'] = (
+            canonical_hashes(profile) == baseline
+            and str(uuid.UUID(_metadata(metadata)['device_id'])) == device)
+        if not report['cancel_no_daemon_sampled'] or not report['cancel_canonical_and_device_id_unchanged']:
+            raise PreflightError('cancel_changed_existing_profile_or_started_daemon')
+    except PreflightError as error:
+        # Cleanup can fail too; retain the original fixed-code cause separately.
+        report['primary_diagnostic'] = str(error)
+        raise
     finally:
         safe = fence.stopped
         for label, process in owned:

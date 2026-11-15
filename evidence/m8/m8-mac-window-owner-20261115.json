@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "status": "owner_run_failed_before_profile_creation",
+  "receipt": "MAC-PENCERE-SONUC-436a7b57.zip",
+  "receipt_sha256": "01828da97f29e60faed4541b4411e14caa92d91aa3346e809ea60c3a7a3e26d1",
+  "result": {
+    "schema": 1,
+    "scope": "normal entry in isolated temporary HOME; not installed-product or M8 acceptance",
+    "outcome": "failed",
+    "ci_startup_passed": false,
+    "not_tested": [
+      "independent out-of-group helper enumeration",
+      "OS permission denial",
+      "fresh native session replay",
+      "real personal-profile migration",
+      "cross-device sync",
+      "public signing/distribution"
+    ],
+    "source": "529068950f497eb61a56e9ed30a0d8bae77383ce",
+    "collector_source": "fc6d35a082e1a3278d8ae12bebfa4e19d66f7114",
+    "owner_observations": {
+      "opening_explanation_cancel": true
+    },
+    "launches": {
+      "opening_cancel": {
+        "exit_code": 2,
+        "natural_exit": true,
+        "same_group_live_descendants_before_cleanup": 0,
+        "group_reaped": true,
+        "timed_out": false,
+        "output_limited": false,
+        "observer_failed": false,
+        "sampled_daemon_count": 0,
+        "progress": []
+      }
+    },
+    "commands": [],
+    "captured_groups_reaped": true,
+    "service_shutdown_via_product_exit_verified": false,
+    "diagnostic": "service_shutdown_unverified_profile_retained"
+  },
+  "owner_clarification": "Owner explicitly selected Open local memory during the initial step that expected Quit.",
+  "interpretation": "No profile creation command ran; source path requires an existing initialized profile. Opening at this step is consistent with the missing-profile refusal. Old collector did not export the fixed startup error, so it was not directly captured.",
+  "not_established": [
+    "Keychain password failure",
+    "successful explanation cancellation",
+    "successful main window opening",
+    "window lifecycle acceptance",
+    "M8 completion"
+  ],
+  "followup": "Create isolated fixture before first normal opening; move explanation Quit to end on the initialized fixture. Record fixed startup codes and primary failure independently from cleanup refusal. Signed product bytes unchanged."
+}

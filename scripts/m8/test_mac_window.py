@@ -12,7 +12,7 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mac_identity_preflight import PreflightError
-from mac_window_process import WindowProcess, natural_quit_ok, parse_group
+from mac_window_process import WindowProcess, natural_quit_ok, parse_group, window_progress
 from mac_window_owner import exercise
 from package_mac_window import build
 from mac_development_diagnostic_package import export_failed
@@ -26,6 +26,20 @@ def clean(daemons=1):
 
 
 class ProcessTests(unittest.TestCase):
+    def test_startup_diagnostics_keep_only_known_codes(self):
+        output = '\n'.join([
+            'development_startup: existing_profile_missing',
+            'development_startup: local_signed_startup_Deadline',
+            'development_startup: private memory body',
+            '{"developmentStage":"start","private":"secret"}',
+            '{"developmentStage":"private secret"}',
+            '{"developmentStage":[]}', 'private path /Users/owner',
+            '{broken json', '{"developmentStage":"bind"}'])
+        self.assertEqual(window_progress(output), [
+            {'startup_error': 'existing_profile_missing'},
+            {'startup_error': 'local_signed_startup_Deadline'},
+            {'development_stage': 'start'}, {'development_stage': 'bind'}])
+
     def test_forced_cleanup_or_surviving_child_cannot_pass_as_quit(self):
         self.assertTrue(natural_quit_ok(clean()))
         for key, value in [('natural_exit', False), ('same_group_live_descendants_before_cleanup', 1),
@@ -95,17 +109,20 @@ class FlowTests(unittest.TestCase):
                     self.started = False
                     self.assert_home = selected_home == home
                 def start(self):
+                    # Every normal opening now has a fully initialized fixture.
+                    if not identity.exists() or not record.exists():
+                        raise AssertionError('profile must precede the first opening')
                     self.started = True
-                    if mode == 'thread_start' and self.number == 1:
+                    if mode == 'thread_start' and self.number == 0:
                         raise RuntimeError('injected')
                 def daemon_pin(self):
                     return {42}
                 def finish(self, wait=0):
-                    if mode == 'unresolved' and self.number == 1:
+                    if mode == 'unresolved' and self.number == 0:
                         raise OSError('unknown writer')
                     if self.result is None:
-                        self.result = clean(0 if self.number == 0 else 1)
-                        if self.number == 1:
+                        self.result = clean(0 if self.number == 2 else 1)
+                        if self.number == 0:
                             if mode in ('forced', 'thread_start'):
                                 self.result['natural_exit'] = False
                             if mode == 'survivor':
@@ -114,17 +131,26 @@ class FlowTests(unittest.TestCase):
                                 record.write_bytes(b'changed')
                             if mode == 'identity_changed':
                                 identity.write_text(json.dumps({'device_id': '00000000-0000-4000-8000-000000000002'}), encoding='utf-8')
+                        if self.number == 2:
+                            if mode == 'cancel_daemon':
+                                self.result['sampled_daemon_count'] = 1
+                            if mode == 'cancel_changed':
+                                record.write_bytes(b'changed on cancel')
                     return self.result
 
             if mode == 'pass':
                 exercise(home / 'package', home, report, lambda _: True, runner, Process)
                 self.assertEqual(report['outcome'], 'bounded_window_checks_passed_with_owner_observations')
                 self.assertTrue(report['canonical_unchanged_after_restart'])
+                self.assertTrue(report['cancel_canonical_and_device_id_unchanged'])
+                self.assertEqual(list(report['launches']), ['window_session', 'restart', 'opening_cancel'])
                 self.assertEqual(len(report['owner_observations']), 10)
             else:
                 with self.assertRaises((PreflightError, RuntimeError)):
                     exercise(home / 'package', home, report, lambda _: True, runner, Process)
                 self.assertNotEqual(report.get('outcome'), 'bounded_window_checks_passed_with_owner_observations')
+                if mode in ('forced', 'survivor'):
+                    self.assertEqual(report['primary_diagnostic'], 'natural_quit_not_verified')
             cleanups = [c for c in calls if c[0] == '/usr/bin/security']
             if mode in ('forced', 'survivor', 'unresolved', 'thread_start', 'identity_changed'):
                 self.assertFalse(cleanups)
@@ -138,7 +164,8 @@ class FlowTests(unittest.TestCase):
         self.simulate('pass')
 
     def test_failure_cannot_be_relabelled_by_final_cleanup(self):
-        for mode in ('forced', 'survivor', 'unresolved', 'thread_start', 'changed', 'identity_changed'):
+        for mode in ('forced', 'survivor', 'unresolved', 'thread_start', 'changed', 'identity_changed',
+                     'cancel_daemon', 'cancel_changed'):
             with self.subTest(mode=mode):
                 self.simulate(mode)
 

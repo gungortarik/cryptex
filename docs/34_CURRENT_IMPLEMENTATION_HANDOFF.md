@@ -1,8 +1,30 @@
 # 34 — Current Implementation Handoff
 
-## One-click Mac window owner package — November15
+## Window owner receipt and corrected first step — November15
 
-READY for owner execution; no owner result yet. Downloads package:
+Returned `MAC-PENCERE-SONUC-436a7b57.zip` FAILED in the first explanation-cancel
+phase: natural exit2, no sampled daemon, no profile-creator command. Owner explicitly
+confirmed choosing **Open local memory**, while the old first step expected Quit
+before creating a fixture. This is consistent with the missing-profile refusal;
+the old collector did not retain the fixed startup code. No password failure or
+window acceptance can be inferred. See
+[returned evidence](../evidence/m8/m8-mac-window-owner-20261115.json).
+
+Corrected collector creates the isolated fixture BEFORE first opening, runs the
+window/restart flow, and tests explanation Quit LAST against that existing fixture.
+Cancellation checks canonical bytes/device UUID unchanged and no sampled daemon;
+it does not claim all derived profile files unchanged or test empty-profile cancel.
+The prior failed receipt remains failed. Product binaries are unchanged. Window
+reports now retain allowlisted startup codes and primary typed failure independently
+from cleanup refusal. Failed/uncertain launches still retain the test key/HOME.
+Local7 collector tests and6 diagnostic regressions pass;3 Darwin tests require CI.
+Independent source review found only an overbroad evidence-field name, corrected
+to `cancel_canonical_and_device_id_unchanged`; reviewer did not execute tests.
+Corrected package/CI evidence will be recorded here after verification.
+
+## Original one-click Mac window owner package — November15
+
+SUPERSEDED by the corrected flow above after the failed owner receipt. Original package:
 `Cryptex-Mac-Pencere-5290689-fc6d35a.zip` (arm64, macOS26+; expires
 2026-11-16T17:50:45Z). Open ZIP, then `MAC-PENCERE.command` in the extracted folder.
 Owner follows bounded E/H prompts; return `MAC-PENCERE-SONUC-*.zip` even on failure.
