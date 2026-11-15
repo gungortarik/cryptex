@@ -1365,7 +1365,10 @@ pub fn development_entry() -> Option<Result<(), String>> {
             Owner::start_profile(&runtime, ContentProfile::ExistingProfile),
         )?;
         let (mut context, binding) = stage("content", install_context(content, &runtime))?;
-        stage("bind", owner.client.call(|reply| Work::Bind(binding, reply)))?;
+        stage(
+            "bind",
+            owner.client.call(|reply| Work::Bind(binding, reply)),
+        )?;
         stage("ping", owner.client.call(Work::Ping))?;
         if check_only {
             stage("profile_status", owner.client.call(Work::ProfileStatus))?;
