@@ -2,6 +2,20 @@
 #import <Foundation/Foundation.h>
 #import <Security/Security.h>
 
+static NSString *imageHash(const char *path) {
+    NSURL *url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path]];
+    SecStaticCodeRef code = NULL;
+    CFDictionaryRef info = NULL;
+    if (SecStaticCodeCreateWithPath((__bridge CFURLRef)url, kSecCSDefaultFlags, &code) != errSecSuccess) return nil;
+    if (SecCodeCopySigningInformation(code, kSecCSSigningInformation, &info) != errSecSuccess) return nil;
+    NSData *hash = ((__bridge NSDictionary *)info)[(__bridge id)kSecCodeInfoUnique];
+    if (![hash isKindOfClass:[NSData class]] || hash.length < 20 || hash.length > 32) return nil;
+    NSMutableString *text = [NSMutableString string];
+    const uint8_t *bytes = hash.bytes;
+    for (NSUInteger i = 0; i < hash.length; i++) [text appendFormat:@"%02x", bytes[i]];
+    return text;
+}
+
 static NSArray *partitions(CFStringRef description) {
     if (!description) return nil;
     NSString *text = (__bridge NSString *)description;
@@ -35,6 +49,9 @@ int main(int argc, const char **argv) {
     @autoreleasepool {
         if (argc != 4) return 2;
         NSMutableDictionary *report = [NSMutableDictionary dictionary];
+        NSString *creatorHash = imageHash(argv[2]), *productHash = imageHash(argv[3]);
+        if (!creatorHash || !productHash) return 4;
+        report[@"different_image_cdhash"] = @(![creatorHash isEqualToString:productHash]);
         OSStatus status = SecKeychainSetUserInteractionAllowed(false);
         report[@"interaction_disabled_status"] = @(status);
         if (status != errSecSuccess) return 3;
@@ -81,8 +98,8 @@ int main(int argc, const char **argv) {
                         report[@"partition_format_recognized"] = @(values != nil);
                         if (values) {
                             report[@"partition_count"] = @(values.count);
-                            report[@"creator_cdhash_allowed"] = @([values containsObject:[@"cdhash:" stringByAppendingString:[NSString stringWithUTF8String:argv[2]]]]);
-                            report[@"product_cdhash_allowed"] = @([values containsObject:[@"cdhash:" stringByAppendingString:[NSString stringWithUTF8String:argv[3]]]]);
+                            report[@"creator_cdhash_allowed"] = @([values containsObject:[@"cdhash:" stringByAppendingString:creatorHash]]);
+                            report[@"product_cdhash_allowed"] = @([values containsObject:[@"cdhash:" stringByAppendingString:productHash]]);
                         }
                     }
                 }

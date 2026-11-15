@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
-import re
 import stat
 import sys
 import uuid
@@ -18,7 +17,7 @@ from mac_window_process import window_progress
 
 ARCHIVE_HASH = '25f50a847c9bbce23891ffd1bbd9e53c42f85b49d86a51918350a9bd04c6e3cf'
 BOOL_FIELDS = {'keychain_unlocked', 'item_in_default_keychain', 'partition_format_recognized',
-               'creator_cdhash_allowed', 'product_cdhash_allowed'}
+               'creator_cdhash_allowed', 'product_cdhash_allowed', 'different_image_cdhash'}
 INT_FIELDS = {'interaction_disabled_status', 'lookup_status', 'match_count',
               'containing_keychain_status', 'keychain_state_status', 'default_keychain_status',
               'copy_access_status', 'partition_acl_count', 'partition_contents_status', 'partition_count'}
@@ -74,7 +73,10 @@ def exercise(package, root, report, runner=run_bounded):
     report['commands'] = []
 
     def run(args, label, timeout=30):
-        result = fence.outcome(args, timeout)
+        try:
+            result = fence.outcome(args, timeout)
+        finally:
+            report['captured_groups_reaped'] = fence.stopped
         report['commands'].append({'stage': label, 'exit_code': result.code,
             'timed_out': result.timed_out, 'output_limited': result.limited,
             'pipe_failed': result.pipe_failed})
@@ -88,22 +90,18 @@ def exercise(package, root, report, runner=run_bounded):
              '-framework', 'Foundation', '-framework', 'Security',
              Path(__file__).with_name('mac_keychain_item_probe.m'), '-o', probe], 'compile_probe', 90)
         require_same_designated_identity(creator, daemon, run)
-        hashes = []
-        for binary in (creator, daemon):
-            output = run(['/usr/bin/codesign', '-d', '--verbose=2', binary], 'read_image_hash')
-            found = re.findall(r'^CDHash=([a-f0-9]{40})$', output, re.M)
-            if len(found) != 1:
-                raise PreflightError('image_hash_missing')
-            hashes.append(found[0])
-        report['different_image_cdhash'] = hashes[0] != hashes[1]
-        run([creator, 'pilot-fixture', 'signed-transfer-v1', '--runtime-root', profile,
-             '--confirm-isolated-pilot'], 'create_test_profile', 45)
-        device = str(uuid.UUID(_metadata(profile / 'identity/local_device.json')['device_id']))
+        try:
+            run([creator, 'pilot-fixture', 'signed-transfer-v1', '--runtime-root', profile,
+                 '--confirm-isolated-pilot'], 'create_test_profile', 45)
+        finally:
+            metadata = profile / 'identity/local_device.json'
+            if fence.stopped and metadata.exists():
+                device = str(uuid.UUID(_metadata(metadata)['device_id']))
         baseline = canonical_hashes(profile)
         if not baseline:
             raise PreflightError('canonical_baseline_missing')
         report['item_metadata'] = sanitize_probe(run([probe, 'device-event-signing-seed:' + device,
-                                                     *hashes], 'read_metadata'))
+                                                     creator, daemon], 'read_metadata'))
         result = fence.outcome([desktop, '--cryptex-development-check', profile], 60)
         report['startup'] = {'exit_code': result.code, 'timed_out': result.timed_out,
             'output_limited': result.limited, 'pipe_failed': result.pipe_failed,
