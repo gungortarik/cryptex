@@ -25,8 +25,9 @@ def summary(result):
     elif result.code == 0 and not (result.timed_out or result.limited or result.pipe_failed):
         # Don't export per-process rows, including PID/start/parent/group.
         rows = result.output.splitlines()
-        if 0 < len(rows) <= 4096 and all(re.fullmatch(r'[0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-3]', row) for row in rows):
+        if 0 < len(rows) <= 4096 and all(re.fullmatch(r'[0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-4]', row) for row in rows):
             report['observed_live_process_count'] = len(rows)
+            report['opaque_path_count'] = sum(row.endswith(' 4') for row in rows)
         else:
             report['diagnostic'] = 'unrecognized_probe_output'
     return report

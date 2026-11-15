@@ -22,6 +22,9 @@ class DiagnosticTests(unittest.TestCase):
         report = summary(CommandResult(0, '123456 1 123456 123456789 123 0\n'))
         self.assertEqual(report['observed_live_process_count'], 1)
         self.assertNotIn('123456', json.dumps(report))
+        opaque = summary(CommandResult(0, '123456 1 123456 123456789 123 4\n'))
+        self.assertEqual(opaque['opaque_path_count'], 1)
+        self.assertNotIn('123456', json.dumps(opaque))
 
     def test_collector_only_compiles_and_reads_three_times(self):
         calls = []

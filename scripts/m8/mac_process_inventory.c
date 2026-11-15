@@ -45,11 +45,15 @@ int main(int argc, char **argv) {
         char path[PROC_PIDPATHINFO_MAXSIZE] = {0};
         errno = 0;
         int path_size = proc_pidpath(pids[i], path, sizeof(path));
+        int role = 0;
         if (path_size <= 0) {
             int path_error = errno;
             found = info(pids[i], &b);
             if (found == 0 || (found == 1 && b.pbi_status == SZOMB)) continue;
-            return failed("path", path_error, path_size);
+            if (path_error != ENOENT || found != 1) return failed("path", path_error, path_size);
+            /* Preserve this live instance as opaque, never as absent. Python
+             * may exclude only a frozen pre-spawn instance, not a new helper. */
+            role = 4;
         }
         found = info(pids[i], &b);
         if (found == 0) continue;
@@ -57,8 +61,9 @@ int main(int argc, char **argv) {
         if (a.pbi_start_tvsec != b.pbi_start_tvsec ||
             a.pbi_start_tvusec != b.pbi_start_tvusec || a.pbi_uid != b.pbi_uid) return failed("changed", 0, 0);
         if (b.pbi_status == SZOMB) continue;
-        int role = 0;
-        for (int n = 1; n < argc; ++n) if (!strcmp(path, argv[n])) role = n < 3 ? n : 3;
+        if (role != 4) {
+            for (int n = 1; n < argc; ++n) if (!strcmp(path, argv[n])) role = n < 3 ? n : 3;
+        }
         rows[count++] = (struct row){b, role};
     }
     /* Export numeric metadata only. All unrelated rows stay in collector RAM. */

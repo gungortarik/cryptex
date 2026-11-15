@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 from mac_identity_preflight import CommandResult, PreflightError
 from mac_process_inventory import ImageInventory, compile_probe, parse_inventory, shutdown_ok
@@ -23,8 +24,10 @@ class InventoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             desktop = Path(tmp) / 'desktop'
             desktop.touch()
-            output = '10 1 10 100 0 1\n11 10 10 101 0 2\n12 11 12 102 0 2\n13 12 12 103 0 3'
+            output = '99 1 99 99 0 0'
             inventory = ImageInventory('/probe', desktop, lambda *_: CommandResult(0, output))
+            inventory.establish_baseline()
+            output = '10 1 10 100 0 1\n11 10 10 101 0 2\n12 11 12 102 0 2\n13 12 12 103 0 3'
             inventory.sample(10)
             self.assertTrue(inventory.topology_seen)
             output = '13 1 12 103 0 0'  # same instance, different executable
@@ -38,6 +41,44 @@ class InventoryTests(unittest.TestCase):
             inventory.runner = lambda *_: CommandResult(2, '')
             with self.assertRaisesRegex(PreflightError, 'unavailable'):
                 inventory.require_empty()
+
+    def test_only_frozen_pre_spawn_opaque_births_can_be_excluded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            desktop = Path(tmp) / 'desktop'
+            desktop.touch()
+            output = '99 1 99 99 0 4'
+            inventory = ImageInventory('/probe', desktop, lambda *_: CommandResult(0, output))
+            with self.assertRaisesRegex(PreflightError, 'baseline_missing'):
+                inventory.require_empty()
+            inventory.establish_baseline()
+            inventory.require_empty()
+            with self.assertRaisesRegex(PreflightError, 'already_frozen'):
+                inventory.establish_baseline()
+            for unknown in ('99 1 99 100 0 4', '100 1 100 99 0 4'):
+                output = unknown  # reused PID or new unknown birth must fail
+                with self.assertRaisesRegex(PreflightError, 'path_unavailable'):
+                    inventory.require_empty()
+            output = '99 1 99 99 0 3'  # former baseline instance execs a target
+            with self.assertRaisesRegex(PreflightError, 'still_live'):
+                inventory.require_empty()
+            output = '99 1 99 99 0 4'
+            with self.assertRaisesRegex(PreflightError, 'path_unavailable'):
+                inventory.require_empty()
+
+    def test_second_census_cannot_expand_baseline_and_known_targets_refuse(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            desktop = Path(tmp) / 'desktop'
+            desktop.touch()
+            outputs = iter(('99 1 99 99 0 4', '99 1 99 99 0 4\n100 1 100 100 0 4'))
+            inventory = ImageInventory('/probe', desktop, lambda *_: CommandResult(0, next(outputs)))
+            with self.assertRaisesRegex(PreflightError, 'path_unavailable'):
+                inventory.establish_baseline()
+            self.assertEqual(inventory.baseline_opaque, frozenset({(99, 99, 0)}))
+            for role in (1, 2, 3):
+                inventory = ImageInventory('/probe', desktop,
+                                           lambda *_: CommandResult(0, f'99 1 99 99 0 {role}'))
+                with self.assertRaisesRegex(PreflightError, 'still_live'):
+                    inventory.establish_baseline()
 
     def test_group_cleanup_never_substitutes_for_independent_natural_absence(self):
         good = dict(clean(), independent_helper_topology_observed=True,
@@ -72,6 +113,57 @@ int main(int argc, char **argv) {
 
 @unittest.skipUnless(sys.platform == 'darwin', 'real Darwin libproc required')
 class NativeInventoryTests(unittest.TestCase):
+    def test_real_live_birth_with_injected_path_error_is_opaque_not_absent(self):
+        with tempfile.TemporaryDirectory(prefix='cx-inventory-opaque-') as temporary:
+            root = Path(temporary).resolve()
+            desktop = root / 'desktop'
+            desktop.touch()
+            probe = root / 'fixture-probe'
+            source = root / 'fixture-probe.c'
+            # Injection exists only in this test translation unit. The shipped
+            # observer has no environment hooks or alternate libproc providers.
+            source.write_text('''#include <libproc.h>
+#include <errno.h>
+#include <stdlib.h>
+static int fixture_pidpath(int pid, void *buffer, unsigned int size) {
+    const char *target = getenv("CX_INVENTORY_TEST_PID");
+    if (target && pid == atoi(target)) {
+        errno = atoi(getenv("CX_INVENTORY_TEST_ERRNO"));
+        return 0;
+    }
+    return proc_pidpath(pid, buffer, size);
+}
+#define proc_pidpath fixture_pidpath
+#include "''' + str(Path(__file__).with_name('mac_process_inventory.c')) + '"\n', encoding='utf-8')
+            subprocess.run(['/usr/bin/xcrun', 'clang', '-Wall', '-Wextra', '-Werror',
+                            source, '-o', probe], check=True)
+            children = []
+            try:
+                def child():
+                    process = subprocess.Popen(['/bin/cat'], stdin=subprocess.PIPE,
+                                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    children.append(process)
+                    return process
+                preexisting = child()
+                with patch.dict('os.environ', CX_INVENTORY_TEST_PID=str(preexisting.pid),
+                                CX_INVENTORY_TEST_ERRNO='2'):
+                    inventory = ImageInventory(probe, desktop)
+                    inventory.establish_baseline()
+                    self.assertIn(preexisting.pid, {birth[0] for birth in inventory.baseline_opaque})
+                    inventory.require_empty()
+                    self.assertIsNone(preexisting.poll())  # opaque process is still alive
+                    with patch.dict('os.environ', CX_INVENTORY_TEST_ERRNO='1'):
+                        with self.assertRaisesRegex(PreflightError, 'unavailable'):
+                            inventory.require_empty()
+                    newcomer = child()
+                    with patch.dict('os.environ', CX_INVENTORY_TEST_PID=str(newcomer.pid)):
+                        with self.assertRaisesRegex(PreflightError, 'path_unavailable'):
+                            inventory.require_empty()
+            finally:
+                for process in children:
+                    process.stdin.close()
+                    process.wait(timeout=10)
+
     def exercise(self, orphan):
         with tempfile.TemporaryDirectory(prefix='cx-inventory-test-') as temporary:
             root = Path(temporary).resolve()
@@ -85,7 +177,7 @@ class NativeInventoryTests(unittest.TestCase):
             shutil.copy2(desktop, desktop.with_name('cryptexd'))
             shutil.copy2(desktop, engine)
             inventory = ImageInventory(compile_probe(root), desktop)
-            inventory.require_empty()
+            inventory.establish_baseline()
             child = subprocess.Popen([desktop, root, '0', str(int(orphan))], stdin=subprocess.PIPE,
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                      start_new_session=True)

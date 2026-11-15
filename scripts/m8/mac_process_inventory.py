@@ -15,7 +15,7 @@ def parse_inventory(raw):
             raise PreflightError('inventory_invalid')
         pid, parent, group, sec, usec, role = map(int, values)
         if not (0 < pid < 2**31 and 0 <= parent < 2**31 and 0 <= group < 2**31
-                and 0 < sec < 2**63 and 0 <= usec < 1000000 and role in range(4)) or pid in rows:
+                and 0 < sec < 2**63 and 0 <= usec < 1000000 and role in range(5)) or pid in rows:
             raise PreflightError('inventory_invalid')
         rows[pid] = (parent, group, sec, usec, role)
     if not rows:
@@ -34,13 +34,31 @@ class ImageInventory:
         self.seen = set()
         self.topology_seen = False
         self.last = None
+        self.baseline_opaque = None
 
-    def sample(self, leader=None):
+    def read(self):
         result = self.runner([self.probe, *self.targets], 5)
         if result.code or result.timed_out or result.limited or result.pipe_failed:
             raise PreflightError('inventory_unavailable')
-        rows = parse_inventory(result.output)
-        targets = {pid: row for pid, row in rows.items() if row[4]}
+        return parse_inventory(result.output)
+
+    def establish_baseline(self):
+        if self.baseline_opaque is not None or self.seen:
+            raise PreflightError('inventory_baseline_already_frozen')
+        rows = self.read()
+        if any(row[4] in (1, 2, 3) for row in rows.values()):
+            raise PreflightError('inventory_processes_still_live')
+        self.baseline_opaque = frozenset((pid, row[2], row[3]) for pid, row in rows.items() if row[4] == 4)
+        self.require_empty()  # A second census may not broaden the frozen set.
+
+    def sample(self, leader=None):
+        if self.baseline_opaque is None:
+            raise PreflightError('inventory_baseline_missing')
+        rows = self.read()
+        opaque = {(pid, row[2], row[3]) for pid, row in rows.items() if row[4] == 4}
+        if not opaque.issubset(self.baseline_opaque) or opaque & self.seen:
+            raise PreflightError('inventory_new_or_tracked_path_unavailable')
+        targets = {pid: row for pid, row in rows.items() if row[4] in (1, 2, 3)}
         self.seen.update((pid, row[2], row[3]) for pid, row in targets.items())
         if len(self.seen) > 256:
             raise PreflightError('inventory_instances_limit')
@@ -91,7 +109,7 @@ class ObservedCommand(WindowProcess):
         return self.command
 
     def start(self):
-        self.inventory.require_empty()
+        self.inventory.establish_baseline()
         super().start()
 
     def snapshot(self):
@@ -106,6 +124,7 @@ class ObservedCommand(WindowProcess):
             return self.result
         result = super().finish(wait)
         result['independent_helper_topology_observed'] = self.inventory.topology_seen
+        result['pre_spawn_opaque_instances'] = len(self.inventory.baseline_opaque or ())
         result['user_wide_absent_before_group_cleanup'] = self.pre_cleanup == {
             'matching_images': 0, 'captured_instances_live': 0}
         result['user_wide_quiet_after_exit'] = False
