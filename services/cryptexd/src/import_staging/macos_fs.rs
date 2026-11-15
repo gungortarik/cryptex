@@ -709,6 +709,34 @@ mod tests {
     }
 
     #[test]
+    fn unprepared_inventory_never_deletes_a_substituted_valid_transaction_tree() {
+        use super::super::namespace_fault::{self, Point};
+        let root = root();
+        let device = cryptex_core::DeviceId::new("peer").unwrap();
+        let relative = PathBuf::from(device.as_filename_stem()).join("00000000000000000000.seg");
+        let input = root.join("transport/incoming").join(&relative);
+        fixture_fs::create_dir_all(input.parent().unwrap()).unwrap();
+        fixture_fs::write(&input, b"same valid unprepared shape").unwrap();
+        let mut session = super::super::ImportStagingSession::begin(&root).unwrap();
+        session.stage_segment(&relative, &device, 0).unwrap();
+        let selected = session.staging_dir.clone();
+        let moved = root.join("original-unprepared");
+        let changed = selected.clone();
+        let saved = moved.clone();
+        let path = relative.clone();
+        let _hook = namespace_fault::install(Point::UnpreparedValidated, move || {
+            fixture_fs::rename(&changed, &saved).unwrap();
+            fixture_fs::create_dir_all(changed.join(path.parent().unwrap())).unwrap();
+            fixture_fs::copy(saved.join(&path), changed.join(&path)).unwrap();
+        });
+        assert!(matches!(session.discard(), Err(super::super::ImportStagingError::RecoveryConflict(message)) if message.contains("namespace")));
+        for transaction in [selected, moved] {
+            assert_eq!(fixture_fs::read(transaction.join(&relative)).unwrap(), b"same valid unprepared shape");
+        }
+        fixture_fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn symlink_hardlink_and_fifo_sources_never_become_regular_snapshots() {
         let root = root();
         let source = root.join("original.seg");

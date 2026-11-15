@@ -257,30 +257,69 @@ struct ImportNamespace {
 }
 
 impl ImportNamespace {
+    fn directory_scope(root: &Path) -> Result<Self, ImportStagingError> {
+        #[cfg(target_os = "macos")]
+        { Ok(Self { root: root.to_path_buf(), identity: macos_fs::RuntimeIdentity::capture(root)? }) }
+        #[cfg(not(target_os = "macos"))]
+        { let _ = root; Ok(Self {}) }
+    }
+
+    fn pin_directory(&self, path: &Path) -> Result<(), ImportStagingError> {
+        #[cfg(target_os = "macos")]
+        self.identity.pin(path)?;
+        #[cfg(not(target_os = "macos"))]
+        let _ = path;
+        self.validate()
+    }
     fn capture(root: &Path) -> Result<Self, ImportStagingError> {
         #[cfg(target_os = "macos")]
         {
-            let result = Self { root: root.to_path_buf(), identity: macos_fs::RuntimeIdentity::capture(root)? };
-            for relative in ["canonical", "canonical/events", "canonical/import-staging", "canonical/import-journal"] {
+            let result = Self {
+                root: root.to_path_buf(),
+                identity: macos_fs::RuntimeIdentity::capture(root)?,
+            };
+            for relative in [
+                "canonical",
+                "canonical/events",
+                "canonical/import-staging",
+                "canonical/import-journal",
+            ] {
                 let path = root.join(relative);
-                if entry_exists(&path)? { result.identity.pin(&path)?; }
+                if entry_exists(&path)? {
+                    result.identity.pin(&path)?;
+                }
             }
             result.validate()?;
             Ok(result)
         }
         #[cfg(not(target_os = "macos"))]
-        { let _ = root; Ok(Self {}) }
+        {
+            let _ = root;
+            Ok(Self {})
+        }
     }
 
     fn bind_manifest(&self, manifest: &PreparedImportManifest) -> Result<(), ImportStagingError> {
         #[cfg(target_os = "macos")]
         {
-            let transaction = self.root.join("canonical/import-staging").join(&manifest.transaction_id);
-            if entry_exists(&transaction)? { self.identity.pin(&transaction)?; }
+            let transaction = self
+                .root
+                .join("canonical/import-staging")
+                .join(&manifest.transaction_id);
+            if entry_exists(&transaction)? {
+                self.identity.pin(&transaction)?;
+            }
             for segment in &manifest.segments {
-                let device = DeviceId::new(segment.device_id.clone()).map_err(|_| ImportStagingError::RecoveryConflict("invalid namespace device".into()))?;
-                for path in [transaction.join(device.as_filename_stem()), canonical_events_device_dir(&self.root, &device)] {
-                    if entry_exists(&path)? { self.identity.pin(&path)?; }
+                let device = DeviceId::new(segment.device_id.clone()).map_err(|_| {
+                    ImportStagingError::RecoveryConflict("invalid namespace device".into())
+                })?;
+                for path in [
+                    transaction.join(device.as_filename_stem()),
+                    canonical_events_device_dir(&self.root, &device),
+                ] {
+                    if entry_exists(&path)? {
+                        self.identity.pin(&path)?;
+                    }
                 }
             }
         }
@@ -291,7 +330,11 @@ impl ImportNamespace {
 
     fn validate(&self) -> Result<(), ImportStagingError> {
         #[cfg(target_os = "macos")]
-        self.identity.validate().map_err(|_| ImportStagingError::RecoveryConflict("recovery namespace changed; preserve evidence".into()))?;
+        self.identity.validate().map_err(|_| {
+            ImportStagingError::RecoveryConflict(
+                "recovery namespace changed; preserve evidence".into(),
+            )
+        })?;
         Ok(())
     }
 
@@ -310,7 +353,9 @@ fn validate_lock_namespace(
 ) -> Result<(), ImportStagingError> {
     #[cfg(target_os = "macos")]
     if !inventory.namespace_valid() || devices.iter().any(|lock| !lock.namespace_valid()) {
-        return Err(ImportStagingError::RecoveryConflict("canonical lock namespace changed during cleanup".into()));
+        return Err(ImportStagingError::RecoveryConflict(
+            "canonical lock namespace changed during cleanup".into(),
+        ));
     }
     #[cfg(not(target_os = "macos"))]
     let _ = (inventory, devices);
@@ -320,21 +365,39 @@ fn validate_lock_namespace(
 #[cfg(all(test, target_os = "macos"))]
 pub(crate) mod namespace_fault {
     #[derive(Clone, Copy, PartialEq, Eq)]
-    pub(crate) enum Point { RecoveryPolicy, CleanupValidated }
+    pub(crate) enum Point {
+        RecoveryPolicy,
+        CleanupValidated,
+        PreparedAbort,
+        UnpreparedValidated,
+    }
     type Hook = Option<(Point, Box<dyn FnOnce()>)>;
     thread_local! { static HOOK: std::cell::RefCell<Hook> = const { std::cell::RefCell::new(None) }; }
     pub(crate) struct Guard(std::marker::PhantomData<std::rc::Rc<()>>);
-    impl Drop for Guard { fn drop(&mut self) { HOOK.with(|h| *h.borrow_mut() = None); } }
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            HOOK.with(|h| *h.borrow_mut() = None);
+        }
+    }
     pub(crate) fn install(point: Point, hook: impl FnOnce() + 'static) -> Guard {
-        HOOK.with(|h| { assert!(h.borrow().is_none()); *h.borrow_mut() = Some((point, Box::new(hook))); });
+        HOOK.with(|h| {
+            assert!(h.borrow().is_none());
+            *h.borrow_mut() = Some((point, Box::new(hook)));
+        });
         Guard(std::marker::PhantomData)
     }
     pub(crate) fn run(point: Point) {
         let hook = HOOK.with(|h| {
-            let selected = h.borrow().as_ref().is_some_and(|(p,_)| *p == point);
-            if selected { h.borrow_mut().take() } else { None }
+            let selected = h.borrow().as_ref().is_some_and(|(p, _)| *p == point);
+            if selected {
+                h.borrow_mut().take()
+            } else {
+                None
+            }
         });
-        if let Some((_, hook)) = hook { hook(); }
+        if let Some((_, hook)) = hook {
+            hook();
+        }
     }
 }
 
@@ -2573,7 +2636,15 @@ fn inspect_committed_marker_companion(
 
         namespace.validate()?;
         validate_lock_namespace(&inventory_lock, &device_locks)?;
-        cleanup::complete_locked(runtime_root, &cleanup_marker_path, marker, &locked_manifest, &namespace, &inventory_lock, &device_locks)?;
+        cleanup::complete_locked(
+            runtime_root,
+            &cleanup_marker_path,
+            marker,
+            &locked_manifest,
+            &namespace,
+            &inventory_lock,
+            &device_locks,
+        )?;
         return Ok("all destinations match; transaction cleanup completed");
     }
 
@@ -2813,6 +2884,8 @@ fn recover_prepared_without_publication(
     verify_visible: &mut Option<&mut PreparedRecoveryPolicyVerifier<'_>>,
     finish_visible: &mut Option<&mut PreparedRecoveryFinisher<'_>>,
 ) -> Result<(), ImportStagingError> {
+    let namespace = ImportNamespace::capture(runtime_root)?;
+    namespace.bind_manifest(manifest)?;
     let inventory_lock = acquire_canonical_inventory_lock(runtime_root).map_err(|error| {
         ImportStagingError::RecoveryConflict(format!(
             "cannot acquire canonical inventory lock for prepared recovery: {error}"
@@ -2949,6 +3022,10 @@ fn recover_prepared_without_publication(
 
     // With all destinations absent and every staged digest intact, aborting this
     // prepared transaction is safe and repeatable after interruption.
+    #[cfg(all(test, target_os = "macos"))]
+    namespace_fault::run(namespace_fault::Point::PreparedAbort);
+    namespace.validate()?;
+    validate_lock_namespace(&inventory_lock, &device_locks)?;
     fs::remove_file(manifest_path).map_err(|error| {
         ImportStagingError::Io(format!("remove prepared import manifest: {error}"))
     })?;
@@ -2957,10 +3034,14 @@ fn recover_prepared_without_publication(
     })?;
     drop(device_locks);
     drop(inventory_lock);
+    namespace.validate()?;
+    validate_lock_namespace(&inventory_lock, &device_locks)?;
     remove_unprepared_transaction(transaction).map_err(|error| {
         ImportStagingError::Io(format!("remove prepared staging transaction: {error}"))
     })?;
-    Ok(())
+    namespace.forget_removed(transaction)?;
+    validate_lock_namespace(&inventory_lock, &device_locks)?;
+    namespace.validate()
 }
 
 /// Validate every member of a prepared transaction from exactly one of its
@@ -3278,8 +3359,8 @@ fn finish_prepared_recovery<S: crate::secure_store::SecureStore + ?Sized>(
         policy.validate_recovery_namespace(runtime_root)?;
         let mut visible = 0;
         for segment in &manifest.segments {
-        namespace.validate()?;
-        policy.validate_recovery_namespace(runtime_root)?;
+            namespace.validate()?;
+            policy.validate_recovery_namespace(runtime_root)?;
             let device = DeviceId::new(segment.device_id.clone())
                 .map_err(|e| ImportStagingError::RecoveryConflict(e.to_string()))?;
             let staged = transaction.join(&segment.staged_relative_path);
@@ -3447,7 +3528,10 @@ fn remove_unprepared_transaction(transaction: &Path) -> Result<(), ImportStaging
             "staging transaction root is not an ordinary directory: {error}"
         ))
     })?;
-    let mut entries = Vec::new();
+    let namespace = ImportNamespace::directory_scope(transaction.parent().ok_or_else(|| ImportStagingError::RecoveryConflict("transaction parent missing".into()))?)?;
+    namespace.pin_directory(transaction)?;
+    let mut files = Vec::new();
+    let mut directories = Vec::new();
     let mut total_bytes = 0u64;
     let mut file_count = 0usize;
     let mut device_dir_count = 0usize;
@@ -3479,6 +3563,7 @@ fn remove_unprepared_transaction(transaction: &Path) -> Result<(), ImportStaging
                 "staging device directory name is outside the filename-ID schema".into(),
             ));
         }
+        namespace.pin_directory(&device_path)?;
         device_dir_count += 1;
         if device_dir_count > crate::import_limits::MAX_IMPORT_FILES_PER_BATCH {
             return Err(ImportStagingError::RecoveryConflict(
@@ -3515,18 +3600,30 @@ fn remove_unprepared_transaction(transaction: &Path) -> Result<(), ImportStaging
                     "staging transaction exceeds the bounded cleanup limits".into(),
                 ));
             }
-            entries.push(file_path);
+            files.push((file_path, snapshot));
         }
-        entries.push(device_path);
+        directories.push(device_path);
     }
-    for path in entries.iter().filter(|path| path.is_file()) {
-        fs::remove_file(path)?;
+    #[cfg(all(test, target_os = "macos"))]
+    namespace_fault::run(namespace_fault::Point::UnpreparedValidated);
+    for (path, expected) in files {
+        namespace.validate()?;
+        let file = open_source_no_follow(&path)?;
+        if source_snapshot(&file)? != expected {
+            return Err(ImportStagingError::RecoveryConflict("staging cleanup source identity changed".into()));
+        }
+        drop(file);
+        fs::remove_file(&path)?;
+        namespace.validate()?;
     }
-    for path in entries.iter().filter(|path| path.is_dir()).rev() {
+    for path in directories.iter().rev() {
+        namespace.validate()?;
         fs::remove_dir(path)?;
+        namespace.forget_removed(path)?;
     }
+    namespace.validate()?;
     fs::remove_dir(transaction)?;
-    Ok(())
+    namespace.forget_removed(transaction)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

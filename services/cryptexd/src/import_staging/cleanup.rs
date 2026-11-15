@@ -234,7 +234,14 @@ pub(super) fn resume(root: &Path, path: &Path) -> Result<(), ImportStagingError>
         sync_staged_parent(&final_path)?;
     }
     namespace.validate()?;
-    cleanup_locked(root, &final_path, &receipt, &namespace, &_inventory, &_devices)
+    cleanup_locked(
+        root,
+        &final_path,
+        &receipt,
+        &namespace,
+        &_inventory,
+        &_devices,
+    )
 }
 
 fn pin_roots(root: &Path) -> Result<Vec<File>, ImportStagingError> {
@@ -304,7 +311,14 @@ pub(super) fn complete_locked(
     cleanup_locked(root, &final_path, &receipt, namespace, inventory, devices)
 }
 
-fn cleanup_locked(root: &Path, path: &Path, receipt: &Receipt, namespace: &ImportNamespace, inventory: &crate::canonical_writer::CanonicalInventoryLock, devices: &[crate::canonical_writer::DeviceCanonicalLock]) -> Result<(), ImportStagingError> {
+fn cleanup_locked(
+    root: &Path,
+    path: &Path,
+    receipt: &Receipt,
+    namespace: &ImportNamespace,
+    inventory: &crate::canonical_writer::CanonicalInventoryLock,
+    devices: &[crate::canonical_writer::DeviceCanonicalLock],
+) -> Result<(), ImportStagingError> {
     namespace.validate()?;
     validate_lock_namespace(inventory, devices)?;
     verify_state(root, path, receipt, false)?;

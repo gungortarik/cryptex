@@ -254,9 +254,19 @@ pub(crate) struct ImportPolicyVerifiedBatch {
 }
 
 impl ImportPolicyVerifiedBatch {
-    pub(crate) fn validate_recovery_namespace(&self, root: &Path) -> Result<(), crate::import_staging::ImportStagingError> {
-        if !self.safety.snapshot.as_ref().is_some_and(|snapshot| snapshot.locks_runtime(root)) {
-            return Err(crate::import_staging::ImportStagingError::RecoveryConflict("recovery policy lock namespace changed".into()));
+    pub(crate) fn validate_recovery_namespace(
+        &self,
+        root: &Path,
+    ) -> Result<(), crate::import_staging::ImportStagingError> {
+        if !self
+            .safety
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.locks_runtime(root))
+        {
+            return Err(crate::import_staging::ImportStagingError::RecoveryConflict(
+                "recovery policy lock namespace changed".into(),
+            ));
         }
         Ok(())
     }

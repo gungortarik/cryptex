@@ -448,8 +448,11 @@ fn original_mac_policy_and_lock_capabilities_refuse_replaced_canonical_subtrees(
         for entry in fs::read_dir(source).unwrap() {
             let entry = entry.unwrap();
             let destination = target.join(entry.file_name());
-            if entry.path().is_dir() { copy_directory(&entry.path(), &destination); }
-            else { fs::copy(entry.path(), destination).unwrap(); }
+            if entry.path().is_dir() {
+                copy_directory(&entry.path(), &destination);
+            } else {
+                fs::copy(entry.path(), destination).unwrap();
+            }
         }
     }
     for replace_device_only in [false, true] {
@@ -495,7 +498,9 @@ fn original_mac_policy_and_lock_capabilities_refuse_replaced_canonical_subtrees(
         // malformed-inventory error cannot establish this regression.
         copy_directory(&moved, &selected);
         let original_entries = fs::read_dir(&moved).unwrap().count();
-        assert!(matches!(session.publish_verified_batch(&proof), Err(ImportStagingError::RecoveryConflict(message)) if message.contains("namespace")));
+        assert!(
+            matches!(session.publish_verified_batch(&proof), Err(ImportStagingError::RecoveryConflict(message)) if message.contains("namespace"))
+        );
         assert_eq!(event_hashes(&fixture.receiver), before);
         assert_eq!(fs::read_dir(&moved).unwrap().count(), original_entries);
         assert_eq!(
@@ -520,33 +525,61 @@ fn mac_prepared_recovery_and_committed_cleanup_keep_the_original_namespace() {
         for entry in fs::read_dir(source).unwrap() {
             let entry = entry.unwrap();
             let destination = target.join(entry.file_name());
-            if entry.path().is_dir() { copy_directory(&entry.path(), &destination); }
-            else { fs::copy(entry.path(), destination).unwrap(); }
+            if entry.path().is_dir() {
+                copy_directory(&entry.path(), &destination);
+            } else {
+                fs::copy(entry.path(), destination).unwrap();
+            }
         }
     }
     fn evidence(root: &Path) -> std::collections::BTreeMap<std::ffi::OsString, Vec<u8>> {
-        fs::read_dir(root.join("canonical/import-journal")).unwrap().map(|entry| {
-            let entry = entry.unwrap();
-            (entry.file_name(), fs::read(entry.path()).unwrap())
-        }).collect()
+        fs::read_dir(root.join("canonical/import-journal"))
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                (entry.file_name(), fs::read(entry.path()).unwrap())
+            })
+            .collect()
     }
     for (boundary, point) in [
+        ("m8_after_prepared_manifest_sync", Point::PreparedAbort),
         ("m8_after_canonical_segment_move_0", Point::RecoveryPolicy),
         ("m8_cleanup_receipt_final_synced", Point::CleanupValidated),
     ] {
         let mut fixture = Fixture::new();
         let next = fixture.append_next();
         fixture.paths.push(next);
-        let seed = fixture.store.get(crate::ServiceLabel::device_credentials(ENV).as_str(),
-            crate::AccountLabel::device_event_signing_seed(&fixture.report.receiver_device).as_str()).unwrap();
-        let mut child = Command::new(std::env::current_exe().unwrap()).args([
-            "--exact", "incoming_publication::tests::publication_interrupt_worker", "--nocapture"])
+        let seed = fixture
+            .store
+            .get(
+                crate::ServiceLabel::device_credentials(ENV).as_str(),
+                crate::AccountLabel::device_event_signing_seed(&fixture.report.receiver_device)
+                    .as_str(),
+            )
+            .unwrap();
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "incoming_publication::tests::publication_interrupt_worker",
+                "--nocapture",
+            ])
             .env("CRYPTEX_TEST_PUBLICATION_ROOT", &fixture.receiver)
             .env(crate::test_interrupt::INTERRUPT_ENV, boundary)
-            .stdin(Stdio::piped()).stdout(Stdio::null()).spawn().unwrap();
-        serde_json::to_writer(child.stdin.take().unwrap(), &(&fixture.report.receiver_device, seed, &fixture.paths)).unwrap();
-        let status = crate::test_interrupt::wait_child_bounded(&mut child, Duration::from_secs(30)).unwrap();
-        assert_eq!(status.code(), Some(crate::test_interrupt::INTERRUPT_EXIT_CODE));
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        serde_json::to_writer(
+            child.stdin.take().unwrap(),
+            &(&fixture.report.receiver_device, seed, &fixture.paths),
+        )
+        .unwrap();
+        let status =
+            crate::test_interrupt::wait_child_bounded(&mut child, Duration::from_secs(30)).unwrap();
+        assert_eq!(
+            status.code(),
+            Some(crate::test_interrupt::INTERRUPT_EXIT_CODE)
+        );
         let before = event_hashes(&fixture.receiver);
         let original_evidence = evidence(&fixture.receiver);
         let selected = fixture.receiver.join("canonical/events");
@@ -556,12 +589,19 @@ fn mac_prepared_recovery_and_committed_cleanup_keep_the_original_namespace() {
             copy_directory(&moved, &selected);
         });
         let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
-        assert!(matches!(recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV),
-            Err(IncomingPublicationError::RecoveryRequired(ImportStagingError::RecoveryConflict(message))) if message.contains("namespace")));
+        assert!(
+            matches!(recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV),
+            Err(IncomingPublicationError::RecoveryRequired(ImportStagingError::RecoveryConflict(message))) if message.contains("namespace"))
+        );
         assert!(instance.admission().enter(&fixture.receiver).is_err());
         assert_eq!(event_hashes(&fixture.receiver), before);
         assert_eq!(evidence(&fixture.receiver), original_evidence);
-        assert_eq!(fs::read_dir(fixture.receiver.join("canonical/import-staging")).unwrap().count(), 1);
+        assert_eq!(
+            fs::read_dir(fixture.receiver.join("canonical/import-staging"))
+                .unwrap()
+                .count(),
+            1
+        );
     }
 }
 
