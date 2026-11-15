@@ -88,7 +88,7 @@ pub(crate) fn serve(
         transport_device_id_override: None,
     };
     if profile.resumes() {
-        let device = crate::m8_owner_channel::local_startup::verified_resume_device(root)
+        let device = crate::m8_owner_channel::local_startup::verified_resume_device(root, profile)
             .map_err(|_| invalid_data("native_fixture_profile"))?;
         match load_existing_event_signing_key(
             context.store.as_ref(),

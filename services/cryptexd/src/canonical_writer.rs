@@ -300,8 +300,9 @@ fn ensure_lock_directory(path: &Path) -> std::io::Result<()> {
 fn open_canonical_lock_file(path: &Path) -> CanonicalWriterResult<CanonicalLockFile> {
     #[cfg(target_os = "macos")]
     {
+        let stage = if path.file_name().is_some_and(|name| name == "inventory.lock") { "inventory_lock_open" } else { "device_lock_open" };
         let (file, binding) = crate::import_staging::macos_fs::LockBinding::open(path)
-            .map_err(|error| CanonicalWriterError::Path(format!("Darwin canonical lock open: {error}")))?;
+            .map_err(|error| CanonicalWriterError::Path(format!("Darwin canonical {stage}: {error}")))?;
         Ok(CanonicalLockFile { file, binding })
     }
     #[cfg(not(target_os = "macos"))]
@@ -398,7 +399,8 @@ pub(crate) fn acquire_canonical_inventory_lock(
     assert_outside_repository(runtime_root)
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
     let events_root = runtime_root.join("canonical").join("events");
-    ensure_lock_directory(&events_root).map_err(|e| CanonicalWriterError::Path(format!("canonical inventory directory: {e}")))?;
+    ensure_lock_directory(&events_root)
+        .map_err(|e| CanonicalWriterError::Path(format!("canonical inventory directory: {e}")))?;
     let file = open_canonical_lock_file(&events_root.join("inventory.lock"))?;
     fs2::FileExt::lock_exclusive(&file.file)
         .map_err(|e| CanonicalWriterError::Path(format!("canonical inventory lock failed: {e}")))?;
@@ -414,7 +416,8 @@ pub(crate) fn acquire_canonical_inventory_lock_until(
     assert_outside_repository(runtime_root)
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
     let events_root = runtime_root.join("canonical").join("events");
-    ensure_lock_directory(&events_root).map_err(|e| CanonicalWriterError::Path(format!("canonical inventory directory: {e}")))?;
+    ensure_lock_directory(&events_root)
+        .map_err(|e| CanonicalWriterError::Path(format!("canonical inventory directory: {e}")))?;
     let file = open_canonical_lock_file(&events_root.join("inventory.lock"))?;
     lock_exclusive_until(&file.file, deadline, "canonical inventory")?;
     Ok(CanonicalInventoryLock { _file: file })

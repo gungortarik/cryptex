@@ -750,14 +750,15 @@ fn require_content_runtime(root: &Path, profile: ContentProfile) -> Result<(), E
         return Err(Error::Arguments);
     }
     if profile.resumes() {
-        verified_resume_device(root)?;
+        verified_resume_device(root, profile)?;
     }
     Ok(())
 }
 
 /// Read-only synthetic identity check before lifecycle recovery. The domain
 /// repeats it under its instance/admission guard before accessing the key.
-pub(crate) fn verified_resume_device(root: &Path) -> Result<cryptex_core::DeviceId, Error> {
+pub(crate) fn verified_resume_device(root: &Path, profile: ContentProfile) -> Result<cryptex_core::DeviceId, Error> {
+    if !profile.resumes() || profile == ContentProfile::ExistingProfile { return Err(Error::Arguments); }
     let brain = crate::identity_runtime::load_brain_identity(root).map_err(|_| Error::Arguments)?;
     if brain.brain_id != "aa5d7ae0-5321-4f53-a91e-36a411d88591" {
         return Err(Error::Arguments);
@@ -779,6 +780,7 @@ pub(crate) fn verified_resume_device(root: &Path) -> Result<cryptex_core::Device
         serde_json::from_slice(&descriptor).map_err(|_| Error::Arguments)?;
     if descriptor.brain_id != brain.brain_id
         || descriptor.device_id != device.as_str()
+        || (!profile.transport() && descriptor.event_id != "d9885c8e-6a01-48bc-8488-cd52c4c1f725")
     {
         return Err(Error::Arguments);
     }
@@ -854,6 +856,25 @@ fn native_io(error: super::native::Error) -> std::io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn transport_resume_authenticates_its_unique_seed_without_relaxing_fixed_fixture_modes() {
+        use std::os::unix::fs::DirBuilderExt;
+        let parent = crate::test_temp::exclusive_temp_dir("native-unique-transport-seed");
+        let root = parent.join("profile");
+        std::fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        std::fs::write(root.join("m8-content.marker"), DURABLE_MARKER).unwrap();
+        let instance = crate::instance::try_acquire_instance(&root).unwrap();
+        let store = crate::FakeSecureStore::new();
+        crate::signed_transfer_probe::create(&root, &store, "aa5d7ae0-5321-4f53-a91e-36a411d88591", "24376f10-1d44-4673-960a-cb46ff26ab65").unwrap();
+        assert!(require_content_runtime(&root, ContentProfile::TransportResume).is_ok());
+        assert!(require_content_runtime(&root, ContentProfile::KeychainResume).is_err());
+        let mut descriptor: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("signed-probe.json")).unwrap()).unwrap();
+        descriptor["event_id"] = serde_json::json!("95c922ca-44c5-42d4-924a-46aa7071960f");
+        std::fs::write(root.join("signed-probe.json"), serde_json::to_vec(&descriptor).unwrap()).unwrap();
+        assert!(require_content_runtime(&root, ContentProfile::TransportResume).is_err());
+        drop(instance);
+        std::fs::remove_dir_all(parent).unwrap();
+    }
     #[test]
     fn stop_request_never_truncates_existing_data_or_follows_a_link() {
         use std::os::unix::fs::symlink;
