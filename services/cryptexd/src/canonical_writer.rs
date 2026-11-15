@@ -300,9 +300,18 @@ fn ensure_lock_directory(path: &Path) -> std::io::Result<()> {
 fn open_canonical_lock_file(path: &Path) -> CanonicalWriterResult<CanonicalLockFile> {
     #[cfg(target_os = "macos")]
     {
-        let stage = if path.file_name().is_some_and(|name| name == "inventory.lock") { "inventory_lock_open" } else { "device_lock_open" };
-        let (file, binding) = crate::import_staging::macos_fs::LockBinding::open(path)
-            .map_err(|error| CanonicalWriterError::Path(format!("Darwin canonical {stage}: {error}")))?;
+        let stage = if path
+            .file_name()
+            .is_some_and(|name| name == "inventory.lock")
+        {
+            "inventory_lock_open"
+        } else {
+            "device_lock_open"
+        };
+        let (file, binding) =
+            crate::import_staging::macos_fs::LockBinding::open(path).map_err(|error| {
+                CanonicalWriterError::Path(format!("Darwin canonical {stage}: {error}"))
+            })?;
         Ok(CanonicalLockFile { file, binding })
     }
     #[cfg(not(target_os = "macos"))]
