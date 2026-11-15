@@ -104,7 +104,26 @@
       "nine signed-inventory file sizes and SHA256 digests match",
       "new existing-profile markers required by bundled checker"
     ],
-    "signature_execution_verified_on": "Mac CI; Windows archive inspection does not claim native signature verification"
+    "signature_execution_verified_on": "Mac CI; Windows archive inspection does not claim native signature verification",
+    "diagnostic_package": {
+      "status": "ready_for_owner; changed collector not executed on Mac",
+      "archive_name": "Cryptex-Mac-Tani-d9561d8-b3014b96.zip",
+      "sha256": "514e153692a2bba679c2ca24e50870b93eb269ca564601866e93334d10ef7c06",
+      "bytes": 24226987,
+      "members": 17,
+      "signed_app_source": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
+      "collector_source": "aadd078e6e337824d4253d6cc671dee850c19e25",
+      "collector_sha256": "f5021c518eefb4ca8666e951ec8b85af52a7a02f26201e4715203c5a507ad748",
+      "launcher": "Cryptex-Mac-Aktarim-Tani/MAC-AKTARIM.command",
+      "expires_utc": "2026-11-16T03:21:56+00:00",
+      "unchanged_signed_app_members": 11,
+      "signed_inventory_files_reverified": 9,
+      "helper_scripts_match_committed_source": true,
+      "local_tests_passed": {"owner_diagnostics": 7, "transport_checker": 10, "package_export": 5},
+      "read_only_agent_review": "no actionable finding in collector/test delta; no tests or CI by reviewer",
+      "raw_output_exported": false,
+      "native_execution_of_changed_collector": false
+    }
   },
   "ordinary_product_activation": false,
   "m8_status": "OPEN",

@@ -105,6 +105,15 @@ ten existing checker tests and five package-export tests pass locally. Their
 mocked processes are not native execution evidence. No repeated terminal paste
 or unchanged historical packet is requested.
 
+Diagnostic archive: `Cryptex-Mac-Tani-d9561d8-b3014b96.zip`, SHA256
+`514e153692a2bba679c2ca24e50870b93eb269ca564601866e93334d10ef7c06`,
+24,226,987 bytes, 17 safe members. Collector source `aadd078`, executable at
+`Cryptex-Mac-Aktarim-Tani/MAC-AKTARIM.command`. All11 app members match the original
+archive byte-for-byte,9 inventory entries reverified, helper bytes match Git.
+Expiry remains2026-11-16T03:21:56+00:00. Read-only agent review found no actionable
+collector/test-delta finding. Native execution of the changed collector awaits
+the owner; this is a diagnostic handoff, not a successful hardware receipt.
+
 Ordinary configured-image/release policy, actual peer/folder synchronization,
 cross-device durable replicas, installed-product/UX and final protocol/M8
 acceptance remain separate gates. No release signer, paid membership, schema

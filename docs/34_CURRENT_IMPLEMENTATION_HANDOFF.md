@@ -50,6 +50,16 @@ Original fixture expiry:2026-11-16T03:21:56+00:00. Check expiry before handing o
 Seven diagnostic unit regressions, ten existing checker regressions and five
 package-export tests pass locally; these are synthetic tests, not Mac acceptance.
 
+Concrete next packet: `Cryptex-Mac-Tani-d9561d8-b3014b96.zip`, SHA256
+`514e153692a2bba679c2ca24e50870b93eb269ca564601866e93334d10ef7c06`.
+Collector source `aadd078`, hash pinned in the structured receipt; separate
+read-only review found no actionable diagnostic-delta issue. All11 signed-app
+members are byte-identical to the prior CI archive and9 inventory entries were
+reverified. Helpers match committed bytes. Extract on Mac, double-click
+`Cryptex-Mac-Aktarim-Tani/MAC-AKTARIM.command`, return `MAC-AKTARIM-SONUC-*.zip`.
+Keep the prior failed runtime. The changed collector has not run natively here;
+do not imply a new Mac pass. No Rust/runtime or production change was made.
+
 M8 OPEN; M9 not begun. Owner hardware/installed UX, ordinary configured-image/
 release policy, actual peer/folder synchronization, cross-device durable replicas
 and final protocol acceptance remain separate gates. Local Rust is blocked by
