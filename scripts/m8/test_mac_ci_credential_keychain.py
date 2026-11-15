@@ -28,7 +28,7 @@ class Fake:
         self.calls = []
         self.original = [str(root / 'original/login.keychain-db'), str(root / 'original/signing.keychain-db')]
         self.default, self.search = self.original[:1], self.original[:]
-        self.path = root / 'ci-credential-scope/credentials.keychain-db'
+        self.path = None
         self.profile = root / 'ci-authorized-existing-profile'
         self.device = '11111111-1111-4111-8111-111111111111'
         self.provisioned = False
@@ -36,6 +36,8 @@ class Fake:
 
     def __call__(self, args, timeout):
         self.calls.append(args)
+        if 'create-keychain' in args:
+            self.path = Path(args[-1])
         if self.failure in args and not self.failed:
             self.failed = True
             return CommandResult(2, 'SHOULD_NOT_BE_PRINTED')
@@ -46,6 +48,8 @@ class Fake:
                 self.path.write_bytes(b'disposable')
             elif command == 'default-keychain':
                 if '-s' in args:
+                    if self.failure == 'raw_restore' and args[-1] == self.original[0]:
+                        raise OSError('unresolved restoration process')
                     if self.failure == 'restore' and args[-1] == self.original[0]:
                         return CommandResult(2, 'RESTORE_SECRET')
                     self.default = args[args.index('-s') + 1:]
@@ -61,6 +65,8 @@ class Fake:
             elif command == 'delete-generic-password':
                 pass
         elif command == 'pilot-fixture':
+            if self.failure == 'raw_creator':
+                raise OSError('unresolved creator')
             key = self.profile / 'identity/devices' / self.device.encode().hex() / 'event_signing_key.json'
             key.parent.mkdir(parents=True)
             key.write_bytes(b'public-key')
@@ -121,7 +127,7 @@ class CredentialTests(unittest.TestCase):
     def test_nonempty_profile_exact_authorization_and_cleanup_on_failures(self):
         failures = (None, 'create-keychain', 'unlock-keychain', 'late_fixture', 'foreign', 'duplicate',
                     'extra_partition', 'set-generic-password-partition-list', 'changed', 'raw',
-                    'restore', 'delete-keychain', 'delete-generic-password')
+                    'restore', 'raw_restore', 'raw_creator', 'delete-keychain', 'delete-generic-password')
         for failure in failures:
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory).resolve()
@@ -139,9 +145,10 @@ class CredentialTests(unittest.TestCase):
                 self.assertNotIn('SENSITIVE', captured.getvalue())
                 self.assertNotIn('SHOULD_NOT', captured.getvalue())
                 self.assertEqual(manifest.read_bytes(), b'{}')
-                if failure != 'restore':
+                if failure not in ('restore', 'raw', 'raw_creator', 'raw_restore'):
                     self.assertEqual(fake.default, fake.original[:1])
-                self.assertEqual(fake.search, fake.original)
+                if failure not in ('raw', 'raw_creator', 'raw_restore'):
+                    self.assertEqual(fake.search, fake.original)
                 for args in fake.calls:
                     if 'set-generic-password-partition-list' in args:
                         self.assertEqual(args[-1], str(fake.path))
@@ -152,8 +159,13 @@ class CredentialTests(unittest.TestCase):
                         self.assertEqual(args[-1], str(fake.path))
                 if failure in ('foreign', 'duplicate'):
                     self.assertFalse(any('set-generic-password-partition-list' in args for args in fake.calls))
-                if failure == 'raw':
-                    self.assertFalse(any('delete-keychain' in args or 'delete-generic-password' in args for args in fake.calls))
+                if failure in ('raw', 'raw_creator', 'raw_restore'):
+                    self.assertFalse(any('delete-keychain' in args for args in fake.calls))
+                    if failure in ('raw', 'raw_creator'):
+                        self.assertFalse(any('delete-generic-password' in args for args in fake.calls))
+                        self.assertEqual(fake.default, [str(fake.path)])
+                    if failure == 'raw_restore':
+                        self.assertEqual(fake.calls[-1], ['/usr/bin/security', 'default-keychain', '-d', 'user', '-s', fake.original[0]])
                 elif failure != 'delete-keychain':
                     self.assertFalse(fake.path.exists())
                 if failure is None:
@@ -161,6 +173,10 @@ class CredentialTests(unittest.TestCase):
                     self.assertIn('ci_authorized_nonempty_profile_startup_restart_refusals=passed', captured.getvalue())
                 else:
                     self.assertNotIn('ci_authorized_nonempty_profile_startup_restart_refusals=passed', captured.getvalue())
+                # Only fake files were made here; no real Keychain or process.
+                if fake.path.exists():
+                    fake.path.unlink()
+                fake.path.parent.rmdir()
 
 
 if __name__ == '__main__':

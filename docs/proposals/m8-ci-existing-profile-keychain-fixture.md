@@ -48,6 +48,12 @@ Keychain. This changes test credential provisioning, not product authorization.
    generated-item cleanup, original default/search-list restoration and deletion
    of the disposable credential Keychain. A restoration/cleanup failure fails CI.
    No keychain, private material or password is exported in an artifact.
+   If a producer cannot be conclusively stopped, retain the dedicated default
+   Keychain outside the outer signing temporary directory and fail CI without
+   restoring lookup preferences underneath a possible late credential write.
+   A raw restoration-command failure latches uncertainty: run no further cleanup
+   commands or deletion. Hosted-runner teardown is the final boundary in either
+   unresolved case; neither case is accepted as clean restoration.
 
 Apple's security tool supports an explicit Keychain plus service/account filters
 for generic-password partition edits and a separate default-Keychain command:

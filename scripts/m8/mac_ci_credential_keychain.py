@@ -6,6 +6,7 @@ import re
 import secrets
 import shlex
 import sys
+import uuid
 
 from mac_development_startup_check import FencedRun
 from mac_identity_preflight import PreflightError, checked, unique_object
@@ -57,7 +58,9 @@ def require_item(output, provisioned):
 
 class CredentialKeychain:
     def __init__(self, root, runner):
-        self.root = root.resolve(strict=True) / 'ci-credential-scope'
+        # Separate from the outer signing TemporaryDirectory: if a producer is
+        # unresolved, its default Keychain must survive that outer cleanup.
+        self.root = root.resolve(strict=True).parent / ('cx-ci-credential-' + uuid.uuid4().hex)
         self.path = self.root / 'credentials.keychain-db'
         self.password = secrets.token_hex(32)
         self.fence = FencedRun(runner)
@@ -96,14 +99,24 @@ class CredentialKeychain:
 
     def __exit__(self, *_):
         stopped = self.fence.stopped
+        if not stopped:
+            self.password = None
+            # A late SecItemAdd must not land in the restored original default.
+            # The disposable runner owns final process teardown; retain scope.
+            raise PreflightError('ci_credential_cleanup_process_unresolved')
         cleanup = FencedRun(self.runner)
         errors = []
+        unresolved = False
 
         def attempt(args, label):
+            nonlocal unresolved
+            if unresolved:
+                return None
             try:
                 result = cleanup.outcome(args, 30)
                 return checked(lambda *_: result, [], label, 30)
             except BaseException:
+                unresolved |= not cleanup.stopped
                 errors.append(label)
                 return None
 
@@ -117,12 +130,12 @@ class CredentialKeychain:
                         errors.append('restored_preferences_mismatch')
                 except ValueError:
                     errors.append('restored_preferences_invalid')
-        if self.created and stopped and cleanup.stopped and self.path.exists():
+        if self.created and not unresolved and self.path.exists():
             attempt([SECURITY, 'delete-keychain', self.path], 'delete_credential_keychain')
             if self.path.exists():
                 errors.append('credential_keychain_remains')
         self.password = None
-        if not stopped or not cleanup.stopped:
+        if unresolved:
             raise PreflightError('ci_credential_cleanup_process_unresolved')
         if errors:
             raise PreflightError('ci_credential_cleanup_failed')
