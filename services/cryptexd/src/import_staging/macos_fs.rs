@@ -9,6 +9,7 @@ use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 
 #[cfg(test)]
 pub(super) use std::fs::{copy, create_dir_all, hard_link, read, remove_dir_all, rename, write};
@@ -136,7 +137,7 @@ fn regular_permissions(file: &File) -> io::Result<()> {
 #[derive(Debug)]
 pub(crate) struct Directory {
     path: PathBuf,
-    files: Vec<File>,
+    files: Vec<Arc<File>>,
     names: Vec<CString>,
 }
 
@@ -160,7 +161,16 @@ impl RuntimeIdentity {
             return Err(unsafe_object());
         }
         if !self.pins.borrow().contains_key(&key) {
-            let directory = Directory::open(path, true)?;
+            let directory = {
+                let pins = self.pins.borrow();
+                let ancestor = pins
+                    .iter()
+                    .filter(|(p, _)| key.starts_with(p))
+                    .max_by_key(|(p, _)| p.components().count())
+                    .map(|(_, directory)| directory)
+                    .ok_or_else(unsafe_object)?;
+                ancestor.open_descendant(path)?
+            };
             self.pins.borrow_mut().insert(key, directory);
         }
         self.validate()
@@ -237,15 +247,41 @@ impl Directory {
         directory_permissions(&root, false)?;
         let mut result = Self {
             path: requested,
-            files: vec![root],
+            files: vec![Arc::new(root)],
             names: Vec::new(),
         };
-        for part in path.components() {
+        result.extend(&path)?;
+        directory_permissions(result.last()?, current_owner)?;
+        result.validate()?;
+        Ok(result)
+    }
+
+    // Share already retained original ancestors without dup()/new descriptors.
+    // Every descendant open remains relative, no-follow and revalidated.
+    fn open_descendant(&self, path: &Path) -> io::Result<Self> {
+        self.validate()?;
+        let normalized = normalize(path)?;
+        let base = normalize(&self.path)?;
+        let suffix = normalized.strip_prefix(&base).map_err(|_| unsafe_object())?;
+        let mut result = Self {
+            path: path.to_owned(),
+            files: self.files.clone(),
+            names: self.names.clone(),
+        };
+        result.extend(suffix)?;
+        directory_permissions(result.last()?, true)?;
+        result.validate()?;
+        self.validate()?;
+        Ok(result)
+    }
+
+    fn extend(&mut self, suffix: &Path) -> io::Result<()> {
+        for part in suffix.components() {
             let Component::Normal(part) = part else {
                 continue;
             };
             let name = leaf(part)?;
-            let parent = result.files.last().ok_or_else(unsafe_object)?;
+            let parent = self.files.last().ok_or_else(unsafe_object)?;
             let next = owned(unsafe {
                 libc::openat(
                     parent.as_raw_fd(),
@@ -259,16 +295,14 @@ impl Directory {
                 Err(error) if error.kind() == io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error),
             }
-            result.files.push(next);
-            result.names.push(name);
+            self.files.push(Arc::new(next));
+            self.names.push(name);
         }
-        directory_permissions(result.last()?, current_owner)?;
-        result.validate()?;
-        Ok(result)
+        Ok(())
     }
 
     fn last(&self) -> io::Result<&File> {
-        self.files.last().ok_or_else(unsafe_object)
+        self.files.last().map(AsRef::as_ref).ok_or_else(unsafe_object)
     }
 
     pub(crate) fn validate(&self) -> io::Result<()> {
@@ -306,7 +340,7 @@ impl Directory {
         self.validate()
     }
 
-    pub(super) fn into_files(self) -> Vec<File> {
+    pub(super) fn into_files(self) -> Vec<Arc<File>> {
         self.files
     }
 
@@ -413,7 +447,7 @@ pub(super) fn open_lock(path: &Path) -> io::Result<File> {
     directory.open_lock(name)
 }
 
-pub(super) fn read_child(files: &[File], path: &Path) -> io::Result<File> {
+pub(super) fn read_child(files: &[Arc<File>], path: &Path) -> io::Result<File> {
     let directory = Directory::open(path.parent().ok_or_else(unsafe_object)?, true)?;
     if files.len() != directory.files.len() {
         return Err(unsafe_object());
@@ -715,6 +749,51 @@ pub(crate) fn require_product_os() -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtime_pins_share_original_ancestors_and_release_descriptors() {
+        let root = root();
+        let identity = RuntimeIdentity::capture(&root).unwrap();
+        let initial = identity.pins.borrow()[&normalize(&root).unwrap()].files.len();
+        for index in 0..32 {
+            let child = root.join(format!("child-{index}"));
+            create_dir(&child).unwrap();
+            identity.pin(&child).unwrap();
+            identity.pin(&child).unwrap();
+        }
+        let weak = {
+            let pins = identity.pins.borrow();
+            let distinct = pins.values().flat_map(|p| p.files.iter())
+                .map(Arc::as_ptr).collect::<std::collections::HashSet<_>>();
+            assert_eq!(distinct.len(), initial + 32);
+            pins.values().flat_map(|p| p.files.iter()).map(Arc::downgrade).collect::<Vec<_>>()
+        };
+        identity.validate().unwrap();
+        drop(identity);
+        assert!(weak.iter().all(|pin| pin.upgrade().is_none()));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn shared_descendant_pins_refuse_replaced_parent_and_symlink() {
+        let root = root();
+        let parent = root.join("parent");
+        create_dir(&parent).unwrap();
+        let identity = RuntimeIdentity::capture(&root).unwrap();
+        identity.pin(&parent).unwrap();
+        let child = parent.join("child");
+        create_dir(&child).unwrap();
+        identity.pin(&child).unwrap();
+        std::fs::rename(&parent, root.join("preserved")).unwrap();
+        create_dir(&parent).unwrap();
+        assert!(identity.pin(&parent.join("new-child")).is_err());
+        assert!(identity.validate().is_err());
+        let fresh = RuntimeIdentity::capture(&root).unwrap();
+        std::os::unix::fs::symlink(root.join("preserved/child"), parent.join("link")).unwrap();
+        assert!(fresh.pin(&parent.join("link")).is_err());
+        drop((fresh, identity));
+        std::fs::remove_dir_all(root).unwrap();
+    }
     use std::fs as fixture_fs;
     use std::os::unix::fs::{PermissionsExt, symlink};
 

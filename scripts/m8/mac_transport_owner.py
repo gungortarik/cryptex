@@ -206,6 +206,13 @@ def main():
     elif datetime.now(timezone.utc) >= datetime.fromisoformat(meta["expires_utc"]):
         report["outcome"] = "fixture_expired"
     else:
+        # Acceptance fixtures must exercise the common low descriptor budget,
+        # including all native descendants; never raise the owner's limit.
+        import resource
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        ceiling = 256 if soft == resource.RLIM_INFINITY else min(256, soft)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (ceiling, hard))
+        report["descriptor_soft_limit"] = ceiling
         temp = Path(tempfile.mkdtemp(prefix="cryptex-owner-transport-")).resolve()
 
         run = make_runner(report, temp / "pairing")

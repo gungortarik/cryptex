@@ -38,6 +38,11 @@ use crate::canonical_writer::{
 use crate::import_limits::{ImportBatchBudget, ImportLimitError};
 use crate::paths::assert_outside_repository;
 
+#[cfg(target_os = "macos")]
+type DirectoryPin = std::sync::Arc<File>;
+#[cfg(not(target_os = "macos"))]
+type DirectoryPin = File;
+
 const COPY_BUFFER_BYTES: usize = 64 * 1024;
 const MAX_PREPARED_MANIFEST_BYTES: u64 = 64 * 1024;
 const MAX_COMMITTED_MARKER_BYTES: u64 = 4 * 1024;
@@ -438,7 +443,7 @@ pub struct ImportStagingSession {
     transaction_id: String,
     staging_dir: PathBuf,
     _single_flight: Option<File>,
-    _directory_handles: Vec<File>,
+    _directory_handles: Vec<DirectoryPin>,
     budget: ImportBatchBudget,
     candidates: Vec<StagedSegment>,
     failed: bool,
@@ -453,7 +458,7 @@ impl ImportStagingSession {
     /// This performs no staging or canonical directory creation.
     pub(crate) fn pin_existing_runtime(
         runtime_root: &Path,
-    ) -> Result<Vec<File>, ImportStagingError> {
+    ) -> Result<Vec<DirectoryPin>, ImportStagingError> {
         if !runtime_root.is_absolute() {
             return Err(ImportStagingError::Invalid(
                 "runtime root must be absolute".into(),
@@ -499,7 +504,13 @@ impl ImportStagingSession {
             ));
         }
 
+        #[cfg(not(target_os = "macos"))]
         let mut directory_handles = Vec::new();
+        #[cfg(target_os = "macos")]
+        // RuntimeIdentity retains these original Mac capabilities; a second
+        // absolute-chain inventory only consumes duplicate descriptors.
+        let directory_handles = Vec::new();
+        #[cfg(not(target_os = "macos"))]
         for directory in [
             runtime_root,
             canonical.as_path(),
@@ -539,6 +550,7 @@ impl ImportStagingSession {
         #[cfg(target_os = "macos")]
         runtime_identity.pin(&transaction_dir)?;
         ensure_plain_directory(&transaction_dir)?;
+        #[cfg(not(target_os = "macos"))]
         directory_handles.extend(inspect_directory_chain(&transaction_dir, true)?);
 
         Ok(Self {
@@ -3701,7 +3713,7 @@ pub(crate) fn source_snapshot(file: &File) -> Result<SourceSnapshot, ImportStagi
 }
 
 fn open_source_from_directory_chain(
-    directory_handles: &[File],
+    directory_handles: &[DirectoryPin],
     source_path: &Path,
 ) -> Result<File, ImportStagingError> {
     #[cfg(windows)]
@@ -3741,7 +3753,7 @@ fn open_source_from_directory_chain(
 /// handle-relative containment. Broader sharing is required for coordination
 /// files such as `writer.lock`, whose existing handle is intentionally held.
 fn open_identity_from_directory_chain(
-    directory_handles: &[File],
+    directory_handles: &[DirectoryPin],
     path: &Path,
 ) -> Result<File, ImportStagingError> {
     #[cfg(windows)]
@@ -4340,7 +4352,7 @@ fn ensure_metadata_plain_directory(metadata: &fs::Metadata) -> Result<(), Import
 fn inspect_directory_chain(
     path: &Path,
     require_current_user_owner: bool,
-) -> Result<Vec<File>, ImportStagingError> {
+) -> Result<Vec<DirectoryPin>, ImportStagingError> {
     use std::os::windows::io::{AsRawHandle, FromRawHandle};
     use std::ptr;
     use windows_sys::Wdk::Storage::FileSystem::{FILE_OPEN, FILE_OPEN_REPARSE_POINT};
@@ -4542,7 +4554,7 @@ fn inspect_directory_chain(
 fn inspect_directory_chain(
     path: &Path,
     require_current_user_owner: bool,
-) -> Result<Vec<File>, ImportStagingError> {
+) -> Result<Vec<DirectoryPin>, ImportStagingError> {
     Ok(macos_fs::Directory::open(path, require_current_user_owner)?.into_files())
 }
 
@@ -4550,7 +4562,7 @@ fn inspect_directory_chain(
 fn inspect_directory_chain(
     path: &Path,
     _require_current_user_owner: bool,
-) -> Result<Vec<File>, ImportStagingError> {
+) -> Result<Vec<DirectoryPin>, ImportStagingError> {
     ensure_existing_plain_directory(path)?;
     Ok(Vec::new())
 }

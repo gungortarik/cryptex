@@ -5,7 +5,7 @@ import io
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 import zipfile
 
 from mac_identity_preflight import CommandResult, PreflightError
@@ -210,6 +210,7 @@ class OwnerDiagnosticsTests(unittest.TestCase):
                 run([binary, root], "real_native_managed_pairing", 240)
 
             with patch("mac_transport_owner.__file__", str(launcher)), \
+                    patch.dict("sys.modules", {"resource": Mock(getrlimit=Mock(return_value=(256, 10240)), RLIM_INFINITY=-1)}), \
                     patch("mac_transport_owner.sys.stdout", new_callable=io.StringIO), \
                     patch("mac_transport_owner.os.umask"), \
                     patch("mac_transport_owner.sys.platform", "darwin"), \
