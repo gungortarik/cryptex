@@ -779,7 +779,6 @@ pub(crate) fn verified_resume_device(root: &Path) -> Result<cryptex_core::Device
         serde_json::from_slice(&descriptor).map_err(|_| Error::Arguments)?;
     if descriptor.brain_id != brain.brain_id
         || descriptor.device_id != device.as_str()
-        || descriptor.event_id != "d9885c8e-6a01-48bc-8488-cd52c4c1f725"
     {
         return Err(Error::Arguments);
     }

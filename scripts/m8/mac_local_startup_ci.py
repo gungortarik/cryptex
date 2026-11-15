@@ -86,7 +86,8 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                 raise PreflightError("signed_startup_gate_test_missing")
         for selection in ("managed_profile::macos::tests::", "owned_process::macos::tests::",
                           "ipc::native_profile::tests::", "import_staging::macos_inbox::tests::",
-                          "incoming_publication::tests::", "runtime_admission::tests::"):
+                          "incoming_publication::tests::", "runtime_admission::tests::",
+                          "capture::tests::concurrent_matching_capture_ids_append_once"):
             run(fixture_rust_command(cargo, "test", "--locked", "-p", "cryptexd", "--features", "m8-local-startup-check",
                  "--lib", selection, "--", "--test-threads=1"), "test_mac_transport_private_adapters",
                 180 if selection == "incoming_publication::tests::" else 60)

@@ -301,7 +301,7 @@ fn open_canonical_lock_file(path: &Path) -> CanonicalWriterResult<CanonicalLockF
     #[cfg(target_os = "macos")]
     {
         let (file, binding) = crate::import_staging::macos_fs::LockBinding::open(path)
-            .map_err(|error| CanonicalWriterError::Path(error.to_string()))?;
+            .map_err(|error| CanonicalWriterError::Path(format!("Darwin canonical lock open: {error}")))?;
         Ok(CanonicalLockFile { file, binding })
     }
     #[cfg(not(target_os = "macos"))]
@@ -383,7 +383,7 @@ pub(crate) fn acquire_canonical_write_lock_set(
     for device_id in &ordered {
         let device_dir = canonical_events_device_dir(runtime_root, device_id);
         ensure_lock_directory(&device_dir)
-            .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+            .map_err(|e| CanonicalWriterError::Path(format!("canonical device directory: {e}")))?;
         devices.push(acquire_device_lock_in_existing_dir(device_id, &device_dir)?);
     }
     Ok(CanonicalWriteLockSet {
@@ -398,7 +398,7 @@ pub(crate) fn acquire_canonical_inventory_lock(
     assert_outside_repository(runtime_root)
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
     let events_root = runtime_root.join("canonical").join("events");
-    ensure_lock_directory(&events_root).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    ensure_lock_directory(&events_root).map_err(|e| CanonicalWriterError::Path(format!("canonical inventory directory: {e}")))?;
     let file = open_canonical_lock_file(&events_root.join("inventory.lock"))?;
     fs2::FileExt::lock_exclusive(&file.file)
         .map_err(|e| CanonicalWriterError::Path(format!("canonical inventory lock failed: {e}")))?;
@@ -414,7 +414,7 @@ pub(crate) fn acquire_canonical_inventory_lock_until(
     assert_outside_repository(runtime_root)
         .map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
     let events_root = runtime_root.join("canonical").join("events");
-    ensure_lock_directory(&events_root).map_err(|e| CanonicalWriterError::Path(e.to_string()))?;
+    ensure_lock_directory(&events_root).map_err(|e| CanonicalWriterError::Path(format!("canonical inventory directory: {e}")))?;
     let file = open_canonical_lock_file(&events_root.join("inventory.lock"))?;
     lock_exclusive_until(&file.file, deadline, "canonical inventory")?;
     Ok(CanonicalInventoryLock { _file: file })

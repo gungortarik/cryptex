@@ -655,6 +655,29 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_canonical_directory_and_lock_creation_preserves_one_namespace() {
+        use std::sync::{Arc, Barrier};
+        for _ in 0..16 {
+            let root = crate::test_temp::exclusive_temp_dir("mac-concurrent-canonical-lock");
+            let directory = root.join("canonical/events/6465766963652d61");
+            let barrier = Arc::new(Barrier::new(8));
+            let workers = (0..8).map(|_| {
+                let directory = directory.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || -> io::Result<()> {
+                    barrier.wait();
+                    create_dir_all_owned(&directory)?;
+                    let (file, binding) = LockBinding::open(&directory.join("writer.lock"))?;
+                    fs2::FileExt::lock_exclusive(&file)?;
+                    binding.validate(&file)
+                })
+            }).collect::<Vec<_>>();
+            let outcomes = workers.into_iter().map(|worker| worker.join().unwrap()).collect::<Vec<_>>();
+            assert!(outcomes.iter().all(Result::is_ok), "concurrent namespace outcomes: {outcomes:?}");
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+    #[test]
     fn private_descriptor_promotion_is_atomic_and_never_replaces_an_occupied_destination() {
         let root = root();
         let staging = root.join("staged");
