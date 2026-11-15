@@ -19,7 +19,7 @@ NATIVE_ERRORS = {"local_signed_startup_" + code for code in (
 NATIVE_STAGES = {"content_bind", "owner_exchange", "child_inventory", "child_verification_hint",
                  "daemon_image", "desktop_inventory", "native_accept", "ready_file", "runtime_ready",
                  "startup_ack", "startup_hello", "verification_hint"}
-PROFILE_STAGES = {"validate", "backend", "prepare", "context", "unix_data", "recover", "namespace",
+PROFILE_STAGES = {"key_lock", "key_store", "validate", "backend", "prepare", "context", "unix_data", "recover", "namespace",
                   "recover_evidence", "initialize_slots", "rebuild", "rebuild_key", "rebuild_db", "rebuild_scan",
                   "slot_key", "slot_scan", "slot_locks"}
 DEVELOPMENT_STAGES = {"start", "content", "bind", "ping", "profile_status", "unix_health", "close"}
@@ -151,6 +151,25 @@ def require_refusal(outcome, code):
         raise PreflightError("development_refusal_not_verified")
 
 
+def require_same_designated_identity(creator, daemon, run):
+    requirements = []
+    for binary in (creator, daemon):
+        text = run(["/usr/bin/codesign", "-d", "-r-", binary], "inspect_development_designated_identity", 30)
+        lines = [line.removeprefix("designated => ") for line in text.splitlines()
+                 if line.startswith("designated => ")]
+        if len(lines) != 1 or not lines[0] or len(lines[0]) > 4096:
+            raise PreflightError("development_designated_identity_unavailable")
+        requirements.append(lines[0])
+    if requirements[0] != requirements[1]:
+        raise PreflightError("development_designated_identity_mismatch")
+    # Equality is not a signature check. Verify both actual images against the
+    # shared requirement before creating the fresh test-only credential.
+    for binary in (creator, daemon):
+        run(["/usr/bin/codesign", "--verify", "--strict", "-R", "=" + requirements[0], binary],
+            "verify_development_designated_identity", 30)
+    print("development_creator_designated_identity=matched", flush=True)
+
+
 def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixture_daemon):
     from mac_local_startup_ci import fixture_rust_command
     keys = ("CRYPTEX_M8_DEVELOPMENT_CERT_DER", "CRYPTEX_M8_DEVELOPMENT_RELEASE_ID", "CARGO")
@@ -204,6 +223,7 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
     creator = root / "development-profile-creator"
     shutil.copy2(fixture_daemon, creator)
     sign(creator, "com.cryptex.development.daemon")
+    require_same_designated_identity(creator, daemon, run)
     exercise_profile(root, desktop, creator, bundle / "Contents/Resources/m8-startup.json",
                      run_bounded, run)
     print("development_native_existing_profile_restart_and_refusals=passed")

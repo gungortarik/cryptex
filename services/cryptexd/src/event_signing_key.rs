@@ -215,6 +215,19 @@ pub fn load_existing_event_verifying_key<S: SecureStore + ?Sized>(
     Ok((ready.public, verifying_key))
 }
 
+// Fixed-label development diagnostics distinguish file-lock waits from the
+// OS credential call. No identifier, path, key bytes or native error is logged.
+fn trace_key_load<T, E>(_name: &'static str, work: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
+    #[cfg(all(target_os = "macos", feature = "m8-development-product"))]
+    {
+        crate::ipc::native_profile::trace_stage(_name, work)
+    }
+    #[cfg(not(all(target_os = "macos", feature = "m8-development-product")))]
+    {
+        work()
+    }
+}
+
 /// Load the already enrolled signing key without creating or repairing any
 /// SecureStore item, runtime directory, lock file, or public metadata. This is
 /// reserved for daemon operations that have passed an explicit owner-approval
@@ -234,7 +247,7 @@ pub fn load_existing_event_signing_key<S: SecureStore + ?Sized>(
         .read(true)
         .open(&lock_path)
         .map_err(|error| EventSigningKeyError::Io(error.to_string()))?;
-    fs2::FileExt::lock_shared(&lock)
+    trace_key_load("key_lock", || fs2::FileExt::lock_shared(&lock))
         .map_err(|error| EventSigningKeyError::Io(error.to_string()))?;
 
     let metadata = load_public_metadata_if_present(&meta_path)?.ok_or_else(|| {
@@ -242,7 +255,7 @@ pub fn load_existing_event_signing_key<S: SecureStore + ?Sized>(
     })?;
     let service = ServiceLabel::device_credentials(env);
     let account = AccountLabel::device_event_signing_seed(device_id.as_str());
-    let seed = store.get(service.as_str(), account.as_str())?;
+    let seed = trace_key_load("key_store", || store.get(service.as_str(), account.as_str()))?;
     let ready = ready_from_seed_and_meta(&seed, &metadata, device_id)?;
     drop(lock);
     Ok(ready)

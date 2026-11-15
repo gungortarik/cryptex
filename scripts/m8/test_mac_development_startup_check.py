@@ -9,7 +9,7 @@ import json
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mac_development_startup_check import require_refusal, canonical_hashes, exercise_profile, FencedRun
+from mac_development_startup_check import require_refusal, canonical_hashes, exercise_profile, FencedRun, require_same_designated_identity
 from mac_identity_preflight import PreflightError
 
 
@@ -23,6 +23,30 @@ class RefusalTests(unittest.TestCase):
                        dict(output="some_other_error\n")):
             with self.subTest(change=change), self.assertRaises(PreflightError):
                 require_refusal(SimpleNamespace(**(base | change)), "local_signed_startup_Inventory")
+
+
+class DesignatedIdentityTests(unittest.TestCase):
+    def test_mismatch_missing_and_duplicate_requirements_refuse_before_verify(self):
+        for second in ('designated => different', 'no requirement',
+                       'designated => one\ndesignated => two'):
+            calls = []
+            def run(args, *unused):
+                calls.append(args)
+                return 'designated => expected' if len(calls) == 1 else second
+            with self.subTest(second=second), self.assertRaises(PreflightError):
+                require_same_designated_identity('creator', 'daemon', run)
+            self.assertTrue(all('-d' in args for args in calls))
+
+    def test_matching_requirement_verifies_both_actual_images(self):
+        calls = []
+        requirement = 'identifier "com.cryptex.development.daemon" and anchor H"abc"'
+        def run(args, *unused):
+            calls.append(args)
+            return 'designated => ' + requirement
+        with redirect_stdout(io.StringIO()):
+            require_same_designated_identity('creator', 'daemon', run)
+        self.assertEqual([args[-1] for args in calls[2:]], ['creator', 'daemon'])
+        self.assertTrue(all(args[-2] == '=' + requirement for args in calls[2:]))
 
 
 class DiagnosticTests(unittest.TestCase):
