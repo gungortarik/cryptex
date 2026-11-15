@@ -315,6 +315,9 @@ pub(crate) fn serve(
 ) -> io::Result<()> {
     validate_existing(root)?;
     let mut backend = Backend::new(root)?;
+    bound_runtime_admission(root, instance)?
+        .bind_namespace(backend.namespace.clone())
+        .map_err(io::Error::other)?;
     prepare_existing_runtime(root, instance, &backend.namespace)?;
     // Open an explicitly enrolled owned helper only. Absence is local-only;
     // never generate/adopt a profile or infer peer trust during native startup.
@@ -325,6 +328,10 @@ pub(crate) fn serve(
         None
     };
     let context = context(root, instance, worker.as_ref().map(Worker::status_reader))?;
+    // No Unix or derived worker is exposed until it shares the original
+    // native namespace capability set and verified device pins.
+    #[cfg(feature = "m8-development-product")]
+    super::spawn_retrieval_server(root, instance, context.store.clone(), context.environment)?;
     let registry = ApprovalSessionRegistry::default();
     let mut domain = super::native_domain::Domain::from_context(context.clone(), &registry);
     send_checked(&backend.namespace, || {

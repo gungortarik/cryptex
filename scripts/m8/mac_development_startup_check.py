@@ -6,14 +6,92 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import uuid
 
-from mac_identity_preflight import PreflightError
+from mac_identity_preflight import PreflightError, checked
+from mac_transport_check import _metadata
 
 
 def canonical_hashes(root):
-    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in (root / "canonical/events").rglob("*.seg")}
+    records = root / "canonical/events"
+    if not records.is_dir() or records.is_symlink():
+        raise PreflightError("development_canonical_baseline_missing")
+    result = {}
+    for directory, dirs, files in os.walk(records, followlinks=False):
+        for name in dirs:
+            if (Path(directory) / name).is_symlink():
+                raise PreflightError("development_canonical_object_unsafe")
+        for name in files:
+            path = Path(directory) / name
+            metadata = path.lstat()
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                raise PreflightError("development_canonical_object_unsafe")
+            if name not in ("writer.lock", "writer_tip.json"):
+                result[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return result
+
+
+class FencedRun:
+    """Only a returned bounded result proves our captured process group was reaped."""
+    def __init__(self, run_bounded):
+        self.run_bounded = run_bounded
+        self.stopped = True
+
+    def outcome(self, args, timeout):
+        self.stopped = False
+        result = self.run_bounded([str(arg) for arg in args], timeout)
+        self.stopped = True
+        return result
+
+    def checked(self, args, label, timeout):
+        return checked(self.outcome, args, label, timeout)
+
+
+def exercise_profile(root, desktop, fixture_daemon, manifest, run_bounded, run):
+    profile = root / "development-pilot-runtime"
+    profile.mkdir(mode=0o700)  # Exclusive fresh fixture; never adopt an owner profile.
+    (profile / "pilot-runtime.marker").write_bytes(b"m0-native-desktop-runtime-v1\n")
+    fence = FencedRun(run_bounded)
+    completed = False
+    try:
+        fence.checked([fixture_daemon, "pilot-fixture", "signed-transfer-v1", "--runtime-root", profile,
+                       "--confirm-isolated-pilot"], "prepare_development_existing_profile", 45)
+        before = canonical_hashes(profile)
+        if not before:
+            raise PreflightError("development_canonical_baseline_missing")
+        for attempt in range(2):
+            output = fence.checked([desktop, "--cryptex-development-check", profile],
+                                   "development_normal_startup_restart", 60)
+            if "development_existing_profile_startup_and_cleanup=passed" not in output.splitlines():
+                raise PreflightError("development_startup_marker_missing")
+            if canonical_hashes(profile) != before:
+                raise PreflightError("development_restart_changed_canonical")
+        original = manifest.read_bytes()
+        try:
+            manifest.write_bytes(original + b" ")
+            require_refusal(fence.outcome([desktop, "--cryptex-development-check", profile], 30),
+                            "local_signed_startup_Inventory")
+        finally:
+            manifest.write_bytes(original)
+        if canonical_hashes(profile) != before:
+            raise PreflightError("development_refusal_changed_canonical")
+        completed = True
+    finally:
+        # Even a nonzero exit, timeout or missing marker gets exact-key cleanup
+        # once the bounded runner has reaped its captured process group. A raw
+        # runner exception has no such guarantee: preserve evidence and refuse.
+        if not fence.stopped:
+            raise PreflightError("development_cleanup_writer_unresolved")
+        metadata = profile / "identity/local_device.json"
+        if metadata.exists():
+            device = str(uuid.UUID(_metadata(metadata)["device_id"]))
+            run(["/usr/bin/security", "delete-generic-password", "-s", "Cryptex-Dev-DeviceCredentials",
+                 "-a", "device-event-signing-seed:" + device], "cleanup_development_device_key", 30)
+        elif completed:
+            raise PreflightError("development_cleanup_identity_missing")
+        if completed:
+            shutil.rmtree(profile)
 
 
 def require_refusal(outcome, code):
@@ -68,37 +146,6 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
     if missing.exists():
         raise PreflightError("development_missing_profile_created")
 
-    profile = root / "development-pilot-runtime"
-    profile.mkdir(mode=0o700)
-    (profile / "pilot-runtime.marker").write_bytes(b"m0-native-desktop-runtime-v1\n")
-    # Only the separate fixture binary creates test input. The development app
-    # cannot enter this command or create a signing identity during startup.
-    run([fixture_daemon, "pilot-fixture", "signed-transfer-v1", "--runtime-root", profile,
-         "--confirm-isolated-pilot"], "prepare_development_existing_profile", 45)
-    device = str(uuid.UUID(json.loads((profile / "identity/local_device.json").read_text())["device_id"]))
-    before = canonical_hashes(profile)
-    if not before:
-        raise PreflightError("development_canonical_baseline_missing")
-    # On an uncertain child exit, deliberately leave key/profile for diagnosis.
-    # Success requires the native close acknowledgement and actual child reaping.
-    for attempt in range(2):
-        output = run([desktop, "--cryptex-development-check", profile],
-                     "development_normal_startup_restart", 60)
-        if "development_existing_profile_startup_and_cleanup=passed" not in output.splitlines():
-            raise PreflightError("development_startup_marker_missing")
-        if canonical_hashes(profile) != before:
-            raise PreflightError("development_restart_changed_canonical")
-    manifest = bundle / "Contents/Resources/m8-startup.json"
-    original = manifest.read_bytes()
-    try:
-        manifest.write_bytes(original + b" ")
-        outcome = run_bounded([str(desktop), "--cryptex-development-check", str(profile)], 30)
-        require_refusal(outcome, "local_signed_startup_Inventory")
-    finally:
-        manifest.write_bytes(original)
-    if canonical_hashes(profile) != before:
-        raise PreflightError("development_refusal_changed_canonical")
-    run(["/usr/bin/security", "delete-generic-password", "-s", "Cryptex-Dev-DeviceCredentials",
-         "-a", "device-event-signing-seed:" + device], "cleanup_development_device_key", 30)
-    shutil.rmtree(profile)
+    exercise_profile(root, desktop, fixture_daemon, bundle / "Contents/Resources/m8-startup.json",
+                     run_bounded, run)
     print("development_native_existing_profile_restart_and_refusals=passed")

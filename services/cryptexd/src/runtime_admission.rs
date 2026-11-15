@@ -60,6 +60,10 @@ struct Inner {
     owner: Weak<File>,
     state: Mutex<State>,
     changed: Condvar,
+    #[cfg(target_os = "macos")]
+    namespace: std::sync::OnceLock<crate::import_staging::macos_fs::RuntimeIdentity>,
+    #[cfg(target_os = "macos")]
+    namespace_failed: std::sync::atomic::AtomicBool,
     #[cfg(test)]
     _test_owner: Option<Arc<File>>,
 }
@@ -68,6 +72,37 @@ struct Inner {
 pub(crate) struct RuntimeAdmission(Arc<Inner>);
 
 impl RuntimeAdmission {
+    /// Publish the original native capability set before exposing any workers.
+    /// Clones share later verified device pins; no caller can refresh the root.
+    #[cfg(all(target_os = "macos", any(feature = "m8-local-startup-check", test)))]
+    pub(crate) fn bind_namespace(
+        &self,
+        namespace: crate::import_staging::macos_fs::RuntimeIdentity,
+    ) -> Result<(), AdmissionError> {
+        if !namespace.belongs_to(&self.0.root) {
+            return Err(AdmissionError::WrongRuntime);
+        }
+        self.0.namespace.set(namespace).map_err(|_| AdmissionError::WrongRuntime)?;
+        self.check_namespace()
+    }
+
+    /// This check also applies to an already admitted, asynchronously queued
+    /// worker and its actual reply. A detected replacement is a monotone hold.
+    pub(crate) fn check_namespace(&self) -> Result<(), AdmissionError> {
+        #[cfg(target_os = "macos")]
+        if self.0.namespace_failed.load(std::sync::atomic::Ordering::Acquire)
+            || self.0.namespace.get().is_some_and(|namespace| namespace.validate().is_err()) {
+            self.0.namespace_failed.store(true, std::sync::atomic::Ordering::Release);
+            if let Ok(mut state) = self.0.state.lock()
+                && state.hold != Some(RuntimeHold::Stopped)
+            {
+                state.hold = Some(RuntimeHold::RecoveryRequired);
+            }
+            self.0.changed.notify_all();
+            return Err(AdmissionError::Held(RuntimeHold::RecoveryRequired));
+        }
+        Ok(())
+    }
     /// Bind domain work to this exact instance-owned admission allocation.
     /// A valid lease from another root or another incarnation is not authority
     /// for this runtime. Existing admitted work can still drain after stop.
@@ -79,7 +114,7 @@ impl RuntimeAdmission {
         if self.0.root != root || !Arc::ptr_eq(&self.0, &permit._lease.admission.0) {
             return Err(AdmissionError::WrongRuntime);
         }
-        Ok(())
+        self.check_namespace()
     }
 
     pub(crate) fn new(root: &Path, owner: Weak<File>) -> Self {
@@ -88,6 +123,10 @@ impl RuntimeAdmission {
             owner,
             state: Mutex::new(State::default()),
             changed: Condvar::new(),
+            #[cfg(target_os = "macos")]
+            namespace: std::sync::OnceLock::new(),
+            #[cfg(target_os = "macos")]
+            namespace_failed: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
             _test_owner: None,
         }))
@@ -97,6 +136,7 @@ impl RuntimeAdmission {
         if self.0.root != root {
             return Err(AdmissionError::WrongRuntime);
         }
+        self.check_namespace()?;
         let mut state = self
             .0
             .state
@@ -135,6 +175,7 @@ impl RuntimeAdmission {
         if self.0.root != root {
             return Err(AdmissionError::WrongRuntime);
         }
+        self.check_namespace()?;
         let mut state = self
             .0
             .state
@@ -247,6 +288,10 @@ impl RuntimeAdmission {
             owner: Arc::downgrade(&owner),
             state: Mutex::new(State::default()),
             changed: Condvar::new(),
+            #[cfg(target_os = "macos")]
+            namespace: std::sync::OnceLock::new(),
+            #[cfg(target_os = "macos")]
+            namespace_failed: std::sync::atomic::AtomicBool::new(false),
             _test_owner: Some(owner),
         }))
     }
@@ -259,8 +304,16 @@ pub(crate) struct OperationPermit {
     _lease: Arc<OperationLease>,
 }
 
+impl OperationPermit {
+    pub(crate) fn check_namespace(&self) -> Result<(), AdmissionError> {
+        self._lease.admission.check_namespace()
+    }
+}
+
 impl Drop for OperationPermit {
     fn drop(&mut self) {
+        // Late workers retain their own lease even after the caller timed out.
+        let _ = self.check_namespace(); // Failure latches recovery in the gate.
         // A worker may panic while the connection still retains another clone.
         // Latch here, rather than waiting for the last clone on a healthy thread.
         if std::thread::panicking() {
@@ -306,10 +359,11 @@ impl ExclusivePermit {
     /// Called only by transaction orchestration after verified recovery and
     /// rebuild, a clean pre-prepare rejection, or a classified failure.
     pub(crate) fn finish(mut self, hold: Option<RuntimeHold>) {
+        let namespace_valid = self.admission.check_namespace().is_ok();
         drop(self._owner.take());
         if let Ok(mut state) = self.admission.0.state.lock() {
             if state.hold != Some(RuntimeHold::Stopped) {
-                state.hold = hold;
+                state.hold = if namespace_valid { hold } else { Some(RuntimeHold::RecoveryRequired) };
             }
             state.exclusive = false;
         }
@@ -342,6 +396,26 @@ mod tests {
 
     fn deadline() -> Instant {
         Instant::now() + Duration::from_secs(3)
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn original_namespace_cannot_rebind_or_clear_drift_through_recovery() {
+        use crate::import_staging::macos_fs::RuntimeIdentity;
+        let root = crate::test_temp::exclusive_temp_dir("namespace-admission");
+        let admission = RuntimeAdmission::detached_for_tests(&root);
+        admission.bind_namespace(RuntimeIdentity::capture(&root).unwrap()).unwrap();
+        assert_eq!(admission.bind_namespace(RuntimeIdentity::capture(&root).unwrap()), Err(AdmissionError::WrongRuntime));
+        let recovery = admission.exclusive(&root, deadline(), true).unwrap();
+        let preserved = root.with_extension("original");
+        std::fs::rename(&root, &preserved).unwrap();
+        std::fs::create_dir(&root).unwrap();
+        recovery.finish(None);
+        std::fs::remove_dir(&root).unwrap();
+        std::fs::rename(preserved, &root).unwrap();
+        assert!(matches!(admission.enter(&root), Err(AdmissionError::Held(RuntimeHold::RecoveryRequired))));
+        assert!(matches!(admission.exclusive(&root, deadline(), true), Err(AdmissionError::Held(RuntimeHold::RecoveryRequired))));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

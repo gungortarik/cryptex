@@ -9,7 +9,7 @@ use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[cfg(test)]
 pub(super) use std::fs::{copy, create_dir_all, hard_link, read, remove_dir_all, rename, write};
@@ -141,9 +141,10 @@ pub(crate) struct Directory {
     names: Vec<CString>,
 }
 
+#[derive(Clone)]
 pub(crate) struct RuntimeIdentity {
     root: PathBuf,
-    pins: std::cell::RefCell<std::collections::BTreeMap<PathBuf, Directory>>,
+    pins: Arc<Mutex<std::collections::BTreeMap<PathBuf, Directory>>>,
 }
 impl RuntimeIdentity {
     pub(crate) fn capture(root: &Path) -> io::Result<Self> {
@@ -151,7 +152,7 @@ impl RuntimeIdentity {
         let root = normalize(root)?;
         Ok(Self {
             root: root.clone(),
-            pins: std::cell::RefCell::new(std::collections::BTreeMap::from([(root, directory)])),
+            pins: Arc::new(Mutex::new(std::collections::BTreeMap::from([(root, directory)]))),
         })
     }
     pub(crate) fn pin(&self, path: &Path) -> io::Result<()> {
@@ -160,9 +161,9 @@ impl RuntimeIdentity {
         if !key.starts_with(&self.root) {
             return Err(unsafe_object());
         }
-        if !self.pins.borrow().contains_key(&key) {
+        let mut pins = self.pins.lock().map_err(|_| unsafe_object())?;
+        if !pins.contains_key(&key) {
             let directory = {
-                let pins = self.pins.borrow();
                 let ancestor = pins
                     .iter()
                     .filter(|(p, _)| key.starts_with(p))
@@ -171,15 +172,20 @@ impl RuntimeIdentity {
                     .ok_or_else(unsafe_object)?;
                 ancestor.open_descendant(path)?
             };
-            self.pins.borrow_mut().insert(key, directory);
+            pins.insert(key, directory);
         }
+        drop(pins);
         self.validate()
     }
     pub(crate) fn validate(&self) -> io::Result<()> {
-        for directory in self.pins.borrow().values() {
+        for directory in self.pins.lock().map_err(|_| unsafe_object())?.values() {
             directory.validate()?;
         }
         Ok(())
+    }
+    #[cfg(any(feature = "m8-local-startup-check", test))]
+    pub(crate) fn belongs_to(&self, root: &Path) -> bool {
+        normalize(root).is_ok_and(|root| root == self.root)
     }
     // Only called after the daemon's authorized bounded cleanup removed this
     // exact subtree. Other original capabilities are never replaced/refreshed.
@@ -193,7 +199,7 @@ impl RuntimeIdentity {
             _ => return Err(unsafe_object()),
         }
         self.pins
-            .borrow_mut()
+            .lock().map_err(|_| unsafe_object())?
             .retain(|path, _| !path.starts_with(&key));
         self.validate()
     }
@@ -759,7 +765,7 @@ mod tests {
     fn runtime_pins_share_original_ancestors_and_release_descriptors() {
         let root = root();
         let identity = RuntimeIdentity::capture(&root).unwrap();
-        let initial = identity.pins.borrow()[&normalize(&root).unwrap()]
+        let initial = identity.pins.lock().unwrap()[&normalize(&root).unwrap()]
             .files
             .len();
         for index in 0..32 {
@@ -769,7 +775,7 @@ mod tests {
             identity.pin(&child).unwrap();
         }
         let weak = {
-            let pins = identity.pins.borrow();
+            let pins = identity.pins.lock().unwrap();
             let distinct = pins
                 .values()
                 .flat_map(|p| p.files.iter())

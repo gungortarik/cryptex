@@ -77,7 +77,9 @@ impl AdmittedReply {
                 "owner reply deadline exceeded",
             ));
         }
+        self._permit.check_namespace().map_err(io::Error::other)?;
         send(&self.bytes, self.deadline)?;
+        self._permit.check_namespace().map_err(io::Error::other)?;
         if Instant::now() >= self.deadline {
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
@@ -133,6 +135,36 @@ mod tests {
             })
             .unwrap();
         admission.stop_and_drain(Instant::now()).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn original_namespace_is_checked_before_and_after_actual_reply_send() {
+        use crate::import_staging::macos_fs::RuntimeIdentity;
+        for before in [true, false] {
+            let root = crate::test_temp::exclusive_temp_dir("reply-namespace");
+            let admission = RuntimeAdmission::detached_for_tests(&root);
+            admission.bind_namespace(RuntimeIdentity::capture(&root).unwrap()).unwrap();
+            let reply = AdmittedReply::new(body(), admission.enter(&root).unwrap(),
+                Instant::now() + Duration::from_secs(3)).unwrap();
+            let original = root.with_extension("original");
+            let replace = || {
+                std::fs::rename(&root, &original).unwrap();
+                std::fs::create_dir(&root).unwrap();
+            };
+            if before { replace(); }
+            let mut sent = false;
+            assert!(reply.send_using(|_, _| {
+                sent = true;
+                replace();
+                Ok(())
+            }).is_err());
+            assert_eq!(sent, !before);
+            std::fs::remove_dir(&root).unwrap();
+            std::fs::rename(original, &root).unwrap();
+            assert!(admission.enter(&root).is_err());
+            std::fs::remove_dir_all(root).unwrap();
+        }
     }
 
     #[test]

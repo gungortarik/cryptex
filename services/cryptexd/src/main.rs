@@ -49,8 +49,7 @@ fn main() {
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
     let ordinary_ipc = !_startup_guard
         .as_ref()
-        .is_some_and(|guard| guard.is_content_mode())
-        || cfg!(feature = "m8-development-product");
+        .is_some_and(|guard| guard.is_content_mode());
     let result = run_with_ready(
         std::mem::take(&mut args),
         ordinary_ipc,

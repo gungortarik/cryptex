@@ -87,6 +87,8 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
         for selection in ("managed_profile::macos::tests::", "owned_process::macos::tests::",
                           "ipc::native_profile::tests::", "import_staging::macos_inbox::tests::",
                           "incoming_publication::tests::", "runtime_admission::tests::",
+                          "ipc::tests::original_namespace_",
+                          "m8_owner_channel::reply::tests::",
                           "capture::tests::concurrent_matching_capture_ids_append_once",
                           "import_staging::macos_fs::tests::"):
             run(fixture_rust_command(cargo, "test", "--locked", "-p", "cryptexd", "--features", "m8-local-startup-check",

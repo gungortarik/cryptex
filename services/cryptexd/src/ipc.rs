@@ -711,6 +711,8 @@ impl SearchContext {
         let mut context = self.clone();
         if context.operation.is_none() {
             context.operation = Some(self.admission.enter(&self.runtime_root)?);
+        } else if let Some(permit) = &context.operation {
+            self.admission.validate_operation(&self.runtime_root, permit)?;
         }
         Ok(context)
     }
@@ -792,6 +794,7 @@ fn synchronize_local_derived_state(context: &SearchContext) -> Result<(), Derive
         &mut db,
     )
     .map_err(|_| DerivedCatchupError::KnowledgeRebuildFailed)?;
+    context.admission.check_namespace().map_err(|_| DerivedCatchupError::RuntimeHeld)?;
     Ok(())
 }
 
@@ -2306,7 +2309,14 @@ fn handle_connection_via(
             ),
         }
     };
-    write_response(stream, &response_bytes, write_deadline)
+    if let Some(context) = &admitted_search {
+        context.admission.check_namespace().map_err(io::Error::other)?;
+    }
+    write_response(stream, &response_bytes, write_deadline)?;
+    if let Some(context) = &admitted_search {
+        context.admission.check_namespace().map_err(io::Error::other)?;
+    }
+    Ok(())
 }
 
 fn runtime_operation_held(request: &Request, code: &'static str) -> io::Result<Vec<u8>> {
@@ -4220,6 +4230,26 @@ fn handle_enrollment(
     peer_is_desktop: bool,
 ) -> DesktopEnrollmentResponse {
     let request_id = request.request_id.clone();
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return enrollment_rejected(Some(request_id), error.code());
+    }
+    let response = handle_enrollment_checked(request, context, peer_is_desktop);
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return enrollment_rejected(Some(request_id), error.code());
+    }
+    response
+}
+
+fn handle_enrollment_checked(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+) -> DesktopEnrollmentResponse {
+    let request_id = request.request_id.clone();
     let authorization_error = if request.protocol_version != PROTOCOL_VERSION {
         Some("incompatible_protocol_version")
     } else if request.request_id.is_empty() || request.request_id.len() > 128 {
@@ -4306,6 +4336,27 @@ fn handle_search(
 }
 
 fn handle_search_until(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+    deadline: Option<Instant>,
+) -> DesktopSearchResponse {
+    let request_id = request.request_id.clone();
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return search_held(Some(request_id), error.code());
+    }
+    let response = handle_search_until_checked(request, context, peer_is_desktop, deadline);
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return search_held(Some(request_id), error.code());
+    }
+    response
+}
+
+fn handle_search_until_checked(
     request: Request,
     context: Option<&SearchContext>,
     peer_is_desktop: bool,
@@ -4425,6 +4476,27 @@ fn handle_timeline_until(
     deadline: Option<Instant>,
 ) -> DesktopSearchResponse {
     let request_id = request.request_id.clone();
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return timeline_held(Some(request_id), error.code());
+    }
+    let response = handle_timeline_until_checked(request, context, peer_is_desktop, deadline);
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return timeline_held(Some(request_id), error.code());
+    }
+    response
+}
+
+fn handle_timeline_until_checked(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+    deadline: Option<Instant>,
+) -> DesktopSearchResponse {
+    let request_id = request.request_id.clone();
     let authorization_error = if request.protocol_version != PROTOCOL_VERSION {
         Some("incompatible_protocol_version")
     } else if request.request_id.is_empty() || request.request_id.len() > 128 {
@@ -4532,6 +4604,27 @@ fn handle_timeline_until(
 }
 
 fn handle_event_detail_until(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+    deadline: Option<Instant>,
+) -> DesktopSearchResponse {
+    let request_id = request.request_id.clone();
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return event_detail_held(Some(request_id), error.code());
+    }
+    let response = handle_event_detail_until_checked(request, context, peer_is_desktop, deadline);
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return event_detail_held(Some(request_id), error.code());
+    }
+    response
+}
+
+fn handle_event_detail_until_checked(
     request: Request,
     context: Option<&SearchContext>,
     peer_is_desktop: bool,
@@ -4890,6 +4983,26 @@ fn handle_vault_rebuild(
     peer_is_desktop: bool,
 ) -> DesktopVaultResponse {
     let request_id = request.request_id.clone();
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return vault_held(Some(request_id), error.code());
+    }
+    let response = handle_vault_rebuild_checked(request, context, peer_is_desktop);
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return vault_held(Some(request_id), error.code());
+    }
+    response
+}
+
+fn handle_vault_rebuild_checked(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+) -> DesktopVaultResponse {
+    let request_id = request.request_id.clone();
     let authorization_error = if request.protocol_version != PROTOCOL_VERSION {
         Some("incompatible_protocol_version")
     } else if request.request_id.is_empty() || request.request_id.len() > 128 {
@@ -5128,6 +5241,26 @@ where
 }
 
 fn handle_capture_until(
+    request: Request,
+    context: Option<&SearchContext>,
+    peer_is_desktop: bool,
+) -> DesktopCaptureResponse {
+    let request_id = request.request_id.clone();
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return capture_rejected(Some(request_id), error.code());
+    }
+    let response = handle_capture_until_checked(request, context, peer_is_desktop);
+    if let Some(context) = context
+        && let Err(error) = context.admission.check_namespace()
+    {
+        return capture_uncertain(Some(request_id), error.code());
+    }
+    response
+}
+
+fn handle_capture_until_checked(
     request: Request,
     context: Option<&SearchContext>,
     peer_is_desktop: bool,
@@ -6890,6 +7023,53 @@ pub(crate) mod tests {
             synchronize_local_derived_state(&fixture.context),
             Err(DerivedCatchupError::RuntimeHeld)
         ));
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn original_namespace_guards_unix_capture_queued_workers_and_derived_rebuild() {
+        use crate::import_staging::macos_fs::RuntimeIdentity;
+        let fixture = prepared_search_fixture("original-namespace");
+        let namespace = RuntimeIdentity::capture(&fixture.root).unwrap();
+        fixture.context.admission.bind_namespace(namespace.clone()).unwrap();
+        // A later verified device pin must be visible to every cloned context.
+        let device = cryptex_storage::canonical_events_device_dir(&fixture.root, &fixture.device);
+        namespace.pin(&device).unwrap();
+        let queued = fixture.context.admitted().unwrap();
+        let preserved = fixture.root.join("original-device");
+        fs::rename(&device, &preserved).unwrap();
+        fs::create_dir(&device).unwrap();
+        let original = fs::read_dir(&preserved).unwrap().map(|entry| {
+            let path = entry.unwrap().path();
+            (path.clone(), fs::read(path).unwrap())
+        }).collect::<Vec<_>>();
+        let request = || capture_request("desktop", vec![CAPABILITY_CONTENT_CAPTURE.into()], sample_capture_body());
+        let response = run_capture_until(request(), Some(queued), true,
+            Instant::now() + Duration::from_secs(3), None);
+        assert_eq!(response.error.as_deref(), Some("runtime_recovery_required"));
+        let context = fixture.context.clone();
+        let (name, listener) = isolated_ipc_listener("namespace-product-socket");
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().unwrap();
+            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true).unwrap();
+        });
+        let mut client = Stream::connect(name.borrow()).unwrap();
+        let mut frame = serde_json::to_vec(&request()).unwrap();
+        frame.push(b'\n');
+        let deadline = Instant::now() + Duration::from_secs(3);
+        write_ipc_all(&mut client, &frame, deadline).unwrap();
+        let response: serde_json::Value = serde_json::from_slice(
+            &read_ipc_frame(&mut client, MAX_CAPTURE_RESPONSE_BYTES, deadline).unwrap()).unwrap();
+        assert_eq!(response["error"], "runtime_recovery_required");
+        assert_eq!(response["accepted"], false);
+        server.join().unwrap();
+        assert!(matches!(synchronize_local_derived_state(&fixture.context), Err(DerivedCatchupError::RuntimeHeld)));
+        assert_eq!(fs::read_dir(&device).unwrap().count(), 0);
+        for (path, bytes) in original { assert_eq!(fs::read(path).unwrap(), bytes); }
+        fs::remove_dir(&device).unwrap();
+        fs::rename(preserved, &device).unwrap();
+        assert!(fixture.context.admitted().is_err(), "restoring names cannot clear the hold");
         fs::remove_dir_all(fixture.root).unwrap();
     }
 

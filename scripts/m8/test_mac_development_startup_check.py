@@ -2,10 +2,12 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
+import tempfile
+import json
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mac_development_startup_check import require_refusal
+from mac_development_startup_check import require_refusal, canonical_hashes, exercise_profile
 from mac_identity_preflight import PreflightError
 
 
@@ -19,6 +21,69 @@ class RefusalTests(unittest.TestCase):
                        dict(output="some_other_error\n")):
             with self.subTest(change=change), self.assertRaises(PreflightError):
                 require_refusal(SimpleNamespace(**(base | change)), "local_signed_startup_Inventory")
+
+
+class ProfileTests(unittest.TestCase):
+    def test_hashes_include_active_tails_and_new_records(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            records = root / "canonical/events/device"
+            records.mkdir(parents=True)
+            (records / "one.seg").write_bytes(b"sealed")
+            active = records / "two.open"
+            active.write_bytes(b"active")
+            before = canonical_hashes(root)
+            self.assertEqual(len(before), 2)
+            active.write_bytes(b"changed")
+            self.assertNotEqual(before, canonical_hashes(root))
+            active.write_bytes(b"active")
+            (records / "extra.seg").write_bytes(b"new")
+            self.assertNotEqual(before, canonical_hashes(root))
+
+    def test_failure_cleanup_requires_reaped_writer_and_keeps_diagnostics(self):
+        for failure in ("exit", "timeout", "marker", "raw", "active", "success"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                manifest = root / "inventory.json"
+                manifest.write_bytes(b"{}")
+                calls = []
+                device = "11111111-1111-4111-8111-111111111111"
+                def bounded(args, timeout):
+                    profile = root / "development-pilot-runtime"
+                    result = dict(code=0, timed_out=False, limited=False, pipe_failed=False,
+                                  output="development_existing_profile_startup_and_cleanup=passed\n")
+                    if args[0] == "fixture":
+                        (profile / "identity").mkdir()
+                        (profile / "identity/local_device.json").write_text(json.dumps({"device_id": device}))
+                        records = profile / "canonical/events/device"
+                        records.mkdir(parents=True)
+                        (records / "one.seg").write_bytes(b"sealed")
+                        (records / "two.open").write_bytes(b"active")
+                    elif manifest.read_bytes() != b"{}":
+                        result.update(code=2, output="local_signed_startup_Inventory\n")
+                    elif failure == "raw":
+                        raise OSError("unresolved group")
+                    elif failure == "exit":
+                        result["code"] = 2
+                    elif failure == "timeout":
+                        result["timed_out"] = True
+                    elif failure == "marker":
+                        result["output"] = ""
+                    elif failure == "active":
+                        (profile / "canonical/events/device/two.open").write_bytes(b"changed")
+                    return SimpleNamespace(**result)
+                def cleanup(args, label, timeout):
+                    calls.append(args)
+                if failure == "success":
+                    exercise_profile(root, "desktop", "fixture", manifest, bounded, cleanup)
+                else:
+                    with self.assertRaises(PreflightError):
+                        exercise_profile(root, "desktop", "fixture", manifest, bounded, cleanup)
+                self.assertEqual(len(calls), 0 if failure == "raw" else 1)
+                if calls:
+                    self.assertEqual(calls[0][-1], "device-event-signing-seed:" + device)
+                self.assertEqual((root / "development-pilot-runtime").exists(), failure != "success")
+                self.assertEqual(manifest.read_bytes(), b"{}")
 
 
 if __name__ == "__main__":
