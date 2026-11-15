@@ -273,6 +273,20 @@ pub struct Prepared {
     deadline: Instant,
     content_profile: Option<ContentProfile>,
 }
+
+/// Retain authenticated UI bytes before singleton selection. This opens no
+/// rendezvous, starts no child and grants no native session. The selected owner
+/// must still verify its own release and bind these exact bytes before a webview
+/// is created. In particular, a user prompt cannot consume the native deadline.
+#[cfg(feature = "m8-development-product")]
+pub fn verified_desktop_content(timeout: Duration) -> Result<crate::ProtectedContent, Error> {
+    crate::import_staging::macos_fs::require_product_os().map_err(|_| Error::Image)?;
+    let deadline = Instant::now().checked_add(timeout).ok_or(Error::Deadline)?;
+    let content = Release::current(Role::Desktop, deadline)?.frontend()?;
+    check_time(deadline)?;
+    Ok(content)
+}
+
 impl Prepared {
     pub fn current_desktop(timeout: Duration) -> Result<Self, Error> {
         let deadline = Instant::now().checked_add(timeout).ok_or(Error::Deadline)?;

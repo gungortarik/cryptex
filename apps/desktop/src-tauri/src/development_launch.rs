@@ -31,9 +31,101 @@ pub fn runtime(home: Option<&OsStr>) -> Result<PathBuf, &'static str> {
     Ok(home.join("Library/Application Support/Cryptex-Dev/runtime/p0-2"))
 }
 
+/// UI lifecycle only; this state never authorizes a daemon operation.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub enum Lifecycle {
+    #[default]
+    Opening,
+    Ready,
+    ConfirmingQuit,
+    Stopping,
+    ExitReady,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Quit {
+    Proceed,
+    Confirm,
+    Prevent,
+}
+
+impl Lifecycle {
+    pub fn ready(&mut self) -> bool {
+        if *self != Self::Opening {
+            return false;
+        }
+        *self = Self::Ready;
+        true
+    }
+
+    pub fn request_quit(&mut self, draft_unresolved: bool) -> Quit {
+        match self {
+            Self::ConfirmingQuit | Self::Stopping => Quit::Prevent,
+            Self::ExitReady => Quit::Proceed,
+            Self::Ready if draft_unresolved => {
+                *self = Self::ConfirmingQuit;
+                Quit::Confirm
+            }
+            _ => {
+                *self = Self::Stopping;
+                Quit::Proceed
+            }
+        }
+    }
+
+    pub fn confirm_quit(&mut self, discard: bool) -> Quit {
+        if *self != Self::ConfirmingQuit {
+            return Quit::Prevent;
+        }
+        *self = if discard { Self::Stopping } else { Self::Ready };
+        if discard { Quit::Proceed } else { Quit::Prevent }
+    }
+
+    pub fn shutdown_complete(&mut self) {
+        if *self == Self::Stopping {
+            *self = Self::ExitReady;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cancelled_quit_preserves_session_and_serializes_nested_requests() {
+        let mut lifecycle = Lifecycle::default();
+        assert!(lifecycle.ready());
+        assert_eq!(lifecycle.request_quit(true), Quit::Confirm);
+        assert_eq!(lifecycle.request_quit(false), Quit::Prevent);
+        assert_eq!(lifecycle.confirm_quit(false), Quit::Prevent);
+        assert_eq!(lifecycle, Lifecycle::Ready);
+        assert_eq!(lifecycle.request_quit(true), Quit::Confirm);
+        assert_eq!(lifecycle.confirm_quit(true), Quit::Proceed);
+        assert!(!lifecycle.ready());
+    }
+
+    #[test]
+    fn cancelled_startup_cannot_later_open_a_window_or_request_draft_discard() {
+        let mut lifecycle = Lifecycle::default();
+        assert_eq!(lifecycle.request_quit(true), Quit::Proceed);
+        assert!(!lifecycle.ready());
+        assert_eq!(lifecycle.confirm_quit(true), Quit::Prevent);
+    }
+
+    #[test]
+    fn clean_quit_does_not_prompt_and_cannot_be_revived() {
+        let mut lifecycle = Lifecycle::default();
+        assert!(lifecycle.ready());
+        assert_eq!(lifecycle.request_quit(false), Quit::Proceed);
+        assert_eq!(lifecycle.confirm_quit(false), Quit::Prevent);
+        assert!(!lifecycle.ready());
+        // A nested Quit during shutdown must not claim clean exit prematurely.
+        assert_eq!(lifecycle.request_quit(false), Quit::Prevent);
+        lifecycle.shutdown_complete();
+        assert_eq!(lifecycle.request_quit(true), Quit::Proceed);
+        assert!(!lifecycle.ready());
+    }
 
     #[test]
     fn normal_entry_has_no_fixture_or_path_override() {
