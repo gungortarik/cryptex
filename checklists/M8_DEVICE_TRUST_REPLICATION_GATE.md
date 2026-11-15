@@ -19,8 +19,11 @@ reproduced the same rejection/EMFILE path with a256-descriptor budget. Correctio
 nativeCI43681948389 passed both platforms, including the exported Mac transport
 launcher under256. The [correction receipt](../evidence/m8/m8-macos-descriptor-correction-20261115.json)
 records passed fullCI43682159822 on the same source (Mac591/Windows682 daemon
-tests, zero failures) and the corrected owner package. Physical owner acceptance of the
-correction remains open; earlier owner failures are preserved. Ordinary activation, peer/folder/cross-device durable
+tests, zero failures) and the corrected owner package. The corrected
+[owner return5ca78781](../evidence/m8/m8-macos-descriptor-owner-acceptance-20261115.json)
+passes all13 commands,12 expected markers and five completion flags under256;
+the bounded local owner acceptance gate is closed. Earlier failed-source receipts
+remain historical evidence. Ordinary activation, peer/folder/cross-device durable
 replication, installed UX and full protocol/M8 acceptance remain open. This
 supersedes earlier adapter-pending notes only within the default-off candidate.
 

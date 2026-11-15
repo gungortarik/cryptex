@@ -2,6 +2,22 @@
 
 ## Mac descriptor correction and owner acceptance — November15
 
+Latest owner return `MAC-AKTARIM-SONUC-5ca78781.zip` PASSED. Its source7fc6d44
+and collector3c97921 match the corrected CI-executed package. All13 command
+receipts exit0 without timeout, output/pipe failure or startup diagnostics;
+all12 required identity/mutation/pairing/import/restart markers and five final
+completion flags pass under inherited soft FD limit256. This is owner-provided
+aggregate evidence, not independently observed hardware execution. See the
+[bounded owner receipt](../evidence/m8/m8-macos-descriptor-owner-acceptance-20261115.json).
+The descriptor-exhaustion correction is now accepted within this isolated local
+fixture. Do not repeat this owner package. Remaining work is ordinary product
+activation/configured image policy, actual peer/folder cross-device durable
+replication and final installed UX/protocol acceptance; M8 remains OPEN. Before
+implementing the next slice, reconcile these gates against current source and
+accepted contracts; this receipt does not authorize silently enabling defaults.
+
+Historical failure and correction evidence follows:
+
 Owner `MAC-AKTARIM-SONUC-8aed5431.zip` matches d956 app and e79b4fa collector.
 Native import is Rejected; the subsequent validation-only command fails opening
 a directory with errno24 (EMFILE). Identity/mutation and exact-key cleanup pass.
@@ -41,8 +57,8 @@ sizes/digests verified, launcher/helpers match7fc6d44. The source-bound collecto
 sets the inherited soft ceiling at most256 before running native checks; actual
 peak FD count was not sampled. Exported-launcher success verifies complete
 pairing/import/restart/loss/cleanup checks within that ceiling, not owner hardware.
-Next: extract on Mac, run `Cryptex-Mac-Aktarim/MAC-AKTARIM.command`,
-return `MAC-AKTARIM-SONUC-*.zip`. Physical owner acceptance and fullM8 remain open.
+Owner execution of `Cryptex-Mac-Aktarim/MAC-AKTARIM.command` has now returned the
+successful5ca78781 receipt above. This bounded owner gate is closed; fullM8 is open.
 
 
 ## Verified Mac filesystem/native integration — November 14

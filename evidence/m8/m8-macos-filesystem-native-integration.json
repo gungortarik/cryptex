@@ -202,8 +202,16 @@
         "native_ci": 43681948389,
         "native_ci_conclusion": "success",
         "soft_fd_ceiling": 256,
-        "physical_owner_acceptance": "pending",
-        "evidence": "evidence/m8/m8-macos-descriptor-correction-20261115.json"
+        "physical_owner_acceptance": "passed_bounded_owner_receipt",
+        "evidence": "evidence/m8/m8-macos-descriptor-correction-20261115.json",
+        "owner_receipt": {
+          "source": "7fc6d44c04419ca02736dc5f4afb550f0616d3a7",
+          "archive_name": "MAC-AKTARIM-SONUC-5ca78781.zip",
+          "archive_sha256": "4d8691c8532bf6ee3ca2e23162297d180392bbbafe352262535a9fee8824a193",
+          "outcome": "passed",
+          "attribution": "owner-provided aggregate receipt; not independently observed device execution",
+          "evidence": "evidence/m8/m8-macos-descriptor-owner-acceptance-20261115.json"
+        }
       }
     }
   },
@@ -226,5 +234,13 @@
     "services/cryptexd/src/runtime_admission.rs": "1af7af2b2b65e18733bd8aabbdd54f76aa01be3d07724614ea807c4cbad161e4",
     "apps/desktop/src-tauri/src/candidate_ui.rs": "fb1426d7525ccb77610e2a5de82007088688b350300ba67de39e7ae1388d21aa",
     "scripts/m8/mac_transport_check.py": "70c704b74e5dcfaad12c4b822d81b9d0b5b3cd615c591cb182feb1db745ee05a"
+  },
+  "superseded_by_corrected_owner_acceptance": {
+    "source": "7fc6d44c04419ca02736dc5f4afb550f0616d3a7",
+    "archive_name": "MAC-AKTARIM-SONUC-5ca78781.zip",
+    "archive_sha256": "4d8691c8532bf6ee3ca2e23162297d180392bbbafe352262535a9fee8824a193",
+    "outcome": "passed",
+    "attribution": "owner-provided aggregate receipt; not independently observed device execution",
+    "evidence": "evidence/m8/m8-macos-descriptor-owner-acceptance-20261115.json"
   }
 }

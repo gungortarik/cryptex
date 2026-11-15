@@ -19,8 +19,9 @@ on Mac and Windows, including the exported Mac transport test under the same256
 limit. The [correction receipt](evidence/m8/m8-macos-descriptor-correction-20261115.json)
 records passed [full CI43682159822](https://github.com/gungortarik/cryptex/actions/runs/43682159822)
 (Mac591/Windows682 daemon tests, zero failures) and the corrected owner package.
-Physical acceptance, ordinary
-activation and actual cross-device synchronization remain open;
+[Owner return5ca78781](evidence/m8/m8-macos-descriptor-owner-acceptance-20261115.json)
+also passed all local import/restart/cleanup checks under256 on the corrected
+candidate. Ordinary activation and actual cross-device synchronization remain open;
 earlier implementation notes below are historical checkpoints.
 
 **Selected authority correction — November 14:** cutoff-bound local admissions

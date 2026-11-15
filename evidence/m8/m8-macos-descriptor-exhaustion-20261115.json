@@ -374,7 +374,15 @@
     "native_ci": 43681948389,
     "native_ci_conclusion": "success",
     "soft_fd_ceiling": 256,
-    "physical_owner_acceptance": "pending",
-    "evidence": "evidence/m8/m8-macos-descriptor-correction-20261115.json"
+    "physical_owner_acceptance": "passed_bounded_owner_receipt",
+    "evidence": "evidence/m8/m8-macos-descriptor-correction-20261115.json",
+    "owner_receipt": {
+      "source": "7fc6d44c04419ca02736dc5f4afb550f0616d3a7",
+      "archive_name": "MAC-AKTARIM-SONUC-5ca78781.zip",
+      "archive_sha256": "4d8691c8532bf6ee3ca2e23162297d180392bbbafe352262535a9fee8824a193",
+      "outcome": "passed",
+      "attribution": "owner-provided aggregate receipt; not independently observed device execution",
+      "evidence": "evidence/m8/m8-macos-descriptor-owner-acceptance-20261115.json"
+    }
   }
 }

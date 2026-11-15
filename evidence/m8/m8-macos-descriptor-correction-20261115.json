@@ -1,7 +1,7 @@
 {
   "scope": "bounded Mac descriptor-use correction; ordinary activation/full M8 remain open",
   "source": "7fc6d44c04419ca02736dc5f4afb550f0616d3a7",
-  "status": "native_and_full_ci_pass_owner_pending",
+  "status": "native_full_ci_and_bounded_owner_pass",
   "native_ci": {
     "run": 43681948389,
     "conclusion": "success",
@@ -48,7 +48,7 @@
     "native_run": 43681948389,
     "artifact_id": 14149117052,
     "soft_fd_ceiling": 256,
-    "owner_acceptance": "pending"
+    "owner_acceptance": "passed_bounded_owner_receipt"
   },
   "python_tests_passed": 35,
   "review": {
@@ -70,5 +70,13 @@
     "services/cryptexd/src/import_staging/cleanup.rs": "ac660551c689cad9c42c416a308b8fff589d19c5d3c58806c91fc83dde1a2a72",
     "scripts/m8/mac_transport_owner.py": "3c97921a1b6e6f88309abe3e52741cad18c59c7e3dafe3e94ffc86c75e0f5a9b",
     "scripts/m8/mac_local_startup_ci.py": "523b90ff64b0ddb12900b83f2f5e428bb9c7765b4b006ac5c14121a4685234e1"
+  },
+  "owner_receipt": {
+    "source": "7fc6d44c04419ca02736dc5f4afb550f0616d3a7",
+    "archive_name": "MAC-AKTARIM-SONUC-5ca78781.zip",
+    "archive_sha256": "4d8691c8532bf6ee3ca2e23162297d180392bbbafe352262535a9fee8824a193",
+    "outcome": "passed",
+    "attribution": "owner-provided aggregate receipt; not independently observed device execution",
+    "evidence": "evidence/m8/m8-macos-descriptor-owner-acceptance-20261115.json"
   }
 }
