@@ -1,0 +1,119 @@
+{
+  "receipt_version": 1,
+  "status": "completed",
+  "conclusion": "success",
+  "headSha": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
+  "scope": "Bounded default-off Darwin filesystem and existing OS-backed profile native domain/session/incoming/status integration; not ordinary activation, physical owner acceptance or full M8 completion",
+  "runs": [
+    {
+      "run_id": 43671790009,
+      "url": "https://github.com/gungortarik/cryptex/actions/runs/43671790009",
+      "role": "full_readiness",
+      "conclusion": "success",
+      "jobs": [
+        { "id": 132683229961, "name": "Readiness (macos-latest)", "conclusion": "success" },
+        { "id": 132683230183, "name": "Readiness (windows-latest)", "conclusion": "success" },
+        { "id": 132683230173, "name": "IPC cross-account ACL (Windows)", "conclusion": "success" }
+      ]
+    },
+    {
+      "run_id": 43671787980,
+      "url": "https://github.com/gungortarik/cryptex/actions/runs/43671787980",
+      "role": "signed_native_startup",
+      "conclusion": "success",
+      "jobs": [
+        { "id": 132683223526, "name": "Desktop startup (macos-latest)", "conclusion": "success" },
+        { "id": 132683223838, "name": "Desktop startup (windows-latest)", "conclusion": "success" }
+      ]
+    }
+  ],
+  "daemon_library": {
+    "macos": { "passed": 589, "failed": 0, "ignored": 7 },
+    "windows": { "passed": 682, "failed": 0, "ignored": 5 }
+  },
+  "mac_filesystem_tests_passed": [
+    "concurrent_canonical_directory_and_lock_creation_preserves_one_namespace",
+    "directory_stream_refuses_an_observed_namespace_change",
+    "disappearing_opened_lock_is_never_recreated_or_split_from_its_holder",
+    "existing_lock_bytes_are_preserved_and_link_aliases_are_refused",
+    "private_descriptor_promotion_is_atomic_and_never_replaces_an_occupied_destination",
+    "retained_directory_and_runtime_identity_refuse_replacement_instead_of_following_it",
+    "staging_refusal_never_rolls_back_a_replacement_transaction",
+    "symlink_hardlink_and_fifo_sources_never_become_regular_snapshots",
+    "unprepared_inventory_never_deletes_a_substituted_valid_transaction_tree",
+    "unsafe_write_permissions_and_extended_allow_acl_are_not_repaired_or_adopted"
+  ],
+  "reply_admission_test_passed_on_both_platforms": "runtime_admission::tests::canonical_reply_closes_new_admission_before_its_real_lease_is_released",
+  "native_markers_passed": [
+    "native_existing_profile_signed_import=passed",
+    "native_existing_profile_restart_replay_and_local_status=passed",
+    "native_managed_pairing_clean_shutdown=passed",
+    "native_managed_pairing_restart_idempotent=passed",
+    "exported_durable_launcher=passed",
+    "exported_transport_launcher=passed",
+    "exported_combined_loss_launcher=passed"
+  ],
+  "native_feature_selections": [
+    "m8_owner_channel::",
+    "managed_profile::macos::tests::",
+    "owned_process::macos::tests::",
+    "ipc::native_profile::tests::",
+    "import_staging::macos_inbox::tests::",
+    "incoming_publication::tests::",
+    "runtime_admission::tests::",
+    "capture::tests::concurrent_matching_capture_ids_append_once",
+    "import_staging::macos_fs::tests::concurrent_canonical_directory_and_lock_creation_preserves_one_namespace"
+  ],
+  "source_review": {
+    "kind": "separate read-only agent review",
+    "agent": "/root/independent_m8_review",
+    "headSha": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
+    "remaining_actionable_findings": 0,
+    "reviewer_executed_tests_or_ci": false,
+    "human_security_certification": false
+  },
+  "owner_acceptance": {
+    "status": "not_run",
+    "artifact_id": 14145435970,
+    "artifact_name": "mac-interactive-ui",
+    "original_nested_archive": "cryptex-mac-transport.zip",
+    "archive_name": "Cryptex-Mac-Profil-d9561d8-70db1c49.zip",
+    "source": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
+    "architecture": "arm64",
+    "expires_utc": "2026-11-16T03:21:56+00:00",
+    "members": 15,
+    "inventory_files_verified": 9,
+    "bytes": 24224511,
+    "sha256": "70db1c49e4e37e53236794737c673d84d4c103c87b816fd93f982be22e7955e4",
+    "launcher": "Cryptex-Mac-Aktarim/MAC-AKTARIM.command",
+    "result_pattern": "MAC-AKTARIM-SONUC-*.zip",
+    "local_archive_checks": [
+      "safe unique relative regular members",
+      "expected executable launcher",
+      "source and expiry match",
+      "nine signed-inventory file sizes and SHA256 digests match",
+      "new existing-profile markers required by bundled checker"
+    ],
+    "signature_execution_verified_on": "Mac CI; Windows archive inspection does not claim native signature verification"
+  },
+  "ordinary_product_activation": false,
+  "m8_status": "OPEN",
+  "m9_started": false,
+  "remaining_gates": [
+    "owner Mac acceptance of changed default-off candidate",
+    "ordinary configured-image/release policy and product activation acceptance",
+    "actual peer/folder synchronization and cross-device durable-replica acceptance",
+    "installed-product UX and final protocol/milestone acceptance"
+  ],
+  "source_files_sha256": {
+    "services/cryptexd/src/import_staging/macos_fs.rs": "1567ff184a8abcce6969a2760a2a6183eb242af8a6307d1989fdf3f9d8b179bc",
+    "services/cryptexd/src/import_staging/macos_fs.c": "d0ca12fd540ee4b89d0f068748db919f5d6ba18cf12066b6ae1bc108d9765042",
+    "services/cryptexd/src/import_staging/macos_inbox.rs": "c57e780dd24a78f16a1c98f9c21079d49abedba8ab30883100ec2122311ef42d",
+    "services/cryptexd/src/ipc/native_domain.rs": "2c2fcf46d4dc0b99e362dac444b82068a6e1572565e5aeb78cd09c3a39341d68",
+    "services/cryptexd/src/ipc/native_profile.rs": "db5036cde10a041731921e6780b12ed0498063d28cf347ec6af28eb6ee30172d",
+    "services/cryptexd/src/m8_owner_channel/transport_helper.rs": "2cd34a1f9d6fbe012cdfbed3235a24595ab8220f14b6ed4d9e378ccca2e4d831",
+    "services/cryptexd/src/runtime_admission.rs": "1af7af2b2b65e18733bd8aabbdd54f76aa01be3d07724614ea807c4cbad161e4",
+    "apps/desktop/src-tauri/src/candidate_ui.rs": "fb1426d7525ccb77610e2a5de82007088688b350300ba67de39e7ae1388d21aa",
+    "scripts/m8/mac_transport_check.py": "70c704b74e5dcfaad12c4b822d81b9d0b5b3cd615c591cb182feb1db745ee05a"
+  }
+}

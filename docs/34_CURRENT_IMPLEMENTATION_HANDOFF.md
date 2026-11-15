@@ -1,7 +1,54 @@
 # 34 — Current Implementation Handoff
 
 
-## Mac filesystem and existing-profile integration — November 14 (verification open)
+## Verified Mac filesystem/native integration — November 14
+
+Verified code: `d9561d81af883bcdcc17bc7893a566ac0b305cdf`. Read the
+[bounded review and owner handoff](../evidence/m8/m8-macos-filesystem-native-integration-review-20261114.md),
+[structured receipt](../evidence/m8/m8-macos-filesystem-native-integration.json)
+and [contract](proposals/m8-macos-import-filesystem-20261114.md).
+
+Darwin publication/recovery/cleanup now uses original descriptor/lock namespace
+bindings. The default-off ExistingProfile connects initialized Keychain identity,
+sealed native requests, connection-local grants, same-instance incoming work and
+conservative status. Canonical-capable replies close new admission before their
+actual reply lease is released; full R4/peer-slot/M3-M4 reconciliation follows
+before new work. Device caps persist through rebuild/publication, every success
+send checks original namespace before/after delivery, and helper readers retain
+the requested locator plus its original no-follow capability. Product mode never
+seeds, creates signing keys, recognizes fixture fault IDs or falls back to Unix.
+macOS26/local development signer remain selected; ordinary activation is closed.
+
+Separate read-only agent review through this code reports no remaining actionable
+finding; it is not a human certification. Both exact runs passed:
+[full43671790009](https://github.com/gungortarik/cryptex/actions/runs/43671790009)
+(Mac589passed/7ignored, Windows682passed/5ignored, Windows ACL, format/lint,
+frontend/conformance/release checks) and
+[native43671787980](https://github.com/gungortarik/cryptex/actions/runs/43671787980)
+(both platform jobs, real signed Mac path and exported launchers). Ten Darwin
+cases include16x8 first creation, preserved existing bytes/link refusal and
+disappearing-opened-lock refusal while its original holder excludes contenders.
+Actual8-way capture and the parallel daemon library pass. Do not resume the old
+ENOENT, seed UUID or /var-association diagnostics without a new failure. No Apple
+kernel explanation, failed-create errno retry or validation relaxation is claimed.
+
+**Resume at changed owner acceptance:** the CI-executed arm64 archive
+`Cryptex-Mac-Profil-d9561d8-70db1c49.zip` is ready. Extract on the Mac and run
+`Cryptex-Mac-Aktarim/MAC-AKTARIM.command`; collect `MAC-AKTARIM-SONUC-*.zip`.
+Expiry:2026-11-16T03:21:56+00:00. Recheck expiry/source before a later handoff;
+regenerate from this reviewed code if expired. Do not repeat an unchanged older
+packet. The changed harness covers live ExistingProfile pairing→incoming,
+permitted restriction→fresh state, restart idempotence and old wire/handle refusal
+using private fresh profiles, not personal memory.
+
+M8 OPEN; M9 not begun. Owner hardware/installed UX, ordinary configured-image/
+release policy, actual peer/folder synchronization, cross-device durable replicas
+and final protocol acceptance remain separate gates. Local Rust is blocked by
+Application Control4551; no bypass. Preserve preexisting
+`scripts/m8/__pycache__/`. The verification notes below are historical snapshots,
+not current blockers or new work requests.
+
+## Historical Mac verification snapshot — November 14 (superseded)
 
 Current code candidate is on `codex/m8-device-trust`; resume from the branch HEAD,
 not an older owner's archive. See [bounded contract](proposals/m8-macos-import-filesystem-20261114.md).

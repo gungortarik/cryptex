@@ -4,7 +4,18 @@ Updated 2026-11-14. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
-Latest bounded correction: [R4 incoming conflict retention/restart](../evidence/m8/m8-incoming-policy-hold-review-20261114.md)
+Latest bounded integration: [Darwin filesystem/native existing-profile review](../evidence/m8/m8-macos-filesystem-native-integration-review-20261114.md)
+and [receipt](../evidence/m8/m8-macos-filesystem-native-integration.json) bind
+`d9561d8` to passed full43671790009 and native43671787980. Mac589/Windows682daemon
+tests passed, zero failures; separate read-only agent review has no remaining
+finding in this slice. Corrected16x8 creation/disappearing-leaf guards, original
+namespace binding, actual-send admission/reconciliation and live signed import/
+restart checks passed. The changed CI-executed owner packet is ready; physical
+owner acceptance is pending. Ordinary activation, peer/folder/cross-device durable
+replication, installed UX and full protocol/M8 acceptance remain open. This
+supersedes earlier adapter-pending notes only within the default-off candidate.
+
+Earlier bounded correction: [R4 incoming conflict retention/restart](../evidence/m8/m8-incoming-policy-hold-review-20261114.md)
 and its [structured receipt](../evidence/m8/m8-incoming-policy-hold-native.json)
 bind `1a042f9` to successful Mac/Windows readiness and Windows cross-account ACL
 in [CI43657350874](https://github.com/gungortarik/cryptex/actions/runs/43657350874).
@@ -17,7 +28,7 @@ activate Mac publication/product routes. Continue with the current handoff's
 remaining adapters, policy/configuration and product acceptance; do not repeat
 already covered owner packages or mark full M8 done from this result.
 
-Latest disabled integration: the [Mac transport helper evidence](../evidence/m8/m8-macos-transport-helper-20261112.md)
+Earlier disabled integration: the [Mac transport helper evidence](../evidence/m8/m8-macos-transport-helper-20261112.md)
 and [independent review](../evidence/m8/m8-macos-transport-independent-review-20261112.md)
 record fresh owned engine identity, native pairing/reopen, helper/daemon loss,
 eleven live drift refusals and profile-lease-fenced fixture credential cleanup.
