@@ -1356,6 +1356,10 @@ pub fn development_entry() -> Option<Result<(), String>> {
                     super::development_launch::runtime(std::env::var_os("HOME").as_deref())?;
                 development_ui::run(runtime)
             }
+            super::development_launch::Mode::WindowCheck(runtime) => {
+                let runtime = super::development_launch::window_check_runtime(&runtime)?;
+                development_ui::run(runtime)
+            }
             super::development_launch::Mode::Check(runtime) => {
                 // Keep the noninteractive diagnostic and its native budget intact.
                 let (owner, content) = development_ui::stage(

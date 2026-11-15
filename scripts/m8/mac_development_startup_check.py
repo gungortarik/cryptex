@@ -215,6 +215,10 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
                     "existing_profile_missing")
     if missing.exists():
         raise PreflightError("development_missing_profile_created")
+    require_refusal(run_bounded([str(desktop), "--cryptex-development-window-check", str(missing)], 30),
+                    "development_window_check_runtime")
+    if missing.exists():
+        raise PreflightError("development_window_check_created_profile")
 
     # Keychain tracks its creator's designated code requirement. Provision
     # this fresh test profile with the development daemon identity, not the

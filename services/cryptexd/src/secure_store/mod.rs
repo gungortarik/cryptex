@@ -52,6 +52,18 @@ impl fmt::Display for SecureStoreError {
 
 impl std::error::Error for SecureStoreError {}
 
+#[cfg(any(test, all(target_os = "macos", feature = "m8-development-product")))]
+impl SecureStoreError {
+    /// Closed diagnostics: no operation string, account, service, path or payload.
+    pub(crate) fn diagnostic(&self) -> serde_json::Value {
+        match self {
+            Self::Missing => serde_json::json!({"kind": "missing"}),
+            Self::InvalidName(_) => serde_json::json!({"kind": "invalid_name"}),
+            Self::Platform { code, .. } => serde_json::json!({"kind": "platform", "code": code}),
+        }
+    }
+}
+
 pub type SecureStoreResult<T> = Result<T, SecureStoreError>;
 
 /// Daemon-authority secret storage. Implementations must never log secret bytes.
@@ -128,6 +140,26 @@ pub(crate) fn validate_name_pair(service: &str, account: &str) -> SecureStoreRes
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn development_diagnostic_contains_only_kind_and_numeric_status() {
+        assert_eq!(
+            SecureStoreError::Missing.diagnostic(),
+            serde_json::json!({"kind": "missing"})
+        );
+        assert_eq!(
+            SecureStoreError::InvalidName("private detail".into()).diagnostic(),
+            serde_json::json!({"kind": "invalid_name"})
+        );
+        assert_eq!(
+            SecureStoreError::Platform {
+                op: "private detail",
+                code: -25293,
+            }
+            .diagnostic(),
+            serde_json::json!({"kind": "platform", "code": -25293})
+        );
+    }
 
     #[test]
     fn error_surfaces_do_not_embed_secret_bytes() {

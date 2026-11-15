@@ -34,6 +34,13 @@ def window_progress(output):
             name = value.get('developmentStage')
             if isinstance(name, str) and name in stages:
                 result.append({'development_stage': name})
+            error = value.get('m8KeyStoreError')
+            if isinstance(error, dict):
+                kind = error.get('kind')
+                if kind in ('missing', 'invalid_name'):
+                    result.append({'key_store_error': kind})
+                elif kind == 'platform' and type(error.get('code')) is int and -(2**31) <= error['code'] < 2**31:
+                    result.append({'key_store_error': kind, 'code': error['code']})
     return result
 
 
@@ -60,14 +67,15 @@ def natural_quit_ok(result):
 
 
 class WindowProcess:
-    def __init__(self, binary, home, timeout=600):
+    def __init__(self, binary, profile, timeout=600):
         self.env = os.environ.copy()
-        self.env.update(HOME=str(home), PATH='/usr/bin:/bin:/usr/sbin:/sbin')
+        self.env['PATH'] = '/usr/bin:/bin:/usr/sbin:/sbin'
         for key in list(self.env):
             if key.startswith(('DYLD_', 'CRYPTEX_', 'CX_')) or key in (
                     'SDKROOT', 'CPATH', 'LIBRARY_PATH', 'CARGO_MANIFEST_DIR'):
                 self.env.pop(key, None)
         self.binary = binary
+        self.profile = profile
         self.process = None
         self.reader = None
         self.monitor = None
@@ -89,7 +97,8 @@ class WindowProcess:
         # The collector registers this object before any child or thread starts.
         if self.process is not None:
             raise PreflightError('window_already_started')
-        self.process = subprocess.Popen([str(self.binary)], env=self.env, start_new_session=True,
+        self.process = subprocess.Popen([str(self.binary), '--cryptex-development-window-check',
+                                         str(self.profile)], env=self.env, start_new_session=True,
                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
         try:
             self.reader = threading.Thread(target=self._read, daemon=True)

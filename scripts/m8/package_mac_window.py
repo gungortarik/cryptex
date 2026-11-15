@@ -80,15 +80,16 @@ def build(source_zip, destination, expected_sha256, collector_source):
         'Şifreyi yalnızca macOS izin penceresine yaz; Terminale yazma.\n'
         'Hata ya da belirsizlik varsa H seç. Başarısız sonuç ZIP dosyasını da gönder.\n'
         'Sonunda aynı klasördeki MAC-PENCERE-SONUC-*.zip dosyasını gönder.\n\n'
-        'Kişisel profil kullanılmaz; normal uygulama geçici HOME altında çalışır.\n'
+        'Kişisel profil kullanılmaz; uygulama ayrı geçici test profilini açar.\n'
+        'macOS kullanıcı/Keychain ortamı değiştirilmez.\n'
         'Yalnızca bu testin oluşturduğu anahtar ve geçici profil temizlenir.\n'
         'Görsel gözlemler sahibi tarafından bildirilir; otomatik süreç/kapanış sonuçlarından ayrıdır.\n'
         'Bu, kalıcı kurulum veya M8 kabulü değildir. Başsız CI Keychain aşaması geçmedi.\n'
         'Sistem uygulamayı engellerse korumaları kapatma; görünen mesajı paylaş.\n'
         'İmza geçerlilik sonu (UTC): ' + meta['expires_utc'] + '\n'
     ).encode('utf-8')
-    meta.update(collector_source=collector_source, window_test='normal_entry_isolated_home_v1',
-                scope='bounded interactive window test, not installed-product acceptance',
+    meta.update(collector_source=collector_source, window_test='existing_profile_window_v2',
+                scope='shared product UI via explicit existing-profile diagnostic; not default-profile acceptance',
                 source_archive_sha256=expected_sha256,
                 files={name: hashlib.sha256(data).hexdigest() for name, data in members.items()})
     members['diagnostic.json'] = (json.dumps(meta, indent=2) + '\n').encode('utf-8')

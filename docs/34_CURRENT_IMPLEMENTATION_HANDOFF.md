@@ -1,5 +1,30 @@
 # 34 — Current Implementation Handoff
 
+## Window test Keychain context correction — November15
+
+Returned `MAC-PENCERE-SONUC-930b7dfe.zip` FAILED after fixture creation succeeded.
+One daemon was sampled; key_lock completed but key_store returned failure; bind
+reported local_signed_startup_Instance and Desktop exited2. Owner reports no OS
+Keychain prompt. Window acceptance did not run. The exact missing/platform status
+was not recorded by that binary. Test key/profile retained after failed shutdown
+verification. See [owner evidence](../evidence/m8/m8-mac-window-key-read-20261115.json).
+
+Read-only CI43747827435 on58859f3 reproduced a lookup-context difference: inherited
+HOME default/list calls exit[0,0] with1 search-list item; temporary HOME exit[1,0]
+with0 items. Original context remained unchanged. No key/item/password access or
+OS settings mutation was performed. This establishes the harness HOME override
+changes discovery on CI; it supports, but does not prove, the owner's exact cause.
+
+Correction retains real HOME for creator/Desktop/daemon and adds a separate
+--cryptex-development-window-check route through the SAME product UI/native gates.
+It accepts only an existing physical private directory below OS temp. Normal
+no-argument default-profile selection is unchanged. Desktop never seeds a profile.
+Collector provisions a generated fixture outside the repo and personal profile;
+failed/uncertain shutdown still retains it. Test scope is now shared product UI
+through explicit existing-profile diagnostic, NOT normal default-root acceptance.
+Closed key-store diagnostics preserve only error kind and numeric OSStatus, never
+account/service/operation/path/secret payload. Native validation/package pending.
+
 ## Window owner receipt and corrected first step — November15
 
 Returned `MAC-PENCERE-SONUC-436a7b57.zip` FAILED in the first explanation-cancel

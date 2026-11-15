@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "status": "owner_window_failed_at_existing_key_read",
+  "receipt": "MAC-PENCERE-SONUC-930b7dfe.zip",
+  "receipt_sha256": "f7c604da14612f665a07db28483f84503c2d50bbc83dddec43f00ff8037f0ac6",
+  "result": {
+    "schema": 1,
+    "scope": "normal entry in isolated temporary HOME; not installed-product or M8 acceptance",
+    "outcome": "failed",
+    "ci_startup_passed": false,
+    "not_tested": [
+      "independent out-of-group helper enumeration",
+      "OS permission denial",
+      "fresh native session replay",
+      "real personal-profile migration",
+      "cross-device sync",
+      "public signing/distribution"
+    ],
+    "source": "529068950f497eb61a56e9ed30a0d8bae77383ce",
+    "collector_source": "7bbfca19cdb504af4fa5087ce1a308932c0c73ff",
+    "owner_observations": {
+      "opened_and_draft_entered": false
+    },
+    "launches": {
+      "window_session": {
+        "exit_code": 2,
+        "natural_exit": true,
+        "same_group_live_descendants_before_cleanup": 0,
+        "group_reaped": true,
+        "timed_out": false,
+        "output_limited": false,
+        "observer_failed": false,
+        "sampled_daemon_count": 1,
+        "progress": [
+          {
+            "stage": "validate",
+            "phase": "begin"
+          },
+          {
+            "stage": "validate",
+            "phase": "complete"
+          },
+          {
+            "stage": "backend",
+            "phase": "begin"
+          },
+          {
+            "stage": "backend",
+            "phase": "complete"
+          },
+          {
+            "stage": "prepare",
+            "phase": "begin"
+          },
+          {
+            "stage": "recover",
+            "phase": "begin"
+          },
+          {
+            "stage": "recover_evidence",
+            "phase": "begin"
+          },
+          {
+            "stage": "recover_evidence",
+            "phase": "complete"
+          },
+          {
+            "stage": "initialize_slots",
+            "phase": "begin"
+          },
+          {
+            "stage": "slot_key",
+            "phase": "begin"
+          },
+          {
+            "stage": "key_lock",
+            "phase": "begin"
+          },
+          {
+            "stage": "key_lock",
+            "phase": "complete"
+          },
+          {
+            "stage": "key_store",
+            "phase": "begin"
+          },
+          {
+            "stage": "key_store",
+            "phase": "failed"
+          },
+          {
+            "stage": "slot_key",
+            "phase": "failed"
+          },
+          {
+            "stage": "initialize_slots",
+            "phase": "failed"
+          },
+          {
+            "stage": "recover",
+            "phase": "failed"
+          },
+          {
+            "stage": "prepare",
+            "phase": "failed"
+          },
+          {
+            "development_stage": "bind"
+          },
+          {
+            "startup_error": "local_signed_startup_Instance"
+          }
+        ]
+      }
+    },
+    "commands": [
+      {
+        "stage": "create_isolated_profile",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "progress": []
+      }
+    ],
+    "captured_groups_reaped": true,
+    "primary_diagnostic": "owner_observation_not_confirmed",
+    "service_shutdown_via_product_exit_verified": false,
+    "diagnostic": "service_shutdown_unverified_profile_retained"
+  },
+  "owner_observation": "No separate macOS Keychain permission prompt appeared.",
+  "established": [
+    "Isolated fixture creation returned exit0",
+    "One daemon was sampled",
+    "Existing key read returned failure after lock completed",
+    "Desktop bind failed with local_signed_startup_Instance",
+    "Window/draft observation was negative",
+    "Natural exit2; captured process group reaped; profile/key retained"
+  ],
+  "not_established": [
+    "Underlying OSStatus or missing-item classification",
+    "Password failure",
+    "HOME mismatch as definitive cause",
+    "Window lifecycle acceptance",
+    "M8 completion"
+  ],
+  "source_hypothesis": "Fixture creator inherits original HOME; normal Desktop/daemon receive temporary HOME; Keychain adapter does not specify an explicit search list. Read-only CI discovery comparison is pending; do not change ACLs or repeat owner run unchanged."
+}

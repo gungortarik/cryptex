@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -26,6 +27,12 @@ def clean(daemons=1):
 
 
 class ProcessTests(unittest.TestCase):
+    def test_window_keeps_os_home_and_uses_only_explicit_test_profile(self):
+        with patch.dict(os.environ, {'HOME': '/owner-home'}):
+            instance = WindowProcess(Path('/fixture/desktop'), Path('/private/test/runtime'))
+            self.assertEqual(instance.env['HOME'], '/owner-home')
+            self.assertEqual(instance.profile, Path('/private/test/runtime'))
+
     def test_startup_diagnostics_keep_only_known_codes(self):
         output = '\n'.join([
             'development_startup: existing_profile_missing',
@@ -34,11 +41,16 @@ class ProcessTests(unittest.TestCase):
             '{"developmentStage":"start","private":"secret"}',
             '{"developmentStage":"private secret"}',
             '{"developmentStage":[]}', 'private path /Users/owner',
+            '{"m8KeyStoreError":{"kind":"missing","secret":"private"}}',
+            '{"m8KeyStoreError":{"kind":"platform","code":-25308,"private":"detail"}}',
+            '{"m8KeyStoreError":{"kind":"platform","code":true}}',
+            '{"m8KeyStoreError":{"kind":"private"}}',
             '{broken json', '{"developmentStage":"bind"}'])
         self.assertEqual(window_progress(output), [
             {'startup_error': 'existing_profile_missing'},
             {'startup_error': 'local_signed_startup_Deadline'},
-            {'development_stage': 'start'}, {'development_stage': 'bind'}])
+            {'development_stage': 'start'}, {'key_store_error': 'missing'},
+            {'key_store_error': 'platform', 'code': -25308}, {'development_stage': 'bind'}])
 
     def test_forced_cleanup_or_surviving_child_cannot_pass_as_quit(self):
         self.assertTrue(natural_quit_ok(clean()))
@@ -83,7 +95,7 @@ class FlowTests(unittest.TestCase):
     def simulate(self, mode):
         with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):
             home = Path(temp)
-            profile = home / 'Library/Application Support/Cryptex-Dev/runtime/p0-2'
+            profile = home / 'runtime'
             identity = profile / 'identity/local_device.json'
             record = profile / 'canonical/events/device/1.seg'
             calls, instances = [], []
@@ -107,7 +119,7 @@ class FlowTests(unittest.TestCase):
                     instances.append(self)
                     self.result = None
                     self.started = False
-                    self.assert_home = selected_home == home
+                    self.assert_home = selected_home == profile
                 def start(self):
                     # Every normal opening now has a fully initialized fixture.
                     if not identity.exists() or not record.exists():

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Interactive normal-entry exercise in a private temporary HOME, not an install."""
+"""Shared product window flow on a private temporary profile; real HOME retained."""
 from datetime import datetime, timezone
 import json
 import os
@@ -39,7 +39,7 @@ def answer(question, timeout=300):
 
 
 def validate_platform(meta):
-    if meta.get('window_test') != 'normal_entry_isolated_home_v1':
+    if meta.get('window_test') != 'existing_profile_window_v2':
         raise PreflightError('window_package_invalid')
     if sys.platform != 'darwin' or platform.machine() != meta['architecture']:
         raise PreflightError('platform_mismatch')
@@ -50,7 +50,7 @@ def validate_platform(meta):
 
 
 def exercise(package, home, report, ask=answer, runner=run_bounded, process_type=WindowProcess):
-    profile = home / 'Library/Application Support/Cryptex-Dev/runtime/p0-2'
+    profile = home / 'runtime'
     binary = package / 'development.app/Contents/MacOS/cryptex-desktop'
     metadata = profile / 'identity/local_device.json'
     fence = FencedRun(runner)
@@ -66,7 +66,7 @@ def exercise(package, home, report, ask=answer, runner=run_bounded, process_type
             raise PreflightError('owner_observation_not_confirmed')
 
     def launch(label):
-        process = process_type(binary, home)
+        process = process_type(binary, profile)
         owned.append((label, process))
         process.start()
         return process
@@ -127,7 +127,7 @@ def exercise(package, home, report, ask=answer, runner=run_bounded, process_type
         stable(main, pins, 'dock_reopen_same_observed_daemon_pids')
         print('\n2. Pencereyi tekrar kapat, sonra bu Terminale dön.', flush=True)
         observe('ready_for_second_launch', 'Cryptex penceresini kapattın mı?')
-        command(['/usr/bin/env', 'HOME=' + str(home), binary], 'second_normal_launch', 30)
+        command([binary, '--cryptex-development-window-check', profile], 'second_window_launch', 30)
         observe('second_launch_kept_draft', 'İkinci başlatma mevcut pencereyi aynı taslakla geri getirdi mi?')
         stable(main, pins, 'second_launch_same_observed_daemon_pids')
         observe('quit_cancel_kept_draft', 'Cryptex içinde Command-Q yap. Taslağı silme onayında Cancel seç.\n'
@@ -196,7 +196,7 @@ def exercise(package, home, report, ask=answer, runner=run_bounded, process_type
 def main():
     os.umask(0o077)
     package = Path(__file__).resolve().parent
-    report = {'schema': 1, 'scope': 'normal entry in isolated temporary HOME; not installed-product or M8 acceptance',
+    report = {'schema': 1, 'scope': 'shared product UI through explicit existing-profile diagnostic; real HOME retained; not normal default-profile or M8 acceptance',
               'outcome': 'incomplete', 'ci_startup_passed': False,
               'not_tested': ['independent out-of-group helper enumeration', 'OS permission denial', 'fresh native session replay', 'real personal-profile migration',
                              'cross-device sync', 'public signing/distribution']}
@@ -210,7 +210,7 @@ def main():
         verify_package(package, meta)
         validate_platform(meta)
         report.update(source=meta['source'], collector_source=meta['collector_source'])
-        home = Path(tempfile.mkdtemp(prefix='cryptex-window-home-')).resolve()
+        home = Path(tempfile.mkdtemp(prefix='cryptex-window-profile-')).resolve()
         exercise(package, home, report)
     except PreflightError as error:
         report.update(outcome='failed', diagnostic=str(error))

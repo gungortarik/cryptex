@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 pub enum Mode {
     Window,
     Check(PathBuf),
+    WindowCheck(PathBuf),
 }
 
 pub fn mode(args: &[OsString]) -> Result<Mode, &'static str> {
@@ -17,8 +18,40 @@ pub fn mode(args: &[OsString]) -> Result<Mode, &'static str> {
         {
             Ok(Mode::Check(PathBuf::from(root)))
         }
+        [argument, root]
+            if argument == "--cryptex-development-window-check" && Path::new(root).is_absolute() =>
+        {
+            Ok(Mode::WindowCheck(PathBuf::from(root)))
+        }
         _ => Err("development_arguments_refused"),
     }
+}
+
+/// UI diagnostics share the normal UI/native gates, but never select a personal
+/// profile or replace HOME (which also changes macOS Keychain discovery).
+pub fn window_check_runtime(root: &Path) -> Result<PathBuf, &'static str> {
+    let temporary = std::env::temp_dir()
+        .canonicalize()
+        .map_err(|_| "development_window_check_runtime")?;
+    let physical = root
+        .canonicalize()
+        .map_err(|_| "development_window_check_runtime")?;
+    if physical != root || physical == temporary || !physical.starts_with(&temporary) {
+        return Err("development_window_check_runtime");
+    }
+    let metadata =
+        std::fs::symlink_metadata(root).map_err(|_| "development_window_check_runtime")?;
+    if !metadata.is_dir() {
+        return Err("development_window_check_runtime");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o077 != 0 {
+            return Err("development_window_check_runtime");
+        }
+    }
+    Ok(physical)
 }
 
 pub fn runtime(home: Option<&OsStr>) -> Result<PathBuf, &'static str> {
@@ -163,6 +196,54 @@ mod tests {
             assert!(mode(&[flag.into()]).is_err());
         }
         assert!(mode(&["--cryptex-development-check".into(), "profile".into()]).is_err());
+        let root = std::env::temp_dir().join("existing-window-check");
+        assert_eq!(
+            mode(&[
+                "--cryptex-development-window-check".into(),
+                root.clone().into_os_string()
+            ]),
+            Ok(Mode::WindowCheck(root))
+        );
+        assert!(
+            mode(&[
+                "--cryptex-development-window-check".into(),
+                "relative".into()
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn window_diagnostic_requires_existing_physical_temporary_directory() {
+        let temporary = std::env::temp_dir().canonicalize().unwrap();
+        assert!(window_check_runtime(&temporary).is_err());
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = temporary.join(format!("cryptex-window-check-{}-{nonce}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        assert_eq!(window_check_runtime(&root), Ok(root.clone()));
+        assert!(window_check_runtime(&root.join("missing")).is_err());
+        assert!(!root.join("missing").exists());
+        let file = root.join("file");
+        std::fs::write(&file, b"not a profile").unwrap();
+        assert!(window_check_runtime(&file).is_err());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{PermissionsExt, symlink};
+            let link = root.join("alias");
+            symlink(&root, &link).unwrap();
+            assert!(window_check_runtime(&link).is_err());
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+            assert!(window_check_runtime(&root).is_err());
+        }
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
