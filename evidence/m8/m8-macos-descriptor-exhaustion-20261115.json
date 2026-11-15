@@ -1,0 +1,372 @@
+{
+  "archive_name": "MAC-AKTARIM-SONUC-8aed5431.zip",
+  "archive_sha256": "68c28a5595a1277384fb1d7e44e14dd32a0b4ce310a503c66381ffebe85fead9",
+  "attribution": "owner-provided aggregate receipt",
+  "received_result": {
+    "source": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
+    "outcome": "failed",
+    "collector_sha256": "e79b4fa612b9bb59a5123a147f4765b8b8ffb339755ad12df0b93f45a50df7ef",
+    "scope": "isolated real local engines and signed native pairing; not cross-device sync",
+    "diagnostic_schema": 2,
+    "command_diagnostics": [
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 8745,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_clean_stop_ack=passed",
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_helper_loss_cleanup=passed",
+          "mac_transport_missing_key_no_regeneration=passed",
+          "mac_transport_owned_identity_restart=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 234,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 8009,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_mutation_batch_receipts_cases_5=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 252,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 9433,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_mutation_batch_profile_cases_6=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 240,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "real_native_managed_pairing",
+        "exit_code": 2,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 20578,
+        "timeout_seconds": 240,
+        "codes": [
+          "existing_profile_incoming_Rejected"
+        ],
+        "markers": [
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "native_managed_pairing_clean_shutdown=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "cleanup_native_pairing_device_key",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 17,
+        "timeout_seconds": 30,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 253,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "cleanup_native_pairing_device_key",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 14,
+        "timeout_seconds": 30,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 250,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      }
+    ],
+    "identity_restart_and_refusals_verified": true,
+    "post_rejection_validation": {
+      "outcome": "validation_only_after_failure",
+      "validation_only": true,
+      "exit_code": 2,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "timeout_seconds": 45,
+      "elapsed_ms": 126,
+      "reason_codes": [
+        "filesystem_open_fd",
+        "staging_io"
+      ],
+      "os_error_numbers": [
+        24
+      ]
+    },
+    "diagnostic": "real_native_managed_pairing_failed"
+  },
+  "confirmed": "post-failure validation open_fd failed with EMFILE (24)",
+  "not_yet_confirmed": "original live rejection same root cause; owner resource limit; bounded runtime correction",
+  "ci_reproduction_run": 43681401473,
+  "m8_status": "OPEN",
+  "ci_reproduction": {
+    "scope": "CI reproduction only; not owner acceptance",
+    "descriptor_soft_limit": 256,
+    "prior_soft_limit": 10240,
+    "launcher_exit": 1,
+    "native_archive_sha256": "70db1c49e4e37e53236794737c673d84d4c103c87b816fd93f982be22e7955e4",
+    "result": {
+      "source": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
+      "outcome": "failed",
+      "collector_sha256": "e79b4fa612b9bb59a5123a147f4765b8b8ffb339755ad12df0b93f45a50df7ef",
+      "scope": "isolated real local engines and signed native pairing; not cross-device sync",
+      "diagnostic_schema": 2,
+      "command_diagnostics": [
+        {
+          "stage": "real_managed_mac_transport_identity",
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limited": false,
+          "pipe_failed": false,
+          "elapsed_ms": 8702,
+          "timeout_seconds": 180,
+          "codes": [],
+          "markers": [
+            "mac_transport_clean_stop_ack=passed",
+            "mac_transport_foreign_socket_no_credentials=passed",
+            "mac_transport_helper_loss_cleanup=passed",
+            "mac_transport_missing_key_no_regeneration=passed",
+            "mac_transport_owned_identity_restart=passed"
+          ],
+          "startup_failures": []
+        },
+        {
+          "stage": "identity_key_cleanup_fenced",
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limited": false,
+          "pipe_failed": false,
+          "elapsed_ms": 279,
+          "timeout_seconds": 45,
+          "codes": [],
+          "markers": [],
+          "startup_failures": []
+        },
+        {
+          "stage": "real_managed_mac_transport_identity",
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limited": false,
+          "pipe_failed": false,
+          "elapsed_ms": 9105,
+          "timeout_seconds": 180,
+          "codes": [],
+          "markers": [
+            "mac_transport_foreign_socket_no_credentials=passed",
+            "mac_transport_mutation_batch_receipts_cases_5=passed"
+          ],
+          "startup_failures": []
+        },
+        {
+          "stage": "identity_key_cleanup_fenced",
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limited": false,
+          "pipe_failed": false,
+          "elapsed_ms": 299,
+          "timeout_seconds": 45,
+          "codes": [],
+          "markers": [],
+          "startup_failures": []
+        },
+        {
+          "stage": "real_managed_mac_transport_identity",
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limited": false,
+          "pipe_failed": false,
+          "elapsed_ms": 11388,
+          "timeout_seconds": 180,
+          "codes": [],
+          "markers": [
+            "mac_transport_foreign_socket_no_credentials=passed",
+            "mac_transport_mutation_batch_profile_cases_6=passed"
+          ],
+          "startup_failures": []
+        },
+        {
+          "stage": "identity_key_cleanup_fenced",
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limited": false,
+          "pipe_failed": false,
+          "elapsed_ms": 279,
+          "timeout_seconds": 45,
+          "codes": [],
+          "markers": [],
+          "startup_failures": []
+        },
+        {
+          "stage": "real_native_managed_pairing",
+          "exit_code": 2,
+          "timed_out": false,
+          "output_limited": false,
+          "pipe_failed": false,
+          "elapsed_ms": 21439,
+          "timeout_seconds": 240,
+          "codes": [
+            "existing_profile_incoming_Rejected"
+          ],
+          "markers": [
+            "mac_transport_foreign_socket_no_credentials=passed",
+            "native_managed_pairing_clean_shutdown=passed"
+          ],
+          "startup_failures": []
+        },
+        {
+          "stage": "cleanup_native_pairing_device_key",
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limited": false,
+          "pipe_failed": false,
+          "elapsed_ms": 18,
+          "timeout_seconds": 30,
+          "codes": [],
+          "markers": [],
+          "startup_failures": []
+        },
+        {
+          "stage": "identity_key_cleanup_fenced",
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limited": false,
+          "pipe_failed": false,
+          "elapsed_ms": 282,
+          "timeout_seconds": 45,
+          "codes": [],
+          "markers": [],
+          "startup_failures": []
+        },
+        {
+          "stage": "cleanup_native_pairing_device_key",
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limited": false,
+          "pipe_failed": false,
+          "elapsed_ms": 17,
+          "timeout_seconds": 30,
+          "codes": [],
+          "markers": [],
+          "startup_failures": []
+        },
+        {
+          "stage": "identity_key_cleanup_fenced",
+          "exit_code": 0,
+          "timed_out": false,
+          "output_limited": false,
+          "pipe_failed": false,
+          "elapsed_ms": 276,
+          "timeout_seconds": 45,
+          "codes": [],
+          "markers": [],
+          "startup_failures": []
+        }
+      ],
+      "identity_restart_and_refusals_verified": true,
+      "post_rejection_validation": {
+        "outcome": "validation_only_after_failure",
+        "validation_only": true,
+        "exit_code": 2,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "timeout_seconds": 45,
+        "elapsed_ms": 96,
+        "reason_codes": [
+          "filesystem_open_fd",
+          "staging_io"
+        ],
+        "os_error_numbers": [
+          24
+        ]
+      },
+      "diagnostic": "real_native_managed_pairing_failed"
+    }
+  },
+  "ci_run_url": "https://github.com/gungortarik/cryptex/actions/runs/43681401473",
+  "runtime_fix_implemented": false
+}

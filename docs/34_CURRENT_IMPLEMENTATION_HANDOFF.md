@@ -1,5 +1,32 @@
 # 34 — Current Implementation Handoff
 
+## Current owner blocker: descriptor exhaustion — November15
+
+Owner `MAC-AKTARIM-SONUC-8aed5431.zip` matches d956 app and e79b4fa collector.
+Native import is Rejected; the subsequent validation-only command fails opening
+a directory with errno24 (EMFILE). Identity/mutation and exact-key cleanup pass.
+The receipt is recorded in
+[descriptor evidence](../evidence/m8/m8-macos-descriptor-exhaustion-20261115.json).
+
+Independent native reproduction [CI43681401473](https://github.com/gungortarik/cryptex/actions/runs/43681401473)
+used the exact pinned signed archive with inherited soft descriptor limit256.
+It reproduced native Rejected followed by validation `filesystem_open_fd`,
+`staging_io`, errno24. Workflow success means the reproduction produced evidence;
+the tested application FAILED. No physical-owner fix or M8 acceptance is claimed.
+
+Next implementation: reduce duplicate retained ancestor descriptors in the Mac
+filesystem adapter. RuntimeIdentity currently retains complete absolute chains
+for every pinned path, alongside legacy session/recovery directory vectors.
+Share original capabilities or remove demonstrably redundant Mac pins while
+preserving no-follow, permission/ACL, namespace-drift, original-lock and cleanup
+checks. Do not raise limits as an acceptance substitute or retry the owner packet.
+Measure complete live import/restart descriptor usage and run the256-limit
+reproduction after the fix, plus native security regressions. No runtime fix has
+been implemented yet. Local Rust remains blocked by Application Control4551.
+The CI-only reproduction is selected through ci.yml input mac_fd_repro_only;
+its pinned fixture expires2026-11-16T03:21:56+00:00 and must be regenerated afterward.
+No owner action is required until a corrected, verified package is ready.
+
 
 ## Verified Mac filesystem/native integration — November 14
 

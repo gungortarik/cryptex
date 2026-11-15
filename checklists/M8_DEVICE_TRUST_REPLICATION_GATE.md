@@ -13,8 +13,9 @@ namespace binding, actual-send admission/reconciliation and live signed import/
 restart checks passed in CI. The returned owner packet failed at native pairing;
 identity checks passed. The diagnostic return identifies a clean incoming
 `Rejected`, exit2 without timeout/output/pipe failure; its inner cause is still
-unconfirmed. The next packet runs validation-only after that exact failure using
-the unchanged signed daemon, within the original budget. Physical
+identified by the next validation receipt as open_fd EMFILE24. MacCI43681401473
+reproduced the same rejection/EMFILE path with a256-descriptor budget. A resource
+correction and native re-verification are pending; do not repeat owner packets. Physical
 owner acceptance remains failed/open. Ordinary activation, peer/folder/cross-device durable
 replication, installed UX and full protocol/M8 acceptance remain open. This
 supersedes earlier adapter-pending notes only within the default-off candidate.

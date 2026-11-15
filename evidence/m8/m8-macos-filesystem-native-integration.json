@@ -188,6 +188,15 @@
       "collector_sha256": "e79b4fa612b9bb59a5123a147f4765b8b8ffb339755ad12df0b93f45a50df7ef",
       "signed_app_bytes_changed": false,
       "native_execution_of_new_validation_branch": "pending owner; Python regressions only"
+    },
+    "current_blocker": {
+      "kind": "descriptor_exhaustion",
+      "owner_archive": "MAC-AKTARIM-SONUC-8aed5431.zip",
+      "native_ci_reproduction": 43681401473,
+      "soft_fd_limit": 256,
+      "validation_errno": 24,
+      "runtime_fix_implemented": false,
+      "evidence": "evidence/m8/m8-macos-descriptor-exhaustion-20261115.json"
     }
   },
   "ordinary_product_activation": false,

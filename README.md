@@ -12,8 +12,9 @@ and [native CI43671787980](https://github.com/gungortarik/cryptex/actions/runs/4
 on `d9561d8`. Daemon Mac589/Windows682passed, zero failures. The
 [review and concrete owner handoff](evidence/m8/m8-macos-filesystem-native-integration-review-20261114.md)
 record CI success separately from a subsequent owner-Mac native pairing failure.
-The diagnostic return narrows it to a clean incoming rejection; its inner cause
-needs the validation-only probe. Physical acceptance, ordinary
+Owner diagnostics identified descriptor exhaustion (EMFILE24); a separate Mac
+CI run reproduced the rejection under a256-descriptor budget. The resource-use
+correction is pending. Physical acceptance, ordinary
 activation and actual cross-device synchronization remain open;
 earlier implementation notes below are historical checkpoints.
 
