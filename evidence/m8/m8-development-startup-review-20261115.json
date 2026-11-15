@@ -1,0 +1,90 @@
+{
+  "status": "native_development_startup_blocked_in_keychain_read",
+  "source": "7928539",
+  "scope": "controlled local-certificate development startup; not public release or M8 completion",
+  "review": {
+    "mode": "independent read-only agent source review",
+    "findings_fixed": [
+      "ordinary Unix and derived workers share original native namespace capability allocation",
+      "failed native checks clean the exact generated key after captured group reaping",
+      "canonical preservation includes active tails and added files"
+    ],
+    "followup": "no further actionable source finding; tests not run by reviewer",
+    "diagnostic_followup": "No actionable finding in8213b5d/e688db6 source review; no demonstrated lock holder retained by reaped fixture creator. Keychain vs key-file lock remains to be distinguished.",
+    "diagnostic_package": "One P2 missing-identity cleanup success issue fixed; read-only re-review found no remaining actionable finding. No native acceptance claimed."
+  },
+  "local_checks": {
+    "python_checker_tests": 6,
+    "python_bounded_runner_tests": 6,
+    "rust": "not run: Application Control4551; no bypass",
+    "python_diagnostic_package_tests": 6,
+    "python_content_diagnostic_tests": 2
+  },
+  "native_ci": {
+    "previous": "43726010673",
+    "previous_windows": "passed",
+    "previous_macos": "failed: development content bind Channel/Instance; cause unproven",
+    "correction": "43727340410",
+    "correction_status": "Windows passed; Mac development startup failed, initially missing redacted stage detail",
+    "diagnostic_source": "3abbd81",
+    "diagnostic_run": "43728766699",
+    "diagnostic_status": "3abbd81 failed product-only compilation (missing serde_json in Desktop diagnostic); corrected in9d30ae8",
+    "full_run": "43728035782",
+    "full_source": "7928539",
+    "full_status": "passed on both platforms",
+    "full_daemon_tests": {
+      "macos": {
+        "passed": 596,
+        "failed": 0,
+        "ignored": 7
+      },
+      "windows": {
+        "passed": 684,
+        "failed": 0,
+        "ignored": 5
+      }
+    },
+    "latest_source": "2af7bcc",
+    "latest_run": "43736009393",
+    "latest_status": "Windows passed; Mac FAILED key_store begin without completion, content_bind Deadline; diagnostic artifact exported, not a pass",
+    "previous_diagnostic_run": "43729754529",
+    "previous_diagnostic_status": "Windows passed; Mac failed content_bind local_signed_startup_Deadline after creator identity correction",
+    "trace_format_run": "43731564886",
+    "trace_format_status": "format failed before behavior checks; corrected in8213b5d",
+    "trace_run": "43731965027",
+    "trace_status": "Windows passed; Mac failed content_bind Deadline after slot_key begin; validate/backend/recover_evidence completed",
+    "key_trace_format_run": "43733314160",
+    "key_trace_format_status": "format failed before behavior checks; corrected in716c871",
+    "key_trace_run": "43733487924",
+    "key_trace_source": "716c871",
+    "key_trace_attempt_1": "Windows passed; Mac stopped earlier at content marker missing; not reproduced in attempt2",
+    "key_trace_attempt_2": "Windows passed; Mac development startup failed after equal designated requirements, key_lock complete and key_store begin without completion"
+  },
+  "not_established": [
+    "development native startup acceptance",
+    "ordinary installed UI lifecycle acceptance",
+    "owner publisher packaging",
+    "trusted peer/folder product configuration",
+    "sealed-record product export",
+    "Windows-Mac network durable reconciliation",
+    "M8 completion"
+  ],
+  "test_identity_setup": {
+    "change": "CI-only creator outside product bundle uses same development daemon designated identifier and disposable CI signer",
+    "limits": "No key ACL relaxation, exported secret or product fixture fallback. Does not prove migration from a different signer/identifier. Matching the creator identity did not resolve the startup deadline; root cause remains unproven.",
+    "reference": "https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/AboutCS/AboutCS.html"
+  },
+  "owner_diagnostic": {
+    "source": "2af7bcc50f0a586a7f6303b0f186554ee0e2096e",
+    "scope": "fresh isolated profile; cold startup before any explicit product identity access; no ACL changes or secret export",
+    "result_rule": "post-access success cannot replace failed cold startup; original generated identity is frozen before work; changed/missing metadata refuses key cleanup; verified exact key, captured group and runtime cleanup required",
+    "delivery": "prepared locally; physical execution pending",
+    "collector_source": "52c5e071cc8d3b1e5a2189ad2b53766174c08229",
+    "artifact_id": 14170299457,
+    "file": "Cryptex-Mac-Baslangic-Tani-2af7bcc-52c5e07.zip",
+    "sha256": "2f40c3a94829868f8bf7da7d437740d2ffe392e85103b68426b0a8570c64f85d",
+    "architecture": "arm64",
+    "expires_utc": "2026-11-16T16:33:09+00:00",
+    "packaging_check": "Downloaded CI public candidate; immutable signed files verified against manifest; collector updated separately; all delivered member SHA256 and ZIP CRC checks passed"
+  }
+}

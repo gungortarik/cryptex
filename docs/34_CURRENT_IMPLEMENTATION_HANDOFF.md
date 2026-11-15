@@ -6,33 +6,83 @@ Owner decision received: "Önerilen ürün entegrasyonunu uygula". The proposal 
 ADR-0020/0021 scope amendment now authorize controlled development integration.
 Do not ask again. Implementation/CI/review, not authority, is the current gate.
 
-First implementation slice adds explicit build-time development DER/release pins,
-distinct image identifiers, a normal development Desktop entry using protected
-content and ExistingProfile native sessions, and refuses fixture creation/driver
-paths in that build. Existing accepted Unix data APIs use the same daemon's
-admission; M8 owner requests remain on the native connection, with no Unix
-fallback. A diagnostic opens an explicitly supplied existing profile without
-initializing it and verifies startup/cleanup. Normal launch uses the stable
-development application-data profile. Capture draft confirmation and native
-child cleanup are retained; full installed UX acceptance is still pending.
-Native CI now builds/signs this separately and checks preexisting canonical bytes
-across restart plus refusal paths. Native results/review remain pending. Peer/
-folder policy, outgoing export and real-device package are not implemented yet.
+First implementation slice (`d1dbba4`, `d776115`, corrected by `7928539`) adds
+explicit build-time development DER/release pins, distinct image identifiers, a
+normal development Desktop entry using protected content and ExistingProfile
+native sessions, and refuses fixture creation/driver paths in that build. Normal
+launch selects the stable development application-data profile; a diagnostic can
+only open an explicitly supplied existing profile. Other builds remain closed.
+
+Independent source review found an initial ordinary-Unix namespace bypass and
+CI-fixture cleanup/inventory gaps. Correction `7928539` shares the original native
+RuntimeIdentity allocation (including later verified device pins) with runtime
+admission before any Unix/derived worker is exposed. Actual queued work and reply
+writes recheck it; observed drift is latched and cannot be cleared by name restore
+or recovery. Unix data routing remains as accepted; M8 owner requests stay native.
+The CI checker covers open tails/new files and exact-key finally cleanup after the
+bounded runner reaps its captured process group. Raw unresolved runner failures
+retain the profile/key for diagnosis. Source re-review found no remaining
+finding in this correction; it did not execute tests or establish acceptance.
+
+Full CI43728035782 on7928539 PASSED both platforms: Mac daemon596 passed,
+0 failed,7 ignored; Windows daemon684 passed,0 failed,5 ignored. Desktop and
+release checks also passed. This verifies the shared namespace correction, not
+the later product-feature native startup path.
+
+Native CI43733487924 attempt2 on716c871 confirms the startup blocker:
+creator/product designated requirements match and both actual images verify;
+key_lock completes; key_store begins but does not return before content-bind
+Deadline. Do not claim a Rust file-lock deadlock or mismatched designated
+requirement. The OS-store wait is established; the exact OS authorization cause
+is not. Attempt1 failed an earlier content-marker check with exit0; that did not
+recur in attempt2.07aeb79 preserves that failure and adds closed progress labels.
+
+2af7bcc adds a FAILED-candidate diagnostic export and an isolated owner runner.
+It tests cold startup first. Only the observed key_store wait permits a separate
+explicit existing-identity access through the real product daemon (up to120s for
+an owner OS prompt), followed by two unchanged native15s-budget restarts. No ACL
+change or private-key export; post-access success cannot become cold-start
+success. The generated exact key and runtime are cleaned only after captured
+process-group reaping. Missing identity or unverified cleanup refuses success.
+Read-only review fixed one cleanup P2 and found no remaining source finding.
+CI43736009393 on2af7bcc PASSED Windows and FAILED Mac at the same OS-store
+wait. Artifact14170299457 exported the failed candidate; this is not acceptance.
+The signed2af7bcc binaries were preserved, and reviewed collector52c5e07 freezes
+the generated cleanup identity before work. All delivered file hashes/ZIP CRCs
+were verified. Owner package in Downloads:
+Cryptex-Mac-Baslangic-Tani-2af7bcc-52c5e07.zip (arm64; expires
+2026-11-16T16:33:09Z). SHA256:
+2f40c3a94829868f8bf7da7d437740d2ffe392e85103b68426b0a8570c64f85d.
+Next external step: owner runs MAC-BASLANGIC-TANI.command on their Mac and returns
+MAC-BASLANGIC-TANI-SONUC-*.zip plus whether a system permission dialog appeared.
+Do not repeat old transfer fixtures or relabel post-access success as cold-start
+success. If expired, regenerate the candidate with the same reviewed collector.
+
+Local Rust remains blocked by Application Control4551. Six Python startup-checker,
+six diagnostic-package, two content-diagnostic and six bounded-runner tests
+passed locally. No native product acceptance is established. See the review
+receipt for exact CI source/results.
+
+Still pending in this slice: native acceptance and installed normal-window UX
+(including close-to-tray/single-instance/reopen), fresh-profile provisioning and
+owner publisher packaging. Do not substitute the diagnostic for those checks.
+Peer/folder policy, outgoing export and the combined real-device package are not
+implemented yet. These remain authorized work; do not ask the owner again.
 
 The owner requested normal product integration and a real two-device durable
 sync test after the corrected Mac receipt. Source audit at8cf54e4 confirmed
 three remaining implementation boundaries: configured release/ordinary native
 entry, verified peer/folder plus sealed-record export, and live network feeding
-of the existing incoming controller. Existing native fixture acceptance is not
-an implementation of the first two boundaries. No code/default was enabled.
+of the existing incoming controller. Existing native fixture acceptance was not
+an implementation of the first two boundaries. The controlled startup slice
+above now implements the first boundary partially; public defaults stay closed.
 
 Concrete decision ready in
 [controlled product-flow proposal](proposals/m8-product-flow-activation-20261115.md).
 It retains macOS26/local signing and recommends normal entry in an explicitly
 provisioned development build, a daemon-managed untrusted exchange tree, then a
-single Windows/Mac offline/reconnect/restart/restriction package. ADR-0020 and
-ADR-0021 are accepted for disabled development only; the outgoing exchange
-extension was included in the accepted selection above. No repeat of5ca78781 is
+single Windows/Mac offline/reconnect/restart/restriction package. The original disabled-only ADR-0020/0021 scope was amended by this owner
+selection; the outgoing exchange extension was included in that selection. No repeat of5ca78781 is
 needed. M8 remains open.
 
 ## Mac descriptor correction and owner acceptance — November15
