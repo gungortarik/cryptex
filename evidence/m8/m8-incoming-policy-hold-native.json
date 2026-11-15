@@ -1,0 +1,114 @@
+{
+  "receipt_version": 1,
+  "status": "completed",
+  "conclusion": "success",
+  "headSha": "1a042f96d922d002d2feb959ca890b0432249d97",
+  "run_id": 43657350874,
+  "run_url": "https://github.com/gungortarik/cryptex/actions/runs/43657350874",
+  "scope": "R4 authenticated incoming policy retention and restart in the inactive Windows publisher; common guards on Mac; not product activation or full M8 acceptance",
+  "jobs": [
+    {
+      "id": 132638731414,
+      "name": "IPC cross-account ACL (Windows)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132638731642,
+      "name": "Readiness (macos-latest)",
+      "conclusion": "success",
+      "daemon_library": {
+        "passed": 553,
+        "failed": 0,
+        "ignored": 7
+      },
+      "all_expected_new_tests_passed": true,
+      "expected_new_test_count": 7
+    },
+    {
+      "id": 132638731717,
+      "name": "Readiness (windows-latest)",
+      "conclusion": "success",
+      "daemon_library": {
+        "passed": 681,
+        "failed": 0,
+        "ignored": 5
+      },
+      "all_expected_new_tests_passed": true,
+      "expected_new_test_count": 14
+    }
+  ],
+  "new_common_tests": [
+    "import_staging::policy_hold::tests::generic_startup_preserves_review_markers_and_missing_journal_sentinel",
+    "import_staging::policy_hold::tests::changed_evidence_and_busy_import_slot_cannot_close_a_review_intent",
+    "import_staging::policy_hold::tests::review_intent_is_closed_bounded_and_never_a_publication_manifest",
+    "import_staging::policy_hold::tests::held_seen_latch_makes_missing_final_decision_sticky_before_revalidation",
+    "import_staging::policy_hold::tests::uncertain_intent_write_preserves_stage_and_refuses_discard",
+    "runtime_admission::tests::incoming_policy_hold_denies_all_shared_ordinary_admission",
+    "trust_reducer::admission_tests::terminal_conflict_never_hides_a_later_statically_invalid_signed_policy"
+  ],
+  "new_windows_publisher_tests": [
+    "incoming_publication::tests::ready_union_removing_a_canonical_peers_grant_retains_evidence_and_holds_after_restart",
+    "incoming_publication::tests::authenticated_cycle_and_terminal_tail_are_retained_and_rechecked_after_restart",
+    "incoming_publication::tests::authenticated_policy_conflict_holds_all_clones_and_survives_restart_without_sqlite",
+    "incoming_publication::tests::mixed_malformed_conflict_is_clean_rejection_and_does_not_latch_authority",
+    "incoming_publication::tests::missing_corrupt_or_changed_policy_evidence_never_reopens_old_content",
+    "incoming_publication::tests::process_interruptions_of_policy_review_preserve_or_reconstruct_the_hold",
+    "incoming_publication::tests::interrupted_unclassified_ready_or_mixed_bad_batch_aborts_on_first_restart"
+  ],
+  "independent_source_review": {
+    "candidate": "1a042f96d922d002d2feb959ca890b0432249d97",
+    "finding_status": "no remaining actionable finding",
+    "execution_performed_by_reviewer": false
+  },
+  "source_files": [
+    {
+      "path": "services/cryptexd/src/import_staging.rs",
+      "git_blob_sha256": "c473b7271d14fe21efa0d5507c4995f23a1e22acd3416d15d3da271beb16b6cf"
+    },
+    {
+      "path": "services/cryptexd/src/import_staging/policy_hold.rs",
+      "git_blob_sha256": "c3425315814807df1e5db22349452a6895a1237308bed302a7f2063598dd938c"
+    },
+    {
+      "path": "services/cryptexd/src/incoming_publication.rs",
+      "git_blob_sha256": "aa825e7bd2146ee67dfb575865271d0d9a67c336e5b0fcab9b30fcd8f1f804f5"
+    },
+    {
+      "path": "services/cryptexd/src/incoming_publication_tests.rs",
+      "git_blob_sha256": "e1a8bfe4d34ad3d0ce31c65e075a81fda82d2151a09f64055a66c9be8da55aa4"
+    },
+    {
+      "path": "services/cryptexd/src/knowledge_materialization.rs",
+      "git_blob_sha256": "a9a910722038b91f20ac78002d3a58f006fd1695137a100b342757fb7b0d060e"
+    },
+    {
+      "path": "services/cryptexd/src/runtime_admission.rs",
+      "git_blob_sha256": "4c33d4fe473d2d1055208d3265412a51294f76341d193a9aae95669a05bab4e8"
+    },
+    {
+      "path": "services/cryptexd/src/trust_reducer.rs",
+      "git_blob_sha256": "79d403220456bdb983c05997c61cbc5f653b9107c02da8c90bd3eec6710523f1"
+    },
+    {
+      "path": "services/cryptexd/src/trust_reducer/admission_tests.rs",
+      "git_blob_sha256": "7c86ad184e23b48f90466ec74c495365a32a6c40cdc87449b77a86a6dc8401d7"
+    },
+    {
+      "path": "docs/proposals/m8-incoming-policy-hold-20261114.md",
+      "git_blob_sha256": "9755804727ffc055d3b80bc4142426d42a5fcad575158ef60066958ac2eeafa4"
+    }
+  ],
+  "canonical_event_and_protocol_schema_sources_changed": false,
+  "manual_jobs_not_executed": [
+    "Dedicated default-off Desktop startup/native suite",
+    "Mac identity preflight",
+    "Unsigned Windows installer",
+    "Separate schema/historical-reader workflow"
+  ],
+  "limits": [
+    "No authenticated competing-fork witness admission added",
+    "Mac publication filesystem adapter and product activation remain closed",
+    "No real owner-device package rerun or full M8 acceptance claimed",
+    "Abrupt child interruption tests are not power-loss proofs"
+  ]
+}

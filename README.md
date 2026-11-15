@@ -8,9 +8,17 @@ Current implementation milestone: **M8 — Device trust and replication (in prog
 and strict terminal-tail holds passed independent source review and exact
 [Mac/Windows CI43646684219](https://github.com/gungortarik/cryptex/actions/runs/43646684219)
 on2276652. Nine new tests passed each platform. The [review](evidence/m8/m8-admission-terminal-review-20261114.md)
-records the source-bound correction and limits. Authenticated staged policy
-conflicts still need a durable restart-safe hold before incoming/product
-activation. Default gates remain closed; this is not full M8 acceptance.
+records the source-bound correction and limits.
+
+**Incoming conflict recovery — November 14:** authenticated policy conflicts now
+retain bounded staged evidence and keep shared admission closed across restart.
+Independent source review and exact-source
+[Mac/Windows CI43657350874](https://github.com/gungortarik/cryptex/actions/runs/43657350874)
+passed on `1a042f9`: daemon Mac553/Windows681passed, zero failures; all14 new
+Windows tests and7 common Mac tests passed. See the
+[review and scope](evidence/m8/m8-incoming-policy-hold-review-20261114.md).
+Mac publication adapters and ordinary product integration/acceptance remain open.
+Default gates remain closed; this is not full M8 acceptance.
 
 **Recovery checkpoint — November 14:** three new daemon tests cover durable
 signed restrictions, stale/partially rebuilt on-disk SQLite and guarded vault

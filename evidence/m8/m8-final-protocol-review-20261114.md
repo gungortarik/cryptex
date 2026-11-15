@@ -11,8 +11,13 @@ The owner explicitly selected A/B. The [correction review](m8-admission-terminal
 and [receipt](m8-admission-terminal-native.json) bind source2276652 to successful
 Mac/Windows CI43646684219 and nine new tests each. R1/R2 are corrected and
 independently source-reviewed at canonical-history scope; do not repeat their
-policy-choice question. R3's stale candidate text is consolidated. R4 remains an
-incoming/product activation blocker; this is not unconditional final acceptance.
+policy-choice question. R3's stale candidate text is consolidated. Follow-up
+[R4 review](m8-incoming-policy-hold-review-20261114.md) and
+[receipt](m8-incoming-policy-hold-native.json) verify the bounded durable
+incoming-conflict correction on1a042f9/CI43657350874, including genuine SCC,
+dependency, terminal-tail and Ready-union admission-removal publisher/restart
+cases. Mac publication and integrated product acceptance remain open; this is
+not unconditional final protocol acceptance.
 Findings below retain the original9340612 source observations and their exact
 scope rather than implying the old source counterexample was natively executed.
 

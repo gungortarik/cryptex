@@ -9,8 +9,11 @@ implementation/review. It is not final protocol acceptance or product activation
 Reviewed baseline: `93406122a5ca99e22f65885b923060ed43490fbe`.
 The [correction review](../../evidence/m8/m8-admission-terminal-review-20261114.md)
 records verified source2276652 and exact Mac/Windows CI43646684219. The selected
-A/B choice is not pending and must not be requested again. R4's durable incoming
-policy-hold contract and ordinary product activation remain separate work.
+A/B choice is not pending and must not be requested again. The follow-up
+[R4 review](../../evidence/m8/m8-incoming-policy-hold-review-20261114.md) and
+[receipt](../../evidence/m8/m8-incoming-policy-hold-native.json) now verify its
+bounded durable incoming hold/restart correction on1a042f9/CI43657350874.
+Ordinary product activation and full protocol acceptance remain separate work.
 
 The user requested final protocol acceptance and Mac product approval/incoming/
 protection-status integration. The independent full closeout review found two

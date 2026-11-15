@@ -1,5 +1,37 @@
 # 34 — Current Implementation Handoff
 
+## R4 incoming conflict retention — November 14
+
+Implementation/review candidate: `1a042f96d922d002d2feb959ca890b0432249d97`.
+The owner requested restart-persistent safe waiting. The [bounded contract](proposals/m8-incoming-policy-hold-20261114.md)
+and [independent review](../evidence/m8/m8-incoming-policy-hold-review-20261114.md)
+record purpose-separated complete-batch intents before classification, a monotone
+held-seen latch, retained exact staged bytes, and full OS-anchor-bound union
+revalidation before legacy cleanup/startup readiness. Recovery does not require
+SQLite, publish a held union, or clear a final held decision from old canonical
+state. Changed/missing/unknown evidence preserves the hold. Clean unsealed
+Ready/whole-invalid batches can abort after complete verification. No M8 override
+or competing-fork witness admission is introduced.
+
+Source review reported no remaining actionable finding. Exact-source native
+[CI43657350874](https://github.com/gungortarik/cryptex/actions/runs/43657350874)
+passed both readiness jobs and Windows cross-account ACL. Daemon library:
+Mac553passed/7ignored, Windows681passed/5ignored, zero failures. All14 new
+Windows tests and the7 shared Mac tests passed. The [structured receipt](../evidence/m8/m8-incoming-policy-hold-native.json)
+binds source, job IDs, test names and hashes; format/lint/release/Node steps also
+passed. Dedicated manual Desktop/identity/installer/historical jobs were not run.
+Local Rust remains blocked by Application Control4551; no bypass was used.
+
+Do not repeat the selected A/B policy question or unchanged owner packages.
+After this bounded correction, continue with Mac filesystem publication adapters,
+configured identity/OS policy, supported approval/session/incoming/protection-status
+wiring and integrated acceptance. Do not remove Windows ownership/cfg gates as a
+Mac port. Product activation/full protocol acceptance remain closed; M8 OPEN,
+M9 not begun. R4 is closed within the recorded inactive-publisher scope; do not
+repeat its tests without a new change or unresolved concern. Preserve
+`scripts/m8/__pycache__/`. Older sections below are historical source-scoped
+checkpoints, including the pre-R4 resume instruction.
+
 ## Cutoff/terminal correction verified — November 14
 
 The owner selected "Önerilen kuralları uygula" after the concrete decision,

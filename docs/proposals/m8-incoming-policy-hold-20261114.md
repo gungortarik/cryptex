@@ -1,5 +1,10 @@
 # R4 — Restart-persistent authenticated incoming policy hold
 
+Implementation reviewed and native-verified on `1a042f9`:
+[review](../../evidence/m8/m8-incoming-policy-hold-review-20261114.md),
+[exact-source receipt](../../evidence/m8/m8-incoming-policy-hold-native.json).
+This closes the bounded R4 correction, not full protocol/product acceptance.
+
 Scope: the existing, inactive Windows incoming publisher. No product route or
 Mac publication adapter is enabled. This implements the owner's selected
 whole-Brain conflict policy and explicit request for restart persistence.

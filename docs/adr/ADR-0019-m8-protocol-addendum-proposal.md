@@ -1289,9 +1289,14 @@ retirement-contract mismatch. The owner selected the
 source2276652 now passes exact Mac/Windows CI43646684219, genuine signed
 regressions and independent source review at canonical-history scope. This
 selection must not be requested again. The [review/disposition](../../evidence/m8/m8-final-protocol-review-20261114.md)
-retains R4: authenticated staged policy conflicts can become clean rejection.
-A bounded durable verified-evidence/restart-hold contract is required before
-incoming activation; no storage mechanism is silently selected here.
+originally retained R4: authenticated staged policy conflicts could become clean
+rejection. The owner's explicit restart-persistence request is now implemented
+under the reviewed [purpose-separated recovery contract](../proposals/m8-incoming-policy-hold-20261114.md).
+Source1a042f9 passed exact Mac/Windows CI43657350874 and independent source
+review; the [R4 review/limits](../../evidence/m8/m8-incoming-policy-hold-review-20261114.md)
+record retained evidence, full-union restart revalidation, no automatic final-hold
+clearance and the Windows-publisher/Mac-conservative-guard scope. This closes the
+bounded correction, not incoming/product activation or full ADR acceptance.
 The stale stopped Mac carrier recipe has been consolidated with the reviewed
 per-message candidate direction and selected wire3 retention. Neither edit
 configures a product publisher or supplies full protocol/product acceptance.
