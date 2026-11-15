@@ -255,7 +255,9 @@ pub fn load_existing_event_signing_key<S: SecureStore + ?Sized>(
     })?;
     let service = ServiceLabel::device_credentials(env);
     let account = AccountLabel::device_event_signing_seed(device_id.as_str());
-    let seed = trace_key_load("key_store", || store.get(service.as_str(), account.as_str()))?;
+    let seed = trace_key_load("key_store", || {
+        store.get(service.as_str(), account.as_str())
+    })?;
     let ready = ready_from_seed_and_meta(&seed, &metadata, device_id)?;
     drop(lock);
     Ok(ready)
