@@ -1790,7 +1790,10 @@ mod tests {
         let path = cryptexd::identity_runtime::brain_identity_path(&root);
         let before = fs::read(&path).unwrap();
         assert!(!cryptexd::local_device_identity::local_device_identity_path(&root).exists());
-        assert_eq!(fs::read_dir(root.join("canonical/events")).unwrap().count(), 0);
+        assert_eq!(
+            fs::read_dir(root.join("canonical/events")).unwrap().count(),
+            0
+        );
         assert!(run(args).is_err());
         assert_eq!(fs::read(path).unwrap(), before);
         fs::remove_dir_all(root).unwrap();
