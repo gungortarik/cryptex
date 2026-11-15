@@ -27,9 +27,17 @@ class ProductKeyTests(unittest.TestCase):
                 profile_snapshot(root)
 
     def test_actual_daemon_enrolls_and_changed_metadata_or_event_is_not_accepted(self):
-        for failure in ('none', 'metadata', 'event', 'raw', 'failed_enroll'):
+        for failure in ('none', 'alias', 'metadata', 'event', 'raw', 'failed_enroll'):
+            if failure == 'alias' and sys.platform != 'darwin':
+                continue
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                parent = Path(directory).resolve(strict=True)
+                root = parent / 'owned'
+                root.mkdir(mode=0o700)
+                supplied_root = root
+                if failure == 'alias':
+                    supplied_root = parent / 'alias'
+                    supplied_root.symlink_to(root, target_is_directory=True)
                 profile = root / 'product-owned-key-runtime'
                 manifest = root / 'manifest'
                 manifest.write_bytes(b'{}')
@@ -38,6 +46,8 @@ class ProductKeyTests(unittest.TestCase):
                 key_path = profile / 'identity/devices' / device.encode().hex() / 'event_signing_key.json'
                 def runner(args, timeout):
                     calls.append(args)
+                    if '--runtime-root' in args:
+                        self.assertEqual(Path(args[args.index('--runtime-root') + 1]), profile)
                     if 'prepare-empty-stream-v1' in args:
                         (profile / 'canonical/events/inventory.lock').write_bytes(b'')
                         stream = profile / 'canonical/events' / device.encode().hex()
@@ -66,8 +76,8 @@ class ProductKeyTests(unittest.TestCase):
                         (profile / 'canonical/events/new.seg').write_bytes(b'new')
                     return CommandResult(0, 'development_existing_profile_startup_and_cleanup=passed\n')
                 with redirect_stdout(io.StringIO()):
-                    if failure == 'none':
-                        exercise(root, root / 'cryptex-desktop', 'creator', manifest, runner,
+                    if failure in ('none', 'alias'):
+                        exercise(supplied_root, root / 'cryptex-desktop', 'creator', manifest, runner,
                                  lambda *args: cleanups.append(args))
                     else:
                         with self.assertRaises(PreflightError):
@@ -75,7 +85,7 @@ class ProductKeyTests(unittest.TestCase):
                                      lambda *args: cleanups.append(args))
                 self.assertEqual(len(cleanups), 0 if failure == 'raw' else 1)
                 self.assertEqual(manifest.read_bytes(), b'{}')
-                self.assertEqual(profile.exists(), failure != 'none')
+                self.assertEqual(profile.exists(), failure not in ('none', 'alias'))
                 self.assertIn('brain-only-v1', calls[0])
 
 

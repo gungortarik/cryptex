@@ -35,6 +35,10 @@ def profile_snapshot(profile):
 
 
 def exercise(root, desktop, creator, manifest, runner, run):
+    # CI's exclusively owned temporary parent can be reached through macOS's
+    # /var alias. Pass its physical path before creating the fresh runtime;
+    # the daemon must continue refusing symlinks in supplied runtime paths.
+    root = root.resolve(strict=True)
     profile = root / 'product-owned-key-runtime'
     profile.mkdir(mode=0o700)
     (profile / 'pilot-runtime.marker').write_bytes(b'm0-native-desktop-runtime-v1\n')
