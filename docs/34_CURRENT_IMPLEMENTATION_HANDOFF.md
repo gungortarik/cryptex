@@ -74,6 +74,16 @@ five package tests pass locally; read-only agent review has no actionable findin
 Native execution of this new validation branch remains pending. No Rust/runtime,
 acceptance rule, retry policy or production activation change was made.
 
+Ready validation packet: `Cryptex-Mac-Dogrulama-d9561d8-c80c8d8c.zip`, SHA256
+`aba5063e4e4d677b0dd80926d5dad6ca25036befcf7e4d0c51ac3668a95da047`.
+Collector source `42f989c`, SHA256
+`e79b4fa612b9bb59a5123a147f4765b8b8ffb339755ad12df0b93f45a50df7ef`.
+All11 app members remain identical to the original CI archive;9 inventory
+entries reverified. Helpers match Git. On Mac extract and double-click
+`Cryptex-Mac-Aktarim-Dogrulama/MAC-AKTARIM.command`; return the new
+`MAC-AKTARIM-SONUC-*.zip`. Expiry stays2026-11-16T03:21:56+00:00. Do not hand
+off an expired packet or claim native acceptance of the added diagnostic branch.
+
 M8 OPEN; M9 not begun. Owner hardware/installed UX, ordinary configured-image/
 release policy, actual peer/folder synchronization, cross-device durable replicas
 and final protocol acceptance remain separate gates. Local Rust is blocked by

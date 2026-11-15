@@ -188,6 +188,24 @@
       "transport_checker": 10,
       "package_export": 5
     },
-    "review": "read-only agent review: no actionable finding; reviewer did not execute tests or CI"
+    "review": "read-only agent review: no actionable finding; reviewer did not execute tests or CI",
+    "validation_packet": {
+      "archive_name": "Cryptex-Mac-Dogrulama-d9561d8-c80c8d8c.zip",
+      "sha256": "aba5063e4e4d677b0dd80926d5dad6ca25036befcf7e4d0c51ac3668a95da047",
+      "bytes": 24229102,
+      "members": 17,
+      "unchanged_signed_app_members": 11,
+      "verified_inventory_files": 9,
+      "launcher": "Cryptex-Mac-Aktarim-Dogrulama/MAC-AKTARIM.command",
+      "expires_utc": "2026-11-16T03:21:56+00:00",
+      "signed_app_source": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
+      "collector_source": "42f989ce9c6b09645335a69f772781b75ae0abd6",
+      "diagnostic_mode": "validation_only_after_failure",
+      "diagnostic_schema": 2,
+      "original_archive_sha256": "70db1c49e4e37e53236794737c673d84d4c103c87b816fd93f982be22e7955e4",
+      "collector_sha256": "e79b4fa612b9bb59a5123a147f4765b8b8ffb339755ad12df0b93f45a50df7ef",
+      "signed_app_bytes_changed": false,
+      "native_execution_of_new_validation_branch": "pending owner; Python regressions only"
+    }
   }
 }
