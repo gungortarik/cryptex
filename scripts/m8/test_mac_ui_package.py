@@ -33,7 +33,10 @@ class InteractiveFixtureTests(unittest.TestCase):
             export_fixture(root, files, root / "transport.zip", *args, transport_check=True)
             with zipfile.ZipFile(root / "transport.zip") as archive:
                 prefix = "Cryptex-Mac-Aktarim/"
-                for name in ("mac_transport_check.py", "mac_identity_preflight.py"):
+                for name in ("mac_transport_check.py", "mac_identity_preflight.py",
+                             "mac_process_inventory.py", "mac_process_inventory.c",
+                             "mac_window_process.py", "mac_development_diagnostic_owner.py",
+                             "mac_development_startup_check.py"):
                     self.assertEqual(archive.read(prefix + name), Path(__file__).with_name(name).read_bytes())
                 self.assertTrue(archive.getinfo(prefix + "MAC-AKTARIM.command").external_attr >> 16 & 0o100)
             export_fixture(root, files, root / "combined.zip", *args, combined_loss=True)

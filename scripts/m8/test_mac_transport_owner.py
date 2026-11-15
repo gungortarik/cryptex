@@ -206,7 +206,7 @@ class OwnerDiagnosticsTests(unittest.TestCase):
             runtime = package / "private-runtime"
             runtime.mkdir()
 
-            def failed_pairing(binary, root, run):
+            def failed_pairing(binary, root, probe, run, report):
                 run([binary, root], "real_native_managed_pairing", 240)
 
             with patch("mac_transport_owner.__file__", str(launcher)), \
@@ -217,7 +217,8 @@ class OwnerDiagnosticsTests(unittest.TestCase):
                     patch("mac_transport_owner.platform.machine", return_value="arm64"), \
                     patch("mac_transport_owner.tempfile.mkdtemp", return_value=str(runtime)), \
                     patch("mac_transport_owner.check_identity"), \
-                    patch("mac_transport_owner.check_native_pairing", side_effect=failed_pairing), \
+                    patch("mac_transport_owner.compile_probe", return_value=package / 'probe'), \
+                    patch("mac_transport_owner.check_observed_pairing", side_effect=failed_pairing), \
                     patch("mac_transport_owner.check_parent_loss") as loss, \
                     patch("mac_transport_owner.run_bounded", return_value=CommandResult(2, "existing_profile_incoming_Rejected")):
                 self.assertEqual(main(), 1)

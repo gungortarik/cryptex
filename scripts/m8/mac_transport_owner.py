@@ -17,7 +17,8 @@ import uuid
 import zipfile
 
 from mac_identity_preflight import PreflightError, run_bounded
-from mac_transport_check import IDENTITY_MARKERS, MARKERS, MUTATION_BATCH_MARKERS, _metadata, check_identity, check_native_pairing, check_parent_loss
+from mac_transport_check import IDENTITY_MARKERS, MARKERS, MUTATION_BATCH_MARKERS, _metadata, check_identity, check_parent_loss
+from mac_process_inventory import compile_probe, check_observed_pairing
 
 
 # Closed diagnostic inventory. Never export raw output, arguments, paths,
@@ -221,7 +222,8 @@ def main():
             binary = package / "positive.app/Contents/MacOS"
             check_identity(binary / "cryptexd", temp / "identity", run)
             report["identity_restart_and_refusals_verified"] = True
-            check_native_pairing(binary / "cryptex-desktop", temp / "pairing", run)
+            probe = compile_probe(temp)
+            check_observed_pairing(binary / "cryptex-desktop", temp / "pairing", probe, run, report)
             report["native_pairing_and_reopen_verified"] = True
             check_parent_loss(binary / "cryptexd", temp / "loss", run)
             report["daemon_loss_and_unresolved_refusal_verified"] = True

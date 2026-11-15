@@ -58,7 +58,10 @@ def export_fixture(bundle, files, destination, source, architecture, expires, *,
                 add(archive, helper, Path(__file__).with_name(helper).read_bytes())
         elif transport_check:
             add(archive, "MAC-AKTARIM.command", Path(__file__).with_name("mac_transport_owner.py").read_bytes(), True)
-            for helper in ("mac_transport_check.py", "mac_identity_preflight.py"):
+            for helper in ("mac_transport_check.py", "mac_identity_preflight.py",
+                           "mac_process_inventory.py", "mac_process_inventory.c",
+                           "mac_window_process.py", "mac_development_diagnostic_owner.py",
+                           "mac_development_startup_check.py"):
                 add(archive, helper, Path(__file__).with_name(helper).read_bytes())
         elif durable:
             add(archive, "MAC-KALICI.command", Path(__file__).with_name("mac_durable_owner.py").read_bytes(), True)
