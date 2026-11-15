@@ -6927,11 +6927,15 @@ mod tests {
 
         let mut session = ImportStagingSession::begin(&root).unwrap();
         let error = session.stage_segment(relative, &device, 0).unwrap_err();
+        #[cfg(not(target_os = "macos"))]
         assert!(
             error
                 .to_string()
                 .contains("aliases an entry under canonical/events")
         );
+        #[cfg(target_os = "macos")]
+        assert!(matches!(error, ImportStagingError::Io(ref message)
+            if message == "import regular file must have exactly one link"));
         assert!(session.failed);
 
         drop(session);
@@ -7351,7 +7355,9 @@ mod tests {
                 .is_err(),
             "publication preflight must reject a staged file with a canonical hard-link alias"
         );
-        fs::remove_file(alias_path).unwrap();
+        // Test fixture repair deliberately removes the synthetic hard link.
+        // The production Darwin unlink adapter refuses multiply linked files.
+        std::fs::remove_file(alias_path).unwrap();
         policy_verified
             .validate_publication_preconditions(&session)
             .unwrap();

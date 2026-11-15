@@ -111,8 +111,13 @@ fn directory_permissions(file: &File, current_owner: bool) -> io::Result<()> {
 
 fn regular_permissions(file: &File) -> io::Result<()> {
     let m = file.metadata()?;
+    if m.nlink() != 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "import regular file must have exactly one link",
+        ));
+    }
     if !m.is_file()
-        || m.nlink() != 1
         || m.uid() != unsafe { libc::geteuid() }
         || m.mode() & 0o022 != 0
         || unsafe { cx_import_acl_safe(file.as_raw_fd()) } != 0
