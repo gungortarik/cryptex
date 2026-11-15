@@ -1,5 +1,61 @@
 # 34 — Current Implementation Handoff
 
+
+## Mac filesystem and existing-profile integration — November 14 (verification open)
+
+Current code candidate is on `codex/m8-device-trust`; resume from the branch HEAD,
+not an older owner's archive. See [bounded contract](proposals/m8-macos-import-filesystem-20261114.md).
+The descriptor-relative Darwin adapter, original namespace/lock binding, exclusive
+promotion/flush and guarded recovery/cleanup are implemented. Baseline source
+`609eb7c687f578b7e88f743f5e7098fa99c59e8b` passed exact-source
+[CI43664460270](https://github.com/gungortarik/cryptex/actions/runs/43664460270):
+Mac585passed/7ignored, Windows681passed/5ignored; both readiness jobs and Windows
+cross-account ACL passed. That baseline is **not** acceptance of subsequent code.
+
+A distinct default-off `ExistingProfile` now connects an already initialized
+OS-backed profile to the shared sealed native dispatcher, connection-local grants,
+same-instance incoming controller, bounded descriptor inbox hints and conservative
+live status. No fixture seeding/fault IDs enter this mode; no renderer receives
+paths, keys, raw capabilities, content-binding controls or an import-hint command.
+Canonical-capable domain replies close new admission before releasing their real
+reply lease; full R4 recovery/authenticated peer slots/M3-M4 rebuild runs before
+further work. Original backend device capabilities survive reconciliation and
+actual publication. Ready/status/domain sends validate the original namespace
+before and after actual send. Protection never means remote durability from local
+publication/helper liveness. Ordinary activation remains closed under ADR0020;
+no release signer, Unix fallback or new paid membership choice is inferred.
+
+**Do not declare this candidate complete:** native verification exposed two issues.
+Transport fixture seeds now have unique event UUIDs; the fixed resume expectation
+was corrected in `ed27b8d1510d98e0a488b2c0e28cc1d0c5f6ddc2`, preserving fixed-ID
+constraints for non-transport fixture modes and authenticating the actual sealed
+transport seed. The genuine eight-writer first-create test has repeatedly returned
+ENOENT, reproduced by a new16-round adapter stress case. The failing syscall is
+not yet established: do not retry ENOENT as harmless contention or weaken the test.
+Fixed-stage directory/open diagnostics and unchanged strict checks were added in
+`2e32ae2`; inspect its latest native job logs. The signed existing-profile import
+also returned `Unavailable`; fixed-code discovery/controller diagnostics were added
+in `109ed38`. These are real remaining gates, not called CI flakes or passes.
+
+Current diagnostic runs:
+[43668821475](https://github.com/gungortarik/cryptex/actions/runs/43668821475) (full),
+[43668819534](https://github.com/gungortarik/cryptex/actions/runs/43668819534) (native),
+[43669169588](https://github.com/gungortarik/cryptex/actions/runs/43669169588) (native diagnostics).
+Recheck status before continuing. Source review already corrected post-domain
+reconciliation, pre-send namespace checks and retained device bindings; the
+independent reviewer is read-only and must not run tests/CI or edit files.
+
+Continue by locating/fixing the creation failure, resolving the actual controller
+refusal, obtaining exact-source native/full CI success and independent review,
+then preparing the already requested one-click Mac acceptance archive from that
+passing source. The extended signed harness exercises live ExistingProfile pair
+completion→incoming without restart, restriction→fresh status/approval, restart
+idempotence and old wire/handle refusal. It still proves local two-engine behavior,
+not real peer/folder synchronization or remote durable replication. No owner action
+or fresh copy/paste loop is needed until a concrete passing package is ready.
+M8 OPEN; M9 not begun. Local Rust remains blocked by Application Control4551;
+use native CI without bypass. Preserve preexisting `scripts/m8/__pycache__/`.
+
 ## R4 incoming conflict retention — November 14
 
 Implementation/review candidate: `1a042f96d922d002d2feb959ca890b0432249d97`.
