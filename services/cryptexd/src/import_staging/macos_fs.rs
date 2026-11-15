@@ -218,6 +218,11 @@ impl LockBinding {
     }
 }
 
+enum ExistingLock {
+    Absent,
+    Opened(File),
+}
+
 impl Directory {
     pub(crate) fn open(path: &Path, current_owner: bool) -> io::Result<Self> {
         let requested = path.to_path_buf();
@@ -316,20 +321,47 @@ impl Directory {
         // issue a nonexclusive O_CREAT against a concurrently created leaf.
         // Missing parents/replacements still fail the original capability
         // checks on every operation; no failed create is retried as ENOENT.
-        match self.open_file(name, libc::O_RDWR) {
-            Ok(file) => Ok(file),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+        match self.lookup_existing_lock(name)? {
+            ExistingLock::Opened(file) => Ok(file),
+            ExistingLock::Absent => {
                 match self.open_file(name, libc::O_RDWR | libc::O_CREAT | libc::O_EXCL) {
                     Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                        // One other supported creator won. Open that one
-                        // ordinary, owned, single-link leaf without create.
+                        // One other supported creator won. This strict lookup
+                        // cannot create a replacement if that leaf disappears.
                         self.open_file(name, libc::O_RDWR)
                     }
                     result => result,
                 }
             }
-            Err(error) => Err(error),
         }
+    }
+
+    fn lookup_existing_lock(&self, name: &OsStr) -> io::Result<ExistingLock> {
+        self.validate()?;
+        let name = leaf(name)?;
+        let fd = unsafe {
+            libc::openat(
+                self.last()?.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDWR | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            let error = io::Error::last_os_error();
+            self.validate()?;
+            // Only the original lookup syscall can establish absence. Never
+            // reinterpret post-open visibility/identity loss as a new leaf.
+            return if error.raw_os_error() == Some(libc::ENOENT) {
+                Ok(ExistingLock::Absent)
+            } else {
+                Err(at_stage("existing_lock_lookup", error))
+            };
+        }
+        let file = owned(fd)?;
+        #[cfg(test)]
+        super::namespace_fault::run(super::namespace_fault::Point::LockLeafOpened);
+        self.validate_open_file(&name, &file)?;
+        Ok(ExistingLock::Opened(file))
     }
 
     fn open_file(&self, name: &OsStr, flags: libc::c_int) -> io::Result<File> {
@@ -343,14 +375,19 @@ impl Directory {
                 0o600,
             )
         })?;
-        regular_permissions(&file)?;
+        self.validate_open_file(&name, &file)?;
+        Ok(file)
+    }
+
+    fn validate_open_file(&self, name: &CStr, file: &File) -> io::Result<()> {
+        regular_permissions(file)?;
         self.validate()?;
-        let visible = stat_at(self.last()?, &name)?;
+        let visible = stat_at(self.last()?, name)?;
         let metadata = file.metadata()?;
         if (visible.st_dev as u64) != metadata.dev() || visible.st_ino != metadata.ino() {
             return Err(unsafe_object());
         }
-        Ok(file)
+        self.validate()
     }
 }
 
@@ -685,6 +722,28 @@ mod tests {
         crate::test_temp::exclusive_temp_dir("mac-import-capability")
     }
 
+    #[test]
+    fn disappearing_opened_lock_is_never_recreated_or_split_from_its_holder() {
+        let root = crate::test_temp::exclusive_temp_dir("mac-lock-disappeared");
+        let path = root.join("writer.lock");
+        let preserved = root.join("preserved.lock");
+        std::fs::write(&path, b"original held lock").unwrap();
+        let holder = std::fs::OpenOptions::new().read(true).write(true).open(&path).unwrap();
+        fs2::FileExt::lock_exclusive(&holder).unwrap();
+        let moved_path = path.clone();
+        let moved_preserved = preserved.clone();
+        let _fault = super::super::namespace_fault::install(
+            super::super::namespace_fault::Point::LockLeafOpened,
+            move || std::fs::rename(moved_path, moved_preserved).unwrap(),
+        );
+        assert!(LockBinding::open(&path).is_err());
+        assert!(!path.exists());
+        assert_eq!(std::fs::read(&preserved).unwrap(), b"original held lock");
+        let contender = std::fs::OpenOptions::new().read(true).write(true).open(&preserved).unwrap();
+        assert_eq!(fs2::FileExt::try_lock_exclusive(&contender).unwrap_err().kind(), io::ErrorKind::WouldBlock);
+        drop((contender, holder));
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn existing_lock_bytes_are_preserved_and_link_aliases_are_refused() {
         use std::os::unix::fs::symlink;

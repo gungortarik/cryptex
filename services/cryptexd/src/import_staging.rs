@@ -380,6 +380,7 @@ pub(crate) mod namespace_fault {
         CleanupValidated,
         PreparedAbort,
         UnpreparedValidated,
+        LockLeafOpened,
     }
     type Hook = Option<(Point, Box<dyn FnOnce()>)>;
     thread_local! { static HOOK: std::cell::RefCell<Hook> = const { std::cell::RefCell::new(None) }; }
