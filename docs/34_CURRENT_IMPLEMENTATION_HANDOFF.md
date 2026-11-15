@@ -1,5 +1,23 @@
 # 34 — Current Implementation Handoff
 
+## Normal product-flow continuation — November15
+
+The owner requested normal product integration and a real two-device durable
+sync test after the corrected Mac receipt. Source audit at8cf54e4 confirmed
+three remaining implementation boundaries: configured release/ordinary native
+entry, verified peer/folder plus sealed-record export, and live network feeding
+of the existing incoming controller. Existing native fixture acceptance is not
+an implementation of the first two boundaries. No code/default was enabled.
+
+Concrete decision ready in
+[controlled product-flow proposal](proposals/m8-product-flow-activation-20261115.md).
+It retains macOS26/local signing and recommends normal entry in an explicitly
+provisioned development build, a daemon-managed untrusted exchange tree, then a
+single Windows/Mac offline/reconnect/restart/restriction package. ADR-0020 and
+ADR-0021 are accepted for disabled development only; the outgoing exchange
+extension also needs acceptance of its concrete direction. Await that selection
+before changing those boundaries. No repeat of5ca78781 is needed. M8 remains open.
+
 ## Mac descriptor correction and owner acceptance — November15
 
 Latest owner return `MAC-AKTARIM-SONUC-5ca78781.zip` PASSED. Its source7fc6d44
