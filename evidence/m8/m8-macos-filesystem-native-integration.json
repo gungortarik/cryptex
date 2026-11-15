@@ -74,6 +74,21 @@
   },
   "owner_acceptance": {
     "status": "failed",
+    "latest_diagnostic_result": {
+      "archive_name": "MAC-AKTARIM-SONUC-f7684e37.zip",
+      "sha256": "763b65b071420f362c14ffe48eb595e216ae11875e01de594fac034bbd388be3",
+      "collector_sha256": "f5021c518eefb4ca8666e951ec8b85af52a7a02f26201e4715203c5a507ad748",
+      "source": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
+      "outcome": "failed",
+      "native_exit_code": 2,
+      "native_elapsed_ms": 20526,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "native_code": "existing_profile_incoming_Rejected",
+      "inner_rejection_cause": "unconfirmed",
+      "evidence": "evidence/m8/m8-macos-owner-rejection-20261115.json"
+    },
     "received_result": {
       "archive_name": "MAC-AKTARIM-SONUC-1bcdf362.zip",
       "sha256": "d314e353d0c5a584dd0277ec7eef5b49f71fb2876dd6092e3090505f954e1b4e",
@@ -106,7 +121,7 @@
     ],
     "signature_execution_verified_on": "Mac CI; Windows archive inspection does not claim native signature verification",
     "diagnostic_package": {
-      "status": "ready_for_owner; changed collector not executed on Mac",
+      "status": "owner_return_failed; clean import rejection observed",
       "archive_name": "Cryptex-Mac-Tani-d9561d8-b3014b96.zip",
       "sha256": "514e153692a2bba679c2ca24e50870b93eb269ca564601866e93334d10ef7c06",
       "bytes": 24226987,
@@ -122,7 +137,7 @@
       "local_tests_passed": {"owner_diagnostics": 7, "transport_checker": 10, "package_export": 5},
       "read_only_agent_review": "no actionable finding in collector/test delta; no tests or CI by reviewer",
       "raw_output_exported": false,
-      "native_execution_of_changed_collector": false
+      "native_execution_of_changed_collector": "owner-provided failed receipt; not independently executed on owner hardware"
     }
   },
   "ordinary_product_activation": false,

@@ -17,7 +17,7 @@ import uuid
 import zipfile
 
 from mac_identity_preflight import PreflightError, run_bounded
-from mac_transport_check import IDENTITY_MARKERS, MARKERS, MUTATION_BATCH_MARKERS, check_identity, check_native_pairing, check_parent_loss
+from mac_transport_check import IDENTITY_MARKERS, MARKERS, MUTATION_BATCH_MARKERS, _metadata, check_identity, check_native_pairing, check_parent_loss
 
 
 # Closed diagnostic inventory. Never export raw output, arguments, paths,
@@ -50,6 +50,57 @@ SAFE_STARTUP_STAGES = frozenset((
     "startup_hello", "startup_ack", "runtime_ready", "ready_file",
     "child_inventory", "child_verification_hint",
 ))
+VALIDATION_REASONS = {
+    "retrieval safety gate is held:": "retrieval_safety_held",
+    "CanonicalVerificationUnavailable": "canonical_verification_unavailable",
+    "MaterializationStateMissingOrStale": "materialization_missing_or_stale",
+    "ProjectionDoesNotMatchCanonical": "projection_canonical_mismatch",
+    "UnsupportedSemantics": "unsupported_semantics",
+    "V2SemanticsNotIntegrated": "v2_semantics_not_integrated",
+    "UnresolvedDependency": "unresolved_dependency",
+    "OperationDeadlineExceeded": "operation_deadline",
+    "import staging I/O:": "staging_io",
+    "import staging rejected:": "staging_invalid",
+    "import staging limit:": "staging_limit",
+    "unsafe or changed import filesystem object": "filesystem_unsafe_or_changed",
+    "import filesystem open_fd:": "filesystem_open_fd",
+    "import filesystem stat_at:": "filesystem_stat_at",
+    "import filesystem lock_parent_open:": "filesystem_lock_parent_open",
+    "import filesystem lock_leaf_open:": "filesystem_lock_leaf_open",
+    "import filesystem existing_lock_lookup:": "filesystem_existing_lock_lookup",
+    "import filesystem create_existing_ancestor:": "filesystem_create_ancestor",
+    "import filesystem create_directory:": "filesystem_create_directory",
+    "import filesystem validate_created_directory:": "filesystem_validate_created_directory",
+    "incoming candidate aliases an entry under canonical/events": "canonical_alias",
+    "candidate identity or metadata changed during snapshot": "source_metadata_changed",
+    "candidate changed length during snapshot:": "source_length_changed",
+    "staged bytes did not match the copied source snapshot": "snapshot_readback_mismatch",
+    "staged segment ends with an incomplete": "incomplete_frame",
+    "staged segment uses an unsupported frame version": "unsupported_frame_version",
+    "event frame is not valid JSON": "invalid_frame_json",
+    "Ed25519 signature verification failed": "signature_verification_failed",
+    "content_hash mismatch:": "content_hash_mismatch",
+    "JSON duplicate-key check failed:": "duplicate_json_key",
+    "event device_id does not match the staged segment": "event_device_mismatch",
+    "event brain_id does not match the selected Brain": "event_brain_mismatch",
+    "no trusted daemon signing key is bound to the event": "untrusted_signing_key",
+    "event prev_content_hash does not match the verified stream tip": "stream_hash_mismatch",
+    "event device_seq is not strictly increasing": "stream_sequence_order",
+    "staged segment contains a duplicate event_id": "duplicate_event_id",
+    "staged segment is empty or its digest changed before validation": "empty_or_changed_segment",
+    "import candidate device is outside the locally approved trust set": "device_outside_trust",
+    "import cannot extend a device with an active canonical segment": "active_canonical_segment",
+    "complete local-anchor trust context is unavailable": "trust_context_unavailable",
+    "post-import policy union contains duplicate canonical records": "duplicate_policy_record",
+    "staging cleanup failed:": "validation_cleanup_failed",
+}
+
+
+def summarize_validation(output):
+    bounded = output[:65536]
+    return {"reason_codes": sorted({code for phrase, code in VALIDATION_REASONS.items() if phrase in bounded}),
+            "os_error_numbers": sorted({int(code) for code in re.findall(r"\(os error ([0-9]{1,3})\)", bounded)
+                                        if int(code) <= 255})[:8]}
 
 
 def summarize_output(output):
@@ -76,9 +127,9 @@ def summarize_output(output):
             "startup_failures": stages}
 
 
-def make_runner(report):
+def make_runner(report, expected_pairing_root=None):
     lock = threading.Lock()
-    report["diagnostic_schema"] = 1
+    report["diagnostic_schema"] = 2
     report["command_diagnostics"] = []
 
     def run(args, stage, timeout=30):
@@ -94,6 +145,46 @@ def make_runner(report):
                 report["command_diagnostics"].append(receipt)
             else:
                 report["command_diagnostics_truncated"] = True
+        if (stage == "real_native_managed_pairing" and result.code == 2
+                and not (result.timed_out or result.limited or result.pipe_failed)
+                and "existing_profile_incoming_Rejected" in receipt["codes"]
+                and "post_rejection_validation" not in report
+                and expected_pairing_root is not None and len(args) == 3
+                and args[1] == "--cryptex-m8-local-content-transport-check"
+                and Path(args[2]) == expected_pairing_root):
+            # run_bounded returned only after reaping the exact native driver
+            # and stopping its owned process group. Keys still exist until the
+            # checker's finally cleanup. No old root discovery or adoption.
+            try:
+                metadata = _metadata(expected_pairing_root / "initiator/identity/local_device.json")
+                device = str(uuid.UUID(metadata["device_id"]))
+            except (PreflightError, OSError, ValueError, TypeError, KeyError):
+                report["post_rejection_validation"] = {"outcome": "fixture_metadata_refused"}
+            else:
+                remaining = int(timeout - (time.monotonic() - started))
+                if remaining < 1:
+                    report["post_rejection_validation"] = {"outcome": "original_budget_exhausted"}
+                else:
+                    budget = min(45, remaining)
+                    probe_started = time.monotonic()
+                    relative = device.encode("ascii").hex() + "/00000000000000000000.seg"
+                    # Existing daemon CLI: owns the instance, stages/verifies/
+                    # discards. Never publishes or repairs canonical memory.
+                    # Raw wait/OS errors MUST propagate: no typed stopped proof
+                    # may reach the checker cleanup while this writer is unresolved.
+                    report["post_rejection_validation"] = {"outcome": "writer_exit_unresolved", "validation_only": True}
+                    probe = run_bounded([str(Path(args[0]).with_name("cryptexd")), "replication",
+                        "validate-incoming", "--runtime-root", str(expected_pairing_root / "responder"),
+                        "--environment", "dev", relative], budget)
+                    report["post_rejection_validation"] = {
+                        "outcome": "validation_only_after_failure", "validation_only": True,
+                        "exit_code": probe.code, "timed_out": probe.timed_out,
+                        "output_limited": probe.limited, "pipe_failed": probe.pipe_failed,
+                        "timeout_seconds": budget,
+                        "elapsed_ms": int((time.monotonic() - probe_started) * 1000),
+                        **summarize_validation(probe.output)}
+                    # This later check never turns the original native failure
+                    # into a pass, even when explicit validation exits zero.
         if result.code or result.timed_out or result.limited or result.pipe_failed:
             raise PreflightError(stage + "_failed")
         return result.output
@@ -117,7 +208,7 @@ def main():
     else:
         temp = Path(tempfile.mkdtemp(prefix="cryptex-owner-transport-")).resolve()
 
-        run = make_runner(report)
+        run = make_runner(report, temp / "pairing")
 
         try:
             binary = package / "positive.app/Contents/MacOS"

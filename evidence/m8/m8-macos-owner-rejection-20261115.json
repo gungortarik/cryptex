@@ -1,0 +1,193 @@
+{
+  "receipt_version": 1,
+  "status": "owner_import_rejected_cause_unconfirmed",
+  "archive_name": "MAC-AKTARIM-SONUC-f7684e37.zip",
+  "archive_sha256": "763b65b071420f362c14ffe48eb595e216ae11875e01de594fac034bbd388be3",
+  "attribution": "owner-provided aggregate diagnostic; not independent owner-hardware execution",
+  "received_result": {
+    "source": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
+    "outcome": "failed",
+    "collector_sha256": "f5021c518eefb4ca8666e951ec8b85af52a7a02f26201e4715203c5a507ad748",
+    "scope": "isolated real local engines and signed native pairing; not cross-device sync",
+    "diagnostic_schema": 1,
+    "command_diagnostics": [
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 8379,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_clean_stop_ack=passed",
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_helper_loss_cleanup=passed",
+          "mac_transport_missing_key_no_regeneration=passed",
+          "mac_transport_owned_identity_restart=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 234,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 7901,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_mutation_batch_receipts_cases_5=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 248,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 9321,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_mutation_batch_profile_cases_6=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 237,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "real_native_managed_pairing",
+        "exit_code": 2,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 20526,
+        "timeout_seconds": 240,
+        "codes": [
+          "existing_profile_incoming_Rejected"
+        ],
+        "markers": [
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "native_managed_pairing_clean_shutdown=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "cleanup_native_pairing_device_key",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 21,
+        "timeout_seconds": 30,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 261,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "cleanup_native_pairing_device_key",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 16,
+        "timeout_seconds": 30,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 252,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      }
+    ],
+    "identity_restart_and_refusals_verified": true,
+    "diagnostic": "real_native_managed_pairing_failed"
+  },
+  "interpretation": {
+    "original_failure_preserved": true,
+    "inner_rejection_reason_confirmed": false,
+    "timeout_or_output_failure": false,
+    "canonical_publication_accepted": false,
+    "later_restart_and_parent_loss_accepted": false,
+    "m8_complete": false
+  },
+  "next_step": {
+    "kind": "validation_only_after_failure",
+    "same_signed_app_source": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
+    "daemon_command": "replication validate-incoming",
+    "publishes_canonical": false,
+    "mutates_temporary_staging_and_coordination": true,
+    "maximum_probe_seconds": 45,
+    "within_remaining_original_pairing_seconds": 240,
+    "retries": 0,
+    "raw_output_exported": false,
+    "native_execution_of_new_branch": "pending owner",
+    "local_tests": {
+      "owner_diagnostics": 14,
+      "transport_checker": 10,
+      "package_export": 5
+    },
+    "review": "read-only agent review: no actionable finding; reviewer did not execute tests or CI"
+  }
+}

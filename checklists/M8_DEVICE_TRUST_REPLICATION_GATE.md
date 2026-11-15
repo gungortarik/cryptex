@@ -11,8 +11,10 @@ tests passed, zero failures; separate read-only agent review has no remaining
 finding in this slice. Corrected16x8 creation/disappearing-leaf guards, original
 namespace binding, actual-send admission/reconciliation and live signed import/
 restart checks passed in CI. The returned owner packet failed at native pairing;
-identity checks passed, but the precise cause is unconfirmed. The next packet adds
-bounded privacy-filtered diagnostics to unchanged signed app bytes. Physical
+identity checks passed. The diagnostic return identifies a clean incoming
+`Rejected`, exit2 without timeout/output/pipe failure; its inner cause is still
+unconfirmed. The next packet runs validation-only after that exact failure using
+the unchanged signed daemon, within the original budget. Physical
 owner acceptance remains failed/open. Ordinary activation, peer/folder/cross-device durable
 replication, installed UX and full protocol/M8 acceptance remain open. This
 supersedes earlier adapter-pending notes only within the default-off candidate.

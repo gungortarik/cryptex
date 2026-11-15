@@ -9,10 +9,116 @@ from unittest.mock import patch
 import zipfile
 
 from mac_identity_preflight import CommandResult, PreflightError
-from mac_transport_owner import main, make_runner, summarize_output
+from mac_transport_check import check_native_pairing
+from mac_transport_owner import main, make_runner, summarize_output, summarize_validation
 
 
 class OwnerDiagnosticsTests(unittest.TestCase):
+    def fixture_probe(self, directory):
+        root = Path(directory) / "pairing"
+        metadata = root / "initiator/identity/local_device.json"
+        metadata.parent.mkdir(parents=True)
+        metadata.write_text(json.dumps({"device_id": "24376f10-1d44-4673-960a-cb46ff26ab65"}), encoding="utf-8")
+        binary = Path(directory) / "positive.app/Contents/MacOS/cryptex-desktop"
+        return root, binary
+
+    def test_validation_reason_filter_never_exports_raw_error_values(self):
+        secret = "private-secret-body-path"
+        output = ("import staging rejected: retrieval safety gate is held: "
+                  "Some(MaterializationStateMissingOrStale) " + secret +
+                  " (os error 13) (os error 999) (os error 1000)")
+        self.assertEqual(summarize_validation(output), {
+            "reason_codes": ["materialization_missing_or_stale", "retrieval_safety_held", "staging_invalid"],
+            "os_error_numbers": [13]})
+        self.assertNotIn(secret, json.dumps(summarize_validation(output)))
+
+    def test_rejected_fixture_gets_one_validation_before_original_failure_and_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, binary = self.fixture_probe(directory)
+            for probe_result in (CommandResult(0, '{"outcome":"validated_only","published":false}'),
+                                 CommandResult(1, "import staging rejected: event brain_id does not match the selected Brain")):
+                report = {}
+                run = make_runner(report, root)
+                with self.subTest(probe=probe_result), patch("mac_transport_owner.run_bounded", side_effect=(
+                        CommandResult(2, "existing_profile_incoming_Rejected"), probe_result, CommandResult(0, ""))) as bounded:
+                    with self.assertRaisesRegex(PreflightError, "real_native_managed_pairing_failed"):
+                        check_native_pairing(binary, root, run)
+                self.assertEqual(bounded.call_count, 3)
+                self.assertEqual(bounded.call_args_list[1].args[0], [
+                    str(binary.with_name("cryptexd")), "replication", "validate-incoming", "--runtime-root",
+                    str(root / "responder"), "--environment", "dev",
+                    "24376f10-1d44-4673-960a-cb46ff26ab65".encode().hex() + "/00000000000000000000.seg"])
+                self.assertLessEqual(bounded.call_args_list[1].args[1], 45)
+                self.assertEqual(bounded.call_args_list[2].args[0][0:2], ["/usr/bin/security", "delete-generic-password"])
+                self.assertEqual(report["post_rejection_validation"]["exit_code"], probe_result.code)
+                self.assertTrue(report["post_rejection_validation"]["validation_only"])
+                self.assertNotIn("native_pairing_and_reopen_verified", report)
+
+    def test_unresolved_validation_writer_blocks_fixture_key_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, binary = self.fixture_probe(directory)
+            report = {}
+            with patch("mac_transport_owner.run_bounded", side_effect=(
+                    CommandResult(2, "existing_profile_incoming_Rejected"), TimeoutError("unresolved-private"))) as bounded:
+                with self.assertRaisesRegex(PreflightError, "native_pairing_cleanup_writer_unresolved"):
+                    check_native_pairing(binary, root, make_runner(report, root))
+            self.assertEqual(bounded.call_count, 2)
+            self.assertNotIn("unresolved-private", json.dumps(report))
+            self.assertEqual(report["post_rejection_validation"]["outcome"], "writer_exit_unresolved")
+
+    def test_validation_only_for_exact_rejection_and_current_fixture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, binary = self.fixture_probe(directory)
+            for result, selector, selected in (
+                    (CommandResult(2, "existing_profile_incoming_Rejected", timed_out=True), "--cryptex-m8-local-content-transport-check", root),
+                    (CommandResult(2, "existing_profile_incoming_Rejected", limited=True), "--cryptex-m8-local-content-transport-check", root),
+                    (CommandResult(2, "existing_profile_incoming_Rejected", pipe_failed=True), "--cryptex-m8-local-content-transport-check", root),
+                    (CommandResult(2, "existing_profile_incoming_Held"), "--cryptex-m8-local-content-transport-check", root),
+                    (CommandResult(2, "existing_profile_incoming_Rejected"), "other", root),
+                    (CommandResult(2, "existing_profile_incoming_Rejected"), "--cryptex-m8-local-content-transport-check", root.parent / "older")):
+                with self.subTest(result=result, selector=selector, selected=selected), \
+                        patch("mac_transport_owner.run_bounded", return_value=result) as bounded:
+                    report = {}
+                    with self.assertRaises(PreflightError):
+                        make_runner(report, root)([binary, selector, selected], "real_native_managed_pairing", 240)
+                    self.assertEqual(bounded.call_count, 1)
+                    self.assertNotIn("post_rejection_validation", report)
+
+    def test_validation_does_not_extend_original_pairing_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, binary = self.fixture_probe(directory)
+            report = {}
+            with patch("mac_transport_owner.run_bounded", return_value=CommandResult(2, "existing_profile_incoming_Rejected")) as bounded, \
+                    patch("mac_transport_owner.time.monotonic", side_effect=(0, 240, 241)):
+                with self.assertRaises(PreflightError):
+                    make_runner(report, root)([binary, "--cryptex-m8-local-content-transport-check", root], "real_native_managed_pairing", 240)
+            bounded.assert_called_once()
+            self.assertEqual(report["post_rejection_validation"]["outcome"], "original_budget_exhausted")
+
+    def test_validation_probe_is_not_retried(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, binary = self.fixture_probe(directory)
+            report = {}
+            run = make_runner(report, root)
+            with patch("mac_transport_owner.run_bounded", side_effect=(
+                    CommandResult(2, "existing_profile_incoming_Rejected"), CommandResult(0, ""),
+                    CommandResult(2, "existing_profile_incoming_Rejected"))) as bounded:
+                for _ in range(2):
+                    with self.assertRaises(PreflightError):
+                        run([binary, "--cryptex-m8-local-content-transport-check", root], "real_native_managed_pairing", 240)
+            self.assertEqual(bounded.call_count, 3)
+
+    def test_unsafe_fixture_metadata_does_not_launch_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, binary = self.fixture_probe(directory)
+            report = {}
+            with patch("mac_transport_owner._metadata", side_effect=PreflightError("unsafe metadata")), \
+                    patch("mac_transport_owner.run_bounded", return_value=CommandResult(2, "existing_profile_incoming_Rejected")) as bounded:
+                with self.assertRaisesRegex(PreflightError, "real_native_managed_pairing_failed"):
+                    make_runner(report, root)([binary, "--cryptex-m8-local-content-transport-check", root], "real_native_managed_pairing", 240)
+            bounded.assert_called_once()
+            self.assertEqual(report["post_rejection_validation"]["outcome"], "fixture_metadata_refused")
+
     def test_only_closed_codes_markers_and_startup_fields_leave_collector(self):
         secret = "private-body-and-credential-123"
         output = "\n".join((

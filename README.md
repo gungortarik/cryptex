@@ -12,7 +12,8 @@ and [native CI43671787980](https://github.com/gungortarik/cryptex/actions/runs/4
 on `d9561d8`. Daemon Mac589/Windows682passed, zero failures. The
 [review and concrete owner handoff](evidence/m8/m8-macos-filesystem-native-integration-review-20261114.md)
 record CI success separately from a subsequent owner-Mac native pairing failure.
-Its cause needs the diagnostic-only collector; physical acceptance, ordinary
+The diagnostic return narrows it to a clean incoming rejection; its inner cause
+needs the validation-only probe. Physical acceptance, ordinary
 activation and actual cross-device synchronization remain open;
 earlier implementation notes below are historical checkpoints.
 

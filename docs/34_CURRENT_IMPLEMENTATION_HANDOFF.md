@@ -32,15 +32,16 @@ Actual8-way capture and the parallel daemon library pass. Do not resume the old
 ENOENT, seed UUID or /var-association diagnostics without a new failure. No Apple
 kernel explanation, failed-create errno retry or validation relaxation is claimed.
 
-**Resume at owner failure diagnosis:** received
-`MAC-AKTARIM-SONUC-1bcdf362.zip` from source `d9561d8` failed with
-`real_native_managed_pairing_failed`; identity restart/refusals passed according
-to the owner-provided receipt. No pairing/import/reopen/parent-loss acceptance
-is established. The original receipt omits exit code, timeout/output/pipe flags
-and native substep codes, so the cause remains unknown. CI success above remains
-valid for CI; it does not override the hardware failure.
+**Resume at owner import rejection diagnosis — November15:** returned
+`MAC-AKTARIM-SONUC-f7684e37.zip` matches app source `d9561d8` and diagnostic
+collector `f5021c5`. Identity/mutation and exact-key cleanup commands passed;
+native pairing/import exited2 after20526ms with `existing_profile_incoming_Rejected`.
+No timeout/output-limit/pipe flag was set. The only pairing marker is clean
+shutdown. This establishes an owner-reported clean rejection, not its inner cause
+or later import/restart/loss acceptance. CI success above does not override it.
+See [the diagnostic receipt](../evidence/m8/m8-macos-owner-rejection-20261115.json).
 
-The diagnostic collector now retains bounded per-command exit/timeout/output/
+The diagnostic collector retains bounded per-command exit/timeout/output/
 pipe flags, elapsed time, closed native codes and markers, plus its own SHA256.
 Only fixed allowlisted fields leave the collector; raw output, command arguments,
 runtime paths, memory and credentials are excluded. Original process-death fencing,
@@ -50,15 +51,28 @@ Original fixture expiry:2026-11-16T03:21:56+00:00. Check expiry before handing o
 Seven diagnostic unit regressions, ten existing checker regressions and five
 package-export tests pass locally; these are synthetic tests, not Mac acceptance.
 
-Concrete next packet: `Cryptex-Mac-Tani-d9561d8-b3014b96.zip`, SHA256
+Previous diagnostic packet: `Cryptex-Mac-Tani-d9561d8-b3014b96.zip`, SHA256
 `514e153692a2bba679c2ca24e50870b93eb269ca564601866e93334d10ef7c06`.
 Collector source `aadd078`, hash pinned in the structured receipt; separate
 read-only review found no actionable diagnostic-delta issue. All11 signed-app
 members are byte-identical to the prior CI archive and9 inventory entries were
-reverified. Helpers match committed bytes. Extract on Mac, double-click
-`Cryptex-Mac-Aktarim-Tani/MAC-AKTARIM.command`, return `MAC-AKTARIM-SONUC-*.zip`.
-Keep the prior failed runtime. The changed collector has not run natively here;
-do not imply a new Mac pass. No Rust/runtime or production change was made.
+reverified. Helpers match committed bytes. Its launcher was
+`Cryptex-Mac-Aktarim-Tani/MAC-AKTARIM.command`.
+The owner executed this collector and returned the failure above. Preserve that
+failed runtime; do not rerun this unchanged packet.
+
+The next collector uses the same signed app. After the exact native driver is
+reaped with clean `Rejected`, before exact-key cleanup, it runs the existing
+`replication validate-incoming` CLI once on this invocation's fresh receiver and
+segment. It stages/verifies/discards with instance ownership, never publishes or
+repairs canonical data. This is validation-only after failure, not filesystem
+read-only or an exact publisher replay. It uses at most45s within the remaining
+original240s pairing budget. Raw wait errors retain the cleanup fence; even a
+validation exit0 cannot turn the original failure into a pass. Only finite reason
+codes/OS error numbers are exported. Fourteen owner-diagnostic, ten checker and
+five package tests pass locally; read-only agent review has no actionable finding.
+Native execution of this new validation branch remains pending. No Rust/runtime,
+acceptance rule, retry policy or production activation change was made.
 
 M8 OPEN; M9 not begun. Owner hardware/installed UX, ordinary configured-image/
 release policy, actual peer/folder synchronization, cross-device durable replicas

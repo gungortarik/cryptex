@@ -111,8 +111,20 @@ Diagnostic archive: `Cryptex-Mac-Tani-d9561d8-b3014b96.zip`, SHA256
 `Cryptex-Mac-Aktarim-Tani/MAC-AKTARIM.command`. All11 app members match the original
 archive byte-for-byte,9 inventory entries reverified, helper bytes match Git.
 Expiry remains2026-11-16T03:21:56+00:00. Read-only agent review found no actionable
-collector/test-delta finding. Native execution of the changed collector awaits
-the owner; this is a diagnostic handoff, not a successful hardware receipt.
+collector/test-delta finding. The owner returned the following failed diagnostic.
+
+November15 return: `MAC-AKTARIM-SONUC-f7684e37.zip`, SHA256
+`763b65b071420f362c14ffe48eb595e216ae11875e01de594fac034bbd388be3`,
+matches the collector hash. Its [aggregate receipt](m8-macos-owner-rejection-20261115.json)
+shows exit2 after20526ms, `existing_profile_incoming_Rejected`, and no timeout,
+output-limit or pipe failure. Identity/mutation/cleanup passed. The inner reason
+is still unconfirmed. The new collector adds one existing validation-only CLI
+invocation after that exact failure, within the remaining original240s budget
+and before exact-key cleanup. It uses fresh fixture paths only, never publishes,
+and preserves both the original failure and unresolved-writer cleanup fencing.
+Fourteen owner tests, ten checker tests and five export tests pass locally;
+read-only source review found no actionable diagnostic-delta issue. This is not
+native execution evidence for the new branch or a repair of the rejection.
 
 Ordinary configured-image/release policy, actual peer/folder synchronization,
 cross-device durable replicas, installed-product/UX and final protocol/M8
