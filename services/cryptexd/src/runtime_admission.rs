@@ -189,10 +189,20 @@ impl RuntimeAdmission {
     /// operation that may have changed canonical policy. Existing holds are
     /// monotone here; only full verified recovery/rebuild may clear them.
     #[cfg(any(all(target_os = "macos", feature = "m8-local-startup-check"), test))]
-    pub(crate) fn require_derived_rebuild(&self, root: &Path, permit: &OperationPermit) -> Result<(), AdmissionError> {
+    pub(crate) fn require_derived_rebuild(
+        &self,
+        root: &Path,
+        permit: &OperationPermit,
+    ) -> Result<(), AdmissionError> {
         self.validate_operation(root, permit)?;
-        let mut state = self.0.state.lock().map_err(|_| AdmissionError::Held(RuntimeHold::RecoveryRequired))?;
-        if let Some(hold) = state.hold { return Err(AdmissionError::Held(hold)); }
+        let mut state = self
+            .0
+            .state
+            .lock()
+            .map_err(|_| AdmissionError::Held(RuntimeHold::RecoveryRequired))?;
+        if let Some(hold) = state.hold {
+            return Err(AdmissionError::Held(hold));
+        }
         state.hold = Some(RuntimeHold::DerivedRebuildRequired);
         self.0.changed.notify_all();
         Ok(())
@@ -342,12 +352,24 @@ mod tests {
         let reply = gate.enter(&root).unwrap();
         let alien = RuntimeAdmission::detached_for_tests(&root);
         let foreign = alien.enter(&root).unwrap();
-        assert_eq!(gate.require_derived_rebuild(&root, &foreign), Err(AdmissionError::WrongRuntime));
+        assert_eq!(
+            gate.require_derived_rebuild(&root, &foreign),
+            Err(AdmissionError::WrongRuntime)
+        );
         gate.require_derived_rebuild(&root, &reply).unwrap();
-        assert!(matches!(gate.enter(&root), Err(AdmissionError::Held(RuntimeHold::DerivedRebuildRequired))));
-        assert!(matches!(gate.exclusive(&root, Instant::now(), true), Err(AdmissionError::Busy)));
+        assert!(matches!(
+            gate.enter(&root),
+            Err(AdmissionError::Held(RuntimeHold::DerivedRebuildRequired))
+        ));
+        assert!(matches!(
+            gate.exclusive(&root, Instant::now(), true),
+            Err(AdmissionError::Busy)
+        ));
         drop(reply);
-        assert!(matches!(gate.enter(&root), Err(AdmissionError::Held(RuntimeHold::DerivedRebuildRequired))));
+        assert!(matches!(
+            gate.enter(&root),
+            Err(AdmissionError::Held(RuntimeHold::DerivedRebuildRequired))
+        ));
         let exclusive = gate.exclusive(&root, deadline(), true).unwrap();
         exclusive.finish(None); // Test-only stand-in for the verified orchestrator.
         assert!(gate.enter(&root).is_ok());

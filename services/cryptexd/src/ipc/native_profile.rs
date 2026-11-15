@@ -35,8 +35,13 @@ fn prepare_existing_runtime(
     namespace: &RuntimeIdentity,
 ) -> io::Result<()> {
     namespace.validate()?;
-    crate::incoming_publication::recover_live_with_instance(root, instance, &crate::MacosKeychainStore::new(), SecureStoreEnvironment::Dev)
-        .map_err(io::Error::other)?;
+    crate::incoming_publication::recover_live_with_instance(
+        root,
+        instance,
+        &crate::MacosKeychainStore::new(),
+        SecureStoreEnvironment::Dev,
+    )
+    .map_err(io::Error::other)?;
     namespace.validate()
 }
 
@@ -224,7 +229,10 @@ impl Backend {
     }
 }
 
-fn send_checked(namespace: &RuntimeIdentity, send: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
+fn send_checked(
+    namespace: &RuntimeIdentity,
+    send: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
     namespace.validate()?;
     send()?;
     namespace.validate()
@@ -249,7 +257,9 @@ pub(crate) fn serve(
     let context = context(root, instance, worker.as_ref().map(Worker::status_reader))?;
     let registry = ApprovalSessionRegistry::default();
     let mut domain = super::native_domain::Domain::from_context(context.clone(), &registry);
-    send_checked(&backend.namespace, || connection.ready(Instant::now() + IPC_RESPONSE_DEADLINE))?;
+    send_checked(&backend.namespace, || {
+        connection.ready(Instant::now() + IPC_RESPONSE_DEADLINE)
+    })?;
     loop {
         backend.namespace.validate()?;
         match connection.receive(Instant::now() + IPC_APPROVAL_SESSION_DEADLINE)? {
@@ -264,22 +274,32 @@ pub(crate) fn serve(
             }
             Incoming::Ping => {
                 backend.tick(&context, instance)?;
-                send_checked(&backend.namespace, || connection.send(b"pong", Instant::now() + IPC_RESPONSE_DEADLINE))?;
+                send_checked(&backend.namespace, || {
+                    connection.send(b"pong", Instant::now() + IPC_RESPONSE_DEADLINE)
+                })?;
             }
             Incoming::Status => {
                 let status = backend.tick(&context, instance)?;
-                send_checked(&backend.namespace, || connection.send(
-                    &serde_json::to_vec(&status)?, Instant::now() + IPC_RESPONSE_DEADLINE))?;
+                send_checked(&backend.namespace, || {
+                    connection.send(
+                        &serde_json::to_vec(&status)?,
+                        Instant::now() + IPC_RESPONSE_DEADLINE,
+                    )
+                })?;
             }
             Incoming::Request(received) => {
                 backend.tick(&context, instance)?;
                 let response = domain.dispatch(connection, *received)?;
                 let reconcile = response.requires_reconcile;
-                if reconcile { response.hold_rebuild(&context)?; }
+                if reconcile {
+                    response.hold_rebuild(&context)?;
+                }
                 // Validate while the real response still owns ordinary admission.
                 // No observed drift can first be reported as native success.
                 send_checked(&backend.namespace, || response.send(connection))?;
-                if reconcile { prepare_existing_runtime(root, instance, &backend.namespace)?; }
+                if reconcile {
+                    prepare_existing_runtime(root, instance, &backend.namespace)?;
+                }
             }
         }
         backend.namespace.validate()?;
@@ -294,17 +314,35 @@ mod tests {
         use std::os::unix::fs::DirBuilderExt;
         let parent = crate::test_temp::exclusive_temp_dir("native-pre-reply-drift");
         let root = parent.join("runtime");
-        std::fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&root)
+            .unwrap();
         let namespace = RuntimeIdentity::capture(&root).unwrap();
         std::fs::write(root.join("preserved"), b"original").unwrap();
         std::fs::rename(&root, parent.join("original")).unwrap();
-        std::fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&root)
+            .unwrap();
         std::fs::write(root.join("preserved"), b"replacement").unwrap();
         let mut sent = false;
-        assert!(send_checked(&namespace, || { sent = true; Ok(()) }).is_err());
+        assert!(
+            send_checked(&namespace, || {
+                sent = true;
+                Ok(())
+            })
+            .is_err()
+        );
         assert!(!sent);
-        assert_eq!(std::fs::read(parent.join("original/preserved")).unwrap(), b"original");
-        assert_eq!(std::fs::read(root.join("preserved")).unwrap(), b"replacement");
+        assert_eq!(
+            std::fs::read(parent.join("original/preserved")).unwrap(),
+            b"original"
+        );
+        assert_eq!(
+            std::fs::read(root.join("preserved")).unwrap(),
+            b"replacement"
+        );
         std::fs::remove_dir_all(parent).unwrap();
     }
     #[test]

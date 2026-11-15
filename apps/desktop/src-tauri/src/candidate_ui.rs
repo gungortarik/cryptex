@@ -915,11 +915,18 @@ fn canonical_event_snapshot(
         })
         .collect())
 }
-fn check_existing_profile_import(source: &Path, receiver: &Path, mut daemon: LocalDaemon) -> Result<(), String> {
+fn check_existing_profile_import(
+    source: &Path,
+    receiver: &Path,
+    mut daemon: LocalDaemon,
+) -> Result<(), String> {
     use std::os::unix::fs::DirBuilderExt;
     let source_before = canonical_event_snapshot(source)?;
-    let brain = cryptexd::identity_runtime::load_brain_identity(source).map_err(|_| "existing_profile_source")?;
-    let local = cryptexd::local_device_identity::load_local_device_identity(source, &brain.brain_id).map_err(|_| "existing_profile_source")?;
+    let brain = cryptexd::identity_runtime::load_brain_identity(source)
+        .map_err(|_| "existing_profile_source")?;
+    let local =
+        cryptexd::local_device_identity::load_local_device_identity(source, &brain.brain_id)
+            .map_err(|_| "existing_profile_source")?;
     let device = &local.device_id;
     let stem = device
         .as_bytes()
@@ -963,12 +970,29 @@ fn check_existing_profile_import(source: &Path, receiver: &Path, mut daemon: Loc
     {
         return Err("existing_profile_publication_mismatch".into());
     }
-    let restriction = daemon.prepare_owner(Input { kind: "device_restriction".into(), target_device_id: Some(local.device_id), reason: Some("compromised".into()), cutoff_seq: Some(1) }).map_err(|e| e.to_string())?;
-    if !daemon.finish_owner(&restriction.session_handle, true).map_err(|e| e.to_string())?.accepted {
+    let restriction = daemon
+        .prepare_owner(Input {
+            kind: "device_restriction".into(),
+            target_device_id: Some(local.device_id),
+            reason: Some("compromised".into()),
+            cutoff_seq: Some(1),
+        })
+        .map_err(|e| e.to_string())?;
+    if !daemon
+        .finish_owner(&restriction.session_handle, true)
+        .map_err(|e| e.to_string())?
+        .accepted
+    {
         return Err("existing_profile_live_restriction".into());
     }
     let status = daemon.profile_status().map_err(|e| e.to_string())?;
-    if status.remote_durability_verified || matches!(status.incoming, cryptexd::local_signed_startup::NativeIncomingState::Held | cryptexd::local_signed_startup::NativeIncomingState::Unavailable) {
+    if status.remote_durability_verified
+        || matches!(
+            status.incoming,
+            cryptexd::local_signed_startup::NativeIncomingState::Held
+                | cryptexd::local_signed_startup::NativeIncomingState::Unavailable
+        )
+    {
         return Err("existing_profile_restriction_not_reconciled".into());
     }
     let prepared = daemon
@@ -1001,7 +1025,12 @@ fn check_existing_profile_import(source: &Path, receiver: &Path, mut daemon: Loc
     Ok(())
 }
 
-fn signed_pairing_messages(first: &mut LocalDaemon, second: &mut LocalDaemon, id_a: String, id_b: String) -> Result<Vec<String>, String> {
+fn signed_pairing_messages(
+    first: &mut LocalDaemon,
+    second: &mut LocalDaemon,
+    id_a: String,
+    id_b: String,
+) -> Result<Vec<String>, String> {
     let brain = first
         .read_pairing_brain_identity()
         .map_err(|e| e.to_string())?;
@@ -1111,7 +1140,11 @@ fn check_transport_pairing(root: &Path) -> Result<(), String> {
     let native_id_b = pairing_transport(&mut native_b)?;
     let messages = signed_pairing_messages(&mut native_a, &mut native_b, native_id_a, native_id_b)?;
     for daemon in [&mut native_a, &mut native_b] {
-        if !daemon.complete_pairing(messages.clone()).map_err(|e| e.to_string())?.accepted {
+        if !daemon
+            .complete_pairing(messages.clone())
+            .map_err(|e| e.to_string())?
+            .accepted
+        {
             return Err("existing_profile_live_pairing".into());
         }
     }

@@ -20,7 +20,10 @@ pub(super) struct Response {
 }
 impl Response {
     pub(super) fn hold_rebuild(&self, context: &SearchContext) -> io::Result<()> {
-        context.admission.require_derived_rebuild(&context.runtime_root, &self.permit).map_err(io::Error::other)
+        context
+            .admission
+            .require_derived_rebuild(&context.runtime_root, &self.permit)
+            .map_err(io::Error::other)
     }
     pub(super) fn send(self, connection: &mut BoundConnection<'_>) -> io::Result<()> {
         AdmittedReply::new(self.reply, self.permit, Instant::now() + self.timeout)?
@@ -48,7 +51,10 @@ impl<'a> Domain<'a> {
         let received = connection.consume(received)?;
         // Conservative even for an uncertain/rejected result: a durable event
         // may precede a journal/reply failure. Reads/cancellation do not dirty M4.
-        let requires_reconcile = matches!(received.method, Method::CompleteApproval | Method::ConfirmApproval | Method::ConfirmOwnerOperation);
+        let requires_reconcile = matches!(
+            received.method,
+            Method::CompleteApproval | Method::ConfirmApproval | Method::ConfirmOwnerOperation
+        );
         let request = received.request;
         if let Some(session) = self.pending.take() {
             let session: approval_domain::PendingSession<'_> = session;

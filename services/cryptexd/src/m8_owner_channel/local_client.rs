@@ -221,11 +221,16 @@ impl LocalDaemon {
             return Err(Error::Arguments);
         }
         let result = (|| {
-            let status: NativeProfileStatus = serde_json::from_slice(&self.exchange(STATUS)?).map_err(|_| Error::Channel)?;
-            if status.schema_version != 1 || status.remote_durability_verified { return Err(Error::Channel); }
+            let status: NativeProfileStatus =
+                serde_json::from_slice(&self.exchange(STATUS)?).map_err(|_| Error::Channel)?;
+            if status.schema_version != 1 || status.remote_durability_verified {
+                return Err(Error::Channel);
+            }
             Ok(status)
         })();
-        if result.is_err() { self.burn(); }
+        if result.is_err() {
+            self.burn();
+        }
         result
     }
     pub fn fixture_status(&mut self) -> Result<serde_json::Value, Error> {
