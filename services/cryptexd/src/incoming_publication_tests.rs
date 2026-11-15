@@ -1022,7 +1022,8 @@ fn add_policy_conflict_at(
         fixture.report.source_device.clone()
     } else {
         fixture.report.receiver_device.clone()
-    }).unwrap();
+    })
+    .unwrap();
     let issuer_key = crate::event_signing_key::load_existing_event_signing_key(
         &fixture.store,
         ENV,
@@ -1033,7 +1034,11 @@ fn add_policy_conflict_at(
     let target_key = crate::event_signing_key::load_existing_event_signing_key(
         &fixture.store,
         ENV,
-        if kind == "cycle" { &fixture.source } else { &fixture.receiver },
+        if kind == "cycle" {
+            &fixture.source
+        } else {
+            &fixture.receiver
+        },
         &target,
     )
     .unwrap();
@@ -1103,75 +1108,196 @@ fn retained_transaction(root: &Path) -> PathBuf {
 #[test]
 fn ready_union_removing_a_canonical_peers_grant_retains_evidence_and_holds_after_restart() {
     use crate::bootstrap_journal::BootstrapJournalStore;
-    use cryptex_events::{BootstrapApprovalRole, SecurityPayloadV3, VersionedRecord};
+    use cryptex_events::{AuthenticatedSecurityRecord, BootstrapApprovalRole, SecurityPayloadV3};
     let mut fixture = Fixture::new();
     fixture.publish().unwrap();
     let local = DeviceId::new(fixture.report.receiver_device.clone()).unwrap();
     let a = DeviceId::new(fixture.report.source_device.clone()).unwrap();
     let c = DeviceId::new(fixture.report.unapproved_device.clone()).unwrap();
     let local_key = crate::event_signing_key::load_existing_event_signing_key(
-        &fixture.store, ENV, &fixture.receiver, &local,
-    ).unwrap();
+        &fixture.store,
+        ENV,
+        &fixture.receiver,
+        &local,
+    )
+    .unwrap();
     let c_key = crate::event_signing_key::load_existing_event_signing_key(
-        &fixture.store, ENV, &fixture.negative, &c,
-    ).unwrap();
+        &fixture.store,
+        ENV,
+        &fixture.negative,
+        &c,
+    )
+    .unwrap();
     let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
-        &fixture.receiver, &fixture.report.brain_id, &fixture.store, ENV,
-    ).unwrap();
+        &fixture.receiver,
+        &fixture.report.brain_id,
+        &fixture.store,
+        ENV,
+    )
+    .unwrap();
     let anchor = resolver.local_trust_anchor().unwrap();
-    let snapshot = crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
-        &fixture.receiver, &fixture.report.brain_id, &anchor, None,
-    ).unwrap();
-    let first_grant = snapshot.verified_records().iter().find_map(|record| match record {
-        VersionedRecord::VerifiedSecurityV3(event) if event.device_id() == &local => Some(event),
-        _ => None,
-    }).unwrap();
-    let boundary = (first_grant.device_seq().to_u64().unwrap(), first_grant.content_hash().clone());
+    let snapshot = crate::knowledge_materialization::scan_verified_trust_policy(
+        &fixture.receiver,
+        &fixture.report.brain_id,
+        &local,
+        anchor.signing_key_id(),
+        anchor.public_key(),
+        &[local.clone(), a.clone()],
+    )
+    .unwrap();
+    let first_grant = snapshot
+        .history
+        .records()
+        .iter()
+        .find_map(|record| match record {
+            AuthenticatedSecurityRecord::SecurityV3(event) if event.device_id() == &local => {
+                Some(event)
+            }
+            _ => None,
+        })
+        .unwrap();
+    let boundary = (
+        first_grant.device_seq().to_u64().unwrap(),
+        first_grant.content_hash().clone(),
+    );
     assert_eq!(boundary.0, 2);
-    let SecurityPayloadV3::PeerApproved { transcript, .. } = first_grant.payload() else { panic!("expected A admission"); };
-    let old_messages = transcript.as_array().unwrap().iter().map(|v| serde_json::to_vec(v).unwrap()).collect::<Vec<_>>();
-    let old = cryptex_events::verify_bootstrap_transcript(&old_messages.iter().map(Vec::as_slice).collect::<Vec<_>>()).unwrap();
+    let SecurityPayloadV3::PeerApproved { transcript, .. } = first_grant.payload() else {
+        panic!("expected A admission");
+    };
+    let old_messages = transcript
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| serde_json::to_vec(v).unwrap())
+        .collect::<Vec<_>>();
+    let old = cryptex_events::verify_bootstrap_transcript(
+        &old_messages.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+    )
+    .unwrap();
     let transport = if old.initiator().device_id == local {
         old.initiator_transport_device_id()
-    } else { old.responder_transport_device_id() }.to_owned();
+    } else {
+        old.responder_transport_device_id()
+    }
+    .to_owned();
     drop(snapshot);
 
     // The real daemon journal/writer creates C's only grant after A's grant.
     let tx = "bf".repeat(32);
-    let offer = cryptex_events::create_bootstrap_offer(&fixture.report.brain_id, &tx, &local, &transport, &[0x61;32], &local_key.signing_key).unwrap();
-    let proof = cryptex_events::create_bootstrap_proof(&offer, &c, &["CCCCCCC";8].join("-"), &[0x62;32], &c_key.signing_key).unwrap();
-    let request = cryptex_events::verify_bootstrap_approval_request(&[&offer, &proof], BootstrapApprovalRole::Initiator).unwrap();
-    let local_approval = cryptex_events::sign_bootstrap_approval(&request, &local_key.signing_key).unwrap();
-    let peer_request = cryptex_events::verify_bootstrap_approval_request(&[&offer, &proof, &local_approval], BootstrapApprovalRole::Responder).unwrap();
-    let peer_approval = cryptex_events::sign_bootstrap_approval(&peer_request, &c_key.signing_key).unwrap();
+    let offer = cryptex_events::create_bootstrap_offer(
+        &fixture.report.brain_id,
+        &tx,
+        &local,
+        &transport,
+        &[0x61; 32],
+        &local_key.signing_key,
+    )
+    .unwrap();
+    let proof = cryptex_events::create_bootstrap_proof(
+        &offer,
+        &c,
+        &["CCCCCCC"; 8].join("-"),
+        &[0x62; 32],
+        &c_key.signing_key,
+    )
+    .unwrap();
+    let request = cryptex_events::verify_bootstrap_approval_request(
+        &[&offer, &proof],
+        BootstrapApprovalRole::Initiator,
+    )
+    .unwrap();
+    let local_approval =
+        cryptex_events::sign_bootstrap_approval(&request, &local_key.signing_key).unwrap();
+    let peer_request = cryptex_events::verify_bootstrap_approval_request(
+        &[&offer, &proof, &local_approval],
+        BootstrapApprovalRole::Responder,
+    )
+    .unwrap();
+    let peer_approval =
+        cryptex_events::sign_bootstrap_approval(&peer_request, &c_key.signing_key).unwrap();
     let messages = vec![offer, proof, local_approval, peer_approval];
     let journal = BootstrapJournalStore::new(&fixture.receiver).unwrap();
-    journal.begin_verified_approval_prefix(&request, &messages[..2], "77777777-7777-4777-8777-777777777777").unwrap();
-    journal.record_local_approval_signature(&request, &messages[2]).unwrap();
-    journal.record_verified_complete_transcript(&tx, &messages).unwrap();
+    journal
+        .begin_verified_approval_prefix(
+            &request,
+            &messages[..2],
+            "77777777-7777-4777-8777-777777777777",
+        )
+        .unwrap();
+    journal
+        .record_local_approval_signature(&request, &messages[2])
+        .unwrap();
+    journal
+        .record_verified_complete_transcript(&tx, &messages)
+        .unwrap();
     crate::knowledge_materialization::append_local_peer_approval_anchor(
-        &fixture.receiver, &fixture.report.brain_id, &fixture.store, ENV, &tx, &messages,
-    ).unwrap();
-    drop(crate::canonical_writer::acquire_canonical_write_lock_set(&fixture.receiver, &[local.clone(), a, c.clone()]).unwrap());
+        &fixture.receiver,
+        &fixture.report.brain_id,
+        &fixture.store,
+        ENV,
+        &tx,
+        &messages,
+    )
+    .unwrap();
+    drop(
+        crate::canonical_writer::acquire_canonical_write_lock_set(
+            &fixture.receiver,
+            &[local.clone(), a, c.clone()],
+        )
+        .unwrap(),
+    );
     let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
     recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV).unwrap();
     let c_first = PathBuf::from(&fixture.report.unapproved_segment.relative_path);
-    let c_tail = append_offline_note(&fixture, &fixture.negative, c.as_str(), "Synthetic C admission-removal witness.");
-    for path in [&c_first, &c_tail] { copy_incoming(&fixture.negative, &fixture.receiver, path); }
-    publish_incoming_with_instance(&fixture.receiver, &[c_first, c_tail], &mut instance, &fixture.store, ENV).unwrap();
-    assert!(verified_note_texts(&fixture, &fixture.receiver).contains("Synthetic C admission-removal witness."));
+    let c_tail = append_offline_note(
+        &fixture,
+        &fixture.negative,
+        c.as_str(),
+        "Synthetic C admission-removal witness.",
+    );
+    for path in [&c_first, &c_tail] {
+        copy_incoming(&fixture.negative, &fixture.receiver, path);
+    }
+    publish_incoming_with_instance(
+        &fixture.receiver,
+        &[c_first, c_tail],
+        &mut instance,
+        &fixture.store,
+        ENV,
+    )
+    .unwrap();
+    assert!(
+        verified_note_texts(&fixture, &fixture.receiver)
+            .contains("Synthetic C admission-removal witness.")
+    );
     let before = event_hashes(&fixture.receiver);
     add_policy_conflict_at(&mut fixture, "removal", Some(boundary));
     let gate = instance.admission();
-    assert!(matches!(publish_incoming_with_instance(&fixture.receiver, &fixture.paths, &mut instance, &fixture.store, ENV),
-        Err(IncomingPublicationError::PolicyHeld(crate::import_staging::AuthenticatedPolicyConflict::AdmissionRemoved))));
+    assert!(matches!(
+        publish_incoming_with_instance(
+            &fixture.receiver,
+            &fixture.paths,
+            &mut instance,
+            &fixture.store,
+            ENV
+        ),
+        Err(IncomingPublicationError::PolicyHeld(
+            crate::import_staging::AuthenticatedPolicyConflict::AdmissionRemoved
+        ))
+    ));
     assert!(gate.enter(&fixture.receiver).is_err());
     assert!(gate.clone().enter(&fixture.receiver).is_err());
     assert_eq!(event_hashes(&fixture.receiver), before);
     drop(instance);
     let mut restarted = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
-    assert!(matches!(recover_live_with_instance(&fixture.receiver, &mut restarted, &fixture.store, ENV),
-        Err(IncomingPublicationError::RecoveryRequired(ImportStagingError::PolicyConflict(crate::import_staging::AuthenticatedPolicyConflict::AdmissionRemoved)))));
+    assert!(matches!(
+        recover_live_with_instance(&fixture.receiver, &mut restarted, &fixture.store, ENV),
+        Err(IncomingPublicationError::RecoveryRequired(
+            ImportStagingError::PolicyConflict(
+                crate::import_staging::AuthenticatedPolicyConflict::AdmissionRemoved
+            )
+        ))
+    ));
     assert!(restarted.admission().enter(&fixture.receiver).is_err());
     assert!(retained_transaction(&fixture.receiver).exists());
     assert_eq!(event_hashes(&fixture.receiver), before);
@@ -1182,24 +1308,27 @@ fn authenticated_cycle_and_terminal_tail_are_retained_and_rechecked_after_restar
     use crate::import_staging::AuthenticatedPolicyConflict;
     for (kind, expected) in [
         ("cycle", AuthenticatedPolicyConflict::RestrictionCycle),
-        ("terminal", AuthenticatedPolicyConflict::TerminalRetirementTail),
+        (
+            "terminal",
+            AuthenticatedPolicyConflict::TerminalRetirementTail,
+        ),
     ] {
-    let mut fixture = Fixture::new();
-    add_policy_conflict_kind(&mut fixture, kind);
-    let before = event_hashes(&fixture.receiver);
-    assert!(matches!(
-        fixture.publish(),
-        Err(IncomingPublicationError::PolicyHeld(reason)) if reason == expected
-    ));
-    let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
-    assert!(matches!(
-        recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV),
-        Err(IncomingPublicationError::RecoveryRequired(
-            ImportStagingError::PolicyConflict(reason)
-        )) if reason == expected
-    ));
-    assert!(instance.admission().enter(&fixture.receiver).is_err());
-    assert_eq!(event_hashes(&fixture.receiver), before);
+        let mut fixture = Fixture::new();
+        add_policy_conflict_kind(&mut fixture, kind);
+        let before = event_hashes(&fixture.receiver);
+        assert!(matches!(
+            fixture.publish(),
+            Err(IncomingPublicationError::PolicyHeld(reason)) if reason == expected
+        ));
+        let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
+        assert!(matches!(
+            recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV),
+            Err(IncomingPublicationError::RecoveryRequired(
+                ImportStagingError::PolicyConflict(reason)
+            )) if reason == expected
+        ));
+        assert!(instance.admission().enter(&fixture.receiver).is_err());
+        assert_eq!(event_hashes(&fixture.receiver), before);
     }
 }
 
@@ -1333,8 +1462,14 @@ fn missing_corrupt_or_changed_policy_evidence_never_reopens_old_content() {
         let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
         let empty = crate::FakeSecureStore::new();
         if fault == "wrong-local-key" {
-            empty.put(crate::ServiceLabel::device_credentials(ENV).as_str(),
-                crate::AccountLabel::device_event_signing_seed(&fixture.report.receiver_device).as_str(), &[0x64;32]).unwrap();
+            empty
+                .put(
+                    crate::ServiceLabel::device_credentials(ENV).as_str(),
+                    crate::AccountLabel::device_event_signing_seed(&fixture.report.receiver_device)
+                        .as_str(),
+                    &[0x64; 32],
+                )
+                .unwrap();
         }
         let store = if matches!(fault, "wrong-local-key" | "missing-local-key") {
             &empty
