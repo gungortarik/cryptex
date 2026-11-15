@@ -63,6 +63,8 @@ jobs:
       - name: Test actual concurrent canonical capture
         run: |
           cargo test --locked -p cryptexd --lib capture::tests::concurrent_matching_capture_ids_append_once -- --test-threads=1
+      - name: Test filesystem adapters in the actual parallel daemon library context
+        run: cargo test --locked -p cryptexd --lib
 
   schema-candidate:
     if: ${{ !inputs.mac_import_diagnostics_only && (github.event_name == 'workflow_dispatch' && inputs.schema_candidate_only) }}

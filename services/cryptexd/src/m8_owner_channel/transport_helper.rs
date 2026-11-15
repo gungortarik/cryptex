@@ -1400,15 +1400,28 @@ mod tests {
         let parent = crate::test_temp::exclusive_temp_dir("mac-reader-runtime-binding");
         let root = parent.join("runtime");
         let profile = root.join("managed-transport");
-        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&profile).unwrap();
-        let namespace = Arc::new(crate::import_staging::macos_fs::Directory::open(&profile, true).unwrap());
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&profile)
+            .unwrap();
+        let namespace =
+            Arc::new(crate::import_staging::macos_fs::Directory::open(&profile, true).unwrap());
         let (sender, _receiver) = mpsc::sync_channel(1);
-        let reader = StatusReader { sender, state: Arc::new(AtomicU8::new(OPENING)), profile_root: profile.clone(), namespace };
+        let reader = StatusReader {
+            sender,
+            state: Arc::new(AtomicU8::new(OPENING)),
+            profile_root: profile.clone(),
+            namespace,
+        };
         assert!(reader.belongs_to_runtime(&root));
         assert!(reader.try_transport_device_id().is_err()); // Association is not readiness/authority.
         assert!(!reader.belongs_to_runtime(&parent));
         std::fs::rename(&profile, root.join("preserved")).unwrap();
-        std::fs::DirBuilder::new().mode(0o700).create(&profile).unwrap();
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&profile)
+            .unwrap();
         assert!(!reader.belongs_to_runtime(&root));
         assert!(reader.try_transport_device_id().is_err());
         let link = parent.join("untrusted-alias");
