@@ -142,7 +142,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn development_diagnostic_contains_only_kind_and_numeric_status() {
+    fn development_product_key_store_diagnostic_contains_only_kind_and_numeric_status() {
         assert_eq!(
             SecureStoreError::Missing.diagnostic(),
             serde_json::json!({"kind": "missing"})
