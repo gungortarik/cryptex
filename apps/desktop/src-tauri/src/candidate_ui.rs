@@ -7,7 +7,8 @@ use cryptexd::ipc::{
     DesktopOwnerSecurityOperationResult as Finished,
 };
 use cryptexd::local_signed_startup::{
-    CONTENT_MARKER, ContentProfile, DURABLE_MARKER, LocalDaemon, NativeProfileStatus, Prepared as Startup,
+    CONTENT_MARKER, ContentProfile, DURABLE_MARKER, LocalDaemon, NativeProfileStatus,
+    Prepared as Startup,
 };
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
@@ -263,10 +264,13 @@ impl Owner {
     }
     fn prepare_root(runtime: &Path, profile: ContentProfile) -> Result<(), String> {
         if profile == ContentProfile::ExistingProfile {
-            cryptexd::paths::assert_outside_repository(runtime).map_err(|_| "existing_profile_runtime")?;
+            cryptexd::paths::assert_outside_repository(runtime)
+                .map_err(|_| "existing_profile_runtime")?;
             // The daemon alone reads the OS-backed signing key and verifies
             // canonical policy. Desktop never creates/adopts this profile.
-            if !runtime.is_dir() { return Err("existing_profile_missing".into()); }
+            if !runtime.is_dir() {
+                return Err("existing_profile_missing".into());
+            }
             return Ok(());
         }
         use std::os::unix::fs::DirBuilderExt;
@@ -351,10 +355,17 @@ impl Owner {
                 loop {
                     check_pending_delivery(&mut daemon, &mut pending_delivery);
                     if stop_worker.load(Ordering::Acquire) {
-                        let saved = if profile == ContentProfile::ExistingProfile { Ok(()) } else {
-                            let receipt = daemon.fixture_status().map(|value| value.to_string())
-                                .unwrap_or_else(|_| "{\"sessionInvalidated\":true,\"outcome\":\"uncertain\"}".into());
-                            std::fs::write(runtime.join("ui-receipt.json"), receipt).map_err(|_| "candidate_receipt_write".to_owned())
+                        let saved = if profile == ContentProfile::ExistingProfile {
+                            Ok(())
+                        } else {
+                            let receipt = daemon
+                                .fixture_status()
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|_| {
+                                    "{\"sessionInvalidated\":true,\"outcome\":\"uncertain\"}".into()
+                                });
+                            std::fs::write(runtime.join("ui-receipt.json"), receipt)
+                                .map_err(|_| "candidate_receipt_write".to_owned())
                         };
                         let cleanup = daemon
                             .shutdown(&runtime.join("stop"))
@@ -365,8 +376,13 @@ impl Owner {
                     let queued = match receiver.recv_timeout(Duration::from_millis(50)) {
                         Ok(work) => work,
                         Err(mpsc::RecvTimeoutError::Timeout) => {
-                            if profile == ContentProfile::ExistingProfile && bound && last_profile_poll.elapsed() >= Duration::from_secs(2) {
-                                if daemon.profile_status().is_err() { daemon.invalidate_session(); }
+                            if profile == ContentProfile::ExistingProfile
+                                && bound
+                                && last_profile_poll.elapsed() >= Duration::from_secs(2)
+                            {
+                                if daemon.profile_status().is_err() {
+                                    daemon.invalidate_session();
+                                }
                                 last_profile_poll = Instant::now();
                             }
                             continue;
@@ -583,7 +599,9 @@ impl Drop for Owner {
     }
 }
 #[tauri::command]
-async fn m8_native_profile_status(state: tauri::State<'_, Client>) -> Result<NativeProfileStatus, String> {
+async fn m8_native_profile_status(
+    state: tauri::State<'_, Client>,
+) -> Result<NativeProfileStatus, String> {
     async_call(state.inner().clone(), Work::ProfileStatus).await
 }
 #[tauri::command]
@@ -884,48 +902,95 @@ fn pairing_transport(daemon: &mut LocalDaemon) -> Result<String, String> {
     }
 }
 
-fn canonical_event_snapshot(root: &Path) -> Result<std::collections::BTreeMap<PathBuf, Vec<u8>>, String> {
-    Ok(durable_snapshot(root)?.into_iter().filter(|(path, _)| path.starts_with(root.join("canonical/events"))
-        && path.extension().is_some_and(|ext| ext == "seg" || ext == "open")).collect())
+fn canonical_event_snapshot(
+    root: &Path,
+) -> Result<std::collections::BTreeMap<PathBuf, Vec<u8>>, String> {
+    Ok(durable_snapshot(root)?
+        .into_iter()
+        .filter(|(path, _)| {
+            path.starts_with(root.join("canonical/events"))
+                && path
+                    .extension()
+                    .is_some_and(|ext| ext == "seg" || ext == "open")
+        })
+        .collect())
 }
 fn check_existing_profile_import(source: &Path, receiver: &Path) -> Result<(), String> {
     use std::os::unix::fs::DirBuilderExt;
     let source_before = canonical_event_snapshot(source)?;
-    let descriptor: serde_json::Value = serde_json::from_slice(&std::fs::read(source.join("signed-probe.json")).map_err(|_| "existing_profile_source")?)
-        .map_err(|_| "existing_profile_source")?;
-    let device = descriptor["device_id"].as_str().ok_or("existing_profile_source")?;
-    let stem = device.as_bytes().iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    let descriptor: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(source.join("signed-probe.json")).map_err(|_| "existing_profile_source")?,
+    )
+    .map_err(|_| "existing_profile_source")?;
+    let device = descriptor["device_id"]
+        .as_str()
+        .ok_or("existing_profile_source")?;
+    let stem = device
+        .as_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     let relative = PathBuf::from(stem).join("00000000000000000000.seg");
     let incoming = receiver.join("transport/incoming").join(&relative);
-    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(incoming.parent().ok_or("existing_profile_incoming")?)
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(incoming.parent().ok_or("existing_profile_incoming")?)
         .map_err(|_| "existing_profile_incoming")?;
     // Deliberate untrusted transport test bytes only. Desktop never writes or
     // seals a canonical event; the native daemon must authenticate this batch.
-    std::fs::copy(source.join("canonical/events").join(&relative), &incoming).map_err(|_| "existing_profile_incoming")?;
+    std::fs::copy(source.join("canonical/events").join(&relative), &incoming)
+        .map_err(|_| "existing_profile_incoming")?;
     let mut daemon = durable_daemon(receiver, ContentProfile::ExistingProfile)?;
     let deadline = Instant::now() + Duration::from_secs(90);
     loop {
         let status = daemon.profile_status().map_err(|e| e.to_string())?;
-        if status.remote_durability_verified { return Err("existing_profile_false_protection".into()); }
-        if status.incoming == cryptexd::local_signed_startup::NativeIncomingState::Published { break; }
-        if !matches!(status.incoming, cryptexd::local_signed_startup::NativeIncomingState::WaitingForTransport | cryptexd::local_signed_startup::NativeIncomingState::Deferred | cryptexd::local_signed_startup::NativeIncomingState::Idle)
-            || Instant::now() >= deadline { return Err(format!("existing_profile_incoming_{:?}", status.incoming)); }
+        if status.remote_durability_verified {
+            return Err("existing_profile_false_protection".into());
+        }
+        if status.incoming == cryptexd::local_signed_startup::NativeIncomingState::Published {
+            break;
+        }
+        if !matches!(
+            status.incoming,
+            cryptexd::local_signed_startup::NativeIncomingState::WaitingForTransport
+                | cryptexd::local_signed_startup::NativeIncomingState::Deferred
+                | cryptexd::local_signed_startup::NativeIncomingState::Idle
+        ) || Instant::now() >= deadline
+        {
+            return Err(format!("existing_profile_incoming_{:?}", status.incoming));
+        }
         std::thread::sleep(Duration::from_millis(200));
     }
     let destination = receiver.join("canonical/events").join(relative);
-    if std::fs::read(&destination).map_err(|_| "existing_profile_publication")? != std::fs::read(&incoming).map_err(|_| "existing_profile_incoming")? {
+    if std::fs::read(&destination).map_err(|_| "existing_profile_publication")?
+        != std::fs::read(&incoming).map_err(|_| "existing_profile_incoming")?
+    {
         return Err("existing_profile_publication_mismatch".into());
     }
-    let prepared = daemon.prepare_owner(self_retirement()).map_err(|e| e.to_string())?;
-    let old = daemon.capture_confirmation_probe().map_err(|e| e.to_string())?;
+    let prepared = daemon
+        .prepare_owner(self_retirement())
+        .map_err(|e| e.to_string())?;
+    let old = daemon
+        .capture_confirmation_probe()
+        .map_err(|e| e.to_string())?;
     daemon.close().map_err(|e| e.to_string())?;
     let before_restart = canonical_event_snapshot(receiver)?;
     let mut reopened = durable_daemon(receiver, ContentProfile::ExistingProfile)?;
-    reopened.require_wire_replay_refusal(&old).map_err(|e| e.to_string())?;
-    if reopened.finish_owner(&prepared.session_handle, true).is_ok() { return Err("existing_profile_old_handle_accepted".into()); }
+    reopened
+        .require_wire_replay_refusal(&old)
+        .map_err(|e| e.to_string())?;
+    if reopened
+        .finish_owner(&prepared.session_handle, true)
+        .is_ok()
+    {
+        return Err("existing_profile_old_handle_accepted".into());
+    }
     reopened.profile_status().map_err(|e| e.to_string())?;
     reopened.close().map_err(|e| e.to_string())?;
-    if canonical_event_snapshot(receiver)? != before_restart || canonical_event_snapshot(source)? != source_before {
+    if canonical_event_snapshot(receiver)? != before_restart
+        || canonical_event_snapshot(source)? != source_before
+    {
         return Err("existing_profile_restart_changed_events".into());
     }
     println!("native_existing_profile_signed_import=passed");
@@ -1065,11 +1130,17 @@ pub fn entry() -> Option<Result<(), String>> {
         }
         let existing_profile = args[0] == "--cryptex-m8-local-content-existing-profile-ui";
         let runtime = if existing_profile {
-            PathBuf::from(&args[1]).canonicalize().map_err(|_| "existing_profile_missing")?
-        } else { PathBuf::from(&args[1]) };
+            PathBuf::from(&args[1])
+                .canonicalize()
+                .map_err(|_| "existing_profile_missing")?
+        } else {
+            PathBuf::from(&args[1])
+        };
         let (owner, content) = if existing_profile {
             Owner::start_profile(&runtime, ContentProfile::ExistingProfile)?
-        } else { Owner::start(&runtime)? };
+        } else {
+            Owner::start(&runtime)?
+        };
         let (mut context, binding) = install_context(content, &runtime)?;
         owner.client.call(|reply| Work::Bind(binding, reply))?;
         if args[0] == "--cryptex-m8-local-content-check" {
@@ -1145,7 +1216,9 @@ pub fn entry() -> Option<Result<(), String>> {
             .cloned()
             .ok_or("candidate_window")?;
         window.title = "Cryptex Ã‚Â· Ã„Â°zole onay testi".into();
-        if existing_profile { window.title = "Cryptex - Existing profile".into(); }
+        if existing_profile {
+            window.title = "Cryptex - Existing profile".into();
+        }
         context.config_mut().app.windows.clear();
         let app = tauri::Builder::default()
             .manage(owner.client.clone())

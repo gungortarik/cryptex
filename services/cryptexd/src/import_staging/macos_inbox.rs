@@ -5,12 +5,23 @@ use std::os::unix::fs::MetadataExt;
 
 const MAX_DISCOVERY_ENTRIES: usize = 4096;
 #[derive(Clone, PartialEq, Eq)]
-struct Fingerprint { device: u64, inode: u64, bytes: u64, changed: (i64, i64), modified: (i64, i64) }
+struct Fingerprint {
+    device: u64,
+    inode: u64,
+    bytes: u64,
+    changed: (i64, i64),
+    modified: (i64, i64),
+}
 impl Fingerprint {
     fn of(file: &File) -> io::Result<Self> {
         let m = file.metadata()?;
-        Ok(Self { device: m.dev(), inode: m.ino(), bytes: m.len(),
-            changed: (m.ctime(), m.ctime_nsec()), modified: (m.mtime(), m.mtime_nsec()) })
+        Ok(Self {
+            device: m.dev(),
+            inode: m.ino(),
+            bytes: m.len(),
+            changed: (m.ctime(), m.ctime_nsec()),
+            modified: (m.mtime(), m.mtime_nsec()),
+        })
     }
 }
 pub(crate) struct Inbox {
@@ -21,12 +32,18 @@ pub(crate) struct Inbox {
 }
 impl Inbox {
     pub(crate) fn new(root: &Path) -> io::Result<Self> {
-        Ok(Self { root: root.to_owned(), namespace: macos_fs::RuntimeIdentity::capture(root)?,
-            seen: BTreeMap::new(), pending: Vec::new() })
+        Ok(Self {
+            root: root.to_owned(),
+            namespace: macos_fs::RuntimeIdentity::capture(root)?,
+            seen: BTreeMap::new(),
+            pending: Vec::new(),
+        })
     }
     pub(crate) fn discover(&mut self) -> io::Result<Vec<PathBuf>> {
         self.namespace.validate()?;
-        if !self.pending.is_empty() { return Ok(self.pending.iter().map(|(p, _)| p.clone()).collect()); }
+        if !self.pending.is_empty() {
+            return Ok(self.pending.iter().map(|(p, _)| p.clone()).collect());
+        }
         let incoming = self.root.join("transport/incoming");
         let directories = match fs::read_dir(&incoming) {
             Ok(entries) => entries,
@@ -38,43 +55,77 @@ impl Inbox {
         let mut candidates = BTreeMap::new();
         for directory in directories {
             count += 1;
-            if count > MAX_DISCOVERY_ENTRIES { return Err(discovery_limit()); }
+            if count > MAX_DISCOVERY_ENTRIES {
+                return Err(discovery_limit());
+            }
             let directory = directory?;
             let path = directory.path();
-            if path.file_name().is_some_and(|name| name == ".stfolder") { continue; }
-            if !fs::symlink_metadata(&path)?.is_dir() { return Err(discovery_object()); }
+            if path.file_name().is_some_and(|name| name == ".stfolder") {
+                continue;
+            }
+            if !fs::symlink_metadata(&path)?.is_dir() {
+                return Err(discovery_object());
+            }
             self.namespace.pin(&path)?;
             for entry in fs::read_dir(&path)? {
                 count += 1;
-                if count > MAX_DISCOVERY_ENTRIES { return Err(discovery_limit()); }
+                if count > MAX_DISCOVERY_ENTRIES {
+                    return Err(discovery_limit());
+                }
                 let path = entry?.path();
-                if path.extension().is_none_or(|ext| ext != "seg") { continue; }
-                let relative = path.strip_prefix(&incoming).map_err(|_| discovery_object())?.to_owned();
+                if path.extension().is_none_or(|ext| ext != "seg") {
+                    continue;
+                }
+                let relative = path
+                    .strip_prefix(&incoming)
+                    .map_err(|_| discovery_object())?
+                    .to_owned();
                 validate_relative_segment_path(&relative).map_err(|_| discovery_object())?;
-                let chain = inspect_directory_chain(path.parent().ok_or_else(discovery_object)?, true)
+                let chain =
+                    inspect_directory_chain(path.parent().ok_or_else(discovery_object)?, true)
+                        .map_err(|_| discovery_object())?;
+                let file = open_source_from_directory_chain(&chain, &path)
                     .map_err(|_| discovery_object())?;
-                let file = open_source_from_directory_chain(&chain, &path).map_err(|_| discovery_object())?;
                 let fingerprint = Fingerprint::of(&file)?;
-                if self.seen.get(&relative) != Some(&fingerprint) { candidates.insert(relative, fingerprint); }
+                if self.seen.get(&relative) != Some(&fingerprint) {
+                    candidates.insert(relative, fingerprint);
+                }
             }
         }
         self.namespace.validate()?;
-        self.pending = candidates.into_iter().take(crate::import_limits::MAX_IMPORT_FILES_PER_BATCH).collect();
+        self.pending = candidates
+            .into_iter()
+            .take(crate::import_limits::MAX_IMPORT_FILES_PER_BATCH)
+            .collect();
         Ok(self.pending.iter().map(|(p, _)| p.clone()).collect())
     }
     /// Only an actual clean publication/rejection consumes a discovery hint.
     /// Waiting, deferred and held outcomes keep it for verified handling.
     pub(crate) fn consumed(&mut self) -> io::Result<()> {
         self.namespace.validate()?;
-        if self.seen.len() + self.pending.iter().filter(|(p, _)| !self.seen.contains_key(p)).count() > MAX_DISCOVERY_ENTRIES {
+        if self.seen.len()
+            + self
+                .pending
+                .iter()
+                .filter(|(p, _)| !self.seen.contains_key(p))
+                .count()
+            > MAX_DISCOVERY_ENTRIES
+        {
             return Err(discovery_limit());
         }
         self.seen.extend(self.pending.drain(..));
         Ok(())
     }
 }
-fn discovery_object() -> io::Error { io::Error::new(io::ErrorKind::PermissionDenied, "incoming_discovery_unsafe_object") }
-fn discovery_limit() -> io::Error { io::Error::new(io::ErrorKind::InvalidData, "incoming_discovery_limit") }
+fn discovery_object() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        "incoming_discovery_unsafe_object",
+    )
+}
+fn discovery_limit() -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, "incoming_discovery_limit")
+}
 
 #[cfg(test)]
 mod tests {

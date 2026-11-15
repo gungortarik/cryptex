@@ -217,10 +217,14 @@ impl LocalDaemon {
     /// Default-off existing-profile diagnostics. The schema has no protected
     /// state; local readiness/publication cannot assert remote durability.
     pub fn profile_status(&mut self) -> Result<NativeProfileStatus, Error> {
-        if !self.existing_profile { return Err(Error::Arguments); }
-        let status: NativeProfileStatus = serde_json::from_slice(&self.exchange(STATUS)?).map_err(|_| Error::Channel)?;
+        if !self.existing_profile {
+            return Err(Error::Arguments);
+        }
+        let status: NativeProfileStatus =
+            serde_json::from_slice(&self.exchange(STATUS)?).map_err(|_| Error::Channel)?;
         if status.schema_version != 1 || status.remote_durability_verified {
-            self.burn(); return Err(Error::Channel);
+            self.burn();
+            return Err(Error::Channel);
         }
         Ok(status)
     }

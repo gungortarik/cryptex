@@ -48,7 +48,9 @@ pub(crate) fn serve(
         return Err(invalid_data("native_fixture_profile_state"));
     }
     let store: Arc<dyn SecureStore> = match profile {
-        ContentProfile::ExistingProfile => return Err(invalid_data("existing_profile_is_not_a_fixture")),
+        ContentProfile::ExistingProfile => {
+            return Err(invalid_data("existing_profile_is_not_a_fixture"));
+        }
         ContentProfile::Ephemeral => Arc::new(crate::FakeSecureStore::new()),
         ContentProfile::KeychainCreate
         | ContentProfile::KeychainResume
@@ -56,8 +58,11 @@ pub(crate) fn serve(
         | ContentProfile::TransportResume => Arc::new(crate::MacosKeychainStore::new()),
     };
     if !profile.resumes() {
-        let event_id = if profile.transport() { new_bootstrap_event_id().map_err(invalid_data)? }
-            else { "d9885c8e-6a01-48bc-8488-cd52c4c1f725".to_owned() };
+        let event_id = if profile.transport() {
+            new_bootstrap_event_id().map_err(invalid_data)?
+        } else {
+            "d9885c8e-6a01-48bc-8488-cd52c4c1f725".to_owned()
+        };
         crate::signed_transfer_probe::create(
             root,
             store.as_ref(),

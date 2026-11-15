@@ -282,7 +282,9 @@ impl Directory {
         let current = self.open_file(name, libc::O_RDONLY)?;
         let a = current.metadata()?;
         let b = expected.metadata()?;
-        if (a.dev(), a.ino()) != (b.dev(), b.ino()) { return Err(unsafe_object()); }
+        if (a.dev(), a.ino()) != (b.dev(), b.ino()) {
+            return Err(unsafe_object());
+        }
         let name = leaf(name)?;
         if unsafe { libc::unlinkat(self.last()?.as_raw_fd(), name.as_ptr(), 0) } != 0 {
             return Err(io::Error::last_os_error());
@@ -822,6 +824,12 @@ mod tests {
 pub(crate) fn require_product_os() -> io::Result<()> {
     // SAFETY: no pointer arguments; the native SDK/runtime availability guard
     // refuses older systems instead of choosing a weaker transport fallback.
-    if unsafe { cx_import_product_os_supported() } == 1 { Ok(()) }
-    else { Err(io::Error::new(io::ErrorKind::Unsupported, "native_profile_requires_macos_26")) }
+    if unsafe { cx_import_product_os_supported() } == 1 {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "native_profile_requires_macos_26",
+        ))
+    }
 }

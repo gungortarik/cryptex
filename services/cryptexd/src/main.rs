@@ -100,7 +100,10 @@ fn run(args: Vec<String>) -> Result<(), LifecycleError> {
 fn run_with_ready(
     args: Vec<String>,
     ordinary_ipc: bool,
-    ready: &mut dyn FnMut(&Path, &mut cryptexd::instance::InstanceLock) -> Result<(), LifecycleError>,
+    ready: &mut dyn FnMut(
+        &Path,
+        &mut cryptexd::instance::InstanceLock,
+    ) -> Result<(), LifecycleError>,
 ) -> Result<(), LifecycleError> {
     if args.is_empty() {
         println!("cryptexd M0 foundation");
@@ -803,7 +806,10 @@ fn enroll_local_with_platform_store(
 fn run_lifecycle(
     args: &[String],
     ordinary_ipc: bool,
-    ready: &mut dyn FnMut(&Path, &mut cryptexd::instance::InstanceLock) -> Result<(), LifecycleError>,
+    ready: &mut dyn FnMut(
+        &Path,
+        &mut cryptexd::instance::InstanceLock,
+    ) -> Result<(), LifecycleError>,
 ) -> Result<(), LifecycleError> {
     #[cfg(windows)]
     let _ = ordinary_ipc;

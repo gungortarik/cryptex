@@ -44,10 +44,16 @@ impl ContentProfile {
         }
     }
     pub(crate) fn resumes(self) -> bool {
-        matches!(self, Self::KeychainResume | Self::TransportResume | Self::ExistingProfile)
+        matches!(
+            self,
+            Self::KeychainResume | Self::TransportResume | Self::ExistingProfile
+        )
     }
     pub(crate) fn transport(self) -> bool {
-        matches!(self, Self::TransportCreate | Self::TransportResume | Self::ExistingProfile)
+        matches!(
+            self,
+            Self::TransportCreate | Self::TransportResume | Self::ExistingProfile
+        )
     }
 }
 const RELEASE: &str = "m8-local-startup-v1";
@@ -579,7 +585,8 @@ impl ChildGuard {
             crate::ipc::native_profile::serve(&mut connection, root, lock)
         } else {
             crate::ipc::local_native::serve(&mut connection, root, lock, profile)
-        }.map_err(|_| Error::Channel)
+        }
+        .map_err(|_| Error::Channel)
     }
     pub fn runtime_ready(&mut self) -> Result<(), Error> {
         self._channel
@@ -697,7 +704,10 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
     }))
 }
 
-pub use crate::ipc::native_profile::{Status as NativeProfileStatus, Protection as NativeProtection, IncomingState as NativeIncomingState};
+pub use crate::ipc::native_profile::{
+    IncomingState as NativeIncomingState, Protection as NativeProtection,
+    Status as NativeProfileStatus,
+};
 
 pub const CONTENT_MARKER: &str = "m8-isolated-native-content-v1\n";
 pub const DURABLE_MARKER: &str = "m8-isolated-native-keychain-v1\n";

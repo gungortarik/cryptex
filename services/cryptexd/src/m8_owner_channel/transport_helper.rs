@@ -125,7 +125,8 @@ struct Reply {
 
 fn private_root(root: &Path) -> Result<(), Error> {
     crate::paths::assert_outside_repository(root).map_err(|_| Error::Arguments)?;
-    let namespace = crate::import_staging::macos_fs::Directory::open(root, true).map_err(|_| Error::Profile)?;
+    let namespace =
+        crate::import_staging::macos_fs::Directory::open(root, true).map_err(|_| Error::Profile)?;
     if !root.is_absolute() || root.canonicalize().map_err(|_| Error::Arguments)? != root {
         return Err(Error::Arguments);
     }
@@ -688,7 +689,8 @@ impl Helper {
     ) -> Result<Self, Error> {
         use std::os::unix::process::CommandExt;
         private_root(root)?;
-        let namespace = crate::import_staging::macos_fs::Directory::open(root, true).map_err(|_| Error::Profile)?;
+        let namespace = crate::import_staging::macos_fs::Directory::open(root, true)
+            .map_err(|_| Error::Profile)?;
         if root
             .join("transport.active")
             .try_exists()
@@ -834,7 +836,9 @@ impl Helper {
         Ok(result)
     }
     fn request(&mut self, op: Operation) -> Result<(), Error> {
-        if matches!(op, Operation::Observe) { self.namespace.validate().map_err(|_| Error::Profile)?; }
+        if matches!(op, Operation::Observe) {
+            self.namespace.validate().map_err(|_| Error::Profile)?;
+        }
         self.sequence = self.sequence.checked_add(1).ok_or(Error::Channel)?;
         let request = Request {
             sequence: self.sequence,
@@ -869,7 +873,9 @@ impl Helper {
         {
             return Err(Error::Channel);
         }
-        if matches!(op, Operation::Observe) { self.namespace.validate().map_err(|_| Error::Profile)?; }
+        if matches!(op, Operation::Observe) {
+            self.namespace.validate().map_err(|_| Error::Profile)?;
+        }
         Ok(())
     }
     fn close(&mut self) -> Result<(), Error> {
@@ -922,7 +928,8 @@ impl Helper {
                 if retained.dev() != current.dev() || retained.ino() != current.ino() {
                     return Err(Error::Cleanup);
                 }
-                self.namespace.remove_owned_file(std::ffi::OsStr::new("transport.active"), &self.active)
+                self.namespace
+                    .remove_owned_file(std::ffi::OsStr::new("transport.active"), &self.active)
                     .map_err(|_| Error::Cleanup)?;
                 return if kill || status.success() {
                     Ok(())

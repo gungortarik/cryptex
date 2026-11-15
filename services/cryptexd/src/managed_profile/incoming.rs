@@ -8,10 +8,10 @@ use cryptex_events::TrustedDaemonKeyResolver;
 
 #[cfg(windows)]
 use super::worker::StatusReader;
-#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
-use crate::m8_owner_channel::transport_helper::StatusReader;
 use crate::incoming_publication::{IncomingPublicationError, IncomingPublicationReport};
 use crate::instance::InstanceLock;
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+use crate::m8_owner_channel::transport_helper::StatusReader;
 use crate::runtime_admission::AdmissionError;
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 

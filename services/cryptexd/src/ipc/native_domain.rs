@@ -24,11 +24,20 @@ impl Response {
     }
 }
 impl<'a> Domain<'a> {
-    pub(super) fn from_context(context: SearchContext, registry: &'a ApprovalSessionRegistry) -> Self {
-        Self { context, registry, pending: None }
+    pub(super) fn from_context(
+        context: SearchContext,
+        registry: &'a ApprovalSessionRegistry,
+    ) -> Self {
+        Self {
+            context,
+            registry,
+            pending: None,
+        }
     }
     pub(super) fn dispatch(
-        &mut self, connection: &mut BoundConnection<'_>, received: ReceivedRequest,
+        &mut self,
+        connection: &mut BoundConnection<'_>,
+        received: ReceivedRequest,
     ) -> io::Result<Response> {
         // Consumption here is one-use and tied to this native allocation;
         // ordinary parsed JSON/roles/PIDs cannot construct the sealed value.
@@ -39,16 +48,34 @@ impl<'a> Domain<'a> {
             // Reacquire the frozen admission, not a lease from another context.
             let permit = session.admit_followup().map_err(io::Error::other)?;
             let finished = session.finish(request, &permit)?;
-            return Ok(Response { reply: finished.reply, permit, timeout: finished.timeout });
+            return Ok(Response {
+                reply: finished.reply,
+                permit,
+                timeout: finished.timeout,
+            });
         }
-        let permit = self.context.admission.enter(&self.context.runtime_root).map_err(io::Error::other)?;
+        let permit = self
+            .context
+            .admission
+            .enter(&self.context.runtime_root)
+            .map_err(io::Error::other)?;
         let (reply, timeout) = {
             match received.method {
                 Method::PrepareOwnerOperation | Method::PrepareApproval => {
                     let prepared = if received.method == Method::PrepareOwnerOperation {
-                        approval_domain::prepare_owner(&self.context, self.registry, request, &permit)?
+                        approval_domain::prepare_owner(
+                            &self.context,
+                            self.registry,
+                            request,
+                            &permit,
+                        )?
                     } else {
-                        approval_domain::prepare_bootstrap(&self.context, self.registry, request, &permit)?
+                        approval_domain::prepare_bootstrap(
+                            &self.context,
+                            self.registry,
+                            request,
+                            &permit,
+                        )?
                     };
                     self.pending = prepared.session;
                     (prepared.reply, IPC_RESPONSE_DEADLINE)
@@ -95,6 +122,10 @@ impl<'a> Domain<'a> {
                 ),
             }
         };
-        Ok(Response { reply, permit, timeout })
+        Ok(Response {
+            reply,
+            permit,
+            timeout,
+        })
     }
 }
