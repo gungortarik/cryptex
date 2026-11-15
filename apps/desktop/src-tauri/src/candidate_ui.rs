@@ -1346,7 +1346,7 @@ pub fn entry() -> Option<Result<(), String>> {
 pub fn development_entry() -> Option<Result<(), String>> {
     fn stage<T>(name: &'static str, result: Result<T, String>) -> Result<T, String> {
         result.inspect_err(|_| {
-            eprintln!("{}", serde_json::json!({"developmentStage": name}));
+            eprintln!(r#"{{"developmentStage":"{name}"}}"#);
         })
     }
     Some((|| {

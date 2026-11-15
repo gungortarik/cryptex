@@ -28,7 +28,9 @@ class RefusalTests(unittest.TestCase):
 class DiagnosticTests(unittest.TestCase):
     def test_failure_output_only_contains_allowlisted_stages(self):
         output = "\n".join([
-            "private note and runtime path", "local_signed_startup_Channel",
+            "private note and runtime path", "local_signed_startup_Channel", "local_signed_startup_private",
+            json.dumps({"developmentStage": "private"}),
+            json.dumps({"m8ProfileStage": "prepare", "kind": "private"}),
             json.dumps({"m8LocalStage": "content_bind", "error": "local_signed_startup_Instance", "secret": "private"}),
             json.dumps({"m8ProfileStage": "prepare", "kind": "Other", "path": "private"}),
             json.dumps({"developmentStage": "unix_health", "path": "private"}),

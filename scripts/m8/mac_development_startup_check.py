@@ -4,7 +4,6 @@ No owner signing identity is provisioned and no public release is produced.
 import hashlib
 import json
 import os
-import re
 from pathlib import Path
 import shutil
 import stat
@@ -12,6 +11,19 @@ import uuid
 
 from mac_identity_preflight import PreflightError, checked
 from mac_transport_check import _metadata
+
+
+NATIVE_ERRORS = {"local_signed_startup_" + code for code in (
+    "Arguments", "Inventory", "Image", "Channel", "Rendezvous", "Instance",
+    "Deadline", "Spawn", "Readiness", "Cleanup", "StaleAccepted")}
+NATIVE_STAGES = {"content_bind", "owner_exchange", "child_inventory", "child_verification_hint",
+                 "daemon_image", "desktop_inventory", "native_accept", "ready_file", "runtime_ready",
+                 "startup_ack", "startup_hello", "verification_hint"}
+PROFILE_STAGES = {"validate", "backend", "prepare", "context", "unix_data"}
+DEVELOPMENT_STAGES = {"start", "content", "bind", "ping", "profile_status", "unix_health", "close"}
+IO_KINDS = {"NotFound", "PermissionDenied", "ConnectionRefused", "ConnectionReset", "BrokenPipe",
+            "AlreadyExists", "WouldBlock", "InvalidInput", "InvalidData", "TimedOut", "Interrupted",
+            "UnexpectedEof", "OutOfMemory", "Unsupported", "Other"}
 
 
 def canonical_hashes(root):
@@ -56,7 +68,7 @@ class FencedRun:
                               "timedOut": outcome.timed_out, "outputLimited": outcome.limited,
                               "pipeFailed": outcome.pipe_failed}), flush=True)
             for line in outcome.output.splitlines():
-                if re.fullmatch(r"(?:local_signed_startup|existing_profile|development)_[A-Za-z0-9_]+", line):
+                if line in NATIVE_ERRORS or line in {"existing_profile_missing", "development_arguments_refused"}:
                     print(line, flush=True)
                 elif line.startswith("{"):
                     try:
@@ -64,17 +76,17 @@ class FencedRun:
                     except ValueError:
                         continue
                     stage = value.get("developmentStage")
-                    if isinstance(stage, str) and re.fullmatch(r"[a-z_]{1,64}", stage):
+                    if isinstance(stage, str) and stage in DEVELOPMENT_STAGES:
                         print(json.dumps({"developmentStage": stage}), flush=True)
                     stage = value.get("m8LocalStage")
                     error = value.get("error")
-                    if (isinstance(stage, str) and re.fullmatch(r"[a-z_]{1,64}", stage)
-                            and isinstance(error, str) and re.fullmatch(r"local_signed_startup_[A-Za-z0-9_]+", error)):
+                    if (isinstance(stage, str) and stage in NATIVE_STAGES
+                            and isinstance(error, str) and error in NATIVE_ERRORS):
                         print(json.dumps({"m8LocalStage": stage, "error": error}), flush=True)
                     stage = value.get("m8ProfileStage")
                     kind = value.get("kind")
-                    if (isinstance(stage, str) and re.fullmatch(r"[a-z_]{1,64}", stage)
-                            and isinstance(kind, str) and re.fullmatch(r"[A-Za-z]{1,64}", kind)):
+                    if (isinstance(stage, str) and stage in PROFILE_STAGES
+                            and isinstance(kind, str) and kind in IO_KINDS):
                         print(json.dumps({"m8ProfileStage": stage, "kind": kind}), flush=True)
             raise
 
@@ -177,6 +189,13 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
     if missing.exists():
         raise PreflightError("development_missing_profile_created")
 
-    exercise_profile(root, desktop, fixture_daemon, bundle / "Contents/Resources/m8-startup.json",
+    # Keychain tracks its creator's designated code requirement. Provision
+    # this fresh test profile with the development daemon identity, not the
+    # unrelated fixture identity. The creator stays outside the shipped bundle;
+    # no ACL change, key export or fixture command in the product is enabled.
+    creator = root / "development-profile-creator"
+    shutil.copy2(fixture_daemon, creator)
+    sign(creator, "com.cryptex.development.daemon")
+    exercise_profile(root, desktop, creator, bundle / "Contents/Resources/m8-startup.json",
                      run_bounded, run)
     print("development_native_existing_profile_restart_and_refusals=passed")
