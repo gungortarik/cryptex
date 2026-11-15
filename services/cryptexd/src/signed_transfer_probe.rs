@@ -83,7 +83,8 @@ pub fn prepare_empty_local_stream(
     if first.is_some() {
         return Err(ProbeError::Setup);
     }
-    let brain = crate::identity_runtime::load_brain_identity(root).map_err(|_| ProbeError::Setup)?;
+    let brain =
+        crate::identity_runtime::load_brain_identity(root).map_err(|_| ProbeError::Setup)?;
     let local = crate::local_device_identity::load_local_device_identity(root, &brain.brain_id)
         .map_err(|_| ProbeError::Setup)?;
     let device = DeviceId::new(local.device_id).map_err(|_| ProbeError::Setup)?;
@@ -97,9 +98,7 @@ pub fn prepare_empty_local_stream(
         }
     }
     let device_lock = crate::canonical_writer::acquire_device_canonical_lock_under_inventory(
-        root,
-        &device,
-        &inventory,
+        root, &device, &inventory,
     )
     .map_err(|_| ProbeError::Setup)?;
     #[cfg(target_os = "macos")]
