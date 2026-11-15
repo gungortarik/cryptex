@@ -729,9 +729,14 @@ mod tests {
             fixture_fs::create_dir_all(changed.join(path.parent().unwrap())).unwrap();
             fixture_fs::copy(saved.join(&path), changed.join(&path)).unwrap();
         });
-        assert!(matches!(session.discard(), Err(super::super::ImportStagingError::RecoveryConflict(message)) if message.contains("namespace")));
+        assert!(
+            matches!(session.discard(), Err(super::super::ImportStagingError::RecoveryConflict(message)) if message.contains("namespace"))
+        );
         for transaction in [selected, moved] {
-            assert_eq!(fixture_fs::read(transaction.join(&relative)).unwrap(), b"same valid unprepared shape");
+            assert_eq!(
+                fixture_fs::read(transaction.join(&relative)).unwrap(),
+                b"same valid unprepared shape"
+            );
         }
         fixture_fs::remove_dir_all(root).unwrap();
     }

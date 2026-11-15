@@ -259,9 +259,17 @@ struct ImportNamespace {
 impl ImportNamespace {
     fn directory_scope(root: &Path) -> Result<Self, ImportStagingError> {
         #[cfg(target_os = "macos")]
-        { Ok(Self { root: root.to_path_buf(), identity: macos_fs::RuntimeIdentity::capture(root)? }) }
+        {
+            Ok(Self {
+                root: root.to_path_buf(),
+                identity: macos_fs::RuntimeIdentity::capture(root)?,
+            })
+        }
         #[cfg(not(target_os = "macos"))]
-        { let _ = root; Ok(Self {}) }
+        {
+            let _ = root;
+            Ok(Self {})
+        }
     }
 
     fn pin_directory(&self, path: &Path) -> Result<(), ImportStagingError> {
@@ -3032,8 +3040,6 @@ fn recover_prepared_without_publication(
     sync_staged_parent(manifest_path).map_err(|error| {
         ImportStagingError::Io(format!("sync prepared import journal parent: {error}"))
     })?;
-    drop(device_locks);
-    drop(inventory_lock);
     namespace.validate()?;
     validate_lock_namespace(&inventory_lock, &device_locks)?;
     remove_unprepared_transaction(transaction).map_err(|error| {
@@ -3528,7 +3534,9 @@ fn remove_unprepared_transaction(transaction: &Path) -> Result<(), ImportStaging
             "staging transaction root is not an ordinary directory: {error}"
         ))
     })?;
-    let namespace = ImportNamespace::directory_scope(transaction.parent().ok_or_else(|| ImportStagingError::RecoveryConflict("transaction parent missing".into()))?)?;
+    let namespace = ImportNamespace::directory_scope(transaction.parent().ok_or_else(|| {
+        ImportStagingError::RecoveryConflict("transaction parent missing".into())
+    })?)?;
     namespace.pin_directory(transaction)?;
     let mut files = Vec::new();
     let mut directories = Vec::new();
@@ -3610,7 +3618,9 @@ fn remove_unprepared_transaction(transaction: &Path) -> Result<(), ImportStaging
         namespace.validate()?;
         let file = open_source_no_follow(&path)?;
         if source_snapshot(&file)? != expected {
-            return Err(ImportStagingError::RecoveryConflict("staging cleanup source identity changed".into()));
+            return Err(ImportStagingError::RecoveryConflict(
+                "staging cleanup source identity changed".into(),
+            ));
         }
         drop(file);
         fs::remove_file(&path)?;
