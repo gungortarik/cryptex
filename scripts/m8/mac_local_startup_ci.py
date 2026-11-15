@@ -16,6 +16,31 @@ from mac_combined_loss_check import check_combined_loss
 from mac_endpoint_check import check_native_endpoints
 
 
+CONTENT_MARKERS = ("verified_tauri_assets=passed", "native_synthetic_approval_sessions=passed",
+                   "native_pairing_boundary_refusals=passed",
+                   "native_lost_session_and_old_handle_refused=passed",
+                   "native_prepare_and_actor_failures_burn_grants=passed")
+CONTENT_SCENARIOS = {"synthetic_sessions", "lost_connection", "fresh_handle_refusal",
+                     "missing-snapshot", "handle-allocation", "expired-queue", "lost-receiver",
+                     "cancelled_inflight", "completed_delivery", "cancelled_handoff"}
+
+
+def require_content_markers(output):
+    lines = output.splitlines()
+    missing = [marker for marker in CONTENT_MARKERS if marker not in lines]
+    if missing:
+        for line in lines:
+            label = line.removeprefix("m8_candidate_scenario=")
+            if line.startswith("m8_candidate_scenario=") and label in CONTENT_SCENARIOS:
+                print(json.dumps({"nativeContentScenario": label}), flush=True)
+        print(json.dumps({"nativeContentMarkers": {
+            marker.removesuffix("=passed"): marker in lines for marker in CONTENT_MARKERS
+        }}), flush=True)
+        raise PreflightError("native_content_session_marker_missing")
+    for marker in CONTENT_MARKERS:
+        print(marker)
+
+
 def fixture_rust_command(executable, command, *args):
     # Scoped fixture artifacts only: optimize the existing full hash routines
     # and their generic caller, never skip bytes, assertions or deadline checks.
@@ -189,13 +214,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     content_result = run([positive / "Contents/MacOS/cryptex-desktop",
                   "--cryptex-m8-local-content-check", root / "content-runtime"],
                  "real_verified_content_and_native_sessions", 90)
-    for marker in ("verified_tauri_assets=passed", "native_synthetic_approval_sessions=passed",
-                   "native_pairing_boundary_refusals=passed",
-                   "native_lost_session_and_old_handle_refused=passed",
-                   "native_prepare_and_actor_failures_burn_grants=passed"):
-        if marker not in content_result.splitlines():
-            raise PreflightError("native_content_session_marker_missing")
-        print(marker)
+    require_content_markers(content_result)
     check_session_journal(root / "content-runtime/bootstrap/pending.json",
                           ("cancelled", "owner_pending", "anchored"))
     check_session_journal(root / "content-runtime.lost/bootstrap/pending.json", ("owner_pending",))
