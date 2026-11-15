@@ -327,6 +327,25 @@ fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
         );
         return Ok(());
     }
+    if args.first().map(String::as_str) == Some("brain-only-v1") {
+        let [_, flag, root, confirm] = args else {
+            return Err(LifecycleError::Usage("brain-only-v1 requires --runtime-root <fresh-pilot> --confirm-isolated-pilot".into()));
+        };
+        if flag != "--runtime-root" || confirm != "--confirm-isolated-pilot" {
+            return Err(LifecycleError::Usage("invalid brain fixture arguments".into()));
+        }
+        let root = Path::new(root);
+        validate_pilot_fixture_root(root)?;
+        let _instance = try_acquire_instance(root)?;
+        prepare_m1_runtime_foundation(root)
+            .map_err(|_| LifecycleError::Attention("probe_setup_failed".into()))?;
+        let brain = BrainIdentity::new(random_uuid_v4()?, "2026-11-15T00:00:00Z")
+            .map_err(|_| LifecycleError::Attention("probe_setup_failed".into()))?;
+        write_brain_identity(root, &brain)
+            .map_err(|_| LifecycleError::Attention("probe_setup_failed".into()))?;
+        println!("brain_only_fixture=ready");
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("signed-transfer-v1") {
         let [_, flag, root, confirm] = args else {
             return Err(LifecycleError::Usage(
@@ -1748,6 +1767,38 @@ mod tests {
                 Err(LifecycleError::Usage(_))
             ));
         }
+    }
+
+    #[test]
+    #[cfg(not(feature = "m8-development-product"))]
+    fn brain_only_fixture_preserves_existing_profiles_and_creates_no_device_or_events() {
+        let root = fresh_pilot_root();
+        let args = vec![
+            "pilot-fixture".into(),
+            "brain-only-v1".into(),
+            "--runtime-root".into(),
+            root.to_str().unwrap().into(),
+            "--confirm-isolated-pilot".into(),
+        ];
+        run(args.clone()).unwrap();
+        let path = cryptexd::identity_runtime::brain_identity_path(&root);
+        let before = fs::read(&path).unwrap();
+        assert!(!cryptexd::local_device_identity::local_device_identity_path(&root).exists());
+        assert!(!root.join("canonical/events").exists());
+        assert!(run(args).is_err());
+        assert_eq!(fs::read(path).unwrap(), before);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn brain_only_fixture_requires_explicit_confirmation() {
+        assert!(run(vec![
+            "pilot-fixture".into(),
+            "brain-only-v1".into(),
+            "--runtime-root".into(),
+            "unused".into(),
+        ])
+        .is_err());
     }
 
     #[test]

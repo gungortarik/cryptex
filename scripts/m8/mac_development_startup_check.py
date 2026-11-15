@@ -208,6 +208,10 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
         (daemon, ["--m8-local-transport-driver", str(root / "must-not-create")], "mac_transport_Arguments"),
     ):
         require_refusal(run_bounded([str(binary), *args], 30), code)
+    refused = run_bounded([str(daemon), "pilot-fixture", "brain-only-v1", "--runtime-root",
+                           str(root / "must-not-create"), "--confirm-isolated-pilot"], 30)
+    if refused.code != 2 or refused.timed_out or refused.limited or refused.pipe_failed:
+        raise PreflightError("development_brain_fixture_not_refused")
     if (root / "must-not-create").exists():
         raise PreflightError("development_refusal_created_profile")
     missing = root / "development-missing-profile"
@@ -220,17 +224,17 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
     if missing.exists():
         raise PreflightError("development_window_check_created_profile")
 
-    # Keychain tracks its creator's designated code requirement. Provision
-    # this fresh test profile with the development daemon identity, not the
-    # unrelated fixture identity. The creator stays outside the shipped bundle;
-    # no ACL change, key export or fixture command in the product is enabled.
+    # Equal designated requirements do not imply equal Keychain partitions for
+    # our self-signed, different images. The external fixture creates only a
+    # public Brain; the actual product daemon enrolls its OWN key. Existing
+    # different-image/signed-event fixtures remain separate diagnostic cases.
     creator = root / "development-profile-creator"
     shutil.copy2(fixture_daemon, creator)
     sign(creator, "com.cryptex.development.daemon")
     require_same_designated_identity(creator, daemon, run)
     try:
-        exercise_profile(root, desktop, creator, bundle / "Contents/Resources/m8-startup.json",
-                         run_bounded, run)
+        from mac_product_key_startup import exercise
+        exercise(root, desktop, creator, bundle / "Contents/Resources/m8-startup.json", run_bounded, run)
     except PreflightError:
         destination = os.environ.get("CRYPTEX_DEVELOPMENT_DIAGNOSTIC_EXPORT")
         if destination:
@@ -241,4 +245,4 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
                          "diagnostic_expiry", 30).strip()
             export_failed(bundle, files, creator, Path(destination), source, platform.machine(), expiry)
         raise  # Exporting a diagnostic never turns native startup failure into success.
-    print("development_native_existing_profile_restart_and_refusals=passed")
+    print("development_native_product_owned_key_restart_and_refusals=passed")

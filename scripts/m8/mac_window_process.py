@@ -93,12 +93,16 @@ class WindowProcess:
         self.deadline = time.monotonic() + timeout
         self.result = None
 
+    def arguments(self):
+        if self.profile is None:
+            return [str(self.binary)]
+        return [str(self.binary), '--cryptex-development-window-check', str(self.profile)]
+
     def start(self):
         # The collector registers this object before any child or thread starts.
         if self.process is not None:
             raise PreflightError('window_already_started')
-        self.process = subprocess.Popen([str(self.binary), '--cryptex-development-window-check',
-                                         str(self.profile)], env=self.env, start_new_session=True,
+        self.process = subprocess.Popen(self.arguments(), env=self.env, start_new_session=True,
                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
         try:
             self.reader = threading.Thread(target=self._read, daemon=True)

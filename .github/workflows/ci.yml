@@ -183,6 +183,8 @@ jobs:
           pnpm --filter @cryptex/desktop build
       - name: Check formatting
         run: cargo fmt --all -- --check
+      - name: Test public-Brain-only fixture isolation
+        run: cargo test --locked -p cryptexd --bin cryptexd brain_only_fixture -- --test-threads=1
       - name: Lint changed daemon and Desktop paths
         run: cargo clippy --locked -p cryptexd -p cryptex-desktop --all-targets -- -D warnings
       - name: Verify native Mac frame and right ownership
