@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "ready_owner_execution_pending",
+  "status": "owner_execution_passed_bounded_scope",
   "package": "Cryptex-Mac-Normal-d3927b4-1c0e3c3.zip",
   "package_sha256": "1fd5177910521ad1c58503b3ab4a3a29c21f51a46b9b01e62b277e6bd052dee9",
   "product_source": "d3927b4083d192e80e3d5ca736e41fd35705bf2e",
@@ -22,12 +22,12 @@
   },
   "cleanup": "Only after both natural product exits and unchanged canonical/device identity: exact generated key and FD-pinned synthetic leaf. On uncertainty retain profile/key; never delete ancestors.",
   "not_established": [
-    "Owner normal-profile acceptance",
     "Personal-profile migration",
     "Independent out-of-group helper disappearance",
     "Cross-device sync",
     "Public distribution",
     "Full M8 acceptance"
   ],
-  "related_owner_ui_receipt": "m8-mac-window-owner-acceptance-20261115.json"
+  "related_owner_ui_receipt": "m8-mac-window-owner-acceptance-20261115.json",
+  "owner_acceptance": "m8-mac-normal-owner-acceptance-20261115.json"
 }

@@ -1,6 +1,12 @@
 # M8 completion ledger
 
-November15 continuation: normal default-location owner result remains pending.
+November15 continuation: [owner normal result b77b619e](../evidence/m8/m8-mac-normal-owner-acceptance-20261115.json)
+PASSED on product d3927b4/collector 1c0e3c3: two no-argument natural exit0
+launches at the actual default root, ten completed Keychain reads, four positive
+visual confirmations, unchanged canonical/device state and exact key/runtime
+cleanup. The initially absent default root held synthetic test history; personal
+profile migration is not covered. Product-exit shutdown is checked, independent
+out-of-group helper enumeration is not. Do not repeat the unchanged owner package.
 Pinned native43761107215 passed actual nonempty signed product startup/restart,
 modified-inventory refusal, unchanged canonical/public identity, exact synthetic
 credential permissions and full Keychain preference restoration/deletion. Product

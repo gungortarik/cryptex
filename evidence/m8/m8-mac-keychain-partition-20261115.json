@@ -165,7 +165,7 @@
     "No default/search-list changes",
     "No product deadline or authentication changes"
   ],
-  "next_positive_scope": "Scoped latest-source Mac+Windows startup CI43761233562 passed; normal owner default-locator receipt remains pending.",
+  "next_positive_scope": "Scoped Mac+Windows startup CI43761233562 and bounded normal default-locator owner receipt b77b619e passed. Remaining acceptance is tracked in current handoff; full M8 stays open.",
   "positive_followup": {
     "ci_run": 43752532500,
     "source": "3e170af",
@@ -228,7 +228,7 @@
   "acceptance": {
     "keychain_read_under_same_product_image": "observed complete",
     "full_native_ci": "scoped desktop-startup workflow passed on Mac and Windows; not full repository matrix",
-    "normal_default_profile_owner": "pending",
+    "normal_default_profile_owner": "passed bounded synthetic-default-root opening/restart in b77b619e; see m8-mac-normal-owner-acceptance-20261115.json",
     "m8": "open"
   },
   "isolated_ci_keychain_followup": {

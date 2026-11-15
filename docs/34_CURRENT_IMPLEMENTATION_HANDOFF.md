@@ -1,5 +1,30 @@
 # 34 — Current Implementation Handoff
 
+## Owner normal default-profile opening passed — November15
+
+Owner return `MAC-NORMAL-SONUC-b77b619e.zip` passes the bounded no-argument
+opening/restart test on product d3927b4, collector 1c0e3c3. See
+[acceptance receipt](../evidence/m8/m8-mac-normal-owner-acceptance-20261115.json).
+Archive CRC, exact delivered package SHA256, source IDs, delivered collector bytes
+and every acceptance field were checked locally. Both launches naturally exit0,
+each samples one daemon and completes five Keychain reads; no timeout, observer
+failure or live same-group descendant before cleanup. All four owner visual
+observations pass. Canonical bytes/device UUID remain unchanged; exact generated
+key and owned default-profile leaf cleanup pass. Actual HOME is retained and the
+Desktop receives no arguments. The profile was new synthetic history at an absent
+default root; no existing personal profile was adopted or migrated.
+
+The receipt's ci_startup_passed=false is a fixed owner-collector scope label,
+not a failing CI run. Separate scoped Mac+Windows CI43761233562 passed as recorded
+below. This closes the previously pending normal default-locator owner exercise;
+do not repeat the unchanged package. Evidence is owner-supplied collector data
+and visual confirmations, not independent physical attestation. Helper shutdown
+still relies on product exit semantics rather than independent out-of-group
+helper enumeration. Next remaining acceptance includes that process observation,
+OS permission-denial behavior and real Windows-Mac durable reconciliation. Personal
+profile migration, public distribution and full M8 acceptance are not established.
+M8 remains OPEN; older pending normal-package notes below are historical.
+
 ## Native provisioned-profile CI passed; owner normal opening next — November15
 
 Pinned native CI43761107215 PASSED on collector59f9ba5 with byte-identical product

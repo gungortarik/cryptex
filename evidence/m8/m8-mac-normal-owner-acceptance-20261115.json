@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "status": "bounded_owner_normal_default_profile_acceptance_passed",
+  "receipt": "MAC-NORMAL-SONUC-b77b619e.zip",
+  "receipt_sha256": "b1160de212484536f334d14627ebbcfec9f7a0749ffe2b919085a62ab20cfc7e",
+  "result_json_sha256": "3e1fa7dcddd87b2358886fa47fc0004f776672c8bb0e86beb7e49c45d740ffda",
+  "binary_source": "d3927b4083d192e80e3d5ca736e41fd35705bf2e",
+  "collector_source": "1c0e3c36d4164c44816a34a241654808aefe7b21",
+  "package_sha256": "1fd5177910521ad1c58503b3ab4a3a29c21f51a46b9b01e62b277e6bd052dee9",
+  "scope": "normal no-argument development opening/restart using synthetic fixture at absent default root",
+  "evidence_origin": "Owner-supplied collector aggregates and four visual confirmations; archive and collector checked locally, not independent physical attestation.",
+  "validation": {
+    "zip_crc": "passed",
+    "source_ids_match_package": true,
+    "delivered_collector_matches_repository": true,
+    "all_acceptance_fields_checked": true
+  },
+  "launches": {
+    "normal_open": {
+      "exit_code": 0,
+      "natural_exit": true,
+      "same_group_live_descendants_before_cleanup": 0,
+      "group_reaped": true,
+      "timed_out": false,
+      "output_limited": false,
+      "observer_failed": false,
+      "sampled_daemon_count": 1,
+      "key_store_reads_completed": 5
+    },
+    "normal_restart": {
+      "exit_code": 0,
+      "natural_exit": true,
+      "same_group_live_descendants_before_cleanup": 0,
+      "group_reaped": true,
+      "timed_out": false,
+      "output_limited": false,
+      "observer_failed": false,
+      "sampled_daemon_count": 1,
+      "key_store_reads_completed": 5
+    }
+  },
+  "owner_observations": {
+    "normal_open_opened": true,
+    "normal_open_quit": true,
+    "normal_restart_opened": true,
+    "normal_restart_quit": true
+  },
+  "commands": [
+    {
+      "stage": "create_default_test_profile",
+      "exit_code": 0,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false
+    },
+    {
+      "stage": "cleanup_exact_test_key",
+      "exit_code": 0,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false
+    }
+  ],
+  "checks": {
+    "exclusive_absent_default_root_created": true,
+    "service_shutdown_via_product_exit_verified": true,
+    "credential_cleanup_verified": true,
+    "runtime_cleanup_verified": true,
+    "canonical_unchanged": true,
+    "device_identity_unchanged": true,
+    "no_arguments": true,
+    "real_home_retained": true
+  },
+  "ci_startup_passed_field": "False is a fixed owner-collector scope label, not a failing CI result. Separate scoped CI43761233562 passed.",
+  "limitations": [
+    "personal-profile migration",
+    "independent out-of-group helper enumeration",
+    "cross-device sync",
+    "public distribution",
+    "full M8 acceptance"
+  ],
+  "m8": "open"
+}
