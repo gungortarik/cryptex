@@ -32,14 +32,23 @@ Actual8-way capture and the parallel daemon library pass. Do not resume the old
 ENOENT, seed UUID or /var-association diagnostics without a new failure. No Apple
 kernel explanation, failed-create errno retry or validation relaxation is claimed.
 
-**Resume at changed owner acceptance:** the CI-executed arm64 archive
-`Cryptex-Mac-Profil-d9561d8-70db1c49.zip` is ready. Extract on the Mac and run
-`Cryptex-Mac-Aktarim/MAC-AKTARIM.command`; collect `MAC-AKTARIM-SONUC-*.zip`.
-Expiry:2026-11-16T03:21:56+00:00. Recheck expiry/source before a later handoff;
-regenerate from this reviewed code if expired. Do not repeat an unchanged older
-packet. The changed harness covers live ExistingProfile pairing→incoming,
-permitted restriction→fresh state, restart idempotence and old wire/handle refusal
-using private fresh profiles, not personal memory.
+**Resume at owner failure diagnosis:** received
+`MAC-AKTARIM-SONUC-1bcdf362.zip` from source `d9561d8` failed with
+`real_native_managed_pairing_failed`; identity restart/refusals passed according
+to the owner-provided receipt. No pairing/import/reopen/parent-loss acceptance
+is established. The original receipt omits exit code, timeout/output/pipe flags
+and native substep codes, so the cause remains unknown. CI success above remains
+valid for CI; it does not override the hardware failure.
+
+The diagnostic collector now retains bounded per-command exit/timeout/output/
+pipe flags, elapsed time, closed native codes and markers, plus its own SHA256.
+Only fixed allowlisted fields leave the collector; raw output, command arguments,
+runtime paths, memory and credentials are excluded. Original process-death fencing,
+cleanup, acceptance checks and time budgets are unchanged. Repackage the same
+signed `d9561d8` app with this collector; do not mutate its inventory or binaries.
+Original fixture expiry:2026-11-16T03:21:56+00:00. Check expiry before handing off.
+Seven diagnostic unit regressions, ten existing checker regressions and five
+package-export tests pass locally; these are synthetic tests, not Mac acceptance.
 
 M8 OPEN; M9 not begun. Owner hardware/installed UX, ordinary configured-image/
 release policy, actual peer/folder synchronization, cross-device durable replicas

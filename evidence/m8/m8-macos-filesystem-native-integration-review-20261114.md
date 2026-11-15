@@ -86,8 +86,24 @@ Native signatures/execution were verified on Mac CI, not Windows.
 Move the ZIP to the Mac, extract there, double-click
 `Cryptex-Mac-Aktarim/MAC-AKTARIM.command`, keep test windows open and return the new
 `MAC-AKTARIM-SONUC-*.zip`. Fresh private profiles/fenced credential cleanup are
-used; personal memory is not transferred. Physical owner acceptance is pending.
-No repeated terminal paste or unchanged historical packet is requested.
+used; personal memory is not transferred.
+
+Owner return `MAC-AKTARIM-SONUC-1bcdf362.zip` (SHA256
+`d314e353d0c5a584dd0277ec7eef5b49f71fb2876dd6092e3090505f954e1b4e`)
+reports source `d9561d8`, identity restart/refusal success and
+`real_native_managed_pairing_failed`. It contains only the aggregate JSON;
+exit status, timeout/output flags and native substep are unavailable. Physical
+owner acceptance **failed**; its cause is unconfirmed. The CI successes above
+do not supersede this receipt. Do not infer pairing, import or later parent-loss
+success. Preserve the original failed runtime on the Mac.
+
+Next handoff uses the same signed app bytes with a diagnostic-only collector.
+It records fixed allowlisted codes/markers and command outcome flags/timing,
+never raw stdout, arguments, paths, memory bodies or Keychain values. Timeouts,
+cleanup fencing and acceptance checks are unchanged. Seven new collector tests,
+ten existing checker tests and five package-export tests pass locally. Their
+mocked processes are not native execution evidence. No repeated terminal paste
+or unchanged historical packet is requested.
 
 Ordinary configured-image/release policy, actual peer/folder synchronization,
 cross-device durable replicas, installed-product/UX and final protocol/M8

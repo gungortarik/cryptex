@@ -1,7 +1,7 @@
 {
   "receipt_version": 1,
-  "status": "completed",
-  "conclusion": "success",
+  "status": "owner_diagnostics_required",
+  "conclusion": "ci_success_owner_acceptance_failed",
   "headSha": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
   "scope": "Bounded default-off Darwin filesystem and existing OS-backed profile native domain/session/incoming/status integration; not ordinary activation, physical owner acceptance or full M8 completion",
   "runs": [
@@ -73,7 +73,17 @@
     "human_security_certification": false
   },
   "owner_acceptance": {
-    "status": "not_run",
+    "status": "failed",
+    "received_result": {
+      "archive_name": "MAC-AKTARIM-SONUC-1bcdf362.zip",
+      "sha256": "d314e353d0c5a584dd0277ec7eef5b49f71fb2876dd6092e3090505f954e1b4e",
+      "source": "d9561d81af883bcdcc17bc7893a566ac0b305cdf",
+      "outcome": "failed",
+      "identity_restart_and_refusals_verified": true,
+      "diagnostic": "real_native_managed_pairing_failed",
+      "failure_cause": "unknown: original receipt omits command exit/timeout/output flags and substep codes",
+      "execution_attribution": "owner-provided aggregate receipt; not independently executed on owner hardware"
+    },
     "artifact_id": 14145435970,
     "artifact_name": "mac-interactive-ui",
     "original_nested_archive": "cryptex-mac-transport.zip",

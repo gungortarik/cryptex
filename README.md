@@ -11,8 +11,9 @@ passed separate agent review and exact-source
 and [native CI43671787980](https://github.com/gungortarik/cryptex/actions/runs/43671787980)
 on `d9561d8`. Daemon Mac589/Windows682passed, zero failures. The
 [review and concrete owner handoff](evidence/m8/m8-macos-filesystem-native-integration-review-20261114.md)
-separate the ready changed packet from physical owner acceptance, ordinary
-activation and actual cross-device synchronization. Those gates remain open;
+record CI success separately from a subsequent owner-Mac native pairing failure.
+Its cause needs the diagnostic-only collector; physical acceptance, ordinary
+activation and actual cross-device synchronization remain open;
 earlier implementation notes below are historical checkpoints.
 
 **Selected authority correction — November 14:** cutoff-bound local admissions

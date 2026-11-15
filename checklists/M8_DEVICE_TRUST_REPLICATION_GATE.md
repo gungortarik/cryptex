@@ -10,8 +10,10 @@ and [receipt](../evidence/m8/m8-macos-filesystem-native-integration.json) bind
 tests passed, zero failures; separate read-only agent review has no remaining
 finding in this slice. Corrected16x8 creation/disappearing-leaf guards, original
 namespace binding, actual-send admission/reconciliation and live signed import/
-restart checks passed. The changed CI-executed owner packet is ready; physical
-owner acceptance is pending. Ordinary activation, peer/folder/cross-device durable
+restart checks passed in CI. The returned owner packet failed at native pairing;
+identity checks passed, but the precise cause is unconfirmed. The next packet adds
+bounded privacy-filtered diagnostics to unchanged signed app bytes. Physical
+owner acceptance remains failed/open. Ordinary activation, peer/folder/cross-device durable
 replication, installed UX and full protocol/M8 acceptance remain open. This
 supersedes earlier adapter-pending notes only within the default-off candidate.
 
