@@ -1,5 +1,14 @@
 # M8 completion ledger
 
+Latest helper observation slice: [receipt](../evidence/m8/m8-independent-helper-shutdown-20261115.json)
+binds f7fe55f to passed Darwin collector CI43763552289 and scoped Mac/Windows
+application CI43763653794. The exported signed local pairing/import/reopen driver
+requires user-wide image/instance absence before collector group cleanup and
+later quiet samples; actual separate-session orphan negatives pass. Independent
+source review has no actionable security finding. Owner packet is ready, receipt
+pending. This is local native evidence, not actual Windows-Mac durable delivery;
+trust-derived product peer/folder policy and daemon export remain prerequisites.
+
 November15 continuation: [owner normal result b77b619e](../evidence/m8/m8-mac-normal-owner-acceptance-20261115.json)
 PASSED on product d3927b4/collector 1c0e3c3: two no-argument natural exit0
 launches at the actual default root, ten completed Keychain reads, four positive

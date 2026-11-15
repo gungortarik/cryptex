@@ -129,3 +129,23 @@ review and the milestone completion ledger remain required.
 Keep ADR-0020/ADR-0021 disabled-only and run another explicitly isolated network
 fixture. It can prove the network leg but cannot close the normal product-flow
 gap requested by the owner. Do not label that alternative product integration.
+
+## Continuation audit after normal opening acceptance — November 15
+
+The policy/native startup and no-argument existing-profile window portions now
+have scoped CI and owner evidence (CI43761233562 and owner b77b619e; see current
+handoff). The transport-helper shutdown observation is separately being extended;
+a normal local-only profile does not start that helper.
+
+The real-peer/folder and exporter rows above remain implementation prerequisites,
+not device-test failures. At f7fe55f, native_xml::inspect still enforces self-only
+bootstrap configuration; configure_transfer_test/TransferTestPolicy are confined
+to Windows tests. Native ExistingProfile starts a helper only when its managed
+profile already exists. Incoming discovery/publication is connected, but there is
+no ordinary verified sealed exporter or cross-platform trust-derived exchange
+configuration. A new device packet alone cannot close these code gaps.
+
+Continue with implementation order 2 and 3 under the existing authorization;
+then order 4/5 supplies a coordinated real LAN acceptance packet. Do not ask the
+owner to repeat terminal pairing/copy loops or claim the local native fixture is
+a Windows-Mac transfer. Preserve the prior bounded receipts.

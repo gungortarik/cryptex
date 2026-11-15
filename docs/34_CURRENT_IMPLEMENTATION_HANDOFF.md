@@ -1,5 +1,56 @@
 # 34 — Current Implementation Handoff
 
+## Independent helper shutdown and real-network continuation — November15
+
+Collector f7fe55f adds a read-only, user-wide Darwin libproc inventory. It observes
+exact package daemon/Desktop and per-profile copied engine paths, PID birth times,
+parent/group topology and captured instances even after exec/reparent. No PID from
+this inventory is ever a signal target. Actual driver natural exit, independent
+absence BEFORE owned-group cleanup and three later empty samples are all required.
+Uncertainty or a surviving helper retains the fresh runtime/credentials and fails.
+This is bounded observation, not atomic kernel attestation or future-respawn proof.
+
+Collector CI43763552289 PASSED25 window/observer tests (including actual Darwin
+separate-session helper/engine and surviving reparented-child refusal),2 existing
+product-key helper tests and3 isolated credential tests. Local checks passed17
+window tests with8 Darwin skips,5 package tests and14 transport-report tests.
+Native application/export CI43763653794 PASSED Mac and Windows at exact source
+f7fe55f5390af4840c6e67ceb4ef448d88d49b27 with that same mac_ui_source. Its exported
+transport launcher executes the new independent observer around the signed real
+pairing/import/reopen driver. Completed logs confirm exported_transport_launcher,
+signed development startup and local certificate cleanup passed. Independent
+read-only source review found no actionable security issue; reviewer ran no tests.
+Owner receipt is still required. Ready handoff: Cryptex-Mac-Kapanis-f7fe55f.zip,
+SHA256 db05d2fc2273769ce14f90e77d5b27e71697fa2d69f9f665e29ff2e4248ec43e,
+Apple Silicon/macOS26+, expiry2026-11-16T21:28:08Z (16:28 New York). Open ZIP,
+run MAC-AKTARIM.command and return MAC-AKTARIM-SONUC-*.zip. No terminal code
+paste, manual JSON editing or copied segments. Archive is byte-identical to the
+native-tested exported artifact; all20 members/manifest content hashes/modes and
+collector source checked. [Evidence](../evidence/m8/m8-independent-helper-shutdown-20261115.json). The earlier normal
+opening b77b619e had no managed-transport root, so it observed no transport helper;
+never relabel it as complete helper/engine shutdown proof.
+
+Real Windows-Mac durable sync is NOT ready for a device handoff. Current source
+still has these concrete prerequisites under the already accepted
+[product-flow direction](proposals/m8-product-flow-activation-20261115.md):
+- managed_profile/native_xml.rs::inspect permits one self device and no active
+  folder. TransferTestPolicy/configure_transfer_test remain test+Windows-only.
+- native_profile starts only an already-enrolled helper; normal opening does not
+  configure trusted peers or exchange folders. Its incoming controller is wired,
+  but local native acceptance copies a segment into the inbox; it is not network
+  delivery between devices.
+- No supported ordinary daemon sealed-segment exporter is connected. A verified
+  trust-derived peer/folder binding, bounded no-replace export, local-tail sealing
+  checkpoint and hold/restriction reconciliation precede the two-device packet.
+
+Next implementation boundary is that trust-derived peer/exchange configuration
+and daemon exporter, following the accepted direction, then native review/CI and
+one coordinated fresh-profile Windows/Mac LAN packet. Do not reuse the Windows
+TransferTestPolicy as product authority, share canonical/events, copy segments by
+hand as network evidence or label Syncthing completion remote canonical durability.
+No new architecture choice or repeat of already accepted policy is requested.
+M8 remains OPEN; owner helper receipt and product network integration are separate.
+
 ## Owner normal default-profile opening passed — November15
 
 Owner return `MAC-NORMAL-SONUC-b77b619e.zip` passes the bounded no-argument

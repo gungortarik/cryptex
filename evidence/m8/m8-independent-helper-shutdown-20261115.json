@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "status": "native_application_and_collector_passed_owner_packet_ready",
+  "source": "f7fe55f5390af4840c6e67ceb4ef448d88d49b27",
+  "scope": "Read-only independent Darwin process observation around signed local pairing/import/restart driver; not cross-device transport or normal managed-profile UI acceptance",
+  "collector_ci": 43763552289,
+  "collector_job": 132963482654,
+  "collector_result": "passed",
+  "collector_tests": {
+    "window_and_inventory": 25,
+    "product_key_helper": 2,
+    "isolated_ci_keychain": 3
+  },
+  "native_cases": [
+    "live daemon/helper/engine topology across sessions",
+    "surviving reparented helper refused after driver exits"
+  ],
+  "portable_cases": [
+    "malformed/truncated/duplicate inventory refused",
+    "captured process survives exec/reparent",
+    "PID reuse separated by kernel process birth",
+    "unseen matching image refused",
+    "failed inventory is not empty inventory",
+    "forced or same-group-only cleanup is not independent natural shutdown"
+  ],
+  "observed_contract": [
+    "same user, exact package and per-profile engine image paths",
+    "PID plus kernel start seconds/microseconds; no discovered PID signal authority",
+    "all captured instances checked after exec",
+    "natural driver exit and absence before collector group cleanup",
+    "three additional empty samples after exit",
+    "uncertainty retains fresh runtime and credentials"
+  ],
+  "privacy": "No argv, environment, note bodies, OS credentials or unrelated process data is exported. Aggregate flags and fixed startup diagnostics only.",
+  "application_ci": 43763653794,
+  "application_status": "passed Mac and Windows; completed Mac log confirms exported_transport_launcher=passed and all subsequent signed development startup/cleanup checks",
+  "superseded_dispatch": {
+    "run": 43763636988,
+    "status": "cancelled",
+    "reason": "incorrect manually entered source SHA; replaced by verified git rev-parse source"
+  },
+  "owner_acceptance": "pending",
+  "remaining": [
+    "product trust-derived peer/folder configuration",
+    "daemon verified sealed export and local-tail checkpoint",
+    "real Windows-Mac durable reconciliation and replay after restart"
+  ],
+  "m8": "open",
+  "independent_source_review": {
+    "source": "f7fe55f5390af4840c6e67ceb4ef448d88d49b27",
+    "outcome": "no actionable security finding",
+    "execution": "none",
+    "limits": "Bounded image/instance observation, not atomic process discovery or future respawn proof. Product code unchanged."
+  },
+  "application_job": 132963806109,
+  "windows_job": 132963806310,
+  "application_log_markers": [
+    "exported_durable_launcher=passed",
+    "exported_transport_launcher=passed",
+    "exported_combined_loss_launcher=passed",
+    "development_native_provisioned_existing_profile_restart_and_refusals=passed",
+    "local_certificate_fixture_cleanup=passed"
+  ],
+  "application_result_basis": "CI executes the exported launcher and requires source, outcome and all five completion flags. New launcher refuses success unless shutdown_ok independently passes. Raw owner report from runner is not separately archived.",
+  "package": {
+    "name": "Cryptex-Mac-Kapanis-f7fe55f.zip",
+    "sha256": "db05d2fc2273769ce14f90e77d5b27e71697fa2d69f9f665e29ff2e4248ec43e",
+    "bytes": 24252347,
+    "architecture": "arm64",
+    "expires_utc": "2026-11-16T21:28:08+00:00",
+    "entry": "MAC-AKTARIM.command",
+    "result": "MAC-AKTARIM-SONUC-*.zip",
+    "validation": "CRC, all signed-manifest content hashes/sizes, safe unique regular members, executable modes, Python syntax, observer/launcher source bytes and exact downloaded archive copy checked",
+    "members": 20
+  }
+}
