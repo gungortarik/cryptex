@@ -29,10 +29,12 @@ class DiagnosticTests(unittest.TestCase):
     def test_failure_output_only_contains_allowlisted_stages(self):
         output = "\n".join([
             "private note and runtime path", "local_signed_startup_Channel", "local_signed_startup_private",
+            '{"x":' + '[' * 2000 + '0' + ']' * 2000 + '}',
             json.dumps({"developmentStage": "private"}),
             json.dumps({"m8ProfileStage": "prepare", "kind": "private"}),
             json.dumps({"m8LocalStage": "content_bind", "error": "local_signed_startup_Instance", "secret": "private"}),
             json.dumps({"m8ProfileStage": "prepare", "kind": "Other", "path": "private"}),
+            json.dumps({"m8ProfileStage": "recover_evidence", "phase": "begin", "path": "private"}),
             json.dumps({"developmentStage": "unix_health", "path": "private"}),
             json.dumps({"m8LocalStage": "private path", "error": "private key"})])
         result = SimpleNamespace(code=2, timed_out=False, limited=False, pipe_failed=False, output=output)
@@ -44,6 +46,7 @@ class DiagnosticTests(unittest.TestCase):
         self.assertNotIn("private", diagnostic)
         self.assertIn("unix_health", diagnostic)
         self.assertIn("prepare", diagnostic)
+        self.assertIn("recover_evidence", diagnostic)
         self.assertIn("local_signed_startup_Instance", diagnostic)
         self.assertTrue(fence.stopped)
 

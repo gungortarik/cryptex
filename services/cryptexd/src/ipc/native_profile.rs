@@ -9,6 +9,27 @@ use crate::m8_owner_channel::transport_helper::{StatusReader, Worker};
 use crate::managed_profile::incoming::{IncomingController, IncomingControllerError, IncomingTick};
 use std::os::unix::fs::MetadataExt;
 
+/// Fixed progress labels only. They diagnose a blocked startup operation, but
+/// confer no readiness, identity or publication authority.
+pub(crate) fn trace_stage<T, E>(
+    _name: &'static str,
+    work: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+    #[cfg(feature = "m8-development-product")]
+    eprintln!(
+        "{}",
+        serde_json::json!({"m8ProfileStage": _name, "phase": "begin"})
+    );
+    let result = work();
+    #[cfg(feature = "m8-development-product")]
+    eprintln!(
+        "{}",
+        serde_json::json!({"m8ProfileStage": _name,
+        "phase": if result.is_ok() { "complete" } else { "failed" }})
+    );
+    result
+}
+
 /// This read-only preflight is not publication/owner authority. The live domain
 /// repeats anchor/policy verification under the actual instance admission.
 pub(crate) fn validate_existing(root: &Path) -> io::Result<()> {
@@ -80,20 +101,24 @@ fn prepare_existing_runtime(
     namespace: &RuntimeIdentity,
 ) -> io::Result<()> {
     namespace.validate()?;
-    crate::incoming_publication::recover_live_with_instance(
-        root,
-        instance,
-        &crate::MacosKeychainStore::new(),
-        SecureStoreEnvironment::Dev,
-    )
+    trace_stage("recover", || {
+        crate::incoming_publication::recover_live_with_instance(
+            root,
+            instance,
+            &crate::MacosKeychainStore::new(),
+            SecureStoreEnvironment::Dev,
+        )
+    })
     .map_err(io::Error::other)?;
-    bind_verified_namespace(
-        root,
-        instance,
-        namespace,
-        &crate::MacosKeychainStore::new(),
-        SecureStoreEnvironment::Dev,
-    )
+    trace_stage("namespace", || {
+        bind_verified_namespace(
+            root,
+            instance,
+            namespace,
+            &crate::MacosKeychainStore::new(),
+            SecureStoreEnvironment::Dev,
+        )
+    })
 }
 
 fn context(
@@ -313,23 +338,14 @@ pub(crate) fn serve(
     root: &Path,
     instance: &mut crate::instance::InstanceLock,
 ) -> io::Result<()> {
-    fn stage<T>(name: &'static str, result: io::Result<T>) -> io::Result<T> {
-        result.inspect_err(|error| {
-            eprintln!(
-                "{}",
-                serde_json::json!({"m8ProfileStage": name, "kind": format!("{:?}", error.kind())})
-            );
-        })
-    }
-    stage("validate", validate_existing(root))?;
-    let mut backend = stage("backend", Backend::new(root))?;
+    trace_stage("validate", || validate_existing(root))?;
+    let mut backend = trace_stage("backend", || Backend::new(root))?;
     bound_runtime_admission(root, instance)?
         .bind_namespace(backend.namespace.clone())
         .map_err(io::Error::other)?;
-    stage(
-        "prepare",
-        prepare_existing_runtime(root, instance, &backend.namespace),
-    )?;
+    trace_stage("prepare", || {
+        prepare_existing_runtime(root, instance, &backend.namespace)
+    })?;
     // Open an explicitly enrolled owned helper only. Absence is local-only;
     // never generate/adopt a profile or infer peer trust during native startup.
     let helper_root = root.join("managed-transport");
@@ -338,17 +354,15 @@ pub(crate) fn serve(
     } else {
         None
     };
-    let context = stage(
-        "context",
-        context(root, instance, worker.as_ref().map(Worker::status_reader)),
-    )?;
+    let context = trace_stage("context", || {
+        context(root, instance, worker.as_ref().map(Worker::status_reader))
+    })?;
     // No Unix or derived worker is exposed until it shares the original
     // native namespace capability set and verified device pins.
     #[cfg(feature = "m8-development-product")]
-    stage(
-        "unix_data",
-        super::spawn_retrieval_server(root, instance, context.store.clone(), context.environment),
-    )?;
+    trace_stage("unix_data", || {
+        super::spawn_retrieval_server(root, instance, context.store.clone(), context.environment)
+    })?;
     let registry = ApprovalSessionRegistry::default();
     let mut domain = super::native_domain::Domain::from_context(context.clone(), &registry);
     send_checked(&backend.namespace, || {

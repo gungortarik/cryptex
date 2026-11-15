@@ -262,6 +262,16 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
     })
 }
 
+fn trace_recovery<T, E>(
+    _name: &'static str,
+    work: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    { crate::ipc::native_profile::trace_stage(_name, work) }
+    #[cfg(not(all(target_os = "macos", feature = "m8-local-startup-check")))]
+    { work() }
+}
+
 fn rebuild_imported_state<S: SecureStore + ?Sized>(
     root: &Path,
     brain: &str,
@@ -269,18 +279,19 @@ fn rebuild_imported_state<S: SecureStore + ?Sized>(
     environment: SecureStoreEnvironment,
 ) -> Result<(), IncomingPublicationError> {
     use IncomingPublicationError::CommittedNeedsRebuild;
-    let resolver =
+    let resolver = trace_recovery("rebuild_key", || {
         crate::local_device_identity::LocalDeviceKeyResolver::load(root, brain, store, environment)
-            .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
+    }).map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
     let anchor = resolver
         .local_trust_anchor()
         .ok_or_else(|| CommittedNeedsRebuild("local trust anchor unavailable".into()))?;
-    let mut db = cryptex_projection::ProjectionDb::open_or_create(root)
+    let mut db = trace_recovery("rebuild_db", || cryptex_projection::ProjectionDb::open_or_create(root))
         .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
-    crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
-        root, brain, &anchor, &mut db,
-    )
-    .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
+    trace_recovery("rebuild_scan", || {
+        crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
+            root, brain, &anchor, &mut db,
+        )
+    }).map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
     Ok(())
 }
 
@@ -297,22 +308,20 @@ fn initialize_admitted_stream_slots<S: SecureStore + ?Sized>(
         let namespace = crate::import_staging::macos_fs::RuntimeIdentity::capture(root)?;
         namespace.pin(&root.join("canonical/events"))?;
         let brain = crate::identity_runtime::load_brain_identity(root)?;
-        let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
-            root,
-            &brain.brain_id,
-            store,
-            environment,
-        )?;
+        let resolver = trace_recovery("slot_key", || {
+            crate::local_device_identity::LocalDeviceKeyResolver::load(root, &brain.brain_id, store, environment)
+        })?;
         let anchor = resolver
             .local_trust_anchor()
             .ok_or("native profile anchor missing")?;
-        let snapshot =
+        let snapshot = trace_recovery("slot_scan", || {
             crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
                 root,
                 &brain.brain_id,
                 &anchor,
                 None,
-            )?;
+            )
+        })?;
         let (history, _) = snapshot
             .verified_trust_context()
             .ok_or("native profile policy held")?;
@@ -332,7 +341,9 @@ fn initialize_admitted_stream_slots<S: SecureStore + ?Sized>(
             return Err("native profile snapshot namespace changed".into());
         }
         drop(snapshot);
-        let slots = crate::canonical_writer::acquire_canonical_write_lock_set(root, &devices)?;
+        let slots = trace_recovery("slot_locks", || {
+            crate::canonical_writer::acquire_canonical_write_lock_set(root, &devices)
+        })?;
         if !slots.namespace_valid() {
             return Err("native profile slot namespace changed".into());
         }
@@ -371,12 +382,13 @@ pub(crate) fn recover_live_with_instance<S: SecureStore + ?Sized>(
             true,
         )
         .map_err(IncomingPublicationError::Admission)?;
-    if let Err(error) = crate::import_staging::recover_import_staging_with_local_state(
-        root,
-        instance,
-        store,
-        environment,
-    ) {
+    let recover = || {
+        crate::import_staging::recover_import_staging_with_local_state(
+            root, instance, store, environment,
+        )
+    };
+    let recovered = trace_recovery("recover_evidence", recover);
+    if let Err(error) = recovered {
         let hold = if matches!(error, ImportStagingError::PolicyConflict(_)) {
             RuntimeHold::IncomingPolicyConflict
         } else {
@@ -386,13 +398,17 @@ pub(crate) fn recover_live_with_instance<S: SecureStore + ?Sized>(
         return Err(IncomingPublicationError::RecoveryRequired(error));
     }
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
-    if let Err(error) = initialize_admitted_stream_slots(root, store, environment) {
+    if let Err(error) = trace_recovery("initialize_slots", || {
+        initialize_admitted_stream_slots(root, store, environment)
+    }) {
         exclusive.finish(Some(RuntimeHold::DerivedRebuildRequired));
         return Err(error);
     }
     let brain = crate::identity_runtime::load_brain_identity(root)
         .map_err(|error| IncomingPublicationError::CommittedNeedsRebuild(error.to_string()))?;
-    if let Err(error) = rebuild_imported_state(root, &brain.brain_id, store, environment) {
+    let rebuild = || rebuild_imported_state(root, &brain.brain_id, store, environment);
+    let rebuilt = trace_recovery("rebuild", rebuild);
+    if let Err(error) = rebuilt {
         exclusive.finish(Some(RuntimeHold::DerivedRebuildRequired));
         return Err(error);
     }

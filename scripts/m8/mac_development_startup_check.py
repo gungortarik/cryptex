@@ -19,7 +19,9 @@ NATIVE_ERRORS = {"local_signed_startup_" + code for code in (
 NATIVE_STAGES = {"content_bind", "owner_exchange", "child_inventory", "child_verification_hint",
                  "daemon_image", "desktop_inventory", "native_accept", "ready_file", "runtime_ready",
                  "startup_ack", "startup_hello", "verification_hint"}
-PROFILE_STAGES = {"validate", "backend", "prepare", "context", "unix_data"}
+PROFILE_STAGES = {"validate", "backend", "prepare", "context", "unix_data", "recover", "namespace",
+                  "recover_evidence", "initialize_slots", "rebuild", "rebuild_key", "rebuild_db", "rebuild_scan",
+                  "slot_key", "slot_scan", "slot_locks"}
 DEVELOPMENT_STAGES = {"start", "content", "bind", "ping", "profile_status", "unix_health", "close"}
 IO_KINDS = {"NotFound", "PermissionDenied", "ConnectionRefused", "ConnectionReset", "BrokenPipe",
             "AlreadyExists", "WouldBlock", "InvalidInput", "InvalidData", "TimedOut", "Interrupted",
@@ -68,12 +70,14 @@ class FencedRun:
                               "timedOut": outcome.timed_out, "outputLimited": outcome.limited,
                               "pipeFailed": outcome.pipe_failed}), flush=True)
             for line in outcome.output.splitlines():
+                if len(line) > 512:
+                    continue
                 if line in NATIVE_ERRORS or line in {"existing_profile_missing", "development_arguments_refused"}:
                     print(line, flush=True)
                 elif line.startswith("{"):
                     try:
                         value = json.loads(line)
-                    except ValueError:
+                    except (ValueError, RecursionError):
                         continue
                     stage = value.get("developmentStage")
                     if isinstance(stage, str) and stage in DEVELOPMENT_STAGES:
@@ -85,6 +89,10 @@ class FencedRun:
                         print(json.dumps({"m8LocalStage": stage, "error": error}), flush=True)
                     stage = value.get("m8ProfileStage")
                     kind = value.get("kind")
+                    phase = value.get("phase")
+                    if (isinstance(stage, str) and stage in PROFILE_STAGES
+                            and isinstance(phase, str) and phase in {"begin", "complete", "failed"}):
+                        print(json.dumps({"m8ProfileStage": stage, "phase": phase}), flush=True)
                     if (isinstance(stage, str) and stage in PROFILE_STAGES
                             and isinstance(kind, str) and kind in IO_KINDS):
                         print(json.dumps({"m8ProfileStage": stage, "kind": kind}), flush=True)
