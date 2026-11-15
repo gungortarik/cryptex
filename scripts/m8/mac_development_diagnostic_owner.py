@@ -42,7 +42,8 @@ def successful(outcome):
 def verify_package(package, meta):
     if (meta.get('schema') != 1 or meta.get('diagnostic_only') is not True
             or meta.get('ci_startup_passed') is not False
-            or not re.fullmatch(r'[0-9a-f]{40}', meta.get('source', ''))):
+            or not re.fullmatch(r'[0-9a-f]{40}', meta.get('source', ''))
+            or not re.fullmatch(r'[0-9a-f]{40}', meta.get('collector_source', ''))):
         raise PreflightError('package_metadata_invalid')
     files = meta['files']
     if not isinstance(files, dict) or not 6 <= len(files) <= 4096:
@@ -71,6 +72,8 @@ def exercise(package, root, report, runner=run_bounded):
     daemon = package / 'development.app/Contents/MacOS/cryptexd'
     fence = FencedRun(runner)
     report['commands'] = []
+    device = None
+    metadata = profile / 'identity/local_device.json'
 
     def run(args, stage, timeout):
         try:
@@ -85,8 +88,12 @@ def exercise(package, root, report, runner=run_bounded):
     try:
         created = run([package / 'profile-creator', 'pilot-fixture', 'signed-transfer-v1',
                        '--runtime-root', profile, '--confirm-isolated-pilot'], 'create_isolated_profile', 45)
+        if metadata.exists():
+            device = str(uuid.UUID(_metadata(metadata)['device_id']))
         if not successful(created):
             raise PreflightError('profile_creation_failed')
+        if device is None:
+            raise PreflightError('created_identity_missing')
         baseline = canonical_hashes(profile)
         if not baseline:
             raise PreflightError('canonical_baseline_missing')
@@ -122,9 +129,10 @@ def exercise(package, root, report, runner=run_bounded):
         report['captured_group_reaped'] = fence.stopped
         if not fence.stopped:
             raise PreflightError('writer_unresolved')
-        metadata = profile / 'identity/local_device.json'
         if metadata.exists():
-            device = str(uuid.UUID(_metadata(metadata)['device_id']))
+            if device is None or str(uuid.UUID(_metadata(metadata)['device_id'])) != device:
+                report['credential_cleanup_verified'] = False
+                raise PreflightError('cleanup_identity_changed')
             cleanup = run(['/usr/bin/security', 'delete-generic-password', '-s',
                            'Cryptex-Dev-DeviceCredentials', '-a', 'device-event-signing-seed:' + device],
                           'cleanup_exact_test_key', 30)
@@ -148,6 +156,7 @@ def main():
         meta = json.loads((package / 'diagnostic.json').read_text(encoding='utf-8'))
         verify_package(package, meta)
         report['source'] = meta['source']
+        report['collector_source'] = meta['collector_source']
         if sys.platform != 'darwin' or platform.machine() != meta['architecture']:
             raise PreflightError('platform_mismatch')
         if datetime.now(timezone.utc) >= datetime.fromisoformat(meta['expires_utc']):

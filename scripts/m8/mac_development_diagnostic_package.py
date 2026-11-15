@@ -21,9 +21,12 @@ def plain_bytes(root, relative):
     return file.read_bytes()
 
 
-def export_failed(bundle, files, creator, destination, source, architecture, expires):
+def export_failed(bundle, files, creator, destination, source, architecture, expires, *, collector_source=None):
+    collector_source = source if collector_source is None else collector_source
     if not re.fullmatch(r'[0-9a-f]{40}', source) or architecture not in ('arm64', 'x86_64'):
         raise ValueError('diagnostic_identity_invalid')
+    if not re.fullmatch(r'[0-9a-f]{40}', collector_source):
+        raise ValueError('diagnostic_collector_invalid')
     if not expires.startswith('notAfter='):
         raise ValueError('diagnostic_expiry_missing')
     expiry = datetime.fromtimestamp(ssl.cert_time_to_seconds(expires[9:]), timezone.utc)
@@ -54,8 +57,17 @@ def export_failed(bundle, files, creator, destination, source, architecture, exp
                'mac_transport_check.py': 'mac_transport_check.py'}
     for name, source_name in helpers.items():
         members[name] = Path(__file__).with_name(source_name).read_bytes()
+    members['BASLA.txt'] = (
+        'Bu paket Mac başlangıcındaki Keychain beklemesini incelemek içindir.\n'
+        'Mevcut Cryptex profilini kullanmaz; ayrı geçici test profili oluşturur.\n'
+        'MAC-BASLANGIC-TANI.command dosyasını aç ve pencereyi açık bırak.\n'
+        'Sistem izin penceresi çıkarsa uygulama adını kontrol et; onay senin seçimin.\n'
+        'Bitince oluşan MAC-BASLANGIC-TANI-SONUC-*.zip dosyasını gönder.\n'
+        'Bu paket ürün başlangıcının veya M8 kabulünün geçtiği anlamına gelmez.\n'
+    ).encode('utf-8')
     meta = {'schema': 1, 'diagnostic_only': True, 'ci_startup_passed': False,
-            'source': source, 'architecture': architecture, 'expires_utc': expiry.isoformat(),
+            'source': source, 'collector_source': collector_source,
+            'architecture': architecture, 'expires_utc': expiry.isoformat(),
             'files': {name: hashlib.sha256(data).hexdigest() for name, data in members.items()}}
     members['diagnostic.json'] = (json.dumps(meta, indent=2) + '\n').encode()
     executables = {'MAC-BASLANGIC-TANI.command', 'profile-creator',

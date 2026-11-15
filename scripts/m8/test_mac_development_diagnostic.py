@@ -106,6 +106,29 @@ class OwnerTests(unittest.TestCase):
         self.assertNotIn('private', json.dumps(progress(output)))
         self.assertEqual(len(progress(output)), 2)
 
+    def test_changed_identity_cannot_redirect_key_cleanup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            calls = []
+            def runner(args, timeout):
+                calls.append(args)
+                identity = root / 'runtime/identity/local_device.json'
+                if len(calls) == 1:
+                    records = root / 'runtime/canonical/events/device'
+                    records.mkdir(parents=True)
+                    (records / 'one.seg').write_bytes(b'synthetic')
+                    identity.parent.mkdir()
+                    identity.write_text(json.dumps({'device_id': '00000000-0000-4000-8000-000000000001'}))
+                if len(calls) == 4:
+                    identity.write_text(json.dumps({'device_id': '00000000-0000-4000-8000-000000000002'}))
+                return outcome(output='development_existing_profile_startup_and_cleanup=passed')
+            report = {}
+            with self.assertRaisesRegex(PreflightError, 'cleanup_identity_changed'):
+                exercise(root, root, report, runner)
+            self.assertEqual(len(calls), 4)
+            self.assertFalse(report['credential_cleanup_verified'])
+            self.assertFalse(any(args[0] == '/usr/bin/security' for args in calls))
+
 
 class ExportTests(unittest.TestCase):
     def test_failed_status_and_exact_files_are_exported_and_mutation_refused(self):
