@@ -733,8 +733,15 @@ async fn p0_3_ipc_health(state: tauri::State<'_, Client>) -> Result<(), String> 
 #[cfg(not(feature = "m8-development-product"))]
 fn p0_5_set_capture_session_guard() {}
 #[cfg(feature = "m8-development-product")]
-#[derive(Default)]
 struct DevelopmentDraft(AtomicBool);
+#[cfg(feature = "m8-development-product")]
+impl Default for DevelopmentDraft {
+    fn default() -> Self {
+        // Until the verified renderer acknowledges its draft state, ask before
+        // quitting rather than assume that no unsaved input exists.
+        Self(AtomicBool::new(true))
+    }
+}
 #[cfg(feature = "m8-development-product")]
 #[tauri::command]
 fn p0_5_set_capture_session_guard(
@@ -742,7 +749,9 @@ fn p0_5_set_capture_session_guard(
     sync_failed: Option<bool>,
     state: tauri::State<'_, DevelopmentDraft>,
 ) {
-    state.0.store(dirty || sync_failed.unwrap_or(false), Ordering::Release);
+    state
+        .0
+        .store(dirty || sync_failed.unwrap_or(false), Ordering::Release);
 }
 fn install_context(
     content: cryptexd::ProtectedContent,
@@ -1331,7 +1340,6 @@ pub fn entry() -> Option<Result<(), String>> {
     })())
 }
 
-
 /// The selected development build always owns normal entry. No failure falls
 /// through to fixture commands, environment daemon overrides or legacy startup.
 #[cfg(feature = "m8-development-product")]
@@ -1341,7 +1349,10 @@ pub fn development_entry() -> Option<Result<(), String>> {
         let args: Vec<_> = std::env::args_os().skip(1).collect();
         let mode = super::development_launch::mode(&args)?;
         let (runtime, check_only) = match mode {
-            super::development_launch::Mode::Window => (super::development_launch::runtime(std::env::var_os("HOME").as_deref())?, false),
+            super::development_launch::Mode::Window => (
+                super::development_launch::runtime(std::env::var_os("HOME").as_deref())?,
+                false,
+            ),
             super::development_launch::Mode::Check(root) => (root, true),
         };
         let (owner, content) = Owner::start_profile(&runtime, ContentProfile::ExistingProfile)?;
@@ -1355,7 +1366,13 @@ pub fn development_entry() -> Option<Result<(), String>> {
             println!("development_existing_profile_startup_and_cleanup=passed");
             return Ok(());
         }
-        let mut window = context.config().app.windows.first().cloned().ok_or("development_window")?;
+        let mut window = context
+            .config()
+            .app
+            .windows
+            .first()
+            .cloned()
+            .ok_or("development_window")?;
         window.title = "Cryptex".into();
         context.config_mut().app.windows.clear();
         let app = tauri::Builder::default()
@@ -1400,7 +1417,9 @@ pub fn development_entry() -> Option<Result<(), String>> {
             .setup(move |app| {
                 tauri::WebviewWindowBuilder::from_config(app, &window)?
                     .incognito(true)
-                    .on_navigation(|url| url.scheme() == "tauri" && url.host_str() == Some("localhost"))
+                    .on_navigation(|url| {
+                        url.scheme() == "tauri" && url.host_str() == Some("localhost")
+                    })
                     .build()?;
                 Ok(())
             })

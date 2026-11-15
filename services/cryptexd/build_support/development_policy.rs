@@ -54,8 +54,13 @@ mod tests {
     fn missing_fixture_or_unsafe_release_identity_refuses() {
         assert!(select(true, None).is_err());
         for value in [
-            "", "m8-local-startup-v1", "cryptex-dev-", "cryptex-dev-a/b",
-            "cryptex-dev-a\\b", "cryptex-dev-a\nb", "cryptex-dev-é",
+            "",
+            "m8-local-startup-v1",
+            "cryptex-dev-",
+            "cryptex-dev-a/b",
+            "cryptex-dev-a\\b",
+            "cryptex-dev-a\nb",
+            "cryptex-dev-é",
         ] {
             assert!(select(true, Some(value)).is_err());
         }

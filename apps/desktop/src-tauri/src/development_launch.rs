@@ -12,7 +12,11 @@ pub enum Mode {
 pub fn mode(args: &[OsString]) -> Result<Mode, &'static str> {
     match args {
         [] => Ok(Mode::Window),
-        [argument, root] if argument == "--cryptex-development-check" && Path::new(root).is_absolute() => Ok(Mode::Check(PathBuf::from(root))),
+        [argument, root]
+            if argument == "--cryptex-development-check" && Path::new(root).is_absolute() =>
+        {
+            Ok(Mode::Check(PathBuf::from(root)))
+        }
         _ => Err("development_arguments_refused"),
     }
 }
@@ -35,9 +39,21 @@ mod tests {
     fn normal_entry_has_no_fixture_or_path_override() {
         assert_eq!(mode(&[]), Ok(Mode::Window));
         let root = std::env::temp_dir().join("cryptex-check-existing");
-        assert_eq!(mode(&["--cryptex-development-check".into(), root.clone().into_os_string()]), Ok(Mode::Check(root)));
+        assert_eq!(
+            mode(&[
+                "--cryptex-development-check".into(),
+                root.clone().into_os_string()
+            ]),
+            Ok(Mode::Check(root))
+        );
         assert!(mode(&["--cryptex-development-check".into()]).is_err());
-        for flag in ["--cryptex-pilot-resume", "--cryptex-m8-local-content-ui", "--cryptex-m8-local-startup-check", "--runtime-root", "--cryptex-background"] {
+        for flag in [
+            "--cryptex-pilot-resume",
+            "--cryptex-m8-local-content-ui",
+            "--cryptex-m8-local-startup-check",
+            "--runtime-root",
+            "--cryptex-background",
+        ] {
             assert!(mode(&[flag.into()]).is_err());
         }
         assert!(mode(&["--cryptex-development-check".into(), "profile".into()]).is_err());
@@ -48,6 +64,9 @@ mod tests {
         assert!(runtime(None).is_err());
         assert!(runtime(Some(OsStr::new("relative"))).is_err());
         let base = std::env::temp_dir().join("cryptex-development-location-test");
-        assert_eq!(runtime(Some(base.as_os_str())).unwrap(), base.join("Library/Application Support/Cryptex-Dev/runtime/p0-2"));
+        assert_eq!(
+            runtime(Some(base.as_os_str())).unwrap(),
+            base.join("Library/Application Support/Cryptex-Dev/runtime/p0-2")
+        );
     }
 }

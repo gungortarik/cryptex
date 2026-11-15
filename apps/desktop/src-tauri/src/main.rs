@@ -28,9 +28,9 @@ use tauri_plugin_opener::OpenerExt;
 mod background_process;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
 mod candidate_ui;
-mod frontend_build_mode;
 #[cfg(any(test, feature = "m8-development-product"))]
 mod development_launch;
+mod frontend_build_mode;
 mod pilot_runtime;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
 mod protected_assets;

@@ -1095,27 +1095,48 @@ mod tests {
     }
 }
 
-
 #[cfg(all(test, feature = "m8-development-product"))]
 mod development_product_tests {
     use super::*;
 
     #[test]
     fn development_product_refuses_fixture_profiles_before_native_allocation() {
-        for profile in [ContentProfile::Ephemeral, ContentProfile::KeychainCreate,
-            ContentProfile::KeychainResume, ContentProfile::TransportCreate, ContentProfile::TransportResume] {
-            assert!(matches!(Prepared::current_profile(Duration::from_secs(1), profile), Err(Error::Arguments)));
+        for profile in [
+            ContentProfile::Ephemeral,
+            ContentProfile::KeychainCreate,
+            ContentProfile::KeychainResume,
+            ContentProfile::TransportCreate,
+            ContentProfile::TransportResume,
+        ] {
+            assert!(matches!(
+                Prepared::current_profile(Duration::from_secs(1), profile),
+                Err(Error::Arguments)
+            ));
         }
     }
 
     #[test]
     fn development_product_child_refuses_fixture_epoch_before_profile_access() {
-        for flag in [EPOCH_FLAG, CONTENT_EPOCH_FLAG, DURABLE_CREATE_FLAG, DURABLE_RESUME_FLAG,
-            TRANSPORT_CREATE_FLAG, TRANSPORT_RESUME_FLAG] {
-            let mut args = vec!["lifecycle".into(), "hold".into(), "--runtime-root".into(),
-                "/private/unused-cryptex-development".into(), "--ready-file".into(),
-                "/private/unused-cryptex-development/ready".into(), "--stop-file".into(),
-                "/private/unused-cryptex-development/stop".into(), flag.into(), "01".repeat(16)];
+        for flag in [
+            EPOCH_FLAG,
+            CONTENT_EPOCH_FLAG,
+            DURABLE_CREATE_FLAG,
+            DURABLE_RESUME_FLAG,
+            TRANSPORT_CREATE_FLAG,
+            TRANSPORT_RESUME_FLAG,
+        ] {
+            let mut args = vec![
+                "lifecycle".into(),
+                "hold".into(),
+                "--runtime-root".into(),
+                "/private/unused-cryptex-development".into(),
+                "--ready-file".into(),
+                "/private/unused-cryptex-development/ready".into(),
+                "--stop-file".into(),
+                "/private/unused-cryptex-development/stop".into(),
+                flag.into(),
+                "01".repeat(16),
+            ];
             assert!(matches!(child_gate(&mut args), Err(Error::Arguments)));
         }
     }

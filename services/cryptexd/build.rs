@@ -13,7 +13,9 @@ fn main() {
         );
         let policy = development_policy::select(
             std::env::var_os("CARGO_FEATURE_M8_DEVELOPMENT_PRODUCT").is_some(),
-            std::env::var("CRYPTEX_M8_DEVELOPMENT_RELEASE_ID").ok().as_deref(),
+            std::env::var("CRYPTEX_M8_DEVELOPMENT_RELEASE_ID")
+                .ok()
+                .as_deref(),
         )
         .expect("invalid independent development build policy");
         for (name, value) in [
