@@ -29,15 +29,37 @@ pub(crate) fn validate_existing(root: &Path) -> io::Result<()> {
     directory.validate()
 }
 
-fn bind_verified_namespace<S: SecureStore + ?Sized>(root: &Path, instance: &crate::instance::InstanceLock,
-    namespace: &RuntimeIdentity, store: &S, environment: SecureStoreEnvironment) -> io::Result<()> {
+fn bind_verified_namespace<S: SecureStore + ?Sized>(
+    root: &Path,
+    instance: &crate::instance::InstanceLock,
+    namespace: &RuntimeIdentity,
+    store: &S,
+    environment: SecureStoreEnvironment,
+) -> io::Result<()> {
     use cryptex_events::TrustedDaemonKeyResolver;
     namespace.validate()?;
-    let _permit = bound_runtime_admission(root, instance)?.enter(root).map_err(io::Error::other)?;
+    let _permit = bound_runtime_admission(root, instance)?
+        .enter(root)
+        .map_err(io::Error::other)?;
     let brain = load_brain_identity(root).map_err(io::Error::other)?;
-    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(root, &brain.brain_id, store, environment).map_err(io::Error::other)?;
-    let anchor = resolver.local_trust_anchor().ok_or_else(|| invalid_data("native_profile_anchor"))?;
-    let snapshot = crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(root, &brain.brain_id, &anchor, None).map_err(io::Error::other)?;
+    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+        root,
+        &brain.brain_id,
+        store,
+        environment,
+    )
+    .map_err(io::Error::other)?;
+    let anchor = resolver
+        .local_trust_anchor()
+        .ok_or_else(|| invalid_data("native_profile_anchor"))?;
+    let snapshot =
+        crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+            root,
+            &brain.brain_id,
+            &anchor,
+            None,
+        )
+        .map_err(io::Error::other)?;
     if snapshot.verified_trust_context().is_none() || !snapshot.locks_runtime(root) {
         return Err(invalid_data("native_profile_namespace_unavailable"));
     }
@@ -46,7 +68,9 @@ fn bind_verified_namespace<S: SecureStore + ?Sized>(root: &Path, instance: &crat
         // replacement directory. Keep these in the original live Backend.
         namespace.pin(&cryptex_storage::canonical_events_device_dir(root, device))?;
     }
-    if !snapshot.locks_runtime(root) { return Err(invalid_data("native_profile_namespace_changed")); }
+    if !snapshot.locks_runtime(root) {
+        return Err(invalid_data("native_profile_namespace_changed"));
+    }
     namespace.validate()
 }
 
@@ -63,7 +87,13 @@ fn prepare_existing_runtime(
         SecureStoreEnvironment::Dev,
     )
     .map_err(io::Error::other)?;
-    bind_verified_namespace(root, instance, namespace, &crate::MacosKeychainStore::new(), SecureStoreEnvironment::Dev)
+    bind_verified_namespace(
+        root,
+        instance,
+        namespace,
+        &crate::MacosKeychainStore::new(),
+        SecureStoreEnvironment::Dev,
+    )
 }
 
 fn context(
@@ -225,7 +255,13 @@ impl Backend {
             .poll(transport, instance, context.store.as_ref())
         {
             Ok(IncomingTick::Published(_)) => {
-                bind_verified_namespace(&context.runtime_root, instance, &self.namespace, context.store.as_ref(), context.environment)?;
+                bind_verified_namespace(
+                    &context.runtime_root,
+                    instance,
+                    &self.namespace,
+                    context.store.as_ref(),
+                    context.environment,
+                )?;
                 self.inbox.consumed()?;
                 Status::new(IncomingState::Published, observed)
             }
@@ -337,12 +373,25 @@ mod tests {
         let instance = crate::instance::try_acquire_instance(&root).unwrap();
         let store = crate::FakeSecureStore::new();
         let brain = "aa5d7ae0-5321-4f53-a91e-36a411d88591";
-        crate::signed_transfer_probe::create(&root, &store, brain, "24376f10-1d44-4673-960a-cb46ff26ab65").unwrap();
+        crate::signed_transfer_probe::create(
+            &root,
+            &store,
+            brain,
+            "24376f10-1d44-4673-960a-cb46ff26ab65",
+        )
+        .unwrap();
         let local = load_local_device_identity(&root, brain).unwrap();
         let device = DeviceId::new(local.device_id).unwrap();
         let namespace = RuntimeIdentity::capture(&root).unwrap();
-        namespace.pin(&root.join("canonical/events")) .unwrap();
-        bind_verified_namespace(&root, &instance, &namespace, &store, SecureStoreEnvironment::Dev).unwrap();
+        namespace.pin(&root.join("canonical/events")).unwrap();
+        bind_verified_namespace(
+            &root,
+            &instance,
+            &namespace,
+            &store,
+            SecureStoreEnvironment::Dev,
+        )
+        .unwrap();
         let directory = cryptex_storage::canonical_events_device_dir(&root, &device);
         let preserved = root.join("canonical/preserved-device");
         std::fs::rename(&directory, &preserved).unwrap();
@@ -351,9 +400,24 @@ mod tests {
             let entry = entry.unwrap();
             std::fs::copy(entry.path(), directory.join(entry.file_name())).unwrap();
         }
-        assert!(bind_verified_namespace(&root, &instance, &namespace, &store, SecureStoreEnvironment::Dev).is_err());
+        assert!(
+            bind_verified_namespace(
+                &root,
+                &instance,
+                &namespace,
+                &store,
+                SecureStoreEnvironment::Dev
+            )
+            .is_err()
+        );
         let mut sent = false;
-        assert!(send_checked(&namespace, || { sent = true; Ok(()) }).is_err());
+        assert!(
+            send_checked(&namespace, || {
+                sent = true;
+                Ok(())
+            })
+            .is_err()
+        );
         assert!(!sent);
         assert!(preserved.join("00000000000000000000.seg").is_file());
         assert!(directory.join("00000000000000000000.seg").is_file());

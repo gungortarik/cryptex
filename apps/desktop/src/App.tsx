@@ -1078,12 +1078,6 @@ export function App() {
       </aside>
 
       <section className="workspace" id="home">
-        {nativeProfile.active && (
-          <section className="vault-panel" aria-label="Device status" role="status">
-            <p className="panel-kicker">Device status</p>
-            <p>{nativeProfileMessage(nativeProfile.status)}</p>
-          </section>
-        )}
         <header className="topbar">
           <div className="wordmark">Cryptex</div>
           <div className={`connection-state state-${connection}`} role="status">
@@ -1093,6 +1087,11 @@ export function App() {
         </header>
 
         <div className="content-column">
+          {nativeProfile.active && (
+            <p className="capture-status" aria-label="Device status" role="status">
+              {nativeProfileMessage(nativeProfile.status)}
+            </p>
+          )}
           <div className="page-heading">
             <p className="eyebrow">Your personal archive</p>
             <h1>Find what you remember.</h1>
