@@ -59,6 +59,8 @@ jobs:
           persist-credentials: false
       - name: Test collector and actual Darwin process groups without application or Keychain
         run: /usr/bin/python3 -B -m unittest discover -s scripts/m8 -p 'test_mac_window*.py' -v
+      - name: Compare read-only Keychain discovery with isolated HOME (no item access)
+        run: /usr/bin/python3 -B scripts/m8/mac_keychain_context_check.py
   mac-fd-repro:
     if: github.event_name == 'workflow_dispatch' && inputs.mac_fd_repro_only && !inputs.mac_window_collector_only
     permissions:
