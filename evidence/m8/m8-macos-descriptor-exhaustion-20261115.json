@@ -368,5 +368,13 @@
     }
   },
   "ci_run_url": "https://github.com/gungortarik/cryptex/actions/runs/43681401473",
-  "runtime_fix_implemented": false
+  "runtime_fix_implemented": true,
+  "subsequent_correction": {
+    "source": "7fc6d44c04419ca02736dc5f4afb550f0616d3a7",
+    "native_ci": 43681948389,
+    "native_ci_conclusion": "success",
+    "soft_fd_ceiling": 256,
+    "physical_owner_acceptance": "pending",
+    "evidence": "evidence/m8/m8-macos-descriptor-correction-20261115.json"
+  }
 }

@@ -1,6 +1,6 @@
 # M8 completion ledger
 
-Updated 2026-11-14. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
+Updated 2026-11-15. Status: **OPEN**. Authority: Master Spec, accepted ADRs,
 M8 contract and Definition of Done. This ledger records evidence; it does not
 relax protocol acceptance or authorize production activation.
 
@@ -14,9 +14,13 @@ restart checks passed in CI. The returned owner packet failed at native pairing;
 identity checks passed. The diagnostic return identifies a clean incoming
 `Rejected`, exit2 without timeout/output/pipe failure; its inner cause is still
 identified by the next validation receipt as open_fd EMFILE24. MacCI43681401473
-reproduced the same rejection/EMFILE path with a256-descriptor budget. A resource
-correction and native re-verification are pending; do not repeat owner packets. Physical
-owner acceptance remains failed/open. Ordinary activation, peer/folder/cross-device durable
+reproduced the same rejection/EMFILE path with a256-descriptor budget. Correction
+`7fc6d44` shares original ancestor pins without opening duplicate descriptors;
+nativeCI43681948389 passed both platforms, including the exported Mac transport
+launcher under256. The [correction receipt](../evidence/m8/m8-macos-descriptor-correction-20261115.json)
+records passed fullCI43682159822 on the same source (Mac591/Windows682 daemon
+tests, zero failures) and the corrected owner package. Physical owner acceptance of the
+correction remains open; earlier owner failures are preserved. Ordinary activation, peer/folder/cross-device durable
 replication, installed UX and full protocol/M8 acceptance remain open. This
 supersedes earlier adapter-pending notes only within the default-off candidate.
 

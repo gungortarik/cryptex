@@ -32,6 +32,18 @@ An observed namespace refusal must skip eager staging rollback. Intentional
 bounded cleanup may forget only the successfully removed private subtree;
 remaining original capabilities are never refreshed to a new namespace.
 
+Descriptor-budget correction (November15): within RuntimeIdentity, a newly
+pinned descendant shares the deepest retained original ancestor's `Arc<File>`
+chain and opens only the suffix using no-follow openat. Every original binding
+is validated before/after; no pin is refreshed from a replacement path. Legacy
+Mac directory-pin vectors also retain Arc references without dup/try_clone.
+The Mac session omits its duplicate persistent absolute-chain vector because
+RuntimeIdentity already retains those exact directories. Windows handles remain
+unchanged. Independent read-directory operations still open their own chain;
+shared open-file descriptions are never used as concurrent enumeration cursors.
+Acceptance must execute the full signed fixture under an inherited soft256 FD
+ceiling, not infer success from pointer sharing or increase the owner's limit.
+
 Publication uses Darwin `renameatx_np(..., RENAME_EXCL)` between checked parents,
 single-link regular sources, same-volume validation and destination identity
 readback. Refuse an existing destination even for same-object/case aliases. No

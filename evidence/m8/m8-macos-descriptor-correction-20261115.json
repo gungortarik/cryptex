@@ -1,0 +1,74 @@
+{
+  "scope": "bounded Mac descriptor-use correction; ordinary activation/full M8 remain open",
+  "source": "7fc6d44c04419ca02736dc5f4afb550f0616d3a7",
+  "status": "native_and_full_ci_pass_owner_pending",
+  "native_ci": {
+    "run": 43681948389,
+    "conclusion": "success",
+    "mac_job": 132714260814,
+    "windows_job": 132714261025,
+    "exported_transport_launcher": "passed",
+    "soft_fd_ceiling": 256,
+    "numeric_peak_sampled": false
+  },
+  "full_ci": {
+    "run": 43682159822,
+    "conclusion": "success",
+    "source": "7fc6d44c04419ca02736dc5f4afb550f0616d3a7",
+    "mac_job": 132714909702,
+    "windows_job": 132714909524,
+    "windows_cross_account_acl_job": 132714909705,
+    "daemon_tests": {
+      "mac": {
+        "passed": 591,
+        "failed": 0,
+        "ignored": 7
+      },
+      "windows": {
+        "passed": 682,
+        "failed": 0,
+        "ignored": 5
+      }
+    },
+    "new_mac_regressions": [
+      "runtime_pins_share_original_ancestors_and_release_descriptors",
+      "shared_descendant_pins_refuse_replaced_parent_and_symlink"
+    ]
+  },
+  "owner_package": {
+    "path": "C:\\Users\\Tarik\\Downloads\\Cryptex-Mac-Duzeltme-7fc6d44-b28f2258.zip",
+    "archive_sha256": "b28f22588a9ea17502cf947d095ed2eae166f0d4a8d2040d38870c5e6bb2e75c",
+    "bytes": 24228601,
+    "source": "7fc6d44c04419ca02736dc5f4afb550f0616d3a7",
+    "expires_utc": "2026-11-16T05:40:44+00:00",
+    "architecture": "arm64",
+    "members": 15,
+    "inventory_files_verified": 9,
+    "collector_sha256": "3c97921a1b6e6f88309abe3e52741cad18c59c7e3dafe3e94ffc86c75e0f5a9b",
+    "native_run": 43681948389,
+    "artifact_id": 14149117052,
+    "soft_fd_ceiling": 256,
+    "owner_acceptance": "pending"
+  },
+  "python_tests_passed": 35,
+  "review": {
+    "kind": "read-only agent review",
+    "source": "7fc6d44",
+    "actionable_findings_remaining": 0,
+    "executed_tests": false
+  },
+  "changes": [
+    "original ancestor descriptors shared through Arc ownership",
+    "Mac legacy directory pins retain Arc without duplicate OS descriptors",
+    "redundant Mac session ancestor inventory removed; original RuntimeIdentity retained",
+    "Windows handles unchanged; directory iterators still independent",
+    "owner transport fixture caps inherited soft descriptors at most256"
+  ],
+  "source_files_sha256": {
+    "services/cryptexd/src/import_staging.rs": "15cf2e662136cc14003d78eb5ff54293d6fe7611da7a361a758331458ab963ee",
+    "services/cryptexd/src/import_staging/macos_fs.rs": "d4a3f0be1ff47a034757a929f9b68765956063bd9387590d14173d7b924227bd",
+    "services/cryptexd/src/import_staging/cleanup.rs": "ac660551c689cad9c42c416a308b8fff589d19c5d3c58806c91fc83dde1a2a72",
+    "scripts/m8/mac_transport_owner.py": "3c97921a1b6e6f88309abe3e52741cad18c59c7e3dafe3e94ffc86c75e0f5a9b",
+    "scripts/m8/mac_local_startup_ci.py": "523b90ff64b0ddb12900b83f2f5e428bb9c7765b4b006ac5c14121a4685234e1"
+  }
+}

@@ -14,7 +14,12 @@ on `d9561d8`. Daemon Mac589/Windows682passed, zero failures. The
 record CI success separately from a subsequent owner-Mac native pairing failure.
 Owner diagnostics identified descriptor exhaustion (EMFILE24); a separate Mac
 CI run reproduced the rejection under a256-descriptor budget. The resource-use
-correction is pending. Physical acceptance, ordinary
+correction `7fc6d44` now passes [native CI43681948389](https://github.com/gungortarik/cryptex/actions/runs/43681948389)
+on Mac and Windows, including the exported Mac transport test under the same256
+limit. The [correction receipt](evidence/m8/m8-macos-descriptor-correction-20261115.json)
+records passed [full CI43682159822](https://github.com/gungortarik/cryptex/actions/runs/43682159822)
+(Mac591/Windows682 daemon tests, zero failures) and the corrected owner package.
+Physical acceptance, ordinary
 activation and actual cross-device synchronization remain open;
 earlier implementation notes below are historical checkpoints.
 

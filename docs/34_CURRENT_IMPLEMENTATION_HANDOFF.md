@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Current owner blocker: descriptor exhaustion — November15
+## Mac descriptor correction and owner acceptance — November15
 
 Owner `MAC-AKTARIM-SONUC-8aed5431.zip` matches d956 app and e79b4fa collector.
 Native import is Rejected; the subsequent validation-only command fails opening
@@ -14,18 +14,35 @@ It reproduced native Rejected followed by validation `filesystem_open_fd`,
 `staging_io`, errno24. Workflow success means the reproduction produced evidence;
 the tested application FAILED. No physical-owner fix or M8 acceptance is claimed.
 
-Next implementation: reduce duplicate retained ancestor descriptors in the Mac
-filesystem adapter. RuntimeIdentity currently retains complete absolute chains
-for every pinned path, alongside legacy session/recovery directory vectors.
-Share original capabilities or remove demonstrably redundant Mac pins while
-preserving no-follow, permission/ACL, namespace-drift, original-lock and cleanup
-checks. Do not raise limits as an acceptance substitute or retry the owner packet.
-Measure complete live import/restart descriptor usage and run the256-limit
-reproduction after the fix, plus native security regressions. No runtime fix has
-been implemented yet. Local Rust remains blocked by Application Control4551.
+Correction candidate `7fc6d44` shares original Mac ancestor descriptors using
+Arc ownership, carries shared pins through legacy cleanup/read-child callers,
+and removes duplicate persistent Mac session chains already retained by
+RuntimeIdentity. Windows handles and directory iterator ownership are unchanged.
+Two new regressions cover bounded unique pins/release and replacement/symlink
+refusal. The exported owner launcher inherits a soft limit at most256; it never
+raises an existing limit. All Mac filesystem adapter tests now run in the signed
+native suite. Thirty-five Python tests pass locally. Read-only agent review
+found the cleanup type mismatch in the initial candidate;7fc6d44 fixes it and
+has no remaining actionable finding in that review. NativeCI43681948389 passed
+on both platforms, including the exported Mac transport launcher under256.
+Full [CI43682159822](https://github.com/gungortarik/cryptex/actions/runs/43682159822)
+also passed on exact7fc6d44: Mac591 daemon tests passed/7 ignored and Windows682
+passed/5 ignored, zero failures. Windows cross-account ACL passed. Both new Mac
+pin-sharing/replacement tests passed. The [correction receipt](../evidence/m8/m8-macos-descriptor-correction-20261115.json)
+binds source, native/full CI, review and the owner package.
+Local Rust remains blocked by Application Control4551.
 The CI-only reproduction is selected through ci.yml input mac_fd_repro_only;
 its pinned fixture expires2026-11-16T03:21:56+00:00 and must be regenerated afterward.
-No owner action is required until a corrected, verified package is ready.
+Corrected CI-executed packet: `Cryptex-Mac-Duzeltme-7fc6d44-b28f2258.zip`, SHA256
+`b28f22588a9ea17502cf947d095ed2eae166f0d4a8d2040d38870c5e6bb2e75c`.
+It is the unchanged transport archive from native run43681948389 artifact14149117052.
+Targetarm64, expiry2026-11-16T05:40:44+00:00. All15 members checked,9 inventory
+sizes/digests verified, launcher/helpers match7fc6d44. The source-bound collector
+sets the inherited soft ceiling at most256 before running native checks; actual
+peak FD count was not sampled. Exported-launcher success verifies complete
+pairing/import/restart/loss/cleanup checks within that ceiling, not owner hardware.
+Next: extract on Mac, run `Cryptex-Mac-Aktarim/MAC-AKTARIM.command`,
+return `MAC-AKTARIM-SONUC-*.zip`. Physical owner acceptance and fullM8 remain open.
 
 
 ## Verified Mac filesystem/native integration — November 14
