@@ -712,7 +712,8 @@ impl SearchContext {
         if context.operation.is_none() {
             context.operation = Some(self.admission.enter(&self.runtime_root)?);
         } else if let Some(permit) = &context.operation {
-            self.admission.validate_operation(&self.runtime_root, permit)?;
+            self.admission
+                .validate_operation(&self.runtime_root, permit)?;
         }
         Ok(context)
     }
@@ -794,7 +795,10 @@ fn synchronize_local_derived_state(context: &SearchContext) -> Result<(), Derive
         &mut db,
     )
     .map_err(|_| DerivedCatchupError::KnowledgeRebuildFailed)?;
-    context.admission.check_namespace().map_err(|_| DerivedCatchupError::RuntimeHeld)?;
+    context
+        .admission
+        .check_namespace()
+        .map_err(|_| DerivedCatchupError::RuntimeHeld)?;
     Ok(())
 }
 
@@ -2310,11 +2314,17 @@ fn handle_connection_via(
         }
     };
     if let Some(context) = &admitted_search {
-        context.admission.check_namespace().map_err(io::Error::other)?;
+        context
+            .admission
+            .check_namespace()
+            .map_err(io::Error::other)?;
     }
     write_response(stream, &response_bytes, write_deadline)?;
     if let Some(context) = &admitted_search {
-        context.admission.check_namespace().map_err(io::Error::other)?;
+        context
+            .admission
+            .check_namespace()
+            .map_err(io::Error::other)?;
     }
     Ok(())
 }
@@ -7032,7 +7042,11 @@ pub(crate) mod tests {
         use crate::import_staging::macos_fs::RuntimeIdentity;
         let fixture = prepared_search_fixture("original-namespace");
         let namespace = RuntimeIdentity::capture(&fixture.root).unwrap();
-        fixture.context.admission.bind_namespace(namespace.clone()).unwrap();
+        fixture
+            .context
+            .admission
+            .bind_namespace(namespace.clone())
+            .unwrap();
         // A later verified device pin must be visible to every cloned context.
         let device = cryptex_storage::canonical_events_device_dir(&fixture.root, &fixture.device);
         namespace.pin(&device).unwrap();
@@ -7040,19 +7054,34 @@ pub(crate) mod tests {
         let preserved = fixture.root.join("original-device");
         fs::rename(&device, &preserved).unwrap();
         fs::create_dir(&device).unwrap();
-        let original = fs::read_dir(&preserved).unwrap().map(|entry| {
-            let path = entry.unwrap().path();
-            (path.clone(), fs::read(path).unwrap())
-        }).collect::<Vec<_>>();
-        let request = || capture_request("desktop", vec![CAPABILITY_CONTENT_CAPTURE.into()], sample_capture_body());
-        let response = run_capture_until(request(), Some(queued), true,
-            Instant::now() + Duration::from_secs(3), None);
+        let original = fs::read_dir(&preserved)
+            .unwrap()
+            .map(|entry| {
+                let path = entry.unwrap().path();
+                (path.clone(), fs::read(path).unwrap())
+            })
+            .collect::<Vec<_>>();
+        let request = || {
+            capture_request(
+                "desktop",
+                vec![CAPABILITY_CONTENT_CAPTURE.into()],
+                sample_capture_body(),
+            )
+        };
+        let response = run_capture_until(
+            request(),
+            Some(queued),
+            true,
+            Instant::now() + Duration::from_secs(3),
+            None,
+        );
         assert_eq!(response.error.as_deref(), Some("runtime_recovery_required"));
         let context = fixture.context.clone();
         let (name, listener) = isolated_ipc_listener("namespace-product-socket");
         let server = thread::spawn(move || {
             let mut stream = listener.accept().unwrap();
-            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true).unwrap();
+            handle_connection_for_peer(&mut stream, Some(&context), None, None, None, true)
+                .unwrap();
         });
         let mut client = Stream::connect(name.borrow()).unwrap();
         let mut frame = serde_json::to_vec(&request()).unwrap();
@@ -7060,16 +7089,26 @@ pub(crate) mod tests {
         let deadline = Instant::now() + Duration::from_secs(3);
         write_ipc_all(&mut client, &frame, deadline).unwrap();
         let response: serde_json::Value = serde_json::from_slice(
-            &read_ipc_frame(&mut client, MAX_CAPTURE_RESPONSE_BYTES, deadline).unwrap()).unwrap();
+            &read_ipc_frame(&mut client, MAX_CAPTURE_RESPONSE_BYTES, deadline).unwrap(),
+        )
+        .unwrap();
         assert_eq!(response["error"], "runtime_recovery_required");
         assert_eq!(response["accepted"], false);
         server.join().unwrap();
-        assert!(matches!(synchronize_local_derived_state(&fixture.context), Err(DerivedCatchupError::RuntimeHeld)));
+        assert!(matches!(
+            synchronize_local_derived_state(&fixture.context),
+            Err(DerivedCatchupError::RuntimeHeld)
+        ));
         assert_eq!(fs::read_dir(&device).unwrap().count(), 0);
-        for (path, bytes) in original { assert_eq!(fs::read(path).unwrap(), bytes); }
+        for (path, bytes) in original {
+            assert_eq!(fs::read(path).unwrap(), bytes);
+        }
         fs::remove_dir(&device).unwrap();
         fs::rename(preserved, &device).unwrap();
-        assert!(fixture.context.admitted().is_err(), "restoring names cannot clear the hold");
+        assert!(
+            fixture.context.admitted().is_err(),
+            "restoring names cannot clear the hold"
+        );
         fs::remove_dir_all(fixture.root).unwrap();
     }
 

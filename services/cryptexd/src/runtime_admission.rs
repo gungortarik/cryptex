@@ -82,7 +82,10 @@ impl RuntimeAdmission {
         if !namespace.belongs_to(&self.0.root) {
             return Err(AdmissionError::WrongRuntime);
         }
-        self.0.namespace.set(namespace).map_err(|_| AdmissionError::WrongRuntime)?;
+        self.0
+            .namespace
+            .set(namespace)
+            .map_err(|_| AdmissionError::WrongRuntime)?;
         self.check_namespace()
     }
 
@@ -90,9 +93,19 @@ impl RuntimeAdmission {
     /// worker and its actual reply. A detected replacement is a monotone hold.
     pub(crate) fn check_namespace(&self) -> Result<(), AdmissionError> {
         #[cfg(target_os = "macos")]
-        if self.0.namespace_failed.load(std::sync::atomic::Ordering::Acquire)
-            || self.0.namespace.get().is_some_and(|namespace| namespace.validate().is_err()) {
-            self.0.namespace_failed.store(true, std::sync::atomic::Ordering::Release);
+        if self
+            .0
+            .namespace_failed
+            .load(std::sync::atomic::Ordering::Acquire)
+            || self
+                .0
+                .namespace
+                .get()
+                .is_some_and(|namespace| namespace.validate().is_err())
+        {
+            self.0
+                .namespace_failed
+                .store(true, std::sync::atomic::Ordering::Release);
             if let Ok(mut state) = self.0.state.lock()
                 && state.hold != Some(RuntimeHold::Stopped)
             {
@@ -363,7 +376,11 @@ impl ExclusivePermit {
         drop(self._owner.take());
         if let Ok(mut state) = self.admission.0.state.lock() {
             if state.hold != Some(RuntimeHold::Stopped) {
-                state.hold = if namespace_valid { hold } else { Some(RuntimeHold::RecoveryRequired) };
+                state.hold = if namespace_valid {
+                    hold
+                } else {
+                    Some(RuntimeHold::RecoveryRequired)
+                };
             }
             state.exclusive = false;
         }
@@ -404,8 +421,13 @@ mod tests {
         use crate::import_staging::macos_fs::RuntimeIdentity;
         let root = crate::test_temp::exclusive_temp_dir("namespace-admission");
         let admission = RuntimeAdmission::detached_for_tests(&root);
-        admission.bind_namespace(RuntimeIdentity::capture(&root).unwrap()).unwrap();
-        assert_eq!(admission.bind_namespace(RuntimeIdentity::capture(&root).unwrap()), Err(AdmissionError::WrongRuntime));
+        admission
+            .bind_namespace(RuntimeIdentity::capture(&root).unwrap())
+            .unwrap();
+        assert_eq!(
+            admission.bind_namespace(RuntimeIdentity::capture(&root).unwrap()),
+            Err(AdmissionError::WrongRuntime)
+        );
         let recovery = admission.exclusive(&root, deadline(), true).unwrap();
         let preserved = root.with_extension("original");
         std::fs::rename(&root, &preserved).unwrap();
@@ -413,8 +435,14 @@ mod tests {
         recovery.finish(None);
         std::fs::remove_dir(&root).unwrap();
         std::fs::rename(preserved, &root).unwrap();
-        assert!(matches!(admission.enter(&root), Err(AdmissionError::Held(RuntimeHold::RecoveryRequired))));
-        assert!(matches!(admission.exclusive(&root, deadline(), true), Err(AdmissionError::Held(RuntimeHold::RecoveryRequired))));
+        assert!(matches!(
+            admission.enter(&root),
+            Err(AdmissionError::Held(RuntimeHold::RecoveryRequired))
+        ));
+        assert!(matches!(
+            admission.exclusive(&root, deadline(), true),
+            Err(AdmissionError::Held(RuntimeHold::RecoveryRequired))
+        ));
         std::fs::remove_dir_all(root).unwrap();
     }
 

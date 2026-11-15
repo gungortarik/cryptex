@@ -152,7 +152,9 @@ impl RuntimeIdentity {
         let root = normalize(root)?;
         Ok(Self {
             root: root.clone(),
-            pins: Arc::new(Mutex::new(std::collections::BTreeMap::from([(root, directory)]))),
+            pins: Arc::new(Mutex::new(std::collections::BTreeMap::from([(
+                root, directory,
+            )]))),
         })
     }
     pub(crate) fn pin(&self, path: &Path) -> io::Result<()> {
@@ -199,7 +201,8 @@ impl RuntimeIdentity {
             _ => return Err(unsafe_object()),
         }
         self.pins
-            .lock().map_err(|_| unsafe_object())?
+            .lock()
+            .map_err(|_| unsafe_object())?
             .retain(|path, _| !path.starts_with(&key));
         self.validate()
     }

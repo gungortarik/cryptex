@@ -144,21 +144,33 @@ mod tests {
         for before in [true, false] {
             let root = crate::test_temp::exclusive_temp_dir("reply-namespace");
             let admission = RuntimeAdmission::detached_for_tests(&root);
-            admission.bind_namespace(RuntimeIdentity::capture(&root).unwrap()).unwrap();
-            let reply = AdmittedReply::new(body(), admission.enter(&root).unwrap(),
-                Instant::now() + Duration::from_secs(3)).unwrap();
+            admission
+                .bind_namespace(RuntimeIdentity::capture(&root).unwrap())
+                .unwrap();
+            let reply = AdmittedReply::new(
+                body(),
+                admission.enter(&root).unwrap(),
+                Instant::now() + Duration::from_secs(3),
+            )
+            .unwrap();
             let original = root.with_extension("original");
             let replace = || {
                 std::fs::rename(&root, &original).unwrap();
                 std::fs::create_dir(&root).unwrap();
             };
-            if before { replace(); }
-            let mut sent = false;
-            assert!(reply.send_using(|_, _| {
-                sent = true;
+            if before {
                 replace();
-                Ok(())
-            }).is_err());
+            }
+            let mut sent = false;
+            assert!(
+                reply
+                    .send_using(|_, _| {
+                        sent = true;
+                        replace();
+                        Ok(())
+                    })
+                    .is_err()
+            );
             assert_eq!(sent, !before);
             std::fs::remove_dir(&root).unwrap();
             std::fs::rename(original, &root).unwrap();
