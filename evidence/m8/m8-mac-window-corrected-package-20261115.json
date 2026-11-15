@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "status": "corrected_package_ready_owner_execution_pending",
+  "binary_source": "529068950f497eb61a56e9ed30a0d8bae77383ce",
+  "collector_source": "7bbfca19cdb504af4fa5087ce1a308932c0c73ff",
+  "package": "Cryptex-Mac-Pencere-5290689-7bbfca1.zip",
+  "package_sha256": "aeee736b2272d198697456eb1433d61182b076443ef60fc2e75d8e991fb074d6",
+  "expires_utc": "2026-11-16T17:50:45Z",
+  "architecture": "arm64",
+  "minimum_macos": 26,
+  "changes": [
+    "Initialize isolated fixture before first opening",
+    "Test explanation Quit last with canonical/device UUID comparisons",
+    "Export fixed startup error codes only",
+    "Preserve primary failure separately from cleanup refusal"
+  ],
+  "ci": {
+    "run": 43747105114,
+    "result": "success",
+    "tests": 10,
+    "scope": "collector and native Darwin process groups only; no Cryptex UI or Keychain"
+  },
+  "local": {
+    "collector_passed": 7,
+    "darwin_skipped": 3,
+    "diagnostic_regressions_passed": 6,
+    "diff_check": "passed"
+  },
+  "package_verification": {
+    "members": 20,
+    "crc": "passed",
+    "all_manifest_hashes": "passed",
+    "all_python_syntax": "passed",
+    "executable_modes": "passed",
+    "public_signed_image_bytes_unchanged": true
+  },
+  "review": "Independent read-only source review; narrow evidence-field name corrected; no further ownership/cleanup/privacy finding.",
+  "not_established": [
+    "owner window lifecycle acceptance",
+    "headless product startup CI success",
+    "OS permission denial",
+    "independent out-of-group helper disappearance",
+    "personal-profile migration",
+    "cross-device sync",
+    "full M8 acceptance"
+  ],
+  "prior_failed_receipt": "MAC-PENCERE-SONUC-436a7b57.zip remains failed; user confirmed Open selected before profile existed."
+}

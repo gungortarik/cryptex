@@ -20,7 +20,15 @@ from cleanup refusal. Failed/uncertain launches still retain the test key/HOME.
 Local7 collector tests and6 diagnostic regressions pass;3 Darwin tests require CI.
 Independent source review found only an overbroad evidence-field name, corrected
 to `cancel_canonical_and_device_id_unchanged`; reviewer did not execute tests.
-Corrected package/CI evidence will be recorded here after verification.
+Corrected package is READY: `Cryptex-Mac-Pencere-5290689-7bbfca1.zip` in Downloads.
+Apple Silicon/macOS26+, certificate expires2026-11-16T17:50:45Z. CI43747105114
+on7bbfca1 passed all10 tests including the3 actual Darwin process tests; no product
+UI/Keychain ran in this CI. ZIP CRC, all20 members/manifest hashes, Python syntax,
+executable modes and byte-identical public signed images were verified. See
+[corrected package evidence](../evidence/m8/m8-mac-window-corrected-package-20261115.json).
+Next: owner opens extracted MAC-PENCERE.command, chooses Open local memory on first
+two openings, follows E/H prompts, chooses Quit only for the last explanation test,
+and returns the result ZIP. Real owner window lifecycle acceptance remains pending.
 
 ## Original one-click Mac window owner package — November15
 
