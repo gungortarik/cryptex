@@ -5,7 +5,15 @@
 //! requires the local trust/cutoff and M3/M4 proof token; managed transport
 //! does not call it yet.
 
-use std::fs::{self, File, OpenOptions};
+use std::fs::File;
+#[cfg(any(not(target_os = "macos"), test))]
+use std::fs::OpenOptions;
+#[cfg(not(target_os = "macos"))]
+use std::fs;
+#[cfg(target_os = "macos")]
+mod macos_fs;
+#[cfg(target_os = "macos")]
+use macos_fs as fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::SystemTime;
@@ -213,6 +221,20 @@ struct CommittedImportMarker {
 mod cleanup;
 pub(crate) mod policy_hold;
 
+fn create_import_file(path: &Path) -> io::Result<File> {
+    #[cfg(target_os = "macos")]
+    { macos_fs::open_new(path) }
+    #[cfg(not(target_os = "macos"))]
+    { OpenOptions::new().read(true).write(true).create_new(true).open(path) }
+}
+
+fn sync_import_file(file: &File) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    { macos_fs::flush(file) }
+    #[cfg(not(target_os = "macos"))]
+    { file.sync_all() }
+}
+
 impl VerifiedStagedBatch {
     #[must_use]
     pub fn segments(&self) -> &[VerifiedStagedSegment] {
@@ -245,6 +267,8 @@ pub struct ImportStagingSession {
     failed: bool,
     prepared: bool,
     policy_review: bool,
+    #[cfg(target_os = "macos")]
+    runtime_identity: macos_fs::RuntimeIdentity,
 }
 
 impl ImportStagingSession {
@@ -277,6 +301,8 @@ impl ImportStagingSession {
         assert_outside_repository(runtime_root)
             .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
         ensure_plain_directory(runtime_root)?;
+        #[cfg(target_os = "macos")]
+        let runtime_identity = macos_fs::RuntimeIdentity::capture(runtime_root)?;
 
         let canonical = runtime_root.join("canonical");
         let events_root = canonical.join("events");
@@ -343,7 +369,15 @@ impl ImportStagingSession {
             failed: false,
             prepared: false,
             policy_review: false,
+            #[cfg(target_os = "macos")]
+            runtime_identity,
         })
+    }
+
+    fn validate_runtime_identity(&self) -> Result<(), ImportStagingError> {
+        #[cfg(target_os = "macos")]
+        self.runtime_identity.validate()?;
+        Ok(())
     }
 
     /// Copy one `.seg` candidate from the fixed incoming folder into this
@@ -461,6 +495,7 @@ impl ImportStagingSession {
     /// Explicitly discard this unprepared staging transaction. Cleanup errors
     /// are returned; callers must not proceed to canonical locks after failure.
     pub fn discard(mut self) -> Result<(), ImportStagingError> {
+        self.validate_runtime_identity()?;
         if self.prepared || self.policy_review {
             return Err(ImportStagingError::RecoveryConflict(
                 "a prepared import transaction requires startup reconciliation".into(),
@@ -481,6 +516,7 @@ impl ImportStagingSession {
         device_id: &DeviceId,
         segment_index: u64,
     ) -> Result<(), ImportStagingError> {
+        self.validate_runtime_identity()?;
         validate_relative_segment_path(incoming_relative_path)?;
         validate_import_path_binding(incoming_relative_path, device_id, segment_index)?;
         let incoming_root = self.runtime_root.join("transport").join("incoming");
@@ -522,11 +558,7 @@ impl ImportStagingSession {
         let _device_handles = inspect_directory_chain(&device_dir, true)?;
         let final_path = device_dir.join(format!("{segment_index:020}.seg"));
         let temp_path = device_dir.join(format!(".{}.tmp", random_hex_16()?));
-        let mut staged = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create_new(true)
-            .open(&temp_path)?;
+        let mut staged = create_import_file(&temp_path)?;
 
         let (copied, digest) = copy_bounded(&mut source, &mut staged, initial.length)?;
         if copied != initial.length {
@@ -541,7 +573,7 @@ impl ImportStagingSession {
                 "candidate identity or metadata changed during snapshot".into(),
             ));
         }
-        staged.sync_all()?;
+        sync_import_file(&staged)?;
         staged.seek(SeekFrom::Start(0))?;
         let (readback_length, readback_digest) = hash_bounded(&mut staged, initial.length)?;
         if readback_length != copied || readback_digest != digest {
@@ -549,10 +581,11 @@ impl ImportStagingSession {
                 "staged bytes did not match the copied source snapshot".into(),
             ));
         }
-        staged.sync_all()?;
+        sync_import_file(&staged)?;
         drop(staged);
         publish_staged_no_replace(&temp_path, &final_path)?;
         sync_staged_parent(&final_path)?;
+        self.validate_runtime_identity()?;
 
         self.candidates.push(StagedSegment {
             device_id: device_id.clone(),
@@ -575,7 +608,7 @@ impl ImportStagingSession {
     /// Remove only private staged copies of exact, already verified canonical
     /// segments. The successful safety gate retains this runtime's inventory
     /// and affected device locks throughout comparison and removal.
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     pub(crate) fn remove_identical_replays(
         &mut self,
         snapshot: &crate::knowledge_materialization::VerifiedCanonicalSnapshot,
@@ -659,6 +692,7 @@ impl ImportStagingSession {
         prior_tip: &ImportStreamTip,
         key_resolver: &mut R,
     ) -> Result<VerifiedStagedSegment, ImportStagingError> {
+        self.validate_runtime_identity()?;
         if !self.candidates.iter().any(|staged| staged == candidate) {
             return Err(ImportStagingError::Invalid(
                 "candidate does not belong to this staging transaction".into(),
@@ -700,6 +734,7 @@ impl ImportStagingSession {
                 "staged segment changed while it was being validated".into(),
             ));
         }
+        self.validate_runtime_identity()?;
         Ok(summary)
     }
 
@@ -715,6 +750,7 @@ impl ImportStagingSession {
         prior_tips: &[(DeviceId, ImportStreamTip)],
         key_resolver: &mut R,
     ) -> Result<VerifiedStagedBatch, ImportStagingError> {
+        self.validate_runtime_identity()?;
         if self.failed || self.prepared || self.candidates.is_empty() {
             return Err(ImportStagingError::Invalid(
                 "cannot verify an empty, failed, or prepared staging batch".into(),
@@ -1101,6 +1137,7 @@ impl ImportStagingSession {
         &self,
         policy_verified: &crate::knowledge_materialization::ImportPolicyVerifiedBatch,
     ) -> Result<PathBuf, ImportStagingError> {
+        self.validate_runtime_identity()?;
         if !policy_verified.keeps_retrieval_snapshot()
             || !policy_verified.keeps_post_import_policy()
         {
@@ -1167,8 +1204,10 @@ impl ImportStagingSession {
             }
             drop(source_file);
 
+            self.validate_runtime_identity()?;
             publish_staged_no_replace(&source, &destination)?;
             sync_staged_parent(&destination)?;
+            self.validate_runtime_identity()?;
             if !manifest_file_matches(&destination, segment, true)? {
                 return Err(ImportStagingError::RecoveryConflict(
                     "published canonical segment failed read-back verification".into(),
@@ -1190,7 +1229,9 @@ impl ImportStagingSession {
             transaction_id: self.transaction_id.clone(),
             prepared_manifest_sha256: manifest_digest,
         };
-        write_committed_marker(&self.runtime_root, &marker)
+        let path = write_committed_marker(&self.runtime_root, &marker)?;
+        self.validate_runtime_identity()?;
+        Ok(path)
     }
 
     pub fn budget(&self) -> ImportBatchBudget {
@@ -1205,6 +1246,7 @@ impl ImportStagingSession {
         &mut self,
         verified: &VerifiedStagedBatch,
     ) -> Result<PathBuf, ImportStagingError> {
+        self.validate_runtime_identity()?;
         if self._single_flight.is_some() {
             return Err(ImportStagingError::Invalid(
                 "release the staging slot before preparing the manifest".into(),
@@ -1327,12 +1369,9 @@ impl ImportStagingSession {
         let final_path = journal_root.join(format!("{}.prepared.json", self.transaction_id));
         let temp_path = journal_root.join(format!(".{}.prepared.tmp", self.transaction_id));
         let write_result = (|| {
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temp_path)?;
+            let mut file = create_import_file(&temp_path)?;
             file.write_all(&bytes)?;
-            file.sync_all()?;
+            sync_import_file(&file)?;
             drop(file);
             #[cfg(test)]
             crate::test_interrupt::maybe_abrupt_exit(
@@ -1356,6 +1395,7 @@ impl ImportStagingSession {
         }
         drop(staged_file_pins);
         self.prepared = true;
+        self.validate_runtime_identity()?;
         Ok(final_path)
     }
 
@@ -1365,6 +1405,7 @@ impl ImportStagingSession {
     /// claim: another `begin` call refuses while it exists, and startup may
     /// remove it only as an unprepared transaction.
     pub fn release_staging_slot(&mut self) -> Result<(), ImportStagingError> {
+        self.validate_runtime_identity()?;
         if self.failed || self.candidates.is_empty() {
             return Err(ImportStagingError::Invalid(
                 "cannot release an empty or failed staging transaction".into(),
@@ -2173,12 +2214,9 @@ fn write_committed_marker(
         ));
     }
 
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temp_path)?;
+    let mut file = create_import_file(&temp_path)?;
     file.write_all(&bytes)?;
-    file.sync_all()?;
+    sync_import_file(&file)?;
     drop(file);
     #[cfg(test)]
     crate::test_interrupt::maybe_abrupt_exit(
@@ -3401,7 +3439,11 @@ fn open_source_from_directory_chain(
             windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL,
         )
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        macos_fs::read_child(directory_handles, source_path).map_err(Into::into)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let _ = directory_handles;
         open_source_no_follow(source_path)
@@ -3437,7 +3479,11 @@ fn open_identity_from_directory_chain(
             windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL,
         )
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        macos_fs::read_child(directory_handles, path).map_err(Into::into)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let _ = directory_handles;
         open_source_no_follow(path)
@@ -3518,6 +3564,12 @@ fn open_nt_child(
     Ok(unsafe { File::from_raw_handle(handle) })
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) fn open_source_no_follow(path: &Path) -> Result<File, ImportStagingError> {
+    macos_fs::open_read(path).map_err(Into::into)
+}
+
+#[cfg(not(target_os = "macos"))]
 pub(crate) fn open_source_no_follow(path: &Path) -> Result<File, ImportStagingError> {
     let mut options = OpenOptions::new();
     options.read(true);
@@ -3897,6 +3949,7 @@ fn same_volume(first: &Path, second: &Path) -> Result<bool, ImportStagingError> 
     }
     #[cfg(unix)]
     {
+        #[cfg(not(target_os = "macos"))]
         use std::os::unix::fs::MetadataExt;
         Ok(first_metadata.dev() == second_metadata.dev())
     }
@@ -4198,7 +4251,12 @@ fn inspect_directory_chain(
     Ok(pins)
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+fn inspect_directory_chain(path: &Path, require_current_user_owner: bool) -> Result<Vec<File>, ImportStagingError> {
+    Ok(macos_fs::Directory::open(path, require_current_user_owner)?.into_files())
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 fn inspect_directory_chain(
     path: &Path,
     _require_current_user_owner: bool,
@@ -4220,6 +4278,12 @@ fn is_link_or_reparse(metadata: &fs::Metadata) -> bool {
     false
 }
 
+#[cfg(target_os = "macos")]
+fn open_lock_file(path: &Path) -> Result<File, ImportStagingError> {
+    macos_fs::open_lock(path).map_err(Into::into)
+}
+
+#[cfg(not(target_os = "macos"))]
 fn open_lock_file(path: &Path) -> Result<File, ImportStagingError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
@@ -4293,6 +4357,10 @@ fn encode_hex(bytes: &[u8]) -> String {
 }
 
 fn publish_staged_no_replace(source: &Path, destination: &Path) -> Result<(), ImportStagingError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos_fs::promote(source, destination).map_err(Into::into)
+    }
     #[cfg(windows)]
     {
         use windows_sys::Win32::Storage::FileSystem::{MOVEFILE_WRITE_THROUGH, MoveFileExW};
@@ -4310,7 +4378,7 @@ fn publish_staged_no_replace(source: &Path, destination: &Path) -> Result<(), Im
         }
         Ok(())
     }
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         fs::hard_link(source, destination)?;
         fs::remove_file(source)?;
@@ -4326,7 +4394,9 @@ fn publish_staged_no_replace(source: &Path, destination: &Path) -> Result<(), Im
 }
 
 fn sync_staged_parent(path: &Path) -> Result<(), ImportStagingError> {
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
+    macos_fs::sync_parent(path)?;
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         let parent = path.parent().ok_or_else(|| {
             ImportStagingError::Invalid("staged segment path has no parent".into())
@@ -4399,7 +4469,7 @@ mod tests {
     #[cfg(windows)]
     fn long_windows_publication_preserves_no_replace_and_directory_checks() {
         let root = crate::test_temp::exclusive_temp_dir("long-staging-adapter");
-        let parent = root.join("long-path-".repeat(20)).join("unicode-é");
+        let parent = root.join("long-path-".repeat(20)).join("unicode-Ã©");
         fs::create_dir_all(&parent).unwrap();
         let source = parent.join("source.seg");
         let destination = parent.join("destination.seg");

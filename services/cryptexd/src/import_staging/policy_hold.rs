@@ -1,7 +1,7 @@
 //! Purpose-separated recovery evidence. Nothing in this module grants trust or
 //! authorizes canonical publication. A receipt is replayed, never believed.
 
-#![cfg_attr(not(windows), allow(dead_code))] // Windows publisher remains gated.
+#![cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 
 use super::*;
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
@@ -88,12 +88,9 @@ fn persist_new(path: &Path, bytes: &[u8]) -> Result<(), ImportStagingError> {
         .ok_or_else(|| recovery("policy evidence has no parent"))?;
     let _pins = inspect_directory_chain(parent, true)?;
     let temporary = path.with_extension("json.pending");
-    let mut file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&temporary)?;
+    let mut file = create_import_file(&temporary)?;
     file.write_all(bytes)?;
-    file.sync_all()?;
+    sync_import_file(&file)?;
     drop(file);
     publish_staged_no_replace(&temporary, path)?;
     sync_staged_parent(path)?;
@@ -164,6 +161,7 @@ impl ImportStagingSession {
         brain: &str,
         anchor: &LocalTrustAnchor,
     ) -> Result<(), ImportStagingError> {
+        self.validate_runtime_identity()?;
         if self.policy_review || self.prepared || self.failed || self._single_flight.is_some() {
             return Err(recovery(
                 "policy review requires a complete released staging batch",
@@ -211,7 +209,7 @@ impl ImportStagingSession {
             &self.runtime_root,
             "complete policy inventory durable before authentication/classification",
         );
-        Ok(())
+        self.validate_runtime_identity()
     }
 
     pub(crate) fn has_policy_review(&self) -> bool {
@@ -219,6 +217,7 @@ impl ImportStagingSession {
     }
 
     pub(crate) fn finish_policy_review(&mut self) -> Result<(), ImportStagingError> {
+        self.validate_runtime_identity()?;
         if !self.policy_review {
             return Ok(());
         }
@@ -244,13 +243,14 @@ impl ImportStagingSession {
         fs::remove_file(&sentinel)?;
         sync_staged_parent(&sentinel)?;
         self.policy_review = false;
-        Ok(())
+        self.validate_runtime_identity()
     }
 
     pub(crate) fn retain_policy_hold(
         &self,
         reason: AuthenticatedPolicyConflict,
     ) -> Result<(), ImportStagingError> {
+        self.validate_runtime_identity()?;
         let _slot = review_slot(&self.runtime_root)?;
         check_review_namespace(&self.runtime_root, &self.transaction_id)?;
         let intent = read_intent_pair(&self.runtime_root, &self.transaction_id)?;
@@ -281,7 +281,7 @@ impl ImportStagingSession {
             &self.runtime_root,
             "held decision durable; no canonical publication",
         );
-        Ok(())
+        self.validate_runtime_identity()
     }
 }
 
@@ -405,6 +405,8 @@ pub(super) fn recover<S: SecureStore + ?Sized>(
     if !entry_exists(&journal)? {
         return Ok(());
     }
+    #[cfg(target_os = "macos")]
+    let runtime_identity = super::macos_fs::RuntimeIdentity::capture(root)?;
     let _pins = inspect_directory_chain(&journal, true)?;
     let mut intent_id = None;
     let mut names = Vec::new();
@@ -502,6 +504,8 @@ pub(super) fn recover<S: SecureStore + ?Sized>(
         failed: false,
         prepared: false,
         policy_review: true,
+        #[cfg(target_os = "macos")]
+        runtime_identity,
     };
     match crate::knowledge_materialization::revalidate_incoming_policy_evidence(
         root,

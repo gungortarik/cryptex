@@ -45,12 +45,14 @@ fn main() {
     println!("cargo:rerun-if-changed={native}/channel.h");
     println!("cargo:rerun-if-changed={native}/inventory.c");
     println!("cargo:rerun-if-changed=src/owned_process/macos_endpoint.c");
+    println!("cargo:rerun-if-changed=src/import_staging/macos_fs.c");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         let mut build = cc::Build::new();
         if std::env::var_os("CARGO_FEATURE_M8_LOCAL_STARTUP_CHECK").is_some() {
             build.file("src/owned_process/macos_endpoint.c");
         }
         build
+            .file("src/import_staging/macos_fs.c")
             .file(format!("{native}/channel.c"))
             .file(format!("{native}/inventory.c"))
             .std("c11")

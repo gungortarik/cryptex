@@ -174,7 +174,7 @@ impl RetrievalSafetyState {
     /// Idempotent replay is decided only inside this successful local-policy
     /// snapshot. Byte equality outside the trusted, locked inventory is not an
     /// admission decision. Normal transport publication remains gated.
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     pub(crate) fn remove_identical_import_replays(
         &self,
         session: &mut crate::import_staging::ImportStagingSession,

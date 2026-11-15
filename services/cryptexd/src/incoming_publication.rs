@@ -1,4 +1,4 @@
-//! Windows internal incoming-to-canonical transaction integration.
+//! Internal incoming-to-canonical integration with verified platform adapters.
 //!
 //! No CLI, IPC, watcher or managed-transport caller enables this path. Activation
 //! still requires the ADR-0019 native durability and independent review gates.

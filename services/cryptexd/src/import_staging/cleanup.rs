@@ -274,14 +274,11 @@ pub(super) fn complete_locked(
     }
     #[cfg(test)]
     interrupt(root, "m8_before_cleanup_receipt_creation");
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)?;
+    let mut file = create_import_file(&temporary)?;
     #[cfg(test)]
     interrupt(root, "m8_cleanup_receipt_created");
     file.write_all(&bytes)?;
-    file.sync_all()?;
+    sync_import_file(&file)?;
     drop(file);
     #[cfg(test)]
     interrupt(root, "m8_cleanup_receipt_temp_synced");

@@ -507,12 +507,15 @@ fn recover_writer_state_before_start(
     reconcile_platform_peer_approval_anchors(runtime_root)
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn recover_import_staging_before_start(
     runtime_root: &Path,
     instance: &cryptexd::instance::InstanceLock,
 ) -> Result<(), LifecycleError> {
+    #[cfg(windows)]
     let store = cryptexd::WindowsCredentialStore::new();
+    #[cfg(target_os = "macos")]
+    let store = cryptexd::MacosKeychainStore::new();
     cryptexd::import_staging::recover_import_staging_with_local_state(
         runtime_root,
         instance,
@@ -522,7 +525,7 @@ fn recover_import_staging_before_start(
     .map_err(|error| LifecycleError::ImportRecoveryConflict(error.to_string()))
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn recover_import_staging_before_start(
     runtime_root: &Path,
     _instance: &cryptexd::instance::InstanceLock,

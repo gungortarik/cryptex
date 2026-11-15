@@ -10,9 +10,9 @@ use std::time::Instant;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RuntimeHold {
     RecoveryRequired,
-    #[cfg(any(windows, test))]
+    #[cfg(any(windows, target_os = "macos", test))]
     IncomingPolicyConflict,
-    #[cfg(any(windows, test))] // Production publication remains Windows-only.
+    #[cfg(any(windows, target_os = "macos", test))] // Internal publication remains gated.
     DerivedRebuildRequired,
     Stopped,
 }
@@ -29,9 +29,9 @@ impl AdmissionError {
         match self {
             Self::Busy => "runtime_busy",
             Self::Held(RuntimeHold::RecoveryRequired) => "runtime_recovery_required",
-            #[cfg(any(windows, test))]
+            #[cfg(any(windows, target_os = "macos", test))]
             Self::Held(RuntimeHold::IncomingPolicyConflict) => "runtime_policy_conflict",
-            #[cfg(any(windows, test))]
+            #[cfg(any(windows, target_os = "macos", test))]
             Self::Held(RuntimeHold::DerivedRebuildRequired) => "runtime_rebuild_required",
             Self::Held(RuntimeHold::Stopped) => "runtime_stopped",
             Self::WrongRuntime => "runtime_mismatch",
