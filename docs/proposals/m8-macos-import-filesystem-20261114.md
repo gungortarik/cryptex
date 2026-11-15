@@ -105,3 +105,25 @@ Desktop-local handle. This is a local two-engine integration receipt, not anothe
 physical Mac/device transfer or power-loss certification. Full installed-product
 activation, actual peer/folder synchronization and remote durability acceptance
 remain distinct gates.
+
+### Live reconciliation and reply ordering
+
+Pre-authentication child preflight reads public identity metadata only; OS key
+access starts after native image/content attribution, under the actual daemon
+instance. A canonical-capable native completion/confirmation closes new admission
+with DerivedRebuildRequired while its actual reply lease is still alive, including
+uncertain/rejected outcomes. After actual send releases that lease, the same owner
+runs full retained-evidence recovery, authenticated empty-slot initialization and
+M3/M4 rebuild under exclusive admission before handling another request/hint. No
+old-canonical-only hold clearing or second instance is introduced. Fresh observed
+batches also refresh derived state before the publisher can classify clean input
+rejection; transient missing/stale derived files do not become consumed hints.
+
+Every ready/status/domain send validates the retained original namespace both
+before and after the actual send; observed post-work drift sends no success. A
+unit seam exercises that shared send wrapper with a replaced original root and
+proves no send and both trees preserved. The signed integration test completes a
+new pairing in ExistingProfile, imports without restarting, confirms a permitted
+exact-cutoff restriction, then checks current native status/approval preparation
+and restart replay refusal. Source review findings and native acceptance remain
+recorded separately until the final exact-source run passes.

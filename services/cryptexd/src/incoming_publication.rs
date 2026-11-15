@@ -282,6 +282,33 @@ fn rebuild_imported_state<S: SecureStore + ?Sized>(
     Ok(())
 }
 
+/// Prepare only authenticated peer slots before constructing M4 watermarks.
+/// Called by the recovery orchestrator under its actual exclusive instance
+/// admission, after full retained-evidence recovery and before rebuilding.
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+fn initialize_admitted_stream_slots<S: SecureStore + ?Sized>(root: &Path, store: &S, environment: SecureStoreEnvironment) -> Result<(), IncomingPublicationError> {
+    let verify = || -> Result<(), Box<dyn std::error::Error>> {
+        let namespace = crate::import_staging::macos_fs::RuntimeIdentity::capture(root)?;
+        namespace.pin(&root.join("canonical/events"))?;
+        let brain = crate::identity_runtime::load_brain_identity(root)?;
+        let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(root, &brain.brain_id, store, environment)?;
+        let anchor = resolver.local_trust_anchor().ok_or("native profile anchor missing")?;
+        let snapshot = crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(root, &brain.brain_id, &anchor, None)?;
+        let (history, _) = snapshot.verified_trust_context().ok_or("native profile policy held")?;
+        let mut devices = history.approved_peer_bindings.keys().cloned().collect::<Vec<_>>();
+        devices.push(anchor.device_id().clone());
+        for device in snapshot.locked_devices() { namespace.pin(&cryptex_storage::canonical_events_device_dir(root, device))?; }
+        drop(snapshot);
+        let slots = crate::canonical_writer::acquire_canonical_write_lock_set(root, &devices)?;
+        namespace.validate()?;
+        for device in &devices { namespace.pin(&cryptex_storage::canonical_events_device_dir(root, device))?; }
+        drop(slots);
+        namespace.validate()?;
+        Ok(())
+    };
+    verify().map_err(|_| IncomingPublicationError::CommittedNeedsRebuild("native admitted stream initialization failed".into()))
+}
+
 /// Internal recovery only: no renderer/CLI/autonomous recovery entry point.
 /// A failed repair keeps admission closed; only complete verified recovery plus
 /// cutoff-aware M3/M4 rebuild permits ordinary operations to resume.
@@ -312,6 +339,11 @@ pub(crate) fn recover_live_with_instance<S: SecureStore + ?Sized>(
         };
         exclusive.finish(Some(hold));
         return Err(IncomingPublicationError::RecoveryRequired(error));
+    }
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    if let Err(error) = initialize_admitted_stream_slots(root, store, environment) {
+        exclusive.finish(Some(RuntimeHold::DerivedRebuildRequired));
+        return Err(error);
     }
     let brain = crate::identity_runtime::load_brain_identity(root)
         .map_err(|error| IncomingPublicationError::CommittedNeedsRebuild(error.to_string()))?;

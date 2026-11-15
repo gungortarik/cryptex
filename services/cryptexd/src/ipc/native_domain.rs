@@ -15,9 +15,13 @@ pub(super) struct Domain<'a> {
 pub(super) struct Response {
     pub(super) reply: BootstrapApprovalIpcResponse,
     permit: OperationPermit,
+    pub(super) requires_reconcile: bool,
     timeout: Duration,
 }
 impl Response {
+    pub(super) fn hold_rebuild(&self, context: &SearchContext) -> io::Result<()> {
+        context.admission.require_derived_rebuild(&context.runtime_root, &self.permit).map_err(io::Error::other)
+    }
     pub(super) fn send(self, connection: &mut BoundConnection<'_>) -> io::Result<()> {
         AdmittedReply::new(self.reply, self.permit, Instant::now() + self.timeout)?
             .send_using(|bytes, deadline| connection.send(bytes, deadline))
@@ -42,6 +46,9 @@ impl<'a> Domain<'a> {
         // Consumption here is one-use and tied to this native allocation;
         // ordinary parsed JSON/roles/PIDs cannot construct the sealed value.
         let received = connection.consume(received)?;
+        // Conservative even for an uncertain/rejected result: a durable event
+        // may precede a journal/reply failure. Reads/cancellation do not dirty M4.
+        let requires_reconcile = matches!(received.method, Method::CompleteApproval | Method::ConfirmApproval | Method::ConfirmOwnerOperation);
         let request = received.request;
         if let Some(session) = self.pending.take() {
             let session: approval_domain::PendingSession<'_> = session;
@@ -52,6 +59,7 @@ impl<'a> Domain<'a> {
                 reply: finished.reply,
                 permit,
                 timeout: finished.timeout,
+                requires_reconcile,
             });
         }
         let permit = self
@@ -126,6 +134,7 @@ impl<'a> Domain<'a> {
             reply,
             permit,
             timeout,
+            requires_reconcile,
         })
     }
 }

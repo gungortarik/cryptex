@@ -630,6 +630,20 @@ pub(super) fn read_dir<P: AsRef<Path>>(path: P) -> io::Result<ReadDir> {
     })
 }
 
+#[cfg(feature = "m8-local-startup-check")]
+pub(crate) fn require_product_os() -> io::Result<()> {
+    // SAFETY: no pointer arguments; the native SDK/runtime availability guard
+    // refuses older systems instead of choosing a weaker transport fallback.
+    if unsafe { cx_import_product_os_supported() } == 1 {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "native_profile_requires_macos_26",
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -817,19 +831,5 @@ mod tests {
         );
         assert!(Directory::open(&selected, true).is_ok());
         fixture_fs::remove_dir_all(root).unwrap();
-    }
-}
-
-#[cfg(feature = "m8-local-startup-check")]
-pub(crate) fn require_product_os() -> io::Result<()> {
-    // SAFETY: no pointer arguments; the native SDK/runtime availability guard
-    // refuses older systems instead of choosing a weaker transport fallback.
-    if unsafe { cx_import_product_os_supported() } == 1 {
-        Ok(())
-    } else {
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "native_profile_requires_macos_26",
-        ))
     }
 }

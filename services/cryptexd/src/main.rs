@@ -54,7 +54,7 @@ fn main() {
         std::mem::take(&mut args),
         ordinary_ipc,
         &mut |root, lock| {
-            let _ = (root, lock);
+            let _ = (root, &*lock);
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
             if let Some(guard) = _startup_guard.as_mut() {
                 guard

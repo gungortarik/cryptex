@@ -22,15 +22,10 @@ pub(crate) fn validate_existing(root: &Path) -> io::Result<()> {
     let brain = load_brain_identity(root).map_err(|_| invalid_data("native_profile_brain"))?;
     let local = load_local_device_identity(root, &brain.brain_id)
         .map_err(|_| invalid_data("native_profile_identity"))?;
-    let device =
-        DeviceId::new(local.device_id).map_err(|_| invalid_data("native_profile_device"))?;
-    load_existing_event_signing_key(
-        &crate::MacosKeychainStore::new(),
-        SecureStoreEnvironment::Dev,
-        root,
-        &device,
-    )
-    .map_err(|_| invalid_data("native_profile_existing_key_unavailable"))?;
+    DeviceId::new(local.device_id).map_err(|_| invalid_data("native_profile_device"))?;
+    // Pre-authentication child CLI preflight reads public metadata only.
+    // The OS-backed key is loaded after native image/content attribution,
+    // inside prepare_existing_runtime and the admitted live context.
     directory.validate()
 }
 
@@ -39,65 +34,9 @@ fn prepare_existing_runtime(
     instance: &mut crate::instance::InstanceLock,
     namespace: &RuntimeIdentity,
 ) -> io::Result<()> {
-    use cryptex_events::TrustedDaemonKeyResolver;
-    let store = crate::MacosKeychainStore::new();
-    let exclusive = instance
-        .admission()
-        .exclusive(root, Instant::now() + IPC_RESPONSE_DEADLINE, false)
-        .map_err(io::Error::other)?;
     namespace.validate()?;
-    let brain = load_brain_identity(root).map_err(|_| invalid_data("native_profile_brain"))?;
-    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
-        root,
-        &brain.brain_id,
-        &store,
-        SecureStoreEnvironment::Dev,
-    )
-    .map_err(io::Error::other)?;
-    let anchor = resolver
-        .local_trust_anchor()
-        .ok_or_else(|| invalid_data("native_profile_anchor"))?;
-    let snapshot =
-        crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
-            root,
-            &brain.brain_id,
-            &anchor,
-            None,
-        )
+    crate::incoming_publication::recover_live_with_instance(root, instance, &crate::MacosKeychainStore::new(), SecureStoreEnvironment::Dev)
         .map_err(io::Error::other)?;
-    let (history, _) = snapshot
-        .verified_trust_context()
-        .ok_or_else(|| invalid_data("native_profile_policy_held"))?;
-    let mut devices = history
-        .approved_peer_bindings
-        .keys()
-        .cloned()
-        .collect::<Vec<_>>();
-    devices.push(anchor.device_id().clone());
-    for device in snapshot.locked_devices() {
-        namespace.pin(&cryptex_storage::canonical_events_device_dir(root, device))?;
-    }
-    drop(snapshot);
-    // Empty slots are derived from verified approvals, never incoming names.
-    // Establish them before M4 watermark construction, through the normal
-    // canonical lock API, while no native domain/ordinary reader exists yet.
-    let slots = crate::canonical_writer::acquire_canonical_write_lock_set(root, &devices)
-        .map_err(io::Error::other)?;
-    namespace.validate()?;
-    for device in &devices {
-        namespace.pin(&cryptex_storage::canonical_events_device_dir(root, device))?;
-    }
-    drop(slots);
-    exclusive.finish(None);
-    // Reuses the actual instance, full R4 recovery and cutoff-aware M3/M4
-    // rebuild. Any failure closes shared admission before native readiness.
-    crate::incoming_publication::recover_live_with_instance(
-        root,
-        instance,
-        &store,
-        SecureStoreEnvironment::Dev,
-    )
-    .map_err(io::Error::other)?;
     namespace.validate()
 }
 
@@ -249,6 +188,9 @@ impl Backend {
                 return Ok(self.status.clone());
             }
         };
+        if !paths.is_empty() && observed {
+            prepare_existing_runtime(&context.runtime_root, instance, &self.namespace)?;
+        }
         if !paths.is_empty() {
             self.controller.enqueue(paths).map_err(io::Error::other)?;
         }
@@ -282,6 +224,12 @@ impl Backend {
     }
 }
 
+fn send_checked(namespace: &RuntimeIdentity, send: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
+    namespace.validate()?;
+    send()?;
+    namespace.validate()
+}
+
 pub(crate) fn serve(
     connection: &mut BoundConnection<'_>,
     root: &Path,
@@ -301,7 +249,7 @@ pub(crate) fn serve(
     let context = context(root, instance, worker.as_ref().map(Worker::status_reader))?;
     let registry = ApprovalSessionRegistry::default();
     let mut domain = super::native_domain::Domain::from_context(context.clone(), &registry);
-    connection.ready(Instant::now() + IPC_RESPONSE_DEADLINE)?;
+    send_checked(&backend.namespace, || connection.ready(Instant::now() + IPC_RESPONSE_DEADLINE))?;
     loop {
         backend.namespace.validate()?;
         match connection.receive(Instant::now() + IPC_APPROVAL_SESSION_DEADLINE)? {
@@ -316,18 +264,22 @@ pub(crate) fn serve(
             }
             Incoming::Ping => {
                 backend.tick(&context, instance)?;
-                connection.send(b"pong", Instant::now() + IPC_RESPONSE_DEADLINE)?;
+                send_checked(&backend.namespace, || connection.send(b"pong", Instant::now() + IPC_RESPONSE_DEADLINE))?;
             }
             Incoming::Status => {
                 let status = backend.tick(&context, instance)?;
-                connection.send(
-                    &serde_json::to_vec(&status)?,
-                    Instant::now() + IPC_RESPONSE_DEADLINE,
-                )?;
+                send_checked(&backend.namespace, || connection.send(
+                    &serde_json::to_vec(&status)?, Instant::now() + IPC_RESPONSE_DEADLINE))?;
             }
             Incoming::Request(received) => {
                 backend.tick(&context, instance)?;
-                domain.dispatch(connection, *received)?.send(connection)?;
+                let response = domain.dispatch(connection, *received)?;
+                let reconcile = response.requires_reconcile;
+                if reconcile { response.hold_rebuild(&context)?; }
+                // Validate while the real response still owns ordinary admission.
+                // No observed drift can first be reported as native success.
+                send_checked(&backend.namespace, || response.send(connection))?;
+                if reconcile { prepare_existing_runtime(root, instance, &backend.namespace)?; }
             }
         }
         backend.namespace.validate()?;
@@ -337,6 +289,24 @@ pub(crate) fn serve(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn observed_namespace_drift_after_work_sends_no_success_reply() {
+        use std::os::unix::fs::DirBuilderExt;
+        let parent = crate::test_temp::exclusive_temp_dir("native-pre-reply-drift");
+        let root = parent.join("runtime");
+        std::fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        let namespace = RuntimeIdentity::capture(&root).unwrap();
+        std::fs::write(root.join("preserved"), b"original").unwrap();
+        std::fs::rename(&root, parent.join("original")).unwrap();
+        std::fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        std::fs::write(root.join("preserved"), b"replacement").unwrap();
+        let mut sent = false;
+        assert!(send_checked(&namespace, || { sent = true; Ok(()) }).is_err());
+        assert!(!sent);
+        assert_eq!(std::fs::read(parent.join("original/preserved")).unwrap(), b"original");
+        assert_eq!(std::fs::read(root.join("preserved")).unwrap(), b"replacement");
+        std::fs::remove_dir_all(parent).unwrap();
+    }
     #[test]
     fn transport_readiness_and_local_publication_never_claim_remote_protection() {
         for incoming in [

@@ -915,16 +915,12 @@ fn canonical_event_snapshot(
         })
         .collect())
 }
-fn check_existing_profile_import(source: &Path, receiver: &Path) -> Result<(), String> {
+fn check_existing_profile_import(source: &Path, receiver: &Path, mut daemon: LocalDaemon) -> Result<(), String> {
     use std::os::unix::fs::DirBuilderExt;
     let source_before = canonical_event_snapshot(source)?;
-    let descriptor: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(source.join("signed-probe.json")).map_err(|_| "existing_profile_source")?,
-    )
-    .map_err(|_| "existing_profile_source")?;
-    let device = descriptor["device_id"]
-        .as_str()
-        .ok_or("existing_profile_source")?;
+    let brain = cryptexd::identity_runtime::load_brain_identity(source).map_err(|_| "existing_profile_source")?;
+    let local = cryptexd::local_device_identity::load_local_device_identity(source, &brain.brain_id).map_err(|_| "existing_profile_source")?;
+    let device = &local.device_id;
     let stem = device
         .as_bytes()
         .iter()
@@ -941,7 +937,6 @@ fn check_existing_profile_import(source: &Path, receiver: &Path) -> Result<(), S
     // seals a canonical event; the native daemon must authenticate this batch.
     std::fs::copy(source.join("canonical/events").join(&relative), &incoming)
         .map_err(|_| "existing_profile_incoming")?;
-    let mut daemon = durable_daemon(receiver, ContentProfile::ExistingProfile)?;
     let deadline = Instant::now() + Duration::from_secs(90);
     loop {
         let status = daemon.profile_status().map_err(|e| e.to_string())?;
@@ -967,6 +962,14 @@ fn check_existing_profile_import(source: &Path, receiver: &Path) -> Result<(), S
         != std::fs::read(&incoming).map_err(|_| "existing_profile_incoming")?
     {
         return Err("existing_profile_publication_mismatch".into());
+    }
+    let restriction = daemon.prepare_owner(Input { kind: "device_restriction".into(), target_device_id: Some(local.device_id), reason: Some("compromised".into()), cutoff_seq: Some(1) }).map_err(|e| e.to_string())?;
+    if !daemon.finish_owner(&restriction.session_handle, true).map_err(|e| e.to_string())?.accepted {
+        return Err("existing_profile_live_restriction".into());
+    }
+    let status = daemon.profile_status().map_err(|e| e.to_string())?;
+    if status.remote_durability_verified || matches!(status.incoming, cryptexd::local_signed_startup::NativeIncomingState::Held | cryptexd::local_signed_startup::NativeIncomingState::Unavailable) {
+        return Err("existing_profile_restriction_not_reconciled".into());
     }
     let prepared = daemon
         .prepare_owner(self_retirement())
@@ -998,19 +1001,7 @@ fn check_existing_profile_import(source: &Path, receiver: &Path) -> Result<(), S
     Ok(())
 }
 
-/// Actual signed Desktop/native daemon pairs; two isolated local engines.
-/// This fixture proves pairing and reopen, not cross-device data replication.
-fn check_transport_pairing(root: &Path) -> Result<(), String> {
-    Owner::prepare_root(root, ContentProfile::Ephemeral)?;
-    let a = root.join("initiator");
-    let b = root.join("responder");
-    let mut first = durable_daemon(&a, ContentProfile::TransportCreate)?;
-    let mut second = durable_daemon(&b, ContentProfile::TransportCreate)?;
-    let id_a = pairing_transport(&mut first)?;
-    let id_b = pairing_transport(&mut second)?;
-    if id_a == id_b {
-        return Err("candidate_transport_identity_collision".into());
-    }
+fn signed_pairing_messages(first: &mut LocalDaemon, second: &mut LocalDaemon, id_a: String, id_b: String) -> Result<Vec<String>, String> {
     let brain = first
         .read_pairing_brain_identity()
         .map_err(|e| e.to_string())?;
@@ -1067,6 +1058,23 @@ fn check_transport_pairing(root: &Path) -> Result<(), String> {
             .signed_message
             .ok_or("candidate_approval_missing")?,
     );
+    Ok(messages)
+}
+
+/// Actual signed Desktop/native daemon pairs; two isolated local engines.
+/// This fixture proves pairing and reopen, not cross-device data replication.
+fn check_transport_pairing(root: &Path) -> Result<(), String> {
+    Owner::prepare_root(root, ContentProfile::Ephemeral)?;
+    let a = root.join("initiator");
+    let b = root.join("responder");
+    let mut first = durable_daemon(&a, ContentProfile::TransportCreate)?;
+    let mut second = durable_daemon(&b, ContentProfile::TransportCreate)?;
+    let id_a = pairing_transport(&mut first)?;
+    let id_b = pairing_transport(&mut second)?;
+    if id_a == id_b {
+        return Err("candidate_transport_identity_collision".into());
+    }
+    let messages = signed_pairing_messages(&mut first, &mut second, id_a.clone(), id_b.clone())?;
     for daemon in [&mut first, &mut second] {
         if !daemon
             .complete_pairing(messages.clone())
@@ -1097,7 +1105,18 @@ fn check_transport_pairing(root: &Path) -> Result<(), String> {
         }
         reopened.close().map_err(|e| e.to_string())?;
     }
-    check_existing_profile_import(&a, &b)?;
+    let mut native_a = durable_daemon(&a, ContentProfile::ExistingProfile)?;
+    let mut native_b = durable_daemon(&b, ContentProfile::ExistingProfile)?;
+    let native_id_a = pairing_transport(&mut native_a)?;
+    let native_id_b = pairing_transport(&mut native_b)?;
+    let messages = signed_pairing_messages(&mut native_a, &mut native_b, native_id_a, native_id_b)?;
+    for daemon in [&mut native_a, &mut native_b] {
+        if !daemon.complete_pairing(messages.clone()).map_err(|e| e.to_string())?.accepted {
+            return Err("existing_profile_live_pairing".into());
+        }
+    }
+    native_a.close().map_err(|e| e.to_string())?;
+    check_existing_profile_import(&a, &b, native_b)?;
     println!("native_managed_transport_pairing=passed");
     println!("native_managed_pairing_restart_idempotent=passed");
     Ok(())
