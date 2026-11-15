@@ -9,6 +9,10 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      mac_keychain_diagnostic_only:
+        description: Inspect exact synthetic credential metadata using pinned signed images; no ACL changes
+        type: boolean
+        default: false
       mac_window_collector_only:
         description: Test only isolated Mac window collector and Darwin process-group observation; no application acceptance
         type: boolean
@@ -49,8 +53,33 @@ permissions:
   contents: read
 
 jobs:
+  mac-keychain-diagnostic:
+    if: github.event_name == 'workflow_dispatch' && inputs.mac_keychain_diagnostic_only
+    permissions:
+      contents: read
+      actions: read
+    runs-on: macos-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test metadata output boundary
+        run: python3 -B -m unittest discover -s scripts/m8 -p 'test_mac_keychain_item_ci.py' -v
+      - name: Download pinned development images
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 43748758699 --repo gungortarik/cryptex --name mac-development-diagnostic --dir "$RUNNER_TEMP/keychain-artifact"
+      - name: Inspect generated item and reproduce headless startup
+        run: python3 -B scripts/m8/mac_keychain_item_ci.py "$RUNNER_TEMP/keychain-artifact/cryptex-mac-development-diagnostic.zip" "$RUNNER_TEMP/keychain-probe"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-keychain-metadata
+          path: ${{ runner.temp }}/keychain-probe/keychain-item.json
+          retention-days: 2
   mac-window-collector:
-    if: github.event_name == 'workflow_dispatch' && inputs.mac_window_collector_only
+    if: github.event_name == 'workflow_dispatch' && inputs.mac_window_collector_only && !inputs.mac_keychain_diagnostic_only
     runs-on: macos-latest
     timeout-minutes: 8
     steps:
@@ -62,7 +91,7 @@ jobs:
       - name: Compare read-only Keychain discovery with isolated HOME (no item access)
         run: /usr/bin/python3 -B scripts/m8/mac_keychain_context_check.py
   mac-fd-repro:
-    if: github.event_name == 'workflow_dispatch' && inputs.mac_fd_repro_only && !inputs.mac_window_collector_only
+    if: github.event_name == 'workflow_dispatch' && inputs.mac_fd_repro_only && !inputs.mac_window_collector_only && !inputs.mac_keychain_diagnostic_only
     permissions:
       contents: read
       actions: read
@@ -86,7 +115,7 @@ jobs:
           retention-days: 2
 
   mac-import-diagnostics:
-    if: ${{ !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && github.event_name == 'workflow_dispatch' && inputs.mac_import_diagnostics_only }}
+    if: ${{ !inputs.mac_keychain_diagnostic_only && !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && github.event_name == 'workflow_dispatch' && inputs.mac_import_diagnostics_only }}
     name: Darwin import filesystem diagnostics
     runs-on: macos-latest
     timeout-minutes: 15
@@ -111,10 +140,10 @@ jobs:
         run: cargo test --locked -p cryptexd --lib
 
   schema-candidate:
-    if: ${{ !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (github.event_name == 'workflow_dispatch' && inputs.schema_candidate_only) }}
+    if: ${{ !inputs.mac_keychain_diagnostic_only && !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (github.event_name == 'workflow_dispatch' && inputs.schema_candidate_only) }}
     uses: ./.github/workflows/m8-schema-candidate.yml
   desktop-startup:
-    if: ${{ !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && inputs.desktop_startup_only)) }}
+    if: ${{ !inputs.mac_keychain_diagnostic_only && !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && inputs.desktop_startup_only)) }}
     name: Desktop startup (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     # Match the signed-fixture runner's existing profile from the first build;
@@ -229,7 +258,7 @@ jobs:
           retention-days: 1
 
   readiness:
-    if: ${{ !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.ipc_acl_only && !inputs.windows_desktop_build_only))) }}
+    if: ${{ !inputs.mac_keychain_diagnostic_only && !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.ipc_acl_only && !inputs.windows_desktop_build_only))) }}
     name: Readiness (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
@@ -379,7 +408,7 @@ jobs:
       # separately. These tests do not certify installed/signed distribution.
 
   ipc-acl:
-    if: ${{ !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.windows_desktop_build_only))) }}
+    if: ${{ !inputs.mac_keychain_diagnostic_only && !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name != 'workflow_dispatch' || (!inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && !inputs.windows_desktop_build_only))) }}
     name: IPC cross-account ACL (Windows)
     runs-on: windows-latest
     timeout-minutes: 10
@@ -399,11 +428,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   mac-identity-preflight:
-    if: ${{ !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && inputs.mac_identity_preflight_only)) }}
+    if: ${{ !inputs.mac_keychain_diagnostic_only && !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && inputs.mac_identity_preflight_only)) }}
     uses: ./.github/workflows/m8-macos-identity-preflight.yml
 
   windows-desktop-build:
-    if: ${{ !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && inputs.windows_desktop_build_only)) }}
+    if: ${{ !inputs.mac_keychain_diagnostic_only && !inputs.mac_window_collector_only && !inputs.mac_fd_repro_only && !inputs.mac_import_diagnostics_only && (!inputs.schema_candidate_only && (github.event_name == 'workflow_dispatch' && !inputs.desktop_startup_only && !inputs.mac_identity_preflight_only && inputs.windows_desktop_build_only)) }}
     name: Windows Desktop package (unsigned, manual only)
     runs-on: windows-latest
     timeout-minutes: 25
