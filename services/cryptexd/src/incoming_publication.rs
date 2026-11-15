@@ -262,14 +262,15 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
     })
 }
 
-fn trace_recovery<T, E>(
-    _name: &'static str,
-    work: impl FnOnce() -> Result<T, E>,
-) -> Result<T, E> {
+fn trace_recovery<T, E>(_name: &'static str, work: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
-    { crate::ipc::native_profile::trace_stage(_name, work) }
+    {
+        crate::ipc::native_profile::trace_stage(_name, work)
+    }
     #[cfg(not(all(target_os = "macos", feature = "m8-local-startup-check")))]
-    { work() }
+    {
+        work()
+    }
 }
 
 fn rebuild_imported_state<S: SecureStore + ?Sized>(
@@ -281,17 +282,21 @@ fn rebuild_imported_state<S: SecureStore + ?Sized>(
     use IncomingPublicationError::CommittedNeedsRebuild;
     let resolver = trace_recovery("rebuild_key", || {
         crate::local_device_identity::LocalDeviceKeyResolver::load(root, brain, store, environment)
-    }).map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
+    })
+    .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
     let anchor = resolver
         .local_trust_anchor()
         .ok_or_else(|| CommittedNeedsRebuild("local trust anchor unavailable".into()))?;
-    let mut db = trace_recovery("rebuild_db", || cryptex_projection::ProjectionDb::open_or_create(root))
-        .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
+    let mut db = trace_recovery("rebuild_db", || {
+        cryptex_projection::ProjectionDb::open_or_create(root)
+    })
+    .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
     trace_recovery("rebuild_scan", || {
         crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
             root, brain, &anchor, &mut db,
         )
-    }).map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
+    })
+    .map_err(|error| CommittedNeedsRebuild(error.to_string()))?;
     Ok(())
 }
 
@@ -309,7 +314,12 @@ fn initialize_admitted_stream_slots<S: SecureStore + ?Sized>(
         namespace.pin(&root.join("canonical/events"))?;
         let brain = crate::identity_runtime::load_brain_identity(root)?;
         let resolver = trace_recovery("slot_key", || {
-            crate::local_device_identity::LocalDeviceKeyResolver::load(root, &brain.brain_id, store, environment)
+            crate::local_device_identity::LocalDeviceKeyResolver::load(
+                root,
+                &brain.brain_id,
+                store,
+                environment,
+            )
         })?;
         let anchor = resolver
             .local_trust_anchor()
@@ -384,7 +394,10 @@ pub(crate) fn recover_live_with_instance<S: SecureStore + ?Sized>(
         .map_err(IncomingPublicationError::Admission)?;
     let recover = || {
         crate::import_staging::recover_import_staging_with_local_state(
-            root, instance, store, environment,
+            root,
+            instance,
+            store,
+            environment,
         )
     };
     let recovered = trace_recovery("recover_evidence", recover);
