@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "status": "implementation_and_selected_checks_passed_native_startup_and_ui_acceptance_open",
+  "source": "529068950f497eb61a56e9ed30a0d8bae77383ce",
+  "scope": "Controlled local-certificate Mac development opening and window lifecycle; no public release or profile provisioning",
+  "changes": [
+    "Verified immutable frontend preflight before singleton selection; no child or native session from preflight",
+    "Native informational opening choice before fresh unchanged native startup deadline; no cached access grant",
+    "ExistingProfile owner binding must match retained content before webview creation",
+    "Close hides; menu-bar, Dock and second launch restore the same window and draft",
+    "Two-phase guarded Quit serializes confirmation and shutdown; new domain dispatch refused while not Ready",
+    "Setup and diagnostic failures explicitly observe owned daemon cleanup; cleanup failure cannot become exit0"
+  ],
+  "review": {
+    "mode": "independent read-only source review; reviewer did not execute tests",
+    "sources": [
+      "595f09c",
+      "155ee30",
+      "5290689"
+    ],
+    "outcome": "no actionable code finding",
+    "copy_correction": "Removed reference to a diagnostic artifact which the normal shell does not generate"
+  },
+  "ci": {
+    "run": 43743142364,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/43743142364",
+    "windows": "passed",
+    "macos": "failed at existing-profile native content bind: key_lock completed; key_store began without completion; local_signed_startup_Deadline",
+    "windows_desktop_tests": 51,
+    "windows_entry_lifecycle_tests": 5,
+    "windows_standard_user_startup_tests": 10,
+    "macos_completed_checks": [
+      "format",
+      "default daemon/Desktop lint",
+      "native frame/right checks",
+      "local-certificate native exchange and prior fixture checks",
+      "development-product lint and build",
+      "development_launch::tests:: cargo command",
+      "development_product_ daemon test command",
+      "fixture argument refusal and missing-profile refusal",
+      "matching creator/product designated identity"
+    ],
+    "macos_test_evidence": "Selected cargo commands returned successfully through the checked sequential runner before exercise_profile. Their success output is not printed; no exact Mac test count is asserted.",
+    "macos_later_checks": "Skipped after failed native startup; not accepted",
+    "whole_run": "failure",
+    "native_failure": {
+      "exit_code": 2,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false,
+      "stage": "content_bind",
+      "error": "local_signed_startup_Deadline",
+      "cause": "OS credential read wait observed; precise CI authorization cause remains unproven"
+    }
+  },
+  "previous_attempts": [
+    {
+      "run": 43740597739,
+      "outcome": "format failed"
+    },
+    {
+      "run": 43740913255,
+      "outcome": "format failed"
+    },
+    {
+      "run": 43741039834,
+      "outcome": "Windows passed; Mac development-only compilation failed; corrected in155ee30"
+    },
+    {
+      "run": 43741948649,
+      "outcome": "Windows passed; Mac product Clippy rejected collapsible Exit match; corrected in5290689",
+      "windows_desktop_tests": 51,
+      "windows_entry_lifecycle_tests": 5,
+      "windows_standard_user_startup_tests": 10
+    }
+  ],
+  "local_validation": {
+    "rust": "Unavailable under Application Control4551; no bypass",
+    "diff_check": "passed"
+  },
+  "not_established": [
+    "Physical Mac explanation, permission refusal and cancel flow",
+    "Installed window/menu-bar/Dock/second-launch and unsaved-draft behavior",
+    "Actual interactive Quit cancellation and owned daemon/helper cleanup",
+    "Unattended native existing-profile startup",
+    "Windows-Mac product reconciliation or full M8 acceptance"
+  ],
+  "diagnostic_artifact": {
+    "id": 14173284246,
+    "sha256": "35178f082c94f81cad8784e1a8d6b8c6fd9f57abd13afd09cf82c1914c8cb961",
+    "expires_utc": "2026-11-16T17:50:45+00:00",
+    "ci_startup_passed": false,
+    "validation": "ZIP CRC and source metadata checked; retained locally, not delivered as an accepted UI test"
+  }
+}

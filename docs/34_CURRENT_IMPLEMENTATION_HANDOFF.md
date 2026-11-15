@@ -1,5 +1,62 @@
 # 34 — Current Implementation Handoff
 
+## Development opening/window lifecycle — November15
+
+Implementation source `5290689` adds the normal Mac development shell's native
+opening explanation and window lifecycle. It retains authenticated content before
+singleton setup, then starts ExistingProfile only in the primary instance after
+the owner chooses Open local memory. The actual owner's content binding must
+match the retained snapshot before Bind/Ping or creation of any webview.
+The explanation is shown on each primary launch; it is informational, never a
+cached permission grant or proof of Keychain readiness. The native15s budget
+starts after that choice. No password field, identity creation, ACL relaxation,
+profile override or automatic access retry was added.
+
+Close hides the same window; menu-bar Open, Dock reopen and a second launch
+restore it without replacing the draft/session. Quit first prevents exit, asks
+about unresolved drafts, rejects new domain invokes during confirmation/closing,
+and observes owner shutdown before a second exit request is allowed. Cancel
+restores dispatch. Already admitted work retains the existing daemon shutdown
+contract. Setup/shutdown failures are visible native errors; failed cleanup is
+exit2. AppKit Exit retains emergency cleanup. The headless diagnostic now also
+observes explicit cleanup on a failed bind/health check.
+
+Independent read-only review through5290689 found no actionable code issue.
+CI43741039834 on c27bcb9 passed Windows (51 Desktop tests including5 entry/lifecycle
+checks;10 standard-user startup checks), but Mac product compilation failed on
+handler type inference and setup App.exit.155ee30 corrects both. CI43741948649
+again passed Windows; Mac product Clippy then requested a guarded Exit match,
+corrected in5290689. No product behavior test ran past those compile/lint failures.
+Native CI43743142364 on5290689 PASSED Windows (51 Desktop,10 standard-user startup;
+all scoped Windows steps passed). On Mac, format/lint, native frame/right and
+prior signed checks, development-product lint/build, selected entry/lifecycle
+and fixture-refusal cargo commands, and actual argument/missing-profile refusals
+completed. Successful selected cargo output is suppressed by the checked runner;
+do not invent an exact Mac test count. The run FAILED at the unchanged native
+ExistingProfile boundary: key_lock completed, key_store began without completion,
+content_bind returned local_signed_startup_Deadline (exit2; no outer runner timeout,
+output overflow or pipe failure). Later Mac checks were skipped. This is NOT a
+passing CI or native UI acceptance. Do not relax ACLs, extend native deadlines or
+repeat the prior unchanged owner diagnostic. See
+[window review evidence](../evidence/m8/m8-development-window-review-20261115.json).
+
+Failed-candidate artifact14173284246 was retained under the system temporary
+folder cryptex-window-ci-43743142364 (source5290689; ZIP CRC/source checked; expires
+2026-11-16T17:50:45Z). It is the HEADLESS diagnostic exporter, not a prepared normal
+window test packet. A new physical normal-entry window/lifecycle acceptance
+runner/package is still needed; do not send this archive as UI acceptance.
+The earlier two runs stopped at formatting. The shutdown message no longer
+refers to a diagnostic artifact that the normal shell does not generate. Local
+Rust remains blocked by Application Control4551; use native CI, never bypass it.
+
+Physical Mac acceptance still required after code checks: explanation Cancel
+starts no daemon; permission refusal/failure remains visible and does not seed a
+profile; successful opening creates one window/owned daemon; hide, menu-bar/Dock
+reopen and second launch preserve an unsaved draft and process instance; Quit
+Cancel preserves them; confirmed Quit reaps the owned daemon/helper; restart uses
+a fresh session and existing canonical data. Do not repeat the unchanged startup
+diagnostic below or treat it as evidence for this new interactive shell.
+
 ## Normal product-flow continuation — November15
 
 Latest owner return: MAC-BASLANGIC-TANI-SONUC-0540d16b.zip PASSED the bounded
@@ -15,9 +72,9 @@ itself is not in the receipt. Owner-reported aggregate evidence,
 not independently observed physical execution. See
 [evidence](../evidence/m8/m8-development-owner-startup-20261115.json).
 
-Do not repeat this unchanged diagnostic. Next: explicit credential-readiness /
-startup UX and installed window/tray/single-instance/reopen lifecycle, then the
-already-authorized peer/export integration. CI's OS-store wait remains unresolved;
+Do not repeat this unchanged diagnostic. Opening/window lifecycle implementation
+and its remaining acceptance are recorded above; the already-authorized
+peer/export integration follows that boundary. CI's OS-store wait remains unresolved;
 owner interaction supports an authorization-related hypothesis but does not prove
 the precise CI cause. Keep native deadlines and no-regeneration behavior; do not
 relax ACLs or call M8 complete. The historical handoff below describes the packet
