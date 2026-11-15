@@ -1352,9 +1352,8 @@ pub fn development_entry() -> Option<Result<(), String>> {
         let args: Vec<_> = std::env::args_os().skip(1).collect();
         match super::development_launch::mode(&args)? {
             super::development_launch::Mode::Window => {
-                let runtime = super::development_launch::runtime(
-                    std::env::var_os("HOME").as_deref(),
-                )?;
+                let runtime =
+                    super::development_launch::runtime(std::env::var_os("HOME").as_deref())?;
                 development_ui::run(runtime)
             }
             super::development_launch::Mode::Check(runtime) => {
@@ -1364,15 +1363,16 @@ pub fn development_entry() -> Option<Result<(), String>> {
                     Owner::start_profile(&runtime, ContentProfile::ExistingProfile),
                 )?;
                 let checked = (|| {
-                    let (_, binding) = development_ui::stage(
-                        "content", install_context(content, &runtime),
-                    )?;
+                    let (_, binding) =
+                        development_ui::stage("content", install_context(content, &runtime))?;
                     development_ui::stage(
-                        "bind", owner.client.call(|reply| Work::Bind(binding, reply)),
+                        "bind",
+                        owner.client.call(|reply| Work::Bind(binding, reply)),
                     )?;
                     development_ui::stage("ping", owner.client.call(Work::Ping))?;
                     development_ui::stage(
-                        "profile_status", owner.client.call(Work::ProfileStatus),
+                        "profile_status",
+                        owner.client.call(Work::ProfileStatus),
                     )?;
                     development_ui::stage("unix_health", super::p0_3_ipc_health())
                 })();

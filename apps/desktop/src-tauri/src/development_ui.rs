@@ -82,10 +82,17 @@ fn tray(app: &tauri::AppHandle) -> Result<(), String> {
     let build = || -> Result<(), Box<dyn std::error::Error>> {
         let open = MenuItem::with_id(app, "open", "Open Cryptex", true, None::<&str>)?;
         let quit = MenuItem::with_id(
-            app, crate::TRAY_MENU_QUIT_ID, "Quit Cryptex", true, None::<&str>,
+            app,
+            crate::TRAY_MENU_QUIT_ID,
+            "Quit Cryptex",
+            true,
+            None::<&str>,
         )?;
         let menu = Menu::with_items(app, &[&open, &quit])?;
-        let icon = app.default_window_icon().cloned().ok_or("development_tray_icon")?;
+        let icon = app
+            .default_window_icon()
+            .cloned()
+            .ok_or("development_tray_icon")?;
         TrayIconBuilder::new()
             .icon(icon)
             .tooltip("Cryptex")
@@ -97,9 +104,14 @@ fn tray(app: &tauri::AppHandle) -> Result<(), String> {
                 _ => {}
             })
             .on_tray_icon_event(|tray, event| {
-                if matches!(event, TrayIconEvent::Click {
-                    button: MouseButton::Left, button_state: MouseButtonState::Up, ..
-                }) {
+                if matches!(
+                    event,
+                    TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    }
+                ) {
                     reopen(tray.app_handle());
                 }
             })
@@ -120,11 +132,19 @@ pub(super) fn run(runtime: PathBuf) -> Result<(), String> {
 fn run_inner(runtime: PathBuf) -> Result<(), String> {
     // Snapshot only: no listener, child, credentials or grant. Tauri needs the
     // authenticated context to select the singleton before application setup.
-    let content = stage("content_preflight", cryptexd::local_signed_startup::verified_desktop_content(
-        Duration::from_secs(15),
-    ).map_err(|error| error.to_string()))?;
+    let content = stage(
+        "content_preflight",
+        cryptexd::local_signed_startup::verified_desktop_content(Duration::from_secs(15))
+            .map_err(|error| error.to_string()),
+    )?;
     let (mut context, binding) = stage("content", install_context(content, &runtime))?;
-    let mut window = context.config().app.windows.first().cloned().ok_or("development_window")?;
+    let mut window = context
+        .config()
+        .app
+        .windows
+        .first()
+        .cloned()
+        .ok_or("development_window")?;
     window.title = "Cryptex".into();
     context.config_mut().app.windows.clear();
     let owner: OwnerSlot = Arc::new(Mutex::new(None));
@@ -142,29 +162,43 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
                 app.exit(0);
             }
         })
-        .invoke_handler(tauri::generate_handler![
-            m8_native_profile_status,
-            m8_new_bootstrap_transaction_id,
-            m8_read_bootstrap_brain_identity,
-            m8_read_transport_device_id,
-            m8_create_bootstrap_offer,
-            m8_create_bootstrap_proof,
-            m8_prepare_peer_approval,
-            m8_confirm_peer_approval,
-            m8_cancel_peer_approval,
-            m8_complete_peer_approval,
-            m8_prepare_owner_security_operation,
-            m8_confirm_owner_security_operation,
-            m8_cancel_owner_security_operation,
-            p0_5_set_capture_session_guard,
-            crate::p0_3_ipc_health,
-            crate::p0_4_guarded_search,
-            crate::p0_5_guarded_timeline,
-            crate::p0_5_guarded_event_detail,
-            crate::p0_5_capture_memory,
-            crate::p0_5_resolve_capture,
-            crate::p0_6_materialize_and_open_vault,
-        ])
+        .invoke_handler(|invoke| {
+            let app = invoke.message.webview_ref().app_handle().clone();
+            let state = app.state::<Mutex<Lifecycle>>();
+            let lifecycle = state.lock();
+            // Hold the lifecycle lock through dispatch. Work accepted earlier
+            // belongs to the owner's existing bounded shutdown/drain contract.
+            // Guard synchronization is bookkeeping, not a domain operation.
+            if invoke.message.command() != "p0_5_set_capture_session_guard"
+                && !lifecycle.as_ref().is_ok_and(|state| state.accepts_work())
+            {
+                invoke.resolver.reject("development_not_ready");
+                return true;
+            }
+            tauri::generate_handler![
+                m8_native_profile_status,
+                m8_new_bootstrap_transaction_id,
+                m8_read_bootstrap_brain_identity,
+                m8_read_transport_device_id,
+                m8_create_bootstrap_offer,
+                m8_create_bootstrap_proof,
+                m8_prepare_peer_approval,
+                m8_confirm_peer_approval,
+                m8_cancel_peer_approval,
+                m8_complete_peer_approval,
+                m8_prepare_owner_security_operation,
+                m8_confirm_owner_security_operation,
+                m8_cancel_owner_security_operation,
+                p0_5_set_capture_session_guard,
+                crate::p0_3_ipc_health,
+                crate::p0_4_guarded_search,
+                crate::p0_5_guarded_timeline,
+                crate::p0_5_guarded_event_detail,
+                crate::p0_5_capture_memory,
+                crate::p0_5_resolve_capture,
+                crate::p0_6_materialize_and_open_vault,
+            ](invoke)
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -186,9 +220,10 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
                     return Ok(());
                 }
                 // Fresh native deadline starts after the human explanation.
-                let (started, content) = stage("start", Owner::start_profile(
-                    &runtime, ContentProfile::ExistingProfile,
-                ))?;
+                let (started, content) = stage(
+                    "start",
+                    Owner::start_profile(&runtime, ContentProfile::ExistingProfile),
+                )?;
                 let client = started.client.clone();
                 *setup_owner.lock().map_err(|_| "development_owner_lock")? = Some(started);
                 if content.binding() != &binding {
@@ -199,13 +234,19 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
                 app.manage(client);
                 // Do not create a hideable window unless its reopen path exists.
                 tray(app.handle())?;
-                if !state.lock().map_err(|_| "development_lifecycle_lock")?.ready() {
+                if !state
+                    .lock()
+                    .map_err(|_| "development_lifecycle_lock")?
+                    .ready()
+                {
                     return Err("development_startup_cancelled".into());
                 }
                 tauri::WebviewWindowBuilder::from_config(app, &window)
                     .map_err(|_| "development_window")?
                     .incognito(true)
-                    .on_navigation(|url| url.scheme() == "tauri" && url.host_str() == Some("localhost"))
+                    .on_navigation(|url| {
+                        url.scheme() == "tauri" && url.host_str() == Some("localhost")
+                    })
                     .build()
                     .map_err(|_| "development_window")?;
                 Ok(())
@@ -229,8 +270,14 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
         .build(context)
         .map_err(|_| "development_window")?;
     app.run(move |app, event| match event {
-        tauri::RunEvent::ExitRequested { api, .. } => {
+        tauri::RunEvent::ExitRequested { api, code, .. } => {
             let state = app.state::<Mutex<Lifecycle>>();
+            if state.lock().is_ok_and(|state| *state == Lifecycle::ExitReady) {
+                return;
+            }
+            // Every initial request is held. Only a second, explicit request
+            // after successful cleanup can terminate the event loop.
+            api.prevent_exit();
             let dirty = app.state::<DevelopmentDraft>().0.load(Ordering::Acquire);
             let mut decision = match state.lock() {
                 Ok(mut state) => state.request_quit(dirty),
@@ -245,13 +292,16 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
                 };
             }
             if decision != Quit::Proceed {
-                api.prevent_exit();
-            } else if close_owner(&owner).is_err() {
+                return;
+            }
+            if close_owner(&owner).is_err() {
                 show_failure(true);
                 std::process::exit(2);
-            } else if let Ok(mut state) = state.lock() {
+            }
+            if let Ok(mut state) = state.lock() {
                 state.shutdown_complete();
             }
+            app.exit(code.unwrap_or(0));
         }
         tauri::RunEvent::Reopen { .. } => reopen(app),
         tauri::RunEvent::Exit => {

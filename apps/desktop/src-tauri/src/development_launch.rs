@@ -50,6 +50,10 @@ pub enum Quit {
 }
 
 impl Lifecycle {
+    pub fn accepts_work(&self) -> bool {
+        *self == Self::Ready
+    }
+
     pub fn ready(&mut self) -> bool {
         if *self != Self::Opening {
             return false;
@@ -78,7 +82,11 @@ impl Lifecycle {
             return Quit::Prevent;
         }
         *self = if discard { Self::Stopping } else { Self::Ready };
-        if discard { Quit::Proceed } else { Quit::Prevent }
+        if discard {
+            Quit::Proceed
+        } else {
+            Quit::Prevent
+        }
     }
 
     pub fn shutdown_complete(&mut self) {
@@ -95,13 +103,18 @@ mod tests {
     #[test]
     fn cancelled_quit_preserves_session_and_serializes_nested_requests() {
         let mut lifecycle = Lifecycle::default();
+        assert!(!lifecycle.accepts_work());
         assert!(lifecycle.ready());
+        assert!(lifecycle.accepts_work());
         assert_eq!(lifecycle.request_quit(true), Quit::Confirm);
+        assert!(!lifecycle.accepts_work());
         assert_eq!(lifecycle.request_quit(false), Quit::Prevent);
         assert_eq!(lifecycle.confirm_quit(false), Quit::Prevent);
         assert_eq!(lifecycle, Lifecycle::Ready);
+        assert!(lifecycle.accepts_work());
         assert_eq!(lifecycle.request_quit(true), Quit::Confirm);
         assert_eq!(lifecycle.confirm_quit(true), Quit::Proceed);
+        assert!(!lifecycle.accepts_work());
         assert!(!lifecycle.ready());
     }
 
@@ -123,6 +136,7 @@ mod tests {
         // A nested Quit during shutdown must not claim clean exit prematurely.
         assert_eq!(lifecycle.request_quit(false), Quit::Prevent);
         lifecycle.shutdown_complete();
+        assert!(!lifecycle.accepts_work());
         assert_eq!(lifecycle.request_quit(true), Quit::Proceed);
         assert!(!lifecycle.ready());
     }
