@@ -40,7 +40,7 @@ fn show_failure(cleanup: bool) {
         (
             "Cryptex could not confirm a complete shutdown",
             "The local service did not confirm that it stopped safely. \
-             Cryptex will close with an error. Keep the diagnostic result before trying again.",
+             Cryptex will close with an error. Please report this shutdown error before reopening Cryptex.",
         )
     } else {
         (
@@ -308,12 +308,10 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
             app.exit(code.unwrap_or(0));
         }
         tauri::RunEvent::Reopen { .. } => reopen(app),
-        tauri::RunEvent::Exit => {
-            // Emergency fallback; ordinary Quit already observed shutdown.
-            if close_owner(&owner).is_err() {
-                eprintln!(r#"{{"developmentStage":"exit_cleanup"}}"#);
-                std::process::exit(2);
-            }
+        // Emergency fallback; ordinary Quit already observed shutdown.
+        tauri::RunEvent::Exit if close_owner(&owner).is_err() => {
+            eprintln!(r#"{{"developmentStage":"exit_cleanup"}}"#);
+            std::process::exit(2);
         }
         _ => {}
     });
