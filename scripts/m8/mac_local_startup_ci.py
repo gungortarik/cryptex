@@ -317,3 +317,10 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                     "runtime_cleanup_verified", "guardian_output_loss_cleanup_verified"))):
             raise PreflightError("exported_combined_loss_result_failed")
         print("exported_combined_loss_launcher=passed")
+
+    from mac_development_startup_check import check as check_development
+    check_development(
+        root, cargo, clippy, run, run_bounded,
+        lambda target, identifier: sign_fixture_image(run, target, fingerprint, identifier,
+                                                     keychain, password, "sign_development_image"),
+        inventory, template, positive / "Contents/MacOS/cryptexd")

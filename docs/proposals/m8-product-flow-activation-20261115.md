@@ -1,7 +1,9 @@
 # M8 controlled product-flow activation and two-device acceptance
 
-Status: PROPOSED; owner selection required before changing the disabled boundary.
-Source audit: `8cf54e4`, November 15, 2026. No activation code is changed here.
+Status: ACCEPTED FOR CONTROLLED DEVELOPMENT PRODUCT INTEGRATION.
+Owner decision, November 15, 2026: "Önerilen ürün entegrasyonunu uygula".
+Source audit: `8cf54e4`. Acceptance authorizes the implementation direction below,
+not an unverified activation, public release or M8 completion.
 
 ## Verified starting point
 
@@ -21,9 +23,9 @@ The following are current implementation gaps, not requests to repeat that test:
 | Outgoing work | Canonical writer seals immutable segments; no ordinary transport exporter is connected | Daemon-only verified sealed-segment export, isolated from canonical storage |
 | Protection UI | Native status deliberately reports LocalOnly/Attention and remote durability false | Preserve truthful status; never promote transport completion to remote durable acceptance |
 
-## Decision requested
+## Accepted decision
 
-Select a controlled local development product integration, followed by one
+Implement a controlled local development product integration, followed by one
 two-device acceptance package. This is a scoped amendment to the disabled-only
 development boundary of ADR-0020/ADR-0021, not approval to distribute publicly,
 enable all builds, purchase Apple membership, or declare M8 complete.
@@ -45,15 +47,16 @@ fixture seeding, synthetic identities, fault IDs, or test-only trust override ma
 be reachable from normal entry. First-run profile initialization is a separate
 existing daemon operation, not an excuse to seed a profile from the UI.
 
-## Concrete transport direction proposed for review
+## Accepted transport direction; implementation remains subject to review
 
 Keep the approved isolation boundary: the managed shared tree is
 `transport/incoming`, never `canonical/events`. For bidirectional operation,
-propose a strictly configured send/receive exchange tree. The daemon exports
+use a strictly configured send/receive exchange tree. The daemon exports
 verified immutable sealed segments into that untrusted exchange tree as copies;
 the same verified IncomingController admits received segments to canonical
 storage. This extends the previously approved receive-only implementation slice
-in ADR-0019 section 5.1.1 and must be accepted and reviewed before implementation.
+in ADR-0019 section 5.1.1. The owner accepted this direction; source review and
+native acceptance remain required before enabling the implemented exporter.
 
 - Derive admitted device IDs and transport associations from current verified
   canonical trust under the existing admission/locking rules. A successful

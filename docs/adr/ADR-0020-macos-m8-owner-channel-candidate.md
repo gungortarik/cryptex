@@ -1,6 +1,14 @@
 # ADR-0020 — Disabled macOS M8 owner-message adapter candidate
 
 **Status:** ACCEPTED FOR DISABLED CANDIDATE DEVELOPMENT ONLY.
+
+**November 15 scope amendment:** the owner accepted
+[controlled development product integration](../proposals/m8-product-flow-activation-20261115.md)
+("Önerilen ürün entegrasyonunu uygula"). This permits implementing the normal
+entry of an explicitly provisioned local-certificate development build, subject
+to the proposal's image/session, review and native acceptance gates. Other builds
+remain disabled. Public distribution and full M8 acceptance are not authorized
+by this amendment. Earlier disabled-only wording below records the original scope.
 **Date:**2026-11-10.
 **Owner decision:** "önerdiğin Mac entegrasyonunu başlangıçta kapalı tutarak uygulayalım."
 This accepts implementation of the bounded candidate in the

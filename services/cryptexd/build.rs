@@ -1,13 +1,30 @@
+#[path = "build_support/development_policy.rs"]
+mod development_policy;
+
 fn main() {
     println!("cargo:rerun-if-env-changed=CRYPTEX_M8_LOCAL_STARTUP_CERT_DER");
+    println!("cargo:rerun-if-env-changed=CRYPTEX_M8_DEVELOPMENT_CERT_DER");
+    println!("cargo:rerun-if-env-changed=CRYPTEX_M8_DEVELOPMENT_RELEASE_ID");
     if std::env::var_os("CARGO_FEATURE_M8_LOCAL_STARTUP_CHECK").is_some() {
         assert_eq!(
             std::env::var("CARGO_CFG_TARGET_OS").as_deref(),
             Ok("macos"),
             "local signed startup check requires macOS"
         );
-        let source = std::env::var_os("CRYPTEX_M8_LOCAL_STARTUP_CERT_DER")
-            .expect("local signed startup check requires an independent build-time DER pin");
+        let policy = development_policy::select(
+            std::env::var_os("CARGO_FEATURE_M8_DEVELOPMENT_PRODUCT").is_some(),
+            std::env::var("CRYPTEX_M8_DEVELOPMENT_RELEASE_ID").ok().as_deref(),
+        )
+        .expect("invalid independent development build policy");
+        for (name, value) in [
+            ("CRYPTEX_COMPILED_RELEASE_ID", policy.release_id.as_str()),
+            ("CRYPTEX_COMPILED_DESKTOP_ID", policy.desktop_identifier),
+            ("CRYPTEX_COMPILED_DAEMON_ID", policy.daemon_identifier),
+        ] {
+            println!("cargo:rustc-env={name}={value}");
+        }
+        let source = std::env::var_os(policy.certificate_variable)
+            .expect("signed startup requires an independent build-time DER pin");
         let source = std::path::PathBuf::from(source);
         assert!(
             source.is_absolute(),

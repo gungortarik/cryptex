@@ -49,7 +49,8 @@ fn main() {
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
     let ordinary_ipc = !_startup_guard
         .as_ref()
-        .is_some_and(|guard| guard.is_content_mode());
+        .is_some_and(|guard| guard.is_content_mode())
+        || cfg!(feature = "m8-development-product");
     let result = run_with_ready(
         std::mem::take(&mut args),
         ordinary_ipc,
@@ -105,6 +106,11 @@ fn run_with_ready(
         &mut cryptexd::instance::InstanceLock,
     ) -> Result<(), LifecycleError>,
 ) -> Result<(), LifecycleError> {
+    if cfg!(feature = "m8-development-product")
+        && args.first().is_some_and(|arg| arg == "pilot-fixture")
+    {
+        return Err(LifecycleError::Usage("development_fixture_refused".into()));
+    }
     if args.is_empty() {
         println!("cryptexd M0 foundation");
         return Ok(());

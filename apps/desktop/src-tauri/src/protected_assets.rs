@@ -5,6 +5,12 @@ use std::borrow::Cow;
 use tauri::utils::assets::{AssetKey, AssetsIter, CspHash};
 
 pub struct SnapshotAssets(ProtectedContent);
+
+pub const APP_IDENTIFIER: &str = if cfg!(feature = "m8-development-product") {
+    "com.cryptex.development.desktop"
+} else {
+    "com.cryptex.m8.native-ui-fixture"
+};
 impl<R: tauri::Runtime> tauri::Assets<R> for SnapshotAssets {
     fn get(&self, key: &AssetKey) -> Option<Cow<'_, [u8]>> {
         self.0.get(key.as_ref()).map(Cow::Borrowed)
@@ -28,7 +34,7 @@ pub fn install<R: tauri::Runtime>(
 ) {
     // Both debug and embedded-protocol builds must use the same compiled CSP.
     let config = context.config_mut();
-    config.identifier = "com.cryptex.m8.native-ui-fixture".into();
+    config.identifier = APP_IDENTIFIER.into();
     config.app.app_directories_override = Some(tauri::utils::config::AppDirectoriesOverride::Root(
         runtime.join("ui-data"),
     ));

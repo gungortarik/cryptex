@@ -56,7 +56,7 @@ impl ContentProfile {
         )
     }
 }
-const RELEASE: &str = "m8-local-startup-v1";
+const RELEASE: &str = env!("CRYPTEX_COMPILED_RELEASE_ID");
 const VERIFICATION_HINT: &[u8] = b"cryptex-m8-verification-progress-v1\n";
 #[path = "local_client.rs"]
 mod client;
@@ -136,8 +136,8 @@ impl Release {
             architecture,
             publisher: PublisherDefinition {
                 signing: SigningProfile::LocalCertificate { der: CERT },
-                desktop_identifier: "com.cryptex.m8.local-startup.desktop",
-                daemon_identifier: "com.cryptex.m8.local-startup.daemon",
+                desktop_identifier: env!("CRYPTEX_COMPILED_DESKTOP_ID"),
+                daemon_identifier: env!("CRYPTEX_COMPILED_DAEMON_ID"),
             },
         };
         let bundle = VerifiedInventory::verify(&raw, &cms, trust, deadline)
@@ -293,6 +293,9 @@ impl Prepared {
         Self::current_profile(timeout, ContentProfile::Ephemeral)
     }
     pub fn current_profile(timeout: Duration, profile: ContentProfile) -> Result<Self, Error> {
+        if cfg!(feature = "m8-development-product") && profile != ContentProfile::ExistingProfile {
+            return Err(Error::Arguments);
+        }
         if profile == ContentProfile::ExistingProfile {
             crate::import_staging::macos_fs::require_product_os().map_err(|_| Error::Image)?;
         }
@@ -308,6 +311,11 @@ impl Prepared {
     /// The path is a launch locator. Only the subsequent native live image and
     /// exact-instance checks establish this isolated startup observation.
     pub fn launch(self, mut command: Command, ready: &Path) -> Result<LocalDaemon, Error> {
+        if cfg!(feature = "m8-development-product")
+            && self.content_profile != Some(ContentProfile::ExistingProfile)
+        {
+            return Err(Error::Arguments);
+        }
         check_time(self.deadline)?;
         if Path::new(command.get_program()) != self.daemon_path() {
             return Err(Error::Arguments);
@@ -646,6 +654,11 @@ pub fn child_gate(args: &mut Vec<String>) -> Result<Option<ChildGuard>, Error> {
         _ => None,
     };
     let runtime = PathBuf::from(&args[3]);
+    if cfg!(feature = "m8-development-product")
+        && content_profile != Some(ContentProfile::ExistingProfile)
+    {
+        return Err(Error::Arguments);
+    }
     if let Some(profile) = content_profile {
         require_content_runtime(&runtime, profile)?;
     }
@@ -1079,5 +1092,31 @@ mod tests {
             assert!(matches!(child_gate(&mut args), Err(Error::Arguments)));
         }
         assert!(child_gate(&mut vec!["help".into()]).unwrap().is_none());
+    }
+}
+
+
+#[cfg(all(test, feature = "m8-development-product"))]
+mod development_product_tests {
+    use super::*;
+
+    #[test]
+    fn development_product_refuses_fixture_profiles_before_native_allocation() {
+        for profile in [ContentProfile::Ephemeral, ContentProfile::KeychainCreate,
+            ContentProfile::KeychainResume, ContentProfile::TransportCreate, ContentProfile::TransportResume] {
+            assert!(matches!(Prepared::current_profile(Duration::from_secs(1), profile), Err(Error::Arguments)));
+        }
+    }
+
+    #[test]
+    fn development_product_child_refuses_fixture_epoch_before_profile_access() {
+        for flag in [EPOCH_FLAG, CONTENT_EPOCH_FLAG, DURABLE_CREATE_FLAG, DURABLE_RESUME_FLAG,
+            TRANSPORT_CREATE_FLAG, TRANSPORT_RESUME_FLAG] {
+            let mut args = vec!["lifecycle".into(), "hold".into(), "--runtime-root".into(),
+                "/private/unused-cryptex-development".into(), "--ready-file".into(),
+                "/private/unused-cryptex-development/ready".into(), "--stop-file".into(),
+                "/private/unused-cryptex-development/stop".into(), flag.into(), "01".repeat(16)];
+            assert!(matches!(child_gate(&mut args), Err(Error::Arguments)));
+        }
     }
 }

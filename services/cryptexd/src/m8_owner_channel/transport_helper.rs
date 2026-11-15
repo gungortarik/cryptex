@@ -539,6 +539,11 @@ fn cleanup_fixture_key_with_busy<S: SecureStore + ?Sized>(
 }
 
 pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
+    if cfg!(feature = "m8-development-product")
+        && args.first().is_some_and(|arg| arg.starts_with("--m8-") && arg != FLAG)
+    {
+        return Some(Err(Error::Arguments));
+    }
     if let Some(result) = combined_loss::entry(args) {
         return Some(result);
     }
@@ -1591,5 +1596,19 @@ mod tests {
         assert!(private_root(&root).is_err());
         assert_eq!(std::fs::read(&link).unwrap(), MARKER);
         std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+
+#[cfg(all(test, feature = "m8-development-product"))]
+mod development_product_tests {
+    use super::*;
+
+    #[test]
+    fn development_product_refuses_fixture_drivers_and_cleanup() {
+        for flag in ["--m8-local-transport-driver", "--m8-local-transport-mutation-driver",
+            "--m8-local-transport-loss-driver", "--m8-local-transport-fixture-key-cleanup", COMBINED_FLAG] {
+            assert!(matches!(entry(&[flag.into(), "/private/unused-cryptex-development".into()]), Some(Err(Error::Arguments))));
+        }
     }
 }

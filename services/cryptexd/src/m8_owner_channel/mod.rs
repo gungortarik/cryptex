@@ -8,6 +8,10 @@
 
 use std::fmt;
 
+#[cfg(test)]
+#[path = "../../build_support/development_policy.rs"]
+mod development_policy_tests;
+
 mod image_policy;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
 pub mod local_startup;

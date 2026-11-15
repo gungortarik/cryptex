@@ -1,6 +1,13 @@
 # ADR-0021 — Disabled macOS managed transport helper
 
 Status: **ACCEPTED FOR DISABLED DEVELOPMENT AND ISOLATED TESTS ONLY.**
+
+November 15 amendment: the owner accepted the
+[controlled product integration](../proposals/m8-product-flow-activation-20261115.md)
+including verified peer/folder configuration and daemon-only sealed-record
+export through the untrusted exchange tree. Implement and verify this path for
+the explicitly provisioned development build; lifecycle/identity/cleanup
+requirements below remain mandatory. No blanket production activation follows.
 Date: 2026-11-12.
 
 The owner was shown the [concrete helper proposal](../proposals/m8-macos-transport-identity-binding.md)

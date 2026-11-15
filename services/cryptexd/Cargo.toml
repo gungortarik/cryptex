@@ -8,6 +8,8 @@ publish = false
 [features]
 # Isolated, headless real-binary startup experiment. Never enables owner routes.
 m8-local-startup-check = []
+# Owner-approved controlled integration; independently pinned development policy.
+m8-development-product = ["m8-local-startup-check"]
 
 [[bin]]
 name = "cryptexd"

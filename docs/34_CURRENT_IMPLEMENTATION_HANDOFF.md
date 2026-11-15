@@ -2,6 +2,23 @@
 
 ## Normal product-flow continuation — November15
 
+Owner decision received: "Önerilen ürün entegrasyonunu uygula". The proposal and
+ADR-0020/0021 scope amendment now authorize controlled development integration.
+Do not ask again. Implementation/CI/review, not authority, is the current gate.
+
+First implementation slice adds explicit build-time development DER/release pins,
+distinct image identifiers, a normal development Desktop entry using protected
+content and ExistingProfile native sessions, and refuses fixture creation/driver
+paths in that build. Existing accepted Unix data APIs use the same daemon's
+admission; M8 owner requests remain on the native connection, with no Unix
+fallback. A diagnostic opens an explicitly supplied existing profile without
+initializing it and verifies startup/cleanup. Normal launch uses the stable
+development application-data profile. Capture draft confirmation and native
+child cleanup are retained; full installed UX acceptance is still pending.
+Native CI now builds/signs this separately and checks preexisting canonical bytes
+across restart plus refusal paths. Native results/review remain pending. Peer/
+folder policy, outgoing export and real-device package are not implemented yet.
+
 The owner requested normal product integration and a real two-device durable
 sync test after the corrected Mac receipt. Source audit at8cf54e4 confirmed
 three remaining implementation boundaries: configured release/ordinary native
@@ -15,8 +32,8 @@ It retains macOS26/local signing and recommends normal entry in an explicitly
 provisioned development build, a daemon-managed untrusted exchange tree, then a
 single Windows/Mac offline/reconnect/restart/restriction package. ADR-0020 and
 ADR-0021 are accepted for disabled development only; the outgoing exchange
-extension also needs acceptance of its concrete direction. Await that selection
-before changing those boundaries. No repeat of5ca78781 is needed. M8 remains open.
+extension was included in the accepted selection above. No repeat of5ca78781 is
+needed. M8 remains open.
 
 ## Mac descriptor correction and owner acceptance — November15
 

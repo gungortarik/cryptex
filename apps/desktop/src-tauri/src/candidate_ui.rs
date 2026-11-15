@@ -730,7 +730,20 @@ async fn p0_3_ipc_health(state: tauri::State<'_, Client>) -> Result<(), String> 
     async_call(state.inner().clone(), Work::Ping).await
 }
 #[tauri::command]
+#[cfg(not(feature = "m8-development-product"))]
 fn p0_5_set_capture_session_guard() {}
+#[cfg(feature = "m8-development-product")]
+#[derive(Default)]
+struct DevelopmentDraft(AtomicBool);
+#[cfg(feature = "m8-development-product")]
+#[tauri::command]
+fn p0_5_set_capture_session_guard(
+    dirty: bool,
+    sync_failed: Option<bool>,
+    state: tauri::State<'_, DevelopmentDraft>,
+) {
+    state.0.store(dirty || sync_failed.unwrap_or(false), Ordering::Release);
+}
 fn install_context(
     content: cryptexd::ProtectedContent,
     runtime: &Path,
@@ -745,7 +758,7 @@ fn install_context(
     if context.assets().get(&"/index.html".into()).as_deref() != Some(original.as_slice())
         || context.assets().get(&"/unlisted.js".into()).is_some()
         || context.config().build.dev_url.is_some()
-        || context.config().identifier != "com.cryptex.m8.native-ui-fixture"
+        || context.config().identifier != super::protected_assets::APP_IDENTIFIER
         || context.config().app.app_directories_override.is_none()
         || context
             .config()
@@ -1313,6 +1326,104 @@ pub fn entry() -> Option<Result<(), String>> {
                 eprintln!("candidate_ui_shutdown: {error}");
                 std::process::exit(2);
             }
+        });
+        Ok(())
+    })())
+}
+
+
+/// The selected development build always owns normal entry. No failure falls
+/// through to fixture commands, environment daemon overrides or legacy startup.
+#[cfg(feature = "m8-development-product")]
+pub fn development_entry() -> Option<Result<(), String>> {
+    Some((|| {
+        use tauri::Manager;
+        let args: Vec<_> = std::env::args_os().skip(1).collect();
+        let mode = super::development_launch::mode(&args)?;
+        let (runtime, check_only) = match mode {
+            super::development_launch::Mode::Window => (super::development_launch::runtime(std::env::var_os("HOME").as_deref())?, false),
+            super::development_launch::Mode::Check(root) => (root, true),
+        };
+        let (owner, content) = Owner::start_profile(&runtime, ContentProfile::ExistingProfile)?;
+        let (mut context, binding) = install_context(content, &runtime)?;
+        owner.client.call(|reply| Work::Bind(binding, reply))?;
+        owner.client.call(Work::Ping)?;
+        if check_only {
+            owner.client.call(Work::ProfileStatus)?;
+            super::p0_3_ipc_health()?;
+            owner.close()?;
+            println!("development_existing_profile_startup_and_cleanup=passed");
+            return Ok(());
+        }
+        let mut window = context.config().app.windows.first().cloned().ok_or("development_window")?;
+        window.title = "Cryptex".into();
+        context.config_mut().app.windows.clear();
+        let app = tauri::Builder::default()
+            .plugin(tauri_plugin_opener::init())
+            .manage(owner.client.clone())
+            .manage(DevelopmentDraft::default())
+            .menu(super::build_cryptex_app_menu)
+            .on_menu_event(|app, event| {
+                if super::is_app_menu_quit_id(event.id().as_ref()) {
+                    app.exit(0);
+                }
+            })
+            .invoke_handler(tauri::generate_handler![
+                m8_native_profile_status,
+                m8_new_bootstrap_transaction_id,
+                m8_read_bootstrap_brain_identity,
+                m8_read_transport_device_id,
+                m8_create_bootstrap_offer,
+                m8_create_bootstrap_proof,
+                m8_prepare_peer_approval,
+                m8_confirm_peer_approval,
+                m8_cancel_peer_approval,
+                m8_complete_peer_approval,
+                m8_prepare_owner_security_operation,
+                m8_confirm_owner_security_operation,
+                m8_cancel_owner_security_operation,
+                p0_5_set_capture_session_guard,
+                super::p0_3_ipc_health,
+                super::p0_4_guarded_search,
+                super::p0_5_guarded_timeline,
+                super::p0_5_guarded_event_detail,
+                super::p0_5_capture_memory,
+                super::p0_5_resolve_capture,
+                super::p0_6_materialize_and_open_vault,
+            ])
+            .on_window_event(|window, event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    window.app_handle().exit(0);
+                }
+            })
+            .setup(move |app| {
+                tauri::WebviewWindowBuilder::from_config(app, &window)?
+                    .incognito(true)
+                    .on_navigation(|url| url.scheme() == "tauri" && url.host_str() == Some("localhost"))
+                    .build()?;
+                Ok(())
+            })
+            .build(context)
+            .map_err(|_| "development_window")?;
+        let mut owner = Some(owner);
+        app.run(move |app, event| match event {
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                if app.state::<DevelopmentDraft>().0.load(Ordering::Acquire)
+                    && !super::native_confirm_discard_and_quit(super::CAPTURE_QUIT_WARNING)
+                {
+                    api.prevent_exit();
+                }
+            }
+            tauri::RunEvent::Exit => {
+                if let Some(owner) = owner.take()
+                    && let Err(error) = owner.close()
+                {
+                    eprintln!("development_shutdown: {error}");
+                    std::process::exit(2);
+                }
+            }
+            _ => {}
         });
         Ok(())
     })())
