@@ -58,9 +58,11 @@ jobs:
       - name: Check source formatting
         run: cargo fmt --all -- --check
       - name: Test actual concurrent Darwin directory and lock creation
-        run: cargo test --locked -p cryptexd --lib import_staging::macos_fs::tests:: -- --test-threads=1
+        run: |
+          cargo test --locked -p cryptexd --lib import_staging::macos_fs::tests:: -- --test-threads=1
       - name: Test actual concurrent canonical capture
-        run: cargo test --locked -p cryptexd --lib capture::tests::concurrent_matching_capture_ids_append_once -- --test-threads=1
+        run: |
+          cargo test --locked -p cryptexd --lib capture::tests::concurrent_matching_capture_ids_append_once -- --test-threads=1
 
   schema-candidate:
     if: ${{ !inputs.mac_import_diagnostics_only && (github.event_name == 'workflow_dispatch' && inputs.schema_candidate_only) }}
