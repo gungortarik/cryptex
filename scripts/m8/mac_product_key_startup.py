@@ -25,7 +25,7 @@ def profile_snapshot(profile):
             raise PreflightError('product_key_identity_unsafe')
         result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     events = profile / 'canonical/events'
-    result['events'] = canonical_hashes(profile) if events.exists() else {}
+    result['events'] = canonical_hashes(profile) if events.exists() or events.is_symlink() else {}
     return result
 
 

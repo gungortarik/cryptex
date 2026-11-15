@@ -4,12 +4,28 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import sys
 
 from mac_identity_preflight import CommandResult, PreflightError
-from mac_product_key_startup import exercise
+from mac_product_key_startup import exercise, profile_snapshot
 
 
 class ProductKeyTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == 'darwin', 'actual Darwin symlink refusal')
+    def test_dangling_event_directory_is_not_an_empty_canonical_tree(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            device = '11111111-1111-4111-8111-111111111111'
+            key = root / 'identity/devices' / device.encode().hex() / 'event_signing_key.json'
+            key.parent.mkdir(parents=True)
+            key.write_bytes(b'public')
+            (root / 'identity/brain_identity.json').write_bytes(b'public')
+            (root / 'identity/local_device.json').write_text(json.dumps({'device_id': device}))
+            (root / 'canonical').mkdir()
+            (root / 'canonical/events').symlink_to(root / 'absent')
+            with self.assertRaises(PreflightError):
+                profile_snapshot(root)
+
     def test_actual_daemon_enrolls_and_changed_metadata_or_event_is_not_accepted(self):
         for failure in ('none', 'metadata', 'event', 'raw', 'failed_enroll'):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:

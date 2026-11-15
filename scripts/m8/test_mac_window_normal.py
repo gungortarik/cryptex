@@ -8,15 +8,50 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import uuid
+import hashlib
+import zipfile
 
 from mac_identity_preflight import CommandResult, PreflightError
 from mac_normal_profile import DefaultProfile
 from mac_normal_owner import exercise
 from mac_window_process import WindowProcess
 from test_mac_window import clean
+from mac_development_diagnostic_package import export_failed
+from mac_development_diagnostic_owner import verify_package
+from package_mac_normal import build
 
 
 class NormalArgumentsTests(unittest.TestCase):
+    def test_normal_package_preserves_signed_images_and_records_distinct_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / 'app'
+            files = []
+            for name in ('Contents/MacOS/cryptex-desktop', 'Contents/MacOS/cryptexd',
+                         'Contents/Resources/frontend/index.html'):
+                path = bundle / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'signed fixture bytes')
+                files.append({'path': name, 'size': path.stat().st_size,
+                              'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+            for name in ('m8-startup.json', 'm8-startup.cms'):
+                (bundle / 'Contents/Resources' / name).write_bytes(b'public')
+            creator = root / 'creator'
+            creator.write_bytes(b'fixture image')
+            source, output = root / 'source.zip', root / 'normal.zip'
+            export_failed(bundle, files, creator, source, 'a' * 40, 'arm64', 'notAfter=Nov 20 00:00:00 2099 GMT')
+            build(source, output, hashlib.sha256(source.read_bytes()).hexdigest(), 'b' * 40)
+            with zipfile.ZipFile(output) as archive:
+                self.assertIsNone(archive.testzip())
+                meta = json.loads(archive.read('Cryptex-Mac-Normal/diagnostic.json'))
+                self.assertEqual(meta['normal_test'], 'absent_default_root_v1')
+                self.assertNotIn('window_test', meta)
+                self.assertNotIn('Cryptex-Mac-Normal/MAC-PENCERE.command', archive.namelist())
+                self.assertEqual(archive.getinfo('Cryptex-Mac-Normal/MAC-NORMAL.command').external_attr >> 16, 0o100700)
+                self.assertEqual(archive.read('Cryptex-Mac-Normal/development.app/Contents/MacOS/cryptexd'), b'signed fixture bytes')
+                archive.extractall(root / 'extracted')
+            verify_package(root / 'extracted/Cryptex-Mac-Normal', meta)
+
     def test_no_argument_launch_retains_real_home(self):
         with patch.dict(os.environ, {'HOME': '/owner'}):
             process = WindowProcess(Path('/app/desktop'), None)

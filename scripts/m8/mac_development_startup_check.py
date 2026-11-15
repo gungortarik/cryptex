@@ -208,9 +208,16 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
         (daemon, ["--m8-local-transport-driver", str(root / "must-not-create")], "mac_transport_Arguments"),
     ):
         require_refusal(run_bounded([str(binary), *args], 30), code)
+    fixture_refusal = root / "product-fixture-refusal"
+    fixture_refusal.mkdir(mode=0o700)
+    marker = fixture_refusal / "pilot-runtime.marker"
+    marker.write_bytes(b"m0-native-desktop-runtime-v1\n")
     refused = run_bounded([str(daemon), "pilot-fixture", "brain-only-v1", "--runtime-root",
-                           str(root / "must-not-create"), "--confirm-isolated-pilot"], 30)
-    if refused.code != 2 or refused.timed_out or refused.limited or refused.pipe_failed:
+                           str(fixture_refusal), "--confirm-isolated-pilot"], 30)
+    if (refused.code != 2 or refused.timed_out or refused.limited or refused.pipe_failed
+            or "cryptexd: development_fixture_refused" not in refused.output.splitlines()
+            or list(fixture_refusal.iterdir()) != [marker]
+            or marker.read_bytes() != b"m0-native-desktop-runtime-v1\n"):
         raise PreflightError("development_brain_fixture_not_refused")
     if (root / "must-not-create").exists():
         raise PreflightError("development_refusal_created_profile")
