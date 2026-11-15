@@ -466,6 +466,11 @@ impl ImportStagingSession {
                 "a prepared import transaction requires startup reconciliation".into(),
             ));
         }
+        let _cleanup_slot = if self._single_flight.is_none() {
+            Some(cleanup::lock_slot(&self.runtime_root)?)
+        } else {
+            None
+        };
         self._directory_handles.clear();
         remove_unprepared_transaction(&self.staging_dir)
     }

@@ -1039,7 +1039,8 @@ fn add_policy_conflict_kind(fixture: &mut Fixture, terminal: bool) -> PathBuf {
             sequence,
             &previous,
             &issuer_key.signing_key,
-        ).unwrap();
+        )
+        .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&retirement).unwrap();
         previous = ContentHashHex::parse(value["content_hash"].as_str().unwrap()).unwrap();
         sequence += 1;
@@ -1068,7 +1069,8 @@ fn add_policy_conflict_kind(fixture: &mut Fixture, terminal: bool) -> PathBuf {
         fs::File::create(fixture.receiver.join("transport/incoming").join(&relative)).unwrap();
     bodies.push(body);
     for body in bodies {
-        file.write_all(&cryptex_events::encode_frame_header(body.len() as u32).unwrap()).unwrap();
+        file.write_all(&cryptex_events::encode_frame_header(body.len() as u32).unwrap())
+            .unwrap();
         file.write_all(&body).unwrap();
     }
     drop(file);
@@ -1090,14 +1092,21 @@ fn authenticated_terminal_tail_is_retained_and_rechecked_after_restart() {
     let mut fixture = Fixture::new();
     add_policy_conflict_kind(&mut fixture, true);
     let before = event_hashes(&fixture.receiver);
-    assert!(matches!(fixture.publish(), Err(IncomingPublicationError::PolicyHeld(
-        crate::import_staging::AuthenticatedPolicyConflict::TerminalRetirementTail
-    ))));
-    let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
-    assert!(matches!(recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV),
-        Err(IncomingPublicationError::RecoveryRequired(ImportStagingError::PolicyConflict(
+    assert!(matches!(
+        fixture.publish(),
+        Err(IncomingPublicationError::PolicyHeld(
             crate::import_staging::AuthenticatedPolicyConflict::TerminalRetirementTail
-        )))));
+        ))
+    ));
+    let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
+    assert!(matches!(
+        recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV),
+        Err(IncomingPublicationError::RecoveryRequired(
+            ImportStagingError::PolicyConflict(
+                crate::import_staging::AuthenticatedPolicyConflict::TerminalRetirementTail
+            )
+        ))
+    ));
     assert!(instance.admission().enter(&fixture.receiver).is_err());
     assert_eq!(event_hashes(&fixture.receiver), before);
 }
@@ -1313,52 +1322,56 @@ fn interrupted_unclassified_ready_or_mixed_bad_batch_aborts_on_first_restart() {
     use std::process::{Command, Stdio};
     use std::time::Duration;
     for malformed in [false, true] {
-    let mut fixture = Fixture::new();
-    if malformed {
-        let conflict = add_policy_conflict(&mut fixture);
-        fs::OpenOptions::new().append(true).open(fixture.receiver.join("transport/incoming").join(conflict))
-            .unwrap().write_all(b"incomplete frame").unwrap();
-    }
-    let before = event_hashes(&fixture.receiver);
-    let seed = fixture
-        .store
-        .get(
-            crate::ServiceLabel::device_credentials(ENV).as_str(),
-            crate::AccountLabel::device_event_signing_seed(&fixture.report.receiver_device)
-                .as_str(),
+        let mut fixture = Fixture::new();
+        if malformed {
+            let conflict = add_policy_conflict(&mut fixture);
+            fs::OpenOptions::new()
+                .append(true)
+                .open(fixture.receiver.join("transport/incoming").join(conflict))
+                .unwrap()
+                .write_all(b"incomplete frame")
+                .unwrap();
+        }
+        let before = event_hashes(&fixture.receiver);
+        let seed = fixture
+            .store
+            .get(
+                crate::ServiceLabel::device_credentials(ENV).as_str(),
+                crate::AccountLabel::device_event_signing_seed(&fixture.report.receiver_device)
+                    .as_str(),
+            )
+            .unwrap();
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "incoming_publication::tests::publication_interrupt_worker",
+                "--nocapture",
+            ])
+            .env("CRYPTEX_TEST_PUBLICATION_ROOT", &fixture.receiver)
+            .env(
+                crate::test_interrupt::INTERRUPT_ENV,
+                "m8_policy_intent_synced",
+            )
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        serde_json::to_writer(
+            child.stdin.take().unwrap(),
+            &(&fixture.report.receiver_device, seed, &fixture.paths),
         )
         .unwrap();
-    let mut child = Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "incoming_publication::tests::publication_interrupt_worker",
-            "--nocapture",
-        ])
-        .env("CRYPTEX_TEST_PUBLICATION_ROOT", &fixture.receiver)
-        .env(
-            crate::test_interrupt::INTERRUPT_ENV,
-            "m8_policy_intent_synced",
-        )
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .spawn()
-        .unwrap();
-    serde_json::to_writer(
-        child.stdin.take().unwrap(),
-        &(&fixture.report.receiver_device, seed, &fixture.paths),
-    )
-    .unwrap();
-    let status =
-        crate::test_interrupt::wait_child_bounded(&mut child, Duration::from_secs(30)).unwrap();
-    assert_eq!(
-        status.code(),
-        Some(crate::test_interrupt::INTERRUPT_EXIT_CODE)
-    );
-    let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
-    recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV).unwrap();
-    assert!(instance.admission().enter(&fixture.receiver).is_ok());
-    assert_eq!(event_hashes(&fixture.receiver), before);
-    fixture.assert_clean();
+        let status =
+            crate::test_interrupt::wait_child_bounded(&mut child, Duration::from_secs(30)).unwrap();
+        assert_eq!(
+            status.code(),
+            Some(crate::test_interrupt::INTERRUPT_EXIT_CODE)
+        );
+        let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
+        recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV).unwrap();
+        assert!(instance.admission().enter(&fixture.receiver).is_ok());
+        assert_eq!(event_hashes(&fixture.receiver), before);
+        fixture.assert_clean();
     }
 }
 

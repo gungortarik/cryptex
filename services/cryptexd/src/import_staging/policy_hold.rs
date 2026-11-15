@@ -197,6 +197,7 @@ impl ImportStagingSession {
         intent.validate()?;
         let bytes = canonical_bytes(&intent)?;
         let _slot = review_slot(&self.runtime_root)?;
+        check_review_namespace(&self.runtime_root, &self.transaction_id)?;
         // Set before the first write: uncertain persistence cannot clean-abort.
         self.policy_review = true;
         persist_new(&self.staging_dir.join(INTENT_NAME), &bytes)?;
@@ -222,6 +223,7 @@ impl ImportStagingSession {
             return Ok(());
         }
         let _slot = review_slot(&self.runtime_root)?;
+        check_review_namespace(&self.runtime_root, &self.transaction_id)?;
         let intent = read_intent_pair(&self.runtime_root, &self.transaction_id)?;
         if entry_exists(&self.staging_dir.join(LATCH_NAME))?
             || entry_exists(&journal_path(
@@ -250,6 +252,7 @@ impl ImportStagingSession {
         reason: AuthenticatedPolicyConflict,
     ) -> Result<(), ImportStagingError> {
         let _slot = review_slot(&self.runtime_root)?;
+        check_review_namespace(&self.runtime_root, &self.transaction_id)?;
         let intent = read_intent_pair(&self.runtime_root, &self.transaction_id)?;
         verify_review_files(&intent, &self.staging_dir, false)?;
         let decision = HeldDecision {
@@ -373,10 +376,22 @@ fn verify_review_files(
 }
 
 fn review_slot(root: &Path) -> Result<File, ImportStagingError> {
-    let lock = open_lock_file(&root.join("canonical/import-journal/import.lock"))?;
-    lock.try_lock_exclusive()
-        .map_err(|_| recovery("policy review import slot is busy"))?;
-    Ok(lock)
+    cleanup::lock_slot(root)
+}
+
+fn check_review_namespace(root: &Path, id: &str) -> Result<(), ImportStagingError> {
+    let journal = root.join("canonical/import-journal");
+    let allowed = [
+        journal.join("import.lock"),
+        journal_path(root, id, INTENT_NAME),
+        journal_path(root, id, LATCH_NAME),
+    ];
+    for entry in fs::read_dir(journal)? {
+        if !allowed.contains(&entry?.path()) {
+            return Err(recovery("unexpected policy review journal state"));
+        }
+    }
+    Ok(())
 }
 
 /// Called before legacy staging cleanup, and while instance/exclusive ownership
@@ -641,10 +656,17 @@ mod tests {
     fn held_seen_latch_makes_missing_final_decision_sticky_before_revalidation() {
         let (root, mut session, anchor) = fixture();
         session.begin_policy_review(BRAIN, &anchor).unwrap();
-        session.retain_policy_hold(AuthenticatedPolicyConflict::AdmissionDependency).unwrap();
+        session
+            .retain_policy_hold(AuthenticatedPolicyConflict::AdmissionDependency)
+            .unwrap();
         let decision = journal_path(&root, &session.transaction_id, LATCH_NAME);
         fs::remove_file(decision).unwrap();
-        let error = recover(&root, &crate::FakeSecureStore::new(), SecureStoreEnvironment::Dev).unwrap_err();
+        let error = recover(
+            &root,
+            &crate::FakeSecureStore::new(),
+            SecureStoreEnvironment::Dev,
+        )
+        .unwrap_err();
         assert!(error.to_string().contains("incomplete held decision"));
         assert!(session.finish_policy_review().is_err());
         assert!(session.discard().is_err());
