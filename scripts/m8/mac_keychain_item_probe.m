@@ -51,7 +51,7 @@ int main(int argc, const char **argv) {
         NSMutableDictionary *report = [NSMutableDictionary dictionary];
         NSString *creatorHash = imageHash(argv[2]), *productHash = imageHash(argv[3]);
         if (!creatorHash || !productHash) return 4;
-        report[@"different_image_cdhash"] = @(![creatorHash isEqualToString:productHash]);
+        report[@"different_image_cdhash"] = [creatorHash isEqualToString:productHash] ? @NO : @YES;
         OSStatus status = SecKeychainSetUserInteractionAllowed(false);
         report[@"interaction_disabled_status"] = @(status);
         if (status != errSecSuccess) return 3;
@@ -77,10 +77,10 @@ int main(int argc, const char **argv) {
                     SecKeychainStatus bits = 0;
                     status = SecKeychainGetStatus(keychain, &bits);
                     report[@"keychain_state_status"] = @(status);
-                    if (status == errSecSuccess) report[@"keychain_unlocked"] = @((bits & kSecUnlockStateStatus) != 0);
+                    if (status == errSecSuccess) report[@"keychain_unlocked"] = (bits & kSecUnlockStateStatus) ? @YES : @NO;
                     status = SecKeychainCopyDefault(&defaultKeychain);
                     report[@"default_keychain_status"] = @(status);
-                    if (status == errSecSuccess) report[@"item_in_default_keychain"] = @(CFEqual(keychain, defaultKeychain));
+                    if (status == errSecSuccess) report[@"item_in_default_keychain"] = CFEqual(keychain, defaultKeychain) ? @YES : @NO;
                 }
                 SecAccessRef access = NULL;
                 status = SecKeychainItemCopyAccess(item, &access);
@@ -95,11 +95,11 @@ int main(int argc, const char **argv) {
                         status = SecACLCopyContents((SecACLRef)CFArrayGetValueAtIndex(acls, 0), &apps, &description, &selector);
                         report[@"partition_contents_status"] = @(status);
                         NSArray *values = status == errSecSuccess ? partitions(description) : nil;
-                        report[@"partition_format_recognized"] = @(values != nil);
+                        report[@"partition_format_recognized"] = values ? @YES : @NO;
                         if (values) {
                             report[@"partition_count"] = @(values.count);
-                            report[@"creator_cdhash_allowed"] = @([values containsObject:[@"cdhash:" stringByAppendingString:creatorHash]]);
-                            report[@"product_cdhash_allowed"] = @([values containsObject:[@"cdhash:" stringByAppendingString:productHash]]);
+                            report[@"creator_cdhash_allowed"] = [values containsObject:[@"cdhash:" stringByAppendingString:creatorHash]] ? @YES : @NO;
+                            report[@"product_cdhash_allowed"] = [values containsObject:[@"cdhash:" stringByAppendingString:productHash]] ? @YES : @NO;
                         }
                     }
                 }
