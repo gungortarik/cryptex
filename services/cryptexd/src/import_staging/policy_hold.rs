@@ -196,6 +196,7 @@ impl ImportStagingSession {
         };
         intent.validate()?;
         let bytes = canonical_bytes(&intent)?;
+        let _slot = review_slot(&self.runtime_root)?;
         // Set before the first write: uncertain persistence cannot clean-abort.
         self.policy_review = true;
         persist_new(&self.staging_dir.join(INTENT_NAME), &bytes)?;
@@ -220,7 +221,8 @@ impl ImportStagingSession {
         if !self.policy_review {
             return Ok(());
         }
-        let _ = read_intent_pair(&self.runtime_root, &self.transaction_id)?;
+        let _slot = review_slot(&self.runtime_root)?;
+        let intent = read_intent_pair(&self.runtime_root, &self.transaction_id)?;
         if entry_exists(&self.staging_dir.join(LATCH_NAME))?
             || entry_exists(&journal_path(
                 &self.runtime_root,
@@ -232,6 +234,7 @@ impl ImportStagingSession {
                 "held policy evidence requires reviewed resolution",
             ));
         }
+        verify_review_files(&intent, &self.staging_dir, false)?;
         let journal = journal_path(&self.runtime_root, &self.transaction_id, INTENT_NAME);
         fs::remove_file(&journal)?;
         sync_staged_parent(&journal)?;
@@ -246,7 +249,9 @@ impl ImportStagingSession {
         &self,
         reason: AuthenticatedPolicyConflict,
     ) -> Result<(), ImportStagingError> {
+        let _slot = review_slot(&self.runtime_root)?;
         let intent = read_intent_pair(&self.runtime_root, &self.transaction_id)?;
+        verify_review_files(&intent, &self.staging_dir, false)?;
         let decision = HeldDecision {
             version: 1,
             purpose: "cryptex-incoming-policy-held".into(),
@@ -294,6 +299,84 @@ fn read_intent_pair(root: &Path, id: &str) -> Result<ReviewIntent, ImportStaging
         return Err(recovery("policy review inventory copies disagree"));
     }
     Ok(intent)
+}
+
+fn verify_review_files(
+    intent: &ReviewIntent,
+    staging: &Path,
+    latched: bool,
+) -> Result<(ImportBatchBudget, Vec<StagedSegment>), ImportStagingError> {
+    let mut expected = std::collections::BTreeSet::from([staging.join(INTENT_NAME)]);
+    if latched {
+        expected.insert(staging.join(LATCH_NAME));
+    }
+    let mut candidates = Vec::new();
+    let mut budget = ImportBatchBudget::empty();
+    for segment in &intent.segments {
+        let device = DeviceId::new(segment.device_id.clone())
+            .map_err(|_| recovery("invalid review device"))?;
+        let relative = format!(
+            "{}/{:020}.seg",
+            device.as_filename_stem(),
+            segment.segment_index
+        );
+        let path = staging.join(&relative);
+        let descriptor = PreparedImportSegment {
+            device_id: segment.device_id.clone(),
+            segment_index: segment.segment_index,
+            staged_relative_path: relative.clone(),
+            destination_relative_path: relative,
+            length: segment.length,
+            sha256: segment.sha256.clone(),
+        };
+        // This is only the shared exact-file validator, not a prepared manifest.
+        manifest_file_matches(&path, &descriptor, false)?;
+        expected.insert(path.clone());
+        budget.admit_file(segment.length)?;
+        candidates.push(StagedSegment {
+            device_id: device,
+            segment_index: segment.segment_index,
+            staged_path: path,
+            length: segment.length,
+            sha256: segment.sha256.clone(),
+        });
+    }
+    let mut actual = std::collections::BTreeSet::new();
+    for entry in fs::read_dir(staging)?.take(crate::import_limits::MAX_IMPORT_FILES_PER_BATCH + 3) {
+        let path = entry?.path();
+        let metadata = fs::symlink_metadata(&path)?;
+        if is_link_or_reparse(&metadata) {
+            return Err(recovery("linked policy evidence"));
+        }
+        if metadata.is_dir() {
+            ensure_existing_plain_directory(&path)?;
+            let mut count = 0;
+            for file in
+                fs::read_dir(&path)?.take(crate::import_limits::MAX_IMPORT_FILES_PER_BATCH + 1)
+            {
+                actual.insert(file?.path());
+                count += 1;
+            }
+            if count == 0 {
+                return Err(recovery("empty policy evidence directory"));
+            }
+        } else {
+            actual.insert(path);
+        }
+    }
+    if actual != expected {
+        return Err(recovery(
+            "policy review must retain its exact complete inventory",
+        ));
+    }
+    Ok((budget, candidates))
+}
+
+fn review_slot(root: &Path) -> Result<File, ImportStagingError> {
+    let lock = open_lock_file(&root.join("canonical/import-journal/import.lock"))?;
+    lock.try_lock_exclusive()
+        .map_err(|_| recovery("policy review import slot is busy"))?;
+    Ok(lock)
 }
 
 /// Called before legacy staging cleanup, and while instance/exclusive ownership
@@ -352,7 +435,6 @@ pub(super) fn recover<S: SecureStore + ?Sized>(
     let intent = read_intent_pair(root, &id)?;
     let staging = root.join("canonical/import-staging").join(&id);
     let staging_pins = inspect_directory_chain(&staging, true)?;
-    let mut expected = std::collections::BTreeSet::from([staging.join(INTENT_NAME)]);
     let latch_path = staging.join(LATCH_NAME);
     let held_path = journal_path(root, &id, LATCH_NAME);
     let latched = entry_exists(&latch_path)?;
@@ -363,7 +445,6 @@ pub(super) fn recover<S: SecureStore + ?Sized>(
         ));
     }
     let decision = if latched {
-        expected.insert(latch_path.clone());
         let latch: HeldDecision = read_closed(&latch_path)?;
         let held: HeldDecision = read_closed(&held_path)?;
         if latch != held
@@ -379,66 +460,7 @@ pub(super) fn recover<S: SecureStore + ?Sized>(
     } else {
         None
     };
-    let mut candidates = Vec::new();
-    let mut budget = ImportBatchBudget::empty();
-    for segment in &intent.segments {
-        let device = DeviceId::new(segment.device_id.clone())
-            .map_err(|_| recovery("invalid review device"))?;
-        let relative = format!(
-            "{}/{:020}.seg",
-            device.as_filename_stem(),
-            segment.segment_index
-        );
-        let path = staging.join(&relative);
-        let descriptor = PreparedImportSegment {
-            device_id: segment.device_id.clone(),
-            segment_index: segment.segment_index,
-            staged_relative_path: relative.clone(),
-            destination_relative_path: relative,
-            length: segment.length,
-            sha256: segment.sha256.clone(),
-        };
-        // This is only the shared exact-file validator, not a prepared manifest.
-        manifest_file_matches(&path, &descriptor, false)?;
-        expected.insert(path.clone());
-        budget.admit_file(segment.length)?;
-        candidates.push(StagedSegment {
-            device_id: device,
-            segment_index: segment.segment_index,
-            staged_path: path,
-            length: segment.length,
-            sha256: segment.sha256.clone(),
-        });
-    }
-    let mut actual = std::collections::BTreeSet::new();
-    for entry in fs::read_dir(&staging)?.take(crate::import_limits::MAX_IMPORT_FILES_PER_BATCH + 3)
-    {
-        let path = entry?.path();
-        let metadata = fs::symlink_metadata(&path)?;
-        if is_link_or_reparse(&metadata) {
-            return Err(recovery("linked policy evidence"));
-        }
-        if metadata.is_dir() {
-            ensure_existing_plain_directory(&path)?;
-            let mut count = 0;
-            for file in
-                fs::read_dir(&path)?.take(crate::import_limits::MAX_IMPORT_FILES_PER_BATCH + 1)
-            {
-                actual.insert(file?.path());
-                count += 1;
-            }
-            if count == 0 {
-                return Err(recovery("empty policy evidence directory"));
-            }
-        } else {
-            actual.insert(path);
-        }
-    }
-    if actual != expected {
-        return Err(recovery(
-            "policy review must retain its exact complete inventory",
-        ));
-    }
+    let (budget, candidates) = verify_review_files(&intent, &staging, latched)?;
     let brain = crate::identity_runtime::load_brain_identity(root)
         .map_err(|_| recovery("policy review Brain unavailable"))?;
     let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
@@ -596,6 +618,36 @@ mod tests {
         assert!(session.discard().is_err());
         assert!(stage.join(INTENT_NAME).exists());
         assert!(recover_import_staging(&root).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn changed_evidence_and_busy_import_slot_cannot_close_a_review_intent() {
+        let (root, mut session, anchor) = fixture();
+        session.begin_policy_review(BRAIN, &anchor).unwrap();
+        let marker = journal_path(&root, &session.transaction_id, INTENT_NAME);
+        let slot = review_slot(&root).unwrap();
+        assert!(session.finish_policy_review().is_err());
+        assert!(marker.exists());
+        drop(slot);
+        fs::write(&session.candidates[0].staged_path, b"changed evidence").unwrap();
+        assert!(session.finish_policy_review().is_err());
+        assert!(marker.exists());
+        assert!(session.discard().is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn held_seen_latch_makes_missing_final_decision_sticky_before_revalidation() {
+        let (root, mut session, anchor) = fixture();
+        session.begin_policy_review(BRAIN, &anchor).unwrap();
+        session.retain_policy_hold(AuthenticatedPolicyConflict::AdmissionDependency).unwrap();
+        let decision = journal_path(&root, &session.transaction_id, LATCH_NAME);
+        fs::remove_file(decision).unwrap();
+        let error = recover(&root, &crate::FakeSecureStore::new(), SecureStoreEnvironment::Dev).unwrap_err();
+        assert!(error.to_string().contains("incomplete held decision"));
+        assert!(session.finish_policy_review().is_err());
+        assert!(session.discard().is_err());
         fs::remove_dir_all(root).unwrap();
     }
 }

@@ -997,14 +997,18 @@ fn publication_interrupt_worker() {
 /// A genuine admitted peer restricts the local stream to genesis. Its own
 /// admission depends on that stream's grant, so the complete union must hold.
 fn add_policy_conflict(fixture: &mut Fixture) -> PathBuf {
+    add_policy_conflict_kind(fixture, false)
+}
+
+fn add_policy_conflict_kind(fixture: &mut Fixture, terminal: bool) -> PathBuf {
     use cryptex_events::{ContentHashHex, DeviceSeq, SigningKeyId};
     use std::io::Write;
     let next = fixture.append_next();
     let bytes = fs::read(fixture.source.join("canonical/events").join(&next)).unwrap();
     let prior: serde_json::Value =
         serde_json::from_slice(&bytes[cryptex_events::FRAME_HEADER_BYTES..]).unwrap();
-    let previous = ContentHashHex::parse(prior["content_hash"].as_str().unwrap()).unwrap();
-    let sequence: u64 = prior["device_seq"].as_str().unwrap().parse().unwrap();
+    let mut previous = ContentHashHex::parse(prior["content_hash"].as_str().unwrap()).unwrap();
+    let mut sequence: u64 = prior["device_seq"].as_str().unwrap().parse().unwrap();
     let issuer = DeviceId::new(fixture.report.source_device.clone()).unwrap();
     let target = DeviceId::new(fixture.report.receiver_device.clone()).unwrap();
     let issuer_key = crate::event_signing_key::load_existing_event_signing_key(
@@ -1021,6 +1025,26 @@ fn add_policy_conflict(fixture: &mut Fixture) -> PathBuf {
         &target,
     )
     .unwrap();
+    let mut bodies = Vec::new();
+    if terminal {
+        let retirement = cryptex_events::security_v3::sign_device_self_retired_event(
+            "88888888-8888-4888-8888-888888888888",
+            &fixture.report.brain_id,
+            &issuer,
+            DeviceSeq::from_u64(sequence + 1).unwrap(),
+            "2026-11-14T00:00:02Z",
+            &SigningKeyId::parse(&issuer_key.public.signing_key_id).unwrap(),
+            &previous,
+            &"ae".repeat(32),
+            sequence,
+            &previous,
+            &issuer_key.signing_key,
+        ).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&retirement).unwrap();
+        previous = ContentHashHex::parse(value["content_hash"].as_str().unwrap()).unwrap();
+        sequence += 1;
+        bodies.push(retirement);
+    }
     let body = cryptex_events::security_v3::sign_device_restricted_event(
         "99999999-9999-4999-8999-999999999999",
         &fixture.report.brain_id,
@@ -1042,9 +1066,11 @@ fn add_policy_conflict(fixture: &mut Fixture) -> PathBuf {
     let relative = PathBuf::from(issuer.as_filename_stem()).join("00000000000000000002.seg");
     let mut file =
         fs::File::create(fixture.receiver.join("transport/incoming").join(&relative)).unwrap();
-    file.write_all(&cryptex_events::encode_frame_header(body.len() as u32).unwrap())
-        .unwrap();
-    file.write_all(&body).unwrap();
+    bodies.push(body);
+    for body in bodies {
+        file.write_all(&cryptex_events::encode_frame_header(body.len() as u32).unwrap()).unwrap();
+        file.write_all(&body).unwrap();
+    }
     drop(file);
     fixture.paths.extend([next, relative.clone()]);
     relative
@@ -1057,6 +1083,23 @@ fn retained_transaction(root: &Path) -> PathBuf {
         .unwrap()
         .unwrap()
         .path()
+}
+
+#[test]
+fn authenticated_terminal_tail_is_retained_and_rechecked_after_restart() {
+    let mut fixture = Fixture::new();
+    add_policy_conflict_kind(&mut fixture, true);
+    let before = event_hashes(&fixture.receiver);
+    assert!(matches!(fixture.publish(), Err(IncomingPublicationError::PolicyHeld(
+        crate::import_staging::AuthenticatedPolicyConflict::TerminalRetirementTail
+    ))));
+    let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
+    assert!(matches!(recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV),
+        Err(IncomingPublicationError::RecoveryRequired(ImportStagingError::PolicyConflict(
+            crate::import_staging::AuthenticatedPolicyConflict::TerminalRetirementTail
+        )))));
+    assert!(instance.admission().enter(&fixture.receiver).is_err());
+    assert_eq!(event_hashes(&fixture.receiver), before);
 }
 
 #[test]
@@ -1265,30 +1308,58 @@ fn process_interruptions_of_policy_review_preserve_or_reconstruct_the_hold() {
 }
 
 #[test]
-fn interrupted_unclassified_mixed_bad_batch_rejects_whole_inventory_on_restart() {
+fn interrupted_unclassified_ready_or_mixed_bad_batch_aborts_on_first_restart() {
     use std::io::Write;
     use std::process::{Command, Stdio};
     use std::time::Duration;
+    for malformed in [false, true] {
     let mut fixture = Fixture::new();
-    let conflict = add_policy_conflict(&mut fixture);
-    fs::OpenOptions::new().append(true).open(fixture.receiver.join("transport/incoming").join(conflict))
-        .unwrap().write_all(b"incomplete frame").unwrap();
+    if malformed {
+        let conflict = add_policy_conflict(&mut fixture);
+        fs::OpenOptions::new().append(true).open(fixture.receiver.join("transport/incoming").join(conflict))
+            .unwrap().write_all(b"incomplete frame").unwrap();
+    }
     let before = event_hashes(&fixture.receiver);
-    let seed = fixture.store.get(crate::ServiceLabel::device_credentials(ENV).as_str(),
-        crate::AccountLabel::device_event_signing_seed(&fixture.report.receiver_device).as_str()).unwrap();
-    let mut child = Command::new(std::env::current_exe().unwrap()).args([
-        "--exact", "incoming_publication::tests::publication_interrupt_worker", "--nocapture"])
+    let seed = fixture
+        .store
+        .get(
+            crate::ServiceLabel::device_credentials(ENV).as_str(),
+            crate::AccountLabel::device_event_signing_seed(&fixture.report.receiver_device)
+                .as_str(),
+        )
+        .unwrap();
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "incoming_publication::tests::publication_interrupt_worker",
+            "--nocapture",
+        ])
         .env("CRYPTEX_TEST_PUBLICATION_ROOT", &fixture.receiver)
-        .env(crate::test_interrupt::INTERRUPT_ENV, "m8_policy_intent_synced")
-        .stdin(Stdio::piped()).stdout(Stdio::null()).spawn().unwrap();
-    serde_json::to_writer(child.stdin.take().unwrap(), &(&fixture.report.receiver_device, seed, &fixture.paths)).unwrap();
-    let status = crate::test_interrupt::wait_child_bounded(&mut child, Duration::from_secs(30)).unwrap();
-    assert_eq!(status.code(), Some(crate::test_interrupt::INTERRUPT_EXIT_CODE));
+        .env(
+            crate::test_interrupt::INTERRUPT_ENV,
+            "m8_policy_intent_synced",
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    serde_json::to_writer(
+        child.stdin.take().unwrap(),
+        &(&fixture.report.receiver_device, seed, &fixture.paths),
+    )
+    .unwrap();
+    let status =
+        crate::test_interrupt::wait_child_bounded(&mut child, Duration::from_secs(30)).unwrap();
+    assert_eq!(
+        status.code(),
+        Some(crate::test_interrupt::INTERRUPT_EXIT_CODE)
+    );
     let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
     recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV).unwrap();
     assert!(instance.admission().enter(&fixture.receiver).is_ok());
     assert_eq!(event_hashes(&fixture.receiver), before);
     fixture.assert_clean();
+    }
 }
 
 #[test]

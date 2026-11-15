@@ -420,6 +420,37 @@ fn signed_retirement_gap_content_policy_and_ambiguous_tails_enforce_the_terminal
 }
 
 #[test]
+fn terminal_conflict_never_hides_a_later_statically_invalid_signed_policy() {
+    let local = SigningKey::from_bytes(&[0x51; 32]);
+    let prior = make_v1("L", 1, ZERO_CONTENT_HASH_HEX, &local);
+    let retirement = policy(
+        "L",
+        &local,
+        3,
+        &hash(&prior),
+        "security.device_self_retired",
+        json!({"transaction_id":"33".repeat(32), "last_authorized_seq":"1", "last_authorized_content_hash":hash(&prior)}),
+    );
+    let invalid = restriction(
+        "L",
+        &local,
+        4,
+        &hash(&retirement),
+        ("L", &local),
+        999,
+        &"ab".repeat(32),
+    );
+    let mut records = vec![prior, retirement, invalid];
+    for _ in 0..2 {
+        assert!(matches!(
+            verify(&records, &local),
+            Err(TrustHold::InvalidPolicyHistory)
+        ));
+        records.reverse();
+    }
+}
+
+#[test]
 fn signed_retirement_cannot_name_an_earlier_record_to_manufacture_an_scc_breaker() {
     let local = SigningKey::from_bytes(&[0x51; 32]);
     let a = SigningKey::from_bytes(&[0x52; 32]);
