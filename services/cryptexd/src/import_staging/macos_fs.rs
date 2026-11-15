@@ -196,9 +196,12 @@ pub(crate) struct LockBinding {
 }
 impl LockBinding {
     pub(crate) fn open(path: &Path) -> io::Result<(File, Self)> {
-        let directory = Directory::open(path.parent().ok_or_else(unsafe_object)?, true)?;
+        let directory = Directory::open(path.parent().ok_or_else(unsafe_object)?, true)
+            .map_err(|error| at_stage("lock_parent_open", error))?;
         let name = path.file_name().ok_or_else(unsafe_object)?.to_owned();
-        let file = directory.open_file(&name, libc::O_RDWR | libc::O_CREAT)?;
+        let file = directory
+            .open_file(&name, libc::O_RDWR | libc::O_CREAT)
+            .map_err(|error| at_stage("lock_leaf_open", error))?;
         let binding = Self { directory, name };
         binding.validate(&file)?;
         Ok((file, binding))
@@ -674,10 +677,14 @@ mod tests {
                     let barrier = Arc::clone(&barrier);
                     std::thread::spawn(move || -> io::Result<()> {
                         barrier.wait();
-                        create_dir_all_owned(&directory)?;
-                        let (file, binding) = LockBinding::open(&directory.join("writer.lock"))?;
-                        fs2::FileExt::lock_exclusive(&file)?;
+                        create_dir_all_owned(&directory)
+                            .map_err(|error| at_stage("stress_create", error))?;
+                        let (file, binding) = LockBinding::open(&directory.join("writer.lock"))
+                            .map_err(|error| at_stage("stress_open", error))?;
+                        fs2::FileExt::lock_exclusive(&file)
+                            .map_err(|error| at_stage("stress_lock", error))?;
                         binding.validate(&file)
+                            .map_err(|error| at_stage("stress_binding", error))
                     })
                 })
                 .collect::<Vec<_>>();
