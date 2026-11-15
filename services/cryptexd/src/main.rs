@@ -327,6 +327,25 @@ fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
         );
         return Ok(());
     }
+    if args.first().map(String::as_str) == Some("prepare-empty-stream-v1") {
+        let [_, flag, root, confirm] = args else {
+            return Err(LifecycleError::Usage(
+                "empty stream fixture arguments".into(),
+            ));
+        };
+        if flag != "--runtime-root" || confirm != "--confirm-isolated-pilot" {
+            return Err(LifecycleError::Usage(
+                "empty stream fixture arguments".into(),
+            ));
+        }
+        let root = Path::new(root);
+        validate_marked_existing_pilot_root(root)?;
+        let instance = try_acquire_instance(root)?;
+        cryptexd::signed_transfer_probe::prepare_empty_local_stream(root, &instance)
+            .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+        println!("empty_local_stream_fixture=ready");
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("brain-only-v1") {
         let [_, flag, root, confirm] = args else {
             return Err(LifecycleError::Usage(

@@ -26,6 +26,11 @@ def profile_snapshot(profile):
         result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     events = profile / 'canonical/events'
     result['events'] = canonical_hashes(profile) if events.exists() or events.is_symlink() else {}
+    # This zero-byte coordination lock is not durable event data. All records,
+    # including unexpected filenames, remain in the compared inventory.
+    inventory_lock = result['events'].pop(str(Path('canonical/events/inventory.lock')), None)
+    if inventory_lock not in (None, hashlib.sha256(b'').hexdigest()):
+        raise PreflightError('product_key_inventory_lock_not_empty')
     return result
 
 
@@ -49,6 +54,8 @@ def exercise(root, desktop, creator, manifest, runner, run):
             metadata = profile / 'identity/local_device.json'
             if fence.stopped and metadata.exists():
                 device = str(uuid.UUID(_metadata(metadata)['device_id']))
+        fence.checked([creator, 'pilot-fixture', 'prepare-empty-stream-v1', '--runtime-root', profile,
+                       '--confirm-isolated-pilot'], 'prepare_empty_local_stream', 45)
         before = profile_snapshot(profile)
         if before['events']:
             raise PreflightError('product_key_fixture_not_empty')

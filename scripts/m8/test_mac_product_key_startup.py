@@ -38,6 +38,12 @@ class ProductKeyTests(unittest.TestCase):
                 key_path = profile / 'identity/devices' / device.encode().hex() / 'event_signing_key.json'
                 def runner(args, timeout):
                     calls.append(args)
+                    if 'prepare-empty-stream-v1' in args:
+                        (profile / 'canonical/events/inventory.lock').write_bytes(b'')
+                        stream = profile / 'canonical/events' / device.encode().hex()
+                        stream.mkdir()
+                        (stream / 'writer.lock').write_bytes(b'')
+                        return CommandResult(0, '')
                     if args[0] == 'creator':
                         (profile / 'identity').mkdir()
                         (profile / 'identity/brain_identity.json').write_bytes(b'public-brain')

@@ -56,6 +56,60 @@ impl std::fmt::Display for ProbeError {
 }
 impl std::error::Error for ProbeError {}
 
+/// Explicit pilot setup only: initialize an empty local stream through the
+/// canonical writer's locks. Never read/create a signing key or append an event.
+pub fn prepare_empty_local_stream(
+    root: &Path,
+    instance: &crate::instance::InstanceLock,
+) -> Result<(), ProbeError> {
+    if instance.path() != crate::paths::lock_path(root) {
+        return Err(ProbeError::Setup);
+    }
+    let events = root.join("canonical/events");
+    for path in [root.join("canonical"), events.clone()] {
+        let metadata = fs::symlink_metadata(path).map_err(|_| ProbeError::Setup)?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Err(ProbeError::Setup);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if metadata.file_attributes() & 0x400 != 0 {
+                return Err(ProbeError::Setup);
+            }
+        }
+    }
+    let first = fs::read_dir(&events).map_err(|_| ProbeError::Io)?.next();
+    if first.is_some() {
+        return Err(ProbeError::Setup);
+    }
+    let brain = crate::identity_runtime::load_brain_identity(root).map_err(|_| ProbeError::Setup)?;
+    let local = crate::local_device_identity::load_local_device_identity(root, &brain.brain_id)
+        .map_err(|_| ProbeError::Setup)?;
+    let device = DeviceId::new(local.device_id).map_err(|_| ProbeError::Setup)?;
+    let inventory = crate::canonical_writer::acquire_canonical_inventory_lock(root)
+        .map_err(|_| ProbeError::Setup)?;
+    for entry in fs::read_dir(events).map_err(|_| ProbeError::Io)? {
+        let entry = entry.map_err(|_| ProbeError::Io)?;
+        let metadata = fs::symlink_metadata(entry.path()).map_err(|_| ProbeError::Io)?;
+        if entry.file_name() != "inventory.lock" || !metadata.is_file() || metadata.len() != 0 {
+            return Err(ProbeError::Setup);
+        }
+    }
+    let device_lock = crate::canonical_writer::acquire_device_canonical_lock_under_inventory(
+        root,
+        &device,
+        &inventory,
+    )
+    .map_err(|_| ProbeError::Setup)?;
+    #[cfg(target_os = "macos")]
+    if !inventory.namespace_valid() || !device_lock.namespace_valid() {
+        return Err(ProbeError::Setup);
+    }
+    drop(device_lock);
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProbeDescriptor {
@@ -227,6 +281,40 @@ pub fn verify(bytes: &[u8], descriptor: &[u8]) -> Result<ProbeReport, ProbeError
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn empty_stream_fixture_preserves_identity_and_refuses_existing_inventory() {
+        let root = crate::test_temp::exclusive_temp_dir("empty-stream-probe");
+        let brain = cryptex_core::BrainIdentity::new(
+            "11111111-1111-4111-8111-111111111111",
+            "2026-11-15T00:00:00Z",
+        )
+        .unwrap();
+        crate::identity_runtime::write_brain_identity(&root, &brain).unwrap();
+        let store = crate::FakeSecureStore::new();
+        let local = crate::local_device_identity::enroll_local_device(
+            &root,
+            &store,
+            SecureStoreEnvironment::Dev,
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("canonical/events")).unwrap();
+        let device = DeviceId::new(local.device_id).unwrap();
+        let key = cryptex_storage::event_signing_key_path(&root, &device);
+        let before = fs::read(&key).unwrap();
+        let instance = crate::instance::try_acquire_instance(&root).unwrap();
+        prepare_empty_local_stream(&root, &instance).unwrap();
+        assert_eq!(fs::read(key).unwrap(), before);
+        let stream = cryptex_storage::canonical_events_device_dir(&root, &device);
+        let names = fs::read_dir(stream)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec![std::ffi::OsString::from("writer.lock")]);
+        assert!(prepare_empty_local_stream(&root, &instance).is_err());
+        drop(instance);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     fn fixture() -> (Vec<u8>, Vec<u8>) {
         let root = crate::test_temp::exclusive_temp_dir("signed-probe");
         let store = crate::FakeSecureStore::new();
