@@ -25,7 +25,10 @@
     "test_executions_passed": 62,
     "clippy": "passed",
     "temporary_account_profile_removed": true,
-    "negative_cases": ["corrupt canonical history", "occupied peer stream path"],
+    "negative_cases": [
+      "corrupt canonical history",
+      "occupied peer stream path"
+    ],
     "preservation": "Canonical event bytes unchanged across first and repeated recovery",
     "local_execution": "Blocked by Application Control 4551; no security override"
   },
@@ -51,7 +54,16 @@
     "signing": "unsigned development artifact; not release acceptance",
     "owner_action": "Quit VM Cryptex, extract update in VM, run VM-GUNCELLE.cmd as standard user; return result ZIP and Local connections screen. Preserve profile, pairing, Mac and paused sync."
   },
-  "owner_update_result": "pending",
+  "owner_update_result": {
+    "name": "VM-GUNCELLEME-SONUC-2f309e7a2c3a.zip",
+    "sha256": "ce4d6b04391c9159ce53dddf6beae8845230b4d867009684a63aa5cd59c0bad8",
+    "provenance_matches_expected": true,
+    "outcome": "installed_beside_old_app",
+    "launch_requested": true,
+    "normal_window_verified": false,
+    "network_delivery_verified": false,
+    "evidence_kind": "bounded unsigned owner receipt; not independent runtime attestation"
+  },
   "owner_attention_resolved": false,
   "network_delivery_verified": false,
   "m8_closed": false

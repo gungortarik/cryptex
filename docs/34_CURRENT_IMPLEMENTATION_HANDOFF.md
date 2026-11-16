@@ -1,5 +1,16 @@
 # 34 — Current Implementation Handoff
 
+## VM candidate installed; connection screen pending — November 16
+
+Owner receipt VM-GUNCELLEME-SONUC-2f309e7a2c3a.zip SHA256
+ce4d6b04391c9159ce53dddf6beae8845230b4d867009684a63aa5cd59c0bad8
+matches product17c1fed and tooling2ee4140. It reports installed_beside_old_app
+and launch_requested=true. This unsigned receipt does not verify the actual
+window, daemon readiness, resolved connection attention or network delivery.
+Next owner action: show Local connections in the newly launched VM app, with
+Pause sync still checked. If it did not open, use the update folder's generated
+CRYPTEX-AC.cmd. Do not rerun update/setup/pairing or change the Mac yet.
+
 ## Windows peer stream recovery candidate — November 16
 
 Owner diagnostic VM-ESLESTIRME-TANI-bcb37e4874ab.zip SHA256
