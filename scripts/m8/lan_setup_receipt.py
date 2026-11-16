@@ -9,6 +9,7 @@ import zipfile
 
 from lan_acceptance_receipt import unique_object
 from lan_acceptance_preflight import Refused
+from mac_lan_setup import BUILD_LABELS, BUILD_CODES
 
 STAGES = ('product_built_and_signed', 'fresh_profile_created', 'first_note_committed',
           'transport_enrolled_local_only', 'initialized_startup_restart', 'persistent_profile_preserved')
@@ -28,9 +29,27 @@ def validate(report, source, session):
         raise Refused('setup_receipt_binding')
     if any(report[k] is not False for k in ('pairing_authorized', 'network_delivery_verified', 'convergence_verified')):
         raise Refused('setup_receipt_scope')
-    allowed = BASE | set(STAGES) | DIGESTS | {'failed_stage', 'error'}
+    optional = {'build_tools', 'build_failure'}
+    allowed = BASE | set(STAGES) | DIGESTS | {'failed_stage', 'error'} | optional
     if set(report) - allowed or any(report[k] is not True for k in STAGES if k in report):
         raise Refused('setup_receipt_fields')
+    if 'build_tools' in report:
+        versions = report['build_tools']
+        if (not isinstance(versions, dict) or set(versions) - {'node', 'pnpm'}
+                or any(not isinstance(v, str) or not re.fullmatch(r'\d{1,4}\.\d{1,4}\.\d{1,4}', v)
+                       for v in versions.values())):
+            raise Refused('setup_tool_versions')
+    if 'build_failure' in report:
+        diagnostic = report['build_failure']
+        if (not isinstance(diagnostic, dict)
+                or set(diagnostic) != {'stage', 'exit_code', 'timed_out', 'output_limited', 'pipe_failed', 'codes'}
+                or not isinstance(diagnostic['stage'], str) or diagnostic['stage'] not in BUILD_LABELS
+                or type(diagnostic['exit_code']) is not int or not -(2**31) <= diagnostic['exit_code'] < 2**31
+                or any(type(diagnostic[k]) is not bool for k in ('timed_out', 'output_limited', 'pipe_failed'))
+                or not isinstance(diagnostic['codes'], list) or len(diagnostic['codes']) > len(BUILD_CODES)
+                or any(not isinstance(c, str) or c not in BUILD_CODES for c in diagnostic['codes'])
+                or report['outcome'] != 'refused_or_incomplete'):
+            raise Refused('setup_build_diagnostic')
     for key in DIGESTS:
         if key in report and (not isinstance(report[key], str) or not re.fullmatch('[a-f0-9]{64}', report[key])):
             raise Refused('setup_receipt_digest')
@@ -39,7 +58,7 @@ def validate(report, source, session):
         if report['first_note_sha256'] != expected:
             raise Refused('setup_note_mismatch')
     if report['outcome'] == 'prepared_local_only':
-        if set(report) != BASE | set(STAGES) | DIGESTS:
+        if set(report) - {'build_tools'} != BASE | set(STAGES) | DIGESTS:
             raise Refused('setup_receipt_incomplete_success')
     elif report['outcome'] == 'refused_or_incomplete':
         if 'failed_stage' not in report:

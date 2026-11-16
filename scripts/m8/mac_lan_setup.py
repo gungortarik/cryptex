@@ -75,13 +75,47 @@ def extract_source(archive_path, destination, expected):
 
 
 def tool(name):
-    search = os.pathsep.join([str(Path.home()/'.cargo/bin'), '/opt/homebrew/bin', '/usr/local/bin',
-                              '/usr/bin', '/bin', os.environ.get('PATH', '')])
+    search = os.pathsep.join([os.environ.get('PATH', ''), str(Path.home()/'.cargo/bin'),
+                              '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'])
     found = shutil.which(name, path=search)
     if not found:
         raise PreflightError('build_tool_missing_' + name)
     # Preserve rustup proxy's argv[0] rather than resolving it to `rustup`.
     return Path(found).absolute()
+
+
+BUILD_LABELS = {'node_version', 'pnpm_version', 'frontend_dependencies', 'frontend_build'}
+BUILD_CODES = {'ERR_PNPM_UNSUPPORTED_ENGINE', 'ERR_PNPM_BAD_PM_VERSION',
+               'ERR_PNPM_OUTDATED_LOCKFILE', 'ERR_PNPM_LOCKFILE_CONFIG_MISMATCH',
+               'ERR_PNPM_FETCH_401', 'ERR_PNPM_FETCH_403', 'ERR_PNPM_FETCH_404',
+               'ERR_PNPM_META_FETCH_FAIL', 'ENOTFOUND', 'ECONNRESET', 'ETIMEDOUT',
+               'EACCES', 'ENOSPC', 'ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND'}
+
+
+def build_diagnostic(label, outcome):
+    if label not in BUILD_LABELS:
+        return None
+    # Closed tokens only: never return raw stderr, URLs, paths or registry credentials.
+    tokens = set(re.findall(r'\b[A-Z][A-Z0-9_]+\b', outcome.output))
+    return dict(stage=label, exit_code=outcome.code, timed_out=outcome.timed_out,
+                output_limited=outcome.limited, pipe_failed=outcome.pipe_failed,
+                codes=sorted(tokens & BUILD_CODES))
+
+
+def build_frontend(source, node, pnpm, run, report):
+    expected = json.loads((source/'package.json').read_text())['engines']
+    versions = report.setdefault('build_tools', {})
+    for name, executable in (('node', node), ('pnpm', pnpm)):
+        # pnpm may be a shell/Corepack launcher or a native executable. Let the
+        # OS execute it; passing its bytes to Node as JavaScript is invalid.
+        version = run([executable, '--version'], name + '_version', 60).strip()
+        if not re.fullmatch(r'v?\d{1,4}\.\d{1,4}\.\d{1,4}', version):
+            raise PreflightError(name + '_version_unrecognized')
+        versions[name] = version.removeprefix('v')
+        if versions[name] != expected[name]:
+            raise PreflightError(name + '_version_mismatch')
+    run([pnpm, 'install', '--frozen-lockfile'], 'frontend_dependencies', 900)
+    run([pnpm, '--filter', '@cryptex/desktop', 'build'], 'frontend_build', 600)
 
 
 def inventory(bundle, architecture, release, run):
@@ -122,8 +156,7 @@ def build(source, work, commit, run, report):
         os.environ.update(CRYPTEX_M8_DEVELOPMENT_CERT_DER=str(certificate),
                           CRYPTEX_M8_DEVELOPMENT_RELEASE_ID=release, CARGO_PROFILE_DEV_DEBUG='0',
                           CARGO_TARGET_DIR=str(work/'target'))
-        run([node, pnpm.resolve(), 'install', '--frozen-lockfile'], 'frontend_dependencies', 900)
-        run([node, pnpm.resolve(), '--filter', '@cryptex/desktop', 'build'], 'frontend_build', 600)
+        build_frontend(source, node, pnpm, run, report)
         # Distinct explicit public-metadata creator. It never owns OS keys.
         run([cargo, 'build', '--quiet', '--locked', '-p', 'cryptexd'], 'public_creator_build', 1800)
         creator = work/'public-profile-creator'
@@ -239,6 +272,10 @@ def main():
             cache.check()
             print('\nCryptex: ' + label, flush=True)
             outcome = run_bounded([str(a) for a in args], timeout, input_data=input_data, tool_path=tool_path)
+            if outcome.code or outcome.timed_out or outcome.limited or outcome.pipe_failed:
+                diagnostic = build_diagnostic(label, outcome)
+                if diagnostic is not None:
+                    report['build_failure'] = diagnostic
             return checked(lambda *_: outcome, args, label, timeout)
         bundle, creator = build(source, work, plan['source_commit'], run, report)
         from mac_window_owner import answer

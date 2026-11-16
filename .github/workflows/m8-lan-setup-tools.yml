@@ -1,0 +1,48 @@
+name: M8 LAN setup tooling
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  setup-tools:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: Test setup launcher, diagnostics and receipt boundaries
+        run: |
+          python -B -m unittest discover -s scripts/m8 -p test_mac_lan_setup.py
+          python -B -m unittest discover -s scripts/m8 -p test_lan_setup_receipt.py
+          python -B -m unittest discover -s scripts/m8 -p test_mac_identity_preflight.py
+      - name: Execute actual pinned frontend tools through the Mac setup function
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          python3 -B - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts/m8')
+          from mac_lan_setup import build_frontend, tool
+          from mac_identity_preflight import run_bounded, checked
+          def run(args, label, timeout):
+              outcome = run_bounded([str(a) for a in args], timeout, tool_path=os.environ['PATH'])
+              return checked(lambda *_: outcome, [], label, timeout)
+          report = {}
+          build_frontend(Path.cwd(), tool('node'), tool('pnpm'), run, report)
+          assert report['build_tools'] == {'node': '24.19.0', 'pnpm': '11.28.0'}
+          print('actual_frontend_setup_launcher=passed')
+          PY

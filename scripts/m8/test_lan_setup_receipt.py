@@ -7,6 +7,8 @@ import zipfile
 
 from lan_setup_receipt import STAGES, validate, read
 from lan_acceptance_preflight import Refused
+from mac_lan_setup import build_diagnostic
+from mac_identity_preflight import CommandResult
 
 SOURCE = 'a' * 40
 SESSION = 'b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4'
@@ -22,6 +24,19 @@ def success():
 
 
 class SetupReceiptTests(unittest.TestCase):
+    def test_safe_build_diagnostics_accept_only_known_scalar_fields(self):
+        value = success()
+        value['build_tools'] = {'node': '24.19.0', 'pnpm': '11.28.0'}
+        self.assertEqual(validate(value, SOURCE, SESSION), value)
+        value.update(outcome='refused_or_incomplete', failed_stage='frontend_dependencies',
+                     build_failure=build_diagnostic('frontend_dependencies', CommandResult(1, 'ENOSPC private')))
+        self.assertEqual(validate(value, SOURCE, SESSION), value)
+        for field, bad in [('codes', ['SECRET']), ('stage', []), ('exit_code', True), ('timed_out', 'false')]:
+            altered = dict(value, build_failure={**value['build_failure'], field: bad})
+            with self.assertRaises(Refused): validate(altered, SOURCE, SESSION)
+        value['build_tools']['node'] = '/private/path'
+        with self.assertRaises(Refused): validate(value, SOURCE, SESSION)
+
     def test_success_is_only_a_bound_setup_observation(self):
         self.assertEqual(validate(success(), SOURCE, SESSION)['outcome'], 'prepared_local_only')
         for key, value in [('source_commit', 'd'*40), ('pairing_authorized', True),

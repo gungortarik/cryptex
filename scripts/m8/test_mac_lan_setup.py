@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import ssl
 import sys
@@ -9,10 +10,50 @@ import unittest
 import zipfile
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent))
-from mac_lan_setup import public_certificate, source_members, setup
-from mac_identity_preflight import PreflightError
+from mac_lan_setup import public_certificate, source_members, setup, build_frontend, build_diagnostic
+from mac_identity_preflight import PreflightError, CommandResult, run_bounded, checked
 
 class LanSetupTests(unittest.TestCase):
+    def test_tool_version_mismatch_stops_before_dependency_install(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root/'package.json').write_text(json.dumps({'engines': {'node': '24.19.0', 'pnpm': '11.28.0'}}))
+            calls, report = [], {}
+            def run(args, label, timeout):
+                calls.append(label)
+                return 'v24.19.0' if label == 'node_version' else '10.0.0'
+            with self.assertRaisesRegex(PreflightError, '^pnpm_version_mismatch$'):
+                build_frontend(root, Path('/node'), Path('/pnpm'), run, report)
+            self.assertEqual(calls, ['node_version', 'pnpm_version'])
+            self.assertEqual(report['build_tools'], {'node': '24.19.0', 'pnpm': '10.0.0'})
+
+    @unittest.skipUnless(os.name == 'posix', 'actual executable/shebang test runs on Mac CI')
+    def test_frontend_executes_shell_launcher_instead_of_parsing_it_as_javascript(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root/'package.json').write_text(json.dumps({'engines': {'node': '24.19.0', 'pnpm': '11.28.0'}}))
+            node, pnpm = root/'node', root/'pnpm'
+            # Node can only report its version. Feeding it another program fails.
+            node.write_text('#!/bin/sh\n[ "$1" = "--version" ] || exit 71\nprintf "v24.19.0\\n"\n')
+            pnpm.write_text('#!/bin/sh\ncase "$1" in\n--version) printf "11.28.0\\n";;\n'
+                            'install) [ "$2" = "--frozen-lockfile" ] || exit 72;;\n'
+                            '--filter) [ "$2" = "@cryptex/desktop" ] && [ "$3" = "build" ] || exit 73;;\n'
+                            '*) exit 74;;\nesac\n')
+            node.chmod(0o700); pnpm.chmod(0o700)
+            def run(args, label, timeout):
+                return checked(run_bounded, [str(a) for a in args], label, timeout)
+            self.assertEqual(run_bounded([str(node), str(pnpm), 'install'], 5).code, 71)
+            report = {}
+            build_frontend(root, node, pnpm, run, report)
+            self.assertEqual(report['build_tools'], {'node': '24.19.0', 'pnpm': '11.28.0'})
+
+    def test_build_failure_never_exports_raw_output_or_unknown_codes(self):
+        value = build_diagnostic('frontend_dependencies', CommandResult(1,
+            'ERR_PNPM_UNSUPPORTED_ENGINE private-token https://example.invalid/secret ENOSPC UNKNOWN_SECRET'))
+        self.assertEqual(value['codes'], ['ENOSPC', 'ERR_PNPM_UNSUPPORTED_ENGINE'])
+        self.assertNotIn('secret', json.dumps(value))
+        self.assertIsNone(build_diagnostic('sign_inventory_keychain', CommandResult(1, 'ENOSPC secret')))
+
     def test_public_certificate_is_selected_by_exact_existing_identity(self):
         der = b'public certificate fixture'
         pem = ssl.DER_cert_to_PEM_cert(der)
