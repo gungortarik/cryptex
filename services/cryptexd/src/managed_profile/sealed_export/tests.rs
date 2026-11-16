@@ -206,8 +206,12 @@ fn signed_cutoff_withholds_whole_peer_pack_without_starving_another_eligible_pee
     let transcript =
         cryptex_events::verify_bootstrap_transcript(&[&offer, &proof, &first, &last]).unwrap();
     let original = std::fs::read(fixture.canonical(0, "open")).unwrap();
-    let (frames, _) = cryptex_storage::segment_io::scan_complete_frames(&original).unwrap();
-    let tail: serde_json::Value = serde_json::from_slice(frames.last().unwrap()).unwrap();
+    let (frames, complete) = cryptex_storage::segment_io::scan_complete_frames(&original).unwrap();
+    assert_eq!(complete, original.len());
+    let tail: serde_json::Value = serde_json::from_slice(
+        &frames.last().unwrap()[cryptex_events::framing::FRAME_HEADER_BYTES..],
+    )
+    .unwrap();
     let approval = cryptex_events::sign_peer_approved_event(
         &transcript,
         "99999999-9999-4999-8999-999999999991",
@@ -245,8 +249,12 @@ fn signed_cutoff_withholds_whole_peer_pack_without_starving_another_eligible_pee
         0,
     ))
     .unwrap();
-    let (peer_frames, _) = cryptex_storage::segment_io::scan_complete_frames(&peer_bytes).unwrap();
-    let boundary: serde_json::Value = serde_json::from_slice(&peer_frames[0]).unwrap();
+    let (peer_frames, complete) =
+        cryptex_storage::segment_io::scan_complete_frames(&peer_bytes).unwrap();
+    assert_eq!(complete, peer_bytes.len());
+    let boundary: serde_json::Value =
+        serde_json::from_slice(&peer_frames[0][cryptex_events::framing::FRAME_HEADER_BYTES..])
+            .unwrap();
     let tail: serde_json::Value = serde_json::from_slice(&approval).unwrap();
     let restriction = cryptex_events::security_v3::sign_device_restricted_event(
         "99999999-9999-4999-8999-999999999992",
