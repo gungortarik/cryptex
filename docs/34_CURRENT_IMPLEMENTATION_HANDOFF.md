@@ -1,5 +1,33 @@
 # 34 — Current Implementation Handoff
 
+## VM pairing recorded; connection attention persists — November 16
+
+Owner completed the four-message signed exchange for transaction
+3eb268f509abb291f105078ffde1d81be6bf14b2af26640c86bf24e269642454.
+VM screenshot shows pairing recorded in canonical local history; owner reports
+the same success on Mac. This is UI evidence, not independent disk/crypto audit.
+VM device bde7cefd-2f40-40f1-a22e-ae1fb123e8a8; Mac device
+1d17c886-a6cf-4422-aba5-fc985656741d. Both public-key SHA256 fingerprints were
+compared to owner review screens. Keep the original four signed messages.
+
+VM Local connections shows attention and zero eligible peers even after explicit
+reload. Local enrolled port is59957; displayed192.168.1.20 is a placeholder.
+Keep sync paused; do not re-pair, delete profile, or guess LAN settings. Product
+attention text covers several internal errors. A read only request returns a
+cached view after generation checks; reload does not universally retry apply.
+Do not diagnose a specific trust failure from that generic text alone.
+
+Next diagnostic: scripts/m8/windows_pairing_diagnostic.py, one-click TANI.cmd in
+the VM. It pins existing paths, checks exact Brain and VM device, reads bounded
+v1/v2/v3 pairing journal metadata (including compact terminal receipts), and
+exports only fixed enums/counts/presence. It does not execute binaries, use IPC,
+read canonical bodies, access secure storage or modify the runtime. Missing,
+locked or corrupt observations remain explicit. It cannot capture the live
+connection error or verify canonical signatures; use it to narrow disk state.
+Five local tests passed: unchanged files/no initialization, wrong-device refusal,
+v3 summary/redaction, schema refusal, duplicate/oversize/hardlink refusal.
+Owner VM diagnostic and actual LAN delivery remain pending. M8 remains open.
+
 ## Owner Windows VM persistent setup passed — November 16
 
 ESITLEME-KURULUM-SONUC-Windows-49100c51b8e4.zip passes the bounded receipt
