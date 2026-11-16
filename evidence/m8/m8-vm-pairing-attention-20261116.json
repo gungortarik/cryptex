@@ -1,0 +1,24 @@
+{
+  "scope": "Pairing UI success followed by persistent VM connection attention; diagnosis pending",
+  "source_commit": "204ab1802565618f7116f399f55dba15f27b2de3",
+  "packet": "Cryptex-VM-Eslesme-Tani.zip",
+  "packet_sha256": "e9d1fc9d75aae573bed0663c4d0ad11c1b859fb98addb350f746e9179a892826",
+  "transaction_id": "3eb268f509abb291f105078ffde1d81be6bf14b2af26640c86bf24e269642454",
+  "observations": {
+    "vm_pairing_recorded": "owner screenshot",
+    "mac_pairing_recorded": "owner text report",
+    "vm_connections": "attention, zero eligible peers, persists after reload",
+    "local_transport_port": 59957,
+    "live_error_code": "not captured",
+    "cause": "unconfirmed"
+  },
+  "validation": {
+    "local_tests": "5 passed",
+    "git_diff_check": "passed",
+    "exact_committed_zip_readback": "passed",
+    "vm_diagnostic_execution": "pending"
+  },
+  "profile_changes_by_diagnostic": false,
+  "network_delivery_verified": false,
+  "m8_closed": false
+}

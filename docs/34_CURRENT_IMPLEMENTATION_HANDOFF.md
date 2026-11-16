@@ -28,6 +28,11 @@ Five local tests passed: unchanged files/no initialization, wrong-device refusal
 v3 summary/redaction, schema refusal, duplicate/oversize/hardlink refusal.
 Owner VM diagnostic and actual LAN delivery remain pending. M8 remains open.
 
+Prepared Downloads/Cryptex-VM-Eslesme-Tani.zip from204ab18; SHA256
+e9d1fc9d75aae573bed0663c4d0ad11c1b859fb98addb350f746e9179a892826.
+Exact committed ZIP readback passed. Return VM-ESLESTIRME-TANI-*.zip from the
+VM Downloads directory. Evidence: m8-vm-pairing-attention-20261116.json.
+
 ## Owner Windows VM persistent setup passed — November 16
 
 ESITLEME-KURULUM-SONUC-Windows-49100c51b8e4.zip passes the bounded receipt
