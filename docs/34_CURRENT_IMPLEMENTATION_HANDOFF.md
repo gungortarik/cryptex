@@ -1,5 +1,26 @@
 # 34 — Current Implementation Handoff
 
+## Owner Windows persistent recovery passed — November 16
+
+ESITLEME-ONARIM-SONUC-Windows-0639bc01fcef.zip validates against exact a0e73b8,
+product3d8e5b4, session and prior failure receipt. ZIP SHA256:
+33f9aac9bfa7f312eb9be4f050eb020cb8f69ede411bba0d4eeb424fe2f9f9ed.
+Outcome is recovered_local_only: pinned retained product and marker-only profile
+verified, help launch passed, profile preserved after probe, owner explicitly
+confirmed resume, first public note committed, local-only transport enrolled,
+and persistent profile retained. First-note hash matches the exact Windows
+session note. This is a bounded unsigned owner observation, not peer authority.
+No numeric launch error occurred in this recovery; the historical cause remains
+unknown. No deletion, replacement identity or security-policy change was needed.
+
+Both Mac and Windows now have successful local persistent setup receipts.
+Do not rerun fresh setup/recovery against either initialized profile. Next:
+owner opens CRYPTEX-AC.cmd in the extracted Cryptex-Windows-Onarim folder for
+normal Windows Desktop opening; inspect the actual window/daemon outcome.
+Normal Windows window/restart, owner-reviewed pairing, real LAN delivery and
+convergence, interruption/replay and cutoff propagation are still unverified.
+Successful Mac profile and its CRYPTEX-AC.command must be retained. M8 remains open.
+
 ## Targeted Windows marker-only recovery — November 16
 
 User authorized a one-click diagnostic/recovery without deleting the profile.

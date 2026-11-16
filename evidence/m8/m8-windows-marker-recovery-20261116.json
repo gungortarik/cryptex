@@ -20,10 +20,19 @@
   },
   "ci_run": "43946483367",
   "ci_result": "Windows and Mac passed at a0e73b8; actual marker-only recovery and initialized-profile refusal passed; temporary standard-user account/profile cleanup passed",
-  "owner_recovery_verified": false,
+  "owner_recovery_verified": true,
   "normal_window_restart": false,
   "pairing": false,
   "network_delivery": false,
   "m8_closed": false,
-  "ci_marker": "windows_actual_marker_only_recovery_and_nonempty_refusal=passed"
+  "ci_marker": "windows_actual_marker_only_recovery_and_nonempty_refusal=passed",
+  "owner_receipt": {
+    "name": "ESITLEME-ONARIM-SONUC-Windows-0639bc01fcef.zip",
+    "sha256": "33f9aac9bfa7f312eb9be4f050eb020cb8f69ede411bba0d4eeb424fe2f9f9ed",
+    "source": "a0e73b83f7caa7bd67bfd3d9e32761b6c0cb54ac",
+    "binding_and_schema": "passed",
+    "outcome": "recovered_local_only",
+    "first_note_sha256": "31bb11ad1d8828177c24c16b73810b6af0a4280be479fb6ac1bf9aa004960287",
+    "observation": "Bounded unsigned owner receipt: pinned retained app, marker-only inspection, help probe, explicit resume, first capture and local-only transport passed; profile retained"
+  }
 }
