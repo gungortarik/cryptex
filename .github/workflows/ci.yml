@@ -213,6 +213,9 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           cargo test --locked -p cryptexd --lib managed_profile::native::tests:: -- --test-threads=1
+      - name: Test Windows owned transport reader revocation
+        if: runner.os == 'Windows'
+        run: cargo test --locked -p cryptexd --lib managed_profile::worker::tests::transport_identity_is_available_only_for_an_active_ready_worker -- --test-threads=1
       - name: Lint changed daemon and Desktop paths
         run: cargo clippy --locked -p cryptexd -p cryptex-desktop --all-targets -- -D warnings
       - name: Verify native Mac frame and right ownership

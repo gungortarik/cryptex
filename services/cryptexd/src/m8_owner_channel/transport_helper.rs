@@ -125,6 +125,21 @@ struct Reply {
     error: Option<Error>,
     exchange_digest: Option<[u8; 32]>,
 }
+impl Reply {
+    fn install_refusal(&self) -> Result<Option<Error>, Error> {
+        let Some(error) = self.error else {
+            return Ok(None);
+        };
+        if self.sequence != 0
+            || self.identity.is_some()
+            || self.credential_profile.is_some()
+            || self.exchange_digest.is_some()
+        {
+            return Err(Error::Channel);
+        }
+        Ok(Some(error))
+    }
+}
 
 fn private_root(root: &Path) -> Result<(), Error> {
     crate::paths::assert_outside_repository(root).map_err(|_| Error::Arguments)?;
@@ -467,22 +482,34 @@ fn serve_exchange(
         .parent()
         .filter(|_| root.file_name().is_some_and(|n| n == "managed-transport"))
         .ok_or(Error::Policy)?;
-    let image =
-        ExchangeImage::from_authenticated_parent(bytes, runtime).map_err(|_| Error::Policy)?;
+    let image = ExchangeImage::from_authenticated_parent(bytes, runtime)
+        .inspect_err(|error| {
+            eprintln!("component=mac_transport stage=exchange_image error={error}")
+        })
+        .map_err(|_| Error::Policy)?;
     let digest = image.acknowledgement().map_err(|_| Error::Policy)?;
     if !role_active() {
         return Err(Error::Policy);
     }
     prepared
         .install_exchange(image, store)
+        .inspect_err(|error| {
+            eprintln!("component=mac_transport stage=exchange_install error={error}")
+        })
         .map_err(|_| Error::Profile)?;
     let identity = prepared.configured_transport_device_id().to_owned();
     if !role_active() {
         return Err(Error::Policy);
     }
-    let session = prepared.start(package, store).map_err(|_| Error::Engine)?;
+    let session = prepared
+        .start(package, store)
+        .inspect_err(|error| {
+            eprintln!("component=mac_transport stage=exchange_start error={error}")
+        })
+        .map_err(|_| Error::Engine)?;
     if session
         .acknowledge_exchange(store)
+        .inspect_err(|error| eprintln!("component=mac_transport stage=exchange_ack error={error}"))
         .map_err(|_| Error::Engine)?
         != digest
     {
@@ -784,6 +811,7 @@ pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
         }
         let result = serve(root, &release, &mut channel, combined);
         if let Err(error) = result {
+            eprintln!("component=mac_transport stage=serve_refusal error={error}");
             let refusal = Reply {
                 exchange_digest: None,
                 sequence: 0,
@@ -1034,6 +1062,12 @@ impl Helper {
                 .receive(&mut buffer, Instant::now() + Duration::from_secs(35))
                 .map_err(|_| Error::Channel)?,
         )?;
+        if let Some(error) = ready.install_refusal()? {
+            channel
+                .send(REFUSAL_ACK, Instant::now() + BUDGET)
+                .map_err(|_| Error::Channel)?;
+            return Err(error);
+        }
         if ready.sequence != 1
             || ready.error.is_some()
             || ready.credential_profile.is_some()
@@ -1997,6 +2031,25 @@ pub fn check(root: &Path) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn exchange_install_preserves_only_a_closed_typed_refusal() {
+        let mut reply = Reply {
+            sequence: 0,
+            identity: None,
+            credential_profile: None,
+            error: Some(Error::Engine),
+            exchange_digest: None,
+        };
+        assert_eq!(reply.install_refusal(), Ok(Some(Error::Engine)));
+        reply.sequence = 1;
+        assert_eq!(reply.install_refusal(), Err(Error::Channel));
+        reply.sequence = 0;
+        reply.identity = Some("unexpected".into());
+        assert_eq!(reply.install_refusal(), Err(Error::Channel));
+        reply.identity = None;
+        reply.exchange_digest = Some([0; 32]);
+        assert_eq!(reply.install_refusal(), Err(Error::Channel));
+    }
     #[test]
     fn requested_runtime_binding_retains_its_namespace_and_never_grants_readiness() {
         use std::os::unix::fs::{DirBuilderExt, symlink};
