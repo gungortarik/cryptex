@@ -1,5 +1,18 @@
 # M8 completion ledger
 
+Latest compiler faacc8c/native probes1c43a94: exact trust-derived peer/folder XML and
+schema1 derived binding readback implemented. Local7 eligibility/12 XML tests,
+format/clippy and actual pinned Windows two-start config roundtrip pass. Independent
+compiler source review has no actionable finding. Corrected CI43786002606 PASSED
+Mac and Windows; logs confirm5 compiler tests each, Mac role refusal, existing
+signed native pairing/import/restart, and credential/account cleanup. Windows native
+two-start fixture ran locally, not in CI;6 broader ignored Mac tests remain excluded.
+Mac probe proves unauthenticated-helper launch refusal only. Positive Mac config
+roundtrip remains OPEN and must use the authenticated helper, not a libtest bypass.
+Configuration installation/recovery, helper acknowledgement, live reconciliation
+and bounded sealed export remain OPEN; no network activation or owner packet.
+[Detailed scope](../evidence/m8/m8-strict-exchange-configuration-20261115.json).
+
 Latest implementation3ef998d/73ce74c: locked canonical transport eligibility
 view and separate retained-history incoming binding. Local7 policy,5 incoming
 controller and1 beyond-cutoff publication tests pass; format and daemon clippy

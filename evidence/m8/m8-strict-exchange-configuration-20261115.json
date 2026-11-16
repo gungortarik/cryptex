@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "status": "compiler_local_and_scoped_native_ci_passed",
+  "compiler_source": "faacc8c2066ea70f321fdab274946cf42625ebd8",
+  "native_probe_source": "1c43a94866d6a70ea4d2820ccff8a78b9e5f68bd",
+  "scope": "Pure trust-derived XML compiler, strict readback and versioned derived binding validation. Not persisted product configuration, a launch permit, an export permit or real peer transfer.",
+  "contract": {
+    "authority": "Borrow current locked ExchangePeers. No Clone/Deserialize of the policy; a serialized derived receipt cannot construct one. Recheck snapshot/root authority on use.",
+    "active_configuration": "Exactly the eligible direct peers and one fixed sendreceive transport/incoming folder. Fixed pinned 2.1.5 templates; never promote mutable defaults. No extra/duplicate/missing peer or folder, introducer, auto-accept, canonical path, alternate versioner, ownership/xattr sync or fsync bypass.",
+    "network": "Exact explicit RFC1918 IPv4 endpoint per eligible peer, distinct nonzero endpoints and exact selected listen port. GUI stays loopback; discovery, relay and NAT stay disabled. Product constructor rejects loopback peers/listen; native fixture changes private fields only under cfg(test).",
+    "binding": "Schema1, engine version, brain ID, local transport ID, runtime-derived incoming path, folder ID, ports/listen, canonical peer device/key/fingerprint/transport identities and endpoints, plus SHA256 of complete normalized XML. Duplicate/unknown JSON fields, stale values and drift refuse. This is derived equality evidence, not an authenticated source of authority.",
+    "limits": "64 eligible peers, existing 256 KiB/4096-node/depth16 XML bounds, 64 KiB derived binding, 1024-byte UTF8 incoming path. Explicit typed refusal, no truncation.",
+    "filesystem_boundary": "Only lexical derivation occurs here. No link/alias containment claim: the future installer must retain native namespace pins and runtime admission through writes/readback/start, stop stale workers and reconcile trust changes."
+  },
+  "local_checks": {
+    "format": "cargo fmt --all -- --check passed",
+    "lint": "cargo clippy --locked -p cryptexd --all-targets -- -D warnings passed",
+    "canonical_policy": "7 passed, including explicit MAX restriction exclusion",
+    "xml": "12 passed, including 5 new strict exchange cases and existing XML/fixture cases",
+    "native_windows": "Explicit ignored fixture executed: exact pinned2.1.5 owned process, offline generation, actual signed canonical pairing, loopback-only empty exchange, 2 fresh-snapshot opens with readback before/during/after each start and clean owned REST shutdown; 1 passed in21.23s",
+    "native_windows_test_source": "3feb5b3493bbc75b2b9f69a3e1a3e328e9f3dae8; subsequent1c43a94 restricts this unchanged positive fixture to Windows",
+    "native_windows_package_sha256": "36a0f7bc372f64fa7cc4f5654fa324c0dd9f7fef2e07565e00c6e1cf73f50344",
+    "python_ci_harness": "7 passed; requires exact executed Mac negative role-refusal test and restores fixture environment",
+    "fresh_authority": "Previous snapshot locks released, new canonical scan accepts same derived binding, then real owner-confirmed local self-retirement makes fresh ExchangePeers return LocalRestricted. No saved receipt bypass."
+  },
+  "review": {
+    "mode": "independent read-only source review; reviewer executed no tests",
+    "compiler": "No actionable finding after adding genuine fresh-snapshot retirement regression; MAX cutoff guarded separately.",
+    "native_fixture": "Initial P2: direct libtest cannot start native engine on Mac without authenticated helper thread authority. Corrected to Windows-only positive roundtrip and separate Mac exact InvalidLaunch/empty-directory negative. Guard unchanged; positive Mac roundtrip OPEN. No further actionable source findings.",
+    "next_boundary": "One admitted install/readback/owned-start/acknowledge operation with recoverable config+binding state and live policy invalidation; retain snapshot pins through readiness acknowledgement, not worker lifetime."
+  },
+  "ci": {
+    "superseded_runs": [43785116464, 43785622326],
+    "superseded_status": "Cancelled by this task after adding native verification and correcting the Mac fixture entry role respectively; neither claimed passed.",
+    "run": 43786002606,
+    "source": "1c43a94866d6a70ea4d2820ccff8a78b9e5f68bd",
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/43786002606",
+    "status": "success",
+    "mac_job": 133033676271,
+    "windows_job": 133033676566,
+    "verified_logs": [
+      "All5 strict configuration tests pass on Mac and Windows, including fresh-snapshot retirement refusal.",
+      "Mac native_exchange_outside_helper_refused=passed: pinned package cannot launch outside authenticated helper and leaves zero generated files.",
+      "Mac native_managed_transport_pairing, native_existing_profile_signed_import, native_existing_profile_restart_replay_and_local_status, real_signed_desktop_daemon_startup_restart and local_certificate_fixture_cleanup all passed.",
+      "Windows standard_user_daemon_tests=passed; temporary_account_profile_removed=true for all3 scoped invocations."
+    ],
+    "ignored": "Windows positive native two-start fixture is ignored in CI and was executed explicitly locally. Six broader Mac owner-channel/IPC tests remain ignored and are not claimed passed.",
+    "scope": "desktop_startup_only; neither positive Mac exchange-config helper roundtrip nor real Windows-Mac durable network acceptance"
+  },
+  "remaining": [
+    "Positive Mac exchange-config roundtrip through authenticated helper; ordinary libtest correctly cannot launch the engine.",
+    "Install/reconcile derived config and binding under native namespace capabilities and runtime admission, with interruption recovery and exact helper acknowledgement.",
+    "Stop/restart transport on restrictions, retirement, hold and roster changes without retaining canonical locks for the worker's lifetime.",
+    "Admitted local-tail seal checkpoint and bounded verified no-replace daemon export.",
+    "Actual Windows-Mac LAN durable convergence/restart acceptance and remaining M8 release gates."
+  ],
+  "owner_action": "None; no new owner packet and no repeat of accepted helper shutdown.",
+  "local_scratch_cleanup": "Automatic approval review blocked removal of the two task-created temporary schema/package directories. They remain outside the repository. No product or user profile deletion was attempted.",
+  "milestone": "M8 OPEN"
+}

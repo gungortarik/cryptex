@@ -1,5 +1,66 @@
 # 34 — Current Implementation Handoff
 
+## Strict trust-derived exchange configuration — November15
+
+Compiler faacc8c and native probes1c43a94 add a separate product configuration
+policy, never promote TransferTestPolicy. ExchangeConfigPolicy borrows locked
+ExchangePeers and constructs exactly the canonical direct peer roster and one
+sendreceive runtime/transport/incoming folder. Fixed pinned2.1.5 templates avoid
+promoting mutable defaults. Explicit RFC1918 endpoints, exact active node equality,
+bootstrap network/auth validation and a schema1 full-config derived binding reject
+drift. The receipt is not authority: reconstruct the policy from a fresh canonical
+snapshot. Limits are64 peers,256KiB XML,64KiB binding and1024-byte incoming path.
+
+Local format/clippy,7 eligibility tests and12 XML tests pass. New tests include
+duplicate/extra/missing nodes, unsafe endpoints/settings, stale/duplicate/unknown
+receipt fields and release/rescan of canonical locks before an owner-confirmed
+self-retirement refusal. Independent compiler source review found no actionable
+issue; reviewer executed no tests. Actual pinned Windows engine ran2 isolated
+loopback-only opens with config readback before/during/after and clean owned REST
+shutdown (1 explicit native test passed). This is empty exchange/native serializer
+evidence, not peer delivery. The product constructor still rejects loopback.
+
+Scoped CI43786002606 PASSED Mac and Windows on exact1c43a94. Completed logs confirm
+all5 new compiler tests on both targets, Mac native_exchange_outside_helper_refused,
+existing signed pairing/import/startup/restart and certificate cleanup, plus Windows
+standard-user suites/account cleanup. The Windows native two-start test is ignored
+in CI and was executed explicitly locally above;6 broader Mac ignored tests are not
+claimed passed. Mac explicitly proves that a libtest without authenticated helper
+authority cannot start the pinned engine or create profile files. Review caught the initial invalid
+attempt to run the direct Windows probe on Mac: the correct existing role guard
+refuses it. Positive Mac exchange-config roundtrip remains OPEN until routed
+through the authenticated helper integration; no guard or test assertion was
+weakened to accept a positive result. Earlier43785116464 and43785622326 were
+superseded/cancelled, not accepted.
+The fixture's synthetic credential/public IDs are sanitized from pinned generation;
+its runtime files remain outside the repository. No new owner action is requested.
+[Evidence and limits](../evidence/m8/m8-strict-exchange-configuration-20261115.json).
+
+IMPORTANT: this is a compiler/readback boundary, not yet a configuration installer
+or process/export permit. Existing PreparedNativeProfile::validate still admits
+only bootstrap config; native helper/worker normal paths have not been activated.
+Next implement atomic/recoverable config+binding installation under admission and
+native directory pins, helper acknowledgement and live stop/reconcile on policy
+changes, then positive Mac helper-owned config roundtrip. Do not hold canonical
+snapshot locks for the whole worker lifetime.
+Only then wire bounded admitted sealed export and the coordinated Windows-Mac LAN
+packet. No link/alias containment is claimed by the compiler's lexical path check.
+M8 remains OPEN.
+
+Independent continuation review names the next indivisible slice: admitted
+install -> readback -> owned start -> exact acknowledgement, including recovery.
+Keep bootstrap mode unchanged; add a separate exchange mode with original
+identity/cert/OS-key validation. Extend PrivateDirectory with durable replacement
+and an explicit recoverable config/binding commit boundary; mixed/missing state
+must refuse. Windows routes through ManagedTransportWorker, Mac through existing
+authenticated transport_helper::serve/Scope with a closed bounded operation,
+never arbitrary paths/REST. Retain admission and original namespace/snapshot
+pins until acknowledged readiness, then release canonical locks. Worker observation
+retains native/profile ownership plus immutable derived state; policy invalidation
+must stop/reconcile before readiness returns and unresolved cleanup blocks replacement.
+Test each interruption boundary, stale authority, namespace replacement, failed
+acknowledgement, owned stop/restart and positive helper-mediated Mac roundtrip.
+
 ## Canonical transport eligibility and historical import separation — November15
 
 Code3ef998d / CI tooling73ce74c adds managed_profile::exchange_policy. A
