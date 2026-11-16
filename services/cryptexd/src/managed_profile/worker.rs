@@ -111,7 +111,13 @@ impl Shared {
         status: Status,
         transport_device_id: Option<&str>,
     ) -> Result<Control, WorkerError> {
-        let stop = self.stop.load(Ordering::Acquire);
+        let stop = self.stop.load(Ordering::Acquire)
+            || self
+                .transport
+                .lock()
+                .map_err(|_| WorkerError::StatusUnavailable)?
+                .as_ref()
+                .is_some_and(|guard| guard.check().is_err());
         let mut snapshot = self
             .snapshot
             .lock()
@@ -368,7 +374,29 @@ impl ManagedTransportWorker {
         environment: SecureStoreEnvironment,
         ports: NativePorts,
     ) -> Result<Self, WorkerError> {
+        Self::spawn_existing_guarded(profile, package, environment, ports, None)
+    }
+    pub(crate) fn spawn_existing_guarded(
+        profile: PathBuf,
+        package: PathBuf,
+        environment: SecureStoreEnvironment,
+        ports: NativePorts,
+        guard: Option<crate::runtime_admission::TransportGuard>,
+    ) -> Result<Self, WorkerError> {
         Self::spawn_task(move |shared| {
+            *shared
+                .transport
+                .lock()
+                .map_err(|_| WorkerError::StatusUnavailable)? = guard;
+            if shared
+                .transport
+                .lock()
+                .map_err(|_| WorkerError::StatusUnavailable)?
+                .as_ref()
+                .is_some_and(|guard| guard.check().is_err())
+            {
+                return Ok(Outcome::Cancelled);
+            }
             if shared.stop.load(Ordering::Acquire) {
                 return Ok(Outcome::Cancelled);
             }
@@ -558,6 +586,50 @@ mod tests {
             reader.try_transport_device_id(),
             Err(WorkerError::StatusUnavailable)
         );
+        shared.snapshot.lock().unwrap().state = WorkerState::Active;
+        let root = crate::test_temp::exclusive_temp_dir("bootstrap-status-epoch");
+        let instance = crate::instance::try_acquire_instance(&root).unwrap();
+        let gate = instance.admission();
+        let permit = gate
+            .exclusive(
+                &root,
+                std::time::Instant::now() + Duration::from_secs(1),
+                false,
+            )
+            .unwrap();
+        *shared.transport.lock().unwrap() = Some(permit.transport_guard(&root).unwrap());
+        permit.finish(None);
+        assert!(reader.try_transport_device_id().is_ok());
+        let permit = gate
+            .exclusive(
+                &root,
+                std::time::Instant::now() + Duration::from_secs(1),
+                false,
+            )
+            .unwrap();
+        permit.finish(None);
+        // Cached ready status never outlives its original admission generation.
+        assert_eq!(
+            reader.try_transport_device_id(),
+            Err(WorkerError::StatusUnavailable)
+        );
+        assert_eq!(
+            shared
+                .publish(
+                    Status {
+                        phase: super::super::controller::Phase::LocalReady,
+                        attempt: 1,
+                        pid: None,
+                        error: None
+                    },
+                    Some("AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA")
+                )
+                .unwrap(),
+            Control::Stop
+        );
+        *shared.transport.lock().unwrap() = None;
+        drop(instance);
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn cancellation_and_join_are_idempotent() {

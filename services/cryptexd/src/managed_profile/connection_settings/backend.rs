@@ -195,7 +195,7 @@ impl Owner {
                 };
                 if let Some(owner) = &controller.recovery_owner
                     && controller.location.is_some()
-                    && !controller.is_identity_only()
+                    && controller.requires_history_recovery()
                 {
                     let mut instance = owner.lock().map_err(|_| Error::Unavailable)?;
                     // First startup uses the same canonical recovery/rebuild gate
@@ -300,14 +300,14 @@ struct Controller {
     recovery_owner: Option<Arc<Mutex<crate::instance::InstanceLock>>>,
 }
 impl Controller {
-    fn is_identity_only(&self) -> bool {
+    fn requires_history_recovery(&self) -> bool {
         #[cfg(windows)]
         {
-            bootstrap::identity_only(&self.root, self.store.as_ref(), self.environment) == Ok(true)
+            bootstrap::identity_only(&self.root, self.store.as_ref(), self.environment) == Ok(false)
         }
         #[cfg(not(windows))]
         {
-            false
+            true
         }
     }
     fn close(&mut self) -> Result<(), Error> {
@@ -340,7 +340,12 @@ impl Controller {
     }
     fn check_generation(&mut self) {
         #[cfg(windows)]
-        if self.identity_only && !self.is_identity_only() {
+        if self.identity_only
+            && matches!(
+                bootstrap::identity_only(&self.root, self.store.as_ref(), self.environment),
+                Ok(false) | Err(Error::Authority)
+            )
+        {
             // First canonical data requires full recovery and fresh trust scan.
             // No settings or cached identity can clear a preexisting hold.
             if let Ok(permit) = self.admission.enter(&self.root) {
@@ -465,11 +470,12 @@ impl Controller {
                     // Original bootstrap image admits self/loopback only and
                     // refuses any persisted exchange image or transaction.
                     self.worker = Some(
-                        Worker::spawn_existing(
+                        Worker::spawn_existing_guarded(
                             location.profile.clone(),
                             location.package.clone(),
                             self.environment,
                             ports,
+                            self.guard.clone(),
                         )
                         .map_err(|_| Error::Start)?,
                     );
