@@ -136,6 +136,7 @@ def run_bounded(args, timeout=20, *, input_data=None, tool_path=None):
     reader = threading.Thread(target=read, daemon=True)
     reader_started = False
     timed_out = False
+    command_deadline = time.monotonic() + timeout
     process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                stdin=subprocess.PIPE if input_data is not None else subprocess.DEVNULL,
                                start_new_session=True, bufsize=0, env=env)
@@ -146,7 +147,7 @@ def run_bounded(args, timeout=20, *, input_data=None, tool_path=None):
             try:
                 os.set_blocking(process.stdin.fileno(), False)
                 offset = 0
-                deadline = time.monotonic() + min(timeout, 5)
+                deadline = min(command_deadline, time.monotonic() + 5)
                 while offset < len(input_data):
                     remaining = deadline - time.monotonic()
                     if remaining <= 0 or not select.select([], [process.stdin], [], remaining)[1]:
@@ -165,7 +166,8 @@ def run_bounded(args, timeout=20, *, input_data=None, tool_path=None):
                 except (OSError, ValueError):
                     pipe_failed.set()
         if not pipe_failed.is_set():
-            timed_out = not wait_without_reaping(process.pid, timeout)
+            remaining = max(0, command_deadline - time.monotonic())
+            timed_out = not wait_without_reaping(process.pid, remaining)
     finally:
         # Do this even after clean leader exit and EOF: a descendant can close
         # its pipe and otherwise survive. The leader is not reaped until here,

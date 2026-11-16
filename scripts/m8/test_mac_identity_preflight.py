@@ -46,13 +46,17 @@ class IdentityPreflightTests(unittest.TestCase):
                  patch.object(probe.os, 'killpg', lambda *args: events.append('kill'), create=True), \
                  patch.object(probe.signal, 'SIGKILL', 9, create=True), \
                  patch.object(probe.select, 'select', lambda *a: ([], [process.stdin], [])), \
-                 patch.object(probe, 'wait_without_reaping', return_value=True):
+                 patch.object(probe.time, 'monotonic', side_effect=range(100, 130)), \
+                 patch.object(probe, 'wait_without_reaping', return_value=True) as wait:
                 if failure == 'thread':
                     with self.assertRaises(RuntimeError): probe.run_bounded(['unused'], input_data=b'hello')
                 else:
                     result = probe.run_bounded(['unused'], input_data=b'hello')
                     self.assertEqual(result.pipe_failed, failure is not None)
-                    if failure is None: self.assertEqual(process.stdin.sent, b'hello')
+                    if failure is None:
+                        self.assertEqual(process.stdin.sent, b'hello')
+                        # Five seconds consumed by input/startup leave 15, not a fresh 20.
+                        wait.assert_called_once_with(123, 15)
             self.assertEqual(events, ['kill', 'reap'])
     def test_permission_error_exception_requires_a_dead_exact_group_snapshot(self):
         self.assertTrue(probe.dead_group_snapshot(0, b' 123 Z\n', b'', 123))
