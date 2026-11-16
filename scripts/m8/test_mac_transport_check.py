@@ -5,7 +5,7 @@ import threading
 import unittest
 
 from mac_identity_preflight import PreflightError
-from mac_transport_check import IDENTITY_MARKERS, MUTATION_BATCH_MARKERS, MARKERS, EXCHANGE_MARKER, REPLACEMENT_MARKER, PAUSE_MARKER, check_identity, check_native_pairing, loss_group_snapshot, exchange_interface
+from mac_transport_check import IDENTITY_MARKERS, MUTATION_BATCH_MARKERS, MARKERS, EXCHANGE_MARKER, REPLACEMENT_MARKER, PAUSE_MARKER, SETTINGS_MARKER, check_identity, check_native_pairing, loss_group_snapshot, exchange_interface
 
 
 class IdentityCleanupTests(unittest.TestCase):
@@ -43,7 +43,7 @@ class IdentityCleanupTests(unittest.TestCase):
                     return "mac_transport_fixture_key_cleanup=passed"
                 if args[1] == "--m8-local-exchange-start-driver":
                     self.assertEqual(timeout, 360)
-                    return EXCHANGE_MARKER + "\n" + REPLACEMENT_MARKER + "\n" + PAUSE_MARKER
+                    return EXCHANGE_MARKER + "\n" + REPLACEMENT_MARKER + "\n" + PAUSE_MARKER + "\n" + SETTINGS_MARKER
                 return "\n".join(MARKERS)
             check_native_pairing(Path("signed-desktop"), root, run, exchange_ip="192.168.64.2")
             self.assertEqual(len(calls), 6)

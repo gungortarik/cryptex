@@ -49,7 +49,7 @@ impl Location {
             expected_ports: None,
         }
     }
-    fn candidate(
+    pub(crate) fn candidate(
         &self,
         store: &dyn SecureStore,
         environment: SecureStoreEnvironment,
@@ -354,6 +354,7 @@ impl Controller {
     }
     fn apply(&mut self, update: Option<Update>, interest: &Interest) -> Result<View, Error> {
         let result = self.apply_inner(update, interest);
+        let mut restored = false;
         if matches!(
             result,
             Err(Error::StaleRevision | Error::UnknownDevice | Error::InvalidEndpoint)
@@ -362,9 +363,11 @@ impl Controller {
         {
             // A stale editor never changes preferences. Restore from a NEW
             // canonical scan rather than leaving a valid saved configuration off.
-            let _ = self.apply_inner(None, interest);
+            restored = self.apply_inner(None, interest).is_ok();
         }
-        if let Err(error) = result {
+        if let Err(error) = result
+            && !restored
+        {
             self.view.state = if error == Error::NotEnrolled {
                 State::NotEnrolled
             } else {
@@ -495,6 +498,13 @@ impl Controller {
             if Instant::now() >= scan_deadline {
                 return Err(Error::Unavailable);
             }
+            // Retain exclusion before handing off to native startup, including
+            // cancellation or namespace failure immediately after it returns.
+            self.guard = Some(
+                permit
+                    .transport_guard(&self.root)
+                    .map_err(|_| Error::Held)?,
+            );
             #[cfg(windows)]
             let worker = Worker::start_exchange(
                 location.profile.clone(),
@@ -518,11 +528,6 @@ impl Controller {
                 if reader.try_transport_device_id().map_err(|_| Error::Start)? != identity {
                     return Err(Error::Start);
                 }
-                self.guard = Some(
-                    permit
-                        .transport_guard(&self.root)
-                        .map_err(|_| Error::Held)?,
-                );
                 *self.reader.lock().map_err(|_| Error::Unavailable)? = Some(reader);
                 Ok(())
             })();

@@ -972,7 +972,40 @@ fn check_existing_profile_import(
     receiver: &Path,
     mut daemon: LocalDaemon,
 ) -> Result<(), String> {
+    use cryptexd::managed_profile::connection_settings::{State, Update};
     use std::os::unix::fs::DirBuilderExt;
+    let before_settings = canonical_event_snapshot(receiver)?;
+    let settings = daemon
+        .connection_settings(None)
+        .map_err(|e| e.to_string())?;
+    if settings.state != State::Paused || settings.devices.len() != 1 {
+        return Err("existing_profile_settings_initial".into());
+    }
+    let pending = daemon
+        .prepare_owner(self_retirement())
+        .map_err(|e| e.to_string())?;
+    let stale = daemon
+        .capture_confirmation_probe()
+        .map_err(|e| e.to_string())?;
+    let saved = daemon
+        .connection_settings(Some(Update {
+            expected_revision: settings.revision,
+            paused: true,
+            listen_address: None,
+            peers: Vec::new(),
+        }))
+        .map_err(|e| e.to_string())?;
+    if saved.state != State::Paused {
+        return Err("existing_profile_settings_save".into());
+    }
+    daemon
+        .require_wire_replay_refusal(&stale)
+        .map_err(|e| e.to_string())?;
+    if daemon.finish_owner(&pending.session_handle, true).is_ok()
+        || canonical_event_snapshot(receiver)? != before_settings
+    {
+        return Err("existing_profile_settings_old_approval".into());
+    }
     let source_before = canonical_event_snapshot(source)?;
     let brain = cryptexd::identity_runtime::load_brain_identity(source)
         .map_err(|_| "existing_profile_source")?;
@@ -1047,6 +1080,15 @@ fn check_existing_profile_import(
     {
         return Err("existing_profile_restriction_not_reconciled".into());
     }
+    let restricted = daemon
+        .connection_settings(None)
+        .map_err(|e| e.to_string())?;
+    if restricted.state != State::Paused
+        || !restricted.devices.is_empty()
+        || restricted.revision != saved.revision
+    {
+        return Err("existing_profile_settings_restricted_peer".into());
+    }
     let prepared = daemon
         .prepare_owner(self_retirement())
         .map_err(|e| e.to_string())?;
@@ -1056,6 +1098,15 @@ fn check_existing_profile_import(
     daemon.close().map_err(|e| e.to_string())?;
     let before_restart = canonical_event_snapshot(receiver)?;
     let mut reopened = durable_daemon(receiver, ContentProfile::ExistingProfile)?;
+    let settings = reopened
+        .connection_settings(None)
+        .map_err(|e| e.to_string())?;
+    if settings.state != State::Paused
+        || !settings.devices.is_empty()
+        || settings.revision != saved.revision
+    {
+        return Err("existing_profile_settings_restart".into());
+    }
     reopened
         .require_wire_replay_refusal(&old)
         .map_err(|e| e.to_string())?;
@@ -1074,6 +1125,7 @@ fn check_existing_profile_import(
     }
     println!("native_existing_profile_signed_import=passed");
     println!("native_existing_profile_restart_replay_and_local_status=passed");
+    println!("native_connection_settings_owner_channel_and_roster=passed");
     Ok(())
 }
 

@@ -6873,6 +6873,45 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn settings_reply_hold_is_typed_and_reply_lease_blocks_shutdown_drain() {
+        use crate::managed_profile::connection_settings::{Error, Response};
+        let fixture = prepared_search_fixture("settings-reply-lifetime");
+        let mut reply = Response {
+            schema_version: 1,
+            request_id: "ab".into(),
+            accepted: true,
+            error: None,
+            view: None,
+        };
+        let lease = connection_settings_response_lease(Some(&fixture.context), &mut reply).unwrap();
+        assert!(
+            fixture
+                .context
+                .admission
+                .exclusive(&fixture.root, Instant::now(), false)
+                .is_err()
+        );
+        drop(lease);
+        fixture
+            .context
+            .admission
+            .exclusive(
+                &fixture.root,
+                Instant::now() + Duration::from_secs(1),
+                false,
+            )
+            .unwrap()
+            .finish(Some(
+                crate::runtime_admission::RuntimeHold::IncomingPolicyConflict,
+            ));
+        assert!(connection_settings_response_lease(Some(&fixture.context), &mut reply).is_none());
+        assert!(!reply.accepted);
+        assert_eq!(reply.error, Some(Error::Held));
+        assert!(reply.view.is_none());
+        fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[test]
     fn transport_status_requires_exact_desktop_peer_role_capability_and_body() {
         let fixture = prepared_search_fixture("transport-auth");
         for (request, peer, expected) in [

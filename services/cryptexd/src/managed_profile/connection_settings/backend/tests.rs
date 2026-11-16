@@ -86,6 +86,60 @@ fn preferences_require_current_canonical_binding_and_revision() {
             None,
         )
         .unwrap();
+    let (history, _) = snapshot.verified_trust_context().unwrap();
+    let issuer = history.local_device.clone();
+    let target = history
+        .directly_approved_peers
+        .iter()
+        .next()
+        .unwrap()
+        .clone();
+    let key_id = history.local_signing_key_id.clone();
+    let public_key = history.local_public_key;
+    drop(snapshot);
+    let policy = crate::knowledge_materialization::scan_verified_trust_policy(
+        &receiver,
+        &brain.brain_id,
+        &issuer,
+        &key_id,
+        &public_key,
+        &[issuer.clone(), target.clone()],
+    )
+    .unwrap();
+    let transaction = "cd".repeat(32);
+    let approval = policy
+        .device_restriction_approval_snapshot(
+            transaction.clone(),
+            &target,
+            crate::bootstrap_journal::RestrictionReason::Compromised,
+            0,
+        )
+        .unwrap();
+    drop(policy);
+    let journal = crate::bootstrap_journal::BootstrapJournalStore::new(&receiver).unwrap();
+    journal
+        .begin_owner_operation(approval.clone(), "99999999-9999-4999-8999-999999999997")
+        .unwrap();
+    journal
+        .confirm_owner_operation(&transaction, &approval.digest().unwrap())
+        .unwrap();
+    crate::knowledge_materialization::append_confirmed_owner_security_operation(
+        &receiver,
+        &brain.brain_id,
+        &store,
+        SecureStoreEnvironment::Dev,
+        &transaction,
+    )
+    .unwrap();
+    drop(journal);
+    let snapshot =
+        crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+            &receiver,
+            &brain.brain_id,
+            &resolver.local_trust_anchor().unwrap(),
+            None,
+        )
+        .unwrap();
     let restricted = ExchangePeers::from_snapshot(&snapshot, &receiver, REMOTE).unwrap();
     assert!(restricted.bindings().is_empty());
     assert!(saved.devices(&restricted).is_empty());

@@ -378,6 +378,12 @@ pub(crate) fn serve(
     )
     .map_err(io::Error::other)?;
     context.connections = Some(connections.handle());
+    // Complete the initial coordinator admission before accepting owner frames.
+    // A transport-domain Attention result still permits local profile use.
+    connections
+        .handle()
+        .request(None)
+        .map_err(io::Error::other)?;
     // No Unix or derived worker is exposed until it shares the original
     // native namespace capability set and verified device pins.
     #[cfg(feature = "m8-development-product")]
@@ -432,6 +438,12 @@ pub(crate) fn serve(
             }
             Incoming::Request(received) => {
                 backend.tick(&context, instance)?;
+                // Publication may revoke transport while rebuilding canonical
+                // views. Settle its fresh roster before the next owner admission.
+                connections
+                    .handle()
+                    .request(None)
+                    .map_err(io::Error::other)?;
                 let response = domain.dispatch(connection, *received)?;
                 let reconcile = response.requires_reconcile;
                 if reconcile {
@@ -442,6 +454,10 @@ pub(crate) fn serve(
                 send_checked(&backend.namespace, || response.send(connection))?;
                 if reconcile {
                     prepare_existing_runtime(root, instance, &backend.namespace)?;
+                    connections
+                        .handle()
+                        .request(None)
+                        .map_err(io::Error::other)?;
                 }
             }
         }

@@ -115,6 +115,7 @@ impl<'a> OwnedSyncthingRest<'a> {
         self.observe_before(deadline, None)
     }
 
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     pub(crate) fn observe_listener_with_budget(
         &self,
         listener: Option<std::net::SocketAddrV4>,

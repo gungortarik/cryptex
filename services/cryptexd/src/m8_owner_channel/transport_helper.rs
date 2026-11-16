@@ -1578,9 +1578,11 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
         return Err(Error::Arguments);
     }
     let helper_root = root.join("managed-transport");
-    let bootstrap = Worker::spawn(helper_root.clone(), false)?;
-    let identity = wait_identity(bootstrap.status_reader())?;
-    bootstrap.close()?;
+    // Product startup may already have installed paused exchange state. Read a
+    // validated candidate seed; only the later owned handshake proves readiness.
+    let (identity, _) = crate::managed_profile::connection_settings::Location::mac(root)
+        .candidate(&MacosKeychainStore::new(), SecureStoreEnvironment::Dev)
+        .map_err(|_| Error::Profile)?;
     let owner = crate::instance::try_acquire_instance(root).map_err(|_| Error::Profile)?;
     let admission = owner.admission();
     admission
@@ -1687,9 +1689,105 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
             return Err(Error::Cleanup);
         }
     }
+    drop(owner);
+    check_connection_coordinator(root, ip, endpoint)?;
     println!("native_supervised_exchange_install_restart_revocation=passed");
     println!("native_supervised_exchange_endpoint_replacement=passed");
     println!("native_supervised_exchange_pause_resume=passed");
+    Ok(())
+}
+
+fn check_connection_coordinator(
+    root: &Path,
+    ip: std::net::Ipv4Addr,
+    endpoint: std::net::SocketAddrV4,
+) -> Result<(), Error> {
+    use crate::managed_profile::connection_settings::{
+        Error as SettingsError, Location, Owner, PeerAddress, State, Update,
+    };
+    let instance = crate::instance::try_acquire_instance(root).map_err(|_| Error::Profile)?;
+    let start = || {
+        Owner::start(
+            root,
+            &instance,
+            Arc::new(MacosKeychainStore::new()),
+            SecureStoreEnvironment::Dev,
+            Some(Location::mac(root)),
+            crate::approval_session::ApprovalSessionRegistry::default(),
+            None,
+        )
+        .map_err(|_| Error::Profile)
+    };
+    let mut owner = start()?;
+    let handle = owner.handle();
+    let initial = handle.request(None).map_err(|_| Error::Profile)?;
+    if initial.state != State::Paused || initial.devices.len() != 1 {
+        return Err(Error::Policy);
+    }
+    let mut update = Update {
+        expected_revision: initial.revision,
+        paused: false,
+        listen_address: Some(ip),
+        peers: initial
+            .devices
+            .into_iter()
+            .map(|device| PeerAddress {
+                device_id: device.device_id,
+                endpoint,
+            })
+            .collect(),
+    };
+    let active = handle
+        .request(Some(update.clone()))
+        .map_err(|_| Error::Engine)?;
+    if active.state != State::ReadyLocally {
+        return Err(Error::Engine);
+    }
+    if !matches!(
+        handle.request(Some(update.clone())),
+        Err(SettingsError::StaleRevision)
+    ) || handle.request(None).map_err(|_| Error::Engine)?.state != State::ReadyLocally
+    {
+        return Err(Error::Policy);
+    }
+    let mut unknown = update.clone();
+    unknown.expected_revision = active.revision.clone();
+    unknown.peers[0].device_id = "not-a-trusted-device".into();
+    if !matches!(
+        handle.request(Some(unknown)),
+        Err(SettingsError::UnknownDevice)
+    ) || handle.request(None).map_err(|_| Error::Engine)?.state != State::ReadyLocally
+    {
+        return Err(Error::Policy);
+    }
+    update.expected_revision = active.revision;
+    update.paused = true;
+    let paused = handle
+        .request(Some(update.clone()))
+        .map_err(|_| Error::Engine)?;
+    if paused.state != State::Paused {
+        return Err(Error::Policy);
+    }
+    owner.shutdown().map_err(|_| Error::Cleanup)?;
+    drop(owner);
+    let mut restarted = start()?;
+    let handle = restarted.handle();
+    let reopened = handle.request(None).map_err(|_| Error::Engine)?;
+    if reopened.state != State::Paused || reopened.revision != paused.revision {
+        return Err(Error::Policy);
+    }
+    update.expected_revision = reopened.revision;
+    update.paused = false;
+    if handle
+        .request(Some(update))
+        .map_err(|_| Error::Engine)?
+        .state
+        != State::ReadyLocally
+    {
+        return Err(Error::Engine);
+    }
+    restarted.shutdown().map_err(|_| Error::Cleanup)?;
+    println!("native_connection_settings_restart_and_stale_refusal=passed");
     Ok(())
 }
 
