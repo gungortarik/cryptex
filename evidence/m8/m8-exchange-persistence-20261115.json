@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "status": "scoped_native_ci_passed",
+  "implementation_source": "1e1a54b",
+  "ci_source": "22380738fa408972a49bdccfe83c0cb67d7aad77",
+  "scope": "Module-private bootstrap-to-exchange configuration persistence primitive, native filesystem adapters, and fail-closed existing bootstrap validation. Install is called only by tests; no controller/helper install operation or exchange-mode process launch is exposed.",
+  "contract": {
+    "authority": "Every install/recovery recompiles bootstrap and verifies derived binding against the caller's current borrowed ExchangeConfigPolicy. The journal cannot create trust or substitute for future original native identity/certificate/OS-credential and runtime admission checks.",
+    "journal": "Schema1, exact native-home path, bootstrap, desired config and binding, pending/committed phase. Native private data only, including the native REST credential already required in config.xml; never canonical data, Debug output, logs or exported diagnostics.",
+    "bounds": "256 KiB config, 64 KiB binding, 1 MiB journal, 4096-byte UTF8 native-home path; reject duplicate/unknown JSON fields and unknown schema.",
+    "recognized_pending_states": ["old config / absent binding", "new config / absent binding", "new config / exact new binding"],
+    "staging": "Only the exact next replacement can have a complete stage. Partial, foreign, multiple or out-of-order stages and all committed-stage leftovers refuse without silently deleting or repairing them.",
+    "commit": "Pending journal, config, binding, committed journal; each replacement has bounded readback. Both new commit and unchanged committed retry renew all fixed-leaf flush barriers and read back exact bytes/no stages. No canonical append or delete.",
+    "windows": "Private owner ACL validation, original no-delete-sharing ancestor pins, exact-stage resumption, MoveFileExW REPLACE_EXISTING|WRITE_THROUGH, writable-file flushing and installed file identity/readback checks.",
+    "mac": "Private owner/ACL/nlink checks; original ancestor-to-child edge validation; descriptor-relative openat/renameat; file fsync/F_FULLFSYNC, parent fsync and installed inode/readback checks. Existing retained ancestors are reused rather than duplicated.",
+    "bootstrap": "Existing PreparedNativeProfile validation refuses any exchange binding/journal/stage, including empty files, before native identity/credential validation. No recovery or activation through the old path."
+  },
+  "local": {
+    "format": "passed",
+    "daemon_all_target_clippy": "passed",
+    "python_startup_runner": "7 passed",
+    "rust_execution": "Compiled, but new test executable was blocked by Windows Application Control error4551. No local Rust tests executed for this slice; no bypass attempted."
+  },
+  "review": {
+    "mode": "Existing independent reviewer, read-only source review; no tests executed by reviewer.",
+    "finding": "Visible committed bytes could hide a previous post-rename flush error on retry.",
+    "resolution": "Added sync_committed plus full readback on every successful path, including no-write retries; persistent-flush-failure regression included.",
+    "final": "No further actionable persistence findings. Original-ancestor replacement regression added as requested."
+  },
+  "ci": {
+    "run": 43790365795,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/43790365795",
+    "source": "22380738fa408972a49bdccfe83c0cb67d7aad77",
+    "scope": "desktop_startup_only on native Windows and macOS",
+    "status": "success",
+    "windows_job": 133047175149,
+    "windows_status": "success",
+    "windows_verified_log": "8 persistence tests passed, including actual private-file replacement and reopen at 8 injected operation-boundary failures. Native profile suite11 passed/1 ignored includes pending-exchange bootstrap refusal. Three scoped standard-user suites passed and temporary account/profile removal confirmed.",
+    "mac_job": 133047175495,
+    "mac_status": "success",
+    "mac_persistence_evidence": "On this exact source, the passing bounded signed runner invokes feature-enabled managed_profile::exchange_install::tests:: and managed_profile::macos::tests:: (including original-ancestor replacement). A nonzero exit/timeout aborts the step. Individual suite stdout is not emitted by this harness; no separate positive exchange-engine launch is claimed.",
+    "mac_verified_log": "native_exchange_outside_helper_refused, native_managed_transport_pairing, native_existing_profile_signed_import, native_existing_profile_restart_replay_and_local_status, real_signed_desktop_daemon_startup_restart, local_certificate_fixture_cleanup all passed.",
+    "ignored": "Windows native-profile suite retains1 ignored real-engine test; XML suite retains1 ignored positive native roundtrip. Broader Mac owner-channel/IPC suites retain6 ignored tests. Not counted as executed acceptance.",
+    "initial_failed_run": 43789634443,
+    "initial_failure": "Mac passed. Windows5 pure tests passed but3 filesystem tests failed before creating native state: test scratch canonicalize returned a verbatim Windows path outside PrivateDirectory's ordinary disk-path API. Corrected the test-only path selection in2238073; production path/ownership checks unchanged.",
+    "superseded_run": 43789572782,
+    "superseded_reason": "Cancelled by this task to make Windows persistence and bootstrap test failures independent CI steps. Not accepted as a passed run."
+  },
+  "not_claimed": [
+    "An abrupt process-kill experiment inside this new transaction; current recovery tests inject errors immediately before/after each replacement and release/reacquire actual native leases.",
+    "Abrupt OS power-loss or Windows parent-metadata durability acceptance.",
+    "Automatic repair of partial/corrupt staging, active-roster updates or arbitrary config drift.",
+    "Runtime admission, incoming-path alias containment, engine stop/install/start/acknowledgement integration or live invalidation completion.",
+    "Positive Mac helper-owned exchange-config roundtrip, sealed export, actual Windows-Mac durable network convergence or full M8 acceptance."
+  ],
+  "next": "Wire one admitted, stopped-engine install/readback/start/ack operation to the existing worker and authenticated Mac helper; retain original identity/OS-key and namespace/snapshot pins through acknowledgement, release canonical locks afterward, stop/reconcile on policy changes. Only then connect bounded sealed export and prepare real two-device acceptance.",
+  "owner_action": "None requested; no new device ZIP.",
+  "milestone": "M8 OPEN"
+}

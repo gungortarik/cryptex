@@ -1,5 +1,19 @@
 # M8 completion ledger
 
+Latest persistence boundary1e1a54b / exact CI source2238073: a module-private
+first-install/recovery transaction, native bounded replacement and original Mac
+ancestor-edge validation. Existing bootstrap refuses every exchange marker/stage.
+No worker/helper install or exchange-mode launch is exposed. CI43790365795 PASSED
+Windows and Mac; Windows8 persistence tests plus native profile11/1 ignored,
+Mac feature-enabled private/persistence suites via the signed bounded runner,
+existing signed startup/import/restart and credential/account cleanup. Local
+format/clippy/Python7 pass; local Rust execution blocked by Application Control4551.
+Independent source review's committed-retry flush finding was fixed and tested.
+Fault injection/reopen is not a power-loss or abrupt-process-kill acceptance.
+Admitted install/start/ack, live reconciliation, helper-owned exchange roundtrip,
+sealed export and actual Windows-Mac durable convergence remain OPEN. No owner
+packet requested. [Evidence](../evidence/m8/m8-exchange-persistence-20261115.json).
+
 Latest compiler faacc8c/native probes1c43a94: exact trust-derived peer/folder XML and
 schema1 derived binding readback implemented. Local7 eligibility/12 XML tests,
 format/clippy and actual pinned Windows two-start config roundtrip pass. Independent

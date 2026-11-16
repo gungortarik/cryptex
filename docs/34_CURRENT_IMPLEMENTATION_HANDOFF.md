@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Exchange persistence boundary — November15, native CI pending
+## Exchange persistence boundary — November15, scoped native CI passed
 
 The next bounded implementation adds a module-private first-install/recovery
 transaction; it is called only by tests, NOT by a worker/helper or UI. Existing
@@ -15,7 +15,8 @@ duplicate fields/schema, stale policy, changed home or mismatched bytes refuse.
 This is derived private native data (including the native REST key already needed
 in config.xml), never canonical data or logging/diagnostic export material.
 Bounds: config256KiB, binding64KiB, journal1MiB, native-home4096 UTF-8 bytes.
-The original generation/config/cert/key and OS credential are NOT replaced.
+The original generation/config.xml, native cert.pem/key.pem and OS credential are
+NOT replaced; only the derived native/config.xml and the two new records change.
 
 The only recoverable pending disk combinations are old-config/no-binding,
 new-config/no-binding and new-config/new-binding. Exact next-write staging may
@@ -29,10 +30,26 @@ Mac uses descriptor-relative renameat, file fsync/F_FULLFSYNC and parent fsync.
 Do NOT claim Windows power-loss/parent-metadata durability acceptance from this.
 Mac now revalidates every ORIGINAL retained ancestor edge, without doubling FDs.
 
-Local format and daemon all-target clippy passed. Python startup-runner7 tests pass.
+Implementation1e1a54b; exact tested source2238073 (9d5b7c4 CI steps separated,
+2238073 corrects test-only Windows path spelling). Local format and daemon
+all-target clippy passed. Python startup-runner7 tests pass.
 New Rust tests compiled, but local execution was blocked by Application Control
 4551 (no tests executed); do not reuse the earlier local-test-success statement
-for this binary. Scoped Windows/Mac CI is pending. Independent source review found
+for this binary. Scoped CI43790365795 PASSED Windows and Mac on exact2238073.
+Windows logs confirm8 persistence tests, native profile11 passed/1 ignored including
+bootstrap refusal, and all3 standard-user suite/account cleanup receipts. Mac's
+passing signed bounded runner invokes the feature-enabled exchange persistence
+and private adapter suites (individual stdout is not exported); completed logs
+also confirm native role refusal, signed pairing/import/restart, actual signed
+Desktop/daemon startup/restart and certificate cleanup. Broader Mac6 ignored
+owner-channel/IPC cases and Windows ignored native-engine fixtures are excluded.
+These are injected errors before/after each replacement with actual lease
+release/reopen, not a new abrupt-process-kill or power-cut experiment.
+Initial CI43789634443 passed Mac but Windows3 filesystem cases refused the test's
+verbatim canonicalized path before creation; corrected only the test path, never
+the product path/ownership guard. Earlier43789572782 was superseded/cancelled.
+[Evidence and limits](../evidence/m8/m8-exchange-persistence-20261115.json).
+Independent source review found
 a committed-retry flush gap, now fixed; no further actionable persistence finding.
 Reviewer executed no tests. Mac ancestor replacement regression is included.
 
