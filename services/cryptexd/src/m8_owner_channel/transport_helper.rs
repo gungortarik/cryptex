@@ -215,6 +215,41 @@ fn create_root(root: &Path) -> Result<PathBuf, Error> {
     private_root(&root)?;
     Ok(root)
 }
+/// Explicit product CLI enrollment through the actual signed daemon image.
+/// The temporary fixture create_root guard remains unchanged. The caller keeps
+/// the original runtime namespace and daemon instance lock for this operation.
+pub(crate) fn enroll_product(
+    namespace: &crate::import_staging::export_fs::Directory,
+    runtime: &Path,
+) -> Result<(), Error> {
+    if !namespace.is_path(runtime) {
+        return Err(Error::Arguments);
+    }
+    // Verify product inventory before creating any transport state.
+    let _release = Release::current(Role::Daemon, Instant::now() + Duration::from_secs(25))
+        .map_err(|_| Error::Policy)?;
+    let helper = namespace
+        .create_child_exclusive("managed-transport")
+        .map_err(|_| Error::Profile)?;
+    let mut marker = helper
+        .open_file("transport.marker", true)
+        .map_err(|_| Error::Profile)?;
+    marker
+        .write_all(MARKER)
+        .and_then(|_| marker.sync_all())
+        .map_err(|_| Error::Profile)?;
+    drop(marker);
+    helper.sync().map_err(|_| Error::Profile)?;
+    let root = runtime.join("managed-transport");
+    private_root(&root.canonicalize().map_err(|_| Error::Profile)?)?;
+    let original = helper.into_mac_namespace();
+    let worker = Worker::spawn_configured(root, false, false, None, Some(original))?;
+    let observed = wait_identity(worker.status_reader());
+    // Always stop/reap the owned helper, including an identity failure.
+    worker.close()?;
+    observed?;
+    namespace.validate().map_err(|_| Error::Profile)
+}
 fn epoch_text(epoch: &[u8; 16]) -> String {
     epoch.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -848,7 +883,7 @@ struct Helper {
     credential: String,
     root: PathBuf,
     active: File,
-    namespace: crate::import_staging::macos_fs::Directory,
+    namespace: Arc<crate::import_staging::macos_fs::Directory>,
 }
 impl Helper {
     fn start(
@@ -856,11 +891,12 @@ impl Helper {
         credential_record: &std::sync::Mutex<Option<String>>,
         combined: bool,
         exchange: bool,
+        original: Arc<crate::import_staging::macos_fs::Directory>,
     ) -> Result<Self, Error> {
         use std::os::unix::process::CommandExt;
+        original.validate().map_err(|_| Error::Profile)?;
         private_root(root)?;
-        let namespace = crate::import_staging::macos_fs::Directory::open(root, true)
-            .map_err(|_| Error::Profile)?;
+        let namespace = original;
         if root
             .join("transport.active")
             .try_exists()
@@ -872,12 +908,14 @@ impl Helper {
         if exchange && (combined || !profile_path.try_exists().map_err(|_| Error::Profile)?) {
             return Err(Error::Policy);
         }
+        namespace.validate().map_err(|_| Error::Profile)?;
         let profile = if profile_path.try_exists().map_err(|_| Error::Profile)? {
             ManagedProfile::open(&profile_path, SecureStoreEnvironment::Dev)
         } else {
             ManagedProfile::create(&profile_path, SecureStoreEnvironment::Dev)
         }
         .map_err(|_| Error::Profile)?;
+        namespace.validate().map_err(|_| Error::Profile)?;
         let credential = profile.credential_profile_id().to_owned();
         drop(profile);
         *credential_record.lock().map_err(|_| Error::Unavailable)? = Some(credential.clone());
@@ -966,6 +1004,7 @@ impl Helper {
         {
             return Err(Error::Channel);
         }
+        result.namespace.validate().map_err(|_| Error::Profile)?;
         channel
             .send(
                 &combined_loss::helper_hello(combined, 1, &epoch, &result._release, root),
@@ -1333,6 +1372,7 @@ impl Worker {
                 accept: accept_rx,
                 active: active_tx,
             }),
+            None,
         )?;
         let result = (|| {
             let seed = seed_rx
@@ -1380,16 +1420,26 @@ impl Worker {
         Self::spawn_inner(root, create, false)
     }
     fn spawn_inner(root: PathBuf, create: bool, combined: bool) -> Result<Self, Error> {
-        Self::spawn_configured(root, create, combined, None)
+        Self::spawn_configured(root, create, combined, None, None)
     }
     fn spawn_configured(
         root: PathBuf,
         create: bool,
         combined: bool,
         exchange: Option<ExchangeSetup>,
+        original: Option<crate::import_staging::macos_fs::Directory>,
     ) -> Result<Self, Error> {
         let requested_root = root.clone();
-        let (root, namespace) = if create {
+        let (root, namespace) = if let Some(namespace) = original {
+            if create {
+                return Err(Error::Arguments);
+            }
+            namespace.validate().map_err(|_| Error::Profile)?;
+            let canonical = root.canonicalize().map_err(|_| Error::Profile)?;
+            private_root(&canonical)?;
+            namespace.validate().map_err(|_| Error::Profile)?;
+            (canonical, namespace)
+        } else if create {
             let canonical = create_root(&root)?;
             let namespace = crate::import_staging::macos_fs::Directory::open(&root, true)
                 .map_err(|_| Error::Profile)?;
@@ -1429,7 +1479,13 @@ impl Worker {
                     if let Some(setup) = &exchange {
                         setup.guard.check().map_err(|_| Error::Policy)?;
                     }
-                    let mut helper = Helper::start(&root, &record, combined, exchange.is_some())?;
+                    let mut helper = Helper::start(
+                        &root,
+                        &record,
+                        combined,
+                        exchange.is_some(),
+                        namespace.clone(),
+                    )?;
                     if let Some(setup) = &exchange {
                         setup
                             .seed
@@ -2162,6 +2218,34 @@ pub fn check(root: &Path) -> Result<(), Error> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn enrollment_replacement_before_worker_start_is_refused_without_provisioning() {
+        use super::*;
+        let parent = crate::test_temp::exclusive_temp_dir("enrollment-original-root");
+        let namespace = crate::import_staging::export_fs::Directory::open(&parent).unwrap();
+        let original = namespace
+            .create_child_exclusive("managed-transport")
+            .unwrap();
+        let root = parent.join("managed-transport");
+        std::fs::rename(&root, parent.join("preserved")).unwrap();
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&root)
+            .unwrap();
+        assert!(matches!(
+            Worker::spawn_configured(
+                root.clone(),
+                false,
+                false,
+                None,
+                Some(original.into_mac_namespace())
+            ),
+            Err(Error::Profile)
+        ));
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
+        drop(namespace);
+        std::fs::remove_dir_all(parent).unwrap();
+    }
     use super::*;
     #[test]
     fn exchange_install_preserves_only_a_closed_typed_refusal() {

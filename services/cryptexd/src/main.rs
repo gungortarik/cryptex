@@ -118,6 +118,8 @@ fn run_with_ready(
     match args[0].as_str() {
         "lifecycle" => run_lifecycle(&args[1..], ordinary_ipc, ready),
         "identity" => run_identity(&args[1..]),
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        "transport" => run_transport_enrollment(&args[1..]),
         "replication" => run_replication(&args[1..]),
         "pilot-fixture" => run_pilot_fixture(&args[1..]),
         #[cfg(windows)]
@@ -131,6 +133,32 @@ fn run_with_ready(
             usage_text()
         ))),
     }
+}
+
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+fn run_transport_enrollment(args: &[String]) -> Result<(), LifecycleError> {
+    let [operation, root_flag, root, confirm, rest @ ..] = args else {
+        return Err(LifecycleError::Usage(
+            "transport enrollment arguments".into(),
+        ));
+    };
+    if operation != "enroll-local-dev"
+        || root_flag != "--runtime-root"
+        || confirm != "--confirm-local-only"
+    {
+        return Err(LifecycleError::Usage(
+            "transport enrollment arguments".into(),
+        ));
+    }
+    let package = match rest {
+        [] => None,
+        [flag, path] if cfg!(windows) && flag == "--package" => Some(Path::new(path)),
+        _ => return Err(LifecycleError::Usage("transport package arguments".into())),
+    };
+    cryptexd::managed_profile::enrollment::enroll_local_dev(Path::new(root), package)
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+    println!("transport_enrollment=local_only");
+    Ok(())
 }
 
 fn run_replication(args: &[String]) -> Result<(), LifecycleError> {
@@ -247,6 +275,33 @@ fn run_pilot_transport(args: &[String]) -> Result<(), LifecycleError> {
 }
 
 fn run_pilot_fixture(args: &[String]) -> Result<(), LifecycleError> {
+    if args.first().map(String::as_str) == Some("lan-profile-v1") {
+        let [_, root_flag, root, brain_flag, brain, confirm] = args else {
+            return Err(LifecycleError::Usage(
+                "lan profile fixture arguments".into(),
+            ));
+        };
+        if root_flag != "--runtime-root"
+            || brain_flag != "--brain-id"
+            || confirm != "--confirm-isolated-pilot"
+        {
+            return Err(LifecycleError::Usage(
+                "lan profile fixture arguments".into(),
+            ));
+        }
+        let brain = BrainIdentity::new(brain, "2026-11-16T00:00:00Z")
+            .map_err(|_| LifecycleError::Usage("invalid public Brain ID".into()))?;
+        let root = Path::new(root);
+        validate_pilot_fixture_root(root)?;
+        let _instance = try_acquire_instance(root)?;
+        prepare_m1_runtime_foundation(root)
+            .map_err(|_| LifecycleError::Attention("lan_profile_foundation".into()))?;
+        write_brain_identity(root, &brain)
+            .map_err(|_| LifecycleError::Attention("lan_public_brain".into()))?;
+        fs::create_dir_all(root.join("canonical/events"))?;
+        println!("lan_profile_fixture=ready");
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("trusted-import-prepare-v1") {
         let [
             _,
@@ -740,6 +795,29 @@ fn seed_timeline_fixture_with_platform_store(
 }
 
 fn run_identity(args: &[String]) -> Result<(), LifecycleError> {
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    if args.first().map(String::as_str) == Some("first-note-local-dev") {
+        use std::io::Read;
+        let [_, flag, root, confirm] = args else {
+            return Err(LifecycleError::Usage("first note arguments".into()));
+        };
+        if flag != "--runtime-root" || confirm != "--confirm-public-first-note-stdin" {
+            return Err(LifecycleError::Usage("first note arguments".into()));
+        }
+        let mut text = String::new();
+        std::io::stdin()
+            .take(4097)
+            .read_to_string(&mut text)
+            .map_err(|_| LifecycleError::Usage("first note UTF-8 input".into()))?;
+        #[cfg(windows)]
+        let store = cryptexd::WindowsCredentialStore::new();
+        #[cfg(target_os = "macos")]
+        let store = cryptexd::MacosKeychainStore::new();
+        cryptexd::first_capture::capture_first_local_dev(Path::new(root), &store, text)
+            .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+        println!("first_note=committed_public");
+        return Ok(());
+    }
     if args.first().map(String::as_str) != Some("enroll-local") {
         return Err(LifecycleError::Usage(format!(
             "identity requires the explicit 'enroll-local' operation\n{}",
@@ -1810,6 +1888,58 @@ mod tests {
             ])
             .is_err()
         );
+    }
+
+    #[test]
+    #[cfg(not(feature = "m8-development-product"))]
+    fn lan_profile_fixture_identical_public_brain_without_keys_or_events() {
+        let roots = [fresh_pilot_root(), fresh_pilot_root()];
+        let mut snapshots = Vec::new();
+        for root in &roots {
+            let args = vec![
+                "pilot-fixture".into(),
+                "lan-profile-v1".into(),
+                "--runtime-root".into(),
+                root.to_str().unwrap().into(),
+                "--brain-id".into(),
+                "b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4".into(),
+                "--confirm-isolated-pilot".into(),
+            ];
+            run(args.clone()).unwrap();
+            let path = cryptexd::identity_runtime::brain_identity_path(root);
+            let bytes = fs::read(&path).unwrap();
+            assert!(!cryptexd::local_device_identity::local_device_identity_path(root).exists());
+            assert_eq!(
+                fs::read_dir(root.join("canonical/events")).unwrap().count(),
+                0
+            );
+            assert!(run(args).is_err());
+            assert_eq!(fs::read(path).unwrap(), bytes);
+            snapshots.push(bytes);
+        }
+        assert_eq!(snapshots[0], snapshots[1]);
+        for root in roots {
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn lan_profile_fixture_invalid_brain_is_no_write() {
+        let root = fresh_pilot_root();
+        assert!(
+            run(vec![
+                "pilot-fixture".into(),
+                "lan-profile-v1".into(),
+                "--runtime-root".into(),
+                root.to_str().unwrap().into(),
+                "--brain-id".into(),
+                "invalid".into(),
+                "--confirm-isolated-pilot".into()
+            ])
+            .is_err()
+        );
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

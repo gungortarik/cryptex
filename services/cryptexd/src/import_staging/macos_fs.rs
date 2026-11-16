@@ -244,6 +244,24 @@ enum ExistingLock {
 
 impl Directory {
     #[cfg(feature = "m8-local-startup-check")]
+    pub(super) fn export_sync(&self) -> io::Result<()> {
+        self.validate()?;
+        self.sync()?;
+        self.validate()
+    }
+    #[cfg(feature = "m8-local-startup-check")]
+    pub(super) fn export_create_child_exclusive(&self, name: &OsStr) -> io::Result<Self> {
+        self.validate()?;
+        let child = leaf(name)?;
+        if unsafe { libc::mkdirat(self.last()?.as_raw_fd(), child.as_ptr(), 0o700) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let result = self.open_descendant(&self.path.join(name))?;
+        self.sync()?;
+        self.validate()?;
+        Ok(result)
+    }
+    #[cfg(feature = "m8-local-startup-check")]
     pub(super) fn export_child(&self, name: &OsStr, create: bool) -> io::Result<Self> {
         self.validate()?;
         let child = leaf(name)?;

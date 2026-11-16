@@ -54,6 +54,35 @@ struct PackagePins {
 pub struct PinnedSyncthingPackage(Arc<PackagePins>);
 
 impl PinnedSyncthingPackage {
+    /// Copy only the three already verified, immutable Windows package handles.
+    /// Destination is a newly created backend directory, never an overwrite.
+    #[cfg(windows)]
+    pub(crate) fn install_fresh(
+        &self,
+        directory: &crate::import_staging::export_fs::Directory,
+    ) -> Result<(), PackageError> {
+        use std::io::{Seek, SeekFrom};
+        let files = &self.0._files;
+        let start = files
+            .len()
+            .checked_sub(3)
+            .ok_or(PackageError::UnsafeObject)?;
+        for (name, source) in ["syncthing.exe", "LICENSE.txt", "AUTHORS.txt"]
+            .into_iter()
+            .zip(&files[start..])
+        {
+            let mut source = source.try_clone().map_err(|_| PackageError::Io)?;
+            source
+                .seek(SeekFrom::Start(0))
+                .map_err(|_| PackageError::Io)?;
+            let mut target = directory
+                .open_file(name, true)
+                .map_err(|_| PackageError::Io)?;
+            std::io::copy(&mut source, &mut target).map_err(|_| PackageError::Io)?;
+            crate::import_staging::export_fs::flush(&target).map_err(|_| PackageError::Io)?;
+        }
+        directory.validate().map_err(|_| PackageError::UnsafeObject)
+    }
     pub fn open(directory: &Path) -> Result<Self, PackageError> {
         #[cfg(all(windows, target_arch = "x86_64"))]
         {

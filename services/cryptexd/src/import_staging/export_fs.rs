@@ -30,6 +30,10 @@ pub(crate) struct Directory {
     native: macos_fs::Directory,
 }
 impl Directory {
+    #[cfg(target_os = "macos")]
+    pub(crate) fn into_mac_namespace(self) -> macos_fs::Directory {
+        self.native
+    }
     pub(crate) fn is_path(&self, path: &Path) -> bool {
         self.path == path
     }
@@ -73,6 +77,29 @@ impl Directory {
             path,
             native: self.native.export_child(name.as_ref(), create)?,
         })
+    }
+    /// Enrollment must never adopt a pre-existing or partially prepared tree.
+    pub(crate) fn create_child_exclusive(&self, name: &str) -> Result<Self, Error> {
+        leaf(name)?;
+        self.validate()?;
+        #[cfg(windows)]
+        {
+            fs::create_dir(self.path.join(name))?;
+            self.child(name, false)
+        }
+        #[cfg(target_os = "macos")]
+        Ok(Self {
+            path: self.path.join(name),
+            native: self.native.export_create_child_exclusive(name.as_ref())?,
+        })
+    }
+    pub(crate) fn sync(&self) -> Result<(), Error> {
+        self.validate()?;
+        #[cfg(target_os = "macos")]
+        self.native.export_sync()?;
+        #[cfg(windows)]
+        sync_staged_parent(&self.path.join("enrollment"))?;
+        self.validate()
     }
     pub(crate) fn open_file(&self, name: &str, create: bool) -> Result<File, Error> {
         leaf(name)?;

@@ -21,6 +21,8 @@ pub mod compat;
 pub mod daemon_startup;
 pub mod error;
 pub mod event_signing_key;
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub mod first_capture;
 pub mod identity_runtime;
 pub mod import_limits;
 pub mod import_staging;

@@ -20,6 +20,8 @@ pub mod connection_settings;
 #[cfg(any(windows, test))]
 pub mod controller;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub mod enrollment;
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 #[allow(dead_code)] // Module-private persistence used by admitted exchange workers.
 mod exchange_install;
 #[cfg(any(
