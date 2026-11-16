@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "status": "scoped_native_ci_passed",
+  "implementation_source": "e0e88d5",
+  "candidate_source": "bd4a69169657a74de2cdf92a341020f4185a64a7",
+  "scope": "Daemon-only admitted bootstrap-to-exchange installation, owned native startup, exact ready acknowledgement and live invalidation; normal settings/coordinator activation remains closed.",
+  "contract": {
+    "authority": "Caller obtains exclusive RuntimeAdmission before fresh canonical scan, borrows ExchangeConfigPolicy and retains the canonical snapshot and permit through synchronous readiness acknowledgement. A disk binding/journal never grants authority.",
+    "native_identity": "Original ready profile, generation bootstrap, native certificate/private-key hashes, local native ID, API credential binding and actual OS-stored credential are checked on install and reopen. Strict normalized XML equality accepts only harmless native serialization.",
+    "command": "Closed schema1 command, fresh random nonce, full target configuration/binding, original native identity/ports/root. Maximum1MiB; unknown/duplicate fields reject. No Debug, log or diagnostic export of command/seed/configuration credentials.",
+    "windows": "The original profile lease, native ancestor pins and pinned package transfer to the worker. Installed readback, owned REST readiness and matching command digest precede parent acceptance. Initial LocalReady publication and final worker acknowledgement complete before return.",
+    "mac": "Authenticated same-release helper role receives bootstrap-only or exchange-start mode. The helper opens existing native state, returns its original seed, installs only the parent-issued image, proves owned REST readiness and acknowledges the exact digest. Parent accepts and observes again before final readiness. Helper never scans canonical policy.",
+    "paths": "Original incoming ancestors remain pinned. Mac validates the original no-follow Directory before/after resolving only permitted OS alias spelling against the authenticated helper runtime; arbitrary symlink canonicalization is not authority.",
+    "lifetime": "Every reconcile attempt invalidates the previous transport epoch, including timeout. Policy/recovery/namespace/shutdown holds refuse stale readiness. Strong runtime ownership pins prevent replacement instance acquisition while workers/status views drain. Explicit owned close is still required for cleanup evidence.",
+    "restart": "Only a new admitted canonical policy can reopen committed exchange state. No stale automatic restart or active roster replacement. Existing bootstrap route still refuses exchange markers before OS-credential access."
+  },
+  "local": {
+    "format": "passed",
+    "daemon_all_target_clippy": "passed",
+    "exchange_suites": "17 passed:9 persistence,7 canonical eligibility,1 image/nonce/config/admission test",
+    "admission": "9 passed, including old-epoch non-revival and runtime OS-lock retention after InstanceLock drop",
+    "native_profile": "11 passed,1 ignored; ignored real profile fixture not counted",
+    "worker": "8 passed",
+    "real_windows_native": "Explicit supervised_exchange_install_restart_and_revocation passed on e03218c in23.58s. Actual bootstrap serve, first install, owned ready, clean close, committed restart with new canonical scan, live hold refusal, owned stop, bootstrap refusal and isolated OS-credential absence check. Empty disposable exchange; only cfg(test) substitutes loopback endpoints. No peer delivery claimed.",
+    "python": "12 transport harness and7 startup runner tests passed",
+    "execution": "Rust execution was available in this turn without Application Control bypass; previous slice's4551 limitation is historical."
+  },
+  "review": {
+    "mode": "Existing independent reviewer; source-only, no reviewer test execution",
+    "corrected": ["OS alias runtime mismatch", "literal bootstrap-format mismatch", "premature return before active acknowledgement", "early bootstrap-marker refusal", "weak-only runtime ownership gap", "positive Mac fixture selected a deliberately restricted peer roster"],
+    "verdict": "No remaining blocking source findings through e03218c. Later50d11de fixes Mac compilation boundaries; bd4a691 corrects CI account/suite execution only."
+  },
+  "ci": {
+    "run": 43796009611,
+    "source": "bd4a691",
+    "status": "success",
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/43796009611",
+    "windows_job": 133064866187,
+    "mac_job": 133064865961,
+    "windows_status": "success",
+    "mac_status": "success",
+    "windows_verified_log": "Image/nonce/config test passed under actual standard user;9 persistence tests,9 admission tests,11 native profile tests passed/1 ignored. All3 scoped standard-user runs confirmed account/profile cleanup; transport run now requires4 enumerated complete suites. No FAILED summary in final job log.",
+    "mac_verified_log": "Explicit native_supervised_exchange_install_restart_revocation=passed from actual signed helper/engine first installation, close, fresh-policy restart, hold and close. Also native_exchange_outside_helper_refused, native_managed_transport_pairing, native_existing_profile_signed_import, native_existing_profile_restart_replay_and_local_status, real_signed_desktop_daemon_startup_restart and local_certificate_fixture_cleanup all passed.",
+    "mac_unit_scope": "Passing bounded signed-runner commands include feature-enabled exchange_start, exchange_install, macos private adapter and runtime admission suites. Individual stdout is not exported; do not invent per-suite Mac counts. Broader explicitly ignored native cases remain excluded.",
+    "superseded_cancelled": [43794695991, 43794793737],
+    "rejected_initial_run": 43795035199,
+    "initial_failures": "Mac feature compilation found4 type/initializer/mutability errors, fixed in50d11de. Windows job reported success but detailed logs showed the image test failed under elevated runner ownership; subsequent successful cargo command masked its exit. This green result is NOT acceptance.",
+    "harness_correction": "bd4a691 moves the owner-sensitive image suite into the existing disposable standard-user runner (4 enumerated suites with exit/count/no-ignored verification), and makes runtime admission a separate CI step. Product ownership checks and test assertions are unchanged.",
+    "intermediate_run": 43795435947,
+    "intermediate_limit": "Cancelled after final candidate passed. Windows retained the same masked-test problem and is not accepted; no positive Mac result is inferred from this intermediate run."
+  },
+  "not_claimed": [
+    "Normal product settings/coordinator activation or automatic active-roster reconciliation",
+    "Bounded sealed export or actual Windows-Mac durable network convergence",
+    "Abrupt power-loss or new kill-at-each-persistence-boundary acceptance",
+    "Exchange-specific lost-ack/crash fault-injection coverage beyond existing bounded failure/cleanup mechanisms",
+    "All ignored native/platform cases or full M8 completion"
+  ],
+  "next": "Integrate normal coordinator settings/ownership and active-roster reconciliation before admitted sealed export and real two-device acceptance.",
+  "owner_action": "None; no new device package",
+  "milestone": "M8 OPEN"
+}

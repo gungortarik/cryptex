@@ -1,5 +1,67 @@
 # 34 — Current Implementation Handoff
 
+## Supervised exchange install/start — November15, native CI passed
+
+Source e0e88d5/48bb78b/e03218c, Mac compile fix50d11de and CI fixbd4a691 connect recoverable exchange persistence to the
+Windows owned worker and authenticated Mac transport helper. These are daemon-only
+backend entries; normal product settings activation is not wired yet. The caller
+must hold exclusive runtime admission BEFORE scanning canonical history and retain
+the fresh locked ExchangeConfigPolicy until the synchronous start method returns.
+Original profile/cert/key/OS credential and native generation bootstrap are checked
+before installation. Full normalized XML equivalence permits harmless native
+serialization but rejects drift. Ordinary bootstrap still refuses exchange state.
+
+Each start has a fresh random nonce bound to its complete bounded configuration
+command. Ready requires installed readback, exact owned REST observation, matching
+command digest, parent acceptance and a final worker active acknowledgement. Mac
+also observes the helper after its acceptance; helper receives no canonical API or
+authority from disk. Accepted OS aliases are resolved only after native Directory
+validation, with original incoming ancestor pins retained. User symlinks refuse.
+The original image/epoch/channel and helper role checks remain in place.
+
+A runtime transport epoch invalidates old sessions on any reconcile attempt,
+including timeout; policy/recovery/namespace/shutdown holds reject readiness.
+TransportGuard retains the instance OS lock while worker/status handles drain,
+but Stopped still refuses use immediately. Explicit owned close is required before
+claiming cleanup; holding the lock alone is not shutdown evidence. No stale-policy
+automatic restart or active roster replacement was added.
+
+Local format and all-target daemon clippy passed. Local Rust execution is now
+available without bypass:17 exchange tests,9 admission tests,11 native profile
+tests (1 ignored),8 worker tests passed. Explicit pinned-engine Windows fixture
+passed on e03218c: real bootstrap serve, first install, clean close, committed
+reopen under a fresh canonical scan, exact ready identity, live hold refusal and
+owned stop, old bootstrap refusal, isolated OS-key removal. This uses an empty
+disposable exchange and cfg(test)-only loopback endpoints; it is NOT peer delivery.
+Python transport harness12 and startup runner7 tests passed. Independent source
+review has no remaining blocking findings through e03218c; reviewer ran no tests.
+
+CI43796009611 PASSED both Windows and Mac on exact
+bd4a69169657a74de2cdf92a341020f4185a64a7. Completed Mac logs explicitly confirm
+native_supervised_exchange_install_restart_revocation=passed, actual signed
+Desktop/daemon startup/restart, existing signed pairing/import/replay and isolated
+certificate cleanup. The new driver reuses the unrestricted initiator fixture
+(responder intentionally restricted its peer), a present RFC1918 interface and
+fresh canonical authority; the authenticated helper really installs/starts/reopens.
+Passing bounded Mac commands also cover feature-enabled image/persistence/private
+adapter/admission suites; their individual stdout is suppressed by the harness.
+Windows logs confirm the image suite under a real standard-user account,9 persistence,
+9 admission,11 native profile tests/1 ignored, and all3 scoped standard-user runs
+with temporary-account/profile cleanup (transport run now has4 enumerated suites).
+
+Initial CI43795035199 is NOT acceptance: Mac feature compilation failed4 type/
+initializer/mutability checks, corrected in50d11de. Windows reported green but its
+logs exposed an owner-sensitive image test failing under the elevated runner, whose
+exit was masked by the next successful cargo command. bd4a691 moves that test into
+the existing verified standard-user runner and separates admission into its own
+step. No production ownership checks or test assertions were weakened. Runs
+43794695991/43794793737/43795435947 were superseded and cancelled; no acceptance
+is inferred from them. [Evidence and limits](../evidence/m8/m8-supervised-exchange-start-20261115.json).
+
+Remaining gates: normal settings/coordinator ownership and active-roster reconcile,
+admitted sealed export, actual Windows-Mac durable convergence/interruption, and
+the final M8 acceptance ledger. No new owner device ZIP is requested. M8 OPEN.
+
 ## Exchange persistence boundary — November15, scoped native CI passed
 
 The next bounded implementation adds a module-private first-install/recovery

@@ -1,5 +1,21 @@
 # M8 completion ledger
 
+Supervised install/start e03218c: backend Windows worker and authenticated Mac
+helper now retain fresh canonical policy/admission through installed readback,
+owned REST readiness and final correlated acknowledgement. Epoch/hold/namespace
+invalidation denies stale readiness; runtime exclusion survives draining workers.
+Local17 exchange/9 admission/11 native profile/8 worker tests, real Windows
+first-install/restart/hold/close fixture, format/clippy and Python12+7 passed.
+Independent source review has no remaining blocker. Native CI43796009611 PASSED
+both platforms on exactbd4a691; Mac's actual signed helper reports positive
+install/restart/revocation/close. Windows image tests passed under the real standard
+user with4 enumerated transport suites and account cleanup. Initial43795035199
+Windows green is rejected: detailed logs exposed a masked test failure under the
+elevated runner; fixed CI checks/account selection without weakening ownership.
+[Evidence](../evidence/m8/m8-supervised-exchange-start-20261115.json). Product settings ownership,
+active roster reconciliation, sealed export and real Windows-Mac convergence remain
+OPEN. No new owner package; M8 is not closed.
+
 Latest persistence boundary1e1a54b / exact CI source2238073: a module-private
 first-install/recovery transaction, native bounded replacement and original Mac
 ancestor-edge validation. Existing bootstrap refuses every exchange marker/stage.
