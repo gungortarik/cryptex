@@ -79,6 +79,8 @@ pub enum Error {
     Deadline,
     Spawn,
     Readiness,
+    /// Authenticated peer refused a domain operation; the channel remains valid.
+    Unavailable,
     Cleanup,
     StaleAccepted,
 }
