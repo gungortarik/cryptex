@@ -24,6 +24,46 @@ fn live_recovery_initializes_newly_approved_peer_stream_before_rebuild() {
     assert_eq!(event_hashes(&fixture.source), before);
 }
 
+#[test]
+#[cfg(windows)]
+fn live_recovery_refuses_corrupt_history_without_creating_peer_stream() {
+    let fixture = Fixture::new();
+    let peer = DeviceId::new(fixture.report.receiver_device.clone()).unwrap();
+    let peer_path = cryptex_storage::canonical_events_device_dir(&fixture.source, &peer);
+    assert!(!peer_path.exists());
+    let first = fixture
+        .source
+        .join(event_hashes(&fixture.source)[0].0.clone());
+    let mut bytes = fs::read(&first).unwrap();
+    bytes[0] ^= 0xff;
+    fs::write(&first, &bytes).unwrap();
+    let before = event_hashes(&fixture.source);
+    let mut instance = crate::instance::try_acquire_instance(&fixture.source).unwrap();
+    assert!(
+        recover_live_with_instance(&fixture.source, &mut instance, &fixture.store, ENV).is_err()
+    );
+    assert!(!peer_path.exists());
+    assert_eq!(event_hashes(&fixture.source), before);
+    assert!(instance.admission().enter(&fixture.source).is_err());
+}
+
+#[test]
+#[cfg(windows)]
+fn live_recovery_refuses_occupied_peer_slot_without_replacing_it() {
+    let fixture = Fixture::new();
+    let peer = DeviceId::new(fixture.report.receiver_device.clone()).unwrap();
+    let peer_path = cryptex_storage::canonical_events_device_dir(&fixture.source, &peer);
+    fs::write(&peer_path, b"do not replace").unwrap();
+    let before = event_hashes(&fixture.source);
+    let mut instance = crate::instance::try_acquire_instance(&fixture.source).unwrap();
+    assert!(
+        recover_live_with_instance(&fixture.source, &mut instance, &fixture.store, ENV).is_err()
+    );
+    assert_eq!(fs::read(&peer_path).unwrap(), b"do not replace");
+    assert_eq!(event_hashes(&fixture.source), before);
+    assert!(instance.admission().enter(&fixture.source).is_err());
+}
+
 fn append_offline_note(fixture: &Fixture, root: &Path, device: &str, text: &str) -> PathBuf {
     let device = DeviceId::new(device).unwrap();
     let appended = crate::canonical_writer::append_memory_note(

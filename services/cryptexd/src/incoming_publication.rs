@@ -410,6 +410,11 @@ pub(crate) fn recover_live_with_instance<S: SecureStore + ?Sized>(
         exclusive.finish(Some(hold));
         return Err(IncomingPublicationError::RecoveryRequired(error));
     }
+    #[cfg(windows)]
+    if let Err(error) = windows_stream_slots::initialize(root, store, environment) {
+        exclusive.finish(Some(RuntimeHold::DerivedRebuildRequired));
+        return Err(error);
+    }
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
     if let Err(error) = trace_recovery("initialize_slots", || {
         initialize_admitted_stream_slots(root, store, environment)
@@ -432,3 +437,6 @@ pub(crate) fn recover_live_with_instance<S: SecureStore + ?Sized>(
 #[cfg(test)]
 #[path = "incoming_publication_tests.rs"]
 mod tests;
+
+#[cfg(windows)]
+mod windows_stream_slots;

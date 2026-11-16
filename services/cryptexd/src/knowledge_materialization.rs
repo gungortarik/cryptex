@@ -870,7 +870,7 @@ impl VerifiedCanonicalSnapshot {
         true
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(windows, target_os = "macos"))]
     pub(crate) fn locked_devices(&self) -> &[DeviceId] {
         &self.devices
     }
