@@ -1,5 +1,40 @@
 # 34 — Current Implementation Handoff
 
+## Real LAN setup receipt received — November 16, application packet still pending
+
+The owner returned `ESITLEME-HAZIRLIK-SONUC-Darwin-a3d4ced8864b.zip`.
+Its single bounded result JSON matches collector source0d4bedb and script SHA256
+`efe196dadbdde493905620d0efd3d1cb200cd2d75dc17244f2b069e2b150cbbd`.
+The report says Darwin27.2.1/arm64, one RFC1918 address and an absent normal
+release-development profile; the legacy development root exists and must not
+be adopted, moved or deleted. This is an unsigned owner-supplied observation,
+not evidence of authenticated identity or transfer.
+
+A current read-only Windows refresh confirms its normal root is absent. The OS
+selects the physical Wi-Fi interface and an on-link /24 route to the Mac's
+reported address. No listener/connection test or canonical transfer occurred.
+Private endpoint values and session plan are in the owner's Downloads file
+`ESITLEME-OTURUM-b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4.json`, outside Git.
+The plan sets pairing/delivery/convergence false and requires launch-time
+rechecking. Receipt SHA256 and observations are in the sealed-export evidence.
+
+`scripts/m8/lan_acceptance_receipt.py` adds a bounded no-extraction receipt
+reader and explicit direct-route plan builder. It rejects extra/archive-alias
+members, duplicate JSON keys, wrong collector bindings/scopes, existing normal
+profiles, non-private addresses and routed/default-route plans. Twelve receipt
+and preflight unit tests pass. No daemon/app behavior changed in this receipt step.
+
+Next: implement the fresh persistent-profile application packet, not another
+preflight request. Setup still needs explicit daemon-owned local identity and
+transport enrollment before normal launch, plus public-message handoff with
+owner pairing review. Existing Mac normal-opening collector deletes its successful
+synthetic fixture; it is not a persistent LAN packet. Product daemon refuses
+pilot-fixture commands, Mac transport create_root is temporary-root-only, and
+mac_development_startup_check exports its product bundle only on failed startup.
+Do not relabel those old collectors or failure artifacts as passed real-device
+acceptance, copy canonical files across machines, or enable fixture seeding from
+normal application entry. The accepted product-flow proposal remains the authority.
+
 ## Admitted sealed export and real LAN preparation — November 16, Windows and Mac CI passed
 
 The user confirmed that their Windows machine and own Mac are available on the
@@ -48,11 +83,11 @@ Read-only one-click setup package `Cryptex-LAN-Hazirlik-0d4bedb.zip` was built i
 the owner's Downloads and offered for Mac. Collector source0d4bedb has six passing
 unit tests and reports only OS/architecture, private IPv4 candidates and fixed
 profile-path existence. Windows receipt24b7b6adfeed observed four private address
-candidates and an absent normal release-development profile. Mac receipt is
-pending. The collector creates no profile, reads no keys/note contents, starts
+candidates and an absent normal release-development profile. The subsequent
+Mac receipt is now recorded in the newer section above. The collector creates no profile, reads no keys/note contents, starts
 no application and performs no transfer; this is not a LAN acceptance result.
 
-Continue with the Mac setup receipt, then prepare
+The Mac setup receipt is received; prepare
 the coordinated persistent Windows/Mac application packet using fresh profiles
 at normal application paths without adopting or overwriting existing profiles.
 The remaining device gate is owner-reviewed pairing, disconnected capture on

@@ -20,7 +20,8 @@
     "startup_runner": "7 passed",
     "standard_user_summary_validator": "3 positive and6 refusal cases passed",
     "lan_preflight": "6 passed",
-    "rust_execution": "Windows Application Control4551 blocks local execution; no bypass. Platform execution is tracked separately."
+    "rust_execution": "Windows Application Control4551 blocks local execution; no bypass. Platform execution is tracked separately.",
+    "lan_receipt_and_preflight": "12 passed; bounded ZIP input, schema/source/scope checks, profile refusal and direct-route plan constraints"
   },
   "source_review": {
     "reviewer": "Existing authorized independent_m8_review agent",
@@ -99,13 +100,19 @@
     "package": "Cryptex-LAN-Hazirlik-0d4bedb.zip",
     "windows_receipt": "ESITLEME-HAZIRLIK-SONUC-Windows-24b7b6adfeed.zip",
     "windows_observation": "Normal release-development profile absent; four private IPv4 candidates. No profile content read or modified.",
-    "mac_receipt": "pending",
+    "mac_receipt": "ESITLEME-HAZIRLIK-SONUC-Darwin-a3d4ced8864b.zip",
     "network_tested": false,
-    "package_sha256": "a55f14f1831a3056dd5225e39b05e8f4295466a0c6ba206cfba7a2df41eaf6b6"
+    "package_sha256": "a55f14f1831a3056dd5225e39b05e8f4295466a0c6ba206cfba7a2df41eaf6b6",
+    "mac_receipt_sha256": "7ec79dffbb0bb5914ac9c9f40b8c0f39d4f0841a4be60325ee97be4bbf3b478b",
+    "mac_observation": "Owner-supplied receipt reports Darwin27.2.1 arm64, one private IPv4 address, absent normal development root and existing legacy root. Collector source/hash match the offered packet. This is an unsigned setup observation, not native identity/trust evidence.",
+    "current_windows_observation": "Read-only refresh confirms normal development root absent. Current OS route selects Wi-Fi with an on-link /24 route to the reported Mac address. No application listener, packet delivery or durable convergence tested.",
+    "plan_run_id": "b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4",
+    "plan_file": "ESITLEME-OTURUM-b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4.json",
+    "plan_scope": "Public LAN candidate selection only, stored outside the repository. Recheck profile absence and current route at launch. Pairing/delivery/convergence flags remain false."
   },
   "remaining_gates": [
     "Keep the earlier intermittent restricted-peer failure recorded as unroot-caused. Both subsequent cec7dab and exact-source5acd145 Mac runs passed; aggregate diagnostics remain in place.",
-    "Coordinated fresh persistent-profile application packet after Mac setup observation; no existing-profile adoption or overwrite.",
+    "Implement and validate fresh persistent-profile enrollment/transport setup and the coordinated signed application packet. Mac setup observation is now received; no more preflight collection is required merely to begin that work.",
     "Owner-reviewed pairing, disconnected captures, actual Windows-Mac LAN delivery and daemon-verified canonical plus derived convergence after restart.",
     "Real transport interruption/recovery, duplicate delivery and cutoff propagation.",
     "Native Windows first-enrollment/coordinator and physical settings UI evidence; final M8 ledger remains open."
