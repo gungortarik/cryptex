@@ -45,6 +45,37 @@ use crate::paths::{assert_outside_repository, ensure_runtime_root};
 use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 use crate::sequence_runtime::{allocate_device_sequence, initialize_device_sequence};
 
+/// Export checkpoint: consume only the local verified active file while the
+/// snapshot retains the existing inventory/device locks. No sequence allocation,
+/// event rewrite or tip authority is introduced; the next writer reconciles the
+/// derived tip from the sealed stream as it does after an interrupted seal.
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub(crate) fn seal_export_checkpoint(
+    root: &Path,
+    pack: &crate::knowledge_materialization::export_plan::ExportPack<'_>,
+    directory: &crate::import_staging::export_fs::Directory,
+    source: &File,
+) -> Result<(), crate::import_staging::export_fs::Error> {
+    let invalid = || crate::import_staging::export_fs::Error::Unsafe;
+    let lock = pack.local_lock().ok_or_else(invalid)?;
+    if !pack.validate(root)
+        || lock.device_id() != &pack.device
+        || !directory.is_path(&canonical_events_device_dir(root, &pack.device))
+    {
+        return Err(invalid());
+    }
+    directory.promote(
+        &format!("{:020}.open", pack.index),
+        source,
+        directory,
+        &format!("{:020}.seg", pack.index),
+    )?;
+    if !pack.validate(root) {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 thread_local! {
     static FAIL_AFTER_APPEND_BEFORE_TIP: std::cell::Cell<bool> =

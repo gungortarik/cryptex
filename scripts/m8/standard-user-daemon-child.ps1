@@ -80,7 +80,7 @@ foreach($exe in $p.executables) {
     $fullList=Invoke-TestBinary $exe '--list'
     $fullCount=@($fullList.stdout -split '\r?\n' | Where-Object {$_ -cmatch ': test$'}).Count
     if($fullList.code -ne 0 -or $fullCount -eq 0){throw 'Missing full daemon test inventory.'}
-    $filters=if($transportOnly){@('managed_profile::connection_settings::','managed_profile::exchange_policy::','managed_profile::exchange_start::','managed_profile::incoming::tests::','offline_restricted_peer_tail_is_refused_after_owner_confirmed_cutoff')}elseif($sessionOnly){@('approval_session::tests::','ipc::tests::','m8_owner_channel::')}else{@('')}
+    $filters=if($transportOnly){@('managed_profile::sealed_export::','managed_profile::connection_settings::','managed_profile::exchange_policy::','managed_profile::exchange_start::','managed_profile::incoming::tests::','offline_restricted_peer_tail_is_refused_after_owner_confirmed_cutoff')}elseif($sessionOnly){@('approval_session::tests::','ipc::tests::','m8_owner_channel::')}else{@('')}
     foreach($filter in $filters) {
         $list=Invoke-TestBinary $exe ("$filter --list".Trim())
         $count=@($list.stdout -split '\r?\n' | Where-Object {$_ -cmatch ': test$'}).Count

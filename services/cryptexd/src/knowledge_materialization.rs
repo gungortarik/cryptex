@@ -551,6 +551,9 @@ struct RawFrame {
     bytes: Vec<u8>,
 }
 
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub(crate) mod export_plan;
+
 /// A transaction-owned sealed destination that may already have been moved
 /// into canonical storage when startup recovery reconstructs the pre-import
 /// policy snapshot. The caller must derive this from the closed prepared

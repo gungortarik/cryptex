@@ -44,6 +44,8 @@ mod native_transfer_test;
     test
 ))]
 pub(crate) mod native_xml;
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub(crate) mod sealed_export;
 #[cfg(all(test, windows))]
 mod tests;
 #[cfg(windows)]

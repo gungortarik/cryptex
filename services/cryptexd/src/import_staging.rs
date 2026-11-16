@@ -226,6 +226,8 @@ struct CommittedImportMarker {
 }
 
 mod cleanup;
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub(crate) mod export_fs;
 pub(crate) mod policy_hold;
 
 fn create_import_file(path: &Path) -> io::Result<File> {

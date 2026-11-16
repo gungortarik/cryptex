@@ -243,6 +243,63 @@ enum ExistingLock {
 }
 
 impl Directory {
+    #[cfg(feature = "m8-local-startup-check")]
+    pub(super) fn export_child(&self, name: &OsStr, create: bool) -> io::Result<Self> {
+        self.validate()?;
+        let child = leaf(name)?;
+        if create && unsafe { libc::mkdirat(self.last()?.as_raw_fd(), child.as_ptr(), 0o700) } != 0
+        {
+            let error = io::Error::last_os_error();
+            if error.kind() != io::ErrorKind::AlreadyExists {
+                return Err(error);
+            }
+        }
+        let result = self.open_descendant(&self.path.join(name))?;
+        self.sync()?;
+        Ok(result)
+    }
+
+    #[cfg(feature = "m8-local-startup-check")]
+    pub(super) fn export_open(&self, name: &OsStr, create: bool) -> io::Result<File> {
+        self.open_file(
+            name,
+            if create {
+                libc::O_RDWR | libc::O_CREAT | libc::O_EXCL
+            } else {
+                libc::O_RDWR
+            },
+        )
+    }
+
+    #[cfg(feature = "m8-local-startup-check")]
+    pub(super) fn export_promote(
+        &self,
+        name: &OsStr,
+        file: &File,
+        to: &Self,
+        target: &OsStr,
+    ) -> io::Result<()> {
+        let name = leaf(name)?;
+        let target = leaf(target)?;
+        self.validate_open_file(&name, file)?;
+        to.validate()?;
+        flush(file)?;
+        if unsafe {
+            cx_import_rename_exclusive(
+                self.last()?.as_raw_fd(),
+                name.as_ptr(),
+                to.last()?.as_raw_fd(),
+                target.as_ptr(),
+            )
+        } != 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        self.sync()?;
+        to.sync()?;
+        to.validate_open_file(&target, file)
+    }
+
     pub(crate) fn open(path: &Path, current_owner: bool) -> io::Result<Self> {
         let requested = path.to_path_buf();
         let path = normalize(path)?;

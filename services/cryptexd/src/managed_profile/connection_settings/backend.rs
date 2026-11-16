@@ -180,6 +180,8 @@ impl Owner {
                     guard: None,
                     reader,
                     cleanup_failed: false,
+                    exporter: super::super::sealed_export::Exporter::default(),
+                    next_export: Instant::now(),
                     #[cfg(windows)]
                     identity_only: false,
                     stop: worker_stop.clone(),
@@ -294,6 +296,8 @@ struct Controller {
     reader: Arc<Mutex<Option<Reader>>>,
     view: View,
     cleanup_failed: bool,
+    exporter: super::super::sealed_export::Exporter,
+    next_export: Instant,
     #[cfg(windows)]
     identity_only: bool,
     stop: Arc<AtomicBool>,
@@ -382,6 +386,51 @@ impl Controller {
             let error = self.close().err().unwrap_or(Error::Start);
             self.view.state = State::Attention;
             self.view.error = Some(error);
+        }
+        if self.view.state == State::ReadyLocally
+            && self.view.error.is_none()
+            && Instant::now() >= self.next_export
+        {
+            self.next_export = Instant::now() + Duration::from_secs(5);
+            let reader = self.reader.lock().ok().and_then(|r| r.clone());
+            if let (Some(guard), Some(reader)) = (&self.guard, reader)
+                && let Ok(identity) = reader.try_transport_device_id()
+            {
+                match self.exporter.tick(
+                    &self.root,
+                    &self.admission,
+                    guard,
+                    &identity,
+                    (self.store.as_ref(), self.environment),
+                    &self.stop,
+                ) {
+                    Ok(report) => {
+                        if report.withheld > 0 {
+                            eprintln!(
+                                "component=sealed_export status=partial reason=cutoff_boundary withheld_packs={}",
+                                report.withheld
+                            );
+                        }
+                    }
+                    Err(super::super::sealed_export::Error::Deferred) => {}
+                    Err(error) => {
+                        eprintln!("component=sealed_export status=refused error={error:?}");
+                        if error == super::super::sealed_export::Error::Authority
+                            && let Ok(permit) = self.admission.exclusive(
+                                &self.root,
+                                Instant::now() + Duration::from_secs(10),
+                                false,
+                            )
+                        {
+                            permit.finish(Some(
+                                crate::runtime_admission::RuntimeHold::RecoveryRequired,
+                            ));
+                        }
+                        self.view.error = Some(self.close().err().unwrap_or(Error::Storage));
+                        self.view.state = State::Attention;
+                    }
+                }
+            }
         }
     }
     fn apply(&mut self, update: Option<Update>, interest: &Interest) -> Result<View, Error> {
