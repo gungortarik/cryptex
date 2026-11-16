@@ -33,6 +33,8 @@ pub struct Location {
     profile: PathBuf,
     package: PathBuf,
     expected_ports: Option<NativePorts>,
+    #[cfg(windows)]
+    enrolled_pins: Vec<crate::import_staging::export_fs::Directory>,
 }
 impl Location {
     #[cfg(windows)]
@@ -41,7 +43,38 @@ impl Location {
             profile,
             package,
             expected_ports: Some(ports),
+            enrolled_pins: Vec::new(),
         }
+    }
+    /// Normal Windows entry only reopens an explicitly prepared fixed layout.
+    /// Absence is local-only; present but unsafe/incomplete state is a refusal.
+    /// No profile, key, port or package is generated or selected by the UI.
+    #[cfg(windows)]
+    pub fn windows_enrolled(root: &Path) -> Result<Option<Self>, Error> {
+        use crate::import_staging::export_fs::Directory;
+        let runtime = Directory::open(root).map_err(|_| Error::Authority)?;
+        if !runtime
+            .exists("managed-transport")
+            .map_err(|_| Error::Storage)?
+        {
+            return Ok(None);
+        }
+        let helper = runtime
+            .child("managed-transport", false)
+            .map_err(|_| Error::Authority)?;
+        let profile = helper
+            .child("00000000000000000000000000000001", false)
+            .map_err(|_| Error::NotEnrolled)?;
+        let package = helper
+            .child("package", false)
+            .map_err(|_| Error::NotEnrolled)?;
+        let base = root.join("managed-transport");
+        Ok(Some(Self {
+            profile: base.join("00000000000000000000000000000001"),
+            package: base.join("package"),
+            expected_ports: None,
+            enrolled_pins: vec![runtime, helper, profile, package],
+        }))
     }
     #[cfg(target_os = "macos")]
     pub(crate) fn mac(root: &Path) -> Self {
@@ -57,6 +90,10 @@ impl Location {
         store: &dyn SecureStore,
         environment: SecureStoreEnvironment,
     ) -> Result<(String, NativePorts), Error> {
+        #[cfg(windows)]
+        for pin in &self.enrolled_pins {
+            pin.validate().map_err(|_| Error::Authority)?;
+        }
         let package = crate::syncthing_package::PinnedSyncthingPackage::open(&self.package)
             .map_err(|_| Error::NotEnrolled)?;
         let mut profile =

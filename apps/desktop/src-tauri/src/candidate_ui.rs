@@ -1087,6 +1087,13 @@ fn check_existing_profile_import(
         || !restricted.devices.is_empty()
         || restricted.revision != saved.revision
     {
+        eprintln!(
+            "component=native_settings_check stage=restricted_peer state={:?} error={:?} devices={} revision_equal={}",
+            restricted.state,
+            restricted.error,
+            restricted.devices.len(),
+            restricted.revision == saved.revision
+        );
         return Err("existing_profile_settings_restricted_peer".into());
     }
     let prepared = daemon

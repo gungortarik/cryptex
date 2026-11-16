@@ -1111,6 +1111,11 @@ fn start_managed_transport(
         })
         .transpose()
         .map_err(|e| LifecycleError::Attention(e.to_string()))?;
+    let location = match location {
+        Some(location) => Some(location),
+        None => Location::windows_enrolled(root)
+            .map_err(|error| LifecycleError::Attention(error.to_string()))?,
+    };
     Owner::start(
         root,
         &*locked_instance(instance)?,

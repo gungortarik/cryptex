@@ -2,6 +2,48 @@ use super::*;
 const LOCAL: &str = "U2SYIGU-YWZX757-2WPZGCR-DHD7MLH-ZKV7HLJ-EYO6CXE-K3DU3DU-SDFXYAE";
 const REMOTE: &str = "XAAPCAD-GA4SF4J-BNQL3FS-T456WKV-FGLXUKO-CDWHVDW-EYWNRIG-SM5GUAZ";
 
+#[cfg(windows)]
+#[test]
+fn normal_windows_locator_is_read_only_pinned_and_refuses_incomplete_enrollment() {
+    let root = crate::test_temp::exclusive_temp_dir("normal-enrolled-transport");
+    assert!(Location::windows_enrolled(&root).unwrap().is_none());
+    assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
+    let helper = root.join("managed-transport");
+    std::fs::write(&helper, b"not a directory").unwrap();
+    assert!(matches!(
+        Location::windows_enrolled(&root),
+        Err(Error::Authority)
+    ));
+    assert_eq!(std::fs::read(&helper).unwrap(), b"not a directory");
+    std::fs::remove_file(&helper).unwrap();
+    std::fs::create_dir(&helper).unwrap();
+    assert!(matches!(
+        Location::windows_enrolled(&root),
+        Err(Error::NotEnrolled)
+    ));
+    assert_eq!(std::fs::read_dir(&helper).unwrap().count(), 0);
+    let profile = helper.join("00000000000000000000000000000001");
+    let package = helper.join("package");
+    std::fs::create_dir(&profile).unwrap();
+    std::fs::create_dir(&package).unwrap();
+    let location = Location::windows_enrolled(&root).unwrap().unwrap();
+    assert_eq!(location.profile, profile);
+    assert_eq!(location.package, package);
+    assert!(location.expected_ports.is_none());
+    assert!(std::fs::rename(&helper, root.join("replaced")).is_err());
+    assert!(matches!(
+        location.candidate(
+            &crate::FakeSecureStore::default(),
+            SecureStoreEnvironment::Dev
+        ),
+        Err(Error::NotEnrolled)
+    ));
+    assert_eq!(std::fs::read_dir(&profile).unwrap().count(), 0);
+    assert_eq!(std::fs::read_dir(&package).unwrap().count(), 0);
+    drop(location);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 #[test]
 fn preferences_require_current_canonical_binding_and_revision() {
     let (source, receiver, negative, store) =
