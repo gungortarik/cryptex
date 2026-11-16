@@ -1,0 +1,35 @@
+{
+  "scope": "One-click persistent Windows enrollment; no owner installation, normal UI or network acceptance yet",
+  "source": "072493870fd7373618aa44726887daed70fd01c1",
+  "product_source": "3d8e5b4756f7a6c91ae245c630a48efc645c0a50",
+  "product_run": "43905651278",
+  "packet_sha256": "72340931acfd835394c98f463dccd6130a478afceb91b332363104db03431831",
+  "packet_readback": "passed",
+  "local_tests": {
+    "windows_native_and_setup": 12,
+    "receipt": 2
+  },
+  "review": {
+    "agent": "independent_m8_review",
+    "source": "0724938",
+    "result": "No remaining actionable findings; source-only"
+  },
+  "ci": {
+    "43928475618": "Elevated account refused local key enrollment; moved test to existing standard-user harness",
+    "43929034478": "Standard-user launch failed due multiple Python PATH results; exact executable selected",
+    "43929318467": "Actual persistent enrollment and reuse refusal passed; post-account cleanup failed; cleanup moved under owning SID",
+    "43929655340": "Superseded and cancelled for final cleanup correction",
+    "43929738012": "passed Windows and Mac at0724938; actual Windows enrollment/reuse refusal and temporary account/profile cleanup passed; Mac source-archive build and CMS passed"
+  },
+  "owner_windows_setup": false,
+  "normal_window_restart": false,
+  "pairing": false,
+  "network_delivery": false,
+  "convergence": false,
+  "m8_closed": false,
+  "markers": [
+    "windows_actual_persistent_enrollment_and_reuse_refusal=passed",
+    "normal_window_restart_and_network=not_tested",
+    "standard_user_daemon_tests=passed; temporary_account_profile_removed=true"
+  ]
+}

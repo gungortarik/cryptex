@@ -1,5 +1,50 @@
 # 34 — Current Implementation Handoff
 
+## Windows persistent enrollment packet — November 16
+
+0724938 adds an explicit one-click Windows enrollment package. It uses the
+previously verified unsigned Windows product from3d8e5b4/run43905651278; no
+services/crates/apps source changed between that build and this packet. All
+binary/notice bytes are checked against fixed SHA256 values before copying and
+again before execution. Retained app data lives under LOCALAPPDATA/Cryptex-Dev;
+the normal runtime is runtime/p0-2. Existing normal roots refuse adoption.
+Only the daemon creates Brain identity and canonical first-note history, enrolls
+the current user's OS key and provisions local-only transport. The exact public
+note and persistent setup require owner confirmation. Setup refuses elevation;
+it never changes firewall, App Control, personal ACLs or old profiles.
+
+The Windows-only runner creates children suspended, assigns a kill-on-close job
+before resume, bounds output/deadline/input and pins ordinary non-reparse paths.
+Final cleanup awaits zero job activity and retained exact member/leader handles;
+even query/thread-start faults terminate owned processes before pipe cleanup.
+Tests include a descendant with detached stdio, live producer during failed job
+queries, reader-start failure, existing-profile preservation and changed binaries.
+Twelve Windows native/setup tests and two receipt tests passed locally. Reviewer
+independent_m8_review found no remaining actionable issue at0724938.
+
+CI43928475618 refused key enrollment under the elevated hosted account. The
+actual scenario now reuses the established disposable standard-user/private-TEMP
+harness.43929034478 exposed multiple Python PATH results;7b354d3 selects one.
+43929318467 completed actual enrollment/reuse refusal, but elevated parent cleanup
+could not remove owner-only canonical data after SID deletion. Successful fixture
+cleanup now runs under the owning temporary SID before account/profile removal.
+No product ownership assertion was weakened.43929655340 was superseded/cancelled
+for the final leader-wait correction. Final CI43929738012 passed Windows and Mac. Windows logs include
+`windows_actual_persistent_enrollment_and_reuse_refusal=passed` and
+`standard_user_daemon_tests=passed; temporary_account_profile_removed=true`.
+The Mac source-archive product build and CMS tests also passed.
+
+Prepared packet: Downloads/Cryptex-Windows-Esitleme-Kurulum-0724938.zip.
+SHA256:72340931acfd835394c98f463dccd6130a478afceb91b332363104db03431831.
+Exact ZIP member readback passed; packet is ready for owner execution.
+Owner runs WINDOWS-ESITLEME-KUR.cmd on the main Windows machine, confirms the
+public note with E, and returns ESITLEME-KURULUM-SONUC-Windows-*.zip. Successful
+setup leaves CRYPTEX-AC.cmd for ordinary no-argument Desktop opening. The receipt
+expressly leaves normal-window/restart and network acceptance false; these must
+be checked next. Preserve successful Mac profile and launcher; do not rerun Mac
+fresh setup. Pairing remains owner-reviewed, followed by real LAN convergence,
+interruption/restart/replay and cutoff propagation. M8 remains open.
+
 ## Owner Mac persistent setup passed — November 16
 
 `ESITLEME-KURULUM-SONUC-Darwin-1b733e0add52.zip` passes bounded archive/schema,
