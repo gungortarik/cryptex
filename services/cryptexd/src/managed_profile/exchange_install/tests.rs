@@ -55,7 +55,12 @@ fn with_policy(f: impl FnOnce(&ExchangeConfigPolicy<'_>, &[u8])) {
 fn scratch() -> PathBuf {
     let mut nonce = [0; 16];
     getrandom::getrandom(&mut nonce).unwrap();
-    std::env::temp_dir().canonicalize().unwrap().join(format!(
+    let parent = std::env::temp_dir();
+    // Mac TMPDIR may contain a symlink; Windows canonicalize yields a verbatim
+    // prefix, deliberately outside PrivateDirectory's ordinary disk-path API.
+    #[cfg(target_os = "macos")]
+    let parent = parent.canonicalize().unwrap();
+    parent.join(format!(
         "cx-exchange-install-{}",
         nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()
     ))
