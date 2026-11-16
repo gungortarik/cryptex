@@ -222,6 +222,12 @@ jobs:
       - name: Verify native Mac frame and right ownership
         if: runner.os == 'macOS'
         run: sh scripts/m8/test-mac-owner-native.sh
+      - name: Compile owner-local Keychain CMS signer
+        if: runner.os == 'macOS'
+        run: |
+          clang -Wall -Wextra -Werror scripts/m8/mac_owner_cms.c services/cryptexd/src/m8_owner_channel/native/inventory.c -framework Security -framework CoreFoundation -o "$RUNNER_TEMP/owner-cms"
+          python3 -B -m unittest discover -s scripts/m8 -p test_mac_lan_setup.py
+          python3 -B -m unittest discover -s scripts/m8 -p test_mac_identity_preflight.py
       - name: Test local certificate native exchange and actual signed startup
         if: runner.os == 'macOS'
         env:

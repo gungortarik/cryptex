@@ -53,9 +53,10 @@ class FencedRun:
         self.run_bounded = run_bounded
         self.stopped = True
 
-    def outcome(self, args, timeout):
+    def outcome(self, args, timeout, *, input_data=None):
         self.stopped = False
-        result = self.run_bounded([str(arg) for arg in args], timeout)
+        kwargs = {} if input_data is None else {'input_data': input_data}
+        result = self.run_bounded([str(arg) for arg in args], timeout, **kwargs)
         self.stopped = True
         return result
 
@@ -252,3 +253,5 @@ def check(root, cargo, clippy, run, run_bounded, sign, inventory, template, fixt
             export_failed(bundle, files, creator, Path(destination), source, platform.machine(), expiry)
         raise  # Exporting a diagnostic never turns native startup failure into success.
     print("development_native_provisioned_existing_profile_restart_and_refusals=passed")
+    from mac_ci_lan_enrollment import exercise as exercise_enrollment
+    exercise_enrollment(root, desktop, creator, run_bounded)

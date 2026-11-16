@@ -303,4 +303,19 @@ mod tests {
         );
         std::fs::remove_dir_all(root).unwrap();
     }
+    #[test]
+    fn first_capture_interrupted_receipt_blocks_new_note_without_erasing_evidence() {
+        let (root, store) = fresh();
+        crate::capture::fail_after_pending_before_append();
+        assert_eq!(
+            capture_first_local_dev(&root, &store, "first".into()),
+            Err(Error::CaptureUncertain)
+        );
+        assert_eq!(
+            capture_first_local_dev(&root, &store, "retry".into()),
+            Err(Error::ExistingState)
+        );
+        assert!(root.join("canonical/events").is_dir());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

@@ -21,6 +21,39 @@ spec.loader.exec_module(packager)
 
 
 class IdentityPreflightTests(unittest.TestCase):
+    def test_bounded_stdin_partial_writes_and_failures_always_kill_before_reap(self):
+        for failure in (None, 'write', 'close', 'thread'):
+            events = []
+            class Input:
+                sent = bytearray()
+                def fileno(self): return 12
+                def write(self, data):
+                    if failure == 'write': raise OSError('injected')
+                    self.sent.extend(data[:2]); return min(2, len(data))
+                def close(self):
+                    if failure == 'close': raise OSError('injected')
+            class Reader:
+                def __init__(self, **kwargs): pass
+                def start(self):
+                    if failure == 'thread': raise RuntimeError('injected')
+                def join(self, **kwargs): pass
+                def is_alive(self): return False
+            process = SimpleNamespace(pid=123, stdin=Input(), stdout=io.BytesIO(), returncode=0,
+                                      wait=lambda **kwargs: events.append('reap'))
+            with patch.object(probe.subprocess, 'Popen', return_value=process), \
+                 patch.object(probe.threading, 'Thread', Reader), \
+                 patch.object(probe.os, 'set_blocking', create=True), \
+                 patch.object(probe.os, 'killpg', lambda *args: events.append('kill'), create=True), \
+                 patch.object(probe.signal, 'SIGKILL', 9, create=True), \
+                 patch.object(probe.select, 'select', lambda *a: ([], [process.stdin], [])), \
+                 patch.object(probe, 'wait_without_reaping', return_value=True):
+                if failure == 'thread':
+                    with self.assertRaises(RuntimeError): probe.run_bounded(['unused'], input_data=b'hello')
+                else:
+                    result = probe.run_bounded(['unused'], input_data=b'hello')
+                    self.assertEqual(result.pipe_failed, failure is not None)
+                    if failure is None: self.assertEqual(process.stdin.sent, b'hello')
+            self.assertEqual(events, ['kill', 'reap'])
     def test_permission_error_exception_requires_a_dead_exact_group_snapshot(self):
         self.assertTrue(probe.dead_group_snapshot(0, b' 123 Z\n', b'', 123))
         self.assertTrue(probe.dead_group_snapshot(1, b'', b'', 123))

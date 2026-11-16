@@ -1,5 +1,46 @@
 # 34 — Current Implementation Handoff
 
+## Persistent LAN enrollment packet — November 16, native validation pending
+
+The owner confirmed Rust/Cargo and Node remain installed on their own Mac.
+Commit fd4adcd adds separate explicit daemon first-public-note and local-only
+transport enrollment commands. Normal application entry still cannot create
+fixtures or manufacture trust. First capture refuses existing canonical,
+recovery, transport or capture state, uses the real OS key and the existing
+durable capture transaction, and retains uncertain outcomes without retry.
+Transport enrollment exclusively creates its private namespace, retains original
+directory capabilities and uses the actual signed product daemon/helper for
+Mac credentials. Existing or partial enrollment refuses adoption.
+
+The owner-local packet builder is `scripts/m8/package_lan_setup.py`. It archives
+an exact committed source into a one-click Mac package. On the owner's Mac it
+selects an existing signing identity, pins its public DER before compilation,
+signs Desktop/daemon and the inventory through Keychain, and verifies that CMS
+with the unchanged product verifier. No private key is exported; a disposable
+CI publisher cannot become the owner's persistent publisher. The private build
+cache, app and new normal profile are retained. Legacy profiles are untouched.
+
+After displaying the exact first public test note for confirmation, setup uses
+the public-Brain-only creator, then the actual product daemon to enroll its key,
+commit that note and enroll local-only transport. Two verified startup/cleanup
+checks precede a normal-opening `CRYPTEX-AC.command` launcher. Failure preserves
+partial state and produces a bounded result ZIP; do not delete it for a retry.
+Pairing, network delivery and convergence remain explicitly false.
+
+The bounded command runner now accepts at most 4096 stdin bytes with complete
+partial-write handling and cleanup before leader reaping, including write,
+close and reader-start faults. Local Python tests pass (POSIX cases require
+Mac); local Rust execution remains blocked by Application Control4551.
+CI43900310153 passed Windows at fd4adcd; its Mac result and the newer packet,
+CMS compiler and actual product-owned enrollment/restart fixture must be checked
+at the final exact source. No owner profile has been created by this workstation.
+
+Next: complete exact-source CI, deliver the Mac setup package and inspect its
+owner receipt, then prepare the Windows endpoint and owner-reviewed pairing.
+Real LAN disconnected capture/delivery, restart/replay, interruption, cutoff
+propagation and full M8 acceptance remain open. Do not replace that leg with
+copied canonical segments or treat a setup receipt as convergence evidence.
+
 ## Real LAN setup receipt received — November 16, application packet still pending
 
 The owner returned `ESITLEME-HAZIRLIK-SONUC-Darwin-a3d4ced8864b.zip`.

@@ -86,16 +86,16 @@ def darwin_group_is_dead(pgid, env):
     return dead_group_snapshot(result.returncode, result.stdout, result.stderr, pgid)
 
 
-def run_bounded(args, timeout=20):
+def run_bounded(args, timeout=20, *, input_data=None, tool_path=None):
+    if input_data is not None and (not isinstance(input_data, bytes) or len(input_data) > 4096):
+        raise ValueError("bounded_input_invalid")
     env = os.environ.copy()
-    env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+    env["PATH"] = tool_path or "/usr/bin:/bin:/usr/sbin:/sbin"
     for key in ("SDKROOT", "MACOSX_DEPLOYMENT_TARGET", "CPATH", "C_INCLUDE_PATH", "CPLUS_INCLUDE_PATH", "OBJC_INCLUDE_PATH", "LIBRARY_PATH"):
         env.pop(key, None)
     for key in list(env):
         if key.startswith("DYLD_"):
             env.pop(key)
-    process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               start_new_session=True, bufsize=0, env=env)
     output = bytearray()
     limited = threading.Event()
     pipe_failed = threading.Event()
@@ -134,10 +134,38 @@ def run_bounded(args, timeout=20):
             process.stdout.close()
 
     reader = threading.Thread(target=read, daemon=True)
-    reader.start()
+    reader_started = False
     timed_out = False
+    process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               stdin=subprocess.PIPE if input_data is not None else subprocess.DEVNULL,
+                               start_new_session=True, bufsize=0, env=env)
     try:
-        timed_out = not wait_without_reaping(process.pid, timeout)
+        reader.start()
+        reader_started = True
+        if input_data is not None:
+            try:
+                os.set_blocking(process.stdin.fileno(), False)
+                offset = 0
+                deadline = time.monotonic() + min(timeout, 5)
+                while offset < len(input_data):
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 or not select.select([], [process.stdin], [], remaining)[1]:
+                        raise TimeoutError('bounded_input_deadline')
+                    count = process.stdin.write(input_data[offset:])
+                    if count is None:
+                        continue
+                    if count <= 0:
+                        raise OSError('bounded_input_incomplete')
+                    offset += count
+            except (OSError, ValueError):
+                pipe_failed.set()
+            finally:
+                try:
+                    process.stdin.close()
+                except (OSError, ValueError):
+                    pipe_failed.set()
+        if not pipe_failed.is_set():
+            timed_out = not wait_without_reaping(process.pid, timeout)
     finally:
         # Do this even after clean leader exit and EOF: a descendant can close
         # its pipe and otherwise survive. The leader is not reaped until here,
@@ -148,9 +176,14 @@ def run_bounded(args, timeout=20):
             finally:
                 process.wait(timeout=5)
                 reaped = True
-        reader.join(timeout=2)
-        if reader.is_alive():
-            timed_out = True  # Never block closing a pipe retained outside our group.
+        if reader_started:
+            reader.join(timeout=2)
+            if reader.is_alive():
+                timed_out = True  # Never block closing a pipe retained outside our group.
+        else:
+            process.stdout.close()
+            if process.stdin is not None:
+                process.stdin.close()
     return CommandResult(process.returncode, bytes(output).decode("utf-8", "replace"), limited.is_set(), timed_out, pipe_failed.is_set())
 
 
