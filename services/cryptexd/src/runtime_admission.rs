@@ -387,6 +387,9 @@ pub(crate) struct ExclusivePermit {
 pub(crate) struct TransportGuard {
     admission: RuntimeAdmission,
     epoch: u64,
+    // Retain OS exclusion while a cancelled worker (or its status view) drains.
+    // InstanceLock::drop still latches Stopped; ownership never grants readiness.
+    _owner: Arc<File>,
 }
 #[cfg(any(
     windows,
@@ -442,6 +445,12 @@ impl ExclusivePermit {
         Ok(TransportGuard {
             admission: self.admission.clone(),
             epoch: state.transport_epoch,
+            _owner: self
+                .admission
+                .0
+                .owner
+                .upgrade()
+                .ok_or(AdmissionError::Held(RuntimeHold::Stopped))?,
         })
     }
     /// Called only by transaction orchestration after verified recovery and
@@ -518,6 +527,9 @@ mod tests {
         assert!(guard.check().is_err());
         drop(owner);
         assert!(fresh.check().is_err());
+        assert!(try_acquire_instance(&root).is_err());
+        drop((guard, fresh));
+        drop(try_acquire_instance(&root).unwrap());
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -545,6 +557,7 @@ mod tests {
             Err(AdmissionError::Held(RuntimeHold::IncomingPolicyConflict))
         );
         drop(owner);
+        drop((guard, fresh));
         std::fs::remove_dir_all(root).unwrap();
     }
 

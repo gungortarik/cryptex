@@ -1,5 +1,6 @@
 //! Explicit daemon-owned Windows worker for an existing ready profile.
-//! No discovery, provisioning, IPC authority, peer configuration or startup hook.
+//! Fresh admitted exchange setup or self-only supervision; no discovery,
+//! provisioning, renderer authority or automatic product startup hook.
 use std::path::PathBuf;
 use std::sync::{
     Arc, Mutex,

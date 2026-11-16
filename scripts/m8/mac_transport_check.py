@@ -131,7 +131,7 @@ def check_native_pairing(binary, root, run, *, exchange_ip=None):
             writer_stopped = False
             try:
                 exchange = run([binary.with_name("cryptexd"), "--m8-local-exchange-start-driver",
-                                (root / "responder").resolve(), exchange_ip], "supervised_native_exchange", 150)
+                                (root / "initiator").resolve(), exchange_ip], "supervised_native_exchange", 150)
                 writer_stopped = True
             except PreflightError:
                 writer_stopped = True

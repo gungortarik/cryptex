@@ -19,7 +19,7 @@ use crate::syncthing_rest::{ApiCredential, credential_labels};
 #[cfg(any(windows, test))]
 pub mod controller;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
-#[allow(dead_code)] // Persistence boundary only; no exchange-mode launch is enabled.
+#[allow(dead_code)] // Module-private persistence used by admitted exchange workers.
 mod exchange_install;
 #[cfg(any(
     windows,
