@@ -8,6 +8,22 @@ const LOCAL: &str = "U2SYIGU-YWZX757-2WPZGCR-DHD7MLH-ZKV7HLJ-EYO6CXE-K3DU3DU-SDF
 const REMOTE: &str = "XAAPCAD-GA4SF4J-BNQL3FS-T456WKV-FGLXUKO-CDWHVDW-EYWNRIG-SM5GUAZ";
 const ENV: SecureStoreEnvironment = SecureStoreEnvironment::Dev;
 
+thread_local! {
+    static RACING_DELIVERY: std::cell::RefCell<Option<(PathBuf, Vec<u8>)>> = const { std::cell::RefCell::new(None) };
+}
+
+pub(super) fn publish_racing_delivery() {
+    if let Some((destination, bytes)) = RACING_DELIVERY.with(|race| race.borrow_mut().take()) {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(destination)
+            .unwrap();
+        file.write_all(&bytes).unwrap();
+        file.sync_all().unwrap();
+    }
+}
+
 struct Fixture {
     roots: [PathBuf; 3],
     store: crate::FakeSecureStore,
@@ -350,6 +366,41 @@ fn divergent_exchange_bytes_are_never_replaced_and_canonical_is_unchanged() {
         original
     );
     fixture.cleanup();
+}
+
+#[test]
+fn racing_delivery_is_verified_without_replacing_the_winner() {
+    for identical in [true, false] {
+        let fixture = Fixture::new();
+        let original = std::fs::read(fixture.canonical(0, "open")).unwrap();
+        let winner = if identical {
+            original.clone()
+        } else {
+            b"conflicting racing delivery".to_vec()
+        };
+        RACING_DELIVERY.with(|race| {
+            *race.borrow_mut() = Some((fixture.exchange(0), winner.clone()));
+        });
+        let result = fixture.run(&mut Exporter::default());
+        assert!(RACING_DELIVERY.with(|race| race.borrow().is_none()));
+        if identical {
+            let report = result.unwrap();
+            assert_eq!((report.copied, report.present), (0, 1));
+            assert!(
+                !fixture.roots[0]
+                    .join("transport/export-staging/segment.tmp")
+                    .exists()
+            );
+        } else {
+            assert_eq!(result.unwrap_err(), Error::DestinationConflict);
+        }
+        assert_eq!(std::fs::read(fixture.exchange(0)).unwrap(), winner);
+        assert_eq!(
+            std::fs::read(fixture.canonical(0, "seg")).unwrap(),
+            original
+        );
+        fixture.cleanup();
+    }
 }
 
 #[test]

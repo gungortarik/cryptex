@@ -205,6 +205,8 @@ impl Exporter {
                 verify(&mut staged, pack, &check)?;
                 check()?;
                 checkpoint(2)?;
+                #[cfg(test)]
+                tests::publish_racing_delivery();
                 match scratch.promote("segment.tmp", &staged, &target, &sealed) {
                     Ok(()) => {}
                     Err(crate::import_staging::export_fs::Error::Io(
