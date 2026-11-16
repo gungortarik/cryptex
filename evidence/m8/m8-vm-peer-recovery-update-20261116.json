@@ -1,0 +1,58 @@
+{
+  "scope": "Windows admitted-peer stream initialization and profile-preserving owner VM update candidate",
+  "owner_diagnostic": {
+    "name": "VM-ESLESTIRME-TANI-bcb37e4874ab.zip",
+    "sha256": "58b19ebee92a04ebf15b4a2f531c77bafc67b7515a247f7443acb3b11a852b6d",
+    "expected_identity_and_transaction": true,
+    "journal_schema": 3,
+    "state": "anchored",
+    "terminal": true,
+    "message_count": 4,
+    "peer_stream": "absent",
+    "canonical_signatures_verified": false,
+    "atomic_snapshot": false,
+    "live_error_captured": false,
+    "limits": "Compact terminal receipts omit append attempts; counts do not prove canonical validity. Generic connection attention cause remains unconfirmed."
+  },
+  "native_validation": {
+    "baseline_source": "4d7e30b3e9fff4e963e8cc1ac29c614ebb360298",
+    "baseline_run": "43958543112",
+    "baseline_result": "Expected regression failure: recovery returned without creating the approved peer directory. This did not reproduce the owner's generic attention error.",
+    "fixed_source": "a8a41d635be404897307ad7e1a2f11ab00f94227",
+    "fixed_run": "43958805200",
+    "fixed_result": "success",
+    "standard_user_suite_count": 9,
+    "test_executions_passed": 62,
+    "clippy": "passed",
+    "temporary_account_profile_removed": true,
+    "negative_cases": ["corrupt canonical history", "occupied peer stream path"],
+    "preservation": "Canonical event bytes unchanged across first and repeated recovery",
+    "local_execution": "Blocked by Application Control 4551; no security override"
+  },
+  "tool_and_ui_validation": {
+    "allowlisted_attention_reason_tests": "8 passed",
+    "profile_preserving_update_tests": "3 passed",
+    "product_source": "17c1feda944bb570688d09920a6125c54b1dfb89",
+    "tool_source": "2ee4140527f0d689d1c7c9716db64624dbc48507",
+    "product_run": "43959342022",
+    "product_build": "success",
+    "release_desktop_tests": "53 passed",
+    "sidecar_staging_tests": "3 passed"
+  },
+  "packet": {
+    "name": "Cryptex-VM-Guncelle-17c1fed.zip",
+    "sha256": "e09f977818a22c235402833266d085a46122fb2bc86fe3f2d319b9b454ef7244",
+    "bytes": 20114249,
+    "exact_member_readback": "passed",
+    "artifact_source_run_and_binary_hash_validation": "passed",
+    "desktop_sha256": "e156332338dbd6008f9beedd9b2d775a89bf7c361d49ad7f2f968541c7f5eba1",
+    "daemon_sha256": "003b38937a4200617b8765b8fb2baaa1c05d4695226eaa01667d3843c1bede9e",
+    "unchanged_transport_source_packet_sha256": "4a3d8504b1953f5eb4b7de71bce3eee55caaa2c1718086e37f145c40610a79f4",
+    "signing": "unsigned development artifact; not release acceptance",
+    "owner_action": "Quit VM Cryptex, extract update in VM, run VM-GUNCELLE.cmd as standard user; return result ZIP and Local connections screen. Preserve profile, pairing, Mac and paused sync."
+  },
+  "owner_update_result": "pending",
+  "owner_attention_resolved": false,
+  "network_delivery_verified": false,
+  "m8_closed": false
+}

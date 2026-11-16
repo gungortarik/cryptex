@@ -25,7 +25,8 @@ including absent-peer recovery/repeat preservation, corrupt-history refusal and
 occupied-slot refusal. Temporary account/profile cleanup and daemon clippy passed.
 Local native execution remains blocked by Application Control4551; no override.
 17c1fed adds only allowlisted attention reason codes to the UI; eight Node tests
-passed. Windows package build43959342022 is pending at17c1fed. Superseded build
+passed. Windows package build43959342022 succeeded at17c1fed, including 53 release
+Desktop tests and three sidecar staging tests. Superseded build
 43958862135 was cancelled after adding this UI diagnostic.
 
 VM update tooling installs the candidate beside the old app and keeps the normal
@@ -35,6 +36,16 @@ no-argument startup and the daemon's existing recovery path. Three local update
 tests passed, including profile/old-app byte preservation and no unexpected
 command execution. Do not rerun setup or pairing. Candidate owner result, exact
 live connection reason and LAN acceptance are still pending; M8 remains open.
+
+Prepared Downloads/Cryptex-VM-Guncelle-17c1fed.zip (20114249 bytes) with product
+17c1feda944bb570688d09920a6125c54b1dfb89 and committed tooling
+2ee4140527f0d689d1c7c9716db64624dbc48507. SHA256
+e09f977818a22c235402833266d085a46122fb2bc86fe3f2d319b9b454ef7244.
+CI provenance/source/run/binary hashes, pinned unchanged transport packet and
+exact ZIP member readback passed. Owner: Quit VM Cryptex, extract this ZIP in VM,
+run VM-GUNCELLE.cmd as standard user, return VM-GUNCELLEME-SONUC-*.zip and Local
+connections screenshot. Use the new folder's CRYPTEX-AC.cmd thereafter. Keep
+Mac unchanged and sync paused. Evidence: m8-vm-peer-recovery-update-20261116.json.
 
 ## VM pairing recorded; connection attention persists — November 16
 
