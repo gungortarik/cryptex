@@ -48,6 +48,26 @@
     "43905651278": {
       "source": "3d8e5b4",
       "windows_package": "passed; all 53 release helper tests executed; artifact source/run/size/SHA256 verified after download; not installed or executed"
+    },
+    "43922277799": {
+      "source": "06045fe",
+      "windows": "passed scoped tooling",
+      "mac": "actual archive product compilation passed; CMS self verification refused",
+      "cms_failure": {
+        "stage": "verify_inventory",
+        "status": 0,
+        "verify": 1
+      }
+    },
+    "43923240688": {
+      "source": "69381a7090d79ee02d722d4db22e1716af6eda38",
+      "windows": "passed scoped tooling",
+      "mac": "passed scoped tooling, actual source archive product compilation and actual Keychain CMS signing",
+      "markers": [
+        "packet_release_matches_native_policy=passed",
+        "owner_packet_archive_product_compile=passed",
+        "actual_keychain_cms_self_verify_and_refusals=passed"
+      ]
     }
   },
   "owner_setup_attempts": [
@@ -72,6 +92,17 @@
       "pnpm": "11.28.0",
       "diagnosis": "Packet release ID cryptex-lan-* is deterministically rejected by unchanged native policy requiring cryptex-dev-*; raw compiler output absent",
       "profile_creation_reached": false
+    },
+    {
+      "receipt": "ESITLEME-KURULUM-SONUC-Darwin-74a066ee66cd.zip",
+      "sha256": "b70ec7537d8cf2cf096f1ff0b1906d79c25439a64c67b9b2477aafde3f608de5",
+      "source": "bff7a6e7166dc680369071b9608f86704ff06b06",
+      "binding_and_schema": "passed",
+      "outcome": "refused_or_incomplete",
+      "failed_stage": "sign_inventory_keychain",
+      "owner_permission_observation": "Owner reports Keychain prompt appeared and permission was granted",
+      "diagnosis": "Old receipt has no numeric CMS stage; disposable CI separately reproduces helper verification failure after successful encoder calls",
+      "profile_creation_reached": false
     }
   ],
   "archive_build_correction": {
@@ -92,5 +123,24 @@
   "pairing_authorized_by_this_evidence": false,
   "network_delivery_verified": false,
   "durable_convergence_verified": false,
-  "m8_closed": false
+  "m8_closed": false,
+  "cms_encoding_correction": {
+    "source": "69381a7090d79ee02d722d4db22e1716af6eda38",
+    "packet_sha256": "d76c2aee90c846bc6d9089ad0a93e6645216db9a2788b59727b88dd8a946b45f",
+    "packet_readback": "passed",
+    "review": "independent_m8_review: no actionable source findings",
+    "product_verifier_changed": false,
+    "owner_key_exported": false,
+    "owner_keychain_acl_changed": false,
+    "checks": [
+      "actual synthetic Keychain signing and unchanged pinned verifier",
+      "maximum 1MiB content",
+      "altered content, certificate and signature refusal",
+      "trailing CMS data refusal",
+      "existing output preservation",
+      "wrong identity refusal",
+      "closed receipt diagnostic validation"
+    ],
+    "owner_setup_verified": false
+  }
 }

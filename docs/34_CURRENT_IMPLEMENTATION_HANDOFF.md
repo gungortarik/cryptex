@@ -1,5 +1,43 @@
 # 34 — Current Implementation Handoff
 
+## Owner CMS encoding correction — November 16
+
+Owner receipt `ESITLEME-KURULUM-SONUC-Darwin-74a066ee66cd.zip` validates against
+bff7a6e and the current acceptance session. SHA256:
+`b70ec7537d8cf2cf096f1ff0b1906d79c25439a64c67b9b2477aafde3f608de5`.
+It passed compilation/product signing but stopped at `sign_inventory_keychain`,
+before fresh profile creation. The owner reports granting the separate Keychain
+prompt. Do not attribute this failure to denied permission. The old receipt has
+no numeric native CMS failure detail.
+
+06045fe added an actual hosted-Mac CMS test using a disposable synthetic signing
+identity in an isolated Keychain, accessible only to the exact test helper.
+CI43922277799 reproduced `stage=verify_inventory status=0 verify=1`: all encoder
+calls succeeded, then the unchanged product envelope filter refused the result.
+Apple CMSEncoder returns streaming BER; the product admits definite DER only.
+69381a7 reserializes the public CMS using the system OpenSSL CMS implementation,
+with fixed arguments/environment and anonymous private scratch descriptors.
+The existing bounded runner still owns the process group and deadline. The
+private key remains in Keychain; there is no owner ACL mutation. The unchanged
+product verifier must accept exact content, pinned certificate, signature and
+trust before any final CMS output is created. Exclusive output remains enforced.
+
+New receipt diagnostics carry only a closed stage plus numeric status/verify
+codes. The native CI test additionally checks altered content/certificate/CMS,
+trailing data, existing-output preservation, wrong identity and maximum1MiB
+content. Local setup/receipt/runner tests passed (POSIX cases run on Mac CI).
+Independent source review found no actionable issue at69381a7. Source review
+and disposable CI remain separate from owner-local setup and device acceptance.
+
+CI43923240688 at69381a7 passed Mac and Windows scoped tooling. The actual
+archive build and `actual_keychain_cms_self_verify_and_refusals=passed` markers
+are present, including maximum content and all negative checks. Prepared packet:
+`Cryptex-Mac-Esitleme-Kurulum-69381a7.zip`, exact member readback passed,
+SHA256 `d76c2aee90c846bc6d9089ad0a93e6645216db9a2788b59727b88dd8a946b45f`.
+Next: owner runs `MAC-ESITLEME-KUR.command`
+and returns its result. Preserve all existing profiles, keys and cache.
+Pairing, real Windows–Mac delivery/convergence and M8 closure remain open.
+
 ## Owner packet reached product compilation; release-ID correction — November 16
 
 `ESITLEME-KURULUM-SONUC-Darwin-ef6cd9f06618.zip` passes bounded shape/source/session
