@@ -10,10 +10,37 @@ import unittest
 import zipfile
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent))
-from mac_lan_setup import public_certificate, source_members, setup, build_frontend, build_diagnostic, tool
+from mac_lan_setup import public_certificate, source_members, setup, build_frontend, build_diagnostic, tool, compile_products, product_release
 from mac_identity_preflight import PreflightError, CommandResult, run_bounded, checked
 
 class LanSetupTests(unittest.TestCase):
+    def test_failed_product_compile_restores_environment_and_never_reaches_setup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            work = Path(temp).resolve()
+            source = work/'source'; source.mkdir()
+            (work/'target/debug').mkdir(parents=True)
+            calls, previous = [], Path.cwd()
+            def run(args, stage, timeout):
+                calls.append(stage)
+                self.assertEqual(os.environ['CRYPTEX_M8_DEVELOPMENT_RELEASE_ID'], product_release('a'*40))
+                self.assertEqual(os.environ['CRYPTEX_M8_DEVELOPMENT_CERT_DER'], str(work/'public.der'))
+                if stage == 'public_creator_build':
+                    (work/'target/debug/cryptexd').write_bytes(b'fixture creator')
+                else:
+                    raise PreflightError('injected_product_build_failure')
+            with patch('mac_lan_setup.tool', side_effect=lambda name: Path('/tools')/name), \
+                 patch('mac_lan_setup.build_frontend'), \
+                 patch.dict(os.environ, CRYPTEX_M8_DEVELOPMENT_RELEASE_ID='previous', CARGO_TARGET_DIR='previous-target'):
+                with self.assertRaisesRegex(PreflightError, 'injected_product_build_failure'):
+                    compile_products(source, work, 'a'*40, work/'public.der', run, {})
+                self.assertEqual(os.environ['CRYPTEX_M8_DEVELOPMENT_RELEASE_ID'], 'previous')
+                self.assertEqual(os.environ['CARGO_TARGET_DIR'], 'previous-target')
+            self.assertEqual(Path.cwd(), previous)
+            self.assertEqual(calls, ['public_creator_build', 'product_build'])
+            self.assertFalse((work/'Cryptex-LAN.app').exists())
+        with self.assertRaisesRegex(PreflightError, 'product_source_invalid'):
+            product_release('invalid/source')
+
     def test_tool_lookup_prefers_explicit_path_and_ignores_current_directory(self):
         selected = str(Path.home()/'selected-tools')
         with patch.dict(os.environ, PATH=os.pathsep.join(['', '.', selected])), \

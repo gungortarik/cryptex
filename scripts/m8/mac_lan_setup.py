@@ -141,14 +141,16 @@ def inventory(bundle, architecture, release, run):
             'architecture': architecture, **roles, 'files': files}
 
 
-def build(source, work, commit, run, report):
-    fingerprint = select_identity(run(['/usr/bin/security', 'find-identity', '-v', '-p', 'codesigning'], 'select_owner_identity', 30))
-    der = public_certificate(run(['/usr/bin/security', 'find-certificate', '-a', '-p'], 'read_public_certificates', 30), fingerprint)
-    certificate = work/'owner-public.der'
-    certificate.write_bytes(der)
-    report['signer_certificate_sha256'] = hashlib.sha256(der).hexdigest()
+def product_release(commit):
+    if not re.fullmatch('[a-f0-9]{40}', commit):
+        raise PreflightError('product_source_invalid')
+    return 'cryptex-dev-lan-' + commit[:12]
+
+
+def compile_products(source, work, commit, certificate, run, report):
+    """Shared by owner setup and archive CI; no signing, keys or runtime setup."""
     cargo, node, pnpm = tool('cargo'), tool('node'), tool('pnpm')
-    release = 'cryptex-lan-' + commit[:12]
+    release = product_release(commit)
     previous = Path.cwd()
     saved = {k: os.environ.get(k) for k in ('CRYPTEX_M8_DEVELOPMENT_CERT_DER', 'CRYPTEX_M8_DEVELOPMENT_RELEASE_ID',
              'CARGO_PROFILE_DEV_DEBUG', 'CARGO_TARGET_DIR')}
@@ -171,6 +173,16 @@ def build(source, work, commit, run, report):
         for key, value in saved.items():
             if value is None: os.environ.pop(key, None)
             else: os.environ[key] = value
+    return creator, release
+
+
+def build(source, work, commit, run, report):
+    fingerprint = select_identity(run(['/usr/bin/security', 'find-identity', '-v', '-p', 'codesigning'], 'select_owner_identity', 30))
+    der = public_certificate(run(['/usr/bin/security', 'find-certificate', '-a', '-p'], 'read_public_certificates', 30), fingerprint)
+    certificate = work/'owner-public.der'
+    certificate.write_bytes(der)
+    report['signer_certificate_sha256'] = hashlib.sha256(der).hexdigest()
+    creator, release = compile_products(source, work, commit, certificate, run, report)
     bundle = work/'Cryptex-LAN.app'
     binary_dir, resources = bundle/'Contents/MacOS', bundle/'Contents/Resources'
     binary_dir.mkdir(mode=0o700, parents=True)

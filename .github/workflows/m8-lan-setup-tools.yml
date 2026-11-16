@@ -13,7 +13,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -23,6 +23,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
+      - name: Install repository Rust toolchain for archive build
+        if: runner.os == 'macOS'
+        run: rustup toolchain install 1.98.1 --profile minimal
       - name: Test setup launcher, diagnostics and receipt boundaries
         run: |
           python -B -m unittest discover -s scripts/m8 -p test_mac_lan_setup.py
@@ -46,3 +49,6 @@ jobs:
           assert report['build_tools'] == {'node': '24.19.0', 'pnpm': '11.28.0'}
           print('actual_frontend_setup_launcher=passed')
           PY
+      - name: Compile actual product from owner packet source archive
+        if: runner.os == 'macOS'
+        run: python3 -B scripts/m8/mac_lan_archive_build_ci.py
