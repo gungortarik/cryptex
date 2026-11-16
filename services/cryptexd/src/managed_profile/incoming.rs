@@ -191,13 +191,7 @@ fn require_transport_binding<S: SecureStore + ?Sized>(
                 None,
             )
             .ok()?;
-        let (history, _) = snapshot.verified_trust_context()?;
-        (!history.approved_peer_bindings.is_empty()
-            && history
-                .approved_peer_bindings
-                .values()
-                .all(|binding| binding.local_transport_device_id == expected))
-        .then_some(())
+        super::exchange_policy::validate_incoming_binding(&snapshot, root, expected).ok()
     };
     verify().ok_or(IncomingControllerError::BindingUnavailable)
 }

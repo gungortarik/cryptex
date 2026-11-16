@@ -18,6 +18,14 @@ use crate::syncthing_rest::{ApiCredential, credential_labels};
 
 #[cfg(any(windows, test))]
 pub mod controller;
+#[cfg(any(
+    windows,
+    all(target_os = "macos", feature = "m8-local-startup-check"),
+    test
+))]
+#[allow(dead_code)]
+// Incoming binding is live; peer configuration/export consume the locked view next.
+pub(crate) mod exchange_policy;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 #[allow(dead_code)] // Gated bridge; native activation/review is a separate release gate.
 pub(crate) mod incoming;

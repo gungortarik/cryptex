@@ -12,6 +12,7 @@ struct Fixture {
     store: crate::FakeSecureStore,
     paths: Vec<PathBuf>,
     unapproved: PathBuf,
+    report: crate::trusted_import_probe::PreparedTrustedProbe,
 }
 impl Fixture {
     fn new() -> Self {
@@ -49,12 +50,106 @@ impl Fixture {
             store,
             paths,
             unapproved,
+            report,
         }
     }
     fn controller(&self) -> IncomingController {
         let mut controller = IncomingController::new(self.receiver.clone(), ENV).unwrap();
         controller.enqueue(self.paths.clone()).unwrap();
         controller
+    }
+}
+
+#[test]
+fn last_peer_restriction_still_allows_identical_signed_inbox_replay() {
+    use crate::bootstrap_journal::{BootstrapJournalStore, RestrictionReason};
+    use cryptex_core::DeviceId;
+    use cryptex_events::TrustedDaemonKeyResolver;
+
+    for reason in [RestrictionReason::Retired, RestrictionReason::Compromised] {
+        let fixture = Fixture::new();
+        let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
+        let mut controller = fixture.controller();
+        let mut ready = ManagedTransportWorker::synthetic_for_incoming_tests(LOCAL_TRANSPORT, true);
+        assert!(matches!(
+            ready
+                .process_incoming(&mut controller, &mut instance, &fixture.store)
+                .unwrap(),
+            IncomingTick::Published(_)
+        ));
+        let issuer = DeviceId::new(fixture.report.receiver_device.clone()).unwrap();
+        let target = DeviceId::new(fixture.report.source_device.clone()).unwrap();
+        let key = crate::event_signing_key::load_existing_event_signing_key(
+            &fixture.store,
+            ENV,
+            &fixture.receiver,
+            &issuer,
+        )
+        .unwrap();
+        let policy = crate::knowledge_materialization::scan_verified_trust_policy(
+            &fixture.receiver,
+            &fixture.report.brain_id,
+            &issuer,
+            &cryptex_events::SigningKeyId::parse(&key.public.signing_key_id).unwrap(),
+            &key.signing_key.verifying_key().to_bytes(),
+            &[issuer.clone(), target.clone()],
+        )
+        .unwrap();
+        let transaction = "bc".repeat(32);
+        let approval = policy
+            .device_restriction_approval_snapshot(transaction.clone(), &target, reason, 3)
+            .unwrap();
+        drop(policy);
+        let journal = BootstrapJournalStore::new(&fixture.receiver).unwrap();
+        journal
+            .begin_owner_operation(approval.clone(), "99999999-9999-4999-8999-999999999996")
+            .unwrap();
+        journal
+            .confirm_owner_operation(&transaction, &approval.digest().unwrap())
+            .unwrap();
+        crate::knowledge_materialization::append_confirmed_owner_security_operation(
+            &fixture.receiver,
+            &fixture.report.brain_id,
+            &fixture.store,
+            ENV,
+            &transaction,
+        )
+        .unwrap();
+        {
+            let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+                &fixture.receiver,
+                &fixture.report.brain_id,
+                &fixture.store,
+                ENV,
+            )
+            .unwrap();
+            let anchor = resolver.local_trust_anchor().unwrap();
+            let snapshot =
+                crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+                    &fixture.receiver,
+                    &fixture.report.brain_id,
+                    &anchor,
+                    None,
+                )
+                .unwrap();
+            let active = super::super::exchange_policy::ExchangePeers::from_snapshot(
+                &snapshot,
+                &fixture.receiver,
+                LOCAL_TRANSPORT,
+            )
+            .unwrap();
+            assert!(active.bindings().is_empty());
+        }
+        controller.enqueue(fixture.paths.clone()).unwrap();
+        let IncomingTick::Published(replay) = ready
+            .process_incoming(&mut controller, &mut instance, &fixture.store)
+            .unwrap()
+        else {
+            panic!("expected verified historical replay");
+        };
+        assert_eq!(replay.published_segments, 0);
+        assert_eq!(replay.identical_segments, fixture.paths.len());
+        ready.shutdown(std::time::Duration::from_secs(2)).unwrap();
     }
 }
 impl Drop for Fixture {
