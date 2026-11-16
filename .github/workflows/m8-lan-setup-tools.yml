@@ -52,3 +52,6 @@ jobs:
       - name: Compile actual product from owner packet source archive
         if: runner.os == 'macOS'
         run: python3 -B scripts/m8/mac_lan_archive_build_ci.py
+      - name: Verify owner CMS helper with exact synthetic CI key access
+        if: runner.os == 'macOS'
+        run: python3 -B scripts/m8/mac_owner_cms_ci.py

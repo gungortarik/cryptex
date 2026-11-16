@@ -22,6 +22,9 @@ static int digest_matches(CFDataRef der, const char *wanted) {
 }
 int main(int argc, char **argv) {
     int result = 2, input = -1, output = -1;
+    const char *stage = "arguments";
+    OSStatus status = 0;
+    int verify_code = 0;
     CFTypeRef found = NULL;
     SecIdentityRef signer = NULL;
     CMSEncoderRef encoder = NULL;
@@ -34,7 +37,10 @@ int main(int argc, char **argv) {
     const void *keys[] = {kSecClass, kSecReturnRef, kSecMatchLimit};
     const void *values[] = {kSecClassIdentity, kCFBooleanTrue, kSecMatchLimitAll};
     query = CFDictionaryCreate(NULL, keys, values, 3, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    if (SecItemCopyMatching(query, &found) != errSecSuccess || !found || CFGetTypeID(found) != CFArrayGetTypeID()) goto done;
+    stage = "identity_query";
+    if (!query) goto done;
+    status = SecItemCopyMatching(query, &found);
+    if (status != errSecSuccess || !found || CFGetTypeID(found) != CFArrayGetTypeID()) goto done;
     CFArrayRef identities = (CFArrayRef)found;
     if (CFArrayGetCount(identities) > 1024) goto done;
     for (CFIndex i=0; i<CFArrayGetCount(identities); i++) {
@@ -51,7 +57,9 @@ int main(int argc, char **argv) {
             signer = candidate;
         }
     }
+    stage = "identity_select";
     if (!signer) goto done;
+    stage = "input";
     input = open(argv[2], O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     struct stat st;
     if (input < 0 || fstat(input, &st) || !S_ISREG(st.st_mode) || st.st_nlink != 1 || st.st_size < 1 || st.st_size > 1048576) goto done;
@@ -65,16 +73,21 @@ int main(int argc, char **argv) {
     }
     unsigned char extra;
     if (read(input, &extra, 1) != 0) goto done;
-    if (CMSEncoderCreate(&encoder) != errSecSuccess ||
-        CMSEncoderAddSigners(encoder, signer) != errSecSuccess ||
-        CMSEncoderSetSignerAlgorithm(encoder, kCMSEncoderDigestAlgorithmSHA256) != errSecSuccess ||
-        CMSEncoderSetHasDetachedContent(encoder, false) != errSecSuccess ||
-        CMSEncoderSetCertificateChainMode(encoder, kCMSCertificateSignerOnly) != errSecSuccess ||
-        CMSEncoderUpdateContent(encoder, bytes, offset) != errSecSuccess ||
-        CMSEncoderCopyEncodedContent(encoder, &encoded) != errSecSuccess) goto done;
+#define CMS_CALL(label, call) do { stage = label; status = (call); if (status != errSecSuccess) goto done; } while (0)
+    CMS_CALL("encoder_create", CMSEncoderCreate(&encoder));
+    CMS_CALL("encoder_signer", CMSEncoderAddSigners(encoder, signer));
+    CMS_CALL("encoder_algorithm", CMSEncoderSetSignerAlgorithm(encoder, kCMSEncoderDigestAlgorithmSHA256));
+    CMS_CALL("encoder_content", CMSEncoderSetHasDetachedContent(encoder, false));
+    CMS_CALL("encoder_chain", CMSEncoderSetCertificateChainMode(encoder, kCMSCertificateSignerOnly));
+    CMS_CALL("encoder_update", CMSEncoderUpdateContent(encoder, bytes, offset));
+    CMS_CALL("encoder_finish", CMSEncoderCopyEncodedContent(encoder, &encoded));
+#undef CMS_CALL
     if (!encoded || CFDataGetLength(encoded) > 2097152) goto done;
-    if (cx_verify_inventory(CFDataGetBytePtr(encoded), (size_t)CFDataGetLength(encoded), bytes, offset,
-                            CFDataGetBytePtr(selected_der), (size_t)CFDataGetLength(selected_der))) goto done;
+    stage = "verify_inventory";
+    verify_code = cx_verify_inventory(CFDataGetBytePtr(encoded), (size_t)CFDataGetLength(encoded), bytes, offset,
+                                     CFDataGetBytePtr(selected_der), (size_t)CFDataGetLength(selected_der));
+    if (verify_code) goto done;
+    stage = "output";
     output = open(argv[3], O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
     if (output < 0) goto done;
     offset = 0;
@@ -94,6 +107,6 @@ done:
     if (found) CFRelease(found);
     if (query) CFRelease(query);
     free(bytes);
-    if (result) fprintf(stderr, "owner_cms_signing_refused\n");
+    if (result) fprintf(stderr, "owner_cms_signing_refused stage=%s status=%d verify=%d\n", stage, (int)status, verify_code);
     return result;
 }
