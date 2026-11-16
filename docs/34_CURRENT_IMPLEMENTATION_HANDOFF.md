@@ -1,5 +1,41 @@
 # 34 — Current Implementation Handoff
 
+## Windows peer stream recovery candidate — November 16
+
+Owner diagnostic VM-ESLESTIRME-TANI-bcb37e4874ab.zip SHA256
+58b19ebee92a04ebf15b4a2f531c77bafc67b7515a247f7443acb3b11a852b6d
+matches expected Brain/device/transaction. It reports one v3 terminal anchored
+record with four messages and a verified-anchor cache, one local canonical
+stream and no peer stream. Zero append_attempt_count is the compact receipt's
+omitted vector, not proof no append occurred. Connection-settings directory has
+one lock; its connections.json could not be pinned. Exact live error was not
+captured. This is bounded unsigned diagnostic evidence, not canonical audit.
+
+Windows lacked the admitted-stream initialization already used by native Mac
+recovery. Regression CI43958543112 at4d7e30b confirms recover returned without
+creating the approved peer directory (peer_path.is_dir assertion failed); this
+alone does not reproduce the owner's generic attention error. a8a41d6 adds a
+Windows adapter using existing current-owner non-reparse directory pins, a
+verified trust scan, exclusive runtime admission and canonical inventory/write
+lock ordering. It creates only authenticated empty stream directories/locks;
+it does not append/replace events, identities or keys. Mac path is unchanged.
+
+CI43958805200 at a8a41d6 passed nine standard-user suites (62 test executions),
+including absent-peer recovery/repeat preservation, corrupt-history refusal and
+occupied-slot refusal. Temporary account/profile cleanup and daemon clippy passed.
+Local native execution remains blocked by Application Control4551; no override.
+17c1fed adds only allowlisted attention reason codes to the UI; eight Node tests
+passed. Windows package build43959342022 is pending at17c1fed. Superseded build
+43958862135 was cancelled after adding this UI diagnostic.
+
+VM update tooling installs the candidate beside the old app and keeps the normal
+profile. It refuses wrong VM identity, changed payload and a running desktop or
+daemon; no process is killed. The user must Quit first. New launcher uses normal
+no-argument startup and the daemon's existing recovery path. Three local update
+tests passed, including profile/old-app byte preservation and no unexpected
+command execution. Do not rerun setup or pairing. Candidate owner result, exact
+live connection reason and LAN acceptance are still pending; M8 remains open.
+
 ## VM pairing recorded; connection attention persists — November 16
 
 Owner completed the four-message signed exchange for transaction
