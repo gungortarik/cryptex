@@ -1,5 +1,52 @@
 # 34 — Current Implementation Handoff
 
+## Canonical transport eligibility and historical import separation — November15
+
+Code3ef998d / CI tooling73ce74c adds managed_profile::exchange_policy. A
+non-cloneable ExchangePeers view borrows the complete verified canonical snapshot
+and its inventory/device locks. It validates exact direct approval bindings,
+observed local transport identity, distinct peer IDs and the ready trust set.
+New connection eligibility excludes effectively restricted/self-retired peers;
+an explicit MAX cutoff is still a restriction. Local restriction refuses new
+connections. Untrusted or causally out-of-authority restrictions cannot disable
+another peer. This view is NOT an export permit or adapter activation.
+
+Incoming uses a separate complete retained-binding check, not the active roster.
+An empty active connection roster must not reject already-downloaded historical
+records or identical replay: publication remains the cutoff/full-union authority.
+The signed Windows controller regression commits both retired/compromised
+last-peer restrictions, proves the active roster empty, then verifies zero-append
+replay. Independent source review identified this distinction and confirms the
+corrected separation; no further actionable finding, reviewer ran no tests.
+
+Local Windows:7 policy tests (including actual signed canonical pairing/root
+binding),5 incoming controller tests, the existing offline restricted-tail
+publication refusal test, cargo fmt and daemon all-target clippy pass. Local
+Rust tools execute successfully now; do not carry forward the older4551 block
+as current. Scoped native Mac/Windows CI43781475685 PASSED at exact73ce74c.
+Completed logs confirm all7 policy tests on both targets, Windows7+5+1 suites
+under an actual standard-user token with account/profile cleanup, and Mac signed
+pairing/import/restart plus certificate cleanup. The6 explicitly ignored tests
+in broader Mac suites are not claimed passed. This is scoped CI, not full M8
+acceptance or network delivery. [Evidence](../evidence/m8/m8-canonical-transport-eligibility-20261115.json).
+
+First CI43780967260 passed Mac but failed Windows controller tests under the
+elevated runner's different staging-directory owner. The corrected CI uses the
+existing disposable standard-user harness in a narrow TransportPolicyOnly mode;
+production ownership checks are unchanged. YAML test-filter commands also use
+literal blocks so Rust namespace colons cannot be parsed as YAML mappings.
+No new owner package or repeat of accepted shutdown tests is requested.
+
+Next implementation remains strict product peer/folder configuration and its
+derived restart binding, then daemon-only bounded sealed export. The canonical
+writer's existing size-threshold seal is not by itself the admitted export
+checkpoint: retain snapshot/runtime authority and original namespace capabilities
+through source verification, seal/copy and no-replace publication. Preserve
+original event bytes, reject mismatched existing exchange bytes, and retain
+typed full-disk/interruption errors. Normal incoming binding is connected;
+the new connection roster is not yet consumed by native XML or helper config.
+No network activation or exporter completion is claimed. M8 remains OPEN.
+
 ## Owner helper shutdown accepted; continue product network integration — November15
 
 Returned MAC-AKTARIM-SONUC-c2026149.zip PASSED. CRC, product f7fe55f,

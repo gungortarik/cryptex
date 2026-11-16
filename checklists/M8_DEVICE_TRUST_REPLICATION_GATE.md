@@ -1,5 +1,17 @@
 # M8 completion ledger
 
+Latest implementation3ef998d/73ce74c: locked canonical transport eligibility
+view and separate retained-history incoming binding. Local7 policy,5 incoming
+controller and1 beyond-cutoff publication tests pass; format and daemon clippy
+pass. Independent source review confirms the historical replay separation.
+Native CI43781475685 PASSED Mac and Windows. Completed logs confirm native
+signed pairing/import/restart and isolated credential cleanup, plus Windows
+standard-user7+5+1 policy/controller/cutoff tests and account cleanup. Broader
+Mac suites retain6 explicitly ignored tests; they are not claimed passed.
+Native XML peer/folder configuration, derived
+restart binding and admitted sealed export remain OPEN; no network activation
+or new owner package. See current handoff for the exact continuation boundary.
+
 Latest owner c2026149 PASSED the bounded independent helper shutdown gate:
 natural exit0, helper topology observed, independent absence before collector
 cleanup, quiet afterward, all12 command diagnostics successful and all five

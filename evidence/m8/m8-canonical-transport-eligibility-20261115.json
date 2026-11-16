@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "status": "implemented_local_and_scoped_native_ci_passed",
+  "code_source": "3ef998d",
+  "ci_source": "73ce74cd5669c514bd60457b374142a39d778f31",
+  "scope": "Locked canonical transport eligibility and retained-history incoming identity validation; no network configuration or exporter activation.",
+  "changes": [
+    "Borrow verified canonical snapshot and its inventory/device locks; reject wrong runtime, incomplete authority, missing/duplicate/self transport binding or local transport drift.",
+    "Restrict new connection eligibility using effective issuer authority and terminal retirement, including explicit MAX cutoffs. No transitive peer authorization.",
+    "Keep retained inbox binding separate from connection eligibility. Publisher remains per-record cutoff/replay/full-union authority."
+  ],
+  "local_checks": {
+    "format": "cargo fmt --all -- --check passed",
+    "lint": "cargo clippy --locked -p cryptexd --all-targets -- -D warnings passed",
+    "exchange_policy_tests": 7,
+    "incoming_controller_tests": 5,
+    "offline_beyond_cutoff_publication_tests": 1,
+    "ci_summary_validator": "3 positive and6 refusal cases; parent and child PowerShell parsed"
+  },
+  "review": {
+    "mode": "independent read-only source review; no tests executed by reviewer",
+    "result": "No remaining actionable finding after separating active connections from historical inbox binding.",
+    "regression": "Signed last-peer owner restriction for Retired and Compromised, empty active roster, cached identical inbox replay yields0 appended and all identical."
+  },
+  "ci_attempts": [
+    {
+      "run": 43780967260,
+      "source": "93160ee4715ad328d5f2ba1491e286ebed071c9a",
+      "windows": "failed in controller tests: elevated runner staging directory owner differs from current user; policy tests passed",
+      "mac": "passed; signed local pairing/import/restart and fixture cleanup confirmed in completed logs",
+      "resolution": "Use existing disposable standard-user harness with narrow TransportPolicyOnly suite; production ownership checks unchanged."
+    },
+    {
+      "run": 43781475685,
+      "source": "73ce74cd5669c514bd60457b374142a39d778f31",
+      "url": "https://github.com/gungortarik/cryptex/actions/runs/43781475685",
+      "status": "success",
+      "windows_job": 133019420739,
+      "mac_job": 133019420513,
+      "windows": "passed; 7 policy, 5 incoming controller and 1 beyond-cutoff publication tests under an actual standard-user token; temporary account/profile removed",
+      "mac": "passed; 7 policy tests, actual signed managed pairing/import/profile restart, Desktop-daemon startup/restart and local certificate fixture cleanup",
+      "ignored": "6 explicitly ignored tests in broader Mac owner-channel/IPC suites are not claimed passed",
+      "scope": "desktop_startup_only; no real Windows-Mac network acceptance or full milestone run"
+    }
+  ],
+  "remaining": [
+    "Strict native peer/folder configuration generated from the locked view and complete readback validation.",
+    "Versioned derived configuration restart binding and live restriction/hold reconciliation.",
+    "Admitted local-tail sealing checkpoint plus bounded verified no-replace export with native namespace capabilities.",
+    "Real Windows-Mac network durable convergence and restart acceptance."
+  ],
+  "owner_action": "None; previously accepted c2026149 helper shutdown is not repeated.",
+  "milestone": "M8 OPEN"
+}
