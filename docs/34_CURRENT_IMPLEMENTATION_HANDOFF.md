@@ -1,5 +1,43 @@
 # 34 — Current Implementation Handoff
 
+## Owner packet reached product compilation; release-ID correction — November 16
+
+`ESITLEME-KURULUM-SONUC-Darwin-ef6cd9f06618.zip` passes bounded shape/source/session
+validation for41619fd. SHA256:
+`8bdc050fea3b2c47d8199b9ade938853a7c93814495f9ecaf39f8fe168b100f3`.
+It reports Node24.19.0 and pnpm11.28.0, and reached `product_build` after dependency
+installation, frontend build and public creator compilation. Outcome remains
+`refused_or_incomplete`, error `product_build_failed`. No fresh runtime/profile,
+first note or transport setup was reached. This is not a pairing/transfer result.
+
+The packet generated `cryptex-lan-<commit>` while the existing authoritative
+`services/cryptexd/build_support/development_policy.rs` requires `cryptex-dev-`.
+That deterministic packet/policy incompatibility rejects this product build,
+independently of any other owner-host issues. The old receipt contains no raw
+compiler output. bff7a6e corrects the packet to `cryptex-dev-lan-<commit>`; the
+product policy is unchanged. The same generated ID is used during compilation
+and authenticated inventory generation.
+
+The owner and CI now share `compile_products`. Hosted Mac CI extracts an exact
+Git source archive outside the checkout, executes the unchanged Rust policy
+selector against the generated ID (also rejecting the old ID), generates only
+a disposable public DER build input, and compiles creator, Desktop and daemon
+with the actual packet function. It performs no owner signing, Keychain changes,
+profile creation or network acceptance. The CI-only private certificate fixture
+is not exported in any owner packet. Unit tests also verify environment/cwd
+restoration after compilation failure. CI43919754493 passed atbff7a6e on both
+platforms; Mac logs include `packet_release_matches_native_policy=passed` and
+`owner_packet_archive_product_compile=passed` after the actual product build.
+This closes the archive compile check, not owner-local signing/setup acceptance.
+
+Corrected `Cryptex-Mac-Esitleme-Kurulum-bff7a6e.zip` is in Downloads, source
+`bff7a6e7166dc680369071b9608f86704ff06b06`; exact member readback passed.
+ZIP SHA256: `823523a9e6abfe83d5f400f097dcf878e6f36ea6da395c388e55a94db3dec425`.
+Next: owner runs this corrected one-click Mac package for the same acceptance
+session and returns its receipt. Preserve existing profiles/keys/cache;
+the setup still refuses an existing normal profile before writes. Windows–Mac
+pairing, network delivery and M8 acceptance remain open.
+
 ## Owner Mac setup stopped before profile creation — November 16
 
 Owner receipt `ESITLEME-KURULUM-SONUC-Darwin-4bf8914127a8.zip` matches source

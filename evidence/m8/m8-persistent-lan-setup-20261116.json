@@ -50,6 +50,38 @@
       "windows_package": "passed; all 53 release helper tests executed; artifact source/run/size/SHA256 verified after download; not installed or executed"
     }
   },
+  "owner_setup_attempts": [
+    {
+      "receipt": "ESITLEME-KURULUM-SONUC-Darwin-4bf8914127a8.zip",
+      "sha256": "d5735003dd6ac7098cbe799e04e9ae9d8db9d692f57b263132708ec4975039cc",
+      "source": "755a5d7f3286869dbf01076f1cd7482c83d48571",
+      "binding_and_schema": "passed",
+      "outcome": "refused_or_incomplete",
+      "failed_stage": "frontend_dependencies",
+      "cause": "Exact owner-host cause not present in receipt; source had invalid Node-as-pnpm-launcher assumption",
+      "profile_creation_reached": false
+    },
+    {
+      "receipt": "ESITLEME-KURULUM-SONUC-Darwin-ef6cd9f06618.zip",
+      "sha256": "8bdc050fea3b2c47d8199b9ade938853a7c93814495f9ecaf39f8fe168b100f3",
+      "source": "41619fd0ad646040d6ef16b3f4ddb2ab91535be6",
+      "binding_and_schema": "passed",
+      "outcome": "refused_or_incomplete",
+      "failed_stage": "product_build",
+      "node": "24.19.0",
+      "pnpm": "11.28.0",
+      "diagnosis": "Packet release ID cryptex-lan-* is deterministically rejected by unchanged native policy requiring cryptex-dev-*; raw compiler output absent",
+      "profile_creation_reached": false
+    }
+  ],
+  "archive_build_correction": {
+    "source": "bff7a6e7166dc680369071b9608f86704ff06b06",
+    "packet_sha256": "823523a9e6abfe83d5f400f097dcf878e6f36ea6da395c388e55a94db3dec425",
+    "ci_run": "43919754493",
+    "ci_result": "Mac and Windows scoped tooling passed; actual Mac source-archive creator/Desktop/daemon compilation passed",
+    "native_policy_selector": "Generated release ID accepted and old packet release ID rejected by unchanged Rust selector",
+    "owner_signing_or_setup_verified": false
+  },
   "remaining_device_gates": [
     "Owner Mac actually builds/signs with its existing Keychain identity and returns setup receipt",
     "Windows explicit persistent enrollment and ordinary opening",
