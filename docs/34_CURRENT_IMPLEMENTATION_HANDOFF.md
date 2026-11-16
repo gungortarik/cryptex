@@ -23,6 +23,15 @@ opening, then owner-reviewed pairing and Windows VM to Mac LAN delivery. The
 main-host publisher block remains a separate unresolved acceptance limitation.
 M8 is open; a VM setup receipt cannot establish normal-window or sync acceptance.
 
+Packet source5ce0fb925ee4bb9e309f429ed9f080937d5f92b0:
+Downloads/Cryptex-Windows-VM-Kurulum.zip (20,108,838 bytes), SHA256
+4a3d8504b1953f5eb4b7de71bce3eee55caaa2c1718086e37f145c40610a79f4.
+Pinned product/transport hashes and exact ZIP readback passed. Four local tests
+passed (archive tools/binding parity; existing profile, changed binary and partial
+failure preservation). git diff --check passed. Runtime helpers have no diff from
+a0e73b8, whose actual Windows enrollment/recovery CI passed. No new VM execution
+or new CI result is claimed. Evidence: m8-windows-vm-setup-20261116.json.
+
 ## Owner Windows persistent recovery passed — November 16
 
 ESITLEME-ONARIM-SONUC-Windows-0639bc01fcef.zip validates against exact a0e73b8,

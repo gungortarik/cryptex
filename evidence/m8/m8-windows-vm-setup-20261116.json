@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "scope": "owner Windows VM fresh persistent setup packet; execution pending",
+  "source_commit": "5ce0fb925ee4bb9e309f429ed9f080937d5f92b0",
+  "product_source": "3d8e5b4756f7a6c91ae245c630a48efc645c0a50",
+  "product_ci_run": "43905651278",
+  "run_id": "b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4",
+  "packet": "Cryptex-Windows-VM-Kurulum.zip",
+  "packet_sha256": "4a3d8504b1953f5eb4b7de71bce3eee55caaa2c1718086e37f145c40610a79f4",
+  "packet_bytes": 20108838,
+  "launcher": "Cryptex-Windows-VM-Kurulum/VM-ESITLEME-KUR.cmd",
+  "result_pattern": "ESITLEME-KURULUM-SONUC-Windows-*.zip",
+  "checks": {
+    "pinned_product_and_transport_hashes": true,
+    "zip_member_readback": true,
+    "vm_archive_exact_helpers_and_binding_test": "passed",
+    "existing_profile_changed_payload_partial_failure_tests": "3 passed",
+    "git_diff_check": "passed",
+    "runtime_helpers_identical_to_a0e73b8": true
+  },
+  "limits": {
+    "vm_execution_verified": false,
+    "normal_window_verified": false,
+    "pairing_authorized": false,
+    "network_delivery_verified": false,
+    "main_host_publisher_block_resolved": false,
+    "m8_closed": false
+  },
+  "preservation": "No host profile/key copied; existing VM normal profile refuses; no security policy change. Owner reports VM snapshot taken. Keep successful Mac setup."
+}
