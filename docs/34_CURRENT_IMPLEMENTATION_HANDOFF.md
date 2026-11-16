@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Persistent LAN enrollment packet — November 16, native validation pending
+## Persistent LAN enrollment packet — November 16, Mac/Windows startup CI passed
 
 The owner confirmed Rust/Cargo and Node remain installed on their own Mac.
 Commit fd4adcd adds separate explicit daemon first-public-note and local-only
@@ -31,12 +31,32 @@ The bounded command runner now accepts at most 4096 stdin bytes with complete
 partial-write handling and cleanup before leader reaping, including write,
 close and reader-start faults. Local Python tests pass (POSIX cases require
 Mac); local Rust execution remains blocked by Application Control4551.
-CI43900310153 passed Windows at fd4adcd; its Mac result and the newer packet,
-CMS compiler and actual product-owned enrollment/restart fixture must be checked
-at the final exact source. No owner profile has been created by this workstation.
+CI43900310153 passed both platforms at fd4adcd. Exact packet source755a5d7 passed
+Windows and Mac in CI43903882285, including the four first-capture regressions,
+native CMS compilation, all applicable POSIX runner tests, and the actual signed
+`product_owned_key_first_capture_transport_enrollment_restart=passed` marker.
+The latter uses the real product to create/reopen its own OS key in a disposable
+CI Keychain, capture, enroll transport, refuse duplicate enrollment and open/close
+twice without changing canonical hashes. This is not owner-certificate execution.
+Independent bounded source review closed at755a5d7 after the original namespace,
+stdin cleanup and shared-deadline corrections. No owner profile has been created
+by this workstation. Evidence: `evidence/m8/m8-persistent-lan-setup-20261116.json`.
 
-Next: complete exact-source CI, deliver the Mac setup package and inspect its
-owner receipt, then prepare the Windows endpoint and owner-reviewed pairing.
+Mac packet `Cryptex-Mac-Esitleme-Kurulum-755a5d7.zip` is in the owner's Downloads,
+with exact archive-member readback. `lan_setup_receipt.py` rejects wrong session
+or source, incomplete success and claims of network/pairing authority; three
+focused receipt tests pass. Windows package job43903946352 exposed an older
+release-test invocation without tauri/custom-protocol.3d8e5b4 fixes the invocation,
+preserving the failing embedded-assets assertion;43905651278 is its package rerun.
+No product Rust/frontend sources differ between755a5d7 and3d8e5b4.
+Run43905651278 passed, including all53 release helper tests. Its unsigned
+Desktop, daemon and NSIS artifact was downloaded outside Git to
+`Downloads/Cryptex-Windows-LAN-3d8e5b4`; source/run provenance and every file's
+size/SHA256 match. It was not executed or installed. Windows persistent setup
+and actual LAN acceptance remain next steps after the owner's Mac setup receipt.
+
+Next: deliver the Mac setup package and inspect its owner receipt, then prepare
+the Windows endpoint and owner-reviewed pairing.
 Real LAN disconnected capture/delivery, restart/replay, interruption, cutoff
 propagation and full M8 acceptance remain open. Do not replace that leg with
 copied canonical segments or treat a setup receipt as convergence evidence.

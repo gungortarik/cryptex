@@ -1,0 +1,64 @@
+{
+  "scope": "Explicit persistent local development enrollment and owner-local Mac packet; not real network acceptance",
+  "product_enrollment_source": "fd4adcd",
+  "mac_packet_source": "755a5d7f3286869dbf01076f1cd7482c83d48571",
+  "mac_packet_sha256": "4aeb0c36287d4ef9341f9523dd4c9cddffebfa4a5de5f2f320edab9401e92cd6",
+  "mac_packet_contents_readback": "passed",
+  "review": {
+    "agent": "independent_m8_review",
+    "scope": "bounded source review of enrollment, retained namespaces, owner signing packet and subprocess ownership",
+    "final_source": "755a5d7f3286869dbf01076f1cd7482c83d48571",
+    "result": "No remaining actionable findings in the reviewed correction",
+    "fixed_findings": [
+      "Retain the original Mac helper namespace through authenticated launch",
+      "Cleanup before reap on stdin write/close and reader-start faults",
+      "Complete partial stdin writes within a shared absolute command deadline"
+    ],
+    "execution_evidence": false
+  },
+  "local_validation": {
+    "platform": "Windows",
+    "format_and_diff": "passed",
+    "setup_tests": "4 passed",
+    "bounded_process_tests": "9 passed, 4 POSIX tests skipped",
+    "development_startup_harness": "6 passed",
+    "credential_keychain_harness": "3 passed",
+    "local_startup_harness": "7 passed",
+    "local_signing_runner": "2 passed",
+    "setup_receipt_reader": "3 passed",
+    "native_rust": "Local Application Control4551 prevents execution; no bypass used"
+  },
+  "ci": {
+    "43900310153": {
+      "source": "fd4adcd",
+      "windows": "passed",
+      "mac": "passed"
+    },
+    "43903882285": {
+      "source": "755a5d7",
+      "windows": "passed",
+      "mac": "passed; native product-owned key/first-capture/transport/restart marker present"
+    },
+    "43903946352": {
+      "source": "755a5d7",
+      "windows_package": "failed",
+      "reason": "Release helper tests were invoked without tauri/custom-protocol; 52 passed, embedded-assets guard failed",
+      "fix": "3d8e5b4 adds the same explicit release feature used by the regular release suite; assertion unchanged"
+    },
+    "43905651278": {
+      "source": "3d8e5b4",
+      "windows_package": "passed; all 53 release helper tests executed; artifact source/run/size/SHA256 verified after download; not installed or executed"
+    }
+  },
+  "remaining_device_gates": [
+    "Owner Mac actually builds/signs with its existing Keychain identity and returns setup receipt",
+    "Windows explicit persistent enrollment and ordinary opening",
+    "Owner-reviewed pairing and public LAN settings",
+    "Disconnected capture, real network delivery and daemon-verified durable convergence",
+    "Restart/replay, transport interruption and cutoff propagation"
+  ],
+  "pairing_authorized_by_this_evidence": false,
+  "network_delivery_verified": false,
+  "durable_convergence_verified": false,
+  "m8_closed": false
+}
