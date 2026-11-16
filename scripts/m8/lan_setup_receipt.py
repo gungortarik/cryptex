@@ -9,7 +9,7 @@ import zipfile
 
 from lan_acceptance_receipt import unique_object
 from lan_acceptance_preflight import Refused
-from mac_lan_setup import BUILD_LABELS, BUILD_CODES
+from mac_lan_setup import BUILD_LABELS, BUILD_CODES, CMS_STAGES
 
 STAGES = ('product_built_and_signed', 'fresh_profile_created', 'first_note_committed',
           'transport_enrolled_local_only', 'initialized_startup_restart', 'persistent_profile_preserved')
@@ -29,10 +29,19 @@ def validate(report, source, session):
         raise Refused('setup_receipt_binding')
     if any(report[k] is not False for k in ('pairing_authorized', 'network_delivery_verified', 'convergence_verified')):
         raise Refused('setup_receipt_scope')
-    optional = {'build_tools', 'build_failure'}
+    optional = {'build_tools', 'build_failure', 'cms_failure'}
     allowed = BASE | set(STAGES) | DIGESTS | {'failed_stage', 'error'} | optional
     if set(report) - allowed or any(report[k] is not True for k in STAGES if k in report):
         raise Refused('setup_receipt_fields')
+    if 'cms_failure' in report:
+        diagnostic = report['cms_failure']
+        if (not isinstance(diagnostic, dict) or set(diagnostic) != {'stage', 'status', 'verify'}
+                or not isinstance(diagnostic['stage'], str) or diagnostic['stage'] not in CMS_STAGES
+                or type(diagnostic['status']) is not int or not -(2**31) <= diagnostic['status'] < 2**31
+                or type(diagnostic['verify']) is not int or diagnostic['verify'] not in (0, 1, 2)
+                or report.get('failed_stage') != 'sign_inventory_keychain'
+                or report['outcome'] != 'refused_or_incomplete'):
+            raise Refused('setup_cms_diagnostic')
     if 'build_tools' in report:
         versions = report['build_tools']
         if (not isinstance(versions, dict) or set(versions) - {'node', 'pnpm'}

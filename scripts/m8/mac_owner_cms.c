@@ -10,7 +10,66 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <errno.h>
 extern int cx_verify_inventory(const uint8_t *, size_t, const uint8_t *, size_t, const uint8_t *, size_t);
+
+// Apple's streaming encoder emits BER. Re-serialize only public CMS bytes with
+// the system CMS implementation, then apply the unchanged product verifier.
+// No key is passed to OpenSSL. The enclosing bounded runner owns this process
+// group/deadline. Anonymous scratch descriptors disappear even on termination.
+static int scratch(void) {
+    char name[] = "/tmp/cryptex-owner-cms-XXXXXX";
+    int fd = mkstemp(name);
+    if (fd < 0) return -1;
+    if (unlink(name) || fcntl(fd, F_SETFD, FD_CLOEXEC)) { close(fd); return -1; }
+    return fd;
+}
+static CFDataRef definite_cms(CFDataRef source) {
+    int input = -1, output = -1, actions_ready = 0;
+    posix_spawn_file_actions_t actions;
+    CFDataRef result = NULL;
+    unsigned char *bytes = NULL;
+    input = scratch(); output = scratch();
+    if (input < 0 || output < 0) goto done;
+    size_t size = (size_t)CFDataGetLength(source), offset = 0;
+    while (offset < size) {
+        ssize_t n = write(input, CFDataGetBytePtr(source) + offset, size - offset);
+        if (n <= 0) goto done;
+        offset += (size_t)n;
+    }
+    if (lseek(input, 0, SEEK_SET) != 0 || posix_spawn_file_actions_init(&actions)) goto done;
+    actions_ready = 1;
+    if (posix_spawn_file_actions_adddup2(&actions, input, STDIN_FILENO) ||
+        posix_spawn_file_actions_adddup2(&actions, output, STDOUT_FILENO) ||
+        posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0)) goto done;
+    char *args[] = {"/usr/bin/openssl", "cms", "-cmsout", "-inform", "DER", "-outform", "DER", NULL};
+    char *env[] = {"PATH=/usr/bin:/bin", "OPENSSL_CONF=/dev/null", NULL};
+    pid_t child;
+    if (posix_spawn(&child, args[0], &actions, NULL, args, env)) goto done;
+    int status;
+    pid_t waited;
+    do { waited = waitpid(child, &status, 0); } while (waited < 0 && errno == EINTR);
+    if (waited != child || !WIFEXITED(status) || WEXITSTATUS(status)) goto done;
+    struct stat st;
+    if (fstat(output, &st) || st.st_size < 1 || st.st_size > 2097152 || lseek(output, 0, SEEK_SET) != 0) goto done;
+    size = (size_t)st.st_size; offset = 0;
+    bytes = malloc(size);
+    if (!bytes) goto done;
+    while (offset < size) {
+        ssize_t n = read(output, bytes + offset, size - offset);
+        if (n <= 0) goto done;
+        offset += (size_t)n;
+    }
+    result = CFDataCreate(NULL, bytes, (CFIndex)size);
+done:
+    free(bytes);
+    if (actions_ready) posix_spawn_file_actions_destroy(&actions);
+    if (input >= 0) close(input);
+    if (output >= 0) close(output);
+    return result;
+}
 
 static int digest_matches(CFDataRef der, const char *wanted) {
     unsigned char digest[CC_SHA256_DIGEST_LENGTH];
@@ -83,6 +142,11 @@ int main(int argc, char **argv) {
     CMS_CALL("encoder_finish", CMSEncoderCopyEncodedContent(encoder, &encoded));
 #undef CMS_CALL
     if (!encoded || CFDataGetLength(encoded) > 2097152) goto done;
+    stage = "normalize_der";
+    CFDataRef normalized = definite_cms(encoded);
+    if (!normalized) goto done;
+    CFRelease(encoded);
+    encoded = normalized;
     stage = "verify_inventory";
     verify_code = cx_verify_inventory(CFDataGetBytePtr(encoded), (size_t)CFDataGetLength(encoded), bytes, offset,
                                      CFDataGetBytePtr(selected_der), (size_t)CFDataGetLength(selected_der));

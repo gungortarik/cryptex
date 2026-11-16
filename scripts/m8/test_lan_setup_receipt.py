@@ -7,7 +7,7 @@ import zipfile
 
 from lan_setup_receipt import STAGES, validate, read
 from lan_acceptance_preflight import Refused
-from mac_lan_setup import build_diagnostic
+from mac_lan_setup import build_diagnostic, cms_diagnostic
 from mac_identity_preflight import CommandResult
 
 SOURCE = 'a' * 40
@@ -24,6 +24,20 @@ def success():
 
 
 class SetupReceiptTests(unittest.TestCase):
+    def test_cms_diagnostic_is_closed_and_never_exports_raw_keychain_text(self):
+        line = 'owner_cms_signing_refused stage=verify_inventory status=0 verify=1'
+        diagnostic = cms_diagnostic('sign_inventory_keychain', CommandResult(2, 'private path\n' + line))
+        self.assertEqual(diagnostic, dict(stage='verify_inventory', status=0, verify=1))
+        value = success()
+        value.update(outcome='refused_or_incomplete', failed_stage='sign_inventory_keychain', cms_failure=diagnostic)
+        self.assertEqual(validate(value, SOURCE, SESSION), value)
+        for output in (line+'\n'+line, line.replace('verify_inventory', 'secret'),
+                       line.replace('status=0', 'status=2147483648'), line.replace('verify=1', 'verify=9')):
+            self.assertIsNone(cms_diagnostic('sign_inventory_keychain', CommandResult(2, output)))
+        for field, bad in [('stage', 'private'), ('status', True), ('verify', 3), ('raw', 'secret')]:
+            altered = dict(value, cms_failure={**diagnostic, field: bad})
+            with self.assertRaises(Refused): validate(altered, SOURCE, SESSION)
+
     def test_safe_build_diagnostics_accept_only_known_scalar_fields(self):
         value = success()
         value['build_tools'] = {'node': '24.19.0', 'pnpm': '11.28.0'}

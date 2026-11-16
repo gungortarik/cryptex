@@ -2,7 +2,7 @@
 Only the exact test helper can access this synthetic private key. No owner keys.
 """
 import hashlib
-import os
+import ctypes
 from pathlib import Path
 import re
 import sys
@@ -24,6 +24,16 @@ def main():
         run(['/usr/bin/clang', '-Wall', '-Wextra', '-Werror', repository/'scripts/m8/mac_owner_cms.c',
              repository/'services/cryptexd/src/m8_owner_channel/native/inventory.c',
              '-framework', 'Security', '-framework', 'CoreFoundation', '-o', helper], 'compile_cms_helper')
+        verifier = root/'inventory.dylib'
+        run(['/usr/bin/clang', '-Wall', '-Wextra', '-Werror', '-dynamiclib',
+             repository/'services/cryptexd/src/m8_owner_channel/native/inventory.c',
+             '-framework', 'Security', '-framework', 'CoreFoundation', '-o', verifier], 'compile_unchanged_verifier')
+        library = ctypes.CDLL(str(verifier))
+        verify = library.cx_verify_inventory
+        verify.argtypes = [ctypes.c_void_p, ctypes.c_size_t] * 3
+        verify.restype = ctypes.c_int
+        def verify_bytes(cms, content, cert):
+            return verify(cms, len(cms), content, len(content), cert, len(cert))
         run(['/usr/bin/codesign', '--force', '--sign', '-', '--identifier', 'com.cryptex.ci.cms-helper', helper],
             'sign_cms_test_helper')
         helper_hash = image_hash(run(['/usr/bin/codesign', '-d', '--verbose=4', helper], 'inspect_test_helper'))
@@ -57,12 +67,27 @@ def main():
             if not output.is_file() or not 0 < output.stat().st_size <= 2097152:
                 raise PreflightError('cms_output_missing')
             before = output.read_bytes()
+            cert = (root/'cert.der').read_bytes()
+            content = manifest.read_bytes()
+            if verify_bytes(before, content, cert) != 0:
+                raise PreflightError('cms_independent_self_verify_failed')
+            damaged = before[:-1] + bytes([before[-1] ^ 1])
+            for cms_bytes, content_bytes, cert_bytes in (
+                    (before, content+b'changed', cert), (damaged, content, cert),
+                    (before+b'\0', content, cert), (before, content, cert[:-1]+bytes([cert[-1] ^ 1]))):
+                if verify_bytes(cms_bytes, content_bytes, cert_bytes) == 0:
+                    raise PreflightError('cms_modified_input_not_refused')
             replay = scope.fence.outcome([helper, digest, manifest, output], 60)
             if replay.code != 2 or replay.timed_out or replay.limited or replay.pipe_failed or output.read_bytes() != before:
                 raise PreflightError('cms_existing_output_not_preserved')
             wrong = scope.fence.outcome([helper, '0'*64, manifest, root/'wrong.cms'], 30)
             if wrong.code != 2 or wrong.timed_out or wrong.limited or wrong.pipe_failed or (root/'wrong.cms').exists():
                 raise PreflightError('cms_wrong_certificate_not_refused')
+            manifest.write_bytes(b'x' * 1048576)
+            large = root/'large.cms'
+            scope.run([helper, digest, manifest, large], 'cms_maximum_content', 60)
+            if verify_bytes(large.read_bytes(), manifest.read_bytes(), cert) != 0:
+                raise PreflightError('cms_maximum_content_not_verified')
         print('actual_keychain_cms_self_verify_and_refusals=passed', flush=True)
 
 

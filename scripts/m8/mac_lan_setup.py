@@ -91,6 +91,22 @@ BUILD_CODES = {'ERR_PNPM_UNSUPPORTED_ENGINE', 'ERR_PNPM_BAD_PM_VERSION',
                'ERR_PNPM_FETCH_401', 'ERR_PNPM_FETCH_403', 'ERR_PNPM_FETCH_404',
                'ERR_PNPM_META_FETCH_FAIL', 'ENOTFOUND', 'ECONNRESET', 'ETIMEDOUT',
                'EACCES', 'ENOSPC', 'ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND'}
+CMS_STAGES = {'arguments', 'identity_query', 'identity_select', 'input', 'encoder_create',
+              'encoder_signer', 'encoder_algorithm', 'encoder_content', 'encoder_chain',
+              'encoder_update', 'encoder_finish', 'normalize_der', 'verify_inventory', 'output'}
+
+
+def cms_diagnostic(label, outcome):
+    if label != 'sign_inventory_keychain':
+        return None
+    matches = re.findall(r'^owner_cms_signing_refused stage=([a-z_]+) status=(-?\d{1,11}) verify=(\d{1,2})$',
+                         outcome.output, re.M)
+    if len(matches) != 1:
+        return None
+    stage, status, verify = matches[0]
+    if stage not in CMS_STAGES or not -(2**31) <= int(status) < 2**31 or int(verify) not in (0, 1, 2):
+        return None
+    return dict(stage=stage, status=int(status), verify=int(verify))
 
 
 def build_diagnostic(label, outcome):
@@ -289,6 +305,9 @@ def main():
                 diagnostic = build_diagnostic(label, outcome)
                 if diagnostic is not None:
                     report['build_failure'] = diagnostic
+                diagnostic = cms_diagnostic(label, outcome)
+                if diagnostic is not None:
+                    report['cms_failure'] = diagnostic
             return checked(lambda *_: outcome, args, label, timeout)
         bundle, creator = build(source, work, plan['source_commit'], run, report)
         from mac_window_owner import answer
