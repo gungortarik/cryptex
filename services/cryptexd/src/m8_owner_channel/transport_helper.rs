@@ -399,7 +399,7 @@ fn serve(
             })
     })?;
     let identity = prepared.configured_transport_device_id().to_owned();
-    let mut session = prepared
+    let session = prepared
         .start(&_package, &store)
         .inspect_err(|e| eprintln!("component=mac_transport stage=start error={e}"))
         .map_err(|_| Error::Engine)?;
@@ -1594,7 +1594,7 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
         SecureStoreEnvironment::Dev,
     )
     .map_err(|_| Error::Policy)?;
-    let anchor = resolver.local_trust_anchor().map_err(|_| Error::Policy)?;
+    let anchor = resolver.local_trust_anchor().ok_or(Error::Policy)?;
     for attempt in 0..2 {
         let permit = admission
             .exclusive(root, Instant::now() + BUDGET, false)
@@ -1620,7 +1620,7 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
         let policy = ExchangeConfigPolicy::new(
             &peers,
             ports,
-            std::net::SocketAddrV4::new(ip, ports.sync),
+            std::net::SocketAddrV4::new(ip, ports.sync_port()),
             endpoints,
         )
         .map_err(|_| Error::Policy)?;
@@ -1879,6 +1879,7 @@ mod tests {
             Arc::new(crate::import_staging::macos_fs::Directory::open(&profile, true).unwrap());
         let (sender, _receiver) = mpsc::sync_channel(1);
         let reader = StatusReader {
+            transport: None,
             sender,
             state: Arc::new(AtomicU8::new(OPENING)),
             profile_root: profile.clone(),

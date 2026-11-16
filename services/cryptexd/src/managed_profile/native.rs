@@ -76,6 +76,10 @@ impl NativePorts {
     pub fn api_endpoint(self) -> std::net::SocketAddr {
         std::net::SocketAddr::from(([127, 0, 0, 1], self.api))
     }
+    #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+    pub(crate) fn sync_port(self) -> u16 {
+        self.sync
+    }
 }
 
 #[derive(Serialize, Deserialize)]
