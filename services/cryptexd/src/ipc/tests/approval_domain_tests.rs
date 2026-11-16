@@ -95,6 +95,39 @@ fn assert_burned(registry: &ApprovalSessionRegistry, reply: &BootstrapApprovalIp
     ));
 }
 
+#[cfg(windows)]
+#[test]
+fn sign_only_bootstrap_confirmation_does_not_request_canonical_rebuild() {
+    let mut fixture = prepared_search_fixture("domain-sign-only-rebuild");
+    let instance = crate::instance::try_acquire_instance(&fixture.root).unwrap();
+    fixture.context.admission = instance.admission();
+    let mut connections = crate::managed_profile::connection_settings::Owner::start(
+        &fixture.root,
+        &instance,
+        fixture.store.clone(),
+        SecureStoreEnvironment::Dev,
+        None,
+        ApprovalSessionRegistry::default(),
+        None,
+    )
+    .unwrap();
+    fixture.context.connections = Some(connections.handle());
+    let registry = ApprovalSessionRegistry::default();
+    let (session, reply, prefix) = prepared_bootstrap(&fixture, &registry);
+    let permit = fixture.context.admission.enter(&fixture.root).unwrap();
+    session.reconcile_connections(&permit).unwrap();
+    let finished = session
+        .finish(
+            bootstrap_followup(&reply, prefix, "bootstrap.approval.confirm"),
+            &permit,
+        )
+        .unwrap();
+    assert!(finished.reply.accepted);
+    drop(permit);
+    assert!(fixture.context.admission.enter(&fixture.root).is_ok());
+    connections.shutdown().unwrap();
+}
+
 #[test]
 fn domain_abandonment_burns_grant_without_durable_cancellation_or_append() {
     let mut fixture = prepared_search_fixture("domain-abandon");

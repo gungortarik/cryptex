@@ -376,7 +376,7 @@ pub(super) fn prepare_owner<'a>(
 impl PendingSession<'_> {
     #[cfg(windows)]
     pub(super) fn reconcile_connections(&self, permit: &OperationPermit) -> io::Result<()> {
-        if self.context.reconcile_connections {
+        if self.is_owner() && self.context.reconcile_connections {
             self.context
                 .admission
                 .require_derived_rebuild(&self.context.runtime_root, permit)

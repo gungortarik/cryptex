@@ -248,3 +248,68 @@ fn queued_or_cancelled_request_cannot_begin_later() {
     stop.store(true, Ordering::Release);
     assert_eq!(interest.check(&stop), Err(Error::Unavailable));
 }
+
+#[cfg(windows)]
+#[test]
+fn bootstrap_phase_preserves_explicit_join_and_never_falls_back_from_existing_history() {
+    let root = crate::test_temp::exclusive_temp_dir("connections-joining");
+    let store = crate::FakeSecureStore::new();
+    let env = SecureStoreEnvironment::Dev;
+    crate::install_runtime::prepare_m1_runtime_foundation(&root).unwrap();
+    assert_eq!(bootstrap::identity_only(&root, &store, env), Ok(true));
+    assert!(!root.join("canonical/events/inventory.lock").exists());
+    let brain = cryptex_core::BrainIdentity::new(
+        "33333333-3333-4333-8333-333333333333",
+        "2026-11-15T00:00:00Z",
+    )
+    .unwrap();
+    let raw = brain.to_json_lf().unwrap();
+    crate::identity_runtime::write_brain_identity(&root, &brain).unwrap();
+    assert_eq!(bootstrap::identity_only(&root, &store, env), Ok(true));
+    let identity = crate::local_device_identity::join_existing_brain(
+        &root,
+        &store,
+        env,
+        &raw,
+        &brain.brain_id,
+    )
+    .unwrap();
+    assert_eq!(bootstrap::identity_only(&root, &store, env), Ok(true));
+    assert!(bootstrap::identity_only(&root, &crate::FakeSecureStore::new(), env).is_err());
+    let device = cryptex_core::ids::DeviceId::new(identity.device_id).unwrap();
+    let inventory = crate::canonical_writer::acquire_canonical_inventory_lock(&root).unwrap();
+    let device_lock = crate::canonical_writer::acquire_device_canonical_lock_under_inventory(
+        &root, &device, &inventory,
+    )
+    .unwrap();
+    drop(device_lock);
+    drop(inventory);
+    assert_eq!(bootstrap::identity_only(&root, &store, env), Ok(true));
+    // Any stream artifact enters the full scanner even if malformed or empty.
+    std::fs::write(
+        cryptex_storage::canonical_events_device_dir(&root, &device).join("000000.pack"),
+        b"invalid",
+    )
+    .unwrap();
+    assert_eq!(bootstrap::identity_only(&root, &store, env), Ok(false));
+    std::fs::remove_dir_all(root).unwrap();
+
+    let root = crate::test_temp::exclusive_temp_dir("connections-bootstrap-corrupt");
+    crate::install_runtime::prepare_m1_runtime_foundation(&root).unwrap();
+    std::fs::write(
+        crate::identity_runtime::brain_identity_path(&root),
+        b"invalid",
+    )
+    .unwrap();
+    assert_eq!(
+        bootstrap::identity_only(&root, &store, env),
+        Err(Error::Authority)
+    );
+    std::fs::remove_dir_all(root).unwrap();
+
+    let root = crate::test_temp::exclusive_temp_dir("connections-bootstrap-settings");
+    crate::install_runtime::prepare_m1_runtime_foundation(&root).unwrap();
+    std::fs::create_dir(root.join("connection-settings")).unwrap();
+    assert_eq!(bootstrap::identity_only(&root, &store, env), Ok(false));
+    std::fs::remove_dir_all(root).unwrap();
+}

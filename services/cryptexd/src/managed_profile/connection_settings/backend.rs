@@ -17,6 +17,9 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 #[cfg(windows)]
+mod bootstrap;
+
+#[cfg(windows)]
 type Worker = crate::managed_profile::worker::ManagedTransportWorker;
 #[cfg(windows)]
 pub(crate) type Reader = crate::managed_profile::worker::StatusReader;
@@ -177,6 +180,8 @@ impl Owner {
                     guard: None,
                     reader,
                     cleanup_failed: false,
+                    #[cfg(windows)]
+                    identity_only: false,
                     stop: worker_stop.clone(),
                     view: View {
                         revision: "0".into(),
@@ -190,6 +195,7 @@ impl Owner {
                 };
                 if let Some(owner) = &controller.recovery_owner
                     && controller.location.is_some()
+                    && !controller.is_identity_only()
                 {
                     let mut instance = owner.lock().map_err(|_| Error::Unavailable)?;
                     // First startup uses the same canonical recovery/rebuild gate
@@ -288,10 +294,22 @@ struct Controller {
     reader: Arc<Mutex<Option<Reader>>>,
     view: View,
     cleanup_failed: bool,
+    #[cfg(windows)]
+    identity_only: bool,
     stop: Arc<AtomicBool>,
     recovery_owner: Option<Arc<Mutex<crate::instance::InstanceLock>>>,
 }
 impl Controller {
+    fn is_identity_only(&self) -> bool {
+        #[cfg(windows)]
+        {
+            bootstrap::identity_only(&self.root, self.store.as_ref(), self.environment) == Ok(true)
+        }
+        #[cfg(not(windows))]
+        {
+            false
+        }
+    }
     fn close(&mut self) -> Result<(), Error> {
         *self.reader.lock().map_err(|_| Error::Unavailable)? = None;
         if self.cleanup_failed {
@@ -321,6 +339,15 @@ impl Controller {
         Ok(())
     }
     fn check_generation(&mut self) {
+        #[cfg(windows)]
+        if self.identity_only && !self.is_identity_only() {
+            // First canonical data requires full recovery and fresh trust scan.
+            // No settings or cached identity can clear a preexisting hold.
+            if let Ok(permit) = self.admission.enter(&self.root) {
+                let _ = self.admission.require_derived_rebuild(&self.root, &permit);
+            }
+            self.view.error = Some(Error::Held);
+        }
         if matches!(
             self.admission.enter(&self.root),
             Err(crate::runtime_admission::AdmissionError::Held(
@@ -392,6 +419,10 @@ impl Controller {
         if self.location.is_none() {
             return Err(Error::NotEnrolled);
         }
+        #[cfg(windows)]
+        if self.identity_only && update.is_some() {
+            return Err(Error::NotEnrolled);
+        }
         if let Some(update) = &update {
             update.validate()?;
         }
@@ -418,6 +449,60 @@ impl Controller {
                 .map_err(|_| Error::Unavailable)?;
             let location = self.location.as_ref().ok_or(Error::NotEnrolled)?;
             let (identity, ports) = location.candidate(self.store.as_ref(), self.environment)?;
+            #[cfg(windows)]
+            {
+                self.identity_only =
+                    bootstrap::identity_only(&self.root, self.store.as_ref(), self.environment)?;
+                if self.identity_only {
+                    if update.is_some() {
+                        return Err(Error::NotEnrolled);
+                    }
+                    self.guard = Some(
+                        permit
+                            .transport_guard(&self.root)
+                            .map_err(|_| Error::Held)?,
+                    );
+                    // Original bootstrap image admits self/loopback only and
+                    // refuses any persisted exchange image or transaction.
+                    self.worker = Some(
+                        Worker::spawn_existing(
+                            location.profile.clone(),
+                            location.package.clone(),
+                            self.environment,
+                            ports,
+                        )
+                        .map_err(|_| Error::Start)?,
+                    );
+                    let reader = self.worker.as_ref().ok_or(Error::Start)?.status_reader();
+                    let deadline = Instant::now() + Duration::from_secs(25);
+                    let started = (|| {
+                        loop {
+                            interest.check(&self.stop)?;
+                            if let Ok(current) = reader.try_transport_device_id() {
+                                if current != identity {
+                                    return Err(Error::Start);
+                                }
+                                break;
+                            }
+                            if Instant::now() >= deadline {
+                                return Err(Error::Start);
+                            }
+                            std::thread::sleep(Duration::from_millis(20));
+                        }
+                        *self.reader.lock().map_err(|_| Error::Unavailable)? = Some(reader);
+                        Ok(())
+                    })();
+                    if let Err(error) = started {
+                        self.close()?;
+                        return Err(error);
+                    }
+                    self.view.state = State::NotEnrolled;
+                    self.view.error = None;
+                    self.view.local_transport_port = Some(ports.sync);
+                    self.view.devices.clear();
+                    return Ok(());
+                }
+            }
             let brain = crate::identity_runtime::load_brain_identity(&self.root)
                 .map_err(|_| Error::Authority)?;
             let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(

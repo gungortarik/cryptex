@@ -3421,10 +3421,7 @@ fn deliver_approval_session(
         .send_using(|bytes, deadline| write_response(stream, bytes, deadline));
     }
     #[cfg(windows)]
-    if matches!(
-        followup.operation.as_str(),
-        "bootstrap.approval.confirm" | "owner.security.confirm"
-    ) {
+    if followup.operation == "owner.security.confirm" {
         session.reconcile_connections(&permit)?;
     }
     let finished = session.finish(followup, &permit)?;
