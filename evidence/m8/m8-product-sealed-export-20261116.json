@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "platform_ci_running_device_acceptance_pending",
+  "status": "bounded_platform_ci_passed_device_acceptance_pending",
   "source": "5acd145d3d3e4c59d5e84df08cde4e2d18d3e8d3",
   "scope": "Normal connection-coordinator admitted sealed export and bounded platform tests; not physical Windows-Mac durable convergence.",
   "contract": "docs/milestones/M8_SEALED_EXPORT_CHECKPOINT.md",
@@ -31,7 +31,7 @@
     "run": "https://github.com/gungortarik/cryptex/actions/runs/43813189448",
     "windows_job": 133119226504,
     "mac_job": 133119226341,
-    "status": "in_progress",
+    "status": "success",
     "superseded_fixture_failure": {
       "run": 43811122444,
       "reason": "New signed cutoff test parsed header-inclusive storage frames as JSON on both targets.",
@@ -80,6 +80,17 @@
         "native_existing_profile_restart_replay_and_local_status=passed",
         "real_signed_desktop_daemon_startup_restart=passed"
       ]
+    },
+    "mac": {
+      "conclusion": "success",
+      "verified_markers": [
+        "native_product_sealed_export_pause_resume_restart=passed",
+        "native_connection_settings_restart_and_stale_refusal=passed",
+        "native_connection_settings_owner_channel_and_roster=passed",
+        "native_existing_profile_signed_import=passed",
+        "native_existing_profile_restart_replay_and_local_status=passed",
+        "real_signed_desktop_daemon_startup_restart=passed"
+      ]
     }
   },
   "device_preparation": {
@@ -93,7 +104,7 @@
     "package_sha256": "a55f14f1831a3056dd5225e39b05e8f4295466a0c6ba206cfba7a2df41eaf6b6"
   },
   "remaining_gates": [
-    "Exact-source Mac CI completion at5acd145; Windows passed. Preserve earlier intermittent restricted-peer failure as unroot-caused even though cec7dab passed.",
+    "Keep the earlier intermittent restricted-peer failure recorded as unroot-caused. Both subsequent cec7dab and exact-source5acd145 Mac runs passed; aggregate diagnostics remain in place.",
     "Coordinated fresh persistent-profile application packet after Mac setup observation; no existing-profile adoption or overwrite.",
     "Owner-reviewed pairing, disconnected captures, actual Windows-Mac LAN delivery and daemon-verified canonical plus derived convergence after restart.",
     "Real transport interruption/recovery, duplicate delivery and cutoff propagation.",

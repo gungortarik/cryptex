@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Admitted sealed export and real LAN preparation — November 16, final Mac CI pending
+## Admitted sealed export and real LAN preparation — November 16, Windows and Mac CI passed
 
 The user confirmed that their Windows machine and own Mac are available on the
 same LAN. The accepted product-flow direction now has daemon export scheduled
@@ -29,9 +29,11 @@ new native export fixture;5acd145 adds aggregate state/error/count/revision
 diagnostics without weakening the assertion. The cause remains unverified.
 Both platforms passed atcec7dab inCI43812313765, including the new native
 export marker, settings roster, signed import/replay and real signed startup.
-Current exact-source run is43813189448 (5acd145): Windows passed, including
-the new normal-locator regression under the standard-user token; Mac is still
-running. Verify its terminal result before claiming exact-source acceptance.
+Exact-source run [43813189448](https://github.com/gungortarik/cryptex/actions/runs/43813189448)
+passed both platforms at5acd145. Windows job133119226504 includes all seven
+exporter cases and the new normal-locator regression under the standard-user
+token. Mac job133119226341 includes native_product_sealed_export_pause_resume_restart,
+settings roster/restart, signed import/replay and real signed Desktop/daemon startup.
 The earlier intermittent restricted-peer failure is not root-caused merely
 because the next run passed. Evidence: `evidence/m8/m8-product-sealed-export-20261116.json`.
 
@@ -50,7 +52,7 @@ candidates and an absent normal release-development profile. Mac receipt is
 pending. The collector creates no profile, reads no keys/note contents, starts
 no application and performs no transfer; this is not a LAN acceptance result.
 
-Continue by checking the exact-source CI and Mac setup receipt, then prepare
+Continue with the Mac setup receipt, then prepare
 the coordinated persistent Windows/Mac application packet using fresh profiles
 at normal application paths without adopting or overwriting existing profiles.
 The remaining device gate is owner-reviewed pairing, disconnected capture on
