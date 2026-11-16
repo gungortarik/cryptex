@@ -10,7 +10,7 @@ $manifest=Join-Path $workspace 'services\cryptexd'
 $python=$null
 if($LanSetupOnly) {
     $LanArtifact=(Resolve-Path -LiteralPath $LanArtifact).Path
-    $python=(Get-Command python -CommandType Application).Source
+    $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
     $executables=@(); $expectedSuites=1
 } else {
 $buildArgs=@('test','--locked','-p','cryptexd','--no-run','--message-format=json')
