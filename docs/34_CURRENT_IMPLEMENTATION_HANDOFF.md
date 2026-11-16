@@ -1,5 +1,28 @@
 # 34 — Current Implementation Handoff
 
+## Windows VM setup handoff — November 16
+
+Owner's normal Windows Desktop launcher failed. Screenshot shows Windows Security
+"Part of this app has been blocked": publisher of cryptex-desktop.exe could not
+be confirmed. This does not establish malware or the historical daemon failure's
+cause. Preserve the successful main-host profile. Do not bypass security policy.
+Owner explicitly chose the existing Windows VM and reports taking a snapshot.
+
+Prepare the fresh Windows setup package with --vm. This changes only the handoff
+folder, instructions and launcher (including a Python prerequisite check); exact
+committed setup/native/open helpers and pinned product3d8e5b4 remain unchanged.
+The VM creates its own device identity in its normal local profile, using the
+same public test Brain/session as the retained successful Mac. No host keys or
+profiles are copied. Existing VM normal profiles refuse without deletion or
+adoption. Old TEMP pilot profiles are not targeted. No network/pairing is enabled.
+
+Owner runs VM-ESITLEME-KUR.cmd inside the VM as a standard user, explicitly confirms
+the public note, and returns ESITLEME-KURULUM-SONUC-Windows-*.zip. Do not rerun
+setup after success or partial creation. The next gate is normal VM Desktop
+opening, then owner-reviewed pairing and Windows VM to Mac LAN delivery. The
+main-host publisher block remains a separate unresolved acceptance limitation.
+M8 is open; a VM setup receipt cannot establish normal-window or sync acceptance.
+
 ## Owner Windows persistent recovery passed — November 16
 
 ESITLEME-ONARIM-SONUC-Windows-0639bc01fcef.zip validates against exact a0e73b8,

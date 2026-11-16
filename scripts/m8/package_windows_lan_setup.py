@@ -31,7 +31,7 @@ def payload(artifact):
         if hashlib.sha256(data[name]).hexdigest()!=digest: raise ValueError('payload_hash_mismatch')
     return data
 
-def build(artifact,output,revision):
+def build(artifact,output,revision,vm=False):
     commit=subprocess.check_output(['git','rev-parse',revision+'^{commit}'],cwd=ROOT,text=True).strip()
     members={'payload/'+n:d for n,d in payload(artifact).items()}
     for name in ('windows_lan_setup.py','windows_setup_native.py','windows_lan_open.py'):
@@ -48,17 +48,47 @@ def build(artifact,output,revision):
         'Basarili kurulumdan sonra CRYPTEX-AC.cmd ile normal uygulamayi ac.\n'
         'Pencere acilisini ve eslestirmeyi ayri kontrol edecegiz. Bu paket ag teslimini kanitlamaz.\n'
         'Syncthing 2.1.5 MPL-2.0, upstream source: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()
+    folder='Cryptex-Windows-Esitleme-Kurulum/'
+    if vm:
+        folder='Cryptex-Windows-VM-Kurulum/'
+        del members['WINDOWS-ESITLEME-KUR.cmd']
+        members['VM-ESITLEME-KUR.cmd']=(
+            '@echo off\r\ncd /d "%~dp0"\r\n'
+            'echo Bu paketi yalnizca test Windows VM icinde calistirin.\r\n'
+            'py -3 -B -c "import sys; sys.exit(sys.version_info < (3, 9))" >nul 2>&1\r\n'
+            'if errorlevel 1 (\r\n'
+            '  echo Python 3.9 veya ustu ve py baslaticisi bulunamadi. Bu mesaji bildir.\r\n'
+            '  pause\r\n  exit /b 1\r\n)\r\n'
+            'py -3 -B windows_lan_setup.py\r\npause\r\n').encode()
+        members['BASLA.txt']=(
+            'Windows VM kalici LAN test kurulumu\n\n'
+            'ZIPi VM icindeki Downloads klasorune kopyala ve Tumunu ayikla.\n'
+            'Ana bilgisayarda calistirma. Snapshot alindigindan emin ol.\n'
+            'Ana bilgisayarin profilini veya anahtarlarini VMye kopyalama.\n'
+            'VMde acik Cryptex varsa Quit ile cik. VM-ESITLEME-KUR.cmd dosyasini cift tikla.\n'
+            'Yonetici olarak calistirma. Python 3.9+ ve py baslaticisi gerekir.\n'
+            'Gosterilen public test notunu kabul ediyorsan E yaz ve Entera bas.\n'
+            'Yeni cihaz kimligi VM icinde olusur; Macin mevcut test Brain kimligi kullanilir.\n'
+            'VMde mevcut normal profil varsa durur; eski profilleri silmez veya tasimaz.\n'
+            'Hata veya Windows guvenlik uyarisi olursa dur; korumayi kapatma, istisna ekleme.\n'
+            'Olusan ESITLEME-KURULUM-SONUC-Windows-*.zip dosyasini sohbete gonder.\n'
+            'Sonuc VMnin Downloads klasorundedir. Kurulumu ikinci kez calistirma.\n'
+            'Basarili kurulum CRYPTEX-AC.cmd olusturur; normal pencereyi sonra kontrol edecegiz.\n'
+            'Bu adim eslestirme, ag ayari veya ag teslimi yapmaz. Mac kurulumunu tekrarlama.\n'
+            'VM testi ana Windows yayin/imza kabulunun yerine gecmez.\n'
+            'Syncthing 2.1.5 MPL-2.0, upstream source: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()
     output=output.resolve()
     if output==ROOT or ROOT in output.parents: raise ValueError('output_inside_repository')
     with zipfile.ZipFile(output,'x',zipfile.ZIP_DEFLATED) as archive:
-        for name,data in members.items(): archive.writestr('Cryptex-Windows-Esitleme-Kurulum/'+name,data)
+        for name,data in members.items(): archive.writestr(folder+name,data)
     with zipfile.ZipFile(output) as archive:
         if len(archive.infolist())!=len(members): raise ValueError('packet_member_count')
         for name,data in members.items():
-            if archive.read('Cryptex-Windows-Esitleme-Kurulum/'+name)!=data: raise ValueError('packet_readback')
+            if archive.read(folder+name)!=data: raise ValueError('packet_readback')
     return commit,hashlib.sha256(output.read_bytes()).hexdigest()
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--artifact',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True);parser.add_argument('--revision',default='HEAD')
-    args=parser.parse_args();print(build(args.artifact,args.output,args.revision))
+    parser.add_argument('--vm',action='store_true')
+    args=parser.parse_args();print(build(args.artifact,args.output,args.revision,args.vm))
