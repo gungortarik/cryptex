@@ -469,9 +469,14 @@ fn install(files: &mut impl Files, policy: &impl InstallPolicy) -> Result<()> {
     if !bound {
         files.replace(Leaf::Binding, journal.binding.as_bytes())?;
     }
-    if files.read(Leaf::Config)?.as_deref() != Some(journal.config.as_bytes())
-        || files.read(Leaf::Binding)?.as_deref() != Some(journal.binding.as_bytes())
-    {
+    let readback = files
+        .read(Leaf::Config)?
+        .ok_or(InstallError::ReadbackMismatch)?;
+    // The same complete normalized policy check decides whether replacement is
+    // necessary and whether its readback is valid. A first local-only target
+    // may already be semantically installed in native serialization order.
+    policy.verify_binding(&readback, journal.binding.as_bytes())?;
+    if files.read(Leaf::Binding)?.as_deref() != Some(journal.binding.as_bytes()) {
         return Err(InstallError::ReadbackMismatch);
     }
     // No delete/cleanup window: a complete durable record remains for restart.

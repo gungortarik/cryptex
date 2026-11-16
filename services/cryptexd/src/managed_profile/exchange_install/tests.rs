@@ -14,6 +14,12 @@ fn with_policy(f: impl FnOnce(&ExchangeConfigPolicy<'_>, &[u8])) {
     with_policies(|first, _, bootstrap| f(first, bootstrap));
 }
 fn with_policies(f: impl FnOnce(&ExchangeConfigPolicy<'_>, &ExchangeConfigPolicy<'_>, &[u8])) {
+    with_policies_mode(false, f);
+}
+fn with_policies_mode(
+    local_only: bool,
+    f: impl FnOnce(&ExchangeConfigPolicy<'_>, &ExchangeConfigPolicy<'_>, &[u8]),
+) {
     let (source, receiver, negative, store) =
         crate::trusted_import_probe::tests::pair_with_transport(LOCAL, REMOTE);
     {
@@ -35,12 +41,16 @@ fn with_policies(f: impl FnOnce(&ExchangeConfigPolicy<'_>, &ExchangeConfigPolicy
             .unwrap();
         let authority = ExchangePeers::from_snapshot(&snapshot, &source, LOCAL).unwrap();
         let ports = NativePorts::new(18384, 22001).unwrap();
-        let policy = ExchangeConfigPolicy::new(
-            &authority,
-            ports,
-            "192.168.77.1:22001".parse().unwrap(),
-            BTreeMap::from([(REMOTE.into(), "192.168.77.2:22002".parse().unwrap())]),
-        )
+        let policy = if local_only {
+            ExchangeConfigPolicy::local_only(&authority, ports)
+        } else {
+            ExchangeConfigPolicy::new(
+                &authority,
+                ports,
+                "192.168.77.1:22001".parse().unwrap(),
+                BTreeMap::from([(REMOTE.into(), "192.168.77.2:22002".parse().unwrap())]),
+            )
+        }
         .unwrap();
         let bootstrap = native_xml::inspect(
             include_bytes!("../native_xml/exchange/bootstrap-test.xml"),
@@ -79,6 +89,60 @@ fn seed(home: &PrivateDirectory, name: &str, bytes: &[u8]) {
     let mut file = home.create_file(name).unwrap();
     file.write_all(bytes).unwrap();
     file.sync_all().unwrap();
+}
+
+#[test]
+fn first_local_only_install_and_interrupted_reopen_accept_native_serialization() {
+    with_policies_mode(true, |policy, _, bootstrap| {
+        let target = policy.prepare_bootstrap(bootstrap).unwrap();
+        assert_ne!(
+            target, bootstrap,
+            "fixture must exercise reordered native XML"
+        );
+        for at in 1..=3 {
+            for after in [false, true] {
+                let root = scratch();
+                {
+                    let home = PrivateDirectory::acquire(&root, true).unwrap();
+                    seed(&home, Leaf::Config.name(), bootstrap);
+                    let mut interrupted = Interrupt {
+                        files: &home,
+                        count: 0,
+                        at,
+                        after,
+                    };
+                    assert!(install(&mut interrupted, policy).is_err());
+                }
+                {
+                    let home = PrivateDirectory::acquire(&root, false).unwrap();
+                    install(&mut &home, policy).unwrap();
+                    verify_native(&home, policy).unwrap();
+                    assert_eq!((&home).read(Leaf::Config).unwrap().unwrap(), bootstrap);
+                    let formatted = String::from_utf8(target.clone())
+                        .unwrap()
+                        .replace("><", ">\n<");
+                    (&home).replace(Leaf::Config, formatted.as_bytes()).unwrap();
+                    let mut no_write = Interrupt {
+                        files: &home,
+                        count: 0,
+                        at: 1,
+                        after: false,
+                    };
+                    install(&mut no_write, policy).unwrap();
+                    assert_eq!(no_write.count, 0);
+                    verify_native(&home, policy).unwrap();
+                    let drifted = formatted.replace(
+                        "<globalAnnounceEnabled>false",
+                        "<globalAnnounceEnabled>true",
+                    );
+                    assert_ne!(drifted, formatted);
+                    (&home).replace(Leaf::Config, drifted.as_bytes()).unwrap();
+                    assert!(install(&mut &home, policy).is_err());
+                }
+                std::fs::remove_dir_all(root).unwrap();
+            }
+        }
+    });
 }
 
 struct Interrupt<F> {
