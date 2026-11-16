@@ -11,6 +11,9 @@ const LOCAL: &str = "U2SYIGU-YWZX757-2WPZGCR-DHD7MLH-ZKV7HLJ-EYO6CXE-K3DU3DU-SDF
 const REMOTE: &str = "XAAPCAD-GA4SF4J-BNQL3FS-T456WKV-FGLXUKO-CDWHVDW-EYWNRIG-SM5GUAZ";
 
 fn with_policy(f: impl FnOnce(&ExchangeConfigPolicy<'_>, &[u8])) {
+    with_policies(|first, _, bootstrap| f(first, bootstrap));
+}
+fn with_policies(f: impl FnOnce(&ExchangeConfigPolicy<'_>, &ExchangeConfigPolicy<'_>, &[u8])) {
     let (source, receiver, negative, store) =
         crate::trusted_import_probe::tests::pair_with_transport(LOCAL, REMOTE);
     {
@@ -45,7 +48,14 @@ fn with_policy(f: impl FnOnce(&ExchangeConfigPolicy<'_>, &[u8])) {
             true,
         )
         .unwrap();
-        f(&policy, &bootstrap.bytes);
+        let changed = ExchangeConfigPolicy::new(
+            &authority,
+            ports,
+            "192.168.77.1:22001".parse().unwrap(),
+            BTreeMap::from([(REMOTE.into(), "192.168.77.3:22002".parse().unwrap())]),
+        )
+        .unwrap();
+        f(&policy, &changed, &bootstrap.bytes);
     }
     for root in [source, receiver, negative] {
         std::fs::remove_dir_all(root).unwrap();
@@ -194,6 +204,205 @@ fn completed(policy: &ExchangeConfigPolicy<'_>, bootstrap: &[u8]) -> MemoryFiles
 }
 
 #[test]
+fn changed_policy_recovers_each_boundary_without_reactivating_old_authority() {
+    with_policies(|old, new, bootstrap| {
+        for at in 1..=4 {
+            for after in [false, true] {
+                let mut interrupted = Interrupt {
+                    files: completed(old, bootstrap),
+                    count: 0,
+                    at,
+                    after,
+                };
+                assert!(reconcile(&mut interrupted, new).is_err());
+                let mut files = interrupted.files;
+                let saved = files.data.clone();
+                // Once NEW intent exists, a stale policy must not finish the
+                // pending replacement. Before it exists the old commit is intact.
+                if !(at == 1 && !after) && !(at == 4 && after) {
+                    assert!(reconcile(&mut files, old).is_err());
+                    assert!(files.data == saved);
+                    assert!(install(&mut files, new).is_err());
+                }
+                reconcile(&mut files, new).unwrap();
+                let receipt = Journal::decode(files.data[2].as_ref().unwrap()).unwrap();
+                assert_eq!(receipt.schema, 2);
+                assert!(receipt.phase == Phase::Committed);
+                assert!(receipt.previous.is_none());
+                new.verify_binding(
+                    files.data[0].as_ref().unwrap(),
+                    files.data[1].as_ref().unwrap(),
+                )
+                .unwrap();
+                let writes = files.writes;
+                reconcile(&mut files, new).unwrap();
+                assert_eq!(files.writes, writes);
+                // A later explicit new canonical admission can return to an old
+                // endpoint. Disk content alone never grants that admission.
+                reconcile(&mut files, old).unwrap();
+                old.verify_binding(
+                    files.data[0].as_ref().unwrap(),
+                    files.data[1].as_ref().unwrap(),
+                )
+                .unwrap();
+            }
+        }
+    });
+}
+
+#[test]
+fn changed_policy_refuses_drift_and_unknown_staging_before_any_write() {
+    with_policies(|old, new, bootstrap| {
+        for leaf in [Leaf::Config, Leaf::Binding, Leaf::Journal] {
+            let mut files = completed(old, bootstrap);
+            files.stages[leaf as usize] = Some(b"foreign".to_vec());
+            assert!(reconcile(&mut files, new).is_err());
+            assert_eq!(files.writes, 0);
+        }
+        for leaf in [Leaf::Config, Leaf::Binding] {
+            let mut files = completed(old, bootstrap);
+            files.data[leaf as usize] = Some(b"foreign".to_vec());
+            assert!(reconcile(&mut files, new).is_err());
+            assert_eq!(files.writes, 0);
+        }
+    });
+}
+
+#[test]
+fn replacement_stages_resume_only_the_exact_next_durable_step() {
+    with_policies(|old, new, bootstrap| {
+        for step in 1..=4 {
+            let mut interrupted = Interrupt {
+                files: completed(old, bootstrap),
+                count: 0,
+                at: step,
+                after: false,
+            };
+            assert!(reconcile(&mut interrupted, new).is_err());
+            let files = interrupted.files;
+            let mut journal = Journal::decode(files.data[2].as_ref().unwrap()).unwrap();
+            let target = new.prepare_bootstrap(bootstrap).unwrap();
+            let binding = new.binding_bytes(&target).unwrap();
+            let (leaf, bytes) = match step {
+                1 => {
+                    journal.schema = 2;
+                    journal.phase = Phase::Pending;
+                    journal.previous = Some(Previous {
+                        config: journal.config,
+                        binding: journal.binding,
+                    });
+                    journal.config = text(target).unwrap();
+                    journal.binding = text(binding).unwrap();
+                    (Leaf::Journal, journal.encode().unwrap())
+                }
+                2 => (Leaf::Config, target),
+                3 => (Leaf::Binding, binding),
+                _ => {
+                    journal.phase = Phase::Committed;
+                    journal.previous = None;
+                    (Leaf::Journal, journal.encode().unwrap())
+                }
+            };
+            let mut good = files.clone();
+            good.stages[leaf as usize] = Some(bytes.clone());
+            reconcile(&mut good, new).unwrap();
+            assert!(good.stages.iter().all(Option::is_none));
+            for corrupt in [bytes[..bytes.len() / 2].to_vec(), b"foreign".to_vec()] {
+                let mut bad = files.clone();
+                bad.writes = 0;
+                bad.stages[leaf as usize] = Some(corrupt);
+                assert!(reconcile(&mut bad, new).is_err());
+                assert_eq!(bad.writes, 0);
+            }
+        }
+    });
+}
+
+#[test]
+fn replacement_reopens_real_native_files_after_each_interrupted_step() {
+    with_policies(|old, new, bootstrap| {
+        for at in 1..=4 {
+            for after in [false, true] {
+                let root = scratch();
+                {
+                    let home = PrivateDirectory::acquire(&root, true).unwrap();
+                    seed(&home, Leaf::Config.name(), bootstrap);
+                    install(&mut &home, old).unwrap();
+                    let mut interrupted = Interrupt {
+                        files: &home,
+                        count: 0,
+                        at,
+                        after,
+                    };
+                    assert!(reconcile(&mut interrupted, new).is_err());
+                }
+                {
+                    let home = PrivateDirectory::acquire(&root, false).unwrap();
+                    assert!(refuse_exchange_state(&home).is_err());
+                    install_native(&home, new).unwrap();
+                    verify_native(&home, new).unwrap();
+                    assert!(verify_native(&home, old).is_err());
+                }
+                std::fs::remove_dir_all(root).unwrap();
+            }
+        }
+    });
+}
+
+#[test]
+fn replacement_refuses_corrupt_previous_binding_and_renews_flush_barriers() {
+    with_policies(|old, new, bootstrap| {
+        for field in [
+            "schema",
+            "engine_version",
+            "brain_id",
+            "local_transport",
+            "incoming_path",
+            "folder_id",
+            "config_sha256",
+        ] {
+            let mut files = completed(old, bootstrap);
+            let mut journal = Journal::decode(files.data[2].as_ref().unwrap()).unwrap();
+            let mut binding: serde_json::Value = serde_json::from_str(&journal.binding).unwrap();
+            binding[field] = if field == "schema" {
+                serde_json::json!(99)
+            } else {
+                serde_json::json!("foreign")
+            };
+            journal.binding = serde_json::to_string(&binding).unwrap();
+            files.data[1] = Some(journal.binding.as_bytes().to_vec());
+            files.data[2] = Some(journal.encode().unwrap());
+            assert!(reconcile(&mut files, new).is_err(), "{field}");
+            assert_eq!(files.writes, 0);
+        }
+        let mut files = completed(old, bootstrap);
+        files.fail_sync = true;
+        assert!(reconcile(&mut files, new).is_err());
+        let writes = files.writes;
+        assert!(reconcile(&mut files, new).is_err());
+        assert_eq!(files.writes, writes);
+        files.fail_sync = false;
+        reconcile(&mut files, new).unwrap();
+        assert_eq!(files.writes, writes);
+    });
+}
+
+#[test]
+fn schema_two_pending_requires_previous_state_and_never_downgrades_to_first_install() {
+    with_policies(|old, new, bootstrap| {
+        let mut files = completed(old, bootstrap);
+        let mut journal = Journal::decode(files.data[2].as_ref().unwrap()).unwrap();
+        journal.schema = 2;
+        journal.phase = Phase::Pending;
+        files.data[2] = Some(journal.encode().unwrap());
+        for policy in [old, new] {
+            assert!(reconcile(&mut files, policy).is_err());
+            assert_eq!(files.writes, 0);
+        }
+    });
+}
+
+#[test]
 fn only_reachable_config_binding_pairs_recover_and_committed_never_rolls_back() {
     with_policy(|policy, bootstrap| {
         let base = completed(policy, bootstrap);
@@ -295,6 +504,8 @@ fn stale_policy_from_other_signed_brain_refuses_committed_journal_without_writin
         with_policy(|other, _| {
             let mut files = base.clone();
             assert!(install(&mut files, other).is_err());
+            assert_eq!(files.writes, 0);
+            assert!(reconcile(&mut files, other).is_err());
             assert_eq!(files.writes, 0);
         });
     });

@@ -568,6 +568,7 @@ fn supervised_exchange_install_restart_and_revocation() {
     let api = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     let sync = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     let peer = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let replacement_peer = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     let ports = NativePorts::new(
         api.local_addr().unwrap().port(),
         sync.local_addr().unwrap().port(),
@@ -598,7 +599,8 @@ fn supervised_exchange_install_restart_and_revocation() {
     let anchor = resolver.local_trust_anchor().unwrap();
     let owner = crate::instance::try_acquire_instance(&source).unwrap();
     let gate = owner.admission();
-    for attempt in 0..2 {
+    // First install, identical restart, changed endpoint, changed-target restart.
+    for attempt in 0..4 {
         let permit = gate
             .exclusive(&source, Instant::now() + Duration::from_secs(3), false)
             .unwrap();
@@ -620,7 +622,17 @@ fn supervised_exchange_install_restart_and_revocation() {
         .unwrap();
         // Only this cfg(test) module can substitute isolated loopback endpoints.
         policy.listen = SocketAddrV4::new(Ipv4Addr::LOCALHOST, ports.sync);
-        let endpoint = SocketAddrV4::new(Ipv4Addr::LOCALHOST, peer.local_addr().unwrap().port());
+        let endpoint = SocketAddrV4::new(
+            Ipv4Addr::LOCALHOST,
+            if attempt < 2 {
+                &peer
+            } else {
+                &replacement_peer
+            }
+            .local_addr()
+            .unwrap()
+            .port(),
+        );
         policy.endpoints.insert(REMOTE.into(), endpoint);
         policy.peers[0]
             .set("address", &format!("tcp://{endpoint}"))
@@ -644,7 +656,7 @@ fn supervised_exchange_install_restart_and_revocation() {
             assert!(Instant::now() < deadline, "ready publication deadline");
             std::thread::sleep(Duration::from_millis(20));
         }
-        if attempt == 1 {
+        if attempt == 3 {
             gate.exclusive(&source, Instant::now() + Duration::from_secs(3), false)
                 .unwrap()
                 .finish(Some(

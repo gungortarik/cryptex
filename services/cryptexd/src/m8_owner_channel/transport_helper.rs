@@ -1586,6 +1586,14 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
         ip,
         peer_socket.local_addr().map_err(|_| Error::Engine)?.port(),
     );
+    let replacement_socket = std::net::TcpListener::bind((ip, 0)).map_err(|_| Error::Engine)?;
+    let replacement_endpoint = std::net::SocketAddrV4::new(
+        ip,
+        replacement_socket
+            .local_addr()
+            .map_err(|_| Error::Engine)?
+            .port(),
+    );
     let brain = crate::identity_runtime::load_brain_identity(root).map_err(|_| Error::Policy)?;
     let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
         root,
@@ -1595,7 +1603,9 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
     )
     .map_err(|_| Error::Policy)?;
     let anchor = resolver.local_trust_anchor().ok_or(Error::Policy)?;
-    for attempt in 0..2 {
+    // Each open rederives authority. The third open changes only the peer's
+    // public LAN endpoint, then the fourth verifies persisted replacement.
+    for attempt in 0..4 {
         let permit = admission
             .exclusive(root, Instant::now() + BUDGET, false)
             .map_err(|_| Error::Policy)?;
@@ -1615,7 +1625,16 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
         let endpoints = peers
             .bindings()
             .iter()
-            .map(|peer| (peer.transport_device_id.clone(), endpoint))
+            .map(|peer| {
+                (
+                    peer.transport_device_id.clone(),
+                    if attempt < 2 {
+                        endpoint
+                    } else {
+                        replacement_endpoint
+                    },
+                )
+            })
             .collect();
         let policy = ExchangeConfigPolicy::new(
             &peers,
@@ -1630,7 +1649,7 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
         if worker.status_reader().try_transport_device_id()? != identity {
             return Err(Error::Engine);
         }
-        if attempt == 1 {
+        if attempt == 3 {
             admission
                 .exclusive(root, Instant::now() + BUDGET, false)
                 .map_err(|_| Error::Policy)?
@@ -1643,7 +1662,7 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
         }
         match worker.close() {
             Ok(()) => {}
-            Err(Error::Policy) if attempt == 1 => {}
+            Err(Error::Policy) if attempt == 3 => {}
             Err(error) => return Err(error),
         }
         if helper_root
@@ -1655,6 +1674,7 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
         }
     }
     println!("native_supervised_exchange_install_restart_revocation=passed");
+    println!("native_supervised_exchange_endpoint_replacement=passed");
     Ok(())
 }
 

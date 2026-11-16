@@ -5,7 +5,7 @@ import threading
 import unittest
 
 from mac_identity_preflight import PreflightError
-from mac_transport_check import IDENTITY_MARKERS, MUTATION_BATCH_MARKERS, MARKERS, EXCHANGE_MARKER, check_identity, check_native_pairing, loss_group_snapshot, exchange_interface
+from mac_transport_check import IDENTITY_MARKERS, MUTATION_BATCH_MARKERS, MARKERS, EXCHANGE_MARKER, REPLACEMENT_MARKER, check_identity, check_native_pairing, loss_group_snapshot, exchange_interface
 
 
 class IdentityCleanupTests(unittest.TestCase):
@@ -25,12 +25,28 @@ class IdentityCleanupTests(unittest.TestCase):
                 if args[1] == "--m8-local-transport-fixture-key-cleanup":
                     return "mac_transport_fixture_key_cleanup=passed"
                 if args[1] == "--m8-local-exchange-start-driver":
-                    return ""
+                    return EXCHANGE_MARKER  # Old first-install evidence is insufficient.
                 return "\n".join(MARKERS)
             with self.assertRaisesRegex(PreflightError, "native_exchange_ready_marker_missing"):
                 check_native_pairing(Path("signed-desktop"), root, run, exchange_ip="192.168.64.2")
             self.assertEqual(len(calls), 6)
             self.assertEqual(calls[1][1], "--m8-local-exchange-start-driver")
+
+    def test_exchange_requires_replacement_and_keeps_exact_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            PairingCleanupTests().fixture(root)
+            calls = []
+            def run(args, stage, timeout=30):
+                calls.append(args)
+                if args[1] == "--m8-local-transport-fixture-key-cleanup":
+                    return "mac_transport_fixture_key_cleanup=passed"
+                if args[1] == "--m8-local-exchange-start-driver":
+                    self.assertEqual(timeout, 240)
+                    return EXCHANGE_MARKER + "\n" + REPLACEMENT_MARKER
+                return "\n".join(MARKERS)
+            check_native_pairing(Path("signed-desktop"), root, run, exchange_ip="192.168.64.2")
+            self.assertEqual(len(calls), 6)
 
     def test_backend_fixture_paths_are_resolved_before_driver_and_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -35,7 +35,13 @@ Each identity read requires a fresh bounded observation rather than a ready cach
 
 Keep profile/package/OS APIs in platform adapters and reuse existing native XML,
 credential binding, owned-socket HTTP, bootstrap and canonical domain services.
-Renderer APIs receive no shell, paths, ports, credentials or helper controls.
+Renderer APIs receive no shell, filesystem paths, REST/API ports, credentials,
+process identifiers or helper controls. The authenticated owner settings route
+may exchange bounded public RFC1918 IPv4 transport endpoints only. A public
+endpoint is a connection preference, never device trust or a launch capability.
+This narrow November 15 owner-approved exception is specified in
+[normal LAN settings](../proposals/m8-product-lan-settings-20261115.md);
+the local enrolled transport port stays read-only.
 
 Clean exit, helper loss and daemon loss require separate evidence. An unresolved
 or combined supervisor loss must retain an active-profile marker and refuse a

@@ -120,6 +120,43 @@ fn canonical_bytes(node: &Node) -> Result<Vec<u8>> {
 pub(crate) fn same_normalized(left: &[u8], right: &[u8]) -> Result<bool> {
     Ok(canonical_bytes(&parse(left)?)? == canonical_bytes(&parse(right)?)?)
 }
+
+/// Validate the immutable namespace/identity anchors of a derived replacement.
+/// This does not authorize any old peer. The next binding must separately be
+/// compiled/verified by current canonical policy before this function is called.
+pub(crate) fn validate_replacement(
+    previous_config: &[u8],
+    previous_binding: &[u8],
+    next_binding: &[u8],
+) -> ExchangeResult<()> {
+    fn decode(bytes: &[u8]) -> ExchangeResult<Binding> {
+        if bytes.is_empty() || bytes.len() > MAX_BINDING {
+            return Err(ExchangeConfigError::BindingMismatch);
+        }
+        let text = std::str::from_utf8(bytes).map_err(|_| ExchangeConfigError::BindingMismatch)?;
+        reject_duplicate_json_keys(text).map_err(|_| ExchangeConfigError::BindingMismatch)?;
+        serde_json::from_str(text).map_err(|_| ExchangeConfigError::BindingMismatch)
+    }
+    let old = decode(previous_binding)?;
+    let new = decode(next_binding)?;
+    if old.schema != 1
+        || new.schema != 1
+        || old.engine_version != new.engine_version
+        || old.brain_id != new.brain_id
+        || old.local_transport != new.local_transport
+        || old.incoming_path != new.incoming_path
+        || old.folder_id != new.folder_id
+        || old.ports != new.ports
+        || old.config_sha256
+            != format!(
+                "{:x}",
+                Sha256::digest(canonical_bytes(&parse(previous_config)?)?)
+            )
+    {
+        return Err(ExchangeConfigError::BindingMismatch);
+    }
+    Ok(())
+}
 pub(crate) fn inspect_applied(
     bytes: &[u8],
     expected: &[u8],

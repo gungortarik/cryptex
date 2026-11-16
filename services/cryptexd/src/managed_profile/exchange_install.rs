@@ -1,6 +1,6 @@
 //! Recoverable derived configuration persistence. NOT a launch/admission permit.
 //!
-//! The future controller must retain runtime admission, validate the original
+//! The admitted controller must retain runtime admission, validate the original
 //! native identity/OS credential, stop the owned engine and prove incoming-path
 //! containment before calling this boundary. Bootstrap startup refuses its files.
 //! A journal never supplies trust: every attempt recompiles against a current
@@ -93,7 +93,7 @@ impl InstallPolicy for ExchangeConfigPolicy<'_> {
     }
 }
 pub(super) fn install_native(home: &PrivateDirectory, policy: &impl InstallPolicy) -> Result<()> {
-    install(&mut { home }, policy)
+    reconcile(&mut { home }, policy)
 }
 pub(super) fn verify_native(home: &PrivateDirectory, policy: &impl InstallPolicy) -> Result<()> {
     let journal = Journal::decode(
@@ -129,6 +129,16 @@ struct Journal {
     bootstrap: String,
     config: String,
     binding: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    previous: Option<Previous>,
+}
+// Integrity evidence for a stopped old configuration, NEVER peer authority.
+// Kept only while replacing a completed configuration; no growing history.
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct Previous {
+    config: String,
+    binding: String,
 }
 impl Journal {
     fn encode(&self) -> Result<Vec<u8>> {
@@ -146,10 +156,17 @@ impl Journal {
         let text = std::str::from_utf8(bytes).map_err(|_| InstallError::InvalidJournal)?;
         reject_duplicate_json_keys(text).map_err(|_| InstallError::InvalidJournal)?;
         let result: Self = serde_json::from_str(text).map_err(|_| InstallError::InvalidJournal)?;
-        if result.schema != 1
+        if !matches!(result.schema, 1 | 2)
+            || (result.schema == 1 && result.previous.is_some())
+            || (result.schema == 2 && result.phase == Phase::Pending && result.previous.is_none())
+            || (result.phase == Phase::Committed && result.previous.is_some())
             || result.bootstrap.len() > Leaf::Config.limit()
             || result.config.len() > Leaf::Config.limit()
             || result.binding.len() > Leaf::Binding.limit()
+            || result.previous.as_ref().is_some_and(|previous| {
+                previous.config.len() > Leaf::Config.limit()
+                    || previous.binding.len() > Leaf::Binding.limit()
+            })
         {
             return Err(InstallError::InvalidJournal);
         }
@@ -228,6 +245,120 @@ fn text(bytes: Vec<u8>) -> Result<String> {
     String::from_utf8(bytes).map_err(|_| InstallError::InvalidJournal)
 }
 
+/// Reconcile a stopped, privately leased native profile with CURRENT authority.
+/// A completed old target may be replaced. An interrupted target may only finish
+/// under the same fresh policy: a later revocation never rolls old intent forward.
+/// The caller retains the supervised start's admission, identity and directory
+/// capabilities. This function cannot start either the old or the new engine.
+fn reconcile(files: &mut impl Files, policy: &impl InstallPolicy) -> Result<()> {
+    let Some(bytes) = files.read(Leaf::Journal)? else {
+        return install(files, policy);
+    };
+    let mut journal = Journal::decode(&bytes)?;
+    if journal.native_home != files.home()? {
+        return Err(InstallError::InvalidJournal);
+    }
+    let target = policy.prepare_bootstrap(journal.bootstrap.as_bytes())?;
+    let binding = policy.binding_bytes(&target)?;
+    if journal.previous.is_none()
+        && target == journal.config.as_bytes()
+        && binding == journal.binding.as_bytes()
+    {
+        return install(files, policy);
+    }
+    let current = files
+        .read(Leaf::Config)?
+        .ok_or(InstallError::UnrecognizedState)?;
+    let current_binding = files
+        .read(Leaf::Binding)?
+        .ok_or(InstallError::UnrecognizedState)?;
+    let initial = journal.phase == Phase::Committed;
+    if initial {
+        // The old journal describes only bytes that must be accounted for before
+        // replacement. All new devices/paths/options come from policy above.
+        if !super::native_xml::exchange::same_normalized(&current, journal.config.as_bytes())
+            .map_err(|_| InstallError::UnrecognizedState)?
+            || current_binding != journal.binding.as_bytes()
+        {
+            return Err(InstallError::UnrecognizedState);
+        }
+        journal.previous = Some(Previous {
+            config: journal.config,
+            binding: journal.binding,
+        });
+        journal.schema = 2;
+        journal.phase = Phase::Pending;
+        journal.config = text(target)?;
+        journal.binding = text(binding)?;
+    } else if journal.previous.is_none()
+        || target != journal.config.as_bytes()
+        || binding != journal.binding.as_bytes()
+    {
+        return Err(InstallError::InvalidJournal);
+    }
+    policy.verify_binding(journal.config.as_bytes(), journal.binding.as_bytes())?;
+    let previous = journal
+        .previous
+        .as_ref()
+        .ok_or(InstallError::InvalidJournal)?;
+    super::native_xml::exchange::validate_replacement(
+        previous.config.as_bytes(),
+        previous.binding.as_bytes(),
+        journal.binding.as_bytes(),
+    )?;
+    let old = super::native_xml::exchange::same_normalized(&current, previous.config.as_bytes())
+        .map_err(|_| InstallError::UnrecognizedState)?;
+    let new = policy
+        .verify_binding(&current, journal.binding.as_bytes())
+        .is_ok();
+    let old_bound = current_binding == previous.binding.as_bytes();
+    let new_bound = current_binding == journal.binding.as_bytes();
+    if !(old && old_bound || new && (old_bound || new_bound)) {
+        return Err(InstallError::UnrecognizedState);
+    }
+    let pending = journal.encode()?;
+    let config = journal.config.as_bytes().to_vec();
+    let binding = journal.binding.as_bytes().to_vec();
+    journal.previous = None;
+    journal.phase = Phase::Committed;
+    let committed = journal.encode()?; // Bound BOTH encodings before mutation.
+    let (next_leaf, next_bytes) = if initial {
+        (Leaf::Journal, pending.as_slice())
+    } else if !new {
+        (Leaf::Config, config.as_slice())
+    } else if !new_bound {
+        (Leaf::Binding, binding.as_slice())
+    } else {
+        (Leaf::Journal, committed.as_slice())
+    };
+    let mut stages = 0;
+    for leaf in [Leaf::Config, Leaf::Binding, Leaf::Journal] {
+        if let Some(stage) = files.stage(leaf)? {
+            stages += 1;
+            if leaf != next_leaf || stage != next_bytes {
+                return Err(InstallError::UnrecognizedState);
+            }
+        }
+    }
+    if stages > 1 {
+        return Err(InstallError::UnrecognizedState);
+    }
+    if initial {
+        files.replace(Leaf::Journal, &pending)?;
+    }
+    if !new {
+        files.replace(Leaf::Config, &config)?;
+    }
+    if !new_bound {
+        files.replace(Leaf::Binding, &binding)?;
+    }
+    // The old target is never started as a recovery step. Only this fully
+    // committed/read-back NEW target can pass native session validation.
+    files.replace(Leaf::Journal, &committed)?;
+    files.sync_committed()?;
+    verify_committed(files, &journal, &committed, policy)
+}
+
 /// First bootstrap-to-exchange install or recovery of that SAME install only.
 /// Updating an already active roster is deliberately not inferred from a journal.
 /// This private primitive does not validate OS credentials or start a process.
@@ -251,8 +382,12 @@ fn install(files: &mut impl Files, policy: &impl InstallPolicy) -> Result<()> {
             bootstrap: text(current.clone())?,
             config: text(config)?,
             binding: text(binding)?,
+            previous: None,
         }
     };
+    if journal.previous.is_some() {
+        return Err(InstallError::InvalidJournal);
+    }
     // Recompile the saved bootstrap under CURRENT authority before ANY write.
     // Unknown fields/duplicate keys, changed profile, endpoints, peers or target
     // bytes cannot be adopted by recovering a journal.
