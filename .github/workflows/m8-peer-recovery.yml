@@ -1,0 +1,26 @@
+name: M8 Windows peer recovery
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-peer-recovery:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust tools
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Test actual daemon recovery under disposable standard user
+        shell: pwsh
+        run: |
+          & ./scripts/m8/test-standard-user-summary.ps1
+          & ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -TransportPolicyOnly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Lint daemon
+        run: cargo clippy --locked -p cryptexd --all-targets -- -D warnings

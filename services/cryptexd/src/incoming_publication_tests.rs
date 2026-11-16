@@ -3,6 +3,27 @@ use cryptex_core::DeviceId;
 use cryptex_events::envelope::Classification;
 use std::fs;
 
+#[test]
+#[cfg(windows)]
+fn live_recovery_initializes_newly_approved_peer_stream_before_rebuild() {
+    let fixture = Fixture::new();
+    let peer = DeviceId::new(fixture.report.receiver_device.clone()).unwrap();
+    let peer_path = cryptex_storage::canonical_events_device_dir(&fixture.source, &peer);
+    assert!(
+        !peer_path.exists(),
+        "fixture must not pre-create the approved peer slot"
+    );
+    let before = event_hashes(&fixture.source);
+    let mut instance = crate::instance::try_acquire_instance(&fixture.source).unwrap();
+    recover_live_with_instance(&fixture.source, &mut instance, &fixture.store, ENV).unwrap();
+    assert!(peer_path.is_dir());
+    assert_eq!(event_hashes(&fixture.source), before);
+    assert!(instance.admission().enter(&fixture.source).is_ok());
+    // Repeating recovery must not append peer data or rewrite existing events.
+    recover_live_with_instance(&fixture.source, &mut instance, &fixture.store, ENV).unwrap();
+    assert_eq!(event_hashes(&fixture.source), before);
+}
+
 fn append_offline_note(fixture: &Fixture, root: &Path, device: &str, text: &str) -> PathBuf {
     let device = DeviceId::new(device).unwrap();
     let appended = crate::canonical_writer::append_memory_note(
