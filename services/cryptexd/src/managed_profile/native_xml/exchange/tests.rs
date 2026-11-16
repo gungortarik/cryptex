@@ -397,3 +397,144 @@ fn endpoint_set_requires_exact_trusted_peers_and_explicit_private_ipv4() {
         }
     });
 }
+
+/// Real pinned serializer/startup check, with an empty disposable exchange and
+/// loopback-only endpoints. This does not claim real peer transfer. No product
+/// constructor admits loopback; the private field adjustment exists only here.
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+#[test]
+#[ignore = "requires explicit pinned native package; opens isolated loopback listeners"]
+fn pinned_native_engine_preserves_exchange_config_on_two_starts() {
+    use crate::syncthing_owned_rest::{EndpointError, OwnedRestError, OwnedSyncthingRest};
+    use crate::syncthing_package::PinnedSyncthingPackage;
+    use std::net::{Ipv4Addr, TcpListener};
+    use std::time::{Duration, Instant};
+    let package = PinnedSyncthingPackage::open(&std::path::PathBuf::from(
+        std::env::var_os("CRYPTEX_EXCHANGE_NATIVE_PACKAGE")
+            .expect("explicit pinned package required"),
+    ))
+    .unwrap();
+    let home = crate::test_temp::exclusive_temp_dir("exchange-native-schema");
+    let mut generation = package.spawn_generate(&home).unwrap();
+    assert!(
+        generation
+            .wait_for_exit(Duration::from_secs(15))
+            .unwrap()
+            .is_clean()
+    );
+    drop(generation);
+    let api = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let sync = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let peer_listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let ports = NativePorts::new(
+        api.local_addr().unwrap().port(),
+        sync.local_addr().unwrap().port(),
+    )
+    .unwrap();
+    let bootstrap = inspect(
+        &std::fs::read(home.join("config.xml")).unwrap(),
+        ports,
+        true,
+    )
+    .unwrap();
+    let (source, receiver, negative, store) =
+        crate::trusted_import_probe::tests::pair_with_transport(&bootstrap.native_id, REMOTE);
+    let brain = crate::identity_runtime::load_brain_identity(&source).unwrap();
+    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+        &source,
+        &brain.brain_id,
+        &store,
+        crate::SecureStoreEnvironment::Dev,
+    )
+    .unwrap();
+    let anchor = resolver.local_trust_anchor().unwrap();
+    std::fs::create_dir_all(source.join("transport/incoming")).unwrap();
+    drop(api);
+    drop(sync);
+    let mut saved: Option<Vec<u8>> = None;
+    for attempt in 0..2 {
+        let snapshot =
+            crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+                &source,
+                &brain.brain_id,
+                &anchor,
+                None,
+            )
+            .unwrap();
+        let authority =
+            ExchangePeers::from_snapshot(&snapshot, &source, &bootstrap.native_id).unwrap();
+        let mut policy = ExchangeConfigPolicy::new(
+            &authority,
+            ports,
+            SocketAddrV4::new("192.168.77.1".parse().unwrap(), ports.sync),
+            endpoints(),
+        )
+        .unwrap();
+        policy.listen = SocketAddrV4::new(Ipv4Addr::LOCALHOST, ports.sync);
+        let peer_endpoint = SocketAddrV4::new(
+            Ipv4Addr::LOCALHOST,
+            peer_listener.local_addr().unwrap().port(),
+        );
+        policy.endpoints.insert(REMOTE.into(), peer_endpoint);
+        policy.peers[0]
+            .set("address", &format!("tcp://{peer_endpoint}"))
+            .unwrap();
+        if attempt == 0 {
+            let config = policy.prepare_bootstrap(&bootstrap.bytes).unwrap();
+            saved = Some(policy.binding_bytes(&config).unwrap());
+            std::fs::write(home.join("config.xml"), config).unwrap();
+        }
+        policy
+            .verify_binding(
+                &std::fs::read(home.join("config.xml")).unwrap(),
+                saved.as_ref().unwrap(),
+            )
+            .unwrap();
+        let mut process = package.spawn_serve(&home).unwrap();
+        {
+            let rest = OwnedSyncthingRest::new(
+                process.process(),
+                ports.api_endpoint(),
+                &bootstrap.native_id,
+                ApiCredential::from_bytes(&bootstrap.key).unwrap(),
+            )
+            .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(12);
+            loop {
+                match rest.observe() {
+                    Ok(_) => break,
+                    Err(
+                        OwnedRestError::Endpoint(EndpointError::Unavailable)
+                        | OwnedRestError::Unavailable
+                        | OwnedRestError::Deadline,
+                    ) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+                    Err(error) => panic!("owned native readiness failed: {error}"),
+                }
+            }
+            policy
+                .verify_binding(
+                    &std::fs::read(home.join("config.xml")).unwrap(),
+                    saved.as_ref().unwrap(),
+                )
+                .unwrap();
+            rest.request_shutdown().unwrap();
+        }
+        assert!(
+            process
+                .wait_for_exit(Duration::from_secs(10))
+                .unwrap()
+                .is_clean()
+        );
+        drop(process);
+        policy
+            .verify_binding(
+                &std::fs::read(home.join("config.xml")).unwrap(),
+                saved.as_ref().unwrap(),
+            )
+            .unwrap();
+    }
+    drop(peer_listener);
+    for root in [home, source, receiver, negative] {
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}

@@ -11,10 +11,31 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mac_identity_preflight import PreflightError
-from mac_local_startup_ci import run_real_startup_checks, check_session_journal, sign_fixture_image, fixture_rust_command
+from mac_local_startup_ci import run_real_startup_checks, check_session_journal, sign_fixture_image, fixture_rust_command, check_native_exchange_configuration
 
 
 class StartupRunnerTests(unittest.TestCase):
+    def test_native_exchange_requires_one_actual_test_and_restores_environment(self):
+        selection = "managed_profile::native_xml::exchange::tests::pinned_native_engine_preserves_exchange_config_on_two_starts"
+        old = {"CARGO": "previous-cargo", "CRYPTEX_EXCHANGE_NATIVE_PACKAGE": "previous-package",
+               "CRYPTEX_M8_LOCAL_STARTUP_CERT_DER": "previous-cert", "CARGO_PROFILE_DEV_DEBUG": "previous-debug"}
+        good = f"test {selection} ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 100 filtered out;"
+        for result in (good, "test result: ok. 0 passed; 0 failed; 0 ignored;", good.replace("1 passed", "2 passed"), good.replace(" ... ok", " ... ignored")):
+            def run(args, stage, timeout):
+                self.assertEqual(args[-4:], ["--", "--ignored", "--exact", "--test-threads=1"])
+                self.assertIn(selection, args)
+                self.assertEqual(timeout, 180)
+                self.assertEqual(stage, "native_exchange_configuration_roundtrip")
+                self.assertEqual(os.environ["CRYPTEX_EXCHANGE_NATIVE_PACKAGE"], str(Path("fixture/package")))
+                return result
+            with patch.dict(os.environ, old):
+                if result == good:
+                    check_native_exchange_configuration(run, "cargo-path", Path("fixture"), Path("fixture/package"))
+                else:
+                    with self.assertRaisesRegex(PreflightError, "native_exchange_configuration_test_missing"):
+                        check_native_exchange_configuration(run, "cargo-path", Path("fixture"), Path("fixture/package"))
+                self.assertEqual({key: os.environ[key] for key in old}, old)
+
     def test_optimized_fixture_profile_is_closed_and_preserves_assertions_and_overflow_checks(self):
         expected = {}
         for profile in ('dev','test'):
