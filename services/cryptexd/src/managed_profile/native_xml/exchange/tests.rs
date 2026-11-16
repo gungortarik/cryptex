@@ -401,7 +401,7 @@ fn endpoint_set_requires_exact_trusted_peers_and_explicit_private_ipv4() {
 /// Real pinned serializer/startup check, with an empty disposable exchange and
 /// loopback-only endpoints. This does not claim real peer transfer. No product
 /// constructor admits loopback; the private field adjustment exists only here.
-#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+#[cfg(windows)]
 #[test]
 #[ignore = "requires explicit pinned native package; opens isolated loopback listeners"]
 fn pinned_native_engine_preserves_exchange_config_on_two_starts() {
@@ -537,4 +537,24 @@ fn pinned_native_engine_preserves_exchange_config_on_two_starts() {
     for root in [home, source, receiver, negative] {
         std::fs::remove_dir_all(root).unwrap();
     }
+}
+
+#[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
+#[test]
+#[ignore = "requires explicit pinned Mac native package; verifies no helper-role bypass"]
+fn pinned_native_engine_refuses_outside_authenticated_helper() {
+    use crate::syncthing_package::{PackageError, PinnedSyncthingPackage};
+    let package = PinnedSyncthingPackage::open(&std::path::PathBuf::from(
+        std::env::var_os("CRYPTEX_EXCHANGE_NATIVE_PACKAGE")
+            .expect("explicit pinned package required"),
+    ))
+    .unwrap();
+    let home = crate::test_temp::exclusive_temp_dir("exchange-native-role-refusal");
+    assert!(!crate::m8_owner_channel::transport_helper::role_active());
+    assert_eq!(
+        package.spawn_generate(&home).unwrap_err(),
+        PackageError::Launch(crate::owned_process::OwnedProcessError::InvalidLaunch)
+    );
+    assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
+    std::fs::remove_dir(home).unwrap();
 }

@@ -66,8 +66,11 @@ def sign_fixture_image(run, target, signer, identifier, keychain, password, stag
     run([*args, target], stage)
 
 
-def check_native_exchange_configuration(run, cargo, root, package):
-    selection = "managed_profile::native_xml::exchange::tests::pinned_native_engine_preserves_exchange_config_on_two_starts"
+def check_native_exchange_role_refusal(run, cargo, root, package):
+    # Mac engines may only launch inside the authenticated helper role. A normal
+    # libtest must prove refusal, not bypass the role to mimic the Windows probe.
+    # Positive Mac exchange config roundtrip belongs to the helper integration.
+    selection = "managed_profile::native_xml::exchange::tests::pinned_native_engine_refuses_outside_authenticated_helper"
     values = {"CRYPTEX_M8_LOCAL_STARTUP_CERT_DER": str(root / "cert.der"),
               "CARGO_PROFILE_DEV_DEBUG": "0", "CARGO": str(cargo),
               "CRYPTEX_EXCHANGE_NATIVE_PACKAGE": str(package)}
@@ -77,11 +80,11 @@ def check_native_exchange_configuration(run, cargo, root, package):
         result = run(fixture_rust_command(cargo, "test", "--locked", "-p", "cryptexd",
                      "--features", "m8-local-startup-check", "--lib", selection, "--",
                      "--ignored", "--exact", "--test-threads=1"),
-                     "native_exchange_configuration_roundtrip", 180)
+                     "native_exchange_role_refusal", 180)
         if (f"test {selection} ... ok" not in result or
                 "test result: ok. 1 passed; 0 failed; 0 ignored;" not in result):
-            raise PreflightError("native_exchange_configuration_test_missing")
-        print("native_exchange_configuration_two_starts=passed")
+            raise PreflightError("native_exchange_role_refusal_test_missing")
+        print("native_exchange_outside_helper_refused=passed")
     finally:
         for name, value in saved.items():
             if value is None:
@@ -166,7 +169,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
     (resources / "startup-check.txt").write_bytes(b"Public local startup fixture.\n")
     shutil.copytree(Path("apps/desktop/dist"), resources / "frontend")
     prepare_transport(resources / "transport", run)
-    check_native_exchange_configuration(run, cargo, root, resources / "transport")
+    check_native_exchange_role_refusal(run, cargo, root, resources / "transport")
     architecture = {"arm64": "arm64", "x86_64": "x86_64"}[platform.machine()]
 
     def inventory(bundle, *, role_hash=None, parent_hash=None, release="m8-local-startup-v1"):
