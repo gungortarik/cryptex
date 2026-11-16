@@ -100,6 +100,8 @@ struct Receipt {
 /// Holds both the root profile session and private native-home directory. A
 /// launched session borrows this exclusively, preventing two concurrent starts.
 pub struct PreparedNativeProfile<'profile> {
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    exchange: Option<super::exchange_start::ExchangeImage>,
     #[cfg(all(test, windows))]
     transfer_test: Option<native_xml::TransferTestPolicy>,
     #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -122,6 +124,11 @@ impl fmt::Debug for PreparedNativeProfile<'_> {
         f.write_str("PreparedNativeProfile(<private backend state>)")
     }
 }
+enum OpenMode {
+    Bootstrap,
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    ExchangeCandidate,
+}
 
 impl ManagedProfile {
     #[cfg(all(test, windows))]
@@ -132,7 +139,7 @@ impl ManagedProfile {
         ports: NativePorts,
         policy: native_xml::TransferTestPolicy,
     ) -> Result<PreparedNativeProfile<'a>, NativeConfigError> {
-        self.reopen_native_inner(package, store, ports, Some(policy))
+        self.reopen_native_inner(package, store, ports, OpenMode::Bootstrap, Some(policy))
     }
     /// Worker reopen only: never enter provisioning/generation for an incomplete
     /// profile. Existing ready state is still fully validated by prepare_native.
@@ -146,6 +153,7 @@ impl ManagedProfile {
             package,
             store,
             ports,
+            OpenMode::Bootstrap,
             #[cfg(all(test, windows))]
             None,
         )
@@ -156,13 +164,14 @@ impl ManagedProfile {
         package: &PinnedSyncthingPackage,
         store: &S,
         ports: NativePorts,
+        mode: OpenMode,
         #[cfg(all(test, windows))] transfer_test: Option<native_xml::TransferTestPolicy>,
     ) -> Result<PreparedNativeProfile<'profile>, NativeConfigError> {
         ports.validate()?;
         let _ = package;
         #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
         {
-            let _ = store;
+            let _ = (store, mode);
             Err(NativeConfigError::UnsupportedPlatform)
         }
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -196,6 +205,7 @@ impl ManagedProfile {
             }
             let home = Arc::new(self.directory.child("native", false)?);
             let prepared = PreparedNativeProfile {
+                exchange: None,
                 #[cfg(all(test, windows))]
                 transfer_test,
                 _root_pin: self.directory.clone(),
@@ -205,9 +215,33 @@ impl ManagedProfile {
                 in_use: false,
                 cleanup_unresolved: false,
             };
-            prepared.validate(store)?;
+            match mode {
+                OpenMode::Bootstrap => prepared.validate(store)?,
+                OpenMode::ExchangeCandidate => {
+                    prepared.exchange_bootstrap(store)?;
+                }
+            }
             Ok(prepared)
         }
+    }
+
+    /// Read-only exchange candidate. It cannot start an exchange configuration
+    /// until a fresh daemon-issued image is installed and checked below.
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    pub(crate) fn reopen_exchange_candidate<'a, S: SecureStore + ?Sized>(
+        &'a mut self,
+        package: &PinnedSyncthingPackage,
+        store: &S,
+        ports: NativePorts,
+    ) -> Result<PreparedNativeProfile<'a>, NativeConfigError> {
+        self.reopen_native_inner(
+            package,
+            store,
+            ports,
+            OpenMode::ExchangeCandidate,
+            #[cfg(all(test, windows))]
+            None,
+        )
     }
 
     /// Explicit initialization/reopen only. No native key is generated again
@@ -298,6 +332,7 @@ impl ManagedProfile {
             let prepared = PreparedNativeProfile {
                 #[cfg(all(test, windows))]
                 transfer_test: None,
+                exchange: None,
                 _root_pin: self.directory.clone(),
                 profile: self,
                 home,
@@ -389,6 +424,7 @@ impl ManagedProfile {
         };
         self.write_new("native-ready.json", &json(&receipt)?)?;
         let prepared = PreparedNativeProfile {
+            exchange: None,
             #[cfg(all(test, windows))]
             transfer_test: None,
             _root_pin: self.directory.clone(),
@@ -498,8 +534,76 @@ impl<'profile> PreparedNativeProfile<'profile> {
         }
         Ok(())
     }
+    pub(crate) fn exchange_bootstrap<S: SecureStore + ?Sized>(
+        &self,
+        store: &S,
+    ) -> Result<Vec<u8>, NativeConfigError> {
+        self.require_idle()?;
+        self.validate_identity(store)?;
+        let generation = self.profile.directory.child("generation", false)?;
+        let bytes = read_required(&generation, "config.xml", 256 * 1024)?;
+        let config = native_xml::inspect(&bytes, self.receipt.ports, true)?;
+        self.validate_config_identity(store, &config)?;
+        Ok(config.bytes)
+    }
+    pub(crate) fn exchange_identity(&self) -> super::exchange_start::NativeIdentity {
+        super::exchange_start::NativeIdentity {
+            credential_id: self.profile.credential_profile_id().to_owned(),
+            native_id: self.receipt.native_id.clone(),
+            cert_hash: self.receipt.cert_blake3.clone(),
+            key_hash: self.receipt.key_blake3.clone(),
+        }
+    }
+    pub(crate) fn install_exchange<S: SecureStore + ?Sized>(
+        &mut self,
+        image: super::exchange_start::ExchangeImage,
+        store: &S,
+    ) -> Result<(), NativeConfigError> {
+        use super::exchange_install::InstallPolicy;
+        self.require_idle()?;
+        self.validate_identity(store)?;
+        if image.identity() != &self.exchange_identity() || image.ports() != self.receipt.ports {
+            return Err(NativeConfigError::IdentityChanged);
+        }
+        image
+            .prepare_bootstrap(&self.exchange_bootstrap(store)?)
+            .map_err(|_| NativeConfigError::InvalidConfig)?;
+        super::exchange_install::install_native(&self.home, &image)
+            .map_err(|_| NativeConfigError::InvalidState)?;
+        self.exchange = Some(image);
+        self.validate(store)
+    }
+    pub(crate) fn exchange_acknowledgement(&self) -> Result<[u8; 32], NativeConfigError> {
+        self.exchange
+            .as_ref()
+            .ok_or(NativeConfigError::InvalidState)?
+            .acknowledgement()
+    }
     fn validate<S: SecureStore + ?Sized>(&self, store: &S) -> Result<(), NativeConfigError> {
-        super::exchange_install::refuse_exchange_state(&self.home)?;
+        if self.exchange.is_none() {
+            super::exchange_install::refuse_exchange_state(&self.home)?;
+        }
+        self.validate_identity(store)?;
+        if let Some(image) = &self.exchange {
+            super::exchange_install::verify_native(&self.home, image)
+                .map_err(|_| NativeConfigError::InvalidConfig)?;
+        }
+        let bytes = read_required(&self.home, "config.xml", 256 * 1024)?;
+        #[cfg(all(test, windows))]
+        let bytes = match &self.transfer_test {
+            Some(policy) => policy.checked_bootstrap_config(&bytes)?,
+            None => bytes,
+        };
+        let config = match &self.exchange {
+            Some(image) => image.inspect(&bytes)?,
+            None => native_xml::inspect(&bytes, self.receipt.ports, false)?,
+        };
+        self.validate_config_identity(store, &config)
+    }
+    fn validate_identity<S: SecureStore + ?Sized>(
+        &self,
+        store: &S,
+    ) -> Result<(), NativeConfigError> {
         let current_identity: super::Identity = decode(
             &self
                 .profile
@@ -537,13 +641,14 @@ impl<'profile> PreparedNativeProfile<'profile> {
         {
             return Err(NativeConfigError::IdentityChanged);
         }
-        let bytes = read_required(&self.home, "config.xml", 256 * 1024)?;
-        #[cfg(all(test, windows))]
-        let bytes = match &self.transfer_test {
-            Some(policy) => policy.checked_bootstrap_config(&bytes)?,
-            None => bytes,
-        };
-        let config = native_xml::inspect(&bytes, self.receipt.ports, false)?;
+        self.profile.load_api_credential(store)?;
+        Ok(())
+    }
+    fn validate_config_identity<S: SecureStore + ?Sized>(
+        &self,
+        store: &S,
+        config: &native_xml::Config,
+    ) -> Result<(), NativeConfigError> {
         if config.native_id != self.receipt.native_id {
             return Err(NativeConfigError::IdentityChanged);
         }
@@ -596,7 +701,10 @@ impl<'profile> PreparedNativeProfile<'profile> {
                 .inspect_err(|error| eprintln!("component=managed_transport operation=start_rest status=failed error={error}"))?
                 .observe_with_budget(remaining.min(Duration::from_secs(3)))
             {
-                Ok(_) => return Ok(session),
+                Ok(_) => {
+                    session.prepared.validate(store)?;
+                    return Ok(session);
+                },
                 Err(error @ (
                     OwnedRestError::Endpoint(
                         crate::syncthing_owned_rest::EndpointError::Unavailable,
@@ -639,6 +747,13 @@ pub struct NativeSession<'session, 'profile> {
 }
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 impl NativeSession<'_, '_> {
+    pub(crate) fn acknowledge_exchange<S: SecureStore + ?Sized>(
+        &self,
+        store: &S,
+    ) -> Result<[u8; 32], NativeConfigError> {
+        self.observe(store)?;
+        self.prepared.exchange_acknowledgement()
+    }
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
     pub(crate) fn exercise_foreign_socket_refusal<S: SecureStore + ?Sized>(
         &self,

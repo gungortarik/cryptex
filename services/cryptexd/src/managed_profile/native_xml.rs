@@ -226,7 +226,7 @@ const SETTINGS: &[(&str, &str)] = &[
     ("auditEnabled", "false"),
 ];
 
-pub(super) struct Config {
+pub(crate) struct Config {
     pub(super) bytes: Vec<u8>,
     pub(super) key: Vec<u8>,
     pub(super) native_id: String,

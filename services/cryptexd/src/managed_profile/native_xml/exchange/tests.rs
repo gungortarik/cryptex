@@ -539,6 +539,135 @@ fn pinned_native_engine_preserves_exchange_config_on_two_starts() {
     }
 }
 
+#[cfg(windows)]
+#[test]
+#[ignore = "requires explicit pinned package and isolated native OS credential"]
+fn supervised_exchange_install_restart_and_revocation() {
+    use crate::managed_profile::{ManagedProfile, worker::ManagedTransportWorker};
+    use crate::secure_store::{SecureStore, SecureStoreEnvironment, WindowsCredentialStore};
+    use crate::syncthing_package::PinnedSyncthingPackage;
+    use std::net::{Ipv4Addr, TcpListener};
+    use std::time::{Duration, Instant};
+    let env = SecureStoreEnvironment::Dev;
+    let package_path = std::path::PathBuf::from(
+        std::env::var_os("CRYPTEX_EXCHANGE_NATIVE_PACKAGE").expect("explicit package"),
+    );
+    let package = PinnedSyncthingPackage::open(&package_path).unwrap();
+    let parent = crate::test_temp::exclusive_temp_dir("supervised-exchange");
+    let profile_path = parent.join("00000000000000000000000000000001");
+    let os_store = WindowsCredentialStore::new();
+    let mut profile = ManagedProfile::create(&profile_path, env).unwrap();
+    let labels = profile.labels().unwrap();
+    struct Cleanup((String, String));
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = WindowsCredentialStore::new().delete(&self.0.0, &self.0.1);
+        }
+    }
+    let cleanup = Cleanup(labels.clone());
+    let api = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let sync = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let peer = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let ports = NativePorts::new(
+        api.local_addr().unwrap().port(),
+        sync.local_addr().unwrap().port(),
+    )
+    .unwrap();
+    drop((api, sync));
+    let mut prepared = profile.prepare_native(&package, &os_store, ports).unwrap();
+    let identity = prepared.configured_transport_device_id().to_owned();
+    // Exercise first install AFTER a real native bootstrap serialization.
+    prepared
+        .start(&package, &os_store)
+        .unwrap()
+        .stop(&os_store)
+        .unwrap();
+    drop(prepared);
+    drop(profile);
+    let (source, receiver, negative, store) =
+        crate::trusted_import_probe::tests::pair_with_transport(&identity, REMOTE);
+    std::fs::create_dir_all(source.join("transport/incoming")).unwrap();
+    let brain = crate::identity_runtime::load_brain_identity(&source).unwrap();
+    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+        &source,
+        &brain.brain_id,
+        &store,
+        env,
+    )
+    .unwrap();
+    let anchor = resolver.local_trust_anchor().unwrap();
+    let owner = crate::instance::try_acquire_instance(&source).unwrap();
+    let gate = owner.admission();
+    for attempt in 0..2 {
+        let permit = gate
+            .exclusive(&source, Instant::now() + Duration::from_secs(3), false)
+            .unwrap();
+        let snapshot =
+            crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+                &source,
+                &brain.brain_id,
+                &anchor,
+                None,
+            )
+            .unwrap();
+        let authority = ExchangePeers::from_snapshot(&snapshot, &source, &identity).unwrap();
+        let mut policy = ExchangeConfigPolicy::new(
+            &authority,
+            ports,
+            SocketAddrV4::new("192.168.77.1".parse().unwrap(), ports.sync),
+            endpoints(),
+        )
+        .unwrap();
+        // Only this cfg(test) module can substitute isolated loopback endpoints.
+        policy.listen = SocketAddrV4::new(Ipv4Addr::LOCALHOST, ports.sync);
+        let endpoint = SocketAddrV4::new(Ipv4Addr::LOCALHOST, peer.local_addr().unwrap().port());
+        policy.endpoints.insert(REMOTE.into(), endpoint);
+        policy.peers[0]
+            .set("address", &format!("tcp://{endpoint}"))
+            .unwrap();
+        let mut worker = ManagedTransportWorker::start_exchange(
+            profile_path.clone(),
+            package_path.clone(),
+            env,
+            &policy,
+            &permit,
+        )
+        .unwrap();
+        drop(snapshot);
+        permit.finish(None);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Ok(id) = worker.status_reader().try_transport_device_id() {
+                assert_eq!(id, identity);
+                break;
+            }
+            assert!(Instant::now() < deadline, "ready publication deadline");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if attempt == 1 {
+            gate.exclusive(&source, Instant::now() + Duration::from_secs(3), false)
+                .unwrap()
+                .finish(Some(
+                    crate::runtime_admission::RuntimeHold::IncomingPolicyConflict,
+                ));
+            assert!(worker.status_reader().try_transport_device_id().is_err());
+        }
+        worker.shutdown(Duration::from_secs(40)).unwrap();
+        let mut profile = ManagedProfile::open(&profile_path, env).unwrap();
+        assert!(profile.reopen_native(&package, &os_store, ports).is_err());
+    }
+    drop(owner);
+    os_store.delete(&labels.0, &labels.1).unwrap();
+    assert!(matches!(
+        os_store.get(&labels.0, &labels.1),
+        Err(crate::SecureStoreError::Missing)
+    ));
+    drop(cleanup);
+    for root in [parent, source, receiver, negative] {
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
 #[test]
 #[ignore = "requires explicit pinned Mac native package; verifies no helper-role bypass"]

@@ -66,6 +66,50 @@ impl From<ExchangeConfigError> for InstallError {
 }
 type Result<T> = std::result::Result<T, InstallError>;
 
+// Implemented only by fresh canonical policy and its private authenticated
+// transport command. A disk journal can never implement this interface.
+pub(super) trait InstallPolicy {
+    fn prepare_bootstrap(&self, bytes: &[u8]) -> std::result::Result<Vec<u8>, ExchangeConfigError>;
+    fn binding_bytes(&self, config: &[u8]) -> std::result::Result<Vec<u8>, ExchangeConfigError>;
+    fn verify_binding(
+        &self,
+        config: &[u8],
+        binding: &[u8],
+    ) -> std::result::Result<(), ExchangeConfigError>;
+}
+impl InstallPolicy for ExchangeConfigPolicy<'_> {
+    fn prepare_bootstrap(&self, bytes: &[u8]) -> std::result::Result<Vec<u8>, ExchangeConfigError> {
+        self.prepare_bootstrap(bytes)
+    }
+    fn binding_bytes(&self, bytes: &[u8]) -> std::result::Result<Vec<u8>, ExchangeConfigError> {
+        self.binding_bytes(bytes)
+    }
+    fn verify_binding(
+        &self,
+        config: &[u8],
+        binding: &[u8],
+    ) -> std::result::Result<(), ExchangeConfigError> {
+        self.verify_binding(config, binding)
+    }
+}
+pub(super) fn install_native(home: &PrivateDirectory, policy: &impl InstallPolicy) -> Result<()> {
+    install(&mut { home }, policy)
+}
+pub(super) fn verify_native(home: &PrivateDirectory, policy: &impl InstallPolicy) -> Result<()> {
+    let journal = Journal::decode(
+        &(&home)
+            .read(Leaf::Journal)?
+            .ok_or(InstallError::InvalidJournal)?,
+    )?;
+    if journal.phase != Phase::Committed
+        || journal.native_home != (&home).home()?
+        || policy.prepare_bootstrap(journal.bootstrap.as_bytes())? != journal.config.as_bytes()
+    {
+        return Err(InstallError::InvalidJournal);
+    }
+    verify_committed(&home, &journal, &journal.encode()?, policy)
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 enum Phase {
@@ -187,7 +231,7 @@ fn text(bytes: Vec<u8>) -> Result<String> {
 /// First bootstrap-to-exchange install or recovery of that SAME install only.
 /// Updating an already active roster is deliberately not inferred from a journal.
 /// This private primitive does not validate OS credentials or start a process.
-fn install(files: &mut impl Files, policy: &ExchangeConfigPolicy<'_>) -> Result<()> {
+fn install(files: &mut impl Files, policy: &impl InstallPolicy) -> Result<()> {
     let existing = files.read(Leaf::Journal)?;
     let current = files
         .read(Leaf::Config)?
@@ -220,7 +264,11 @@ fn install(files: &mut impl Files, policy: &ExchangeConfigPolicy<'_>) -> Result<
     policy.verify_binding(journal.config.as_bytes(), journal.binding.as_bytes())?;
     let binding = files.read(Leaf::Binding)?;
     let old = current == journal.bootstrap.as_bytes();
-    let new = current == journal.config.as_bytes();
+    // The owned engine may serialize equivalent XML with different formatting.
+    // Fresh policy still checks the complete normalized configuration.
+    let new = policy
+        .verify_binding(&current, journal.binding.as_bytes())
+        .is_ok();
     let bound = binding.as_deref() == Some(journal.binding.as_bytes());
     let was_committed = journal.phase == Phase::Committed;
     journal.phase = Phase::Pending;
@@ -266,7 +314,7 @@ fn install(files: &mut impl Files, policy: &ExchangeConfigPolicy<'_>) -> Result<
         // A rename may have become visible just before its flush failed.
         // Observing committed bytes is not a substitute for a new barrier.
         files.sync_committed()?;
-        return verify_committed(files, &journal, &committed);
+        return verify_committed(files, &journal, &committed, policy);
     }
     // Reachable durable states: old/no binding, new/no binding, new/new binding.
     // In particular old/new binding and foreign/missing config are NOT recovery.
@@ -290,18 +338,29 @@ fn install(files: &mut impl Files, policy: &ExchangeConfigPolicy<'_>) -> Result<
     // No delete/cleanup window: a complete durable record remains for restart.
     files.replace(Leaf::Journal, &committed)?;
     files.sync_committed()?;
-    verify_committed(files, &journal, &committed)
+    verify_committed(files, &journal, &committed, policy)
 }
 
-fn verify_committed(files: &impl Files, journal: &Journal, committed: &[u8]) -> Result<()> {
+fn verify_committed(
+    files: &impl Files,
+    journal: &Journal,
+    committed: &[u8],
+    policy: &impl InstallPolicy,
+) -> Result<()> {
+    let config = files
+        .read(Leaf::Config)?
+        .ok_or(InstallError::ReadbackMismatch)?;
+    policy.verify_binding(&config, journal.binding.as_bytes())?;
     for (leaf, expected) in [
-        (Leaf::Config, journal.config.as_bytes()),
         (Leaf::Binding, journal.binding.as_bytes()),
         (Leaf::Journal, committed),
     ] {
         if files.read(leaf)?.as_deref() != Some(expected) || files.stage(leaf)?.is_some() {
             return Err(InstallError::ReadbackMismatch);
         }
+    }
+    if files.stage(Leaf::Config)?.is_some() {
+        return Err(InstallError::ReadbackMismatch);
     }
     Ok(())
 }

@@ -115,11 +115,57 @@ fn canonical_bytes(node: &Node) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// Integrity checking for a live session whose target was already authorized by
+/// the daemon. Not a constructor of canonical trust or restart authority.
+pub(crate) fn same_normalized(left: &[u8], right: &[u8]) -> Result<bool> {
+    Ok(canonical_bytes(&parse(left)?)? == canonical_bytes(&parse(right)?)?)
+}
+pub(crate) fn inspect_applied(
+    bytes: &[u8],
+    expected: &[u8],
+    bootstrap: &[u8],
+    ports: NativePorts,
+    incoming: &str,
+) -> Result<Config> {
+    if !same_normalized(bytes, expected)? {
+        return Err(NativeConfigError::InvalidConfig);
+    }
+    let original = inspect(bootstrap, ports, false)?;
+    let mut tree = parse(bytes)?;
+    let folder = tree.one("folder")?;
+    if folder.attrs.get("path").map(String::as_str) != Some(incoming)
+        || folder.attrs.get("type").map(String::as_str) != Some("sendreceive")
+    {
+        return Err(NativeConfigError::InvalidConfig);
+    }
+    tree.children.retain(|node| {
+        node.name != "folder"
+            && (node.name != "device" || node.attrs.get("id") == Some(&original.native_id))
+    });
+    tree.one_mut("options")?
+        .set("listenAddress", &format!("tcp://127.0.0.1:{}", ports.sync))?;
+    let mut checked = inspect(&canonical_bytes(&tree)?, ports, false)?;
+    if checked.native_id != original.native_id || checked.key != original.key {
+        return Err(NativeConfigError::IdentityChanged);
+    }
+    checked.bytes = canonical_bytes(&parse(bytes)?)?;
+    Ok(checked)
+}
+
 fn lan(endpoint: SocketAddrV4) -> bool {
     endpoint.ip().is_private() && endpoint.port() != 0
 }
 
 impl<'a> ExchangeConfigPolicy<'a> {
+    pub(crate) fn runtime_root(&self) -> &std::path::Path {
+        self.authority.runtime_root()
+    }
+    pub(crate) fn ports(&self) -> NativePorts {
+        self.ports
+    }
+    pub(crate) fn revalidate(&self) -> ExchangeResult<()> {
+        self.current()
+    }
     pub(crate) fn new(
         authority: &'a ExchangePeers<'a>,
         ports: NativePorts,

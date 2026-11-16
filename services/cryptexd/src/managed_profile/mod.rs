@@ -30,6 +30,8 @@ mod exchange_install;
 // Incoming binding is live; peer configuration/export consume the locked view next.
 pub(crate) mod exchange_policy;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub(crate) mod exchange_start;
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 #[allow(dead_code)] // Gated bridge; native activation/review is a separate release gate.
 pub(crate) mod incoming;
 pub mod native;
@@ -40,7 +42,7 @@ mod native_transfer_test;
     all(target_os = "macos", feature = "m8-local-startup-check"),
     test
 ))]
-mod native_xml;
+pub(crate) mod native_xml;
 #[cfg(all(test, windows))]
 mod tests;
 #[cfg(windows)]

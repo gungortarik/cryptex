@@ -5,10 +5,33 @@ import threading
 import unittest
 
 from mac_identity_preflight import PreflightError
-from mac_transport_check import IDENTITY_MARKERS, MUTATION_BATCH_MARKERS, MARKERS, check_identity, check_native_pairing, loss_group_snapshot
+from mac_transport_check import IDENTITY_MARKERS, MUTATION_BATCH_MARKERS, MARKERS, EXCHANGE_MARKER, check_identity, check_native_pairing, loss_group_snapshot, exchange_interface
 
 
 class IdentityCleanupTests(unittest.TestCase):
+    def test_exchange_uses_only_a_present_rfc1918_interface(self):
+        self.assertEqual(exchange_interface("inet 127.0.0.1\ninet 192.168.64.2 netmask ..."), "192.168.64.2")
+        for output in ("inet 8.8.8.8", "inet 127.0.0.1", "inet6 fd00::1", "inet 169.254.1.2"):
+            with self.assertRaises(PreflightError):
+                exchange_interface(output)
+
+    def test_exchange_missing_ack_still_cleans_exact_keys(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            PairingCleanupTests().fixture(root)
+            calls = []
+            def run(args, stage, timeout=30):
+                calls.append(args)
+                if args[1] == "--m8-local-transport-fixture-key-cleanup":
+                    return "mac_transport_fixture_key_cleanup=passed"
+                if args[1] == "--m8-local-exchange-start-driver":
+                    return ""
+                return "\n".join(MARKERS)
+            with self.assertRaisesRegex(PreflightError, "native_exchange_ready_marker_missing"):
+                check_native_pairing(Path("signed-desktop"), root, run, exchange_ip="192.168.64.2")
+            self.assertEqual(len(calls), 6)
+            self.assertEqual(calls[1][1], "--m8-local-exchange-start-driver")
+
     def test_backend_fixture_paths_are_resolved_before_driver_and_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

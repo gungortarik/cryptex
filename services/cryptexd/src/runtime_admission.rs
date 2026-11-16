@@ -53,6 +53,7 @@ struct State {
     pending: bool,
     exclusive: bool,
     hold: Option<RuntimeHold>,
+    transport_epoch: u64,
 }
 
 struct Inner {
@@ -206,6 +207,14 @@ impl RuntimeAdmission {
             .upgrade()
             .ok_or(AdmissionError::Held(RuntimeHold::Stopped))?;
         state.pending = true;
+        // Existing transport authority never revives after any reconcile attempt,
+        // even when that attempt times out before acquiring exclusive ownership.
+        state.transport_epoch = state.transport_epoch.checked_add(1).ok_or_else(|| {
+            state.pending = false;
+            state.hold = Some(RuntimeHold::RecoveryRequired);
+            self.0.changed.notify_all();
+            AdmissionError::Held(RuntimeHold::RecoveryRequired)
+        })?;
         self.0.changed.notify_all();
         while state.operations != 0 {
             if Instant::now() >= deadline {
@@ -367,8 +376,61 @@ pub(crate) struct ExclusivePermit {
     finished: bool,
 }
 
+/// Live-session cancellation authority only, not canonical peer authority. It
+/// survives release of snapshot locks but cannot authorize another installation.
+#[cfg(any(windows, target_os = "macos", test))]
+#[derive(Clone)]
+pub(crate) struct TransportGuard {
+    admission: RuntimeAdmission,
+    epoch: u64,
+}
+#[cfg(any(windows, target_os = "macos", test))]
+impl TransportGuard {
+    pub(crate) fn check(&self) -> Result<(), AdmissionError> {
+        self.admission.check_namespace()?;
+        let state = self
+            .admission
+            .0
+            .state
+            .lock()
+            .map_err(|_| AdmissionError::Held(RuntimeHold::RecoveryRequired))?;
+        if let Some(hold) = state.hold {
+            return Err(AdmissionError::Held(hold));
+        }
+        if state.pending || state.transport_epoch != self.epoch {
+            return Err(AdmissionError::Busy);
+        }
+        if self.admission.0.owner.upgrade().is_none() {
+            return Err(AdmissionError::Held(RuntimeHold::Stopped));
+        }
+        Ok(())
+    }
+}
+
 #[cfg(any(windows, target_os = "macos", test))]
 impl ExclusivePermit {
+    pub(crate) fn transport_guard(&self, root: &Path) -> Result<TransportGuard, AdmissionError> {
+        if self.admission.0.root != root {
+            return Err(AdmissionError::WrongRuntime);
+        }
+        self.admission.check_namespace()?;
+        let state = self
+            .admission
+            .0
+            .state
+            .lock()
+            .map_err(|_| AdmissionError::Held(RuntimeHold::RecoveryRequired))?;
+        if !state.exclusive || self.finished {
+            return Err(AdmissionError::Busy);
+        }
+        if let Some(hold) = state.hold {
+            return Err(AdmissionError::Held(hold));
+        }
+        Ok(TransportGuard {
+            admission: self.admission.clone(),
+            epoch: state.transport_epoch,
+        })
+    }
     /// Called only by transaction orchestration after verified recovery and
     /// rebuild, a clean pre-prepare rejection, or a classified failure.
     pub(crate) fn finish(mut self, hold: Option<RuntimeHold>) {
@@ -413,6 +475,64 @@ mod tests {
 
     fn deadline() -> Instant {
         Instant::now() + Duration::from_secs(3)
+    }
+
+    #[test]
+    fn transport_guard_never_revives_after_reconcile_timeout_or_new_epoch() {
+        let root = crate::test_temp::exclusive_temp_dir("transport-admission-epoch");
+        let owner = try_acquire_instance(&root).unwrap();
+        let gate = owner.admission();
+        let permit = gate.exclusive(&root, deadline(), false).unwrap();
+        assert!(matches!(
+            permit.transport_guard(&root.join("alien")),
+            Err(AdmissionError::WrongRuntime)
+        ));
+        let guard = permit.transport_guard(&root).unwrap();
+        guard.check().unwrap();
+        permit.finish(None);
+        guard.check().unwrap();
+        let active = gate.enter(&root).unwrap();
+        assert!(matches!(
+            gate.exclusive(&root, Instant::now(), false),
+            Err(AdmissionError::Busy)
+        ));
+        assert!(guard.check().is_err());
+        drop(active);
+        let next = gate.exclusive(&root, deadline(), false).unwrap();
+        let fresh = next.transport_guard(&root).unwrap();
+        next.finish(None);
+        fresh.check().unwrap();
+        assert!(guard.check().is_err());
+        drop(owner);
+        assert!(fresh.check().is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn transport_guard_refuses_holds_and_unfinished_installation() {
+        let root = crate::test_temp::exclusive_temp_dir("transport-admission-hold");
+        let owner = try_acquire_instance(&root).unwrap();
+        let gate = owner.admission();
+        let permit = gate.exclusive(&root, deadline(), false).unwrap();
+        let guard = permit.transport_guard(&root).unwrap();
+        drop(permit);
+        assert_eq!(
+            guard.check(),
+            Err(AdmissionError::Held(RuntimeHold::RecoveryRequired))
+        );
+        let recovery = gate.exclusive(&root, deadline(), true).unwrap();
+        assert!(recovery.transport_guard(&root).is_err());
+        recovery.finish(None);
+        assert!(guard.check().is_err());
+        let permit = gate.exclusive(&root, deadline(), false).unwrap();
+        let fresh = permit.transport_guard(&root).unwrap();
+        permit.finish(Some(RuntimeHold::IncomingPolicyConflict));
+        assert_eq!(
+            fresh.check(),
+            Err(AdmissionError::Held(RuntimeHold::IncomingPolicyConflict))
+        );
+        drop(owner);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(target_os = "macos")]

@@ -55,6 +55,7 @@ pub struct Snapshot {
 struct Shared {
     stop: AtomicBool,
     snapshot: Mutex<Snapshot>,
+    transport: Mutex<Option<crate::runtime_admission::TransportGuard>>,
 }
 /// Read-only view: no stop, launch, paths or credentials. IPC receives only this
 /// handle, never the owning worker. Nonblocking read respects request budgets.
@@ -62,6 +63,16 @@ struct Shared {
 pub struct StatusReader(Arc<Shared>);
 impl StatusReader {
     pub fn try_snapshot(&self) -> Result<Snapshot, WorkerError> {
+        if self
+            .0
+            .transport
+            .try_lock()
+            .map_err(|_| WorkerError::StatusUnavailable)?
+            .as_ref()
+            .is_some_and(|guard| guard.check().is_err())
+        {
+            return Err(WorkerError::StatusUnavailable);
+        }
         let mut snapshot = self
             .0
             .snapshot
@@ -138,6 +149,141 @@ impl std::fmt::Debug for ManagedTransportWorker {
     }
 }
 impl ManagedTransportWorker {
+    /// Synchronous admitted installation and exact owned-readiness handshake.
+    /// Caller retains fresh canonical snapshot + exclusive permit until return.
+    /// Crash/revocation requires a NEW canonical admission; no stale auto-restart.
+    #[allow(dead_code)] // Backend entry; endpoint/settings UI is not activated here.
+    pub(crate) fn start_exchange(
+        profile_path: PathBuf,
+        package_path: PathBuf,
+        environment: SecureStoreEnvironment,
+        policy: &super::native_xml::exchange::ExchangeConfigPolicy<'_>,
+        permit: &crate::runtime_admission::ExclusivePermit,
+    ) -> Result<Self, WorkerError> {
+        use std::sync::mpsc;
+        let package = PinnedSyncthingPackage::open(&package_path).map_err(WorkerError::Package)?;
+        let mut profile =
+            ManagedProfile::open(&profile_path, environment).map_err(WorkerError::Profile)?;
+        let store = WindowsCredentialStore::new();
+        let ports = policy.ports();
+        let prepared = profile
+            .reopen_exchange_candidate(&package, &store, ports)
+            .map_err(WorkerError::Native)?;
+        let bootstrap = prepared
+            .exchange_bootstrap(&store)
+            .map_err(WorkerError::Native)?;
+        let (image, guard) = super::exchange_start::ExchangeImage::from_policy(
+            policy,
+            permit,
+            prepared.exchange_identity(),
+            &bootstrap,
+        )
+        .map_err(WorkerError::Native)?;
+        let expected = image.acknowledgement().map_err(WorkerError::Native)?;
+        // Transfer the original profile lease and retain native directory identity
+        // across the small gap between dropping/reborrowing PreparedNativeProfile.
+        let native_pins = crate::import_staging::ImportStagingSession::pin_existing_runtime(
+            &profile_path.join("native"),
+        )
+        .map_err(|_| WorkerError::Profile(ProfileError::UnsafeObject))?;
+        drop(prepared);
+        let (ready_send, ready_receive) = mpsc::sync_channel(1);
+        let (accept_send, accept_receive) = mpsc::sync_channel(1);
+        let (active_send, active_receive) = mpsc::sync_channel(1);
+        let worker_guard = guard.clone();
+        let worker = Self::spawn_task(move |shared| {
+            let _pins = native_pins;
+            *shared
+                .transport
+                .lock()
+                .map_err(|_| WorkerError::StatusUnavailable)? = Some(worker_guard.clone());
+            worker_guard
+                .check()
+                .map_err(|_| WorkerError::StatusUnavailable)?;
+            let mut prepared = profile
+                .reopen_exchange_candidate(&package, &store, ports)
+                .map_err(WorkerError::Native)?;
+            prepared
+                .install_exchange(image, &store)
+                .map_err(WorkerError::Native)?;
+            worker_guard
+                .check()
+                .map_err(|_| WorkerError::StatusUnavailable)?;
+            let identity = prepared.configured_transport_device_id().to_owned();
+            let mut session = prepared
+                .start(&package, &store)
+                .map_err(WorkerError::Native)?;
+            let ack = session
+                .acknowledge_exchange(&store)
+                .map_err(WorkerError::Native)?;
+            worker_guard
+                .check()
+                .map_err(|_| WorkerError::StatusUnavailable)?;
+            ready_send
+                .send(ack)
+                .map_err(|_| WorkerError::StatusUnavailable)?;
+            accept_receive
+                .recv_timeout(Duration::from_secs(15))
+                .map_err(|_| WorkerError::StatusUnavailable)?;
+            worker_guard
+                .check()
+                .map_err(|_| WorkerError::StatusUnavailable)?;
+            let ready = Status {
+                phase: super::controller::Phase::LocalReady,
+                attempt: 1,
+                pid: Some(session.pid()),
+                error: None,
+            };
+            session.observe(&store).map_err(WorkerError::Native)?;
+            worker_guard
+                .check()
+                .map_err(|_| WorkerError::StatusUnavailable)?;
+            shared.publish(ready, Some(&identity))?;
+            active_send
+                .send(expected)
+                .map_err(|_| WorkerError::StatusUnavailable)?;
+            while !shared.stop.load(Ordering::Acquire) && worker_guard.check().is_ok() {
+                if session.try_exit().map_err(WorkerError::Native)?.is_some() {
+                    return Err(WorkerError::Native(NativeConfigError::StartExited));
+                }
+                session.observe(&store).map_err(WorkerError::Native)?;
+                if worker_guard.check().is_err() {
+                    break;
+                }
+                shared.publish(ready, Some(&identity))?;
+                std::thread::park_timeout(Duration::from_millis(100));
+            }
+            shared.stop.store(true, Ordering::Release);
+            session.stop(&store).map_err(WorkerError::Native)?;
+            Ok(Outcome::CleanShutdown)
+        })?;
+        let ack = ready_receive
+            .recv_timeout(Duration::from_secs(35))
+            .map_err(|_| WorkerError::StatusUnavailable)?;
+        if ack != expected {
+            return Err(WorkerError::StatusUnavailable);
+        }
+        policy
+            .revalidate()
+            .map_err(|_| WorkerError::StatusUnavailable)?;
+        guard.check().map_err(|_| WorkerError::StatusUnavailable)?;
+        accept_send
+            .send(())
+            .map_err(|_| WorkerError::StatusUnavailable)?;
+        if active_receive
+            .recv_timeout(Duration::from_secs(10))
+            .map_err(|_| WorkerError::StatusUnavailable)?
+            != expected
+        {
+            return Err(WorkerError::StatusUnavailable);
+        }
+        policy
+            .revalidate()
+            .map_err(|_| WorkerError::StatusUnavailable)?;
+        guard.check().map_err(|_| WorkerError::StatusUnavailable)?;
+        worker.status_reader().try_transport_device_id()?;
+        Ok(worker)
+    }
     #[cfg(test)]
     pub(crate) fn spawn_transfer_test(
         profile: PathBuf,
@@ -261,6 +407,7 @@ impl ManagedTransportWorker {
         task: impl FnOnce(&Shared) -> Result<Outcome, WorkerError> + Send + 'static,
     ) -> Result<Self, WorkerError> {
         let shared = Arc::new(Shared {
+            transport: Mutex::new(None),
             stop: AtomicBool::new(false),
             snapshot: Mutex::new(Snapshot {
                 state: WorkerState::Opening,
@@ -382,6 +529,7 @@ mod tests {
     #[test]
     fn transport_identity_is_available_only_for_an_active_ready_worker() {
         let shared = Arc::new(Shared {
+            transport: Mutex::new(None),
             stop: AtomicBool::new(false),
             snapshot: Mutex::new(Snapshot {
                 state: WorkerState::Active,

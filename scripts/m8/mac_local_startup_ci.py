@@ -11,7 +11,7 @@ import zipfile
 from mac_identity_preflight import PreflightError
 from mac_durable_check import MARKERS, check_durable_profile, check_session_journal
 from mac_transport_package import prepare as prepare_transport
-from mac_transport_check import check_native_pairing, check_parent_loss
+from mac_transport_check import check_native_pairing, check_parent_loss, exchange_interface
 from mac_combined_loss_check import check_combined_loss
 from mac_endpoint_check import check_native_endpoints
 
@@ -136,7 +136,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                      "image_policy::tests::product_policy_has_no_configured_publisher"):
             if "test m8_owner_channel::" + name + " ... ok" not in tests:
                 raise PreflightError("signed_startup_gate_test_missing")
-        for selection in ("managed_profile::macos::tests::", "managed_profile::exchange_install::tests::", "owned_process::macos::tests::",
+        for selection in ("managed_profile::macos::tests::", "managed_profile::exchange_install::tests::", "managed_profile::exchange_start::tests::", "owned_process::macos::tests::",
                           "ipc::native_profile::tests::", "import_staging::macos_inbox::tests::",
                           "incoming_publication::tests::", "runtime_admission::tests::",
                           "ipc::tests::original_namespace_",
@@ -215,7 +215,8 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
             raise PreflightError("native_transport_identity_marker_missing")
         print(marker)
     check_native_pairing(positive / "Contents/MacOS/cryptex-desktop",
-                         root / "pairing-runtime", run)
+                         root / "pairing-runtime", run,
+                         exchange_ip=exchange_interface(run(["/sbin/ifconfig", "-a"], "read_ci_private_interface")))
     check_parent_loss(positive / "Contents/MacOS/cryptexd", root / "parent-loss-runtime", run)
     check_combined_loss(positive / "Contents/MacOS/cryptexd", root / "combined-loss-runtime", run)
     result = run([positive / "Contents/MacOS/cryptex-desktop",

@@ -25,6 +25,8 @@ const PROFILE: &str = "00000000000000000000000000000001";
 const BUDGET: Duration = Duration::from_secs(4);
 const REFUSAL_ACK: &[u8] = b"m8-transport-refusal-ack-v1";
 const STOP_ACK: &[u8] = b"m8-transport-stop-ack-v1";
+const BOOTSTRAP_START: &[u8] = b"m8-bootstrap-start-v1";
+const EXCHANGE_START: &[u8] = b"m8-exchange-start-v1";
 fn startup_phase(stage: &'static str, started: Instant) {
     // Fixed stage/timing fields only; no paths, identities or credentials.
     // Logging failure must not interrupt captured-child/group cleanup.
@@ -121,6 +123,7 @@ struct Reply {
     identity: Option<String>,
     credential_profile: Option<String>,
     error: Option<Error>,
+    exchange_digest: Option<[u8; 32]>,
 }
 
 fn private_root(root: &Path) -> Result<(), Error> {
@@ -347,9 +350,24 @@ fn serve(
     combined: bool,
 ) -> Result<(), Error> {
     let _scope = Scope::enter(channel)?;
+    let mut mode = [0; 128];
+    let mode = channel
+        .receive(&mut mode, Instant::now() + BUDGET)
+        .map_err(|_| Error::Channel)?;
+    let exchange = match mode {
+        EXCHANGE_START => true,
+        BOOTSTRAP_START => false,
+        _ => return Err(Error::Channel),
+    };
+    if exchange && combined {
+        return Err(Error::Policy);
+    }
     let _package = package(release, root)?;
     let ports = ports(root)?;
     let path = root.join(PROFILE);
+    if exchange && !path.try_exists().map_err(|_| Error::Profile)? {
+        return Err(Error::Profile);
+    }
     let store = MacosKeychainStore::new();
     let mut profile = if path.try_exists().map_err(|_| Error::Profile)? {
         ManagedProfile::open(&path, SecureStoreEnvironment::Dev)
@@ -361,6 +379,14 @@ fn serve(
     // A helper delayed on acquisition must recheck its captured parent AFTER
     // obtaining the lease, before staged generation can enroll any OS key.
     let credential = profile.credential_profile_id().to_owned();
+    if exchange {
+        let mut prepared = provision_if_parent_live(role_active, || {
+            profile
+                .reopen_exchange_candidate(&_package, &store, ports)
+                .map_err(|_| Error::Profile)
+        })?;
+        return serve_exchange(root, channel, &_package, &store, &mut prepared);
+    }
     let mut prepared = provision_if_parent_live(role_active, || {
         profile
             .prepare_native(&_package, &store, ports)
@@ -395,6 +421,7 @@ fn serve(
         None
     };
     let ready = Reply {
+        exchange_digest: None,
         sequence: 0,
         identity: Some(identity.clone()),
         credential_profile: Some(credential),
@@ -406,7 +433,96 @@ fn serve(
             Instant::now() + BUDGET,
         )
         .map_err(|_| Error::Channel)?;
-    let mut sequence = 0;
+    serve_running(root, channel, session, &store, &identity, 0, None)
+}
+
+fn serve_exchange(
+    root: &Path,
+    channel: &mut Channel,
+    package: &PinnedSyncthingPackage,
+    store: &MacosKeychainStore,
+    prepared: &mut crate::managed_profile::native::PreparedNativeProfile<'_>,
+) -> Result<(), Error> {
+    use crate::managed_profile::exchange_start::{ExchangeImage, ExchangeSeed, MAX_COMMAND};
+    let seed = ExchangeSeed {
+        identity: prepared.exchange_identity(),
+        bootstrap: String::from_utf8(
+            prepared
+                .exchange_bootstrap(store)
+                .map_err(|_| Error::Profile)?,
+        )
+        .map_err(|_| Error::Profile)?,
+    };
+    channel
+        .send(
+            &seed.encode().map_err(|_| Error::Profile)?,
+            Instant::now() + BUDGET,
+        )
+        .map_err(|_| Error::Channel)?;
+    let mut frame = vec![0; MAX_COMMAND];
+    let bytes = channel
+        .receive(&mut frame, Instant::now() + Duration::from_secs(30))
+        .map_err(|_| Error::Channel)?;
+    let runtime = root
+        .parent()
+        .filter(|_| root.file_name().is_some_and(|n| n == "managed-transport"))
+        .ok_or(Error::Policy)?;
+    let image =
+        ExchangeImage::from_authenticated_parent(bytes, runtime).map_err(|_| Error::Policy)?;
+    let digest = image.acknowledgement().map_err(|_| Error::Policy)?;
+    if !role_active() {
+        return Err(Error::Policy);
+    }
+    prepared
+        .install_exchange(image, store)
+        .map_err(|_| Error::Profile)?;
+    let identity = prepared.configured_transport_device_id().to_owned();
+    if !role_active() {
+        return Err(Error::Policy);
+    }
+    let session = prepared.start(package, store).map_err(|_| Error::Engine)?;
+    if session
+        .acknowledge_exchange(store)
+        .map_err(|_| Error::Engine)?
+        != digest
+    {
+        return Err(Error::Engine);
+    }
+    channel
+        .send(
+            &serde_json::to_vec(&Reply {
+                sequence: 1,
+                identity: Some(identity.clone()),
+                credential_profile: None,
+                error: None,
+                exchange_digest: Some(digest),
+            })
+            .map_err(|_| Error::Channel)?,
+            Instant::now() + BUDGET,
+        )
+        .map_err(|_| Error::Channel)?;
+    // Keep exact owned session alive while the parent validates the fresh policy.
+    let mut ack = [0; 32];
+    if channel
+        .receive(&mut ack, Instant::now() + Duration::from_secs(15))
+        .map_err(|_| Error::Channel)?
+        != digest
+        || !role_active()
+    {
+        return Err(Error::Channel);
+    }
+    serve_running(root, channel, session, store, &identity, 1, Some(digest))
+}
+
+fn serve_running(
+    root: &Path,
+    channel: &mut Channel,
+    mut session: crate::managed_profile::native::NativeSession<'_, '_>,
+    store: &MacosKeychainStore,
+    identity: &str,
+    mut sequence: u64,
+    exchange_digest: Option<[u8; 32]>,
+) -> Result<(), Error> {
     loop {
         let mut buffer = [0; 1024];
         let bytes = channel
@@ -424,7 +540,7 @@ fn serve(
                 })?;
                 observe_phase("session", || {
                     session
-                        .observe(&store)
+                        .observe(store)
                         .inspect_err(|e| {
                             eprintln!("component=mac_transport stage=observe error={e}")
                         })
@@ -437,8 +553,9 @@ fn serve(
                     crate::owned_process::macos::kill_helper_group();
                 }
                 let reply = Reply {
+                    exchange_digest,
                     sequence,
-                    identity: Some(identity.clone()),
+                    identity: Some(identity.to_owned()),
                     credential_profile: None,
                     error: None,
                 };
@@ -450,8 +567,9 @@ fn serve(
                     .map_err(|_| Error::Channel)?;
             }
             Operation::Stop => {
-                session.stop(&store).map_err(|_| Error::Engine)?;
+                session.stop(store).map_err(|_| Error::Engine)?;
                 let reply = Reply {
+                    exchange_digest: None,
                     sequence,
                     identity: None,
                     credential_profile: None,
@@ -548,6 +666,19 @@ pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
     }
     if let Some(result) = combined_loss::entry(args) {
         return Some(result);
+    }
+    if args
+        .first()
+        .is_some_and(|arg| arg == "--m8-local-exchange-start-driver")
+    {
+        return Some(if args.len() == 3 {
+            args[2]
+                .parse()
+                .map_err(|_| Error::Arguments)
+                .and_then(|ip| check_exchange_start(Path::new(&args[1]), ip))
+        } else {
+            Err(Error::Arguments)
+        });
     }
     if args
         .first()
@@ -654,6 +785,7 @@ pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
         let result = serve(root, &release, &mut channel, combined);
         if let Err(error) = result {
             let refusal = Reply {
+                exchange_digest: None,
                 sequence: 0,
                 identity: None,
                 credential_profile: None,
@@ -678,6 +810,8 @@ pub fn entry(args: &[String]) -> Option<Result<(), Error>> {
 }
 
 struct Helper {
+    preparation: Option<crate::managed_profile::exchange_start::ExchangeSeed>,
+    exchange_digest: Option<[u8; 32]>,
     child: Option<Child>,
     channel: Option<Channel>,
     _release: Release,
@@ -693,6 +827,7 @@ impl Helper {
         root: &Path,
         credential_record: &std::sync::Mutex<Option<String>>,
         combined: bool,
+        exchange: bool,
     ) -> Result<Self, Error> {
         use std::os::unix::process::CommandExt;
         private_root(root)?;
@@ -706,6 +841,9 @@ impl Helper {
             return Err(Error::Profile);
         }
         let profile_path = root.join(PROFILE);
+        if exchange && (combined || !profile_path.try_exists().map_err(|_| Error::Profile)?) {
+            return Err(Error::Policy);
+        }
         let profile = if profile_path.try_exists().map_err(|_| Error::Profile)? {
             ManagedProfile::open(&profile_path, SecureStoreEnvironment::Dev)
         } else {
@@ -770,6 +908,8 @@ impl Helper {
         let child = command.spawn().map_err(|_| Error::Engine)?;
         startup_phase("parent_child_spawned", started);
         let mut result = Self {
+            preparation: None,
+            exchange_digest: None,
             child: Some(child),
             channel: None,
             _release: release,
@@ -804,6 +944,47 @@ impl Helper {
                 deadline,
             )
             .map_err(|_| Error::Channel)?;
+        channel
+            .send(
+                if exchange {
+                    EXCHANGE_START
+                } else {
+                    BOOTSTRAP_START
+                },
+                Instant::now() + BUDGET,
+            )
+            .map_err(|_| Error::Channel)?;
+        if exchange {
+            use crate::managed_profile::exchange_start::{ExchangeSeed, MAX_COMMAND};
+            let mut buffer = vec![0; MAX_COMMAND];
+            let bytes = channel
+                .receive(&mut buffer, Instant::now() + Duration::from_secs(35))
+                .map_err(|_| Error::Channel)?;
+            if let Ok(refusal) = decode::<Reply>(bytes) {
+                if refusal.sequence != 0
+                    || refusal.identity.is_some()
+                    || refusal.credential_profile.is_some()
+                    || refusal.exchange_digest.is_some()
+                {
+                    return Err(Error::Channel);
+                }
+                let error = refusal.error.ok_or(Error::Channel)?;
+                channel
+                    .send(REFUSAL_ACK, Instant::now() + BUDGET)
+                    .map_err(|_| Error::Channel)?;
+                return Err(error);
+            }
+            let seed = ExchangeSeed::decode(bytes).map_err(|_| Error::Profile)?;
+            if seed.identity.credential_id() != credential
+                || !crate::syncthing_rest::native_id_shape(seed.identity.native_id())
+            {
+                return Err(Error::Profile);
+            }
+            result.identity = seed.identity.native_id().to_owned();
+            result.preparation = Some(seed);
+            result.channel = Some(channel);
+            return Ok(result);
+        }
         let mut buffer = [0; 1024];
         let ready: Reply = decode(
             channel
@@ -832,7 +1013,7 @@ impl Helper {
                         .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
             })
             .ok_or(Error::Profile)?;
-        if ready.sequence != 0 || ready.error.is_some() {
+        if ready.sequence != 0 || ready.error.is_some() || ready.exchange_digest.is_some() {
             return Err(Error::Channel);
         }
         if returned_credential != credential {
@@ -841,6 +1022,39 @@ impl Helper {
         result.identity = id;
         result.channel = Some(channel);
         Ok(result)
+    }
+    fn install_exchange(&mut self, bytes: &[u8], digest: [u8; 32]) -> Result<(), Error> {
+        let channel = self.channel.as_mut().ok_or(Error::Channel)?;
+        channel
+            .send(bytes, Instant::now() + BUDGET)
+            .map_err(|_| Error::Channel)?;
+        let mut buffer = [0; 1024];
+        let ready: Reply = decode(
+            channel
+                .receive(&mut buffer, Instant::now() + Duration::from_secs(35))
+                .map_err(|_| Error::Channel)?,
+        )?;
+        if ready.sequence != 1
+            || ready.error.is_some()
+            || ready.credential_profile.is_some()
+            || ready.identity.as_deref() != Some(self.identity.as_str())
+            || ready.exchange_digest != Some(digest)
+        {
+            return Err(Error::Channel);
+        }
+        self.sequence = 1;
+        self.exchange_digest = Some(digest);
+        Ok(())
+    }
+    fn accept_exchange(&mut self) -> Result<(), Error> {
+        self.channel
+            .as_mut()
+            .ok_or(Error::Channel)?
+            .send(
+                &self.exchange_digest.ok_or(Error::Channel)?,
+                Instant::now() + BUDGET,
+            )
+            .map_err(|_| Error::Channel)
     }
     fn request(&mut self, op: Operation) -> Result<(), Error> {
         if matches!(op, Operation::Observe) {
@@ -874,8 +1088,11 @@ impl Helper {
             || reply.error.is_some()
             || reply.credential_profile.is_some()
             || match op {
-                Operation::Observe => reply.identity.as_deref() != Some(self.identity.as_str()),
-                Operation::Stop => reply.identity.is_some(),
+                Operation::Observe => {
+                    reply.identity.as_deref() != Some(self.identity.as_str())
+                        || reply.exchange_digest != self.exchange_digest
+                }
+                Operation::Stop => reply.identity.is_some() || reply.exchange_digest.is_some(),
             }
         {
             return Err(Error::Channel);
@@ -986,6 +1203,7 @@ struct Query {
 }
 #[derive(Clone)]
 pub(crate) struct StatusReader {
+    transport: Option<crate::runtime_admission::TransportGuard>,
     sender: mpsc::SyncSender<Query>,
     state: Arc<AtomicU8>,
     profile_root: PathBuf,
@@ -1002,6 +1220,9 @@ impl StatusReader {
         Ok(identity)
     }
     fn call(&self, work: Work) -> Result<String, Error> {
+        if let Some(guard) = &self.transport {
+            guard.check().map_err(|_| Error::Unavailable)?;
+        }
         if self.state.load(Ordering::Acquire) != READY {
             return Err(Error::Unavailable);
         }
@@ -1021,6 +1242,9 @@ impl StatusReader {
             .map_err(|_| Error::Deadline)
             .and_then(|v| v);
         interest.store(false, Ordering::Release);
+        if let Some(guard) = &self.transport {
+            guard.check().map_err(|_| Error::Unavailable)?;
+        }
         result
     }
 }
@@ -1030,11 +1254,105 @@ pub(crate) struct Worker {
     thread: Option<std::thread::JoinHandle<Result<(), Error>>>,
     credential: Arc<Mutex<Option<String>>>,
 }
+struct ExchangeSetup {
+    guard: crate::runtime_admission::TransportGuard,
+    seed: mpsc::SyncSender<crate::managed_profile::exchange_start::ExchangeSeed>,
+    command: mpsc::Receiver<(Vec<u8>, [u8; 32])>,
+    ready: mpsc::SyncSender<[u8; 32]>,
+    accept: mpsc::Receiver<()>,
+    active: mpsc::SyncSender<[u8; 32]>,
+}
 impl Worker {
+    /// The caller retains exclusive admission and the canonical snapshot through
+    /// this complete helper install/owned-start/ready handshake.
+    #[allow(dead_code)]
+    pub(crate) fn start_exchange(
+        root: PathBuf,
+        policy: &crate::managed_profile::native_xml::exchange::ExchangeConfigPolicy<'_>,
+        permit: &crate::runtime_admission::ExclusivePermit,
+    ) -> Result<Self, Error> {
+        use crate::managed_profile::exchange_start::ExchangeImage;
+        if root != policy.runtime_root().join("managed-transport") {
+            return Err(Error::Policy);
+        }
+        let guard = permit
+            .transport_guard(policy.runtime_root())
+            .map_err(|_| Error::Policy)?;
+        guard.check().map_err(|_| Error::Policy)?;
+        let (seed_tx, seed_rx) = mpsc::sync_channel(1);
+        let (command_tx, command_rx) = mpsc::sync_channel(1);
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+        let (accept_tx, accept_rx) = mpsc::sync_channel(1);
+        let (active_tx, active_rx) = mpsc::sync_channel(1);
+        // Worker must drop after channels on early return, so a helper waiting
+        // for authority is cancelled before joining its supervisor.
+        let worker = Self::spawn_configured(
+            root,
+            false,
+            false,
+            Some(ExchangeSetup {
+                guard: guard.clone(),
+                seed: seed_tx,
+                command: command_rx,
+                ready: ready_tx,
+                accept: accept_rx,
+                active: active_tx,
+            }),
+        )?;
+        let result = (|| {
+            let seed = seed_rx
+                .recv_timeout(Duration::from_secs(50))
+                .map_err(|_| Error::Deadline)?;
+            let (image, _) = ExchangeImage::from_policy(
+                policy,
+                permit,
+                seed.identity,
+                seed.bootstrap.as_bytes(),
+            )
+            .map_err(|_| Error::Policy)?;
+            let expected = image.acknowledgement().map_err(|_| Error::Policy)?;
+            command_tx
+                .send((image.encode().map_err(|_| Error::Policy)?, expected))
+                .map_err(|_| Error::Channel)?;
+            let ready = ready_rx
+                .recv_timeout(Duration::from_secs(40))
+                .map_err(|_| Error::Deadline)?;
+            if ready != expected {
+                return Err(Error::Channel);
+            }
+            policy.revalidate().map_err(|_| Error::Policy)?;
+            guard.check().map_err(|_| Error::Policy)?;
+            accept_tx.send(()).map_err(|_| Error::Channel)?;
+            if active_rx
+                .recv_timeout(Duration::from_secs(10))
+                .map_err(|_| Error::Deadline)?
+                != expected
+            {
+                return Err(Error::Channel);
+            }
+            policy.revalidate().map_err(|_| Error::Policy)?;
+            guard.check().map_err(|_| Error::Policy)?;
+            if worker.reader.state.load(Ordering::Acquire) != READY {
+                return Err(Error::Unavailable);
+            }
+            Ok(())
+        })();
+        drop((command_tx, accept_tx));
+        result?;
+        Ok(worker)
+    }
     pub(crate) fn spawn(root: PathBuf, create: bool) -> Result<Self, Error> {
         Self::spawn_inner(root, create, false)
     }
     fn spawn_inner(root: PathBuf, create: bool, combined: bool) -> Result<Self, Error> {
+        Self::spawn_configured(root, create, combined, None)
+    }
+    fn spawn_configured(
+        root: PathBuf,
+        create: bool,
+        combined: bool,
+        exchange: Option<ExchangeSetup>,
+    ) -> Result<Self, Error> {
         let requested_root = root.clone();
         let (root, namespace) = if create {
             let canonical = create_root(&root)?;
@@ -1058,6 +1376,7 @@ impl Worker {
         let stop = Arc::new(AtomicBool::new(false));
         let credential = Arc::new(Mutex::new(None));
         let read = StatusReader {
+            transport: exchange.as_ref().map(|e| e.guard.clone()),
             sender,
             state: state.clone(),
             profile_root: requested_root,
@@ -1070,10 +1389,46 @@ impl Worker {
             .spawn(move || {
                 let result = (|| {
                     namespace.validate().map_err(|_| Error::Profile)?;
-                    let mut helper = Helper::start(&root, &record, combined)?;
+                    if let Some(setup) = &exchange {
+                        setup.guard.check().map_err(|_| Error::Policy)?;
+                    }
+                    let mut helper = Helper::start(&root, &record, combined, exchange.is_some())?;
+                    if let Some(setup) = &exchange {
+                        setup
+                            .seed
+                            .send(helper.preparation.take().ok_or(Error::Profile)?)
+                            .map_err(|_| Error::Channel)?;
+                        let (command, digest) = setup
+                            .command
+                            .recv_timeout(Duration::from_secs(25))
+                            .map_err(|_| Error::Deadline)?;
+                        setup.guard.check().map_err(|_| Error::Policy)?;
+                        helper.install_exchange(&command, digest)?;
+                        setup.guard.check().map_err(|_| Error::Policy)?;
+                        setup.ready.send(digest).map_err(|_| Error::Channel)?;
+                        setup
+                            .accept
+                            .recv_timeout(Duration::from_secs(10))
+                            .map_err(|_| Error::Deadline)?;
+                        setup.guard.check().map_err(|_| Error::Policy)?;
+                        helper.accept_exchange()?;
+                        helper.request(Operation::Observe)?;
+                        setup.guard.check().map_err(|_| Error::Policy)?;
+                    }
                     namespace.validate().map_err(|_| Error::Profile)?;
                     state.store(READY, Ordering::Release);
+                    if let Some(setup) = &exchange {
+                        setup
+                            .active
+                            .send(helper.exchange_digest.ok_or(Error::Channel)?)
+                            .map_err(|_| Error::Channel)?;
+                    }
                     while !worker_stop.load(Ordering::Acquire) {
+                        if exchange.as_ref().is_some_and(|e| e.guard.check().is_err()) {
+                            state.store(FAILED, Ordering::Release);
+                            helper.close()?;
+                            return Err(Error::Policy);
+                        }
                         match receive.recv_timeout(Duration::from_millis(250)) {
                             Ok(query) => {
                                 if !query.interest.load(Ordering::Acquire)
@@ -1193,6 +1548,114 @@ fn wait_identity(reader: StatusReader) -> Result<String, Error> {
             Err(e) => return Err(e),
         }
     }
+}
+
+/// Explicit signed CI driver over a previously paired disposable profile.
+/// The product CLI refuses this flag. No new canonical events or peer approval.
+fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error> {
+    use crate::managed_profile::{
+        exchange_policy::ExchangePeers, native_xml::exchange::ExchangeConfigPolicy,
+    };
+    use cryptex_events::TrustedDaemonKeyResolver;
+    if !ip.is_private()
+        || !root.starts_with(
+            std::env::temp_dir()
+                .canonicalize()
+                .map_err(|_| Error::Arguments)?,
+        )
+    {
+        return Err(Error::Arguments);
+    }
+    let helper_root = root.join("managed-transport");
+    let bootstrap = Worker::spawn(helper_root.clone(), false)?;
+    let identity = wait_identity(bootstrap.status_reader())?;
+    bootstrap.close()?;
+    let owner = crate::instance::try_acquire_instance(root).map_err(|_| Error::Profile)?;
+    let admission = owner.admission();
+    admission
+        .bind_namespace(
+            crate::import_staging::macos_fs::RuntimeIdentity::capture(root)
+                .map_err(|_| Error::Profile)?,
+        )
+        .map_err(|_| Error::Profile)?;
+    crate::import_staging::macos_fs::create_dir_all_owned(&root.join("transport/incoming"))
+        .map_err(|_| Error::Profile)?;
+    let ports = ports(&helper_root)?;
+    let peer_socket = std::net::TcpListener::bind((ip, 0)).map_err(|_| Error::Engine)?;
+    let endpoint = std::net::SocketAddrV4::new(
+        ip,
+        peer_socket.local_addr().map_err(|_| Error::Engine)?.port(),
+    );
+    let brain = crate::identity_runtime::load_brain_identity(root).map_err(|_| Error::Policy)?;
+    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+        root,
+        &brain.brain_id,
+        &MacosKeychainStore::new(),
+        SecureStoreEnvironment::Dev,
+    )
+    .map_err(|_| Error::Policy)?;
+    let anchor = resolver.local_trust_anchor().map_err(|_| Error::Policy)?;
+    for attempt in 0..2 {
+        let permit = admission
+            .exclusive(root, Instant::now() + BUDGET, false)
+            .map_err(|_| Error::Policy)?;
+        let snapshot =
+            crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+                root,
+                &brain.brain_id,
+                &anchor,
+                None,
+            )
+            .map_err(|_| Error::Policy)?;
+        let peers =
+            ExchangePeers::from_snapshot(&snapshot, root, &identity).map_err(|_| Error::Policy)?;
+        if peers.bindings().len() != 1 {
+            return Err(Error::Policy);
+        }
+        let endpoints = peers
+            .bindings()
+            .iter()
+            .map(|peer| (peer.transport_device_id.clone(), endpoint))
+            .collect();
+        let policy = ExchangeConfigPolicy::new(
+            &peers,
+            ports,
+            std::net::SocketAddrV4::new(ip, ports.sync),
+            endpoints,
+        )
+        .map_err(|_| Error::Policy)?;
+        let worker = Worker::start_exchange(helper_root.clone(), &policy, &permit)?;
+        drop(snapshot);
+        permit.finish(None);
+        if worker.status_reader().try_transport_device_id()? != identity {
+            return Err(Error::Engine);
+        }
+        if attempt == 1 {
+            admission
+                .exclusive(root, Instant::now() + BUDGET, false)
+                .map_err(|_| Error::Policy)?
+                .finish(Some(
+                    crate::runtime_admission::RuntimeHold::IncomingPolicyConflict,
+                ));
+            if worker.status_reader().try_transport_device_id().is_ok() {
+                return Err(Error::Policy);
+            }
+        }
+        match worker.close() {
+            Ok(()) => {}
+            Err(Error::Policy) if attempt == 1 => {}
+            Err(error) => return Err(error),
+        }
+        if helper_root
+            .join("transport.active")
+            .try_exists()
+            .map_err(|_| Error::Profile)?
+        {
+            return Err(Error::Cleanup);
+        }
+    }
+    println!("native_supervised_exchange_install_restart_revocation=passed");
+    Ok(())
 }
 
 fn loss_driver(root: &Path) -> Result<(), Error> {

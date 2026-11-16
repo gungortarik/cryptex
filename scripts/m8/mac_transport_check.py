@@ -1,5 +1,6 @@
 """Default-off signed native pairing fixture, with exact fixture-key cleanup."""
 import json
+import ipaddress
 from concurrent.futures import ThreadPoolExecutor
 import os
 import re
@@ -102,7 +103,19 @@ def check_identity(binary, root, run):
     return output + "\n" + "\n".join(outputs)
 
 
-def check_native_pairing(binary, root, run):
+EXCHANGE_MARKER = "native_supervised_exchange_install_restart_revocation=passed"
+
+
+def exchange_interface(output):
+    networks = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]
+    for candidate in re.findall(r"\binet ([0-9.]+)\b", output):
+        address = ipaddress.ip_address(candidate)
+        if any(address in network for network in networks):
+            return str(address)
+    raise PreflightError("exchange_fixture_private_interface_missing")
+
+
+def check_native_pairing(binary, root, run, *, exchange_ip=None):
     writer_stopped = False
     try:
         try:
@@ -114,6 +127,18 @@ def check_native_pairing(binary, root, run):
             raise
         if not all(marker in output.splitlines() for marker in MARKERS):
             raise PreflightError("native_managed_pairing_marker_missing")
+        if exchange_ip is not None:
+            writer_stopped = False
+            try:
+                exchange = run([binary.with_name("cryptexd"), "--m8-local-exchange-start-driver",
+                                (root / "responder").resolve(), exchange_ip], "supervised_native_exchange", 150)
+                writer_stopped = True
+            except PreflightError:
+                writer_stopped = True
+                raise
+            if EXCHANGE_MARKER not in exchange.splitlines():
+                raise PreflightError("native_exchange_ready_marker_missing")
+            print(EXCHANGE_MARKER)
     finally:
         # These are fresh CI-only roots. Never enumerate/adopt the login user's
         # other credentials, and never export keys or full transcripts.

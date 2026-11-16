@@ -273,6 +273,22 @@ fn journal_is_strict_bounded_profile_bound_and_recompiled_before_writes() {
 }
 
 #[test]
+fn committed_native_serialization_is_revalidated_without_reinstallation() {
+    with_policy(|policy, bootstrap| {
+        let mut files = completed(policy, bootstrap);
+        let previous_syncs = files.syncs;
+        let original = String::from_utf8(files.data[0].clone().unwrap()).unwrap();
+        files.data[0] = Some(original.replace("><", ">\n  <").into_bytes());
+        install(&mut files, policy).unwrap();
+        assert_eq!(files.writes, 0);
+        assert_eq!(files.syncs, previous_syncs + 1);
+        files.data[0] = Some(original.replace("sendreceive", "sendonly").into_bytes());
+        assert!(install(&mut files, policy).is_err());
+        assert_eq!(files.writes, 0);
+    });
+}
+
+#[test]
 fn stale_policy_from_other_signed_brain_refuses_committed_journal_without_writing() {
     with_policy(|policy, bootstrap| {
         let base = completed(policy, bootstrap);
