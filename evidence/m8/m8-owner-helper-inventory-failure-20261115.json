@@ -113,8 +113,8 @@
     "diagnostic": "inventory_unavailable"
   },
   "interpretation": "ObservedCommand.start calls inventory.require_empty before WindowProcess.start/Popen. Missing exit_code with default no-child finish fields identifies failure of initial inventory before pairing driver spawn. The three prior identity stages and their exact API-key cleanup commands succeeded. No independent helper shutdown acceptance; retained scratch is not reported cleaned.",
-  "cause": "Unknown libproc failure; original probe returns only code2 without stage/errno. Do not infer Keychain denial, password failure, product leak or successful absence.",
-  "next": "Read-only three-sample staged libproc diagnostic; no Cryptex launch, profile access or Keychain operation; do not repeat full transfer package until cause known.",
+  "cause": "Subsequent350ed69b diagnostic: three live process path queries failed ENOENT2; see m8-owner-helper-opaque-baseline-20261115.json. Not evidence of Keychain denial or product leak.",
+  "next": "Validate corrected pre-spawn opaque-instance observer in native CI and then owner package; preserve original failed receipt.",
   "diagnostic_followup": {
     "source": "ef28d58e726e438aed9f19fd19b1d51d71ad8100",
     "ci": 43767799632,
@@ -127,6 +127,6 @@
     "result": "MAC-KAPANIS-TANI-SONUC-*.zip",
     "package_validation": "all4 members, CRC, source bytes/hashes, executable modes and Python syntax checked",
     "behavior": "Probe refuses exactly as before; adds closed stage, errno and returned API size on refusal. Diagnostic performs only compile and three queries with unused targets; aggregate counts only. No application/key/profile operations.",
-    "owner_result": "pending"
+    "owner_result": "Received MAC-KAPANIS-TANI-SONUC-350ed69b.zip; three path/ENOENT2 failures; linked followup evidence"
   }
 }

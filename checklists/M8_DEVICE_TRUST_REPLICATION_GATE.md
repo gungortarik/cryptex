@@ -1,5 +1,16 @@
 # M8 completion ledger
 
+Latest350ed69b diagnostic identifies live-process path/ENOENT(2). Corrected
+observer f7e5c00 freezes only pre-spawn opaque PID/births; new/tracked/reused
+opaque births and other errors still fail. Native CI43777096942 PASSED32
+window/inventory tests, including real libproc failure injection and orphan
+negatives, plus2 product-key and3 CI credential tests. Independent source review
+has no actionable fixture finding. Native application/export43777097110 PASSED
+Mac and Windows, including the actual exported transport launcher. New owner
+packet Cryptex-Mac-Kapanis-f7e5c00.zip is ready, expiry2026-11-16T23:54:15Z;
+owner independent shutdown and real Windows-Mac durable sync remain OPEN.
+[Correction scope and receipt](../evidence/m8/m8-owner-helper-opaque-baseline-20261115.json).
+
 Latest owner helper result f6e60eb8 FAILED at inventory_unavailable before pairing
 driver spawn. Earlier native CI stays passed; real-owner independent shutdown is
 not accepted. Three identity/refusal stages passed, but the full result did not.

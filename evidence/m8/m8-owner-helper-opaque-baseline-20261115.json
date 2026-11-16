@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "status": "native_passed_corrected_owner_package_ready_receipt_pending",
+  "receipt": "MAC-KAPANIS-TANI-SONUC-350ed69b.zip",
+  "receipt_sha256": "b393ee85ca485b42ebf4b0885462929cb1fba7388c9590b4d57222f5a72846a3",
+  "result_json_sha256": "1d3aa400a21e2b77708b15b695bc99aaf1138ef3bc4552d43e7119c72cd5366b",
+  "receipt_crc": "passed",
+  "observation": {
+    "schema": 1,
+    "scope": "read-only libproc diagnosis; no application/profile/Keychain operations",
+    "outcome": "diagnostic_collected",
+    "source": "ef28d58e726e438aed9f19fd19b1d51d71ad8100",
+    "compile": {
+      "exit_code": 0,
+      "timed_out": false,
+      "output_limited": false,
+      "pipe_failed": false
+    },
+    "samples": [
+      {
+        "exit_code": 2,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "stage": "path",
+        "os_error": 2,
+        "returned_size": 0
+      },
+      {
+        "exit_code": 2,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "stage": "path",
+        "os_error": 2,
+        "returned_size": 0
+      },
+      {
+        "exit_code": 2,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "stage": "path",
+        "os_error": 2,
+        "returned_size": 0
+      }
+    ]
+  },
+  "interpretation": "All three read-only probes failed at live process executable path query with ENOENT (2), returned_size0. This is not evidence of Keychain rejection, bad password, or a surviving Cryptex helper.",
+  "correction_source": "f7e5c00d94e72c2907f21809248ae6609d7ab764",
+  "correction": "Stable live ENOENT instances remain opaque role4. Freeze only their PID+kernel-birth identities before Popen, with a second census that cannot expand the set. New, reused-birth, or previously tracked opaque instances refuse; other errors refuse. Never signal discovered PIDs.",
+  "limits": [
+    "Bounded observation of newly launched test descendants, not atomic kernel attestation or no-future-respawn proof.",
+    "Preexisting opaque instances are not identified as unrelated executable images; they cannot be children born from the later test spawn.",
+    "No product authorization, canonical writer, Keychain permission or profile cleanup relaxation.",
+    "Owner shutdown acceptance and real Windows-Mac durable sync remain open."
+  ],
+  "local_validation": {
+    "window_inventory": "32 tests,22 passed10 Darwin skips",
+    "package": "5 passed",
+    "transport": "28 passed",
+    "git_diff_check": "passed"
+  },
+  "native_collector_run": 43777096942,
+  "native_application_run": 43777097110,
+  "product_source": "f7fe55f5390af4840c6e67ceb4ef448d88d49b27",
+  "native_status": "passed: scoped Mac and Windows startup/application export at collector f7e5c00 with pinned unchanged product f7fe55f",
+  "review": {
+    "result": "No actionable fixture finding",
+    "mode": "Independent read-only source review; no tests executed",
+    "qualification": "Reported frozen pre-spawn opaque instances are excluded from bounded newly launched descendant absence; their executable images and unobserved exec intervals remain unknown."
+  },
+  "owner_packet": {
+    "name": "Cryptex-Mac-Kapanis-f7e5c00.zip",
+    "sha256": "6c5e621e1aca6d18404c3af602265d819f9f6c3c2897e79c41be3612fc1fe314",
+    "bytes": 24252850,
+    "members": 20,
+    "architecture": "arm64",
+    "minimum_macos": "26",
+    "expires_utc": "2026-11-16T23:54:15Z",
+    "entry": "MAC-AKTARIM.command",
+    "result": "MAC-AKTARIM-SONUC-*.zip",
+    "validation": "Byte-identical to native-tested exported artifact; CRC,20 regular safe members,manifest sizes/hashes,all8 collector Git blobs at f7e5c00,Python syntax and executable modes verified. One Windows checkout helper used CRLF; exact LF Git blob matches artifact.",
+    "owner_result": "pending"
+  },
+  "native_collector_result": "passed:32 window/inventory tests with no skips,2 product-key helper tests,3 CI credential tests",
+  "native_collector_job": 133005750326,
+  "native_application_jobs": {
+    "mac": 133005751337,
+    "windows": 133005751071
+  },
+  "native_application_markers": [
+    "exported_transport_launcher=passed",
+    "exported_durable_launcher=passed",
+    "exported_combined_loss_launcher=passed",
+    "development_native_provisioned_existing_profile_restart_and_refusals=passed",
+    "ci_credential_preferences_restored_and_keychain_removed=passed",
+    "local_certificate_fixture_cleanup=passed"
+  ],
+  "native_ignored_scope": "Six explicitly ignored Mac approval/Desktop tests are not claimed passed; real owner receipt and network sync acceptance remain separate."
+}

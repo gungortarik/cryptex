@@ -1,6 +1,36 @@
 # 34 — Current Implementation Handoff
 
-## Owner helper observer baseline failure; read-only diagnostic ready — November15
+## Owner path-query correction passed; new one-click package ready — November15
+
+Returned MAC-KAPANIS-TANI-SONUC-350ed69b.zip has three identical path/ENOENT(2)
+failures, not a Keychain or product-leak diagnosis. Correction f7e5c00 preserves
+stable live ENOENT identities as opaque rows, freezes their PID/kernel-birth set
+before Popen, and rejects new/reused/tracked opaque instances. A second baseline
+census cannot enlarge the exception set. Other libproc errors still fail. No
+discovered PID is signalled. This proves bounded absence of newly launched test
+descendants, excluding the reported pre-spawn opaque count; it does not identify
+those preexisting executable images or attest unobserved exec/respawn intervals.
+
+Native collector CI43777096942 PASSED32 tests, including actual Darwin ENOENT
+and EPERM injection, new opaque child refusal, separate-session helper shutdown
+and surviving reparented helper refusal;2 product-key helper and3 CI credential
+tests also pass. Independent read-only source review found no concrete current
+fixture false-clean/cleanup bypass; reviewer did not execute tests. Scoped
+application/export CI43777097110 PASSED Mac and Windows, using unchanged product
+f7fe55f and corrected collector f7e5c00. Completed logs confirm the exported
+transport launcher and signed development provisioned-profile restart/refusals.
+
+New owner packet: Cryptex-Mac-Kapanis-f7e5c00.zip (24,252,850 bytes), SHA256
+6c5e621e1aca6d18404c3af602265d819f9f6c3c2897e79c41be3612fc1fe314.
+Apple Silicon/macOS26+, expires2026-11-16T23:54:15Z (18:54 New York). Open in
+a fresh folder on Mac, double-click MAC-AKTARIM.command and return the resulting
+MAC-AKTARIM-SONUC-*.zip. Byte-identical to the native-tested artifact; CRC,
+20 regular members, manifest sizes/hashes, all8 collector files against committed
+f7e5c00 Git blobs (LF), executable modes and Python syntax verified. Owner
+acceptance and real Windows-Mac durable sync remain open.
+[Receipt](../evidence/m8/m8-owner-helper-opaque-baseline-20261115.json).
+
+## Earlier owner baseline failure and diagnostic handoff — November15
 
 Owner `MAC-AKTARIM-SONUC-f6e60eb8.zip` FAILED with inventory_unavailable, before
 the pairing driver was spawned. CRC/source/launcher hash match the delivered
@@ -9,7 +39,8 @@ cleanup commands pass; identity_restart_and_refusals_verified=true. Independent
 shutdown has no exit_code and the no-child default flags. Source order confirms
 ObservedCommand.start's initial inventory.require_empty precedes Popen. This is
 not independent shutdown acceptance, nor proof of a product leak/Keychain denial.
-The original probe returned code2 without the failing stage/errno; cause is unknown.
+The original probe returned code2 without the failing stage/errno; the returned
+diagnostic above subsequently identified path/ENOENT.
 The collector preserved its scratch as designed. Do not rerun the long transfer
 package or delete that scratch blindly. [Failure receipt](../evidence/m8/m8-owner-helper-inventory-failure-20261115.json).
 
