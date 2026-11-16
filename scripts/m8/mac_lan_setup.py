@@ -75,7 +75,8 @@ def extract_source(archive_path, destination, expected):
 
 
 def tool(name):
-    search = os.pathsep.join([os.environ.get('PATH', ''), str(Path.home()/'.cargo/bin'),
+    directories = [p for p in os.environ.get('PATH', '').split(os.pathsep) if Path(p).is_absolute()]
+    search = os.pathsep.join([*directories, str(Path.home()/'.cargo/bin'),
                               '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'])
     found = shutil.which(name, path=search)
     if not found:

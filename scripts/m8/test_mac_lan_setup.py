@@ -10,10 +10,21 @@ import unittest
 import zipfile
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent))
-from mac_lan_setup import public_certificate, source_members, setup, build_frontend, build_diagnostic
+from mac_lan_setup import public_certificate, source_members, setup, build_frontend, build_diagnostic, tool
 from mac_identity_preflight import PreflightError, CommandResult, run_bounded, checked
 
 class LanSetupTests(unittest.TestCase):
+    def test_tool_lookup_prefers_explicit_path_and_ignores_current_directory(self):
+        selected = str(Path.home()/'selected-tools')
+        with patch.dict(os.environ, PATH=os.pathsep.join(['', '.', selected])), \
+             patch('mac_lan_setup.shutil.which', return_value=None) as which:
+            with self.assertRaisesRegex(PreflightError, 'build_tool_missing_node'):
+                tool('node')
+        search = which.call_args.kwargs['path'].split(os.pathsep)
+        self.assertEqual(search[0], selected)
+        self.assertNotIn('', search)
+        self.assertNotIn('.', search)
+
     def test_tool_version_mismatch_stops_before_dependency_install(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
