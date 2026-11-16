@@ -162,6 +162,28 @@ class IdentityCleanupTests(unittest.TestCase):
 
 
 class PairingCleanupTests(unittest.TestCase):
+    def test_pairing_exchange_and_cleanup_share_one_resolved_fixture_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            self.fixture(root)
+            calls = []
+
+            def run(args, stage, timeout=30):
+                calls.append(args)
+                if args[1] == "--m8-local-transport-fixture-key-cleanup":
+                    return "mac_transport_fixture_key_cleanup=passed"
+                if args[1] == "--m8-local-exchange-start-driver":
+                    return "\n".join((EXCHANGE_MARKER, REPLACEMENT_MARKER, PAUSE_MARKER, SETTINGS_MARKER))
+                return "\n".join(MARKERS)
+
+            check_native_pairing(Path("signed-desktop"), root / "uncreated" / "..", run,
+                                 exchange_ip="192.168.64.2")
+            self.assertEqual(calls[0][2], root)
+            self.assertEqual(calls[1][2], root / "initiator")
+            cleanups = [call[2] for call in calls if call[1] == "--m8-local-transport-fixture-key-cleanup"]
+            self.assertEqual(cleanups, [root / role / "managed-transport" for role in ("initiator", "responder")])
+            self.assertEqual(len(calls), 6)
+
     def test_loss_evidence_requires_the_exact_driver_and_private_group(self):
         valid = b"20 10 20 S\n21 20 20 S\n22 21 20 S\n"
         loss_group_snapshot(valid, 10, 20)

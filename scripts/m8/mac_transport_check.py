@@ -120,6 +120,9 @@ def exchange_interface(output):
 
 
 def check_native_pairing(binary, root, run, *, exchange_ip=None):
+    # Resolve this fresh backend-owned fixture before its first persisted binding.
+    # macOS /var and /private/var aliases must not change between driver stages.
+    root = root.resolve()
     writer_stopped = False
     try:
         try:
