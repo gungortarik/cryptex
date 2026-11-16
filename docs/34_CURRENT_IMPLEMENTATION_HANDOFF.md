@@ -1,6 +1,28 @@
 # 34 — Current Implementation Handoff
 
-## Owner path-query correction passed; new one-click package ready — November15
+## Owner helper shutdown accepted; continue product network integration — November15
+
+Returned MAC-AKTARIM-SONUC-c2026149.zip PASSED. CRC, product f7fe55f,
+committed launcher hash, all five acceptance flags and all12 completed command
+diagnostics were checked. The corrected observer reports natural exit0, actual
+helper topology, zero live same-group descendants, independent captured-instance
+absence BEFORE collector cleanup and quiet samples afterward. No timeout or
+observer failure. Pairing/reopen, daemon-loss/unresolved-state refusal and exact
+fixture credential/runtime cleanup pass. [Owner receipt](../evidence/m8/m8-owner-helper-shutdown-accepted-20261115.json).
+
+One opaque PID/kernel-birth existed before spawn and was excluded by the frozen
+baseline. Its executable identity remains unknown and it is not claimed stopped.
+This is bounded sampling of this newly launched local fixture, not atomic process
+attestation, future-respawn prevention or network delivery. The result is an
+owner-supplied receipt; its launcher hash does not independently attest every
+helper file. Do not repeat the successful unchanged owner packet.
+
+The bounded owner helper gate is complete. M8 remains OPEN: next is the already
+authorized trust-derived peer/exchange configuration and daemon sealed-segment
+export below, then native review/CI and one coordinated Windows-Mac LAN packet.
+No new owner action is needed until that packet is ready.
+
+## Corrected observer implementation and delivered package — November15
 
 Returned MAC-KAPANIS-TANI-SONUC-350ed69b.zip has three identical path/ENOENT(2)
 failures, not a Keychain or product-leak diagnosis. Correction f7e5c00 preserves
@@ -27,7 +49,8 @@ a fresh folder on Mac, double-click MAC-AKTARIM.command and return the resulting
 MAC-AKTARIM-SONUC-*.zip. Byte-identical to the native-tested artifact; CRC,
 20 regular members, manifest sizes/hashes, all8 collector files against committed
 f7e5c00 Git blobs (LF), executable modes and Python syntax verified. Owner
-acceptance and real Windows-Mac durable sync remain open.
+acceptance subsequently passed as recorded above; real Windows-Mac durable
+sync remains open.
 [Receipt](../evidence/m8/m8-owner-helper-opaque-baseline-20261115.json).
 
 ## Earlier owner baseline failure and diagnostic handoff — November15
@@ -111,7 +134,8 @@ one coordinated fresh-profile Windows/Mac LAN packet. Do not reuse the Windows
 TransferTestPolicy as product authority, share canonical/events, copy segments by
 hand as network evidence or label Syncthing completion remote canonical durability.
 No new architecture choice or repeat of already accepted policy is requested.
-M8 remains OPEN; owner helper receipt and product network integration are separate.
+M8 remains OPEN; the owner helper receipt above is accepted, while product
+network integration and real-device network acceptance remain separate open gates.
 
 ## Owner normal default-profile opening passed — November15
 

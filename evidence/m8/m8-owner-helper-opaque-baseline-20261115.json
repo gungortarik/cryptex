@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "native_passed_corrected_owner_package_ready_receipt_pending",
+  "status": "native_and_owner_bounded_helper_shutdown_passed",
   "receipt": "MAC-KAPANIS-TANI-SONUC-350ed69b.zip",
   "receipt_sha256": "b393ee85ca485b42ebf4b0885462929cb1fba7388c9590b4d57222f5a72846a3",
   "result_json_sha256": "1d3aa400a21e2b77708b15b695bc99aaf1138ef3bc4552d43e7119c72cd5366b",
@@ -81,7 +81,7 @@
     "entry": "MAC-AKTARIM.command",
     "result": "MAC-AKTARIM-SONUC-*.zip",
     "validation": "Byte-identical to native-tested exported artifact; CRC,20 regular safe members,manifest sizes/hashes,all8 collector Git blobs at f7e5c00,Python syntax and executable modes verified. One Windows checkout helper used CRLF; exact LF Git blob matches artifact.",
-    "owner_result": "pending"
+    "owner_result": "Passed MAC-AKTARIM-SONUC-c2026149.zip; see m8-owner-helper-shutdown-accepted-20261115.json"
   },
   "native_collector_result": "passed:32 window/inventory tests with no skips,2 product-key helper tests,3 CI credential tests",
   "native_collector_job": 133005750326,

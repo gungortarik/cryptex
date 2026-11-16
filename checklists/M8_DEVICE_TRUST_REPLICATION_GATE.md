@@ -1,6 +1,16 @@
 # M8 completion ledger
 
-Latest350ed69b diagnostic identifies live-process path/ENOENT(2). Corrected
+Latest owner c2026149 PASSED the bounded independent helper shutdown gate:
+natural exit0, helper topology observed, independent absence before collector
+cleanup, quiet afterward, all12 command diagnostics successful and all five
+pairing/reopen/refusal/cleanup flags true. One frozen pre-spawn opaque instance
+is excluded; its executable identity is unknown and it is not claimed stopped.
+CRC/source/launcher and acceptance fields verified. Do not repeat this unchanged
+successful packet. Product peer/folder policy, sealed export and real Windows-Mac
+durable network acceptance remain OPEN; M8 is not complete.
+[Owner acceptance](../evidence/m8/m8-owner-helper-shutdown-accepted-20261115.json).
+
+Earlier350ed69b diagnostic identified live-process path/ENOENT(2). Corrected
 observer f7e5c00 freezes only pre-spawn opaque PID/births; new/tracked/reused
 opaque births and other errors still fail. Native CI43777096942 PASSED32
 window/inventory tests, including real libproc failure injection and orphan
@@ -8,12 +18,14 @@ negatives, plus2 product-key and3 CI credential tests. Independent source review
 has no actionable fixture finding. Native application/export43777097110 PASSED
 Mac and Windows, including the actual exported transport launcher. New owner
 packet Cryptex-Mac-Kapanis-f7e5c00.zip is ready, expiry2026-11-16T23:54:15Z;
-owner independent shutdown and real Windows-Mac durable sync remain OPEN.
+owner independent shutdown subsequently passed above. Real Windows-Mac durable
+sync remains OPEN.
 [Correction scope and receipt](../evidence/m8/m8-owner-helper-opaque-baseline-20261115.json).
 
-Latest owner helper result f6e60eb8 FAILED at inventory_unavailable before pairing
+Earlier owner helper result f6e60eb8 FAILED at inventory_unavailable before pairing
 driver spawn. Earlier native CI stays passed; real-owner independent shutdown is
-not accepted. Three identity/refusal stages passed, but the full result did not.
+not accepted by that failed receipt (superseded by c2026149 above). Three
+identity/refusal stages passed, but the full result did not.
 Read-only diagnostic ef28d58 passes native CI43767799632 and is ready for the
 owner. It adds fixed stage/errno metadata without relaxing process visibility or
 launching Cryptex. See [failure and handoff](../evidence/m8/m8-owner-helper-inventory-failure-20261115.json).

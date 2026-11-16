@@ -1,0 +1,205 @@
+{
+  "schema": 1,
+  "status": "owner_bounded_helper_shutdown_accepted",
+  "receipt": "MAC-AKTARIM-SONUC-c2026149.zip",
+  "receipt_sha256": "c990b6a907a2d698ec3ce98998bfd44830c2a48debbafc960111a70e64cac24e",
+  "result_json_sha256": "ef792e30ee861f021cf675e448785a8900f26d1979ea9fd46349954fbcd06fa6",
+  "validation": "Single bounded result.json,CRC,product source,exact committed launcher hash,all five acceptance flags,shutdown_ok and all12 completed command diagnostics verified.",
+  "product_source": "f7fe55f5390af4840c6e67ceb4ef448d88d49b27",
+  "collector_helper_source": "f7e5c00d94e72c2907f21809248ae6609d7ab764",
+  "package_sha256": "6c5e621e1aca6d18404c3af602265d819f9f6c3c2897e79c41be3612fc1fe314",
+  "observation": {
+    "source": "f7fe55f5390af4840c6e67ceb4ef448d88d49b27",
+    "outcome": "passed",
+    "collector_sha256": "348808e09c49bdf04aaa78a65827585cd11376204996fb99514268fedbe964cd",
+    "scope": "isolated real local engines and signed native pairing; not cross-device sync",
+    "descriptor_soft_limit": 256,
+    "diagnostic_schema": 2,
+    "command_diagnostics": [
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 8406,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_clean_stop_ack=passed",
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_helper_loss_cleanup=passed",
+          "mac_transport_missing_key_no_regeneration=passed",
+          "mac_transport_owned_identity_restart=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 235,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 7932,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_mutation_batch_receipts_cases_5=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 248,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "real_managed_mac_transport_identity",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 9339,
+        "timeout_seconds": 180,
+        "codes": [],
+        "markers": [
+          "mac_transport_foreign_socket_no_credentials=passed",
+          "mac_transport_mutation_batch_profile_cases_6=passed"
+        ],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 236,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "cleanup_native_pairing_device_key",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 28,
+        "timeout_seconds": 30,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 253,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "cleanup_native_pairing_device_key",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 14,
+        "timeout_seconds": 30,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 245,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "native_transport_unresolved_restart",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 67,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      },
+      {
+        "stage": "identity_key_cleanup_fenced",
+        "exit_code": 0,
+        "timed_out": false,
+        "output_limited": false,
+        "pipe_failed": false,
+        "elapsed_ms": 262,
+        "timeout_seconds": 45,
+        "codes": [],
+        "markers": [],
+        "startup_failures": []
+      }
+    ],
+    "identity_restart_and_refusals_verified": true,
+    "independent_shutdown": {
+      "exit_code": 0,
+      "natural_exit": true,
+      "same_group_live_descendants_before_cleanup": 0,
+      "group_reaped": true,
+      "timed_out": false,
+      "output_limited": false,
+      "observer_failed": false,
+      "sampled_daemon_count": 7,
+      "progress": [],
+      "independent_helper_topology_observed": true,
+      "pre_spawn_opaque_instances": 1,
+      "user_wide_absent_before_group_cleanup": true,
+      "user_wide_quiet_after_exit": true
+    },
+    "native_pairing_and_reopen_verified": true,
+    "daemon_loss_and_unresolved_refusal_verified": true,
+    "credential_cleanup_verified": true,
+    "runtime_cleanup_verified": true
+  },
+  "interpretation": "Owner-supplied receipt passes bounded signed local pairing/import/reopen, parent-loss/unresolved-state refusal, natural driver exit0, observed helper topology and captured-instance absence before collector cleanup plus three later quiet samples. Exact fixture credentials and runtime cleanup passed.",
+  "limits": [
+    "One live opaque PID/birth existed before spawn and was excluded by the frozen baseline. Its executable identity is unknown; it is not claimed terminated.",
+    "Repeated process sampling is bounded observation, not atomic attestation or proof against entirely unobserved exec/respawn.",
+    "Receipt is owner-supplied; source and launcher match the delivered package, but the receipt does not hash each helper independently.",
+    "Local isolated fixture only. No real Windows-Mac network transfer or M8 completion is claimed."
+  ],
+  "next": "Implement the already authorized trust-derived peer/folder policy and daemon sealed exporter before one coordinated Windows-Mac durable-sync acceptance package. Do not repeat this successful unchanged owner test."
+}
