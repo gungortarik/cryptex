@@ -30,7 +30,6 @@ def verify_payload(payload,pins):
 def setup(payload,base,session,report,runner=run):
     """base is supplied by normal entry; tests use a fresh disposable CI base."""
     if session!=SESSION: raise Refused('session_mismatch')
-    note=('Cryptex LAN acceptance '+session+': Windows first public note.').encode()
     with Pins() as pins:
         verify_payload(payload,pins)
         pins.chain(base)
@@ -46,25 +45,29 @@ def setup(payload,base,session,report,runner=run):
             with (app/name).open('xb') as out: out.write((payload/name).read_bytes())
         verify_payload(app,pins)
         (root/'pilot-runtime.marker').write_bytes(b'm0-native-desktop-runtime-v1\n')
-        daemon=app/'cryptexd.exe'
-        def step(label,args,marker,stdin=b'',timeout=60):
-            report['failed_stage']=label
-            print('Cryptex: '+label,flush=True)
-            output=runner([daemon,*args],timeout,input_data=stdin)
-            if marker and marker not in output.splitlines(): raise Refused('receipt_marker_missing')
-        step('public_brain_create',['pilot-fixture','lan-profile-v1','--runtime-root',root,'--brain-id',session,
-                                   '--confirm-isolated-pilot'],'lan_profile_fixture=ready')
-        step('local_key_enrollment',['identity','enroll-local','--runtime-root',root,'--environment','dev'],None)
-        step('first_note_capture',['identity','first-note-local-dev','--runtime-root',root,
-                                  '--confirm-public-first-note-stdin'],'first_note=committed_public',note)
-        report['first_note_committed']=True
-        report['first_note_sha256']=hashlib.sha256(note).hexdigest()
-        step('transport_enrollment',['transport','enroll-local-dev','--runtime-root',root,'--confirm-local-only',
-                                     '--package',app/'transport'],'transport_enrollment=local_only',timeout=180)
-        report['transport_enrolled_local_only']=True
-        report['persistent_profile_preserved']=True
+        enroll(root,app,report,runner)
         # Ordinary no-argument opening; no pilot override, fixture or path argument.
         return app
+
+def enroll(root,app,report,runner=run):
+    note=('Cryptex LAN acceptance '+SESSION+': Windows first public note.').encode()
+    daemon=app/'cryptexd.exe'
+    def step(label,args,marker,stdin=b'',timeout=60):
+        report['failed_stage']=label
+        print('Cryptex: '+label,flush=True)
+        output=runner([daemon,*args],timeout,input_data=stdin)
+        if marker and marker not in output.splitlines(): raise Refused('receipt_marker_missing')
+    step('public_brain_create',['pilot-fixture','lan-profile-v1','--runtime-root',root,'--brain-id',SESSION,
+                               '--confirm-isolated-pilot'],'lan_profile_fixture=ready')
+    step('local_key_enrollment',['identity','enroll-local','--runtime-root',root,'--environment','dev'],None)
+    step('first_note_capture',['identity','first-note-local-dev','--runtime-root',root,
+                              '--confirm-public-first-note-stdin'],'first_note=committed_public',note)
+    report['first_note_committed']=True
+    report['first_note_sha256']=hashlib.sha256(note).hexdigest()
+    step('transport_enrollment',['transport','enroll-local-dev','--runtime-root',root,'--confirm-local-only',
+                                 '--package',app/'transport'],'transport_enrollment=local_only',timeout=180)
+    report['transport_enrolled_local_only']=True
+    report['persistent_profile_preserved']=True
 
 def main():
     report=dict(schema=1,purpose='cryptex-windows-persistent-lan-setup',platform='Windows',run_id=SESSION,

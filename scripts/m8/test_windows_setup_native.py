@@ -11,6 +11,29 @@ from windows_setup_native import Pins,Refused,run
 
 @unittest.skipUnless(os.name=='nt','Windows native handles/jobs')
 class WindowsSetupNativeTests(unittest.TestCase):
+    def test_createprocess_error_is_captured_before_cleanup(self):
+        def refused(*args):
+            native.c.set_last_error(4551)
+            return False
+        with patch.object(native,'create_process',side_effect=refused):
+            with self.assertRaises(Refused) as outcome:
+                run([sys.executable,'--version'])
+        self.assertEqual(str(outcome.exception),'process_create_failed')
+        self.assertEqual(outcome.exception.winerror,4551)
+    def test_actual_invalid_image_reports_numeric_windows_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            image=Path(temp)/'invalid.exe';image.write_bytes(b'not executable')
+            si=native.SI();si.cb=native.c.sizeof(si);pi=native.PI()
+            command=native.c.create_unicode_buffer('"'+str(image)+'"')
+            self.assertFalse(native.create_process(str(image),command,None,None,False,0x08000004,
+                                                  None,None,native.c.byref(si),native.c.byref(pi)))
+            expected=native.c.get_last_error()
+            with self.assertRaises(Refused) as outcome:run([image])
+            self.assertEqual(str(outcome.exception),'process_create_failed')
+            # Win32 can classify invalid bytes as bad format or machine mismatch;
+            # preserve exactly the same numeric result as direct CreateProcess.
+            self.assertIn(expected,(193,216))
+            self.assertEqual(outcome.exception.winerror,expected)
     def test_output_stdin_and_exit_refusal(self):
         self.assertEqual(run([sys.executable,'-c','import sys;print(sys.stdin.read())'],input_data=b'public'), 'public\r\n')
         with self.assertRaises(Refused): run([sys.executable,'-c','raise SystemExit(2)'])

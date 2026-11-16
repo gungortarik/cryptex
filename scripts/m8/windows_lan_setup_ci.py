@@ -30,6 +30,23 @@ if __name__=='__main__':
     else: raise AssertionError('existing_profile_adopted')
     assert events()==before
     assert not list(runtime.rglob('transport.active'))
+    # Reproduce the owner's pre-execution refusal, then reuse that SAME empty
+    # namespace through the targeted recovery path and the real product daemon.
+    from windows_lan_recovery import recover
+    retry_base=root/'recovery-appdata';retry_base.mkdir()
+    def refused_launch(*args,**kwargs): raise Refused('process_create_failed',winerror=4551)
+    try: setup(package,retry_base,SESSION,{},refused_launch)
+    except Refused as error: assert error.winerror==4551
+    else: raise AssertionError('injected_launch_not_refused')
+    retained=list((retry_base/'Cryptex-Dev/lan-apps').iterdir())
+    assert len(retained)==1
+    recovery_report={}
+    recover(retry_base,recovery_report,lambda:True,app_name=retained[0].name)
+    assert all(recovery_report[k] for k in ('launch_probe_passed','profile_preserved_after_probe',
+               'first_note_committed','transport_enrolled_local_only','persistent_profile_preserved'))
+    try:recover(retry_base,{},lambda:True,app_name=retained[0].name)
+    except Refused as error: assert str(error)=='profile_not_marker_only'
+    else:raise AssertionError('nonempty_recovery_adopted')
     # Delete successful disposable state while its owning standard-user SID
     # still exists; the elevated parent cannot traverse owner-only canonical ACLs.
     temporary=Path(tempfile.gettempdir()).resolve(strict=True)
@@ -43,4 +60,5 @@ if __name__=='__main__':
         function(path)
     shutil.rmtree(root,onexc=readonly_retry)
     print('windows_actual_persistent_enrollment_and_reuse_refusal=passed')
+    print('windows_actual_marker_only_recovery_and_nonempty_refusal=passed')
     print('normal_window_restart_and_network=not_tested')

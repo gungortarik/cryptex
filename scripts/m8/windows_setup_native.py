@@ -7,7 +7,10 @@ import subprocess
 import threading
 import time
 
-class Refused(Exception): pass
+class Refused(Exception):
+    def __init__(self, code, *, winerror=None):
+        super().__init__(code)
+        self.winerror = winerror
 
 if os.name == 'nt':
     k = c.WinDLL('kernel32', use_last_error=True)
@@ -123,7 +126,8 @@ def run(args,timeout=60,input_data=b''):
         env['PATH']=str(Path(os.environ['SYSTEMROOT'])/'System32')
         block=c.create_unicode_buffer('\0'.join(n+'='+v for n,v in sorted(env.items()))+'\0\0')
         if not create_process(str(args[0]),command,None,None,True,0x08000404,block,None,c.byref(si),c.byref(pi)):
-            raise Refused('process_create_failed')
+            # Capture before cleanup changes the thread-local Win32 error slot.
+            raise Refused('process_create_failed', winerror=c.get_last_error())
         if not assign(job,pi.process): raise Refused('job_assign_failed')
         assigned=True
         def read_output():
