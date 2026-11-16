@@ -53,8 +53,12 @@ export function connectionUpdate(view, paused, listen, addresses) {
 }
 export function connectionMessage(view) {
   if (view.error === "local_restricted") return "This device is retired or restricted. Sync is unavailable; retained local history remains subject to its verified access policy.";
+  if (view.state === "attention") {
+    const code = errors.has(view.error) ? ` (${view.error})` : "";
+    return `Connection needs attention${code}. Local settings or device authority could not be verified.`;
+  }
   return ({ not_enrolled: "This device has no enrolled connection profile yet.", paused: "Sync paused. Your local memory remains available.",
     address_needed: "Add a LAN address for this device and each trusted device to connect.", applying: "Applying connection settings…",
     ready_locally: "Connection ready on this device. Remote durable storage has not been verified.",
-    attention: "Connection needs attention. Local settings or device authority could not be verified." })[view.state];
+    })[view.state];
 }

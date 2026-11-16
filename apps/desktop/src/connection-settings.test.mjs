@@ -28,6 +28,16 @@ test("local readiness never claims remote durable storage", () => {
   assert.match(connectionMessage({...view(),state:"ready_locally"}),/Remote durable storage has not been verified/);
 });
 
+test("attention shows only allowlisted diagnostic codes, never raw service output", () => {
+  for (const error of ["held", "authority", "start", "shutdown", "storage", "pending_settings"]) {
+    assert.match(connectionMessage({...view(),state:"attention",error}),new RegExp(`\\(${error}\\)`));
+  }
+  for (const error of [null,"secret raw error C:/private",{message:"secret"}]) {
+    assert.equal(connectionMessage({...view(),state:"attention",error}),
+      "Connection needs attention. Local settings or device authority could not be verified.");
+  }
+});
+
 test("opaque case-sensitive canonical IDs are preserved", () => {
   const v = view();
   v.devices = ["Device-A","device-a"].map(deviceId => ({deviceId,transportId:transport,endpoint:null}));
