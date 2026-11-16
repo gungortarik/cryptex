@@ -1,5 +1,44 @@
 # 34 — Current Implementation Handoff
 
+## Owner Mac setup stopped before profile creation — November 16
+
+Owner receipt `ESITLEME-KURULUM-SONUC-Darwin-4bf8914127a8.zip` matches source
+755a5d7 and the expected acceptance session. ZIP SHA256 is
+`d5735003dd6ac7098cbe799e04e9ae9d8db9d692f57b263132708ec4975039cc`.
+The bounded reader accepts its shape and bindings. It reports
+`refused_or_incomplete`, stage `frontend_dependencies`, error
+`frontend_dependencies_failed`. Public signing-certificate selection succeeded,
+but the packet never reached product build/sign completion, fresh normal profile
+creation, first capture or transport enrollment. No setup success is claimed.
+The old receipt has no stderr/version detail, so the exact owner-host failure
+cause cannot be determined from this receipt alone.
+
+Source inspection found a launcher defect: the script passed pnpm's resolved
+executable to Node as JavaScript, which fails for shell/native pnpm launchers.
+899efb1 executes pnpm directly, probes exact repository-pinned Node/pnpm versions
+before dependency install, and reports only allowlisted build error tokens,
+exit/timeout flags and numeric tool versions. Raw output/paths/registry secrets
+are never exported.41619fd prioritizes explicit absolute PATH entries and drops
+empty/relative entries. Tool installation and global machine settings are not
+changed. A version mismatch now refuses with a specific diagnostic.
+
+CI43914044872 passed the scoped Mac/Windows collector/tool suites at4b349ca,
+including actual pinned dependency installation and frontend build through the
+new setup function. Final41619fd passed CI43914162608 on both targets, including
+`actual_frontend_setup_launcher=passed` on Mac. Regression tests
+cover a real POSIX shell launcher, rejection of the old Node-as-launcher form,
+version mismatch before installation, safe diagnostic redaction and receipt
+field rejection. Product Rust/frontend code remains identical to755a5d7, whose
+native startup/enrollment validation remains recorded below.
+
+Refreshed `Cryptex-Mac-Esitleme-Kurulum-41619fd.zip` is in Downloads; exact source
+archive/member readback passed. ZIP SHA256:
+`9bc948266b6f4cbe530beb8fd05afd6aa7722a71ed838c2b25919a145758a67b`.
+Next: owner runs that refreshed one-click Mac package; inspect the new receipt.
+The failed run's private build cache may remain; do not delete/adopt any profile
+or Keychain item for a retry. The packet rechecks normal-profile absence before
+any creation. Real pairing and Windows–Mac delivery remain unverified.
+
 ## Persistent LAN enrollment packet — November 16, Mac/Windows startup CI passed
 
 The owner confirmed Rust/Cargo and Node remain installed on their own Mac.
