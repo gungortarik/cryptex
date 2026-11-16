@@ -67,6 +67,13 @@ function Assert-CompleteSuite([int]$Code,[string]$Stdout,[int]$Count,[bool]$NoIg
     if([int]$Matches[3] -ne $Filtered){throw 'Unexpected excluded test inventory.'}
     if($NoIgnored -and [int]$Matches[2] -ne 0){throw 'Startup suite must execute every test, including the endpoint fixture.'}
 }
+if($p.PSObject.Properties['lan_setup_only'] -and $p.lan_setup_only) {
+    & $p.python -B (Join-Path $p.workspace 'scripts/m8/windows_lan_setup_ci.py') $p.lan_artifact
+    if($LASTEXITCODE -ne 0){throw 'Windows LAN setup CI failed.'}
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=1} | ConvertTo-Json |
+        Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
+    exit 0
+}
 $suites=0
 $testArguments=''
 $startupOnly=[bool]($p.PSObject.Properties['desktop_startup_only'] -and $p.desktop_startup_only)

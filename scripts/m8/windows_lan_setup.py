@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import uuid
 import zipfile
+import ctypes
 from windows_setup_native import Pins, Refused, run
 
 SESSION='b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4'
@@ -73,6 +74,7 @@ def main():
     package=Path(__file__).resolve().parent
     try:
         if os.name!='nt' or not os.environ.get('LOCALAPPDATA'): raise Refused('windows_required')
+        if ctypes.windll.shell32.IsUserAnAdmin(): raise Refused('standard_user_required')
         plan=json.loads((package/'setup.json').read_text(encoding='utf-8'))
         if plan['run_id']!=SESSION or plan['product_source']!=PRODUCT: raise Refused('package_binding')
         report['source_commit']=plan['source_commit']

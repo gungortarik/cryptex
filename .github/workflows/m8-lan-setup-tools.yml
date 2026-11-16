@@ -44,7 +44,7 @@ jobs:
           path: ${{ runner.temp }}/lan-product
       - name: Exercise actual Windows persistent enrollment and duplicate refusal
         if: runner.os == 'Windows'
-        run: python -B scripts/m8/windows_lan_setup_ci.py "${{ runner.temp }}/lan-product"
+        run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -LanSetupOnly -LanArtifact "${{ runner.temp }}/lan-product"
       - name: Execute actual pinned frontend tools through the Mac setup function
         if: runner.os == 'macOS'
         shell: bash

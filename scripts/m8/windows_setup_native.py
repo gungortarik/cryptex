@@ -42,16 +42,37 @@ if os.name == 'nt':
     exit_code=api('GetExitCodeProcess',[w.HANDLE,c.POINTER(w.DWORD)])
     terminate_process=api('TerminateProcess',[w.HANDLE,w.UINT])
     query_job=api('QueryInformationJobObject',[w.HANDLE,c.c_int,w.LPVOID,w.DWORD,w.LPVOID])
+    open_process=api('OpenProcess',[w.DWORD,w.BOOL,w.DWORD],w.HANDLE)
+    in_job=api('IsProcessInJob',[w.HANDLE,w.HANDLE,c.POINTER(w.BOOL)])
 
 def settle_job(job):
-    if not terminate(job,2): raise Refused('job_cleanup_failed')
-    deadline=time.monotonic()+5
-    while True:
-        counts=ACCOUNTING()
-        if not query_job(job,1,c.byref(counts),c.sizeof(counts),None): raise Refused('job_cleanup_unknown')
-        if counts.active==0: return
-        if time.monotonic()>deadline: raise Refused('job_cleanup_deadline')
-        time.sleep(.01)
+    handles=[]
+    try:
+        # Retain exact job-member handles before termination; zero active count
+        # can precede the final process-object signal by a short kernel interval.
+        class IDS(c.Structure): _fields_=[('assigned',w.DWORD),('count',w.DWORD),('ids',c.c_size_t*1024)]
+        ids=IDS()
+        if not query_job(job,3,c.byref(ids),c.sizeof(ids),None) or ids.count>1024:
+            raise Refused('job_members_unknown')
+        for pid in ids.ids[:ids.count]:
+            handle=open_process(0x101000,False,pid)
+            if not handle:
+                if c.get_last_error()==87: continue  # Already exited; never adopt a replacement.
+                raise Refused('job_member_unavailable')
+            handles.append(handle)
+            member=w.BOOL()
+            if not in_job(handle,job,c.byref(member)) or not member.value:
+                raise Refused('job_member_changed')
+        if not terminate(job,2): raise Refused('job_cleanup_failed')
+        deadline=time.monotonic()+5
+        while True:
+            counts=ACCOUNTING()
+            if not query_job(job,1,c.byref(counts),c.sizeof(counts),None): raise Refused('job_cleanup_unknown')
+            if counts.active==0 and all(wait(handle,0)==0 for handle in handles): return
+            if time.monotonic()>deadline: raise Refused('job_cleanup_deadline')
+            time.sleep(.01)
+    finally:
+        for handle in handles: close(handle)
 
 class Pins:
     def __init__(self): self.handles=[]
@@ -83,7 +104,7 @@ def run(args,timeout=60,input_data=b''):
     """Create suspended, assign kill-on-close job, then resume; bounded output."""
     import msvcrt
     if len(input_data)>4096: raise Refused('input_bound')
-    job=None; pi=PI(); assigned=False; fds=[]; reader=None
+    job=None; pi=PI(); assigned=False; fds=[]; reader=None; reader_started=False
     chunks=[]; size=0; limited=threading.Event(); failed=threading.Event()
     try:
         job=create_job(None,None)
@@ -113,6 +134,7 @@ def run(args,timeout=60,input_data=b''):
                     chunks.append(data)
             except OSError: failed.set()
         reader=threading.Thread(target=read_output,daemon=True);reader.start()
+        reader_started=True
         for fd in (ir,ow): os.close(fd);fds.remove(fd)
         if resume(pi.thread)==0xffffffff: raise Refused('process_resume_failed')
         # At most 4096 bytes, below the anonymous pipe buffer size.
@@ -138,7 +160,7 @@ def run(args,timeout=60,input_data=b''):
                 elif not terminate_process(pi.process,2): raise Refused('suspended_cleanup_failed')
                 if wait(pi.process,5000)!=0: raise Refused('process_cleanup_unknown')
             except Refused as error: cleanup_error=error
-        if reader: reader.join(5)
+        if reader_started: reader.join(5)
         for fd in fds:
             try: os.close(fd)
             except OSError: pass

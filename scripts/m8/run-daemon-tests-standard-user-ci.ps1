@@ -1,12 +1,18 @@
-param([switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly)
+param([switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[string]$LanArtifact)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-if(([int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly) -gt 1){throw 'Choose one scoped suite.'}
+if(([int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly) -gt 1){throw 'Choose one scoped suite.'}
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'Disposable GitHub-hosted Windows runner required.'
 }
 $workspace=(Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
 $manifest=Join-Path $workspace 'services\cryptexd'
+$python=$null
+if($LanSetupOnly) {
+    $LanArtifact=(Resolve-Path -LiteralPath $LanArtifact).Path
+    $python=(Get-Command python -CommandType Application).Source
+    $executables=@(); $expectedSuites=1
+} else {
 $buildArgs=@('test','--locked','-p','cryptexd','--no-run','--message-format=json')
 if($DesktopStartupOnly){$buildArgs+=@('--test','desktop_startup')}
 if($DesktopSessionOnly -or $TransportPolicyOnly){$buildArgs+=@('--lib')}
@@ -24,6 +30,7 @@ foreach($exe in $executables) {
     $full=(Resolve-Path -LiteralPath $exe).Path
     if(-not $full.StartsWith($workspace+'\target\',[StringComparison]::OrdinalIgnoreCase)){throw 'Test artifact outside workspace target.'}
 }
+}
 $nonce=[guid]::NewGuid().ToString('N').Substring(0,12)
 $userName='cpxCi'+$nonce
 $scratch=Join-Path $env:RUNNER_TEMP ('cryptex-standard-'+$nonce)
@@ -40,13 +47,15 @@ try {
         Add-LocalGroupMember -SID $usersSid -Member $user
     }
     # Fresh account reads checkout/build artifacts; only scratch is writable.
-    foreach($entry in @(@{path=$workspace;rights='ReadAndExecute'},@{path=$scratch;rights='FullControl'})) {
+    $access=@(@{path=$workspace;rights='ReadAndExecute'},@{path=$scratch;rights='FullControl'})
+    if($LanSetupOnly){$access+=@{path=$LanArtifact;rights='ReadAndExecute'}}
+    foreach($entry in $access) {
         $acl=Get-Acl -LiteralPath $entry.path
         $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($user.SID,$entry.rights,'ContainerInherit,ObjectInherit','None','Allow'))
         Set-Acl -LiteralPath $entry.path -AclObject $acl
     }
     $payload=Join-Path $scratch 'tests.json'
-    @{schema=1;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly} |
+    @{schema=1;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;python=$python;workspace=$workspace} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $payload -Encoding UTF8
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'
