@@ -499,6 +499,7 @@ impl<'profile> PreparedNativeProfile<'profile> {
         Ok(())
     }
     fn validate<S: SecureStore + ?Sized>(&self, store: &S) -> Result<(), NativeConfigError> {
+        super::exchange_install::refuse_exchange_state(&self.home)?;
         let current_identity: super::Identity = decode(
             &self
                 .profile

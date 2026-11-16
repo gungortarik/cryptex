@@ -197,6 +197,11 @@ jobs:
           & ./scripts/m8/test-standard-user-summary.ps1
           & ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -TransportPolicyOnly
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test Windows recoverable exchange persistence and bootstrap refusal
+        if: runner.os == 'Windows'
+        run: |
+          cargo test --locked -p cryptexd --lib managed_profile::exchange_install:: -- --test-threads=1
+          cargo test --locked -p cryptexd --lib managed_profile::native::tests:: -- --test-threads=1
       - name: Lint changed daemon and Desktop paths
         run: cargo clippy --locked -p cryptexd -p cryptex-desktop --all-targets -- -D warnings
       - name: Verify native Mac frame and right ownership

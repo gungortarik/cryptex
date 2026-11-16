@@ -15,6 +15,7 @@ pub(super) struct PrivateDirectory {
     directory: File,
     _lock: File,
     _pins: Vec<File>,
+    edges: Vec<CString>,
 }
 fn name(value: &str) -> Result<CString, ProfileError> {
     if value.is_empty()
@@ -49,6 +50,29 @@ fn validate(file: &File, directory: bool) -> Result<(), ProfileError> {
     Ok(())
 }
 impl PrivateDirectory {
+    pub(super) fn sync_exchange_files(&self) -> Result<(), ProfileError> {
+        use super::exchange_install::Leaf;
+        self.require_current()?;
+        let mut retained = Vec::new();
+        for leaf in [Leaf::Config, Leaf::Binding, Leaf::Journal] {
+            let leaf = name(leaf.name())?;
+            let file = opened(unsafe {
+                libc::openat(
+                    self.directory.as_raw_fd(),
+                    leaf.as_ptr(),
+                    libc::O_RDWR | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
+                )
+            })?;
+            validate(&file, false)?;
+            file.sync_all().map_err(|_| ProfileError::Io)?;
+            if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_FULLFSYNC) } != 0 {
+                return Err(ProfileError::Io);
+            }
+            retained.push(file);
+        }
+        self.directory.sync_all().map_err(|_| ProfileError::Io)?;
+        self.require_current()
+    }
     pub(super) fn path(&self) -> &Path {
         &self.path
     }
@@ -79,6 +103,7 @@ impl PrivateDirectory {
             )
         })?;
         let mut pins = Vec::new();
+        let mut edges = Vec::new();
         for part in parent.components() {
             if let Component::Normal(part) = part {
                 let part = CString::new(part.as_bytes()).map_err(|_| ProfileError::InvalidPath)?;
@@ -90,6 +115,7 @@ impl PrivateDirectory {
                     )
                 })?;
                 pins.push(directory);
+                edges.push(part);
                 directory = next;
                 let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
                 if unsafe {
@@ -124,6 +150,7 @@ impl PrivateDirectory {
         })?;
         validate(&selected, true)?;
         pins.push(directory);
+        edges.push(leaf);
         let lock = opened(unsafe {
             libc::openat(
                 selected.as_raw_fd(),
@@ -143,9 +170,39 @@ impl PrivateDirectory {
             directory: selected,
             _lock: lock,
             _pins: pins,
+            edges,
         })
     }
     fn require_current(&self) -> Result<(), ProfileError> {
+        // Retain and recheck the ORIGINAL ancestor-to-child edges. Merely
+        // resolving the final absolute path can miss replacement of an ancestor.
+        for (index, (parent, edge)) in self._pins.iter().zip(&self.edges).enumerate() {
+            let retained = self
+                ._pins
+                .get(index + 1)
+                .unwrap_or(&self.directory)
+                .metadata()
+                .map_err(|_| ProfileError::Io)?;
+            let mut current = std::mem::MaybeUninit::<libc::stat>::uninit();
+            if unsafe {
+                libc::fstatat(
+                    parent.as_raw_fd(),
+                    edge.as_ptr(),
+                    current.as_mut_ptr(),
+                    libc::AT_SYMLINK_NOFOLLOW,
+                )
+            } != 0
+            {
+                return Err(ProfileError::UnsafeObject);
+            }
+            let current = unsafe { current.assume_init() };
+            if current.st_mode & libc::S_IFMT != libc::S_IFDIR
+                || current.st_dev as u64 != retained.dev()
+                || current.st_ino != retained.ino()
+            {
+                return Err(ProfileError::UnsafeObject);
+            }
+        }
         let current =
             std::fs::symlink_metadata(&self.path).map_err(|_| ProfileError::UnsafeObject)?;
         let retained = self.directory.metadata().map_err(|_| ProfileError::Io)?;
@@ -153,6 +210,74 @@ impl PrivateDirectory {
             return Err(ProfileError::UnsafeObject);
         }
         validate(&self.directory, true)
+    }
+    pub(super) fn replace_exchange_file(
+        &self,
+        leaf: super::exchange_install::Leaf,
+        bytes: &[u8],
+    ) -> Result<(), ProfileError> {
+        use std::io::{Read, Write};
+        self.require_current()?;
+        if bytes.len() > leaf.limit() {
+            return Err(ProfileError::InvalidState);
+        }
+        let target = self.open_read(leaf.name())?;
+        let temporary = name(leaf.temporary())?;
+        let destination = name(leaf.name())?;
+        let existed = self.open_read(leaf.temporary())?.is_some();
+        let flags = libc::O_RDWR
+            | libc::O_NOFOLLOW
+            | libc::O_CLOEXEC
+            | libc::O_NONBLOCK
+            | if existed {
+                0
+            } else {
+                libc::O_CREAT | libc::O_EXCL
+            };
+        let mut stage = opened(unsafe {
+            libc::openat(self.directory.as_raw_fd(), temporary.as_ptr(), flags, 0o600)
+        })?;
+        validate(&stage, false)?;
+        if existed {
+            let mut actual = Vec::new();
+            (&mut stage)
+                .take((leaf.limit() + 1) as u64)
+                .read_to_end(&mut actual)
+                .map_err(|_| ProfileError::Io)?;
+            if actual != bytes {
+                return Err(ProfileError::InvalidState);
+            }
+        } else {
+            stage.write_all(bytes).map_err(|_| ProfileError::Io)?;
+        }
+        stage.sync_all().map_err(|_| ProfileError::Io)?;
+        if unsafe { libc::fcntl(stage.as_raw_fd(), libc::F_FULLFSYNC) } != 0 {
+            return Err(ProfileError::Io);
+        }
+        self.require_current()?;
+        let identity = stage.metadata().map_err(|_| ProfileError::Io)?;
+        drop(target);
+        if unsafe {
+            libc::renameat(
+                self.directory.as_raw_fd(),
+                temporary.as_ptr(),
+                self.directory.as_raw_fd(),
+                destination.as_ptr(),
+            )
+        } != 0
+        {
+            return Err(ProfileError::Io);
+        }
+        self.directory.sync_all().map_err(|_| ProfileError::Io)?;
+        self.require_current()?;
+        let installed = self
+            .open_read(leaf.name())?
+            .ok_or(ProfileError::InvalidState)?;
+        let actual = installed.metadata().map_err(|_| ProfileError::Io)?;
+        if actual.dev() != identity.dev() || actual.ino() != identity.ino() {
+            return Err(ProfileError::UnsafeObject);
+        }
+        Ok(())
     }
     pub(super) fn child(&self, leaf: &str, allow_create: bool) -> Result<Self, ProfileError> {
         self.require_current()?;
@@ -219,6 +344,34 @@ pub(super) fn foreign_socket_received_no_bytes(mut stream: std::net::TcpStream) 
 mod tests {
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
+    #[test]
+    fn original_ancestor_edge_is_required_even_if_final_directory_is_reattached() {
+        let mut nonce = [0; 16];
+        getrandom::getrandom(&mut nonce).unwrap();
+        let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
+            "cx-private-edges-{}",
+            nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        ));
+        std::fs::create_dir_all(root.join("parent")).unwrap();
+        let path = root.join("parent/profile");
+        let home = PrivateDirectory::acquire(&path, true).unwrap();
+        drop(home.create_file("fixture").unwrap());
+        std::fs::rename(root.join("parent"), root.join("detached")).unwrap();
+        std::fs::create_dir(root.join("parent")).unwrap();
+        std::fs::rename(root.join("detached/profile"), &path).unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().ino(),
+            home.directory.metadata().unwrap().ino()
+        );
+        assert!(home.open_read("fixture").is_err());
+        assert!(
+            home.replace_exchange_file(super::super::exchange_install::Leaf::Config, b"no")
+                .is_err()
+        );
+        assert!(!path.join("config.xml").exists());
+        drop(home);
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn foreign_socket_probe_waits_for_eof_and_rejects_any_byte() {
         use std::io::Write;

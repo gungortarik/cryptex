@@ -145,6 +145,110 @@ pub(super) struct PrivateDirectory {
 }
 
 impl PrivateDirectory {
+    pub(super) fn sync_exchange_files(&self) -> Result<(), ProfileError> {
+        use super::exchange_install::Leaf;
+        let mut retained = Vec::new();
+        for leaf in [Leaf::Config, Leaf::Binding, Leaf::Journal] {
+            let file = create_owned_file(&self.path.join(leaf.name()), &self.user, OPEN_EXISTING)?;
+            validate_file(&file, &self.user)?;
+            file.sync_all().map_err(|_| ProfileError::Io)?;
+            retained.push(file);
+        }
+        Ok(())
+    }
+    /// Only the three derived exchange leaves, never arbitrary caller paths.
+    /// A leftover stage is resumed only when its ENTIRE content is exact.
+    pub(super) fn replace_exchange_file(
+        &self,
+        leaf: super::exchange_install::Leaf,
+        bytes: &[u8],
+    ) -> Result<(), ProfileError> {
+        use std::io::{Read, Write};
+        use windows_sys::Win32::Storage::FileSystem::{
+            DELETE, FILE_SHARE_DELETE, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+            MoveFileExW,
+        };
+        if bytes.len() > leaf.limit() {
+            return Err(ProfileError::InvalidState);
+        }
+        // Validate an occupied target as an owned regular file; never replace a
+        // link or silently repair ACLs. Original ancestor handles remain pinned.
+        let target = self.open_read(leaf.name())?;
+        let temporary = self.path.join(leaf.temporary());
+        let old_stage = self.open_read(leaf.temporary())?;
+        let existed = old_stage.is_some();
+        if let Some(file) = old_stage {
+            let mut actual = Vec::new();
+            file.take((leaf.limit() + 1) as u64)
+                .read_to_end(&mut actual)
+                .map_err(|_| ProfileError::Io)?;
+            if actual != bytes {
+                return Err(ProfileError::InvalidState);
+            }
+        }
+        let descriptor = self.user.descriptor(false)?;
+        let attributes = SECURITY_ATTRIBUTES {
+            nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: descriptor.0,
+            bInheritHandle: 0,
+        };
+        let temporary_wide = crate::platform::windows::file_path::for_win32_api(&temporary)
+            .map_err(|_| ProfileError::InvalidPath)?;
+        let handle = unsafe {
+            CreateFileW(
+                temporary_wide.as_ptr(),
+                GENERIC_READ | GENERIC_WRITE | DELETE,
+                FILE_SHARE_READ | FILE_SHARE_DELETE,
+                &attributes,
+                if existed { OPEN_EXISTING } else { CREATE_NEW },
+                FILE_FLAG_OPEN_REPARSE_POINT,
+                ptr::null_mut(),
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            return Err(failure("exchange_stage_open"));
+        }
+        let mut stage = unsafe { File::from_raw_handle(handle) };
+        validate_file(&stage, &self.user)?;
+        if existed {
+            let mut actual = Vec::new();
+            (&mut stage)
+                .take((leaf.limit() + 1) as u64)
+                .read_to_end(&mut actual)
+                .map_err(|_| ProfileError::Io)?;
+            if actual != bytes {
+                return Err(ProfileError::InvalidState);
+            }
+        } else {
+            stage.write_all(bytes).map_err(|_| ProfileError::Io)?;
+        }
+        stage.sync_all().map_err(|_| ProfileError::Io)?;
+        let identity = file_identity(&stage)?;
+        drop(target);
+        let destination =
+            crate::platform::windows::file_path::for_win32_api(&self.path.join(leaf.name()))
+                .map_err(|_| ProfileError::InvalidPath)?;
+        if unsafe {
+            MoveFileExW(
+                temporary_wide.as_ptr(),
+                destination.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        } == 0
+        {
+            return Err(failure("exchange_stage_replace"));
+        }
+        stage.sync_all().map_err(|_| ProfileError::Io)?;
+        drop(stage);
+        let installed = self
+            .open_read(leaf.name())?
+            .ok_or(ProfileError::InvalidState)?;
+        if file_identity(&installed)? != identity {
+            return Err(ProfileError::UnsafeObject);
+        }
+        Ok(())
+    }
+
     pub(super) fn path(&self) -> &Path {
         &self.path
     }
@@ -343,6 +447,18 @@ fn attributes(file: &File) -> Result<u32, ProfileError> {
         return Err(ProfileError::UnsafeObject);
     }
     Ok(info.dwFileAttributes)
+}
+
+fn file_identity(file: &File) -> Result<(u32, u32, u32), ProfileError> {
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { zeroed() };
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+        return Err(failure("exchange_file_identity"));
+    }
+    Ok((
+        info.dwVolumeSerialNumber,
+        info.nFileIndexHigh,
+        info.nFileIndexLow,
+    ))
 }
 
 fn validate_file(file: &File, user: &CurrentUser) -> Result<(), ProfileError> {

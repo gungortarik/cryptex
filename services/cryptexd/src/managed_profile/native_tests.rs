@@ -89,6 +89,44 @@ fn fresh_prepare_reopen_keeps_identity_secret_and_raw_config() {
 }
 
 #[test]
+fn pending_exchange_state_blocks_bootstrap_validation_and_reopen_without_repair() {
+    for name in [
+        "exchange-install.json",
+        "exchange-binding.json",
+        "exchange-install.tmp",
+        "exchange-binding.tmp",
+        "exchange-config.tmp",
+    ] {
+        let fixture = Fixture::new();
+        let mut profile = fixture.create();
+        let store = FakeSecureStore::new();
+        let prepared = profile
+            .prepare_with_generator(&store, ports(), generate)
+            .unwrap();
+        let before = std::fs::read(fixture.1.join("native/config.xml")).unwrap();
+        prepared.home.create_file(name).unwrap().sync_all().unwrap();
+        assert_eq!(
+            prepared.validate(&store),
+            Err(NativeConfigError::Profile(ProfileError::InvalidState))
+        );
+        drop(prepared);
+        drop(profile);
+        let mut profile = ManagedProfile::open(&fixture.1, SecureStoreEnvironment::Dev).unwrap();
+        assert!(
+            profile
+                .prepare_with_generator(&store, ports(), |_| panic!("must not regenerate"))
+                .is_err()
+        );
+        assert_eq!(
+            std::fs::read(fixture.1.join("native/config.xml")).unwrap(),
+            before
+        );
+        assert!(fixture.1.join("native").join(name).exists());
+        assert_eq!(store.put_count(), 1);
+    }
+}
+
+#[test]
 fn failed_store_enrollment_resumes_only_the_same_staged_bytes() {
     let fixture = Fixture::new();
     let mut profile = fixture.create();

@@ -1,5 +1,49 @@
 # 34 — Current Implementation Handoff
 
+## Exchange persistence boundary — November15, native CI pending
+
+The next bounded implementation adds a module-private first-install/recovery
+transaction; it is called only by tests, NOT by a worker/helper or UI. Existing
+bootstrap validation now refuses exchange journal/binding/staging leaves, including
+empty ones, before inspecting identity or loading credentials. No exchange-mode
+launch, runtime admission bypass or transport activation is added.
+
+`managed_profile/exchange_install.rs` rederives exact config and binding from a
+borrowed current ExchangeConfigPolicy before any write. Schema1 journal holds the
+original bootstrap, target config/binding and exact native-home path; unknown or
+duplicate fields/schema, stale policy, changed home or mismatched bytes refuse.
+This is derived private native data (including the native REST key already needed
+in config.xml), never canonical data or logging/diagnostic export material.
+Bounds: config256KiB, binding64KiB, journal1MiB, native-home4096 UTF-8 bytes.
+The original generation/config/cert/key and OS credential are NOT replaced.
+
+The only recoverable pending disk combinations are old-config/no-binding,
+new-config/no-binding and new-config/new-binding. Exact next-write staging may
+resume; partial, foreign, multiple or out-of-order stages retain an explicit error.
+Pending -> config -> binding -> committed replacements use private native files
+and retained directory handles. Committed retry renews all file flush barriers,
+Mac parent fsync and complete readback; merely seeing committed bytes is not enough
+after an uncertain flush. No canonical write or record deletion is involved.
+Windows uses MoveFileExW REPLACE_EXISTING|WRITE_THROUGH plus writable-file flush;
+Mac uses descriptor-relative renameat, file fsync/F_FULLFSYNC and parent fsync.
+Do NOT claim Windows power-loss/parent-metadata durability acceptance from this.
+Mac now revalidates every ORIGINAL retained ancestor edge, without doubling FDs.
+
+Local format and daemon all-target clippy passed. Python startup-runner7 tests pass.
+New Rust tests compiled, but local execution was blocked by Application Control
+4551 (no tests executed); do not reuse the earlier local-test-success statement
+for this binary. Scoped Windows/Mac CI is pending. Independent source review found
+a committed-retry flush gap, now fixed; no further actionable persistence finding.
+Reviewer executed no tests. Mac ancestor replacement regression is included.
+
+The full install -> readback -> owned start -> exact acknowledgement slice remains
+OPEN. This primitive is intentionally module-private until the controller can
+retain admission, original identity/cert/OS-key checks, stopped-engine ownership,
+incoming-path containment and namespace/snapshot pins through acknowledgement.
+Mac helper remains canonical-free; no new helper operation is exposed. Active
+roster update/reconcile, positive Mac helper-owned config roundtrip, sealed export
+and real Windows-Mac durable convergence remain next gates. M8 remains OPEN.
+
 ## Strict trust-derived exchange configuration — November15
 
 Compiler faacc8c and native probes1c43a94 add a separate product configuration
