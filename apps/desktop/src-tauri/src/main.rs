@@ -286,6 +286,18 @@ fn m8_read_transport_device_id() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn m8_connection_settings(
+    update: Option<cryptexd::managed_profile::connection_settings::Update>,
+) -> Result<cryptexd::managed_profile::connection_settings::View, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        cryptexd::ipc::desktop_connection_settings(update)
+            .map_err(|_| "connection_settings_unavailable".to_string())
+    })
+    .await
+    .map_err(|_| "connection_settings_worker")?
+}
+
+#[tauri::command]
 fn m8_create_bootstrap_offer(
     transaction_id: String,
     transport_device_id: String,
@@ -2544,6 +2556,7 @@ fn main() {
             m8_new_bootstrap_transaction_id,
             m8_read_bootstrap_brain_identity,
             m8_read_transport_device_id,
+            m8_connection_settings,
             m8_create_bootstrap_offer,
             m8_create_bootstrap_proof,
             m8_prepare_peer_approval,

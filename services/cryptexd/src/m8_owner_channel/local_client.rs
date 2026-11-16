@@ -180,10 +180,13 @@ impl LocalDaemon {
         Ok(())
     }
     fn exchange(&mut self, bytes: &[u8]) -> Result<Vec<u8>, Error> {
+        self.exchange_until(bytes, Duration::from_secs(15))
+    }
+    fn exchange_until(&mut self, bytes: &[u8], budget: Duration) -> Result<Vec<u8>, Error> {
         if !self.bound || bytes.is_empty() || bytes.len() > super::super::request::MAX_FRAME_BYTES {
             return Err(Error::Arguments);
         }
-        let deadline = Instant::now() + Duration::from_secs(15);
+        let deadline = Instant::now() + budget;
         let result = step("owner_exchange", || {
             let channel = self.channel.as_mut().ok_or(Error::Channel)?;
             channel.send(bytes, deadline).map_err(Error::from)?;
@@ -229,6 +232,55 @@ impl LocalDaemon {
             Ok(status)
         })();
         if result.is_err() {
+            self.burn();
+        }
+        result
+    }
+    pub fn connection_settings(
+        &mut self,
+        update: Option<crate::managed_profile::connection_settings::Update>,
+    ) -> Result<crate::managed_profile::connection_settings::View, Error> {
+        use crate::managed_profile::connection_settings::{MAX_FRAME, Request, Response};
+        if !self.existing_profile {
+            return Err(Error::Arguments);
+        }
+        if update.is_some() {
+            self.pending_review.take();
+        }
+        let request = Request {
+            schema_version: 1,
+            request_id: random_id()?,
+            operation: if update.is_some() {
+                "connections.update"
+            } else {
+                "connections.read"
+            }
+            .into(),
+            client_role: "desktop".into(),
+            update,
+        };
+        let bytes = serde_json::to_vec(&request).map_err(|_| Error::Arguments)?;
+        Request::decode(&bytes).map_err(|_| Error::Arguments)?;
+        let bytes = self.exchange_until(&bytes, Duration::from_secs(120))?;
+        let result = (|| {
+            if bytes.len() > MAX_FRAME {
+                return Err(Error::Channel);
+            }
+            cryptex_events::reject_duplicate_json_keys(
+                std::str::from_utf8(&bytes).map_err(|_| Error::Channel)?,
+            )
+            .map_err(|_| Error::Channel)?;
+            let response: Response = serde_json::from_slice(&bytes).map_err(|_| Error::Channel)?;
+            if response.schema_version != 1 || response.request_id != request.request_id {
+                return Err(Error::Channel);
+            }
+            if !response.accepted || response.error.is_some() {
+                return Err(Error::Unavailable);
+            }
+            response.view.ok_or(Error::Channel)
+        })();
+        // A typed domain refusal does not discard a sound authenticated channel.
+        if matches!(result, Err(Error::Channel)) {
             self.burn();
         }
         result

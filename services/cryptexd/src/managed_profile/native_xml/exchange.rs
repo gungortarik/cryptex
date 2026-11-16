@@ -86,6 +86,7 @@ pub(crate) struct ExchangeConfigPolicy<'a> {
     incoming: String,
     peers: Vec<Node>,
     folder: Node,
+    local_only: bool,
 }
 
 fn canonical_bytes(node: &Node) -> Result<Vec<u8>> {
@@ -122,6 +123,18 @@ pub(crate) fn same_normalized(left: &[u8], right: &[u8]) -> Result<bool> {
 }
 
 /// Validate the immutable namespace/identity anchors of a derived replacement.
+/// Read only the already-validated image's exact fixed TCP listener.
+pub(crate) fn configured_listener(bytes: &[u8]) -> ExchangeResult<SocketAddrV4> {
+    parse(bytes)?
+        .one("options")?
+        .one("listenAddress")?
+        .value()?
+        .strip_prefix("tcp://")
+        .ok_or(ExchangeConfigError::ConfigurationMismatch)?
+        .parse()
+        .map_err(|_| ExchangeConfigError::ConfigurationMismatch)
+}
+
 /// This does not authorize any old peer. The next binding must separately be
 /// compiled/verified by current canonical policy before this function is called.
 pub(crate) fn validate_replacement(
@@ -168,6 +181,11 @@ pub(crate) fn inspect_applied(
         return Err(NativeConfigError::InvalidConfig);
     }
     let original = inspect(bootstrap, ports, false)?;
+    // Explicit fresh-authority local-only target: no network peers or folders,
+    // and exactly the original self-only bootstrap, never a disk downgrade.
+    if same_normalized(expected, bootstrap)? {
+        return inspect(bytes, ports, false);
+    }
     let mut tree = parse(bytes)?;
     let folder = tree.one("folder")?;
     if folder.attrs.get("path").map(String::as_str) != Some(incoming)
@@ -209,25 +227,49 @@ impl<'a> ExchangeConfigPolicy<'a> {
         listen: SocketAddrV4,
         endpoints: BTreeMap<String, SocketAddrV4>,
     ) -> ExchangeResult<Self> {
+        Self::build(authority, ports, listen, endpoints, false)
+    }
+
+    pub(crate) fn local_only(
+        authority: &'a ExchangePeers<'a>,
+        ports: NativePorts,
+    ) -> ExchangeResult<Self> {
+        Self::build(
+            authority,
+            ports,
+            SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, ports.sync),
+            BTreeMap::new(),
+            true,
+        )
+    }
+
+    fn build(
+        authority: &'a ExchangePeers<'a>,
+        ports: NativePorts,
+        listen: SocketAddrV4,
+        endpoints: BTreeMap<String, SocketAddrV4>,
+        local_only: bool,
+    ) -> ExchangeResult<Self> {
         authority
             .revalidate()
             .map_err(|_| ExchangeConfigError::AuthorityUnavailable)?;
         ports.validate()?;
-        if authority.bindings().is_empty() {
+        if !local_only && authority.bindings().is_empty() {
             return Err(ExchangeConfigError::AuthorityUnavailable);
         }
         if authority.bindings().len() > MAX_PEERS {
             return Err(ExchangeConfigError::CapacityExceeded);
         }
         let mut seen = std::collections::BTreeSet::from([listen]);
-        if !lan(listen)
-            || listen.port() != ports.sync
-            || endpoints.len() != authority.bindings().len()
-            || authority.bindings().iter().any(|peer| {
-                endpoints
-                    .get(&peer.transport_device_id)
-                    .is_none_or(|address| !lan(*address) || !seen.insert(*address))
-            })
+        if !local_only
+            && (!lan(listen)
+                || listen.port() != ports.sync
+                || endpoints.len() != authority.bindings().len()
+                || authority.bindings().iter().any(|peer| {
+                    endpoints
+                        .get(&peer.transport_device_id)
+                        .is_none_or(|address| !lan(*address) || !seen.insert(*address))
+                }))
         {
             return Err(ExchangeConfigError::InvalidLanEndpoints);
         }
@@ -267,6 +309,7 @@ impl<'a> ExchangeConfigPolicy<'a> {
         let peers = authority
             .bindings()
             .iter()
+            .filter(|_| !local_only)
             .map(|binding| {
                 let mut peer = parse(PEER.as_bytes())?;
                 peer.attrs
@@ -287,6 +330,7 @@ impl<'a> ExchangeConfigPolicy<'a> {
             incoming: incoming.into(),
             peers,
             folder,
+            local_only,
         })
     }
 
@@ -303,6 +347,9 @@ impl<'a> ExchangeConfigPolicy<'a> {
         let config = inspect(bytes, self.ports, false)?;
         if config.native_id != self.authority.local_transport() {
             return Err(ExchangeConfigError::ConfigurationMismatch);
+        }
+        if self.local_only {
+            return Ok(canonical_bytes(&parse(&config.bytes)?)?);
         }
         let mut root = parse(&config.bytes)?;
         let options = root.one_mut("options")?;
@@ -325,6 +372,14 @@ impl<'a> ExchangeConfigPolicy<'a> {
     /// followed by the ordinary bootstrap network/authentication checks.
     pub(crate) fn inspect_exchange(&self, bytes: &[u8]) -> ExchangeResult<Config> {
         self.current()?;
+        if self.local_only {
+            let mut config = inspect(bytes, self.ports, false)?;
+            if config.native_id != self.authority.local_transport() {
+                return Err(ExchangeConfigError::ConfigurationMismatch);
+            }
+            config.bytes = canonical_bytes(&parse(bytes)?)?;
+            return Ok(config);
+        }
         let mut root = parse(bytes)?;
         let folders: Vec<_> = root
             .children
@@ -399,6 +454,7 @@ impl<'a> ExchangeConfigPolicy<'a> {
                 .authority
                 .bindings()
                 .iter()
+                .filter(|_| !self.local_only)
                 .map(|peer| PeerBinding {
                     device_id: peer.device_id.as_str().into(),
                     signing_key_id: peer.signing_key_id.as_str().into(),

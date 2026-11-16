@@ -136,7 +136,7 @@ def run_real_startup_checks(root, checked, run_bounded, cargo, openssl, keychain
                      "image_policy::tests::product_policy_has_no_configured_publisher"):
             if "test m8_owner_channel::" + name + " ... ok" not in tests:
                 raise PreflightError("signed_startup_gate_test_missing")
-        for selection in ("managed_profile::macos::tests::", "managed_profile::exchange_install::tests::", "managed_profile::exchange_start::tests::", "owned_process::macos::tests::",
+        for selection in ("managed_profile::connection_settings::", "managed_profile::macos::tests::", "managed_profile::exchange_install::tests::", "managed_profile::exchange_start::tests::", "owned_process::macos::tests::",
                           "ipc::native_profile::tests::", "import_staging::macos_inbox::tests::",
                           "incoming_publication::tests::", "runtime_admission::tests::",
                           "ipc::tests::original_namespace_",

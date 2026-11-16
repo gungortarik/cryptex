@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::secure_store::{SecureStore, SecureStoreEnvironment, SecureStoreError};
 use crate::syncthing_rest::{ApiCredential, credential_labels};
 
+pub mod connection_settings;
 #[cfg(any(windows, test))]
 pub mod controller;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]

@@ -1253,6 +1253,7 @@ pub(crate) struct Worker {
     stop: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<Result<(), Error>>>,
     credential: Arc<Mutex<Option<String>>>,
+    clean_revocation: Arc<AtomicBool>,
 }
 struct ExchangeSetup {
     guard: crate::runtime_admission::TransportGuard,
@@ -1375,6 +1376,8 @@ impl Worker {
         let state = Arc::new(AtomicU8::new(OPENING));
         let stop = Arc::new(AtomicBool::new(false));
         let credential = Arc::new(Mutex::new(None));
+        let clean_revocation = Arc::new(AtomicBool::new(false));
+        let closed_after_revocation = clean_revocation.clone();
         let read = StatusReader {
             transport: exchange.as_ref().map(|e| e.guard.clone()),
             sender,
@@ -1427,6 +1430,7 @@ impl Worker {
                         if exchange.as_ref().is_some_and(|e| e.guard.check().is_err()) {
                             state.store(FAILED, Ordering::Release);
                             helper.close()?;
+                            closed_after_revocation.store(true, Ordering::Release);
                             return Err(Error::Policy);
                         }
                         match receive.recv_timeout(Duration::from_millis(250)) {
@@ -1502,6 +1506,7 @@ impl Worker {
             stop,
             thread: Some(thread),
             credential,
+            clean_revocation,
         })
     }
     pub(crate) fn status_reader(&self) -> StatusReader {
@@ -1517,6 +1522,12 @@ impl Worker {
     }
     pub(crate) fn close(mut self) -> Result<(), Error> {
         self.join()
+    }
+    pub(crate) fn close_for_reconcile(mut self) -> Result<(), Error> {
+        match self.join() {
+            Err(Error::Policy) if self.clean_revocation.load(Ordering::Acquire) => Ok(()),
+            result => result,
+        }
     }
     fn fixture_credential(&self) -> Result<String, Error> {
         self.credential
@@ -1605,7 +1616,7 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
     let anchor = resolver.local_trust_anchor().ok_or(Error::Policy)?;
     // Each open rederives authority. The third open changes only the peer's
     // public LAN endpoint, then the fourth verifies persisted replacement.
-    for attempt in 0..4 {
+    for attempt in 0..7 {
         let permit = admission
             .exclusive(root, Instant::now() + BUDGET, false)
             .map_err(|_| Error::Policy)?;
@@ -1636,20 +1647,23 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
                 )
             })
             .collect();
-        let policy = ExchangeConfigPolicy::new(
+        let mut policy = ExchangeConfigPolicy::new(
             &peers,
             ports,
             std::net::SocketAddrV4::new(ip, ports.sync_port()),
             endpoints,
         )
         .map_err(|_| Error::Policy)?;
+        if matches!(attempt, 4 | 5) {
+            policy = ExchangeConfigPolicy::local_only(&peers, ports).map_err(|_| Error::Policy)?;
+        }
         let worker = Worker::start_exchange(helper_root.clone(), &policy, &permit)?;
         drop(snapshot);
         permit.finish(None);
         if worker.status_reader().try_transport_device_id()? != identity {
             return Err(Error::Engine);
         }
-        if attempt == 3 {
+        if attempt == 6 {
             admission
                 .exclusive(root, Instant::now() + BUDGET, false)
                 .map_err(|_| Error::Policy)?
@@ -1662,7 +1676,7 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
         }
         match worker.close() {
             Ok(()) => {}
-            Err(Error::Policy) if attempt == 3 => {}
+            Err(Error::Policy) if attempt == 6 => {}
             Err(error) => return Err(error),
         }
         if helper_root
@@ -1675,6 +1689,7 @@ fn check_exchange_start(root: &Path, ip: std::net::Ipv4Addr) -> Result<(), Error
     }
     println!("native_supervised_exchange_install_restart_revocation=passed");
     println!("native_supervised_exchange_endpoint_replacement=passed");
+    println!("native_supervised_exchange_pause_resume=passed");
     Ok(())
 }
 

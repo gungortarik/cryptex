@@ -925,31 +925,32 @@ fn run_lifecycle(
             }
             ensure_runtime_root(&opts.runtime_root)?;
             // Acquire the single-instance lock before any durable identity writes.
-            let mut lock = try_acquire_instance(&opts.runtime_root)?;
+            let lock = try_acquire_instance(&opts.runtime_root)?;
             recover_writer_state_before_start(&opts.runtime_root, &lock)?;
             let install = prepare_m1_runtime_foundation(&opts.runtime_root)
                 .map_err(|e| e.into_lifecycle())?;
+            let holder_pid = lock.pid();
+            let lock = std::sync::Arc::new(std::sync::Mutex::new(lock));
             #[cfg(windows)]
-            let mut transport = start_managed_transport(opts.managed.as_ref())?;
+            let mut transport =
+                start_managed_transport(&opts.runtime_root, &lock, opts.managed.as_ref())?;
             #[cfg(windows)]
-            if let Some(worker) = &transport {
-                cryptexd::ipc::spawn_daemon_ipc_server_with_transport(
+            {
+                cryptexd::ipc::spawn_daemon_ipc_server_with_connections(
                     &opts.runtime_root,
-                    &lock,
+                    &*locked_instance(&lock)?,
                     std::sync::Arc::new(cryptexd::WindowsCredentialStore::new()),
                     SecureStoreEnvironment::Dev,
-                    worker.status_reader(),
+                    transport.handle(),
                 )?;
-            } else {
-                spawn_platform_ipc_server(&opts.runtime_root, &lock)?;
             }
             #[cfg(not(windows))]
             if ordinary_ipc {
-                spawn_platform_ipc_server(&opts.runtime_root, &lock)?;
+                spawn_platform_ipc_server(&opts.runtime_root, &*locked_instance(&lock)?)?;
             }
             let report = LifecycleReport::active_holder(
                 &opts.runtime_root,
-                lock.pid(),
+                holder_pid,
                 format!(
                     "holding instance lock for harness; install_id={}",
                     install.install_id
@@ -961,11 +962,11 @@ fn run_lifecycle(
                 if let Some(parent) = ready.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                fs::write(ready, format!("{}\n", lock.pid()))?;
+                fs::write(ready, format!("{holder_pid}\n"))?;
             }
             // Readiness remains progress. The disabled signed-startup adapter
             // independently reattributes the ready phase to this live child.
-            ready(&opts.runtime_root, &mut lock)?;
+            ready(&opts.runtime_root, &mut *locked_instance(&lock)?)?;
 
             match opts.mode {
                 HoldMode::UntilStopFile(stop) => wait_for_stop_file(&stop),
@@ -976,11 +977,11 @@ fn run_lifecycle(
                 }
             }
 
-            lock.drain_runtime(Duration::from_secs(40))?;
+            locked_instance(&lock)?.drain_runtime(Duration::from_secs(40))?;
             #[cfg(windows)]
-            if let Some(worker) = &mut transport {
-                worker
-                    .shutdown(Duration::from_secs(40))
+            {
+                transport
+                    .shutdown()
                     .map_err(|error| LifecycleError::Attention(error.to_string()))?;
             }
             drop(lock);
@@ -1048,19 +1049,6 @@ fn run_lifecycle(
     }
 }
 
-#[cfg(windows)]
-fn spawn_platform_ipc_server(
-    runtime_root: &Path,
-    instance: &cryptexd::instance::InstanceLock,
-) -> std::io::Result<()> {
-    cryptexd::ipc::spawn_daemon_ipc_server(
-        runtime_root,
-        instance,
-        std::sync::Arc::new(cryptexd::WindowsCredentialStore::new()),
-        SecureStoreEnvironment::Dev,
-    )
-}
-
 #[cfg(target_os = "macos")]
 fn spawn_platform_ipc_server(
     runtime_root: &Path,
@@ -1108,50 +1096,38 @@ struct ManagedTransportOpts {
 
 #[cfg(windows)]
 fn start_managed_transport(
+    root: &Path,
+    instance: &std::sync::Arc<std::sync::Mutex<cryptexd::instance::InstanceLock>>,
     opts: Option<&ManagedTransportOpts>,
-) -> Result<Option<cryptexd::managed_profile::worker::ManagedTransportWorker>, LifecycleError> {
+) -> Result<cryptexd::managed_profile::connection_settings::Owner, LifecycleError> {
     use cryptexd::managed_profile::{
-        controller::Phase,
+        connection_settings::{Location, Owner},
         native::NativePorts,
-        worker::{ManagedTransportWorker, WorkerState},
     };
-    let Some(opts) = opts else {
-        return Ok(None);
-    };
-    let ports = NativePorts::new(opts.api, opts.sync)
-        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
-    let mut worker = ManagedTransportWorker::spawn_existing(
-        opts.profile.clone(),
-        opts.package.clone(),
+    let location = opts
+        .map(|opts| {
+            NativePorts::new(opts.api, opts.sync)
+                .map(|ports| Location::windows(opts.profile.clone(), opts.package.clone(), ports))
+        })
+        .transpose()
+        .map_err(|e| LifecycleError::Attention(e.to_string()))?;
+    Owner::start(
+        root,
+        &*locked_instance(instance)?,
+        std::sync::Arc::new(cryptexd::WindowsCredentialStore::new()),
         SecureStoreEnvironment::Dev,
-        ports,
+        location,
+        cryptexd::ipc::product_connection_registry(),
+        Some(instance.clone()),
     )
-    .map_err(|error| LifecycleError::Attention(error.to_string()))?;
-    let deadline = std::time::Instant::now() + Duration::from_secs(18);
-    loop {
-        let snapshot = worker
-            .snapshot()
-            .map_err(|error| LifecycleError::Attention(error.to_string()))?;
-        if snapshot.state == WorkerState::Failed {
-            let error = worker.shutdown(Duration::from_secs(3)).err();
-            return Err(LifecycleError::Attention(format!(
-                "managed transport startup refused ({error:?})"
-            )));
-        }
-        if snapshot
-            .controller
-            .is_some_and(|status| status.phase == Phase::LocalReady)
-        {
-            return Ok(Some(worker));
-        }
-        if std::time::Instant::now() >= deadline {
-            let _ = worker.shutdown(Duration::from_secs(40));
-            return Err(LifecycleError::Attention(
-                "managed transport startup deadline".into(),
-            ));
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
+    .map_err(|e| LifecycleError::Attention(e.to_string()))
+}
+
+fn locked_instance(
+    lock: &std::sync::Arc<std::sync::Mutex<cryptexd::instance::InstanceLock>>,
+) -> Result<std::sync::MutexGuard<'_, cryptexd::instance::InstanceLock>, LifecycleError> {
+    lock.lock()
+        .map_err(|_| LifecycleError::Attention("instance coordinator unavailable".into()))
 }
 
 fn parse_runtime_root(args: &[String]) -> Result<PathBuf, LifecycleError> {

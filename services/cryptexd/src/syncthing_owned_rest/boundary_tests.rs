@@ -138,3 +138,36 @@ fn synchronous_validation_never_resets_the_request_deadline() {
     );
     assert_eq!(check.calls.get(), (1, 0));
 }
+
+#[test]
+fn ready_requires_the_exact_live_listener_not_just_rest_identity() {
+    let endpoint = "192.168.77.1:22001".parse().unwrap();
+    let good = serde_json::json!({"myID":"test", "connectionServiceStatus": {
+        "tcp://192.168.77.1:22001": {"error":null,"lanAddresses":["tcp://192.168.77.1:22001"],"wanAddresses":[]}
+    }});
+    let check = |value: &serde_json::Value| {
+        json::<Status>(&serde_json::to_vec(value).unwrap())
+            .unwrap()
+            .require_listener(endpoint)
+    };
+    check(&good).unwrap();
+    let mut missing = good.clone();
+    missing
+        .as_object_mut()
+        .unwrap()
+        .remove("connectionServiceStatus");
+    assert!(check(&missing).is_err());
+    for field in ["error", "lanAddresses"] {
+        let mut bad = good.clone();
+        bad["connectionServiceStatus"]["tcp://192.168.77.1:22001"][field] = if field == "error" {
+            serde_json::json!("bind failed")
+        } else {
+            serde_json::json!([])
+        };
+        assert!(check(&bad).is_err());
+    }
+    let mut extra = good.clone();
+    extra["connectionServiceStatus"]["tcp://0.0.0.0:22001"] =
+        good["connectionServiceStatus"]["tcp://192.168.77.1:22001"].clone();
+    assert!(check(&extra).is_err());
+}

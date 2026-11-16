@@ -595,6 +595,8 @@ pub fn spawn_retrieval_server(
         environment,
         expected_desktop: Arc::new(expected_desktop),
         projection_sync: None,
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        connections: None,
         #[cfg(windows)]
         transport_status: None,
         #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
@@ -624,6 +626,8 @@ pub fn spawn_daemon_ipc_server(
         environment,
         #[cfg(windows)]
         None,
+        #[cfg(windows)]
+        None,
     )
 }
 
@@ -635,7 +639,39 @@ pub fn spawn_daemon_ipc_server_with_transport(
     environment: SecureStoreEnvironment,
     transport: crate::managed_profile::worker::StatusReader,
 ) -> io::Result<()> {
-    spawn_daemon_ipc_server_inner(runtime_root, instance, store, environment, Some(transport))
+    spawn_daemon_ipc_server_inner(
+        runtime_root,
+        instance,
+        store,
+        environment,
+        Some(transport),
+        None,
+    )
+}
+
+#[cfg(windows)]
+pub fn product_connection_registry() -> crate::approval_session::ApprovalSessionRegistry {
+    BOOTSTRAP_APPROVAL_SESSIONS
+        .get_or_init(crate::approval_session::ApprovalSessionRegistry::default)
+        .clone()
+}
+
+#[cfg(windows)]
+pub fn spawn_daemon_ipc_server_with_connections(
+    runtime_root: &Path,
+    instance: &crate::instance::InstanceLock,
+    store: Arc<dyn SecureStore>,
+    environment: SecureStoreEnvironment,
+    connections: crate::managed_profile::connection_settings::Handle,
+) -> io::Result<()> {
+    spawn_daemon_ipc_server_inner(
+        runtime_root,
+        instance,
+        store,
+        environment,
+        None,
+        Some(connections),
+    )
 }
 
 fn spawn_daemon_ipc_server_inner(
@@ -644,6 +680,7 @@ fn spawn_daemon_ipc_server_inner(
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
     #[cfg(windows)] transport: Option<crate::managed_profile::worker::StatusReader>,
+    #[cfg(windows)] connections: Option<crate::managed_profile::connection_settings::Handle>,
 ) -> io::Result<()> {
     let admission = bound_runtime_admission(runtime_root, instance)?;
     let expected_desktop = match desktop_process_identity() {
@@ -664,6 +701,8 @@ fn spawn_daemon_ipc_server_inner(
         environment,
         expected_desktop: Arc::new(expected_desktop),
         projection_sync: None,
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        connections: None,
         #[cfg(windows)]
         transport_status: None,
         #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
@@ -675,6 +714,7 @@ fn spawn_daemon_ipc_server_inner(
     #[cfg(windows)]
     {
         context.transport_status = transport;
+        context.connections = connections;
     }
     spawn_server(Some(context))
 }
@@ -688,6 +728,8 @@ struct SearchContext {
     environment: SecureStoreEnvironment,
     expected_desktop: Arc<DesktopProcessIdentity>,
     projection_sync: Option<SyncSender<()>>,
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    connections: Option<crate::managed_profile::connection_settings::Handle>,
     #[cfg(windows)]
     transport_status: Option<crate::managed_profile::worker::StatusReader>,
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
@@ -2117,6 +2159,30 @@ fn handle_connection_via(
         }
         Err(error) => return Err(error),
     };
+    if serde_json::from_slice::<serde_json::Value>(&frame)
+        .ok()
+        .and_then(|v| v.get("operation")?.as_str().map(str::to_owned))
+        .is_some_and(|operation| operation.starts_with("connections."))
+    {
+        #[cfg(windows)]
+        let mut reply = connection_settings_reply(&frame, search, peer_is_desktop);
+        #[cfg(not(windows))]
+        let mut reply = crate::managed_profile::connection_settings::Response {
+            schema_version: 1,
+            request_id: String::new(),
+            accepted: false,
+            error: Some(crate::managed_profile::connection_settings::Error::Unauthorized),
+            view: None,
+        };
+        // Coordinator may need exclusive admission; acquire the response lease
+        // only AFTER it completes and retain it through the actual bounded write.
+        let _response_lease = connection_settings_response_lease(search, &mut reply);
+        return write_response(
+            stream,
+            &serde_json::to_vec(&reply)?,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        );
+    }
     if !frame.is_empty() && is_bootstrap_approval_frame(&frame) {
         if cfg!(target_os = "macos") && delivery == Delivery::ProductSocket {
             // Unix cannot redeem a future Mach/session proof. Refuse before
@@ -2342,6 +2408,125 @@ fn runtime_operation_held(request: &Request, code: &'static str) -> io::Result<V
         }
         _ => serde_json::to_vec(&rejected(id, code))?,
     })
+}
+
+fn connection_settings_response_lease(
+    context: Option<&SearchContext>,
+    reply: &mut crate::managed_profile::connection_settings::Response,
+) -> Option<crate::runtime_admission::OperationPermit> {
+    if !reply.accepted {
+        return None;
+    }
+    let lease = context.and_then(|context| context.admission.enter(&context.runtime_root).ok());
+    if lease.is_none() {
+        // A hold is a domain refusal, not a native channel/protocol failure.
+        reply.accepted = false;
+        reply.view = None;
+        reply.error = Some(crate::managed_profile::connection_settings::Error::Held);
+    }
+    lease
+}
+
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+fn connection_settings_reply(
+    bytes: &[u8],
+    context: Option<&SearchContext>,
+    authenticated_owner: bool,
+) -> crate::managed_profile::connection_settings::Response {
+    use crate::managed_profile::connection_settings::{Error, Request, Response};
+    let mut reply = Response {
+        schema_version: 1,
+        request_id: String::new(),
+        accepted: false,
+        error: None,
+        view: None,
+    };
+    let result = (|| {
+        // Role strings cannot substitute for the platform's authenticated peer.
+        if !authenticated_owner {
+            return Err(Error::Unauthorized);
+        }
+        let request = Request::decode(bytes)?;
+        reply.request_id = request.request_id;
+        let context = context.ok_or(Error::Unavailable)?;
+        context
+            .admission
+            .check_namespace()
+            .map_err(|_| Error::Held)?;
+        let view = context
+            .connections
+            .as_ref()
+            .ok_or(Error::Unavailable)?
+            .request(request.update)?;
+        context
+            .admission
+            .check_namespace()
+            .map_err(|_| Error::Held)?;
+        Ok(view)
+    })();
+    match result {
+        Ok(view) => {
+            reply.accepted = true;
+            reply.view = Some(view);
+        }
+        Err(error) => reply.error = Some(error),
+    }
+    reply
+}
+
+/// Windows packaged Desktop route. Mac must use the native allocation channel.
+pub fn desktop_connection_settings(
+    update: Option<crate::managed_profile::connection_settings::Update>,
+) -> io::Result<crate::managed_profile::connection_settings::View> {
+    #[cfg(windows)]
+    {
+        use crate::managed_profile::connection_settings::{Request, Response};
+        let mut nonce = [0; 16];
+        getrandom::getrandom(&mut nonce).map_err(|_| invalid_data("connection_settings_nonce"))?;
+        let request_id = nonce.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let request = Request {
+            schema_version: 1,
+            request_id: request_id.clone(),
+            operation: if update.is_some() {
+                "connections.update"
+            } else {
+                "connections.read"
+            }
+            .into(),
+            client_role: "desktop".into(),
+            update,
+        };
+        let bytes = serde_json::to_vec(&request)?;
+        Request::decode(&bytes).map_err(io::Error::other)?;
+        let mut stream = Stream::connect(socket_name()?)?;
+        arm_ipc_stream(&stream)?;
+        write_response(&mut stream, &bytes, Instant::now() + IPC_REQUEST_DEADLINE)?;
+        let frame = read_ipc_frame(
+            &mut stream,
+            crate::managed_profile::connection_settings::MAX_FRAME,
+            Instant::now() + Duration::from_secs(120),
+        )?;
+        cryptex_events::reject_duplicate_json_keys(
+            std::str::from_utf8(&frame).map_err(io::Error::other)?,
+        )
+        .map_err(io::Error::other)?;
+        let reply: Response = serde_json::from_slice(&frame)?;
+        if reply.schema_version != 1
+            || reply.request_id != request_id
+            || !reply.accepted
+            || reply.error.is_some()
+        {
+            return Err(invalid_data("connection_settings_refused"));
+        }
+        reply
+            .view
+            .ok_or_else(|| invalid_data("connection_settings_missing"))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = update;
+        Err(invalid_data("native_connection_settings_required"))
+    }
 }
 
 fn is_bootstrap_approval_frame(frame: &[u8]) -> bool {
@@ -2735,6 +2920,14 @@ fn require_current_transport_device_id(
 }
 
 fn current_transport_device_id(context: &SearchContext) -> Result<String, &'static str> {
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    if let Some(connections) = &context.connections {
+        return connections
+            .reader()
+            .ok_or("transport_identity_unavailable")?
+            .try_transport_device_id()
+            .map_err(|_| "transport_identity_unavailable");
+    }
     #[cfg(test)]
     {
         let actual = context
@@ -3227,6 +3420,13 @@ fn deliver_approval_session(
         )?
         .send_using(|bytes, deadline| write_response(stream, bytes, deadline));
     }
+    #[cfg(windows)]
+    if matches!(
+        followup.operation.as_str(),
+        "bootstrap.approval.confirm" | "owner.security.confirm"
+    ) {
+        session.reconcile_connections(&permit)?;
+    }
     let finished = session.finish(followup, &permit)?;
     AdmittedReply::new(finished.reply, permit, Instant::now() + finished.timeout)?
         .send_using(|bytes, deadline| write_response(stream, bytes, deadline))
@@ -3344,6 +3544,13 @@ fn handle_bootstrap_approval_completion(
     } else {
         approval_domain::complete(context, request, &permit)
     };
+    #[cfg(windows)]
+    if context.connections.is_some() && error.is_none() {
+        context
+            .admission
+            .require_derived_rebuild(&context.runtime_root, &permit)
+            .map_err(io::Error::other)?;
+    }
     AdmittedReply::new(reply, permit, Instant::now() + IPC_RESPONSE_DEADLINE)?
         .send_using(|bytes, deadline| write_response(stream, bytes, deadline))
 }
@@ -4168,7 +4375,13 @@ fn handle_transport_status(
         return response;
     }
     #[cfg(windows)]
-    if let Some(reader) = context.and_then(|context| context.transport_status.as_ref()) {
+    if let Some(reader) = context.and_then(|context| {
+        context
+            .connections
+            .as_ref()
+            .and_then(|handle| handle.reader())
+            .or_else(|| context.transport_status.clone())
+    }) {
         use crate::managed_profile::{
             controller::Phase,
             worker::{WorkerError, WorkerState},
@@ -5665,6 +5878,8 @@ pub(crate) mod tests {
             environment: SecureStoreEnvironment::Dev,
             expected_desktop: Arc::new(test_connected_process_identity()),
             projection_sync: None,
+            #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+            connections: None,
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
             transport_identity: None,
@@ -5980,6 +6195,8 @@ pub(crate) mod tests {
                 test_desktop_process_identity().expect("capture test Desktop identity"),
             ),
             projection_sync: None,
+            #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+            connections: None,
             #[cfg(windows)]
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
@@ -6948,6 +7165,8 @@ pub(crate) mod tests {
                 test_desktop_process_identity().expect("capture test Desktop identity"),
             ),
             projection_sync: None,
+            #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+            connections: None,
             #[cfg(windows)]
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
@@ -7183,6 +7402,8 @@ pub(crate) mod tests {
             environment: SecureStoreEnvironment::Dev,
             expected_desktop: Arc::new(test_connected_process_identity()),
             projection_sync: None,
+            #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+            connections: None,
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
             transport_identity: None,
@@ -7849,6 +8070,8 @@ pub(crate) mod tests {
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
             projection_sync: None,
+            #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+            connections: None,
             #[cfg(windows)]
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
@@ -7887,6 +8110,8 @@ pub(crate) mod tests {
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
             projection_sync: None,
+            #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+            connections: None,
             #[cfg(windows)]
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
@@ -8118,6 +8343,8 @@ pub(crate) mod tests {
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
             projection_sync: None,
+            #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+            connections: None,
             #[cfg(windows)]
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]

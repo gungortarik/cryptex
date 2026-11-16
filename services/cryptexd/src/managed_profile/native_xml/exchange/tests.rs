@@ -45,6 +45,46 @@ fn with_authority(f: impl FnOnce(&ExchangePeers<'_>, &[u8])) {
 }
 
 #[test]
+fn local_only_removes_network_authority_without_erasing_canonical_peers() {
+    with_authority(|authority, bootstrap| {
+        let active = ExchangeConfigPolicy::new(authority, ports(), listen(), endpoints()).unwrap();
+        let paused = ExchangeConfigPolicy::local_only(authority, ports()).unwrap();
+        let active_bytes = active.prepare_bootstrap(bootstrap).unwrap();
+        let paused_bytes = paused.prepare_bootstrap(bootstrap).unwrap();
+        assert_eq!(authority.bindings().len(), 1);
+        let tree = parse(&paused_bytes).unwrap();
+        assert!(!tree.children.iter().any(|n| n.name == "folder"));
+        assert_eq!(
+            tree.children.iter().filter(|n| n.name == "device").count(),
+            1
+        );
+        assert_eq!(
+            tree.one("options")
+                .unwrap()
+                .one("listenAddress")
+                .unwrap()
+                .value()
+                .unwrap(),
+            "tcp://127.0.0.1:22001"
+        );
+        assert!(paused.inspect_exchange(&active_bytes).is_err());
+        assert!(active.inspect_exchange(&paused_bytes).is_err());
+        let active_binding = active.binding_bytes(&active_bytes).unwrap();
+        let paused_binding = paused.binding_bytes(&paused_bytes).unwrap();
+        super::validate_replacement(&active_bytes, &active_binding, &paused_binding).unwrap();
+        super::validate_replacement(&paused_bytes, &paused_binding, &active_binding).unwrap();
+        paused
+            .verify_binding(&paused_bytes, &paused_binding)
+            .unwrap();
+        assert!(
+            paused
+                .verify_binding(&paused_bytes, &active_binding)
+                .is_err()
+        );
+    });
+}
+
+#[test]
 fn signed_authority_builds_one_exact_exchange_and_rechecks_derived_binding() {
     with_authority(|authority, bootstrap| {
         let policy = ExchangeConfigPolicy::new(authority, ports(), listen(), endpoints()).unwrap();
@@ -600,7 +640,7 @@ fn supervised_exchange_install_restart_and_revocation() {
     let owner = crate::instance::try_acquire_instance(&source).unwrap();
     let gate = owner.admission();
     // First install, identical restart, changed endpoint, changed-target restart.
-    for attempt in 0..4 {
+    for attempt in 0..7 {
         let permit = gate
             .exclusive(&source, Instant::now() + Duration::from_secs(3), false)
             .unwrap();
@@ -637,6 +677,9 @@ fn supervised_exchange_install_restart_and_revocation() {
         policy.peers[0]
             .set("address", &format!("tcp://{endpoint}"))
             .unwrap();
+        if matches!(attempt, 4 | 5) {
+            policy = ExchangeConfigPolicy::local_only(&authority, ports).unwrap();
+        }
         let mut worker = ManagedTransportWorker::start_exchange(
             profile_path.clone(),
             package_path.clone(),
@@ -656,7 +699,7 @@ fn supervised_exchange_install_restart_and_revocation() {
             assert!(Instant::now() < deadline, "ready publication deadline");
             std::thread::sleep(Duration::from_millis(20));
         }
-        if attempt == 3 {
+        if attempt == 6 {
             gate.exclusive(&source, Instant::now() + Duration::from_secs(3), false)
                 .unwrap()
                 .finish(Some(

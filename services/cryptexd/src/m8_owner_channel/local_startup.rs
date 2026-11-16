@@ -837,11 +837,16 @@ pub(crate) struct ReceivedRequest {
     decoded: super::request::DecodedRequest,
     seal: Arc<()>,
 }
+pub(crate) struct ReceivedSettings {
+    bytes: Vec<u8>,
+    seal: Arc<()>,
+}
 pub(crate) enum Incoming {
     Request(Box<ReceivedRequest>),
     Close,
     Ping,
     Status,
+    Settings(ReceivedSettings),
 }
 impl BoundConnection<'_> {
     pub(crate) fn ready(&mut self, deadline: Instant) -> std::io::Result<()> {
@@ -862,6 +867,19 @@ impl BoundConnection<'_> {
         if bytes == STATUS {
             return Ok(Incoming::Status);
         }
+        if serde_json::from_slice::<serde_json::Value>(bytes)
+            .ok()
+            .and_then(|v| v.get("operation")?.as_str().map(str::to_owned))
+            .is_some_and(|operation| operation.starts_with("connections."))
+        {
+            if bytes.len() > crate::managed_profile::connection_settings::MAX_FRAME {
+                return Err(std::io::Error::other("settings_frame_limit"));
+            }
+            return Ok(Incoming::Settings(ReceivedSettings {
+                bytes: bytes.to_vec(),
+                seal: Arc::clone(&self.seal),
+            }));
+        }
         let decoded = super::request::decode_untrusted(bytes).map_err(std::io::Error::other)?;
         Ok(Incoming::Request(Box::new(ReceivedRequest {
             decoded,
@@ -876,6 +894,12 @@ impl BoundConnection<'_> {
             return Err(std::io::Error::other("native_request_connection_mismatch"));
         }
         Ok(request.decoded)
+    }
+    pub(crate) fn consume_settings(&self, received: ReceivedSettings) -> std::io::Result<Vec<u8>> {
+        if !Arc::ptr_eq(&self.seal, &received.seal) {
+            return Err(std::io::Error::other("settings_connection_mismatch"));
+        }
+        Ok(received.bytes)
     }
     pub(crate) fn send(&mut self, bytes: &[u8], deadline: Instant) -> std::io::Result<()> {
         self.channel.send(bytes, deadline).map_err(native_io)

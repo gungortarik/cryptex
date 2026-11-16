@@ -147,8 +147,14 @@ pub(super) struct PrivateDirectory {
 impl PrivateDirectory {
     pub(super) fn sync_exchange_files(&self) -> Result<(), ProfileError> {
         use super::exchange_install::Leaf;
+        self.sync_leaves(&[Leaf::Config, Leaf::Binding, Leaf::Journal])
+    }
+    pub(super) fn sync_settings_file(&self) -> Result<(), ProfileError> {
+        self.sync_leaves(&[super::exchange_install::Leaf::Settings])
+    }
+    fn sync_leaves(&self, leaves: &[super::exchange_install::Leaf]) -> Result<(), ProfileError> {
         let mut retained = Vec::new();
-        for leaf in [Leaf::Config, Leaf::Binding, Leaf::Journal] {
+        for leaf in leaves {
             let file = create_owned_file(&self.path.join(leaf.name()), &self.user, OPEN_EXISTING)?;
             validate_file(&file, &self.user)?;
             file.sync_all().map_err(|_| ProfileError::Io)?;
@@ -267,6 +273,20 @@ impl PrivateDirectory {
     }
 
     pub(super) fn acquire(path: &Path, create: bool) -> Result<Self, ProfileError> {
+        let (user, pins) = Self::pin_directory(path, create)?;
+        // Lock is only an ownership/session exclusion file, never a readiness
+        // indicator. A stale file from an exited owner can be reopened safely.
+        let lock = create_owned_file(&path.join("session.lock"), &user, OPEN_ALWAYS)?;
+        validate_file(&lock, &user)?;
+        Ok(Self {
+            path: path.to_owned(),
+            _lock: lock,
+            _pins: pins,
+            user,
+        })
+    }
+
+    fn pin_directory(path: &Path, create: bool) -> Result<(CurrentUser, Vec<File>), ProfileError> {
         if !path.is_absolute()
             || path
                 .components()
@@ -313,16 +333,7 @@ impl PrivateDirectory {
         let directory = open_directory(path)?;
         validate_permissions(&directory, &user, true)?;
         pins.push(directory);
-        // Lock is only an ownership/session exclusion file, never a readiness
-        // indicator. A stale file from an exited owner can be reopened safely.
-        let lock = create_owned_file(&path.join("session.lock"), &user, OPEN_ALWAYS)?;
-        validate_file(&lock, &user)?;
-        Ok(Self {
-            path: path.to_owned(),
-            _lock: lock,
-            _pins: pins,
-            user,
-        })
+        Ok((user, pins))
     }
 
     pub(super) fn create_file(&self, name: &str) -> Result<File, ProfileError> {
@@ -536,4 +547,36 @@ fn validate_permissions(
         return Err(ProfileError::UnsafePermissions);
     }
     Ok(())
+}
+
+/// Pin every original ancestor and create only the fixed exchange tree. No
+/// session/ownership file is ever placed in the replicated incoming directory.
+pub(super) struct ExchangeTree(Vec<File>);
+impl ExchangeTree {
+    pub(super) fn validate(&self) -> Result<(), ProfileError> {
+        // Retained no-delete handles prevent namespace replacement on Windows.
+        if self.0.is_empty() {
+            return Err(ProfileError::UnsafeObject);
+        }
+        Ok(())
+    }
+}
+pub(super) fn ensure_exchange_tree(root: &Path) -> Result<ExchangeTree, ProfileError> {
+    // Existing runtime trees use the established import adapter's current-owner,
+    // no-reparse namespace policy. Do not impose managed-profile session ACLs
+    // on existing canonical runtimes or silently repair their permissions.
+    let pin = |path: &Path| {
+        crate::import_staging::ImportStagingSession::pin_existing_runtime(path)
+            .map_err(|_| ProfileError::UnsafeObject)
+    };
+    let mut pins = pin(root)?;
+    for path in [root.join("transport"), root.join("transport/incoming")] {
+        let child = if path.try_exists().map_err(|_| ProfileError::Io)? {
+            pin(&path)?
+        } else {
+            PrivateDirectory::pin_directory(&path, true)?.1
+        };
+        pins.extend(child);
+    }
+    Ok(ExchangeTree(pins))
 }

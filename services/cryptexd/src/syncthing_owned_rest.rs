@@ -37,6 +37,7 @@ pub enum OwnedRestError {
     HttpStatus(u16),
     VersionMismatch,
     IdentityMismatch,
+    ListenerUnavailable,
 }
 
 impl fmt::Display for OwnedRestError {
@@ -111,10 +112,26 @@ impl<'a> OwnedSyncthingRest<'a> {
         let deadline = Instant::now()
             .checked_add(budget)
             .ok_or(OwnedRestError::Deadline)?;
-        self.observe_before(deadline)
+        self.observe_before(deadline, None)
     }
 
-    fn observe_before(&self, deadline: Instant) -> Result<TransportObservation, OwnedRestError> {
+    pub(crate) fn observe_listener_with_budget(
+        &self,
+        listener: Option<std::net::SocketAddrV4>,
+        budget: Duration,
+    ) -> Result<TransportObservation, OwnedRestError> {
+        self.observe_before(
+            Instant::now()
+                .checked_add(budget)
+                .ok_or(OwnedRestError::Deadline)?,
+            listener,
+        )
+    }
+    fn observe_before(
+        &self,
+        deadline: Instant,
+        listener: Option<std::net::SocketAddrV4>,
+    ) -> Result<TransportObservation, OwnedRestError> {
         let version: Version = json(&self.request(Operation::Version, deadline)?)?;
         if version.version != "v2.1.5" {
             return Err(OwnedRestError::VersionMismatch);
@@ -122,6 +139,9 @@ impl<'a> OwnedSyncthingRest<'a> {
         let status: Status = json(&self.request(Operation::Status, deadline)?)?;
         if status.my_id != self.expected_identity {
             return Err(OwnedRestError::IdentityMismatch);
+        }
+        if let Some(listener) = listener {
+            status.require_listener(listener)?;
         }
         Ok(TransportObservation {
             engine_version: "v2.1.5",
@@ -134,7 +154,7 @@ impl<'a> OwnedSyncthingRest<'a> {
     /// owned job, retaining forced cleanup as failure.
     pub fn request_shutdown(&self) -> Result<(), OwnedRestError> {
         let deadline = Instant::now() + BUDGET;
-        self.observe_before(deadline)?;
+        self.observe_before(deadline, None)?;
         self.request(Operation::Shutdown, deadline).map(|_| ())
     }
 
@@ -310,6 +330,33 @@ struct Version {
 struct Status {
     #[serde(rename = "myID")]
     my_id: String,
+    #[serde(default, rename = "connectionServiceStatus")]
+    listeners: Option<std::collections::BTreeMap<String, ListenerStatus>>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListenerStatus {
+    error: serde_json::Value,
+    lan_addresses: Option<Vec<String>>,
+}
+impl Status {
+    fn require_listener(&self, endpoint: std::net::SocketAddrV4) -> Result<(), OwnedRestError> {
+        let expected = format!("tcp://{endpoint}");
+        let listeners = self
+            .listeners
+            .as_ref()
+            .ok_or(OwnedRestError::ListenerUnavailable)?;
+        let listener = listeners
+            .get(&expected)
+            .ok_or(OwnedRestError::ListenerUnavailable)?;
+        if listeners.len() != 1
+            || !listener.error.is_null()
+            || listener.lan_addresses.as_deref() != Some(std::slice::from_ref(&expected))
+        {
+            return Err(OwnedRestError::ListenerUnavailable);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

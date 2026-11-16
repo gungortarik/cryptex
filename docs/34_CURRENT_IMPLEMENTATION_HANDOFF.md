@@ -1,5 +1,41 @@
 # 34 — Current Implementation Handoff
 
+## Normal LAN settings and roster reconciliation — November15, native validation pending
+
+The user accepted the narrow public LAN settings exception in ADR-0021; see
+`docs/proposals/m8-product-lan-settings-20261115.md`. Commit47cd0d8 extends derived
+exchange transactions to bounded committed-policy replacement; CI43798923750
+passed Windows and Mac. This is not real Windows–Mac convergence acceptance.
+
+The current candidate connects Desktop public LAN preferences to authenticated
+Windows owner IPC and the sealed Mac native allocation channel. Renderer receives
+only canonical peer IDs, public transport IDs, RFC1918 endpoints, a read-only
+local transport port and truthful local status. No API ports, paths, credentials,
+PIDs or helper controls cross this boundary. Defaults pause sync. Saved settings
+cannot add trust or reuse an endpoint for a changed canonical transport identity.
+
+The coordinator closes old owned transport before rebuilding exact configuration
+from fresh locked canonical history. Revision conflicts refuse writes. Pause or
+missing addresses installs self-only loopback configuration, retaining historical
+incoming validation independently of active peers. Owner changes invalidate old
+approval grants and transport generations. Local restriction does not invent a
+whole-Brain corruption hold; actual recovery/security holds remain authoritative.
+Private bounded settings writes are flushed/read back; leftover staging refuses.
+Reply leases last through actual send. Shutdown uncertainty stays latched and
+retains instance exclusion. Queued work has deadline/cancellation. Owned REST
+must report the exact live listener before exchange readiness is published.
+
+Local frontend build, JS settings policy tests, Python harness and changed-path
+clippy are checked during implementation. Latest Rust execution is blocked locally
+by Windows Application Control (4551); no bypass was attempted. Native CI for this
+candidate and independent final source review are still required. New coordinator
+tests use the standard-user Windows runner and feature-enabled Mac suite. Native
+exchange drivers now also cover pause, paused restart and resume. Do not infer
+these passes from47cd0d8's earlier CI.
+
+Remaining M8 gates: admitted sealed export, actual Windows–Mac durable convergence
+and interruption, final acceptance ledger. M8 OPEN; no new manual package yet.
+
 ## Supervised exchange install/start — November15, native CI passed
 
 Source e0e88d5/48bb78b/e03218c, Mac compile fix50d11de and CI fixbd4a691 connect recoverable exchange persistence to the

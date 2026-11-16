@@ -52,9 +52,15 @@ fn validate(file: &File, directory: bool) -> Result<(), ProfileError> {
 impl PrivateDirectory {
     pub(super) fn sync_exchange_files(&self) -> Result<(), ProfileError> {
         use super::exchange_install::Leaf;
+        self.sync_leaves(&[Leaf::Config, Leaf::Binding, Leaf::Journal])
+    }
+    pub(super) fn sync_settings_file(&self) -> Result<(), ProfileError> {
+        self.sync_leaves(&[super::exchange_install::Leaf::Settings])
+    }
+    fn sync_leaves(&self, leaves: &[super::exchange_install::Leaf]) -> Result<(), ProfileError> {
         self.require_current()?;
         let mut retained = Vec::new();
-        for leaf in [Leaf::Config, Leaf::Binding, Leaf::Journal] {
+        for leaf in leaves {
             let leaf = name(leaf.name())?;
             let file = opened(unsafe {
                 libc::openat(
@@ -428,4 +434,30 @@ mod tests {
         drop(directory);
         std::fs::remove_dir_all(root).unwrap();
     }
+}
+
+pub(super) struct ExchangeTree(Vec<crate::import_staging::macos_fs::Directory>);
+impl ExchangeTree {
+    pub(super) fn validate(&self) -> Result<(), ProfileError> {
+        for directory in &self.0 {
+            directory
+                .validate()
+                .map_err(|_| ProfileError::UnsafeObject)?;
+        }
+        Ok(())
+    }
+}
+pub(super) fn ensure_exchange_tree(root: &Path) -> Result<ExchangeTree, ProfileError> {
+    use crate::import_staging::macos_fs::{Directory, create_dir_all_owned};
+    let mut tree = ExchangeTree(vec![
+        Directory::open(root, true).map_err(|_| ProfileError::UnsafeObject)?,
+    ]);
+    for path in [root.join("transport"), root.join("transport/incoming")] {
+        tree.validate()?;
+        create_dir_all_owned(&path).map_err(|_| ProfileError::Io)?;
+        tree.0
+            .push(Directory::open(&path, true).map_err(|_| ProfileError::UnsafeObject)?);
+    }
+    tree.validate()?;
+    Ok(tree)
 }

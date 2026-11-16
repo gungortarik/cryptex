@@ -23,6 +23,10 @@ enum Work {
     Bind([u8; 32], Reply<()>),
     Ping(Reply<()>),
     ProfileStatus(Reply<NativeProfileStatus>),
+    Connections(
+        Option<cryptexd::managed_profile::connection_settings::Update>,
+        Reply<cryptexd::managed_profile::connection_settings::View>,
+    ),
     Prepare(Input, Reply<Prepared>),
     Finish(String, bool, Reply<Finished>),
     Brain(Reply<String>),
@@ -84,15 +88,21 @@ impl Client {
         make: impl FnOnce(Reply<T>) -> Work,
     ) -> Result<T, String> {
         let (reply, receive) = mpsc::sync_channel(1);
+        let work = make(reply);
+        let budget = Duration::from_secs(if matches!(&work, Work::Connections(..)) {
+            125
+        } else {
+            25
+        });
         self.sender
             .try_send(Queued {
-                deadline: Instant::now() + Duration::from_secs(25),
+                deadline: Instant::now() + budget,
                 interested,
-                work: make(reply),
+                work,
             })
             .map_err(|_| "candidate_queue_unavailable")?;
         receive
-            .recv_timeout(Duration::from_secs(25))
+            .recv_timeout(budget)
             .map_err(|_| "candidate_result_uncertain")?
     }
     fn exercise_lost_receiver(&self, expired: bool) -> Result<(), String> {
@@ -413,6 +423,15 @@ impl Owner {
                             let result = daemon.profile_status().map_err(|e| e.to_string());
                             deliver(&mut daemon, &delivery, reply, result);
                         }
+                        Work::Connections(update, reply) => {
+                            if update.is_some() {
+                                pending_delivery = None;
+                            }
+                            let result = daemon
+                                .connection_settings(update)
+                                .map_err(|_| "connection_settings_unavailable".to_string());
+                            deliver(&mut daemon, &delivery, reply, result);
+                        }
                         Work::Ping(reply) => {
                             let result = daemon.ping().map_err(|e| e.to_string());
                             deliver(&mut daemon, &delivery, reply, result);
@@ -603,6 +622,17 @@ async fn m8_native_profile_status(
     state: tauri::State<'_, Client>,
 ) -> Result<NativeProfileStatus, String> {
     async_call(state.inner().clone(), Work::ProfileStatus).await
+}
+
+#[tauri::command]
+async fn m8_connection_settings(
+    state: tauri::State<'_, Client>,
+    update: Option<cryptexd::managed_profile::connection_settings::Update>,
+) -> Result<cryptexd::managed_profile::connection_settings::View, String> {
+    async_call(state.inner().clone(), move |reply| {
+        Work::Connections(update, reply)
+    })
+    .await
 }
 #[tauri::command]
 fn m8_new_bootstrap_transaction_id() -> Result<String, String> {
@@ -1301,6 +1331,7 @@ pub fn entry() -> Option<Result<(), String>> {
                 m8_new_bootstrap_transaction_id,
                 m8_read_bootstrap_brain_identity,
                 m8_read_transport_device_id,
+                m8_connection_settings,
                 m8_create_bootstrap_offer,
                 m8_create_bootstrap_proof,
                 m8_prepare_peer_approval,

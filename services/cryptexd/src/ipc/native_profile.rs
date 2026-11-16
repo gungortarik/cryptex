@@ -5,7 +5,7 @@ use crate::approval_session::ApprovalSessionRegistry;
 use crate::import_staging::macos_fs::{Directory, RuntimeIdentity, require_product_os};
 use crate::import_staging::macos_inbox::Inbox;
 use crate::m8_owner_channel::local_startup::{BoundConnection, Incoming};
-use crate::m8_owner_channel::transport_helper::{StatusReader, Worker};
+use crate::m8_owner_channel::transport_helper::StatusReader;
 use crate::managed_profile::incoming::{IncomingController, IncomingControllerError, IncomingTick};
 use std::os::unix::fs::MetadataExt;
 
@@ -137,6 +137,8 @@ fn context(
             pid: unsafe { libc::getppid() } as u32,
         }),
         projection_sync: None,
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        connections: None,
         transport_identity: transport,
         #[cfg(test)]
         transport_device_id_override: None,
@@ -241,7 +243,12 @@ impl Backend {
         instance: &mut crate::instance::InstanceLock,
     ) -> io::Result<Status> {
         self.namespace.validate()?;
-        let observed = context.transport_identity.as_ref().is_some_and(|reader| {
+        let transport = context
+            .connections
+            .as_ref()
+            .and_then(|handle| handle.reader())
+            .or_else(|| context.transport_identity.clone());
+        let observed = transport.as_ref().is_some_and(|reader| {
             reader.belongs_to_runtime(&context.runtime_root)
                 && reader.try_transport_device_id().is_ok()
         });
@@ -258,7 +265,7 @@ impl Backend {
                 return Ok(self.status.clone());
             }
         }
-        let Some(transport) = context.transport_identity.as_ref() else {
+        let Some(transport) = transport.as_ref() else {
             self.status = Status::new(IncomingState::WaitingForTransport, false);
             return Ok(self.status.clone());
         };
@@ -275,7 +282,7 @@ impl Backend {
                 return Ok(self.status.clone());
             }
         };
-        if !paths.is_empty() && observed {
+        if context.connections.is_none() && !paths.is_empty() && observed {
             prepare_existing_runtime(&context.runtime_root, instance, &self.namespace)?;
         }
         if !paths.is_empty() {
@@ -320,6 +327,13 @@ impl Backend {
             }
         };
         self.namespace.validate()?;
+        self.status.transport_observed = if let Some(handle) = &context.connections {
+            handle
+                .reader()
+                .is_some_and(|reader| reader.try_transport_device_id().is_ok())
+        } else {
+            observed
+        };
         Ok(self.status.clone())
     }
 }
@@ -349,21 +363,27 @@ pub(crate) fn serve(
     // Open an explicitly enrolled owned helper only. Absence is local-only;
     // never generate/adopt a profile or infer peer trust during native startup.
     let helper_root = root.join("managed-transport");
-    let mut worker = if helper_root.try_exists()? {
-        Some(Worker::spawn(helper_root, false).map_err(io::Error::other)?)
-    } else {
-        None
-    };
-    let context = trace_stage("context", || {
-        context(root, instance, worker.as_ref().map(Worker::status_reader))
-    })?;
+    let registry = ApprovalSessionRegistry::default();
+    let mut context = trace_stage("context", || context(root, instance, None))?;
+    let mut connections = crate::managed_profile::connection_settings::Owner::start(
+        root,
+        instance,
+        context.store.clone(),
+        context.environment,
+        helper_root
+            .try_exists()?
+            .then(|| crate::managed_profile::connection_settings::Location::mac(root)),
+        registry.clone(),
+        None,
+    )
+    .map_err(io::Error::other)?;
+    context.connections = Some(connections.handle());
     // No Unix or derived worker is exposed until it shares the original
     // native namespace capability set and verified device pins.
     #[cfg(feature = "m8-development-product")]
     trace_stage("unix_data", || {
         super::spawn_retrieval_server(root, instance, context.store.clone(), context.environment)
     })?;
-    let registry = ApprovalSessionRegistry::default();
     let mut domain = super::native_domain::Domain::from_context(context.clone(), &registry);
     send_checked(&backend.namespace, || {
         connection.ready(Instant::now() + IPC_RESPONSE_DEADLINE)
@@ -375,9 +395,7 @@ pub(crate) fn serve(
                 // Drop pending grants before stopping the helper. No grant or
                 // derived-worker lease survives into a replacement process.
                 drop(domain);
-                if let Some(worker) = worker.take() {
-                    worker.close().map_err(io::Error::other)?;
-                }
+                connections.shutdown().map_err(io::Error::other)?;
                 return Ok(());
             }
             Incoming::Ping => {
@@ -391,6 +409,23 @@ pub(crate) fn serve(
                 send_checked(&backend.namespace, || {
                     connection.send(
                         &serde_json::to_vec(&status)?,
+                        Instant::now() + IPC_RESPONSE_DEADLINE,
+                    )
+                })?;
+            }
+            Incoming::Settings(received) => {
+                let bytes = connection.consume_settings(received)?;
+                if crate::managed_profile::connection_settings::Request::decode(&bytes)
+                    .is_ok_and(|request| request.update.is_some())
+                {
+                    domain = super::native_domain::Domain::from_context(context.clone(), &registry);
+                }
+                let mut reply = super::connection_settings_reply(&bytes, Some(&context), true);
+                let _response_lease =
+                    super::connection_settings_response_lease(Some(&context), &mut reply);
+                send_checked(&backend.namespace, || {
+                    connection.send(
+                        &serde_json::to_vec(&reply)?,
                         Instant::now() + IPC_RESPONSE_DEADLINE,
                     )
                 })?;

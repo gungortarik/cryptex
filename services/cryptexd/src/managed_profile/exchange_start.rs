@@ -118,6 +118,12 @@ impl IncomingPins {
     }
 }
 impl ExchangeImage {
+    pub(crate) fn listener(&self) -> Result<std::net::SocketAddrV4, NativeConfigError> {
+        self.pins.validate()?;
+        native_xml::exchange::configured_listener(self.wire.config.as_bytes())
+            .map_err(|_| NativeConfigError::InvalidConfig)
+    }
+
     pub(crate) fn from_policy(
         policy: &ExchangeConfigPolicy<'_>,
         permit: &ExclusivePermit,

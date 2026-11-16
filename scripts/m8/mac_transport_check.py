@@ -105,6 +105,7 @@ def check_identity(binary, root, run):
 
 EXCHANGE_MARKER = "native_supervised_exchange_install_restart_revocation=passed"
 REPLACEMENT_MARKER = "native_supervised_exchange_endpoint_replacement=passed"
+PAUSE_MARKER = "native_supervised_exchange_pause_resume=passed"
 
 
 def exchange_interface(output):
@@ -132,15 +133,16 @@ def check_native_pairing(binary, root, run, *, exchange_ip=None):
             writer_stopped = False
             try:
                 exchange = run([binary.with_name("cryptexd"), "--m8-local-exchange-start-driver",
-                                (root / "initiator").resolve(), exchange_ip], "supervised_native_exchange", 240)
+                                (root / "initiator").resolve(), exchange_ip], "supervised_native_exchange", 360)
                 writer_stopped = True
             except PreflightError:
                 writer_stopped = True
                 raise
-            if not all(marker in exchange.splitlines() for marker in (EXCHANGE_MARKER, REPLACEMENT_MARKER)):
+            if not all(marker in exchange.splitlines() for marker in (EXCHANGE_MARKER, REPLACEMENT_MARKER, PAUSE_MARKER)):
                 raise PreflightError("native_exchange_ready_marker_missing")
             print(EXCHANGE_MARKER)
             print(REPLACEMENT_MARKER)
+            print(PAUSE_MARKER)
     finally:
         # These are fresh CI-only roots. Never enumerate/adopt the login user's
         # other credentials, and never export keys or full transcripts.

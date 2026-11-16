@@ -33,6 +33,13 @@ impl InstanceLock {
     pub(crate) fn admission(&self) -> crate::runtime_admission::RuntimeAdmission {
         self.admission.clone()
     }
+    /// Keep process exclusion while an internal coordinator drains. This is not
+    /// operation authority: admission still checks shutdown/holds separately.
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    pub(crate) fn retain_lock(&self) -> Arc<File> {
+        self._file.clone()
+    }
+
     pub fn path(&self) -> &Path {
         &self.path
     }

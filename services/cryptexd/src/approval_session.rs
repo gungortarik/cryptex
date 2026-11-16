@@ -98,6 +98,7 @@ struct PendingSession {
 }
 
 /// Process-local registry: restart discards every capability by construction.
+#[derive(Clone)]
 pub struct ApprovalSessionRegistry {
     pending: Arc<Mutex<HashMap<[u8; 32], PendingSession>>>,
 }
@@ -111,6 +112,15 @@ impl Default for ApprovalSessionRegistry {
 }
 
 impl ApprovalSessionRegistry {
+    /// Called under exclusive runtime admission when the owner changes the
+    /// connection generation. Old connection capabilities cannot cross it.
+    pub(crate) fn invalidate_all(&self) -> Result<(), ApprovalSessionError> {
+        self.pending
+            .lock()
+            .map_err(|_| ApprovalSessionError::RegistryPoisoned)?
+            .clear();
+        Ok(())
+    }
     /// Creates the unforgeable identity that must be retained for exactly one
     /// authenticated IPC stream. Dropping it automatically invalidates grants.
     pub fn open_connection(&self) -> Result<ApprovalConnection, ApprovalSessionError> {
@@ -1277,6 +1287,33 @@ mod tests {
                     &second,
                     &second_grant.capability,
                     &second_grant.approval_request_digest
+                )
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn connection_reconcile_invalidates_grants_across_registry_clones() {
+        let registry = ApprovalSessionRegistry::default();
+        let connection = registry.open_connection().unwrap();
+        let grant = registry.issue(&connection, snapshot()).unwrap();
+        registry.clone().invalidate_all().unwrap();
+        assert!(
+            registry
+                .consume(
+                    &connection,
+                    &grant.capability,
+                    &grant.approval_request_digest
+                )
+                .is_err()
+        );
+        let fresh = registry.issue(&connection, snapshot()).unwrap();
+        assert!(
+            registry
+                .consume(
+                    &connection,
+                    &fresh.capability,
+                    &fresh.approval_request_digest
                 )
                 .is_ok()
         );

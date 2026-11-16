@@ -135,6 +135,21 @@ enum OpenMode {
 }
 
 impl ManagedProfile {
+    /// Public profile parameters are only a candidate until reopen validates the
+    /// original OS credential/certificate/key and supervised readiness agrees.
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    pub(crate) fn existing_native_ports(&self) -> Result<NativePorts, NativeConfigError> {
+        let receipt: Receipt = decode(
+            &self
+                .read("native-ready.json")?
+                .ok_or(NativeConfigError::InvalidState)?,
+        )?;
+        if receipt.schema != 1 {
+            return Err(NativeConfigError::InvalidState);
+        }
+        receipt.ports.validate()?;
+        Ok(receipt.ports)
+    }
     #[cfg(all(test, windows))]
     pub(crate) fn reopen_transfer_test<'a, S: SecureStore + ?Sized>(
         &'a mut self,
@@ -703,7 +718,10 @@ impl<'profile> PreparedNativeProfile<'profile> {
             match session
                 .rest(store)
                 .inspect_err(|error| eprintln!("component=managed_transport operation=start_rest status=failed error={error}"))?
-                .observe_with_budget(remaining.min(Duration::from_secs(3)))
+                .observe_listener_with_budget(
+                    session.prepared.exchange.as_ref().map(|image| image.listener()).transpose()?,
+                    remaining.min(Duration::from_secs(3)),
+                )
             {
                 Ok(_) => {
                     session.prepared.validate(store)?;
@@ -715,6 +733,7 @@ impl<'profile> PreparedNativeProfile<'profile> {
                     )
                     | OwnedRestError::Unavailable
                     | OwnedRestError::Deadline
+                    | OwnedRestError::ListenerUnavailable
                 )) => {
                     if first_wait {
                         eprintln!("component=managed_transport operation=start_observation status=waiting error={error}");
@@ -856,7 +875,14 @@ impl NativeSession<'_, '_> {
         self.prepared.validate(store)?;
         let observation = self
             .rest(store)?
-            .observe()
+            .observe_listener_with_budget(
+                self.prepared
+                    .exchange
+                    .as_ref()
+                    .map(|image| image.listener())
+                    .transpose()?,
+                Duration::from_secs(3),
+            )
             .map_err(NativeConfigError::Rest)?;
         self.prepared.validate(store)?;
         Ok(observation)

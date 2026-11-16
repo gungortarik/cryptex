@@ -22,6 +22,8 @@ struct SessionContext {
     store: Arc<dyn crate::secure_store::SecureStore>,
     environment: crate::secure_store::SecureStoreEnvironment,
     expected_desktop: Arc<super::DesktopProcessIdentity>,
+    #[cfg(windows)]
+    reconcile_connections: bool,
 }
 
 impl From<&SearchContext> for SessionContext {
@@ -32,6 +34,8 @@ impl From<&SearchContext> for SessionContext {
             store: Arc::clone(&context.store),
             environment: context.environment,
             expected_desktop: Arc::clone(&context.expected_desktop),
+            #[cfg(windows)]
+            reconcile_connections: context.connections.is_some(),
         }
     }
 }
@@ -370,6 +374,16 @@ pub(super) fn prepare_owner<'a>(
 }
 
 impl PendingSession<'_> {
+    #[cfg(windows)]
+    pub(super) fn reconcile_connections(&self, permit: &OperationPermit) -> io::Result<()> {
+        if self.context.reconcile_connections {
+            self.context
+                .admission
+                .require_derived_rebuild(&self.context.runtime_root, permit)
+                .map_err(io::Error::other)?;
+        }
+        Ok(())
+    }
     pub(super) fn is_owner(&self) -> bool {
         matches!(self.kind, PendingKind::Owner { .. })
     }

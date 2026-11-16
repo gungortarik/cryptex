@@ -180,6 +180,7 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
                 m8_new_bootstrap_transaction_id,
                 m8_read_bootstrap_brain_identity,
                 m8_read_transport_device_id,
+                m8_connection_settings,
                 m8_create_bootstrap_offer,
                 m8_create_bootstrap_proof,
                 m8_prepare_peer_approval,

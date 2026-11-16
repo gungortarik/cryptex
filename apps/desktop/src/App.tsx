@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { ConnectionSettings } from "./ConnectionSettings";
 import { parseNativeProfileStatus, nativeProfileMessage, type NativeProfileStatus } from "./native-profile-status.mjs";
 import { completionMessages, pairingRejectionStatus, reviewMessages, swappedPairingField } from "./pairing-status.mjs";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -1119,12 +1120,14 @@ export function App() {
             {vaultStatus ? <p className="capture-status" role="status">{vaultStatus}</p> : null}
           </section>
 
+          <ConnectionSettings active={connection === "active"} onApply={() => { setApprovalPrepared(null); setOwnerOperationPrepared(null); }} />
+
           <section className="bootstrap-panel" aria-labelledby="bootstrap-heading">
             <div>
               <p className="panel-kicker">Device trust · M8 Windows flow</p>
               <h2 id="bootstrap-heading">Review a signed pairing request</h2>
               <p className="capture-help">
-                Exchange signed public messages by copy and paste. Compare full device IDs, key fingerprints, and transport IDs through a separate trusted channel. This flow does not start transport or sync.
+                Exchange signed public messages by copy and paste. Compare full device IDs, key fingerprints, and transport IDs through a separate trusted channel. Connections follow your local connection settings after trust is verified.
               </p>
             </div>
             {!approvalPrepared ? (

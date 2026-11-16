@@ -180,6 +180,10 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
           pnpm install --frozen-lockfile
           pnpm --filter @cryptex/desktop build
+      - name: Test connection settings wire and UI policy
+        run: |
+          pnpm --filter @cryptex/desktop test:connection-settings
+          cargo test --locked -p cryptexd --lib managed_profile::connection_settings::tests:: -- --test-threads=1
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Test public-Brain-only fixture isolation
@@ -338,6 +342,9 @@ jobs:
 
       - name: Test Desktop retrieval response policy
         run: pnpm --filter @cryptex/desktop test:search-policy
+
+      - name: Test connection settings UI policy
+        run: pnpm --filter @cryptex/desktop test:connection-settings
 
       - name: Test truthful native profile status
         run: pnpm --filter @cryptex/desktop test:native-profile-status

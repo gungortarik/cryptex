@@ -241,6 +241,18 @@ button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, va
   font-weight: 500; letter-spacing: -0.025em;
 }
 .bootstrap-form { display: grid; gap: 8px; }
+.connections-heading, .connections-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.connections-form { margin-top: 20px; }
+.connections-pause { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+.bootstrap-form .connections-pause input { width: 17px; height: 17px; accent-color: var(--accent); }
+.connections-local-address { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.bootstrap-form .connections-local-address input { flex: 1 1 180px; max-width: 320px; }
+.connections-local-address span { font-size: 12px; color: var(--muted); }
+.connections-devices h3 { margin: 18px 0 6px; font-size: 14px; font-weight: 650; }
+.connections-device { border-top: 1px solid var(--line); padding: 16px 0; }
+.connections-device code { font-size: 11px; overflow-wrap: anywhere; }
+.connections-identity { margin: 6px 0 12px; }
+.connections-actions { justify-content: flex-end; margin-top: 12px; }
 .bootstrap-form label, .bootstrap-signed-message {
   color: var(--muted); font-size: 12px; font-weight: 650;
 }

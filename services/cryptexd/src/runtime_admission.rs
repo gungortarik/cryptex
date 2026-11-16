@@ -251,7 +251,11 @@ impl RuntimeAdmission {
     /// Close new admission before releasing the real reply lease after an
     /// operation that may have changed canonical policy. Existing holds are
     /// monotone here; only full verified recovery/rebuild may clear them.
-    #[cfg(any(all(target_os = "macos", feature = "m8-local-startup-check"), test))]
+    #[cfg(any(
+        windows,
+        all(target_os = "macos", feature = "m8-local-startup-check"),
+        test
+    ))]
     pub(crate) fn require_derived_rebuild(
         &self,
         root: &Path,

@@ -20,6 +20,7 @@ pub(super) enum Leaf {
     Config,
     Binding,
     Journal,
+    Settings,
 }
 impl Leaf {
     pub(super) fn name(self) -> &'static str {
@@ -27,6 +28,7 @@ impl Leaf {
             Self::Config => "config.xml",
             Self::Binding => "exchange-binding.json",
             Self::Journal => "exchange-install.json",
+            Self::Settings => "connections.json",
         }
     }
     pub(super) fn temporary(self) -> &'static str {
@@ -34,6 +36,7 @@ impl Leaf {
             Self::Config => "exchange-config.tmp",
             Self::Binding => "exchange-binding.tmp",
             Self::Journal => "exchange-install.tmp",
+            Self::Settings => "connections.tmp",
         }
     }
     pub(super) fn limit(self) -> usize {
@@ -41,6 +44,7 @@ impl Leaf {
             Self::Config => 256 * 1024,
             Self::Binding => 64 * 1024,
             Self::Journal => MAX_JOURNAL,
+            Self::Settings => 64 * 1024,
         }
     }
 }

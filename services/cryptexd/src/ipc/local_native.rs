@@ -83,6 +83,8 @@ pub(crate) fn serve(
             pid: unsafe { libc::getppid() } as u32,
         }),
         projection_sync: None,
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        connections: None,
         transport_identity: None,
         #[cfg(test)]
         transport_device_id_override: None,
@@ -144,6 +146,9 @@ pub(crate) fn serve(
                 continue;
             }
             Incoming::Request(request) => *request,
+            Incoming::Settings(_) => {
+                return Err(io::Error::other("settings_product_profile_required"));
+            }
         };
         let mut response = domain.dispatch(connection, received)?;
         // This mutation belongs only to the isolated fixture. Shared/product
