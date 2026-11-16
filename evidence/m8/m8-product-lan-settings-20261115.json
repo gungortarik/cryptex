@@ -1,0 +1,127 @@
+{
+  "schema": 1,
+  "status": "bounded_integration_ci_passed",
+  "source": "2ed3824c483b92a9caff9d38a9838f058f3ef785",
+  "scope": "Owner-approved public RFC1918 LAN preferences, canonical device roster reconciliation, supervised native transport readiness and restart. Not actual Windows-Mac durable convergence.",
+  "authorization": "User explicitly accepted the narrow LAN endpoint exception; ADR-0021 and docs/proposals/m8-product-lan-settings-20261115.md record it.",
+  "boundary": {
+    "renderer": "Closed bounded requests expose private LAN IPv4 endpoints, canonical public device IDs and a read-only public transport port. No API ports, paths, credentials, process IDs or helper controls.",
+    "authority": "Settings are derived preferences. Fresh locked canonical history selects peers; saved associations cannot authorize peers or attach an address to a changed transport identity.",
+    "coordination": "Revoke and drain before configuration replacement; exact native listener observation precedes local readiness. Pause installs self-only loopback configuration. Uncertain shutdown retains exclusion and blocks replacement.",
+    "restart": "Bounded committed replacement journal requires current authority; partial settings staging refuses. Existing holds cannot be cleared by settings. Ordinary approval reply leases persist through send.",
+    "enrollment": "Windows retains strictly validated identity-only prehistory with no LAN. Missing, corrupt and existing-but-unverifiable metadata are distinct. Sign-only confirmation does not request canonical rebuild; first canonical data requires R4 and fresh policy. Bootstrap status readers share the revocable transport guard."
+  },
+  "local": {
+    "format_and_diff": "passed",
+    "daemon_desktop_all_target_clippy": "passed through545b536",
+    "frontend_build": "passed",
+    "javascript_settings_tests": "7 passed",
+    "python_transport_harness_tests": "14 passed",
+    "python_startup_runner_tests": "7 passed",
+    "rust_execution": "Windows Application Control 4551 prevents local execution; no bypass. CI standard-user execution is reported separately."
+  },
+  "independent_review": "Existing independent reviewer performed bounded source review. Reported cleanup retention, response lease/hold handling, stale update restoration, bounded cancellation, exact listener readiness, Windows bootstrap and immediate reader revocation findings were corrected. Final focused correction review at c8c3fe8 found no remaining actionable issue. Reviewer did not execute tests. A subsequent native-start investigation identified inconsistent raw-byte readback for semantically equivalent first local-only XML. Corrected in545b536 with six interruption/reopen cases, normalized readback and exact binding/journal checks; focused review found no remaining actionable issue in that correction. The subsequent fixture-root correction in 2ed3824 received bounded independent source review with no actionable issue; exact-source native Mac CI subsequently passed in run 43807719260. Physical settings UI and two-device convergence remain separate gates.",
+  "ci": {
+    "current_run": "https://github.com/gungortarik/cryptex/actions/runs/43807719260",
+    "current_status": "success",
+    "prior_replacement_baseline": {
+      "source": "47cd0d8",
+      "run": 43798923750,
+      "windows": "passed",
+      "mac": "passed",
+      "verified_mac_markers": [
+        "native_supervised_exchange_install_restart_revocation=passed",
+        "native_supervised_exchange_endpoint_replacement=passed",
+        "native_existing_profile_signed_import=passed",
+        "native_existing_profile_restart_replay_and_local_status=passed"
+      ]
+    },
+    "superseded_runs": [
+      {
+        "run": 43802680829,
+        "source": "0c11e0c",
+        "result": "Mac default-feature unused method and Windows restriction fixture failure. Corrected actual signed restriction setup, not weakened expectation."
+      },
+      {
+        "run": 43803466318,
+        "source": "ac47437",
+        "windows": "passed including six settings tests under standard user",
+        "mac": "feature compile failed on absent typed refusal variant; fixed cc5dfe7"
+      },
+      {
+        "run": 43804012878,
+        "source": "cc5dfe7",
+        "windows": "passed",
+        "mac": "feature clippy item-order failure; fixed db8435a"
+      },
+      {
+        "run": 43804424854,
+        "source": "db8435a",
+        "windows": "passed",
+        "mac": "actual managed pairing failed before startup; previously generic Channel"
+      },
+      {
+        "run": 43804834516,
+        "source": "b9161e1",
+        "windows": "passed including explicit bootstrap classifier and sign-only confirmation regression",
+        "mac": "same actual managed pairing startup failure"
+      },
+      {
+        "run": 43805048891,
+        "source": "c8c3fe8",
+        "windows": "passed",
+        "mac": "same managed pairing failure"
+      },
+      {
+        "run": 43805767046,
+        "source": "b88f7ff",
+        "mac": "structured exchange_install native_config_InvalidState, propagated as typed Profile refusal; no pair acceptance",
+        "windows": "passed including immediate reader revocation test"
+      },
+      {
+        "run": 43806184496,
+        "source": "545b536",
+        "windows": "passed including explicit bootstrap, sign-only admission, reader revocation and interrupted local-only install regressions",
+        "mac": "managed pairing completed; subsequent supervised exchange first install refused. Fixture root alias mismatch identified in source; 2ed3824 resolves fresh backend fixture root before first binding."
+      }
+    ],
+    "windows": {
+      "job": 133102206835,
+      "conclusion": "success",
+      "verified_log": [
+        "explicit bootstrap classifier passed",
+        "sign-only confirmation preserves admission passed",
+        "retained transport reader immediate revocation passed",
+        "first local-only native serialization installation and six interrupted reopen cases passed",
+        "all three standard-user suites report passed and temporary account/profile cleanup"
+      ]
+    },
+    "mac": {
+      "job": 133102207174,
+      "conclusion": "success",
+      "verified_log": [
+        "native_supervised_exchange_install_restart_revocation=passed",
+        "native_supervised_exchange_endpoint_replacement=passed",
+        "native_supervised_exchange_pause_resume=passed",
+        "native_connection_settings_restart_and_stale_refusal=passed",
+        "native_managed_transport_pairing=passed",
+        "native_managed_pairing_clean_shutdown=passed",
+        "native_managed_pairing_restart_idempotent=passed",
+        "native_existing_profile_signed_import=passed",
+        "native_existing_profile_restart_replay_and_local_status=passed",
+        "native_connection_settings_owner_channel_and_roster=passed",
+        "real_signed_desktop_daemon_startup_restart=passed",
+        "native_ui_quit_preserved_seed=passed"
+      ]
+    }
+  },
+  "unexecuted": [
+    "Windows native JoiningDevice to first canonical record to normal coordinator transition",
+    "Real owner interaction with the new settings panel on physical Windows and Mac",
+    "Admitted sealed export and actual Windows-Mac durable convergence/interruption",
+    "Full M8 final acceptance ledger"
+  ],
+  "execution_limit": "Automatic approval review rejected the proposed additional Windows CI download/execution command with only 'blocked by policy'. It was not retried. Existing standard-user Windows suites and existing signed Mac harness are used; omitted native coverage is not claimed.",
+  "milestone": "M8 OPEN",
+  "owner_action": "No new manual package delivered. Next bounded implementation is admitted sealed export, then actual Windows-Mac durable convergence and interruption acceptance."
+}

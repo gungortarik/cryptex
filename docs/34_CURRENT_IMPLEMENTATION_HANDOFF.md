@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Normal LAN settings and roster reconciliation — November15, native validation pending
+## Normal LAN settings and roster reconciliation — November 16, Windows and Mac CI passed
 
 The user accepted the narrow public LAN settings exception in ADR-0021; see
 `docs/proposals/m8-product-lan-settings-20261115.md`. Commit47cd0d8 extends derived
@@ -25,16 +25,57 @@ Reply leases last through actual send. Shutdown uncertainty stays latched and
 retains instance exclusion. Queued work has deadline/cancellation. Owned REST
 must report the exact live listener before exchange readiness is published.
 
-Local frontend build, JS settings policy tests, Python harness and changed-path
-clippy are checked during implementation. Latest Rust execution is blocked locally
-by Windows Application Control (4551); no bypass was attempted. Native CI for this
-candidate and independent final source review are still required. New coordinator
-tests use the standard-user Windows runner and feature-enabled Mac suite. Native
-exchange drivers now also cover pause, paused restart and resume. Do not infer
-these passes from47cd0d8's earlier CI.
+Local frontend build, 7 JS settings policy tests, 14 transport harness tests,
+7 startup-runner tests and changed-path all-target clippy passed. Rust execution
+is blocked locally by Windows Application Control (4551); no bypass was attempted.
+Windows CI at ac47437 passed, including six settings tests under the actual
+standard-user token. Mac feature compilation found a missing domain refusal
+variant and an item-order lint; cc5dfe7/db8435a fix these without weakening tests.
+Exact-source code `2ed3824c483b92a9caff9d38a9838f058f3ef785` passed Windows and
+Mac in [CI 43807719260](https://github.com/gungortarik/cryptex/actions/runs/43807719260).
+Windows job 133102206835 includes standard-user settings/controller suites,
+bootstrap admission, sign-only confirmation, retained reader revocation and
+interrupted first local-only installation regressions. Mac job 133102207174
+passed actual signed owner-channel settings and canonical roster removal,
+stale-revision refusal, persisted preferences, public endpoint replacement,
+pause/restart/resume, signed import/replay and verified Desktop/daemon restart.
+Exact markers and limitations are in
+`evidence/m8/m8-product-lan-settings-20261115.json`.
 
-Remaining M8 gates: admitted sealed export, actual Windows–Mac durable convergence
-and interruption, final acceptance ledger. M8 OPEN; no new manual package yet.
+Two native regressions were corrected without weakening policy: `545b536` uses
+full normalized XML semantics consistently for first local-only readback, while
+keeping binding/journal checks exact; six interrupted write boundaries and native
+serialization reopen are tested. `2ed3824` resolves the fresh backend-owned test
+root before Desktop creates its first binding, so later drivers cannot switch
+from the macOS /var alias to /private/var. Its harness regression checks Desktop,
+exchange and cleanup path consistency. Independent source review found no
+remaining actionable issue in these corrections; the native CI now passes.
+
+Physical new-settings UI acceptance and Windows native first enrollment through
+first canonical record into the coordinator still need direct execution evidence.
+The passing CI does not close actual Windows-Mac durable convergence or M8.
+
+The independent bounded source review's findings are corrected through c8c3fe8;
+its final review found no remaining actionable issue in that correction. This is
+source review, not platform execution. Windows JoiningDevice retains an explicit
+validated identity-only phase: no implicit enrollment, no LAN, no fallback from
+failed history verification, no premature R4 after sign-only approval. Existing
+Brain/key metadata must validate; only empty history or the exact local
+writer.lock-only stream qualifies. Saved settings/anchored history force normal
+verification. First canonical data triggers R4 and a fresh policy; retained
+bootstrap readers immediately refuse after admission epoch revocation.
+
+A proposed additional Windows CI download/execution step was rejected by automatic
+approval review with only `blocked by policy`. It was not retried. Existing
+Windows standard-user suites and the existing signed Mac native harness remain
+the execution paths; this is not a pass for the unexecuted Windows native gate.
+
+Next bounded step: connect admitted sealed export to the normal product transport,
+then prepare actual Windows–Mac durable convergence/interruption acceptance with
+the settings UI. Preserve the existing admission, canonical authority and sealed
+publication boundaries; do not infer remote durability from Ready locally.
+Remaining M8 gates include that real-device acceptance and the final acceptance
+ledger. M8 OPEN; no new manual package delivered in this settings step.
 
 ## Supervised exchange install/start — November15, native CI passed
 
