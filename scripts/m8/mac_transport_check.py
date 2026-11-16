@@ -108,6 +108,7 @@ EXCHANGE_MARKER = "native_supervised_exchange_install_restart_revocation=passed"
 REPLACEMENT_MARKER = "native_supervised_exchange_endpoint_replacement=passed"
 PAUSE_MARKER = "native_supervised_exchange_pause_resume=passed"
 SETTINGS_MARKER = "native_connection_settings_restart_and_stale_refusal=passed"
+EXPORT_MARKER = "native_product_sealed_export_pause_resume_restart=passed"
 
 
 def exchange_interface(output):
@@ -143,12 +144,13 @@ def check_native_pairing(binary, root, run, *, exchange_ip=None):
             except PreflightError:
                 writer_stopped = True
                 raise
-            if not all(marker in exchange.splitlines() for marker in (EXCHANGE_MARKER, REPLACEMENT_MARKER, PAUSE_MARKER, SETTINGS_MARKER)):
+            if not all(marker in exchange.splitlines() for marker in (EXCHANGE_MARKER, REPLACEMENT_MARKER, PAUSE_MARKER, SETTINGS_MARKER, EXPORT_MARKER)):
                 raise PreflightError("native_exchange_ready_marker_missing")
             print(EXCHANGE_MARKER)
             print(REPLACEMENT_MARKER)
             print(PAUSE_MARKER)
             print(SETTINGS_MARKER)
+            print(EXPORT_MARKER)
     finally:
         # These are fresh CI-only roots. Never enumerate/adopt the login user's
         # other credentials, and never export keys or full transcripts.

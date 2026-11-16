@@ -1794,6 +1794,7 @@ fn check_connection_coordinator(
     {
         return Err(Error::Policy);
     }
+    let exported_before_pause = wait_exported_fixture(root, &handle)?;
     update.expected_revision = active.revision;
     update.paused = true;
     let paused = handle
@@ -1810,6 +1811,43 @@ fn check_connection_coordinator(
     if reopened.state != State::Paused || reopened.revision != paused.revision {
         return Err(Error::Policy);
     }
+    // Ordinary daemon append while transport is paused: the exporter must not
+    // publish this active tail until the owner resumes the same coordinator.
+    {
+        use cryptex_events::TrustedDaemonKeyResolver;
+        let permit = instance
+            .admission()
+            .enter(root)
+            .map_err(|_| Error::Policy)?;
+        let brain =
+            crate::identity_runtime::load_brain_identity(root).map_err(|_| Error::Policy)?;
+        let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+            root,
+            &brain.brain_id,
+            &MacosKeychainStore::new(),
+            SecureStoreEnvironment::Dev,
+        )
+        .map_err(|_| Error::Policy)?;
+        let local = resolver.local_trust_anchor().ok_or(Error::Policy)?;
+        crate::canonical_writer::append_memory_note(
+            &MacosKeychainStore::new(),
+            SecureStoreEnvironment::Dev,
+            crate::canonical_writer::AppendMemoryNoteArgs {
+                runtime_root: root,
+                brain_id: &brain.brain_id,
+                device_id: local.device_id(),
+                classification: cryptex_events::envelope::Classification::Public,
+                text: "Synthetic paused export acceptance.",
+                event_id: None,
+                config: &crate::canonical_writer::CanonicalWriterConfig::default(),
+            },
+        )
+        .map_err(|_| Error::Policy)?;
+        drop(permit);
+    }
+    if exported_fixture(root)?.is_some() {
+        return Err(Error::Policy);
+    }
     update.expected_revision = reopened.revision;
     update.paused = false;
     if handle
@@ -1820,9 +1858,103 @@ fn check_connection_coordinator(
     {
         return Err(Error::Engine);
     }
+    let after_resume = wait_exported_fixture(root, &handle)?;
+    if after_resume.len() <= exported_before_pause.len()
+        || exported_before_pause
+            .iter()
+            .any(|(path, hash)| after_resume.get(path) != Some(hash))
+    {
+        return Err(Error::Policy);
+    }
     restarted.shutdown().map_err(|_| Error::Cleanup)?;
+    if exported_fixture(root)?.as_ref() != Some(&after_resume) {
+        return Err(Error::Policy);
+    }
+    println!("native_product_sealed_export_pause_resume_restart=passed");
     println!("native_connection_settings_restart_and_stale_refusal=passed");
     Ok(())
+}
+
+fn wait_exported_fixture(
+    root: &Path,
+    handle: &crate::managed_profile::connection_settings::Handle,
+) -> Result<std::collections::BTreeMap<String, [u8; 32]>, Error> {
+    let until = Instant::now() + Duration::from_secs(15);
+    loop {
+        let view = handle.request(None).map_err(|_| Error::Engine)?;
+        if view.state != crate::managed_profile::connection_settings::State::ReadyLocally
+            || view.error.is_some()
+        {
+            return Err(Error::Engine);
+        }
+        if let Some(packs) = exported_fixture(root)? {
+            return Ok(packs);
+        }
+        if Instant::now() >= until {
+            return Err(Error::Deadline);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn exported_fixture(
+    root: &Path,
+) -> Result<Option<std::collections::BTreeMap<String, [u8; 32]>>, Error> {
+    use cryptex_events::TrustedDaemonKeyResolver;
+    use sha2::{Digest, Sha256};
+    let brain = crate::identity_runtime::load_brain_identity(root).map_err(|_| Error::Policy)?;
+    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+        root,
+        &brain.brain_id,
+        &MacosKeychainStore::new(),
+        SecureStoreEnvironment::Dev,
+    )
+    .map_err(|_| Error::Policy)?;
+    let snapshot =
+        crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+            root,
+            &brain.brain_id,
+            &resolver.local_trust_anchor().ok_or(Error::Policy)?,
+            Some(Instant::now() + Duration::from_secs(5)),
+        )
+        .map_err(|_| Error::Policy)?;
+    let packs = snapshot.export_packs(|| true).map_err(|_| Error::Policy)?;
+    let mut hashes = std::collections::BTreeMap::new();
+    for pack in packs {
+        if !pack.eligible || pack.length > 1024 * 1024 {
+            return Err(Error::Policy);
+        }
+        let relative = format!("{}/{:020}.seg", pack.device.as_filename_stem(), pack.index);
+        if !root
+            .join("canonical/events")
+            .join(&relative)
+            .try_exists()
+            .map_err(|_| Error::Profile)?
+            || !root
+                .join("transport/incoming")
+                .join(&relative)
+                .try_exists()
+                .map_err(|_| Error::Profile)?
+        {
+            return Ok(None);
+        }
+        let file = std::fs::File::open(root.join("transport/incoming").join(&relative))
+            .map_err(|_| Error::Profile)?;
+        let mut bytes = Vec::new();
+        file.take(1024 * 1024 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| Error::Profile)?;
+        if bytes.len() as u64 != pack.length
+            || <[u8; 32]>::from(Sha256::digest(&bytes)) != pack.digest
+        {
+            return Err(Error::Policy);
+        }
+        hashes.insert(relative, pack.digest);
+    }
+    if hashes.is_empty() {
+        return Err(Error::Policy);
+    }
+    Ok(Some(hashes))
 }
 
 fn loss_driver(root: &Path) -> Result<(), Error> {

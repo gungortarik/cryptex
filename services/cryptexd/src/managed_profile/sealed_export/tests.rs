@@ -139,7 +139,162 @@ fn seals_local_tail_copies_exact_bytes_replays_and_next_append_keeps_sequence() 
         )
         .unwrap();
     assert_eq!(snapshot.export_packs(|| true).unwrap().len(), 2);
+    assert!(matches!(
+        snapshot.export_packs(|| false),
+        Err(crate::knowledge_materialization::KnowledgeMaterializationError::DeadlineExceeded)
+    ));
     drop(snapshot);
+    fixture.cleanup();
+}
+
+#[test]
+fn signed_cutoff_withholds_whole_peer_pack_without_starving_another_eligible_peer() {
+    use cryptex_events::{BootstrapApprovalRole, ContentHashHex, DeviceSeq, SigningKeyId};
+    let fixture = Fixture::new();
+    let root = &fixture.roots[0];
+    let brain = crate::identity_runtime::load_brain_identity(root).unwrap();
+    let third_root = &fixture.roots[2];
+    crate::identity_runtime::write_brain_identity(third_root, &brain).unwrap();
+    let third =
+        crate::local_device_identity::enroll_local_device(third_root, &fixture.store, ENV).unwrap();
+    let third = DeviceId::new(third.device_id).unwrap();
+    let local_key = crate::event_signing_key::load_existing_event_signing_key(
+        &fixture.store,
+        ENV,
+        root,
+        &fixture.device,
+    )
+    .unwrap();
+    let third_key = crate::event_signing_key::load_existing_event_signing_key(
+        &fixture.store,
+        ENV,
+        third_root,
+        &third,
+    )
+    .unwrap();
+    let other_transport =
+        "A".repeat(7) + "-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA";
+    let offer = cryptex_events::create_bootstrap_offer(
+        &brain.brain_id,
+        &"b".repeat(64),
+        &fixture.device,
+        LOCAL,
+        &[3; 32],
+        &local_key.signing_key,
+    )
+    .unwrap();
+    let proof = cryptex_events::create_bootstrap_proof(
+        &offer,
+        &third,
+        &other_transport,
+        &[4; 32],
+        &third_key.signing_key,
+    )
+    .unwrap();
+    let request = cryptex_events::verify_bootstrap_approval_request(
+        &[&offer, &proof],
+        BootstrapApprovalRole::Initiator,
+    )
+    .unwrap();
+    let first = cryptex_events::sign_bootstrap_approval(&request, &local_key.signing_key).unwrap();
+    let request = cryptex_events::verify_bootstrap_approval_request(
+        &[&offer, &proof, &first],
+        BootstrapApprovalRole::Responder,
+    )
+    .unwrap();
+    let last = cryptex_events::sign_bootstrap_approval(&request, &third_key.signing_key).unwrap();
+    let transcript =
+        cryptex_events::verify_bootstrap_transcript(&[&offer, &proof, &first, &last]).unwrap();
+    let original = std::fs::read(fixture.canonical(0, "open")).unwrap();
+    let (frames, _) = cryptex_storage::segment_io::scan_complete_frames(&original).unwrap();
+    let tail: serde_json::Value = serde_json::from_slice(frames.last().unwrap()).unwrap();
+    let approval = cryptex_events::sign_peer_approved_event(
+        &transcript,
+        "99999999-9999-4999-8999-999999999991",
+        DeviceSeq::from_u64(3).unwrap(),
+        "2026-11-16T00:00:00Z",
+        &SigningKeyId::parse(&local_key.public.signing_key_id).unwrap(),
+        &ContentHashHex::parse(tail["content_hash"].as_str().unwrap()).unwrap(),
+        &local_key.signing_key,
+    )
+    .unwrap();
+    assert_eq!(
+        crate::sequence_runtime::allocate_device_sequence(root, &fixture.device).unwrap(),
+        3
+    );
+    cryptex_storage::append_frame(root, &fixture.device, 0, &approval).unwrap();
+
+    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+        &fixture.roots[1],
+        &brain.brain_id,
+        &fixture.store,
+        ENV,
+    )
+    .unwrap();
+    let peer = resolver.local_trust_anchor().unwrap().device_id().clone();
+    let peer_key = crate::event_signing_key::load_existing_event_signing_key(
+        &fixture.store,
+        ENV,
+        &fixture.roots[1],
+        &peer,
+    )
+    .unwrap();
+    let peer_bytes = std::fs::read(cryptex_storage::active_segment_path(
+        &fixture.roots[1],
+        &peer,
+        0,
+    ))
+    .unwrap();
+    let (peer_frames, _) = cryptex_storage::segment_io::scan_complete_frames(&peer_bytes).unwrap();
+    let boundary: serde_json::Value = serde_json::from_slice(&peer_frames[0]).unwrap();
+    let tail: serde_json::Value = serde_json::from_slice(&approval).unwrap();
+    let restriction = cryptex_events::security_v3::sign_device_restricted_event(
+        "99999999-9999-4999-8999-999999999992",
+        &brain.brain_id,
+        &fixture.device,
+        DeviceSeq::from_u64(4).unwrap(),
+        "2026-11-16T00:00:01Z",
+        &SigningKeyId::parse(&local_key.public.signing_key_id).unwrap(),
+        &ContentHashHex::parse(tail["content_hash"].as_str().unwrap()).unwrap(),
+        &"c".repeat(64),
+        &peer,
+        &SigningKeyId::parse(&peer_key.public.signing_key_id).unwrap(),
+        &peer_key.signing_key.verifying_key().to_bytes(),
+        cryptex_events::security_v3::RestrictionReasonV3::Compromised,
+        1,
+        &ContentHashHex::parse(boundary["content_hash"].as_str().unwrap()).unwrap(),
+        &local_key.signing_key,
+    )
+    .unwrap();
+    assert_eq!(
+        crate::sequence_runtime::allocate_device_sequence(root, &fixture.device).unwrap(),
+        4
+    );
+    cryptex_storage::append_frame(root, &fixture.device, 0, &restriction).unwrap();
+    // Fixture-only complete signed canonical peer pack, deliberately crossing
+    // the now effective cutoff. Product exporter never imports or fabricates it.
+    let lock = crate::canonical_writer::acquire_device_canonical_lock(root, &peer).unwrap();
+    std::fs::write(
+        cryptex_storage::sealed_segment_path(root, &peer, 0),
+        &peer_bytes,
+    )
+    .unwrap();
+    drop(lock);
+    let report = fixture.run(&mut Exporter::default()).unwrap();
+    assert_eq!((report.copied, report.withheld), (1, 1));
+    assert!(fixture.exchange(0).exists());
+    assert!(
+        !root
+            .join("transport/incoming")
+            .join(peer.as_filename_stem())
+            .exists()
+    );
+    assert_eq!(
+        std::fs::read(cryptex_storage::sealed_segment_path(root, &peer, 0)).unwrap(),
+        peer_bytes
+    );
+    let again = fixture.run(&mut Exporter::default()).unwrap();
+    assert_eq!((again.present, again.withheld), (1, 1));
     fixture.cleanup();
 }
 

@@ -205,7 +205,24 @@ impl Exporter {
                 verify(&mut staged, pack, &check)?;
                 check()?;
                 checkpoint(2)?;
-                scratch.promote("segment.tmp", &staged, &target, &sealed)?;
+                match scratch.promote("segment.tmp", &staged, &target, &sealed) {
+                    Ok(()) => {}
+                    Err(crate::import_staging::export_fs::Error::Io(
+                        std::io::ErrorKind::AlreadyExists,
+                        _,
+                    )) => {
+                        // A transport delivery may win the same leaf between
+                        // lookup and no-replace publication. Only exact bytes
+                        // count as a replay; never overwrite the winner.
+                        let mut existing = target.open_file(&sealed, false)?;
+                        verify(&mut existing, pack, &check)?;
+                        scratch.discard_scratch(staged)?;
+                        report.present += 1;
+                        self.after = Some(key);
+                        continue;
+                    }
+                    Err(error) => return Err(error.into()),
+                }
                 checkpoint(3)?;
                 verify(&mut staged, pack, &check)?;
                 report.copied += 1;
