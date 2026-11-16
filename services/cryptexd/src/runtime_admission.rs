@@ -378,13 +378,21 @@ pub(crate) struct ExclusivePermit {
 
 /// Live-session cancellation authority only, not canonical peer authority. It
 /// survives release of snapshot locks but cannot authorize another installation.
-#[cfg(any(windows, target_os = "macos", test))]
+#[cfg(any(
+    windows,
+    all(target_os = "macos", feature = "m8-local-startup-check"),
+    test
+))]
 #[derive(Clone)]
 pub(crate) struct TransportGuard {
     admission: RuntimeAdmission,
     epoch: u64,
 }
-#[cfg(any(windows, target_os = "macos", test))]
+#[cfg(any(
+    windows,
+    all(target_os = "macos", feature = "m8-local-startup-check"),
+    test
+))]
 impl TransportGuard {
     pub(crate) fn check(&self) -> Result<(), AdmissionError> {
         self.admission.check_namespace()?;
@@ -409,6 +417,11 @@ impl TransportGuard {
 
 #[cfg(any(windows, target_os = "macos", test))]
 impl ExclusivePermit {
+    #[cfg(any(
+        windows,
+        all(target_os = "macos", feature = "m8-local-startup-check"),
+        test
+    ))]
     pub(crate) fn transport_guard(&self, root: &Path) -> Result<TransportGuard, AdmissionError> {
         if self.admission.0.root != root {
             return Err(AdmissionError::WrongRuntime);
