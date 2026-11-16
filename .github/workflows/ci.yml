@@ -76,6 +76,9 @@ jobs:
         run: python3 -B scripts/m8/mac_ci_existing_profile_only.py "$RUNNER_TEMP/keychain-artifact/cryptex-mac-development-diagnostic.zip"
   lan-setup-tools:
     if: github.event_name == 'workflow_dispatch' && inputs.mac_window_collector_only && !inputs.mac_keychain_diagnostic_only
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/m8-lan-setup-tools.yml
   mac-window-collector:
     if: github.event_name == 'workflow_dispatch' && inputs.mac_window_collector_only && !inputs.mac_keychain_diagnostic_only
