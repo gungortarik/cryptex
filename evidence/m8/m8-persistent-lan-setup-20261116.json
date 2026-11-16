@@ -103,6 +103,24 @@
       "owner_permission_observation": "Owner reports Keychain prompt appeared and permission was granted",
       "diagnosis": "Old receipt has no numeric CMS stage; disposable CI separately reproduces helper verification failure after successful encoder calls",
       "profile_creation_reached": false
+    },
+    {
+      "receipt": "ESITLEME-KURULUM-SONUC-Darwin-1b733e0add52.zip",
+      "sha256": "cd80a515069dc4eddd8a912bc43bd4af8873e461d5e38f887bdd388bc2eecf38",
+      "source": "69381a7090d79ee02d722d4db22e1716af6eda38",
+      "binding_and_schema": "passed",
+      "outcome": "prepared_local_only",
+      "observations": {
+        "product_built_and_signed": true,
+        "fresh_profile_created": true,
+        "first_note_committed": true,
+        "transport_enrolled_local_only": true,
+        "initialized_startup_restart": true,
+        "persistent_profile_preserved": true
+      },
+      "first_note_sha256": "05f3b7087f4fd0c9b1ce4f2c33de630f416f243935154720646d905c187c61cf",
+      "release_inventory_sha256": "574ab5ac14c1900b20e348194becaa7138595afb484ae8ffc877a63c1c8d10b2",
+      "evidence_kind": "bounded unsigned owner receipt; local setup observation, not network authority"
     }
   ],
   "archive_build_correction": {
@@ -114,7 +132,6 @@
     "owner_signing_or_setup_verified": false
   },
   "remaining_device_gates": [
-    "Owner Mac actually builds/signs with its existing Keychain identity and returns setup receipt",
     "Windows explicit persistent enrollment and ordinary opening",
     "Owner-reviewed pairing and public LAN settings",
     "Disconnected capture, real network delivery and daemon-verified durable convergence",
@@ -141,6 +158,7 @@
       "wrong identity refusal",
       "closed receipt diagnostic validation"
     ],
-    "owner_setup_verified": false
+    "owner_setup_verified": true,
+    "owner_setup_evidence": "Bounded owner receipt 1b733e0add52 reports prepared_local_only at exact source69381a7"
   }
 }

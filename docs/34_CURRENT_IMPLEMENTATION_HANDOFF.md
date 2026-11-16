@@ -1,5 +1,28 @@
 # 34 — Current Implementation Handoff
 
+## Owner Mac persistent setup passed — November 16
+
+`ESITLEME-KURULUM-SONUC-Darwin-1b733e0add52.zip` passes bounded archive/schema,
+exact source69381a7 and session validation. ZIP SHA256:
+`cd80a515069dc4eddd8a912bc43bd4af8873e461d5e38f887bdd388bc2eecf38`.
+It reports `prepared_local_only`: product built/signed, fresh normal profile,
+first public note committed, local-only transport enrolled, two initialized
+startup/cleanup checks completed, and the persistent profile retained.
+First-note hash matches the exact session note. Inventory SHA256:
+`574ab5ac14c1900b20e348194becaa7138595afb484ae8ffc877a63c1c8d10b2`.
+These are bounded unsigned owner-reported observations, not remote attestation
+or authenticated peer/network evidence. Pairing/delivery/convergence remain false.
+
+Do not rerun fresh Mac setup or delete its successful profile/cache/keys.
+The existing `CRYPTEX-AC.command` in the extracted setup folder opens the retained
+app normally. The next gate is Windows persistent setup followed by owner-reviewed
+pairing and actual LAN delivery. A read-only refresh still finds the Windows
+normal root absent. The previously verified Windows artifact remains outside Git
+under Downloads/Cryptex-Windows-LAN-3d8e5b4; no installation or execution occurred
+in this receipt turn. Windows setup orchestration is not yet prepared.
+M8 is still open for real delivery/convergence, interruption/restart/replay and
+cutoff propagation acceptance. No Mac setup repeat is needed without a new issue.
+
 ## Owner CMS encoding correction — November 16
 
 Owner receipt `ESITLEME-KURULUM-SONUC-Darwin-74a066ee66cd.zip` validates against
