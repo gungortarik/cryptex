@@ -346,6 +346,32 @@ pub(super) fn foreign_socket_received_no_bytes(mut stream: std::net::TcpStream) 
     matches!(stream.read(&mut byte), Ok(0))
 }
 
+pub(super) struct ExchangeTree(Vec<crate::import_staging::macos_fs::Directory>);
+impl ExchangeTree {
+    pub(super) fn validate(&self) -> Result<(), ProfileError> {
+        for directory in &self.0 {
+            directory
+                .validate()
+                .map_err(|_| ProfileError::UnsafeObject)?;
+        }
+        Ok(())
+    }
+}
+pub(super) fn ensure_exchange_tree(root: &Path) -> Result<ExchangeTree, ProfileError> {
+    use crate::import_staging::macos_fs::{Directory, create_dir_all_owned};
+    let mut tree = ExchangeTree(vec![
+        Directory::open(root, true).map_err(|_| ProfileError::UnsafeObject)?,
+    ]);
+    for path in [root.join("transport"), root.join("transport/incoming")] {
+        tree.validate()?;
+        create_dir_all_owned(&path).map_err(|_| ProfileError::Io)?;
+        tree.0
+            .push(Directory::open(&path, true).map_err(|_| ProfileError::UnsafeObject)?);
+    }
+    tree.validate()?;
+    Ok(tree)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,30 +460,4 @@ mod tests {
         drop(directory);
         std::fs::remove_dir_all(root).unwrap();
     }
-}
-
-pub(super) struct ExchangeTree(Vec<crate::import_staging::macos_fs::Directory>);
-impl ExchangeTree {
-    pub(super) fn validate(&self) -> Result<(), ProfileError> {
-        for directory in &self.0 {
-            directory
-                .validate()
-                .map_err(|_| ProfileError::UnsafeObject)?;
-        }
-        Ok(())
-    }
-}
-pub(super) fn ensure_exchange_tree(root: &Path) -> Result<ExchangeTree, ProfileError> {
-    use crate::import_staging::macos_fs::{Directory, create_dir_all_owned};
-    let mut tree = ExchangeTree(vec![
-        Directory::open(root, true).map_err(|_| ProfileError::UnsafeObject)?,
-    ]);
-    for path in [root.join("transport"), root.join("transport/incoming")] {
-        tree.validate()?;
-        create_dir_all_owned(&path).map_err(|_| ProfileError::Io)?;
-        tree.0
-            .push(Directory::open(&path, true).map_err(|_| ProfileError::UnsafeObject)?);
-    }
-    tree.validate()?;
-    Ok(tree)
 }
