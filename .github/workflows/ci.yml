@@ -508,7 +508,7 @@ jobs:
         run: pnpm --filter @cryptex/desktop tauri:package --bundles nsis
 
       - name: Test release Desktop path and status helpers
-        run: cargo test -p cryptex-desktop --bin cryptex-desktop --release --locked
+        run: cargo test -p cryptex-desktop --bin cryptex-desktop --release --locked --features tauri/custom-protocol
 
       - name: Stage artifacts with provenance
         shell: pwsh
