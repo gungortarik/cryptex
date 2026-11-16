@@ -58,6 +58,23 @@ class WindowsSetupNativeTests(unittest.TestCase):
         with patch.object(native,'query_job',return_value=False):
             with self.assertRaisesRegex(Refused,'job_members_unknown'):
                 run([sys.executable,'-c','print("success")'])
+    def test_enumeration_failure_still_stops_live_producer_within_bound(self):
+        with tempfile.TemporaryDirectory() as temp, ThreadPoolExecutor(max_workers=1) as pool:
+            marker=Path(temp)/'leader.pid'
+            script='import os,time;from pathlib import Path;Path('+repr(str(marker))+').write_text(str(os.getpid()));time.sleep(30)'
+            with patch.object(native,'query_job',return_value=False):
+                started=time.monotonic()
+                future=pool.submit(run,[sys.executable,'-c',script],.5)
+                deadline=time.monotonic()+3
+                while not marker.exists() and time.monotonic()<deadline: time.sleep(.01)
+                self.assertTrue(marker.exists())
+                handle=native.open_process(0x100000,False,int(marker.read_text()))
+                self.assertTrue(handle)
+                try:
+                    with self.assertRaisesRegex(Refused,'job_members_unknown'): future.result(timeout=7)
+                    self.assertEqual(native.wait(handle,0),0)
+                    self.assertLess(time.monotonic()-started,6)
+                finally:native.close(handle)
     def test_reader_start_fault_closes_owned_handles(self):
         current=native.api('GetCurrentProcess',[],native.w.HANDLE)()
         count=native.api('GetProcessHandleCount',[native.w.HANDLE,native.c.POINTER(native.w.DWORD)])

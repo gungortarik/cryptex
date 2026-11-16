@@ -72,6 +72,9 @@ def settle_job(job):
             if time.monotonic()>deadline: raise Refused('job_cleanup_deadline')
             time.sleep(.01)
     finally:
+        # Enumeration uncertainty must not delay stopping our already-owned job.
+        # The caller retains the refusal; this is cleanup, never an adoption.
+        terminate(job,2)
         for handle in handles: close(handle)
 
 class Pins:
@@ -160,6 +163,10 @@ def run(args,timeout=60,input_data=b''):
                 elif not terminate_process(pi.process,2): raise Refused('suspended_cleanup_failed')
                 if wait(pi.process,5000)!=0: raise Refused('process_cleanup_unknown')
             except Refused as error: cleanup_error=error
+        # Kill-on-close is the fallback before touching a possibly blocked reader.
+        if job:
+            close(job)
+            job=None
         if reader_started: reader.join(5)
         for fd in fds:
             try: os.close(fd)

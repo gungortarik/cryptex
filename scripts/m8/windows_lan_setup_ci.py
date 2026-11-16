@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import shutil
+import stat
 from package_windows_lan_setup import payload
 from windows_lan_setup import setup,SESSION
 from windows_setup_native import Refused
@@ -28,5 +30,17 @@ if __name__=='__main__':
     else: raise AssertionError('existing_profile_adopted')
     assert events()==before
     assert not list(runtime.rglob('transport.active'))
+    # Delete successful disposable state while its owning standard-user SID
+    # still exists; the elevated parent cannot traverse owner-only canonical ACLs.
+    temporary=Path(tempfile.gettempdir()).resolve(strict=True)
+    if root.resolve(strict=True).parent!=temporary or not root.name.startswith('cryptex-lan-setup-ci-'):
+        raise RuntimeError('ci_cleanup_target_refused')
+    def readonly_retry(function,path,error):
+        candidate=Path(path)
+        if root not in candidate.parents or candidate.is_symlink(): raise error
+        if not candidate.stat().st_file_attributes & stat.FILE_ATTRIBUTE_READONLY: raise error
+        candidate.chmod(stat.S_IWRITE)
+        function(path)
+    shutil.rmtree(root,onexc=readonly_retry)
     print('windows_actual_persistent_enrollment_and_reuse_refusal=passed')
     print('normal_window_restart_and_network=not_tested')
