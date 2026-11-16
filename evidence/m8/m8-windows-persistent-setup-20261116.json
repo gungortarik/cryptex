@@ -31,5 +31,18 @@
     "windows_actual_persistent_enrollment_and_reuse_refusal=passed",
     "normal_window_restart_and_network=not_tested",
     "standard_user_daemon_tests=passed; temporary_account_profile_removed=true"
+  ],
+  "owner_attempts": [
+    {
+      "receipt": "ESITLEME-KURULUM-SONUC-Windows-b1a7d19ec79e.zip",
+      "sha256": "32b78e35d9029fb2f519264dcd5e7937bfc5dd5a2fb99fbccc112de5db4875f3",
+      "source": "072493870fd7373618aa44726887daed70fd01c1",
+      "binding_and_schema": "passed",
+      "outcome": "refused_or_incomplete",
+      "failed_stage": "public_brain_create",
+      "error": "process_create_failed",
+      "fresh_profile_created": true,
+      "diagnosis": "CreateProcess failed before daemon execution; current receipt lacks numeric GetLastError, exact OS cause unconfirmed"
+    }
   ]
 }

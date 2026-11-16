@@ -1,5 +1,23 @@
 # 34 — Current Implementation Handoff
 
+## Owner Windows launch refused before public Brain creation — November 16
+
+Receipt ESITLEME-KURULUM-SONUC-Windows-b1a7d19ec79e.zip passes exact0724938
+source/session validation; SHA256
+32b78e35d9029fb2f519264dcd5e7937bfc5dd5a2fb99fbccc112de5db4875f3.
+It reports fresh_profile_created=true, then public_brain_create /
+process_create_failed. No successful daemon execution, local-key enrollment,
+first note or transport enrollment is reported. A partial fresh profile and
+retained app may exist; do not delete or rerun fresh setup against it.
+The runner currently omits numeric GetLastError. App Control was a previous
+local obstacle, but this receipt does not prove the same cause. A read-only
+CodeIntegrity search on this host returned no matching recent cryptexd event;
+absence is not evidence that policy did or did not block this launch.
+Next: capture the bounded numeric process-creation error and verify exact
+retained state before choosing recovery. Do not bypass Windows security policy
+or claim Windows setup/pairing/network acceptance. Successful Mac setup remains
+valid and must be preserved.
+
 ## Windows persistent enrollment packet — November 16
 
 0724938 adds an explicit one-click Windows enrollment package. It uses the
