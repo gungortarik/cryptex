@@ -1,5 +1,42 @@
 # 34 — Current Implementation Handoff
 
+## Targeted Windows marker-only recovery — November 16
+
+User authorized a one-click diagnostic/recovery without deleting the profile.
+Current workstation inspection found exactly the runtime marker, with its exact
+expected bytes, and retained app2db9fbd6b1db4c5fa38cbb25afe915e3. All product hashes
+matched. An owned-job `cryptexd.exe --help` probe now succeeds; a subsequent check
+still sees the exact marker-only profile. No Brain/key/canonical enrollment was
+performed on the owner's host by the agent. The original failed launch cannot
+be assigned a historic Win32 error; do not claim that App Control caused it or
+that Windows policy was fixed. No policy/ACL changes or binary replacement.
+
+a0e73b8 captures GetLastError immediately when CreateProcessW refuses. Its targeted
+recovery packet pins the exact known retained app and fixed normal runtime;
+any non-marker profile or unexpected app state refuses. The first Cryptex executable
+operation is --help with no runtime argument. If it succeeds and the owner
+confirms the exact first public note, recovery rechecks marker-only state and
+uses the shared existing daemon enrollment sequence in that same profile.
+Failure preserves partial state. Ordinary-window/restart/network acceptance
+remain false. The marker is pinned before read; canonical data is only written
+by the daemon. A second recovery against initialized state refuses.
+
+Twenty local Windows tests passed at the packet source; one additional bounded
+recovery-receipt test passed afterwards (21 total). Numeric error capture is
+checked against direct CreateProcess, including platform-dependent invalid-image
+classification. Actual native recovery is exercised in CI under the disposable
+standard user, after injected failure before the initial daemon executes.
+Independent source review found no actionable blockers at a0e73b8.
+CI43946483367 passed Windows and Mac at a0e73b8. Windows logs include
+`windows_actual_marker_only_recovery_and_nonempty_refusal=passed` and successful
+temporary account/profile cleanup; Mac archive build/CMS also passed. Prepared packet:
+Downloads/Cryptex-Windows-Onarim-a0e73b8.zip; SHA256
+3842c53274ce9066e06de779499b74b88fd30d0057dcc76fb7bf1b265e450e37.
+Exact ZIP member readback passed. Ready for owner execution. Owner runs
+WINDOWS-ONAR.cmd on this same main Windows machine and returns
+ESITLEME-ONARIM-SONUC-Windows-*.zip. The packet itself prompts E only after the
+read-only probe succeeds. Existing Mac state stays unchanged. M8 remains open.
+
 ## Owner Windows launch refused before public Brain creation — November 16
 
 Receipt ESITLEME-KURULUM-SONUC-Windows-b1a7d19ec79e.zip passes exact0724938

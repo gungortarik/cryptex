@@ -1,0 +1,29 @@
+{
+  "scope": "Targeted Windows launch diagnosis and explicitly confirmed marker-only recovery; no device transfer acceptance",
+  "source": "a0e73b83f7caa7bd67bfd3d9e32761b6c0cb54ac",
+  "prior_receipt_sha256": "32b78e35d9029fb2f519264dcd5e7937bfc5dd5a2fb99fbccc112de5db4875f3",
+  "local_observations": {
+    "retained_product_hashes": "passed",
+    "before_and_after_marker_only": true,
+    "owned_read_only_help_probe": "passed",
+    "historic_win32_error": "unavailable",
+    "owner_profile_enrollment_by_agent": false,
+    "security_policy_changed": false
+  },
+  "packet_sha256": "3842c53274ce9066e06de779499b74b88fd30d0057dcc76fb7bf1b265e450e37",
+  "packet_readback": "passed",
+  "local_windows_tests": 21,
+  "review": {
+    "agent": "independent_m8_review",
+    "source": "a0e73b8",
+    "result": "no actionable blockers; source review"
+  },
+  "ci_run": "43946483367",
+  "ci_result": "Windows and Mac passed at a0e73b8; actual marker-only recovery and initialized-profile refusal passed; temporary standard-user account/profile cleanup passed",
+  "owner_recovery_verified": false,
+  "normal_window_restart": false,
+  "pairing": false,
+  "network_delivery": false,
+  "m8_closed": false,
+  "ci_marker": "windows_actual_marker_only_recovery_and_nonempty_refusal=passed"
+}

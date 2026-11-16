@@ -1,8 +1,20 @@
 import hashlib
 import unittest
-from windows_lan_receipt import validate,Refused,SESSION,PRODUCT,STAGES
+from windows_lan_receipt import validate,validate_recovery,Refused,SESSION,PRODUCT,STAGES
 
 class WindowsReceiptTests(unittest.TestCase):
+    def test_recovery_requires_bound_prior_attempt_and_numeric_error_only(self):
+        from windows_lan_recovery import PRIOR
+        value=self.receipt()
+        for key in STAGES|{'first_note_sha256'}:value.pop(key,None)
+        value.update(purpose='cryptex-windows-lan-launch-recovery',prior_receipt_sha256=PRIOR,
+                     outcome='refused_or_incomplete',failed_stage='launch_probe',error='process_create_failed',win32_error=4551)
+        self.assertEqual(validate_recovery(value,'a'*40),value)
+        for key,bad in [('win32_error',True),('win32_error',-1),('win32_error','raw text'),
+                        ('prior_receipt_sha256','0'*64),('normal_window_verified',True)]:
+            with self.assertRaises(Refused):validate_recovery(dict(value,**{key:bad}),'a'*40)
+        value.update(outcome='recovered_local_only')
+        with self.assertRaises(Refused):validate_recovery(value,'a'*40)
     def receipt(self):
         return dict(schema=1,purpose='cryptex-windows-persistent-lan-setup',platform='Windows',run_id=SESSION,
                     product_source=PRODUCT,source_commit='a'*40,pairing_authorized=False,network_delivery_verified=False,
