@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "scope": "owner Windows VM fresh persistent setup packet; execution pending",
+  "scope": "owner Windows VM fresh persistent setup receipt validated; pairing and network pending",
   "source_commit": "5ce0fb925ee4bb9e309f429ed9f080937d5f92b0",
   "product_source": "3d8e5b4756f7a6c91ae245c630a48efc645c0a50",
   "product_ci_run": "43905651278",
@@ -19,12 +19,25 @@
     "runtime_helpers_identical_to_a0e73b8": true
   },
   "limits": {
-    "vm_execution_verified": false,
+    "vm_execution_verified": true,
     "normal_window_verified": false,
     "pairing_authorized": false,
     "network_delivery_verified": false,
     "main_host_publisher_block_resolved": false,
     "m8_closed": false
+  },
+  "owner_receipt": {
+    "name": "ESITLEME-KURULUM-SONUC-Windows-49100c51b8e4.zip",
+    "sha256": "262d8cf2b689a3b50b1d4dbb249d92da91b1216dd127a59ca07917dcacf350df",
+    "bounded_schema_and_exact_binding": "passed using windows_lan_receipt.read",
+    "outcome": "enrolled_local_only",
+    "fresh_profile_created": true,
+    "first_note_committed": true,
+    "first_note_sha256": "31bb11ad1d8828177c24c16b73810b6af0a4280be479fb6ac1bf9aa004960287",
+    "transport_enrolled_local_only": true,
+    "persistent_profile_preserved": true,
+    "window_observation": "Owner separately reports Cryptex opened; no window/daemon readiness or restart receipt",
+    "trust_boundary": "Unsigned bounded owner report, not remote attestation or peer authority"
   },
   "preservation": "No host profile/key copied; existing VM normal profile refuses; no security policy change. Owner reports VM snapshot taken. Keep successful Mac setup."
 }

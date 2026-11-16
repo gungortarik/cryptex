@@ -1,5 +1,22 @@
 # 34 — Current Implementation Handoff
 
+## Owner Windows VM persistent setup passed — November 16
+
+ESITLEME-KURULUM-SONUC-Windows-49100c51b8e4.zip passes the bounded receipt
+reader against exact source5ce0fb925ee4bb9e309f429ed9f080937d5f92b0, product
+and session. SHA256:262d8cf2b689a3b50b1d4dbb249d92da91b1216dd127a59ca07917dcacf350df.
+Outcome enrolled_local_only reports fresh profile, exact first public note,
+local-only transport enrollment and persistent profile preservation. Owner
+installed the missing Python prerequisite in the VM and separately reports that
+Cryptex opened. This is not independent window/daemon-readiness or restart proof.
+No pairing, delivery or convergence is claimed. Receipt is unsigned owner evidence.
+
+Preserve this VM profile and successful Mac profile; no fresh setup rerun and no
+copy of the main Windows identity. Next: open the existing Mac CRYPTEX-AC.command
+and inspect verified adapter identity in the normal pairing UI before exchanging
+owner-reviewed signed messages. Main Windows publisher block remains unresolved.
+M8 remains open. Evidence: evidence/m8/m8-windows-vm-setup-20261116.json.
+
 ## Windows VM setup handoff — November 16
 
 Owner's normal Windows Desktop launcher failed. Screenshot shows Windows Security
