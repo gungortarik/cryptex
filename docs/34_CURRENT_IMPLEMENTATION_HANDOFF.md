@@ -1,5 +1,65 @@
 # 34 — Current Implementation Handoff
 
+## Admitted sealed export and real LAN preparation — November 16, final Mac CI pending
+
+The user confirmed that their Windows machine and own Mac are available on the
+same LAN. The accepted product-flow direction now has daemon export scheduled
+inside the ordinary connection coordinator while ReadyLocally. Source through
+`5acd145d3d3e4c59d5e84df08cde4e2d18d3e8d3` retains admission, fresh canonical
+trust and original filesystem capabilities; seals only the verified local active
+tail; copies exact complete packs through private staging; and never overwrites
+conflicting exchange data. Cutoff-crossing physical packs are withheld without
+starving other eligible peers. See `docs/milestones/M8_SEALED_EXPORT_CHECKPOINT.md`.
+
+Seven exporter tests cover exact seal/replay/subsequent append, four injected
+storage/interruption boundaries, signed cutoff plus another eligible peer,
+conflicts, hardlinks/repopulation, bounded cursor/revocation and concurrent
+publication winners. The native signed Mac coordinator adds paused ordinary
+capture followed by resume export and preservation after shutdown. Local format,
+all-target daemon clippy and harness checks pass; local Rust execution remains
+blocked by Application Control4551, without bypass. Independent bounded source
+review through05efc0f, concurrent-winner coverage atcec7dab and Windows locator
+review at5acd145 found no remaining actionable issue; these are not execution.
+
+CI43811122444 found a test fixture parsing framed bytes as JSON on both targets;
+05efc0f fixes header/body separation and asserts complete framing coverage.
+Windows CI43812313765 passed all seven exporter cases atcec7dab. Mac
+CI43811914113 failed at existing_profile_settings_restricted_peer before the
+new native export fixture;5acd145 adds aggregate state/error/count/revision
+diagnostics without weakening the assertion. The cause remains unverified.
+Both platforms passed atcec7dab inCI43812313765, including the new native
+export marker, settings roster, signed import/replay and real signed startup.
+Current exact-source run is43813189448 (5acd145): Windows passed, including
+the new normal-locator regression under the standard-user token; Mac is still
+running. Verify its terminal result before claiming exact-source acceptance.
+The earlier intermittent restricted-peer failure is not root-caused merely
+because the next run passed. Evidence: `evidence/m8/m8-product-sealed-export-20261116.json`.
+
+Normal Windows entry previously supplied no managed-profile location without
+pilot arguments.5acd145 now reopens only the fixed explicitly prepared layout
+under the backend runtime, retaining original directory pins. Absence is
+local-only; unsafe/incomplete enrollment refuses. It creates no profiles or
+credentials. A standard-user regression covers absence, malformed/incomplete
+state, original directory retention and an unprovisioned candidate refusal.
+
+Read-only one-click setup package `Cryptex-LAN-Hazirlik-0d4bedb.zip` was built in
+the owner's Downloads and offered for Mac. Collector source0d4bedb has six passing
+unit tests and reports only OS/architecture, private IPv4 candidates and fixed
+profile-path existence. Windows receipt24b7b6adfeed observed four private address
+candidates and an absent normal release-development profile. Mac receipt is
+pending. The collector creates no profile, reads no keys/note contents, starts
+no application and performs no transfer; this is not a LAN acceptance result.
+
+Continue by checking the exact-source CI and Mac setup receipt, then prepare
+the coordinated persistent Windows/Mac application packet using fresh profiles
+at normal application paths without adopting or overwriting existing profiles.
+The remaining device gate is owner-reviewed pairing, disconnected capture on
+both endpoints, actual LAN delivery, daemon-verified canonical/derived convergence,
+restart/replay, transport interruption and cutoff propagation. Do not replace
+that network leg with copied segment files, or repeat old manual JSON loops.
+Native Windows first-enrollment/coordinator execution and physical settings UI
+remain explicit gates; neither this export checkpoint nor preparation closes M8.
+
 ## Normal LAN settings and roster reconciliation — November 16, Windows and Mac CI passed
 
 The user accepted the narrow public LAN settings exception in ADR-0021; see

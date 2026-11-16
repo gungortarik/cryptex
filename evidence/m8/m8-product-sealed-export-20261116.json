@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "status": "platform_ci_running_device_acceptance_pending",
+  "source": "5acd145d3d3e4c59d5e84df08cde4e2d18d3e8d3",
+  "scope": "Normal connection-coordinator admitted sealed export and bounded platform tests; not physical Windows-Mac durable convergence.",
+  "contract": "docs/milestones/M8_SEALED_EXPORT_CHECKPOINT.md",
+  "implementation": {
+    "authority": "Current operation admission, live transport generation, verified canonical union and trust-derived peers remain retained through export.",
+    "canonical": "Only the verified local active tail is renamed to sealed under its existing device lock. No event rewrite, allocation or signing; next writer reconciles derived tip.",
+    "publication": "Original directory capabilities; independent private staged copy; flush/readback; no-replace promotion; exact verification of existing or concurrent winners.",
+    "limits": "At most16 packs,1GiB per pack,4GiB per batch,20s cooperative deadline,64KiB copy/hash checks; process-local traversal cursor.",
+    "cutoff": "Whole physical packs crossing the effective cutoff are withheld with aggregate diagnostics while unrelated eligible exchange continues.",
+    "status": "ReadyLocally is local readiness only. No Protected or peer durable acceptance claim.",
+    "normal_windows_startup": "Reopens only a fixed explicitly prepared managed profile/package with retained original directory pins. Missing is local-only; unsafe/incomplete existing state refuses. No automatic enrollment, secret creation or UI locator."
+  },
+  "local_validation": {
+    "format_and_diff": "passed",
+    "daemon_all_target_clippy": "passed",
+    "transport_harness": "14 passed",
+    "startup_runner": "7 passed",
+    "standard_user_summary_validator": "3 positive and6 refusal cases passed",
+    "lan_preflight": "6 passed",
+    "rust_execution": "Windows Application Control4551 blocks local execution; no bypass. Platform execution is tracked separately."
+  },
+  "source_review": {
+    "reviewer": "Existing authorized independent_m8_review agent",
+    "scope": "Exporter original-capability path, cutoff progress, cancellation, native fixture, framed cutoff correction and test-only concurrent delivery injection.",
+    "result": "Reported plan cancellation and cutoff starvation findings corrected; final focused reviews through05efc0f andcec7dab found no actionable issue. Source review only. Fixed normal Windows locator reviewed at5acd145 without actionable findings."
+  },
+  "ci": {
+    "run": "https://github.com/gungortarik/cryptex/actions/runs/43813189448",
+    "windows_job": 133119226504,
+    "mac_job": 133119226341,
+    "status": "in_progress",
+    "superseded_fixture_failure": {
+      "run": 43811122444,
+      "reason": "New signed cutoff test parsed header-inclusive storage frames as JSON on both targets.",
+      "correction": "05efc0f uses FRAME_HEADER_BYTES to read the body and asserts complete frame coverage; expectations unchanged."
+    },
+    "exporter_cases": [
+      "seals_local_tail_copies_exact_bytes_replays_and_next_append_keeps_sequence",
+      "signed_cutoff_withholds_whole_peer_pack_without_starving_another_eligible_peer",
+      "interruption_at_seal_partial_copy_flush_and_promotion_reopens_idempotently",
+      "divergent_exchange_bytes_are_never_replaced_and_canonical_is_unchanged",
+      "racing_delivery_is_verified_without_replacing_the_winner",
+      "deleted_exchange_copy_is_repopulated_and_hardlink_alias_is_refused",
+      "bounded_cursor_advances_beyond_first_sixteen_present_packs_and_revocation_stops_export"
+    ],
+    "required_new_native_marker": "native_product_sealed_export_pause_resume_restart=passed",
+    "prior_exporter_windows": {
+      "run": 43812313765,
+      "source": "cec7dab1db37e35c4bab91ce62b1ac1c3a7c397b",
+      "job": 133116708450,
+      "conclusion": "success",
+      "exporter_tests_passed": 7
+    },
+    "prior_native_restriction_failure": {
+      "run": 43811914113,
+      "source": "05efc0f",
+      "job": 133115242009,
+      "marker": "existing_profile_settings_restricted_peer",
+      "status": "Aggregate diagnostics added in5acd145 without weakening the assertion. Subsequent cec7dab full Mac CI passed; original intermittent failure cause remains unverified."
+    },
+    "windows": {
+      "conclusion": "success",
+      "exporter_tests_passed": 7,
+      "normal_locator_regression": "passed under actual standard-user token"
+    },
+    "prior_exporter_native_mac": {
+      "run": 43812313765,
+      "source": "cec7dab1db37e35c4bab91ce62b1ac1c3a7c397b",
+      "job": 133116708909,
+      "native_signed_startup_step": "success",
+      "overall_job": "success",
+      "verified_markers": [
+        "native_product_sealed_export_pause_resume_restart=passed",
+        "native_connection_settings_restart_and_stale_refusal=passed",
+        "native_connection_settings_owner_channel_and_roster=passed",
+        "native_existing_profile_signed_import=passed",
+        "native_existing_profile_restart_replay_and_local_status=passed",
+        "real_signed_desktop_daemon_startup_restart=passed"
+      ]
+    }
+  },
+  "device_preparation": {
+    "user_confirmed": "Own Windows and Mac both available on the same LAN.",
+    "collector_source": "0d4bedb31e9ac6c175ef668de242b30c1113f3d7",
+    "package": "Cryptex-LAN-Hazirlik-0d4bedb.zip",
+    "windows_receipt": "ESITLEME-HAZIRLIK-SONUC-Windows-24b7b6adfeed.zip",
+    "windows_observation": "Normal release-development profile absent; four private IPv4 candidates. No profile content read or modified.",
+    "mac_receipt": "pending",
+    "network_tested": false,
+    "package_sha256": "a55f14f1831a3056dd5225e39b05e8f4295466a0c6ba206cfba7a2df41eaf6b6"
+  },
+  "remaining_gates": [
+    "Exact-source Mac CI completion at5acd145; Windows passed. Preserve earlier intermittent restricted-peer failure as unroot-caused even though cec7dab passed.",
+    "Coordinated fresh persistent-profile application packet after Mac setup observation; no existing-profile adoption or overwrite.",
+    "Owner-reviewed pairing, disconnected captures, actual Windows-Mac LAN delivery and daemon-verified canonical plus derived convergence after restart.",
+    "Real transport interruption/recovery, duplicate delivery and cutoff propagation.",
+    "Native Windows first-enrollment/coordinator and physical settings UI evidence; final M8 ledger remains open."
+  ]
+}

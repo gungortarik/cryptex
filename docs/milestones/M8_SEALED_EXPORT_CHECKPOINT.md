@@ -15,6 +15,15 @@ locks. It loads the existing local signing identity, verifies the complete
 canonical union, and derives current ExchangePeers. Neither saved preferences
 nor an adapter identity alone authorize export.
 
+On normal Windows startup the daemon reopens only an explicitly prepared
+`managed-transport/00000000000000000000000000000001` profile and its sibling
+`package`, under its backend-selected runtime. It retains original directory
+pins for the runtime, helper, profile and package. Missing enrollment stays
+local-only; present unsafe or incomplete enrollment refuses. Existing native
+ports, pinned package and OS-held credentials still require the usual candidate
+verification. This does not provision a profile or add a renderer-controlled
+locator. Explicit pilot arguments retain their separate existing path.
+
 The export plan borrows the locked snapshot's complete physical security frames,
 including security records. It never uses the content-only projection as pack
 bytes. Exact frame offsets, original bodies and canonical frame headers establish
