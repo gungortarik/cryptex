@@ -841,6 +841,15 @@ fn lower_hex(bytes: &[u8]) -> String {
 }
 
 impl VerifiedCanonicalSnapshot {
+    #[cfg(any(
+        windows,
+        all(target_os = "macos", feature = "m8-local-startup-check"),
+        test
+    ))]
+    pub(crate) fn brain_id(&self) -> &str {
+        self.security_history.expected_brain_id()
+    }
+
     pub(crate) fn verified_records(&self) -> &[cryptex_events::VersionedRecord] {
         self.history.records()
     }

@@ -32,7 +32,11 @@ pub(crate) mod incoming;
 pub mod native;
 #[cfg(all(test, windows))]
 mod native_transfer_test;
-#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+#[cfg(any(
+    windows,
+    all(target_os = "macos", feature = "m8-local-startup-check"),
+    test
+))]
 mod native_xml;
 #[cfg(all(test, windows))]
 mod tests;

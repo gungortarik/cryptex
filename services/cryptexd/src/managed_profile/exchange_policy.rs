@@ -4,7 +4,7 @@
 //! the snapshot through any configuration/export operation.
 
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use cryptex_core::DeviceId;
 
@@ -67,6 +67,8 @@ pub(crate) fn validate_incoming_binding(
 /// locks. Empty means no eligible connection, not permission to use adapter peers.
 pub(crate) struct ExchangePeers<'a> {
     _snapshot: &'a VerifiedCanonicalSnapshot,
+    root: PathBuf,
+    local_transport: String,
     peers: Vec<&'a ApprovedPeerBinding>,
 }
 
@@ -79,12 +81,35 @@ impl<'a> ExchangePeers<'a> {
         let (history, trust) = context(snapshot, root)?;
         Ok(Self {
             _snapshot: snapshot,
+            root: root.to_owned(),
+            local_transport: observed_local_transport.to_owned(),
             peers: eligible_peers(history, trust, observed_local_transport)?,
         })
     }
 
     pub(crate) fn bindings(&self) -> &[&'a ApprovedPeerBinding] {
         &self.peers
+    }
+
+    pub(crate) fn runtime_root(&self) -> &Path {
+        &self.root
+    }
+
+    pub(crate) fn brain_id(&self) -> &str {
+        self._snapshot.brain_id()
+    }
+
+    pub(crate) fn local_transport(&self) -> &str {
+        &self.local_transport
+    }
+
+    pub(crate) fn revalidate(&self) -> Result<(), ExchangePolicyError> {
+        let (history, trust) = context(self._snapshot, &self.root)?;
+        let current = eligible_peers(history, trust, &self.local_transport)?;
+        if current != self.peers {
+            return Err(ExchangePolicyError::InvalidBinding);
+        }
+        Ok(())
     }
 }
 

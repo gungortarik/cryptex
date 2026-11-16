@@ -9,6 +9,9 @@ use super::native::{NativeConfigError, NativePorts};
 use crate::syncthing_rest::{ApiCredential, native_id_shape};
 
 const MAX_CONFIG: usize = 256 * 1024;
+#[allow(dead_code)]
+// Validated configuration plan; native installation awaits the admitted controller.
+pub(crate) mod exchange;
 #[cfg(all(test, windows))]
 mod transfer_test;
 #[cfg(all(test, windows))]
