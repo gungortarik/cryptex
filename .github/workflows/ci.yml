@@ -14,7 +14,7 @@ on:
         type: boolean
         default: false
       mac_window_collector_only:
-        description: Test only isolated Mac window collector and Darwin process-group observation; no application acceptance
+        description: Test isolated collectors and LAN setup tooling; no application acceptance
         type: boolean
         default: false
       mac_fd_repro_only:
@@ -74,6 +74,9 @@ jobs:
         run: gh run download 43759501863 --repo gungortarik/cryptex --name mac-development-diagnostic --dir "$RUNNER_TEMP/keychain-artifact"
       - name: Test provisioned nonempty profile and exact cleanup
         run: python3 -B scripts/m8/mac_ci_existing_profile_only.py "$RUNNER_TEMP/keychain-artifact/cryptex-mac-development-diagnostic.zip"
+  lan-setup-tools:
+    if: github.event_name == 'workflow_dispatch' && inputs.mac_window_collector_only && !inputs.mac_keychain_diagnostic_only
+    uses: ./.github/workflows/m8-lan-setup-tools.yml
   mac-window-collector:
     if: github.event_name == 'workflow_dispatch' && inputs.mac_window_collector_only && !inputs.mac_keychain_diagnostic_only
     runs-on: macos-latest

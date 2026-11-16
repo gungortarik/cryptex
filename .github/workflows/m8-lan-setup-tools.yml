@@ -1,7 +1,7 @@
 name: M8 LAN setup tooling
 
 on:
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
