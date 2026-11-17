@@ -7,6 +7,7 @@ on:
       - services/cryptexd/src/managed_profile/worker.rs
       - services/cryptexd/src/managed_profile/worker/**
       - services/cryptexd/src/managed_profile/connection_settings/**
+      - services/cryptexd/src/managed_profile/native_product_receive_test.rs
       - services/cryptexd/src/import_staging/windows_inbox.rs
       - scripts/m8/run-daemon-tests-standard-user-ci.ps1
       - scripts/m8/standard-user-daemon-child.ps1

@@ -39,6 +39,8 @@ pub(crate) mod exchange_start;
 pub(crate) mod incoming;
 pub mod native;
 #[cfg(all(test, windows))]
+mod native_product_receive_test;
+#[cfg(all(test, windows))]
 mod native_transfer_test;
 #[cfg(any(
     windows,
