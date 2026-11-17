@@ -85,12 +85,17 @@ if($p.PSObject.Properties['exchange_native_only'] -and $p.exchange_native_only) 
     $full=Invoke-TestBinary $exe '--list'
     $fullCount=@($full.stdout -split '\r?\n' | Where-Object {$_ -cmatch ': test$'}).Count
     if($full.code -ne 0 -or $fullCount -lt 1){throw 'Missing native test inventory.'}
+    $diagnosticFilter='managed_profile::worker::diagnostics::tests::'
+    $diagnostics=Invoke-TestBinary $exe "$diagnosticFilter --test-threads=1"
+    $diagnostics.stdout | Write-Output
+    $diagnostics.stderr | Write-Output
+    Assert-CompleteSuite $diagnostics.code $diagnostics.stdout 3 $true ($fullCount-3)
     $filter='managed_profile::native_xml::exchange::tests::supervised_exchange_install_restart_and_revocation'
     $result=Invoke-TestBinary $exe "$filter --ignored --exact --test-threads=1"
     $result.stdout | Write-Output
     $result.stderr | Write-Output
     Assert-CompleteSuite $result.code $result.stdout 1 $true ($fullCount-1)
-    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=1} | ConvertTo-Json |
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=2} | ConvertTo-Json |
         Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
     exit 0
 }

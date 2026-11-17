@@ -1,6 +1,8 @@
 //! Explicit daemon-owned Windows worker for an existing ready profile.
 //! Fresh admitted exchange setup or self-only supervision; no discovery,
 //! provisioning, renderer authority or automatic product startup hook.
+mod diagnostics;
+
 use std::path::PathBuf;
 use std::sync::{
     Arc, Mutex,
@@ -199,70 +201,74 @@ impl ManagedTransportWorker {
         let (active_send, active_receive) = mpsc::sync_channel(1);
         let worker_guard = guard.clone();
         let worker = Self::spawn_task(move |shared| {
-            let _pins = native_pins;
-            *shared
-                .transport
-                .lock()
-                .map_err(|_| WorkerError::StatusUnavailable)? = Some(worker_guard.clone());
-            worker_guard
-                .check()
-                .map_err(|_| WorkerError::StatusUnavailable)?;
-            let mut prepared = profile
-                .reopen_exchange_candidate(&package, &store, ports)
-                .map_err(WorkerError::Native)?;
-            prepared
-                .install_exchange(image, &store)
-                .map_err(WorkerError::Native)?;
-            worker_guard
-                .check()
-                .map_err(|_| WorkerError::StatusUnavailable)?;
-            let identity = prepared.configured_transport_device_id().to_owned();
-            let mut session = prepared
-                .start(&package, &store)
-                .map_err(WorkerError::Native)?;
-            let ack = session
-                .acknowledge_exchange(&store)
-                .map_err(WorkerError::Native)?;
-            worker_guard
-                .check()
-                .map_err(|_| WorkerError::StatusUnavailable)?;
-            ready_send
-                .send(ack)
-                .map_err(|_| WorkerError::StatusUnavailable)?;
-            accept_receive
-                .recv_timeout(Duration::from_secs(15))
-                .map_err(|_| WorkerError::StatusUnavailable)?;
-            worker_guard
-                .check()
-                .map_err(|_| WorkerError::StatusUnavailable)?;
-            let ready = Status {
-                phase: super::controller::Phase::LocalReady,
-                attempt: 1,
-                pid: Some(session.pid()),
-                error: None,
-            };
-            session.observe(&store).map_err(WorkerError::Native)?;
-            worker_guard
-                .check()
-                .map_err(|_| WorkerError::StatusUnavailable)?;
-            shared.publish(ready, Some(&identity))?;
-            active_send
-                .send(expected)
-                .map_err(|_| WorkerError::StatusUnavailable)?;
-            while !shared.stop.load(Ordering::Acquire) && worker_guard.check().is_ok() {
-                if session.try_exit().map_err(WorkerError::Native)?.is_some() {
-                    return Err(WorkerError::Native(NativeConfigError::StartExited));
-                }
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _pins = native_pins;
+                *shared
+                    .transport
+                    .lock()
+                    .map_err(|_| WorkerError::StatusUnavailable)? = Some(worker_guard.clone());
+                worker_guard
+                    .check()
+                    .map_err(|_| WorkerError::StatusUnavailable)?;
+                let mut prepared = profile
+                    .reopen_exchange_candidate(&package, &store, ports)
+                    .map_err(WorkerError::Native)?;
+                prepared
+                    .install_exchange(image, &store)
+                    .map_err(WorkerError::Native)?;
+                worker_guard
+                    .check()
+                    .map_err(|_| WorkerError::StatusUnavailable)?;
+                let identity = prepared.configured_transport_device_id().to_owned();
+                let mut session = prepared
+                    .start(&package, &store)
+                    .map_err(WorkerError::Native)?;
+                let ack = session
+                    .acknowledge_exchange(&store)
+                    .map_err(WorkerError::Native)?;
+                worker_guard
+                    .check()
+                    .map_err(|_| WorkerError::StatusUnavailable)?;
+                ready_send
+                    .send(ack)
+                    .map_err(|_| WorkerError::StatusUnavailable)?;
+                accept_receive
+                    .recv_timeout(Duration::from_secs(15))
+                    .map_err(|_| WorkerError::StatusUnavailable)?;
+                worker_guard
+                    .check()
+                    .map_err(|_| WorkerError::StatusUnavailable)?;
+                let ready = Status {
+                    phase: super::controller::Phase::LocalReady,
+                    attempt: 1,
+                    pid: Some(session.pid()),
+                    error: None,
+                };
                 session.observe(&store).map_err(WorkerError::Native)?;
-                if worker_guard.check().is_err() {
-                    break;
-                }
+                worker_guard
+                    .check()
+                    .map_err(|_| WorkerError::StatusUnavailable)?;
                 shared.publish(ready, Some(&identity))?;
-                std::thread::park_timeout(Duration::from_millis(100));
-            }
-            shared.stop.store(true, Ordering::Release);
-            session.stop(&store).map_err(WorkerError::Native)?;
-            Ok(Outcome::CleanShutdown)
+                active_send
+                    .send(expected)
+                    .map_err(|_| WorkerError::StatusUnavailable)?;
+                while !shared.stop.load(Ordering::Acquire) && worker_guard.check().is_ok() {
+                    if session.try_exit().map_err(WorkerError::Native)?.is_some() {
+                        return Err(WorkerError::Native(NativeConfigError::StartExited));
+                    }
+                    session.observe(&store).map_err(WorkerError::Native)?;
+                    if worker_guard.check().is_err() {
+                        break;
+                    }
+                    shared.publish(ready, Some(&identity))?;
+                    std::thread::park_timeout(Duration::from_millis(100));
+                }
+                shared.stop.store(true, Ordering::Release);
+                session.stop(&store).map_err(WorkerError::Native)?;
+                Ok(Outcome::CleanShutdown)
+            }))
+            .unwrap_or(Err(WorkerError::Panicked));
+            diagnostics::finish(&profile, result)
         })?;
         let ack = ready_receive
             .recv_timeout(Duration::from_secs(35))

@@ -44,6 +44,20 @@ class FailureTests(unittest.TestCase):
             with self.assertRaises(d.Refused):
                 d.collect(root, lambda *_: self.fail('log'), lambda: self.fail('processes'))
 
+    def test_first_failure_exports_known_numeric_code_only_and_preserves_file(self):
+        with tempfile.TemporaryDirectory() as base:
+            path=Path(base)/'worker-first-failure-v1.json'
+            raw=b'{"schema":1,"code":507,"os_code":null}'
+            path.write_bytes(raw)
+            result=d.first_failure(path)
+            self.assertEqual(result['error'],'endpoint.PeerChanged')
+            self.assertEqual(path.read_bytes(),raw)
+            for bad in ({'schema':1,'code':999,'os_code':None},
+                        {'schema':1,'code':507,'os_code':'PRIVATE'},
+                        {'schema':1,'code':507,'os_code':None,'secret':'PRIVATE'}):
+                path.write_text(json.dumps(bad))
+                with self.assertRaises(d.Refused): d.first_failure(path)
+
     def test_process_reader_rejects_unexpected_fields(self):
         with self.assertRaises(d.Refused):
             d.processes(lambda *_: '{"secret":"private"}')

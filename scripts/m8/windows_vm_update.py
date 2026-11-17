@@ -91,6 +91,7 @@ def main():
     with zipfile.ZipFile(output,'x',zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('result.json',json.dumps(report,indent=2))
     print(str(output))
+    return report.get('launch_requested') is True
 
 
 if __name__=='__main__': main()

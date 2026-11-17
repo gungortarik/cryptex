@@ -89,6 +89,19 @@ $loop=@($rows | Where-Object { $_.LocalAddress -in @('127.0.0.1','::1') }).Count
     return value
 
 
+def first_failure(path):
+    value = read_json(path)
+    labels = json.loads(Path(__file__).with_name('worker_failure_codes.json').read_text(encoding='utf-8'))
+    if (set(value) != {'schema', 'code', 'os_code'} or type(value['schema']) is not int
+            or value['schema'] != 1 or type(value['code']) is not int
+            or str(value['code']) not in labels
+            or (value['os_code'] is not None and
+                (type(value['os_code']) is not int or not -(2**63) <= value['os_code'] < 2**63))):
+        raise Refused('first_failure_shape')
+    return dict(schema=1, code=value['code'], error=labels[str(value['code'])], os_code=value['os_code'],
+                scope='First persisted worker failure since diagnostic candidate; may precede current process.')
+
+
 def collect(root, reader=read_log, process_reader=processes):
     brain = read_json(root / 'identity/brain_identity.json')
     local = read_json(root / 'identity/local_device.json')
@@ -99,7 +112,9 @@ def collect(root, reader=read_log, process_reader=processes):
                 canonical_bodies_read=False, atomic_snapshot=False,
                 native_log=observation(lambda: reader(root / 'managed-transport' /
                     '00000000000000000000000000000001/native/native.log')),
-                process_counts_not_identity_proof=observation(process_reader))
+                process_counts_not_identity_proof=observation(process_reader),
+                first_worker_failure=observation(lambda: first_failure(root / "managed-transport" /
+                    "00000000000000000000000000000001/worker-first-failure-v1.json")))
 
 
 def main():

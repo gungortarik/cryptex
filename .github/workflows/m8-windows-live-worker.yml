@@ -4,6 +4,8 @@ on:
     branches: [codex/m8-device-trust]
     paths:
       - services/cryptexd/src/managed_profile/native_xml/exchange/tests.rs
+      - services/cryptexd/src/managed_profile/worker.rs
+      - services/cryptexd/src/managed_profile/worker/**
       - .github/workflows/m8-windows-live-worker.yml
 permissions:
   contents: read
