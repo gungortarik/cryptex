@@ -2,6 +2,7 @@
 //! copies, enqueue calls, publication calls or loopback policy overrides.
 use super::*;
 use connection_settings::{Location, Owner, PeerAddress, State, Update};
+use cryptex_events::TrustedDaemonKeyResolver;
 use std::collections::BTreeSet;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, UdpSocket};
 use std::path::PathBuf;
@@ -242,6 +243,125 @@ fn canonical(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     entries
 }
 
+// Exercise the daemon security journal/writer and the same rebuild invalidation
+// used by the owner adapter. This is not an authenticated Desktop approval test.
+fn security_change(
+    root: &Path,
+    instance: &Arc<Mutex<crate::instance::InstanceLock>>,
+    store: &Stores,
+    retire_self: bool,
+) {
+    use crate::bootstrap_journal::{BootstrapJournalStore, RestrictionReason};
+    let admission = instance.lock().unwrap().admission();
+    let permit = admission.enter(root).unwrap();
+    let brain = crate::identity_runtime::load_brain_identity(root).unwrap();
+    let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
+        root,
+        &brain.brain_id,
+        store,
+        ENV,
+    )
+    .unwrap();
+    let snapshot =
+        crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+            root,
+            &brain.brain_id,
+            &resolver.local_trust_anchor().unwrap(),
+            None,
+        )
+        .unwrap();
+    let (history, _) = snapshot.verified_trust_context().unwrap();
+    let local = history.local_device.clone();
+    let target = history
+        .directly_approved_peers
+        .iter()
+        .next()
+        .unwrap()
+        .clone();
+    let key_id = history.local_signing_key_id.clone();
+    let public_key = history.local_public_key;
+    drop(snapshot);
+    let policy = crate::knowledge_materialization::scan_verified_trust_policy(
+        root,
+        &brain.brain_id,
+        &local,
+        &key_id,
+        &public_key,
+        &[local.clone(), target.clone()],
+    )
+    .unwrap();
+    let transaction = if retire_self { "df" } else { "de" }.repeat(32);
+    let approval = if retire_self {
+        policy
+            .self_retirement_approval_snapshot(transaction.clone())
+            .unwrap()
+    } else {
+        let cutoff = policy
+            .history
+            .records()
+            .iter()
+            .filter(|record| record.device_id() == target.as_str())
+            .map(|record| record.device_seq())
+            .max()
+            .unwrap();
+        assert!(cutoff > 0);
+        let approval = policy
+            .device_restriction_approval_snapshot(
+                transaction.clone(),
+                &target,
+                RestrictionReason::Compromised,
+                cutoff,
+            )
+            .unwrap();
+        assert_ne!(
+            approval.cutoff_content_hash.as_deref(),
+            Some(cryptex_events::ZERO_CONTENT_HASH_HEX)
+        );
+        approval
+    };
+    drop(policy);
+    let journal = BootstrapJournalStore::new(root).unwrap();
+    journal
+        .begin_owner_operation(
+            approval.clone(),
+            if retire_self {
+                "99999999-9999-4999-8999-999999999993"
+            } else {
+                "99999999-9999-4999-8999-999999999994"
+            },
+        )
+        .unwrap();
+    journal
+        .confirm_owner_operation(&transaction, &approval.digest().unwrap())
+        .unwrap();
+    admission.require_derived_rebuild(root, &permit).unwrap();
+    crate::knowledge_materialization::append_confirmed_owner_security_operation(
+        root,
+        &brain.brain_id,
+        store,
+        ENV,
+        &transaction,
+    )
+    .unwrap();
+}
+
+fn restricted_view(owner: &Owner, retired: bool) {
+    let view = owner.handle().request(None).unwrap();
+    assert!(view.devices.is_empty());
+    if retired {
+        assert_eq!(view.state, State::Attention);
+        assert_eq!(
+            view.error,
+            Some(connection_settings::Error::LocalRestricted)
+        );
+        assert!(owner.handle().reader().is_none());
+    } else {
+        assert_eq!(view.state, State::AddressNeeded);
+        assert_eq!(view.error, None);
+        assert!(!view.paused);
+    }
+}
+
 #[test]
 #[ignore = "requires explicit pinned package, private CI interface and disposable OS credentials"]
 fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
@@ -383,7 +503,80 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
     assert!(observed_a && observed_b);
     assert_eq!(saved, canonical(&source));
     assert_eq!(saved, canonical(&receiver));
-    drop((owner_a, owner_b, instance_a, instance_b, store));
+    drop((owner_a, owner_b, instance_a, instance_b));
+
+    // Reopen the real normal Owner, then restrict its last peer while live.
+    // Saved endpoints are preferences only and must never regrant authority.
+    let (mut owner_a, instance_a) = a.start(&source, &package_path, store.clone());
+    let view = owner_a.handle().request(None).unwrap();
+    assert_eq!(view.state, State::ReadyLocally);
+    let stale = Update {
+        expected_revision: view.revision.clone(),
+        paused: false,
+        listen_address: view.listen_address,
+        peers: view
+            .devices
+            .iter()
+            .map(|device| PeerAddress {
+                device_id: device.device_id.clone(),
+                endpoint: device.endpoint.unwrap(),
+            })
+            .collect(),
+    };
+    let old_reader = owner_a.handle().reader().unwrap();
+    security_change(&source, &instance_a, &store, false);
+    assert!(old_reader.try_transport_device_id().is_err());
+    restricted_view(&owner_a, false);
+    assert!(matches!(
+        owner_a.handle().request(Some(stale.clone())),
+        Err(connection_settings::Error::UnknownDevice)
+    ));
+    restricted_view(&owner_a, false);
+    assert!(
+        std::net::TcpStream::connect_timeout(
+            &SocketAddrV4::new(ip, a.ports.sync).into(),
+            Duration::from_secs(1),
+        )
+        .is_err(),
+        "restricted last peer must remove the LAN listener"
+    );
+    assert!(found(&source, &instance_a, &store, "offline receiver tail"));
+    owner_a.shutdown().unwrap();
+    drop((owner_a, instance_a));
+    let restricted = canonical(&source);
+    assert!(restricted.len() > saved.len());
+    for previous in &saved {
+        assert!(restricted.contains(previous));
+    }
+    let (mut owner_a, instance_a) = a.start(&source, &package_path, store.clone());
+    restricted_view(&owner_a, false);
+    assert!(matches!(
+        owner_a.handle().request(Some(stale.clone())),
+        Err(connection_settings::Error::UnknownDevice)
+    ));
+    assert_eq!(restricted, canonical(&source));
+    assert!(found(&source, &instance_a, &store, "offline receiver tail"));
+
+    // A retired local identity has no transport authority, including after reopen.
+    security_change(&source, &instance_a, &store, true);
+    restricted_view(&owner_a, true);
+    owner_a.shutdown().unwrap();
+    drop((owner_a, instance_a));
+    let retired = canonical(&source);
+    assert!(retired.len() > restricted.len());
+    for previous in &restricted {
+        assert!(retired.contains(previous));
+    }
+    let (mut owner_a, instance_a) = a.start(&source, &package_path, store.clone());
+    restricted_view(&owner_a, true);
+    assert!(matches!(
+        owner_a.handle().request(Some(stale)),
+        Err(connection_settings::Error::LocalRestricted)
+    ));
+    restricted_view(&owner_a, true);
+    assert_eq!(retired, canonical(&source));
+    owner_a.shutdown().unwrap();
+    drop((owner_a, instance_a, store));
     for root in [source, receiver, negative] {
         std::fs::remove_dir_all(root).unwrap();
     }
