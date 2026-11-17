@@ -11,12 +11,28 @@ on:
       - services/cryptexd/src/managed_profile/sealed_export.rs
       - services/cryptexd/src/managed_profile/sealed_export/**
       - services/cryptexd/src/import_staging/windows_inbox.rs
+      - services/cryptexd/src/canonical_writer.rs
       - scripts/m8/run-daemon-tests-standard-user-ci.ps1
       - scripts/m8/standard-user-daemon-child.ps1
       - .github/workflows/m8-windows-live-worker.yml
 permissions:
   contents: read
 jobs:
+  mac-canonical-lock:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - name: Verify canonical lock contention and writer regression on macOS
+        run: cargo test --locked -p cryptexd --lib canonical_writer::tests:: -- --test-threads=1
+      - run: cargo clippy --locked -p cryptexd --lib -- -D warnings
   product-receive:
     uses: ./.github/workflows/m8-peer-recovery.yml
   native-worker:

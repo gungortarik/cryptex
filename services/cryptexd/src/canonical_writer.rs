@@ -549,7 +549,15 @@ fn lock_exclusive_until(file: &File, deadline: Instant, scope: &str) -> Canonica
         }
         match fs2::FileExt::try_lock_exclusive(file) {
             Ok(()) => return Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    || error.raw_os_error().is_some_and(|code| {
+                        Some(code) == fs2::lock_contended_error().raw_os_error()
+                    }) =>
+            {
+                // fs2 reports Windows ERROR_LOCK_VIOLATION (33), which Rust
+                // does not classify as WouldBlock. Only the native contention
+                // code is retryable; other OS failures still fail closed.
                 std::thread::sleep(Duration::from_millis(5));
             }
             Err(error) => {
@@ -1952,6 +1960,59 @@ pub fn load_verified_events<S: SecureStore + ?Sized>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn bounded_canonical_scan_waits_for_native_inventory_contention() {
+        let root = crate::test_temp::exclusive_temp_dir("export-lock-contention");
+        let held = crate::canonical_writer::acquire_canonical_inventory_lock(&root).unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        let waiting_root = root.clone();
+        let waiter = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let result = crate::canonical_writer::acquire_canonical_inventory_lock_until(
+                &waiting_root,
+                Instant::now() + Duration::from_secs(5),
+            )
+            .map(|_| ());
+            result_tx.send(result).unwrap();
+        });
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let early = result_rx.recv_timeout(Duration::from_millis(200));
+        drop(held);
+        waiter.join().unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(
+            matches!(early, Err(std::sync::mpsc::RecvTimeoutError::Timeout)),
+            "a contended native inventory lock must wait, not fail immediately: {early:?}"
+        );
+        result_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+    }
+
+    #[test]
+    fn bounded_canonical_scan_contention_still_obeys_deadline() {
+        let root = crate::test_temp::exclusive_temp_dir("export-lock-deadline");
+        let held = crate::canonical_writer::acquire_canonical_inventory_lock(&root).unwrap();
+        let result = crate::canonical_writer::acquire_canonical_inventory_lock_until(
+            &root,
+            Instant::now() + Duration::from_millis(50),
+        );
+        drop(held);
+        assert!(
+            matches!(result, Err(crate::canonical_writer::CanonicalWriterError::Path(ref reason))
+            if reason == "canonical inventory lock deadline exceeded")
+        );
+        let after = crate::canonical_writer::acquire_canonical_inventory_lock_until(
+            &root,
+            Instant::now() + Duration::from_secs(1),
+        )
+        .unwrap();
+        drop(after);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     use super::*;
     use crate::secure_store::FakeSecureStore;
     use cryptex_events::framing::encode_frame_header;

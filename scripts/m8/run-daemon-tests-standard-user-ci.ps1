@@ -25,7 +25,7 @@ $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Objec
     $_.profile.test -and $_.executable
 } | ForEach-Object {$_.executable} | Sort-Object -Unique)
 $expectedArtifacts=if($DesktopStartupOnly -or $DesktopSessionOnly -or $TransportPolicyOnly -or $ExchangeNativeOnly){1}else{2}
-$expectedSuites=if($ExchangeNativeOnly){3}elseif($TransportPolicyOnly){10}elseif($DesktopSessionOnly){3}else{$expectedArtifacts}
+$expectedSuites=if($ExchangeNativeOnly){3}elseif($TransportPolicyOnly){11}elseif($DesktopSessionOnly){3}else{$expectedArtifacts}
 if($executables.Count -ne $expectedArtifacts){throw 'Expected exact daemon test artifacts.'}
 foreach($exe in $executables) {
     $full=(Resolve-Path -LiteralPath $exe).Path
