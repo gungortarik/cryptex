@@ -1,13 +1,14 @@
-param([switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[string]$LanArtifact)
+param([switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-if(([int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly) -gt 1){throw 'Choose one scoped suite.'}
+if(([int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly+[int][bool]$ExchangeNativeOnly) -gt 1){throw 'Choose one scoped suite.'}
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'Disposable GitHub-hosted Windows runner required.'
 }
 $workspace=(Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
 $manifest=Join-Path $workspace 'services\cryptexd'
 $python=$null
+if($ExchangeNativeOnly){$ExchangePackage=(Resolve-Path -LiteralPath $ExchangePackage).Path}
 if($LanSetupOnly) {
     $LanArtifact=(Resolve-Path -LiteralPath $LanArtifact).Path
     $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
@@ -15,7 +16,7 @@ if($LanSetupOnly) {
 } else {
 $buildArgs=@('test','--locked','-p','cryptexd','--no-run','--message-format=json')
 if($DesktopStartupOnly){$buildArgs+=@('--test','desktop_startup')}
-if($DesktopSessionOnly -or $TransportPolicyOnly){$buildArgs+=@('--lib')}
+if($DesktopSessionOnly -or $TransportPolicyOnly -or $ExchangeNativeOnly){$buildArgs+=@('--lib')}
 $artifacts=@(& cargo @buildArgs)
 if($LASTEXITCODE -ne 0){throw 'Daemon test build failed.'}
 $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Object {
@@ -23,8 +24,8 @@ $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Objec
     $_.target.name -eq $(if($DesktopStartupOnly){'desktop_startup'}else{'cryptexd'}) -and
     $_.profile.test -and $_.executable
 } | ForEach-Object {$_.executable} | Sort-Object -Unique)
-$expectedArtifacts=if($DesktopStartupOnly -or $DesktopSessionOnly -or $TransportPolicyOnly){1}else{2}
-$expectedSuites=if($TransportPolicyOnly){9}elseif($DesktopSessionOnly){3}else{$expectedArtifacts}
+$expectedArtifacts=if($DesktopStartupOnly -or $DesktopSessionOnly -or $TransportPolicyOnly -or $ExchangeNativeOnly){1}else{2}
+$expectedSuites=if($ExchangeNativeOnly){1}elseif($TransportPolicyOnly){9}elseif($DesktopSessionOnly){3}else{$expectedArtifacts}
 if($executables.Count -ne $expectedArtifacts){throw 'Expected exact daemon test artifacts.'}
 foreach($exe in $executables) {
     $full=(Resolve-Path -LiteralPath $exe).Path
@@ -48,6 +49,7 @@ try {
     }
     # Fresh account reads checkout/build artifacts; only scratch is writable.
     $access=@(@{path=$workspace;rights='ReadAndExecute'},@{path=$scratch;rights='FullControl'})
+    if($ExchangeNativeOnly){$access+=@{path=$ExchangePackage;rights='ReadAndExecute'}}
     if($LanSetupOnly){$access+=@{path=$LanArtifact;rights='ReadAndExecute'}}
     foreach($entry in $access) {
         $acl=Get-Acl -LiteralPath $entry.path
@@ -55,7 +57,7 @@ try {
         Set-Acl -LiteralPath $entry.path -AclObject $acl
     }
     $payload=Join-Path $scratch 'tests.json'
-    @{schema=1;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;python=$python;workspace=$workspace} |
+    @{schema=1;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $payload -Encoding UTF8
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'

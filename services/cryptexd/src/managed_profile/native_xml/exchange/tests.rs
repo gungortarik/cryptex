@@ -688,6 +688,7 @@ fn supervised_exchange_install_restart_and_revocation() {
             &permit,
         )
         .unwrap();
+        let export_guard = permit.transport_guard(&source).unwrap();
         drop(snapshot);
         permit.finish(None);
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -698,6 +699,34 @@ fn supervised_exchange_install_restart_and_revocation() {
             }
             assert!(Instant::now() < deadline, "ready publication deadline");
             std::thread::sleep(Duration::from_millis(20));
+        }
+        if attempt == 0 {
+            // Unlike an immediate start/stop smoke, exercise health checks while
+            // the normal exporter seals and publishes actual admitted history.
+            let mut exporter = crate::managed_profile::sealed_export::Exporter::default();
+            let stop = std::sync::atomic::AtomicBool::new(false);
+            let until = Instant::now() + Duration::from_secs(30);
+            let mut exported = 0;
+            while Instant::now() < until {
+                let report = exporter
+                    .tick(
+                        &source,
+                        &gate,
+                        &export_guard,
+                        &identity,
+                        (&store, env),
+                        &stop,
+                    )
+                    .unwrap();
+                exported += report.copied + report.present;
+                std::thread::sleep(Duration::from_millis(250));
+                assert!(
+                    worker.status_reader().try_transport_device_id().is_ok(),
+                    "worker lost readiness during export: {:?}",
+                    worker.snapshot()
+                );
+            }
+            assert!(exported > 0);
         }
         if attempt == 6 {
             gate.exclusive(&source, Instant::now() + Duration::from_secs(3), false)

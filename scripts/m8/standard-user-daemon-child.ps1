@@ -74,6 +74,26 @@ if($p.PSObject.Properties['lan_setup_only'] -and $p.lan_setup_only) {
         Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
     exit 0
 }
+if($p.PSObject.Properties['exchange_native_only'] -and $p.exchange_native_only) {
+    $nativePackage=Join-Path $env:TEMP 'exchange-native-package'
+    New-Item -ItemType Directory -Path $nativePackage | Out-Null
+    foreach($leaf in @('syncthing.exe','LICENSE.txt','AUTHORS.txt')) {
+        Copy-Item -LiteralPath (Join-Path $p.exchange_package $leaf) -Destination $nativePackage
+    }
+    $env:CRYPTEX_EXCHANGE_NATIVE_PACKAGE=$nativePackage
+    $exe=$p.executables[0]
+    $full=Invoke-TestBinary $exe '--list'
+    $fullCount=@($full.stdout -split '\r?\n' | Where-Object {$_ -cmatch ': test$'}).Count
+    if($full.code -ne 0 -or $fullCount -lt 1){throw 'Missing native test inventory.'}
+    $filter='managed_profile::native_xml::exchange::tests::supervised_exchange_install_restart_and_revocation'
+    $result=Invoke-TestBinary $exe "$filter --ignored --exact --test-threads=1"
+    $result.stdout | Write-Output
+    $result.stderr | Write-Output
+    Assert-CompleteSuite $result.code $result.stdout 1 $true ($fullCount-1)
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=1} | ConvertTo-Json |
+        Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
+    exit 0
+}
 $suites=0
 $testArguments=''
 $startupOnly=[bool]($p.PSObject.Properties['desktop_startup_only'] -and $p.desktop_startup_only)
