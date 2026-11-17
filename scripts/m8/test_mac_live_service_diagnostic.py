@@ -70,7 +70,11 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(set(result),{'desktop','daemon','engine','daemon_parent_desktop','daemon_parent_daemon'})
         with socket.socket() as server:
             server.bind(('127.0.0.1',61942));server.listen()
-            result=d.listeners()
+            try:
+                result=d.listeners()
+            except d.Refused:
+                raw=d.run_bounded(['/usr/sbin/lsof','-nP','-a','-u',str(os.getuid()),'-iTCP:61942','-sTCP:LISTEN','-Fpn'])
+                self.fail('lsof field shapes: '+json.dumps([(line[:1],line[1:].isdigit(),line.endswith(':61942')) for line in raw.splitlines()]))
             self.assertGreaterEqual(result['loopback'],1)
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder).resolve();(root/'identity').mkdir()
