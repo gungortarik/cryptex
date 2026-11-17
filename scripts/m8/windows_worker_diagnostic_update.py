@@ -33,9 +33,14 @@ def main():
     print('Cryptex normal profille aciliyor. Iki cihaz acik kalsin. Ayarlari degistirme.')
     print('En fazla 3 dakika gozlem yapilacak; hata daha erken kaydedilirse sonuc hemen hazirlanir.')
     root=Path(os.environ['LOCALAPPDATA'])/'Cryptex-Dev/runtime/p0-2'
-    found=wait_for_failure(root)
-    report=diagnostic.collect(root)
-    report['first_failure_seen_during_wait']=found
+    report=dict(schema=1,purpose='cryptex-vm-transport-failure-diagnostic',outcome='refused')
+    try:
+        found=wait_for_failure(root)
+        report=diagnostic.collect(root)
+        report['first_failure_seen_during_wait']=found
+    except Exception:
+        report['error']='observation_unavailable'
+    # No exception details or raw paths/content enter the exported receipt.
     report['maximum_wait_seconds']=180
     report['collector_sha256']=hashlib.sha256(Path(diagnostic.__file__).read_bytes()).hexdigest()
     report['candidate_source']=read_json(Path(__file__).with_name('candidate.json'))['product_source']
