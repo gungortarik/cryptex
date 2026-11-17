@@ -1,5 +1,25 @@
 # 34 — Current Implementation Handoff
 
+## First-failure owner receipt: listener restored, no readable failure — November 17
+
+VM-ILK-HATA-SONUC-d376d3c21f54.zip SHA256
+75396916a94fa6845671fce5d66c25b7b25f45875d85c56b382dd70d19190a40
+matches the delivered collector and candidate93370b1. After the180s window:
+Desktop1,daemon1,engine2 by name; port59957 has one LAN listener. These counts
+are not process-ownership proof. Native log6321 bytes,5 starts,2 stops,4 shutdown
+requests, no selected connection markers. Log may contain earlier runs.
+First-worker record unavailable:path_pin_failed; no valid failure was observed
+during wait. This collector error cannot distinguish missing leaf from access/
+pin refusal, so neither absence of a worker error nor a root-cause fix is proved.
+
+Runtime state differs from the earlier absent-engine/refused-port receipt.
+Next owner action: keep BOTH apps open and run the existing read-only
+Cryptex-Aktarim-Tani-a53b871.zip on VM(TANI-WINDOWS.cmd) and Mac(TANI-MAC.command).
+Return both new AKTARIM-TANI-SONUC ZIPs to compare TCP and sealed-stream metadata.
+No reinstall, pairing, settings change or restart. Existing packet member/hash
+readback reverified. No new product changes this turn; M8 and delivery gate open.
+Full receipt retained in evidence/m8/m8-vm-first-worker-failure-20261116.json.
+
 ## One-click VM first worker failure candidate ready — November 16
 
 Owner authorized preserving the first failure hidden behind shutdown and another

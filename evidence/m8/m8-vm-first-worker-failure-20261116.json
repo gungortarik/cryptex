@@ -51,7 +51,96 @@
     "python_compile_from_archive": "passed",
     "payload_provenance_hashes": "passed"
   },
-  "owner_result": "pending",
+  "owner_result": {
+    "archive": "VM-ILK-HATA-SONUC-d376d3c21f54.zip",
+    "sha256": "75396916a94fa6845671fce5d66c25b7b25f45875d85c56b382dd70d19190a40",
+    "collector_matches": true,
+    "candidate_matches": true,
+    "observation": {
+      "schema": 1,
+      "purpose": "cryptex-vm-transport-failure-diagnostic",
+      "outcome": "observed",
+      "profile_writes": false,
+      "processes_changed": false,
+      "credentials_read": false,
+      "canonical_bodies_read": false,
+      "atomic_snapshot": false,
+      "native_log": {
+        "status": "observed",
+        "value": {
+          "tail_only": false,
+          "bytes_read": 6321,
+          "marker_counts": {
+            "listener_started": 5,
+            "listener_stopped": 2,
+            "listen_failure": 0,
+            "connection_established": 0,
+            "connection_closed": 0,
+            "unexpected_device": 0,
+            "certificate_error": 0,
+            "folder_error": 0,
+            "access_denied": 0,
+            "database_stop_timeout": 0,
+            "shutdown_requested": 4,
+            "panic": 0
+          },
+          "recent_marker_groups": [
+            [
+              "listener_started"
+            ],
+            [
+              "listener_started"
+            ],
+            [
+              "listener_stopped",
+              "shutdown_requested"
+            ],
+            [
+              "shutdown_requested"
+            ],
+            [
+              "listener_started"
+            ],
+            [
+              "listener_stopped",
+              "shutdown_requested"
+            ],
+            [
+              "shutdown_requested"
+            ],
+            [
+              "listener_started"
+            ],
+            [
+              "listener_started"
+            ]
+          ],
+          "raw_lines_exported": false,
+          "limits": "Markers can include earlier runs; absence does not rule out a failure."
+        }
+      },
+      "process_counts_not_identity_proof": {
+        "status": "observed",
+        "value": {
+          "desktop": 1,
+          "daemon": 1,
+          "engine": 2,
+          "listeners": 1,
+          "lan": 1,
+          "loopback": 0
+        }
+      },
+      "first_worker_failure": {
+        "status": "unavailable",
+        "error": "path_pin_failed"
+      },
+      "first_failure_seen_during_wait": false,
+      "maximum_wait_seconds": 180,
+      "collector_sha256": "d78ee21819b90a4ee8b83291d1f810a5c1e0be906814b66042a7e91ba3103670",
+      "candidate_source": "93370b1db99b7364195ec0d1bbc57b5b45b97716"
+    },
+    "interpretation": "A LAN listener is present in this observation; first failure unavailable (path_pin_failed). Cannot distinguish missing leaf from pin/access failure, cannot attribute process names or listener to owned worker, cannot infer original root cause fixed or remote delivery. Next: repeat existing read-only LAN metadata diagnostic on both live devices following changed runtime state."
+  },
   "root_cause_fixed": false,
   "delivery_verified": false,
   "m8_closed": false
