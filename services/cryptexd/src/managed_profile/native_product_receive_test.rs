@@ -532,6 +532,9 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
     let old_reader = owner_a.handle().reader().unwrap();
     security_change(&source, &instance_a, &store, false);
     assert!(old_reader.try_transport_device_id().is_err());
+    // A revoked handle still retains the original instance exclusion until
+    // dropped. Finish this negative observation before attempting a new owner.
+    drop(old_reader);
     restricted_view(&owner_a, false);
     assert!(matches!(
         owner_a.handle().request(Some(stale.clone())),
