@@ -28,7 +28,45 @@
     "TCP success is not peer authentication or note delivery",
     "Non-atomic unsigned observations; no canonical signature verification"
   ],
-  "owner_results": "pending",
+  "owner_results": {
+    "Darwin": {
+      "file": "AKTARIM-TANI-SONUC-Darwin-3db5e5176041.zip",
+      "sha256": "578e3cf58a19cd663bd90f6456fb50d3a2102ab4b1743127d1a7955ec2df372c",
+      "local_tcp": "connected",
+      "peer_tcp": "io_error_without_numeric_code",
+      "local_canonical_and_exchange_segments": [
+        [
+          0,
+          5838
+        ]
+      ],
+      "peer_canonical_segments": 0,
+      "peer_exchange": "absent"
+    },
+    "Windows": {
+      "file": "AKTARIM-TANI-SONUC-Windows-6156bfc8f4be.zip",
+      "sha256": "ee6d4514462e61cc2de34874360bbc05ea367fb10df855688462a37924ae183a",
+      "local_tcp": "connection_refused_10061",
+      "peer_tcp": "connected",
+      "local_canonical_and_exchange_segments": [
+        [
+          0,
+          5842
+        ],
+        [
+          1,
+          705
+        ]
+      ],
+      "local_open_bytes": 1357,
+      "peer_canonical_segments": 0,
+      "peer_exchange": "path_unavailable"
+    },
+    "collector_sha256": "529ee1c8796cea8bb87dbad93b92f7203081e8ffeb2bb73d51ae762e9b147fa7",
+    "both_saved_settings": "unpaused, expected local IP and expected peer endpoint",
+    "limits": "Unsigned non-atomic reports; segment sizes are not hashes, content or signature verification; TCP is not identity authentication",
+    "next": "Inspect current VM connection state after one reload without restarting or rewriting settings. Windows local port refusal narrows diagnosis; worker exit, binding failure or filtering not yet distinguished."
+  },
   "delivery_verified": false,
   "m8_closed": false
 }

@@ -1,5 +1,23 @@
 # 34 — Current Implementation Handoff
 
+## LAN diagnostic results: Windows local port refused — November 16
+
+Both owner reports match the delivered collector SHA256
+529ee1c8796cea8bb87dbad93b92f7203081e8ffeb2bb73d51ae762e9b147fa7.
+Saved preferences are unpaused with the expected IP and peer endpoint on both.
+Windows can connect to Mac61942 but its own192.168.50.26:59957 returns10061.
+Mac local61942 connects; its probe to Windows59957 fails without a numeric code.
+Do not classify the latter as a proven firewall or timeout cause.
+Windows canonical and exchange slots have two sealed segments (0:5842,1:705
+bytes), plus1357 open bytes in canonical. Mac has local segment0:5838 bytes
+in both locations. Both peer canonical slots have zero sealed segments. Mac
+peer exchange is absent; Windows peer exchange is unavailable to the reader.
+These are unsigned, non-atomic metadata observations, not content/crypto proofs.
+No cross-device delivery is established. Next: current VM Local connections
+screen after one Reload, without restart/settings changes, to inspect worker
+state following capture/export. Do not disable protection or add firewall rules
+without evidence. Exact report digests are in m8-lan-transfer-diagnostic-20261116.json.
+
 ## Live VM/Mac LAN search miss; bounded diagnostics — November 16
 
 Owner screenshots after the VM candidate update show the expected Mac peer and
