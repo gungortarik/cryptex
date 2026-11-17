@@ -70,6 +70,14 @@ fn checkpoint(_point: u8) -> Result<(), Error> {
     Ok(())
 }
 
+fn authority(_stage: &'static str) -> Error {
+    // Native fixtures need the failing boundary, never raw errors, paths, keys
+    // or note bodies. Production error behavior is unchanged.
+    #[cfg(test)]
+    eprintln!("component=sealed_export_test authority_stage={_stage}");
+    Error::Authority
+}
+
 impl Exporter {
     pub(crate) fn tick(
         &mut self,
@@ -90,36 +98,42 @@ impl Exporter {
             }
             admission
                 .validate_operation(root, &permit)
-                .map_err(|_| Error::Authority)?;
+                .map_err(|_| authority("admission"))?;
             guard.check().map_err(|_| Error::Deferred)?;
             root_pin.validate()?;
             Ok(())
         };
         check()?;
         let brain =
-            crate::identity_runtime::load_brain_identity(root).map_err(|_| Error::Authority)?;
+            crate::identity_runtime::load_brain_identity(root).map_err(|_| authority("brain"))?;
         let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
             root,
             &brain.brain_id,
             store,
             environment,
         )
-        .map_err(|_| Error::Authority)?;
-        let anchor = resolver.local_trust_anchor().ok_or(Error::Authority)?;
+        .map_err(|_| authority("local_key"))?;
+        let anchor = resolver
+            .local_trust_anchor()
+            .ok_or_else(|| authority("anchor"))?;
         let snapshot = crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(root, &brain.brain_id, &anchor, Some(deadline)).map_err(|e| match e {
             crate::knowledge_materialization::KnowledgeMaterializationError::DeadlineExceeded => Error::Deferred,
-            _ => Error::Authority,
+            crate::knowledge_materialization::KnowledgeMaterializationError::Canonical(_) => authority("scan_canonical"),
+            crate::knowledge_materialization::KnowledgeMaterializationError::Storage(_) => authority("scan_storage"),
+            crate::knowledge_materialization::KnowledgeMaterializationError::Verification(_) => authority("scan_verification"),
+            crate::knowledge_materialization::KnowledgeMaterializationError::Knowledge(_) => authority("scan_knowledge"),
+            crate::knowledge_materialization::KnowledgeMaterializationError::InvalidInput(_) => authority("scan_input"),
         })?;
         let peers = super::exchange_policy::ExchangePeers::from_snapshot(&snapshot, root, identity)
-            .map_err(|_| Error::Authority)?;
+            .map_err(|_| authority("peers"))?;
         if peers.bindings().is_empty() {
-            return Err(Error::Authority);
+            return Err(authority("no_peers"));
         }
         let check = || {
             check()?;
-            peers.revalidate().map_err(|_| Error::Authority)
+            peers.revalidate().map_err(|_| authority("peers_recheck"))
         };
-        let packs = snapshot.export_packs(|| check().is_ok()).map_err(|e| match e { crate::knowledge_materialization::KnowledgeMaterializationError::DeadlineExceeded => Error::Deferred, _ => Error::Authority })?;
+        let packs = snapshot.export_packs(|| check().is_ok()).map_err(|e| match e { crate::knowledge_materialization::KnowledgeMaterializationError::DeadlineExceeded => Error::Deferred, _ => authority("packs") })?;
         let canonical = root_pin.child("canonical", false)?.child("events", false)?;
         let transport = root_pin.child("transport", false)?;
         let incoming = transport.child("incoming", false)?;

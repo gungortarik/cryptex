@@ -277,6 +277,9 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
     while !found(&receiver, &instance_b, &store, "test 3")
         || !found(&source, &instance_a, &store, "native reverse note")
     {
+        for owner in [&owner_a, &owner_b] {
+            assert_eq!(owner.handle().request(None).unwrap().error, None);
+        }
         assert!(
             Instant::now() < deadline,
             "normal product exchange did not reach guarded search on both peers"
@@ -340,6 +343,9 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
     while !found(&receiver, &instance_b, &store, "offline source tail")
         || !found(&source, &instance_a, &store, "offline receiver tail")
     {
+        for owner in [&owner_a, &owner_b] {
+            assert_eq!(owner.handle().request(None).unwrap().error, None);
+        }
         assert!(
             Instant::now() < deadline,
             "offline tails did not converge after resume"
