@@ -1,5 +1,35 @@
 # 34 — Current Implementation Handoff
 
+## Mac sleep clock defect fixed; owner update ready — November 17
+
+Owner confirmed Mac slept/lid closed before the reported deadlines. Found and
+reproduced mixed clocks: Rust Instant uses CLOCK_UPTIME_RAW (excludes sleep), C
+channel used CLOCK_MONOTONIC (includes sleep). Fix50b068e uses CLOCK_UPTIME_RAW
+without changing budgets, identity checks or actual-expiry session invalidation.
+Earlier installed setup receipt source69381a7 has the old clock too; this is
+historical provenance, not a fresh current-image attestation. The terminal's
+756ms owner exchange is consistent with sleep crossing a native deadline;
+physical wake/transfer acceptance remains pending.
+
+Exact candidate1ed9b97e612c9e42dd00c4429491b732bd8cb2e6 passed Mac CI44148287536:
+two production-C clock regressions (old code fails simulated one-hour sleep;
+corrected code passes; real awake expiry/clock failure still refuse), six profile
+preservation/refusal updater tests, signed native channel16-scenario suite, fmt,
+clippy and committed packet readback. No physical sleep was forced on CI.
+
+Delivered-ready Downloads/Cryptex-Mac-Uyku-Duzeltme-1ed9b97.zip,3746037 bytes,
+SHA256b03785fbc455b10a0aef2b30adfc8ebc6b231b7ce6fd4610a164ec553df8e9c8.
+Owner action: leave Windows unchanged; Quit Mac Cryptex with Command-Q, extract
+packet, run MAC-GUNCELLE.command. Builds/signs new app beside old using existing
+owner certificate; never enrolls or alters existing profile. Refuses active app,
+wrong identity or changed root. Receipt MAC-GUNCELLEME-SONUC-*.zip appears beside
+script before normal new Desktop launch; keep Terminal open, choose Open local
+memory, send receipt. Generated CRYPTEX-AC-1ed9b97e.command is future launcher.
+No process-name kill/adoption; residual engines are not assumed safe to remove.
+Receipt proves build/update only. Next verify local service and live transfer,
+then controlled sleep/wake acceptance. M8 remains open.
+Evidence: evidence/m8/m8-mac-sleep-clock-fix-20261117.json.
+
 ## Mac launch Terminal identifies helper receive deadline — November 17
 
 Owner supplied RTF-as-txt Terminal output, SHA256

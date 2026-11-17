@@ -1,0 +1,41 @@
+{
+  "scope": "Mac native channel clock alignment and existing-profile owner update; physical wake/transfer acceptance pending",
+  "product_fix_commit": "50b068ee5fbd3cf019035b3bfff732ac313c2ac6",
+  "packet_source_commit": "1ed9b97e612c9e42dd00c4429491b732bd8cb2e6",
+  "owner_evidence": {
+    "terminal_sha256": "dcfd7543fb2df2745f46ed0ff9c464cc33ede86aeed62a48529109f94a064fc8",
+    "confirmed_sleep_or_lid_close": true,
+    "previous_setup_receipt_source": "69381a7090d79ee02d722d4db22e1716af6eda38",
+    "previous_source_clock": "CLOCK_MONOTONIC",
+    "limit": "Old setup receipt establishes earlier build provenance, not a fresh attestation of the currently running image"
+  },
+  "diagnosis": {
+    "verified_defect": "Rust Instant on Darwin excludes system sleep, but the C adapter translated its remaining budget to CLOCK_MONOTONIC, which includes sleep. A native exchange could expire while the Rust caller still had awake-time budget.",
+    "change": "Use CLOCK_UPTIME_RAW for native deadlines, matching Rust Instant and Mach waits. Budget sizes, identity checks, session burning on actual expiry, and replay refusal are unchanged.",
+    "owner_causality": "Confirmed sleep and 756ms owner-exchange timing are consistent with this reproduced defect. Physical Mac retest is still required.",
+    "references": [
+      "https://raw.githubusercontent.com/apple-oss-distributions/Libc/main/gen/clock_gettime.3",
+      "https://raw.githubusercontent.com/rust-lang/rust/1.98.0/library/std/src/sys/time/unix.rs"
+    ]
+  },
+  "validation": {
+    "ci_run": "44148287536",
+    "ci_source": "1ed9b97e612c9e42dd00c4429491b732bd8cb2e6",
+    "conclusion": "success",
+    "native_clock": "Two Darwin C tests: independently advanced sleep-inclusive/awake clocks reproduce old-code failure and pass corrected code; genuine expiry, range bound and clock failure still refuse",
+    "existing_profile_update": "Six POSIX tests: preserve identity/events/old app; refuse wrong profile, active application, changed identity, replaced root, late process start and build failure",
+    "native_channel": "Signed subprocess supervisor suite passed (16 scenarios); two ignored driver entry points are invoked by the suite",
+    "format_and_clippy": "passed",
+    "packet": "Committed source packet build and exact member readback passed on Mac CI and locally",
+    "not_tested": "Physical machine sleep/wake and real Windows-Mac durable delivery"
+  },
+  "packet": {
+    "name": "Cryptex-Mac-Uyku-Duzeltme-1ed9b97.zip",
+    "bytes": 3746037,
+    "sha256": "b03785fbc455b10a0aef2b30adfc8ebc6b231b7ce6fd4610a164ec553df8e9c8",
+    "owner_entry": "MAC-GUNCELLE.command",
+    "behavior": "Refuses active Desktop/daemon names; verifies exact public Brain/Mac IDs; builds and locally signs beside old app in private cache; never invokes enrollment/setup or writes profile. Rechecks identity/root and process gate. Writes update receipt then runs normal Desktop startup, waiting for natural quit.",
+    "receipt": "MAC-GUNCELLEME-SONUC-*.zip beside updater; build result is available while app runs and is not a launch/delivery receipt"
+  },
+  "m8_complete": false
+}
