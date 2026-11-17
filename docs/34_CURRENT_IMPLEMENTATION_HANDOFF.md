@@ -1,5 +1,21 @@
 # 34 — Current Implementation Handoff
 
+## Owner VM paused restart passed; automated offline backlog next — November 17
+
+Owner confirms normal quit/reopen in the updated VM and the received `test 3`
+still visible while Sync paused. Both devices now have owner-observed received
+note visibility after paused reopen. No new screenshot or binary attestation was
+collected; canonical byte equality and physical network/sleep disruption are not
+implied. Do not repeat this check or request a duplicate capture.
+
+Next autonomous work extends the existing real two-Owner Windows native test:
+persist pause on both peers, stop owners, write distinct daemon-signed offline
+tails, reopen paused, verify local guarded search and no remote tail/canonical
+change across timer cycles, resume via normal settings, then verify equal
+canonical union and replay after restart. This is one CI-host two-process test,
+not an owner Mac/VM run or Desktop capture/physical cable-loss test. Native CI
+result is pending until recorded below; product code/package is unchanged.
+
 ## Owner confirms reverse delivery after VM update — November 17
 
 Owner reports applying the delivered VM update, opening Cryptex and finding the

@@ -190,6 +190,36 @@ fn connect(owner: &Owner, ip: Ipv4Addr, peer_port: u16) {
     assert_eq!(view.error, None);
     assert_eq!(view.state, State::ReadyLocally);
 }
+fn pause(owner: &Owner, paused: bool) {
+    let handle = owner.handle();
+    let initial = handle.request(None).unwrap();
+    assert_eq!(initial.error, None);
+    let view = handle
+        .request(Some(Update {
+            expected_revision: initial.revision,
+            paused,
+            listen_address: initial.listen_address,
+            peers: initial
+                .devices
+                .into_iter()
+                .map(|device| PeerAddress {
+                    device_id: device.device_id,
+                    endpoint: device.endpoint.unwrap(),
+                })
+                .collect(),
+        }))
+        .unwrap();
+    assert_eq!(view.error, None);
+    assert_eq!(view.paused, paused);
+    assert_eq!(
+        view.state,
+        if paused {
+            State::Paused
+        } else {
+            State::ReadyLocally
+        }
+    );
+}
 fn canonical(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     let events = root.join("canonical/events");
     let mut entries = Vec::new();
@@ -253,11 +283,80 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
         );
         std::thread::sleep(Duration::from_millis(500));
     }
+    pause(&owner_a, true);
+    pause(&owner_b, true);
+    owner_a.shutdown().unwrap();
+    owner_b.shutdown().unwrap();
+    drop((owner_a, owner_b, instance_a, instance_b));
+    let delivered = canonical(&source);
+    assert_eq!(delivered, canonical(&receiver));
+
+    // Both transport owners are stopped. Only the daemon's ordinary writer
+    // creates the two new signed notes; no delivery or publication shortcut.
+    note(&source, &store, "offline source tail");
+    note(&receiver, &store, "offline receiver tail");
+    let isolated_a = canonical(&source);
+    let isolated_b = canonical(&receiver);
+    assert_ne!(isolated_a, isolated_b);
+    let (mut owner_a, instance_a) = a.start(&source, &package_path, store.clone());
+    let (mut owner_b, instance_b) = b.start(&receiver, &package_path, store.clone());
+    for owner in [&owner_a, &owner_b] {
+        let view = owner.handle().request(None).unwrap();
+        assert_eq!(view.error, None);
+        assert_eq!(view.state, State::Paused);
+        assert!(view.paused);
+    }
+    // More than two ordinary five-second receive/export timer intervals.
+    let until = Instant::now() + Duration::from_secs(12);
+    while Instant::now() < until {
+        assert!(found(&source, &instance_a, &store, "native reverse note"));
+        assert!(found(&receiver, &instance_b, &store, "test 3"));
+        assert!(found(&source, &instance_a, &store, "offline source tail"));
+        assert!(found(
+            &receiver,
+            &instance_b,
+            &store,
+            "offline receiver tail"
+        ));
+        assert!(!found(
+            &receiver,
+            &instance_b,
+            &store,
+            "offline source tail"
+        ));
+        assert!(!found(
+            &source,
+            &instance_a,
+            &store,
+            "offline receiver tail"
+        ));
+        assert_eq!(isolated_a, canonical(&source));
+        assert_eq!(isolated_b, canonical(&receiver));
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    pause(&owner_a, false);
+    pause(&owner_b, false);
+    let deadline = Instant::now() + Duration::from_secs(180);
+    while !found(&receiver, &instance_b, &store, "offline source tail")
+        || !found(&source, &instance_a, &store, "offline receiver tail")
+    {
+        assert!(
+            Instant::now() < deadline,
+            "offline tails did not converge after resume"
+        );
+        std::thread::sleep(Duration::from_millis(500));
+    }
     owner_a.shutdown().unwrap();
     owner_b.shutdown().unwrap();
     drop((owner_a, owner_b, instance_a, instance_b));
     let saved = canonical(&source);
     assert_eq!(saved, canonical(&receiver));
+    for (path, bytes) in delivered {
+        assert!(
+            saved.contains(&(path, bytes)),
+            "previously delivered bytes changed"
+        );
+    }
     let (mut owner_a, instance_a) = a.start(&source, &package_path, store.clone());
     let (mut owner_b, instance_b) = b.start(&receiver, &package_path, store.clone());
     // Saved settings, fresh instance and fresh transport ownership: no reconnect helper.
@@ -267,8 +366,10 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
     let mut observed_a = false;
     let mut observed_b = false;
     while Instant::now() < until {
-        observed_a |= found(&source, &instance_a, &store, "native reverse note");
-        observed_b |= found(&receiver, &instance_b, &store, "test 3");
+        observed_a |= found(&source, &instance_a, &store, "native reverse note")
+            && found(&source, &instance_a, &store, "offline receiver tail");
+        observed_b |= found(&receiver, &instance_b, &store, "test 3")
+            && found(&receiver, &instance_b, &store, "offline source tail");
         std::thread::sleep(Duration::from_millis(500));
     }
     owner_a.shutdown().unwrap();
