@@ -1,5 +1,41 @@
 # 34 — Current Implementation Handoff
 
+## Live VM/Mac LAN search miss; bounded diagnostics — November 16
+
+Owner screenshots after the VM candidate update show the expected Mac peer and
+paused state without attention. VM changed from VMware NAT (192.168.177.131)
+to Bridged and now reports192.168.50.26/24. Mac owner reports192.168.50.104.
+Both saved and enabled their LAN preferences: VM local port59957, Mac61942,
+each using the other endpoint. Screens show ready_locally on both; that is
+not a connected-peer or remote-durability acknowledgement.
+
+Owner saved public note "M8 Windows-Mac aktarim testi 001" on the VM and showed
+the durable-save UI. Mac full-text search failed. Local SQLite FTS5 reproduction
+shows the unquoted Windows-Mac term is parsed as query syntax and fails; M8 and
+the quoted phrase succeed in that isolated reproduction. No product fix yet.
+Mac search M8 then had no hits; the UI also reuses its generic initial empty
+state for zero hits, which is ambiguous. Mac connection read later reported
+unavailable; Cmd-Q and the existing CRYPTEX-AC.command restored ready_locally,
+with the correct persisted endpoints and sync enabled. M8 search still has no
+results per owner. No evidence yet identifies export, LAN, import or projection
+as the blocker. Do not repeat capture/pairing or delete/reinitialize profiles.
+
+scripts/m8/lan_transfer_diagnostic.py collects fixed-path segment counts/sizes,
+public preference matches, and TCP connect-and-close probes to these two exact
+LAN endpoints. It reads no canonical bodies, keys, API credentials or raw logs;
+does not launch/stop apps or write runtime data; rejects the wrong session
+profile before probes. Observations are not atomic, cryptographically verified,
+or proof of delivery. Source a53b871, Windows local tests5 passed/1 POSIX skip;
+cross-platform tooling CI44002692911 passed: Windows5 passed/1 POSIX skip;
+Mac6 passed with Python3.13 and again with /usr/bin/python3 used by the launcher.
+Prepared Downloads/Cryptex-Aktarim-Tani-a53b871.zip,11299 bytes, SHA256
+51392781eb9d1623ae030c5249776dd7b37d0aa992fa3b6b8d4a7b3e0355b0af.
+Exact committed ZIP member readback passed. Next owner action is one diagnostic
+run on each device while both apps stay open. Return both AKTARIM-TANI-SONUC
+ZIPs created beside the launchers. No device diagnosis or delivery is claimed
+from collector tests. Evidence: m8-lan-transfer-diagnostic-20261116.json.
+M8 remains open.
+
 ## VM candidate installed; connection screen pending — November 16
 
 Owner receipt VM-GUNCELLEME-SONUC-2f309e7a2c3a.zip SHA256

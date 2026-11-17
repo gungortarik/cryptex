@@ -1,0 +1,34 @@
+{
+  "scope": "Diagnostic handoff for live VM to Mac note search miss",
+  "source_commit": "a53b871081c597065e290522b350f1a72a7958a4",
+  "packet": "Cryptex-Aktarim-Tani-a53b871.zip",
+  "packet_sha256": "51392781eb9d1623ae030c5249776dd7b37d0aa992fa3b6b8d4a7b3e0355b0af",
+  "packet_bytes": 11299,
+  "validation": {
+    "ci_run": "44002692911",
+    "ci_result": "success",
+    "windows": "5 passed, 1 POSIX-only skip",
+    "mac_python_3_13": "6 passed",
+    "mac_system_python": "6 passed",
+    "exact_committed_member_readback": "passed",
+    "git_diff_check": "passed"
+  },
+  "observations": {
+    "vm_endpoint": "192.168.50.26:59957",
+    "mac_endpoint": "192.168.50.104:61942",
+    "owner_ui": "ready_locally on both; Mac restored after restart",
+    "vm_capture": "owner durable-save success UI",
+    "mac_search_M8": "owner reports no results after restart",
+    "full_phrase_search": "unquoted Windows-Mac FTS5 query error reproduced separately; not fixed"
+  },
+  "collector_limits": [
+    "No profile writes, memory body reads, key/API credential reads or raw log collection",
+    "Fixed public metadata and directory entry counts/sizes only",
+    "TCP connect-and-close to fixed owner LAN endpoints; no application bytes",
+    "TCP success is not peer authentication or note delivery",
+    "Non-atomic unsigned observations; no canonical signature verification"
+  ],
+  "owner_results": "pending",
+  "delivery_verified": false,
+  "m8_closed": false
+}
