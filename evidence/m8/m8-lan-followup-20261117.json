@@ -1,0 +1,276 @@
+{
+  "scope": "Follow-up live Windows/Mac LAN metadata observations after VM diagnostic candidate",
+  "receipts": [
+    {
+      "archive": "AKTARIM-TANI-SONUC-Darwin-aad6d763197b.zip",
+      "sha256": "681c84b84aa0aa27c8da993ed48084cd8bbbda70c28785daf87ef94f95371fad",
+      "report": {
+        "schema": 1,
+        "purpose": "cryptex-lan-transfer-diagnostic",
+        "os": "Darwin",
+        "outcome": "observed",
+        "atomic_snapshot": false,
+        "profile_writes": false,
+        "memory_bodies_read": false,
+        "credentials_read": false,
+        "canonical_signatures_verified": false,
+        "network_delivery_verified": false,
+        "directories": {
+          "canonical_local": {
+            "status": "observed",
+            "value": {
+              "files": 4,
+              "directories": 0,
+              "unsafe": 0,
+              "sealed_segments": 1,
+              "open_files": 0,
+              "sealed_bytes": 5838,
+              "open_bytes": 0,
+              "segments": [
+                [
+                  "00000000000000000000",
+                  5838
+                ]
+              ],
+              "segment_list_truncated": false
+            }
+          },
+          "canonical_peer": {
+            "status": "observed",
+            "value": {
+              "files": 1,
+              "directories": 0,
+              "unsafe": 0,
+              "sealed_segments": 0,
+              "open_files": 0,
+              "sealed_bytes": 0,
+              "open_bytes": 0,
+              "segments": [],
+              "segment_list_truncated": false
+            }
+          },
+          "exchange_local": {
+            "status": "observed",
+            "value": {
+              "files": 1,
+              "directories": 0,
+              "unsafe": 0,
+              "sealed_segments": 1,
+              "open_files": 0,
+              "sealed_bytes": 5838,
+              "open_bytes": 0,
+              "segments": [
+                [
+                  "00000000000000000000",
+                  5838
+                ]
+              ],
+              "segment_list_truncated": false
+            }
+          },
+          "exchange_peer": {
+            "status": "absent"
+          },
+          "import_journal": {
+            "status": "observed",
+            "value": {
+              "files": 1,
+              "directories": 0,
+              "unsafe": 0,
+              "sealed_segments": 0,
+              "open_files": 0,
+              "sealed_bytes": 0,
+              "open_bytes": 0,
+              "segments": [],
+              "segment_list_truncated": false
+            }
+          },
+          "import_staging": {
+            "status": "observed",
+            "value": {
+              "files": 0,
+              "directories": 0,
+              "unsafe": 0,
+              "sealed_segments": 0,
+              "open_files": 0,
+              "sealed_bytes": 0,
+              "open_bytes": 0,
+              "segments": [],
+              "segment_list_truncated": false
+            }
+          },
+          "export_staging": {
+            "status": "observed",
+            "value": {
+              "files": 0,
+              "directories": 0,
+              "unsafe": 0,
+              "sealed_segments": 0,
+              "open_files": 0,
+              "sealed_bytes": 0,
+              "open_bytes": 0,
+              "segments": [],
+              "segment_list_truncated": false
+            }
+          }
+        },
+        "settings": {
+          "status": "observed",
+          "value": {
+            "paused": false,
+            "local_ip_matches": true,
+            "peer_count": 1,
+            "peer_endpoint_matches": true
+          }
+        },
+        "tcp_local": {
+          "status": "unavailable",
+          "reason": "io_error",
+          "errno": 61,
+          "winerror": null
+        },
+        "tcp_peer": {
+          "status": "observed",
+          "value": "tcp_connected_identity_not_verified"
+        },
+        "collector_sha256": "529ee1c8796cea8bb87dbad93b92f7203081e8ffeb2bb73d51ae762e9b147fa7"
+      }
+    },
+    {
+      "archive": "AKTARIM-TANI-SONUC-Windows-712571833138.zip",
+      "sha256": "fb7940fd58b10fd34c274f36286bf27f56e1af444df502f3506da21c1f8dce91",
+      "report": {
+        "schema": 1,
+        "purpose": "cryptex-lan-transfer-diagnostic",
+        "os": "Windows",
+        "outcome": "observed",
+        "atomic_snapshot": false,
+        "profile_writes": false,
+        "memory_bodies_read": false,
+        "credentials_read": false,
+        "canonical_signatures_verified": false,
+        "network_delivery_verified": false,
+        "directories": {
+          "canonical_local": {
+            "status": "observed",
+            "value": {
+              "files": 8,
+              "directories": 0,
+              "unsafe": 0,
+              "sealed_segments": 3,
+              "open_files": 0,
+              "sealed_bytes": 7904,
+              "open_bytes": 0,
+              "segments": [
+                [
+                  "00000000000000000000",
+                  5842
+                ],
+                [
+                  "00000000000000000001",
+                  705
+                ],
+                [
+                  "00000000000000000002",
+                  1357
+                ]
+              ],
+              "segment_list_truncated": false
+            }
+          },
+          "canonical_peer": {
+            "status": "observed",
+            "value": {
+              "files": 1,
+              "directories": 0,
+              "unsafe": 0,
+              "sealed_segments": 0,
+              "open_files": 0,
+              "sealed_bytes": 0,
+              "open_bytes": 0,
+              "segments": [],
+              "segment_list_truncated": false
+            }
+          },
+          "exchange_local": {
+            "status": "observed",
+            "value": {
+              "files": 3,
+              "directories": 0,
+              "unsafe": 0,
+              "sealed_segments": 3,
+              "open_files": 0,
+              "sealed_bytes": 7904,
+              "open_bytes": 0,
+              "segments": [
+                [
+                  "00000000000000000000",
+                  5842
+                ],
+                [
+                  "00000000000000000001",
+                  705
+                ],
+                [
+                  "00000000000000000002",
+                  1357
+                ]
+              ],
+              "segment_list_truncated": false
+            }
+          },
+          "exchange_peer": {
+            "status": "unavailable",
+            "reason": "path_unavailable"
+          },
+          "import_journal": {
+            "status": "unavailable",
+            "reason": "path_unavailable"
+          },
+          "import_staging": {
+            "status": "unavailable",
+            "reason": "path_unavailable"
+          },
+          "export_staging": {
+            "status": "observed",
+            "value": {
+              "files": 0,
+              "directories": 0,
+              "unsafe": 0,
+              "sealed_segments": 0,
+              "open_files": 0,
+              "sealed_bytes": 0,
+              "open_bytes": 0,
+              "segments": [],
+              "segment_list_truncated": false
+            }
+          }
+        },
+        "settings": {
+          "status": "observed",
+          "value": {
+            "paused": false,
+            "local_ip_matches": true,
+            "peer_count": 1,
+            "peer_endpoint_matches": true
+          }
+        },
+        "tcp_local": {
+          "status": "observed",
+          "value": "tcp_connected_identity_not_verified"
+        },
+        "tcp_peer": {
+          "status": "unavailable",
+          "reason": "io_error",
+          "errno": 10061,
+          "winerror": 10061
+        },
+        "collector_sha256": "529ee1c8796cea8bb87dbad93b92f7203081e8ffeb2bb73d51ae762e9b147fa7"
+      }
+    }
+  ],
+  "interpretation": "Both probes reach Windows59957; Mac61942 fails locally(errno61) and from Windows(winerror10061). Windows canonical and exchange inventories contain three segments with matching indexes/sizes, not verified matching bytes. Neither peer canonical slot has sealed segments. No verified delivery or root-cause fix. Read Mac connection-settings state next, preserving live state.",
+  "root_cause_fixed": false,
+  "delivery_verified": false,
+  "m8_closed": false
+}

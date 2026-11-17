@@ -1,5 +1,27 @@
 # 34 — Current Implementation Handoff
 
+## Paired LAN receipts now isolate Mac listener failure — November 17
+
+Received Darwin-aad6d763197b and Windows-712571833138 AKTARIM-TANI receipts;
+both collector hashes match a53b871 tooling. Mac reaches Windows59957; Windows
+local59957 succeeds too. Mac local61942 returns errno61; Windows to Mac61942
+returns winerror10061. Both saved settings remain unpaused and match expected
+LAN addresses/peer endpoints. No firewall cause established.
+
+Windows local canonical and exchange inventories each contain sealed segments
+0:5842,1:705,2:1357 bytes (7904 total), no open file. Prior1357 open bytes are now
+sealed and represented in exchange metadata. This is not byte/hash equivalence
+or remote delivery proof. Mac local canonical/exchange still have0:5838; neither
+peer canonical slot has any sealed segments. Mac peer exchange absent; Windows
+peer exchange/import locations unavailable to reader (not proof of absence).
+Exact unsigned non-atomic receipts/digests:evidence/m8/m8-lan-followup-20261117.json.
+
+Next device action: keep Windows unchanged and Mac open; on Mac Local connections
+press Reload current settings once and report the status line. Need current Mac
+controller state before selecting a diagnostic or restart; do not re-pair, alter
+LAN/firewall settings, or assume the earlier Windows failure is fixed. No product
+changes this turn. Cross-device delivery and M8 remain open.
+
 ## First-failure owner receipt: listener restored, no readable failure — November 17
 
 VM-ILK-HATA-SONUC-d376d3c21f54.zip SHA256
