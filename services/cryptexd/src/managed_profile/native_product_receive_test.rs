@@ -222,6 +222,9 @@ fn pause(owner: &Owner, paused: bool) {
     );
 }
 fn canonical(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    canonical_files(root, false)
+}
+fn canonical_files(root: &Path, include_active: bool) -> Vec<(PathBuf, Vec<u8>)> {
     let events = root.join("canonical/events");
     let mut entries = Vec::new();
     for dir in std::fs::read_dir(&events).unwrap() {
@@ -231,7 +234,10 @@ fn canonical(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
         }
         for file in std::fs::read_dir(dir.path()).unwrap() {
             let path = file.unwrap().path();
-            if path.extension().is_some_and(|e| e == "seg") {
+            if path
+                .extension()
+                .is_some_and(|e| e == "seg" || (include_active && e == "open"))
+            {
                 entries.push((
                     path.strip_prefix(&events).unwrap().to_owned(),
                     std::fs::read(path).unwrap(),
@@ -543,7 +549,9 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
     assert!(found(&source, &instance_a, &store, "offline receiver tail"));
     owner_a.shutdown().unwrap();
     drop((owner_a, instance_a));
-    let restricted = canonical(&source);
+    // Security appends can remain in the durable active pack when the last
+    // peer is removed. Count/include that pack; do not force a fixture seal.
+    let restricted = canonical_files(&source, true);
     assert!(restricted.len() > saved.len());
     for previous in &saved {
         assert!(restricted.contains(previous));
@@ -554,7 +562,7 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
         owner_a.handle().request(Some(stale.clone())),
         Err(connection_settings::Error::UnknownDevice)
     ));
-    assert_eq!(restricted, canonical(&source));
+    assert_eq!(restricted, canonical_files(&source, true));
     assert!(found(&source, &instance_a, &store, "offline receiver tail"));
 
     // A retired local identity has no transport authority, including after reopen.
@@ -562,10 +570,21 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
     restricted_view(&owner_a, true);
     owner_a.shutdown().unwrap();
     drop((owner_a, instance_a));
-    let retired = canonical(&source);
-    assert!(retired.len() > restricted.len());
-    for previous in &restricted {
-        assert!(retired.contains(previous));
+    let retired = canonical_files(&source, true);
+    assert_ne!(
+        retired, restricted,
+        "retirement must append durable evidence"
+    );
+    for (path, bytes) in &restricted {
+        let after = &retired.iter().find(|(p, _)| p == path).unwrap().1;
+        if path.extension().is_some_and(|ext| ext == "open") {
+            assert!(
+                after.starts_with(bytes),
+                "active pack must remain append-only"
+            );
+        } else {
+            assert_eq!(after, bytes, "sealed bytes must remain immutable");
+        }
     }
     let (mut owner_a, instance_a) = a.start(&source, &package_path, store.clone());
     restricted_view(&owner_a, true);
@@ -574,7 +593,7 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
         Err(connection_settings::Error::LocalRestricted)
     ));
     restricted_view(&owner_a, true);
-    assert_eq!(retired, canonical(&source));
+    assert_eq!(retired, canonical_files(&source, true));
     owner_a.shutdown().unwrap();
     drop((owner_a, instance_a, store));
     for root in [source, receiver, negative] {
