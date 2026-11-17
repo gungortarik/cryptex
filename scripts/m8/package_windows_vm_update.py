@@ -45,8 +45,10 @@ def build(artifact,transport_packet,product_source,run_id,output,first_failure=F
         'Profil ve anahtarlar korunur; eslestirme veya yeni profil kurulumu yapilmaz.\n'
         'Yeni uygulama eski uygulamanin yanina kurulur ve normal bicimde acilir.\n'
         'Bu noktadan sonra bu klasorde olusan CRYPTEX-AC.cmd dosyasini kullan.\n'
-        'VM-GUNCELLEME-SONUC-*.zip dosyasini Downloads klasorunden sohbete gonder.\n'
-        'Local connections ekranini acip durumunu da gonder. Pause sync isaretli kalsin.\n'
+        'Mevcut LAN ve Pause sync ayarlarini degistirme; yeniden eslestirme yapma.\n'
+        'Mac uygulamasi ve onu acan Terminal acik kalsin; Mac uyanik olsun.\n'
+        'Guncelleyici VM-GUNCELLEME-SONUC-*.zip kaydini Downloads klasorune birakir.\n'
+        'Hata olursa bu kaydi bildir. Yeni test notu olusturman gerekmiyor.\n'
         'Guvenlik engeli olursa korumayi kapatma veya istisna ekleme. Profili silme.\n'
         'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()
     if first_failure:
