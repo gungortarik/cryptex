@@ -1,5 +1,29 @@
 # 34 — Current Implementation Handoff
 
+## Mac live-service result: no daemon by name; preserve launch Terminal — November 17
+
+Received MAC-SERVIS-TANI-SONUC-8cb874b51efd.zip SHA256
+111fe197589919c21edd7bf48ef1f3a7ea7c63165112bc20ade41f1f20567f76;
+collector matches delivered packet. Current-user process-name observation:
+desktop1,daemon0,engine2; no61942 listeners. Native log12992 bytes has10 listener
+starts,9 stops,18 shutdown markers; last group is start. Other selected marker
+counts zero. Prior runs are mixed in; cannot infer current lifecycle chronology
+or error absence. Name counts do not establish ownership; engine2 must not be
+called orphans or killed/adopted based on this receipt.
+
+Checked signed Mac bundle/launch locators use Contents/MacOS/cryptexd, not an
+alternate daemon basename. Added long bundle path regression only at802b0ad:
+fresh CI copies sleep as cryptexd under >200-character bundle path; unchanged
+collector ps command counts it. CI44145119131 passed9 tests with Python3.13 and
+system Python. No collector/product changes and no new owner packet required.
+
+UI settings-unavailable and port refusal are consistent with daemon no longer
+running, but original exit/crash/cleanup cause remains unknown. Next owner action:
+keep both apps and existing Terminal open; send last error lines/screenshot from
+Mac Terminal that launched Cryptex. Existing normal launcher execs Desktop and
+Mac helper diagnostics inherit stderr. Do not restart/re-pair or terminate named
+processes before this evidence. Full receipt:evidence/m8/m8-mac-live-service-diagnostic-20261117.json.
+
 ## Mac UI settings unavailable; live-service diagnostic packet — November 17
 
 Owner Mac screenshot after Reload: "Connection settings are unavailable. Retry
