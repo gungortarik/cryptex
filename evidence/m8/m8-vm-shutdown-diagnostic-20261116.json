@@ -16,7 +16,22 @@
   "observed_owner_state": "connection attention(shutdown), saved LAN endpoints unchanged, sync unpaused",
   "interpretation": "Shutdown aggregates worker failures; neither cleanup timeout nor firewall root cause established",
   "product_changed": false,
-  "owner_result": "pending",
+  "owner_result": {
+    "archive": "VM-SUREC-TANI-SONUC-c95d49e7f56f.zip",
+    "sha256": "cadd854b2d1552520a1b84f6616ad151869bc3901d7fb288c7b2cd1be46ec7a0",
+    "collector_matches": true,
+    "desktop_processes": 1,
+    "daemon_processes": 1,
+    "engine_processes": 0,
+    "port_59957_listeners": 0,
+    "native_log_bytes_read": 4795,
+    "listener_started_markers": 4,
+    "listener_stopped_markers": 2,
+    "shutdown_requested_markers": 4,
+    "other_selected_markers": 0,
+    "last_marker_group": "listener_started",
+    "limits": "Unsigned non-atomic observation; process names are not identity proof. Log includes earlier runs. Missing markers do not establish original worker failure."
+  },
   "root_cause_fixed": false,
   "delivery_verified": false,
   "m8_closed": false

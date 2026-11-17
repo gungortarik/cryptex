@@ -1,5 +1,36 @@
 # 34 — Current Implementation Handoff
 
+## VM failure receipt and real Windows worker/export regression — November 16
+
+Received VM-SUREC-TANI-SONUC-c95d49e7f56f.zip; archive SHA256
+cadd854b2d1552520a1b84f6616ad151869bc3901d7fb288c7b2cd1be46ec7a0.
+Collector hash matches the delivered dc8c6ac packet. Observation: Desktop1,
+daemon1, Syncthing0, port59957 listeners0. The complete4795-byte native log has
+four listener-start markers, two stop markers and four shutdown-request markers;
+all other selected counters are zero. Last marker group is listener_started.
+These unsigned, non-atomic name/count observations confirm the engine was absent
+at collection, not the original failure or a firewall cause. No raw log, keys,
+canonical bodies or process identifiers were exported.
+
+Added an exact ignored native regression at2769911bf3658e510f0550ed099c162937e2a32d:
+existing supervised_exchange_install_restart_and_revocation now keeps the real
+Windows worker active for30s while the normal exporter publishes admitted packs,
+asserting continued readiness and nonzero export. Existing restart, endpoint
+replacement, local-only and revocation checks remain. Dedicated CI44005386191
+passed:1 test,0 failed,0 ignored,755 filtered,93.53s; fresh standard-user account
+and profile cleanup confirmed. Native package SHA is pinned; runtime and fixture
+credentials stay outside checkout on the disposable runner. Local cargo check,
+fmt, clippy(-D warnings), PowerShell parser and diff checks passed.
+
+This did NOT reproduce the owner's failure and is not Windows–Mac delivery proof.
+Product binaries and both owner profiles are unchanged. M8 remains open.
+Next bounded engineering step: preserve/expose the original fixed typed Windows
+worker failure before Controller::close collapses it into Shutdown, with tests
+and no weakening of cleanup_failed, owned-socket checks or trust guards. Then
+prepare a profile-preserving diagnostic candidate if needed. Do not repeat the
+pairing/copy-paste loop or change LAN/firewall settings from the current evidence.
+Owner was asked to leave apps open; no new package or restart requested this turn.
+
 ## VM reports shutdown; preserve live state for redacted process diagnosis
 
 Owner VM screenshot after Reload shows connection attention(shutdown), sync
