@@ -5,6 +5,9 @@ on:
     paths:
       - services/cryptexd/src/m8_owner_channel/native/**
       - scripts/m8/test_mac_channel_clock.py
+      - scripts/m8/mac_existing_update.py
+      - scripts/m8/test_mac_existing_update.py
+      - scripts/m8/package_mac_existing_update.py
       - .github/workflows/m8-mac-channel-clock.yml
   workflow_dispatch:
 permissions:
@@ -19,6 +22,10 @@ jobs:
           persist-credentials: false
       - name: Reproduce mixed-clock failure and test corrected native deadlines
         run: /usr/bin/python3 -B -m unittest discover -s scripts/m8 -p test_mac_channel_clock.py -v
+      - name: Verify existing profile update preserves identity and refuses replacement
+        run: /usr/bin/python3 -B -m unittest discover -s scripts/m8 -p test_mac_existing_update.py -v
+      - name: Build and read back exact committed owner update packet
+        run: python3 -B scripts/m8/package_mac_existing_update.py --revision HEAD --output "$RUNNER_TEMP/mac-existing-update.zip"
       - uses: dtolnay/rust-toolchain@1.98.1
         with:
           components: clippy,rustfmt
