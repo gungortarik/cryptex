@@ -25,5 +25,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       - name: Test signed native channel identity, expiry and replay refusal
-        run: cargo test --locked -p cryptexd --lib m8_owner_channel::native::tests:: -- --test-threads=1
+        run: |
+          cargo test --locked -p cryptexd --lib m8_owner_channel::native::tests:: -- --test-threads=1
       - run: cargo clippy --locked -p cryptexd --lib -- -D warnings
