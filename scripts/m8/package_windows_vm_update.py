@@ -11,7 +11,7 @@ ROOT=Path(__file__).resolve().parents[2]
 TRANSPORT_PACKET_SHA='4a3d8504b1953f5eb4b7de71bce3eee55caaa2c1718086e37f145c40610a79f4'
 
 
-def build(artifact,transport_packet,product_source,run_id,output):
+def build(artifact,transport_packet,product_source,run_id,output,first_failure=False):
     if not re.fullmatch('[0-9a-f]{40}',product_source) or not run_id.isdecimal():
         raise ValueError('expected_provenance')
     provenance=json.loads((artifact/'provenance.json').read_text(encoding='utf-8-sig'))
@@ -49,6 +49,25 @@ def build(artifact,transport_packet,product_source,run_id,output):
         'Local connections ekranini acip durumunu da gonder. Pause sync isaretli kalsin.\n'
         'Guvenlik engeli olursa korumayi kapatma veya istisna ekleme. Profili silme.\n'
         'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()
+    if first_failure:
+        for name in ('windows_worker_diagnostic_update.py','windows_transport_failure_diagnostic.py','worker_failure_codes.json'):
+            members[name]=subprocess.check_output(['git','show',tool_source+':scripts/m8/'+name],cwd=ROOT)
+        del members['VM-GUNCELLE.cmd']
+        members['VM-ILK-HATA.cmd']=b'@echo off\r\ncd /d "%~dp0"\r\npy -3 -B windows_worker_diagnostic_update.py\r\npause\r\n'
+        members['BASLA.txt']=(
+            'Yalnizca mevcut Windows VM icindir. Mac uygulamasi acik kalsin.\n'
+            'VMde Cryptex tepsi menusunden Quit Cryptex ile normal cikis yap. End Task kullanma.\n'
+            'ZIPi VMde Tumunu ayikla ile ac, VM-ILK-HATA.cmd dosyasina cift tikla.\n'
+            'Yonetici olarak calistirma. Koruma engeli olursa dur ve sonucu gonder.\n'
+            'Mevcut profil, anahtarlar ve eslestirme korunur; eski uygulama silinmez.\n'
+            'Yeni uygulama otomatik acilir. En fazla 3 dakika sonra ayni klasorde\n'
+            'VM-ILK-HATA-SONUC-*.zip olusur. Bu dosyayi sohbete gonder.\n'
+            'Bu sirada Pause sync, LAN adresleri veya eslestirmeyi degistirme.\n'
+            'Sonuc hazirlaninca iki uygulama da acik kalsin.\n'
+            'Sonraki acilislarda bu klasordeki CRYPTEX-AC.cmd kullanilir.\n'
+            'Daemon yalnizca ilk sabit hata kodunu ozel aktarim profilinde saklar.\n'
+            'Bu tani kaydi yetki veya aktarim basarisi kaniti degildir.\n'
+            'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()
     output=output.resolve()
     if output==ROOT or ROOT in output.parents: raise ValueError('output_inside_repository')
     with zipfile.ZipFile(output,'x',zipfile.ZIP_DEFLATED) as archive:
@@ -67,5 +86,6 @@ if __name__=='__main__':
     parser.add_argument('--product-source',required=True)
     parser.add_argument('--run-id',required=True)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--first-failure',action='store_true')
     args=parser.parse_args()
-    print(build(args.artifact,args.transport_packet,args.product_source,args.run_id,args.output))
+    print(build(args.artifact,args.transport_packet,args.product_source,args.run_id,args.output,args.first_failure))
