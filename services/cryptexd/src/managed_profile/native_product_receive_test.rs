@@ -194,7 +194,11 @@ fn canonical(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     let events = root.join("canonical/events");
     let mut entries = Vec::new();
     for dir in std::fs::read_dir(&events).unwrap() {
-        for file in std::fs::read_dir(dir.unwrap().path()).unwrap() {
+        let dir = dir.unwrap();
+        if !dir.file_type().unwrap().is_dir() {
+            continue; // Inventory coordination files are not device streams.
+        }
+        for file in std::fs::read_dir(dir.path()).unwrap() {
             let path = file.unwrap().path();
             if path.extension().is_some_and(|e| e == "seg") {
                 entries.push((

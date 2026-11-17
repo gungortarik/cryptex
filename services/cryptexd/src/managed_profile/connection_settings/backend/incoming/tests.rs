@@ -125,7 +125,11 @@ impl Fixture {
     fn canonical_bytes(&self) -> Vec<(PathBuf, Vec<u8>)> {
         let mut files = Vec::new();
         for dir in fs::read_dir(self.receiver.join("canonical/events")).unwrap() {
-            for file in fs::read_dir(dir.unwrap().path()).unwrap() {
+            let dir = dir.unwrap();
+            if !dir.file_type().unwrap().is_dir() {
+                continue; // Inventory coordination files are not device streams.
+            }
+            for file in fs::read_dir(dir.path()).unwrap() {
                 let path = file.unwrap().path();
                 if path
                     .extension()
