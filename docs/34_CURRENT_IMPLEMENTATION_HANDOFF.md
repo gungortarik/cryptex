@@ -14,7 +14,38 @@ tails, reopen paused, verify local guarded search and no remote tail/canonical
 change across timer cycles, resume via normal settings, then verify equal
 canonical union and replay after restart. This is one CI-host two-process test,
 not an owner Mac/VM run or Desktop capture/physical cable-loss test. Native CI
-result is pending until recorded below; product code/package is unchanged.
+Initial runs `44163727858` and `44165464795` failed BEFORE the new offline phase:
+exporter authority refusal, narrowed by test-only redacted diagnostics to
+`scan_canonical`. A deterministic local native contention regression then failed
+with Windows OS33. `lock_exclusive_until` only retried `ErrorKind::WouldBlock`,
+but fs2's Windows lock-contended error is OS33 and does not have that kind.
+Fix `2107297` recognizes fs2's exact platform contention code and retains the
+existing deadline and all other fail-closed errors. Local two regressions,
+seven existing export tests, 29 existing writer tests and clippy passed.
+
+Source `476c47f` changes only workflow YAML after that product fix. Native Windows
+backlog, Windows 11-suite policy/writer coverage and Mac canonical writer CI
+`44166454534` PASSED: Windows99 policy/writer/publication +5 native worker checks,
+Mac30 writer tests, all zero failures. Extended actual normal-Owner offline
+backlog/resume/restart test passed in131.17s; temporary Windows accounts/profiles
+removed. Package build `44166264598` PASSED for product `2107297`, including
+release Desktop tests. Run `44166239352` never created jobs because
+an inline Rust test filter needed YAML block quoting; it is not test evidence.
+Do not ask the owner to reproduce contention or repeat paused restart.
+Detailed evidence: `evidence/m8/m8-normal-offline-backlog-20261117.json`.
+
+Ready existing-profile update:
+`C:/Users/Tarik/Downloads/Cryptex-VM-Kilit-Duzeltme-2107297.zip`, SHA-256
+`76e7bcc977189e7cb1cc8db47eae0b74f66cedf510ba3987dbd2b6ccbb384839`.
+Exact product provenance/hash and ZIP member readback passed; tool source476c47f.
+Normal VM Quit, extract, run `VM-GUNCELLE.cmd` as ordinary user. No profile reset,
+new notes or pairing; old app remains. User's VM is currently paused after the
+successful persistence check. Restore Pause sync=false/save after update to
+resume ordinary synchronization; Mac app/Terminal stay open. Actual installation
+of this additional lock fix remains unconfirmed. Do not ask for fresh result ZIP
+unless an error occurs. Next engineering gate is integrated restriction/status
+and final candidate review; physical Windows-Mac interruption evidence remains
+distinct from the passed same-host native backlog test.
 
 ## Owner confirms reverse delivery after VM update — November 17
 

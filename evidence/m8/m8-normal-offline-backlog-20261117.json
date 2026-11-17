@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "scope": "Two Windows normal connection Owners: persisted pause, offline backlogs, resume convergence and restart replay",
+  "source": "476c47fee30991a96a783fd99e2d5e4ff21d4abd",
+  "product_fix_source": "21072971ca7cb8a46a628ccb616270291fec5693",
+  "product_change": true,
+  "ci": {
+    "run_id": 44166454534,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/44166454534",
+    "conclusion": "success",
+    "windows_policy_writer_publication_tests_passed": 99,
+    "windows_native_worker_tests_passed": 5,
+    "mac_canonical_writer_tests_passed": 30,
+    "native_backlog_exchange_seconds": 131.17,
+    "isolated_windows_accounts_and_profiles_removed": true,
+    "format_and_lint": "passed"
+  },
+  "failed_before_fix": {
+    "initial_run": 44163727858,
+    "diagnostic_run": 44165464795,
+    "phase": "Initial normal exchange before newly added offline backlog phase",
+    "redacted_diagnostic": "sealed_export_test authority_stage=scan_canonical",
+    "local_deterministic_regression": "Contended inventory lock failed immediately with OS33 instead of waiting",
+    "cause": "Windows fs2 lock contention code is not std::io::ErrorKind::WouldBlock",
+    "fix": "Recognize the exact fs2 platform contention code; preserve bounded deadline and non-contention failures",
+    "yaml_only_failed_run_without_jobs": 44166239352
+  },
+  "test": "managed_profile::native_product_receive_test::two_normal_owners_exchange_offline_notes_and_replay_after_restart",
+  "assertions": [
+    "Initial real native transport delivers distinct notes in both directions",
+    "Normal connection settings pause both owners before clean shutdown",
+    "Daemon canonical writer creates separate signed offline tails with both owners stopped",
+    "Fresh owners reopen saved paused preferences and serve guarded local search",
+    "Across 12 seconds, received old notes and new local tails remain visible but opposite tails are absent and local canonical segment sets unchanged",
+    "Normal settings resume both owners and native transfer delivers both offline tails",
+    "Canonical segment sets become byte-identical and preserve previously delivered segments",
+    "Another restart using saved settings preserves old and new note visibility and identical canonical bytes across replay"
+  ],
+  "local": {
+    "cargo_fmt": "passed",
+    "daemon_all_targets_clippy_warnings_denied": "passed",
+    "new_native_contention_tests": "2 passed after previously reproducing OS33 failure",
+    "existing_sealed_export_tests": "7 passed",
+    "existing_canonical_writer_tests": "29 passed"
+  },
+  "owner_observation": "evidence/m8/m8-owner-bidirectional-delivery-20261117.json separately records actual VM paused-restart visibility",
+  "vm_update_package": {
+    "build_run_id": 44166264598,
+    "build_conclusion": "success",
+    "release_desktop_helper_tests": "passed",
+    "product_source": "21072971ca7cb8a46a628ccb616270291fec5693",
+    "test_and_tool_source": "476c47fee30991a96a783fd99e2d5e4ff21d4abd",
+    "source_difference": "Only workflow YAML quoting; no Rust or application change",
+    "path": "C:/Users/Tarik/Downloads/Cryptex-VM-Kilit-Duzeltme-2107297.zip",
+    "sha256": "76e7bcc977189e7cb1cc8db47eae0b74f66cedf510ba3987dbd2b6ccbb384839",
+    "desktop_sha256": "86db87dd42fa5c91685b348fc1ab36a90b10a3110165b327a15fbb47a7a2e785",
+    "daemon_sha256": "768d1e8a9b5742c9b85c308e90b9d04a9247c204dfe2343dc5b64f290dc9ac4d",
+    "provenance_and_exact_zip_member_readback": "passed",
+    "installed_on_owner_vm": false
+  },
+  "limits": [
+    "One disposable Windows CI host with two real managed transport processes; not a physical Mac leg",
+    "Synthetic canonical identities and isolated transport credentials; no owner profile changed",
+    "Offline writes use the daemon writer with owners stopped, not the Desktop capture UI",
+    "Pause and normal shutdown are not abrupt process kill, physical network loss or sleep/wake",
+    "Owner VM still uses previously delivered 06655f5 until a separately verified update is applied",
+    "Full M8 security, integrated status and physical-device acceptance remain separate"
+  ]
+}

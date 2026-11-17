@@ -9,8 +9,15 @@ is now visible in the updated Windows VM; the reverse direction was already
 observed on Mac. See [automated evidence](../evidence/m8/m8-windows-normal-incoming-20261117.json)
 and [owner observation](../evidence/m8/m8-owner-bidirectional-delivery-20261117.json).
 
-Next bounded device observation is VM paused-restart visibility of that existing
-note. Do not repeat pairing, unchanged native CI or Mac's completed paused reopen.
+VM paused-restart visibility of the existing received note is now owner-confirmed,
+alongside Mac's earlier paused reopen. Do not repeat pairing or these observations.
+Extended normal-Owner native coverage now passes pause persisted across restart,
+separate offline tails, no delivery during pause and convergence after resume.
+This exposed and corrected a Windows native lock-contention classification bug;
+CI44166454534 passes Windows104/Mac30 checks. See the
+[failure, fix and bounded result](../evidence/m8/m8-normal-offline-backlog-20261117.json).
+It remains separate from actual-device evidence; the additional owner VM update
+is ready but installation has not yet been confirmed.
 Remaining closure work must distinguish actual-device offline/reconnect and
 interruption evidence, integrated cutoff/conflict/protection status, and final
 candidate security/human review. Successful UI search is not canonical hash

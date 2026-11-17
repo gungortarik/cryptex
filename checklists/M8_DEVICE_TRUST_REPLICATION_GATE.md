@@ -2,6 +2,17 @@
 
 ## November 17 current product checkpoint
 
+Follow-up native offline backlog test exposed a Windows OS33 lock-contention
+classification bug. Fix `2107297` retries only fs2's native contention code
+within the existing deadline. Exact test source `476c47f` differs only in workflow
+YAML and passed CI44166454534: Windows99 policy/writer/publication +5 native,
+Mac30 canonical writer tests. The actual normal-Owner pause/offline/resume/restart
+scenario passed in131.17s with equal canonical sets and unchanged earlier bytes.
+[Failure, reproduction, fix and verification](../evidence/m8/m8-normal-offline-backlog-20261117.json).
+This is two processes on one CI host; physical Windows-Mac interruption acceptance
+is not implied. The owner's existing installed VM build has not yet received this
+additional contention fix.
+
 Normal Windows incoming discovery/publication is integrated through `19c1da9`;
 source `06655f5` passed 73 scoped native Windows checks, including two actual
 normal Owners exchanging offline notes in both directions and replaying after
@@ -12,8 +23,9 @@ Owner now confirms the existing Mac-origin note is visible in the updated VM,
 following earlier Windows-origin visibility on Mac. Thus normal-product physical
 bidirectional delivery/search is owner-observed; it is not merely local readiness.
 [Observation and limits](../evidence/m8/m8-owner-bidirectional-delivery-20261117.json).
-Updated VM paused-restart persistence, independently evidenced cross-device
-convergence/interruption, integrated restriction/status acceptance and final
+Owner additionally confirms the received note remains searchable after normal
+VM quit/reopen with sync paused, matching Mac's earlier paused-reopen observation.
+Independently evidenced cross-device convergence/interruption, integrated restriction/status acceptance and final
 security/human review remain separate gates. M8 stays OPEN. Do not repeat pairing,
 forward delivery or unchanged CI, or require another diagnostic ZIP for success.
 
