@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import platform
 import socket
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -64,6 +66,23 @@ class NativeTests(unittest.TestCase):
             d.run_bounded([sys.executable,'-c','print("x"*4096)'],limit=64)
         with self.assertRaisesRegex(d.Refused,'observer_timeout'):
             d.run_bounded([sys.executable,'-c','import time;time.sleep(5)'],timeout=0.05)
+
+    @unittest.skipUnless(platform.system()=='Darwin','actual Mac long executable path')
+    def test_process_counts_include_long_bundle_paths(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder).resolve()/('a'*100)/('b'*100)/'Contents/MacOS'
+            root.mkdir(parents=True)
+            binary=root/'cryptexd'
+            shutil.copyfile('/bin/sleep',binary);binary.chmod(0o700)
+            before=d.processes()['daemon']
+            child=subprocess.Popen([str(binary),'15'])
+            try:
+                self.assertIsNone(child.poll())
+                self.assertEqual(d.processes()['daemon'],before+1)
+            finally:
+                if child.poll() is None: child.terminate()
+                try: child.wait(timeout=3)
+                except subprocess.TimeoutExpired: child.kill();child.wait()
 
     @unittest.skipUnless(platform.system()=='Darwin','actual Mac ps/lsof')
     def test_actual_mac_commands_and_session_gate(self):
