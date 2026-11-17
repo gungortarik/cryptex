@@ -56,14 +56,15 @@
     "desktop_sha256": "86db87dd42fa5c91685b348fc1ab36a90b10a3110165b327a15fbb47a7a2e785",
     "daemon_sha256": "768d1e8a9b5742c9b85c308e90b9d04a9247c204dfe2343dc5b64f290dc9ac4d",
     "provenance_and_exact_zip_member_readback": "passed",
-    "installed_on_owner_vm": false
+    "installed_on_owner_vm": true,
+    "installation_evidence": "Owner reports VM update applied and Pause sync unchecked/saved; no fresh binary attestation"
   },
   "limits": [
     "One disposable Windows CI host with two real managed transport processes; not a physical Mac leg",
     "Synthetic canonical identities and isolated transport credentials; no owner profile changed",
     "Offline writes use the daemon writer with owners stopped, not the Desktop capture UI",
     "Pause and normal shutdown are not abrupt process kill, physical network loss or sleep/wake",
-    "Owner VM still uses previously delivered 06655f5 until a separately verified update is applied",
+    "Owner reports applying the additional VM update; no fresh installed-binary hash was collected",
     "Full M8 security, integrated status and physical-device acceptance remain separate"
   ]
 }

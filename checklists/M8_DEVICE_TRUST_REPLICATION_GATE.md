@@ -2,6 +2,19 @@
 
 ## November 17 current product checkpoint
 
+Test-only source `ed44709` passed CI44172483591: Windows104/Mac30 checks, zero
+failures, both disposable standard-user account/profile cleanup markers passed.
+The actual normal-Owner exchange/offline/replay test now also passes live
+Compromised cutoff reconciliation, revoked reader refusal, LAN listener removal,
+old-settings refusal, retained accepted search, restricted restart and local
+self-retirement/restart with no transport authority. Active security packs and
+immutable sealed bytes remain unchanged across reopen. Shared renderer status
+checks10/10 pass locally. [Exact scope and fixture corrections](../evidence/m8/m8-live-owner-restriction-20261117.json).
+No new product package is required. This is not physical cross-device restriction
+or terminal self-retirement dissemination; the latter remains explicitly outside
+the current sealed-export checkpoint. See the finite current closure map in
+`docs/M8_REMAINING_ACCEPTANCE.md`; final candidate review and M8 remain OPEN.
+
 Follow-up native offline backlog test exposed a Windows OS33 lock-contention
 classification bug. Fix `2107297` retries only fs2's native contention code
 within the existing deadline. Exact test source `476c47f` differs only in workflow
@@ -10,8 +23,8 @@ Mac30 canonical writer tests. The actual normal-Owner pause/offline/resume/resta
 scenario passed in131.17s with equal canonical sets and unchanged earlier bytes.
 [Failure, reproduction, fix and verification](../evidence/m8/m8-normal-offline-backlog-20261117.json).
 This is two processes on one CI host; physical Windows-Mac interruption acceptance
-is not implied. The owner's existing installed VM build has not yet received this
-additional contention fix.
+is not implied. Owner confirms applying this additional VM contention fix and
+saving Pause sync=false; this is owner observation, not a fresh binary attestation.
 
 Normal Windows incoming discovery/publication is integrated through `19c1da9`;
 source `06655f5` passed 73 scoped native Windows checks, including two actual

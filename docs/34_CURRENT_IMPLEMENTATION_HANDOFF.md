@@ -1,5 +1,53 @@
 # 34 — Current Implementation Handoff
 
+## Owner lock-fix update applied; live security reconciliation acceptance — November 17
+
+Owner confirms applying the VM lock-fix update, unchecking Pause sync and saving.
+This is owner-reported installation/settings acceptance, not a fresh binary hash
+attestation. Do not repeat setup, pairing, note creation or paused restart; no
+additional result ZIP is needed for this successful update.
+
+Test-only source `75c4d9e` extends the actual two-normal-Owner Windows scenario
+after its existing offline/replay phases: a daemon-confirmed Compromised decision
+at the peer's exact verified nonzero history boundary must invalidate the retained
+reader, remove the peer/LAN listener, reject old endpoint settings, retain accepted
+history/search and survive restart. Then self-retirement must stop local transport,
+expose Attention/LocalRestricted and refuse restart with the same old preferences.
+The test uses the existing daemon journal/writer and owner-adapter rebuild barrier;
+it is not an authenticated Desktop approval click or cross-device restriction
+propagation test. Owner profiles are untouched. Local format/all-target clippy
+passed. Initial CI `44169691227` passed through live compromise/stale-settings/LAN
+closure/search, then a fixture counted only sealed packs despite the durable
+security record remaining active. Corrected test-only source `5701574` includes
+active security packs, exact restart equality and append-only byte preservation;
+CI `44171205484` then exposed a second fixture lifetime error: the deliberately
+revoked status reader still retained original instance exclusion across reopen.
+Test-only `ed44709` drops that reader after its refusal assertion, before restart;
+CI `44172483591` PASSED all three jobs: Windows99 policy/writer/publication +5
+native checks, Mac30 writer checks, zero failures. Extended actual native test
+passed in165.41s; both Windows standard-user account/profile cleanup markers
+passed. Shared renderer connection/protection policy checks10/10 passed locally.
+Live compromise and self-retirement stop/refusal/restart acceptance is complete
+within this Windows fixture scope. No product binary changed; no new owner
+update, note, pairing or result ZIP is required. Details:
+`evidence/m8/m8-live-owner-restriction-20261117.json`.
+
+Remaining status distinction: the normal settings route only claims local
+readiness; native profile status explicitly leaves remote durability unverified.
+The older `replication status` CLI is public-metadata diagnostics with hardcoded
+NotImplemented fields, not a live product-protection report. Do not count it as
+integrated runtime acceptance or invent remote receipts. The accepted product
+activation contract forbids a new signed remote receipt protocol without an
+accepted evidence contract. Physical Windows-Mac canonical digest/reconnect,
+restriction propagation and final candidate security/human review remain open.
+Source review identifies a concrete terminal propagation gap: self-retirement
+may remain in an active pack and local transport eligibility becomes
+LocalRestricted, so the ordinary exporter cannot deliver that terminal record.
+Do not confuse the new correct local-stop test with remote retirement delivery
+or weaken terminal authorization. See the current finite closure map before
+selecting a reviewed terminal-record handoff; no owner re-pair or retirement test
+is requested.
+
 ## Owner VM paused restart passed; automated offline backlog next — November 17
 
 Owner confirms normal quit/reopen in the updated VM and the received `test 3`
@@ -42,7 +90,7 @@ Normal VM Quit, extract, run `VM-GUNCELLE.cmd` as ordinary user. No profile rese
 new notes or pairing; old app remains. User's VM is currently paused after the
 successful persistence check. Restore Pause sync=false/save after update to
 resume ordinary synchronization; Mac app/Terminal stay open. Actual installation
-of this additional lock fix remains unconfirmed. Do not ask for fresh result ZIP
+of this additional lock fix is now owner-confirmed above. Do not ask for fresh result ZIP
 unless an error occurs. Next engineering gate is integrated restriction/status
 and final candidate review; physical Windows-Mac interruption evidence remains
 distinct from the passed same-host native backlog test.

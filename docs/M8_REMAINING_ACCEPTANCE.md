@@ -16,13 +16,45 @@ separate offline tails, no delivery during pause and convergence after resume.
 This exposed and corrected a Windows native lock-contention classification bug;
 CI44166454534 passes Windows104/Mac30 checks. See the
 [failure, fix and bounded result](../evidence/m8/m8-normal-offline-backlog-20261117.json).
-It remains separate from actual-device evidence; the additional owner VM update
-is ready but installation has not yet been confirmed.
+It remains separate from actual-device evidence; the owner now confirms applying
+the additional VM update and saving Pause sync=false. No fresh binary attestation
+was collected. Do not request another successful-update receipt.
 Remaining closure work must distinguish actual-device offline/reconnect and
 interruption evidence, integrated cutoff/conflict/protection status, and final
 candidate security/human review. Successful UI search is not canonical hash
 equality or full milestone acceptance. Do not expand this into M16 stress work.
 Search usability improvement was requested for later; it does not change M8 scope.
+
+## Finite closure map (November 17; historical gaps below are not a new backlog)
+
+| Contract area | Current accepted observation | Still required for closeout |
+| --- | --- | --- |
+| Pairing / owner actions | Actual Mac and VM bilateral approval/recording; existing session, replay and cancellation receipts | Final candidate UI/diff review, not another pairing run |
+| Transport / incoming validation | Both normal paths connected; actual notes visible in both directions; native signed publication/replay tests | Include these sources in final security review |
+| Offline / reconnect | Both actual received notes survive paused reopening; genuine two-Owner offline tails converge with identical immutable bytes in CI | Run-bound daemon-verified digest comparison on the actual Mac/VM after reconnect/interruption |
+| Restriction / cutoff | Existing signed nonzero cutoff/beyond-boundary refusal; live normal Windows Owner compromise/retirement, stale-setting refusal, retained search and restart passed CI44172483591 (165.41s) | Actual cross-device restriction propagation/refusal on disposable identities; never retire the owner's paired test identity just to satisfy this gate |
+| Protection status | Settings explicitly say local readiness only; Mac native status never upgrades publication to remote durability; ten shared renderer policy checks pass | Final integrated runtime/error-state review; legacy metadata CLI is not runtime protection evidence |
+| Cross-platform correctness | Prior exact-source Mac native receipts plus latest Windows normal receive and shared writer CI | Relevant final candidate CI; do not claim a Windows-only native test exercises Mac |
+| Security / human acceptance | Earlier bounded source reviews retained | Final candidate security and human diff/flow review; M8 remains OPEN |
+
+No new remote receipt protocol, general sync-stress campaign, Search redesign or
+profile reset is implied by this map. The controlled activation proposal requires
+actual-device daemon-verified canonical digests; raw file counts and successful
+Search alone cannot close that evidence requirement.
+
+Concrete propagation gap from the November 17 source review: self-retirement
+can remain in the canonical active pack (`append_confirmed_owner_security_operation`
+uses the ordinary threshold), and `exchange_policy::eligible_peers` refuses a
+retired local identity before the normal exporter can send its terminal record.
+Even a sealed retirement record would not bypass that eligibility refusal.
+Do not describe local retirement/transport shutdown as remote propagation. A
+reviewed terminal-record handoff/reconciliation path is still needed; do not keep
+retired transport alive, bypass trust or change the approved terminal policy to
+make a test green. Restriction propagation to remaining eligible peers is a
+separate case from delivering retirement from the retired installation itself.
+This limit is already explicit in
+[the sealed export checkpoint](milestones/M8_SEALED_EXPORT_CHECKPOINT.md);
+it is not a newly introduced regression or a reason to repeat owner setup.
 
 ## Historical November 14 snapshot
 

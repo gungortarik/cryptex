@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "scope": "Real Windows normal connection Owner reconciles local compromise/retirement with native transport and persisted preferences",
+  "source": "ed44709bff84f57fbce8978d9687ffc85af6c20b",
+  "product_change": false,
+  "test": "managed_profile::native_product_receive_test::two_normal_owners_exchange_offline_notes_and_replay_after_restart",
+  "ci": {
+    "run_id": 44172483591,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/44172483591",
+    "conclusion": "success",
+    "windows_policy_writer_publication_tests_passed": 99,
+    "windows_native_worker_tests_passed": 5,
+    "mac_canonical_writer_tests_passed": 30,
+    "extended_native_scenario_seconds": 165.41,
+    "isolated_windows_accounts_and_profiles_removed": true,
+    "format_and_lint": "passed"
+  },
+  "assertions": [
+    "Existing actual two-Owner bidirectional/offline/restart/replay phases remain required",
+    "Compromised decision selects the exact verified nonzero peer boundary and nonzero content hash",
+    "Daemon journal confirmation and canonical writer run under the adapter-equivalent admission/rebuild boundary",
+    "Previously issued native status reader loses authority",
+    "Normal Owner reconciles to no eligible peers and AddressNeeded, never ReadyLocally",
+    "Old endpoint preferences are refused as UnknownDevice and cannot restore peer authority",
+    "LAN TCP listener is no longer reachable after removal of the final peer",
+    "Accepted pre-cutoff peer note remains available through guarded search",
+    "Restart preserves the restricted roster, rejects the same stale settings and preserves sealed and active canonical bytes",
+    "Self-retirement stops local transport and reports Attention/LocalRestricted with no ready reader",
+    "Retired restart and stale settings cannot reactivate transport; immutable sealed bytes and append-only active history are preserved"
+  ],
+  "initial_failure": {
+    "run_id": 44169691227,
+    "source": "75c4d9ef7b8e57ac0292440f7252d9f41560198a",
+    "phase": "After live compromise reconciliation, stale-settings refusal, LAN listener closure and retained search passed",
+    "assertion": "restricted.len() > saved.len()",
+    "cause": "Test counted only sealed .seg files; a security append may remain in the durable .open pack with the final peer removed",
+    "correction": "Include active packs for security snapshots; require exact restart equality, immutable sealed bytes, appended retirement evidence and preserved active prefixes. No forced sealing or production policy change."
+  },
+  "second_fixture_failure": {
+    "run_id": 44171205484,
+    "source": "5701574e87c4811c46a70a984d030dde456d3790",
+    "error": "AlreadyRunning { holder_pid: None } at instance reopen",
+    "cause": "Test retained the deliberately revoked StatusReader across restart; its original transport guard retains the instance exclusion even though readiness is invalid",
+    "correction": "Drop the old reader after asserting it has no authority, before reopening a new Owner. No lock bypass, forced unlock or production change."
+  },
+  "local": {
+    "format": "passed",
+    "daemon_all_targets_clippy_warnings_denied": "passed",
+    "renderer_connection_and_protection_policy_tests": "10 passed, zero failures or skips"
+  },
+  "bounded_source_review": {
+    "reviewer": "implementation agent, not independent review",
+    "checked": [
+      "Windows owner confirmation invalidates derived admission before append, including uncertain outcomes",
+      "Controller derives active peers from a locked canonical scan; saved endpoints cannot create authority",
+      "Controller drains old owned worker before replacement and latches unresolved shutdown",
+      "Old native status readers reject invalid admission generations",
+      "Incoming normal pump uses the retained instance, guards pause/hold and delegates signatures/cutoff/publication to the existing controller",
+      "Settings and native profile UI do not promote local readiness/publication to remote durability"
+    ],
+    "not_closed": [
+      "Terminal self-retirement propagation: writer can leave the event in an active pack, while ExchangePeers rejects LocalRestricted and the normal exporter requires eligible peers; local stop/restart success does not demonstrate delivery of the terminal event. This is also explicitly excluded by M8_SEALED_EXPORT_CHECKPOINT.md.",
+      "Legacy replication status CLI remains metadata diagnostics with static NotImplemented fields; not an integrated runtime report",
+      "Final candidate-wide security and human review"
+    ]
+  },
+  "owner_installation": {
+    "product_source": "21072971ca7cb8a46a628ccb616270291fec5693",
+    "reported_vm_update_applied": true,
+    "reported_pause_sync_unchecked_and_saved": true,
+    "new_binary_attestation_collected": false,
+    "new_owner_package_required_by_this_test_only_change": false
+  },
+  "limits": [
+    "One disposable Windows CI host, real managed transport and synthetic identities; no owner profile modification",
+    "Security journal confirmation is a daemon test seam, not authenticated Desktop approval",
+    "Restriction is local and the opposite peer is stopped before it; this does not prove restriction propagation over the physical Windows-Mac link",
+    "Mac writer and shared renderer checks do not establish Mac native security-transition parity",
+    "No Protected state or signed remote receipt protocol introduced",
+    "Actual-device digest, interruption, restriction propagation and final review remain separate M8 gates"
+  ]
+}
