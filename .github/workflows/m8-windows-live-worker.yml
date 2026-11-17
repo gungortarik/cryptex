@@ -1,4 +1,4 @@
-name: M8 Windows live worker export
+name: M8 Windows live worker and product receive
 on:
   push:
     branches: [codex/m8-device-trust]
@@ -6,10 +6,16 @@ on:
       - services/cryptexd/src/managed_profile/native_xml/exchange/tests.rs
       - services/cryptexd/src/managed_profile/worker.rs
       - services/cryptexd/src/managed_profile/worker/**
+      - services/cryptexd/src/managed_profile/connection_settings/**
+      - services/cryptexd/src/import_staging/windows_inbox.rs
+      - scripts/m8/run-daemon-tests-standard-user-ci.ps1
+      - scripts/m8/standard-user-daemon-child.ps1
       - .github/workflows/m8-windows-live-worker.yml
 permissions:
   contents: read
 jobs:
+  product-receive:
+    uses: ./.github/workflows/m8-peer-recovery.yml
   native-worker:
     runs-on: windows-latest
     timeout-minutes: 25

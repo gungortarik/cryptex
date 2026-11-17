@@ -18,6 +18,8 @@ use std::time::{Duration, Instant};
 
 #[cfg(windows)]
 mod bootstrap;
+#[cfg(windows)]
+mod incoming;
 
 #[cfg(windows)]
 type Worker = crate::managed_profile::worker::ManagedTransportWorker;
@@ -220,6 +222,10 @@ impl Owner {
                     exporter: super::super::sealed_export::Exporter::default(),
                     next_export: Instant::now(),
                     #[cfg(windows)]
+                    incoming: None,
+                    #[cfg(windows)]
+                    next_incoming: Instant::now(),
+                    #[cfg(windows)]
                     identity_only: false,
                     stop: worker_stop.clone(),
                     view: View {
@@ -335,6 +341,10 @@ struct Controller {
     cleanup_failed: bool,
     exporter: super::super::sealed_export::Exporter,
     next_export: Instant,
+    #[cfg(windows)]
+    incoming: Option<incoming::Pump>,
+    #[cfg(windows)]
+    next_incoming: Instant,
     #[cfg(windows)]
     identity_only: bool,
     stop: Arc<AtomicBool>,
@@ -469,6 +479,8 @@ impl Controller {
                 }
             }
         }
+        #[cfg(windows)]
+        self.check_incoming();
     }
     fn apply(&mut self, update: Option<Update>, interest: &Interest) -> Result<View, Error> {
         let result = self.apply_inner(update, interest);

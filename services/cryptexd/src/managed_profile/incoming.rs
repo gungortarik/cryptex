@@ -1,6 +1,7 @@
 //! Gated daemon-side bridge from owned transport readiness to canonical import.
 //! Hints are bounded relative paths, never transport trust or publication proof.
-//! No normal startup, watcher, CLI or renderer constructs/feeds this controller.
+//! The daemon's native Mac session and Windows connection lifecycle feed it;
+//! renderer messages never supply paths or publication authority.
 
 use std::path::{Component, Path, PathBuf};
 

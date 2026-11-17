@@ -14,6 +14,8 @@ use std::fs::OpenOptions;
 pub(crate) mod macos_fs;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
 pub(crate) mod macos_inbox;
+#[cfg(windows)]
+pub(crate) mod windows_inbox;
 #[cfg(target_os = "macos")]
 use macos_fs as fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
