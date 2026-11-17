@@ -1,5 +1,32 @@
 # 34 — Current Implementation Handoff
 
+## VM reports shutdown; preserve live state for redacted process diagnosis
+
+Owner VM screenshot after Reload shows connection attention(shutdown), sync
+enabled and unchanged endpoints. Controller::close maps every worker shutdown
+error to Shutdown and latches cleanup_failed; worker wait can return the original
+task failure too. Therefore this is not proof of a shutdown timeout specifically,
+nor of a firewall fault. Do not weaken the latch or restart behind uncertain
+cleanup. No root cause fix is claimed from this screen.
+
+Prepared Downloads/Cryptex-VM-Surec-Tani-dc8c6ac.zip from
+dc8c6ac6671a138c9a29c50495d09d8f95dec401,10297 bytes,SHA256
+a8c600f4e839c3ded065cd95045377496b932acaee9057864256c26ebf2a6bb6.
+Collector SHA25638042c2538f88b538713b01eaab194b2278f89dba8b5a901650bed633a653931.
+Exact committed member readback passed. Five Windows tests passed including
+shared-writer bounded log reading, preservation, hardlink refusal, redaction and
+wrong-profile gating. Actual bounded PowerShell process/listener reader executed
+locally successfully. CI44004212152 passed on Windows and Mac (Windows-specific
+tests skip on Mac). Product binaries and runtime have not been modified.
+
+Owner next: keep VM Cryptex open, extract ZIP in VM, double-click TANI.cmd as
+standard user, send VM-SUREC-TANI-SONUC-*.zip created beside it. No Mac action.
+Collector reads up to the last1MiB of existing native/native.log locally, exports
+only fixed marker counts/order (not raw lines), plus fixed process-name counts
+and port59957 listener counts. Logs may include earlier runs; missing markers
+are not proof of absence. No profile writes, process control, firewall changes,
+key/API credential access or canonical body reads. Results pending; M8 open.
+
 ## LAN diagnostic results: Windows local port refused — November 16
 
 Both owner reports match the delivered collector SHA256

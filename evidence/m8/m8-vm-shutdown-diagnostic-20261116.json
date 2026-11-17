@@ -1,0 +1,23 @@
+{
+  "scope": "Read-only VM transport failure diagnosis after attention(shutdown)",
+  "source_commit": "dc8c6ac6671a138c9a29c50495d09d8f95dec401",
+  "packet": "Cryptex-VM-Surec-Tani-dc8c6ac.zip",
+  "packet_sha256": "a8c600f4e839c3ded065cd95045377496b932acaee9057864256c26ebf2a6bb6",
+  "packet_bytes": 10297,
+  "collector_sha256": "38042c2538f88b538713b01eaab194b2278f89dba8b5a901650bed633a653931",
+  "validation": {
+    "windows_tests": "5 passed",
+    "bounded_powershell_reader": "executed locally successfully",
+    "ci_run": "44004212152",
+    "ci_conclusion": "success",
+    "exact_committed_member_readback": "passed",
+    "git_diff_check": "passed"
+  },
+  "observed_owner_state": "connection attention(shutdown), saved LAN endpoints unchanged, sync unpaused",
+  "interpretation": "Shutdown aggregates worker failures; neither cleanup timeout nor firewall root cause established",
+  "product_changed": false,
+  "owner_result": "pending",
+  "root_cause_fixed": false,
+  "delivery_verified": false,
+  "m8_closed": false
+}
