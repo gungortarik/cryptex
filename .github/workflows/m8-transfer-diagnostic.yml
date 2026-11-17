@@ -11,6 +11,8 @@ on:
       - scripts/m8/windows_worker_diagnostic_update.py
       - scripts/m8/test_windows_worker_diagnostic_update.py
       - scripts/m8/worker_failure_codes.json
+      - scripts/m8/mac_live_service_diagnostic.py
+      - scripts/m8/test_mac_live_service_diagnostic.py
       - .github/workflows/m8-transfer-diagnostic.yml
 permissions:
   contents: read
@@ -30,6 +32,10 @@ jobs:
       - run: python -B -m unittest discover -s scripts/m8 -p test_lan_transfer_diagnostic.py -v
       - run: python -B -m unittest discover -s scripts/m8 -p test_windows_transport_failure_diagnostic.py -v
       - run: python -B -m unittest discover -s scripts/m8 -p test_windows_worker_diagnostic_update.py -v
+      - run: python -B -m unittest discover -s scripts/m8 -p test_mac_live_service_diagnostic.py -v
+      - name: Check Mac service collector with system Python
+        if: runner.os == 'macOS'
+        run: /usr/bin/python3 -B -m unittest discover -s scripts/m8 -p test_mac_live_service_diagnostic.py -v
       - name: Check Mac system Python used by launcher
         if: runner.os == 'macOS'
         run: /usr/bin/python3 -B -m unittest discover -s scripts/m8 -p test_lan_transfer_diagnostic.py -v
