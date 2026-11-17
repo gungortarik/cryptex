@@ -17,10 +17,11 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(d.Refused): d.parse_processes(raw+'1 0 private\n')
 
     def test_listener_parser_exports_only_counts(self):
-        self.assertEqual(d.parse_listeners('p42\nn192.168.50.104:61942\n'),
+        self.assertEqual(d.parse_listeners('p42\nf7\nn192.168.50.104:61942\n'),
                          dict(listeners=1,expected_lan=1,wildcard=0,loopback=0))
         self.assertEqual(d.parse_listeners('')['listeners'],0)
-        with self.assertRaises(d.Refused): d.parse_listeners('PRIVATE RAW ERROR')
+        for raw in ('PRIVATE RAW ERROR','fPRIVATE','n127.0.0.1:1234'):
+            with self.assertRaises(d.Refused): d.parse_listeners(raw)
 
     def test_log_markers_never_export_raw_lines(self):
         raw=b'PRIVATE SECRET Listener starting\nPRIVATE PATH exiting\n'

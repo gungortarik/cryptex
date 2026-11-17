@@ -99,7 +99,8 @@ def parse_listeners(raw):
     result=dict(listeners=0,expected_lan=0,wildcard=0,loopback=0)
     for line in raw.splitlines():
         if not line: continue
-        if line.startswith('p') and line[1:].isdigit(): continue
+        # macOS lsof includes the numeric file descriptor even with -Fpn.
+        if line[:1] in ('p','f') and line[1:].isdigit(): continue
         if not line.startswith('n') or not line.endswith(':61942'): raise Refused('listener_shape')
         result['listeners']+=1
         address=line[1:]
