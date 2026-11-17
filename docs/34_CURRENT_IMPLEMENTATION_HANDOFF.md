@@ -1,5 +1,42 @@
 # 34 — Current Implementation Handoff
 
+## One-click VM first worker failure candidate ready — November 16
+
+Owner authorized preserving the first failure hidden behind shutdown and another
+one-click packet. Product93370b1db99b7364195ec0d1bbc57b5b45b97716 now records the
+first exchange-worker error, after native session unwinding, in the existing
+private managed transport profile as worker-first-failure-v1.json. This is an
+optional non-authoritative diagnostic: schema, fixed numeric code, optional OS/
+HTTP numeric code only. No Debug strings, operation strings, paths, memory bodies,
+credentials or panic payloads. Existing leaf is never truncated/replaced; invalid
+or unwritable diagnostics never replace the original WorkerError. It is not read
+by admission/trust. No cleanup latch, owned-socket check or retry policy changed.
+The original worker error still reaches the existing Shutdown mapping.
+
+Native CI44006883862 passed three first-failure tests plus real worker/export/
+restart/revocation test under a fresh standard Windows user, cleanup confirmed.
+Product build44006883732 passed with53 release Desktop tests and3 sidecar tests.
+Tool source45be605ce06551bb3f1f82809233edba6d7cc6a1; tooling CI44007210434 passed.
+Local check/fmt/clippy(-D warnings),6 collector tests,3 installer preservation
+tests,3 bounded observation wrapper tests and PowerShell parsing passed.
+
+Delivered Downloads/Cryptex-VM-Ilk-Hata-93370b1.zip,20121823 bytes,SHA256
+ef527e780fe89915e64f94b46f3c74e1a4497ad2ac28e7c270f1f031d7a383f3.
+Collector SHA256d78ee21819b90a4ee8b83291d1f810a5c1e0be906814b66042a7e91ba3103670.
+Exact committed member readback, candidate provenance/payload hashes and Python
+compile from archive passed. This is unsigned development VM instrumentation,
+not a root-cause fix, remote delivery proof or M8 completion.
+
+Owner next: leave Mac open; on VM use tray Quit Cryptex (no End Task), extract
+ZIP, double-click VM-ILK-HATA.cmd as ordinary user. Installer refuses live app/
+daemon, retains old app and existing profile/identity, opens new candidate via
+normal entry. Wrapper waits at most180s (ends early on a valid first error), then
+writes VM-ILK-HATA-SONUC-*.zip beside script. Send that ZIP; keep apps open. Use
+new folder CRYPTEX-AC.cmd for future opens. No pairing/LAN/pause changes required.
+Diagnostic absence is explicitly unavailable, never success. First record may
+precede a later process because it survives restart. Read next owner receipt
+before choosing a fix. Evidence:m8-vm-first-worker-failure-20261116.json.
+
 ## VM failure receipt and real Windows worker/export regression — November 16
 
 Received VM-SUREC-TANI-SONUC-c95d49e7f56f.zip; archive SHA256

@@ -1,0 +1,58 @@
+{
+  "scope": "Windows retained-profile first worker failure diagnostic; no root-cause fix claimed",
+  "product_source": "93370b1db99b7364195ec0d1bbc57b5b45b97716",
+  "tool_source": "45be605ce06551bb3f1f82809233edba6d7cc6a1",
+  "native_ci": {
+    "run": "44006883862",
+    "conclusion": "success",
+    "diagnostic_tests": 3,
+    "native_worker_export_tests": 1,
+    "standard_user_cleanup": "passed"
+  },
+  "collector_ci": {
+    "run": "44007210434",
+    "conclusion": "success"
+  },
+  "local_checks": [
+    "cargo check --locked -p cryptexd --tests",
+    "cargo fmt --all",
+    "cargo clippy --locked -p cryptexd --tests -- -D warnings",
+    "6 collector tests",
+    "3 retained-profile update tests",
+    "3 observation wrapper tests",
+    "PowerShell parser",
+    "git diff --check"
+  ],
+  "persistence": {
+    "leaf": "worker-first-failure-v1.json",
+    "location": "private managed transport profile, outside canonical history",
+    "fields": [
+      "schema",
+      "code",
+      "os_code"
+    ],
+    "first_failure_preserved": true,
+    "authoritative": false,
+    "read_by_trust_or_admission": false,
+    "existing_invalid_record": "not overwritten; original worker error retained"
+  },
+  "product_build": {
+    "run": "44006883732",
+    "conclusion": "success",
+    "release_desktop_tests": 53,
+    "sidecar_tests": 3
+  },
+  "packet": {
+    "name": "Cryptex-VM-Ilk-Hata-93370b1.zip",
+    "bytes": 20121823,
+    "sha256": "ef527e780fe89915e64f94b46f3c74e1a4497ad2ac28e7c270f1f031d7a383f3",
+    "collector_sha256": "d78ee21819b90a4ee8b83291d1f810a5c1e0be906814b66042a7e91ba3103670",
+    "exact_member_readback": "passed",
+    "python_compile_from_archive": "passed",
+    "payload_provenance_hashes": "passed"
+  },
+  "owner_result": "pending",
+  "root_cause_fixed": false,
+  "delivery_verified": false,
+  "m8_closed": false
+}
