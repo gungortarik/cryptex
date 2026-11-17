@@ -1,5 +1,30 @@
 # 34 — Current Implementation Handoff
 
+## Owner confirms reverse delivery after VM update — November 17
+
+Owner reports applying the delivered VM update, opening Cryptex and finding the
+Mac-origin test note in VM search: "test 3 çıktı VM'de". Together with the earlier
+Windows-origin note visible on Mac, this establishes owner-observed bidirectional
+normal product delivery/search. It is not an independently collected canonical
+hash comparison, offline VM restart, abrupt interruption or full M8 closeout.
+The following older reverse-delivery-pending statements are now superseded.
+See `evidence/m8/m8-owner-bidirectional-delivery-20261117.json`.
+
+Next minimal device check: in VM save Pause sync, Quit Cryptex normally, reopen
+using `CRYPTEX-AC.cmd` from the new receive-update folder, leave sync paused and
+search for the same received note. No new note, pairing or diagnostic ZIP.
+This checks the newly repaired receiver after restart without a new transfer;
+Mac's earlier paused-restart observation and unchanged native CI need not repeat.
+Owner UI confirmation cannot substitute for canonical byte equality or the
+remaining integrated cutoff/status/security acceptance. Do not retire either
+paired owner identity merely to test a negative case.
+
+Owner also requests improving Search later. Record that follow-up without changing
+M8 scope now: examine query spacing/typo handling, useful results and clearer
+empty/error/index freshness states under existing offline FTS5 and retrieval
+safety requirements. Owner mentioned joined spelling, but exact query and stored
+text were not captured; no fuzzy/space-insensitive behavior is claimed verified.
+
 ## Autonomous reverse-transfer repair — November 17 (native CI passed; VM update ready)
 
 Owner explicitly requested automation after repeated manual ZIP/screenshot loops.

@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "date": "2026-11-17",
+  "scope": "Owner-reported normal product bidirectional delivery and search visibility",
+  "evidence_kind": "conversation observation; no new machine receipt or screenshot",
+  "owner_reports": {
+    "vm_update_applied_and_app_opened": true,
+    "mac_origin_note_found_on_vm": true,
+    "test_label": "test 3",
+    "exact_query_and_stored_spacing": "not independently captured"
+  },
+  "expected_vm_product_source": "06655f5f31fa77e42319c808815f03f108225d1b",
+  "vm_source_attestation": "Delivered package source; installed binary not re-attested in this observation",
+  "package_evidence": "evidence/m8/m8-windows-normal-incoming-20261117.json",
+  "earlier_forward_observation": "Owner Mac screenshot showed the Windows-origin M8 Windows-Mac aktarim testi 001 note; owner also observed it after Mac reopen with sync paused",
+  "accepted_here": [
+    "Owner-observed Windows-to-Mac note visibility",
+    "Owner-observed Mac-to-Windows note visibility after receive fix"
+  ],
+  "not_established_here": [
+    "Independent canonical byte equality across physical devices",
+    "Updated VM received-note persistence after paused restart",
+    "Physical network interruption or Mac sleep/wake recovery",
+    "Integrated physical-device restriction propagation and protection status",
+    "Full M8 acceptance or release readiness",
+    "Search spelling or whitespace tolerance"
+  ],
+  "next_device_check": "Pause sync in VM, normal Quit, reopen new CRYPTEX-AC.cmd and find the existing note while still paused; no duplicate capture or pairing"
+}

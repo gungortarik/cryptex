@@ -1,5 +1,26 @@
 # M8 completion ledger
 
+## November 17 current product checkpoint
+
+Normal Windows incoming discovery/publication is integrated through `19c1da9`;
+source `06655f5` passed 73 scoped native Windows checks, including two actual
+normal Owners exchanging offline notes in both directions and replaying after
+restart with unchanged canonical bytes. Mac regression and unsigned VM package
+build also passed. [Exact automated evidence](../evidence/m8/m8-windows-normal-incoming-20261117.json).
+
+Owner now confirms the existing Mac-origin note is visible in the updated VM,
+following earlier Windows-origin visibility on Mac. Thus normal-product physical
+bidirectional delivery/search is owner-observed; it is not merely local readiness.
+[Observation and limits](../evidence/m8/m8-owner-bidirectional-delivery-20261117.json).
+Updated VM paused-restart persistence, independently evidenced cross-device
+convergence/interruption, integrated restriction/status acceptance and final
+security/human review remain separate gates. M8 stays OPEN. Do not repeat pairing,
+forward delivery or unchanged CI, or require another diagnostic ZIP for success.
+
+The dated entries below are historical source-specific checkpoints. Claims there
+that normal incoming integration or peer configuration is absent do not describe
+the current source; use the current handoff and latest evidence for continuation.
+
 Supervised install/start e03218c: backend Windows worker and authenticated Mac
 helper now retain fresh canonical policy/admission through installed readback,
 owned REST readiness and final correlated acknowledgement. Epoch/hold/namespace

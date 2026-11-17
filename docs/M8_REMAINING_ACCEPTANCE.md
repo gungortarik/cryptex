@@ -1,4 +1,29 @@
-# M8 remaining acceptance — November 14
+# M8 remaining acceptance — current checkpoint November 17
+
+## Current continuation (supersedes the historical November 14 gap list below)
+
+Both normal product paths now have incoming integration. The Windows missing
+receive pump was fixed and passed native CI including genuine two-process
+bidirectional exchange/restart. Owner confirms the existing Mac-origin test note
+is now visible in the updated Windows VM; the reverse direction was already
+observed on Mac. See [automated evidence](../evidence/m8/m8-windows-normal-incoming-20261117.json)
+and [owner observation](../evidence/m8/m8-owner-bidirectional-delivery-20261117.json).
+
+Next bounded device observation is VM paused-restart visibility of that existing
+note. Do not repeat pairing, unchanged native CI or Mac's completed paused reopen.
+Remaining closure work must distinguish actual-device offline/reconnect and
+interruption evidence, integrated cutoff/conflict/protection status, and final
+candidate security/human review. Successful UI search is not canonical hash
+equality or full milestone acceptance. Do not expand this into M16 stress work.
+Search usability improvement was requested for later; it does not change M8 scope.
+
+## Historical November 14 snapshot
+
+The source-gap and activation statements below describe that date, not current
+implementation. Later corrections and owner-approved integration are recorded
+in the [current handoff](34_CURRENT_IMPLEMENTATION_HANDOFF.md) and completion
+ledger. Retain these older evidence boundaries without treating resolved gaps
+as new work or repeating their tests.
 
 This is an operational checklist, not an amendment or percentage estimate.
 Authority: [M8 contract](milestones/M8_DEVICE_TRUST_REPLICATION.md),
