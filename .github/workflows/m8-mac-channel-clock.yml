@@ -1,0 +1,29 @@
+name: M8 Mac channel clock regression
+on:
+  push:
+    branches: [codex/m8-device-trust]
+    paths:
+      - services/cryptexd/src/m8_owner_channel/native/**
+      - scripts/m8/test_mac_channel_clock.py
+      - .github/workflows/m8-mac-channel-clock.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-clock:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reproduce mixed-clock failure and test corrected native deadlines
+        run: /usr/bin/python3 -B -m unittest discover -s scripts/m8 -p test_mac_channel_clock.py -v
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - name: Test signed native channel identity, expiry and replay refusal
+        run: cargo test --locked -p cryptexd --lib m8_owner_channel::native::tests:: -- --test-threads=1
+      - run: cargo clippy --locked -p cryptexd --lib -- -D warnings

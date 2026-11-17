@@ -1,5 +1,24 @@
 # 34 — Current Implementation Handoff
 
+## Mac launch Terminal identifies helper receive deadline — November 17
+
+Owner supplied RTF-as-txt Terminal output, SHA256
+dcfd7543fb2df2745f46ed0ff9c464cc33ede86aeed62a48529109f94a064fc8.
+Final cluster: mac_transport native_channel request_receive Deadline;
+owner_exchange local_signed_startup_Deadline elapsedMs756; connections shutdown
+unresolved; cryptexd local_signed_startup_Channel. The 756ms belongs to the
+separate owner exchange, not the helper request duration. Current source has
+a four-second Observe request budget, but this log does not identify the failed
+operation or installed Mac revision. No slow observe-phase lines were present;
+successful repeated key_lock/key_store completions do not establish a password
+or Keychain failure. Do not extend timeouts or relax authentication on this basis.
+
+The requested Terminal evidence is now received; do not ask for it again.
+Next: establish installed Mac provenance and add bounded fixed operation/phase
+timing if needed to distinguish helper response work, channel loss and cleanup.
+No product/profile changes in this investigation; sync and M8 remain unverified.
+Receipt: evidence/m8/m8-mac-terminal-deadline-20261117.json.
+
 ## Mac live-service result: no daemon by name; preserve launch Terminal — November 17
 
 Received MAC-SERVIS-TANI-SONUC-8cb874b51efd.zip SHA256

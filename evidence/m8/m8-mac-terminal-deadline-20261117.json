@@ -1,0 +1,21 @@
+{
+  "scope": "Owner-supplied Mac launch Terminal output; RTF saved with txt extension",
+  "artifact_sha256": "dcfd7543fb2df2745f46ed0ff9c464cc33ede86aeed62a48529109f94a064fc8",
+  "observed_final_lines": [
+    "component=mac_transport operation=native_channel stage=request_receive status=failed error=Deadline",
+    "{\"elapsedMs\":756,\"error\":\"local_signed_startup_Deadline\",\"m8LocalStage\":\"owner_exchange\"}",
+    "component=connections stage=shutdown status=unresolved",
+    "cryptexd: attention: local_signed_startup_Channel"
+  ],
+  "interpretation": "The first failure in the final cluster is a native transport-helper request receive deadline. The owner channel also reports a deadline, followed by unresolved shutdown and daemon channel attention. The log does not establish why the helper response was unavailable.",
+  "limits": [
+    "Owner-supplied unstructured log, not a signed or atomic receipt",
+    "756ms is the separate owner_exchange measurement, not the measured helper request duration",
+    "Current source uses a four-second Observe request budget; the failed operation and installed Mac source revision are not identified by this line",
+    "No slow observe phase lines occur in supplied output; absence does not prove an operation completed or establish a Keychain failure",
+    "No proof of remote durable delivery or safe process cleanup"
+  ],
+  "next_step": "Confirm installed Mac build provenance, then capture fixed operation, phase and elapsed timing around helper requests/replies and cleanup without logging credentials or memory bodies. Preserve timeout, sender identity and fail-closed policies.",
+  "product_changed": false,
+  "profile_changed": false
+}

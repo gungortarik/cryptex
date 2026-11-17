@@ -32,11 +32,14 @@ struct cx_channel {
     bool parent_is_peer, pinned, closed;
 };
 
-// One monotonic budget per handshake or data call. Signing APIs are
-// synchronous; elapsed time is rechecked before sending or publishing bytes.
+// Use the same awake-time clock as Rust Instant and Mach message timeouts.
+// CLOCK_MONOTONIC advances during system sleep on Darwin: translating an
+// Instant budget to that clock would expire a live request while Rust still
+// has budget remaining. Signing APIs are synchronous; elapsed awake time is
+// rechecked before sending or publishing bytes. Expiry still burns the channel.
 uint64_t cx_now_ms(void) {
     struct timespec t;
-    if (clock_gettime(CLOCK_MONOTONIC, &t)) return UINT64_MAX;
+    if (clock_gettime(CLOCK_UPTIME_RAW, &t)) return UINT64_MAX;
     return (uint64_t)t.tv_sec * 1000 + (uint64_t)t.tv_nsec / 1000000;
 }
 
