@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "scope": "Controlled development normal Windows incoming integration; not full M8 or physical two-device acceptance",
+  "product_source": "06655f5f31fa77e42319c808815f03f108225d1b",
+  "implementation_commit": "19c1da9a8d44511c3cb80657701ba9e500239ab5",
+  "finding": "Windows normal connection Owner exported and reconciled transport but did not construct/feed IncomingController. Mac native profile already fed it.",
+  "authority": "docs/proposals/m8-product-flow-activation-20261115.md accepted product integration requires both targets",
+  "change": {
+    "entry": "managed_profile::connection_settings::backend::Controller::check_generation",
+    "discovery": "Bounded Windows handle-pinned incoming hints with no-follow source identity checks and single-link regular-file refusal",
+    "publication": "Existing IncomingController, owned transport identity binding, retained InstanceLock, exclusive admission, signed canonical publication and derived rebuild",
+    "safety": ["No incoming work while paused/stopping/held", "No canonical overwrite", "No re-pairing", "No raw note or credential diagnostics", "Identical replay after restart"]
+  },
+  "windows_ci": {
+    "run_id": 44159042020,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/44159042020",
+    "conclusion": "success",
+    "standard_user_policy_and_publication_tests_passed": 68,
+    "native_worker_tests_passed": 5,
+    "new_timer_tests_passed": 4,
+    "new_discovery_tests_passed": 2,
+    "two_real_normal_owners": {
+      "test": "managed_profile::native_product_receive_test::two_normal_owners_exchange_offline_notes_and_replay_after_restart",
+      "passed": true,
+      "seconds": 87.66,
+      "normal_connection_owners": true,
+      "native_owned_transport_processes": 2,
+      "directions": 2,
+      "guarded_search_verified": true,
+      "canonical_sets_equal_after_delivery": true,
+      "restart_with_saved_settings": true,
+      "canonical_bytes_unchanged_after_replay": true,
+      "manual_inbox_copy": false,
+      "direct_publisher_call": false,
+      "test_only_loopback_policy_override": false,
+      "network_scope": "Same disposable Windows runner private IPv4 interface; no physical Mac leg",
+      "credentials": "Two synthetic OS transport credentials removed with disposable standard-user account/profile"
+    },
+    "format_and_clippy_passed": true
+  },
+  "mac_regression": {
+    "run_id": 44158308992,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/44158308992",
+    "source": "19c1da9a8d44511c3cb80657701ba9e500239ab5",
+    "conclusion": "success",
+    "scope": "Native clock/signed channel/updater regression and daemon library lint. Later source changes are Windows-only tests/harness. Not physical sleep/wake acceptance."
+  },
+  "local": {
+    "format_and_daemon_all_target_clippy": "passed",
+    "discovery_tests": "2 passed before later host Application Control refusal",
+    "existing_profile_updater_tests": "3 passed",
+    "newer_rust_test_executable": "Host Application Control refused execution with OS 4551; tests run in disposable native CI without weakening host protection"
+  },
+  "vm_update_package": {
+    "build_run_id": 44159424434,
+    "build_url": "https://github.com/gungortarik/cryptex/actions/runs/44159424434",
+    "build_conclusion": "success",
+    "release_desktop_helper_tests": "passed",
+    "tool_source": "bea120b350d8f36e0f6f59f7e0223e8b34418b72",
+    "path": "C:/Users/Tarik/Downloads/Cryptex-VM-Alim-Duzeltme-06655f5.zip",
+    "sha256": "2f3b0b3a011a80005c1bf1365ff39fbd05336f1f58bf33eae4b28e9e1c73465e",
+    "desktop_sha256": "9697f846c00fe06c2012781a23ece9b820ff9dfb28a2bc4946f3751c10d955e0",
+    "daemon_sha256": "d9fe849cd56746e32fba0b7f60ecd2729995cb0299a38251a09d5b10404e88b3",
+    "provenance_and_zip_member_readback": "passed",
+    "signing": "Unsigned controlled-development Windows VM artifact; not public release",
+    "owner_profile_updated": false
+  },
+  "limitations": [
+    "Owner reports Mac-origin test 3 still absent on old Windows VM product",
+    "Updated owner VM application not yet installed or searched in this receipt",
+    "Mac product is unchanged by this Windows fix",
+    "Physical Windows-Mac interruption, restart and remaining M8 acceptance gates remain open"
+  ]
+}

@@ -1,5 +1,153 @@
 # 34 — Current Implementation Handoff
 
+## Autonomous reverse-transfer repair — November 17 (native CI passed; VM update ready)
+
+Owner explicitly requested automation after repeated manual ZIP/screenshot loops.
+Do not ask for another diagnostic pair or duplicate `test 3`. Preserve both paired
+profiles. Windows -> Mac note visibility/paused restart below remains owner UI
+evidence; Mac -> Windows `test 3` is still unverified on the owner's devices.
+
+Source defect found: normal Windows `main.rs` starts the connection Owner, whose
+timer handled export/reconciliation but never fed IncomingController. Only the
+Mac native profile and explicit Windows probes fed the publisher. Accepted
+`m8-product-flow-activation-20261115.md` expressly requires both targets.
+
+Fix `19c1da9` adds bounded pinned Windows inbox discovery and a receive pump to
+the existing normal connection timer. It reuses the retained daemon instance,
+admission barrier, signed local transport binding, canonical publisher and derived
+rebuild. Paused, stopped and held work is refused/deferred; no renderer paths,
+canonical rewrites, trust bypass or automatic re-pairing were added. Diagnostics
+contain fixed codes and counts only. Memory-only hint cache resets on restart;
+replayed files must pass the existing identical-canonical checks.
+
+Automation: four normal-timer import/search/restart/refusal tests, two Windows
+discovery tests, and a real two-Owner native exchange/restart test. The latter
+uses the actual normal settings/worker/export/import flow on a disposable CI
+private interface, with two synthetic signed identities and two temporary OS
+transport credentials; no copying into inbox or direct publisher call. It is
+not physical Windows-Mac acceptance. Initial CI caught a test inventory helper
+mistaking coordination files for stream directories; corrected in `06655f5`
+without changing product assertions.
+
+Local format/clippy passed; two discovery and three updater-preservation tests
+passed. Host Application Control blocked the newer Rust test executable (4551);
+do not weaken protection. Native Windows CI `44159042020` passed: 68 policy /
+publication tests and 5 native worker checks, including actual bidirectional
+normal-Owner transfer + guarded search + restart/identical replay (87.66s).
+Disposable OS credentials/account/profile cleanup passed. The unsigned product
+build `44159424434` passed, including release Desktop helper tests. Mac source regression run
+`44158308992` passed at product-fix `19c1da9`; subsequent changes are Windows-only
+test harness changes. Exact evidence: `evidence/m8/m8-windows-normal-incoming-20261117.json`.
+Do not label the physical device acceptance complete. Computer-use can see the open VM; direct
+guest input has not yet been verified. No owner data was changed through UI.
+
+Verified update: `C:/Users/Tarik/Downloads/Cryptex-VM-Alim-Duzeltme-06655f5.zip`.
+Product source `06655f5f31fa77e42319c808815f03f108225d1b`, package tools
+`bea120b350d8f36e0f6f59f7e0223e8b34418b72`; SHA-256
+`2f3b0b3a011a80005c1bf1365ff39fbd05336f1f58bf33eae4b28e9e1c73465e`.
+Build provenance and every packaged member were checked. Minimum owner action:
+normal Quit Cryptex in VM, extract ZIP, run `VM-GUNCELLE.cmd` as ordinary user.
+The updater refuses live processes and preserves exact existing profile, keys,
+pairing, LAN preferences and old app. Keep Mac app/Terminal awake and open.
+Do not ask for new notes or re-pairing. Resume by checking existing `test 3` in
+updated VM search; obtain diagnostic receipt only if update or receive fails.
+
+## Paused Mac restart visible; reverse test `test 3` not yet visible on VM — November 17
+
+Owner reopened updated Mac app and screenshot
+codex-clipboard-a73bb143-d5e2-4d1e-b9a2-7394599a26f6.png again shows the
+Windows-origin "M8 Windows-Mac aktarim testi 001" in Mac search. Owner explicitly
+confirmed Pause sync checked and Sync paused. This is owner-observed paused
+restart/search acceptance, not independent canonical hash verification or a
+physical sleep/wake check. Terminal was accidentally closed before reopening;
+do not describe that sequence as a verified clean shutdown.
+
+Reverse test note is exactly `test 3` (owner shortened proposed long test name).
+Owner reports creating it Public on Mac while paused, then unpausing/saving.
+Mac Reload reports connection ready; Windows VM search still lacks `test 3`.
+Do not save duplicate notes, re-pair, or claim reverse delivery from readiness.
+The former request for another diagnostic pair is superseded by the autonomous
+repair and verified update above. Reverse delivery and M8 remain open until
+the updated actual VM/Mac result is observed.
+
+## Windows-origin note visible in Mac search; paused restart next — November 17
+
+Owner applied Mac Pause sync/save (reported paused), then unpause/save and Reload
+(reported connection ready on this device). Mac screenshot
+codex-clipboard-11b653f3-bcb0-4036-a97f-50e3dd9dd546.png shows query M8, one Public
+result: "M8 Windows-Mac aktarim testi 001", dated Nov16. This is owner UI evidence
+that the earlier Windows-created test note is now visible in Mac search after
+normal settings reconciliation. Do not repeat pairing/build/initial delivery
+checks without a changed-state reason. It is not an independent canonical hash
+receipt or proof of reverse transfer, offline restart or physical sleep/wake.
+The prior attention(start) cause remains unconfirmed; pause/unpause recovered
+local readiness and visible delivery without profile deletion.
+
+Next owner test: on Mac pause sync/save, Quit with Command-Q, reopen using the
+new packet's CRYPTEX-AC-1ed9b97e.command, leave sync paused and search M8. Verify
+the same note remains visible without resumed sync. Windows may stay open.
+Do not mark M8 or sleep/wake acceptance complete from this screenshot.
+
+## Updated Mac daemon alive, transport stopped; controlled settings transition next — November 17
+
+Received MAC-SERVIS-TANI-SONUC-dc9e21907072.zip SHA256
+8763da8ee08384a7b2e5a2b8461aa2276f1f57fd5b2d63a683d9c67615a1e561;
+collector SHA matches delivered dcf83f13467f2175a23b74f75520767df880936fd1c296c29cedbd4194ba4d88.
+Name observation desktop1/daemon1/engine2, daemon-parent-desktop1; no61942
+listener. Native log17561bytes:11 listener starts,10 stops,20 shutdown markers,
+one connection_established and one connection_closed. Last groups connection
+established, closed, listener stopped/shutdown, shutdown. This mixed-run,
+non-atomic log does not identify peer or durable delivery; engine names do not
+authorize kill/adoption. No selected certificate/folder/panic markers.
+
+Source inspection: Controller check_generation collapses failed readiness read
+to Start after successful close. Thus screenshot start is not proof of initial
+spawn failure. No exact reader error captured; do not diagnose firewall or
+credentials, extend budgets, or claim sleep acceptance. Reload only reads the
+controller view; it does not explicitly reapply unchanged saved preferences.
+Next owner action: one normal Mac Pause sync -> Save transition, report status;
+then unpause/save only after reviewing result. This exercises fresh canonical
+reconciliation through the supported settings path without profile deletion,
+re-pairing, process-name cleanup or another product rebuild. Keep Terminal and
+Windows open to preserve any new fixed-stage error evidence.
+
+## Updated Mac UI reports attention(start); Terminal has no terminal refusal — November 17
+
+Owner Windows UI is locally ready; Mac UI now attention(start), unpaused,
+local192.168.50.104:61942 and Windows peer192.168.50.26:59957. These configured
+addresses match the opposite UI but do not prove current interface addresses.
+New owner RTF Terminal file SHA256
+ddef027f548b53ad7d791332793c3c451e6d01a30fbc1b23438b411ddb283841
+shows update launcher, one successful native helper handshake, and only
+start_observation status=waiting error=owned_rest_Endpoint(Unavailable).
+No Deadline, exchange_start/install refusal or terminal shutdown appears in
+the supplied excerpt. This waiting sample can be transient; do not call it the
+root cause. Controller Start also covers readiness-reader errors, so the UI
+does not uniquely identify initial helper spawn failure.
+
+Next owner action: leave both apps/Terminal open and rerun the already verified
+read-only Cryptex-Mac-Servis-Tani-e5f98fb.zip / TANI-MAC.command against this
+changed live state; send new MAC-SERVIS-TANI-SONUC ZIP. No rebuild/re-pair,
+no named-process kill or marker deletion. Need listener/process/log observation
+to distinguish current worker state; sleep fix physical acceptance still pending.
+
+## Owner Mac update built and signed; live readiness next — November 17
+
+Received MAC-GUNCELLEME-SONUC-73a34aa5a947.zip, SHA256
+ed6a3ba763675da795c0844c35a1c302c30963e89cd89b524045b2d6204c419d.
+Unsigned bounded receipt reports built_beside_existing_app at exact candidate
+1ed9b97e612c9e42dd00c4429491b732bd8cb2e6, product_built_and_signed=true,
+public_identity_unchanged=true. Updater SHA256
+0b64f71b86d230ebafaf2a430483b9c7d454267a64df62849c0f8d531a9a99ea matches
+delivered packet. Inventory SHA256
+eb7a82d2924de52bc0532100496c33bc86c97811902ccac58d1ad08a47e79604.
+Updater reports no profile writes, enrollment or old-app modification. Receipt
+is created before normal Desktop launch; it does not establish app readiness,
+delivery or physical wake acceptance. Do not rebuild or re-pair on this result.
+Next owner step: in the newly opened Mac app choose Open local memory if needed,
+then Local connections / Reload current settings once and report status. Keep
+Terminal and Windows VM open. If new app did not open, report that instead.
+
 ## Mac sleep clock defect fixed; owner update ready — November 17
 
 Owner confirmed Mac slept/lid closed before the reported deadlines. Found and
