@@ -1,0 +1,32 @@
+{
+  "scope": "Read-only Mac live-service diagnostic after owner UI reports connection settings unavailable",
+  "source_commit": "e5f98fb43969df00e8101e8cbc1447e63916ff62",
+  "packet": {
+    "name": "Cryptex-Mac-Servis-Tani-e5f98fb.zip",
+    "bytes": 7924,
+    "sha256": "9cd24737ba79d8ace6a247e928831d32f54e1aa5ddb03c361e410d98f42f0ebf",
+    "collector_sha256": "dcf83f13467f2175a23b74f75520767df880936fd1c296c29cedbd4194ba4d88",
+    "exact_member_readback": "passed",
+    "python_compile_from_archive": "passed"
+  },
+  "validation": {
+    "ci_run": "44112871772",
+    "ci_conclusion": "success",
+    "mac_tests": "8 tests with Python3.13 and system Python",
+    "windows_tests": "3 parser tests passed;5 POSIX tests skipped",
+    "initial_failure": "Mac lsof -Fpn also emits numeric f field; observed with redacted field shapes in CI44112680648; parser now explicitly accepts numeric f, preserves unknown-field/port refusal"
+  },
+  "limits": [
+    "unsigned non-atomic observations",
+    "process names/parent relationships and port counts are not ownership proof",
+    "native log up to last1MiB may include earlier runs",
+    "no raw logs, paths, process IDs, memory bodies or credentials exported"
+  ],
+  "application_processes_changed": false,
+  "profile_changed": false,
+  "product_changed": false,
+  "owner_result": "pending",
+  "root_cause_fixed": false,
+  "delivery_verified": false,
+  "m8_closed": false
+}

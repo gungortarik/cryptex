@@ -1,5 +1,35 @@
 # 34 — Current Implementation Handoff
 
+## Mac UI settings unavailable; live-service diagnostic packet — November 17
+
+Owner Mac screenshot after Reload: "Connection settings are unavailable. Retry
+after the local service is ready." This does not identify whether daemon,
+transport helper or authenticated channel failed. Keep live state; no restart,
+re-pair or LAN/firewall changes. Prepared read-only Mac collector at
+e5f98fb43969df00e8101e8cbc1447e63916ff62 with exact existing Brain/Mac identity
+gate. Reads current-user process names/parent relationships into fixed counts,
+current-user port61942 listener counts, and fixed markers from last1MiB of
+native/native.log under pinned no-follow POSIX directories/owned regular leaf.
+Rejects aliases, hardlinks and FIFO. No raw lines, paths, PID values, credentials,
+canonical bodies or application process control. Only its own short-lived
+ps/lsof observer children may be terminated on timeout/overflow. Missing log or
+observer failure is explicit, never a healthy-state claim.
+
+CI44112871772 passed. Eight Mac tests passed with Python3.13 and system Python,
+including actual ps/lsof plus local listener, bounded observers, wrong-profile
+gate and preservation/refusal cases. Windows ran3 parsers;5 POSIX checks skipped.
+Initial Mac lsof shape failure was resolved from CI field-shape evidence: -Fpn
+also emits numeric f descriptor fields. Unknown fields/ports still refused.
+
+Packet Downloads/Cryptex-Mac-Servis-Tani-e5f98fb.zip,7924 bytes,SHA256
+9cd24737ba79d8ace6a247e928831d32f54e1aa5ddb03c361e410d98f42f0ebf.
+Collector SHA256dcf83f13467f2175a23b74f75520767df880936fd1c296c29cedbd4194ba4d88.
+Exact committed member readback and Python compile from ZIP passed.
+Owner next: leave both apps open; extract ZIP on Mac, double-click
+TANI-MAC.command, send MAC-SERVIS-TANI-SONUC-*.zip from same folder. No app
+installation, sudo or Keychain access. Result pending. Product unchanged; original
+failure and delivery still unresolved. Evidence:m8-mac-live-service-diagnostic-20261117.json.
+
 ## Paired LAN receipts now isolate Mac listener failure — November 17
 
 Received Darwin-aad6d763197b and Windows-712571833138 AKTARIM-TANI receipts;
