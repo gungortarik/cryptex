@@ -1,0 +1,28 @@
+name: M8 transfer diagnostic tooling
+on:
+  push:
+    branches: [codex/m8-device-trust]
+    paths:
+      - scripts/m8/lan_transfer_diagnostic.py
+      - scripts/m8/test_lan_transfer_diagnostic.py
+      - scripts/m8/package_lan_transfer_diagnostic.py
+      - .github/workflows/m8-transfer-diagnostic.yml
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -B -m unittest discover -s scripts/m8 -p test_lan_transfer_diagnostic.py -v
+      - name: Check Mac system Python used by launcher
+        if: runner.os == 'macOS'
+        run: /usr/bin/python3 -B -m unittest discover -s scripts/m8 -p test_lan_transfer_diagnostic.py -v
