@@ -15,12 +15,12 @@ from lan_canonical_verification import command as verify_command, parse_output, 
 from mac_identity_preflight import unique_object
 
 BASELINE = '8f18e7737d78aa78d1c07fb7df99ec04ea0f767360398e42fd47af079e6ed7b7'
-STAGES = ['start_existing_profile', 'capture_while_disconnected', 'interrupt_owned_daemon_after_start',
+STAGES = ['start_existing_profile', 'capture_while_disconnected', 'interrupt_owned_process_after_start',
           'restart_and_receive', 'allow_peer_receipt_delivery', 'offline_restart', 'completed']
 ERRORS = {'arguments', 'existing_profile_required', 'startup', 'identity', 'connections',
           'capture_uncertain', 'search', 'peer_deadline', 'interruption', 'cleanup'}
 DRIVER_FIELDS = {'schema', 'purpose', 'run_id', 'brain_id', 'local_device_id', 'peer_device_id',
-                 'outcome', 'error', 'midstream_bytes_interrupted', 'remote_durability_verified'}
+                 'outcome', 'error', 'midstream_bytes_interrupted', 'remote_durability_verified', 'interrupted_component'}
 
 
 def validate_driver(value, plan, local, peer):
@@ -28,6 +28,7 @@ def validate_driver(value, plan, local, peer):
             or type(value['schema']) is not int or value['schema'] != 1
             or value['purpose'] != 'cryptex-device-recovery' or value['run_id'] != plan['run_id']
             or value['brain_id'] != BRAIN or value['local_device_id'] != local or value['peer_device_id'] != peer
+            or value['interrupted_component'] != ('desktop' if local == MAC else 'daemon')
             or value['midstream_bytes_interrupted'] is not False
             or value['remote_durability_verified'] is not False
             or not ((value['outcome'] == 'local_steps_passed' and value['error'] is None)
@@ -169,7 +170,7 @@ def collect(package, plan, system, report):
     thread = threading.Thread(target=heartbeat, daemon=True)
     thread.start()
     try:
-        code, output = execute([desktop, '--cryptex-device-recovery-check', plan['run_id'], BRAIN, local, peer], 3000)
+        code, output = execute([desktop, '--cryptex-device-recovery-check', plan['run_id'], BRAIN, local, peer], 3600)
     finally:
         finished.set()
         thread.join(2)

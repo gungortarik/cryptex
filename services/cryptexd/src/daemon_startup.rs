@@ -28,6 +28,32 @@ impl std::fmt::Display for StartupError {
 
 impl std::error::Error for StartupError {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InterruptionError {
+    NotRunning,
+    Observation,
+    Termination,
+    Reap,
+}
+
+/// Explicit fault injection for a retained child. No lookup or PID adoption.
+/// Keep the caller's handle intact on every error so cleanup remains possible.
+pub fn interrupt_owned_child(child: &mut Child) -> Result<(), InterruptionError> {
+    if child
+        .try_wait()
+        .map_err(|_| InterruptionError::Observation)?
+        .is_some()
+    {
+        return Err(InterruptionError::NotRunning);
+    }
+    child.kill().map_err(|_| InterruptionError::Termination)?;
+    let status = child.wait().map_err(|_| InterruptionError::Reap)?;
+    if status.success() {
+        return Err(InterruptionError::NotRunning);
+    }
+    Ok(())
+}
+
 fn read_progress(ready: &Path) -> Result<Option<Vec<u8>>, StartupError> {
     let mut options = fs::OpenOptions::new();
     options.read(true);

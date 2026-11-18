@@ -19,8 +19,10 @@ jobs:
         include:
           - os: windows-latest
             features: cryptex-desktop/m8-device-recovery-check
+            daemon_features: ''
           - os: macos-latest
             features: cryptex-desktop/m8-device-recovery-check,cryptex-desktop/m8-development-product
+            daemon_features: '--features m8-development-product'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     env:
@@ -48,6 +50,8 @@ jobs:
       - run: cargo fmt --all -- --check
       - name: Desktop acceptance boundaries and existing helpers
         run: cargo test --locked -p cryptex-desktop --features ${{ matrix.features }} -- --test-threads=1
+      - name: Actual retained-child interruption and unrelated-child isolation
+        run: cargo test --locked -p cryptexd ${{ matrix.daemon_features }} --test desktop_startup owned_interruption_ -- --test-threads=1
       - run: cargo clippy --locked -p cryptex-desktop --features ${{ matrix.features }} --all-targets -- -D warnings
       - run: python3 -B -m unittest discover -s scripts/m8 -p test_lan_device_recovery.py
       - run: python3 -B -m unittest discover -s scripts/m8 -p test_lan_canonical_verification.py

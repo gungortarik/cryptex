@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const FLAG: &str = "--cryptex-device-recovery-check";
+#[cfg(target_os = "macos")]
+const CUT_FLAG: &str = "--cryptex-device-recovery-desktop-loss";
 const IPC: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Serialize)]
@@ -267,36 +269,15 @@ impl Session {
             std::thread::sleep(Duration::from_secs(2));
         }
     }
+    #[cfg(windows)]
     fn interrupt(mut self) -> Result<()> {
-        #[cfg(windows)]
         {
             let child = self.child.as_mut().ok_or(Failure::Interruption)?;
             // Retained Child only. Never accept a process name, PID or status
             // response as authority to terminate a process.
-            if child
-                .try_wait()
-                .map_err(|_| Failure::Interruption)?
-                .is_some()
-            {
-                return Err(Failure::Interruption);
-            }
-            child.kill().map_err(|_| Failure::Interruption)?;
-            let status = child.wait().map_err(|_| Failure::Cleanup)?;
+            cryptexd::daemon_startup::interrupt_owned_child(child)
+                .map_err(|_| Failure::Interruption)?;
             self.child.take();
-            if status.success() {
-                return Err(Failure::Interruption);
-            }
-        }
-        #[cfg(all(target_os = "macos", feature = "m8-development-product"))]
-        {
-            let mut native = self.native.take().ok_or(Failure::Interruption)?;
-            native
-                .interrupt_owned_child()
-                .map_err(|_| Failure::Interruption)?;
-            native
-                .require_stale_rejection()
-                .map_err(|_| Failure::Interruption)?;
-            native.close().map_err(|_| Failure::Cleanup)?;
         }
         Ok(())
     }
@@ -394,7 +375,7 @@ impl Drop for Session {
 fn stage(name: &str) {
     println!("{}", serde_json::json!({"recovery_stage":name}));
 }
-fn run(plan: &Plan, root: &Path) -> Result<()> {
+fn cut(plan: &Plan, root: &Path) -> Result<()> {
     stage("start_existing_profile");
     let mut session = Session::start(root, plan)?;
     let initial = session.connections(None)?;
@@ -408,8 +389,56 @@ fn run(plan: &Plan, root: &Path) -> Result<()> {
     session.capture(plan, false)?;
     session.wait_found(plan, &plan.local, false, 60)?;
     session.pause(plan, false)?;
-    stage("interrupt_owned_daemon_after_start");
-    session.interrupt()?;
+    stage("interrupt_owned_process_after_start");
+    #[cfg(windows)]
+    {
+        session.interrupt()?;
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // Do not kill the Mac daemon: only that retained supervisor can prove
+        // helper/group cleanup and remove its active marker. Abrupt Desktop
+        // exit drops native rights in the OS, bypassing Session/LocalDaemon
+        // Drop. The normal daemon observes owner loss and performs cleanup.
+        use std::io::Write;
+        std::io::stdout()
+            .flush()
+            .map_err(|_| Failure::Interruption)?;
+        std::process::exit(75);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn cut_desktop_child(plan: &Plan) -> Result<()> {
+    let mut child =
+        std::process::Command::new(std::env::current_exe().map_err(|_| Failure::Startup)?)
+            .args([CUT_FLAG, &plan.run, &plan.brain, &plan.local, &plan.peer])
+            .spawn()
+            .map_err(|_| Failure::Startup)?;
+    let deadline = Instant::now() + Duration::from_secs(420);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.code() == Some(75) => return Ok(()),
+            Ok(Some(_)) => return Err(Failure::Interruption),
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+            _ => {
+                // This exact Desktop child only. Leave the daemon alive long
+                // enough to complete ordinary native owner-loss cleanup.
+                let _ = child.kill();
+                let _ = child.wait();
+                std::thread::sleep(Duration::from_secs(40));
+                return Err(Failure::Interruption);
+            }
+        }
+    }
+}
+
+fn run(plan: &Plan, root: &Path) -> Result<()> {
+    #[cfg(windows)]
+    cut(plan, root)?;
+    #[cfg(target_os = "macos")]
+    cut_desktop_child(plan)?;
     // Give the existing helper's owner-loss cleanup its full budget. No marker
     // deletion, PID adoption, forced unlock or recovery repair is permitted.
     std::thread::sleep(Duration::from_secs(40));
@@ -455,7 +484,15 @@ fn run(plan: &Plan, root: &Path) -> Result<()> {
 }
 
 pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
-    let args: Vec<_> = std::env::args().skip(1).collect();
+    let mut args: Vec<_> = std::env::args().skip(1).collect();
+    #[cfg(target_os = "macos")]
+    let is_cut = args.first().is_some_and(|v| v == CUT_FLAG);
+    #[cfg(target_os = "macos")]
+    if is_cut {
+        args[0] = FLAG.into();
+    }
+    #[cfg(windows)]
+    let _ = &mut args;
     if args.first().is_none_or(|v| v != FLAG) {
         return None;
     }
@@ -466,12 +503,20 @@ pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
             .join("Cryptex-Dev/runtime/p0-2");
         #[cfg(target_os = "macos")]
         let root = super::development_launch::runtime(std::env::var_os("HOME").as_deref())?;
+        #[cfg(target_os = "macos")]
+        if is_cut {
+            // A successful cut exits 75 inside cut(), without running drops.
+            // On failure, normal Rust cleanup runs before this exit instead.
+            let _ = cut(&plan, &root);
+            std::process::exit(76);
+        }
         let result = run(&plan, &root);
         println!(
             "{}",
             serde_json::json!({"schema":1,"purpose":"cryptex-device-recovery",
             "run_id":plan.run,"brain_id":plan.brain,"local_device_id":plan.local,"peer_device_id":plan.peer,
             "outcome":if result.is_ok(){"local_steps_passed"}else{"incomplete"},
+            "interrupted_component":if cfg!(target_os="macos"){"desktop"}else{"daemon"},
             "error":result.as_ref().err(),"midstream_bytes_interrupted":false,
             "remote_durability_verified":false})
         );

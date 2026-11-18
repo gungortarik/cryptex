@@ -7,7 +7,11 @@ minimal manual work. A separate default-off `m8-device-recovery-check` Desktop
 entry now drives existing authenticated capture/resolve/search/settings routes;
 Mac reuses signed ExistingProfile startup and protected-content binding. No
 renderer fault control, CLI canonical writer, enrollment or trust override was
-added. Only the retained child handle is terminated; no process-name/PID adoption.
+added. Windows terminates its retained daemon child. Mac abruptly exits a
+retained Desktop child; native owner loss lets the still-live daemon prove helper
+cleanup. No process-name/PID adoption is permitted. Abrupt Mac daemon loss would
+retain transport.active under ADR-0021; that stronger recovery is not implemented
+or claimed, and the packet never deletes that marker.
 The collector requires the previously accepted ten-record aggregate, creates two
 fixed Public test notes per device through the daemon, restarts after the cut,
 exchanges ordinary acknowledgements, verifies offline restart search, restores
@@ -23,7 +27,10 @@ but host Application Control blocked execution (OS4551). Do not bypass it. The
 driver now waits only for the ordinary route's two derived catch-up states; other
 canonical, policy, protocol or identity holds fail immediately. The first CI run
 was cancelled after this review fix so the packet will use only revised source.
-The new focused workflow is manual. No owner recovery packet has been delivered
+Two real retained-child isolation/natural-exit-refusal tests passed locally.
+CI44234366547 at 9f5cbbd passed the earlier Mac/Windows candidate checks; the
+platform-specific interruption correction and these native tests require a new
+exact-source run. No owner recovery packet has been delivered
 and no physical interruption receipt exists at this checkpoint. Validate both
 platforms and exact-source package readback before handing the packet to owner.
 

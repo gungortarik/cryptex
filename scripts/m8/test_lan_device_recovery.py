@@ -19,6 +19,7 @@ def receipt(local, peer, before=False):
 def driver(local=r.WINDOWS, peer=r.MAC):
     return dict(schema=1, purpose='cryptex-device-recovery', run_id=RUN, brain_id=r.BRAIN,
                 local_device_id=local, peer_device_id=peer, outcome='local_steps_passed', error=None,
+                interrupted_component='desktop' if local==r.MAC else 'daemon',
                 midstream_bytes_interrupted=False, remote_durability_verified=False)
 
 

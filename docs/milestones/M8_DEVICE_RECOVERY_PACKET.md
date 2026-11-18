@@ -22,9 +22,12 @@ guarded search and connection-setting routes do all work.
    Each device starts its own exact retained daemon child. Require one expected
    trusted peer, saved LAN endpoints, and initially enabled synchronization.
 3. Pause transport through normal settings, commit one fixed Public run marker,
-   and verify it through guarded local search. Re-enable the normal worker, then
-   abruptly terminate only the retained daemon child. An already dead child or
-   failed termination is not successful fault injection.
+   and verify it through guarded local search. Re-enable the normal worker. On
+   Windows, abruptly terminate only the retained daemon child. An already dead
+   child or failed termination is not successful fault injection. On Mac, a
+   retained Desktop child exits abruptly without running Rust drops; its daemon
+   observes native owner loss and performs ordinary helper cleanup. The outer
+   collector stays alive throughout cleanup and never kills/adopts that daemon.
 4. Allow the normal owner-loss cleanup budget, then perform fresh ordinary
    authenticated startup. Never delete active markers, force-unlock, adopt an
    orphan, repair canonical data or change OS security settings.
@@ -47,7 +50,12 @@ Failure receipts must be inspected before another attempt; no automatic repair.
 ## Exact evidentiary boundary
 
 The note was definitely queued while disconnected before the transport restart.
-The driver terminates a live owned process after the local worker reports ready.
+The driver interrupts an owned process after the local worker reports ready.
+The Mac report explicitly names Desktop loss; Windows names daemon loss. These
+are not interchangeable. Abrupt Mac daemon loss would retain `transport.active`:
+only the original live daemon owns the helper child/group and can prove cleanup.
+ADR-0021's replacement refusal remains intact. Automatic recovery from that
+stronger failure is neither claimed nor added.
 It does **not** observe an unfinished network byte at the exact instant of that
 termination: a small note might already have arrived. Therefore this proves only
 queued-work process-interruption recovery when both actual device reports pass.

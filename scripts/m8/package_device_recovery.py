@@ -59,7 +59,7 @@ def build(artifact, revision, output):
             'Mac mevcut yerel sertifikayla ayri test uygulamasi derler. Keychain izni macOS penceresinde verilir.\n'
             'Paket her cihazda iki kisa Public test notu olusturur; notlar kalici tutulur.\n'
             'Not girmen, mesaj kopyalaman, Search yapman veya End Task kullanman gerekmiyor.\n'
-            'Yalniz testin baslattigi daemon aniden durdurulur; sonra normal guvenlik kontrolleriyle acilir.\n'
+            'Windows daemonu; Mac ise test Desktop surecini aniden kapatir. Mac daemonu kendi yardimcisini normal guvenli yolla kapatir.\n'
             'Esitleme kapaliyken yeniden acilip kayitlar okunur; basarida eski acik esitleme ayari geri gelir.\n'
             'Hata halinde otomatik kilit temizleme, profil onarimi veya guvenlik ayari degisikligi yapilmaz.\n'
             'Iki KESINTI-SONUC-*.zip dosyasini gonder. Sonuclari incelemeden paketi tekrar calistirma.\n'

@@ -482,21 +482,6 @@ impl LocalDaemon {
     pub fn owned_child_id(&self) -> Option<u32> {
         self.child.as_ref().map(std::process::Child::id)
     }
-    /// Fault injection by the native owner only. Unlike ordinary cleanup, an
-    /// already exited process or failed termination cannot count as a cut.
-    pub fn interrupt_owned_child(&mut self) -> Result<(), Error> {
-        let child = self.child.as_mut().ok_or(Error::Arguments)?;
-        if child.try_wait().map_err(|_| Error::Cleanup)?.is_some() {
-            return Err(Error::Cleanup);
-        }
-        child.kill().map_err(|_| Error::Cleanup)?;
-        let status = child.wait().map_err(|_| Error::Cleanup)?;
-        self.child.take();
-        if status.success() {
-            return Err(Error::Cleanup);
-        }
-        Ok(())
-    }
     pub fn terminate_for_restart(&mut self) -> Result<(), Error> {
         if let Some(mut child) = self.child.take() {
             let kill = child.kill();

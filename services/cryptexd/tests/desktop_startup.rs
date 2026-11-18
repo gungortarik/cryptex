@@ -109,6 +109,36 @@ fn startup_worker() {
 }
 
 #[test]
+fn owned_interruption_reaps_only_the_retained_child_and_refuses_a_second_cut() {
+    use cryptexd::daemon_startup::{InterruptionError, interrupt_owned_child};
+    let root = Runtime::new("owned-cut");
+    let other = Runtime::new("untouched-child");
+    let mut target = OwnedChild(worker(&root, "empty"));
+    let mut bystander = OwnedChild(worker(&other, "empty"));
+    wait_file(&root.0.join("fixture-prepared"));
+    wait_file(&other.0.join("fixture-prepared"));
+    interrupt_owned_child(&mut target.0).unwrap();
+    assert!(target.0.try_wait().unwrap().is_some());
+    assert!(bystander.0.try_wait().unwrap().is_none());
+    assert_eq!(
+        interrupt_owned_child(&mut target.0),
+        Err(InterruptionError::NotRunning)
+    );
+}
+
+#[test]
+fn owned_interruption_refuses_a_natural_exit_without_claiming_fault_injection() {
+    use cryptexd::daemon_startup::{InterruptionError, interrupt_owned_child};
+    let root = Runtime::new("already-exited");
+    let mut child = OwnedChild(worker(&root, "exit"));
+    assert!(child.0.wait().unwrap().success());
+    assert_eq!(
+        interrupt_owned_child(&mut child.0),
+        Err(InterruptionError::NotRunning)
+    );
+}
+
+#[test]
 fn empty_and_partial_pid_wait_for_complete_supervised_child_readiness() {
     let root = Runtime::new("partial");
     let child = worker(&root, "partial");
