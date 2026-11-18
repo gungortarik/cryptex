@@ -32,7 +32,8 @@ jobs:
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
-      - run: cargo test --locked -p cryptexd --features m8-development-product --lib knowledge_materialization::local_receipt::tests:: -- --test-threads=1
+      - run: |
+          cargo test --locked -p cryptexd --features m8-development-product --lib knowledge_materialization::local_receipt::tests:: -- --test-threads=1
       - run: cargo test --locked -p cryptexd --features m8-development-product --bin cryptexd verify_local_cli_ -- --test-threads=1
       - run: cargo clippy --locked -p cryptexd --features m8-development-product --all-targets -- -D warnings
       - run: python3 -B -m unittest discover -s scripts/m8 -p test_lan_canonical_verification.py
