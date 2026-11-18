@@ -129,7 +129,12 @@ def support_line(report):
                 fields.append('connection=' + (item['code'] or item['outcome']))
                 if item['code'] == 'settings_start_rest_deadline':
                     fields.append('bu_baslatmada_402=dogrulandi')
+                elif item['code'] == 'settings_start':
+                    fields.append('bu_baslatmada_402=belirlenemedi')
                 break
+        retained = report.get('windows_transport', {}).get('first_worker_failure', {})
+        if retained.get('status') == 'observed' and retained['value']['code'] == 402:
+            fields.append('saklanan_ilk_hata=402')
         first = next((item for item in driver['observations'] if item['outcome'] == 'error'), None)
         if first:
             fields.append('first=' + first['step'] + '/' + (first['code'] or 'error'))

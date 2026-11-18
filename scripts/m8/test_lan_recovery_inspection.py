@@ -24,12 +24,17 @@ def output(error=None, observation=None):
 
 class InspectionTests(unittest.TestCase):
     def test_only_current_settings_response_can_attribute_402(self):
-        for code in ('settings_start', 'settings_start_rest_deadline'):
+        for code in ('settings_start', 'settings_start_rest_deadline', 'settings_authority'):
             note = dict(step='connections_read', outcome='error', code=code, os_code=None)
             driver = d.parse_inspection(output('connections', note), 2, PLAN, r.WINDOWS, r.MAC)
-            line = d.support_line(dict(driver=driver, os='Windows', run_id=PLAN['run_id'],
-                                      windows_transport={'first_worker_failure': {'code': 402}}))
-            self.assertEqual('bu_baslatmada_402=dogrulandi' in line, code == 'settings_start_rest_deadline')
+            for retained_code in (None, 402, 403):
+                retained = ({'status': 'observed', 'value': {'code': retained_code}}
+                            if retained_code is not None else {'status': 'unavailable'})
+                line = d.support_line(dict(driver=driver, os='Windows', run_id=PLAN['run_id'],
+                                          windows_transport={'first_worker_failure': retained}))
+                self.assertEqual('bu_baslatmada_402=dogrulandi' in line, code == 'settings_start_rest_deadline')
+                self.assertEqual('bu_baslatmada_402=belirlenemedi' in line, code == 'settings_start')
+                self.assertEqual('saklanan_ilk_hata=402' in line, retained_code == 402)
 
     def test_only_windows_transport_start_collects_passive_evidence(self):
         from unittest.mock import Mock

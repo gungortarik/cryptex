@@ -28,7 +28,22 @@ The non-appending Windows inspection packet for run 813cf272 is
 `Cryptex-VM-402-Kontrol-9e1c647.zip`, SHA-256
 `6d4915a3ab68b4ece3f8c39da0e65e964d3374d58aae9175aac0806e8abab742`.
 The delivered Desktop and daemon hashes match the candidate CI artifact.
-The physical VM result is pending; no Mac rerun is required for this check.
+The physical VM returned `KESINTI-TANI-SONUC-Windows-1825d9d5e67a.zip`
+(SHA-256 `68e0fb4b2dda6543e7d1ef8dd00e88705a95380855906236d20b19f8ca57c138`).
+The run, source and executable hashes match the packet. Startup health and
+identity passed. The settings read reported generic `settings_start`. The
+only 402 is in the retained historical record. The native log summary matches
+the earlier sample. Neither observation identifies the cause of this start.
+Both verified canonical sets contain eleven records across two devices with
+digest `58400d9ac30516f4d3a502d7365ec16a4444b540fc03162d3717ee095b023e5e`.
+The two missing capture receipts belong to the earlier pre-capture run.
+This inspection requested no capture, settings update or process interruption.
+Normal cleanup completed. Two-device interruption and recovery remain open.
+
+The next Windows investigation needs the underlying error at the current
+exchange start, post-start identity check or worker monitoring check. Each
+can surface the same settings error. Repeating this packet or a Mac run
+cannot distinguish these paths for the observed attempt.
 
 ## Windows connection-start inspection for run 813cf272
 
