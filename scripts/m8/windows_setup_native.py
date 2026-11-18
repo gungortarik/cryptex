@@ -106,7 +106,7 @@ class Pins:
     def __enter__(self): return self
     def __exit__(self,*_): self.close()
 
-def run(args,timeout=60,input_data=b''):
+def run(args,timeout=60,input_data=b'',*,capture_status=False):
     """Create suspended, assign kill-on-close job, then resume; bounded output."""
     import msvcrt
     if len(input_data)>4096: raise Refused('input_bound')
@@ -157,8 +157,10 @@ def run(args,timeout=60,input_data=b''):
         settle_job(job)
         reader.join(5)
         if reader.is_alive() or limited.is_set() or failed.is_set(): raise Refused('process_output_bound')
+        output=b''.join(chunks).decode('utf-8',errors='replace')
+        if capture_status: return code.value,output
         if code.value: raise Refused('command_failed')
-        return b''.join(chunks).decode('utf-8',errors='replace')
+        return output
     finally:
         cleanup_error=None
         if pi.process:

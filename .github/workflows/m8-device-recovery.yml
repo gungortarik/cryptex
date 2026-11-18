@@ -1,0 +1,92 @@
+name: M8 device recovery packet
+on:
+  push:
+    branches: [codex/m8-device-trust]
+    paths:
+      - apps/desktop/src-tauri/src/device_recovery.rs
+      - scripts/m8/lan_device_recovery.py
+      - scripts/m8/test_lan_device_recovery.py
+      - scripts/m8/package_device_recovery.py
+      - .github/workflows/m8-device-recovery.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            features: cryptex-desktop/m8-device-recovery-check
+          - os: macos-latest
+            features: cryptex-desktop/m8-device-recovery-check,cryptex-desktop/m8-development-product
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CRYPTEX_M8_DEVELOPMENT_CERT_DER: ${{ github.workspace }}/services/cryptexd/src/m8_owner_channel/release_inventory/fixtures/signer.der
+      CRYPTEX_M8_DEVELOPMENT_RELEASE_ID: cryptex-dev-recovery-compile-ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cryptex/desktop build
+      - run: cargo fmt --all -- --check
+      - name: Desktop acceptance boundaries and existing helpers
+        run: cargo test --locked -p cryptex-desktop --features ${{ matrix.features }} -- --test-threads=1
+      - run: cargo clippy --locked -p cryptex-desktop --features ${{ matrix.features }} --all-targets -- -D warnings
+      - run: python3 -B -m unittest discover -s scripts/m8 -p test_lan_device_recovery.py
+      - run: python3 -B -m unittest discover -s scripts/m8 -p test_lan_canonical_verification.py
+      - run: python3 -B -m unittest discover -s scripts/m8 -p test_mac_existing_update.py
+      - run: python3 -B -m unittest discover -s scripts/m8 -p test_mac_lan_setup.py
+      - name: Native bounded child jobs
+        if: runner.os == 'Windows'
+        run: python -B -m unittest discover -s scripts/m8 -p test_windows_setup_native.py
+      - name: Build explicit acceptance executables
+        if: runner.os == 'Windows'
+        shell: python
+        run: |
+          import subprocess, sys
+          sys.path.insert(0, 'scripts/m8')
+          from mac_local_startup_ci import fixture_rust_command
+          subprocess.run(fixture_rust_command('cargo', 'build', '--locked', '-p', 'cryptexd',
+              '-p', 'cryptex-desktop', '--features', 'cryptex-desktop/m8-device-recovery-check'), check=True)
+      - name: Bind artifact to exact source and feature
+        if: runner.os == 'Windows'
+        shell: python
+        run: |
+          import hashlib, json, os, pathlib, shutil
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'device-recovery'
+          out.mkdir()
+          hashes = {}
+          for name in ('cryptex-desktop.exe', 'cryptexd.exe'):
+              target = out / name
+              shutil.copyfile('target/debug/' + name, target)
+              assert target.stat().st_size <= 64*1024*1024
+              hashes[name] = hashlib.sha256(target.read_bytes()).hexdigest()
+          (out/'provenance.json').write_text(json.dumps(dict(source_commit=os.environ['GITHUB_SHA'],
+              run_id=os.environ['GITHUB_RUN_ID'], feature='m8-device-recovery-check', hashes=hashes)), encoding='utf-8')
+      - name: Build and read back owner packet
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: python -B scripts/m8/package_device_recovery.py --artifact "$env:RUNNER_TEMP/device-recovery" --output "$env:RUNNER_TEMP/device-recovery.zip"
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: cryptex-device-recovery-${{ github.sha }}
+          path: ${{ runner.temp }}/device-recovery/
+          if-no-files-found: error

@@ -1434,6 +1434,35 @@ pub fn entry() -> Option<Result<(), String>> {
 #[path = "development_ui.rs"]
 mod development_ui;
 
+/// Explicit acceptance executable only. Reuses the normal ExistingProfile
+/// startup, protected content and binding; adds no renderer command or trust.
+#[cfg(all(
+    feature = "m8-development-product",
+    feature = "m8-device-recovery-check"
+))]
+pub(super) fn recovery_start(runtime: &Path) -> Result<LocalDaemon, String> {
+    Owner::prepare_root(runtime, ContentProfile::ExistingProfile)?;
+    let prepared =
+        Startup::current_profile(Duration::from_secs(15), ContentProfile::ExistingProfile)
+            .map_err(|_| "recovery_native_prepare")?;
+    let path = prepared.daemon_path();
+    let command =
+        super::daemon_hold_command(path.to_str().ok_or("recovery_daemon_path")?, runtime)?;
+    let mut daemon = prepared
+        .launch(command, &runtime.join("ready"))
+        .map_err(|_| "recovery_native_start")?;
+    let content = daemon.content().map_err(|_| "recovery_content")?;
+    let (_, binding) = install_context(content, runtime)?;
+    daemon
+        .bind_content(&binding)
+        .map_err(|_| "recovery_content_binding")?;
+    daemon.ping().map_err(|_| "recovery_native_ping")?;
+    daemon
+        .profile_status()
+        .map_err(|_| "recovery_profile_status")?;
+    Ok(daemon)
+}
+
 /// The selected development build always owns normal entry. No failure falls
 /// through to fixture commands, environment daemon overrides or legacy startup.
 #[cfg(feature = "m8-development-product")]

@@ -30,6 +30,8 @@ mod background_process;
 mod candidate_ui;
 #[cfg(any(test, feature = "m8-development-product"))]
 mod development_launch;
+#[cfg(feature = "m8-device-recovery-check")]
+mod device_recovery;
 mod frontend_build_mode;
 mod pilot_runtime;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
@@ -2447,6 +2449,13 @@ fn local_signed_startup_check() -> Option<Result<(), String>> {
 }
 
 fn main() {
+    #[cfg(feature = "m8-device-recovery-check")]
+    if let Some(result) = device_recovery::entry() {
+        if let Err(error) = &result {
+            eprintln!("recovery_check_refused: {error}");
+        }
+        std::process::exit(if result.is_ok() { 0 } else { 2 });
+    }
     #[cfg(all(target_os = "macos", feature = "m8-development-product"))]
     if let Some(result) = candidate_ui::development_entry() {
         if let Err(error) = &result {

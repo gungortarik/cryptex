@@ -37,6 +37,11 @@ class WindowsSetupNativeTests(unittest.TestCase):
     def test_output_stdin_and_exit_refusal(self):
         self.assertEqual(run([sys.executable,'-c','import sys;print(sys.stdin.read())'],input_data=b'public'), 'public\r\n')
         with self.assertRaises(Refused): run([sys.executable,'-c','raise SystemExit(2)'])
+    def test_explicit_status_capture_preserves_failure_and_bounded_output(self):
+        self.assertEqual(run([sys.executable,'-c','print("incomplete");raise SystemExit(2)'],capture_status=True),
+                         (2,'incomplete\r\n'))
+        with self.assertRaises(Refused):
+            run([sys.executable,'-c','print("x"*70000)'],capture_status=True)
     def test_output_bound_and_deadline(self):
         with self.assertRaises(Refused): run([sys.executable,'-c','print("x"*70000)'])
         started=time.monotonic()

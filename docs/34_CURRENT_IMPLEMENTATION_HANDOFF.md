@@ -1,5 +1,27 @@
 # 34 — Current Implementation Handoff
 
+## Actual-device recovery automation — November 17 (candidate, not yet accepted)
+
+The owner requested a one-click actual Mac/VM interruption/recovery run with
+minimal manual work. A separate default-off `m8-device-recovery-check` Desktop
+entry now drives existing authenticated capture/resolve/search/settings routes;
+Mac reuses signed ExistingProfile startup and protected-content binding. No
+renderer fault control, CLI canonical writer, enrollment or trust override was
+added. Only the retained child handle is terminated; no process-name/PID adoption.
+The collector requires the previously accepted ten-record aggregate, creates two
+fixed Public test notes per device through the daemon, restarts after the cut,
+exchanges ordinary acknowledgements, verifies offline restart search, restores
+enabled sync, and collects stopped-daemon final digests. Both final reports must
+match fourteen records. Existing apps/launchers remain untouched. A changed
+baseline refuses rerun; no force-unlock, marker cleanup or canonical repair.
+See `docs/milestones/M8_DEVICE_RECOVERY_PACKET.md` for exact limits: this is queued
+work plus abrupt process loss, not evidence of a byte interrupted mid-transfer or
+power loss. Local six receipt checks, twelve Windows child-job checks, eight
+applicable Mac-builder checks and Desktop clippy passed; Mac-only checks await CI.
+The new focused workflow is manual. No owner recovery packet has been delivered
+and no physical interruption receipt exists at this checkpoint. Validate both
+platforms and exact-source package readback before handing the packet to owner.
+
 ## Local canonical-set evidence packet — November 17 (actual Mac/VM sets match)
 
 Owner Windows receipt BUTUNLUK-SONUC-Windows-2ced9af101b7.zip passes the strict
