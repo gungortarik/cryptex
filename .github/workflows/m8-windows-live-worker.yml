@@ -8,6 +8,7 @@ on:
       - services/cryptexd/src/managed_profile/worker/**
       - services/cryptexd/src/managed_profile/connection_settings/**
       - services/cryptexd/src/managed_profile/native_product_receive_test.rs
+      - services/cryptexd/src/managed_profile/native_product_receive_test/**
       - services/cryptexd/src/managed_profile/sealed_export.rs
       - services/cryptexd/src/managed_profile/sealed_export/**
       - services/cryptexd/src/import_staging/windows_inbox.rs

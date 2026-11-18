@@ -1,5 +1,20 @@
 # 34 — Current Implementation Handoff
 
+## Remaining-peer restriction delivery automation — November 17 (validation pending)
+
+Owner asked to continue the existing program after correcting an incomplete
+message; no new retirement workflow was authorized. The next bounded check uses
+three disposable Windows native profiles with actual daemon-written bilateral
+anchors and normal network publication. After all three converge, B stays offline;
+A records a Compromised decision at B's exact verified boundary. A/C must retain
+each other, C must receive the decision without fixture file copies, reject the
+old roster even with a current settings revision, retain B's accepted notes,
+exchange a subsequent A note, and retain identical canonical bytes/authority
+after paused restart. This is not terminal self-retirement dissemination or an
+actual Mac/VM receipt. The native standard-user harness now requires four suites;
+source validation and CI results must be recorded before accepting this test.
+No owner profile, pairing, update package or manual note is needed.
+
 ## Owner lock-fix update applied; live security reconciliation acceptance — November 17
 
 Owner confirms applying the VM lock-fix update, unchecking Pause sync and saving.

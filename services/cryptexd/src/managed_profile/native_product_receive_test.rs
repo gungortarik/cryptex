@@ -11,8 +11,10 @@ use std::time::{Duration, Instant};
 
 const ENV: SecureStoreEnvironment = SecureStoreEnvironment::Dev;
 
+mod restriction;
+
 // Canonical fixture signing keys stay in memory; real native workers use exactly
-// these two disposable OS credential labels. Never access owner credentials.
+// the fixture's explicit disposable OS credential labels. Never access owner credentials.
 struct Stores {
     canonical: crate::FakeSecureStore,
     transport: BTreeSet<(String, String)>,
@@ -257,6 +259,16 @@ fn security_change(
     store: &Stores,
     retire_self: bool,
 ) {
+    security_change_for(root, instance, store, retire_self, None);
+}
+
+fn security_change_for(
+    root: &Path,
+    instance: &Arc<Mutex<crate::instance::InstanceLock>>,
+    store: &Stores,
+    retire_self: bool,
+    target: Option<cryptex_core::DeviceId>,
+) {
     use crate::bootstrap_journal::{BootstrapJournalStore, RestrictionReason};
     let admission = instance.lock().unwrap().admission();
     let permit = admission.enter(root).unwrap();
@@ -278,12 +290,16 @@ fn security_change(
         .unwrap();
     let (history, _) = snapshot.verified_trust_context().unwrap();
     let local = history.local_device.clone();
-    let target = history
-        .directly_approved_peers
-        .iter()
-        .next()
-        .unwrap()
-        .clone();
+    let target = target.unwrap_or_else(|| {
+        history
+            .directly_approved_peers
+            .iter()
+            .next()
+            .unwrap()
+            .clone()
+    });
+    assert!(history.directly_approved_peers.contains(&target));
+    let devices = history.known_devices.iter().cloned().collect::<Vec<_>>();
     let key_id = history.local_signing_key_id.clone();
     let public_key = history.local_public_key;
     drop(snapshot);
@@ -293,7 +309,7 @@ fn security_change(
         &local,
         &key_id,
         &public_key,
-        &[local.clone(), target.clone()],
+        &devices,
     )
     .unwrap();
     let transaction = if retire_self { "df" } else { "de" }.repeat(32);

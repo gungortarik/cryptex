@@ -100,7 +100,12 @@ if($p.PSObject.Properties['exchange_native_only'] -and $p.exchange_native_only) 
     $result.stdout | Write-Output
     $result.stderr | Write-Output
     Assert-CompleteSuite $result.code $result.stdout 1 $true ($fullCount-1)
-    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=3} | ConvertTo-Json |
+    $filter='managed_profile::native_product_receive_test::restriction::restriction_propagates_to_remaining_peer_and_survives_restart'
+    $result=Invoke-TestBinary $exe "$filter --ignored --exact --test-threads=1"
+    $result.stdout | Write-Output
+    $result.stderr | Write-Output
+    Assert-CompleteSuite $result.code $result.stdout 1 $true ($fullCount-1)
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=4} | ConvertTo-Json |
         Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
     exit 0
 }
