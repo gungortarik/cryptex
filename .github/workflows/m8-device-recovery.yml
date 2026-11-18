@@ -58,7 +58,15 @@ jobs:
         run: cargo test --locked -p cryptexd ${{ matrix.daemon_features }} --test desktop_startup owned_interruption_ -- --test-threads=1
       - name: Capture receipt reconciliation in open and sealed paired profiles
         run: |
-          cargo test --locked -p cryptexd ${{ matrix.daemon_features }} --lib capture::tests:: -- --test-threads=1
+          cargo test --locked -p cryptexd ${{ matrix.daemon_features }} --lib capture::tests:: -- --test-threads=1 --skip first_capture::tests::
+      - name: First capture and writer policy under a standard Windows account
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -TransportPolicyOnly
+      - name: First capture on Mac
+        if: runner.os == 'macOS'
+        run: |
+          cargo test --locked -p cryptexd ${{ matrix.daemon_features }} --lib first_capture::tests:: -- --test-threads=1
       - name: Refused Brain identity read retains its operation and reason
         run: cargo test --locked -p cryptexd ${{ matrix.daemon_features }} --lib ipc::tests::brain_read_returns_exchange_rejection_when_runtime_is_stopped -- --exact
       - run: cargo clippy --locked -p cryptex-desktop --features ${{ matrix.features }} --all-targets -- -D warnings
