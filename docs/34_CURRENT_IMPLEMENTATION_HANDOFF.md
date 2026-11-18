@@ -1,5 +1,29 @@
 # 34 — Current Implementation Handoff
 
+## Actual-device recovery attempt — November 18 (incomplete; do not rerun)
+
+Both original KESINTI reports for run4bbd029c/source0f090c4 were inspected and
+validated against the delivered packet. Windows binary hashes match; both
+pre-run daemon receipts verify the accepted ten-record/two-device aggregate.
+Neither device reached interrupt_owned_process_after_start. Windows stopped
+within Session::start with identity, before any test capture. Mac reached
+capture_while_disconnected, then its retained Desktop child failed; the outer
+driver collapses that error to interruption, losing the original cause. This
+is a diagnostic defect in the acceptance driver, not proof of a process cut.
+Mac may have committed its queued marker before guarded search failed. There
+is no final digest or durable capture receipt in this report, so do not assert
+that its canonical set is unchanged or blindly rerun the ten-record packet.
+The root causes of the Windows startup failure and Mac inner failure remain
+unverified. Do not attribute them to owner reboot, network or lost pairing.
+Both report no cleanup uncertainty, but this is not new independent process
+enumeration. Preserve profiles, keys, prior app and established pairing.
+Next: retain typed first-error substeps (including Mac child failures), inspect
+post-run state without appending, and reproduce the actual driver flow before
+another owner acceptance run. No force-unlock, marker removal or repeat capture.
+Evidence: evidence/m8/m8-device-recovery-attempt-20261118.json includes original
+ZIP checksums and both full redacted reports. Strict compare_results refuses
+these incomplete reports. Actual interruption/recovery and M8 remain OPEN.
+
 ## Actual-device recovery automation — November 17 (candidate, not yet accepted)
 
 The owner requested a one-click actual Mac/VM interruption/recovery run with

@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "source": "0f090c4fa4519dd49310ac9c50634543ed8892e3",
+  "run_id": "4bbd029c-2ab2-426f-aec5-725b67cbcaf7",
+  "validation": "Expected run, source, reciprocal identity, baseline signatures and Windows binary pins verified; incomplete reports correctly refuse acceptance",
+  "reports": {
+    "Windows": {
+      "filename": "KESINTI-SONUC-Windows-9420afe77c4e.zip",
+      "sha256": "fc142c4910e0abcdf9d35c0885a524471d4c3f0c62317f6dbebdc1e4836bd674",
+      "receipt": {
+        "schema": 1,
+        "purpose": "cryptex-device-recovery-result",
+        "os": "Windows",
+        "outcome": "incomplete",
+        "credentials_exported": false,
+        "old_app_changed": false,
+        "pairing_changed": false,
+        "midstream_bytes_interrupted": false,
+        "remote_protection_claim": false,
+        "run_id": "4bbd029c-2ab2-426f-aec5-725b67cbcaf7",
+        "source_commit": "0f090c4fa4519dd49310ac9c50634543ed8892e3",
+        "desktop_sha256": "102fc706e13ef621a7174f1ca4f1e6e054ab49bd7631197eb1f6a16e764dbebf",
+        "daemon_sha256": "871cc967706d059986918a2c592cbd2ba499ac627f4e8c136a7f788a6e2365ee",
+        "before": {
+          "schema": 1,
+          "purpose": "cryptex-local-canonical-verification",
+          "run_id": "4bbd029c-2ab2-426f-aec5-725b67cbcaf7",
+          "brain_id": "b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4",
+          "local_device_id": "bde7cefd-2f40-40f1-a22e-ae1fb123e8a8",
+          "peer_device_id": "1d17c886-a6cf-4422-aba5-fc985656741d",
+          "canonical_set_sha256": "8f18e7737d78aa78d1c07fb7df99ec04ea0f767360398e42fd47af079e6ed7b7",
+          "canonical_records": 10,
+          "canonical_devices": 2,
+          "signatures_and_chains_verified": true,
+          "remote_durability_verified": false,
+          "network_delivery_verified": false,
+          "derived_results_verified": false
+        },
+        "driver": {
+          "receipt": {
+            "brain_id": "b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4",
+            "error": "identity",
+            "interrupted_component": "daemon",
+            "local_device_id": "bde7cefd-2f40-40f1-a22e-ae1fb123e8a8",
+            "midstream_bytes_interrupted": false,
+            "outcome": "incomplete",
+            "peer_device_id": "1d17c886-a6cf-4422-aba5-fc985656741d",
+            "purpose": "cryptex-device-recovery",
+            "remote_durability_verified": false,
+            "run_id": "4bbd029c-2ab2-426f-aec5-725b67cbcaf7",
+            "schema": 1
+          },
+          "stages": [
+            "start_existing_profile"
+          ],
+          "cleanup_unconfirmed": false
+        },
+        "error": "native_steps_incomplete"
+      }
+    },
+    "Darwin": {
+      "filename": "KESINTI-SONUC-Darwin-b9223a82fbb7.zip",
+      "sha256": "2b1e5b9b11c6e22e52c1326addb0e4085381f55b0de4ce3853c8940e78512546",
+      "receipt": {
+        "schema": 1,
+        "purpose": "cryptex-device-recovery-result",
+        "os": "Darwin",
+        "outcome": "incomplete",
+        "credentials_exported": false,
+        "old_app_changed": false,
+        "pairing_changed": false,
+        "midstream_bytes_interrupted": false,
+        "remote_protection_claim": false,
+        "run_id": "4bbd029c-2ab2-426f-aec5-725b67cbcaf7",
+        "source_commit": "0f090c4fa4519dd49310ac9c50634543ed8892e3",
+        "stage": "sign_inventory_keychain",
+        "signer_certificate_sha256": "5eda98e07d9d72c78cdfe41e6ec08b7d4d2b5290b727742ddead980baf3b8ff9",
+        "build_tools": {
+          "node": "24.19.0",
+          "pnpm": "11.28.0"
+        },
+        "product_built_and_signed": true,
+        "public_identity_unchanged": true,
+        "release_inventory_sha256": "c6c5002a234d95addd9ae9392c92201ea801916c49a99a098f3fef3c5cac0ad8",
+        "desktop_sha256": "7311ccf213be9b1a5abd199a044113ee6f98fafba69003160b30de7d9e4ba006",
+        "daemon_sha256": "e14e82c63008f9a3429fe489905305682dc48592d2fe1acc98660cdfd915a353",
+        "before": {
+          "schema": 1,
+          "purpose": "cryptex-local-canonical-verification",
+          "run_id": "4bbd029c-2ab2-426f-aec5-725b67cbcaf7",
+          "brain_id": "b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4",
+          "local_device_id": "1d17c886-a6cf-4422-aba5-fc985656741d",
+          "peer_device_id": "bde7cefd-2f40-40f1-a22e-ae1fb123e8a8",
+          "canonical_set_sha256": "8f18e7737d78aa78d1c07fb7df99ec04ea0f767360398e42fd47af079e6ed7b7",
+          "canonical_records": 10,
+          "canonical_devices": 2,
+          "signatures_and_chains_verified": true,
+          "remote_durability_verified": false,
+          "network_delivery_verified": false,
+          "derived_results_verified": false
+        },
+        "driver": {
+          "receipt": {
+            "brain_id": "b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4",
+            "error": "interruption",
+            "interrupted_component": "desktop",
+            "local_device_id": "1d17c886-a6cf-4422-aba5-fc985656741d",
+            "midstream_bytes_interrupted": false,
+            "outcome": "incomplete",
+            "peer_device_id": "bde7cefd-2f40-40f1-a22e-ae1fb123e8a8",
+            "purpose": "cryptex-device-recovery",
+            "remote_durability_verified": false,
+            "run_id": "4bbd029c-2ab2-426f-aec5-725b67cbcaf7",
+            "schema": 1
+          },
+          "stages": [
+            "start_existing_profile",
+            "capture_while_disconnected"
+          ],
+          "cleanup_unconfirmed": false
+        },
+        "error": "native_steps_incomplete"
+      }
+    }
+  },
+  "actual_interruption_reached": false,
+  "actual_recovery_accepted": false,
+  "post_test_canonical_set_verified": false,
+  "mac_capture_commit_unknown": true,
+  "findings": [
+    "Windows stopped within initial startup identity checks; no capture stage entered",
+    "Mac reached capture_while_disconnected but not process interruption",
+    "Mac child failure is collapsed to interruption; original cause unavailable",
+    "Mac may have committed its queued marker before guarded search failed; no final digest collected"
+  ],
+  "next_step": "Correct first-error diagnostics and inspect post-run state without appending or resetting; do not rerun the existing packet",
+  "m8_complete": false
+}

@@ -1,5 +1,14 @@
 # M8 remaining acceptance — current checkpoint November 17
 
+November 18 recovery attempt update: both owner reports pass the delivered
+run/source/baseline checks, but neither reaches the actual process interruption.
+Windows stops at startup identity validation; Mac reaches capture/search and
+its child error is incorrectly collapsed to interruption. No final digests were
+collected; Mac may have appended its queued marker. Do not rerun or reset.
+Correct first-error diagnostics and inspect post-run state without adding notes
+before another acceptance attempt. See
+[validated incomplete evidence](../evidence/m8/m8-device-recovery-attempt-20261118.json).
+
 ## Current continuation (supersedes the historical November 14 gap list below)
 
 Both normal product paths now have incoming integration. The Windows missing
