@@ -28,6 +28,19 @@ disk-only transfer inventory to compare each sender's sealed canonical and
 exchange streams with the receiver's exchange and canonical streams before
 any new capture. Segment numbers and sizes are diagnostic metadata only.
 
+The returned disk inventories from packet `1d24e80` match the delivered
+collector hash. Both saved peer endpoints match and sync is enabled. By
+segment index and length, each sender's sealed stream is present in its
+exchange folder. The Windows-origin segment 6 (767 bytes) is absent from
+the Mac exchange and canonical peer streams. The Mac-origin segment 5
+(767 bytes) is absent from the corresponding Windows streams. All earlier
+listed index/length pairs match. These non-atomic snapshots cannot distinguish
+late export, transport scanning, peer connectivity or remote file delivery.
+The native two-owner regression now adds ordinary captures on both live
+workers after the offline backlog arrives and requires both new notes to
+reach the other peer before shutdown. Keep the four actual records for
+follow-up. No repeat cut or fresh capture is justified by these inventories.
+
 ## Windows guarded lookup of the already reconciled Mac record
 
 The old `search_hold` label covers several daemon reasons; the original

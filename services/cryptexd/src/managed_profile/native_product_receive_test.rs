@@ -505,6 +505,58 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
         );
         std::thread::sleep(Duration::from_millis(500));
     }
+    // The physical peers each received the queued note, then missed the next
+    // segment. Keep both workers running and capture a second wave with the
+    // ordinary writer threshold. Only the product exporter may seal it.
+    for (root, instance, text) in [
+        (&source, &instance_a, "source live acknowledgement"),
+        (&receiver, &instance_b, "receiver live acknowledgement"),
+    ] {
+        let admission = instance.lock().unwrap().admission();
+        let until = Instant::now() + Duration::from_secs(30);
+        let _permit = loop {
+            match admission.enter(root) {
+                Ok(permit) => break permit,
+                Err(crate::runtime_admission::AdmissionError::Busy) if Instant::now() < until => {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(error) => panic!("live capture admission failed: {error:?}"),
+            }
+        };
+        let outcome = crate::capture::capture_memory_note(
+            store.as_ref(),
+            ENV,
+            root,
+            crate::capture::CaptureRequest {
+                capture_id: "a6354484-3ea5-4359-a72b-34fbe0447a0a".into(),
+                classification: cryptex_events::Classification::Public,
+                text: text.into(),
+            },
+            &crate::canonical_writer::CanonicalWriterConfig::default(),
+        );
+        assert!(
+            matches!(outcome, crate::capture::CaptureOutcome::Committed(_)),
+            "{outcome:?}"
+        );
+    }
+    let deadline = Instant::now() + Duration::from_secs(180);
+    while !found(
+        &receiver,
+        &instance_b,
+        &store,
+        "source live acknowledgement",
+    ) || !found(
+        &source,
+        &instance_a,
+        &store,
+        "receiver live acknowledgement",
+    ) {
+        assert!(
+            Instant::now() < deadline,
+            "live acknowledgements failed to converge"
+        );
+        std::thread::sleep(Duration::from_secs(2));
+    }
     owner_a.shutdown().unwrap();
     owner_b.shutdown().unwrap();
     drop((owner_a, owner_b, instance_a, instance_b));
