@@ -23,6 +23,15 @@ eleventh record and the active refusal through non-appending inspection, and
 reconcile the existing sets. The original ten-record fault packet cannot
 resume from this state.
 
+Both CI jobs passed on `3f9df42` in run 44342544299, including the new IPC
+regression. The local host blocked clean Rust build scripts with OS error
+4551. The owner inspection archive `Cryptex-Kesinti-Tani-3f9df42.zip` is
+25,220,225 bytes, SHA-256
+`563f76add84c4c3f362b60bd0a9c7f79ace768a78f2a7e87c4d815197ee4de81`.
+Verified its CRC, source and payload hashes, target run and inspection launchers.
+Use the Windows VM launcher first to narrow the underlying refusal before
+requesting another Mac build.
+
 ## Recovery inspection follow-up — November 18 (packet ready; device reports pending)
 
 The owner authorized continuation after the incomplete recovery attempt. A
