@@ -179,12 +179,13 @@ def collect(root, system, probe=tcp_probe):
                         p.get('device_id') == peer and p.get('endpoint') == f'{peer_ip}:{peer_port}'
                         for p in peers))
     report['settings'] = observe(settings)
-    report['tcp_local'] = observe(lambda: probe(ip, ip, port))
-    report['tcp_peer'] = observe(lambda: probe(ip, peer_ip, peer_port))
+    if probe is not None:
+        report['tcp_local'] = observe(lambda: probe(ip, ip, port))
+        report['tcp_peer'] = observe(lambda: probe(ip, peer_ip, peer_port))
     return report
 
 
-def main():
+def main(*, disk_only=False):
     os.umask(0o077)
     system = platform.system()
     report = dict(schema=1, purpose='cryptex-lan-transfer-diagnostic', outcome='refused', os=system)
@@ -200,13 +201,17 @@ def main():
             if os.geteuid() == 0:
                 raise Refused('standard_user_required')
             root = Path.home() / 'Library/Application Support/Cryptex-Dev/runtime/p0-2'
-        report = collect(root, system)
+        report = collect(root, system, None if disk_only else tcp_probe)
     except Refused as error:
         report['error'] = str(error)
     except Exception:
         report['error'] = 'collector_unavailable'
     report['collector_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    output = Path(__file__).absolute().parent / f'AKTARIM-TANI-SONUC-{system}-{uuid.uuid4().hex[:12]}.zip'
+    prefix = 'AKTARIM-TANI-SONUC'
+    if disk_only:
+        report['purpose'] = 'cryptex-lan-transfer-disk-inventory'
+        prefix = 'AKTARIM-IZI-SONUC'
+    output = Path(__file__).absolute().parent / f'{prefix}-{system}-{uuid.uuid4().hex[:12]}.zip'
     with zipfile.ZipFile(output, 'x', zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('result.json', json.dumps(report, indent=2) + '\n')
     print('Profil degistirilmedi. Gonderilecek sonuc: ' + str(output), flush=True)

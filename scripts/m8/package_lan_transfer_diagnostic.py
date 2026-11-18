@@ -9,7 +9,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def build(output):
+def build(output, *, disk_only=False):
     source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     files = {name: subprocess.check_output(['git', 'show', source + ':scripts/m8/' + name], cwd=ROOT)
              for name in ('lan_transfer_diagnostic.py', 'windows_setup_native.py', 'windows_pairing_diagnostic.py')}
@@ -26,6 +26,17 @@ def build(output):
         'Yalnizca 192.168.50.26:59957 ve 192.168.50.104:61942 aktarim portlarina TCP baglantisi denenir.\n'
         'Hicbir uygulama verisi gonderilmez. Profil, ayar, guvenlik duvari ve uygulama surecleri degistirilmez.\n'
         'TCP basarisi cihaz kimligi, not teslimi veya kalici kayit kaniti degildir.\n').encode()
+    if disk_only:
+        files['aktarim_izi.py'] = b'from lan_transfer_diagnostic import main\nraise SystemExit(main(disk_only=True))\n'
+        files['TANI-WINDOWS.cmd'] = (
+            b'@echo off\r\ncd /d "%~dp0"\r\nif not exist aktarim_izi.py (echo ZIP dosyasini tamamen ayikla. & pause & exit /b 1)\r\n'
+            b'py -3 -B aktarim_izi.py\r\npause\r\n')
+        files['TANI-MAC.command'] = b'#!/bin/bash\ncd -- "$(dirname -- "$0")" || exit 1\n/usr/bin/python3 -B aktarim_izi.py\n'
+        files['BASLA.txt'] = (
+            'ZIPi Mac ve Windows VM icinde tamamen ayikla. Cryptex kapaliysa kapali kalsin.\n'
+            'Mac: TANI-MAC.command. Windows VM: TANI-WINDOWS.cmd. Sira onemli degil.\n'
+            'Her cihazda olusan AKTARIM-IZI-SONUC ZIPini gonder.\n'
+            'Kontrol dosya listesini ve boyutlari okur. Not eklemez, servisi baslatmaz, aga baglanmaz.\n').encode()
     files['provenance.json'] = json.dumps(dict(source_commit=source,
         files={name: hashlib.sha256(data).hexdigest() for name, data in files.items()}), indent=2).encode()
     output = output.resolve()
@@ -47,4 +58,6 @@ def build(output):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', required=True, type=Path)
-    print(build(parser.parse_args().output))
+    parser.add_argument('--disk-only', action='store_true')
+    args = parser.parse_args()
+    print(build(args.output, disk_only=args.disk_only))

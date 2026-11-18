@@ -1,20 +1,32 @@
 # 34 — Current Implementation Handoff
 
-## Next physical interruption run from twelve verified records
+## Physical interruption from twelve verified records
 
 The before and after receipts from the Windows and Mac queued-note checks
 agree on the twelve-record aggregate in the recovery specification. The new
 packet uses a fresh run UUID. On Mac it checks both earlier queued-capture
 receipts before the first new capture. Each device contributes two Public
 markers. Compare both final reports for sixteen signed records, equal
-aggregates and offline restart evidence. Physical results are pending.
+aggregates and offline restart evidence.
 
 Windows and macOS recovery CI passed in run `44417559551` for `90a0aef`.
 The delivered `Cryptex-Kesinti-12-Kayit-90a0aef.zip` uses run
 `9b502d61-00ed-4686-841d-10bce8fec61b`, ZIP SHA-256
 `9d1954e997f9a5d5dfe9a833e5cd84596512e7a55abd028b0276317a65811462`.
-Use this same ZIP on both devices. Await both run-bound `KESINTI-SONUC`
-reports before evaluating physical acceptance or scheduling another capture.
+Windows returned `KESINTI-SONUC-Windows-5e3159fa3ebf.zip`; Mac returned
+`KESINTI-SONUC-Darwin-b4e1828162b7.zip`. Both reports match the packet
+run and source. Both began at the pinned aggregate, interrupted the intended
+component, reached restart_and_receive and ended with peer_deadline. Separate
+post-fault inspections resolved both local captures on each device. Creating
+the acknowledgement requires first finding the peer's queued marker.
+The stopped receipts (collected before those inspections) verify fifteen
+records each, with different set hashes. Mac later reported the Windows
+acknowledgement not visible. Windows reported held on both peer lookups.
+Neither driver reached offline_restart. The exact missing transfer stage is
+unresolved. Preserve this run and the four existing captures. Use the
+disk-only transfer inventory to compare each sender's sealed canonical and
+exchange streams with the receiver's exchange and canonical streams before
+any new capture. Segment numbers and sizes are diagnostic metadata only.
 
 ## Windows guarded lookup of the already reconciled Mac record
 

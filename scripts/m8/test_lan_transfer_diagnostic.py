@@ -39,6 +39,22 @@ class DiagnosticTests(unittest.TestCase):
                 self.assertNotIn('PRIVATE', json.dumps(report))
                 self.assertEqual(before, {str(p.relative_to(root)): p.read_bytes() for p in root.rglob('*') if p.is_file()})
 
+    def test_disk_inventory_collects_both_streams_without_contacting_either_device(self):
+        for system in d.SIDES:
+            with self.subTest(system=system), tempfile.TemporaryDirectory() as base:
+                root, _ = self.fixture(base, system)
+                incoming = root / 'transport/incoming' / d.SIDES[system][1].encode().hex()
+                incoming.mkdir(parents=True)
+                (incoming / '00000000000000000002.seg').write_bytes(b'test')
+                report = d.collect(root, system, probe=None)
+                self.assertNotIn('tcp_local', report)
+                self.assertNotIn('tcp_peer', report)
+                self.assertEqual(report['directories']['canonical_local']['value']['segments'],
+                                 [['00000000000000000001', len(b'PRIVATE MEMORY BODY')]])
+                self.assertEqual(report['directories']['exchange_peer']['value']['segments'],
+                                 [['00000000000000000002', 4]])
+                self.assertFalse(report['canonical_signatures_verified'])
+
     def test_wrong_profile_never_probes(self):
         with tempfile.TemporaryDirectory() as base:
             root, _ = self.fixture(base, 'Windows')
