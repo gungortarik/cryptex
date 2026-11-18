@@ -9,6 +9,13 @@ Correct first-error diagnostics and inspect post-run state without adding notes
 before another acceptance attempt. See
 [validated incomplete evidence](../evidence/m8/m8-device-recovery-attempt-20261118.json).
 
+Follow-up: non-appending inspection packet a7e99ea passes Mac/Windows
+CI44327605147 and exact-source package readback. It preserves typed first-error
+observations, queries old capture receipts and collects before/after digests
+even after a native failure. It does not retry capture or interrupt a process.
+Physical inspection results and the original causes remain pending; M8 remains
+open. [Packet and limits](../evidence/m8/m8-recovery-inspection-packet-20261118.json).
+
 ## Current continuation (supersedes the historical November 14 gap list below)
 
 Both normal product paths now have incoming integration. The Windows missing

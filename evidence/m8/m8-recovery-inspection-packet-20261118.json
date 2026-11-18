@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "source": "a7e99eadb9c0b195988a054b7b0ab74305b15687",
+  "ci": {
+    "run_id": 44327605147,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/44327605147",
+    "conclusion": "success",
+    "desktop_tests": {
+      "macos": 52,
+      "windows": 59
+    },
+    "retained_child_tests_each": 2,
+    "inspection_collector_tests_each": 4,
+    "recovery_receipt_tests_each": 6,
+    "format_and_clippy": "passed",
+    "both_packet_readbacks": "passed"
+  },
+  "packet": {
+    "filename": "Cryptex-Kesinti-Tani-a7e99ea.zip",
+    "bytes": 25211908,
+    "sha256": "5a4c48835b88b3a4856539fcd23ce85c6862f32bfa23b9a37423ff03bc679376",
+    "manifest": {
+      "schema": 1,
+      "purpose": "cryptex-device-recovery-inspection-packet",
+      "run_id": "4bbd029c-2ab2-426f-aec5-725b67cbcaf7",
+      "source_commit": "a7e99eadb9c0b195988a054b7b0ab74305b15687",
+      "source_sha256": "4e9f36031b5483f0af7ef7118b0de841960a5f82d43b3ad3268ffe9e27744fbc",
+      "hashes": {
+        "cryptex-desktop.exe": "79a6ec7ed849d96831f8dfb3cab093621eef948ae898befb081977149774dd69",
+        "cryptexd.exe": "7ce60966ed84108a113a7e4e0f17bcb1afc9f868fb596499938468a93fcfc2e9",
+        "transport/syncthing.exe": "36a0f7bc372f64fa7cc4f5654fa324c0dd9f7fef2e07565e00c6e1cf73f50344",
+        "transport/LICENSE.txt": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
+        "transport/AUTHORS.txt": "5a0044d13ddf6f013bdd5c2bc419bf45d6123c356567510237e82f304d113d48"
+      }
+    },
+    "hashes_launchers_crc_verified": true
+  },
+  "scope": "Non-appending inspection of the prior incomplete actual-device run; not a rerun or recovery acceptance",
+  "behavior": [
+    "Authenticated normal startup; no bypass after failed identity checks",
+    "Fixed first-error observations and closed Mac child exit-code mapping; no raw OS/server text",
+    "Resolve existing capture receipts only; never submit capture",
+    "Read settings without updates and query guarded marker visibility",
+    "Always attempt stopped-profile final verification after native inspection, including failure",
+    "Normal startup may import already-existing data and rebuild derived state; compare before/after sets",
+    "Old apps, pairing and profiles retained; no marker deletion or repair"
+  ],
+  "limitations": [
+    "Underlying Windows initial identity and Mac capture/search failures remain unverified",
+    "CI validates compilation, unit boundaries, child ownership and packaging; physical inspection receipts are pending",
+    "Mac build and local signing happen on owner Mac; no private key exported",
+    "Do not run the prior ten-record recovery packet after this inspection"
+  ],
+  "actual_device_inspection": "pending",
+  "recovery_accepted": false,
+  "m8_complete": false
+}

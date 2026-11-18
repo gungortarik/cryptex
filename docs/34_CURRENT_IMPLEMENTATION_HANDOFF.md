@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Recovery inspection follow-up — November 18 (candidate)
+## Recovery inspection follow-up — November 18 (packet ready; device reports pending)
 
 The owner authorized continuation after the incomplete recovery attempt. A
 separate --cryptex-device-recovery-inspect mode now starts the same authenticated
@@ -18,11 +18,24 @@ preserve the original typed failure instead of always reporting interruption.
 The inspection targets the original run4bbd029c for receipt resolution. It must
 not be counted as recovery acceptance. Package launchers are TANI-MAC.command
 and TANI-WINDOWS.cmd, never the old fault-injection launcher. No simultaneous
-launch is required. Existing apps must be quit first. Final source CI and packet
-readback still required at this checkpoint. Local four inspection collector and
+launch is required. Existing apps must be quit first. Local four inspection collector and
 six existing recovery receipt tests pass; local Rust clippy is inconclusive due
 to E0463 missing existing target dependencies. Use clean CI; do not bypass policy.
 The underlying Windows startup and Mac capture/search causes remain unverified.
+Exact-source CI44327605147 at a7e99ea now passes Windows59/Mac52 Desktop tests,
+two retained-child tests each, four inspection and six recovery receipt tests
+each, existing verifier/builder checks, format, clippy and both packet readbacks.
+Owner packet Cryptex-Kesinti-Tani-a7e99ea.zip is 25,211,908 bytes; all payload and
+source hashes, CRC and inspection-only launchers were verified after packaging.
+See evidence/m8/m8-recovery-inspection-packet-20261118.json for exact pins.
+Next owner step: quit normal apps, extract this same new ZIP on both devices,
+run TANI-MAC.command / TANI-WINDOWS.cmd independently, keep terminals open and
+send both KESINTI-TANI-SONUC ZIPs. No new notes, Search actions or process cuts.
+Validate new-source bindings plus original target run, inspect the fixed-code
+observations and capture resolve outcomes, and compare before/after verified
+sets. A diagnostics_collected result may still contain a failed native startup;
+it means evidence collection succeeded, never recovery acceptance. Do not ask
+for another recovery attempt until actual existing state and causes are known.
 
 ## Actual-device recovery attempt — November 18 (incomplete; do not rerun)
 
