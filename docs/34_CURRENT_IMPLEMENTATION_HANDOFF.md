@@ -1,14 +1,21 @@
 # 34 — Current Implementation Handoff
 
-## Local canonical-set evidence packet — November 17 (Windows accepted; Mac pending)
+## Local canonical-set evidence packet — November 17 (actual Mac/VM sets match)
 
 Owner Windows receipt BUTUNLUK-SONUC-Windows-2ced9af101b7.zip passes the strict
 schema, expected run/source/daemon hash and reciprocal identity checks. The daemon
 verified ten canonical records from two devices; aggregate
 8f18e7737d78aa78d1c07fb7df99ec04ea0f767360398e42fd47af079e6ed7b7.
 Original archive checksum and receipt are retained in the evidence JSON below.
-Owner says the Mac report is coming. Do not rerun Windows or request new notes;
-await the matching Mac receipt before asserting cross-device set equality.
+Mac receipt BUTUNLUK-SONUC-Darwin-4e980cc2b4d6.zip now passes the same strict
+run/source/reciprocal-identity validation. Both original ZIPs were read again;
+lan_canonical_verification.compare confirms identical canonical-set hashes,
+ten records and two devices. Both report successful signature/chain verification.
+Accept actual-device set equality for these stopped-profile observations.
+Mac signing/build/unchanged-identity metadata is owner-packet reported, not a
+separate independent code-signing attestation. Do not rerun pairing, notes or
+this unchanged digest check. Physical interruption, terminal retirement handoff
+and final security/human review remain separate; no Protected claim is added.
 
 Owner asks to finish the remaining gates and reports both physical devices were
 closed/reopened. This is acceptable; preserve the established pairing and notes.
@@ -47,12 +54,10 @@ and remaining-peer restriction179.92s passed with no ignored selected checks.
 The exact CI artifact produced Downloads/Cryptex-Butunluk-863bfcd.zip (8883922 bytes),
 run6c6ab02f-d8c1-4323-a119-950383c00e69; hashes and bounded review are in
 `evidence/m8/m8-local-canonical-verification-20261117.json`.
-Next owner action: normal quit on both devices; extract the same ZIP and run
-BUTUNLUK-WINDOWS.cmd in the VM and BUTUNLUK-MAC.command on the owner's Mac.
-Collect both BUTUNLUK-SONUC ZIPs, validate exact run/source/reciprocal identities,
-then compare via lan_canonical_verification.compare. Do not reset/re-pair or
-request another note/search loop. The Windows aggregate is accepted; Mac and
-cross-device comparison remain pending.
+Owner packet execution and both receipt validations are complete. Original ZIP
+hashes, Mac build metadata and the positive bounded comparison are retained in
+the evidence file. Next work is the remaining interruption/closeout gates;
+do not reset/re-pair or request another note/search loop.
 This packet
 is only canonical-set evidence, not the physical interruption gate or full M8
 acceptance. Terminal retirement handoff and final review remain separate.

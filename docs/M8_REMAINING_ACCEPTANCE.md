@@ -29,9 +29,10 @@ The run-bound local canonical verifier and shared Mac/VM packet now pass
 CI44224805589 at source863bfcd. Both existing applications must be normally
 stopped; no reset, enrollment, canonical repair or note-copy loop is required.
 The packet compares daemon-verified aggregate record sets without exporting
-memory bodies. The Windows owner receipt verifies ten records from two devices;
-the Mac report and set comparison are pending. Packet creation is not
-physical convergence/interruption acceptance. See
+memory bodies. Both original Windows/Mac owner reports now verify ten records
+from two devices with identical canonical-set hashes and reciprocal identities
+in the same run. This closes the stopped-profile set-equality observation;
+physical interruption acceptance remains separate. See
 [the packet evidence and limits](../evidence/m8/m8-local-canonical-verification-20261117.json).
 
 ## Finite closure map (November 17; historical gaps below are not a new backlog)
@@ -40,7 +41,7 @@ physical convergence/interruption acceptance. See
 | --- | --- | --- |
 | Pairing / owner actions | Actual Mac and VM bilateral approval/recording; existing session, replay and cancellation receipts | Final candidate UI/diff review, not another pairing run |
 | Transport / incoming validation | Both normal paths connected; actual notes visible in both directions; native signed publication/replay tests | Include these sources in final security review |
-| Offline / reconnect | Both actual received notes survive paused reopening; genuine two-Owner offline tails converge with identical immutable bytes in CI | Run-bound daemon-verified digest comparison on the actual Mac/VM after reconnect/interruption |
+| Offline / reconnect | Both actual received notes survive paused reopening; genuine two-Owner offline tails converge in CI; actual Mac/VM run6c6ab02f reports identical daemon-verified canonical sets (ten records, two devices) | Run-bound evidence around an actual-device interruption and recovery; the completed stopped-profile comparison is not that scenario |
 | Restriction / cutoff | Existing signed nonzero cutoff/beyond-boundary refusal; live local compromise/retirement passed CI44172483591; three real native Windows Owners now prove restriction delivery to the remaining eligible peer, fresh-revision old-roster refusal, continued authorized traffic and paused restart in CI44220199842 (213.91s) | Physical cross-platform restriction/refusal acceptance on disposable identities and reviewed terminal retirement delivery; never retire the owner's paired test identity just to satisfy this gate |
 | Protection status | Settings explicitly say local readiness only; Mac native status never upgrades publication to remote durability; ten shared renderer policy checks pass | Final integrated runtime/error-state review; legacy metadata CLI is not runtime protection evidence |
 | Cross-platform correctness | Prior exact-source Mac native receipts plus latest Windows normal receive and shared writer CI | Relevant final candidate CI; do not claim a Windows-only native test exercises Mac |
