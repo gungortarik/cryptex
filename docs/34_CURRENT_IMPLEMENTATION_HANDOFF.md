@@ -19,6 +19,16 @@ journal (314), unrecognized state (315), capacity (316), readback (317) and
 policy (318). Storage errors retain their profile code. Confirm startup on the
 existing VM before running another interruption.
 
+Recovery packet CI [44404418183](https://github.com/gungortarik/cryptex/actions/runs/44404418183)
+passed on Windows and macOS at `7432f1e`. Its Windows standard-user test
+reproduced the exact-home rejection with the old spelling and verified all
+three persisted files after reopening with the product spelling. The
+start-only Windows packet is `Cryptex-VM-Baslatma-7432f1e.zip`, SHA-256
+`86bd847960e78e271d2646ff85d21a066b82ae6969dd9bd1ef5621b66cfab719`.
+It uses the same inspection run ID as 5177504. Compare the new VM settings
+read and before/after receipts; the earlier physical 303 alone cannot
+distinguish a journal rejection from other native state errors.
+
 ## Windows settings start inspection, candidate 5177504
 
 The Windows lifecycle owner now waits for in-memory worker status publication
