@@ -143,6 +143,38 @@ fn observed_io<T>(step: &str, value: std::io::Result<T>, failure: Failure) -> Re
     }
 }
 
+#[cfg(any(windows, test))]
+fn read_startup_brain(
+    deadline: Instant,
+    mut read: impl FnMut(Duration) -> std::io::Result<String>,
+) -> std::io::Result<String> {
+    let delay = Duration::from_millis(250);
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "brain read deadline",
+            ));
+        }
+        // The client has separate connect and exchange timeouts.
+        let result = read(IPC.min(remaining / 2));
+        match result {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::InvalidData
+                    && error.to_string() == "runtime_busy" =>
+            {
+                observation("brain_read", "held", Some("runtime_busy"), None);
+                if deadline.saturating_duration_since(Instant::now()) <= delay {
+                    return Err(error);
+                }
+                std::thread::sleep(delay);
+            }
+            other => return other,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Plan {
     run: String,
@@ -223,7 +255,7 @@ impl Session {
             return Err(Failure::ExistingProfileRequired);
         }
         #[cfg(windows)]
-        let session = {
+        let mut session = {
             let path = std::env::current_exe().map_err(|_| Failure::Startup)?;
             let daemon = path.parent().ok_or(Failure::Startup)?.join("cryptexd.exe");
             let (pid, child) =
@@ -259,7 +291,19 @@ impl Session {
         #[cfg(windows)]
         let raw = observed_io(
             "brain_read",
-            ipc::desktop_read_bootstrap_brain_identity(IPC),
+            read_startup_brain(Instant::now() + Duration::from_secs(30), |timeout| {
+                let child = session
+                    .child
+                    .as_mut()
+                    .ok_or_else(|| std::io::Error::other("owned daemon unavailable"))?;
+                if child.try_wait()?.is_some() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::BrokenPipe,
+                        "owned daemon exited",
+                    ));
+                }
+                ipc::desktop_read_bootstrap_brain_identity(timeout)
+            }),
             Failure::Identity,
         )?;
         #[cfg(all(target_os = "macos", feature = "m8-development-product"))]
@@ -820,6 +864,56 @@ fn inspect_existing(plan: &Plan, root: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn startup_brain_read_waits_only_for_explicit_busy() {
+        use std::io::{Error, ErrorKind};
+        let mut calls = 0;
+        let response = read_startup_brain(Instant::now() + Duration::from_secs(5), |timeout| {
+            calls += 1;
+            assert!(timeout <= IPC);
+            if calls == 1 {
+                Err(Error::new(ErrorKind::InvalidData, "runtime_busy"))
+            } else {
+                Ok("unchanged identity response".into())
+            }
+        })
+        .unwrap();
+        assert_eq!(calls, 2);
+        assert_eq!(response, "unchanged identity response");
+
+        for (kind, code) in [
+            (ErrorKind::InvalidData, "runtime_policy_conflict"),
+            (ErrorKind::PermissionDenied, "runtime_busy"),
+            (
+                ErrorKind::InvalidData,
+                "bootstrap exchange operation mismatch",
+            ),
+        ] {
+            let mut calls = 0;
+            let err = read_startup_brain(Instant::now() + Duration::from_secs(5), |_| {
+                calls += 1;
+                Err(Error::new(kind, code))
+            })
+            .unwrap_err();
+            assert_eq!(calls, 1);
+            assert_eq!(err.to_string(), code);
+        }
+    }
+
+    #[test]
+    fn startup_brain_read_leaves_an_exhausted_busy_request_refused() {
+        let mut calls = 0;
+        let err = read_startup_brain(Instant::now() + Duration::from_millis(200), |_| {
+            calls += 1;
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "runtime_busy",
+            ))
+        })
+        .unwrap_err();
+        assert_eq!(calls, 1);
+        assert_eq!(io_code(&err), "runtime_busy");
+    }
     #[test]
     fn child_failure_preserves_first_cause_without_becoming_a_success_cut() {
         for error in Failure::ALL {

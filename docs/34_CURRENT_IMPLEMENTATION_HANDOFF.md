@@ -1,5 +1,22 @@
 # 34 — Current Implementation Handoff
 
+## Windows recovery inspection — November 18, startup busy
+
+The VM returned `KESINTI-TANI-SONUC-Windows-c733d432c6a9.zip` (SHA-256
+`8a72a2943a66edb94a4791bcd19f04599cedd88eef90b7abd85cb021f92e8a8e`).
+Its run ID, source, Desktop and daemon hashes match the 3f9df42 inspection
+packet. Health passed. Brain identity read returned `runtime_busy` before
+any identity comparison. Admission reports this when exclusive access is
+pending or held. The report does not identify the holder or its duration.
+Both signed local verification receipts match the ten-record baseline.
+The test performed no capture, settings update or interruption.
+
+Windows recovery startup now retries the read-only identity request during
+a bounded 30-second window only for the explicit transient busy response.
+It checks the retained child before issuing each read. All other failures
+still stop startup. Owner testing must use the inspection launcher against
+the original run before any new interruption. Mac last reported 11 records.
+
 ## Recovery inspection results — November 18
 
 Both device reports match the inspection source a7e99ea and the original run
