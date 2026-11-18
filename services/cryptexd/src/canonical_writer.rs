@@ -2021,7 +2021,7 @@ mod tests {
     #[test]
     fn long_windows_writer_appends_seals_reopens_and_preserves_prior_segments() {
         let base = temp_root("long-path");
-        let root = base.join("uzun-Ã§alÄ±ÅŸma-".repeat(16));
+        let root = base.join("uzun-çalışma-".repeat(16));
         let store = FakeSecureStore::new();
         let device = DeviceId::new("33333333-3333-4333-8333-333333333333").unwrap();
         let brain = "33333333-3333-4333-8333-333333333333";
