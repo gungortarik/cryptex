@@ -1,5 +1,31 @@
 # 34 — Current Implementation Handoff
 
+## Windows settings start inspection, candidate 5177504
+
+The Windows lifecycle owner now waits for in-memory worker status publication
+before deciding to close the worker. It still validates the transport guard,
+active state, stop flag and native identity. Ordinary IPC readers retain their
+nonblocking behavior. A contention regression and a terminal-worker error test
+cover the owner path. The previous physical receipt cannot establish that
+contention caused that particular failure.
+
+The Windows inspection daemon retains the current failure stage, worker code
+and optional platform detail on the same settings error returned to the native
+driver. The packet reads the existing profile and connection state, requests
+normal shutdown, and verifies the canonical sets before and after. It does not
+run the capture, search or interruption sequence. Normal product launches and
+the renderer keep the existing public error representation.
+
+Exact-source recovery CI 44400712735 passed on Windows and macOS. Windows
+worker and product-receive CI 44400259411 passed for the underlying lifecycle
+change at 8879bae. The Windows-only packet for run 813cf272 is
+`Cryptex-VM-Baslatma-5177504.zip` (SHA-256
+`1d82b8a90db7c6d34c95816ecf704b90381e785b3af58347a9b01380c095a2f1`).
+The physical VM result is pending. Read the current `connection` and
+`guncel_hata` fields alongside the before/after canonical digests. A ready
+result covers local connection startup. Remote durability and interrupted
+transfer acceptance still require separate evidence.
+
 ## Windows exchange startup and the retained REST timeout
 
 VM-SUREC-TANI-SONUC-de82218a050f.zip (SHA-256
