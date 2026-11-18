@@ -21,6 +21,12 @@ run. Use its local queued receipt and guarded search to identify the outstanding
 marker. A missing receipt alone does not establish absence. Keep both profiles
 and do not rerun the ten-record interruption packet.
 
+Both CI jobs passed for `d9ff50f` in run 44348721747. The owner archive
+`Cryptex-Kesinti-Tani-d9ff50f.zip` is 25,225,348 bytes, SHA-256
+`d1ad2c343e2f265902cd750a9538a48d709885c0e8bd0042bf4f606103a1835c`.
+Verified its CRC, pinned source and payload hashes, original run ID, and
+executable Mac inspection launcher. Next requested receipt is Darwin only.
+
 ## Windows recovery inspection — November 18, startup busy
 
 The VM returned `KESINTI-TANI-SONUC-Windows-c733d432c6a9.zip` (SHA-256
