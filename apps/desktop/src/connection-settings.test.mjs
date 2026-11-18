@@ -29,7 +29,7 @@ test("local readiness never claims remote durable storage", () => {
 });
 
 test("attention shows only allowlisted diagnostic codes, never raw service output", () => {
-  for (const error of ["held", "authority", "start", "shutdown", "storage", "pending_settings"]) {
+  for (const error of ["held", "authority", "start", "start_rest_deadline", "shutdown", "storage", "pending_settings"]) {
     assert.match(connectionMessage({...view(),state:"attention",error}),new RegExp(`\\(${error}\\)`));
   }
   for (const error of [null,"secret raw error C:/private",{message:"secret"}]) {

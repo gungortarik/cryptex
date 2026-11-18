@@ -702,7 +702,13 @@ impl Controller {
                 &policy,
                 &permit,
             )
-            .map_err(|_| Error::Start)?;
+            .map_err(|error| {
+                if error.is_rest_deadline() {
+                    Error::StartRestDeadline
+                } else {
+                    Error::Start
+                }
+            })?;
             #[cfg(target_os = "macos")]
             let worker =
                 Worker::start_exchange(self.root.join("managed-transport"), &policy, &permit)

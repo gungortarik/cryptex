@@ -22,6 +22,7 @@ pub enum Error {
     LocalRestricted,
     Shutdown,
     Start,
+    StartRestDeadline,
     Held,
 }
 impl std::fmt::Display for Error {

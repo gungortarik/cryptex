@@ -343,9 +343,22 @@ impl Session {
                 .map_err(|_| Failure::Connections)
         }
     }
+    fn recovery_settings(&mut self, plan: &Plan, update: Option<Update>) -> Result<View> {
+        let (step, refused) = if update.is_some() {
+            ("connections_apply", "settings_apply_failed")
+        } else {
+            ("connections_read", "settings_read_failed")
+        };
+        let view = self.connections(update).inspect_err(|_| {
+            observation(step, "error", Some(refused), None);
+        })?;
+        plan.check_view(&view).inspect_err(|_| {
+            observation(step, "error", Some(&settings_view_issue(&view)), None);
+        })?;
+        Ok(view)
+    }
     fn pause(&mut self, plan: &Plan, paused: bool) -> Result<()> {
-        let view = self.connections(None)?;
-        plan.check_view(&view)?;
+        let view = self.recovery_settings(plan, None)?;
         let update = Update {
             expected_revision: view.revision,
             paused,
@@ -359,8 +372,7 @@ impl Session {
                 })
                 .collect(),
         };
-        let applied = self.connections(Some(update))?;
-        plan.check_view(&applied)?;
+        let applied = self.recovery_settings(plan, Some(update))?;
         if applied.paused != paused
             || applied.state
                 != if paused {
@@ -644,8 +656,7 @@ fn cut(plan: &Plan, root: &Path) -> Result<bool> {
     if !session.inspect_receipt(PRIOR_MAC_CAPTURE, "resolve_prior_mac")? {
         return Err(Failure::CaptureUncertain);
     }
-    let initial = session.connections(None)?;
-    plan.check_view(&initial)?;
+    let initial = session.recovery_settings(plan, None)?;
     session.pause(plan, true)?;
     // Peer cannot receive this newly committed note while transport is paused.
     stage("capture_while_disconnected");
@@ -713,8 +724,7 @@ fn run(plan: &Plan, root: &Path) -> Result<()> {
     std::thread::sleep(Duration::from_secs(40));
     stage("restart_and_receive");
     let mut session = Session::start(root, plan)?;
-    let restarted = session.connections(None)?;
-    plan.check_view(&restarted)?;
+    let restarted = session.recovery_settings(plan, None)?;
     if restarted.paused {
         return Err(Failure::Connections);
     }
@@ -736,8 +746,7 @@ fn run(plan: &Plan, root: &Path) -> Result<()> {
     session.close()?;
     stage("offline_restart");
     let mut session = Session::start(root, plan)?;
-    let paused = session.connections(None)?;
-    plan.check_view(&paused)?;
+    let paused = session.recovery_settings(plan, None)?;
     if !paused.paused || paused.state != State::Paused {
         return Err(Failure::Connections);
     }

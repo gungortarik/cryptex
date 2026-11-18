@@ -1,5 +1,5 @@
 const states = new Set(["not_enrolled", "paused", "address_needed", "applying", "ready_locally", "attention"]);
-const errors = new Set(["invalid_request", "unauthorized", "unavailable", "not_enrolled", "stale_revision", "unknown_device", "invalid_endpoint", "storage", "pending_settings", "authority", "local_restricted", "shutdown", "start", "held"]);
+const errors = new Set(["invalid_request", "unauthorized", "unavailable", "not_enrolled", "stale_revision", "unknown_device", "invalid_endpoint", "storage", "pending_settings", "authority", "local_restricted", "shutdown", "start", "start_rest_deadline", "held"]);
 function exact(value, keys) {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -52,6 +52,7 @@ export function connectionUpdate(view, paused, listen, addresses) {
   return { expectedRevision: view.revision, paused, listenAddress: ip || null, peers };
 }
 export function connectionMessage(view) {
+  if (view.state === "attention" && view.error === "start_rest_deadline") return "Connection needs attention (start_rest_deadline). The local transport service timed out during startup.";
   if (view.error === "local_restricted") return "This device is retired or restricted. Sync is unavailable; retained local history remains subject to its verified access policy.";
   if (view.state === "attention") {
     const code = errors.has(view.error) ? ` (${view.error})` : "";

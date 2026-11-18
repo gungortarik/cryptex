@@ -2,10 +2,11 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import lan_device_recovery as r
 import lan_recovery_inspection as d
-from test_lan_device_recovery import receipt
+from test_lan_device_recovery import driver, receipt
 
 PLAN=dict(run_id=d.TARGET_RUN,source_commit='a'*40)
 
@@ -22,6 +23,80 @@ def output(error=None, observation=None):
 
 
 class InspectionTests(unittest.TestCase):
+    def test_only_current_settings_response_can_attribute_402(self):
+        for code in ('settings_start', 'settings_start_rest_deadline'):
+            note = dict(step='connections_read', outcome='error', code=code, os_code=None)
+            driver = d.parse_inspection(output('connections', note), 2, PLAN, r.WINDOWS, r.MAC)
+            line = d.support_line(dict(driver=driver, os='Windows', run_id=PLAN['run_id'],
+                                      windows_transport={'first_worker_failure': {'code': 402}}))
+            self.assertEqual('bu_baslatmada_402=dogrulandi' in line, code == 'settings_start_rest_deadline')
+
+    def test_only_windows_transport_start_collects_passive_evidence(self):
+        from unittest.mock import Mock
+        root = Path('fixture')
+        report = {}
+        collector = Mock(return_value={'outcome': 'observed'})
+        for system, code in [('Darwin', 'settings_start'), ('Windows', 'settings_authority'),
+                             ('Windows', 'settings_start')]:
+            evidence = dict(observations=[dict(step='connections_read', outcome='error', code=code)])
+            d.include_windows_start_evidence(report, root, system, evidence, collector)
+        collector.assert_called_once_with(root)
+        self.assertEqual(report['windows_transport'], {'outcome': 'observed'})
+        collector.side_effect = OSError('private path')
+        d.include_windows_start_evidence(report, root, 'Windows', evidence, collector)
+        self.assertEqual(report['windows_transport'], {'outcome': 'unavailable'})
+
+    def failed_recovery(self, tmp, cleanup=False, bad_digest=False, bad_inspection=False):
+        binary = Path(tmp)/'binary'
+        binary.write_bytes(b'fixture')
+        calls = []
+        before = dict(receipt(r.WINDOWS, r.MAC, True), run_id=PLAN['run_id'])
+        failure = dict(driver(), outcome='incomplete', error='connections', run_id=PLAN['run_id'])
+        native = json.dumps({'recovery_stage': 'start_existing_profile'}) + '\n' + json.dumps(failure)
+        if cleanup:
+            native += '\nrecovery_cleanup_unconfirmed'
+        observation = dict(step='connections_read', outcome='error', code='settings_authority', os_code=None)
+        def execute(args, timeout):
+            calls.append(args[1])
+            if len(calls) == 1:
+                return 0, json.dumps(before)
+            if len(calls) == 2:
+                return 2, native
+            if len(calls) == 3:
+                return (2, 'private data') if bad_digest else (0, json.dumps(before))
+            return 2, 'private data' if bad_inspection else output('connections', observation)
+        report = {}
+        with patch.object(r, 'prepare', return_value=(binary, binary, Path(tmp), execute)) as prepare:
+            with self.assertRaisesRegex(r.Refused, 'native_steps_incomplete'):
+                r.collect(Path(tmp), PLAN, 'Windows', report)
+        prepare.assert_called_once()
+        self.assertEqual(report['driver']['receipt']['error'], 'connections')
+        self.assertNotIn('private data', json.dumps(report))
+        self.assertNotIn('local_recovery_steps_verified', report.values())
+        return calls, report
+
+    def test_recovery_failure_collects_digest_then_read_only_inspection_in_same_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            calls, report = self.failed_recovery(tmp)
+        self.assertEqual(calls, ['replication', '--cryptex-device-recovery-check', 'replication',
+                                 '--cryptex-device-recovery-inspect'])
+        self.assertEqual(report['inspection_status'], 'incomplete')
+        self.assertEqual(report['after'], report['before'])
+        summary = d.support_line(dict(report, os='Windows', run_id=PLAN['run_id'], driver=report['inspection']))
+        self.assertIn('connection=settings_authority', summary)
+        self.assertIn('first=connections_read/settings_authority', summary)
+
+    def test_unsafe_shutdown_or_unverifiable_set_never_starts_inspection(self):
+        for options, status, call_count in [
+                (dict(cleanup=True), 'cleanup_unconfirmed', 2),
+                (dict(bad_digest=True), 'stopped_profile_verification_refused', 3),
+                (dict(bad_inspection=True), 'inspection_evidence_unavailable', 4)]:
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                calls, report = self.failed_recovery(tmp, **options)
+                self.assertEqual(len(calls), call_count)
+                self.assertEqual(report['inspection_status'], status)
+                self.assertNotIn('inspection', report)
+
     def test_first_startup_failure_is_retained_and_cannot_pass(self):
         note=dict(step='brain_read',outcome='error',code='brain_operation_mismatch',os_code=None)
         parsed=d.parse_inspection(output('identity',note),2,PLAN,r.WINDOWS,r.MAC)

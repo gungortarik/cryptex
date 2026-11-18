@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sys
 import uuid
 import zipfile
 
@@ -81,9 +82,11 @@ foreach($n in @('cryptex-desktop','cryptexd','syncthing')) {
 $rows=@(Get-NetTCPConnection -State Listen -LocalPort 59957 -ErrorAction SilentlyContinue)
 $lan=@($rows | Where-Object { $_.LocalAddress -in @('192.168.50.26','0.0.0.0','::') }).Count
 $loop=@($rows | Where-Object { $_.LocalAddress -in @('127.0.0.1','::1') }).Count
-[pscustomobject]@{desktop=$counts['cryptex-desktop'];daemon=$counts['cryptexd'];engine=$counts['syncthing'];listeners=$rows.Count;lan=$lan;loopback=$loop} | ConvertTo-Json -Compress'''
+$addresses=@(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop)
+$configured=@($addresses | Where-Object { $_.IPAddress -eq '192.168.50.26' -and $_.AddressState -eq 'Preferred' }).Count
+[pscustomobject]@{desktop=$counts['cryptex-desktop'];daemon=$counts['cryptexd'];engine=$counts['syncthing'];listeners=$rows.Count;lan=$lan;loopback=$loop;expected_vm_address=$configured} | ConvertTo-Json -Compress'''
     value = json.loads(runner([shell, '-NoProfile', '-NonInteractive', '-Command', command], 20))
-    if (set(value) != {'desktop', 'daemon', 'engine', 'listeners', 'lan', 'loopback'}
+    if (set(value) != {'desktop', 'daemon', 'engine', 'listeners', 'lan', 'loopback', 'expected_vm_address'}
             or any(type(v) is not int or not 0 <= v <= 4096 for v in value.values())):
         raise Refused('process_observation_shape')
     return value
@@ -91,7 +94,8 @@ $loop=@($rows | Where-Object { $_.LocalAddress -in @('127.0.0.1','::1') }).Count
 
 def first_failure(path):
     value = read_json(path)
-    labels = json.loads(Path(__file__).with_name('worker_failure_codes.json').read_text(encoding='utf-8'))
+    # Works both with loose source files and the single-file Windows zipapp.
+    labels = json.loads(__loader__.get_data(str(Path(__file__).with_name('worker_failure_codes.json'))))
     if (set(value) != {'schema', 'code', 'os_code'} or type(value['schema']) is not int
             or value['schema'] != 1 or type(value['code']) is not int
             or str(value['code']) not in labels
@@ -117,6 +121,18 @@ def collect(root, reader=read_log, process_reader=processes):
                     "00000000000000000000000000000001/worker-first-failure-v1.json")))
 
 
+def summary(report):
+    if report['outcome'] != 'observed':
+        return 'TANI ' + report.get('error', 'unavailable')
+    stored = report['first_worker_failure']
+    worker = stored.get('value', {})
+    counts = report['process_counts_not_identity_proof'].get('value', {})
+    markers = report['native_log'].get('value', {}).get('marker_counts', {})
+    return ('TANI worker=' + str(worker.get('error', stored.get('error', 'unavailable')))
+            + ' os=' + str(worker.get('os_code')) + ' IP=' + str(counts.get('expected_vm_address', '?'))
+            + ' listen=' + str(counts.get('lan', '?')) + ' bind_hatasi=' + str(markers.get('listen_failure', '?')))
+
+
 def main():
     report = dict(schema=1, purpose='cryptex-vm-transport-failure-diagnostic', outcome='refused')
     try:
@@ -127,11 +143,12 @@ def main():
         report['error'] = str(error)
     except Exception:
         report['error'] = 'collector_unavailable'
-    report['collector_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    output = Path(__file__).absolute().parent / ('VM-SUREC-TANI-SONUC-' + uuid.uuid4().hex[:12] + '.zip')
+    report['collector_sha256'] = hashlib.sha256(__loader__.get_data(__file__)).hexdigest()
+    output = Path(sys.argv[0]).absolute().parent / ('VM-SUREC-TANI-SONUC-' + uuid.uuid4().hex[:12] + '.zip')
     with zipfile.ZipFile(output, 'x', zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('result.json', json.dumps(report, indent=2) + '\n')
     print('Profil ve surecler degistirilmedi. Gonderilecek sonuc: ' + str(output))
+    print(summary(report), flush=True)
 
 
 if __name__ == '__main__':

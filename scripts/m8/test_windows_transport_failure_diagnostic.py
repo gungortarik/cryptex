@@ -62,6 +62,12 @@ class FailureTests(unittest.TestCase):
         with self.assertRaises(d.Refused):
             d.processes(lambda *_: '{"secret":"private"}')
 
+    def test_summary_distinguishes_missing_observation_from_absent_listener(self):
+        sample = dict(outcome='observed', first_worker_failure=dict(status='unavailable', error='path_pin_failed'),
+                      process_counts_not_identity_proof=dict(value=dict(expected_vm_address=1, lan=0)),
+                      native_log=dict(status='unavailable'))
+        self.assertEqual(d.summary(sample), 'TANI worker=path_pin_failed os=None IP=1 listen=0 bind_hatasi=?')
+
 
 if __name__ == '__main__':
     unittest.main()

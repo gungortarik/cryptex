@@ -22,7 +22,7 @@ ERRORS = {'arguments', 'existing_profile_required', 'startup', 'identity', 'conn
           'capture_uncertain', 'search', 'peer_deadline', 'interruption', 'cleanup'}
 DRIVER_FIELDS = {'schema', 'purpose', 'run_id', 'brain_id', 'local_device_id', 'peer_device_id',
                  'outcome', 'error', 'midstream_bytes_interrupted', 'remote_durability_verified', 'interrupted_component'}
-OBSERVATION_STEPS = {'startup_health','brain_read','brain_parse','startup_identity','connections_read',
+OBSERVATION_STEPS = {'startup_health','brain_read','brain_parse','startup_identity','connections_read','connections_apply',
                      'resolve_prior_mac','resolve_queued','resolve_received','guarded_search','search_local_queued',
                      'search_local_received','search_peer_queued','search_peer_received'}
 OBSERVATION_OUTCOMES = {'begin','ok','error','paused','ready','committed','not_committed','held','found','not_visible'}
@@ -34,10 +34,10 @@ OBSERVATION_CODES = {'brain_response_mismatch','brain_operation_mismatch','local
     'runtime_rebuild_required','runtime_stopped','runtime_mismatch','receipt_missing','receipt_persist_failed',
     'verification_unavailable','fingerprint_mismatch','lock_failed','writer_failure','durability_unconfirmed',
     'invalid_request','enrollment_required','identity_unavailable','capture_id_conflict','invalid_query',
-    'settings_read_failed','settings_profile_mismatch','settings_invalid_request','settings_unauthorized',
+    'settings_read_failed','settings_apply_failed','settings_profile_mismatch','settings_invalid_request','settings_unauthorized',
     'settings_unavailable','settings_not_enrolled','settings_stale_revision','settings_unknown_device',
     'settings_invalid_endpoint','settings_storage','settings_pending_settings','settings_authority',
-    'settings_local_restricted','settings_shutdown','settings_start','settings_held',
+    'settings_local_restricted','settings_shutdown','settings_start','settings_start_rest_deadline','settings_held',
     'settings_address_needed','settings_applying','settings_attention'}
 
 
@@ -183,6 +183,36 @@ def compare_results(windows, mac, plan):
                 network_power_loss_tested=False, remote_protection_claim=False)
 
 
+def diagnose_failed_run(report, desktop, root, execute, args, plan, local, peer):
+    # Only follow a closed, validated native failure. A timeout, malformed
+    # receipt or uncertain shutdown is not permission to start another owner.
+    from lan_recovery_inspection import include_windows_start_evidence, parse_inspection, verify
+
+    driver = report['driver']
+    if driver['cleanup_unconfirmed'] or driver['receipt']['error'] == 'cleanup':
+        report['inspection_status'] = 'cleanup_unconfirmed'
+        return
+    try:
+        # This is the post-fault set, sampled before ordinary service startup
+        # can receive pending records during the inspection.
+        report['after'] = verify(execute, args, plan, local, peer)
+    except Exception:
+        report['inspection_status'] = 'stopped_profile_verification_refused'
+        return
+    print('Kesinti testi durdu. Ayni oturumda kayit makbuzlari ve baglanti kontrol ediliyor.', flush=True)
+    try:
+        code, output = execute([desktop, '--cryptex-device-recovery-inspect',
+                                plan['run_id'], BRAIN, local, peer], 900)
+        report['inspection'] = parse_inspection(output, code, plan, local, peer)
+    except Exception:
+        # Native output and exceptions may contain arbitrary local data.
+        report['inspection_status'] = 'inspection_evidence_unavailable'
+        return
+    report['inspection_status'] = report['inspection']['receipt']['outcome']
+    if local == WINDOWS:
+        include_windows_start_evidence(report, root, 'Windows', report['inspection'])
+
+
 def collect(package, plan, system, report):
     desktop, daemon, root, execute = prepare(package, plan, report, system)
     local, peer = (WINDOWS, MAC) if system == 'Windows' else (MAC, WINDOWS)
@@ -208,12 +238,13 @@ def collect(package, plan, system, report):
     thread.start()
     try:
         code, output = execute([desktop, '--cryptex-device-recovery-check', plan['run_id'], BRAIN, local, peer], 3600)
+        report['driver'] = parse_driver(output, code, plan, local, peer)
+        if report['driver']['receipt']['outcome'] != 'local_steps_passed':
+            diagnose_failed_run(report, desktop, root, execute, args, plan, local, peer)
+            raise Refused('native_steps_incomplete')
     finally:
         finished.set()
         thread.join(2)
-    report['driver'] = parse_driver(output, code, plan, local, peer)
-    if report['driver']['receipt']['outcome'] != 'local_steps_passed':
-        raise Refused('native_steps_incomplete')
     code, output = execute(args, 90)
     if code:
         raise Refused('final_verification_refused')
@@ -239,6 +270,14 @@ def main():
     with zipfile.ZipFile(output, 'x', zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('result.json', json.dumps(report, indent=2)+'\n')
     print('\nGonderilecek sonuc: '+str(output), flush=True)
+    if 'inspection_status' in report:
+        driver = report['driver']
+        print('Kesinti asamasi: ' + driver['stages'][-1] + ' / ' + driver['receipt']['error'], flush=True)
+        if 'inspection' in report:
+            from lan_recovery_inspection import support_line
+            print(support_line(dict(report, driver=report['inspection'])), flush=True)
+        else:
+            print('Otomatik tani: ' + report['inspection_status'], flush=True)
     print('Iki cihaz raporu birlikte kontrol edilmeden test tamamlandi sayilmaz.\n'
           'Paketi tekrar calistirma; sonucu gonder. Normal Cryptex kisayolun korunuyor.', flush=True)
     return 0 if report['outcome'] == 'local_recovery_steps_verified' else 2

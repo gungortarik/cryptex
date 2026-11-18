@@ -4,6 +4,8 @@ on:
     branches: [codex/m8-device-trust]
     paths:
       - apps/desktop/src-tauri/src/device_recovery.rs
+      - services/cryptexd/src/managed_profile/worker.rs
+      - services/cryptexd/src/managed_profile/connection_settings/backend.rs
       - services/cryptexd/src/capture.rs
       - services/cryptexd/src/canonical_writer.rs
       - scripts/m8/lan_device_recovery.py
@@ -56,6 +58,9 @@ jobs:
         run: cargo test --locked -p cryptex-desktop --features ${{ matrix.features }} -- --test-threads=1
       - name: Actual retained-child interruption and unrelated-child isolation
         run: cargo test --locked -p cryptexd ${{ matrix.daemon_features }} --test desktop_startup owned_interruption_ -- --test-threads=1
+      - name: Windows exchange startup timeout and error correlation
+        if: runner.os == 'Windows'
+        run: cargo test --locked -p cryptexd --lib managed_profile::worker::tests::startup_deadline
       - name: Capture receipt reconciliation in open and sealed paired profiles
         run: |
           cargo test --locked -p cryptexd ${{ matrix.daemon_features }} --lib capture::tests:: -- --test-threads=1 --skip first_capture::tests::

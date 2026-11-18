@@ -64,6 +64,20 @@ def verify(execute, args, plan, local, peer):
     return r.parse_output(output,plan,local,peer)
 
 
+def include_windows_start_evidence(report, root, system, driver, collector=None):
+    if system != 'Windows' or not any(
+            item['step'] == 'connections_read' and item['outcome'] == 'error'
+            and item['code'] in ('settings_start', 'settings_start_rest_deadline') for item in driver['observations']):
+        return
+    try:
+        if collector is None:
+            from windows_transport_failure_diagnostic import collect as collector
+        report['windows_transport'] = collector(root)
+    except Exception:
+        # Optional disk evidence must never overwrite the native result.
+        report['windows_transport'] = {'outcome': 'unavailable'}
+
+
 def collect(package, plan, system, report, prepare=r.prepare):
     desktop,daemon,root,execute=prepare(package,plan,report,system)
     local,peer=(r.WINDOWS,r.MAC) if system=='Windows' else (r.MAC,r.WINDOWS)
@@ -83,6 +97,7 @@ def collect(package, plan, system, report, prepare=r.prepare):
         # and normal owned shutdown must fit before the outer cleanup bound.
         code,output=execute([desktop,'--cryptex-device-recovery-inspect',plan['run_id'],r.BRAIN,local,peer],900)
         report['driver']=parse_inspection(output,code,plan,local,peer)
+        include_windows_start_evidence(report, root, system, report['driver'])
     finally:
         finished.set()
         heartbeat.join(2)
@@ -96,7 +111,34 @@ def collect(package, plan, system, report, prepare=r.prepare):
     report['native_inspection_completed']=report['driver']['receipt']['outcome']=='inspection_completed'
 
 
-def main():
+def support_line(report):
+    # A short handoff for the operator without copying the ZIP or raw logs.
+    fields = ['TANI', report['os'], report.get('run_id', '')[:8]]
+    for key in ('before', 'after'):
+        if key in report:
+            fields.append(key + '=' + str(report[key]['canonical_records']))
+    driver = report.get('driver')
+    if driver:
+        fields.append('inspection=' + driver['receipt']['outcome'])
+        if driver['receipt']['error']:
+            fields.append('error=' + driver['receipt']['error'])
+        if driver['cleanup_unconfirmed']:
+            fields.append('cleanup=unconfirmed')
+        for item in driver['observations']:
+            if item['step'] == 'connections_read' and item['outcome'] != 'begin':
+                fields.append('connection=' + (item['code'] or item['outcome']))
+                if item['code'] == 'settings_start_rest_deadline':
+                    fields.append('bu_baslatmada_402=dogrulandi')
+                break
+        first = next((item for item in driver['observations'] if item['outcome'] == 'error'), None)
+        if first:
+            fields.append('first=' + first['step'] + '/' + (first['code'] or 'error'))
+    if report.get('error'):
+        fields.append('collector=' + report['error'])
+    return ' '.join(fields)
+
+
+def main(target_run=TARGET_RUN):
     os.umask(0o077)
     package,system=Path(__file__).resolve().parent,platform.system()
     report=dict(schema=1,purpose='cryptex-recovery-inspection-result',os=system,outcome='incomplete',
@@ -104,7 +146,7 @@ def main():
                 recovery_accepted=False)
     try:
         plan=r.read_plan(package,'inspection.json','cryptex-device-recovery-inspection-packet')
-        if plan['run_id']!=TARGET_RUN:
+        if plan['run_id']!=target_run:
             raise r.Refused('wrong_inspection_target')
         report.update(run_id=plan['run_id'],source_commit=plan['source_commit'])
         collect(package,plan,system,report)
@@ -119,8 +161,9 @@ def main():
     output=package/('KESINTI-TANI-SONUC-'+system+'-'+uuid.uuid4().hex[:12]+'.zip')
     with zipfile.ZipFile(output,'x',zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('result.json',json.dumps(report,indent=2)+'\n')
-    print('\nGonderilecek sonuc: '+str(output),flush=True)
-    print('Yeni not veya kesinti uygulanmadi. Eski kesinti paketini tekrar calistirma; bu raporu gonder.',flush=True)
+    print('\nAyrintili sonuc: '+str(output),flush=True)
+    print('Asagidaki TANI satirini paylasman yeterli. Eski kesinti paketini tekrar calistirma.',flush=True)
+    print(support_line(report),flush=True)
     return 0 if report['outcome']=='diagnostics_collected' else 2
 
 

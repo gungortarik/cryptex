@@ -14,7 +14,7 @@ from windows_lan_setup import HASHES
 ROOT=Path(__file__).resolve().parents[2]
 
 
-def build(artifact, revision, output, *, inspection=False):
+def build(artifact, revision, output, *, inspection=False, windows_inspection_run=None):
     source=subprocess.check_output(['git','rev-parse',revision+'^{commit}'],cwd=ROOT,text=True).strip()
     provenance=json.loads((artifact/'provenance.json').read_text(encoding='utf-8-sig'))
     if provenance['source_commit'] != source or provenance['feature'] != 'm8-device-recovery-check':
@@ -42,6 +42,7 @@ def build(artifact, revision, output, *, inspection=False):
         members={Path(i.filename).name:archive.read(i) for i in archive.infolist()
                  if i.filename.startswith('scripts/m8/') and i.filename.endswith('.py')
                  and '/' not in i.filename.removeprefix('scripts/m8/')}
+        members['worker_failure_codes.json']=archive.read('scripts/m8/worker_failure_codes.json')
     if 'lan_device_recovery.py' not in members: raise ValueError('collector_not_committed')
     plan=dict(schema=1,purpose='cryptex-device-recovery-packet',run_id=str(uuid.uuid4()),
               source_commit=source,source_sha256=hashlib.sha256(raw).hexdigest(),
@@ -67,7 +68,7 @@ def build(artifact, revision, output, *, inspection=False):
             'Eski uygulama ve kisayol degismez. Sonuc raporunda not icerigi ve ozel anahtar bulunmaz.\n'
             'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()})
     folder='Cryptex-Kesinti'
-    if inspection:
+    if inspection or windows_inspection_run:
         folder='Cryptex-Kesinti-Tani'
         plan.update(purpose='cryptex-device-recovery-inspection-packet',
                     run_id='4bbd029c-2ab2-426f-aec5-725b67cbcaf7')
@@ -87,6 +88,24 @@ def build(artifact, revision, output, *, inspection=False):
                 'macOS Keychain izni isterse yalnizca macOS penceresinde ver.\n'
                 'KESINTI-TANI-SONUC ZIPlerini gonder. Eski KESINTI paketini tekrar calistirma.\n'
                 'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()})
+    if windows_inspection_run:
+        run_id = str(uuid.UUID(windows_inspection_run))
+        if run_id != windows_inspection_run:
+            raise ValueError('invalid_inspection_run')
+        folder = 'Cryptex-VM-402'
+        for name in ('source.zip', 'TANI-MAC.command', 'TANI-WINDOWS.cmd'):
+            members.pop(name)
+        plan['run_id'] = run_id
+        members['inspection.json'] = (json.dumps(plan, indent=2)+'\n').encode()
+        members['inspect_current.py'] = (
+            'import sys\nfrom lan_recovery_inspection import main\n'
+            f'if sys.platform == "win32":\n    raise SystemExit(main("{run_id}"))\n'
+            'raise SystemExit("Windows VM required")\n').encode()
+        members['VM-KONTROL.cmd'] = b'@echo off\r\ncd /d "%~dp0"\r\npy -3 -B inspect_current.py\r\npause\r\n'
+        members['BASLA.txt'] = ('Yalniz Windows VM: Cryptex aciksa normal Quit ile kapat. ZIPi tamamen ayikla.\n'
+                                'VM-KONTROL.cmd dosyasina cift tikla. TANI satirini paylas.\n'
+                                'Bu paket mevcut baglantiyi okur. Not eklemez, kesinti uygulamaz.\n'
+                                'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()
     output=output.resolve()
     if output==ROOT or ROOT in output.parents: raise ValueError('output_inside_repository')
     with zipfile.ZipFile(output,'x',zipfile.ZIP_DEFLATED) as archive:
@@ -106,5 +125,7 @@ if __name__=='__main__':
     parser.add_argument('--revision',default='HEAD')
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--inspect',action='store_true')
+    parser.add_argument('--vm-inspect-run')
     args=parser.parse_args()
-    print(json.dumps(build(args.artifact,args.revision,args.output,inspection=args.inspect)))
+    print(json.dumps(build(args.artifact,args.revision,args.output,inspection=args.inspect,
+                           windows_inspection_run=args.vm_inspect_run)))

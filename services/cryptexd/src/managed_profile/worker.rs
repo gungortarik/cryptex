@@ -36,6 +36,28 @@ impl std::fmt::Display for WorkerError {
 }
 impl std::error::Error for WorkerError {}
 
+impl WorkerError {
+    pub(crate) fn is_rest_deadline(self) -> bool {
+        matches!(
+            self,
+            Self::Native(NativeConfigError::Rest(
+                crate::syncthing_owned_rest::OwnedRestError::Deadline
+            ))
+        )
+    }
+}
+
+// Only for the two read-only readiness observations of the retained exchange
+// process. Each invocation rechecks admission and the complete owned endpoint.
+fn startup_observation<T>(
+    mut observe: impl FnMut() -> Result<T, WorkerError>,
+) -> Result<T, WorkerError> {
+    match observe() {
+        Err(error) if error.is_rest_deadline() => observe(),
+        result => result,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkerState {
     Opening,
@@ -200,7 +222,7 @@ impl ManagedTransportWorker {
         let (accept_send, accept_receive) = mpsc::sync_channel(1);
         let (active_send, active_receive) = mpsc::sync_channel(1);
         let worker_guard = guard.clone();
-        let worker = Self::spawn_task(move |shared| {
+        let mut worker = Self::spawn_task(move |shared| {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let _pins = native_pins;
                 *shared
@@ -223,9 +245,14 @@ impl ManagedTransportWorker {
                 let mut session = prepared
                     .start(&package, &store)
                     .map_err(WorkerError::Native)?;
-                let ack = session
-                    .acknowledge_exchange(&store)
-                    .map_err(WorkerError::Native)?;
+                let ack = startup_observation(|| {
+                    worker_guard
+                        .check()
+                        .map_err(|_| WorkerError::StatusUnavailable)?;
+                    session
+                        .acknowledge_exchange(&store)
+                        .map_err(WorkerError::Native)
+                })?;
                 worker_guard
                     .check()
                     .map_err(|_| WorkerError::StatusUnavailable)?;
@@ -244,7 +271,12 @@ impl ManagedTransportWorker {
                     pid: Some(session.pid()),
                     error: None,
                 };
-                session.observe(&store).map_err(WorkerError::Native)?;
+                startup_observation(|| {
+                    worker_guard
+                        .check()
+                        .map_err(|_| WorkerError::StatusUnavailable)?;
+                    session.observe(&store).map_err(WorkerError::Native)
+                })?;
                 worker_guard
                     .check()
                     .map_err(|_| WorkerError::StatusUnavailable)?;
@@ -270,9 +302,7 @@ impl ManagedTransportWorker {
             .unwrap_or(Err(WorkerError::Panicked));
             diagnostics::finish(&profile, result)
         })?;
-        let ack = ready_receive
-            .recv_timeout(Duration::from_secs(35))
-            .map_err(|_| WorkerError::StatusUnavailable)?;
+        let ack = worker.exchange_reply(&ready_receive, Duration::from_secs(35))?;
         if ack != expected {
             return Err(WorkerError::StatusUnavailable);
         }
@@ -283,11 +313,7 @@ impl ManagedTransportWorker {
         accept_send
             .send(())
             .map_err(|_| WorkerError::StatusUnavailable)?;
-        if active_receive
-            .recv_timeout(Duration::from_secs(10))
-            .map_err(|_| WorkerError::StatusUnavailable)?
-            != expected
-        {
+        if worker.exchange_reply(&active_receive, Duration::from_secs(10))? != expected {
             return Err(WorkerError::StatusUnavailable);
         }
         policy
@@ -296,6 +322,24 @@ impl ManagedTransportWorker {
         guard.check().map_err(|_| WorkerError::StatusUnavailable)?;
         worker.status_reader().try_transport_device_id()?;
         Ok(worker)
+    }
+
+    fn exchange_reply<T>(
+        &mut self,
+        rx: &std::sync::mpsc::Receiver<T>,
+        budget: Duration,
+    ) -> Result<T, WorkerError> {
+        use std::sync::mpsc::RecvTimeoutError;
+        match rx.recv_timeout(budget) {
+            Ok(reply) => Ok(reply),
+            Err(RecvTimeoutError::Timeout) => Err(WorkerError::StatusUnavailable),
+            // The sender belongs only to this worker. On disconnect, use its
+            // terminal result, never the persisted first-failure file.
+            Err(RecvTimeoutError::Disconnected) => match self.wait(Duration::from_secs(1)) {
+                Err(WorkerError::ShutdownDeadline) | Ok(_) => Err(WorkerError::StatusUnavailable),
+                Err(error) => Err(error),
+            },
+        }
     }
     #[cfg(test)]
     pub(crate) fn spawn_transfer_test(
@@ -560,6 +604,53 @@ impl Drop for ManagedTransportWorker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn startup_deadline_retries_only_one_full_read() {
+        use crate::syncthing_owned_rest::OwnedRestError;
+        let deadline = WorkerError::Native(NativeConfigError::Rest(OwnedRestError::Deadline));
+        let mismatch =
+            WorkerError::Native(NativeConfigError::Rest(OwnedRestError::IdentityMismatch));
+        for (reads, expected) in [
+            (vec![Ok(1)], Ok(1)),
+            (vec![Err(deadline), Ok(2)], Ok(2)),
+            (vec![Err(deadline), Err(deadline)], Err(deadline)),
+            (vec![Err(deadline), Err(mismatch)], Err(mismatch)),
+            (vec![Err(mismatch)], Err(mismatch)),
+        ] {
+            let mut reads = reads.into_iter();
+            assert_eq!(startup_observation(|| reads.next().unwrap()), expected);
+            assert_eq!(reads.len(), 0);
+        }
+    }
+
+    #[test]
+    fn startup_deadline_disconnect_preserves_only_this_workers_error() {
+        use crate::syncthing_owned_rest::OwnedRestError;
+        use std::sync::mpsc;
+        let deadline = WorkerError::Native(NativeConfigError::Rest(OwnedRestError::Deadline));
+        for cause in [
+            deadline,
+            WorkerError::Native(NativeConfigError::IdentityChanged),
+        ] {
+            let (tx, rx) = mpsc::sync_channel::<()>(1);
+            let mut worker = ManagedTransportWorker::spawn_task(move |_| {
+                drop(tx);
+                Err(cause)
+            })
+            .unwrap();
+            assert_eq!(
+                worker.exchange_reply(&rx, Duration::from_secs(1)),
+                Err(cause)
+            );
+        }
+        let (_tx, rx) = mpsc::sync_channel::<()>(1);
+        let mut worker = ManagedTransportWorker::spawn_task(move |_| Err(deadline)).unwrap();
+        assert_eq!(
+            worker.exchange_reply(&rx, Duration::ZERO),
+            Err(WorkerError::StatusUnavailable)
+        );
+    }
 
     #[test]
     fn transport_identity_is_available_only_for_an_active_ready_worker() {
