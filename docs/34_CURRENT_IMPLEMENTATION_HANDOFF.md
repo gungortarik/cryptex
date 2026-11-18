@@ -28,11 +28,20 @@ driver now waits only for the ordinary route's two derived catch-up states; othe
 canonical, policy, protocol or identity holds fail immediately. The first CI run
 was cancelled after this review fix so the packet will use only revised source.
 Two real retained-child isolation/natural-exit-refusal tests passed locally.
-CI44234366547 at 9f5cbbd passed the earlier Mac/Windows candidate checks; the
-platform-specific interruption correction and these native tests require a new
-exact-source run. No owner recovery packet has been delivered
-and no physical interruption receipt exists at this checkpoint. Validate both
-platforms and exact-source package readback before handing the packet to owner.
+Exact-source CI44235745236 at 0f090c4 passes both platforms: Windows57/Mac50
+Desktop tests, two real retained-child tests each, six recovery and six canonical
+receipt checks each, Mac build/update tests, Windows12 bounded-job tests, format,
+clippy and Windows artifact/package readback. Earlier candidates were superseded.
+Packet Cryptex-Kesinti-0f090c4.zip (25,185,267 bytes) is bound to run
+4bbd029c-2ab2-426f-aec5-725b67cbcaf7. Local full readback, CRC and hashes passed.
+See evidence/m8/m8-device-recovery-packet-20261117.json for pins and limits.
+Next owner action: quit normal apps, extract the same ZIP on Mac and VM, start
+KESINTI-MAC.command first; after build/precheck, start KESINTI-WINDOWS.cmd. Keep
+both awake on the same LAN and terminals open. No manual notes/Search/End Task.
+Collect two KESINTI-SONUC ZIPs; validate strict receipts and compare final sets
+with lan_device_recovery.compare_results before accepting this bounded scenario.
+Actual-device interruption receipts remain pending. Never rerun a partial test
+or reset profiles without inspecting its evidence. M8 stays open.
 
 ## Local canonical-set evidence packet — November 17 (actual Mac/VM sets match)
 

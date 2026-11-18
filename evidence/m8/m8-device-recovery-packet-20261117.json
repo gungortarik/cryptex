@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "source": "0f090c4fa4519dd49310ac9c50634543ed8892e3",
+  "scope": "Default-off native Desktop queued-work interruption packet for existing owner Mac and Windows VM",
+  "ci": {
+    "run_id": 44235745236,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/44235745236",
+    "conclusion": "success",
+    "desktop_tests": {"windows": 57, "macos": 50},
+    "retained_child_isolation_tests_each_platform": 2,
+    "recovery_receipt_tests_each_platform": 6,
+    "canonical_receipt_tests_each_platform": 6,
+    "mac_existing_update_tests": 7,
+    "mac_builder_tests": 9,
+    "windows_bounded_job_tests": 12,
+    "format_and_all_target_clippy": "passed",
+    "windows_artifact_and_packet_readback": "passed"
+  },
+  "packet": {
+    "filename": "Cryptex-Kesinti-0f090c4.zip",
+    "bytes": 25185267,
+    "run_id": "4bbd029c-2ab2-426f-aec5-725b67cbcaf7",
+    "sha256": "470675ae27a0227257a087b19f660a4e31ee91c606c529ddbf271815aa197aa2",
+    "source_sha256": "92a12820dbc4e9591b6b28e0a52b50643f771d7f3406ced928b8883ea27de955",
+    "windows_desktop_sha256": "102fc706e13ef621a7174f1ca4f1e6e054ab49bd7631197eb1f6a16e764dbebf",
+    "windows_daemon_sha256": "871cc967706d059986918a2c592cbd2ba499ac627f4e8c136a7f788a6e2365ee",
+    "readback_and_crc": "passed",
+    "mac_signing": "Built on owner Mac with existing local certificate; private key stays in Keychain"
+  },
+  "baseline": {
+    "records": 10,
+    "devices": 2,
+    "aggregate_sha256": "8f18e7737d78aa78d1c07fb7df99ec04ea0f767360398e42fd47af079e6ed7b7"
+  },
+  "expected_final_records": 14,
+  "interrupted_component": {
+    "windows": "retained daemon child",
+    "macos": "retained Desktop child; live daemon performs native owner-loss cleanup"
+  },
+  "actual_device_receipts": "pending",
+  "actual_device_interruption_accepted": false,
+  "midstream_bytes_interrupted": false,
+  "power_loss_accepted": false,
+  "remote_protection_claim": false,
+  "m8_complete": false,
+  "review": {
+    "reviewer": "implementation agent; not final independent M8 review",
+    "checks": [
+      "Closed native arguments and fixed test markers; no renderer process control",
+      "Only daemon capture/resolve routes append ordinary Public memory; no blind append retry",
+      "Refuse changed baseline, identity, active instance, integrity/policy hold or cleanup uncertainty",
+      "Windows retained Child only; unrelated process isolation and already-exited refusal tested",
+      "Mac owner-loss path preserves ADR-0021 marker exclusion; no direct daemon kill or marker deletion",
+      "Bounded derived catch-up and native heartbeat while waiting for reciprocal markers",
+      "Offline restart verifies all four new markers; restore original pause preference on success",
+      "Both run/source-bound final receipts must match fourteen signature-verified records"
+    ]
+  },
+  "limits": [
+    "CI does not prove the physical signed Mac/VM scenario",
+    "A small marker may arrive before the process cut; no observed mid-byte interruption",
+    "Mac Desktop loss and Windows daemon loss are different fault scenarios",
+    "Abrupt Mac daemon loss retains transport.active and remains outside this packet",
+    "Changed baseline after a partial run refuses rerun; inspect receipts first",
+    "Owner reports are unsigned diagnostic evidence, not independent binary attestation",
+    "Existing application and launcher remain; four new Public test notes persist"
+  ]
+}

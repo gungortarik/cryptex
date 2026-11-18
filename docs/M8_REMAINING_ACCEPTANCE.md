@@ -35,6 +35,16 @@ in the same run. This closes the stopped-profile set-equality observation;
 physical interruption acceptance remains separate. See
 [the packet evidence and limits](../evidence/m8/m8-local-canonical-verification-20261117.json).
 
+The automatic queued-work process-interruption packet is ready at source
+0f090c4 after Mac/Windows CI44235745236 and exact-source ZIP readback. The owner
+only starts the two launchers; fixed captures, process cut, reciprocal search,
+offline restart and final stopped-profile digests are automated. Actual-device
+results remain pending. Windows interrupts its retained daemon; Mac interrupts
+its retained Desktop and lets the live daemon prove helper cleanup. This does
+not claim Mac daemon-loss recovery, mid-byte interruption or power loss. See
+[packet evidence](../evidence/m8/m8-device-recovery-packet-20261117.json) and
+[scenario boundary](milestones/M8_DEVICE_RECOVERY_PACKET.md).
+
 ## Finite closure map (November 17; historical gaps below are not a new backlog)
 
 | Contract area | Current accepted observation | Still required for closeout |
