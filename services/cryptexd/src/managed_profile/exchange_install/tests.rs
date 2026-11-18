@@ -91,6 +91,43 @@ fn seed(home: &PrivateDirectory, name: &str, bytes: &[u8]) {
     file.sync_all().unwrap();
 }
 
+#[cfg(windows)]
+#[test]
+fn windows_recovery_reopens_the_enrolled_journal_with_exact_path_spelling() {
+    with_policy(|policy, bootstrap| {
+        let base = scratch();
+        let parent = base.join("Cryptex-Dev").join("runtime");
+        std::fs::create_dir_all(&parent).unwrap();
+        let enrolled = parent.join("p0-2");
+        let previous = base.join("Cryptex-Dev/runtime/p0-2");
+        let leaves = |home: &PrivateDirectory| {
+            [Leaf::Config, Leaf::Binding, Leaf::Journal]
+                .map(|leaf| (&home).read(leaf).unwrap().unwrap())
+        };
+        let saved = {
+            let home = PrivateDirectory::acquire(&enrolled, true).unwrap();
+            seed(&home, Leaf::Config.name(), bootstrap);
+            install_native(&home, policy).unwrap();
+            leaves(&home)
+        };
+        {
+            let home = PrivateDirectory::acquire(&previous, false).unwrap();
+            assert_eq!(
+                install_native(&home, policy),
+                Err(InstallError::HomeMismatch)
+            );
+            assert_eq!(leaves(&home), saved);
+        }
+        {
+            let home = PrivateDirectory::acquire(&enrolled, false).unwrap();
+            install_native(&home, policy).unwrap();
+            verify_native(&home, policy).unwrap();
+            assert_eq!(leaves(&home), saved);
+        }
+        std::fs::remove_dir_all(base).unwrap();
+    });
+}
+
 #[test]
 fn first_local_only_install_and_interrupted_reopen_accept_native_serialization() {
     with_policies_mode(true, |policy, _, bootstrap| {

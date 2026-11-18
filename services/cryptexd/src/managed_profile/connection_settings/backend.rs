@@ -86,6 +86,15 @@ fn current_worker_error_preserves_stage_and_platform_code() {
                 detail: Some(5),
             }
         );
+        let journal = crate::managed_profile::exchange_install::InstallError::HomeMismatch;
+        assert_eq!(
+            start_error(StartStage::Exchange, WorkerError::Native(journal.into())),
+            Error::StartFailure {
+                stage: StartStage::Exchange,
+                code: 313,
+                detail: None,
+            },
+        );
     } else {
         assert_eq!(error, Error::Start);
     }

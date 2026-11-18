@@ -788,8 +788,9 @@ pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
     Some((|| {
         let plan = Plan::parse(&args).map_err(|_| "recovery_arguments")?;
         #[cfg(windows)]
-        let root = PathBuf::from(std::env::var_os("LOCALAPPDATA").ok_or("recovery_home")?)
-            .join("Cryptex-Dev/runtime/p0-2");
+        let root =
+            super::windows_release_probe_runtime_root(std::env::var_os("LOCALAPPDATA").as_deref())
+                .map_err(|_| "recovery_home")?;
         #[cfg(target_os = "macos")]
         let root = super::development_launch::runtime(std::env::var_os("HOME").as_deref())?;
         #[cfg(target_os = "macos")]
@@ -952,6 +953,19 @@ fn settings_view_issue(view: &View) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    #[test]
+    fn recovery_uses_the_exact_enrolled_windows_path_spelling() {
+        let base = std::path::Path::new(r"C:\Users\Example\AppData\Local");
+        let enrolled = crate::windows_release_probe_runtime_root(Some(base.as_os_str())).unwrap();
+        assert_eq!(
+            enrolled.as_os_str(),
+            std::ffi::OsStr::new(r"C:\Users\Example\AppData\Local\Cryptex-Dev\runtime\p0-2")
+        );
+        let prior = base.join("Cryptex-Dev/runtime/p0-2");
+        assert_eq!(prior, enrolled);
+        assert_ne!(prior.as_os_str(), enrolled.as_os_str());
+    }
     #[test]
     fn startup_brain_read_waits_only_for_explicit_busy() {
         use std::io::{Error, ErrorKind};

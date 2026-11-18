@@ -36,6 +36,12 @@ pub enum NativeConfigError {
     StartExited,
     StartDeadline,
     UnresolvedCleanup,
+    ExchangeHomeMismatch,
+    ExchangeInvalidJournal,
+    ExchangeUnrecognizedState,
+    ExchangeCapacityExceeded,
+    ExchangeReadbackMismatch,
+    ExchangePolicyMismatch,
     Profile(ProfileError),
     Package(PackageError),
     Process(OwnedProcessError),
@@ -47,6 +53,21 @@ impl fmt::Display for NativeConfigError {
     }
 }
 impl std::error::Error for NativeConfigError {}
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+impl From<super::exchange_install::InstallError> for NativeConfigError {
+    fn from(error: super::exchange_install::InstallError) -> Self {
+        use super::exchange_install::InstallError;
+        match error {
+            InstallError::HomeMismatch => Self::ExchangeHomeMismatch,
+            InstallError::InvalidJournal => Self::ExchangeInvalidJournal,
+            InstallError::UnrecognizedState => Self::ExchangeUnrecognizedState,
+            InstallError::CapacityExceeded => Self::ExchangeCapacityExceeded,
+            InstallError::ReadbackMismatch => Self::ExchangeReadbackMismatch,
+            InstallError::Policy(_) => Self::ExchangePolicyMismatch,
+            InstallError::Storage(error) => Self::Profile(error),
+        }
+    }
+}
 impl From<ProfileError> for NativeConfigError {
     fn from(error: ProfileError) -> Self {
         Self::Profile(error)
@@ -587,8 +608,7 @@ impl<'profile> PreparedNativeProfile<'profile> {
         image
             .prepare_bootstrap(&self.exchange_bootstrap(store)?)
             .map_err(|_| NativeConfigError::InvalidConfig)?;
-        super::exchange_install::install_native(&self.home, &image)
-            .map_err(|_| NativeConfigError::InvalidState)?;
+        super::exchange_install::install_native(&self.home, &image)?;
         self.exchange = Some(image);
         self.validate(store)
     }

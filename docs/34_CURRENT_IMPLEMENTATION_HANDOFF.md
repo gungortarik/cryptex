@@ -1,5 +1,24 @@
 # 34 — Current Implementation Handoff
 
+## Windows recovery launcher and the enrolled exchange journal
+
+The physical Windows receipt for 5177504 captured `exchange/303/native.InvalidState`
+on the failing settings read. The retained REST deadline (402) was historical.
+The daemon closed normally and the two signed canonical receipts matched across
+all 11 records. This run did not exercise an interruption.
+
+The Windows recovery launcher now obtains the enrolled runtime path from the
+same function as the product launcher. Windows permits both separator spellings
+for an ordinary disk path. The exchange journal binds the exact spelling of its
+native home. The previous recovery launcher joined several components containing
+forward slashes, which could cause journal reconciliation to fail before a new
+engine launched. A standard-user regression opens one committed journal using
+both spellings, checks rejection and compares the three persisted files on reopen.
+Installation errors carry distinct worker codes for home mismatch (313), invalid
+journal (314), unrecognized state (315), capacity (316), readback (317) and
+policy (318). Storage errors retain their profile code. Confirm startup on the
+existing VM before running another interruption.
+
 ## Windows settings start inspection, candidate 5177504
 
 The Windows lifecycle owner now waits for in-memory worker status publication

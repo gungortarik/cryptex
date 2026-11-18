@@ -52,6 +52,7 @@ impl Leaf {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum InstallError {
     InvalidJournal,
+    HomeMismatch,
     UnrecognizedState,
     CapacityExceeded,
     ReadbackMismatch,
@@ -105,8 +106,10 @@ pub(super) fn verify_native(home: &PrivateDirectory, policy: &impl InstallPolicy
             .read(Leaf::Journal)?
             .ok_or(InstallError::InvalidJournal)?,
     )?;
+    if journal.native_home != (&home).home()? {
+        return Err(InstallError::HomeMismatch);
+    }
     if journal.phase != Phase::Committed
-        || journal.native_home != (&home).home()?
         || policy.prepare_bootstrap(journal.bootstrap.as_bytes())? != journal.config.as_bytes()
     {
         return Err(InstallError::InvalidJournal);
@@ -260,7 +263,7 @@ fn reconcile(files: &mut impl Files, policy: &impl InstallPolicy) -> Result<()> 
     };
     let mut journal = Journal::decode(&bytes)?;
     if journal.native_home != files.home()? {
-        return Err(InstallError::InvalidJournal);
+        return Err(InstallError::HomeMismatch);
     }
     let target = policy.prepare_bootstrap(journal.bootstrap.as_bytes())?;
     let binding = policy.binding_bytes(&target)?;
@@ -395,9 +398,10 @@ fn install(files: &mut impl Files, policy: &impl InstallPolicy) -> Result<()> {
     // Recompile the saved bootstrap under CURRENT authority before ANY write.
     // Unknown fields/duplicate keys, changed profile, endpoints, peers or target
     // bytes cannot be adopted by recovering a journal.
-    if journal.native_home != files.home()?
-        || policy.prepare_bootstrap(journal.bootstrap.as_bytes())? != journal.config.as_bytes()
-    {
+    if journal.native_home != files.home()? {
+        return Err(InstallError::HomeMismatch);
+    }
+    if policy.prepare_bootstrap(journal.bootstrap.as_bytes())? != journal.config.as_bytes() {
         return Err(InstallError::InvalidJournal);
     }
     policy.verify_binding(journal.config.as_bytes(), journal.binding.as_bytes())?;

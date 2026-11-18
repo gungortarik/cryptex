@@ -122,7 +122,10 @@ fn windows_runtime_root(local_app_data: Option<&OsStr>) -> Result<PathBuf, Strin
         .join("mode-b-desktop"))
 }
 
-#[cfg(all(target_os = "windows", any(not(debug_assertions), test)))]
+#[cfg(all(
+    target_os = "windows",
+    any(not(debug_assertions), test, feature = "m8-device-recovery-check")
+))]
 fn windows_release_probe_runtime_root(local_app_data: Option<&OsStr>) -> Result<PathBuf, String> {
     Ok(PathBuf::from(local_app_data.ok_or("LOCALAPPDATA unset")?)
         .join("Cryptex-Dev")
