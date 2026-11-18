@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Local canonical-set evidence packet — November 17 (validation pending)
+## Local canonical-set evidence packet — November 17 (CI passed; owner reports pending)
 
 Owner asks to finish the remaining gates and reports both physical devices were
 closed/reopened. This is acceptable; preserve the established pairing and notes.
@@ -22,8 +22,29 @@ Eight local library tests and six Python collector/comparison tests passed,
 including empty-peer-slot refusal and the signed Mac daemon's fixed progress
 lines before its final receipt. Local format and all-target clippy passed.
 The CLI test compiled but host Application Control
-blocked execution (OS4551); do not bypass it. Run native CI on both platforms
-and obtain the exact Windows artifact before delivering the packet. This packet
+blocked execution (OS4551); do not bypass it. CI44224075300 rejected an unquoted
+YAML selector; CI44224174635 exposed missing platform-specific development-build
+configuration. CI44224376509 exposed the elevated Windows runner's UnsafeRuntime
+refusal. Keep the owner/path checks; reuse the existing disposable standard-user
+harness via LocalVerificationOnly. Mac CI44224655719 passed eight library, one
+CLI, six collector and seven updater tests plus clippy at e2c188a. That packet
+suppresses an unused product launcher, so verification rebuilds can repeat.
+Current source863bfcd passed exact-source CI44224805589: eight library, one CLI
+and six collector checks per platform, plus seven Mac updater checks, format and
+all-target clippy. Windows account/profile cleanup and artifact/package readback
+passed. Shared-harness native regression CI44224805583 also passed Windows99
+policy/writer/publication, six genuine native checks and Mac30 writer checks;
+temporary account/profile cleanup passed. Existing two-Owner scenario151.85s
+and remaining-peer restriction179.92s passed with no ignored selected checks.
+The exact CI artifact produced Downloads/Cryptex-Butunluk-863bfcd.zip (8883922 bytes),
+run6c6ab02f-d8c1-4323-a119-950383c00e69; hashes and bounded review are in
+`evidence/m8/m8-local-canonical-verification-20261117.json`.
+Next owner action: normal quit on both devices; extract the same ZIP and run
+BUTUNLUK-WINDOWS.cmd in the VM and BUTUNLUK-MAC.command on the owner's Mac.
+Collect both BUTUNLUK-SONUC ZIPs, validate exact run/source/reciprocal identities,
+then compare via lan_canonical_verification.compare. Do not reset/re-pair or
+request another note/search loop. No actual-device aggregate is accepted yet.
+This packet
 is only canonical-set evidence, not the physical interruption gate or full M8
 acceptance. Terminal retirement handoff and final review remain separate.
 

@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "source": "863bfcd8773e44868af1836c4230d29456e7b38b",
+  "scope": "Stopped existing-profile canonical-set verification and a shared owner packet; no remote acknowledgement protocol",
+  "ci": {
+    "run_id": 44224805589,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/44224805589",
+    "conclusion": "success",
+    "mac_development_feature": true,
+    "library_tests_each_platform": 8,
+    "cli_tests_each_platform": 1,
+    "collector_tests_each_platform": 6,
+    "mac_existing_build_tests": 7,
+    "format_and_all_target_clippy": "passed",
+    "windows_standard_account_and_profile_removed": true,
+    "windows_artifact_build_and_packet_readback": "passed"
+  },
+  "packet": {
+    "filename": "Cryptex-Butunluk-863bfcd.zip",
+    "bytes": 8883922,
+    "run_id": "6c6ab02f-d8c1-4323-a119-950383c00e69",
+    "sha256": "d039573dad71945f243f1967f77e3be78f3797e065f0313ae8010ab2fcaf09d1",
+    "source_archive_sha256": "3c2b17ea235b2d35c55a536d4a708e9e88ec81f8d75453a85f6a684f87e0a1d1",
+    "windows_daemon_sha256": "b91096e217d9c1575ffdf2818a361949e5668973d3dbc290292d0141f86980bd",
+    "local_readback_and_hash_binding": "passed",
+    "mac_signing": "Owner's existing local certificate; separate build with no product launcher, enrollment or old-app replacement",
+    "actual_owner_reports": "pending"
+  },
+  "shared_harness_regression": {
+    "run_id": 44224805583,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/44224805583",
+    "conclusion": "success",
+    "mac_canonical_writer_tests": 30,
+    "windows_policy_writer_publication_tests": 99,
+    "windows_native_worker_tests": 6,
+    "existing_two_owner_scenario_seconds": 151.85,
+    "remaining_peer_restriction_seconds": 179.92,
+    "temporary_accounts_and_profiles_removed": true,
+    "scope": "Disposable CI profiles and real native processes; not a new owner Mac/VM run"
+  },
+  "initial_ci_corrections": [
+    "44224075300: YAML namespaced selector required a block scalar; no jobs ran",
+    "44224174635: Mac-only development feature needs a build-time release and public certificate pin; do not enable it for Windows",
+    "44224376509 and superseded 44224655719: elevated Windows runner fixture owner refused as UnsafeRuntime; use existing isolated standard-user harness, preserve runtime checks",
+    "44224655719 Mac job passed all 22 selected tests and lint before the standard-user harness correction"
+  ],
+  "bounded_source_review": {
+    "reviewer": "implementation agent; not final independent M8 review",
+    "checks": [
+      "Existing runtime pins and daemon instance exclusion precede OS key access",
+      "Pending import/conflict evidence, missing keys, wrong identities and unauthenticated history refuse without repair",
+      "Complete authenticated record bodies include security events and retained history; pack boundaries and active/sealed state do not affect the aggregate",
+      "Expected peer must be directly approved, trusted and have actual authenticated records, not only an empty directory",
+      "Only public identity/run fields, counts and one aggregate leave the daemon; no memory bodies, per-note hashes or credentials",
+      "Strict collector schema binds run, Brain and reciprocal device IDs and refuses extra fields or invented remote protection claims",
+      "Mac combined output permits only exact successful key-load stage records before one final receipt",
+      "Repeated Mac verifier builds do not create or replace a product launcher",
+      "Windows packet binary hash and exact committed Mac source are checked against the shared manifest"
+    ]
+  },
+  "limits": [
+    "No actual Mac/VM digest comparison is accepted until both original result ZIPs arrive and match the expected packet run",
+    "Same canonical-set aggregate does not prove network delivery route, physical interruption, restart, future freshness or derived search state",
+    "No signed remote receipt or product Protected-state upgrade",
+    "Mac owner signing and Keychain access can require human interaction and have not run on the owner's device for this packet",
+    "Owner profiles and pairing remain intact; only daemon coordination locks may change",
+    "Terminal retirement handoff, physical cross-platform acceptance and final security/human review remain separate M8 gates"
+  ]
+}

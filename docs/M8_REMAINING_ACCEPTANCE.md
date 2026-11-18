@@ -25,6 +25,14 @@ candidate security/human review. Successful UI search is not canonical hash
 equality or full milestone acceptance. Do not expand this into M16 stress work.
 Search usability improvement was requested for later; it does not change M8 scope.
 
+The run-bound local canonical verifier and shared Mac/VM packet now pass
+CI44224805589 at source863bfcd. Both existing applications must be normally
+stopped; no reset, enrollment, canonical repair or note-copy loop is required.
+The packet compares daemon-verified aggregate record sets without exporting
+memory bodies. Actual owner reports are still pending; packet creation is not
+physical convergence/interruption acceptance. See
+[the packet evidence and limits](../evidence/m8/m8-local-canonical-verification-20261117.json).
+
 ## Finite closure map (November 17; historical gaps below are not a new backlog)
 
 | Contract area | Current accepted observation | Still required for closeout |
