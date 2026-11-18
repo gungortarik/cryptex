@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import threading
 import uuid
 import zipfile
 
@@ -71,10 +72,20 @@ def collect(package, plan, system, report, prepare=r.prepare):
     args=r.verify_command(daemon,root,plan,local,peer)
     report['before']=verify(execute,args,plan,local,peer)
     print('Mevcut kayitlar dogrulandi. Yeni not eklemeden baslangic ve eski islem makbuzu kontrol ediliyor.',flush=True)
+    finished=threading.Event()
+    def progress():
+        while not finished.wait(30):
+            print('Tani devam ediyor; terminali acik birak.',flush=True)
+    heartbeat=threading.Thread(target=progress,daemon=True)
+    heartbeat.start()
     try:
-        code,output=execute([desktop,'--cryptex-device-recovery-inspect',plan['run_id'],r.BRAIN,local,peer],240)
+        # Two resolve deadlines, native settings admission, four guarded reads
+        # and normal owned shutdown must fit before the outer cleanup bound.
+        code,output=execute([desktop,'--cryptex-device-recovery-inspect',plan['run_id'],r.BRAIN,local,peer],900)
         report['driver']=parse_inspection(output,code,plan,local,peer)
     finally:
+        finished.set()
+        heartbeat.join(2)
         # Always collect post-run state, including a refused native startup.
         # No expectation of ten records: the prior Mac attempt may have written.
         report['after']=verify(execute,args,plan,local,peer)
