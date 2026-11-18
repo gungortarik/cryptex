@@ -1,13 +1,20 @@
 {
   "schema": 1,
   "scope": "Three disposable Windows normal connection Owners; restriction delivered to a remaining eligible peer through native network publication",
-  "source": "81cfc9b61f8b9bd36bdfff973288e724ad26688b",
+  "source": "a1af58a3e6fa47802fb39f3a42089d935d00fc33",
   "product_change": false,
   "test": "managed_profile::native_product_receive_test::restriction::restriction_propagates_to_remaining_peer_and_survives_restart",
   "ci": {
-    "run_id": 44218900701,
-    "url": "https://github.com/gungortarik/cryptex/actions/runs/44218900701",
-    "conclusion": "failure"
+    "run_id": 44220199842,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/44220199842",
+    "conclusion": "success",
+    "windows_policy_writer_publication_tests_passed": 99,
+    "windows_native_worker_tests_passed": 6,
+    "mac_canonical_writer_tests_passed": 30,
+    "new_native_scenario_seconds": 213.91,
+    "existing_two_owner_scenario_seconds": 141.17,
+    "isolated_windows_accounts_and_profiles_removed": true,
+    "format_and_lint": "passed"
   },
   "initial_fixture_failure": {
     "run_id": 44218900701,
@@ -18,7 +25,7 @@
     "existing_native_tests_passed": 5,
     "windows_policy_writer_publication_tests_passed": 99,
     "mac_canonical_writer_tests_passed": 30,
-    "correction": "Test helper retries only Busy for at most 20 seconds; held states and every other error still fail immediately. No admission bypass or production change. Revalidation pending."
+    "correction": "Test helper retries only Busy for at most 20 seconds; held states and every other error still fail immediately. No admission bypass or production change. Corrected source a1af58a passed CI44220199842."
   },
   "required_assertions": [
     "All three pairings use signed bilateral messages, confirmed synthetic owner journals and daemon-written canonical anchors",

@@ -1,6 +1,6 @@
 # 34 — Current Implementation Handoff
 
-## Remaining-peer restriction delivery automation — November 17 (validation pending)
+## Remaining-peer restriction delivery automation — November 17 (passed)
 
 Owner asked to continue the existing program after correcting an incomplete
 message; no new retirement workflow was authorized. The next bounded check uses
@@ -11,9 +11,24 @@ each other, C must receive the decision without fixture file copies, reject the
 old roster even with a current settings revision, retain B's accepted notes,
 exchange a subsequent A note, and retain identical canonical bytes/authority
 after paused restart. This is not terminal self-retirement dissemination or an
-actual Mac/VM receipt. The native standard-user harness now requires four suites;
-source validation and CI results must be recorded before accepting this test.
+actual Mac/VM receipt. The native standard-user harness now requires four suites.
 No owner profile, pairing, update package or manual note is needed.
+Initial CI44218900701 passed Mac30, Windows99 and the existing five native checks;
+the three-peer fixture converged, then failed before restriction on ordinary
+admission Busy during resumed incoming replay (120.42s). Test-only a1af58a waits
+up to20 seconds for Busy while still refusing every hold/other error. No runtime
+gate or security rule changed. Corrected source a1af58a PASSED CI44220199842:
+Windows99 policy/writer/publication plus6 native checks, Mac30 writer checks;
+zero failures/ignored checks in the selected suites. The new native scenario
+passed in213.91s and the existing two-Owner scenario in141.17s. Both standard-user
+account/profile cleanup markers passed; format and all-target Windows clippy
+passed. Remaining-eligible-peer network propagation is accepted within this
+Windows fixture scope. No product binary changed and no owner update is needed.
+Next closure work remains actual Mac/VM daemon-verified digest/interruption
+evidence, a reviewed terminal retirement handoff, and final candidate review;
+do not repeat pairing, successful owner note delivery or this unchanged CI test.
+Evidence:
+`evidence/m8/m8-remaining-peer-restriction-20261117.json`.
 
 ## Owner lock-fix update applied; live security reconciliation acceptance — November 17
 

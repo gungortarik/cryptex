@@ -2,6 +2,19 @@
 
 ## November 17 current product checkpoint
 
+Remaining-peer propagation source `a1af58a` passed CI44220199842:
+Windows105/Mac30 selected checks, zero failures, both isolated standard-user
+account/profile cleanup markers passed. Three genuine native Windows Owners
+first converge; with B offline, A's daemon records the exact verified restriction
+and C receives it through normal network publication. A/C retain each other,
+refuse the old roster with a fresh revision, preserve accepted B notes, continue
+authorized note delivery and preserve authority/identical sealed canonical bytes
+after paused restart. New scenario213.91s; original two-Owner scenario141.17s.
+[Evidence and bounded Busy fixture correction](../evidence/m8/m8-remaining-peer-restriction-20261117.json).
+No product change or owner package is required. This does not close physical
+Mac/VM digest/interruption, terminal self-retirement delivery or final candidate
+security/human review; M8 remains OPEN.
+
 Test-only source `ed44709` passed CI44172483591: Windows104/Mac30 checks, zero
 failures, both disposable standard-user account/profile cleanup markers passed.
 The actual normal-Owner exchange/offline/replay test now also passes live

@@ -32,7 +32,7 @@ Search usability improvement was requested for later; it does not change M8 scop
 | Pairing / owner actions | Actual Mac and VM bilateral approval/recording; existing session, replay and cancellation receipts | Final candidate UI/diff review, not another pairing run |
 | Transport / incoming validation | Both normal paths connected; actual notes visible in both directions; native signed publication/replay tests | Include these sources in final security review |
 | Offline / reconnect | Both actual received notes survive paused reopening; genuine two-Owner offline tails converge with identical immutable bytes in CI | Run-bound daemon-verified digest comparison on the actual Mac/VM after reconnect/interruption |
-| Restriction / cutoff | Existing signed nonzero cutoff/beyond-boundary refusal; live normal Windows Owner compromise/retirement, stale-setting refusal, retained search and restart passed CI44172483591 (165.41s) | Actual cross-device restriction propagation/refusal on disposable identities; never retire the owner's paired test identity just to satisfy this gate |
+| Restriction / cutoff | Existing signed nonzero cutoff/beyond-boundary refusal; live local compromise/retirement passed CI44172483591; three real native Windows Owners now prove restriction delivery to the remaining eligible peer, fresh-revision old-roster refusal, continued authorized traffic and paused restart in CI44220199842 (213.91s) | Physical cross-platform restriction/refusal acceptance on disposable identities and reviewed terminal retirement delivery; never retire the owner's paired test identity just to satisfy this gate |
 | Protection status | Settings explicitly say local readiness only; Mac native status never upgrades publication to remote durability; ten shared renderer policy checks pass | Final integrated runtime/error-state review; legacy metadata CLI is not runtime protection evidence |
 | Cross-platform correctness | Prior exact-source Mac native receipts plus latest Windows normal receive and shared writer CI | Relevant final candidate CI; do not claim a Windows-only native test exercises Mac |
 | Security / human acceptance | Earlier bounded source reviews retained | Final candidate security and human diff/flow review; M8 remains OPEN |
@@ -41,6 +41,14 @@ No new remote receipt protocol, general sync-stress campaign, Search redesign or
 profile reset is implied by this map. The controlled activation proposal requires
 actual-device daemon-verified canonical digests; raw file counts and successful
 Search alone cannot close that evidence requirement.
+
+The remaining-peer propagation scenario uses daemon-written bilateral anchors,
+normal native export/incoming publication and no inter-profile canonical/inbox
+file copies. It also retains the restricted peer's accepted notes and verifies
+equal sealed canonical bytes on the remaining pair after restart. It is one
+Windows CI host, not a new Mac/VM receipt. All selected checks passed at source
+a1af58a: Windows105 and Mac30; see
+[the bounded result and initial fixture correction](../evidence/m8/m8-remaining-peer-restriction-20261117.json).
 
 Concrete propagation gap from the November 17 source review: self-retirement
 can remain in the canonical active pack (`append_confirmed_owner_security_operation`
