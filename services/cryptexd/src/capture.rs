@@ -910,6 +910,45 @@ mod tests {
     }
 
     #[test]
+    fn paired_profile_resolves_same_note_in_open_and_sealed_packs() {
+        let (root, peer, other, store) = crate::trusted_import_probe::tests::pair();
+        let env = SecureStoreEnvironment::Dev;
+        let id = "11111111-2222-4333-8444-555555555555";
+        let request = || req(id, "queued", Classification::Public);
+        let cfg = CanonicalWriterConfig::default();
+        let saved = assert_committed(capture_memory_note(&store, env, &root, request(), &cfg));
+        assert_eq!(
+            assert_committed(resolve_capture(&store, env, &root, id)),
+            saved
+        );
+        // Another ordinary capture seals the pack containing the approval and first note.
+        assert_committed(capture_memory_note(
+            &store,
+            env,
+            &root,
+            req(
+                "33333333-2222-4333-8444-555555555555",
+                "seal",
+                Classification::Public,
+            ),
+            &CanonicalWriterConfig {
+                seal_event_threshold: 1,
+            },
+        ));
+        assert_eq!(
+            assert_committed(resolve_capture(&store, env, &root, id)),
+            saved
+        );
+        assert_eq!(
+            assert_committed(capture_memory_note(&store, env, &root, request(), &cfg)),
+            saved
+        );
+        for path in [root, peer, other] {
+            fs::remove_dir_all(path).unwrap();
+        }
+    }
+
+    #[test]
     fn invalid_and_oversized_text_rejected() {
         let (root, store, _) = prepared();
         let cfg = CanonicalWriterConfig::default();
