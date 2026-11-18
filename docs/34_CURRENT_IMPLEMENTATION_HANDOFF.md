@@ -18,6 +18,11 @@ See `docs/milestones/M8_DEVICE_RECOVERY_PACKET.md` for exact limits: this is que
 work plus abrupt process loss, not evidence of a byte interrupted mid-transfer or
 power loss. Local six receipt checks, twelve Windows child-job checks, eight
 applicable Mac-builder checks and Desktop clippy passed; Mac-only checks await CI.
+Three initial driver tests also ran locally; the revised five-test binary compiled
+but host Application Control blocked execution (OS4551). Do not bypass it. The
+driver now waits only for the ordinary route's two derived catch-up states; other
+canonical, policy, protocol or identity holds fail immediately. The first CI run
+was cancelled after this review fix so the packet will use only revised source.
 The new focused workflow is manual. No owner recovery packet has been delivered
 and no physical interruption receipt exists at this checkpoint. Validate both
 platforms and exact-source package readback before handing the packet to owner.

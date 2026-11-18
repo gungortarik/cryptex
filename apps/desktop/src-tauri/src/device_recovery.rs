@@ -141,7 +141,7 @@ impl Session {
             .native
             .as_mut()
             .ok_or(Failure::Identity)?
-            .read_bootstrap_brain_identity()
+            .read_pairing_brain_identity()
             .map_err(|_| Failure::Identity)?;
         let brain: serde_json::Value = serde_json::from_str(&raw).map_err(|_| Failure::Identity)?;
         if brain.get("brain_id").and_then(|v| v.as_str()) != Some(&plan.brain) {
@@ -253,29 +253,7 @@ impl Session {
             IPC,
         )
         .map_err(|_| Failure::Search)?;
-        if !result.accepted
-            || result.error.is_some()
-            || result.hold_reason.is_some()
-            || result.daemon_pid != self.pid
-        {
-            return Err(Failure::Search);
-        }
-        let hits = result.hits.ok_or(Failure::Search)?;
-        if hits.len() > 1 || result.has_more {
-            return Err(Failure::Search);
-        }
-        match hits.first() {
-            None => Ok(false),
-            Some(hit)
-                if hit.text == marker
-                    && hit.brain_id == plan.brain
-                    && hit.device_id == device
-                    && hit.classification == "public" =>
-            {
-                Ok(true)
-            }
-            _ => Err(Failure::Identity),
-        }
+        search_observation(result, self.pid, plan, device, &marker)
     }
     fn wait_found(&mut self, plan: &Plan, device: &str, ack: bool, seconds: u64) -> Result<()> {
         let deadline = Instant::now() + Duration::from_secs(seconds);
@@ -292,7 +270,7 @@ impl Session {
     fn interrupt(mut self) -> Result<()> {
         #[cfg(windows)]
         {
-            let mut child = self.child.take().ok_or(Failure::Interruption)?;
+            let child = self.child.as_mut().ok_or(Failure::Interruption)?;
             // Retained Child only. Never accept a process name, PID or status
             // response as authority to terminate a process.
             if child
@@ -304,6 +282,7 @@ impl Session {
             }
             child.kill().map_err(|_| Failure::Interruption)?;
             let status = child.wait().map_err(|_| Failure::Cleanup)?;
+            self.child.take();
             if status.success() {
                 return Err(Failure::Interruption);
             }
@@ -359,6 +338,49 @@ impl Session {
                 .map_err(|_| Failure::Cleanup)?;
         }
         Ok(())
+    }
+}
+
+fn search_observation(
+    result: ipc::DesktopSearchResponse,
+    pid: u32,
+    plan: &Plan,
+    device: &str,
+    marker: &str,
+) -> Result<bool> {
+    if !result.accepted || result.error.is_some() || result.daemon_pid != pid {
+        return Err(Failure::Search);
+    }
+    if let Some(reason) = result.hold_reason.as_deref() {
+        // The ordinary route itself requests a derived rebuild for these
+        // two states. Wait within the same deadline; never expose stale
+        // hits or treat a policy/integrity hold as an empty result.
+        return if matches!(
+            reason,
+            "materialization_state_missing_or_stale" | "projection_does_not_match_canonical"
+        ) && result.hits.is_none()
+            && !result.has_more
+        {
+            Ok(false)
+        } else {
+            Err(Failure::Search)
+        };
+    }
+    let hits = result.hits.ok_or(Failure::Search)?;
+    if hits.len() > 1 || result.has_more {
+        return Err(Failure::Search);
+    }
+    match hits.first() {
+        None => Ok(false),
+        Some(hit)
+            if hit.text == marker
+                && hit.brain_id == plan.brain
+                && hit.device_id == device
+                && hit.classification == "public" =>
+        {
+            Ok(true)
+        }
+        _ => Err(Failure::Identity),
     }
 }
 impl Drop for Session {
@@ -498,6 +520,76 @@ mod tests {
             .flat_map(|id| [false, true].map(|ack| plan.marker(id, ack)))
             .collect();
         assert_eq!(markers.len(), 4);
+    }
+    #[test]
+    fn derived_catchup_can_wait_but_integrity_holds_or_foreign_processes_cannot() {
+        let plan = Plan::parse(&args()).unwrap();
+        let held = ipc::DesktopSearchResponse {
+            protocol_version: 1,
+            request_id: None,
+            accepted: true,
+            error: None,
+            operation: Some("content.search.result".into()),
+            daemon_pid: 123,
+            hits: None,
+            hold_reason: Some("materialization_state_missing_or_stale".into()),
+            next_cursor: None,
+            has_more: false,
+        };
+        assert!(!search_observation(held.clone(), 123, &plan, &plan.local, "marker").unwrap());
+        let mut invalid = held.clone();
+        invalid.hits = Some(vec![]);
+        assert!(search_observation(invalid, 123, &plan, &plan.local, "marker").is_err());
+        assert!(search_observation(held.clone(), 456, &plan, &plan.local, "marker").is_err());
+        for reason in [
+            "canonical_verification_unavailable",
+            "unresolved_dependency",
+            "unsupported_semantics",
+            "operation_deadline_exceeded",
+        ] {
+            let mut invalid = held.clone();
+            invalid.hold_reason = Some(reason.into());
+            assert!(search_observation(invalid, 123, &plan, &plan.local, "marker").is_err());
+        }
+    }
+    #[test]
+    fn only_exact_verified_marker_from_expected_device_counts_as_received() {
+        let plan = Plan::parse(&args()).unwrap();
+        let marker = plan.marker(&plan.peer, false);
+        let hit = ipc::DesktopSearchHit {
+            event_id: plan.run.clone(),
+            brain_id: plan.brain.clone(),
+            device_id: plan.peer.clone(),
+            device_seq: "7".into(),
+            created_at: "2026-11-17T00:00:00Z".into(),
+            event_type: "memory.note.created".into(),
+            classification: "public".into(),
+            content_hash: "a".repeat(64),
+            signing_key_id: "a".repeat(32),
+            text: marker.clone(),
+        };
+        let valid = ipc::DesktopSearchResponse {
+            protocol_version: 1,
+            request_id: None,
+            accepted: true,
+            error: None,
+            operation: Some("content.search.result".into()),
+            daemon_pid: 123,
+            hits: Some(vec![hit.clone()]),
+            hold_reason: None,
+            next_cursor: None,
+            has_more: false,
+        };
+        assert!(search_observation(valid.clone(), 123, &plan, &plan.peer, &marker).unwrap());
+        let mut duplicate = valid.clone();
+        duplicate.hits.as_mut().unwrap().push(hit);
+        assert!(search_observation(duplicate, 123, &plan, &plan.peer, &marker).is_err());
+        let mut wrong = valid.clone();
+        wrong.hits.as_mut().unwrap()[0].device_id = plan.local.clone();
+        assert!(search_observation(wrong, 123, &plan, &plan.peer, &marker).is_err());
+        let mut wrong = valid;
+        wrong.hits.as_mut().unwrap()[0].text.push('x');
+        assert!(search_observation(wrong, 123, &plan, &plan.peer, &marker).is_err());
     }
     #[test]
     fn missing_changed_or_unready_peer_never_changes_settings() {
