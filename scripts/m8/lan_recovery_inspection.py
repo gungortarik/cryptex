@@ -12,6 +12,8 @@ import lan_device_recovery as r
 from mac_identity_preflight import unique_object
 
 TARGET_RUN = '4bbd029c-2ab2-426f-aec5-725b67cbcaf7'
+QUEUED_BASELINE = '58400d9ac30516f4d3a502d7365ec16a4444b540fc03162d3717ee095b023e5e'
+QUEUED_BASELINE_RECORDS = 11
 QUEUED_RUN = '813cf272-39bd-4cbf-82a9-ddf75e48c7ac'
 STAGES = ['inspect_existing_profile','inspection_completed']
 FIELDS = {'schema','purpose','run_id','brain_id','local_device_id','peer_device_id','outcome','error',
@@ -159,7 +161,7 @@ def collect(package, plan, system, report, prepare=r.prepare, *, start_only=Fals
     report['outcome']='diagnostics_collected'
     report['native_inspection_completed']=report['driver']['receipt']['outcome']=='inspection_completed'
     if queued_note and report['native_inspection_completed']:
-        if after['canonical_records'] <= r.BASELINE_RECORDS or after['canonical_set_sha256'] == r.BASELINE:
+        if after['canonical_records'] <= QUEUED_BASELINE_RECORDS or after['canonical_set_sha256'] == QUEUED_BASELINE:
             raise r.Refused('queued_note_set_inconsistent')
         report['queued_note_verified_after_restart'] = True
 

@@ -14,8 +14,8 @@ from lan_transfer_diagnostic import BRAIN, MAC, WINDOWS, Refused, read_metadata
 from lan_canonical_verification import command as verify_command, parse_output, validate_receipt, compare
 from mac_identity_preflight import unique_object
 
-BASELINE = '58400d9ac30516f4d3a502d7365ec16a4444b540fc03162d3717ee095b023e5e'
-BASELINE_RECORDS = 11
+BASELINE = '3b2bb10901798c7de74f41aaf05d891eec99d66fa246fd44a8098eb93a302898'
+BASELINE_RECORDS = 12
 STAGES = ['start_existing_profile', 'capture_while_disconnected', 'interrupt_owned_process_after_start',
           'restart_and_receive', 'allow_peer_receipt_delivery', 'offline_restart', 'completed']
 ERRORS = {'arguments', 'existing_profile_required', 'startup', 'identity', 'connections',
@@ -23,7 +23,7 @@ ERRORS = {'arguments', 'existing_profile_required', 'startup', 'identity', 'conn
 DRIVER_FIELDS = {'schema', 'purpose', 'run_id', 'brain_id', 'local_device_id', 'peer_device_id',
                  'outcome', 'error', 'midstream_bytes_interrupted', 'remote_durability_verified', 'interrupted_component'}
 OBSERVATION_STEPS = {'startup_health','brain_read','brain_parse','startup_identity','connections_read','connections_apply',
-                     'resolve_prior_mac','resolve_queued','resolve_received','guarded_search','search_local_queued',
+                     'resolve_prior_mac','resolve_prior_mac_queued','resolve_queued','resolve_received','guarded_search','search_local_queued',
                      'search_local_received','search_peer_queued','search_peer_received',
                      'queued_before_restart','queued_after_restart'}
 OBSERVATION_OUTCOMES = {'begin','ok','error','paused','ready','committed','not_committed','held','found','not_visible'}
@@ -167,7 +167,7 @@ def check_result(report, plan, local, peer):
     committed = [o['step'] for o in driver['observations'] if o['outcome']=='committed']
     expected = ['resolve_queued', 'resolve_received']
     if local == MAC:
-        expected.insert(0, 'resolve_prior_mac')
+        expected = ['resolve_prior_mac', 'resolve_prior_mac_queued', *expected]
     if committed != expected:
         raise Refused('missing_restarted_capture_receipts')
     if after['canonical_records'] != BASELINE_RECORDS + 4 or after['canonical_devices'] != 2:
@@ -226,7 +226,9 @@ def collect(package, plan, system, report):
         raise Refused('baseline_verification_refused')
     report['before'] = parse_output(output, plan, local, peer)
     check_baseline(report['before'])
-    print('\nDerleme ve on kontrol tamam. Diger cihazda da KESINTI paketini baslat.\n'
+    if system == 'Darwin':
+        print('MAC HAZIR. Windows VM icinde KESINTI-WINDOWS.cmd dosyasini ac.', flush=True)
+    print('12 imzali kayit dogrulandi. Kesinti testi basliyor.\n'
           'Not girme veya Search yapma gerekmiyor. Terminal acik, cihazlar uyanik kalsin.\n'
           'Her cihaz iki kisa Public test kaydi ekleyecek; bunlar testten sonra kalacak.', flush=True)
     # A fixed progress heartbeat is useful even while native runners retain

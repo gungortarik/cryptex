@@ -16,9 +16,11 @@ guarded search and connection-setting routes do all work.
 ## Sequence
 
 1. Normal applications must already be closed. Verify the established signed
-   ten-record/two-device canonical set against the accepted November 17 aggregate.
+   twelve-record/two-device canonical set against the matching Windows and Mac
+   queued-note receipts (aggregate `3b2bb10901798c7de74f41aaf05d891eec99d66fa246fd44a8098eb93a302898`).
    Changed data, identity, unfinished imports or an active instance stop the run.
 2. Build/install beside the old application. Keep existing launchers and keys.
+   Mac resolves both prior queued-capture receipts before writing a new marker.
    Each device starts its own exact retained daemon child. Require one expected
    trusted peer and saved LAN endpoints. Either initial pause preference is valid.
 3. Pause transport through normal settings, commit one fixed Public run marker,
@@ -37,7 +39,7 @@ guarded search and connection-setting routes do all work.
    markers again. Restore the original pause preference and close normally.
 6. Each stopped daemon independently verifies its final canonical set. Acceptance
    requires both run/source-bound reports, the full ordered stage receipts,
-   successful cleanup, fourteen signed records from two devices, and equal final
+   successful cleanup, sixteen signed records from two devices, and equal final
    aggregates. One successful side is insufficient. A divergent or delayed peer
    produces incomplete evidence, never a remote durability claim.
 

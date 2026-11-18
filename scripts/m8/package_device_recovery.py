@@ -49,12 +49,12 @@ def build(artifact, revision, output, *, inspection=False, windows_inspection_ru
               hashes={n:hashlib.sha256(d).hexdigest() for n,d in data.items()})
     members.update({'payload/'+n:d for n,d in data.items()})
     members.update({'source.zip':raw,'recovery.json':(json.dumps(plan,indent=2)+'\n').encode(),
-        'KESINTI-WINDOWS.cmd':b'@echo off\r\ncd /d "%~dp0"\r\npy -3 -B lan_device_recovery.py\r\npause\r\n',
+        'KESINTI-WINDOWS.cmd':b'@echo off\r\ncd /d "%~dp0"\r\nif not exist lan_device_recovery.py (echo ZIP dosyasini tamamen ayiklayin. & pause & exit /b 1)\r\npy -3 -B lan_device_recovery.py\r\npause\r\n',
         'KESINTI-MAC.command':b'#!/bin/zsh\nset -eu\ncd -- "${0:A:h}"\n/usr/bin/python3 -B lan_device_recovery.py\n',
         'BASLA.txt':(
             'Ayni ZIPi kendi Macine ve Windows VMine TUMUNU AYIKLA ile cikart.\n'
             'Iki Cryptexi normal Quit / Command-Q ile kapat. Pause sync ayarina dokunman gerekmiyor.\n'
-            'Mac: KESINTI-MAC.command. Derleme bitince Windows VM: KESINTI-WINDOWS.cmd.\n'
+            'Mac: KESINTI-MAC.command. MAC HAZIR yazinca Windows VM: KESINTI-WINDOWS.cmd.\n'
             'Ana Windows cihazinda calistirma. Profilleri silme veya yeniden eslestirme.\n'
             'Terminal pencerelerini acik, iki cihazi ayni agda ve uyanik tut.\n'
             'Mac mevcut yerel sertifikayla ayri test uygulamasi derler. Keychain izni macOS penceresinde verilir.\n'

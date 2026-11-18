@@ -1,5 +1,14 @@
 # 34 — Current Implementation Handoff
 
+## Next physical interruption run from twelve verified records
+
+The before and after receipts from the Windows and Mac queued-note checks
+agree on the twelve-record aggregate in the recovery specification. The new
+packet uses a fresh run UUID. On Mac it checks both earlier queued-capture
+receipts before the first new capture. Each device contributes two Public
+markers. Compare both final reports for sixteen signed records, equal
+aggregates and offline restart evidence. Physical results are pending.
+
 ## Windows guarded lookup of the already reconciled Mac record
 
 The old `search_hold` label covers several daemon reasons; the original
@@ -20,7 +29,16 @@ Recovery CI 44413139517 passed on both platforms for `691e4fe`, including
 the standard-user Windows import/IPC admission regression. The single-VM
 packet is `Cryptex-VM-Not-Kontrol-691e4fe.zip`, SHA-256
 `c3db844340cf10aa28979c6a3503178d98f6eebb4f926ec0473fd70d4a8f6d47`.
-The VM result for this packet is pending.
+The VM returned `BEKLEYEN-NOT-SONUC-Windows-76e13a3dee2b.zip` (SHA-256
+`0ef4ee45c3f6c5dc6d48b49137e9c72f61aee83d38fd345dfc535cfa8640ad5f`).
+Run, source, executable hashes and ordered observations matched the packet.
+Windows found the exact Mac-origin queued note before and after a normal
+application restart and closed cleanly. Both Windows receipts verified the
+same 12 records and matched the earlier final Mac digest. The only transient
+busy observation was on the initial Brain read. No guarded search hold was
+observed in this run, so the earlier generic hold remains unattributed.
+The Windows note lookup is complete. The separate two-device controlled
+interruption still requires a fresh run bound to the verified 12-record set.
 
 ## Existing queued Mac note for run 813cf272
 

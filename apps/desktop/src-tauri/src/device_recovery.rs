@@ -13,7 +13,13 @@ pub(super) const START_INSPECT_FLAG: &str = "--cryptex-inspect-connection-start"
 pub(super) const QUEUED_NOTE_FLAG: &str = "--cryptex-inspect-queued-note";
 #[cfg(target_os = "macos")]
 const CUT_FLAG: &str = "--cryptex-device-recovery-desktop-loss";
-const PRIOR_MAC_CAPTURE: &str = "4bbd029c-2ab2-426f-aec5-725b67cbcaf7";
+const PRIOR_MAC_CAPTURES: [(&str, &str); 2] = [
+    ("4bbd029c-2ab2-426f-aec5-725b67cbcaf7", "resolve_prior_mac"),
+    (
+        "813cf272-39bd-4cbf-82a9-ddf75e48c7ac",
+        "resolve_prior_mac_queued",
+    ),
+];
 const IPC: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -683,14 +689,20 @@ fn stage(name: &str) {
     println!("{}", serde_json::json!({"recovery_stage":name}));
 }
 fn cut(plan: &Plan, root: &Path) -> Result<bool> {
-    if plan.run == PRIOR_MAC_CAPTURE || plan.capture_id(true) == PRIOR_MAC_CAPTURE {
+    let ack = plan.capture_id(true);
+    if PRIOR_MAC_CAPTURES
+        .iter()
+        .any(|&(id, _)| plan.run == id || ack == id)
+    {
         return Err(Failure::Arguments);
     }
     stage("start_existing_profile");
     let mut session = Session::start(root, plan)?;
     #[cfg(target_os = "macos")]
-    if !session.inspect_receipt(PRIOR_MAC_CAPTURE, "resolve_prior_mac")? {
-        return Err(Failure::CaptureUncertain);
+    for (id, step) in PRIOR_MAC_CAPTURES {
+        if !session.inspect_receipt(id, step)? {
+            return Err(Failure::CaptureUncertain);
+        }
     }
     let initial = session.recovery_settings(plan, None)?;
     session.pause(plan, true)?;
