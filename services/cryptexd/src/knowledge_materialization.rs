@@ -44,6 +44,8 @@ use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 #[path = "knowledge_materialization/anchor_recovery.rs"]
 mod anchor_recovery;
 
+pub mod local_receipt;
+
 #[cfg(test)]
 thread_local! {
     static POLICY_SCAN_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };

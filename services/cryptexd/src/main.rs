@@ -162,6 +162,58 @@ fn run_transport_enrollment(args: &[String]) -> Result<(), LifecycleError> {
 }
 
 fn run_replication(args: &[String]) -> Result<(), LifecycleError> {
+    if args.first().is_some_and(|arg| arg == "verify-local") {
+        let [
+            _,
+            root_flag,
+            root,
+            env_flag,
+            environment,
+            run_flag,
+            run_id,
+            brain_flag,
+            brain_id,
+            local_flag,
+            local_id,
+            peer_flag,
+            peer_id,
+        ] = args
+        else {
+            return Err(LifecycleError::Usage(
+                "invalid verify-local arguments".into(),
+            ));
+        };
+        if root_flag != "--runtime-root"
+            || env_flag != "--environment"
+            || run_flag != "--run-id"
+            || brain_flag != "--brain-id"
+            || local_flag != "--local-device-id"
+            || peer_flag != "--peer-device-id"
+        {
+            return Err(LifecycleError::Usage(
+                "invalid verify-local arguments".into(),
+            ));
+        }
+        let environment = match environment.as_str() {
+            "dev" => SecureStoreEnvironment::Dev,
+            "prod" => SecureStoreEnvironment::Prod,
+            _ => {
+                return Err(LifecycleError::Usage(
+                    "invalid verify-local environment".into(),
+                ));
+            }
+        };
+        return verify_local_with_platform_store(
+            Path::new(root),
+            environment,
+            &cryptexd::knowledge_materialization::local_receipt::Request {
+                run_id,
+                brain_id,
+                local_device_id: local_id,
+                peer_device_id: peer_id,
+            },
+        );
+    }
     if args.first().is_some_and(|arg| arg == "validate-incoming") {
         let [_, root_flag, root, env_flag, environment, paths @ ..] = args else {
             return Err(LifecycleError::Usage("replication validate-incoming requires --runtime-root <path> --environment <dev|prod> <relative-segment>...".into()));
@@ -198,6 +250,41 @@ fn run_replication(args: &[String]) -> Result<(), LifecycleError> {
         .map_err(|_| LifecycleError::Attention("cannot serialize replication status".into()))?;
     println!("{json}");
     Ok(())
+}
+
+fn verify_local_with_platform_store(
+    root: &Path,
+    environment: SecureStoreEnvironment,
+    request: &cryptexd::knowledge_materialization::local_receipt::Request<'_>,
+) -> Result<(), LifecycleError> {
+    #[cfg(windows)]
+    let store = cryptexd::WindowsCredentialStore::new();
+    #[cfg(target_os = "macos")]
+    let store = cryptexd::MacosKeychainStore::new();
+    #[cfg(any(windows, target_os = "macos"))]
+    {
+        let report = cryptexd::knowledge_materialization::local_receipt::inspect(
+            root,
+            &store,
+            environment,
+            request,
+        )
+        .map_err(|error| LifecycleError::Attention(error.to_string()))?;
+        println!(
+            "{}",
+            serde_json::to_string(&report).map_err(|_| LifecycleError::Attention(
+                "local_verification_serialization".into()
+            ))?
+        );
+        Ok(())
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = (root, environment, request);
+        Err(LifecycleError::Usage(
+            "local verification requires Windows or macOS secure storage".into(),
+        ))
+    }
 }
 
 fn validate_incoming_with_platform_store(
@@ -1521,6 +1608,7 @@ fn usage_text() -> String {
         "  cryptexd",
         "  cryptexd identity enroll-local --runtime-root <app-data-path> --environment <dev|prod>",
         "  cryptexd replication status --runtime-root <app-data-path> (read-only metadata diagnostics)",
+        "  cryptexd replication verify-local --runtime-root <app-data-path> --environment <dev|prod> --run-id <uuid> --brain-id <uuid> --local-device-id <uuid> --peer-device-id <uuid> (offline local evidence only)",
         "  cryptexd replication validate-incoming --runtime-root <app-data-path> --environment <dev|prod> <relative-segment>... (stages, validates, discards)",
         "  cryptexd pilot-fixture timeline-v1 --runtime-root <fresh-pilot-path> --confirm-isolated-pilot",
         "  cryptexd pilot-fixture signed-transfer-v1 --runtime-root <fresh-pilot-path> --confirm-isolated-pilot (synthetic signed segment)",
@@ -1547,6 +1635,51 @@ fn usage_text() -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn verify_local_cli_refuses_incomplete_or_unexpected_options() {
+        for args in [
+            vec!["verify-local"],
+            vec!["verify-local", "--runtime-root", "not-an-absolute-path"],
+            vec![
+                "verify-local",
+                "--runtime-root",
+                "unused",
+                "--environment",
+                "dev",
+                "--run-id",
+                "unused",
+                "--brain-id",
+                "unused",
+                "--local-device-id",
+                "unused",
+                "--peer-device-id",
+                "unused",
+                "--force",
+            ],
+            vec![
+                "verify-local",
+                "--runtime-root",
+                "unused",
+                "--environment",
+                "invalid",
+                "--run-id",
+                "unused",
+                "--brain-id",
+                "unused",
+                "--local-device-id",
+                "unused",
+                "--peer-device-id",
+                "unused",
+            ],
+        ] {
+            let args = args.into_iter().map(str::to_owned).collect::<Vec<_>>();
+            assert!(matches!(
+                super::run_replication(&args),
+                Err(super::LifecycleError::Usage(_))
+            ));
+        }
+    }
+
     #[test]
     fn incoming_validation_requires_explicit_environment_and_nonempty_batch() {
         for args in [

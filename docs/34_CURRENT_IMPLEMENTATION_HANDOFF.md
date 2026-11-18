@@ -1,5 +1,32 @@
 # 34 — Current Implementation Handoff
 
+## Local canonical-set evidence packet — November 17 (validation pending)
+
+Owner asks to finish the remaining gates and reports both physical devices were
+closed/reopened. This is acceptable; preserve the established pairing and notes.
+Do not treat the report as new daemon-verified restart/interruption evidence or
+assume DHCP addresses remained fixed.
+
+Implementing the already accepted product activation requirement for run-bound
+daemon-verified digests: `replication verify-local` pins an existing stopped
+runtime, refuses pending imports/holds, checks the expected identities and OS key,
+and uses the locked canonical signature/chain/trust scan. The checksum includes
+all authenticated record bodies, including security events and active packs;
+no canonical repair, sealing, projection rebuild or key replacement occurs.
+Remote delivery/durability/derived-results flags remain false. The owner ZIP
+contains a CI Windows verifier and exact source for a separately signed Mac
+build, reusing the existing local certificate; neither old app is replaced.
+See `docs/milestones/M8_LOCAL_CANONICAL_VERIFICATION.md`.
+
+Eight local library tests and six Python collector/comparison tests passed,
+including empty-peer-slot refusal and the signed Mac daemon's fixed progress
+lines before its final receipt. Local format and all-target clippy passed.
+The CLI test compiled but host Application Control
+blocked execution (OS4551); do not bypass it. Run native CI on both platforms
+and obtain the exact Windows artifact before delivering the packet. This packet
+is only canonical-set evidence, not the physical interruption gate or full M8
+acceptance. Terminal retirement handoff and final review remain separate.
+
 ## Remaining-peer restriction delivery automation — November 17 (passed)
 
 Owner asked to continue the existing program after correcting an incomplete

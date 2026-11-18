@@ -458,6 +458,39 @@ pub struct ImportStagingSession {
 }
 
 impl ImportStagingSession {
+    /// Offline diagnostics must not certify a canonical set while unpublished
+    /// imports or authenticated conflict evidence await normal startup recovery.
+    /// Caller owns the daemon instance. Keep original directory pins alive;
+    /// never create/clean a transaction or interpret a receipt as authority.
+    pub(crate) fn pin_clean_import_state(
+        runtime_root: &Path,
+    ) -> Result<Vec<DirectoryPin>, ImportStagingError> {
+        let mut pins = Self::pin_existing_runtime(runtime_root)?;
+        let canonical = runtime_root.join("canonical");
+        pins.extend(inspect_directory_chain(&canonical, true)?);
+        for (leaf, allowed) in [
+            ("import-staging", None),
+            ("import-journal", Some("import.lock")),
+        ] {
+            let path = canonical.join(leaf);
+            if !entry_exists(&path)? {
+                continue;
+            }
+            pins.extend(inspect_directory_chain(&path, true)?);
+            for entry in fs::read_dir(&path)? {
+                let entry = entry?;
+                if allowed.is_none_or(|name| entry.file_name() != name) {
+                    return Err(ImportStagingError::RecoveryConflict(
+                        "import evidence requires normal daemon recovery before diagnostics".into(),
+                    ));
+                }
+                // Even the allowed coordination leaf must not hide an alias.
+                let _ = open_recovery_source(&entry.path())?;
+            }
+        }
+        Ok(pins)
+    }
+
     /// Validate and pin an existing runtime before acquiring instance ownership.
     /// This performs no staging or canonical directory creation.
     pub(crate) fn pin_existing_runtime(
