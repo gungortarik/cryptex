@@ -9,6 +9,13 @@ receipts before the first new capture. Each device contributes two Public
 markers. Compare both final reports for sixteen signed records, equal
 aggregates and offline restart evidence. Physical results are pending.
 
+Windows and macOS recovery CI passed in run `44417559551` for `90a0aef`.
+The delivered `Cryptex-Kesinti-12-Kayit-90a0aef.zip` uses run
+`9b502d61-00ed-4686-841d-10bce8fec61b`, ZIP SHA-256
+`9d1954e997f9a5d5dfe9a833e5cd84596512e7a55abd028b0276317a65811462`.
+Use this same ZIP on both devices. Await both run-bound `KESINTI-SONUC`
+reports before evaluating physical acceptance or scheduling another capture.
+
 ## Windows guarded lookup of the already reconciled Mac record
 
 The old `search_hold` label covers several daemon reasons; the original
