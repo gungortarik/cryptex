@@ -30,6 +30,13 @@ class InspectionTests(unittest.TestCase):
         with self.assertRaises(r.Refused): d.parse_inspection(output('identity',note),0,PLAN,r.WINDOWS,r.MAC)
         with self.assertRaises(r.Refused): d.parse_inspection(output(None,note),0,PLAN,r.WINDOWS,r.MAC)
 
+    def test_typed_runtime_and_capture_failures_survive_collection(self):
+        for step, code in [('brain_read','runtime_rebuild_required'),
+                           ('resolve_queued','receipt_missing'), ('guarded_search','runtime_policy_conflict')]:
+            note=dict(step=step,outcome='error',code=code,os_code=None)
+            parsed=d.parse_inspection(output('capture_uncertain',note),2,PLAN,r.WINDOWS,r.MAC)
+            self.assertEqual(parsed['observations'],[note])
+
     def test_mutation_claims_wrong_run_unknown_logs_and_duplicate_keys_refused(self):
         for raw in [output().replace('"capture_invoked": false','"capture_invoked": true'),
                     output().replace(PLAN['run_id'],'b'*36),output()+'\nprivate memory body',

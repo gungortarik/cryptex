@@ -78,6 +78,34 @@ fn observation(step: &str, outcome: &str, code: Option<&str>, os_code: Option<i3
         println!("{line}");
     }
 }
+// Return only static wire codes. Unknown response text never leaves the device.
+fn inspection_code(value: Option<&str>, fallback: &'static str) -> &'static str {
+    const CODES: &[&str] = &[
+        "runtime_busy",
+        "runtime_recovery_required",
+        "runtime_policy_conflict",
+        "runtime_rebuild_required",
+        "runtime_stopped",
+        "runtime_mismatch",
+        "receipt_missing",
+        "receipt_persist_failed",
+        "verification_unavailable",
+        "fingerprint_mismatch",
+        "lock_failed",
+        "writer_failure",
+        "durability_unconfirmed",
+        "invalid_request",
+        "enrollment_required",
+        "identity_unavailable",
+        "capture_id_conflict",
+    ];
+    CODES
+        .iter()
+        .copied()
+        .find(|code| Some(*code) == value)
+        .unwrap_or(fallback)
+}
+
 fn io_code(error: &std::io::Error) -> &'static str {
     // Exact known protocol codes only. No arbitrary server text, paths or
     // credential-related OS descriptions are exported.
@@ -87,17 +115,19 @@ fn io_code(error: &std::io::Error) -> &'static str {
         "local_identity_unavailable" => "local_identity_unavailable",
         "bootstrap_exchange_request_rejected" => "bootstrap_request_rejected",
         "unauthorized_client_process" => "unauthorized_client_process",
-        "runtime_busy" => "runtime_busy",
-        _ => match error.kind() {
-            std::io::ErrorKind::TimedOut => "timed_out",
-            std::io::ErrorKind::PermissionDenied => "permission_denied",
-            std::io::ErrorKind::InvalidData => "invalid_data",
-            std::io::ErrorKind::NotFound => "not_found",
-            std::io::ErrorKind::WouldBlock => "would_block",
-            std::io::ErrorKind::UnexpectedEof => "unexpected_eof",
-            std::io::ErrorKind::BrokenPipe => "broken_pipe",
-            _ => "io_other",
-        },
+        message => inspection_code(
+            Some(message),
+            match error.kind() {
+                std::io::ErrorKind::TimedOut => "timed_out",
+                std::io::ErrorKind::PermissionDenied => "permission_denied",
+                std::io::ErrorKind::InvalidData => "invalid_data",
+                std::io::ErrorKind::NotFound => "not_found",
+                std::io::ErrorKind::WouldBlock => "would_block",
+                std::io::ErrorKind::UnexpectedEof => "unexpected_eof",
+                std::io::ErrorKind::BrokenPipe => "broken_pipe",
+                _ => "io_other",
+            },
+        ),
     }
 }
 fn observed_io<T>(step: &str, value: std::io::Result<T>, failure: Failure) -> Result<T> {
@@ -347,8 +377,20 @@ impl Session {
             ),
             Failure::CaptureUncertain,
         )?;
-        if !response.accepted || response.error.is_some() || response.daemon_pid != self.pid {
-            observation(step, "error", Some("response_refused"), None);
+        if response.daemon_pid != self.pid {
+            observation(step, "error", Some("identity_mismatch"), None);
+            return Err(Failure::CaptureUncertain);
+        }
+        if !response.accepted || response.error.is_some() {
+            observation(
+                step,
+                "error",
+                Some(inspection_code(
+                    response.error.as_deref(),
+                    "response_refused",
+                )),
+                None,
+            );
             return Err(Failure::CaptureUncertain);
         }
         match response.outcome.as_deref() {
@@ -362,7 +404,17 @@ impl Session {
                 observation(step, "not_committed", None, None)
             }
             _ => {
-                observation(step, "error", Some("capture_unresolved"), None);
+                let reason = match response.outcome.as_deref() {
+                    Some("uncertain") => response.uncertain_reason.as_deref(),
+                    Some("rejected") => response.reject_code.as_deref(),
+                    _ => None,
+                };
+                observation(
+                    step,
+                    "error",
+                    Some(inspection_code(reason, "capture_unresolved")),
+                    None,
+                );
                 return Err(Failure::CaptureUncertain);
             }
         }
@@ -398,6 +450,14 @@ impl Session {
             ),
             Failure::Search,
         )?;
+        if result.daemon_pid == self.pid && (!result.accepted || result.error.is_some()) {
+            observation(
+                "guarded_search",
+                "error",
+                Some(inspection_code(result.error.as_deref(), "response_refused")),
+                None,
+            );
+        }
         if let Some(reason) = result.hold_reason.as_deref() {
             let code = match reason {
                 "materialization_state_missing_or_stale" => "derived_state_stale",
@@ -783,6 +843,17 @@ mod tests {
             "bootstrap exchange operation mismatch",
         );
         assert_eq!(io_code(&known), "brain_operation_mismatch");
+        for code in ["runtime_stopped", "runtime_policy_conflict", "runtime_busy"] {
+            assert_eq!(io_code(&std::io::Error::other(code)), code);
+        }
+        assert_eq!(
+            inspection_code(Some("receipt_missing"), "capture_unresolved"),
+            "receipt_missing"
+        );
+        assert_eq!(
+            inspection_code(Some("secret path"), "capture_unresolved"),
+            "capture_unresolved"
+        );
     }
     fn args() -> Vec<String> {
         [

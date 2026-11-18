@@ -1,5 +1,28 @@
 # 34 — Current Implementation Handoff
 
+## Recovery inspection results — November 18
+
+Both device reports match the inspection source a7e99ea and the original run
+4bbd029c. The Windows binaries also match the delivery manifest. Each device
+reported the same verified local set before and after inspection. Windows has
+10 records and Mac has 11. The Mac aggregate alone cannot identify its extra
+record. Both local histories passed signature and chain verification. Neither
+device reached the process cut. The physical recovery gate remains open.
+The report hashes, local digests and bounded observations are in
+`evidence/m8/m8-recovery-inspection-results-20261118.json`.
+
+Windows passed health and received an unexpected response operation during the
+Brain identity read. The daemon's admission-refusal branch used the approval
+result for exchange requests. The correction preserves the exchange operation,
+request ID and original refusal. The underlying admission reason on this VM
+cannot be recovered from its old report. Mac passed startup identity, then
+both capture resolutions were inconclusive and the settings and search checks
+failed. The inspection driver now retains allowlisted refusal and uncertainty
+codes. Keep both existing profiles. Before another fault run, identify the
+eleventh record and the active refusal through non-appending inspection, and
+reconcile the existing sets. The original ten-record fault packet cannot
+resume from this state.
+
 ## Recovery inspection follow-up — November 18 (packet ready; device reports pending)
 
 The owner authorized continuation after the incomplete recovery attempt. A

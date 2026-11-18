@@ -2604,7 +2604,13 @@ fn handle_bootstrap_exchange(
     peer_is_desktop: bool,
     request: BootstrapApprovalIpcRequest,
 ) -> io::Result<()> {
-    let Some(permit) = admit_approval_operation(search, stream, &request.request_id, false)? else {
+    let Some(permit) = admit_approval_operation(
+        search,
+        stream,
+        &request.request_id,
+        "bootstrap.exchange.result",
+    )?
+    else {
         return Ok(());
     };
     let (reply, deadline) = if !peer_is_desktop
@@ -3335,7 +3341,12 @@ fn handle_bootstrap_approval_session(
         ))?;
         return write_response(stream, &response, Instant::now() + IPC_REQUEST_DEADLINE);
     }
-    let Some(permit) = admit_approval_operation(context, stream, &request.request_id, false)?
+    let Some(permit) = admit_approval_operation(
+        context,
+        stream,
+        &request.request_id,
+        "bootstrap.approval.result",
+    )?
     else {
         return Ok(());
     };
@@ -3433,7 +3444,7 @@ fn admit_approval_operation(
     context: &SearchContext,
     stream: &mut Stream,
     request_id: &str,
-    owner: bool,
+    rejection_operation: &'static str,
 ) -> io::Result<Option<crate::runtime_admission::OperationPermit>> {
     match context.admission.enter(&context.runtime_root) {
         Ok(permit) => Ok(Some(permit)),
@@ -3442,11 +3453,7 @@ fn admit_approval_operation(
                 Some(request_id.to_owned()),
                 false,
                 Some(error.code()),
-                if owner {
-                    "owner.security.result"
-                } else {
-                    "bootstrap.approval.result"
-                },
+                rejection_operation,
                 None,
                 None,
                 None,
@@ -3502,7 +3509,13 @@ fn handle_owner_security_operation_session(
             "owner_operation_request_rejected",
         );
     }
-    let Some(permit) = admit_approval_operation(context, stream, &request.request_id, true)? else {
+    let Some(permit) = admit_approval_operation(
+        context,
+        stream,
+        &request.request_id,
+        "owner.security.result",
+    )?
+    else {
         return Ok(());
     };
     let registry = BOOTSTRAP_APPROVAL_SESSIONS
@@ -3517,7 +3530,12 @@ fn handle_bootstrap_approval_completion(
     peer_is_desktop: bool,
     request: BootstrapApprovalIpcRequest,
 ) -> io::Result<()> {
-    let Some(permit) = admit_approval_operation(context, stream, &request.request_id, false)?
+    let Some(permit) = admit_approval_operation(
+        context,
+        stream,
+        &request.request_id,
+        "bootstrap.approval.result",
+    )?
     else {
         return Ok(());
     };
@@ -6368,6 +6386,48 @@ pub(crate) mod tests {
             .expect("load journal");
         assert!(journal.exchanges.is_empty());
         fs::remove_dir_all(fixture.root).expect("remove synthetic fixture");
+    }
+
+    #[test]
+    fn brain_read_returns_exchange_rejection_when_runtime_is_stopped() {
+        let fixture = prepared_search_fixture("brain-read-admission");
+        let context = fixture.context.clone();
+        context
+            .admission
+            .stop_and_drain(Instant::now() + IPC_RESPONSE_DEADLINE)
+            .unwrap();
+        let (name, listener) = isolated_ipc_listener("brain-read-admission");
+        let server = thread::spawn(move || {
+            let mut stream = listener.accept().unwrap();
+            let frame = read_frame_until(
+                &mut stream,
+                MAX_BOOTSTRAP_APPROVAL_FRAME_BYTES,
+                Instant::now() + IPC_RESPONSE_DEADLINE,
+            )
+            .unwrap();
+            handle_bootstrap_approval_session(&mut stream, Some(&context), true, &frame).unwrap();
+        });
+        let mut client = Stream::connect(name.borrow()).unwrap();
+        let mut request = approval_request("bootstrap.exchange.brain_identity.read");
+        request.role = None;
+        request.transcript_messages = None;
+        let reply = exchange_bootstrap_approval(
+            &mut client,
+            &request,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        )
+        .unwrap();
+        assert_eq!(
+            reply.request_id.as_deref(),
+            Some(request.request_id.as_str())
+        );
+        assert_eq!(reply.operation, "bootstrap.exchange.result");
+        assert_eq!(reply.error.as_deref(), Some("runtime_stopped"));
+        assert!(!reply.accepted);
+        assert!(reply.brain_identity_json.is_none() && reply.exchange_message.is_none());
+        server.join().unwrap();
+        drop(fixture.context);
+        fs::remove_dir_all(fixture.root).unwrap();
     }
 
     #[test]

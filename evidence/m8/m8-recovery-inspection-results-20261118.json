@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "run_id": "4bbd029c-2ab2-426f-aec5-725b67cbcaf7",
+  "packet_source": "a7e99eadb9c0b195988a054b7b0ab74305b15687",
+  "reports": {
+    "Windows": {
+      "archive": "KESINTI-TANI-SONUC-Windows-3fde302a1ff4.zip",
+      "archive_sha256": "b3e89ac11c3d1f20286f0fd3cddf5fb83b56e5e18f0872f342714d6fc472cade",
+      "canonical_records": 10,
+      "canonical_set_sha256": "8f18e7737d78aa78d1c07fb7df99ec04ea0f767360398e42fd47af079e6ed7b7",
+      "canonical_devices": 2,
+      "before_equals_after": true,
+      "first_error": "identity",
+      "observations": [
+        {
+          "code": null,
+          "os_code": null,
+          "outcome": "ok",
+          "step": "startup_health"
+        },
+        {
+          "code": "brain_operation_mismatch",
+          "os_code": null,
+          "outcome": "error",
+          "step": "brain_read"
+        }
+      ]
+    },
+    "Darwin": {
+      "archive": "KESINTI-TANI-SONUC-Darwin-1bb1eef9d370.zip",
+      "archive_sha256": "8c17a6a3a9e01da9ffb0e48e337a72444d9b97193992c4bb75e0c6000b3c81a8",
+      "canonical_records": 11,
+      "canonical_set_sha256": "58400d9ac30516f4d3a502d7365ec16a4444b540fc03162d3717ee095b023e5e",
+      "canonical_devices": 2,
+      "before_equals_after": true,
+      "first_error": "capture_uncertain",
+      "observations": [
+        {
+          "code": null,
+          "os_code": null,
+          "outcome": "ok",
+          "step": "startup_health"
+        },
+        {
+          "code": null,
+          "os_code": null,
+          "outcome": "ok",
+          "step": "startup_identity"
+        },
+        {
+          "code": null,
+          "os_code": null,
+          "outcome": "ok",
+          "step": "resolve_queued"
+        },
+        {
+          "code": "capture_unresolved",
+          "os_code": null,
+          "outcome": "error",
+          "step": "resolve_queued"
+        },
+        {
+          "code": null,
+          "os_code": null,
+          "outcome": "ok",
+          "step": "resolve_received"
+        },
+        {
+          "code": "capture_unresolved",
+          "os_code": null,
+          "outcome": "error",
+          "step": "resolve_received"
+        },
+        {
+          "code": null,
+          "os_code": null,
+          "outcome": "begin",
+          "step": "connections_read"
+        },
+        {
+          "code": "response_refused",
+          "os_code": null,
+          "outcome": "error",
+          "step": "connections_read"
+        },
+        {
+          "code": null,
+          "os_code": null,
+          "outcome": "begin",
+          "step": "search_local_queued"
+        },
+        {
+          "code": null,
+          "os_code": null,
+          "outcome": "ok",
+          "step": "guarded_search"
+        },
+        {
+          "code": "response_refused",
+          "os_code": null,
+          "outcome": "error",
+          "step": "search_local_queued"
+        },
+        {
+          "code": null,
+          "os_code": null,
+          "outcome": "begin",
+          "step": "search_local_received"
+        },
+        {
+          "code": "response_refused",
+          "os_code": null,
+          "outcome": "error",
+          "step": "search_local_received"
+        },
+        {
+          "code": null,
+          "os_code": null,
+          "outcome": "begin",
+          "step": "search_peer_queued"
+        },
+        {
+          "code": "response_refused",
+          "os_code": null,
+          "outcome": "error",
+          "step": "search_peer_queued"
+        },
+        {
+          "code": null,
+          "os_code": null,
+          "outcome": "begin",
+          "step": "search_peer_received"
+        },
+        {
+          "code": "response_refused",
+          "os_code": null,
+          "outcome": "error",
+          "step": "search_peer_received"
+        }
+      ]
+    }
+  },
+  "interruption_verified": false,
+  "network_delivery_verified": false,
+  "recovery_accepted": false
+}

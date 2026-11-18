@@ -29,7 +29,10 @@ OBSERVATION_CODES = {'brain_response_mismatch','brain_operation_mismatch','local
     'bootstrap_request_rejected','unauthorized_client_process','runtime_busy','timed_out','permission_denied',
     'invalid_data','not_found','would_block','unexpected_eof','broken_pipe','io_other','identity_mismatch',
     'native_refused','response_refused','capture_unresolved','derived_state_stale','projection_stale',
-    'canonical_verification_unavailable','search_hold'}
+    'canonical_verification_unavailable','search_hold','runtime_recovery_required','runtime_policy_conflict',
+    'runtime_rebuild_required','runtime_stopped','runtime_mismatch','receipt_missing','receipt_persist_failed',
+    'verification_unavailable','fingerprint_mismatch','lock_failed','writer_failure','durability_unconfirmed',
+    'invalid_request','enrollment_required','identity_unavailable','capture_id_conflict'}
 
 
 def validate_observation(value):
