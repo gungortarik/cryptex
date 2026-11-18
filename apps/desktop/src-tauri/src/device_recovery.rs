@@ -375,14 +375,11 @@ impl Drop for Session {
 fn stage(name: &str) {
     println!("{}", serde_json::json!({"recovery_stage":name}));
 }
-fn cut(plan: &Plan, root: &Path) -> Result<()> {
+fn cut(plan: &Plan, root: &Path) -> Result<bool> {
     stage("start_existing_profile");
     let mut session = Session::start(root, plan)?;
     let initial = session.connections(None)?;
     plan.check_view(&initial)?;
-    if initial.paused {
-        return Err(Failure::Connections);
-    }
     session.pause(plan, true)?;
     // Peer cannot receive this newly committed note while transport is paused.
     stage("capture_while_disconnected");
@@ -393,7 +390,7 @@ fn cut(plan: &Plan, root: &Path) -> Result<()> {
     #[cfg(windows)]
     {
         session.interrupt()?;
-        Ok(())
+        Ok(initial.paused)
     }
     #[cfg(target_os = "macos")]
     {
@@ -405,12 +402,12 @@ fn cut(plan: &Plan, root: &Path) -> Result<()> {
         std::io::stdout()
             .flush()
             .map_err(|_| Failure::Interruption)?;
-        std::process::exit(75);
+        std::process::exit(if initial.paused { 77 } else { 75 });
     }
 }
 
 #[cfg(target_os = "macos")]
-fn cut_desktop_child(plan: &Plan) -> Result<()> {
+fn cut_desktop_child(plan: &Plan) -> Result<bool> {
     let mut child =
         std::process::Command::new(std::env::current_exe().map_err(|_| Failure::Startup)?)
             .args([CUT_FLAG, &plan.run, &plan.brain, &plan.local, &plan.peer])
@@ -419,7 +416,8 @@ fn cut_desktop_child(plan: &Plan) -> Result<()> {
     let deadline = Instant::now() + Duration::from_secs(420);
     loop {
         match child.try_wait() {
-            Ok(Some(status)) if status.code() == Some(75) => return Ok(()),
+            Ok(Some(status)) if status.code() == Some(75) => return Ok(false),
+            Ok(Some(status)) if status.code() == Some(77) => return Ok(true),
             Ok(Some(_)) => return Err(Failure::Interruption),
             Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
             _ => {
@@ -436,9 +434,9 @@ fn cut_desktop_child(plan: &Plan) -> Result<()> {
 
 fn run(plan: &Plan, root: &Path) -> Result<()> {
     #[cfg(windows)]
-    cut(plan, root)?;
+    let originally_paused = cut(plan, root)?;
     #[cfg(target_os = "macos")]
-    cut_desktop_child(plan)?;
+    let originally_paused = cut_desktop_child(plan)?;
     // Give the existing helper's owner-loss cleanup its full budget. No marker
     // deletion, PID adoption, forced unlock or recovery repair is permitted.
     std::thread::sleep(Duration::from_secs(40));
@@ -477,7 +475,7 @@ fn run(plan: &Plan, root: &Path) -> Result<()> {
             session.wait_found(plan, device, ack, 60)?;
         }
     }
-    session.pause(plan, false)?;
+    session.pause(plan, originally_paused)?;
     session.close()?;
     stage("completed");
     Ok(())
@@ -505,7 +503,8 @@ pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
         let root = super::development_launch::runtime(std::env::var_os("HOME").as_deref())?;
         #[cfg(target_os = "macos")]
         if is_cut {
-            // A successful cut exits 75 inside cut(), without running drops.
+            // A successful cut exits 75/77 inside cut(), without running drops;
+            // the status carries only the original public pause preference.
             // On failure, normal Rust cleanup runs before this exit instead.
             let _ = cut(&plan, &root);
             std::process::exit(76);
@@ -654,6 +653,10 @@ mod tests {
             error: None,
         };
         assert!(plan.check_view(&good).is_ok());
+        let mut paused = good.clone();
+        paused.paused = true;
+        paused.state = State::Paused;
+        assert!(plan.check_view(&paused).is_ok());
         let mut bad = good.clone();
         bad.devices.clear();
         assert!(plan.check_view(&bad).is_err());

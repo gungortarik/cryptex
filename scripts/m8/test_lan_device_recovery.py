@@ -61,7 +61,8 @@ class RecoveryEvidenceTests(unittest.TestCase):
 
     def test_mixed_runs_duplicate_keys_unknown_fields_and_claims_refused(self):
         for key,value in [('run_id','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'),
-                          ('local_device_id',r.MAC),('remote_durability_verified',True),
+                          ('local_device_id',r.MAC),('interrupted_component','desktop'),
+                          ('remote_durability_verified',True),
                           ('midstream_bytes_interrupted',True),('secret','not allowed'),('schema',True)]:
             changed=driver();changed[key]=value
             with self.assertRaises(Exception):

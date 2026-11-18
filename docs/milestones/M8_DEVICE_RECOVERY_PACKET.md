@@ -20,7 +20,7 @@ guarded search and connection-setting routes do all work.
    Changed data, identity, unfinished imports or an active instance stop the run.
 2. Build/install beside the old application. Keep existing launchers and keys.
    Each device starts its own exact retained daemon child. Require one expected
-   trusted peer, saved LAN endpoints, and initially enabled synchronization.
+   trusted peer and saved LAN endpoints. Either initial pause preference is valid.
 3. Pause transport through normal settings, commit one fixed Public run marker,
    and verify it through guarded local search. Re-enable the normal worker. On
    Windows, abruptly terminate only the retained daemon child. An already dead
@@ -34,7 +34,7 @@ guarded search and connection-setting routes do all work.
 5. Receive and search the peer's fixed run marker. Each daemon then commits one
    fixed Public acknowledgement marker. Search the peer acknowledgement, allow
    delivery grace, pause, close normally and restart offline. Search all four
-   markers again. Restore enabled synchronization and close normally.
+   markers again. Restore the original pause preference and close normally.
 6. Each stopped daemon independently verifies its final canonical set. Acceptance
    requires both run/source-bound reports, the full ordered stage receipts,
    successful cleanup, fourteen signed records from two devices, and equal final

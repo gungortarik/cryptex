@@ -15,7 +15,7 @@ or claimed, and the packet never deletes that marker.
 The collector requires the previously accepted ten-record aggregate, creates two
 fixed Public test notes per device through the daemon, restarts after the cut,
 exchanges ordinary acknowledgements, verifies offline restart search, restores
-enabled sync, and collects stopped-daemon final digests. Both final reports must
+the original pause preference, and collects stopped-daemon final digests. Both final reports must
 match fourteen records. Existing apps/launchers remain untouched. A changed
 baseline refuses rerun; no force-unlock, marker cleanup or canonical repair.
 See `docs/milestones/M8_DEVICE_RECOVERY_PACKET.md` for exact limits: this is queued

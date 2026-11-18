@@ -52,7 +52,7 @@ def build(artifact, revision, output):
         'KESINTI-MAC.command':b'#!/bin/zsh\nset -eu\ncd -- "${0:A:h}"\n/usr/bin/python3 -B lan_device_recovery.py\n',
         'BASLA.txt':(
             'Ayni ZIPi kendi Macine ve Windows VMine TUMUNU AYIKLA ile cikart.\n'
-            'Iki Cryptexi normal Quit / Command-Q ile kapat; Pause sync daha once kapali olmali.\n'
+            'Iki Cryptexi normal Quit / Command-Q ile kapat. Pause sync ayarina dokunman gerekmiyor.\n'
             'Mac: KESINTI-MAC.command. Derleme bitince Windows VM: KESINTI-WINDOWS.cmd.\n'
             'Ana Windows cihazinda calistirma. Profilleri silme veya yeniden eslestirme.\n'
             'Terminal pencerelerini acik, iki cihazi ayni agda ve uyanik tut.\n'
@@ -60,7 +60,7 @@ def build(artifact, revision, output):
             'Paket her cihazda iki kisa Public test notu olusturur; notlar kalici tutulur.\n'
             'Not girmen, mesaj kopyalaman, Search yapman veya End Task kullanman gerekmiyor.\n'
             'Windows daemonu; Mac ise test Desktop surecini aniden kapatir. Mac daemonu kendi yardimcisini normal guvenli yolla kapatir.\n'
-            'Esitleme kapaliyken yeniden acilip kayitlar okunur; basarida eski acik esitleme ayari geri gelir.\n'
+            'Esitleme kapaliyken yeniden acilip kayitlar okunur; basarida onceki Pause sync ayari geri gelir.\n'
             'Hata halinde otomatik kilit temizleme, profil onarimi veya guvenlik ayari degisikligi yapilmaz.\n'
             'Iki KESINTI-SONUC-*.zip dosyasini gonder. Sonuclari incelemeden paketi tekrar calistirma.\n'
             'Bu test bekleyen veriyle surec kesintisi/toparlanma icindir; guc kaybi veya baytin ortasinda kesinti kaniti degildir.\n'
