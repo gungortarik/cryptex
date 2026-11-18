@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "scope": "Three disposable Windows normal connection Owners; restriction delivered to a remaining eligible peer through native network publication",
+  "source": "81cfc9b61f8b9bd36bdfff973288e724ad26688b",
+  "product_change": false,
+  "test": "managed_profile::native_product_receive_test::restriction::restriction_propagates_to_remaining_peer_and_survives_restart",
+  "ci": {
+    "run_id": 44218900701,
+    "url": "https://github.com/gungortarik/cryptex/actions/runs/44218900701",
+    "conclusion": "failure"
+  },
+  "initial_fixture_failure": {
+    "run_id": 44218900701,
+    "source": "81cfc9b61f8b9bd36bdfff973288e724ad26688b",
+    "phase": "After all three native peers converged; before the restriction append",
+    "error": "ordinary admission returned Busy while resumed native incoming replay held exclusive admission",
+    "native_scenario_seconds": 120.42,
+    "existing_native_tests_passed": 5,
+    "windows_policy_writer_publication_tests_passed": 99,
+    "mac_canonical_writer_tests_passed": 30,
+    "correction": "Test helper retries only Busy for at most 20 seconds; held states and every other error still fail immediately. No admission bypass or production change. Revalidation pending."
+  },
+  "required_assertions": [
+    "All three pairings use signed bilateral messages, confirmed synthetic owner journals and daemon-written canonical anchors",
+    "Three genuine native Owners initially deliver all notes and converge to identical immutable canonical packs",
+    "B is offline when A's daemon records a Compromised decision at B's exact verified nonzero history boundary",
+    "A and C retain one another; C learns the restriction exclusively through the normal native receive/publication path",
+    "C rejects the previous roster as UnknownDevice even when submitted with its current settings revision",
+    "Previously accepted B content remains available through guarded search",
+    "A new A note reaches C after restriction, demonstrating continued eligible exchange",
+    "A and C preserve the old canonical bytes and reach an identical expanded canonical union",
+    "Paused restart preserves the restricted roster, guarded search and exact canonical bytes",
+    "Offline B's canonical data remains untouched by the fixture",
+    "Disposable native credentials and standard-user CI account/profile cleanup succeed"
+  ],
+  "local": {
+    "format": "passed",
+    "daemon_all_targets_clippy_warnings_denied": "passed",
+    "standard_user_summary_validator": "3 positive and 6 refusal cases passed"
+  },
+  "bounded_source_review": {
+    "reviewer": "implementation agent, not independent review",
+    "checks": [
+      "No production code or protocol change; shared security helper now uses the complete verified inventory and an explicit target",
+      "No canonical or inbox file copies between peers; native worker and normal importer carry all remote data",
+      "No injected trust rows, fake transport identity or loopback policy exception",
+      "Synthetic approval confirmation remains distinct from authenticated Desktop owner consent",
+      "Old roster is tested with fresh revision so authority refusal cannot pass only because of a stale editor",
+      "Existing two-Owner offline, replay, compromise and retirement scenario remains required by the harness",
+      "CI rejects missing/ignored suites and requires four completed native suites plus temporary account cleanup"
+    ]
+  },
+  "limits": [
+    "One disposable Windows CI host with three real native processes, not three physical devices or a Mac native run",
+    "B is offline during propagation; this does not assert delivery of the decision to B or erasure of already delivered data",
+    "No new beyond-cutoff packet is sent by B in this scenario; existing signed cutoff refusal tests remain separate evidence",
+    "Local self-retirement dissemination remains open and is not solved by continued exchange between eligible A and C",
+    "No remote Protected claim, new signed receipt protocol, owner profile mutation or owner update package",
+    "Actual Mac/VM digest and interruption evidence plus final candidate security/human review remain required"
+  ]
+}

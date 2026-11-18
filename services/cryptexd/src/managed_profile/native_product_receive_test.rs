@@ -271,7 +271,18 @@ fn security_change_for(
 ) {
     use crate::bootstrap_journal::{BootstrapJournalStore, RestrictionReason};
     let admission = instance.lock().unwrap().admission();
-    let permit = admission.enter(root).unwrap();
+    // Normal incoming replay may already own the exclusive gate. Do not treat
+    // a legitimate Busy response as failure, or bypass any held/error state.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let permit = loop {
+        match admission.enter(root) {
+            Ok(permit) => break permit,
+            Err(crate::runtime_admission::AdmissionError::Busy) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => panic!("security fixture could not obtain ordinary admission: {error:?}"),
+        }
+    };
     let brain = crate::identity_runtime::load_brain_identity(root).unwrap();
     let resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
         root,
