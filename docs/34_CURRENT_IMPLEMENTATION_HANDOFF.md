@@ -1,5 +1,102 @@
 # 34 — Current Implementation Handoff
 
+## Windows exchange startup and the retained REST timeout
+
+VM-SUREC-TANI-SONUC-de82218a050f.zip (SHA-256
+`882d84bc3d2bed3cb44ca6d31292b2e372412134b43870216f65b9ea664a0e0a`)
+matched the delivered collector. The first retained worker error was 402
+(`rest.Deadline`); it has no attempt ID. The expected IPv4 was assigned,
+and the process sample found no Desktop, daemon, engine or listener. This
+does not date the 402 to the previous settings read.
+
+Candidate `9e1c647` preserves the terminal error of the worker whose
+startup acknowledgement channel disconnected. A current Windows exchange
+startup returning its own REST deadline yields `start_rest_deadline`;
+unattributed channel timeouts remain generic. The two read-only post-start
+readiness observations each have at most one retry for that exact error.
+Every attempt rechecks the transport guard and uses full owned REST
+verification. Normal monitoring, shutdown and trust rejection keep their
+existing behavior. The inspector classifies the current settings view
+independently of the historical file. A ready result alone cannot identify
+what caused an earlier failure.
+
+Recovery CI 44395857203 passed both platforms, including the Windows
+transient/persistent timeout and unrelated-error cases. Live worker CI
+44395857303 passed the Windows native exchange and product-receive recovery
+jobs and the Mac canonical-lock job. Tooling CI 44395857180 passed.
+The non-appending Windows inspection packet for run 813cf272 is
+`Cryptex-VM-402-Kontrol-9e1c647.zip`, SHA-256
+`6d4915a3ab68b4ece3f8c39da0e65e964d3374d58aae9175aac0806e8abab742`.
+The delivered Desktop and daemon hashes match the candidate CI artifact.
+The physical VM result is pending; no Mac rerun is required for this check.
+
+## Windows connection-start inspection for run 813cf272
+
+The submitted inspection (`KESINTI-TANI-SONUC-Windows-ffe1a6704b0d.zip`,
+SHA-256 `b0bf9d03a0ed098e06cf07e2ab9a50ce18622fee46c3ae722366256be3fccb03`)
+matches the pinned run, binary hashes and both device IDs. Its verified pre/post
+sets match the original eleven-record Windows baseline. Startup identity passed
+after a transient busy read. Both local recovery receipts were missing, as
+expected after the earlier pre-capture stop. The settings read returned a view
+with `settings_start`. None of the four recovery markers was visible.
+The underlying startup failure and two-device recovery remain open.
+
+Future Windows inspections that report this settings error now also sample the
+existing first-worker failure file, bounded native log markers, and local listener
+and configured IPv4 presence. These are point-in-time or historical observations;
+the first-worker failure can predate this run. For this existing result the same
+passive collector is packaged alone as `Cryptex-VM-Baslatma-Kodu-813cf272.pyz`,
+SHA-256 `c181882059972ffcb8f93559d2021133cbeb63a317e634200c58cdd774329090`.
+It can be run with Cryptex in its current state.
+
+## Automatic diagnostics for interrupted device runs
+
+The recovery collector now keeps the first native failure, verifies the stopped
+profile, and invokes the existing inspection entry once with the same binaries
+and run ID. Both receipts go into the original result ZIP. The post-fault set
+is sampled before normal startup can receive pending records. Uncertain cleanup
+or a refused stopped-profile verification blocks inspection. A diagnostic can
+never upgrade an incomplete run to a pass.
+
+For the already-finished 813cf272 run, the Windows-only inspection packet
+`Cryptex-VM-Otomatik-Tani-813cf272.zip` prints a short `TANI` line. Its SHA-256
+is `935f2e6cf3ae04e5a4fa186b65eae43e4e0be65f3308a6898e750926cd9bd4df`.
+Its native payload matches the previous inspection packet. This is a current-state
+inspection; the original Windows settings failure remains unresolved.
+
+## Both physical receipts for recovery run 813cf272 — November 18
+
+Darwin archive `KESINTI-SONUC-Darwin-f2dfcc90f336.zip`, SHA-256
+`12cdf4f2973bc196174ff19ca7030e6c54ff192d09b9e05d89b62024c461abdd`.
+Both receipts match the delivered run/source, reciprocal IDs and eleven-record
+precheck. Mac resolved the prior capture as committed, captured and found its
+new queued note before the Desktop owner cut, and passed health/identity again
+after restart. It ended with peer_deadline in restart_and_receive. The timeout
+code is shared by several searches; individual post-restart hits are not logged.
+Windows never produced its queued note. Neither report has a final aggregate.
+Two-device recovery and offline restart acceptance remain open.
+
+The next Windows-only inspection uses the original b44ab99 payload and native
+inspection entry, with the inspector pinned to 813cf272. It samples the current
+connection state and verified before/after sets without invoking capture, fault
+injection or settings updates. A healthy read now cannot identify a past
+transient or demonstrate that the pause operation succeeded.
+`Cryptex-VM-Baglanti-Kontrol-813cf272.zip` SHA-256
+`2d62e09f0eb6a8240ba3719f3b0a1fa05baa7c5bf28e2ea2f124706f58594e98`.
+
+## Windows result for the eleven-record interruption attempt — November 18
+
+`KESINTI-SONUC-Windows-77bd6123d591.zip` (SHA-256
+`2876381651952226cf38374a67ee2578ba1e5f2f0211e174bf38445993c79d8b`)
+matches run 813cf272, the exact candidate, both Windows executable hashes
+and the 11-record starting aggregate. The initial runtime_busy cleared.
+Health and identity succeeded. The driver then reported connections during
+start_existing_profile, before capture_while_disconnected or the process cut.
+The report does not distinguish the initial settings read, its validation,
+or the pause operation. No final VM aggregate was collected.
+Keep the ongoing Mac run for its result; neither rerun the packet nor
+assume the Mac starting set is still current.
+
 ## Paired capture receipt reconciliation and fresh recovery candidate — November 18
 
 CI 44382456904 reproduced the old verification_unavailable result on Windows
