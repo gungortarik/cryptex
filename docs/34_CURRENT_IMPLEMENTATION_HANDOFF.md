@@ -1,6 +1,14 @@
 # 34 — Current Implementation Handoff
 
-## Local canonical-set evidence packet — November 17 (CI passed; owner reports pending)
+## Local canonical-set evidence packet — November 17 (Windows accepted; Mac pending)
+
+Owner Windows receipt BUTUNLUK-SONUC-Windows-2ced9af101b7.zip passes the strict
+schema, expected run/source/daemon hash and reciprocal identity checks. The daemon
+verified ten canonical records from two devices; aggregate
+8f18e7737d78aa78d1c07fb7df99ec04ea0f767360398e42fd47af079e6ed7b7.
+Original archive checksum and receipt are retained in the evidence JSON below.
+Owner says the Mac report is coming. Do not rerun Windows or request new notes;
+await the matching Mac receipt before asserting cross-device set equality.
 
 Owner asks to finish the remaining gates and reports both physical devices were
 closed/reopened. This is acceptable; preserve the established pairing and notes.
@@ -43,7 +51,8 @@ Next owner action: normal quit on both devices; extract the same ZIP and run
 BUTUNLUK-WINDOWS.cmd in the VM and BUTUNLUK-MAC.command on the owner's Mac.
 Collect both BUTUNLUK-SONUC ZIPs, validate exact run/source/reciprocal identities,
 then compare via lan_canonical_verification.compare. Do not reset/re-pair or
-request another note/search loop. No actual-device aggregate is accepted yet.
+request another note/search loop. The Windows aggregate is accepted; Mac and
+cross-device comparison remain pending.
 This packet
 is only canonical-set evidence, not the physical interruption gate or full M8
 acceptance. Terminal retirement handoff and final review remain separate.

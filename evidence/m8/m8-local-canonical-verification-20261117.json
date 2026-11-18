@@ -24,7 +24,7 @@
     "windows_daemon_sha256": "b91096e217d9c1575ffdf2818a361949e5668973d3dbc290292d0141f86980bd",
     "local_readback_and_hash_binding": "passed",
     "mac_signing": "Owner's existing local certificate; separate build with no product launcher, enrollment or old-app replacement",
-    "actual_owner_reports": "pending"
+    "actual_owner_reports": "Windows local receipt accepted; Mac report pending; no cross-device comparison yet"
   },
   "shared_harness_regression": {
     "run_id": 44224805583,
@@ -65,5 +65,25 @@
     "Mac owner signing and Keychain access can require human interaction and have not run on the owner's device for this packet",
     "Owner profiles and pairing remain intact; only daemon coordination locks may change",
     "Terminal retirement handoff, physical cross-platform acceptance and final security/human review remain separate M8 gates"
-  ]
+  ],
+  "owner_windows_receipt": {
+    "archive": "BUTUNLUK-SONUC-Windows-2ced9af101b7.zip",
+    "archive_sha256": "fb255b784d0446b1df8e63ee767202250e7406870f31a4228e4a3633faf1aaba",
+    "source_and_daemon_hash_match": true,
+    "receipt": {
+      "schema": 1,
+      "purpose": "cryptex-local-canonical-verification",
+      "run_id": "6c6ab02f-d8c1-4323-a119-950383c00e69",
+      "brain_id": "b2ad8bb6-2d65-4690-b3c6-6a7b3f5adac4",
+      "local_device_id": "bde7cefd-2f40-40f1-a22e-ae1fb123e8a8",
+      "peer_device_id": "1d17c886-a6cf-4422-aba5-fc985656741d",
+      "canonical_set_sha256": "8f18e7737d78aa78d1c07fb7df99ec04ea0f767360398e42fd47af079e6ed7b7",
+      "canonical_records": 10,
+      "canonical_devices": 2,
+      "signatures_and_chains_verified": true,
+      "remote_durability_verified": false,
+      "network_delivery_verified": false,
+      "derived_results_verified": false
+    }
+  }
 }
