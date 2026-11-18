@@ -75,6 +75,7 @@ class Receipts(unittest.TestCase):
                     patch('mac_identity_preflight.run_bounded', return_value=result) as runner:
                 self.assertEqual(collect(folder, plan, 'Darwin', report)['local_device_id'], MAC)
                 self.assertEqual(prepare.call_args.args[2], dict(source_commit='a'*40, source_sha256='b'*64))
+                self.assertEqual(prepare.call_args.kwargs, dict(create_launcher=False))
                 self.assertIn(MAC, runner.call_args.args[0])
                 self.assertEqual(runner.call_args.args[1], 90)
                 result.timed_out = True

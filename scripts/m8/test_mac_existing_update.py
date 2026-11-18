@@ -72,6 +72,17 @@ class ExistingUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(update.Refused, 'wrong_mac_profile'):
             update.prepare(self.package, self.home, self.plan, {}, builder, self.observer)
 
+    def test_verification_build_can_repeat_without_creating_or_replacing_a_launcher(self):
+        launcher = self.package / 'CRYPTEX-AC-aaaaaaaa.command'
+        launcher.write_text('existing launcher must remain unchanged')
+        before = launcher.read_bytes()
+        for _ in range(2):
+            desktop = update.prepare(self.package, self.home, self.plan, {},
+                                     self.builder, self.observer, create_launcher=False)
+            self.assertTrue(desktop.exists())
+            self.assertEqual(launcher.read_bytes(), before)
+        self.assertEqual(list(self.package.glob('*.command')), [launcher])
+
     def test_identity_change_during_build_refuses_launcher(self):
         def builder(*args):
             result = self.builder(*args)

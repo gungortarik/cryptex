@@ -35,7 +35,7 @@ def require_closed(observer=processes):
         raise Refused('quit_cryptex_before_update')
 
 
-def prepare(package, home, plan, report, builder=build, observer=processes):
+def prepare(package, home, plan, report, builder=build, observer=processes, *, create_launcher=True):
     root = home / 'Library/Application Support/Cryptex-Dev/runtime/p0-2'
     before = existing_identity(root)
     require_closed(observer)
@@ -77,10 +77,11 @@ def prepare(package, home, plan, report, builder=build, observer=processes):
             if existing_identity(root) != before:
                 raise Refused('existing_identity_changed')
             desktop = bundle / 'Contents/MacOS/cryptex-desktop'
-            launcher = package / ('CRYPTEX-AC-' + plan['source_commit'][:8] + '.command')
-            with launcher.open('x', encoding='utf-8', newline='\n') as stream:
-                stream.write('#!/bin/zsh\nset -eu\nexec ' + shlex.quote(str(desktop)) + '\n')
-            launcher.chmod(0o700)
+            if create_launcher:
+                launcher = package / ('CRYPTEX-AC-' + plan['source_commit'][:8] + '.command')
+                with launcher.open('x', encoding='utf-8', newline='\n') as stream:
+                    stream.write('#!/bin/zsh\nset -eu\nexec ' + shlex.quote(str(desktop)) + '\n')
+                launcher.chmod(0o700)
             report.update(outcome='built_beside_existing_app',
                           public_identity_unchanged=True,
                           release_inventory_sha256=hashlib.sha256(

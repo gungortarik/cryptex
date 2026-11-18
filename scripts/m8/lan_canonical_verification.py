@@ -110,7 +110,7 @@ def collect(package, plan, system, report):
         from mac_identity_preflight import run_bounded
         root = Path.home() / 'Library/Application Support/Cryptex-Dev/runtime/p0-2'
         build_plan = {key: plan[key] for key in ('source_commit', 'source_sha256')}
-        desktop = prepare(package, Path.home(), build_plan, report)
+        desktop = prepare(package, Path.home(), build_plan, report, create_launcher=False)
         daemon = desktop.parent / 'cryptexd'
         report['daemon_sha256'] = hashlib.sha256(daemon.read_bytes()).hexdigest()
         outcome = run_bounded(command(daemon, root, plan, MAC, WINDOWS), 90)

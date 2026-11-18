@@ -11,6 +11,8 @@ on:
       - scripts/m8/lan_canonical_verification.py
       - scripts/m8/test_lan_canonical_verification.py
       - scripts/m8/package_canonical_verification.py
+      - scripts/m8/mac_existing_update.py
+      - scripts/m8/test_mac_existing_update.py
       - .github/workflows/m8-local-verification.yml
   workflow_dispatch:
 permissions:
@@ -46,6 +48,9 @@ jobs:
       - run: cargo test --locked -p cryptexd ${{ matrix.features }} --bin cryptexd verify_local_cli_ -- --test-threads=1
       - run: cargo clippy --locked -p cryptexd ${{ matrix.features }} --all-targets -- -D warnings
       - run: python3 -B -m unittest discover -s scripts/m8 -p test_lan_canonical_verification.py
+      - name: Verify repeatable Mac build without a product launcher
+        if: runner.os == 'macOS'
+        run: python3 -B -m unittest discover -s scripts/m8 -p test_mac_existing_update.py
       - name: Build isolated Windows verifier
         if: runner.os == 'Windows'
         run: cargo build --locked -p cryptexd
