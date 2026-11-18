@@ -6,7 +6,7 @@ license.workspace = true
 publish = false
 
 [features]
-m8-device-recovery-check = ["tauri/custom-protocol"]
+m8-device-recovery-check = ["tauri/custom-protocol", "cryptexd/m8-start-inspection"]
 m8-local-startup-check = ["cryptexd/m8-local-startup-check", "tauri/custom-protocol"]
 m8-development-product = ["m8-local-startup-check", "cryptexd/m8-development-product"]
 

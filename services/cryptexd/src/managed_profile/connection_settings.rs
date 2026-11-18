@@ -23,7 +23,37 @@ pub enum Error {
     Shutdown,
     Start,
     StartRestDeadline,
+    #[cfg(all(windows, feature = "m8-start-inspection"))]
+    StartFailure {
+        stage: StartStage,
+        code: u16,
+        detail: Option<i64>,
+    },
     Held,
+}
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartStage {
+    Bootstrap,
+    Exchange,
+    IdentityRead,
+    IdentityMismatch,
+    Monitor,
+}
+
+impl Error {
+    pub fn public_error(self) -> Self {
+        #[cfg(all(windows, feature = "m8-start-inspection"))]
+        if let Self::StartFailure { stage, code, .. } = self {
+            return if stage == StartStage::Exchange && code == 402 {
+                Self::StartRestDeadline
+            } else {
+                Self::Start
+            };
+        }
+        self
+    }
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

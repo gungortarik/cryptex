@@ -23,6 +23,21 @@ def output(error=None, observation=None):
 
 
 class InspectionTests(unittest.TestCase):
+    def test_current_failure_is_bound_to_exact_settings_reply(self):
+        def parse(stage='exchange', code=604, detail=5, reason='settings_start', before=False):
+            note = dict(step='connections_read', outcome='error', code=reason, os_code=None)
+            lines = output('connections', note).splitlines()
+            lines.insert(1 if before else 2, json.dumps({'current_start_failure': dict(stage=stage, code=code, detail=detail)}))
+            return d.parse_inspection('\n'.join(lines), 2, PLAN, r.WINDOWS, r.MAC)
+        current = parse()
+        self.assertIn('guncel_hata=exchange/604/process.platform alt_kod=5', d.support_line(dict(os='Windows', driver=current)))
+        self.assertEqual(parse(stage='monitor', code=3, detail=None)['current_start_failure']['label'], 'worker.StatusUnavailable')
+        self.assertEqual(parse(code=402, detail=None, reason='settings_start_rest_deadline')['current_start_failure']['label'], 'rest.Deadline')
+        for invalid in [dict(before=True), dict(code=402), dict(reason='settings_authority'),
+                        dict(stage='private'), dict(code=999), dict(detail='private')]:
+            with self.assertRaises(r.Refused):
+                parse(**invalid)
+
     def test_only_current_settings_response_can_attribute_402(self):
         for code in ('settings_start', 'settings_start_rest_deadline', 'settings_authority'):
             note = dict(step='connections_read', outcome='error', code=code, os_code=None)

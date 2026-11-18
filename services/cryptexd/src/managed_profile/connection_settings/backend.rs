@@ -30,6 +30,68 @@ type Worker = crate::m8_owner_channel::transport_helper::Worker;
 #[cfg(target_os = "macos")]
 pub(crate) type Reader = crate::m8_owner_channel::transport_helper::StatusReader;
 
+#[cfg(windows)]
+use crate::managed_profile::worker::WorkerError;
+
+#[cfg(windows)]
+fn start_error(stage: StartStage, cause: WorkerError) -> Error {
+    #[cfg(feature = "m8-start-inspection")]
+    if std::env::var_os("CRYPTEX_INSPECT_CURRENT_START").as_deref()
+        == Some(std::ffi::OsStr::new("1"))
+    {
+        let (code, detail) = cause.diagnostic_code();
+        return Error::StartFailure {
+            stage,
+            code,
+            detail,
+        };
+    }
+    if stage == StartStage::Exchange && cause.is_rest_deadline() {
+        Error::StartRestDeadline
+    } else {
+        Error::Start
+    }
+}
+
+fn owner_identity(reader: &Reader) -> Result<String, Error> {
+    #[cfg(windows)]
+    {
+        reader
+            .owner_transport_device_id()
+            .map_err(|e| start_error(StartStage::IdentityRead, e))
+    }
+    #[cfg(target_os = "macos")]
+    reader.try_transport_device_id().map_err(|_| Error::Start)
+}
+
+#[cfg(all(test, windows, feature = "m8-start-inspection"))]
+#[test]
+fn current_worker_error_preserves_stage_and_platform_code() {
+    use crate::managed_profile::ProfileError;
+    let cause = WorkerError::Profile(ProfileError::Platform {
+        operation: "private marker",
+        code: 5,
+    });
+    let error = start_error(StartStage::Exchange, cause);
+    if std::env::var_os("CRYPTEX_INSPECT_CURRENT_START").as_deref()
+        == Some(std::ffi::OsStr::new("1"))
+    {
+        let encoded = serde_json::to_string(&error).unwrap();
+        assert!(!encoded.contains("private marker"));
+        assert_eq!(
+            serde_json::from_str::<Error>(&encoded).unwrap(),
+            Error::StartFailure {
+                stage: StartStage::Exchange,
+                code: 110,
+                detail: Some(5),
+            }
+        );
+    } else {
+        assert_eq!(error, Error::Start);
+    }
+    assert_eq!(error.public_error(), Error::Start);
+}
+
 /// Backend-selected enrolled locations. Never deserialized from a UI request.
 pub struct Location {
     profile: PathBuf,
@@ -423,14 +485,9 @@ impl Controller {
         if stale || self.view.error == Some(Error::Held) {
             let _ = self.apply(None, &Interest::new());
         } else if self.worker.is_some()
-            && self
-                .reader
-                .lock()
-                .ok()
-                .and_then(|r| r.clone())
-                .is_none_or(|reader| reader.try_transport_device_id().is_err())
+            && let Err(cause) = self.monitor_identity()
         {
-            let error = self.close().err().unwrap_or(Error::Start);
+            let error = self.close().err().unwrap_or(cause);
             self.view.state = State::Attention;
             self.view.error = Some(error);
         }
@@ -482,6 +539,23 @@ impl Controller {
         #[cfg(windows)]
         self.check_incoming();
     }
+    fn monitor_identity(&self) -> Result<(), Error> {
+        let reader = self.reader.lock().ok().and_then(|reader| reader.clone());
+        #[cfg(windows)]
+        {
+            reader
+                .ok_or(WorkerError::StatusUnavailable)
+                .and_then(|reader| reader.owner_transport_device_id())
+                .map(|_| ())
+                .map_err(|e| start_error(StartStage::Monitor, e))
+        }
+        #[cfg(target_os = "macos")]
+        reader
+            .ok_or(Error::Start)
+            .and_then(|reader| owner_identity(&reader))
+            .map(|_| ())
+    }
+
     fn apply(&mut self, update: Option<Update>, interest: &Interest) -> Result<View, Error> {
         let result = self.apply_inner(update, interest);
         let mut restored = false;
@@ -567,29 +641,25 @@ impl Controller {
                     );
                     // Original bootstrap image admits self/loopback only and
                     // refuses any persisted exchange image or transaction.
-                    self.worker = Some(
-                        Worker::spawn_existing_guarded(
-                            location.profile.clone(),
-                            location.package.clone(),
-                            self.environment,
-                            ports,
-                            self.guard.clone(),
-                        )
-                        .map_err(|_| Error::Start)?,
-                    );
-                    let reader = self.worker.as_ref().ok_or(Error::Start)?.status_reader();
+                    let worker = Worker::spawn_existing_guarded(
+                        location.profile.clone(),
+                        location.package.clone(),
+                        self.environment,
+                        ports,
+                        self.guard.clone(),
+                    )
+                    .map_err(|e| start_error(StartStage::Bootstrap, e))?;
+                    let reader = worker.status_reader();
+                    self.worker = Some(worker);
                     let deadline = Instant::now() + Duration::from_secs(25);
                     let started = (|| {
                         loop {
                             interest.check(&self.stop)?;
-                            if let Ok(current) = reader.try_transport_device_id() {
-                                if current != identity {
-                                    return Err(Error::Start);
-                                }
-                                break;
-                            }
-                            if Instant::now() >= deadline {
-                                return Err(Error::Start);
+                            match reader.owner_transport_device_id() {
+                                Ok(current) if current == identity => break,
+                                Ok(_) => return Err(start_error(StartStage::IdentityMismatch, WorkerError::Native(crate::managed_profile::native::NativeConfigError::IdentityChanged))),
+                                Err(WorkerError::StatusUnavailable) if Instant::now() < deadline => {}
+                                Err(e) => return Err(start_error(StartStage::Bootstrap, e)),
                             }
                             std::thread::sleep(Duration::from_millis(20));
                         }
@@ -702,25 +772,27 @@ impl Controller {
                 &policy,
                 &permit,
             )
-            .map_err(|error| {
-                if error.is_rest_deadline() {
-                    Error::StartRestDeadline
-                } else {
-                    Error::Start
-                }
-            })?;
+            .map_err(|error| start_error(StartStage::Exchange, error))?;
             #[cfg(target_os = "macos")]
             let worker =
                 Worker::start_exchange(self.root.join("managed-transport"), &policy, &permit)
                     .map_err(|_| Error::Start)?;
             // Retain ownership before any fallible post-start validation so an
             // uncertain close permanently latches this controller.
+            let reader = worker.status_reader();
             self.worker = Some(worker);
             let validation = (|| {
                 interest.check(&self.stop)?;
                 tree.validate().map_err(|_| Error::Storage)?;
-                let reader = self.worker.as_ref().ok_or(Error::Start)?.status_reader();
-                if reader.try_transport_device_id().map_err(|_| Error::Start)? != identity {
+                if owner_identity(&reader)? != identity {
+                    #[cfg(windows)]
+                    return Err(start_error(
+                        StartStage::IdentityMismatch,
+                        WorkerError::Native(
+                            crate::managed_profile::native::NativeConfigError::IdentityChanged,
+                        ),
+                    ));
+                    #[cfg(target_os = "macos")]
                     return Err(Error::Start);
                 }
                 *self.reader.lock().map_err(|_| Error::Unavailable)? = Some(reader);

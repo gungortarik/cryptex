@@ -21,7 +21,11 @@ def parse_inspection(output, code, plan, local, peer):
     if not isinstance(output,str) or len(output)>65536:
         raise r.Refused('inspection_output_bound')
     stages, observations, receipt, cleanup = [], [], None, False
+    current_failure = None
+    last_settings_error = None
     for line in output.splitlines():
+        preceding_error = last_settings_error
+        last_settings_error = None
         if line == 'recovery_check_refused: recovery_incomplete':
             continue
         if line == 'recovery_cleanup_unconfirmed':
@@ -35,7 +39,24 @@ def parse_inspection(output, code, plan, local, peer):
             if stages != STAGES[:len(stages)]:
                 raise r.Refused('inspection_stage_order')
         elif isinstance(value,dict) and set(value)=={'recovery_observation'}:
-            observations.append(r.validate_observation(value['recovery_observation']))
+            item = r.validate_observation(value['recovery_observation'])
+            observations.append(item)
+            if item['step'] == 'connections_read' and item['outcome'] == 'error':
+                last_settings_error = item['code']
+        elif isinstance(value,dict) and set(value)=={'current_start_failure'}:
+            failure = value['current_start_failure']
+            labels = json.loads(Path(__file__).with_name('worker_failure_codes.json').read_text(encoding='utf-8'))
+            if (local != r.WINDOWS or current_failure is not None
+                    or not isinstance(failure, dict) or set(failure) != {'stage','code','detail'}
+                    or failure['stage'] not in ('bootstrap','exchange','identity_read','identity_mismatch','monitor')
+                    or type(failure['code']) is not int or str(failure['code']) not in labels
+                    or (failure['detail'] is not None and (type(failure['detail']) is not int
+                        or not -(2**63) <= failure['detail'] < 2**63))):
+                raise r.Refused('invalid_current_start_failure')
+            deadline = failure['stage'] == 'exchange' and failure['code'] == 402
+            if preceding_error != ('settings_start_rest_deadline' if deadline else 'settings_start'):
+                raise r.Refused('invalid_current_start_failure')
+            current_failure = dict(failure, label=labels[str(failure['code'])])
         else:
             if (not isinstance(value,dict) or set(value)!=FIELDS
                     or type(value['schema']) is not int or value['schema']!=1
@@ -54,7 +75,10 @@ def parse_inspection(output, code, plan, local, peer):
         raise r.Refused('incomplete_inspection_evidence')
     if not passed and code==0:
         raise r.Refused('inspection_exit_mismatch')
-    return dict(receipt=receipt,stages=stages,observations=observations,cleanup_unconfirmed=cleanup)
+    result = dict(receipt=receipt,stages=stages,observations=observations,cleanup_unconfirmed=cleanup)
+    if current_failure is not None:
+        result['current_start_failure'] = current_failure
+    return result
 
 
 def verify(execute, args, plan, local, peer):
@@ -129,9 +153,14 @@ def support_line(report):
                 fields.append('connection=' + (item['code'] or item['outcome']))
                 if item['code'] == 'settings_start_rest_deadline':
                     fields.append('bu_baslatmada_402=dogrulandi')
-                elif item['code'] == 'settings_start':
+                elif item['code'] == 'settings_start' and 'current_start_failure' not in driver:
                     fields.append('bu_baslatmada_402=belirlenemedi')
                 break
+        if 'current_start_failure' in driver:
+            current = driver['current_start_failure']
+            fields.append(f"guncel_hata={current['stage']}/{current['code']}/{current['label']}")
+            if current['detail'] is not None:
+                fields.append(f"alt_kod={current['detail']}")
         retained = report.get('windows_transport', {}).get('first_worker_failure', {})
         if retained.get('status') == 'observed' and retained['value']['code'] == 402:
             fields.append('saklanan_ilk_hata=402')
@@ -159,7 +188,7 @@ def main(target_run=TARGET_RUN):
         # Errors from arbitrary tools/OS never leave as unbounded text.
         safe={'wrong_inspection_target','invalid_recovery_plan','inspection_output_bound',
               'invalid_observation','inspection_stage_order','trailing_inspection_output',
-              'invalid_inspection_receipt','missing_inspection_receipt','incomplete_inspection_evidence',
+              'invalid_inspection_receipt','missing_inspection_receipt','incomplete_inspection_evidence','invalid_current_start_failure',
               'inspection_exit_mismatch','stopped_profile_verification_refused','quit_cryptex_before_update',
               'wrong_mac_profile','wrong_vm_profile','standard_user_required','bounded_command_incomplete'}
         report.update(outcome='incomplete',error=str(error) if str(error) in safe else 'inspection_unavailable')

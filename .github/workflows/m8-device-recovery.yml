@@ -60,7 +60,11 @@ jobs:
         run: cargo test --locked -p cryptexd ${{ matrix.daemon_features }} --test desktop_startup owned_interruption_ -- --test-threads=1
       - name: Windows exchange startup timeout and error correlation
         if: runner.os == 'Windows'
-        run: cargo test --locked -p cryptexd --lib managed_profile::worker::tests::startup_deadline
+        run: |
+          cargo test --locked -p cryptexd --lib managed_profile::worker::tests::startup_deadline
+          cargo test --locked -p cryptexd --features m8-start-inspection --lib managed_profile::worker::tests::owner_status_waits
+          $env:CRYPTEX_INSPECT_CURRENT_START = '1'
+          cargo test --locked -p cryptexd --features m8-start-inspection --lib current_worker_error_preserves_stage_and_platform_code
       - name: Capture receipt reconciliation in open and sealed paired profiles
         run: |
           cargo test --locked -p cryptexd ${{ matrix.daemon_features }} --lib capture::tests:: -- --test-threads=1 --skip first_capture::tests::

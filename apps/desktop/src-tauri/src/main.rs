@@ -293,6 +293,10 @@ async fn m8_connection_settings(
 ) -> Result<cryptexd::managed_profile::connection_settings::View, String> {
     tauri::async_runtime::spawn_blocking(move || {
         cryptexd::ipc::desktop_connection_settings(update)
+            .map(|mut view| {
+                view.error = view.error.map(|error| error.public_error());
+                view
+            })
             .map_err(|_| "connection_settings_unavailable".to_string())
     })
     .await
@@ -2138,6 +2142,15 @@ fn daemon_hold_command(cryptexd: &str, runtime: &Path) -> Result<std::process::C
         .args(pilot_runtime::daemon_transport_args(runtime))
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    #[cfg(all(windows, feature = "m8-device-recovery-check"))]
+    {
+        command.env_remove("CRYPTEX_INSPECT_CURRENT_START");
+        if std::env::args_os().nth(1).as_deref()
+            == Some(std::ffi::OsStr::new("--cryptex-device-recovery-inspect"))
+        {
+            command.env("CRYPTEX_INSPECT_CURRENT_START", "1");
+        }
+    }
     Ok(command)
 }
 

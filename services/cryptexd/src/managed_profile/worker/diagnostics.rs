@@ -12,7 +12,7 @@ struct Record {
     os_code: Option<i64>,
 }
 // No Debug/Display strings: platform operations, paths and panic payloads stay private.
-fn worker(e: WorkerError) -> (u16, Option<i64>) {
+pub(super) fn worker(e: WorkerError) -> (u16, Option<i64>) {
     match e {
         WorkerError::Spawn => (1, None),
         WorkerError::Panicked => (2, None),

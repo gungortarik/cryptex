@@ -37,6 +37,10 @@ impl std::fmt::Display for WorkerError {
 impl std::error::Error for WorkerError {}
 
 impl WorkerError {
+    #[cfg(feature = "m8-start-inspection")]
+    pub(crate) fn diagnostic_code(self) -> (u16, Option<i64>) {
+        diagnostics::worker(self)
+    }
     pub(crate) fn is_rest_deadline(self) -> bool {
         matches!(
             self,
@@ -88,22 +92,28 @@ struct Shared {
 pub struct StatusReader(Arc<Shared>);
 impl StatusReader {
     pub fn try_snapshot(&self) -> Result<Snapshot, WorkerError> {
-        if self
-            .0
-            .transport
-            .try_lock()
-            .map_err(|_| WorkerError::StatusUnavailable)?
-            .as_ref()
-            .is_some_and(|guard| guard.check().is_err())
-        {
+        self.read_snapshot(false)
+    }
+
+    fn read_snapshot(&self, wait_for_writer: bool) -> Result<Snapshot, WorkerError> {
+        fn copy<T: Clone>(value: &Mutex<T>, wait: bool) -> Result<T, WorkerError> {
+            if wait {
+                value
+                    .lock()
+                    .map(|v| v.clone())
+                    .map_err(|_| WorkerError::StatusUnavailable)
+            } else {
+                value
+                    .try_lock()
+                    .map(|v| v.clone())
+                    .map_err(|_| WorkerError::StatusUnavailable)
+            }
+        }
+        let mut snapshot = copy(&self.0.snapshot, wait_for_writer)?;
+        let guard = copy(&self.0.transport, wait_for_writer)?;
+        if guard.is_some_and(|guard| guard.check().is_err()) {
             return Err(WorkerError::StatusUnavailable);
         }
-        let mut snapshot = self
-            .0
-            .snapshot
-            .try_lock()
-            .map_err(|_| WorkerError::StatusUnavailable)?
-            .clone();
         snapshot.stop_requested = self.0.stop.load(Ordering::Acquire);
         Ok(snapshot)
     }
@@ -111,7 +121,20 @@ impl StatusReader {
     /// Returns the exact local ID observed on the authenticated owned REST
     /// socket, and only while that worker remains active and ready.
     pub fn try_transport_device_id(&self) -> Result<String, WorkerError> {
-        let snapshot = self.try_snapshot()?;
+        Self::ready_identity(self.try_snapshot()?)
+    }
+
+    // The lifecycle owner can close the worker on failure. Wait for the
+    // in-memory publication here so overlapping a healthy writer cannot stop it.
+    pub(crate) fn owner_transport_device_id(&self) -> Result<String, WorkerError> {
+        let snapshot = self.read_snapshot(true)?;
+        if let Some(error) = snapshot.error {
+            return Err(error);
+        }
+        Self::ready_identity(snapshot)
+    }
+
+    fn ready_identity(snapshot: Snapshot) -> Result<String, WorkerError> {
         if snapshot.state != WorkerState::Active
             || snapshot.stop_requested
             || snapshot
@@ -135,13 +158,13 @@ impl Shared {
         status: Status,
         transport_device_id: Option<&str>,
     ) -> Result<Control, WorkerError> {
-        let stop = self.stop.load(Ordering::Acquire)
-            || self
-                .transport
-                .lock()
-                .map_err(|_| WorkerError::StatusUnavailable)?
-                .as_ref()
-                .is_some_and(|guard| guard.check().is_err());
+        let guard = self
+            .transport
+            .lock()
+            .map_err(|_| WorkerError::StatusUnavailable)?
+            .clone();
+        let stop =
+            self.stop.load(Ordering::Acquire) || guard.is_some_and(|guard| guard.check().is_err());
         let mut snapshot = self
             .snapshot
             .lock()
@@ -320,7 +343,7 @@ impl ManagedTransportWorker {
             .revalidate()
             .map_err(|_| WorkerError::StatusUnavailable)?;
         guard.check().map_err(|_| WorkerError::StatusUnavailable)?;
-        worker.status_reader().try_transport_device_id()?;
+        worker.status_reader().owner_transport_device_id()?;
         Ok(worker)
     }
 
@@ -437,14 +460,8 @@ impl ManagedTransportWorker {
             *shared
                 .transport
                 .lock()
-                .map_err(|_| WorkerError::StatusUnavailable)? = guard;
-            if shared
-                .transport
-                .lock()
-                .map_err(|_| WorkerError::StatusUnavailable)?
-                .as_ref()
-                .is_some_and(|guard| guard.check().is_err())
-            {
+                .map_err(|_| WorkerError::StatusUnavailable)? = guard.clone();
+            if guard.is_some_and(|guard| guard.check().is_err()) {
                 return Ok(Outcome::Cancelled);
             }
             if shared.stop.load(Ordering::Acquire) {
@@ -605,6 +622,51 @@ impl Drop for ManagedTransportWorker {
 mod tests {
     use super::*;
 
+    #[test]
+    fn owner_status_waits_for_publication_and_preserves_terminal_error() {
+        use crate::syncthing_owned_rest::OwnedRestError;
+        let id = "AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA";
+        let worker = ManagedTransportWorker::synthetic_for_incoming_tests(id, true);
+        let reader = worker.status_reader();
+        let write = reader.0.snapshot.lock().unwrap();
+        assert_eq!(
+            reader.try_transport_device_id(),
+            Err(WorkerError::StatusUnavailable)
+        );
+        std::thread::scope(|scope| {
+            let (began, starting) = std::sync::mpsc::channel();
+            let (sent, received) = std::sync::mpsc::channel();
+            let reader = reader.clone();
+            scope.spawn(move || {
+                began.send(()).unwrap();
+                sent.send(reader.owner_transport_device_id()).unwrap();
+            });
+            starting.recv().unwrap();
+            assert_eq!(
+                received.recv_timeout(Duration::from_millis(50)),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            );
+            drop(write);
+            assert_eq!(
+                received
+                    .recv_timeout(Duration::from_secs(3))
+                    .unwrap()
+                    .unwrap(),
+                id
+            );
+        });
+        let cause = WorkerError::Native(NativeConfigError::Rest(OwnedRestError::IdentityMismatch));
+        {
+            let mut snapshot = reader.0.snapshot.lock().unwrap();
+            snapshot.state = WorkerState::Failed;
+            snapshot.error = Some(cause);
+        }
+        assert_eq!(reader.owner_transport_device_id(), Err(cause));
+        assert_eq!(
+            reader.try_transport_device_id(),
+            Err(WorkerError::StatusUnavailable)
+        );
+    }
     #[test]
     fn startup_deadline_retries_only_one_full_read() {
         use crate::syncthing_owned_rest::OwnedRestError;

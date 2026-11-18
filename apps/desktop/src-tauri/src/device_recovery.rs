@@ -849,6 +849,19 @@ fn inspect_existing(plan: &Plan, root: &Path) -> Result<()> {
         Ok(view) => {
             let code = settings_view_issue(&view);
             observation("connections_read", "error", Some(&code), None);
+            #[cfg(windows)]
+            if let Some(cryptexd::managed_profile::connection_settings::Error::StartFailure {
+                stage,
+                code,
+                detail,
+            }) = view.error
+            {
+                println!(
+                    "{}",
+                    serde_json::json!({"current_start_failure":{
+                    "stage":stage, "code":code, "detail":detail}})
+                );
+            }
             first_error.get_or_insert(Failure::Connections);
         }
         Err(error) => {
@@ -898,7 +911,7 @@ fn settings_view_issue(view: &View) -> String {
         return "settings_profile_mismatch".into();
     }
     let reason = match view.error {
-        Some(error) => serde_json::json!(error),
+        Some(error) => serde_json::json!(error.public_error()),
         None => serde_json::json!(view.state),
     };
     format!(
