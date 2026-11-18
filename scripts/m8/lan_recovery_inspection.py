@@ -17,7 +17,7 @@ FIELDS = {'schema','purpose','run_id','brain_id','local_device_id','peer_device_
           'capture_invoked','settings_updated','process_interrupted'}
 
 
-def parse_inspection(output, code, plan, local, peer):
+def parse_inspection(output, code, plan, local, peer, *, start_only=False):
     if not isinstance(output,str) or len(output)>65536:
         raise r.Refused('inspection_output_bound')
     stages, observations, receipt, cleanup = [], [], None, False
@@ -60,7 +60,7 @@ def parse_inspection(output, code, plan, local, peer):
         else:
             if (not isinstance(value,dict) or set(value)!=FIELDS
                     or type(value['schema']) is not int or value['schema']!=1
-                    or value['purpose']!='cryptex-device-recovery-inspection'
+                    or value['purpose']!=('cryptex-connection-start-inspection' if start_only else 'cryptex-device-recovery-inspection')
                     or value['run_id']!=plan['run_id'] or value['brain_id']!=r.BRAIN
                     or value['local_device_id']!=local or value['peer_device_id']!=peer
                     or any(value[k] is not False for k in ('capture_invoked','settings_updated','process_interrupted'))
@@ -71,6 +71,9 @@ def parse_inspection(output, code, plan, local, peer):
     if receipt is None or not stages:
         raise r.Refused('missing_inspection_receipt')
     passed=receipt['outcome']=='inspection_completed'
+    if start_only and passed and not any(item['step']=='connections_read' and item['outcome'] in ('ready','paused')
+                                         for item in observations):
+        raise r.Refused('incomplete_inspection_evidence')
     if passed and (code!=0 or cleanup or stages!=STAGES or any(v['outcome']=='error' for v in observations)):
         raise r.Refused('incomplete_inspection_evidence')
     if not passed and code==0:
@@ -102,14 +105,14 @@ def include_windows_start_evidence(report, root, system, driver, collector=None)
         report['windows_transport'] = {'outcome': 'unavailable'}
 
 
-def collect(package, plan, system, report, prepare=r.prepare):
+def collect(package, plan, system, report, prepare=r.prepare, *, start_only=False):
     desktop,daemon,root,execute=prepare(package,plan,report,system)
     local,peer=(r.WINDOWS,r.MAC) if system=='Windows' else (r.MAC,r.WINDOWS)
     report['desktop_sha256']=hashlib.sha256(desktop.read_bytes()).hexdigest()
     report['daemon_sha256']=hashlib.sha256(daemon.read_bytes()).hexdigest()
     args=r.verify_command(daemon,root,plan,local,peer)
     report['before']=verify(execute,args,plan,local,peer)
-    print('Mevcut kayitlar dogrulandi. Yeni not eklemeden baslangic ve eski islem makbuzu kontrol ediliyor.',flush=True)
+    print('Mevcut kayitlar dogrulandi. Baglanti baslatma durumu okunuyor.',flush=True)
     finished=threading.Event()
     def progress():
         while not finished.wait(30):
@@ -119,8 +122,9 @@ def collect(package, plan, system, report, prepare=r.prepare):
     try:
         # Two resolve deadlines, native settings admission, four guarded reads
         # and normal owned shutdown must fit before the outer cleanup bound.
-        code,output=execute([desktop,'--cryptex-device-recovery-inspect',plan['run_id'],r.BRAIN,local,peer],900)
-        report['driver']=parse_inspection(output,code,plan,local,peer)
+        flag = '--cryptex-inspect-connection-start' if start_only else '--cryptex-device-recovery-inspect'
+        code,output=execute([desktop,flag,plan['run_id'],r.BRAIN,local,peer],300 if start_only else 900)
+        report['driver']=parse_inspection(output,code,plan,local,peer,start_only=start_only)
         include_windows_start_evidence(report, root, system, report['driver'])
     finally:
         finished.set()
@@ -172,7 +176,7 @@ def support_line(report):
     return ' '.join(fields)
 
 
-def main(target_run=TARGET_RUN):
+def main(target_run=TARGET_RUN, *, start_only=False):
     os.umask(0o077)
     package,system=Path(__file__).resolve().parent,platform.system()
     report=dict(schema=1,purpose='cryptex-recovery-inspection-result',os=system,outcome='incomplete',
@@ -183,7 +187,7 @@ def main(target_run=TARGET_RUN):
         if plan['run_id']!=target_run:
             raise r.Refused('wrong_inspection_target')
         report.update(run_id=plan['run_id'],source_commit=plan['source_commit'])
-        collect(package,plan,system,report)
+        collect(package,plan,system,report,start_only=start_only)
     except Exception as error:
         # Errors from arbitrary tools/OS never leave as unbounded text.
         safe={'wrong_inspection_target','invalid_recovery_plan','inspection_output_bound',

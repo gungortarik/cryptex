@@ -23,6 +23,30 @@ def output(error=None, observation=None):
 
 
 class InspectionTests(unittest.TestCase):
+    def test_start_only_packet_requires_its_own_receipt_and_settings_observation(self):
+        note = dict(step='connections_read', outcome='ready', code=None, os_code=None)
+        raw = output(observation=note)
+        with self.assertRaises(r.Refused):
+            d.parse_inspection(raw, 0, PLAN, r.WINDOWS, r.MAC, start_only=True)
+        purpose = 'cryptex-connection-start-inspection'
+        raw = raw.replace('cryptex-device-recovery-inspection', purpose)
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp)/'binary'
+            binary.write_bytes(b'fixture')
+            baseline = dict(receipt(r.WINDOWS, r.MAC, True), run_id=PLAN['run_id'])
+            calls = []
+            def execute(args, timeout):
+                calls.append((args[1], timeout))
+                return 0, raw if len(calls)==2 else json.dumps(baseline)
+            report = {}
+            d.collect(Path(tmp), PLAN, 'Windows', report, prepare=lambda *_:(binary,binary,Path(tmp),execute), start_only=True)
+            self.assertEqual(calls, [('replication',90),('--cryptex-inspect-connection-start',300),('replication',90)])
+            self.assertTrue(report['native_inspection_completed'])
+            self.assertTrue(report['same_local_set_before_after'])
+        with self.assertRaises(r.Refused):
+            d.parse_inspection(output().replace('cryptex-device-recovery-inspection', purpose), 0,
+                               PLAN, r.WINDOWS, r.MAC, start_only=True)
+
     def test_current_failure_is_bound_to_exact_settings_reply(self):
         def parse(stage='exchange', code=604, detail=5, reason='settings_start', before=False):
             note = dict(step='connections_read', outcome='error', code=reason, os_code=None)

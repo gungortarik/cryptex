@@ -2145,9 +2145,10 @@ fn daemon_hold_command(cryptexd: &str, runtime: &Path) -> Result<std::process::C
     #[cfg(all(windows, feature = "m8-device-recovery-check"))]
     {
         command.env_remove("CRYPTEX_INSPECT_CURRENT_START");
-        if std::env::args_os().nth(1).as_deref()
-            == Some(std::ffi::OsStr::new("--cryptex-device-recovery-inspect"))
-        {
+        if std::env::args_os().nth(1).is_some_and(|flag| {
+            flag == "--cryptex-device-recovery-inspect"
+                || flag == device_recovery::START_INSPECT_FLAG
+        }) {
             command.env("CRYPTEX_INSPECT_CURRENT_START", "1");
         }
     }

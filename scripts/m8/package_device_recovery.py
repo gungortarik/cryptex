@@ -92,14 +92,14 @@ def build(artifact, revision, output, *, inspection=False, windows_inspection_ru
         run_id = str(uuid.UUID(windows_inspection_run))
         if run_id != windows_inspection_run:
             raise ValueError('invalid_inspection_run')
-        folder = 'Cryptex-VM-402'
+        folder = 'Cryptex-VM-Baslatma'
         for name in ('source.zip', 'TANI-MAC.command', 'TANI-WINDOWS.cmd'):
             members.pop(name)
         plan['run_id'] = run_id
         members['inspection.json'] = (json.dumps(plan, indent=2)+'\n').encode()
         members['inspect_current.py'] = (
             'import sys\nfrom lan_recovery_inspection import main\n'
-            f'if sys.platform == "win32":\n    raise SystemExit(main("{run_id}"))\n'
+            f'if sys.platform == "win32":\n    raise SystemExit(main("{run_id}", start_only=True))\n'
             'raise SystemExit("Windows VM required")\n').encode()
         members['VM-KONTROL.cmd'] = b'@echo off\r\ncd /d "%~dp0"\r\npy -3 -B inspect_current.py\r\npause\r\n'
         members['BASLA.txt'] = ('Yalniz Windows VM: Cryptex aciksa normal Quit ile kapat. ZIPi tamamen ayikla.\n'

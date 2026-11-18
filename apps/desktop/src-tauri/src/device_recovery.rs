@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 const FLAG: &str = "--cryptex-device-recovery-check";
 const INSPECT_FLAG: &str = "--cryptex-device-recovery-inspect";
+pub(super) const START_INSPECT_FLAG: &str = "--cryptex-inspect-connection-start";
 #[cfg(target_os = "macos")]
 const CUT_FLAG: &str = "--cryptex-device-recovery-desktop-loss";
 const PRIOR_MAC_CAPTURE: &str = "4bbd029c-2ab2-426f-aec5-725b67cbcaf7";
@@ -768,7 +769,8 @@ fn run(plan: &Plan, root: &Path) -> Result<()> {
 
 pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
     let mut args: Vec<_> = std::env::args().skip(1).collect();
-    let inspect = args.first().is_some_and(|v| v == INSPECT_FLAG);
+    let start_only = cfg!(windows) && args.first().is_some_and(|v| v == START_INSPECT_FLAG);
+    let inspect = start_only || args.first().is_some_and(|v| v == INSPECT_FLAG);
     if inspect {
         args[0] = FLAG.into();
     }
@@ -799,10 +801,20 @@ pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
             std::process::exit(failure.child_code());
         }
         if inspect {
-            let result = inspect_existing(&plan, &root);
+            let (purpose, result) = if start_only {
+                (
+                    "cryptex-connection-start-inspection",
+                    inspect_start(&plan, &root),
+                )
+            } else {
+                (
+                    "cryptex-device-recovery-inspection",
+                    inspect_existing(&plan, &root),
+                )
+            };
             println!(
                 "{}",
-                serde_json::json!({"schema":1,"purpose":"cryptex-device-recovery-inspection",
+                serde_json::json!({"schema":1,"purpose":purpose,
                 "run_id":plan.run,"brain_id":plan.brain,"local_device_id":plan.local,"peer_device_id":plan.peer,
                 "outcome":if result.is_ok(){"inspection_completed"}else{"incomplete"},"error":result.as_ref().err(),
                 "capture_invoked":false,"settings_updated":false,"process_interrupted":false})
@@ -838,41 +850,8 @@ fn inspect_existing(plan: &Plan, root: &Path) -> Result<()> {
             first_error.get_or_insert(error);
         }
     }
-    observation("connections_read", "begin", None, None);
-    match session.connections(None) {
-        Ok(view) if plan.check_view(&view).is_ok() => observation(
-            "connections_read",
-            if view.paused { "paused" } else { "ready" },
-            None,
-            None,
-        ),
-        Ok(view) => {
-            let code = settings_view_issue(&view);
-            observation("connections_read", "error", Some(&code), None);
-            #[cfg(windows)]
-            if let Some(cryptexd::managed_profile::connection_settings::Error::StartFailure {
-                stage,
-                code,
-                detail,
-            }) = view.error
-            {
-                println!(
-                    "{}",
-                    serde_json::json!({"current_start_failure":{
-                    "stage":stage, "code":code, "detail":detail}})
-                );
-            }
-            first_error.get_or_insert(Failure::Connections);
-        }
-        Err(error) => {
-            observation(
-                "connections_read",
-                "error",
-                Some("settings_read_failed"),
-                None,
-            );
-            first_error.get_or_insert(error);
-        }
+    if let Err(error) = inspect_connection(&mut session, plan) {
+        first_error.get_or_insert(error);
     }
     for (device, ack, step) in [
         (&plan.local, false, "search_local_queued"),
@@ -901,6 +880,56 @@ fn inspect_existing(plan: &Plan, root: &Path) -> Result<()> {
         return Err(error);
     }
     stage("inspection_completed");
+    Ok(())
+}
+
+fn inspect_start(plan: &Plan, root: &Path) -> Result<()> {
+    stage("inspect_existing_profile");
+    let mut session = Session::start(root, plan)?;
+    let result = inspect_connection(&mut session, plan);
+    session.close()?;
+    result?;
+    stage("inspection_completed");
+    Ok(())
+}
+
+fn inspect_connection(session: &mut Session, plan: &Plan) -> Result<()> {
+    observation("connections_read", "begin", None, None);
+    match session.connections(None) {
+        Ok(view) if plan.check_view(&view).is_ok() => observation(
+            "connections_read",
+            if view.paused { "paused" } else { "ready" },
+            None,
+            None,
+        ),
+        Ok(view) => {
+            let code = settings_view_issue(&view);
+            observation("connections_read", "error", Some(&code), None);
+            #[cfg(windows)]
+            if let Some(cryptexd::managed_profile::connection_settings::Error::StartFailure {
+                stage,
+                code,
+                detail,
+            }) = view.error
+            {
+                println!(
+                    "{}",
+                    serde_json::json!({"current_start_failure":{
+                    "stage":stage, "code":code, "detail":detail}})
+                );
+            }
+            return Err(Failure::Connections);
+        }
+        Err(error) => {
+            observation(
+                "connections_read",
+                "error",
+                Some("settings_read_failed"),
+                None,
+            );
+            return Err(error);
+        }
+    }
     Ok(())
 }
 
