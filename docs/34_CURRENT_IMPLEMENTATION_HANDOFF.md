@@ -17,6 +17,12 @@ It checks the retained child before issuing each read. All other failures
 still stop startup. Owner testing must use the inspection launcher against
 the original run before any new interruption. Mac last reported 11 records.
 
+Both CI jobs passed for `fb71c6a` in run 44344966437. The locally assembled
+inspection archive `Cryptex-Kesinti-Tani-fb71c6a.zip` is 25,221,289 bytes,
+SHA-256 `28059d10ec51ce85a9345eb61aeba692063eeeb7d3f988d4ab4b8b0afb28c5c6`.
+Source, payload, run binding, inspection-only launchers and ZIP CRC checked.
+A receipt from the updated VM run is pending.
+
 ## Recovery inspection results — November 18
 
 Both device reports match the inspection source a7e99ea and the original run
