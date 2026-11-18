@@ -702,17 +702,31 @@ fn inspect_existing(plan: &Plan, root: &Path) -> Result<()> {
     // derived state. The collector independently compares before/after digests.
     stage("inspect_existing_profile");
     let mut session = Session::start(root, plan)?;
+    let mut first_error = None;
+    // Once startup identity is authenticated, independent reads may still
+    // explain a failed connection. Preserve the first failure without hiding
+    // the existing capture receipt behind a later network/settings problem.
+    for ack in [false, true] {
+        if let Err(error) = session.inspect_receipt(plan, ack) {
+            first_error.get_or_insert(error);
+        }
+    }
     observation("connections_read", "begin", None, None);
-    let view = session.connections(None)?;
-    plan.check_view(&view)?;
-    observation(
-        "connections_read",
-        if view.paused { "paused" } else { "ready" },
-        None,
-        None,
-    );
-    session.inspect_receipt(plan, false)?;
-    session.inspect_receipt(plan, true)?;
+    match session.connections(None).and_then(|view| {
+        plan.check_view(&view)?;
+        Ok(view)
+    }) {
+        Ok(view) => observation(
+            "connections_read",
+            if view.paused { "paused" } else { "ready" },
+            None,
+            None,
+        ),
+        Err(error) => {
+            observation("connections_read", "error", Some("response_refused"), None);
+            first_error.get_or_insert(error);
+        }
+    }
     for (device, ack, step) in [
         (&plan.local, false, "search_local_queued"),
         (&plan.local, true, "search_local_received"),
@@ -720,15 +734,25 @@ fn inspect_existing(plan: &Plan, root: &Path) -> Result<()> {
         (&plan.peer, true, "search_peer_received"),
     ] {
         observation(step, "begin", None, None);
-        let present = session.found(plan, device, ack)?;
-        observation(
-            step,
-            if present { "found" } else { "not_visible" },
-            None,
-            None,
-        );
+        match session.found(plan, device, ack) {
+            Ok(present) => observation(
+                step,
+                if present { "found" } else { "not_visible" },
+                None,
+                None,
+            ),
+            Err(error) => {
+                observation(step, "error", Some("response_refused"), None);
+                first_error.get_or_insert(error);
+            }
+        }
     }
-    session.close()?;
+    if let Err(error) = session.close() {
+        first_error.get_or_insert(error);
+    }
+    if let Some(error) = first_error {
+        return Err(error);
+    }
     stage("inspection_completed");
     Ok(())
 }
