@@ -17,6 +17,11 @@ set digests. A ready connection or a matching record count alone cannot
 establish delivery. This check covers a normal restart with the saved sync
 preference; a new controlled interruption remains separate.
 
+Candidate `e1c4d86` passed Windows and macOS recovery CI 44409593062.
+The shared packet is `Cryptex-Bekleyen-Not-e1c4d86.zip`, SHA-256
+`70474e5d3eae4bf1d4010d266289f08cfa46e11f9ae25f68bf41ca4290bc1fea`.
+Both physical-device reports are pending.
+
 ## Windows VM startup confirmed on 7432f1e
 
 The returned Windows inspection archive `KESINTI-TANI-SONUC-Windows-3884b8592ac2.zip`
