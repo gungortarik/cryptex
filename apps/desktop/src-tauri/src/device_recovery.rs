@@ -95,6 +95,7 @@ fn inspection_code(value: Option<&str>, fallback: &'static str) -> &'static str 
         "writer_failure",
         "durability_unconfirmed",
         "invalid_request",
+        "invalid_query",
         "enrollment_required",
         "identity_unavailable",
         "capture_id_conflict",
@@ -482,16 +483,7 @@ impl Session {
         let marker = plan.marker(device, ack);
         let result = observed_io(
             "guarded_search",
-            ipc::desktop_search(
-                DesktopSearchQuery {
-                    text: Some(marker.clone()),
-                    classification: Some("public".into()),
-                    device_id: Some(device.into()),
-                    limit: Some(20),
-                    ..Default::default()
-                },
-                IPC,
-            ),
+            ipc::desktop_search(marker_query(&marker, device), IPC),
             Failure::Search,
         )?;
         if result.daemon_pid == self.pid && (!result.accepted || result.error.is_some()) {
@@ -576,6 +568,19 @@ impl Session {
                 .map_err(|_| Failure::Cleanup)?;
         }
         Ok(())
+    }
+}
+
+fn marker_query(marker: &str, device: &str) -> DesktopSearchQuery {
+    // MATCH accepts an FTS5 expression. Quote the generated text as one
+    // phrase so hyphenated UUIDs are searched literally. Hits are still
+    // checked against the original text and identities after retrieval.
+    DesktopSearchQuery {
+        text: Some(format!("\"{}\"", marker.replace('"', "\"\""))),
+        classification: Some("public".into()),
+        device_id: Some(device.into()),
+        limit: Some(20),
+        ..Default::default()
     }
 }
 
@@ -816,18 +821,25 @@ fn inspect_existing(plan: &Plan, root: &Path) -> Result<()> {
         }
     }
     observation("connections_read", "begin", None, None);
-    match session.connections(None).and_then(|view| {
-        plan.check_view(&view)?;
-        Ok(view)
-    }) {
-        Ok(view) => observation(
+    match session.connections(None) {
+        Ok(view) if plan.check_view(&view).is_ok() => observation(
             "connections_read",
             if view.paused { "paused" } else { "ready" },
             None,
             None,
         ),
+        Ok(view) => {
+            let code = settings_view_issue(&view);
+            observation("connections_read", "error", Some(&code), None);
+            first_error.get_or_insert(Failure::Connections);
+        }
         Err(error) => {
-            observation("connections_read", "error", Some("response_refused"), None);
+            observation(
+                "connections_read",
+                "error",
+                Some("settings_read_failed"),
+                None,
+            );
             first_error.get_or_insert(error);
         }
     }
@@ -859,6 +871,22 @@ fn inspect_existing(plan: &Plan, root: &Path) -> Result<()> {
     }
     stage("inspection_completed");
     Ok(())
+}
+
+fn settings_view_issue(view: &View) -> String {
+    // Serialize only the closed public enums. Addresses and identities never
+    // enter the report. A ready or paused view can still fail its peer checks.
+    if view.error.is_none() && matches!(view.state, State::ReadyLocally | State::Paused) {
+        return "settings_profile_mismatch".into();
+    }
+    let reason = match view.error {
+        Some(error) => serde_json::json!(error),
+        None => serde_json::json!(view.state),
+    };
+    format!(
+        "settings_{}",
+        reason.as_str().expect("settings enum wire name")
+    )
 }
 
 #[cfg(test)]
@@ -1083,6 +1111,7 @@ mod tests {
         let mut bad = good.clone();
         bad.devices.clear();
         assert!(plan.check_view(&bad).is_err());
+        assert_eq!(settings_view_issue(&bad), "settings_profile_mismatch");
         let mut bad = good.clone();
         bad.devices[0].device_id = plan.local.clone();
         assert!(plan.check_view(&bad).is_err());
@@ -1092,8 +1121,39 @@ mod tests {
         let mut bad = good.clone();
         bad.state = State::Applying;
         assert!(plan.check_view(&bad).is_err());
+        assert_eq!(settings_view_issue(&bad), "settings_applying");
         let mut bad = good;
         bad.error = Some(cryptexd::managed_profile::connection_settings::Error::Authority);
         assert!(plan.check_view(&bad).is_err());
+        assert_eq!(settings_view_issue(&bad), "settings_authority");
+    }
+
+    #[test]
+    fn generated_recovery_queries_find_only_the_intended_fts_phrase() {
+        let plan = Plan::parse(&args()).unwrap();
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        db.execute("CREATE VIRTUAL TABLE notes USING fts5(body)", [])
+            .unwrap();
+        let mut notes = Vec::new();
+        for device in [&plan.local, &plan.peer] {
+            for ack in [false, true] {
+                let marker = plan.marker(device, ack);
+                db.execute("INSERT INTO notes VALUES (?1)", [&marker])
+                    .unwrap();
+                notes.push((device, marker));
+            }
+        }
+        for (device, marker) in notes {
+            let query = marker_query(&marker, device);
+            let mut stmt = db
+                .prepare("SELECT body FROM notes WHERE notes MATCH ?1")
+                .unwrap();
+            let hits = stmt
+                .query_map([query.text.unwrap()], |row| row.get(0))
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<String>>>()
+                .unwrap();
+            assert_eq!(hits, [marker]);
+        }
     }
 }

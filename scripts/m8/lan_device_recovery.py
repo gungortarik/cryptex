@@ -32,7 +32,12 @@ OBSERVATION_CODES = {'brain_response_mismatch','brain_operation_mismatch','local
     'canonical_verification_unavailable','search_hold','runtime_recovery_required','runtime_policy_conflict',
     'runtime_rebuild_required','runtime_stopped','runtime_mismatch','receipt_missing','receipt_persist_failed',
     'verification_unavailable','fingerprint_mismatch','lock_failed','writer_failure','durability_unconfirmed',
-    'invalid_request','enrollment_required','identity_unavailable','capture_id_conflict'}
+    'invalid_request','enrollment_required','identity_unavailable','capture_id_conflict','invalid_query',
+    'settings_read_failed','settings_profile_mismatch','settings_invalid_request','settings_unauthorized',
+    'settings_unavailable','settings_not_enrolled','settings_stale_revision','settings_unknown_device',
+    'settings_invalid_endpoint','settings_storage','settings_pending_settings','settings_authority',
+    'settings_local_restricted','settings_shutdown','settings_start','settings_held',
+    'settings_address_needed','settings_applying','settings_attention'}
 
 
 def validate_observation(value):

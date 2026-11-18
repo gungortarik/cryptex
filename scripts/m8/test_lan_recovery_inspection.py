@@ -32,7 +32,9 @@ class InspectionTests(unittest.TestCase):
 
     def test_typed_runtime_and_capture_failures_survive_collection(self):
         for step, code in [('brain_read','runtime_rebuild_required'),
-                           ('resolve_queued','receipt_missing'), ('guarded_search','runtime_policy_conflict')]:
+                           ('resolve_queued','receipt_missing'), ('guarded_search','runtime_policy_conflict'),
+                           ('guarded_search','invalid_query'), ('connections_read','settings_authority'),
+                           ('connections_read','settings_profile_mismatch')]:
             note=dict(step=step,outcome='error',code=code,os_code=None)
             parsed=d.parse_inspection(output('capture_uncertain',note),2,PLAN,r.WINDOWS,r.MAC)
             self.assertEqual(parsed['observations'],[note])

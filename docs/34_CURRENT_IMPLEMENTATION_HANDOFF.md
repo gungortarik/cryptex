@@ -1,5 +1,26 @@
 # 34 — Current Implementation Handoff
 
+## Recovery marker lookup — November 18
+
+Inspection of the existing VM profile on fb71c6a passed health and Brain identity.
+The read yielded runtime_busy and then succeeded. Both capture resolves returned
+receipt_missing, consistent with the original Windows attempt stopping before
+capture. The initial and final local receipts matched the ten-record baseline.
+The source, run and both binary hashes matched the delivered archive.
+Result archive SHA-256: 90d70cc45f19c9858270d2366b6b4a4dd9de391c2365fe76e1631542bb876f67.
+Settings and all four searches reported response_refused. The archive does
+not contain their underlying error codes. No new note or interruption occurred.
+
+The recovery driver passed raw UUIDs into the FTS5 MATCH expression. This
+reproduced a query error in an in-memory SQLite database. It now quotes the
+entire marker as a phrase while preserving the device and classification
+filters and exact post-search comparisons. The inspection records a bounded
+connection error or state when a view is returned but fails validation.
+The next owner inspection is on the Mac with 11 records, targeting the original
+run. Use its local queued receipt and guarded search to identify the outstanding
+marker. A missing receipt alone does not establish absence. Keep both profiles
+and do not rerun the ten-record interruption packet.
+
 ## Windows recovery inspection — November 18, startup busy
 
 The VM returned `KESINTI-TANI-SONUC-Windows-c733d432c6a9.zip` (SHA-256
