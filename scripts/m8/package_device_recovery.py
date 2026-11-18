@@ -14,7 +14,7 @@ from windows_lan_setup import HASHES
 ROOT=Path(__file__).resolve().parents[2]
 
 
-def build(artifact, revision, output):
+def build(artifact, revision, output, *, inspection=False):
     source=subprocess.check_output(['git','rev-parse',revision+'^{commit}'],cwd=ROOT,text=True).strip()
     provenance=json.loads((artifact/'provenance.json').read_text(encoding='utf-8-sig'))
     if provenance['source_commit'] != source or provenance['feature'] != 'm8-device-recovery-check':
@@ -66,16 +66,37 @@ def build(artifact, revision, output):
             'Bu test bekleyen veriyle surec kesintisi/toparlanma icindir; guc kaybi veya baytin ortasinda kesinti kaniti degildir.\n'
             'Eski uygulama ve kisayol degismez. Sonuc raporunda not icerigi ve ozel anahtar bulunmaz.\n'
             'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()})
+    folder='Cryptex-Kesinti'
+    if inspection:
+        folder='Cryptex-Kesinti-Tani'
+        plan.update(purpose='cryptex-device-recovery-inspection-packet',
+                    run_id='4bbd029c-2ab2-426f-aec5-725b67cbcaf7')
+        for name in ('recovery.json','KESINTI-WINDOWS.cmd','KESINTI-MAC.command'):
+            members.pop(name)
+        members.update({
+            'inspection.json':(json.dumps(plan,indent=2)+'\n').encode(),
+            'TANI-WINDOWS.cmd':b'@echo off\r\ncd /d "%~dp0"\r\npy -3 -B lan_recovery_inspection.py\r\npause\r\n',
+            'TANI-MAC.command':b'#!/bin/zsh\nset -eu\ncd -- "${0:A:h}"\n/usr/bin/python3 -B lan_recovery_inspection.py\n',
+            'BASLA.txt':(
+                'Cryptex aciksa iki cihazda da normal Quit / Command-Q ile kapat.\n'
+                'ZIPi tamamen cikart. Mac: TANI-MAC.command. Windows VM: TANI-WINDOWS.cmd.\n'
+                'Iki cihazda ayni anda baslatman gerekmiyor. Terminal acik, cihaz uyanik kalsin.\n'
+                'Yeni not eklenmez, kesinti uygulanmaz, esitleme ayarlari degistirilmez.\n'
+                'Normal servis acilisi daha once var olan gelen veriyi isleyebilir; once/sonra ozetleri toplanir.\n'
+                'Mac ayri uygulamayi mevcut yerel sertifikayla derler; eski kisayol ve kimlik korunur.\n'
+                'macOS Keychain izni isterse yalnizca macOS penceresinde ver.\n'
+                'KESINTI-TANI-SONUC ZIPlerini gonder. Eski KESINTI paketini tekrar calistirma.\n'
+                'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()})
     output=output.resolve()
     if output==ROOT or ROOT in output.parents: raise ValueError('output_inside_repository')
     with zipfile.ZipFile(output,'x',zipfile.ZIP_DEFLATED) as archive:
         for name,data in members.items():
-            info=zipfile.ZipInfo('Cryptex-Kesinti/'+name);info.create_system=3
+            info=zipfile.ZipInfo(folder+'/'+name);info.create_system=3
             info.external_attr=(0o100700 if name.endswith('.command') else 0o100600)<<16
             archive.writestr(info,data,compress_type=zipfile.ZIP_DEFLATED)
     with zipfile.ZipFile(output) as archive:
         for name,data in members.items():
-            if archive.read('Cryptex-Kesinti/'+name)!=data: raise ValueError('packet_readback')
+            if archive.read(folder+'/'+name)!=data: raise ValueError('packet_readback')
     return dict(source=source,run_id=plan['run_id'],sha256=hashlib.sha256(output.read_bytes()).hexdigest())
 
 
@@ -84,5 +105,6 @@ if __name__=='__main__':
     parser.add_argument('--artifact',type=Path,required=True)
     parser.add_argument('--revision',default='HEAD')
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--inspect',action='store_true')
     args=parser.parse_args()
-    print(json.dumps(build(args.artifact,args.revision,args.output)))
+    print(json.dumps(build(args.artifact,args.revision,args.output,inspection=args.inspect)))

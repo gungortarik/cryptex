@@ -8,11 +8,12 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const FLAG: &str = "--cryptex-device-recovery-check";
+const INSPECT_FLAG: &str = "--cryptex-device-recovery-inspect";
 #[cfg(target_os = "macos")]
 const CUT_FLAG: &str = "--cryptex-device-recovery-desktop-loss";
 const IPC: Duration = Duration::from_secs(3);
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum Failure {
     Arguments,
@@ -27,6 +28,90 @@ enum Failure {
     Cleanup,
 }
 type Result<T> = std::result::Result<T, Failure>;
+
+impl Failure {
+    // Closed exit-code mapping carries the first inner failure through Mac's
+    // retained child without files, raw logs, or overriding a success cut code.
+    #[cfg(any(target_os = "macos", test))]
+    const ALL: [Self; 10] = [
+        Self::Arguments,
+        Self::ExistingProfileRequired,
+        Self::Startup,
+        Self::Identity,
+        Self::Connections,
+        Self::CaptureUncertain,
+        Self::Search,
+        Self::PeerDeadline,
+        Self::Interruption,
+        Self::Cleanup,
+    ];
+    #[cfg(any(target_os = "macos", test))]
+    fn child_code(self) -> i32 {
+        100 + Self::ALL
+            .iter()
+            .position(|v| *v == self)
+            .expect("closed failure") as i32
+    }
+    #[cfg(any(target_os = "macos", test))]
+    fn from_child_code(code: i32) -> Option<Self> {
+        code.checked_sub(100)
+            .and_then(|v| Self::ALL.get(v as usize))
+            .copied()
+    }
+}
+
+fn observation(step: &str, outcome: &str, code: Option<&str>, os_code: Option<i32>) {
+    use std::collections::BTreeSet;
+    use std::sync::{Mutex, OnceLock};
+    static SEEN: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
+    let line = serde_json::json!({"recovery_observation":{
+        "step":step,"outcome":outcome,"code":code,"os_code":os_code}})
+    .to_string();
+    // Polling the same bounded derived hold must not exhaust the collector's
+    // output limit. Keep the first observation of each fixed-code transition.
+    if SEEN
+        .get_or_init(|| Mutex::new(BTreeSet::new()))
+        .lock()
+        .expect("diagnostic observation lock")
+        .insert(line.clone())
+    {
+        println!("{line}");
+    }
+}
+fn io_code(error: &std::io::Error) -> &'static str {
+    // Exact known protocol codes only. No arbitrary server text, paths or
+    // credential-related OS descriptions are exported.
+    match error.to_string().as_str() {
+        "bootstrap exchange response mismatch" => "brain_response_mismatch",
+        "bootstrap exchange operation mismatch" => "brain_operation_mismatch",
+        "local_identity_unavailable" => "local_identity_unavailable",
+        "bootstrap_exchange_request_rejected" => "bootstrap_request_rejected",
+        "unauthorized_client_process" => "unauthorized_client_process",
+        "runtime_busy" => "runtime_busy",
+        _ => match error.kind() {
+            std::io::ErrorKind::TimedOut => "timed_out",
+            std::io::ErrorKind::PermissionDenied => "permission_denied",
+            std::io::ErrorKind::InvalidData => "invalid_data",
+            std::io::ErrorKind::NotFound => "not_found",
+            std::io::ErrorKind::WouldBlock => "would_block",
+            std::io::ErrorKind::UnexpectedEof => "unexpected_eof",
+            std::io::ErrorKind::BrokenPipe => "broken_pipe",
+            _ => "io_other",
+        },
+    }
+}
+fn observed_io<T>(step: &str, value: std::io::Result<T>, failure: Failure) -> Result<T> {
+    match value {
+        Ok(value) => {
+            observation(step, "ok", None, None);
+            Ok(value)
+        }
+        Err(error) => {
+            observation(step, "error", Some(io_code(&error)), error.raw_os_error());
+            Err(failure)
+        }
+    }
+}
 
 #[derive(Debug)]
 struct Plan {
@@ -132,23 +217,40 @@ impl Session {
         };
         #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-development-product"))))]
         compile_error!("device recovery requires Windows or the signed Mac development product");
-        let health = ipc::desktop_health_ping(IPC).map_err(|_| Failure::Identity)?;
+        let health = observed_io(
+            "startup_health",
+            ipc::desktop_health_ping(IPC),
+            Failure::Identity,
+        )?;
         if !health.accepted || health.error.is_some() || health.daemon_pid != session.pid {
+            observation("startup_health", "error", Some("identity_mismatch"), None);
             return Err(Failure::Identity);
         }
         #[cfg(windows)]
-        let raw = ipc::desktop_read_bootstrap_brain_identity(IPC).map_err(|_| Failure::Identity)?;
+        let raw = observed_io(
+            "brain_read",
+            ipc::desktop_read_bootstrap_brain_identity(IPC),
+            Failure::Identity,
+        )?;
         #[cfg(all(target_os = "macos", feature = "m8-development-product"))]
         let raw = session
             .native
             .as_mut()
             .ok_or(Failure::Identity)?
             .read_pairing_brain_identity()
-            .map_err(|_| Failure::Identity)?;
-        let brain: serde_json::Value = serde_json::from_str(&raw).map_err(|_| Failure::Identity)?;
+            .map_err(|_| {
+                observation("brain_read", "error", Some("native_refused"), None);
+                Failure::Identity
+            })?;
+        let brain: serde_json::Value = serde_json::from_str(&raw).map_err(|_| {
+            observation("brain_parse", "error", Some("invalid_data"), None);
+            Failure::Identity
+        })?;
         if brain.get("brain_id").and_then(|v| v.as_str()) != Some(&plan.brain) {
+            observation("brain_parse", "error", Some("identity_mismatch"), None);
             return Err(Failure::Identity);
         }
+        observation("startup_identity", "ok", None, None);
         Ok(session)
     }
     fn connections(&mut self, update: Option<Update>) -> Result<View> {
@@ -228,6 +330,44 @@ impl Session {
         }
         Ok(())
     }
+
+    fn inspect_receipt(&self, plan: &Plan, ack: bool) -> Result<()> {
+        let step = if ack {
+            "resolve_received"
+        } else {
+            "resolve_queued"
+        };
+        let response = observed_io(
+            step,
+            ipc::desktop_capture_resolve(
+                DesktopCaptureResolveBody {
+                    capture_id: plan.capture_id(ack),
+                },
+                IPC,
+            ),
+            Failure::CaptureUncertain,
+        )?;
+        if !response.accepted || response.error.is_some() || response.daemon_pid != self.pid {
+            observation(step, "error", Some("response_refused"), None);
+            return Err(Failure::CaptureUncertain);
+        }
+        match response.outcome.as_deref() {
+            Some("committed")
+                if response.capture_id.as_deref() == Some(&plan.capture_id(ack))
+                    && response.classification.as_deref() == Some("public") =>
+            {
+                observation(step, "committed", None, None)
+            }
+            Some("rejected") if response.reject_code.as_deref() == Some("not_committed") => {
+                observation(step, "not_committed", None, None)
+            }
+            _ => {
+                observation(step, "error", Some("capture_unresolved"), None);
+                return Err(Failure::CaptureUncertain);
+            }
+        }
+        Ok(())
+    }
     fn heartbeat(&mut self) -> Result<()> {
         #[cfg(all(target_os = "macos", feature = "m8-development-product"))]
         self.native
@@ -244,17 +384,30 @@ impl Session {
     fn found(&mut self, plan: &Plan, device: &str, ack: bool) -> Result<bool> {
         self.heartbeat()?;
         let marker = plan.marker(device, ack);
-        let result = ipc::desktop_search(
-            DesktopSearchQuery {
-                text: Some(marker.clone()),
-                classification: Some("public".into()),
-                device_id: Some(device.into()),
-                limit: Some(20),
-                ..Default::default()
-            },
-            IPC,
-        )
-        .map_err(|_| Failure::Search)?;
+        let result = observed_io(
+            "guarded_search",
+            ipc::desktop_search(
+                DesktopSearchQuery {
+                    text: Some(marker.clone()),
+                    classification: Some("public".into()),
+                    device_id: Some(device.into()),
+                    limit: Some(20),
+                    ..Default::default()
+                },
+                IPC,
+            ),
+            Failure::Search,
+        )?;
+        if let Some(reason) = result.hold_reason.as_deref() {
+            let code = match reason {
+                "materialization_state_missing_or_stale" => "derived_state_stale",
+                "projection_does_not_match_canonical" => "projection_stale",
+                "canonical_verification_unavailable" => "canonical_verification_unavailable",
+                "operation_deadline_exceeded" => "timed_out",
+                _ => "search_hold",
+            };
+            observation("guarded_search", "held", Some(code), None);
+        }
         search_observation(result, self.pid, plan, device, &marker)
     }
     fn wait_found(&mut self, plan: &Plan, device: &str, ack: bool, seconds: u64) -> Result<()> {
@@ -418,7 +571,12 @@ fn cut_desktop_child(plan: &Plan) -> Result<bool> {
         match child.try_wait() {
             Ok(Some(status)) if status.code() == Some(75) => return Ok(false),
             Ok(Some(status)) if status.code() == Some(77) => return Ok(true),
-            Ok(Some(_)) => return Err(Failure::Interruption),
+            Ok(Some(status)) => {
+                return Err(status
+                    .code()
+                    .and_then(Failure::from_child_code)
+                    .unwrap_or(Failure::Interruption));
+            }
             Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
             _ => {
                 // This exact Desktop child only. Leave the daemon alive long
@@ -483,6 +641,10 @@ fn run(plan: &Plan, root: &Path) -> Result<()> {
 
 pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
     let mut args: Vec<_> = std::env::args().skip(1).collect();
+    let inspect = args.first().is_some_and(|v| v == INSPECT_FLAG);
+    if inspect {
+        args[0] = FLAG.into();
+    }
     #[cfg(target_os = "macos")]
     let is_cut = args.first().is_some_and(|v| v == CUT_FLAG);
     #[cfg(target_os = "macos")]
@@ -506,8 +668,19 @@ pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
             // A successful cut exits 75/77 inside cut(), without running drops;
             // the status carries only the original public pause preference.
             // On failure, normal Rust cleanup runs before this exit instead.
-            let _ = cut(&plan, &root);
-            std::process::exit(76);
+            let failure = cut(&plan, &root).err().unwrap_or(Failure::Interruption);
+            std::process::exit(failure.child_code());
+        }
+        if inspect {
+            let result = inspect_existing(&plan, &root);
+            println!(
+                "{}",
+                serde_json::json!({"schema":1,"purpose":"cryptex-device-recovery-inspection",
+                "run_id":plan.run,"brain_id":plan.brain,"local_device_id":plan.local,"peer_device_id":plan.peer,
+                "outcome":if result.is_ok(){"inspection_completed"}else{"incomplete"},"error":result.as_ref().err(),
+                "capture_invoked":false,"settings_updated":false,"process_interrupted":false})
+            );
+            return result.map_err(|_| "recovery_incomplete");
         }
         let result = run(&plan, &root);
         println!(
@@ -523,9 +696,70 @@ pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
     })())
 }
 
+fn inspect_existing(plan: &Plan, root: &Path) -> Result<()> {
+    // No capture, settings update, or interruption is reachable on this path.
+    // Normal startup may reconcile already-existing incoming data and rebuild
+    // derived state. The collector independently compares before/after digests.
+    stage("inspect_existing_profile");
+    let mut session = Session::start(root, plan)?;
+    observation("connections_read", "begin", None, None);
+    let view = session.connections(None)?;
+    plan.check_view(&view)?;
+    observation(
+        "connections_read",
+        if view.paused { "paused" } else { "ready" },
+        None,
+        None,
+    );
+    session.inspect_receipt(plan, false)?;
+    session.inspect_receipt(plan, true)?;
+    for (device, ack, step) in [
+        (&plan.local, false, "search_local_queued"),
+        (&plan.local, true, "search_local_received"),
+        (&plan.peer, false, "search_peer_queued"),
+        (&plan.peer, true, "search_peer_received"),
+    ] {
+        observation(step, "begin", None, None);
+        let present = session.found(plan, device, ack)?;
+        observation(
+            step,
+            if present { "found" } else { "not_visible" },
+            None,
+            None,
+        );
+    }
+    session.close()?;
+    stage("inspection_completed");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn child_failure_preserves_first_cause_without_becoming_a_success_cut() {
+        for error in Failure::ALL {
+            let code = error.child_code();
+            assert!(![0, 75, 76, 77].contains(&code));
+            assert_eq!(Failure::from_child_code(code), Some(error));
+        }
+        for code in [-1, 0, 75, 76, 77, 110, 255] {
+            assert_eq!(Failure::from_child_code(code), None);
+        }
+    }
+    #[test]
+    fn diagnostic_io_text_never_exports_unknown_server_or_os_messages() {
+        let private = std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "private note body and /Users/example/key-path",
+        );
+        assert_eq!(io_code(&private), "invalid_data");
+        let known = std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "bootstrap exchange operation mismatch",
+        );
+        assert_eq!(io_code(&known), "brain_operation_mismatch");
+    }
     fn args() -> Vec<String> {
         [
             FLAG,

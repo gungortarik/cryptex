@@ -21,6 +21,25 @@ ERRORS = {'arguments', 'existing_profile_required', 'startup', 'identity', 'conn
           'capture_uncertain', 'search', 'peer_deadline', 'interruption', 'cleanup'}
 DRIVER_FIELDS = {'schema', 'purpose', 'run_id', 'brain_id', 'local_device_id', 'peer_device_id',
                  'outcome', 'error', 'midstream_bytes_interrupted', 'remote_durability_verified', 'interrupted_component'}
+OBSERVATION_STEPS = {'startup_health','brain_read','brain_parse','startup_identity','connections_read',
+                     'resolve_queued','resolve_received','guarded_search','search_local_queued',
+                     'search_local_received','search_peer_queued','search_peer_received'}
+OBSERVATION_OUTCOMES = {'begin','ok','error','paused','ready','committed','not_committed','held','found','not_visible'}
+OBSERVATION_CODES = {'brain_response_mismatch','brain_operation_mismatch','local_identity_unavailable',
+    'bootstrap_request_rejected','unauthorized_client_process','runtime_busy','timed_out','permission_denied',
+    'invalid_data','not_found','would_block','unexpected_eof','broken_pipe','io_other','identity_mismatch',
+    'native_refused','response_refused','capture_unresolved','derived_state_stale','projection_stale',
+    'canonical_verification_unavailable','search_hold'}
+
+
+def validate_observation(value):
+    if (not isinstance(value, dict) or set(value) != {'step','outcome','code','os_code'}
+            or value['step'] not in OBSERVATION_STEPS or value['outcome'] not in OBSERVATION_OUTCOMES
+            or (value['code'] is not None and value['code'] not in OBSERVATION_CODES)
+            or (value['os_code'] is not None and
+                (type(value['os_code']) is not int or not -(2**31) <= value['os_code'] < 2**31))):
+        raise Refused('invalid_observation')
+    return value
 
 
 def validate_driver(value, plan, local, peer):
@@ -40,7 +59,7 @@ def validate_driver(value, plan, local, peer):
 def parse_driver(output, code, plan, local, peer):
     if not isinstance(output, str) or len(output) > 65536:
         raise Refused('recovery_output_bound')
-    stages, receipt, cleanup_unknown = [], None, False
+    stages, receipt, cleanup_unknown, observations = [], None, False, []
     for line in output.splitlines():
         if line == 'recovery_check_refused: recovery_incomplete':
             continue
@@ -48,7 +67,9 @@ def parse_driver(output, code, plan, local, peer):
             cleanup_unknown = True
             continue
         value = json.loads(line, object_pairs_hook=unique_object)
-        if isinstance(value, dict) and set(value) == {'recovery_stage'} and receipt is None:
+        if isinstance(value, dict) and set(value) == {'recovery_observation'} and receipt is None:
+            observations.append(validate_observation(value['recovery_observation']))
+        elif isinstance(value, dict) and set(value) == {'recovery_stage'} and receipt is None:
             stages.append(value['recovery_stage'])
             if stages != STAGES[:len(stages)]:
                 raise Refused('recovery_stage_order')
@@ -59,19 +80,20 @@ def parse_driver(output, code, plan, local, peer):
     if receipt is None or not stages:
         raise Refused('missing_recovery_receipt')
     passed = receipt['outcome'] == 'local_steps_passed'
-    if passed and (code != 0 or stages != STAGES or cleanup_unknown):
+    if passed and (code != 0 or stages != STAGES or cleanup_unknown
+                   or any(v['outcome']=='error' for v in observations)):
         raise Refused('incomplete_recovery_evidence')
     if not passed and code == 0:
         raise Refused('recovery_exit_mismatch')
-    return dict(receipt=receipt, stages=stages, cleanup_unconfirmed=cleanup_unknown)
+    return dict(receipt=receipt, stages=stages, observations=observations, cleanup_unconfirmed=cleanup_unknown)
 
 
-def read_plan(package):
-    plan = read_metadata(package/'recovery.json')
+def read_plan(package, filename='recovery.json', purpose='cryptex-device-recovery-packet'):
+    plan = read_metadata(package/filename)
     keys = {'schema', 'purpose', 'run_id', 'source_commit', 'source_sha256', 'hashes'}
     from windows_vm_update import FILES
     if (set(plan) != keys or type(plan['schema']) is not int or plan['schema'] != 1
-            or plan['purpose'] != 'cryptex-device-recovery-packet'
+            or plan['purpose'] != purpose
             or str(uuid.UUID(plan['run_id'])) != plan['run_id']
             or not re.fullmatch('[a-f0-9]{40}', plan['source_commit'])
             or not re.fullmatch('[a-f0-9]{64}', plan['source_sha256'])

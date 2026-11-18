@@ -1,5 +1,29 @@
 # 34 — Current Implementation Handoff
 
+## Recovery inspection follow-up — November 18 (candidate)
+
+The owner authorized continuation after the incomplete recovery attempt. A
+separate --cryptex-device-recovery-inspect mode now starts the same authenticated
+Desktop/daemon flow, queries the prior run's capture receipts without appending,
+reads connection settings without updating them, and performs guarded searches.
+It never calls capture or process interruption. Normal startup may process
+already-existing incoming data and derived rebuilds; this is not a claim of a
+physically read-only runtime. The collector verifies stopped-profile digests
+before and after, including after a refused native inspection, without requiring
+the old ten-record baseline. No repair, reset, marker cleanup or retry append.
+Structured first-error observations use fixed steps/codes and optional numeric
+OS codes only. Unknown IPC/OS messages are redacted. Repeated observations are
+deduplicated so polling cannot fill the bounded output. Mac child exit codes now
+preserve the original typed failure instead of always reporting interruption.
+The inspection targets the original run4bbd029c for receipt resolution. It must
+not be counted as recovery acceptance. Package launchers are TANI-MAC.command
+and TANI-WINDOWS.cmd, never the old fault-injection launcher. No simultaneous
+launch is required. Existing apps must be quit first. Final source CI and packet
+readback still required at this checkpoint. Local four inspection collector and
+six existing recovery receipt tests pass; local Rust clippy is inconclusive due
+to E0463 missing existing target dependencies. Use clean CI; do not bypass policy.
+The underlying Windows startup and Mac capture/search causes remain unverified.
+
 ## Actual-device recovery attempt — November 18 (incomplete; do not rerun)
 
 Both original KESINTI reports for run4bbd029c/source0f090c4 were inspected and
