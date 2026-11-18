@@ -1,5 +1,87 @@
 # 34 — Current Implementation Handoff
 
+## Paired capture receipt reconciliation and fresh recovery candidate — November 18
+
+CI 44382456904 reproduced the old verification_unavailable result on Windows
+and Mac using a genuinely signed pairing and a committed note. The receipt
+reader stopped at the v3 peer approval in the local event chain. The fixed
+reader keeps its enrolled public key, writer lock, whole-stream signature
+and sequence verification, and receipt fingerprint and durability checks. It
+validates the approval transcript against its authenticated author and Brain.
+Unknown records, restriction/retirement controls and an approval bearing the
+requested note's event ID still block this bounded reconciliation path.
+
+The candidate targets the eleven-record digest below and allocates a fresh
+run ID. The Mac driver resolves the earlier queued capture before changing
+settings or appending on that device. On each device the driver resolves both
+new local receipts after an offline restart. Comparison requires committed
+receipts, the ordered native stages and matching 15-record local digests.
+Windows interrupts its retained daemon and Mac interrupts its retained Desktop
+owner. Preserve incomplete runs for inspection without repeating captures.
+
+Exact candidate b44ab99 passed both CI jobs in 44384163799, including the
+paired open/sealed receipt regression, standard-user Windows writer checks,
+owned-child interruption tests and packet readback. The local Rust test
+attempt hit E0463 in the existing reqwest build cache; native results are
+from CI. Delivered `Cryptex-Kesinti-11-Kayit-b44ab99.zip` (25,226,058 bytes,
+SHA-256 `55a75fe69cef4b88636d386d75bb7fc0e15cf948712421a2eb7c6bdcd5c9cfe5`)
+for run `813cf272-39bd-4cbf-82a9-ddf75e48c7ac`. Both physical-device
+reports are pending.
+
+## Eleven-record Mac and Windows VM comparison passed — November 18
+
+The VM report `BUTUNLUK-SONUC-Windows-05a42a1e1388.zip` (SHA-256
+`5044631e72e825f40d5f33b8bf305e29584f25cfdc7a5ce4d505046422507489`)
+reports local_canonical_verified. The source and daemon hash match the
+delivered Windows verifier. Compared its receipt with the original Darwin
+inspection archive recorded below, using lan_canonical_verification.compare
+for run `4bbd029c-2ab2-426f-aec5-725b67cbcaf7`. Both stopped-profile
+observations verified signatures and chains for 11 records from two devices.
+The matching canonical set digest is
+`58400d9ac30516f4d3a502d7365ec16a4444b540fc03162d3717ee095b023e5e`.
+The Mac observation predates the VM observation. Accept this set comparison
+and the earlier VM marker visibility. No additional owner search or digest
+check is needed for this checkpoint. The original fault run stopped before
+its interruption step. Before a fresh fault test, address capture receipt
+resolution for the paired profile and prepare a run with the verified
+eleven-record baseline and fresh marker IDs.
+
+## Windows VM shows the existing Mac queued marker — November 18
+
+After the Mac settings showed ready with pause cleared, the owner's Windows VM
+search for `queued` returned one public note. Its text contains the recovery
+run `4bbd029c-2ab2-426f-aec5-725b67cbcaf7`, the Mac device ID
+`1d17c886-a6cf-4422-aba5-fc985656741d` and the queued suffix. Screenshot
+SHA-256: `f2d0ad1ead84433edc0a8e1bfcf4ad0c55b760d2d13e26e44d9ec0c9fa691899`.
+This confirms VM search visibility. The next comparison uses the existing Mac
+eleven-record receipt and a fresh stopped-profile VM receipt for the same run.
+Owner packet `Cryptex-VM-11-Kayit-Kontrol.zip` SHA-256:
+`a45b13cf0fe3cc6ac78e69d49842fe9b25574b5e6ab607d809e5077bc4e90999`.
+It reuses the verified 863bfcd collector and daemon with the recovery run ID.
+Actual interruption/recovery acceptance is still pending.
+
+## Actual Mac recovery marker identified — November 18
+
+The Darwin inspection archive `KESINTI-TANI-SONUC-Darwin-2dd408c710dd.zip`
+(SHA-256 `c5505bb7c1607fcc27650a2ae459e0c9817a2309bb3627f9667f3eced2bb313e`)
+matches the run and source in the d9ff50f inspection plan. Both local verifier
+receipts passed schema and identity checks, with 11 records from two devices
+and the same aggregate as the earlier Mac inspection:
+`58400d9ac30516f4d3a502d7365ec16a4444b540fc03162d3717ee095b023e5e`.
+Guarded search found the exact public local queued marker for this run.
+The other three marker searches returned not_visible. The settings read
+reported paused. The queued receipt resolver returned verification_unavailable,
+and the received receipt was missing. Inspection performed no capture, settings
+change or interruption. The latest available VM receipt still has ten records.
+
+Resume normal sync on the paired Mac and VM and observe the existing Mac marker
+on the VM before collecting a new comparison. Preserve the partial run. Do not
+append its marker again or re-run the original ten-record packet. Actual process
+interruption and recovery remain unverified. The capture resolver uses
+for_each_verified_event_enrolled_with_lock, which refuses non-v1 records,
+including verified v3 security records. The Mac report gives no inner error to
+distinguish this known boundary from other verification failures.
+
 ## Recovery marker lookup — November 18
 
 Inspection of the existing VM profile on fb71c6a passed health and Brain identity.
