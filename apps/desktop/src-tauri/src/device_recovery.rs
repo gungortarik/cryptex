@@ -11,6 +11,7 @@ const FLAG: &str = "--cryptex-device-recovery-check";
 const INSPECT_FLAG: &str = "--cryptex-device-recovery-inspect";
 #[cfg(target_os = "macos")]
 const CUT_FLAG: &str = "--cryptex-device-recovery-desktop-loss";
+const PRIOR_MAC_CAPTURE: &str = "4bbd029c-2ab2-426f-aec5-725b67cbcaf7";
 const IPC: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -406,17 +407,12 @@ impl Session {
         Ok(())
     }
 
-    fn inspect_receipt(&self, plan: &Plan, ack: bool) -> Result<()> {
-        let step = if ack {
-            "resolve_received"
-        } else {
-            "resolve_queued"
-        };
+    fn inspect_receipt(&self, capture_id: &str, step: &str) -> Result<bool> {
         let response = observed_io(
             step,
             ipc::desktop_capture_resolve(
                 DesktopCaptureResolveBody {
-                    capture_id: plan.capture_id(ack),
+                    capture_id: capture_id.to_owned(),
                 },
                 IPC,
             ),
@@ -440,13 +436,15 @@ impl Session {
         }
         match response.outcome.as_deref() {
             Some("committed")
-                if response.capture_id.as_deref() == Some(&plan.capture_id(ack))
+                if response.capture_id.as_deref() == Some(capture_id)
                     && response.classification.as_deref() == Some("public") =>
             {
-                observation(step, "committed", None, None)
+                observation(step, "committed", None, None);
+                Ok(true)
             }
             Some("rejected") if response.reject_code.as_deref() == Some("not_committed") => {
-                observation(step, "not_committed", None, None)
+                observation(step, "not_committed", None, None);
+                Ok(false)
             }
             _ => {
                 let reason = match response.outcome.as_deref() {
@@ -460,10 +458,9 @@ impl Session {
                     Some(inspection_code(reason, "capture_unresolved")),
                     None,
                 );
-                return Err(Failure::CaptureUncertain);
+                Err(Failure::CaptureUncertain)
             }
         }
-        Ok(())
     }
     fn heartbeat(&mut self) -> Result<()> {
         #[cfg(all(target_os = "macos", feature = "m8-development-product"))]
@@ -638,8 +635,15 @@ fn stage(name: &str) {
     println!("{}", serde_json::json!({"recovery_stage":name}));
 }
 fn cut(plan: &Plan, root: &Path) -> Result<bool> {
+    if plan.run == PRIOR_MAC_CAPTURE || plan.capture_id(true) == PRIOR_MAC_CAPTURE {
+        return Err(Failure::Arguments);
+    }
     stage("start_existing_profile");
     let mut session = Session::start(root, plan)?;
+    #[cfg(target_os = "macos")]
+    if !session.inspect_receipt(PRIOR_MAC_CAPTURE, "resolve_prior_mac")? {
+        return Err(Failure::CaptureUncertain);
+    }
     let initial = session.connections(None)?;
     plan.check_view(&initial)?;
     session.pause(plan, true)?;
@@ -737,6 +741,11 @@ fn run(plan: &Plan, root: &Path) -> Result<()> {
     if !paused.paused || paused.state != State::Paused {
         return Err(Failure::Connections);
     }
+    for (ack, step) in [(false, "resolve_queued"), (true, "resolve_received")] {
+        if !session.inspect_receipt(&plan.capture_id(ack), step)? {
+            return Err(Failure::CaptureUncertain);
+        }
+    }
     for device in [&plan.local, &plan.peer] {
         for ack in [false, true] {
             session.wait_found(plan, device, ack, 60)?;
@@ -815,8 +824,8 @@ fn inspect_existing(plan: &Plan, root: &Path) -> Result<()> {
     // Once startup identity is authenticated, independent reads may still
     // explain a failed connection. Preserve the first failure without hiding
     // the existing capture receipt behind a later network/settings problem.
-    for ack in [false, true] {
-        if let Err(error) = session.inspect_receipt(plan, ack) {
+    for (ack, step) in [(false, "resolve_queued"), (true, "resolve_received")] {
+        if let Err(error) = session.inspect_receipt(&plan.capture_id(ack), step) {
             first_error.get_or_insert(error);
         }
     }

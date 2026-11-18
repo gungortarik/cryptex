@@ -16,7 +16,7 @@ use cryptex_storage::{active_segment_path, canonical_events_device_dir, sealed_s
 use crate::canonical_writer::{
     AppendMemoryNoteArgs, CanonicalWriterConfig, CanonicalWriterError, DeviceCanonicalLock,
     acquire_device_canonical_lock, append_memory_note_with_lock,
-    for_each_verified_event_enrolled_with_lock,
+    for_each_verified_record_enrolled_with_lock,
 };
 use crate::capture_receipt::{
     CaptureReceipt, ReceiptError, ReceiptState, confirm_existing_dir_entry_durable,
@@ -467,14 +467,7 @@ pub fn resolve_capture<S: SecureStore + ?Sized>(
         }
     };
 
-    match find_verified_event(
-        store,
-        env,
-        runtime_root,
-        &device_id,
-        &lock,
-        &receipt.event_id,
-    ) {
+    match find_verified_event(store, env, runtime_root, &device_id, &lock, &receipt) {
         ScanResult::Blocked(detail) => {
             CaptureOutcome::uncertain(CaptureUncertainReason::VerificationUnavailable, detail)
         }
@@ -524,18 +517,46 @@ fn find_verified_event<S: SecureStore + ?Sized>(
     runtime_root: &Path,
     device_id: &DeviceId,
     lock: &DeviceCanonicalLock,
-    event_id: &str,
+    receipt: &CaptureReceipt,
 ) -> ScanResult {
     let mut found = None;
-    match for_each_verified_event_enrolled_with_lock(
+    match for_each_verified_record_enrolled_with_lock(
         store,
         env,
         runtime_root,
         device_id,
         lock,
-        |event, pack_path| {
-            if event.event_id == event_id {
-                found = Some((event.clone(), pack_path.to_path_buf()));
+        |record, author_key, pack_path| {
+            use cryptex_events::{SecurityEventTypeV3, VersionedRecord};
+            match record {
+                VersionedRecord::VerifiedV1(event) if event.brain_id == receipt.brain_id => {
+                    if event.event_id == receipt.event_id {
+                        if found.is_some() {
+                            return Err(CanonicalWriterError::Integrity(
+                                "duplicate capture event ID".into(),
+                            ));
+                        }
+                        found = Some((event.clone(), pack_path.to_path_buf()));
+                    }
+                }
+                VersionedRecord::VerifiedSecurityV3(anchor)
+                    if anchor.event_type() == SecurityEventTypeV3::PeerApproved
+                        && anchor.brain_id() == receipt.brain_id
+                        && anchor.event_id() != receipt.event_id =>
+                {
+                    // Receipt verification checks the embedded approvals without granting trust.
+                    cryptex_events::security_v3::verify_peer_approval_protocol_binding(
+                        anchor, author_key,
+                    )
+                    .map_err(|e| CanonicalWriterError::Integrity(e.to_string()))?;
+                }
+                _ => {
+                    return Err(CanonicalWriterError::Storage(
+                        cryptex_storage::StorageError::CompatibilityBoundary(
+                            "record outside capture receipt verification scope".into(),
+                        ),
+                    ));
+                }
             }
             Ok(())
         },
@@ -605,7 +626,7 @@ fn resume_pending<S: SecureStore + ?Sized>(
         args.runtime_root,
         args.device_id,
         args.lock,
-        &receipt.event_id,
+        receipt,
     ) {
         ScanResult::Blocked(detail) => {
             CaptureOutcome::uncertain(CaptureUncertainReason::VerificationUnavailable, detail)
@@ -729,7 +750,7 @@ fn durably_confirm_committed<S: SecureStore + ?Sized>(
     device_id: &DeviceId,
     receipt: &CaptureReceipt,
 ) -> CaptureOutcome {
-    match find_verified_event(store, env, runtime_root, device_id, lock, &receipt.event_id) {
+    match find_verified_event(store, env, runtime_root, device_id, lock, receipt) {
         ScanResult::Blocked(detail) => {
             CaptureOutcome::uncertain(CaptureUncertainReason::VerificationUnavailable, detail)
         }
@@ -943,6 +964,23 @@ mod tests {
             assert_committed(capture_memory_note(&store, env, &root, request(), &cfg)),
             saved
         );
+        // The genuine signed pairing event cannot satisfy a pending note receipt,
+        // or be classified as an absent event that could be appended again.
+        let device = DeviceId::new(saved.device_id.clone()).unwrap();
+        let mut pending = load_receipt(&root, &saved.brain_id, &device, id)
+            .unwrap()
+            .unwrap();
+        pending.capture_id = "44444444-2222-4333-8444-555555555555".into();
+        pending.event_id = "22222222-2222-4222-8222-222222222222".into();
+        pending.state = ReceiptState::Pending;
+        create_pending_receipt_exclusive(&root, &pending).unwrap();
+        assert!(matches!(
+            resolve_capture(&store, env, &root, &pending.capture_id),
+            CaptureOutcome::Uncertain {
+                reason: CaptureUncertainReason::VerificationUnavailable,
+                ..
+            }
+        ));
         for path in [root, peer, other] {
             fs::remove_dir_all(path).unwrap();
         }

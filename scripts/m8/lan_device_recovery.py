@@ -14,7 +14,8 @@ from lan_transfer_diagnostic import BRAIN, MAC, WINDOWS, Refused, read_metadata
 from lan_canonical_verification import command as verify_command, parse_output, validate_receipt, compare
 from mac_identity_preflight import unique_object
 
-BASELINE = '8f18e7737d78aa78d1c07fb7df99ec04ea0f767360398e42fd47af079e6ed7b7'
+BASELINE = '58400d9ac30516f4d3a502d7365ec16a4444b540fc03162d3717ee095b023e5e'
+BASELINE_RECORDS = 11
 STAGES = ['start_existing_profile', 'capture_while_disconnected', 'interrupt_owned_process_after_start',
           'restart_and_receive', 'allow_peer_receipt_delivery', 'offline_restart', 'completed']
 ERRORS = {'arguments', 'existing_profile_required', 'startup', 'identity', 'connections',
@@ -22,7 +23,7 @@ ERRORS = {'arguments', 'existing_profile_required', 'startup', 'identity', 'conn
 DRIVER_FIELDS = {'schema', 'purpose', 'run_id', 'brain_id', 'local_device_id', 'peer_device_id',
                  'outcome', 'error', 'midstream_bytes_interrupted', 'remote_durability_verified', 'interrupted_component'}
 OBSERVATION_STEPS = {'startup_health','brain_read','brain_parse','startup_identity','connections_read',
-                     'resolve_queued','resolve_received','guarded_search','search_local_queued',
+                     'resolve_prior_mac','resolve_queued','resolve_received','guarded_search','search_local_queued',
                      'search_local_received','search_peer_queued','search_peer_received'}
 OBSERVATION_OUTCOMES = {'begin','ok','error','paused','ready','committed','not_committed','held','found','not_visible'}
 OBSERVATION_CODES = {'brain_response_mismatch','brain_operation_mismatch','local_identity_unavailable',
@@ -145,7 +146,7 @@ def prepare(package, plan, report, system):
 
 
 def check_baseline(receipt):
-    if (receipt['canonical_records'] != 10 or receipt['canonical_devices'] != 2
+    if (receipt['canonical_records'] != BASELINE_RECORDS or receipt['canonical_devices'] != 2
             or receipt['canonical_set_sha256'] != BASELINE):
         raise Refused('baseline_changed_do_not_repeat')
 
@@ -161,7 +162,13 @@ def check_result(report, plan, local, peer):
     if driver['receipt']['outcome'] != 'local_steps_passed' or driver['stages'] != STAGES or driver['cleanup_unconfirmed'] is not False:
         raise Refused('incomplete_device_steps')
     after = validate_receipt(report['after'], plan['run_id'], local, peer)
-    if after['canonical_records'] != 14 or after['canonical_devices'] != 2:
+    committed = [o['step'] for o in driver['observations'] if o['outcome']=='committed']
+    expected = ['resolve_queued', 'resolve_received']
+    if local == MAC:
+        expected.insert(0, 'resolve_prior_mac')
+    if committed != expected:
+        raise Refused('missing_restarted_capture_receipts')
+    if after['canonical_records'] != BASELINE_RECORDS + 4 or after['canonical_devices'] != 2:
         raise Refused('unexpected_post_test_set')
     return after
 

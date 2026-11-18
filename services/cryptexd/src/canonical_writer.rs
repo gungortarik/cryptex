@@ -1829,17 +1829,17 @@ where
 /// Unlike [`for_each_verified_event_with_lock`], this path never creates, completes,
 /// or replaces SecureStore seeds / public signing metadata. Each callback receives
 /// the containing pack path for the verified event.
-pub(crate) fn for_each_verified_event_enrolled_with_lock<S, F>(
+pub(crate) fn for_each_verified_record_enrolled_with_lock<S, F>(
     store: &S,
     env: SecureStoreEnvironment,
     runtime_root: &Path,
     device_id: &DeviceId,
     lock: &DeviceCanonicalLock,
-    mut on_event: F,
+    mut on_record: F,
 ) -> CanonicalWriterResult<()>
 where
     S: SecureStore + ?Sized,
-    F: FnMut(&AcceptedEvent, &Path) -> CanonicalWriterResult<()>,
+    F: FnMut(&VersionedRecord, &VerifyingKey, &Path) -> CanonicalWriterResult<()>,
 {
     if lock.device_id() != device_id {
         return Err(CanonicalWriterError::Invalid(
@@ -1881,26 +1881,7 @@ where
             )));
         }
         for record in &events {
-            match record {
-                VersionedRecord::VerifiedV1(ev) => on_event(ev, &path)?,
-                VersionedRecord::VerifiedV2Supported(_)
-                | VersionedRecord::VerifiedUnsupported(_)
-                | VersionedRecord::VerifiedSecurityV3(_) => {
-                    return Err(CanonicalWriterError::Storage(
-                        StorageError::CompatibilityBoundary(
-                            "non-v1 canonical records require a version-aware retrieval-safety path"
-                                .into(),
-                        ),
-                    ));
-                }
-                VersionedRecord::Unverifiable(_) => {
-                    return Err(CanonicalWriterError::Storage(
-                        StorageError::CompatibilityBoundary(
-                            "unverifiable event blocks retrieval".into(),
-                        ),
-                    ));
-                }
-            }
+            on_record(record, &validator.verifying_key, &path)?;
         }
     }
     if let Some(idx) = open {
@@ -1915,26 +1896,7 @@ where
                 &mut expected_seq,
             )?;
             for record in &events {
-                match record {
-                    VersionedRecord::VerifiedV1(ev) => on_event(ev, &path)?,
-                    VersionedRecord::VerifiedV2Supported(_)
-                    | VersionedRecord::VerifiedUnsupported(_)
-                    | VersionedRecord::VerifiedSecurityV3(_) => {
-                        return Err(CanonicalWriterError::Storage(
-                            StorageError::CompatibilityBoundary(
-                                "non-v1 canonical records require a version-aware retrieval-safety path"
-                                    .into(),
-                            ),
-                        ));
-                    }
-                    VersionedRecord::Unverifiable(_) => {
-                        return Err(CanonicalWriterError::Storage(
-                            StorageError::CompatibilityBoundary(
-                                "unverifiable event blocks retrieval".into(),
-                            ),
-                        ));
-                    }
-                }
+                on_record(record, &validator.verifying_key, &path)?;
             }
         }
     }
@@ -2059,7 +2021,7 @@ mod tests {
     #[test]
     fn long_windows_writer_appends_seals_reopens_and_preserves_prior_segments() {
         let base = temp_root("long-path");
-        let root = base.join("uzun-çalışma-".repeat(16));
+        let root = base.join("uzun-Ã§alÄ±ÅŸma-".repeat(16));
         let store = FakeSecureStore::new();
         let device = DeviceId::new("33333333-3333-4333-8333-333333333333").unwrap();
         let brain = "33333333-3333-4333-8333-333333333333";

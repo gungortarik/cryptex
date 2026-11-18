@@ -11,7 +11,7 @@ def receipt(local, peer, before=False):
     return dict(schema=1, purpose='cryptex-local-canonical-verification', run_id=RUN,
                 brain_id=r.BRAIN, local_device_id=local, peer_device_id=peer,
                 canonical_set_sha256=r.BASELINE if before else 'b'*64,
-                canonical_records=10 if before else 14, canonical_devices=2,
+                canonical_records=11 if before else 15, canonical_devices=2,
                 signatures_and_chains_verified=True, remote_durability_verified=False,
                 network_delivery_verified=False, derived_results_verified=False)
 
@@ -24,9 +24,14 @@ def driver(local=r.WINDOWS, peer=r.MAC):
 
 
 def report(local, peer):
+    steps=['resolve_queued','resolve_received']
+    if local==r.MAC:
+        steps.insert(0,'resolve_prior_mac')
     return dict(outcome='local_recovery_steps_verified', **PLAN, before=receipt(local,peer,True),
                 after=receipt(local,peer), driver=dict(receipt=driver(local,peer),
-                stages=r.STAGES.copy(), cleanup_unconfirmed=False))
+                stages=r.STAGES.copy(), cleanup_unconfirmed=False,
+                observations=[dict(step=s, outcome='committed', code=None, os_code=None)
+                              for s in steps]))
 
 
 class RecoveryEvidenceTests(unittest.TestCase):
@@ -73,11 +78,18 @@ class RecoveryEvidenceTests(unittest.TestCase):
     def test_wrong_baseline_missing_note_and_changed_source_refuse(self):
         a,b=report(r.WINDOWS,r.MAC),report(r.MAC,r.WINDOWS)
         for field,key,value in [('before','canonical_set_sha256','c'*64),
-                                ('after','canonical_records',13),('after','signatures_and_chains_verified',False)]:
+                                ('before','canonical_records',10),('after','canonical_records',14),
+                                ('after','signatures_and_chains_verified',False)]:
             changed=copy.deepcopy(a);changed[field][key]=value
             with self.assertRaises(Exception):r.compare_results(changed,b,PLAN)
         a['source_commit']='c'*40
         with self.assertRaises(Exception):r.compare_results(a,b,PLAN)
+
+    def test_missing_offline_receipt_prevents_acceptance(self):
+        a,b=report(r.WINDOWS,r.MAC),report(r.MAC,r.WINDOWS)
+        a['driver']['observations'].pop()
+        with self.assertRaisesRegex(r.Refused,'missing_restarted_capture_receipts'):
+            r.compare_results(a,b,PLAN)
 
     def test_different_valid_final_sets_do_not_pass_recovery(self):
         a,b=report(r.WINDOWS,r.MAC),report(r.MAC,r.WINDOWS)
