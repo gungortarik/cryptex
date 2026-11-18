@@ -14,7 +14,7 @@ from windows_lan_setup import HASHES
 ROOT=Path(__file__).resolve().parents[2]
 
 
-def build(artifact, revision, output, *, inspection=False, windows_inspection_run=None, queued_note=False):
+def build(artifact, revision, output, *, inspection=False, windows_inspection_run=None, queued_note=False, vm_queued_note=False):
     source=subprocess.check_output(['git','rev-parse',revision+'^{commit}'],cwd=ROOT,text=True).strip()
     provenance=json.loads((artifact/'provenance.json').read_text(encoding='utf-8-sig'))
     if provenance['source_commit'] != source or provenance['feature'] != 'm8-device-recovery-check':
@@ -68,7 +68,7 @@ def build(artifact, revision, output, *, inspection=False, windows_inspection_ru
             'Eski uygulama ve kisayol degismez. Sonuc raporunda not icerigi ve ozel anahtar bulunmaz.\n'
             'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()})
     folder='Cryptex-Kesinti'
-    if inspection or windows_inspection_run or queued_note:
+    if inspection or windows_inspection_run or queued_note or vm_queued_note:
         folder='Cryptex-Kesinti-Tani'
         plan.update(purpose='cryptex-device-recovery-inspection-packet',
                     run_id='4bbd029c-2ab2-426f-aec5-725b67cbcaf7')
@@ -88,7 +88,7 @@ def build(artifact, revision, output, *, inspection=False, windows_inspection_ru
                 'macOS Keychain izni isterse yalnizca macOS penceresinde ver.\n'
                 'KESINTI-TANI-SONUC ZIPlerini gonder. Eski KESINTI paketini tekrar calistirma.\n'
                 'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()})
-    if queued_note:
+    if queued_note or vm_queued_note:
         from lan_recovery_inspection import QUEUED_RUN
         folder = 'Cryptex-Bekleyen-Not'
         plan['run_id'] = QUEUED_RUN
@@ -109,6 +109,16 @@ def build(artifact, revision, output, *, inspection=False, windows_inspection_ru
             'Kontrol mevcut Mac notunu arar, normal kapanis ve yeniden acilista dogrular.\n'
             'Iki BEKLEYEN-NOT-SONUC ZIPini gonder.\n'
             'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()
+        if vm_queued_note:
+            folder = 'Cryptex-VM-Not-Kontrol'
+            members.pop('source.zip')
+            members.pop('MAC-KONTROL.command')
+            members['BASLA.txt'] = (
+                'Windows VM icinde Cryptex aciksa Quit ile kapat. ZIPi tamamen ayikla.\n'
+                'WINDOWS-KONTROL.cmd dosyasina cift tikla.\n'
+                'Mevcut Mac notu yerel kayitlarda aranir ve VM uygulamasi yeniden acilarak kontrol edilir.\n'
+                'BEKLEYEN-NOT-SONUC-Windows ZIPini gonder.\n'
+                'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()
     elif windows_inspection_run:
         run_id = str(uuid.UUID(windows_inspection_run))
         if run_id != windows_inspection_run:
@@ -149,6 +159,8 @@ if __name__=='__main__':
     mode.add_argument('--inspect',action='store_true')
     mode.add_argument('--vm-inspect-run')
     mode.add_argument('--queued-note',action='store_true')
+    mode.add_argument('--vm-queued-note',action='store_true')
     args=parser.parse_args()
     print(json.dumps(build(args.artifact,args.revision,args.output,inspection=args.inspect,
-                           windows_inspection_run=args.vm_inspect_run,queued_note=args.queued_note)))
+                           windows_inspection_run=args.vm_inspect_run,queued_note=args.queued_note,
+                           vm_queued_note=args.vm_queued_note)))

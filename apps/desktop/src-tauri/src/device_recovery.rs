@@ -489,7 +489,7 @@ impl Session {
         }
         Ok(())
     }
-    fn found(&mut self, plan: &Plan, device: &str, ack: bool) -> Result<bool> {
+    fn find_marker(&mut self, plan: &Plan, device: &str, ack: bool) -> Result<MarkerObservation> {
         self.heartbeat()?;
         let marker = plan.marker(device, ack);
         let result = observed_io(
@@ -505,22 +505,22 @@ impl Session {
                 None,
             );
         }
-        if let Some(reason) = result.hold_reason.as_deref() {
-            let code = match reason {
-                "materialization_state_missing_or_stale" => "derived_state_stale",
-                "projection_does_not_match_canonical" => "projection_stale",
-                "canonical_verification_unavailable" => "canonical_verification_unavailable",
-                "operation_deadline_exceeded" => "timed_out",
-                _ => "search_hold",
-            };
-            observation("guarded_search", "held", Some(code), None);
+        if result.daemon_pid == self.pid
+            && let Some(reason) = result.hold_reason.as_deref()
+        {
+            observation(
+                "guarded_search",
+                "held",
+                Some(search_hold_code(reason)),
+                None,
+            );
         }
         search_observation(result, self.pid, plan, device, &marker)
     }
     fn wait_found(&mut self, plan: &Plan, device: &str, ack: bool, seconds: u64) -> Result<()> {
         let deadline = Instant::now() + Duration::from_secs(seconds);
         loop {
-            if self.found(plan, device, ack)? {
+            if self.find_marker(plan, device, ack)? == MarkerObservation::Found {
                 return Ok(());
             }
             if Instant::now() >= deadline {
@@ -595,27 +595,61 @@ fn marker_query(marker: &str, device: &str) -> DesktopSearchQuery {
     }
 }
 
+fn search_hold_code(reason: &str) -> &'static str {
+    match reason {
+        "materialization_state_missing_or_stale" => "derived_state_stale",
+        "projection_does_not_match_canonical" => "projection_stale",
+        "operation_deadline_exceeded" => "timed_out",
+        "canonical_verification_unavailable" => "canonical_verification_unavailable",
+        "runtime_busy" => "runtime_busy",
+        "runtime_recovery_required" => "runtime_recovery_required",
+        "runtime_policy_conflict" => "runtime_policy_conflict",
+        "runtime_rebuild_required" => "runtime_rebuild_required",
+        "runtime_stopped" => "runtime_stopped",
+        "runtime_mismatch" => "runtime_mismatch",
+        "unsupported_semantics" => "unsupported_semantics",
+        "v2_semantics_not_integrated" => "v2_semantics_not_integrated",
+        "unresolved_dependency" => "unresolved_dependency",
+        "local_enrollment_required" => "local_enrollment_required",
+        "search_worker_unavailable" => "search_worker_unavailable",
+        _ => "search_hold",
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MarkerObservation {
+    Found,
+    NotVisible,
+    Held,
+}
+
 fn search_observation(
     result: ipc::DesktopSearchResponse,
     pid: u32,
     plan: &Plan,
     device: &str,
     marker: &str,
-) -> Result<bool> {
-    if !result.accepted || result.error.is_some() || result.daemon_pid != pid {
+) -> Result<MarkerObservation> {
+    if !result.accepted
+        || result.error.is_some()
+        || result.daemon_pid != pid
+        || result.operation.as_deref() != Some("content.search.result")
+        || result.next_cursor.is_some()
+    {
         return Err(Failure::Search);
     }
     if let Some(reason) = result.hold_reason.as_deref() {
-        // The ordinary route itself requests a derived rebuild for these
-        // two states. Wait within the same deadline; never expose stale
-        // hits or treat a policy/integrity hold as an empty result.
+        // An active import can temporarily own admission. Stale projections
+        // request their own rebuild. Only the bounded polling caller retries.
         return if matches!(
             reason,
-            "materialization_state_missing_or_stale" | "projection_does_not_match_canonical"
+            "runtime_busy"
+                | "materialization_state_missing_or_stale"
+                | "projection_does_not_match_canonical"
         ) && result.hits.is_none()
             && !result.has_more
         {
-            Ok(false)
+            Ok(MarkerObservation::Held)
         } else {
             Err(Failure::Search)
         };
@@ -625,14 +659,14 @@ fn search_observation(
         return Err(Failure::Search);
     }
     match hits.first() {
-        None => Ok(false),
+        None => Ok(MarkerObservation::NotVisible),
         Some(hit)
             if hit.text == marker
                 && hit.brain_id == plan.brain
                 && hit.device_id == device
                 && hit.classification == "public" =>
         {
-            Ok(true)
+            Ok(MarkerObservation::Found)
         }
         _ => Err(Failure::Identity),
     }
@@ -868,13 +902,10 @@ fn inspect_existing(plan: &Plan, root: &Path) -> Result<()> {
         (&plan.peer, true, "search_peer_received"),
     ] {
         observation(step, "begin", None, None);
-        match session.found(plan, device, ack) {
-            Ok(present) => observation(
-                step,
-                if present { "found" } else { "not_visible" },
-                None,
-                None,
-            ),
+        match session.find_marker(plan, device, ack) {
+            Ok(MarkerObservation::Found) => observation(step, "found", None, None),
+            Ok(MarkerObservation::NotVisible) => observation(step, "not_visible", None, None),
+            Ok(MarkerObservation::Held) => observation(step, "held", None, None),
             Err(error) => {
                 observation(step, "error", Some("response_refused"), None);
                 first_error.get_or_insert(error);
@@ -1150,7 +1181,20 @@ mod tests {
             next_cursor: None,
             has_more: false,
         };
-        assert!(!search_observation(held.clone(), 123, &plan, &plan.local, "marker").unwrap());
+        for reason in [
+            "materialization_state_missing_or_stale",
+            "projection_does_not_match_canonical",
+            "runtime_busy",
+        ] {
+            let mut pending = held.clone();
+            pending.hold_reason = Some(reason.into());
+            assert_eq!(
+                search_observation(pending, 123, &plan, &plan.local, "marker"),
+                Ok(MarkerObservation::Held)
+            );
+        }
+        assert_eq!(search_hold_code("runtime_busy"), "runtime_busy");
+        assert_eq!(search_hold_code("private unknown detail"), "search_hold");
         let mut invalid = held.clone();
         invalid.hits = Some(vec![]);
         assert!(search_observation(invalid, 123, &plan, &plan.local, "marker").is_err());
@@ -1160,6 +1204,14 @@ mod tests {
             "unresolved_dependency",
             "unsupported_semantics",
             "operation_deadline_exceeded",
+            "runtime_recovery_required",
+            "runtime_policy_conflict",
+            "runtime_rebuild_required",
+            "runtime_stopped",
+            "runtime_mismatch",
+            "search_worker_unavailable",
+            "local_enrollment_required",
+            "v2_semantics_not_integrated",
         ] {
             let mut invalid = held.clone();
             invalid.hold_reason = Some(reason.into());
@@ -1194,7 +1246,10 @@ mod tests {
             next_cursor: None,
             has_more: false,
         };
-        assert!(search_observation(valid.clone(), 123, &plan, &plan.peer, &marker).unwrap());
+        assert_eq!(
+            search_observation(valid.clone(), 123, &plan, &plan.peer, &marker),
+            Ok(MarkerObservation::Found)
+        );
         let mut duplicate = valid.clone();
         duplicate.hits.as_mut().unwrap().push(hit);
         assert!(search_observation(duplicate, 123, &plan, &plan.peer, &marker).is_err());

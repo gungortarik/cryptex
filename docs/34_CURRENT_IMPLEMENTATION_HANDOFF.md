@@ -1,5 +1,21 @@
 # 34 — Current Implementation Handoff
 
+## Windows guarded lookup of the already reconciled Mac record
+
+The old `search_hold` label covers several daemon reasons; the original
+receipt cannot distinguish them. During incoming publication a concurrent
+guarded search can return `runtime_busy` without any hits. The recovery
+driver previously stopped on this response. Its bounded polling now retries
+that specific transient response as well as the two established projection
+catch-up states. A one-shot inspection reports held separately from an empty
+search. Integrity and policy holds still stop the run. Diagnostics retain
+individual known hold codes and redact unrecognized text.
+
+The Windows-only queued-note packet checks the existing Mac-origin marker
+before and after reopening the VM application. Both devices' stopped receipts
+already verified the same twelve-record set. Another Mac run is unnecessary
+for this Windows search observation.
+
 ## Existing queued Mac note for run 813cf272
 
 The Windows receipt below still matches the Mac's verified set from before
@@ -20,7 +36,23 @@ preference; a new controlled interruption remains separate.
 Candidate `e1c4d86` passed Windows and macOS recovery CI 44409593062.
 The shared packet is `Cryptex-Bekleyen-Not-e1c4d86.zip`, SHA-256
 `70474e5d3eae4bf1d4010d266289f08cfa46e11f9ae25f68bf41ca4290bc1fea`.
-Both physical-device reports are pending.
+The Windows VM returned `BEKLEYEN-NOT-SONUC-Windows-fabaf4fd1822.zip`
+(SHA-256 `16e7f75cc3608d75f7e474071bdfd54719a6cb9867f21fb8e1317523757333c9`).
+The run, source, executable pins and reciprocal device IDs match the packet.
+Connections reached ready. Guarded search then reported an unspecified
+`search_hold` and stopped before either marker observation or restart.
+The stopped-profile receipt verified 12 records from two devices, up from
+the verified baseline of 11, with final SHA-256
+`3b2bb10901798c7de74f41aaf05d891eec99d66fa246fd44a8098eb93a302898`.
+The corresponding Darwin archive `BEKLEYEN-NOT-SONUC-Darwin-9b258c66823c.zip`
+(SHA-256 `c8879662512f571e5f6e451bd4490b05439a35736abaacfc0fb895c3d9634d5f`)
+has the same source and run. Both Mac receipts verify twelve records and
+match the final Windows digest. This establishes matching durable sets on
+the two devices. The Mac collector returned `incomplete_inspection_evidence`
+and did not retain driver observations. The collector omitted the native
+`resolve_queued: ok` observation before `committed` from its expected
+sequence. The parser now requires both, in order. Neither archive establishes
+the requested pair of exact-note observations across a Windows restart.
 
 ## Windows VM startup confirmed on 7432f1e
 

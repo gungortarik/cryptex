@@ -80,7 +80,8 @@ def parse_inspection(output, code, plan, local, peer, *, start_only=False, queue
     if queued_note and passed:
         expected = [('connections_read', 'ready')]
         if local == r.MAC:
-            expected.append(('resolve_queued', 'committed'))
+            # The Mac driver reports successful IPC before validating the capture receipt.
+            expected.extend([('resolve_queued', 'ok'), ('resolve_queued', 'committed')])
         expected.extend([('queued_before_restart','found'), ('queued_after_restart','found')])
         required_steps = {step for step, _ in expected}
         observed = [(v['step'],v['outcome']) for v in observations

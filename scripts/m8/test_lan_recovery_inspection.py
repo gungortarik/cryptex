@@ -23,12 +23,24 @@ def output(error=None, observation=None):
 
 
 class InspectionTests(unittest.TestCase):
+    def test_search_failure_retains_the_closed_daemon_hold_reason(self):
+        plan = dict(PLAN, run_id=d.QUEUED_RUN)
+        for reason in ('runtime_busy', 'runtime_policy_conflict', 'unresolved_dependency',
+                       'unsupported_semantics', 'v2_semantics_not_integrated',
+                       'local_enrollment_required', 'search_worker_unavailable', 'search_hold'):
+            note = dict(step='guarded_search',outcome='held',code=reason,os_code=None)
+            raw = output('search',note).replace(PLAN['run_id'],d.QUEUED_RUN).replace(
+                'cryptex-device-recovery-inspection','cryptex-queued-note-inspection')
+            driver = d.parse_inspection(raw,2,plan,r.WINDOWS,r.MAC,queued_note=True)
+            self.assertEqual(driver['observations'],[note])
+            self.assertEqual(driver['receipt']['outcome'],'incomplete')
+
     def test_queued_note_requires_matching_origin_and_both_restart_observations(self):
         plan = dict(PLAN, run_id=d.QUEUED_RUN)
         for local, peer in [(r.WINDOWS,r.MAC), (r.MAC,r.WINDOWS)]:
             events = [('connections_read','ready')]
             if local == r.MAC:
-                events.append(('resolve_queued','committed'))
+                events.extend([('resolve_queued','ok'), ('resolve_queued','committed')])
             events.extend([('queued_before_restart','found'), ('queued_after_restart','found')])
             def raw(items):
                 lines = output().splitlines()
@@ -41,6 +53,8 @@ class InspectionTests(unittest.TestCase):
             parsed = d.parse_inspection(raw(events),0,plan,local,peer,queued_note=True)
             self.assertEqual(parsed['receipt']['outcome'],'inspection_completed')
             invalid_sequences = [events[::-1], events+[events[-1]]]
+            if local == r.MAC:
+                invalid_sequences.append([events[0], events[2], events[1], *events[3:]])
             invalid_sequences.extend(events[:i]+events[i+1:] for i in range(len(events)))
             for missing in invalid_sequences:
                 with self.assertRaises(r.Refused):
