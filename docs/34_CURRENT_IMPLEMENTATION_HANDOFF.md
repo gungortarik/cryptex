@@ -16,6 +16,12 @@ before and after reopening the VM application. Both devices' stopped receipts
 already verified the same twelve-record set. Another Mac run is unnecessary
 for this Windows search observation.
 
+Recovery CI 44413139517 passed on both platforms for `691e4fe`, including
+the standard-user Windows import/IPC admission regression. The single-VM
+packet is `Cryptex-VM-Not-Kontrol-691e4fe.zip`, SHA-256
+`c3db844340cf10aa28979c6a3503178d98f6eebb4f926ec0473fd70d4a8f6d47`.
+The VM result for this packet is pending.
+
 ## Existing queued Mac note for run 813cf272
 
 The Windows receipt below still matches the Mac's verified set from before
