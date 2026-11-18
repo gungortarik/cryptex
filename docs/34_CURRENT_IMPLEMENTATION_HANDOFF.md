@@ -1,5 +1,39 @@
 # 34 — Current Implementation Handoff
 
+## Existing queued Mac note for run 813cf272
+
+The Windows receipt below still matches the Mac's verified set from before
+its queued capture. Use the existing run and marker, with the same read-only
+inspection packet on both devices. The Mac resolves its local capture and
+keeps the sender available for three minutes. The VM checks for the exact
+Public marker from that Mac. Both drivers close normally, start a fresh
+session, repeat the exact guarded search, close, then collect a stopped
+canonical verification receipt. Normal incoming processing can add the
+already queued record. Neither driver issues a capture or changes settings.
+
+Compare both BEKLEYEN-NOT-SONUC reports against the delivered run and source,
+require the ordered search/cleanup evidence and compare the two final signed
+set digests. A ready connection or a matching record count alone cannot
+establish delivery. This check covers a normal restart with the saved sync
+preference; a new controlled interruption remains separate.
+
+## Windows VM startup confirmed on 7432f1e
+
+The returned Windows inspection archive `KESINTI-TANI-SONUC-Windows-3884b8592ac2.zip`
+(SHA-256 `819549f055287d76faba5bc0b7b55397cddda0ea037d250cb4d8fec9a470590b`)
+matches the delivered 7432f1e packet's run, source and both executable hashes.
+The earlier 5177504 run returned `exchange/303/native.InvalidState`; the new
+run reached `connections_read: ready` on the same enrolled profile. An initial
+busy identity read succeeded on retry, and normal shutdown was confirmed.
+The pre/post receipts both verified signatures and chains for the same 11
+records from two devices, with the same digest as the earlier run.
+
+This closes the Windows inspection startup issue. The inspection performed no
+capture, settings update or process cut. The Mac committed a queued record in
+the earlier 813cf272 interruption attempt. Account for that record before any
+fresh two-device interruption run; the old eleven-record precondition cannot
+be assumed on both devices.
+
 ## Windows recovery launcher and the enrolled exchange journal
 
 The physical Windows receipt for 5177504 captured `exchange/303/native.InvalidState`

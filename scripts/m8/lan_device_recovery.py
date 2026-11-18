@@ -24,7 +24,8 @@ DRIVER_FIELDS = {'schema', 'purpose', 'run_id', 'brain_id', 'local_device_id', '
                  'outcome', 'error', 'midstream_bytes_interrupted', 'remote_durability_verified', 'interrupted_component'}
 OBSERVATION_STEPS = {'startup_health','brain_read','brain_parse','startup_identity','connections_read','connections_apply',
                      'resolve_prior_mac','resolve_queued','resolve_received','guarded_search','search_local_queued',
-                     'search_local_received','search_peer_queued','search_peer_received'}
+                     'search_local_received','search_peer_queued','search_peer_received',
+                     'queued_before_restart','queued_after_restart'}
 OBSERVATION_OUTCOMES = {'begin','ok','error','paused','ready','committed','not_committed','held','found','not_visible'}
 OBSERVATION_CODES = {'brain_response_mismatch','brain_operation_mismatch','local_identity_unavailable',
     'bootstrap_request_rejected','unauthorized_client_process','runtime_busy','timed_out','permission_denied',

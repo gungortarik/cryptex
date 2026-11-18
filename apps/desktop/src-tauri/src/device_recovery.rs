@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 const FLAG: &str = "--cryptex-device-recovery-check";
 const INSPECT_FLAG: &str = "--cryptex-device-recovery-inspect";
 pub(super) const START_INSPECT_FLAG: &str = "--cryptex-inspect-connection-start";
+pub(super) const QUEUED_NOTE_FLAG: &str = "--cryptex-inspect-queued-note";
 #[cfg(target_os = "macos")]
 const CUT_FLAG: &str = "--cryptex-device-recovery-desktop-loss";
 const PRIOR_MAC_CAPTURE: &str = "4bbd029c-2ab2-426f-aec5-725b67cbcaf7";
@@ -770,7 +771,8 @@ fn run(plan: &Plan, root: &Path) -> Result<()> {
 pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
     let mut args: Vec<_> = std::env::args().skip(1).collect();
     let start_only = cfg!(windows) && args.first().is_some_and(|v| v == START_INSPECT_FLAG);
-    let inspect = start_only || args.first().is_some_and(|v| v == INSPECT_FLAG);
+    let queued_note = args.first().is_some_and(|v| v == QUEUED_NOTE_FLAG);
+    let inspect = start_only || queued_note || args.first().is_some_and(|v| v == INSPECT_FLAG);
     if inspect {
         args[0] = FLAG.into();
     }
@@ -806,6 +808,11 @@ pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
                 (
                     "cryptex-connection-start-inspection",
                     inspect_start(&plan, &root),
+                )
+            } else if queued_note {
+                (
+                    "cryptex-queued-note-inspection",
+                    inspect_queued_note(&plan, &root),
                 )
             } else {
                 (
@@ -894,15 +901,54 @@ fn inspect_start(plan: &Plan, root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn inspect_connection(session: &mut Session, plan: &Plan) -> Result<()> {
+fn inspect_queued_note(plan: &Plan, root: &Path) -> Result<()> {
+    stage("inspect_existing_profile");
+    let mut session = Session::start(root, plan)?;
+    if inspect_connection(&mut session, plan)? == State::Paused {
+        return Err(Failure::Connections);
+    }
+    let source = if cfg!(target_os = "macos") {
+        &plan.local
+    } else {
+        &plan.peer
+    };
+    #[cfg(target_os = "macos")]
+    if !session.inspect_receipt(&plan.capture_id(false), "resolve_queued")? {
+        return Err(Failure::CaptureUncertain);
+    }
+    session.wait_found(plan, source, false, 120)?;
+    observation("queued_before_restart", "found", None, None);
+    #[cfg(target_os = "macos")]
+    {
+        // Keep the existing sender available while the VM starts and receives.
+        // The receiver supplies its own evidence; elapsed time proves nothing.
+        let until = Instant::now() + Duration::from_secs(180);
+        while Instant::now() < until {
+            session.heartbeat()?;
+            std::thread::sleep(Duration::from_secs(2));
+        }
+    }
+    session.close()?;
+    let mut reopened = Session::start(root, plan)?;
+    reopened.wait_found(plan, source, false, 60)?;
+    observation("queued_after_restart", "found", None, None);
+    reopened.close()?;
+    stage("inspection_completed");
+    Ok(())
+}
+
+fn inspect_connection(session: &mut Session, plan: &Plan) -> Result<State> {
     observation("connections_read", "begin", None, None);
     match session.connections(None) {
-        Ok(view) if plan.check_view(&view).is_ok() => observation(
-            "connections_read",
-            if view.paused { "paused" } else { "ready" },
-            None,
-            None,
-        ),
+        Ok(view) if plan.check_view(&view).is_ok() => {
+            observation(
+                "connections_read",
+                if view.paused { "paused" } else { "ready" },
+                None,
+                None,
+            );
+            Ok(view.state)
+        }
         Ok(view) => {
             let code = settings_view_issue(&view);
             observation("connections_read", "error", Some(&code), None);
@@ -919,7 +965,7 @@ fn inspect_connection(session: &mut Session, plan: &Plan) -> Result<()> {
                     "stage":stage, "code":code, "detail":detail}})
                 );
             }
-            return Err(Failure::Connections);
+            Err(Failure::Connections)
         }
         Err(error) => {
             observation(
@@ -928,10 +974,9 @@ fn inspect_connection(session: &mut Session, plan: &Plan) -> Result<()> {
                 Some("settings_read_failed"),
                 None,
             );
-            return Err(error);
+            Err(error)
         }
     }
-    Ok(())
 }
 
 fn settings_view_issue(view: &View) -> String {

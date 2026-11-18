@@ -12,17 +12,23 @@ import lan_device_recovery as r
 from mac_identity_preflight import unique_object
 
 TARGET_RUN = '4bbd029c-2ab2-426f-aec5-725b67cbcaf7'
+QUEUED_RUN = '813cf272-39bd-4cbf-82a9-ddf75e48c7ac'
 STAGES = ['inspect_existing_profile','inspection_completed']
 FIELDS = {'schema','purpose','run_id','brain_id','local_device_id','peer_device_id','outcome','error',
           'capture_invoked','settings_updated','process_interrupted'}
 
 
-def parse_inspection(output, code, plan, local, peer, *, start_only=False):
+def parse_inspection(output, code, plan, local, peer, *, start_only=False, queued_note=False):
     if not isinstance(output,str) or len(output)>65536:
         raise r.Refused('inspection_output_bound')
     stages, observations, receipt, cleanup = [], [], None, False
     current_failure = None
     last_settings_error = None
+    purpose = 'cryptex-device-recovery-inspection'
+    if queued_note:
+        purpose = 'cryptex-queued-note-inspection'
+    elif start_only:
+        purpose = 'cryptex-connection-start-inspection'
     for line in output.splitlines():
         preceding_error = last_settings_error
         last_settings_error = None
@@ -60,7 +66,7 @@ def parse_inspection(output, code, plan, local, peer, *, start_only=False):
         else:
             if (not isinstance(value,dict) or set(value)!=FIELDS
                     or type(value['schema']) is not int or value['schema']!=1
-                    or value['purpose']!=('cryptex-connection-start-inspection' if start_only else 'cryptex-device-recovery-inspection')
+                    or value['purpose']!=purpose
                     or value['run_id']!=plan['run_id'] or value['brain_id']!=r.BRAIN
                     or value['local_device_id']!=local or value['peer_device_id']!=peer
                     or any(value[k] is not False for k in ('capture_invoked','settings_updated','process_interrupted'))
@@ -71,6 +77,16 @@ def parse_inspection(output, code, plan, local, peer, *, start_only=False):
     if receipt is None or not stages:
         raise r.Refused('missing_inspection_receipt')
     passed=receipt['outcome']=='inspection_completed'
+    if queued_note and passed:
+        expected = [('connections_read', 'ready')]
+        if local == r.MAC:
+            expected.append(('resolve_queued', 'committed'))
+        expected.extend([('queued_before_restart','found'), ('queued_after_restart','found')])
+        required_steps = {step for step, _ in expected}
+        observed = [(v['step'],v['outcome']) for v in observations
+                    if v['step'] in required_steps and v['outcome'] != 'begin']
+        if observed != expected or plan['run_id'] != QUEUED_RUN:
+            raise r.Refused('incomplete_inspection_evidence')
     if start_only and passed and not any(item['step']=='connections_read' and item['outcome'] in ('ready','paused')
                                          for item in observations):
         raise r.Refused('incomplete_inspection_evidence')
@@ -105,13 +121,15 @@ def include_windows_start_evidence(report, root, system, driver, collector=None)
         report['windows_transport'] = {'outcome': 'unavailable'}
 
 
-def collect(package, plan, system, report, prepare=r.prepare, *, start_only=False):
+def collect(package, plan, system, report, prepare=r.prepare, *, start_only=False, queued_note=False):
     desktop,daemon,root,execute=prepare(package,plan,report,system)
     local,peer=(r.WINDOWS,r.MAC) if system=='Windows' else (r.MAC,r.WINDOWS)
     report['desktop_sha256']=hashlib.sha256(desktop.read_bytes()).hexdigest()
     report['daemon_sha256']=hashlib.sha256(daemon.read_bytes()).hexdigest()
     args=r.verify_command(daemon,root,plan,local,peer)
     report['before']=verify(execute,args,plan,local,peer)
+    if queued_note and system == 'Darwin':
+        print('MAC HAZIR. Simdi Windows VM icinde WINDOWS-KONTROL.cmd dosyasini ac.', flush=True)
     print('Mevcut kayitlar dogrulandi. Baglanti baslatma durumu okunuyor.',flush=True)
     finished=threading.Event()
     def progress():
@@ -123,8 +141,10 @@ def collect(package, plan, system, report, prepare=r.prepare, *, start_only=Fals
         # Two resolve deadlines, native settings admission, four guarded reads
         # and normal owned shutdown must fit before the outer cleanup bound.
         flag = '--cryptex-inspect-connection-start' if start_only else '--cryptex-device-recovery-inspect'
+        if queued_note:
+            flag = '--cryptex-inspect-queued-note'
         code,output=execute([desktop,flag,plan['run_id'],r.BRAIN,local,peer],300 if start_only else 900)
-        report['driver']=parse_inspection(output,code,plan,local,peer,start_only=start_only)
+        report['driver']=parse_inspection(output,code,plan,local,peer,start_only=start_only,queued_note=queued_note)
         include_windows_start_evidence(report, root, system, report['driver'])
     finally:
         finished.set()
@@ -137,6 +157,10 @@ def collect(package, plan, system, report, prepare=r.prepare, *, start_only=Fals
         ('canonical_set_sha256','canonical_records','canonical_devices'))
     report['outcome']='diagnostics_collected'
     report['native_inspection_completed']=report['driver']['receipt']['outcome']=='inspection_completed'
+    if queued_note and report['native_inspection_completed']:
+        if after['canonical_records'] <= r.BASELINE_RECORDS or after['canonical_set_sha256'] == r.BASELINE:
+            raise r.Refused('queued_note_set_inconsistent')
+        report['queued_note_verified_after_restart'] = True
 
 
 def support_line(report):
@@ -176,7 +200,7 @@ def support_line(report):
     return ' '.join(fields)
 
 
-def main(target_run=TARGET_RUN, *, start_only=False):
+def main(target_run=TARGET_RUN, *, start_only=False, queued_note=False):
     os.umask(0o077)
     package,system=Path(__file__).resolve().parent,platform.system()
     report=dict(schema=1,purpose='cryptex-recovery-inspection-result',os=system,outcome='incomplete',
@@ -187,19 +211,26 @@ def main(target_run=TARGET_RUN, *, start_only=False):
         if plan['run_id']!=target_run:
             raise r.Refused('wrong_inspection_target')
         report.update(run_id=plan['run_id'],source_commit=plan['source_commit'])
-        collect(package,plan,system,report,start_only=start_only)
+        collect(package,plan,system,report,start_only=start_only,queued_note=queued_note)
     except Exception as error:
         # Errors from arbitrary tools/OS never leave as unbounded text.
         safe={'wrong_inspection_target','invalid_recovery_plan','inspection_output_bound',
               'invalid_observation','inspection_stage_order','trailing_inspection_output',
               'invalid_inspection_receipt','missing_inspection_receipt','incomplete_inspection_evidence','invalid_current_start_failure',
               'inspection_exit_mismatch','stopped_profile_verification_refused','quit_cryptex_before_update',
-              'wrong_mac_profile','wrong_vm_profile','standard_user_required','bounded_command_incomplete'}
+              'wrong_mac_profile','wrong_vm_profile','standard_user_required','bounded_command_incomplete',
+              'queued_note_set_inconsistent'}
         report.update(outcome='incomplete',error=str(error) if str(error) in safe else 'inspection_unavailable')
-    output=package/('KESINTI-TANI-SONUC-'+system+'-'+uuid.uuid4().hex[:12]+'.zip')
+    prefix = 'BEKLEYEN-NOT-SONUC-' if queued_note else 'KESINTI-TANI-SONUC-'
+    output=package/(prefix+system+'-'+uuid.uuid4().hex[:12]+'.zip')
     with zipfile.ZipFile(output,'x',zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('result.json',json.dumps(report,indent=2)+'\n')
     print('\nAyrintili sonuc: '+str(output),flush=True)
+    if queued_note:
+        print('Mevcut not yeniden acilista dogrulandi.' if report.get('queued_note_verified_after_restart')
+              else 'Not dogrulamasi tamamlanamadi.', flush=True)
+        print('Karsilastirma icin bu cihazda olusan sonuc ZIP dosyasini paylas.', flush=True)
+        return 0 if report.get('queued_note_verified_after_restart') else 2
     print('Asagidaki TANI satirini paylasman yeterli. Eski kesinti paketini tekrar calistirma.',flush=True)
     print(support_line(report),flush=True)
     return 0 if report['outcome']=='diagnostics_collected' else 2

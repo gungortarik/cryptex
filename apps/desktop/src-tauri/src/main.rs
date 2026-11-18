@@ -2151,6 +2151,7 @@ fn daemon_hold_command(cryptexd: &str, runtime: &Path) -> Result<std::process::C
         if std::env::args_os().nth(1).is_some_and(|flag| {
             flag == "--cryptex-device-recovery-inspect"
                 || flag == device_recovery::START_INSPECT_FLAG
+                || flag == device_recovery::QUEUED_NOTE_FLAG
         }) {
             command.env("CRYPTEX_INSPECT_CURRENT_START", "1");
         }

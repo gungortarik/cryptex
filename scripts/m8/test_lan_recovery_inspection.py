@@ -23,6 +23,57 @@ def output(error=None, observation=None):
 
 
 class InspectionTests(unittest.TestCase):
+    def test_queued_note_requires_matching_origin_and_both_restart_observations(self):
+        plan = dict(PLAN, run_id=d.QUEUED_RUN)
+        for local, peer in [(r.WINDOWS,r.MAC), (r.MAC,r.WINDOWS)]:
+            events = [('connections_read','ready')]
+            if local == r.MAC:
+                events.append(('resolve_queued','committed'))
+            events.extend([('queued_before_restart','found'), ('queued_after_restart','found')])
+            def raw(items):
+                lines = output().splitlines()
+                final = json.loads(lines[-1])
+                final.update(run_id=plan['run_id'],local_device_id=local,peer_device_id=peer,
+                             purpose='cryptex-queued-note-inspection')
+                obs = [json.dumps({'recovery_observation':dict(step=s,outcome=o,code=None,os_code=None)})
+                       for s,o in items]
+                return '\n'.join([lines[0],*obs,lines[-2],json.dumps(final)])
+            parsed = d.parse_inspection(raw(events),0,plan,local,peer,queued_note=True)
+            self.assertEqual(parsed['receipt']['outcome'],'inspection_completed')
+            invalid_sequences = [events[::-1], events+[events[-1]]]
+            invalid_sequences.extend(events[:i]+events[i+1:] for i in range(len(events)))
+            for missing in invalid_sequences:
+                with self.assertRaises(r.Refused):
+                    d.parse_inspection(raw(missing),0,plan,local,peer,queued_note=True)
+            with self.assertRaises(r.Refused):
+                d.parse_inspection(raw(events),0,plan,peer,local,queued_note=True)
+
+    def test_queued_note_does_not_accept_the_old_eleven_record_set(self):
+        plan = dict(PLAN, run_id=d.QUEUED_RUN)
+        before = dict(receipt(r.WINDOWS,r.MAC,True), run_id=d.QUEUED_RUN,
+                      canonical_records=r.BASELINE_RECORDS, canonical_set_sha256=r.BASELINE)
+        with tempfile.TemporaryDirectory() as tmp:
+            exe = Path(tmp)/'binary'
+            exe.write_bytes(b'fixture')
+            for final_count in [r.BASELINE_RECORDS,r.BASELINE_RECORDS+1]:
+                after = dict(before,canonical_records=final_count)
+                if final_count != r.BASELINE_RECORDS:
+                    after['canonical_set_sha256']='a'*64
+                report = {}
+                driver = dict(observations=[],receipt=dict(outcome='inspection_completed'))
+                with patch.object(d,'verify',side_effect=[before,after]), patch.object(d,'parse_inspection',return_value=driver):
+                    def execute(args,timeout):
+                        self.assertEqual(args[1],'--cryptex-inspect-queued-note')
+                        return 0,'fixture'
+                    def run():
+                        d.collect(Path(tmp),plan,'Windows',report,
+                                  prepare=lambda *_:(exe,exe,Path(tmp),execute),queued_note=True)
+                    if final_count == r.BASELINE_RECORDS:
+                        with self.assertRaisesRegex(r.Refused,'queued_note_set_inconsistent'):
+                            run()
+                    else:
+                        run()
+                        self.assertTrue(report['queued_note_verified_after_restart'])
     def test_start_only_packet_requires_its_own_receipt_and_settings_observation(self):
         note = dict(step='connections_read', outcome='ready', code=None, os_code=None)
         raw = output(observation=note)
