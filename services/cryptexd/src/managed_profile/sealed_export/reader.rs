@@ -50,7 +50,7 @@ struct Round {
 #[derive(Default)]
 pub(super) struct ReaderCheck {
     round: Option<Round>,
-    receipt_written: bool,
+    receipt_peer_nonce: Option<ContentHashHex>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -95,6 +95,7 @@ impl ReaderCheck {
         if bindings.is_empty() || bindings.len() > super::super::connection_settings::MAX_PEERS {
             return Err(Error::Authority);
         }
+        let staging = transport.child("m9-control-staging", true)?;
         if self.round.as_ref().is_none_or(|r| {
             r.started.elapsed() >= FRESHNESS
                 || r.context != context
@@ -102,6 +103,10 @@ impl ReaderCheck {
         }) {
             let mut random = [0; 32];
             getrandom::getrandom(&mut random).map_err(|_| Error::LocalReader)?;
+            // The private diagnostic may have been copied from a stopped profile.
+            // A new round must not present that session's receipt as current.
+            receipt::clear_if_requested(&staging)?;
+            self.receipt_peer_nonce = None;
             self.round = Some(Round {
                 started: Instant::now(),
                 roster: bindings.iter().map(|p| (**p).clone()).collect(),
@@ -112,7 +117,6 @@ impl ReaderCheck {
         }
         let round = self.round.as_mut().ok_or(Error::LocalReader)?;
         let controls = incoming.child(READER_CONTROL_FOLDER, true)?;
-        let staging = transport.child("m9-control-staging", true)?;
         let mut verified = BTreeMap::new();
         let mut rejected = false;
         let signing_key = std::cell::OnceCell::new();
@@ -178,7 +182,7 @@ impl ReaderCheck {
                 && round.started.elapsed() < FRESHNESS
             {
                 verified.insert(peer.device_id.to_string(), reply.daemon_sha256.clone());
-                if !self.receipt_written && bindings.len() == 1 {
+                if self.receipt_peer_nonce.as_ref() != Some(&reply.nonce) && bindings.len() == 1 {
                     observed = Some(reply.clone());
                 }
                 if round.recorded.get(&slot) != Some(reply) {
@@ -191,8 +195,8 @@ impl ReaderCheck {
                         Some(reply),
                     );
                     let saved = match previous {
-                        Ok(Some(_)) => Ok(()),
-                        Ok(None) => evidence.save(&round.context, &round.nonce, bytes, signer()?),
+                        Ok(Some(saved)) if saved == *reply => Ok(()),
+                        Ok(_) => evidence.save(&round.context, &round.nonce, bytes, signer()?),
                         Err(Error::Message) => {
                             eprintln!(
                                 "component=m9_reader_check status=damaged_observation_fresh_reply"
@@ -218,8 +222,8 @@ impl ReaderCheck {
                     &resolved_blob,
                     other.as_ref(),
                 ) {
-                    Ok(Some(build)) => {
-                        retained.insert(peer.device_id.to_string(), build);
+                    Ok(Some(reply)) => {
+                        retained.insert(peer.device_id.to_string(), reply.daemon_sha256);
                     }
                     Ok(None) => {}
                     Err(error) => evidence_error = Some(error),
@@ -236,7 +240,7 @@ impl ReaderCheck {
         if verified.len() == bindings.len() && round.started.elapsed() < FRESHNESS {
             if let Some(peer) = observed {
                 match receipt::write_if_requested(&staging, &round.nonce, &build, &peer) {
-                    Ok(written) => self.receipt_written = written,
+                    Ok(()) => self.receipt_peer_nonce = Some(peer.nonce),
                     Err(error) => {
                         eprintln!("component=m9_reader_receipt status=unavailable error={error:?}")
                     }

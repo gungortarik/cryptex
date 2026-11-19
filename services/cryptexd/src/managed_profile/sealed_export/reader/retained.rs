@@ -114,7 +114,7 @@ impl<'a> Slot<'a> {
         peer_key: &[u8; 32],
         blob: &ContentHashHex,
         observed: Option<&Body>,
-    ) -> Result<Option<ContentHashHex>, Error> {
+    ) -> Result<Option<Body>, Error> {
         let bytes = match self.store.get(&self.service, &self.account) {
             Ok(bytes) if bytes.len() <= LIMIT => bytes,
             Ok(_) => return Err(Error::Message),
@@ -144,6 +144,6 @@ impl<'a> Slot<'a> {
                 .map_err(|_| Error::Storage)?;
             return Ok(None);
         }
-        Ok(Some(body.daemon_sha256))
+        Ok(Some(body))
     }
 }

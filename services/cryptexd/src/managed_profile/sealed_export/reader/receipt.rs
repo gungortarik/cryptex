@@ -10,22 +10,34 @@ fn valid_attempt(value: &str) -> bool {
             .all(|c| c.is_ascii_digit() || matches!(c, b'a'..=b'f'))
 }
 
+pub(super) fn clear_if_requested(staging: &Directory) -> Result<(), Error> {
+    if let Some(attempt) = requested_attempt()? {
+        let name = format!("{attempt}.receipt");
+        if staging.exists(&name)? {
+            staging.remove_reader_receipt(&name, staging.open_file(&name, false)?)?;
+        }
+    }
+    Ok(())
+}
+
+fn requested_attempt() -> Result<Option<String>, Error> {
+    match std::env::var("CRYPTEX_M9_READER_ATTEMPT") {
+        Ok(value) if valid_attempt(&value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        _ => Err(Error::Message),
+    }
+}
+
 pub(super) fn write_if_requested(
     staging: &Directory,
     nonce: &ContentHashHex,
     build: &ContentHashHex,
     peer: &Body,
-) -> Result<bool, Error> {
-    let Ok(attempt) = std::env::var("CRYPTEX_M9_READER_ATTEMPT") else {
-        return Ok(false);
+) -> Result<(), Error> {
+    let Some(attempt) = requested_attempt()? else {
+        return Ok(());
     };
-    if !valid_attempt(&attempt) {
-        return Err(Error::Message);
-    }
     let name = format!("{attempt}.receipt");
-    if staging.exists(&name)? {
-        return Ok(true);
-    }
     let record = serde_json::json!({
         "schema":1, "purpose":"cryptex-verified-m9-reader", "attempt":attempt,
         "brain":peer.route.brain, "local":peer.route.receiver, "peer":peer.route.sender,
@@ -39,8 +51,11 @@ pub(super) fn write_if_requested(
     }
     let mut file = staging.open_file("segment.tmp", true)?;
     file.write_all(&serde_json::to_vec(&record).map_err(|_| Error::Message)?)?;
+    if staging.exists(&name)? {
+        staging.remove_reader_receipt(&name, staging.open_file(&name, false)?)?;
+    }
     staging.promote("segment.tmp", &file, staging, &name)?;
-    Ok(true)
+    Ok(())
 }
 
 #[cfg(test)]

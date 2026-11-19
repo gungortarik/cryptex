@@ -291,6 +291,18 @@ impl Directory {
         self.unlink_opened(name, file)
     }
 
+    pub(crate) fn remove_reader_receipt(&self, name: &str, file: File) -> Result<(), Error> {
+        if !name.strip_suffix(".receipt").is_some_and(|id| {
+            id.len() == 32
+                && id
+                    .bytes()
+                    .all(|c| c.is_ascii_digit() || matches!(c, b'a'..=b'f'))
+        }) {
+            return Err(Error::Unsafe);
+        }
+        self.unlink_opened(name, file)
+    }
+
     pub(crate) fn retire_m8_pid(&self, file: File) -> Result<(), Error> {
         self.unlink_opened("daemon.lock", file)
     }

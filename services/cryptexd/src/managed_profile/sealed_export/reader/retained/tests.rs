@@ -29,6 +29,7 @@ pub(crate) fn native_observation_phase() {
             &hash(4),
             None,
         )
+        .map(|body| body.map(|b| b.daemon_sha256))
     };
     match std::env::var("CRYPTEX_M9_OBSERVATION_PHASE")
         .unwrap()
@@ -87,6 +88,7 @@ fn previous_observation_requires_both_keys_context_route_and_same_observed_build
     let peer_key = remote.verifying_key().to_bytes();
     let read = |observed: Option<&Body>| {
         slot.load(&hash(5), &route, &local_key, &peer_key, &hash(4), observed)
+            .map(|body| body.map(|b| b.daemon_sha256))
     };
     assert_eq!(read(None), Ok(None));
     slot.save(&hash(5), &hash(2), &signed, &local).unwrap();

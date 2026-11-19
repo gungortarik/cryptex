@@ -61,3 +61,34 @@ pub(crate) fn sign_v2_fixture(
     body["signature"] = json!(SignatureHex::from_bytes(&signature.to_bytes()).unwrap());
     serde_json_canonicalizer::to_vec(&body).unwrap()
 }
+
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub(crate) fn stage_stopped_m9_profile(source: &Path, parent: &Path, name: &str) -> PathBuf {
+    use std::fs::File;
+    // Only used on a stopped synthetic profile. Copy regular files exclusively
+    // into an empty protected destination, including stale control and receipt files.
+    fn copy_entry(source: &Path, dest: &Path) {
+        let metadata = fs::symlink_metadata(source).unwrap();
+        if metadata.is_dir() {
+            fs::create_dir(dest).unwrap();
+            for entry in fs::read_dir(source).unwrap() {
+                let entry = entry.unwrap();
+                copy_entry(&entry.path(), &dest.join(entry.file_name()));
+            }
+        } else {
+            assert!(metadata.is_file());
+            let mut output = File::create_new(dest).unwrap();
+            std::io::copy(&mut File::open(source).unwrap(), &mut output).unwrap();
+            fs::set_permissions(dest, metadata.permissions()).unwrap();
+        }
+    }
+
+    let restored = crate::instance::create_m9_profile_root(parent, name).unwrap();
+    for entry in fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_name() != "daemon.lock" {
+            copy_entry(&entry.path(), &restored.join(entry.file_name()));
+        }
+    }
+    restored
+}

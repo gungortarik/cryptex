@@ -8,6 +8,7 @@ use super::Error;
 const DOMAIN: &[u8] = b"cryptex/m9/attachment.link/reader-proof/v1\0";
 pub(super) const LIMIT: u64 = 4096;
 
+#[cfg_attr(test, derive(Debug))]
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Route {
@@ -34,6 +35,7 @@ impl Route {
     }
 }
 
+#[cfg_attr(test, derive(Debug))]
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Body {

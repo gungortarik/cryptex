@@ -182,24 +182,6 @@ fn offline_round_expires_and_both_readers_reverify_after_reconnect() {
     }
 }
 
-// Only used on a stopped synthetic profile. Copy regular files exclusively
-// into an empty protected destination, including stale control and receipt files.
-fn copy_entry(source: &Path, dest: &Path) {
-    let metadata = fs::symlink_metadata(source).unwrap();
-    if metadata.is_dir() {
-        fs::create_dir(dest).unwrap();
-        for entry in fs::read_dir(source).unwrap() {
-            let entry = entry.unwrap();
-            copy_entry(&entry.path(), &dest.join(entry.file_name()));
-        }
-    } else {
-        assert!(metadata.is_file());
-        let mut output = File::create_new(dest).unwrap();
-        std::io::copy(&mut File::open(source).unwrap(), &mut output).unwrap();
-        fs::set_permissions(dest, metadata.permissions()).unwrap();
-    }
-}
-
 fn import_peer_pack(receiver: &mut Side, peer: &Side, path: &Path, store: &crate::FakeSecureStore) {
     crate::incoming_publication::recover_live_with_instance(
         &receiver.root,
@@ -232,15 +214,16 @@ fn restored_profile_reconciles_a_missing_pack_and_requires_a_fresh_reader_reply(
     let from_b = first_challenge(&mut b, &store);
     exchange(&mut a, &mut b, &from_a, &from_b, &store);
     let stale_reply = fs::read(a.controls().join(&from_b)).unwrap();
+    let service = "Cryptex-Dev-M9ReaderObservations";
+    let saved = |slot: &OsStr| store.get(service, slot.to_str().unwrap()).unwrap();
+    let previous_a = saved(&from_b);
+    let previous_b = saved(&from_a);
+    let receipt_name = std::env::var("CRYPTEX_M9_READER_ATTEMPT")
+        .ok()
+        .map(|attempt| format!("transport/m9-control-staging/{attempt}.receipt"));
     drop(a);
 
-    let restored = crate::instance::create_m9_profile_root(&scratch, "restored").unwrap();
-    for entry in fs::read_dir(&live).unwrap() {
-        let entry = entry.unwrap();
-        if entry.file_name() != "daemon.lock" {
-            copy_entry(&entry.path(), &restored.join(entry.file_name()));
-        }
-    }
+    let restored = crate::test_temp::stage_stopped_m9_profile(&live, &scratch, "restored");
     let mut a = Side::new(live.clone(), LOCAL);
     let device =
         DeviceId::new(load_local_device_identity(&peer, BRAIN).unwrap().device_id).unwrap();
@@ -256,21 +239,36 @@ fn restored_profile_reconciles_a_missing_pack_and_requires_a_fresh_reader_reply(
     // The previous run's signed exchange survived the backup. Verify it
     // cannot satisfy a newly opened reader, even with the same secure key.
     let mut a = Side::new(restored.clone(), LOCAL);
+    if let Some(name) = &receipt_name {
+        assert!(restored.join(name).is_file());
+    }
     assert_eq!(fs::read(a.controls().join(&from_b)).unwrap(), stale_reply);
     a.tick(&store);
     assert_eq!(a.exporter.last_reader_status, Some(reader::Status::Waiting));
+    assert_eq!(saved(&from_b), previous_a);
+    if let Some(name) = &receipt_name {
+        assert!(!restored.join(name).exists());
+    }
     import_peer_pack(&mut a, &b, &path, &store);
     assert_eq!(fs::read(&restored_pack).unwrap(), expected);
     drop(a);
-    let mut a = Side::new(restored, LOCAL);
+    let mut a = Side::new(restored.clone(), LOCAL);
     a.tick(&store);
     assert_eq!(a.exporter.last_reader_status, Some(reader::Status::Waiting));
-    b.exporter.end_reader_session();
-    b.tick(&store);
-    assert!(
-        matches!(&b.exporter.last_reader_status, Some(reader::Status::PreviouslyVerified(peers)) if peers.len() == 1)
-    );
+    // The surviving peer stays in the same session. Its proof still has
+    // to be refreshed when the restored device answers with a new nonce.
     exchange(&mut a, &mut b, &from_a, &from_b, &store);
+    assert_ne!(saved(&from_b), previous_a);
+    assert_ne!(saved(&from_a), previous_b);
+    if let Some(name) = &receipt_name {
+        let receipt = |root: &Path| {
+            serde_json::from_slice::<serde_json::Value>(&fs::read(root.join(name)).unwrap())
+                .unwrap()
+        };
+        let new = receipt(&restored);
+        assert_ne!(new["local_nonce"], receipt(&live)["local_nonce"]);
+        assert_eq!(new["local_nonce"], receipt(&peer)["peer_nonce"]);
+    }
     assert_ne!(fs::read(a.controls().join(&from_b)).unwrap(), stale_reply);
     assert_eq!(fs::read(restored_pack).unwrap(), expected);
     assert_eq!(fs::read(live_pack).unwrap(), expected);
