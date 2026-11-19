@@ -44,7 +44,6 @@ struct Round {
     roster: Vec<ApprovedPeerBinding>,
     nonce: ContentHashHex,
     context: ContentHashHex,
-    recorded: BTreeMap<String, Body>,
 }
 
 #[derive(Default)]
@@ -58,6 +57,7 @@ pub(super) enum Status {
     #[default]
     Legacy,
     Waiting,
+    WaitingForHistory,
     Rejected,
     Unavailable(Error),
     Verified(BTreeMap<String, ContentHashHex>),
@@ -112,7 +112,6 @@ impl ReaderCheck {
                 roster: bindings.iter().map(|p| (**p).clone()).collect(),
                 nonce: ContentHashHex::from_bytes(&random).map_err(|_| Error::Message)?,
                 context,
-                recorded: BTreeMap::new(),
             });
         }
         let round = self.round.as_mut().ok_or(Error::LocalReader)?;
@@ -142,6 +141,7 @@ impl ReaderCheck {
         let mut retained = BTreeMap::new();
         let mut evidence_error = None;
         let mut observed = None;
+        let mut routes = Vec::with_capacity(bindings.len());
         for peer in bindings {
             check().map_err(|_| Error::Authority)?;
             let route = Route {
@@ -152,6 +152,21 @@ impl ReaderCheck {
                 receiver_transport: peer.transport_device_id.clone(),
             };
             let reverse = route.reversed();
+            let evidence = retained::Slot::new(credentials, &reverse)?;
+            let prior = evidence.read_observation(&history.local_public_key);
+            if let Ok(Some(prior)) = &prior
+                && !prior.covers_history(snapshot, &reverse)
+            {
+                // Reconcile via the normal incoming importer. Discard any
+                // in-flight nonce so an answer received during the hold cannot
+                // complete the first round after catch-up.
+                self.round = None;
+                return Ok(Status::WaitingForHistory);
+            }
+            routes.push((peer, route, reverse, evidence, prior));
+        }
+        for (peer, route, reverse, evidence, prior) in routes {
+            check().map_err(|_| Error::Authority)?;
             let raw = read(&controls, &reverse.slot()?)?;
             let other = raw
                 .as_deref()
@@ -175,8 +190,18 @@ impl ReaderCheck {
                 check().map_err(|_| Error::Authority)?;
                 publish(&staging, &controls, &slot, &signed)?;
             }
-            let evidence = retained::Slot::new(credentials, &reverse)?;
             check().map_err(|_| Error::Authority)?;
+            let previous = prior.and_then(|item| match item {
+                Some(obs) => evidence.match_reply(
+                    &obs,
+                    &round.context,
+                    &reverse,
+                    &peer.public_key,
+                    &resolved_blob,
+                    other.as_ref(),
+                ),
+                None => Ok(None),
+            });
             if let (Some(reply), Some(bytes)) = (compatible, raw.as_deref())
                 && reply.echo.as_ref() == Some(&round.nonce)
                 && round.started.elapsed() < FRESHNESS
@@ -185,43 +210,29 @@ impl ReaderCheck {
                 if self.receipt_peer_nonce.as_ref() != Some(&reply.nonce) && bindings.len() == 1 {
                     observed = Some(reply.clone());
                 }
-                if round.recorded.get(&slot) != Some(reply) {
-                    let previous = evidence.load(
-                        &round.context,
-                        &reverse,
-                        &history.local_public_key,
-                        &peer.public_key,
-                        &resolved_blob,
-                        Some(reply),
-                    );
-                    let saved = match previous {
-                        Ok(Some(saved)) if saved == *reply => Ok(()),
-                        Ok(_) => evidence.save(&round.context, &round.nonce, bytes, signer()?),
-                        Err(Error::Message) => {
+                let saved = match previous {
+                    Ok(Some(saved)) if saved == *reply => Ok(()),
+                    Ok(_) | Err(Error::Message) => {
+                        if previous.is_err() {
                             eprintln!(
                                 "component=m9_reader_check status=damaged_observation_fresh_reply"
                             );
-                            evidence.save(&round.context, &round.nonce, bytes, signer()?)
                         }
-                        Err(error) => Err(error),
-                    };
-                    match saved {
-                        Ok(()) => {
-                            round.recorded.insert(slot, reply.clone());
-                        }
-                        Err(error) => evidence_error = Some(error),
+                        evidence.save(
+                            &round.context,
+                            &round.nonce,
+                            bytes,
+                            signer()?,
+                            Some((snapshot, &reverse)),
+                        )
                     }
+                    Err(error) => Err(error),
+                };
+                if let Err(error) = saved {
+                    evidence_error = Some(error);
                 }
             } else {
-                round.recorded.remove(&slot);
-                match evidence.load(
-                    &round.context,
-                    &reverse,
-                    &history.local_public_key,
-                    &peer.public_key,
-                    &resolved_blob,
-                    other.as_ref(),
-                ) {
+                match previous {
                     Ok(Some(reply)) => {
                         retained.insert(peer.device_id.to_string(), reply.daemon_sha256);
                     }

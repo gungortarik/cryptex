@@ -49,6 +49,7 @@ pub(crate) fn native_observation_phase() {
                 &hash(2),
                 &wire::sign(reply, &remote).unwrap(),
                 &local,
+                None,
             )
             .unwrap();
         }
@@ -91,7 +92,8 @@ fn previous_observation_requires_both_keys_context_route_and_same_observed_build
             .map(|body| body.map(|b| b.daemon_sha256))
     };
     assert_eq!(read(None), Ok(None));
-    slot.save(&hash(5), &hash(2), &signed, &local).unwrap();
+    slot.save(&hash(5), &hash(2), &signed, &local, None)
+        .unwrap();
     assert_eq!(read(None), Ok(Some(hash(3))));
     assert_eq!(
         slot.load(&hash(6), &route, &local_key, &peer_key, &hash(4), None),
@@ -116,16 +118,19 @@ fn previous_observation_requires_both_keys_context_route_and_same_observed_build
         slot.load(&hash(5), &route, &local_key, &local_key, &hash(4), None),
         Err(Error::Message)
     );
-    slot.save(&hash(5), &hash(7), &signed, &local).unwrap();
+    slot.save(&hash(5), &hash(7), &signed, &local, None)
+        .unwrap();
     assert_eq!(read(None), Err(Error::Message));
-    slot.save(&hash(5), &hash(2), &signed, &local).unwrap();
+    slot.save(&hash(5), &hash(2), &signed, &local, None)
+        .unwrap();
     let changed = Body {
         daemon_sha256: hash(8),
         ..reply.clone()
     };
     assert_eq!(read(Some(&changed)), Ok(None));
     assert_eq!(read(None), Ok(None));
-    slot.save(&hash(5), &hash(2), &signed, &local).unwrap();
+    slot.save(&hash(5), &hash(2), &signed, &local, None)
+        .unwrap();
     let changed = Body {
         resolved_blob: hash(9),
         ..reply

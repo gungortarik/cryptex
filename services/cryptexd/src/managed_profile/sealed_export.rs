@@ -164,6 +164,7 @@ impl Exporter {
         if self.last_reader_status.as_ref() != Some(&status) {
             let label = match &status {
                 reader::Status::Legacy => "legacy_profile",
+                reader::Status::WaitingForHistory => "waiting_for_restore_history",
                 reader::Status::Waiting => "waiting",
                 reader::Status::Rejected => "rejected",
                 reader::Status::Unavailable(reader::Error::Authority) => "authority_unavailable",
@@ -180,6 +181,13 @@ impl Exporter {
                 peers.bindings().len()
             );
             self.last_reader_status = Some(status);
+        }
+        if self.last_reader_status == Some(reader::Status::WaitingForHistory) {
+            self.after = None;
+            return Ok(Report {
+                withheld: packs.len(),
+                ..Report::default()
+            });
         }
         let scratch = transport.child("export-staging", true)?;
         if scratch.exists("segment.tmp")? {

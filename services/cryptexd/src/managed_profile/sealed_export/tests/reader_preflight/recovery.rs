@@ -216,8 +216,6 @@ fn restored_profile_reconciles_a_missing_pack_and_requires_a_fresh_reader_reply(
     let stale_reply = fs::read(a.controls().join(&from_b)).unwrap();
     let service = "Cryptex-Dev-M9ReaderObservations";
     let saved = |slot: &OsStr| store.get(service, slot.to_str().unwrap()).unwrap();
-    let previous_a = saved(&from_b);
-    let previous_b = saved(&from_a);
     let receipt_name = std::env::var("CRYPTEX_M9_READER_ATTEMPT")
         .ok()
         .map(|attempt| format!("transport/m9-control-staging/{attempt}.receipt"));
@@ -230,6 +228,10 @@ fn restored_profile_reconciles_a_missing_pack_and_requires_a_fresh_reader_reply(
     let path = PathBuf::from(device.as_filename_stem()).join(format!("{:020}.seg", 0));
     let expected = fs::read(peer.join("canonical/events").join(&path)).unwrap();
     import_peer_pack(&mut a, &b, &path, &store);
+    a.tick(&store);
+    exchange(&mut a, &mut b, &from_a, &from_b, &store);
+    let previous_a = saved(&from_b);
+    let previous_b = saved(&from_a);
     drop(a);
     let live_pack = live.join("canonical/events").join(&path);
     let restored_pack = restored.join("canonical/events").join(&path);
@@ -243,8 +245,13 @@ fn restored_profile_reconciles_a_missing_pack_and_requires_a_fresh_reader_reply(
         assert!(restored.join(name).is_file());
     }
     assert_eq!(fs::read(a.controls().join(&from_b)).unwrap(), stale_reply);
-    a.tick(&store);
-    assert_eq!(a.exporter.last_reader_status, Some(reader::Status::Waiting));
+    let blocked = a.tick(&store);
+    assert_eq!(
+        a.exporter.last_reader_status,
+        Some(reader::Status::WaitingForHistory)
+    );
+    assert_eq!((blocked.sealed, blocked.copied), (0, 0));
+    assert!(blocked.withheld > 0);
     assert_eq!(saved(&from_b), previous_a);
     if let Some(name) = &receipt_name {
         assert!(!restored.join(name).exists());

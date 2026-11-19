@@ -946,6 +946,15 @@ impl VerifiedCanonicalSnapshot {
         self.history.records()
     }
 
+    /// All signed records for one device, in authenticated chain order.
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    pub(crate) fn reader_device_chain(&self, device: &str) -> &[AuthenticatedSecurityRecord] {
+        let records = self.security_history.records();
+        let start = records.partition_point(|r| r.device_id() < device);
+        let end = records.partition_point(|r| r.device_id() <= device);
+        &records[start..end]
+    }
+
     /// The content projection omits authority events. The complete locked
     /// security history orders them by device and sequence, including cutoffs.
     #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -1179,7 +1188,7 @@ impl VerifiedCanonicalSnapshot {
 /// The caller supplies the enrolled-device key resolver; this function does
 /// not infer trust from event contents or implement device enrollment. Locks
 /// are acquired in stable DeviceId order and held through verification,
-/// reduction, and the SQLite transaction (device locks â†’ SQLite).
+/// reduction, and the SQLite transaction (device locks Ã¢â€ â€™ SQLite).
 pub fn rebuild_knowledge_from_canonical<R: TrustedDaemonKeyResolver>(
     runtime_root: &Path,
     expected_brain_id: &str,
@@ -3940,7 +3949,7 @@ mod tests {
                     entity_id: representative.into(),
                     representative_id: representative.into(),
                     kind: EntityKind::Person,
-                    label: "Tarık".into(),
+                    label: "TarÄ±k".into(),
                     provenance: vec![provenance.clone()],
                 },
                 Entity {
@@ -3962,7 +3971,7 @@ mod tests {
                 semantic_id: "fact-key".into(),
                 subject_entity_id: representative.into(),
                 predicate: "person.name".into(),
-                value: FactValue::Text("Tarık".into()),
+                value: FactValue::Text("TarÄ±k".into()),
                 provenance: vec![provenance.clone()],
             }],
             relations: vec![Relation {
@@ -3978,7 +3987,7 @@ mod tests {
         let view = vault_knowledge_view(&state);
         assert_eq!(view.entities.len(), 2);
         assert_eq!(view.entities[0].entity_id, representative);
-        assert_eq!(view.entities[0].display_label, "Tarık");
+        assert_eq!(view.entities[0].display_label, "TarÄ±k");
         assert_eq!(view.facts.len(), 1);
         assert_eq!(view.facts[0].value_kind, "text");
         assert_eq!(view.relations.len(), 1);
