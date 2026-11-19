@@ -1,5 +1,9 @@
 use super::super::automatic::wait_for;
 use super::*;
+#[cfg(target_os = "macos")]
+use crate::import_staging::macos_inbox::Inbox;
+#[cfg(windows)]
+use crate::import_staging::windows_inbox::Inbox;
 use crate::incoming_publication::{rebuild_imported_state, recover_live_with_instance};
 
 pub(super) fn exercise(
@@ -84,11 +88,57 @@ pub(super) fn exercise(
     }
 
     fs::write(wire.join("resume-lifecycle-receiver"), []).unwrap();
+    let mut inbox = Inbox::new(&receiver.root).unwrap();
+    let forget = &batch[0];
+    let restore = &batch[1];
     wait_for(
-        || batch.iter().all(|path| remote_inbox.join(path).is_file()),
-        "queued lifecycle delivery",
+        || remote_inbox.join(restore).is_file(),
+        "restore delivered before forget",
     );
-    assert_eq!(publish(receiver, &batch, store).published_events, 2);
+    assert!(!remote_inbox.join(forget).try_exists().unwrap());
+    let early_bytes = fs::read(remote_inbox.join(restore)).unwrap();
+    assert_eq!(
+        early_bytes,
+        fs::read(sender.root.join("canonical/events").join(restore)).unwrap()
+    );
+    let existing = inbox.discover().unwrap();
+    assert!(!existing.contains(restore));
+    if !existing.is_empty() {
+        assert_eq!(
+            publish(receiver, &existing, store).identical_segments,
+            existing.len()
+        );
+        inbox.consumed().unwrap();
+    }
+    assert!(inbox.discover().unwrap().is_empty());
+    // Even an explicit early hint must fail at the independent canonical gate.
+    let early = publish_incoming_with_instance(
+        &receiver.root,
+        std::slice::from_ref(restore),
+        &mut receiver.instance,
+        store,
+        ENV,
+    );
+    assert!(
+        matches!(early, Err(crate::incoming_publication::IncomingPublicationError::Rejected(
+        crate::import_staging::ImportStagingError::Invalid(ref reason))) if reason.contains("is not contiguous")),
+        "{early:?}"
+    );
+    assert!(!remote_canonical.join(restore).try_exists().unwrap());
+    assert!(!remote_canonical.join(forget).try_exists().unwrap());
+    assert_eq!(search(receiver, store), baseline);
+
+    fs::write(wire.join("release-forget-segment"), []).unwrap();
+    wait_for(
+        || remote_inbox.join(forget).is_file(),
+        "delayed forget delivery",
+    );
+    let discovered = inbox.discover().unwrap();
+    assert_eq!(discovered, batch);
+    assert_eq!(fs::read(remote_inbox.join(restore)).unwrap(), early_bytes);
+    assert_eq!(publish(receiver, &discovered, store).published_events, 2);
+    inbox.consumed().unwrap();
+    assert!(inbox.discover().unwrap().is_empty());
     for path in &batch {
         let signed = fs::read(sender.root.join("canonical/events").join(path)).unwrap();
         assert_eq!(fs::read(remote_canonical.join(path)).unwrap(), signed);
@@ -99,4 +149,5 @@ pub(super) fn exercise(
     assert_eq!(search(receiver, store), baseline);
     assert_eq!(search(sender, store), search(receiver, store));
     println!("offline_note_lifecycle=verified queued=2 imported=2 identical_replays=2");
+    println!("reordered_note_lifecycle=verified first=restore deferred=1 converged=true");
 }

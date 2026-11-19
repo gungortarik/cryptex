@@ -97,10 +97,7 @@ impl Inbox {
             }
         }
         self.namespace.validate()?;
-        self.pending = candidates
-            .into_iter()
-            .take(crate::import_limits::MAX_IMPORT_FILES_PER_BATCH)
-            .collect();
+        self.pending = super::inbox_order::ready_batch(&self.root, candidates)?;
         Ok(self.pending.iter().map(|(p, _)| p.clone()).collect())
     }
     /// Only an actual clean publication/rejection consumes a discovery hint.

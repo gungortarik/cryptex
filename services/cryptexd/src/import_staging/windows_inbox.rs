@@ -48,7 +48,7 @@ impl Fingerprint {
 }
 
 pub(crate) struct Inbox {
-    incoming: PathBuf,
+    root: PathBuf,
     _runtime: Vec<DirectoryPin>,
     directories: BTreeMap<PathBuf, Vec<DirectoryPin>>,
     seen: BTreeMap<PathBuf, Fingerprint>,
@@ -58,7 +58,7 @@ impl Inbox {
     pub(crate) fn new(root: &Path) -> Result<Self, Error> {
         crate::paths::assert_outside_repository(root).map_err(|_| Error::Unsafe)?;
         Ok(Self {
-            incoming: root.join("transport/incoming"),
+            root: root.to_owned(),
             _runtime: inspect_directory_chain(root, true).map_err(|_| Error::Unsafe)?,
             directories: BTreeMap::new(),
             seen: BTreeMap::new(),
@@ -81,7 +81,7 @@ impl Inbox {
         if !self.pending.is_empty() {
             return Ok(self.pending.iter().map(|(p, _)| p.clone()).collect());
         }
-        let incoming = self.incoming.clone();
+        let incoming = self.root.join("transport/incoming");
         match fs::symlink_metadata(&incoming) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(_) => return Err(Error::Io),
@@ -121,10 +121,8 @@ impl Inbox {
                 }
             }
         }
-        self.pending = candidates
-            .into_iter()
-            .take(crate::import_limits::MAX_IMPORT_FILES_PER_BATCH)
-            .collect();
+        self.pending =
+            super::inbox_order::ready_batch(&self.root, candidates).map_err(|_| Error::Io)?;
         Ok(self.pending.iter().map(|(p, _)| p.clone()).collect())
     }
     /// Waiting/deferred/held work stays pending; only publication or a clean

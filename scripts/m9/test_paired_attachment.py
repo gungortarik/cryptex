@@ -146,6 +146,11 @@ def main():
                     workers.close()
                     (base / "offline").touch()
                     wait_marker("reconnect", 45)
+                    # Delay only the forget segment in the sender's test transport.
+                    # Both signed canonical packs remain untouched.
+                    delay = roots[0] / "profile/transport/incoming/.stignore"
+                    with delay.open("x", encoding="ascii") as ignore:
+                        ignore.write("00000000000000000003.seg\n")
                     start_worker(workers, 0)
                     receiver = workers.enter_context(contextlib.ExitStack())
                     start_worker(receiver, 1)
@@ -154,6 +159,8 @@ def main():
                     (base / "lifecycle-receiver-offline").touch()
                     wait_marker("resume-lifecycle-receiver", 120)
                     start_worker(receiver, 1)
+                    wait_marker("release-forget-segment", 150)
+                    delay.unlink()
                     if test.wait(timeout=180):
                         raise RuntimeError("paired attachment suite failed")
                 finally:
@@ -166,7 +173,8 @@ def main():
                 if ("1 passed; 0 failed; 0 ignored" not in output
                         or "automatic_attachment_sync=verified" not in output
                         or "paired_note_lifecycle=verified receiver_search=visible-hidden-restored" not in output
-                        or "offline_note_lifecycle=verified queued=2 imported=2 identical_replays=2" not in output):
+                        or "offline_note_lifecycle=verified queued=2 imported=2 identical_replays=2" not in output
+                        or "reordered_note_lifecycle=verified first=restore deferred=1 converged=true" not in output):
                     raise RuntimeError("missing paired profile test receipt")
 
 

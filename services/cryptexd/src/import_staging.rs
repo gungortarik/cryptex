@@ -10,6 +10,8 @@ use std::fs;
 use std::fs::File;
 #[cfg(any(not(target_os = "macos"), test))]
 use std::fs::OpenOptions;
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+mod inbox_order;
 #[cfg(target_os = "macos")]
 pub(crate) mod macos_fs;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
