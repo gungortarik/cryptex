@@ -126,11 +126,25 @@ verified the receipt with the original public key, checked its exact fields
 and rejected a different target hash and verification key.
 [Desktop and restart checks](https://github.com/gungortarik/cryptex/actions/runs/44626948887)
 and [lifecycle regressions](https://github.com/gungortarik/cryptex/actions/runs/44626948832).
-The approval records owner intent. Physical removal, integrity bridging and
-stale-peer suppression are subsequent M10 work.
 
-Real profiles keep lifecycle writing and replication disabled. Broader
-multi-device reconciliation, destructive purge and M10 acceptance remain open.
+### Physical removal in a disposable single-device profile
+
+The physical trial at `429fe31` accepts a reviewed, signed approval for an
+author-owned note in a single-device stream of plain notes. The daemon
+verifies the replacement chain under the writer locks, atomically replaces
+the pack, rebuilds the projection and compacts SQLite. A signed bridge at
+the removed frame's position carries the original content hash so subsequent
+signatures still verify. The reader authenticates the separate local approval.
+The trial treats this compacted stream as read-only for subsequent appends.
+
+The native browser test places the target between two other notes, cancels
+once, and then confirms. A fresh process authenticates the survivors, compares
+their exact frame digests and searches every regular file for the synthetic
+target text. It checks FTS and the surviving rows before and after a second
+derived rebuild. [Windows and macOS browser and reopen checks](https://github.com/gungortarik/cryptex/actions/runs/44630511482)
+
+Real profiles keep M10 writes disabled. Multi-device purge, stale-peer
+suppression, attached notes, backups and M10 acceptance remain open.
 
 ## M9 complete on November 19, 2026
 
