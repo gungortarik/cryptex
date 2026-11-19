@@ -143,6 +143,72 @@ where
     I: IntoIterator<Item = &'a AcceptedEvent>,
     A: IntoIterator<Item = VaultAttachmentSource<'a>>,
 {
+    let mut attachment_sources = BTreeMap::<String, &Path>::new();
+    for attachment in attachments {
+        let attachment_id = canonical_attachment_id(attachment.attachment_id)?;
+        let file_name = safe_attachment_file_name(attachment.file_name)?;
+        let relative = format!("attachments/{attachment_id}/{file_name}");
+        if attachment_sources
+            .insert(relative, attachment.source_path)
+            .is_some()
+        {
+            return Err(ProjectionError::InvalidVaultEvent);
+        }
+    }
+
+    rebuild_with_copies(
+        vault_root,
+        events,
+        knowledge,
+        attachment_sources,
+        copy_fixture,
+    )
+}
+
+/// Each signed link has its own stable directory. Link records contain no
+/// original filename. The daemon streams the authorized blob to a new file.
+pub fn rebuild_vault_with_signed_attachments<'a>(
+    vault_root: &Path,
+    events: impl IntoIterator<Item = &'a AcceptedEvent>,
+    knowledge: &VaultKnowledgeView,
+    attachments: impl IntoIterator<Item = (&'a str, &'a [u8; 32])>,
+    open_blob: impl Fn(&[u8; 32]) -> ProjectionResult<fs::File>,
+) -> ProjectionResult<VaultProjectionSummary> {
+    let mut sources = BTreeMap::new();
+    for (link, digest) in attachments {
+        let id = canonical_attachment_id(link)?;
+        if sources
+            .insert(format!("attachments/{id}/attachment.bin"), digest)
+            .is_some()
+        {
+            return Err(ProjectionError::InvalidVaultEvent);
+        }
+    }
+    rebuild_with_copies(vault_root, events, knowledge, sources, |digest, path| {
+        let mut output = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(path)?;
+        std::io::copy(&mut open_blob(digest)?, &mut output)?;
+        output.sync_all()?;
+        drop(output);
+        let copied = digest_file(path)?;
+        if copied != format!("{:x}", sha2::digest::Output::<Sha256>::from(*digest)) {
+            return Err(ProjectionError::SchemaInconsistent {
+                detail: "staged attachment differs from its signed digest".into(),
+            });
+        }
+        Ok(copied)
+    })
+}
+
+fn rebuild_with_copies<'a, T>(
+    vault_root: &Path,
+    events: impl IntoIterator<Item = &'a AcceptedEvent>,
+    knowledge: &VaultKnowledgeView,
+    attachment_sources: BTreeMap<String, T>,
+    copy: impl Fn(T, &Path) -> ProjectionResult<String>,
+) -> ProjectionResult<VaultProjectionSummary> {
     let root_meta = fs::symlink_metadata(vault_root)?;
     if !root_meta.is_dir() || root_meta.file_type().is_symlink() {
         return Err(ProjectionError::SchemaInconsistent {
@@ -203,24 +269,11 @@ where
         }
     }
 
-    let mut attachment_sources = BTreeMap::<String, &Path>::new();
-    for attachment in attachments {
-        let attachment_id = canonical_attachment_id(attachment.attachment_id)?;
-        let file_name = safe_attachment_file_name(attachment.file_name)?;
-        let relative = format!("attachments/{attachment_id}/{file_name}");
-        if attachment_sources
-            .insert(relative, attachment.source_path)
-            .is_some()
-        {
-            return Err(ProjectionError::InvalidVaultEvent);
-        }
-    }
-
     let note_count = rendered.len();
     let open_note_path = rendered.keys().next().map(PathBuf::from);
     let stage = unique_stage_path(&root);
     fs::create_dir(&stage)?;
-    let write_result = write_stage(&stage, rendered, attachment_sources);
+    let write_result = write_stage(&stage, rendered, attachment_sources, copy);
     if let Err(error) = write_result {
         let _ = fs::remove_dir_all(&stage);
         return Err(error);
@@ -257,10 +310,11 @@ fn unique_stage_path(root: &Path) -> PathBuf {
     ))
 }
 
-fn write_stage(
+fn write_stage<T>(
     stage: &Path,
     files: BTreeMap<String, Vec<u8>>,
-    attachments: BTreeMap<String, &Path>,
+    attachments: BTreeMap<String, T>,
+    copy: impl Fn(T, &Path) -> ProjectionResult<String>,
 ) -> ProjectionResult<()> {
     let mut manifest_files = BTreeMap::new();
     for (relative, content) in files {
@@ -275,28 +329,18 @@ fn write_stage(
         output.sync_all()?;
         manifest_files.insert(relative, hex_digest(&content));
     }
+    // Original M6 fixture manifests hashed attachment digests a second time.
+    // Keep note-only manifests compatible and identify raw attachment digests.
+    let schema_version = if attachments.is_empty() { 1 } else { 2 };
     for (relative, source) in attachments {
         let path = safe_manifest_path(stage, &relative)?;
         let parent = path.parent().ok_or(ProjectionError::InvalidVaultEvent)?;
         fs::create_dir_all(parent)?;
-        let source_meta = fs::symlink_metadata(source)?;
-        if !source_meta.is_file() || source_meta.file_type().is_symlink() {
-            return Err(ProjectionError::SchemaInconsistent {
-                detail: "attachment source must be a regular file".into(),
-            });
-        }
-        let expected = digest_file(source)?;
-        let copied = copy_file_new(source, &path)?;
-        let after = digest_file(source)?;
-        if expected != copied || copied != after {
-            return Err(ProjectionError::SchemaInconsistent {
-                detail: "attachment source changed during staged copy".into(),
-            });
-        }
+        let copied = copy(source, &path)?;
         manifest_files.insert(relative, copied);
     }
     let manifest = GeneratedManifest {
-        schema_version: 1,
+        schema_version,
         files: manifest_files,
     };
     let manifest_bytes =
@@ -304,6 +348,24 @@ fn write_stage(
     write_new_synced(&stage.join(MANIFEST_FILE), &manifest_bytes)?;
     write_new_synced(&stage.join(GENERATED_MARKER), MARKER_CONTENT.as_bytes())?;
     Ok(())
+}
+
+fn copy_fixture(source: &Path, path: &Path) -> ProjectionResult<String> {
+    let source_meta = fs::symlink_metadata(source)?;
+    if !source_meta.is_file() || source_meta.file_type().is_symlink() {
+        return Err(ProjectionError::SchemaInconsistent {
+            detail: "attachment source must be a regular file".into(),
+        });
+    }
+    let expected = digest_file(source)?;
+    let copied = copy_file_new(source, path)?;
+    let after = digest_file(source)?;
+    if expected != copied || copied != after {
+        return Err(ProjectionError::SchemaInconsistent {
+            detail: "attachment source changed during staged copy".into(),
+        });
+    }
+    Ok(copied)
 }
 
 fn copy_file_new(source: &Path, destination: &Path) -> ProjectionResult<String> {
@@ -323,10 +385,14 @@ fn copy_file_new(source: &Path, destination: &Path) -> ProjectionResult<String> 
         digest.update(&buffer[..read]);
     }
     output.sync_all()?;
-    Ok(hex_digest(&digest.finalize()))
+    Ok(format!("{:x}", digest.finalize()))
 }
 
 fn digest_file(path: &Path) -> ProjectionResult<String> {
+    Ok(format!("{:x}", hash_file(path)?))
+}
+
+fn hash_file(path: &Path) -> ProjectionResult<sha2::digest::Output<Sha256>> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_file() || metadata.file_type().is_symlink() {
         return Err(ProjectionError::SchemaInconsistent {
@@ -343,7 +409,7 @@ fn digest_file(path: &Path) -> ProjectionResult<String> {
         }
         digest.update(&buffer[..read]);
     }
-    Ok(hex_digest(&digest.finalize()))
+    Ok(digest.finalize())
 }
 
 fn canonical_attachment_id(value: &str) -> ProjectionResult<String> {
@@ -433,10 +499,10 @@ fn read_manifest(tree: &Path) -> ProjectionResult<GeneratedManifest> {
         serde_json::from_slice(&bytes).map_err(|_| ProjectionError::SchemaInconsistent {
             detail: "generated vault manifest is invalid".into(),
         })?;
-    if manifest.schema_version != 1 {
+    if !matches!(manifest.schema_version, 1 | 2) {
         return Err(ProjectionError::UnsupportedSchema {
             found: manifest.schema_version,
-            expected: 1,
+            expected: 2,
         });
     }
     Ok(manifest)
@@ -483,7 +549,13 @@ fn validate_owned_tree(tree: &Path) -> ProjectionResult<()> {
     }
     for (relative, expected_hash) in &manifest.files {
         let path = safe_manifest_path(tree, relative)?;
-        if hex_digest(&fs::read(path)?) != *expected_hash {
+        let raw = hash_file(&path)?;
+        let actual_hash = if manifest.schema_version == 1 && relative.starts_with("attachments/") {
+            hex_digest(&raw)
+        } else {
+            format!("{raw:x}")
+        };
+        if actual_hash != *expected_hash {
             return Err(ProjectionError::SchemaInconsistent {
                 detail: "a generated vault file was changed after publication".into(),
             });
@@ -1033,7 +1105,21 @@ mod tests {
             .join("r_sum__photo.png");
         assert_eq!(fs::read(&projected).unwrap(), original);
 
+        // M6 fixture vaults used SHA-256(SHA-256(bytes)) for binary copies.
+        let tree = root.join(GENERATED_DIR);
+        let mut legacy = read_manifest(&tree).unwrap();
+        assert_eq!(legacy.schema_version, 2);
+        legacy.schema_version = 1;
+        *legacy.files.values_mut().next().unwrap() = hex_digest(&Sha256::digest(original));
+        fs::write(
+            tree.join(MANIFEST_FILE),
+            serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+        validate_owned_tree(&tree).unwrap();
+
         fs::write(&projected, b"changed derived copy").unwrap();
+        assert!(validate_owned_tree(&tree).is_err());
         assert_eq!(fs::read(&source).unwrap(), original);
         fs::remove_dir_all(root).unwrap();
     }

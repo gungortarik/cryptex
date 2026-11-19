@@ -145,6 +145,15 @@ fn verify_local_link<'a>(
 /// Recheck a stored blob before a daemon operation refers to its bytes.
 /// A missing object is distinct from an existing object with the wrong hash.
 pub(crate) fn verify_stored(runtime_root: &Path, digest: &[u8; 32]) -> Result<(), BlobError> {
+    open_verified(runtime_root, digest).map(drop)
+}
+
+/// Return the same verified, rewound handle to the vault copier. The copier
+/// also checks the staged file against the signed digest before publication.
+pub(crate) fn open_verified(
+    runtime_root: &Path,
+    digest: &[u8; 32],
+) -> Result<std::fs::File, BlobError> {
     crate::paths::assert_outside_repository(runtime_root)
         .map_err(|_| BlobError::UnsafeFilesystem)?;
     let root = Directory::open(runtime_root)?;
@@ -164,7 +173,8 @@ pub(crate) fn verify_stored(runtime_root: &Path, digest: &[u8; 32]) -> Result<()
     let mut file = blobs.open_file(&name, false)?;
     verify(&mut file, &expected)?;
     blobs.validate()?;
-    Ok(())
+    file.rewind()?;
+    Ok(file)
 }
 
 fn copy_and_hash(

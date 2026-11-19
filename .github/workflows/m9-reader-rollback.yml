@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/m9-reader-rollback.yml'
       - 'crates/events/src/attachment_link.rs'
+      - 'crates/projection/src/vault.rs'
       - 'services/cryptexd/src/attachment_blobs.rs'
       - 'services/cryptexd/src/canonical_writer/isolated_attachment.rs'
       - 'services/cryptexd/src/incoming_publication.rs'
@@ -53,6 +54,8 @@ jobs:
           ref: 2efc3dd60ce4acd67cc84bd4056973eae5b29a86
           path: m8
           persist-credentials: false
+      - name: Verify generated vault copies and ownership manifests
+        run: cargo test --locked -p cryptex-projection --lib vault::tests::
       - name: Build the unmodified pre-M9 daemon
         working-directory: m8
         run: cargo build --locked -p cryptexd --bin cryptexd

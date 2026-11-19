@@ -2949,8 +2949,35 @@ pub fn rebuild_vault_with_retrieval_safety<R: TrustedDaemonKeyResolver>(
         })
         .collect::<Vec<_>>();
     let knowledge = vault_knowledge_view(&snapshot.state);
-    cryptex_projection::rebuild_vault_with_knowledge(vault_root, events, &knowledge)
-        .map_err(GuardedVaultError::Projection)
+    let links = snapshot
+        .attachment_links
+        .values()
+        .flatten()
+        .map(|(link, digest)| (link.as_str(), digest));
+    cryptex_projection::vault::rebuild_vault_with_signed_attachments(
+        vault_root,
+        events,
+        &knowledge,
+        links,
+        |_digest| {
+            #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+            {
+                crate::attachment_blobs::open_verified(runtime_root, _digest).map_err(|err| {
+                    cryptex_projection::ProjectionError::SchemaInconsistent {
+                        detail: format!("verified vault attachment unavailable: {err:?}"),
+                    }
+                })
+            }
+            #[cfg(not(any(
+                windows,
+                all(target_os = "macos", feature = "m8-local-startup-check")
+            )))]
+            Err(cryptex_projection::ProjectionError::SchemaInconsistent {
+                detail: "attachment storage unavailable on this build".into(),
+            })
+        },
+    )
+    .map_err(GuardedVaultError::Projection)
 }
 
 fn vault_knowledge_view(state: &cryptex_knowledge::KnowledgeState) -> VaultKnowledgeView {

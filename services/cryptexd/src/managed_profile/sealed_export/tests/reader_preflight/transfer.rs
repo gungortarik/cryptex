@@ -80,6 +80,27 @@ fn guarded(
     gate
 }
 
+fn refresh_vault(
+    side: &Side,
+    store: &crate::FakeSecureStore,
+    vault: &Path,
+) -> Result<
+    cryptex_projection::VaultProjectionSummary,
+    crate::knowledge_materialization::GuardedVaultError,
+> {
+    let (db, _) = crate::projection::open_projection_db(&side.root).unwrap();
+    let mut keys = resolver(side, store);
+    let device = keys.local_trust_anchor().unwrap().device_id().clone();
+    crate::knowledge_materialization::rebuild_vault_with_retrieval_safety(
+        &side.root,
+        BRAIN,
+        &[device],
+        &mut keys,
+        &db,
+        vault,
+    )
+}
+
 pub(in crate::managed_profile) fn run() {
     let transport = PathBuf::from(std::env::var_os("CRYPTEX_TEST_WIRE").unwrap());
     let a_id = std::env::var("CRYPTEX_TEST_DEVICE_A").unwrap();
@@ -163,6 +184,9 @@ pub(in crate::managed_profile) fn run() {
     assert_eq!(publish(&mut b).published_events, 3);
     assert_eq!(publish(&mut b).identical_segments, 1);
 
+    let vault = crate::test_temp::exclusive_temp_dir("m9-selected-vault");
+    assert!(refresh_vault(&b, &store, &vault).is_err());
+    assert_eq!(fs::read_dir(&vault).unwrap().count(), 0);
     let state = guarded(&b, &store);
     let note = &selection.note_id;
     assert_eq!(
@@ -270,19 +294,49 @@ pub(in crate::managed_profile) fn run() {
     guarded(&b, &store)
         .verify_local_attachment(note, &link)
         .unwrap();
-    assert_eq!(fs::read(local_blob).unwrap(), selection.bytes);
+    assert_eq!(fs::read(&local_blob).unwrap(), selection.bytes);
     assert_eq!(fs::read_dir(blobs).unwrap().count(), 1);
     let retained: Vec<_> = fs::read_dir(evidence)
         .unwrap()
         .map(|entry| fs::read(entry.unwrap().path()).unwrap())
         .collect();
     assert_eq!(retained, vec![damaged.clone(), damaged]);
-    assert_eq!(fs::read(peer_pack).unwrap(), original_pack);
+    assert_eq!(fs::read(&peer_pack).unwrap(), original_pack);
     println!(
         "paired_attachment_repair=verified receiver_reopened=true interrupted_retry=verified canonical_blobs=1 quarantined=2"
     );
+    let copy = vault
+        .join("Cryptex/attachments")
+        .join(&link)
+        .join("attachment.bin");
+    let first = refresh_vault(&b, &store, &vault).unwrap();
+    assert!(
+        vault
+            .join("Cryptex/notes")
+            .join(format!("{note}.md"))
+            .is_file()
+    );
+    assert_eq!(fs::read(&copy).unwrap(), selection.bytes);
+    // An untouched binary must validate against the manifest on the next refresh.
+    assert_eq!(refresh_vault(&b, &store, &vault).unwrap(), first);
+    let mut edited = selection.bytes.clone();
+    edited[0] ^= 1;
+    fs::write(&copy, &edited).unwrap();
+    assert!(refresh_vault(&b, &store, &vault).is_err());
+    assert_eq!(fs::read(&copy).unwrap(), edited);
     drop(b);
-    for root in [left, right, scratch] {
+    let b = Side::new(right.clone(), &b_id);
+    guarded(&b, &store)
+        .verify_local_attachment(note, &link)
+        .unwrap();
+    assert_eq!(fs::read(&local_blob).unwrap(), selection.bytes);
+    assert_eq!(fs::read(&peer_pack).unwrap(), original_pack);
+    println!(
+        "paired_attachment_vault=verified bytes={} sha256={digest:x} edited_copy_preserved=true canonical_reopened=true",
+        selection.bytes.len()
+    );
+    drop(b);
+    for root in [left, right, scratch, vault] {
         fs::remove_dir_all(root).unwrap();
     }
 }
