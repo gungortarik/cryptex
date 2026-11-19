@@ -1,0 +1,51 @@
+{
+  "scope": "two_host_disposable_profile_compromised_peer_cutoff",
+  "side_A": "Windows VM",
+  "side_B": "Mac",
+  "receipts": [
+    {
+      "archive": "YETKI-SONUC-Windows-5d620de8c6a2.zip",
+      "archive_sha256": "3fcf84cdf7f2830a15cf2441765f5a4a3759526f31bc9ad2b1dc825ac423b8cd",
+      "report": {
+        "schema": 1,
+        "run": "9a6dc973-14c3-42e1-a022-d0142f4f30f0",
+        "source": "30ac742c2c1a9465f3c42ff48b179a996e0f9720",
+        "platform": "Windows",
+        "passed": true,
+        "stage": "both_directions_and_restart",
+        "rounds": [
+          {
+            "sender": "A",
+            "segment_sha256": "aa21cb6a4b9dcf31cdfe14cddabeb822631161f0537ed861284f0468e8a14dec"
+          },
+          {
+            "sender": "B",
+            "segment_sha256": "10d5aeddfb9def5f8016581515c16e81f17649a114b2627cec43931a65e198fb"
+          }
+        ]
+      }
+    },
+    {
+      "archive": "YETKI-SONUC-Darwin-9c5ac2846544.zip",
+      "archive_sha256": "8cdb771a7028defff2541c8c34c73eb524da04193cff365d1c93d401cf650f7a",
+      "report": {
+        "schema": 1,
+        "run": "9a6dc973-14c3-42e1-a022-d0142f4f30f0",
+        "source": "30ac742c2c1a9465f3c42ff48b179a996e0f9720",
+        "platform": "Darwin",
+        "passed": true,
+        "stage": "both_directions_and_restart",
+        "rounds": [
+          {
+            "sender": "A",
+            "segment_sha256": "aa21cb6a4b9dcf31cdfe14cddabeb822631161f0537ed861284f0468e8a14dec"
+          },
+          {
+            "sender": "B",
+            "segment_sha256": "10d5aeddfb9def5f8016581515c16e81f17649a114b2627cec43931a65e198fb"
+          }
+        ]
+      }
+    }
+  ]
+}

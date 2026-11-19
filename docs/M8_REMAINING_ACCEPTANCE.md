@@ -1,5 +1,14 @@
 # M8 remaining acceptance
 
+## Physical Windows–Mac cutoff result
+
+The disposable LAN cutoff check passed in both directions at source `30ac742`.
+Both receipts match the issued run and the SHA-256 of each direction's rejected
+segment. Each receiver retained its accepted prefix through both daemon recovery
+passes. Next, review how remaining devices receive a self-retiring device's final
+signed record. Final status, security and candidate review are still pending.
+[Paired device receipts](../evidence/m8/m8-physical-lan-cutoff-9a6dc973.json).
+
 ## November 18 checkpoint after the two transfer inventories
 
 Pairing, two-way note delivery, paused reopen and a matching twelve-record
@@ -120,8 +129,7 @@ peer signs a note beyond sequence 3. The receiver runs daemon recovery before
 each of two deliveries of the same segment. Both must reach the cutoff check,
 leave canonical history byte-identical, and keep the earlier note searchable.
 CI stages the signed bytes directly into each receiver's temporary inbox.
-The mixed Windows–Mac LAN restriction check and the terminal self-retirement
-handoff remain open. [Native CI for 2dfc292](https://github.com/gungortarik/cryptex/actions/runs/44439423255).
+[Native CI for 2dfc292](https://github.com/gungortarik/cryptex/actions/runs/44439423255).
 
 The two-host cutoff packet at `30ac742` runs both directions with independent
 temporary profiles. Pinned Syncthing processes deliver the signed pairing
@@ -133,9 +141,8 @@ the prefix. Each platform passed a two-process loopback rehearsal, including
 comparison of both directional segment hashes. [Native packet CI](https://github.com/gungortarik/cryptex/actions/runs/44442835699).
 
 The issued Windows VM and Mac packets share run
-`9a6dc973-14c3-42e1-a022-d0142f4f30f0`. Physical evidence requires one
-successful receipt from each platform for this run and source, with matching
-segment hashes for both directions. Normal product transport roster changes
+`9a6dc973-14c3-42e1-a022-d0142f4f30f0`. Windows and Darwin both returned a passing
+receipt for that run and source with matching segment hashes in both directions. Normal product transport roster changes
 remain covered separately by the three-owner test. The two-host packet only
 modifies disposable test profiles.
 
