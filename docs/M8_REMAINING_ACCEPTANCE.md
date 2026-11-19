@@ -1,4 +1,32 @@
-# M8 remaining acceptance — current checkpoint November 17
+# M8 remaining acceptance
+
+## November 18 checkpoint after the two transfer inventories
+
+Pairing, two-way note delivery, paused reopen and a matching twelve-record
+signed set have device evidence. Run `9b502d61-00ed-4686-841d-10bce8fec61b`
+then cut the intended process on each device. Both devices found the peer's
+queued note and committed their own acknowledgement. Each stopped with 15 of
+the expected 16 records and the two set hashes differed. Disk inventories
+from both devices place each missing final segment in the sender's exchange
+folder and show it absent from the peer's exchange folder at collection.
+The inventories contain segment numbers and lengths and cannot establish
+the cause of the missed delivery.
+
+The remaining work has three parts.
+
+1. Verify that the existing four run markers converge, survive offline restart
+   and yield the same sixteen-record signed set on the Mac and VM. Preserve
+   the timed-out run as incomplete when recording any subsequent recovery.
+2. Complete restriction and cutoff acceptance across platforms with disposable
+   identities and review delivery of the final self-retirement record.
+3. Review the final connection and protection status, security-sensitive flows
+   and candidate diff, with green platform CI and human acceptance.
+
+The [current handoff](34_CURRENT_IMPLEMENTATION_HANDOFF.md) tracks the active
+investigation. The November 17 map below records the evidence already available
+for each contract area.
+
+## Earlier recovery attempts
 
 November 18 recovery attempt update: both owner reports pass the delivered
 run/source/baseline checks, but neither reaches the actual process interruption.

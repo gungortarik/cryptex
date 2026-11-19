@@ -41,6 +41,27 @@ workers after the offline backlog arrives and requires both new notes to
 reach the other peer before shutdown. Keep the four actual records for
 follow-up. No repeat cut or fresh capture is justified by these inventories.
 
+The new second-wave native test timed out on Windows in
+[CI 44424710777](https://github.com/gungortarik/cryptex/actions/runs/44424710777).
+A focused controller test isolates a race: a local capture can commit before
+its derived projection is current. Previously the receiver consumed the
+unchanged incoming hint when the local retrieval gate refused publication.
+It now retains that batch for a full retry after projection catch-up. Invalid
+peer input still goes through the existing rejection path. The native fixture
+also runs the verified post-capture refresh that its standalone connection
+owners otherwise lack. The two-owner live acknowledgement and restart case
+passed [CI 44426599702](https://github.com/gungortarik/cryptex/actions/runs/44426599702).
+
+The normal IPC background worker also keeps a pending refresh across transient
+exclusive-admission contention. A security hold still stops the attempt.
+The combined candidate `45d93d4` passed the Mac writer and background-worker
+checks, Windows publication and recovery suite, and two-owner and restricted-peer
+native scenarios in [CI 44427125236](https://github.com/gungortarik/cryptex/actions/runs/44427125236).
+This covers a receive-side failure after delivery. The physical inventory
+sampled the missing files before they appeared on the receiving filesystem;
+it cannot attribute the original device timeout to this race. Preserve the
+existing four markers for actual-device follow-up on corrected builds.
+
 ## Windows guarded lookup of the already reconciled Mac record
 
 The old `search_hold` label covers several daemon reasons; the original
