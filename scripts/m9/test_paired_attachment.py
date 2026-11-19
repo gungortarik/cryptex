@@ -106,10 +106,13 @@ def main():
             key, _ = configure(native, root, cfg, gui)
             configs.append((root, gui, key))
 
+        def start_worker(stack, index):
+            if stack.enter_context(worker(native, *configs[index])) != ids[index]:
+                raise RuntimeError("Syncthing identity mismatch")
+
         def start(stack):
-            for identity, (root, gui, key) in zip(ids, configs):
-                if stack.enter_context(worker(native, root, gui, key)) != identity:
-                    raise RuntimeError("Syncthing identity mismatch")
+            for index in range(len(configs)):
+                start_worker(stack, index)
 
         with contextlib.ExitStack() as workers:
             start(workers)
@@ -143,8 +146,15 @@ def main():
                     workers.close()
                     (base / "offline").touch()
                     wait_marker("reconnect", 45)
-                    start(workers)
-                    if test.wait(timeout=420):
+                    start_worker(workers, 0)
+                    receiver = workers.enter_context(contextlib.ExitStack())
+                    start_worker(receiver, 1)
+                    wait_marker("stop-lifecycle-receiver", 420)
+                    receiver.close()
+                    (base / "lifecycle-receiver-offline").touch()
+                    wait_marker("resume-lifecycle-receiver", 120)
+                    start_worker(receiver, 1)
+                    if test.wait(timeout=180):
                         raise RuntimeError("paired attachment suite failed")
                 finally:
                     if test.poll() is None:
@@ -155,7 +165,8 @@ def main():
                     print(output, flush=True)
                 if ("1 passed; 0 failed; 0 ignored" not in output
                         or "automatic_attachment_sync=verified" not in output
-                        or "paired_note_lifecycle=verified receiver_search=visible-hidden-restored" not in output):
+                        or "paired_note_lifecycle=verified receiver_search=visible-hidden-restored" not in output
+                        or "offline_note_lifecycle=verified queued=2 imported=2 identical_replays=2" not in output):
                     raise RuntimeError("missing paired profile test receipt")
 
 

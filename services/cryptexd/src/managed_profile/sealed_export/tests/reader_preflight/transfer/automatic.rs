@@ -2,12 +2,12 @@
 //! parent coordinates only worker lifetime and never handles attachment bytes.
 use super::*;
 
-fn wait_for(mut condition: impl FnMut() -> bool, stage: &str) {
+pub(super) fn wait_for(mut condition: impl FnMut() -> bool, stage: &str) {
     let deadline = Instant::now() + Duration::from_secs(100);
     while !condition() {
         assert!(
             Instant::now() < deadline,
-            "native attachment timeout: {stage}"
+            "native transfer timeout: {stage}"
         );
         thread::sleep(Duration::from_millis(400));
     }
@@ -144,5 +144,5 @@ pub(super) fn exercise(
     println!(
         "automatic_attachment_sync=verified missing=restored offline=held reconnect=fresh interrupted_repair=recovered canonical_blobs=1 pack=unchanged"
     );
-    super::lifecycle::exercise(&mut a, &mut b, store);
+    super::lifecycle::exercise(wire, &mut a, &mut b, store);
 }

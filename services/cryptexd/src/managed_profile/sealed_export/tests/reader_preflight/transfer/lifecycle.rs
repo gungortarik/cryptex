@@ -1,8 +1,19 @@
 //! Continue on the genuinely paired profiles while the two native workers share
 //! the live exchange directories. Only the source signs a lifecycle record.
 use super::*;
+use crate::incoming_publication::{IncomingPublicationReport, publish_incoming_with_instance};
 use cryptex_events::{AcceptedEvent, ContentHashHex};
 use serde_json::json;
+
+mod offline;
+
+fn publish(
+    side: &mut Side,
+    segments: &[PathBuf],
+    store: &crate::FakeSecureStore,
+) -> IncomingPublicationReport {
+    publish_incoming_with_instance(&side.root, segments, &mut side.instance, store, ENV).unwrap()
+}
 
 fn search(side: &Side, store: &crate::FakeSecureStore) -> Vec<cryptex_projection::SearchHit> {
     let db = cryptex_projection::ProjectionDb::open_existing_read_only(&side.root).unwrap();
@@ -58,7 +69,12 @@ fn signed_control(
     (raw, hash)
 }
 
-pub(super) fn exercise(sender: &mut Side, receiver: &mut Side, store: &crate::FakeSecureStore) {
+pub(super) fn exercise(
+    wire: &Path,
+    sender: &mut Side,
+    receiver: &mut Side,
+    store: &crate::FakeSecureStore,
+) {
     crate::test_temp::LIFECYCLE_PAIR.with(|pair| {
         pair.set([sender.root.clone(), receiver.root.clone()])
             .unwrap()
@@ -122,27 +138,19 @@ pub(super) fn exercise(sender: &mut Side, receiver: &mut Side, store: &crate::Fa
         }
         assert_eq!(&search(receiver, store), before);
         assert!(!remote_pack.try_exists().unwrap());
-        let publish = |side: &mut Side| {
-            crate::incoming_publication::publish_incoming_with_instance(
-                &side.root,
-                std::slice::from_ref(&relative),
-                &mut side.instance,
-                store,
-                ENV,
-            )
-            .unwrap()
-        };
-        assert_eq!(publish(receiver).published_events, 1);
+        let batch = std::slice::from_ref(&relative);
+        assert_eq!(publish(receiver, batch, store).published_events, 1);
         let bytes = fs::read(source_pack).unwrap();
         assert_eq!(fs::read(&remote_pack).unwrap(), bytes);
         let (frames, consumed) = cryptex_storage::scan_complete_frames(&bytes).unwrap();
         assert_eq!(consumed, bytes.len());
         assert_eq!(frames.len(), 1);
         assert_eq!(&frames[0][cryptex_events::FRAME_HEADER_BYTES..], &raw);
-        assert_eq!(publish(receiver).identical_segments, 1);
+        assert_eq!(publish(receiver, batch, store).identical_segments, 1);
         assert_eq!(&search(receiver, store), after);
     }
     println!(
         "paired_note_lifecycle=verified receiver_search=visible-hidden-restored signed_packs=2 identical_replays=2"
     );
+    offline::exercise(wire, sender, receiver, store, &target, prior);
 }
