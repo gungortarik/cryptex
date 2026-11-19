@@ -2,6 +2,8 @@
 
 ## M9 in progress · attachment storage
 
+See the [M9 closeout review](../evidence/m9/attachment-closeout-review-20261119.md) for the verified attachment behavior, product integration gap and remaining reviews.
+
 The first [M9](milestones/M9_ATTACHMENTS.md) slice adds daemon-side streaming
 storage for attachment bytes on Windows and the controlled Mac product path.
 The blob name is the lowercase SHA-256 of the raw bytes. The daemon verifies

@@ -1,0 +1,18 @@
+# M9 attachment closeout review
+
+Reviewed source `f1c877b` on November 19, 2026. M9 remains open. This source has the same executable code and workflows as `3af794f`. The owner requested that real-profile attachment writing stay disabled.
+
+The full readiness workflow passed on this revision. Windows and macOS passed their workspace, daemon and Desktop checks, and Windows passed the cross-account IPC access check. The focused M9 jobs also passed on the matching executable source. [Full readiness CI](https://github.com/gungortarik/cryptex/actions/runs/44577667014) · [Native reader and repair](https://github.com/gungortarik/cryptex/actions/runs/44576009511) · [Desktop attachment flow](https://github.com/gungortarik/cryptex/actions/runs/44576009512)
+
+| M9 requirement | Verified behavior |
+| --- | --- |
+| SHA-256 storage and deduplication | Two notes selected the same binary in Desktop. After reopening the disposable profile, the daemon read the original bytes through each signed link and found exactly one canonical file. Swapping the links failed. [Windows and macOS](https://github.com/gungortarik/cryptex/actions/runs/44572072946) |
+| Reference tracking | After the owner restricted a peer, a note beyond the cutoff lost access. A valid note retained access to the shared file after reopening. [Paired profiles](https://github.com/gungortarik/cryptex/actions/runs/44576009511) |
+| Integrity and repair | A disposable receiver verified incoming bytes, quarantined a damaged copy, reopened after an interrupted replacement and recovered from a new delivery. Replay preserved the sealed pack. The test driver supplied the delivery. [Repair trial](https://github.com/gungortarik/cryptex/actions/runs/44567124985) |
+| Obsidian projection | Editing the generated copy preserved the canonical file and signed pack. Refresh detected the local edit. An unmodified vault dropped the excluded link's copy after a cutoff. [Copy isolation](https://github.com/gungortarik/cryptex/actions/runs/44570289719) · [Cutoff refresh](https://github.com/gungortarik/cryptex/actions/runs/44576009511) |
+
+## Remaining product and review work
+
+1. Connect delivery and repair to the normal sync controller. The paired trial moves bytes with two real transport workers, but the test driver invokes receipt and retry. Attachment pack admission and replacement of a corrupted blob are test-only. The next integration check should let the controller discover the signed reference and complete delivery and interrupted repair for disposable profiles, with real-profile writing still disabled. [Transfer driver](../../services/cryptexd/src/managed_profile/sealed_export/tests/reader_preflight/transfer.rs) · [Blob store](../../services/cryptexd/src/attachment_blobs.rs)
+2. Keep activation a separate decision. The real devices have demonstrated mutual reader compatibility. Ordinary binaries still reject attachment capture. A future activation decision also requires evidence for the complete participating roster, rollback and restore conditions in ADR-0017. [Writer gate](../../services/cryptexd/src/ipc/attachment.rs) · [Activation contract](../../docs/adr/ADR-0017-structured-event-evolution-and-knowledge-materialization.md#82-production-v2-activation--separate-gate-not-m4-completion)
+3. Review the integrated candidate. The current checks cover guarded reads, digest verification, cutoff enforcement, and independent vault copies. The final transport and repair diff still needs security review, the applicable Desktop visual review, required native CI and human review before milestone closure. [M9 contract](../../docs/milestones/M9_ATTACHMENTS.md) · [Definition of Done](../../docs/21_DEFINITION_OF_DONE.md)
