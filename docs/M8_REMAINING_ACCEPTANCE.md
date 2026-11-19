@@ -7,7 +7,12 @@ Both receipts match the issued run and the SHA-256 of each direction's rejected
 segment. Each receiver retained its accepted prefix through both daemon recovery
 passes. The [self-retirement delivery review](proposals/m8-self-retirement-delivery.md)
 records the approved single owner handoff and automatic forwarding design.
-Implementation includes interrupted-publication and native three-owner tests.
+At `c20d97a`, B received A's owner-carried notice once, restarted, and
+relayed A's original signed segment to C over the Windows native transport
+with A offline. B and C retained the same bytes and excluded A after
+reopening offline. This three-profile test passed in 143.05 seconds.
+The macOS interrupted-publication, prefix-seal and terminal-seal checks
+passed on the same source. [Automated Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44449594662).
 Final status, security and candidate review remain open.
 [Paired device receipts](../evidence/m8/m8-physical-lan-cutoff-9a6dc973.json).
 
