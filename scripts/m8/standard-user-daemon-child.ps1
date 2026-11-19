@@ -84,6 +84,10 @@ if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) 
     $result.stderr | Write-Output
     if($result.code -ne 0 -or $result.stdout -notmatch '1 passed; 0 failed; 0 ignored' -or
         $result.stdout -notmatch 'historical_profile_lock=denied'){throw 'Historical M8 denial was not verified.'}
+    $env:CRYPTEX_M9_READER_ATTEMPT=[guid]::NewGuid().ToString('N')
+    $readerUnits=Invoke-TestBinary $p.executables[0] 'managed_profile::sealed_export::reader::'
+    $readerUnits.stdout | Write-Output
+    if($readerUnits.code -ne 0 -or $readerUnits.stdout -notmatch '2 passed; 0 failed; 0 ignored'){throw 'Reader unit checks incomplete.'}
     $preflight=Invoke-TestBinary $p.executables[0] 'managed_profile::sealed_export::tests::reader_preflight:: --nocapture'
     $preflight.stdout | Write-Output
     $preflight.stderr | Write-Output
@@ -96,7 +100,7 @@ if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) 
     $live.stderr | Write-Output
     $proofs=@($live.stderr -split '\r?\n' | Where-Object {$_ -ceq 'component=m9_reader_check status=verified peers=1'})
     if($live.code -ne 0 -or $live.stdout -notmatch '1 passed; 0 failed; 0 ignored' -or $proofs.Count -lt 2){throw 'Live paired reader verification incomplete.'}
-    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=3} | ConvertTo-Json |
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=4} | ConvertTo-Json |
         Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
     exit 0
 }

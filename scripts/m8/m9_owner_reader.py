@@ -84,11 +84,24 @@ def read_archive(path):
 def wait_for_receipt(path, process, report, plan, *, timeout=600, clock=time.monotonic, sleep=time.sleep):
     start = clock()
     progress = start + 30
+    unreadable_since = None
     while clock() - start < timeout:
         if process.poll() is not None:
             raise Refused('desktop_exited_before_verification')
         if path.exists():
-            return validate(read_metadata(path), plan, report['os'], report['attempt'], report['daemon_sha256'])
+            try:
+                record = read_metadata(path)
+            except (PermissionError, Refused) as error:
+                if isinstance(error, Refused) and str(error) != 'metadata_unavailable':
+                    raise
+                # Windows may still hold its write handle after publishing
+                # the name. Bound this retry separately from the peer wait.
+                if unreadable_since is None:
+                    unreadable_since = clock()
+                if clock() - unreadable_since >= 5:
+                    raise Refused('receipt_read_unavailable') from None
+            else:
+                return validate(record, plan, report['os'], report['attempt'], report['daemon_sha256'])
         if clock() >= progress:
             print('Imzali okuyucu yaniti bekleniyor (%d sn).' % int(clock() - start), flush=True)
             progress = clock() + 30

@@ -75,5 +75,7 @@ jobs:
           cargo test --locked -p cryptexd --features m8-development-product --lib attachment_blobs::tests::signed_link::audit_pre_m9_profile_admission -- --ignored --exact --nocapture | tee rollback-observation.txt
           grep '^historical_profile_lock=denied ' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"
           grep '^existing_profile_migration=verified ' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"
+          export CRYPTEX_M9_READER_ATTEMPT=$(python3 -c 'import uuid; print(uuid.uuid4().hex)')
+          cargo test --locked -p cryptexd --features m8-development-product --lib managed_profile::sealed_export::reader::
           cargo test --locked -p cryptexd --features m8-development-product --lib managed_profile::sealed_export::tests::reader_preflight:: -- --nocapture | tee preflight.txt
           grep -F '2 passed; 0 failed; 0 ignored' preflight.txt >> "$GITHUB_STEP_SUMMARY"

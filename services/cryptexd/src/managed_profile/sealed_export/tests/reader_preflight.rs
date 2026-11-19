@@ -95,6 +95,15 @@ fn paired_readers_exchange_fresh_proofs_before_attachment_export() {
     let original = fs::read(&pack).unwrap();
     assert_eq!(a.tick(&store).attachment_waiting_for_reader, 1);
     assert_eq!(a.exporter.last_reader_status, Some(Status::Waiting));
+    let attempt = std::env::var("CRYPTEX_M9_READER_ATTEMPT").ok();
+    let receipt_path = |side: &Side, attempt: &str| {
+        side.root
+            .join("transport/m9-control-staging")
+            .join(format!("{attempt}.receipt"))
+    };
+    if let Some(id) = attempt.as_deref() {
+        assert!(!receipt_path(&a, id).exists());
+    }
     assert_eq!(b.tick(&store).copied, 1); // ordinary v1/security traffic continues
     let slot = |side: &Side| {
         fs::read_dir(side.controls())
@@ -130,6 +139,24 @@ fn paired_readers_exchange_fresh_proofs_before_attachment_export() {
     assert!(
         matches!(&b.exporter.last_reader_status, Some(Status::Verified(builds)) if builds.len()==1)
     );
+    if let Some(id) = attempt.as_deref() {
+        let receipt = |side: &Side| {
+            serde_json::from_slice::<serde_json::Value>(&fs::read(receipt_path(side, id)).unwrap())
+                .unwrap()
+        };
+        let (left, right) = (receipt(&a), receipt(&b));
+        assert_eq!(left["attempt"], id);
+        assert_eq!(right["attempt"], id);
+        for (local, peer) in [
+            ("local", "peer"),
+            ("local_nonce", "peer_nonce"),
+            ("local_build", "peer_build"),
+        ] {
+            assert!(left[local].is_string() && right[local].is_string());
+            assert_eq!(left[local], right[peer]);
+            assert_eq!(right[local], left[peer]);
+        }
+    }
     a.exporter.end_reader_session();
     assert_eq!(a.tick(&store).attachment_waiting_for_reader, 1); // old response still on disk
     let peer_slot = a.controls().join(&from_b);
