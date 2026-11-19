@@ -92,12 +92,15 @@ the daemon executable digest and the resolved blob digest. The verifier
 uses the signing key from the current locked, approved device binding.
 The inbox importer skips this directory.
 
-Live challenges expire after five minutes. A controller restart or a change
-in the verified security history also starts a new round. Only a signed
-reply to the current challenge counts toward live verification.
+Live challenges expire after five minutes. Restarting the controller,
+changing connection settings or changing verified security history starts
+a new round. An internal transport restart after an ordinary import can
+reuse the unexpired challenge once the daemon rechecks the profile and
+peer bindings. Only a signed reply to the current challenge counts toward
+live verification.
 
-On the first successful exchange for a build and security context, the
-daemon keeps the peer's signed reply and the challenge it answered. It
+On each fresh exchange, the daemon keeps the peer's signed reply and the
+challenge it answered. It
 signs that observation with the local device key and stores one item per
 direction in Windows Credential Manager or macOS Keychain. The context
 binds the Brain, the protected profile lock's native file identity, the
@@ -124,7 +127,8 @@ Before reconstruction, the daemon maintenance command
 `cryptexd lifecycle prepare-reader-rejoin-m9 --runtime-root <absolute-new-directory>`
 exclusively prepares a new protected destination under an existing private
 parent, including a private connection-settings directory and session lock.
-Restore saved preferences into that directory using its native permissions. Success reports that the destination is prepared. Restore staging
+Restore saved preferences into that directory using its native permissions.
+Success reports that the destination is prepared. Restore staging
 requires the enrolled device and its signing and transport credentials. The
 controller opens the restored profile through ordinary startup recovery and
 uses its saved connection settings. Enabled sync runs the reader exchange

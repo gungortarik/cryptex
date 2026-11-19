@@ -116,7 +116,19 @@ On both platforms a new process read the signed observation after the
 writer exited. The three-profile roster change and separate-session
 checks also passed on both platforms.
 
-Global writer activation and a product restore/rejoin workflow remain open.
+An already enrolled M9 device can reopen a stopped backup in a newly
+protected destination with its existing credentials and saved connections.
+Normal sync compares its verified history with signed observations in the
+credential store. If a previously witnessed record is missing, the daemon
+waits for ordinary verified import before exchanging fresh reader proofs.
+The peer can stay open throughout. See the [restore scope and offline
+rules](milestones/M9_ATTACHMENTS.md#reconnecting-an-already-enrolled-reader-after-restore).
+Both OS jobs passed the [reader rejoin suite at bb69f97](https://github.com/gungortarik/cryptex/actions/runs/44555704626).
+The macOS and Windows daemon fixtures reconciled the missing signed pack
+before recording fresh replies. Two Windows product controllers also
+exchanged the new proofs over the private network, imported a note written
+after the backup and returned it through guarded search.
+Global writer activation remains open.
 Capture, transfer, repair and the M6 copy-only projection remain open.
 
 ## M8 complete on November 18, 2026
