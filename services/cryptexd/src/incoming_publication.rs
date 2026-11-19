@@ -440,3 +440,7 @@ mod tests;
 
 #[cfg(windows)]
 mod windows_stream_slots;
+
+#[cfg(test)]
+#[path = "lan_cutoff_test.rs"]
+mod lan_cutoff;

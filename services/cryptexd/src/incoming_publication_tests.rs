@@ -87,17 +87,21 @@ fn append_offline_note(fixture: &Fixture, root: &Path, device: &str, text: &str)
 }
 
 fn verified_note_texts(fixture: &Fixture, root: &Path) -> std::collections::BTreeSet<String> {
+    notes_at(root, &fixture.report.brain_id, &fixture.store)
+}
+
+pub(super) fn notes_at(
+    root: &Path,
+    brain: &str,
+    store: &crate::FakeSecureStore,
+) -> std::collections::BTreeSet<String> {
     let db = cryptex_projection::ProjectionDb::open_existing_read_only(root).unwrap();
-    let mut resolver = crate::local_device_identity::LocalDeviceKeyResolver::load(
-        root,
-        &fixture.report.brain_id,
-        &fixture.store,
-        ENV,
-    )
-    .unwrap();
+    let mut resolver =
+        crate::local_device_identity::LocalDeviceKeyResolver::load(root, brain, store, ENV)
+            .unwrap();
     let safety = crate::knowledge_materialization::evaluate_retrieval_safety(
         root,
-        &fixture.report.brain_id,
+        brain,
         &[],
         &mut resolver,
         &db,
@@ -189,50 +193,64 @@ fn offline_both_peers_write_then_reconcile_without_a_master_or_duplicate_segment
     assert_eq!(event_hashes(&fixture.receiver), union_b);
 }
 
+pub(super) fn restrict_peer(
+    root: &Path,
+    store: &crate::FakeSecureStore,
+    brain: &str,
+    issuer: &DeviceId,
+    target: &DeviceId,
+    reason: crate::bootstrap_journal::RestrictionReason,
+) {
+    use crate::bootstrap_journal::BootstrapJournalStore;
+    let key = crate::event_signing_key::load_existing_event_signing_key(store, ENV, root, issuer)
+        .unwrap();
+    let policy = crate::knowledge_materialization::scan_verified_trust_policy(
+        root,
+        brain,
+        issuer,
+        &cryptex_events::SigningKeyId::parse(&key.public.signing_key_id).unwrap(),
+        &key.signing_key.verifying_key().to_bytes(),
+        &[issuer.clone(), target.clone()],
+    )
+    .unwrap();
+    let transaction = "ac".repeat(32);
+    let snapshot = policy
+        .device_restriction_approval_snapshot(transaction.clone(), target, reason, 3)
+        .unwrap();
+    drop(policy);
+    let journal = BootstrapJournalStore::new(root).unwrap();
+    journal
+        .begin_owner_operation(snapshot.clone(), "99999999-9999-4999-8999-999999999997")
+        .unwrap();
+    journal
+        .confirm_owner_operation(&transaction, &snapshot.digest().unwrap())
+        .unwrap();
+    crate::knowledge_materialization::append_confirmed_owner_security_operation(
+        root,
+        brain,
+        store,
+        ENV,
+        &transaction,
+    )
+    .unwrap();
+}
+
 #[test]
 fn offline_restricted_peer_tail_is_refused_after_owner_confirmed_cutoff() {
-    use crate::bootstrap_journal::{BootstrapJournalStore, RestrictionReason};
+    use crate::bootstrap_journal::RestrictionReason;
     for reason in [RestrictionReason::Retired, RestrictionReason::Compromised] {
         let fixture = Fixture::new();
         fixture.publish().unwrap();
         let issuer = DeviceId::new(fixture.report.receiver_device.clone()).unwrap();
         let target = DeviceId::new(fixture.report.source_device.clone()).unwrap();
-        let key = crate::event_signing_key::load_existing_event_signing_key(
+        restrict_peer(
+            &fixture.receiver,
             &fixture.store,
-            ENV,
-            &fixture.receiver,
-            &issuer,
-        )
-        .unwrap();
-        let policy = crate::knowledge_materialization::scan_verified_trust_policy(
-            &fixture.receiver,
             &fixture.report.brain_id,
             &issuer,
-            &cryptex_events::SigningKeyId::parse(&key.public.signing_key_id).unwrap(),
-            &key.signing_key.verifying_key().to_bytes(),
-            &[issuer.clone(), target.clone()],
-        )
-        .unwrap();
-        let transaction = "ac".repeat(32);
-        let snapshot = policy
-            .device_restriction_approval_snapshot(transaction.clone(), &target, reason, 3)
-            .unwrap();
-        drop(policy);
-        let journal = BootstrapJournalStore::new(&fixture.receiver).unwrap();
-        journal
-            .begin_owner_operation(snapshot.clone(), "99999999-9999-4999-8999-999999999997")
-            .unwrap();
-        journal
-            .confirm_owner_operation(&transaction, &snapshot.digest().unwrap())
-            .unwrap();
-        crate::knowledge_materialization::append_confirmed_owner_security_operation(
-            &fixture.receiver,
-            &fixture.report.brain_id,
-            &fixture.store,
-            ENV,
-            &transaction,
-        )
-        .unwrap();
+            &target,
+            reason,
+        );
         // Source has not received the restriction and can still create local
         // bytes while offline. Receiver must not mistake its signature for authority.
         let tail = append_offline_note(
@@ -764,7 +782,7 @@ fn copy_incoming(source: &Path, receiver: &Path, relative: &Path) {
     fs::copy(source.join("canonical/events").join(relative), target).unwrap();
 }
 
-fn event_hashes(root: &Path) -> Vec<(PathBuf, String)> {
+pub(super) fn event_hashes(root: &Path) -> Vec<(PathBuf, String)> {
     use sha2::{Digest, Sha256};
     let mut hashes = Vec::new();
     for device in fs::read_dir(root.join("canonical/events")).unwrap() {

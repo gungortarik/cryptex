@@ -1,0 +1,32 @@
+name: M8 disposable LAN cutoff
+on:
+  push:
+    branches: [codex/m8-device-trust]
+    paths:
+      - services/cryptexd/src/lan_cutoff_test.rs
+      - scripts/m8/lan_cutoff_packet.py
+      - scripts/m8/test_lan_cutoff_pair.py
+      - .github/workflows/m8-lan-cutoff.yml
+permissions:
+  contents: read
+jobs:
+  native-pair:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: Swatinem/rust-cache@v2
+      - run: python -B scripts/m8/test_lan_cutoff_pair.py
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: cutoff-runner-${{ github.sha }}
+          path: ${{ runner.temp }}/cutoff-runner/
+          if-no-files-found: error
