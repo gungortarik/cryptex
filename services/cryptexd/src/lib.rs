@@ -37,6 +37,8 @@ pub mod instance;
 pub mod ipc;
 pub mod knowledge_materialization;
 pub mod local_device_identity;
+#[cfg(test)]
+mod m10_forget_restore;
 #[allow(dead_code)] // Authorized disabled Mac candidate; no native authority is constructed yet.
 pub(crate) mod m8_owner_channel;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
