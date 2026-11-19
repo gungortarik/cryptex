@@ -56,6 +56,14 @@ chain order. The test compares canonical bytes and search results across
 the profiles and checks that replay adds zero events on the receiver.
 Windows and macOS passed at `c827319`. [Reordered delivery CI](https://github.com/gungortarik/cryptex/actions/runs/44603483467)
 
+The restart trial exits the daemon test process while only the restore has
+arrived, stops the receiver's Syncthing worker and reopens the same temporary
+profiles in a new process. Before reconnecting, it verifies the pending bytes
+and visible note identities and hashes against the first process's observations.
+Fresh inbox discovery still waits for the forget. After delivery, both records
+are imported in order and replay adds zero events.
+Windows and macOS passed at `ecc387e`. [Receiver restart CI](https://github.com/gungortarik/cryptex/actions/runs/44606016075)
+
 Real profiles keep lifecycle writing and replication disabled. Broader
 multi-device reconciliation, destructive purge and M10 acceptance remain open.
 
