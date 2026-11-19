@@ -1033,16 +1033,29 @@ fn run_lifecycle(
 
     match command.as_str() {
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
-        "migrate-profile-m9" => {
+        "migrate-profile-m9" | "prepare-reader-rejoin-m9" => {
             let [_, flag, root] = args else {
-                return Err(LifecycleError::Usage(
-                    "migrate-profile-m9 requires --runtime-root <absolute profile>".into(),
-                ));
+                return Err(LifecycleError::Usage(format!(
+                    "{command} requires --runtime-root <absolute profile>"
+                )));
             };
             if flag != "--runtime-root" || !Path::new(root).is_absolute() {
                 return Err(LifecycleError::Usage(
                     "expected an explicit absolute profile path".into(),
                 ));
+            }
+            if command == "prepare-reader-rejoin-m9" {
+                let path = Path::new(root);
+                let (Some(parent), Some(name)) =
+                    (path.parent(), path.file_name().and_then(|n| n.to_str()))
+                else {
+                    return Err(LifecycleError::Usage(
+                        "expected a new named profile directory".into(),
+                    ));
+                };
+                cryptexd::instance::create_m9_profile_root(parent, name)?;
+                println!("reader_rejoin=destination_prepared production_v2_activation=blocked");
+                return Ok(());
             }
             cryptexd::instance::migration::migrate_profile(Path::new(root)).map_err(|error| {
                 LifecycleError::Attention(format!("m9_profile_migration={error:?}"))
@@ -1636,6 +1649,7 @@ fn usage_text() -> String {
         "  cryptexd lifecycle status [--runtime-root <path>]",
         "  cryptexd lifecycle probe [--runtime-root <path>]",
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        "  cryptexd lifecycle prepare-reader-rejoin-m9 --runtime-root <absolute-new-directory> (prepare protected restore destination)",
         "  cryptexd lifecycle migrate-profile-m9 --runtime-root <absolute-existing-profile> (offline layout migration)",
         "  cryptexd lifecycle hold --runtime-root <path> (--stop-file <path> | --hold-ms <ms> | --crash-after-ready) [--ready-file <path>]",
         "    Windows opt-in: --managed-profile <existing-ready-path> --managed-package <pinned-package-dir> --managed-api-port <port> --managed-sync-port <port>",

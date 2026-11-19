@@ -1,4 +1,4 @@
-# M9 — Attachments
+# M9 â€” Attachments
 
 **Status:** ACCEPTED  
 **Baseline:** 2026-09-28
@@ -72,7 +72,7 @@ transition or confirm an already protected profile.
 
 The PID carries no trust or canonical data. Backup rejoin must prepare a
 protected destination before restoring v2 records. Production attachment
-writing remains gated by ADR-0017 §8.2.
+writing remains gated by ADR-0017 Â§8.2.
 
 ### Checking a paired reader before export
 
@@ -116,9 +116,35 @@ behind a new protected lock must obtain fresh proof.
 
 The daemon reports historical coverage as `previously_verified`. It
 describes the build last demonstrated under the locally verified roster.
-Remote changes can only be observed after reconnection. Production
-attachment writing and transfer remain closed. Global activation and a
-product restore/rejoin workflow still require separate evidence.
+Remote changes can only be observed after reconnection.
+
+### Reconnecting an already enrolled reader after restore
+
+Before reconstruction, the daemon maintenance command
+`cryptexd lifecycle prepare-reader-rejoin-m9 --runtime-root <absolute-new-directory>`
+exclusively prepares an empty protected destination under an existing private
+parent. Success reports that the destination is prepared. Restore staging
+requires the enrolled device and its signing and transport credentials. The
+controller opens the restored profile through ordinary startup recovery and
+uses its saved connection settings. Enabled sync runs the reader exchange
+automatically. Paused sync waits for the owner to resume it.
+
+New locally signed observations also retain the last authenticated sequence
+and content hash seen for the local and peer device streams at that exchange.
+Before issuing a fresh challenge or answering another peer, the controller
+checks those boundaries for every currently eligible peer with surviving
+evidence. A device behind a witnessed boundary waits for verified incoming
+history and withholds outgoing canonical packs. A conflicting hash at the
+same sequence also holds the check. The next controller tick retries after
+ordinary import. Observations from earlier releases carry no such boundary.
+The reader exchange alone cannot establish history the device never observed.
+
+A new round clears the requested diagnostic receipt left by a previous
+session. Both peers retain the new signed exchange even if the daemon builds
+are identical and the surviving peer has stayed open. Fresh reader evidence
+grants no write authority. Attachment writing and transfer are still closed.
+Encrypted backup reconstruction and recovery after loss of credentials
+belong to M11.
 
 M9 connects the real canonical attachment/blob subsystem to the projection boundary already proven in M6, using the accepted hard-link/copy fallback evidence rather than redesigning the projection contract.
 

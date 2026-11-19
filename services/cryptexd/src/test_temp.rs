@@ -83,7 +83,30 @@ pub(crate) fn stage_stopped_m9_profile(source: &Path, parent: &Path, name: &str)
         }
     }
 
-    let restored = crate::instance::create_m9_profile_root(parent, name).unwrap();
+    let restored = parent.join(name);
+    if let Some(daemon) = std::env::var_os("CRYPTEX_M9_CANDIDATE_DAEMON") {
+        let prepare = |path: &Path| {
+            std::process::Command::new(&daemon)
+                .args(["lifecycle", "prepare-reader-rejoin-m9", "--runtime-root"])
+                .arg(path)
+                .output()
+                .unwrap()
+        };
+        let result = prepare(&restored);
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&result.stdout)
+                .contains("reader_rejoin=destination_prepared production_v2_activation=blocked")
+        );
+        assert_eq!(prepare(source).status.code(), Some(2));
+        assert_eq!(prepare(&restored).status.code(), Some(2));
+    } else {
+        crate::instance::create_m9_profile_root(parent, name).unwrap();
+    }
     for entry in fs::read_dir(source).unwrap() {
         let entry = entry.unwrap();
         if entry.file_name() != "daemon.lock" {
