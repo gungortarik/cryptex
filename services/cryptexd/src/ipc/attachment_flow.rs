@@ -3,6 +3,7 @@
 use super::tests::prepared_search_fixture;
 use super::*;
 use cryptex_events::Classification;
+use sha2::Digest;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
@@ -65,7 +66,7 @@ fn isolated_server() {
     drop(fixture.context);
     drop(instance);
     let original = crate::instance::try_acquire_instance(root).unwrap();
-    let resolver = LocalDeviceKeyResolver::load(
+    let mut resolver = LocalDeviceKeyResolver::load(
         root,
         &fixture.brain_id,
         fixture.store.as_ref(),
@@ -82,21 +83,17 @@ fn isolated_server() {
         )
         .unwrap();
     let chain = snapshot.reader_device_chain(fixture.device.as_str());
-    let links: Vec<_> = chain
-        .iter()
-        .filter_map(|record| match record {
-            cryptex_events::AuthenticatedSecurityRecord::Attachment(_, fields) => Some(fields),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(links.len(), usize::from(enabled));
-    if enabled {
-        use sha2::{Digest, Sha256};
+    let mut pairs = Vec::new();
+    let digest = <[u8; 32]>::from(sha2::Sha256::digest(TEST_BYTES));
+    for record in chain {
+        let cryptex_events::AuthenticatedSecurityRecord::Attachment(link, fields) = record else {
+            continue;
+        };
         let note = chain
             .iter()
             .find_map(|record| match record {
                 cryptex_events::AuthenticatedSecurityRecord::V1(note)
-                    if note.event_id == links[0].note_event_id() =>
+                    if note.event_id == fields.note_event_id() =>
                 {
                     Some(note)
                 }
@@ -104,20 +101,55 @@ fn isolated_server() {
             })
             .unwrap();
         assert_eq!(note.classification, Classification::Internal);
-        let binding = links[0].bind(note).unwrap();
-        assert_eq!(
-            binding.blob_sha256,
-            <[u8; 32]>::from(Sha256::digest(TEST_BYTES))
+        assert_eq!(fields.bind(note).unwrap().blob_sha256, digest);
+        pairs.push((note.event_id.clone(), link.event_id.clone()));
+    }
+    drop(snapshot);
+    let blobs = root.join("canonical/blobs");
+    if enabled {
+        let [first, second] = pairs.as_slice() else {
+            panic!("expected one signed link per note, including after retry");
+        };
+        assert_ne!(first.0, second.0);
+        assert_ne!(first.1, second.1);
+        let db = ProjectionDb::open_or_create(root).unwrap();
+        let gate = crate::knowledge_materialization::evaluate_retrieval_safety(
+            root,
+            &fixture.brain_id,
+            std::slice::from_ref(&fixture.device),
+            &mut resolver,
+            &db,
         );
-        crate::attachment_blobs::verify_stored(root, &binding.blob_sha256).unwrap();
-        assert_eq!(
-            fs::read_dir(root.join("canonical/blobs")).unwrap().count(),
-            1
+        for (own, other) in [(first, second), (second, first)] {
+            assert!(matches!(
+                gate.open_local_attachment(&own.0, &other.1),
+                Err(crate::attachment_blobs::LocalLinkError::Reference(
+                    cryptex_events::attachment_link::LinkError::MissingLink
+                ))
+            ));
+            let mut bytes = Vec::new();
+            gate.open_local_attachment(&own.0, &own.1)
+                .unwrap()
+                .read_to_end(&mut bytes)
+                .unwrap();
+            assert_eq!(bytes, TEST_BYTES);
+        }
+        let stored = fs::read_dir(blobs)
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(stored.len(), 1);
+        assert!(stored[0].file_type().unwrap().is_file());
+        let expected_name = format!("{:x}", sha2::Sha256::digest(TEST_BYTES));
+        assert_eq!(stored[0].file_name().to_str(), Some(expected_name.as_str()));
+        println!(
+            "shared_attachment=verified notes=2 signed_links=2 canonical_files=1 reopened_reads=2"
         );
     } else {
-        assert!(!root.join("canonical/blobs").exists());
+        assert!(pairs.is_empty());
+        assert!(!blobs.exists());
     }
-    drop((snapshot, original, listener));
+    drop((original, listener));
     fs::remove_dir_all(root).unwrap();
 }
 

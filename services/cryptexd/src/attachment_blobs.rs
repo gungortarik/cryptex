@@ -144,7 +144,8 @@ fn verify_local_link<'a>(
 
 /// Recheck a stored blob before a daemon operation refers to its bytes.
 /// A missing object is distinct from an existing object with the wrong hash.
-pub(crate) fn verify_stored(runtime_root: &Path, digest: &[u8; 32]) -> Result<(), BlobError> {
+#[cfg(test)]
+fn verify_stored(runtime_root: &Path, digest: &[u8; 32]) -> Result<(), BlobError> {
     open_verified(runtime_root, digest).map(drop)
 }
 

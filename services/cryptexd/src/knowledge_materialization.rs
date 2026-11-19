@@ -182,7 +182,17 @@ impl RetrievalSafetyState {
         note_id: &str,
         link_id: &str,
     ) -> Result<(), crate::attachment_blobs::LocalLinkError> {
-        use crate::attachment_blobs::{LocalLinkError, verify_stored};
+        self.open_local_attachment(note_id, link_id).map(drop)
+    }
+
+    /// Keep the reader bound to the snapshot that authorized this exact pair.
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    pub(crate) fn open_local_attachment<'a>(
+        &'a self,
+        note_id: &str,
+        link_id: &str,
+    ) -> Result<impl std::io::Read + use<'a>, crate::attachment_blobs::LocalLinkError> {
+        use crate::attachment_blobs::{LocalLinkError, open_verified};
         let snapshot = self.snapshot.as_ref().ok_or_else(|| {
             LocalLinkError::Held(
                 self.hold
@@ -196,7 +206,7 @@ impl RetrievalSafetyState {
             .ok_or(LocalLinkError::Reference(
                 cryptex_events::attachment_link::LinkError::MissingLink,
             ))?;
-        verify_stored(&snapshot.runtime_root, digest).map_err(LocalLinkError::Blob)
+        open_verified(&snapshot.runtime_root, digest).map_err(LocalLinkError::Blob)
     }
     /// Incoming fixture bytes must match an already admitted, signed reference
     /// before they can acquire a canonical name. Keep its locks until publication.

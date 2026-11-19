@@ -111,6 +111,14 @@ for (const mode of ["blocked", "allowed"]) {
           await other.getByRole("button", { name: "Open full note" }).click();
           await page.getByRole("heading", { name: "Note detail" }).waitFor();
           assert.equal(detail.attachmentLinkCount, 0);
+          const secondNoteId = detail.eventId;
+          assert.notEqual(secondNoteId, selected.noteId);
+          await picker.setInputFiles(file);
+          await page.getByText(/File attached\./).waitFor();
+          await page.getByRole("button", { name: "Close", exact: true }).click();
+          await other.getByRole("button", { name: "Open full note" }).click();
+          await page.getByText("1 signed attachment link", { exact: true }).waitFor();
+          assert.equal(detail.eventId, secondNoteId);
         }
       } finally {
         await client.finish();
