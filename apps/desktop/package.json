@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc --noEmit && vite build",
     "test:connection-settings": "node --test src/connection-settings.test.mjs",
+    "test:connection-screen": "node --test scripts/connection-screen.test.mjs",
     "test:native-profile-status": "node --test src/native-profile-status.test.mjs",
     "test:search-policy": "node --test src/search-policy.test.mjs",
     "test:capture-policy": "node --test src/capture-policy.test.mjs",
@@ -25,6 +26,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
+    "playwright-core": "1.65.1",
     "typescript": "7.0.2",
     "vite": "8.3.1"
   }

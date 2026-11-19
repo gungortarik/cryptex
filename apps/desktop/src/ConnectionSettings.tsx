@@ -14,6 +14,8 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
   const [message, setMessage] = useState<string | null>(null);
   const generation = useRef(0);
   const inFlight = useRef(false);
+  const authorityUnavailable = view?.error === "local_restricted" || view?.error === "authority" || view?.error === "held";
+  const readOnly = busy || !active || !view || view.state === "not_enrolled" || authorityUnavailable;
   const edit = () => { generation.current += 1; setDirty(true); if (!uncertain) setMessage(null); };
 
   function adopt(next: ConnectionView) {
@@ -33,7 +35,7 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
     } finally { inFlight.current = false; setBusy(false); }
   }
   async function save() {
-    if (!view || !active || uncertain || inFlight.current) return;
+    if (!view || readOnly || uncertain || inFlight.current) return;
     let update;
     try { update = connectionUpdate(view, paused, listen, addresses); }
     catch (error) { setMessage(error instanceof Error ? error.message : "Check the LAN addresses."); return; }
@@ -69,9 +71,9 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
     {open && <div className="bootstrap-form connections-form">
       {view && <>
         {!message && <p role="status" className="capture-help">{dirty ? "Unsaved connection settings." : connectionMessage(view)}</p>}
-        <label className="connections-pause"><input type="checkbox" checked={paused} disabled={busy || !active || view.state === "not_enrolled"} onChange={e => { edit(); setPaused(e.target.checked); }} /> Pause sync</label>
+        <label className="connections-pause"><input type="checkbox" checked={paused} disabled={readOnly} onChange={e => { edit(); setPaused(e.target.checked); }} /> Pause sync</label>
         <label htmlFor="connection-local-ip">This device’s LAN IPv4 address</label>
-        <div className="connections-local-address"><input id="connection-local-ip" placeholder="192.168.1.20" maxLength={15} value={listen} disabled={busy || !active || view.state === "not_enrolled"} onChange={e => { edit(); setListen(e.target.value); }} />
+        <div className="connections-local-address"><input id="connection-local-ip" placeholder="192.168.1.20" maxLength={15} value={listen} disabled={readOnly} onChange={e => { edit(); setListen(e.target.value); }} />
           <span>Transport port <strong>{view.localTransportPort ?? "Unavailable"}</strong></span></div>
         <p className="capture-help">The transport port belongs to this device’s enrolled profile and cannot be changed here.</p>
         <div className="connections-devices">
@@ -80,13 +82,13 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
           {view.devices.map(device => <div className="connections-device" key={device.deviceId}>
             <label htmlFor={`endpoint-${device.deviceId}`}>Device <code>{device.deviceId}</code></label>
             <p className="capture-help connections-identity">Transport identity <code>{device.transportId}</code></p>
-            <input id={`endpoint-${device.deviceId}`} placeholder="192.168.1.21:22000" maxLength={21} value={addresses[device.deviceId] ?? ""} disabled={busy || !active} onChange={e => { edit(); setAddresses(previous => ({ ...previous, [device.deviceId]: e.target.value })); }} />
+            <input id={`endpoint-${device.deviceId}`} placeholder="192.168.1.21:22000" maxLength={21} value={addresses[device.deviceId] ?? ""} disabled={readOnly} onChange={e => { edit(); setAddresses(previous => ({ ...previous, [device.deviceId]: e.target.value })); }} />
           </div>)}
         </div>
       </>}
       <div className="connections-actions">
         <button type="button" className="quiet-button" disabled={busy || !active} onClick={() => void load()}>{busy ? "Working…" : "Reload current settings"}</button>
-        {view && <button type="button" className="search-button" disabled={busy || !active || !dirty || uncertain || view.state === "not_enrolled"} onClick={() => void save()}>Save connection settings</button>}
+        {view && <button type="button" className="search-button" disabled={readOnly || !dirty || uncertain} onClick={() => void save()}>Save connection settings</button>}
       </div>
       {message && <p role="status" className="capture-status">{message}</p>}
       {!active && <p role="status" className="capture-status">Connection settings are unavailable until the local service responds.</p>}

@@ -641,6 +641,7 @@ name = "cryptex-desktop"
 version = "0.0.0"
 dependencies = [
  "cryptexd",
+ "libc",
  "rfd",
  "rusqlite",
  "serde",
@@ -651,6 +652,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

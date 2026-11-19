@@ -373,6 +373,9 @@ jobs:
       - name: Test truthful native profile status
         run: pnpm --filter @cryptex/desktop test:native-profile-status
 
+      - name: Check rendered connection status and recovery in Chrome
+        run: pnpm --filter @cryptex/desktop test:connection-screen
+
       - name: Validate Cargo workspace manifest
         run: cargo metadata --locked --format-version 1 --no-deps
 
