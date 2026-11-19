@@ -14,7 +14,7 @@ import urllib.request
 import uuid
 import zipfile
 
-from lan_cutoff_packet import WIN_HASH, build_runner, free_port, generate, role, check_hash
+from lan_cutoff_packet import MAC_HASH, WIN_HASH, build_runner, free_port, generate, role, check_hash
 
 
 def windows_native(folder):
@@ -37,7 +37,7 @@ def windows_native(folder):
 
 def smoke(native, runner, work):
     check_hash(native, WIN_HASH if sys.platform=="win32" else
-               __import__("lan_cutoff_packet").MAC_HASH[platform.machine()])
+               MAC_HASH[platform.machine()])
     run=str(uuid.uuid4())
     roots=[work/"A",work/"B"]
     for root in roots:
@@ -49,7 +49,7 @@ def smoke(native, runner, work):
         ports[1]=free_port("127.0.0.1")
     def worker(i):
         try:
-            role(roots[i],dict(packet=credentials[i], run=run, side="AB"[i],
+            return role(roots[i],dict(packet=credentials[i], run=run, side="AB"[i],
                  local_ip="127.0.0.1",peer_ip="127.0.0.1", port=ports[i],peer_port=ports[1-i],
                  local_id=ids[i], peer_id=ids[1-i]),native,runner,timeout=40)
         except Exception:
@@ -58,7 +58,9 @@ def smoke(native, runner, work):
                 print(log.read_text(errors="replace")[-3500:],flush=True)
             raise
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        list(pool.map(worker,range(2)))
+        left, right = pool.map(worker, range(2))
+        if left != right or left[0]["segment_sha256"] == left[1]["segment_sha256"]:
+            raise RuntimeError("cross_peer_receipts")
 
 
 if __name__=="__main__":

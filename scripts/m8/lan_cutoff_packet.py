@@ -61,6 +61,7 @@ def configure(native, root, cfg, gui):
     for key, value in {"listenAddress": f"tcp://{cfg['local_ip']}:{cfg['port']}",
                        "localAnnounceEnabled": "false", "globalAnnounceEnabled": "false",
                        "relaysEnabled": "false", "natEnabled": "false", "urAccepted": "-1",
+                       "crashReportingEnabled": "false",
                        "autoUpgradeIntervalH": "0", "startBrowser": "false"}.items():
         options = xml.find("options")
         for old in options.findall(key):
@@ -137,6 +138,9 @@ def role(root, cfg, native, runner, timeout=420):
         env.update({"CRYPTEX_CUTOFF_"+k: str(v) for k, v in dict(
             SIDE=cfg["side"], BRAIN=cfg["run"], LOCAL_ID=cfg["local_id"], PEER_ID=cfg["peer_id"],
             OUT=root/"out", IN=root/"in").items()})
+        profile_parent = root / "profiles"
+        profile_parent.mkdir(mode=0o700)
+        env.update(TMPDIR=str(profile_parent), TEMP=str(profile_parent), TMP=str(profile_parent))
         with (root/"test.log").open("wb") as log:
             test = start([runner, TEST, "--exact", "--ignored", "--nocapture"], env, log)
             code = test.wait(timeout=420)
@@ -147,6 +151,15 @@ def role(root, cfg, native, runner, timeout=420):
             missing = re.search(r"round ([12]) missing ([a-z0-9-]+)", output)
             phase = "-".join(missing.groups()) if missing else "check"
             raise RuntimeError("test_" + phase + "_line_" + (location[1] if location else "unknown"))
+        rounds = []
+        for number in (1, 2):
+            sender = (cfg["side"] == "A") == (number == 1)
+            sent = root / ("out" if sender else "in")
+            path = sent / f"r{number}-tail"
+            if not path.is_file() or path.is_symlink() or path.stat().st_size > 65536:
+                raise RuntimeError("missing_tail_receipt")
+            rounds.append(dict(sender="A" if number == 1 else "B",
+                               segment_sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
         # Syncthing may still be delivering the last acknowledgement after the test exits.
         remaining = sum(p.is_file() and not p.name.startswith(".") for p in (root/"out").iterdir())
         query = urllib.parse.urlencode(dict(folder=folders["out"], device=cfg["peer_id"]))
@@ -154,11 +167,11 @@ def role(root, cfg, native, runner, timeout=420):
         while time.monotonic() < deadline:
             completion = get("db/completion?"+query)
             if completion["globalItems"] >= remaining and completion["completion"] == 100:
-                return
+                return rounds
             time.sleep(.5)
         # The receiver of the final ack already has direct evidence of delivery of its verdict.
         if cfg["side"] == "A":
-            return
+            return rounds
         raise RuntimeError("final_ack_delivery")
 
 
@@ -209,9 +222,9 @@ def main():
                 runner = packet/"cutoff-test.exe"
                 check_hash(runner,cfg["runner_sha256"])
             report["stage"] = "lan_test"
-            role(root,cfg,native,runner)
+            report["rounds"] = role(root,cfg,native,runner)
         report.update(passed=True, stage="both_directions_and_restart")
-    except (OSError, KeyError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+    except Exception as exc:  # Always return a bounded failure receipt to the operator.
         report["error"] = str(exc) if type(exc) is RuntimeError else type(exc).__name__
     download = Path.home()/"Downloads"
     output = download/f"YETKI-SONUC-{system}-{uuid.uuid4().hex[:12]}.zip"
