@@ -1,5 +1,20 @@
 # 34 — Current Implementation Handoff
 
+## M10 in progress — reversible Forget in disposable profiles
+
+The first daemon test appends signed note, forget and restore records in a
+disposable single-device profile. It rereads and authenticates the pack at
+each stage, checks the original frame bytes and rebuilds the SQLite projection.
+Assertions cover full-text search, timeline and direct detail for the target,
+the unaffected note's timeline entry, and the restored note's classification.
+The lifecycle vocabulary and replay code are test-only. Both lifecycle tests
+passed on Windows and macOS at `b287dea`, including rejection of invalid
+signed transitions and signature tampering. [CI results](https://github.com/gungortarik/cryptex/actions/runs/44593502606)
+
+The next slice needs to apply lifecycle state to guarded product retrieval,
+including stale derived data and every path that can expose forgotten content.
+Multi-device reconciliation, destructive purge and M10 acceptance are still open.
+
 ## M9 complete on November 19, 2026
 
 The owner accepted candidate `fa479ff` after diff review. Full CI, native reader and interrupted-repair checks, and Desktop attachment tests passed on Windows and macOS. Review of the rendered note detail and security boundaries is recorded in the [M9 acceptance report](../evidence/m9/attachment-closeout-review-20261119.md). Real profiles keep attachment writing disabled. M10 Forget + Purge is next on the roadmap.
