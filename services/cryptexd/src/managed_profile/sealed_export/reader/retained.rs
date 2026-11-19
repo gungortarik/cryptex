@@ -1,7 +1,7 @@
 //! Local evidence of an earlier challenge. Never a live reply or a writer permit.
 use super::{Body, ContentHashHex, Error, Route, VerifiedCanonicalSnapshot, wire};
 use crate::secure_store::{SecureStore, SecureStoreEnvironment, SecureStoreError};
-use cryptex_events::{SignatureHex, VersionedRecord};
+use cryptex_events::SignatureHex;
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -16,17 +16,22 @@ pub(super) fn context(
     build: &ContentHashHex,
 ) -> Result<ContentHashHex, Error> {
     let profile = crate::import_staging::source_snapshot(lock).map_err(|_| Error::Storage)?;
-    let mut security = Vec::new();
-    for record in snapshot.verified_records() {
-        if let VersionedRecord::VerifiedSecurityV3(event) = record {
-            security.push(event.content_hash().as_str());
-        }
+    // Exact native IDs can exceed the integer precision of canonical JSON.
+    // The header ends at the JSON array boundary; each following hash has
+    // exactly 64 lowercase hex characters in verified device/sequence order.
+    let (volume, high, low) = profile.identity;
+    let header = serde_json_canonicalizer::to_vec(&(
+        snapshot.brain_id(),
+        build,
+        [volume.to_string(), high.to_string(), low.to_string()],
+    ))
+    .map_err(|_| Error::Message)?;
+    let mut digest = Sha256::new();
+    digest.update(header);
+    for hash in snapshot.security_event_hashes() {
+        digest.update(hash.as_str().as_bytes());
     }
-    security.sort_unstable();
-    let bytes =
-        serde_json_canonicalizer::to_vec(&(snapshot.brain_id(), profile.identity, build, security))
-            .map_err(|_| Error::Message)?;
-    ContentHashHex::from_bytes(&Sha256::digest(bytes)).map_err(|_| Error::Message)
+    ContentHashHex::from_bytes(&digest.finalize()).map_err(|_| Error::Message)
 }
 
 #[derive(Serialize, Deserialize)]

@@ -946,6 +946,21 @@ impl VerifiedCanonicalSnapshot {
         self.history.records()
     }
 
+    /// The content projection omits authority events. The complete locked
+    /// security history orders them by device and sequence, including cutoffs.
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    pub(crate) fn security_event_hashes(
+        &self,
+    ) -> impl Iterator<Item = &cryptex_events::ContentHashHex> {
+        self.security_history
+            .records()
+            .iter()
+            .filter_map(|record| match record {
+                AuthenticatedSecurityRecord::SecurityV3(event) => Some(event.content_hash()),
+                _ => None,
+            })
+    }
+
     pub(crate) fn locks_runtime(&self, root: &Path) -> bool {
         if self.runtime_root != root {
             return false;

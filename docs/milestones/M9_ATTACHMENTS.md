@@ -92,12 +92,33 @@ the daemon executable digest and the resolved blob digest. The verifier
 uses the signing key from the current locked, approved device binding.
 The inbox importer skips this directory.
 
-An unanswered challenge, invalid signature, incorrect reader result or
-missing peer holds attachment export. Proofs expire after five minutes and
-are refreshed when the controller restarts or its roster changes. This
-session check records the build reported by the enrolled daemon. Global
-writer activation, offline capability retention and backup rejoin require
-separate evidence. Production attachment writing and transfer remain closed.
+Live challenges expire after five minutes. A controller restart or a change
+in the verified security history also starts a new round. Only a signed
+reply to the current challenge counts toward live verification.
+
+On the first successful exchange for a build and security context, the
+daemon keeps the peer's signed reply and the challenge it answered. It
+signs that observation with the local device key and stores one item per
+direction in Windows Credential Manager or macOS Keychain. The context
+binds the Brain, the protected profile lock's native file identity, the
+local daemon digest and the signed security-event hashes. Ordinary notes
+can be captured offline without invalidating the evidence.
+
+On a later enabled sync check, every eligible peer must have a live reply
+or a matching retained observation before the daemon reports coverage.
+For each retained observation it verifies both signatures, the two device
+and transport bindings, the challenge, the reader result and the current
+context under the canonical locks. Peers can answer in different sessions.
+A signed conflicting build or reader result invalidates the previous
+observation. A missing item, changed context, invalid signature or store
+error prevents coverage through that item. A restored profile staged
+behind a new protected lock must obtain fresh proof.
+
+The daemon reports historical coverage as `previously_verified`. It
+describes the build last demonstrated under the locally verified roster.
+Remote changes can only be observed after reconnection. Production
+attachment writing and transfer remain closed. Global activation and a
+product restore/rejoin workflow still require separate evidence.
 
 M9 connects the real canonical attachment/blob subsystem to the projection boundary already proven in M6, using the accepted hard-link/copy fallback evidence rather than redesigning the projection contract.
 
