@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import socket
 import subprocess
 import sys
@@ -69,6 +70,33 @@ def worker(native, root, gui, key):
                 proc.wait(timeout=10)
 
 
+@contextlib.contextmanager
+def test_process(cmd, env, phase):
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as log, subprocess.Popen(
+            cmd, env=dict(env, CRYPTEX_TEST_RECEIVER_PHASE=phase), stdout=log) as proc:
+        try:
+            yield proc, log
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+            log.seek(0)
+            print(log.read(), flush=True)
+
+
+def finish_phase(proc, log, receipts):
+    if proc.wait(timeout=180):
+        raise RuntimeError("paired profile test process failed")
+    log.seek(0)
+    output = log.read()
+    if any(receipt not in output for receipt in ("1 passed; 0 failed; 0 ignored", *receipts)):
+        raise RuntimeError("missing paired profile test receipt")
+    evidence = re.findall(r"^pending_restore_evidence=([0-9a-f]{64}:[0-9a-f]{64})$", output, re.MULTILINE)
+    if len(evidence) != 1:
+        raise RuntimeError("missing pending restore evidence")
+    return evidence[0]
+
+
 def build_binary():
     result = subprocess.run(["cargo", "test", "--locked", "-p", "cryptexd", "--lib", "--no-run",
                              "--features", "m8-development-product", "--message-format=json"],
@@ -118,64 +146,61 @@ def main():
             start(workers)
             cmd = [binary, "managed_profile::paired_attachment_transfer", "--exact", "--ignored", "--nocapture"]
             env = dict(os.environ, CRYPTEX_TEST_WIRE=tmp, CRYPTEX_TEST_DEVICE_A=ids[0], CRYPTEX_TEST_DEVICE_B=ids[1])
-            with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as log, subprocess.Popen(
-                    cmd, env=env, stdout=log) as test:
-                def wait_marker(name, timeout):
-                    deadline = time.monotonic() + timeout
-                    while not (base / name).is_file():
-                        if test.poll() is not None or time.monotonic() >= deadline:
-                            raise RuntimeError(f"controller did not reach {name}")
-                        time.sleep(.15)
+            def wait_marker(proc, name, timeout):
+                deadline = time.monotonic() + timeout
+                while not (base / name).is_file():
+                    if proc.poll() is not None or time.monotonic() >= deadline:
+                        raise RuntimeError(f"controller did not reach {name}")
+                    time.sleep(.15)
 
-                try:
-                    wait_marker("connect", 420)
-                    workers.close()
-                    for root in roots:
-                        config = root / "transport/config.xml"
-                        tree = ET.parse(config)
-                        inbox = root / "profile/transport/incoming"
-                        assert inbox.is_dir()
-                        (inbox / ".stfolder").mkdir(exist_ok=True)
-                        folder = ET.SubElement(tree.getroot(), "folder", id=f"m9-{run}", path=str(inbox),
-                                               type="sendreceive", rescanIntervalS="1", fsWatcherEnabled="false")
-                        for identity in ids:
-                            ET.SubElement(folder, "device", id=identity)
-                        tree.write(config, encoding="utf-8", xml_declaration=True)
-                    start(workers)
-                    wait_marker("disconnect", 130)
-                    workers.close()
-                    (base / "offline").touch()
-                    wait_marker("reconnect", 45)
-                    # Delay only the forget segment in the sender's test transport.
-                    # Both signed canonical packs remain untouched.
-                    delay = roots[0] / "profile/transport/incoming/.stignore"
-                    with delay.open("x", encoding="ascii") as ignore:
-                        ignore.write("00000000000000000003.seg\n")
-                    start_worker(workers, 0)
-                    receiver = workers.enter_context(contextlib.ExitStack())
-                    start_worker(receiver, 1)
-                    wait_marker("stop-lifecycle-receiver", 420)
-                    receiver.close()
-                    (base / "lifecycle-receiver-offline").touch()
-                    wait_marker("resume-lifecycle-receiver", 120)
-                    start_worker(receiver, 1)
-                    wait_marker("release-forget-segment", 150)
-                    delay.unlink()
-                    if test.wait(timeout=180):
-                        raise RuntimeError("paired attachment suite failed")
-                finally:
-                    if test.poll() is None:
-                        test.kill()
-                        test.wait()
-                    log.seek(0)
-                    output = log.read()
-                    print(output, flush=True)
-                if ("1 passed; 0 failed; 0 ignored" not in output
-                        or "automatic_attachment_sync=verified" not in output
-                        or "paired_note_lifecycle=verified receiver_search=visible-hidden-restored" not in output
-                        or "offline_note_lifecycle=verified queued=2 imported=2 identical_replays=2" not in output
-                        or "reordered_note_lifecycle=verified first=restore deferred=1 converged=true" not in output):
-                    raise RuntimeError("missing paired profile test receipt")
+            with test_process(cmd, env, "enroll") as (test, log):
+                wait_marker(test, "connect", 420)
+                workers.close()
+                for root in roots:
+                    config = root / "transport/config.xml"
+                    tree = ET.parse(config)
+                    inbox = root / "profile/transport/incoming"
+                    assert inbox.is_dir()
+                    (inbox / ".stfolder").mkdir(exist_ok=True)
+                    folder = ET.SubElement(tree.getroot(), "folder", id=f"m9-{run}", path=str(inbox),
+                                           type="sendreceive", rescanIntervalS="1", fsWatcherEnabled="false")
+                    for identity in ids:
+                        ET.SubElement(folder, "device", id=identity)
+                    tree.write(config, encoding="utf-8", xml_declaration=True)
+                start(workers)
+                wait_marker(test, "disconnect", 130)
+                workers.close()
+                (base / "offline").touch()
+                wait_marker(test, "reconnect", 45)
+                # Delay only the forget segment in the sender's test transport.
+                # Both signed canonical packs remain untouched.
+                delay = roots[0] / "profile/transport/incoming/.stignore"
+                with delay.open("x", encoding="ascii") as ignore:
+                    ignore.write("00000000000000000003.seg\n")
+                start_worker(workers, 0)
+                receiver = workers.enter_context(contextlib.ExitStack())
+                start_worker(receiver, 1)
+                wait_marker(test, "stop-lifecycle-receiver", 420)
+                receiver.close()
+                (base / "lifecycle-receiver-offline").touch()
+                wait_marker(test, "resume-lifecycle-receiver", 120)
+                start_worker(receiver, 1)
+                before = finish_phase(test, log, (
+                    "automatic_attachment_sync=verified",
+                    "paired_note_lifecycle=verified receiver_search=visible-hidden-restored",
+                ))
+            receiver.close()
+            with test_process(cmd, env, "reopen") as (test, log):
+                wait_marker(test, "release-forget-segment", 150)
+                start_worker(receiver, 1)
+                delay.unlink()
+                after = finish_phase(test, log, (
+                    "offline_note_lifecycle=verified queued=2 imported=2 identical_replays=2",
+                    "reordered_note_lifecycle=verified first=restore deferred=1 converged=true",
+                ))
+            if before != after:
+                raise RuntimeError("pending restore or visible notes changed across restart")
+            print("pending_restore_restart=verified phases=2 queued_after_restart=1 imported=2 replay_added=0")
 
 
 if __name__ == "__main__":

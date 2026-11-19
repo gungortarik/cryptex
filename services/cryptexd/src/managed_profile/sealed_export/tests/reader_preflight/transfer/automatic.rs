@@ -16,7 +16,7 @@ pub(super) fn wait_for(mut condition: impl FnMut() -> bool, stage: &str) {
 pub(super) fn exercise(
     wire: &Path,
     ids: [&str; 2],
-    store: &crate::FakeSecureStore,
+    store: &dyn crate::secure_store::SecureStore,
     relative: &Path,
     note: &str,
     link: &str,

@@ -10,7 +10,7 @@ pub(super) fn exercise(
     wire: &Path,
     sender: &mut Side,
     receiver: &mut Side,
-    store: &crate::FakeSecureStore,
+    store: &dyn crate::secure_store::SecureStore,
     target: &AcceptedEvent,
     mut prior: ContentHashHex,
 ) {
@@ -127,7 +127,65 @@ pub(super) fn exercise(
     assert!(!remote_canonical.join(restore).try_exists().unwrap());
     assert!(!remote_canonical.join(forget).try_exists().unwrap());
     assert_eq!(search(receiver, store), baseline);
+    report_pending(&baseline, &early_bytes);
+}
 
+// The parent compares these observations across process exit without providing
+// the new process with either the staged segment or the expected note identities.
+fn report_pending(notes: &[cryptex_projection::SearchHit], restore: &[u8]) {
+    let rows: Vec<_> = notes
+        .iter()
+        .map(|row| (&row.event_id, &row.content_hash))
+        .collect();
+    println!(
+        "pending_restore_evidence={:x}:{:x}",
+        Sha256::digest(restore),
+        Sha256::digest(serde_json::to_vec(&rows).unwrap())
+    );
+}
+
+pub(in super::super) fn resume(
+    wire: &Path,
+    sender: &Side,
+    receiver: &mut Side,
+    store: &dyn crate::secure_store::SecureStore,
+) {
+    // The receiver transport is still stopped. Only the original on-disk inbox
+    // can supply this restore after all instance locks and discovery caches died.
+    recover_live_with_instance(&receiver.root, &mut receiver.instance, store, ENV).unwrap();
+    let author = resolver(sender, store)
+        .local_trust_anchor()
+        .unwrap()
+        .device_id()
+        .clone();
+    let batch = [3, 4]
+        .map(|index| PathBuf::from(author.as_filename_stem()).join(format!("{index:020}.seg")));
+    let [forget, restore] = &batch;
+    let remote_inbox = receiver.root.join("transport/incoming");
+    let remote_canonical = receiver.root.join("canonical/events");
+    let early_bytes = fs::read(remote_inbox.join(restore)).unwrap();
+    assert_eq!(
+        early_bytes,
+        fs::read(sender.root.join("canonical/events").join(restore)).unwrap()
+    );
+    assert!(!remote_inbox.join(forget).try_exists().unwrap());
+    for path in &batch {
+        assert!(!remote_canonical.join(path).try_exists().unwrap());
+    }
+    let baseline = search(sender, store);
+    assert_eq!(baseline.len(), 2);
+    assert_eq!(search(receiver, store), baseline);
+    let mut inbox = Inbox::new(&receiver.root).unwrap();
+    let existing = inbox.discover().unwrap();
+    assert!(!existing.contains(restore));
+    assert!(!existing.is_empty());
+    assert_eq!(
+        publish(receiver, &existing, store).identical_segments,
+        existing.len()
+    );
+    inbox.consumed().unwrap();
+    assert!(inbox.discover().unwrap().is_empty());
+    report_pending(&baseline, &early_bytes);
     fs::write(wire.join("release-forget-segment"), []).unwrap();
     wait_for(
         || remote_inbox.join(forget).is_file(),

@@ -48,13 +48,13 @@ impl Wire {
     }
 }
 
-fn resolver(side: &Side, store: &crate::FakeSecureStore) -> LocalDeviceKeyResolver {
+fn resolver(side: &Side, store: &dyn crate::secure_store::SecureStore) -> LocalDeviceKeyResolver {
     LocalDeviceKeyResolver::load(&side.root, BRAIN, store, ENV).unwrap()
 }
 
 fn snapshot(
     side: &Side,
-    store: &crate::FakeSecureStore,
+    store: &dyn crate::secure_store::SecureStore,
 ) -> crate::knowledge_materialization::VerifiedCanonicalSnapshot {
     let anchor = resolver(side, store).local_trust_anchor().unwrap();
     crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
@@ -65,7 +65,7 @@ fn snapshot(
 
 fn guarded(
     side: &Side,
-    store: &crate::FakeSecureStore,
+    store: &dyn crate::secure_store::SecureStore,
 ) -> crate::knowledge_materialization::RetrievalSafetyState {
     let (db, _) = crate::projection::open_projection_db(&side.root).unwrap();
     let gate = crate::knowledge_materialization::evaluate_retrieval_safety(
@@ -85,7 +85,7 @@ fn guarded(
 
 fn refresh_vault(
     side: &Side,
-    store: &crate::FakeSecureStore,
+    store: &dyn crate::secure_store::SecureStore,
     vault: &Path,
 ) -> Result<
     cryptex_projection::VaultProjectionSummary,
@@ -110,11 +110,29 @@ pub(in crate::managed_profile) fn run() {
     let b_id = std::env::var("CRYPTEX_TEST_DEVICE_B").unwrap();
     let left = transport.join("A/profile");
     let right = transport.join("B/profile");
+    let store =
+        crate::secure_store::FileBackedSecureStore::open(transport.join("fixture-credentials"))
+            .unwrap();
+    match std::env::var("CRYPTEX_TEST_RECEIVER_PHASE").as_deref() {
+        Ok("reopen") => {
+            for pair in [
+                &crate::test_temp::ATTACHMENT_PAIR,
+                &crate::test_temp::LIFECYCLE_PAIR,
+            ] {
+                pair.with(|slot| slot.set([left.clone(), right.clone()]).unwrap());
+            }
+            let a = Side::new(left, &a_id);
+            let mut b = Side::new(right, &b_id);
+            lifecycle::resume(&transport, &a, &mut b, &store);
+            return;
+        }
+        Ok("enroll") => (),
+        _ => panic!("missing paired receiver test phase"),
+    }
     for root in [&left, &right] {
         fs::create_dir(root).unwrap();
     }
-    let store =
-        crate::trusted_import_probe::tests::enroll_transport_pair(&left, &right, &a_id, &b_id);
+    crate::trusted_import_probe::tests::enroll_transport_pair(&left, &right, &a_id, &b_id, &store);
     let mut a = Side::new(left.clone(), &a_id);
     let mut b = Side::new(right.clone(), &b_id);
     let sender = resolver(&a, &store)

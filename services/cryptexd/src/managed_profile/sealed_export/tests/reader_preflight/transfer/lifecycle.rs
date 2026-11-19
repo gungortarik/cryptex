@@ -6,16 +6,20 @@ use cryptex_events::{AcceptedEvent, ContentHashHex};
 use serde_json::json;
 
 mod offline;
+pub(super) use offline::resume;
 
 fn publish(
     side: &mut Side,
     segments: &[PathBuf],
-    store: &crate::FakeSecureStore,
+    store: &dyn crate::secure_store::SecureStore,
 ) -> IncomingPublicationReport {
     publish_incoming_with_instance(&side.root, segments, &mut side.instance, store, ENV).unwrap()
 }
 
-fn search(side: &Side, store: &crate::FakeSecureStore) -> Vec<cryptex_projection::SearchHit> {
+fn search(
+    side: &Side,
+    store: &dyn crate::secure_store::SecureStore,
+) -> Vec<cryptex_projection::SearchHit> {
     let db = cryptex_projection::ProjectionDb::open_existing_read_only(&side.root).unwrap();
     crate::knowledge_materialization::search_events_with_retrieval_safety(
         &side.root,
@@ -30,7 +34,7 @@ fn search(side: &Side, store: &crate::FakeSecureStore) -> Vec<cryptex_projection
 
 fn signed_control(
     note: &AcceptedEvent,
-    store: &crate::FakeSecureStore,
+    store: &dyn crate::secure_store::SecureStore,
     sender: &Side,
     event_id: &str,
     kind: &str,
@@ -73,7 +77,7 @@ pub(super) fn exercise(
     wire: &Path,
     sender: &mut Side,
     receiver: &mut Side,
-    store: &crate::FakeSecureStore,
+    store: &dyn crate::secure_store::SecureStore,
 ) {
     crate::test_temp::LIFECYCLE_PAIR.with(|pair| {
         pair.set([sender.root.clone(), receiver.root.clone()])

@@ -245,7 +245,7 @@ pub(crate) mod tests {
     pub(crate) fn local(
         root: &Path,
         brain: &str,
-        store: &crate::FakeSecureStore,
+        store: &dyn SecureStore,
     ) -> (DeviceId, cryptex_events::AcceptedEvent) {
         crate::identity_runtime::write_brain_identity(
             root,
@@ -294,7 +294,8 @@ pub(crate) mod tests {
         let source = crate::test_temp::exclusive_temp_dir("trusted-source");
         let receiver = crate::test_temp::exclusive_temp_dir("trusted-receiver");
         let negative = crate::test_temp::exclusive_temp_dir("trusted-negative");
-        let store = enroll_transport_pair(&source, &receiver, transport_a, transport_b);
+        let store = crate::FakeSecureStore::new();
+        enroll_transport_pair(&source, &receiver, transport_a, transport_b, &store);
         (source, receiver, negative, store)
     }
 
@@ -303,13 +304,13 @@ pub(crate) mod tests {
         receiver: &Path,
         transport_a: &str,
         transport_b: &str,
-    ) -> crate::FakeSecureStore {
-        let store = crate::FakeSecureStore::new();
+        store: &dyn SecureStore,
+    ) {
         let brain = "11111111-1111-4111-8111-111111111111";
-        let (a, first_a) = local(source, brain, &store);
-        let (b, first_b) = local(receiver, brain, &store);
-        let key_a = load_existing_event_signing_key(&store, ENV, source, &a).unwrap();
-        let key_b = load_existing_event_signing_key(&store, ENV, receiver, &b).unwrap();
+        let (a, first_a) = local(source, brain, store);
+        let (b, first_b) = local(receiver, brain, store);
+        let key_a = load_existing_event_signing_key(store, ENV, source, &a).unwrap();
+        let key_b = load_existing_event_signing_key(store, ENV, receiver, &b).unwrap();
         let offer = cryptex_events::create_bootstrap_offer(
             brain,
             &"a".repeat(64),
@@ -388,7 +389,6 @@ pub(crate) mod tests {
                 .unwrap();
             file.write_all(&body).unwrap();
         }
-        store
     }
     #[test]
     fn trusted_peer_stream_passes_full_import_policy_without_publication() {

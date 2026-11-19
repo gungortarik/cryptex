@@ -41,7 +41,7 @@ impl Side {
         permit.finish(None);
         guard
     }
-    fn tick(&mut self, store: &crate::FakeSecureStore) -> Report {
+    fn tick(&mut self, store: &dyn crate::secure_store::SecureStore) -> Report {
         self.exporter
             .tick(
                 &self.root,
