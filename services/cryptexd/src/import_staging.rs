@@ -60,6 +60,7 @@ type PreparedRecoveryFinisher<'a> =
 pub enum ImportStagingError {
     Io(String),
     Invalid(String),
+    RetrievalHeld(crate::knowledge_materialization::RetrievalSafetyHold),
     Limit(ImportLimitError),
     RecoveryConflict(String),
     PolicyConflict(AuthenticatedPolicyConflict),
@@ -81,6 +82,9 @@ impl std::fmt::Display for ImportStagingError {
         match self {
             Self::Io(message) => write!(f, "import staging I/O: {message}"),
             Self::Invalid(message) => write!(f, "import staging rejected: {message}"),
+            Self::RetrievalHeld(reason) => {
+                write!(f, "import retrieval safety gate held: {reason:?}")
+            }
             Self::Limit(error) => write!(f, "import staging limit: {error}"),
             Self::RecoveryConflict(message) => f.write_str(message),
             Self::PolicyConflict(reason) => {

@@ -538,6 +538,16 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
             matches!(outcome, crate::capture::CaptureOutcome::Committed(_)),
             "{outcome:?}"
         );
+        // This fixture starts connection owners without the IPC projection
+        // worker. Model its post-capture refresh under ordinary admission.
+        let brain = crate::identity_runtime::load_brain_identity(root).unwrap();
+        crate::incoming_publication::rebuild_imported_state(
+            root,
+            &brain.brain_id,
+            store.as_ref(),
+            ENV,
+        )
+        .unwrap();
     }
     let deadline = Instant::now() + Duration::from_secs(180);
     while !found(

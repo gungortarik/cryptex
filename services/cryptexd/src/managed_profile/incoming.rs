@@ -153,7 +153,12 @@ impl IncomingController {
                 self.pending = None;
                 Ok(IncomingTick::Published(report))
             }
-            Err(IncomingPublicationError::Admission(AdmissionError::Busy)) => {
+            // A local capture can commit before the derived worker catches up.
+            // Keep the exact hint and run the full verifier again on the next tick.
+            Err(IncomingPublicationError::Rejected(crate::import_staging::ImportStagingError::RetrievalHeld(
+                crate::knowledge_materialization::RetrievalSafetyHold::MaterializationStateMissingOrStale
+                | crate::knowledge_materialization::RetrievalSafetyHold::ProjectionDoesNotMatchCanonical,
+            ))) | Err(IncomingPublicationError::Admission(AdmissionError::Busy)) => {
                 Ok(IncomingTick::Deferred)
             }
             Err(error @ IncomingPublicationError::Rejected(_)) => {

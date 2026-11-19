@@ -273,6 +273,58 @@ fn worker_readiness_cannot_substitute_for_runtime_binding_or_approval() {
 }
 
 #[test]
+fn pending_batch_survives_local_capture_until_verified_projection_catches_up() {
+    let fixture = Fixture::new();
+    let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
+    let mut controller = fixture.controller();
+    let mut worker = ManagedTransportWorker::synthetic_for_incoming_tests(LOCAL_TRANSPORT, true);
+    let admission = instance.admission();
+    {
+        let _permit = admission.enter(&fixture.receiver).unwrap();
+        let outcome = crate::capture::capture_memory_note(
+            &fixture.store,
+            ENV,
+            &fixture.receiver,
+            crate::capture::CaptureRequest {
+                capture_id: "1bfb4034-4f4c-4cd1-8dc9-cd34225dd910".into(),
+                classification: cryptex_events::Classification::Public,
+                text: "synthetic local acknowledgement".into(),
+            },
+            &crate::canonical_writer::CanonicalWriterConfig::default(),
+        );
+        assert!(
+            matches!(outcome, crate::capture::CaptureOutcome::Committed(_)),
+            "{outcome:?}"
+        );
+    }
+    assert!(matches!(
+        worker
+            .process_incoming(&mut controller, &mut instance, &fixture.store)
+            .unwrap(),
+        IncomingTick::Deferred
+    ));
+    assert_eq!(controller.pending.as_ref(), Some(&fixture.paths));
+    {
+        let _permit = admission.enter(&fixture.receiver).unwrap();
+        crate::incoming_publication::rebuild_imported_state(
+            &fixture.receiver,
+            &fixture.report.brain_id,
+            &fixture.store,
+            ENV,
+        )
+        .unwrap();
+    }
+    let IncomingTick::Published(report) = worker
+        .process_incoming(&mut controller, &mut instance, &fixture.store)
+        .unwrap()
+    else {
+        panic!("unchanged incoming batch was not reconsidered after catch-up");
+    };
+    assert_eq!(report.published_segments, fixture.paths.len());
+    worker.shutdown(std::time::Duration::from_secs(2)).unwrap();
+}
+
+#[test]
 fn rejected_untrusted_batch_is_not_reprocessed_on_every_worker_poll() {
     let fixture = Fixture::new();
     let mut controller = fixture.controller();

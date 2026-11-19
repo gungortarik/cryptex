@@ -273,7 +273,7 @@ fn trace_recovery<T, E>(_name: &'static str, work: impl FnOnce() -> Result<T, E>
     }
 }
 
-fn rebuild_imported_state<S: SecureStore + ?Sized>(
+pub(crate) fn rebuild_imported_state<S: SecureStore + ?Sized>(
     root: &Path,
     brain: &str,
     store: &S,

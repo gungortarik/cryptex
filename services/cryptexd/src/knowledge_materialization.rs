@@ -182,10 +182,10 @@ impl RetrievalSafetyState {
         session: &mut crate::import_staging::ImportStagingSession,
     ) -> Result<usize, crate::import_staging::ImportStagingError> {
         let snapshot = self.snapshot.as_ref().ok_or_else(|| {
-            crate::import_staging::ImportStagingError::Invalid(format!(
-                "retrieval safety gate is held: {:?}",
+            crate::import_staging::ImportStagingError::RetrievalHeld(
                 self.hold_reason()
-            ))
+                    .unwrap_or(RetrievalSafetyHold::CanonicalVerificationUnavailable),
+            )
         })?;
         session.remove_identical_replays(snapshot)
     }
