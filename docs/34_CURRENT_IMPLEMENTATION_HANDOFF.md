@@ -77,8 +77,19 @@ Windows and macOS also passed the full readiness jobs and Windows passed
 the cross-account IPC check. [Readiness results](https://github.com/gungortarik/cryptex/actions/runs/44527826334)
 
 The enrolled Mac and VM still have the earlier migration build according
-to the latest owner receipts. An updated pair can negotiate automatically
-when sync is enabled. Recording current evidence across offline sessions
+to the latest returned owner receipts. The one-click reader packet
+`Cryptex-M9-Okuyucu-464f9a1.zip` installs product `c733ca4` beside each
+existing app. Its run ID is `f44cd608-6cfe-4d3f-8c28-241f48e96895` and
+its ZIP SHA-256 is `5640c80dd11cde837b2c8ebdd1a8cbce44664011fead4e7525be4238dfe814ee`.
+The [Windows package](https://github.com/gungortarik/cryptex/actions/runs/44535295083)
+and locally signed Mac build use the same source. Enabled normal sync
+produces a private per-launch receipt after the enrolled peer answers the
+fresh challenge. The collector compares both nonces, device identities and
+daemon digests across the two reports. The reader packet keeps production
+attachment writing and transfer closed. Await both `M9-OKUYUCU-SONUC`
+archives for physical acceptance. Use the extracted `m9_owner_reader.py
+--compare <Windows-zip> <Darwin-zip>` to verify them against the packet.
+Recording current evidence across offline sessions
 and revalidating restored backups remain open before writer activation.
 Capture, transfer, repair and the M6 copy-only projection remain open.
 
