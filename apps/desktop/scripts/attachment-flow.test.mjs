@@ -50,7 +50,7 @@ async function startClient(mode) {
   };
 }
 
-for (const mode of ["blocked", "allowed"]) {
+for (const mode of ["blocked", "allowed", "physical"]) {
   test("note detail purge review and file attachment with disposable controls " + mode, { timeout: 120_000 }, async () => {
     const tmp = await mkdtemp(path.join(os.tmpdir(), "cryptex-selected-file-"));
     const file = path.join(tmp, "sample.bin");
@@ -85,11 +85,17 @@ for (const mode of ["blocked", "allowed"]) {
           await route.fulfill({ path: asset });
         });
         await page.goto(origin);
-        const title = "Note selected for a binary attachment";
+        const title = mode === "physical" ? "purgetrialbodyxqkz" : "Note selected for a binary attachment";
         await page.getByLabel("Note", { exact: true }).fill(title);
         await page.getByLabel("Classification", { exact: true }).selectOption("internal");
         await page.getByRole("button", { name: "Save capture" }).click();
         await page.getByText(/Saved to durable memory/).waitFor();
+        if (mode === "physical") {
+          await page.getByLabel("Note", { exact: true }).fill("survivor following the purged record");
+          await page.getByLabel("Classification", { exact: true }).selectOption("internal");
+          await page.getByRole("button", { name: "Save capture" }).click();
+          await page.waitForFunction(() => document.querySelector("textarea")?.value === "");
+        }
         const row = page.getByRole("listitem").filter({ hasText: title });
         await page.getByRole("button", { name: "Open timeline" }).click();
         await row.getByRole("button", { name: "Open full note" }).click();
@@ -101,7 +107,20 @@ for (const mode of ["blocked", "allowed"]) {
         const prepare = { kind: "prepare", note_id: detail.eventId, note_hash: detail.contentHash };
         const review = page.getByRole("button", { name: "Review permanent deletion" });
         const decide = action => client.invoke("m10_purge_review", { action });
-        if (mode === "blocked") {
+        if (mode === "physical") {
+          const dialog = page.getByRole("dialog", { name: "Permanently delete this note?" });
+          await review.click();
+          await dialog.getByText(/Confirm to remove the note/).waitFor();
+          await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+          await page.getByText("Deletion cancelled.").waitFor();
+          assert.deepEqual(await client.invoke("approval_inventory", {}), []);
+          await review.click();
+          await dialog.getByRole("button", { name: "Confirm permanent deletion" }).click();
+          await row.waitFor({ state: "detached" });
+          assert.deepEqual(await decide({ kind: "confirm", ticket: reviewTicket }), { Err: "review_expired" });
+          const removed = await client.invoke("p0_5_guarded_event_detail", { eventId: selected.noteId });
+          assert.equal(removed.hits?.length ?? 0, 0);
+        } else if (mode === "blocked") {
           assert.equal(await review.count(), 0);
           assert.deepEqual(await decide(prepare), { Err: "disabled" });
           assert.deepEqual(await client.invoke("approval_inventory", {}), []);

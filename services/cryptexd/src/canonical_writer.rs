@@ -1363,6 +1363,17 @@ fn scan_pack_events(
                         schema_version_if_parsed: failure.schema_version_if_parsed,
                     }
                 })?;
+            if let VersionedRecord::VerifiedUnsupported(event) = &record {
+                let body: serde_json::Value =
+                    serde_json::from_slice(&event.raw_record).map_err(|_| {
+                        StorageError::CompatibilityBoundary("unreadable v2 envelope".into())
+                    })?;
+                if body["event_type"] == "memory.purge.bridge" {
+                    return Err(StorageError::CompatibilityBoundary(
+                        "physical purge trial is read-only after compaction".into(),
+                    ));
+                }
+            }
             out.push(record);
             Ok(())
         })?;

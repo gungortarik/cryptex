@@ -152,12 +152,25 @@ pub(super) fn persist(
         }
         staging.promote("segment.tmp", &file, &ledger, &name)?;
     }
+    if super::physical::enabled(root) {
+        verify_reopened(
+            root,
+            &brain.brain_id,
+            anchor.device_id().as_str(),
+            note,
+            hash,
+            anchor.public_key(),
+        )?;
+        snapshot.compact_approved_note(&anchor, note, hash, &key, expires)?;
+        drop(snapshot);
+        super::physical::finish_cleanup(ctx)?;
+    }
     ctx.admission
         .check_namespace()
         .map_err(|_| ReviewError::Unavailable)
 }
 
-pub(in crate::ipc) fn verify_reopened(
+pub(crate) fn verify_reopened(
     root: &std::path::Path,
     brain: &str,
     device: &str,

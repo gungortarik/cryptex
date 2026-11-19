@@ -743,6 +743,11 @@ struct RawFrame {
 
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 pub(crate) mod export_plan;
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+mod physical_purge;
 
 /// A transaction-owned sealed destination that may already have been moved
 /// into canonical storage when startup recovery reconstructs the pre-import
@@ -2442,6 +2447,27 @@ fn scan_anchored_history(
         .iter()
         .map(|frame| frame.bytes.as_slice())
         .collect::<Vec<_>>();
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
+    let scope = if crate::ipc::purge_review::physical::enabled(runtime_root) {
+        if !import_devices.is_empty()
+            || !exclusions.is_empty()
+            || devices != [anchor.device_id().clone()]
+        {
+            return Err(KnowledgeMaterializationError::Verification(
+                "local purge trial requires a single device".into(),
+            ));
+        }
+        physical_purge::check_receipts(runtime_root, expected_brain_id, anchor, &frames)?;
+        ImportScanScope {
+            lifecycle: NoteLifecycleRead::LocalPurgeTrial,
+            ..scope
+        }
+    } else {
+        scope
+    };
     let (mut security_history, mut reduction, mut verified_trust) =
         crate::trust_reducer::verify_anchored_history_for_reads(
             &raw_refs,

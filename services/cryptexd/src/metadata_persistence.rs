@@ -93,7 +93,7 @@ where
     Ok(())
 }
 
-fn replace_atomic(tmp: &Path, path: &Path) -> io::Result<()> {
+pub(crate) fn replace_atomic(tmp: &Path, path: &Path) -> io::Result<()> {
     #[cfg(windows)]
     {
         use windows_sys::Win32::Storage::FileSystem::{

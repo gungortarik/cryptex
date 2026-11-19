@@ -32,19 +32,25 @@ fn fixture_name(token: &str) -> interprocess::local_socket::Name<'static> {
 #[ignore = "started by the isolated browser client"]
 fn isolated_server() {
     let token = std::env::var("CRYPTEX_FILE_FIXTURE_SOCKET").unwrap();
-    let enabled = std::env::var("CRYPTEX_FILE_FIXTURE_MODE").unwrap() == "allowed";
+    let mode = std::env::var("CRYPTEX_FILE_FIXTURE_MODE").unwrap();
+    let enabled = mode == "allowed";
+    let physical = mode == "physical";
     let listener = ListenerOptions::new()
         .name(fixture_name(&token))
         .create_sync()
         .unwrap();
-    let mut fixture = prepared_search_fixture("attachment");
+    let mut fixture = prepared_search_fixture(if physical { "physical" } else { "attachment" });
     let root = &fixture.root;
     drop(crate::instance::try_acquire_instance(root).unwrap());
     crate::instance::migration::migrate_profile(root).unwrap();
     let instance = crate::instance::try_acquire_instance(root).unwrap();
     fixture.context.admission = instance.admission();
     fixture.context.isolated_attachment_writer = enabled;
-    if enabled {
+    let mut survivors = Vec::new();
+    if physical {
+        purge_review::physical::register(root);
+    }
+    if enabled || physical {
         fixture.context.purge_reviews = Some(Arc::default());
     }
     start_projection_sync_worker(&mut fixture.context);
@@ -76,7 +82,36 @@ fn isolated_server() {
             io::stdout().flush().unwrap();
             continue;
         }
-        let before = (command == "review").then(|| crate::test_temp::event_hashes(root));
+        if physical && command == "review" && survivors.is_empty() {
+            let anchor = LocalDeviceKeyResolver::load(
+                root,
+                &fixture.brain_id,
+                fixture.store.as_ref(),
+                SecureStoreEnvironment::Dev,
+            )
+            .unwrap()
+            .local_trust_anchor()
+            .unwrap();
+            let snapshot =
+                crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+                    root,
+                    &fixture.brain_id,
+                    &anchor,
+                    None,
+                )
+                .unwrap();
+            let frames = snapshot.trial_security_frames();
+            assert_eq!(frames.len(), 3);
+            assert!(contains_marker(frames[1]));
+            survivors = frames
+                .iter()
+                .filter(|f| !contains_marker(f))
+                .map(|f| format!("{:x}", sha2::Sha256::digest(f)))
+                .collect();
+            assert_eq!(survivors.len(), 2);
+        }
+        let before =
+            (!physical && command == "review").then(|| crate::test_temp::event_hashes(root));
         let mut connection = listener.accept().unwrap();
         handle_connection(
             &mut connection,
@@ -111,6 +146,37 @@ fn isolated_server() {
             None,
         )
         .unwrap();
+    if physical {
+        drop((snapshot, original, listener));
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "ipc::attachment_flow::reopen_physical",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env(
+                "CRYPTEX_REOPEN_PURGED",
+                serde_json::to_string(&(
+                    root,
+                    &fixture.brain_id,
+                    fixture.device.as_str(),
+                    anchor.public_key(),
+                    survivors,
+                ))
+                .unwrap(),
+            )
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success()
+                && String::from_utf8_lossy(&output.stdout).contains("physical-reopen-verified"),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        fs::remove_dir_all(root).unwrap();
+        return;
+    }
     let chain = snapshot.reader_device_chain(fixture.device.as_str());
     let mut pairs = Vec::new();
     let digest = <[u8; 32]>::from(sha2::Sha256::digest(TEST_BYTES));
@@ -216,6 +282,92 @@ fn isolated_server() {
         );
     }
     fs::remove_dir_all(root).unwrap();
+}
+
+fn contains_marker(bytes: &[u8]) -> bool {
+    let marker = b"purgetrialbodyxqkz";
+    bytes.windows(marker.len()).any(|w| w == marker)
+}
+
+#[test]
+#[ignore = "fresh native process after a confirmed local purge"]
+fn reopen_physical() {
+    let (root, brain, device, public, survivors): (PathBuf, String, String, [u8; 32], Vec<String>) =
+        serde_json::from_str(&std::env::var("CRYPTEX_REOPEN_PURGED").unwrap()).unwrap();
+    purge_review::physical::register(&root);
+    let key = ed25519_dalek::VerifyingKey::from_bytes(&public).unwrap();
+    let anchor = cryptex_events::LocalTrustAnchor::new(
+        DeviceId::new(device.clone()).unwrap(),
+        cryptex_events::signing_key_id_from_verifying_key(&key).unwrap(),
+        public,
+    );
+    {
+        let _instance = crate::instance::try_acquire_instance(&root).unwrap();
+        let snapshot =
+            crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+                &root, &brain, &anchor, None,
+            )
+            .unwrap();
+        let chain = snapshot.reader_device_chain(&device);
+        assert_eq!(chain.len(), 3);
+        assert!(matches!(
+            chain[1],
+            cryptex_events::AuthenticatedSecurityRecord::PurgeBridge(..)
+        ));
+        let id = chain[1].event_id().to_owned();
+        let actual: Vec<_> = snapshot
+            .trial_security_frames()
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != 1)
+            .map(|(_, f)| format!("{:x}", sha2::Sha256::digest(f)))
+            .collect();
+        assert_eq!(actual, survivors);
+        assert_eq!(snapshot.verified_records().len(), 2);
+        assert!(snapshot.verified_records().iter().all(
+            |r| matches!(r, cryptex_events::VersionedRecord::VerifiedV1(n) if n.event_id != id)
+        ));
+        drop(snapshot);
+        let mut db = ProjectionDb::open_or_create(&root).unwrap();
+        for rebuild in [false, true] {
+            if rebuild {
+                crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
+                    &root, &brain, &anchor, &mut db,
+                )
+                .unwrap();
+            }
+            let conn = db.connection();
+            let count = |sql| conn.query_row::<i64, _, _>(sql, [], |r| r.get(0)).unwrap();
+            assert_eq!(count("SELECT count(*) FROM events"), 2);
+            assert_eq!(
+                count(
+                    "SELECT count(*) FROM events_fts WHERE events_fts MATCH 'purgetrialbodyxqkz'"
+                ),
+                0
+            );
+            assert_eq!(
+                count("SELECT count(*) FROM events_fts WHERE events_fts MATCH 'survivor'"),
+                1
+            );
+        }
+    }
+    fn inspect(dir: &std::path::Path) {
+        for item in fs::read_dir(dir).unwrap() {
+            let item = item.unwrap();
+            if item.file_type().unwrap().is_dir() {
+                inspect(&item.path());
+            } else {
+                assert!(item.file_type().unwrap().is_file());
+                assert!(
+                    !contains_marker(&fs::read(item.path()).unwrap()),
+                    "body in {:?}",
+                    item.file_name()
+                );
+            }
+        }
+    }
+    inspect(&root);
+    println!("physical-reopen-verified");
 }
 
 #[test]

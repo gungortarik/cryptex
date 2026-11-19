@@ -26,6 +26,8 @@ use crate::versioned_reader::{
 pub enum NoteLifecycleRead {
     Hold,
     Apply,
+    /// Caller verified the local purge receipts before selecting this mode.
+    LocalPurgeTrial,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
@@ -74,6 +76,7 @@ pub enum AuthenticatedSecurityRecord {
         crate::attachment_link::SignedLinkFields,
     ),
     Lifecycle(VerifiedUnsupportedV2, SignedNoteLifecycle),
+    PurgeBridge(VerifiedUnsupportedV2, String, ContentHashHex),
     SecurityV3(SecurityEventV3),
 }
 
@@ -81,7 +84,9 @@ impl AuthenticatedSecurityRecord {
     pub fn event_id(&self) -> &str {
         match self {
             Self::V1(event) => &event.event_id,
-            Self::Attachment(event, _) | Self::Lifecycle(event, _) => &event.event_id,
+            Self::PurgeBridge(event, ..)
+            | Self::Attachment(event, _)
+            | Self::Lifecycle(event, _) => &event.event_id,
             Self::V2(event) => &event.event().event_id,
             Self::SecurityV3(event) => event.event_id(),
         }
@@ -92,6 +97,7 @@ impl AuthenticatedSecurityRecord {
             Self::V1(event) => &event.brain_id,
             Self::Attachment(_, link) => &link.brain_id,
             Self::Lifecycle(_, change) => &change.brain_id,
+            Self::PurgeBridge(_, brain, _) => brain,
             Self::V2(event) => &event.event().brain_id,
             Self::SecurityV3(event) => event.brain_id(),
         }
@@ -100,7 +106,9 @@ impl AuthenticatedSecurityRecord {
     pub fn device_id(&self) -> &str {
         match self {
             Self::V1(event) => &event.device_id,
-            Self::Attachment(event, _) | Self::Lifecycle(event, _) => &event.device_id,
+            Self::PurgeBridge(event, ..)
+            | Self::Attachment(event, _)
+            | Self::Lifecycle(event, _) => &event.device_id,
             Self::V2(event) => &event.event().device_id,
             Self::SecurityV3(event) => event.device_id().as_str(),
         }
@@ -109,7 +117,9 @@ impl AuthenticatedSecurityRecord {
     pub fn device_seq(&self) -> u64 {
         match self {
             Self::V1(event) => event.device_seq.to_u64().expect("validated v1 sequence"),
-            Self::Attachment(event, _) | Self::Lifecycle(event, _) => {
+            Self::PurgeBridge(event, ..)
+            | Self::Attachment(event, _)
+            | Self::Lifecycle(event, _) => {
                 event.device_seq.to_u64().expect("validated v2 sequence")
             }
             Self::V2(event) => event
@@ -124,6 +134,7 @@ impl AuthenticatedSecurityRecord {
     pub fn content_hash(&self) -> &ContentHashHex {
         match self {
             Self::V1(event) => &event.content_hash,
+            Self::PurgeBridge(_, _, original) => original,
             Self::Attachment(event, _) | Self::Lifecycle(event, _) => &event.content_hash,
             Self::V2(event) => &event.event().content_hash,
             Self::SecurityV3(event) => event.content_hash(),
@@ -133,7 +144,9 @@ impl AuthenticatedSecurityRecord {
     pub fn signing_key_id(&self) -> &SigningKeyId {
         match self {
             Self::V1(event) => &event.signing_key_id,
-            Self::Attachment(event, _) | Self::Lifecycle(event, _) => &event.signing_key_id,
+            Self::PurgeBridge(event, ..)
+            | Self::Attachment(event, _)
+            | Self::Lifecycle(event, _) => &event.signing_key_id,
             Self::V2(event) => &event.event().signing_key_id,
             Self::SecurityV3(event) => event.signing_key_id(),
         }
@@ -278,7 +291,8 @@ impl VerifiedSecurityHistory {
                 // M9 reference metadata is evaluated against both device
                 // cutoffs by the daemon and is never an M3 note or M4 assertion.
                 AuthenticatedSecurityRecord::Attachment(..)
-                | AuthenticatedSecurityRecord::Lifecycle(..) => {}
+                | AuthenticatedSecurityRecord::Lifecycle(..)
+                | AuthenticatedSecurityRecord::PurgeBridge(..) => {}
                 AuthenticatedSecurityRecord::SecurityV3(_) => {
                     unreachable!("content_records_through_cutoffs excludes policy records")
                 }
@@ -432,7 +446,26 @@ where
                     AuthenticatedSecurityRecord::V2(event)
                 }
                 VersionedRecord::VerifiedUnsupported(record)
-                    if lifecycle == NoteLifecycleRead::Apply
+                    if lifecycle == NoteLifecycleRead::LocalPurgeTrial
+                        && value["event_type"] == "memory.purge.bridge" =>
+                {
+                    #[derive(serde::Deserialize)]
+                    #[serde(deny_unknown_fields)]
+                    struct Bridge {
+                        original_hash: ContentHashHex,
+                    }
+                    let bad =
+                        || failure(ValidationReasonCode::InvalidRecord, "invalid purge bridge");
+                    if value["payload_schema_version"] != 1 {
+                        return Err(bad().into());
+                    }
+                    let body: Bridge =
+                        serde_json::from_value(value["payload"].clone()).map_err(|_| bad())?;
+                    let brain = value["brain_id"].as_str().ok_or_else(bad)?.to_owned();
+                    AuthenticatedSecurityRecord::PurgeBridge(record, brain, body.original_hash)
+                }
+                VersionedRecord::VerifiedUnsupported(record)
+                    if lifecycle != NoteLifecycleRead::Hold
                         && matches!(
                             value["event_type"].as_str(),
                             Some("memory.forget" | "memory.restore")
@@ -514,6 +547,9 @@ where
             AuthenticatedSecurityRecord::SecurityV3(event) => {
                 verifier.verify_security_v3_next(event)?;
             }
+            AuthenticatedSecurityRecord::PurgeBridge(bridge, _, original) => {
+                verifier.verify_purge_bridge(bridge, original)?;
+            }
             legacy => {
                 let dispatched = match legacy {
                     AuthenticatedSecurityRecord::V1(event) => {
@@ -526,7 +562,8 @@ where
                     | AuthenticatedSecurityRecord::Lifecycle(event, _) => {
                         VersionedRecord::VerifiedUnsupported(event.clone())
                     }
-                    AuthenticatedSecurityRecord::SecurityV3(_) => unreachable!(),
+                    AuthenticatedSecurityRecord::SecurityV3(_)
+                    | AuthenticatedSecurityRecord::PurgeBridge(..) => unreachable!(),
                 };
                 verifier.verify_next(&dispatched)?;
             }

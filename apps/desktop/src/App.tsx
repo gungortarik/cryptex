@@ -1657,7 +1657,11 @@ export function App() {
                   {detailHit.canAttachFile && (
                     <NoteAttachment key={detailHit.eventId} noteId={detailHit.eventId} noteHash={detailHit.contentHash} />
                   )}
-                  {detailHit.canReviewPurge && <PurgeReview key={detailHit.eventId + detailHit.contentHash} note={detailHit} />}
+                  {detailHit.canReviewPurge && <PurgeReview key={detailHit.eventId + detailHit.contentHash} note={detailHit} onPurged={() => {
+                    setHits(current => current.filter(hit => hit.eventId !== detailHit.eventId));
+                    setTimelineHits(current => current.filter(hit => hit.eventId !== detailHit.eventId));
+                    setDetailHit(null);
+                  }} />}
                   <dl className="timeline-detail-source">
                     <dt>Event</dt><dd>{detailHit.eventId}</dd>
                     <dt>Brain</dt><dd>{detailHit.brainId}</dd>

@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 type Note = { eventId: string; contentHash: string; text: string; classification: string };
-type Outcome = { kind: "prepared"; ticket: string } | { kind: "cancelled" } | { kind: "confirmed"; note_id: string; note_hash: string };
+type Outcome = { kind: "prepared"; ticket: string; remove_locally: boolean } | { kind: "cancelled" } | { kind: "confirmed" | "purged"; note_id: string; note_hash: string };
 
-export function PurgeReview({ note }: { note: Note }) {
+export function PurgeReview({ note, onPurged }: { note: Note; onPurged: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const [ticket, setTicket] = useState("");
+  const [removeLocally, setRemoveLocally] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
 
@@ -28,6 +29,7 @@ export function PurgeReview({ note }: { note: Note }) {
         action: { kind: "prepare", note_id: note.eventId, note_hash: note.contentHash },
       });
       if (reply.kind !== "prepared" || !reply.ticket) throw Error();
+      setRemoveLocally(reply.remove_locally);
       setTicket(reply.ticket);
     } catch {
       setStatus("This note could not be verified for deletion review.");
@@ -41,8 +43,9 @@ export function PurgeReview({ note }: { note: Note }) {
     setBusy(true);
     try {
       const reply = await invoke<Outcome>("m10_purge_review", { action: { kind, ticket } });
-      if (reply.kind !== (kind === "cancel" ? "cancelled" : "confirmed")) throw Error();
-      if (reply.kind === "confirmed" && (reply.note_id !== note.eventId || reply.note_hash !== note.contentHash)) throw Error();
+      if (reply.kind !== (kind === "cancel" ? "cancelled" : removeLocally ? "purged" : "confirmed")) throw Error();
+      if ((reply.kind === "confirmed" || reply.kind === "purged") && (reply.note_id !== note.eventId || reply.note_hash !== note.contentHash)) throw Error();
+      if (reply.kind === "purged") { onPurged(); return; }
       setStatus(kind === "cancel" ? "Deletion cancelled." : "Permanent deletion confirmed for this test note. Your approval was saved.");
     } catch {
       setStatus("Cryptex could not verify the decision. Review the note again.");
@@ -62,7 +65,7 @@ export function PurgeReview({ note }: { note: Note }) {
         <p>{note.classification} · <code>{note.eventId}</code></p>
         <blockquote className="purge-note">{note.text}</blockquote>
         <p>Permanent deletion cannot be undone. Copies on unreachable devices or external backups may remain.</p>
-        <p>This temporary profile saves a signed record of your approval. The note will stay stored.</p>
+        <p>{removeLocally ? "Confirm to remove the note from this temporary profile and its search index." : "This temporary profile saves a signed record of your approval. The note will stay stored."}</p>
         <div className="capture-confirm-actions">
           <button type="button" ref={cancel} disabled={busy} onClick={() => void finish("cancel")}>Cancel</button>
           <button type="button" className="purge-confirm" disabled={busy} onClick={() => void finish("confirm")}>Confirm permanent deletion</button>

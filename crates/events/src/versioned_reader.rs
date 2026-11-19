@@ -282,6 +282,18 @@ impl VersionedChainVerifier {
         Ok(())
     }
 
+    /// Advance across a signed replacement while retaining the original successor commitment.
+    pub(crate) fn verify_purge_bridge(
+        &mut self,
+        bridge: &VerifiedUnsupportedV2,
+        original: &ContentHashHex,
+    ) -> Result<(), ValidationFailure> {
+        self.verify_next(&VersionedRecord::VerifiedUnsupported(bridge.clone()))?;
+        // The successor still commits to the removed frame's original hash.
+        self.last_hash = original.clone();
+        Ok(())
+    }
+
     /// Verify and advance with a separately authenticated M8 v3 security
     /// record. The normal dispatch reader intentionally does not classify v3
     /// as verified, so callers must explicitly use the strict v3 parser first.

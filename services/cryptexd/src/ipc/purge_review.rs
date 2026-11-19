@@ -3,7 +3,12 @@
     test,
     any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
 ))]
-pub(super) mod receipt;
+pub(crate) mod physical;
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+pub(crate) mod receipt;
 use super::*;
 
 pub(super) const OPERATION: &str = "purge.review";
@@ -20,9 +25,19 @@ pub enum Action {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Outcome {
-    Prepared { ticket: String },
+    Prepared {
+        ticket: String,
+        remove_locally: bool,
+    },
     Cancelled,
-    Confirmed { note_id: String, note_hash: String },
+    Purged {
+        note_id: String,
+        note_hash: String,
+    },
+    Confirmed {
+        note_id: String,
+        note_hash: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -36,6 +51,9 @@ pub enum ReviewError {
     Unavailable,
     ReceiptIntegrity,
     ReceiptStorage,
+    PackIntegrity,
+    PackStorage,
+    CleanupPending,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -154,7 +172,17 @@ fn decide(ctx: &SearchContext, action: Action) -> Result<Outcome, ReviewError> {
                 note_hash,
                 expires: Instant::now() + Duration::from_secs(300),
             });
-            Ok(Outcome::Prepared { ticket })
+            #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+            let remove_locally = physical::enabled(&ctx.runtime_root);
+            #[cfg(not(any(
+                windows,
+                all(target_os = "macos", feature = "m8-local-startup-check")
+            )))]
+            let remove_locally = false;
+            Ok(Outcome::Prepared {
+                ticket,
+                remove_locally,
+            })
         }
         Action::Cancel { ref ticket } | Action::Confirm { ref ticket } => {
             if !pending.as_ref().is_some_and(|p| p.ticket == *ticket) {
@@ -171,6 +199,12 @@ fn decide(ctx: &SearchContext, action: Action) -> Result<Outcome, ReviewError> {
             #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
             {
                 receipt::persist(&ctx, &current.note_id, &current.note_hash, current.expires)?;
+                if physical::enabled(&ctx.runtime_root) {
+                    return Ok(Outcome::Purged {
+                        note_id: current.note_id,
+                        note_hash: current.note_hash,
+                    });
+                }
                 Ok(Outcome::Confirmed {
                     note_id: current.note_id,
                     note_hash: current.note_hash,
