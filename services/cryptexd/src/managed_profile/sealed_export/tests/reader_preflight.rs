@@ -6,18 +6,19 @@ use cryptex_events::attachment_link::LinkPayload;
 use std::fs;
 
 mod recovery;
+pub(in crate::managed_profile) mod transfer;
 
 const BRAIN: &str = "11111111-1111-4111-8111-111111111111";
 
 struct Side {
     root: PathBuf,
-    transport: &'static str,
+    transport: String,
     instance: InstanceLock,
     guard: TransportGuard,
     exporter: Exporter,
 }
 impl Side {
-    fn new(root: PathBuf, transport: &'static str) -> Self {
+    fn new(root: PathBuf, transport: &str) -> Self {
         drop(try_acquire_instance(&root).unwrap());
         migrate_profile(&root).unwrap();
         crate::managed_profile::platform::ensure_exchange_tree(&root).unwrap();
@@ -30,7 +31,7 @@ impl Side {
         permit.finish(None);
         Self {
             root,
-            transport,
+            transport: transport.to_owned(),
             instance,
             guard,
             exporter: Exporter::default(),
@@ -42,7 +43,7 @@ impl Side {
                 &self.root,
                 &self.instance.admission(),
                 &self.guard,
-                self.transport,
+                &self.transport,
                 (store, ENV),
                 &AtomicBool::new(false),
             )

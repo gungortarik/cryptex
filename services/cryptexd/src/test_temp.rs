@@ -7,6 +7,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+// Only a test creating both profiles can opt them into the M9 transfer trial.
+thread_local! {
+    pub(crate) static ATTACHMENT_PAIR: std::cell::OnceCell<[PathBuf; 2]> = const { std::cell::OnceCell::new() };
+}
+pub(crate) fn attachment_trial(root: &Path) -> bool {
+    ATTACHMENT_PAIR.with(|pair| {
+        pair.get()
+            .is_some_and(|roots| roots.iter().any(|p| p == root))
+    })
+}
+
 static TEMP_ROOT_SEQ: AtomicU64 = AtomicU64::new(1);
 
 /// Create a unique directory under [`std::env::temp_dir`].

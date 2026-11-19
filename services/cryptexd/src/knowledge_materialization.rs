@@ -198,6 +198,44 @@ impl RetrievalSafetyState {
             ))?;
         verify_stored(&snapshot.runtime_root, digest).map_err(LocalLinkError::Blob)
     }
+    /// Incoming fixture bytes must match an already admitted, signed reference
+    /// before they can acquire a canonical name. Keep its locks until publication.
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
+    pub(crate) fn receive_trial_attachment(
+        &self,
+        note: &str,
+        link: &str,
+        bytes: &[u8],
+    ) -> Result<(), crate::attachment_blobs::LocalLinkError> {
+        use crate::attachment_blobs::{BlobError, LocalLinkError};
+        use sha2::{Digest, Sha256};
+        let snapshot = self
+            .snapshot
+            .as_ref()
+            .ok_or(LocalLinkError::Held(self.hold.unwrap_or(
+                RetrievalSafetyHold::CanonicalVerificationUnavailable,
+            )))?;
+        let expected = snapshot
+            .attachment_links
+            .get(note)
+            .and_then(|links| links.get(link))
+            .filter(|_| crate::test_temp::attachment_trial(&snapshot.runtime_root))
+            .ok_or(LocalLinkError::Reference(
+                cryptex_events::attachment_link::LinkError::MissingLink,
+            ))?;
+        if bytes.len() > crate::ipc::attachment::MAX_BYTES
+            || Sha256::digest(bytes).as_slice() != expected
+        {
+            return Err(LocalLinkError::Blob(BlobError::IntegrityMismatch));
+        }
+        crate::attachment_blobs::store(&snapshot.runtime_root, bytes)
+            .map_err(LocalLinkError::Blob)?;
+        self.verify_local_attachment(note, link)
+    }
+
     #[must_use]
     pub fn allows_content(&self) -> bool {
         self.hold.is_none() && self.snapshot.is_some()
@@ -493,7 +531,21 @@ fn verify_post_import_policy(
             )
         })
         .collect::<std::collections::BTreeSet<_>>();
+    #[cfg(test)]
+    let admitted_trial_links = if crate::test_temp::attachment_trial(&snapshot.runtime_root) {
+        admitted_attachment_links(&history, &cutoffs, None)
+            .map_err(|_| ImportStagingError::Invalid("invalid attachment binding".into()))?
+            .into_values()
+            .flat_map(|links| links.into_keys())
+            .collect::<std::collections::BTreeSet<_>>()
+    } else {
+        Default::default()
+    };
     for record in verified.records() {
+        #[cfg(test)]
+        if admitted_trial_links.contains(&record.event_id) {
+            continue;
+        }
         if record.security_control {
             continue;
         }

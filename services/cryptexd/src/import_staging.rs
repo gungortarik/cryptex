@@ -1998,6 +1998,26 @@ fn verify_segment_stream<R: TrustedDaemonKeyResolver>(
                     event.prev_content_hash(),
                     event.content_hash(),
                 ),
+                #[cfg(test)]
+                VersionedRecord::VerifiedUnsupported(event)
+                    if crate::test_temp::ATTACHMENT_PAIR.with(|pair| pair.get().is_some())
+                        && envelope.get("event_type").and_then(|v| v.as_str())
+                            == Some(cryptex_events::attachment_link::EVENT_TYPE) =>
+                {
+                    // The signed envelope passed read_versioned_record. The locked
+                    // post-import union below must also admit this exact note/link.
+                    (
+                        event.event_id.as_str(),
+                        event.device_id.as_str(),
+                        brain_id,
+                        event
+                            .device_seq
+                            .to_u64()
+                            .map_err(|e| ImportStagingError::Invalid(e.to_string()))?,
+                        &event.prev_content_hash,
+                        &event.content_hash,
+                    )
+                }
                 VersionedRecord::VerifiedUnsupported(_) => {
                     return Err(ImportStagingError::Invalid(
                         "event payload schema is not supported for import".into(),

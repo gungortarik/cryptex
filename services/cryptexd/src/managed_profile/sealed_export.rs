@@ -315,7 +315,7 @@ impl Exporter {
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
 
 fn verify(
     file: &mut File,

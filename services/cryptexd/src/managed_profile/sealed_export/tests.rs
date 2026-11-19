@@ -4,7 +4,7 @@ use cryptex_core::DeviceId;
 use cryptex_events::envelope::Classification;
 use std::path::PathBuf;
 
-mod reader_preflight;
+pub(in crate::managed_profile) mod reader_preflight;
 mod retirement_relay;
 
 const LOCAL: &str = "U2SYIGU-YWZX757-2WPZGCR-DHD7MLH-ZKV7HLJ-EYO6CXE-K3DU3DU-SDFXYAE";

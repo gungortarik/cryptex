@@ -76,6 +76,15 @@ pub(crate) mod sealed_export;
 fn native_observation_survives_process_exit() {
     sealed_export::reader::native_observation_phase();
 }
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+#[test]
+#[ignore = "requires a disposable pair of pinned Syncthing workers"]
+fn paired_attachment_transfer() {
+    sealed_export::tests::reader_preflight::transfer::run();
+}
 #[cfg(all(test, windows))]
 mod tests;
 #[cfg(windows)]

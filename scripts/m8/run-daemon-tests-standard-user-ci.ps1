@@ -7,7 +7,7 @@ if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted
 }
 $workspace=(Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
 $manifest=Join-Path $workspace 'services\cryptexd'
-$python=$null
+$python=if($M9HistoricalDaemon){(Get-Command python -CommandType Application | Select-Object -First 1).Source}else{$null}
 $browserNode=if($M9AttachmentBrowser){(Get-Command node -CommandType Application | Select-Object -First 1).Source}else{$null}
 if($ExchangeNativeOnly -or $M9HistoricalDaemon){$ExchangePackage=(Resolve-Path -LiteralPath $ExchangePackage).Path}
 if($LanSetupOnly -or $LanCutoffOnly) {

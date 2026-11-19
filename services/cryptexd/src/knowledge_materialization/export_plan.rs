@@ -84,8 +84,21 @@ impl VerifiedCanonicalSnapshot {
                 eligible &= record.device_seq() <= *cutoff;
                 // The transport contract currently admits only note and
                 // security records. M9 read support does not activate transfer.
-                contains_attachment |=
-                    matches!(record, AuthenticatedSecurityRecord::Attachment(..));
+                if let AuthenticatedSecurityRecord::Attachment(link, _fields) = record {
+                    contains_attachment = true;
+                    #[cfg(test)]
+                    let trial_admitted = crate::test_temp::attachment_trial(&self.runtime_root)
+                        && self
+                            .attachment_links
+                            .get(_fields.note_event_id())
+                            .is_some_and(|links| links.contains_key(&link.event_id));
+                    #[cfg(not(test))]
+                    let trial_admitted = {
+                        let _ = link;
+                        false
+                    };
+                    eligible &= trial_admitted;
+                }
                 retirement_only = single
                     && history.self_retirements.iter().any(|terminal| {
                         terminal.device == device && terminal.event_seq == record.device_seq()
@@ -109,7 +122,7 @@ impl VerifiedCanonicalSnapshot {
                 index,
                 length,
                 digest: hash.finalize().into(),
-                eligible: eligible && !contains_attachment,
+                eligible,
                 contains_attachment,
                 retirement_only,
             });

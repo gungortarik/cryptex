@@ -6,7 +6,7 @@ fn deliver(sender: &Side, receiver: &Side, slot: &OsStr) {
     fs::copy(sender.controls().join(slot), receiver.controls().join(slot)).unwrap();
 }
 
-fn first_challenge(side: &mut Side, store: &crate::FakeSecureStore) -> OsString {
+pub(super) fn first_challenge(side: &mut Side, store: &crate::FakeSecureStore) -> OsString {
     side.tick(store);
     assert_eq!(
         side.exporter.last_reader_status,

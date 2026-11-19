@@ -24,6 +24,9 @@ on:
       - 'services/cryptexd/src/platform/instance_file.rs'
       - 'scripts/m8/*standard-user*'
       - 'scripts/m8/prepare_native_test_package.py'
+      - 'scripts/m9/test_paired_attachment.py'
+      - 'scripts/m8/lan_cutoff_packet.py'
+      - 'scripts/m8/mac_transport_package.py'
       - 'services/cryptexd/src/managed_profile/native_product_receive_test/reader_preflight.rs'
       - 'services/cryptexd/src/compat.rs'
 permissions:
@@ -87,3 +90,4 @@ jobs:
           done
           cargo test --locked -p cryptexd --features m8-development-product --lib managed_profile::sealed_export::tests::reader_preflight:: -- --nocapture | tee preflight.txt
           grep -F '5 passed; 0 failed; 0 ignored' preflight.txt >> "$GITHUB_STEP_SUMMARY"
+          python3 -B scripts/m9/test_paired_attachment.py

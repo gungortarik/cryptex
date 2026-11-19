@@ -110,6 +110,8 @@ if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) 
     $preflight.stderr | Write-Output
     if($preflight.code -ne 0 -or $preflight.stdout -notmatch '5 passed; 0 failed; 0 ignored'){throw 'Paired reader checks incomplete.'}
     Set-NativeTestPackage
+    & $p.python -B (Join-Path $p.workspace 'scripts/m9/test_paired_attachment.py') --native (Join-Path $env:CRYPTEX_EXCHANGE_NATIVE_PACKAGE 'syncthing.exe') --test-binary $p.executables[0]
+    if($LASTEXITCODE -ne 0){throw 'Paired M9 file transfer failed.'}
     $suite='managed_profile::native_product_receive_test::reader_preflight::normal_owners_verify_readers_over_the_private_network'
     $env:CRYPTEX_M9_READER_ATTEMPT=[guid]::NewGuid().ToString('N')
     $live=Invoke-TestBinary $p.executables[0] "$suite --ignored --exact --nocapture"
