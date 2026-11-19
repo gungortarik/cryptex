@@ -87,6 +87,8 @@ pub(crate) fn serve(
         connections: None,
         transport_identity: None,
         #[cfg(test)]
+        isolated_attachment_writer: false,
+        #[cfg(test)]
         transport_device_id_override: None,
     };
     if profile.resumes() {

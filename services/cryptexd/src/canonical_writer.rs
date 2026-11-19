@@ -6,6 +6,12 @@
 //! `writer_tip.json` is rebuildable derived state; verified `.seg`/`.open` records are
 //! authoritative for chain tip and active segment discovery.
 
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+pub(crate) mod isolated_attachment;
+
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};

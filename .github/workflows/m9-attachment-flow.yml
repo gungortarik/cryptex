@@ -1,0 +1,48 @@
+name: M9 desktop attachment flow
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/m9-attachment-flow.yml'
+      - 'apps/desktop/src/**'
+      - 'apps/desktop/src-tauri/src/**'
+      - 'apps/desktop/scripts/attachment-flow.test.mjs'
+      - 'services/cryptexd/src/ipc.rs'
+      - 'services/cryptexd/src/ipc/**'
+      - 'services/cryptexd/src/attachment_blobs*'
+      - 'services/cryptexd/src/canonical_writer*'
+      - 'services/cryptexd/src/canonical_writer/**'
+      - 'services/cryptexd/src/knowledge_materialization.rs'
+      - 'crates/events/src/attachment_link.rs'
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      CRYPTEX_M8_DEVELOPMENT_CERT_DER: ${{ github.workspace }}/services/cryptexd/src/m8_owner_channel/release_inventory/fixtures/signer.der
+      CRYPTEX_M8_DEVELOPMENT_RELEASE_ID: cryptex-dev-attachment-ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cryptex/desktop build
+      - run: node --test apps/desktop/scripts/attachment-flow.test.mjs
+      - if: runner.os == 'macOS'
+        run: cargo check --locked -p cryptex-desktop --features m8-development-product
+      - if: runner.os == 'Windows'
+        run: cargo check --locked -p cryptex-desktop

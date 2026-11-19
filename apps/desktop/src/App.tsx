@@ -1,3 +1,4 @@
+import { NoteAttachment } from "./NoteAttachment";
 import { invoke } from "@tauri-apps/api/core";
 import { ConnectionSettings } from "./ConnectionSettings";
 import { parseNativeProfileStatus, nativeProfileMessage, type NativeProfileStatus } from "./native-profile-status.mjs";
@@ -22,6 +23,7 @@ import { createSearchRequestGate, normalizeSearchText } from "./search-policy.mj
 
 type SearchHit = {
   attachmentLinkCount?: number;
+  canAttachFile?: boolean;
   eventId: string;
   brainId: string;
   deviceId: string;
@@ -1649,6 +1651,9 @@ export function App() {
                   <p>{detailHit.text}</p>
                   {!!detailHit.attachmentLinkCount && (
                     <p>{detailHit.attachmentLinkCount} signed attachment {detailHit.attachmentLinkCount === 1 ? "link" : "links"}</p>
+                  )}
+                  {detailHit.canAttachFile && (
+                    <NoteAttachment key={detailHit.eventId} noteId={detailHit.eventId} noteHash={detailHit.contentHash} />
                   )}
                   <dl className="timeline-detail-source">
                     <dt>Event</dt><dd>{detailHit.eventId}</dd>

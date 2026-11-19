@@ -446,6 +446,15 @@ fn p0_5_guarded_timeline(
 }
 
 #[tauri::command]
+async fn m9_attach_file(
+    file: cryptexd::ipc::attachment::SelectedFile,
+) -> Result<(), cryptexd::ipc::attachment::AttachError> {
+    tauri::async_runtime::spawn_blocking(move || cryptexd::ipc::attachment::desktop_attach(file))
+        .await
+        .map_err(|_| cryptexd::ipc::attachment::AttachError::Uncertain)?
+}
+
+#[tauri::command]
 fn p0_5_guarded_event_detail(
     event_id: String,
 ) -> Result<cryptexd::ipc::DesktopSearchResponse, String> {
@@ -2619,6 +2628,7 @@ fn main() {
             p0_4_guarded_search,
             p0_5_guarded_timeline,
             p0_5_guarded_event_detail,
+            m9_attach_file,
             p0_6_materialize_and_open_vault,
             p0_4_enroll_local_device,
             p0_5_capture_memory,

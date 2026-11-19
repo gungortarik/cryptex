@@ -9,6 +9,8 @@ mod native_domain;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
 pub(crate) mod native_profile;
 
+pub mod attachment;
+
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -505,6 +507,8 @@ impl DesktopSearchQuery {
 pub struct DesktopSearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attachment_link_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub can_attach_file: bool,
     pub event_id: String,
     pub brain_id: String,
     pub device_id: String,
@@ -521,6 +525,7 @@ impl From<SearchHit> for DesktopSearchHit {
     fn from(hit: SearchHit) -> Self {
         Self {
             attachment_link_count: None,
+            can_attach_file: false,
             event_id: hit.event_id,
             brain_id: hit.brain_id,
             device_id: hit.device_id,
@@ -604,6 +609,8 @@ pub fn spawn_retrieval_server(
         transport_status: None,
         #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
         transport_identity: None,
+        #[cfg(test)]
+        isolated_attachment_writer: false,
         #[cfg(test)]
         transport_device_id_override: None,
     };
@@ -711,6 +718,8 @@ fn spawn_daemon_ipc_server_inner(
         #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
         transport_identity: None,
         #[cfg(test)]
+        isolated_attachment_writer: false,
+        #[cfg(test)]
         transport_device_id_override: None,
     };
     start_projection_sync_worker(&mut context);
@@ -737,6 +746,8 @@ struct SearchContext {
     transport_status: Option<crate::managed_profile::worker::StatusReader>,
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
     transport_identity: Option<crate::m8_owner_channel::transport_helper::StatusReader>,
+    #[cfg(test)]
+    isolated_attachment_writer: bool,
     #[cfg(test)]
     transport_device_id_override: Option<String>,
 }
@@ -2011,8 +2022,21 @@ fn create_listener() -> io::Result<interprocess::local_socket::Listener> {
     }
 }
 
-#[cfg(windows)]
+#[cfg(test)]
+thread_local! {
+    static FIXTURE_SOCKET: std::cell::OnceCell<interprocess::local_socket::Name<'static>> = const { std::cell::OnceCell::new() };
+}
+
 fn socket_name() -> io::Result<interprocess::local_socket::Name<'static>> {
+    #[cfg(test)]
+    if let Some(name) = FIXTURE_SOCKET.with(|slot| slot.get().cloned()) {
+        return Ok(name);
+    }
+    product_socket_name()
+}
+
+#[cfg(windows)]
+fn product_socket_name() -> io::Result<interprocess::local_socket::Name<'static>> {
     std::ffi::OsString::from(format!("cryptex-{ENDPOINT_ID}")).to_ns_name::<GenericNamespaced>()
 }
 
@@ -2071,7 +2095,7 @@ fn current_user_sid() -> io::Result<String> {
 }
 
 #[cfg(unix)]
-fn socket_name() -> io::Result<interprocess::local_socket::Name<'static>> {
+fn product_socket_name() -> io::Result<interprocess::local_socket::Name<'static>> {
     use interprocess::local_socket::GenericFilePath;
     use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 
@@ -2191,6 +2215,21 @@ fn handle_connection_via(
         }
         Err(error) => return Err(error),
     };
+    #[derive(Deserialize)]
+    struct Operation<'a> {
+        operation: &'a str,
+    }
+    let operation = serde_json::from_slice::<Operation>(&frame)
+        .ok()
+        .map(|header| header.operation);
+    if operation == Some("attachment.add") {
+        let response = attachment::handle(&frame, search, peer_is_desktop, desktop_capture_workers);
+        return write_response(
+            stream,
+            &serde_json::to_vec(&response)?,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        );
+    }
     #[cfg(windows)]
     if peer_is_desktop && is_retirement_notice(&frame) {
         let ctx = search.ok_or_else(|| invalid_data("notice_unavailable"))?;
@@ -2209,11 +2248,7 @@ fn handle_connection_via(
         )?;
         return write_response(stream, &reply, Instant::now() + IPC_RESPONSE_DEADLINE);
     }
-    if serde_json::from_slice::<serde_json::Value>(&frame)
-        .ok()
-        .and_then(|v| v.get("operation")?.as_str().map(str::to_owned))
-        .is_some_and(|operation| operation.starts_with("connections."))
-    {
+    if operation.is_some_and(|operation| operation.starts_with("connections.")) {
         #[cfg(windows)]
         let mut reply = connection_settings_reply(&frame, search, peer_is_desktop);
         #[cfg(not(windows))]
@@ -5034,7 +5069,7 @@ fn handle_event_detail_until_checked(
         &event_id,
         deadline,
     ) {
-        Ok(detail) => event_detail_results(Some(request_id), detail),
+        Ok(detail) => event_detail_results(Some(request_id), detail, attachment::enabled(context)),
         Err(GuardedSearchError::BrainWideHold(reason)) => {
             if matches!(
                 reason,
@@ -5123,11 +5158,13 @@ fn timeline_results(
 fn event_detail_results(
     request_id: Option<String>,
     detail: Option<(SearchHit, usize)>,
+    can_attach_file: bool,
 ) -> DesktopSearchResponse {
     let hits = detail
         .into_iter()
         .map(|(note, count)| DesktopSearchHit {
             attachment_link_count: Some(count),
+            can_attach_file,
             ..note.into()
         })
         .collect();
@@ -5919,6 +5956,8 @@ fn desktop_capture_exchange(
 #[cfg(test)]
 pub(crate) mod tests {
     mod approval_domain_tests;
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    mod attachment_flow;
     use std::fs;
 
     use cryptex_core::BrainIdentity;
@@ -5981,6 +6020,8 @@ pub(crate) mod tests {
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
             transport_identity: None,
+            #[cfg(test)]
+            isolated_attachment_writer: false,
             transport_device_id_override: None,
         };
         let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
@@ -6299,6 +6340,8 @@ pub(crate) mod tests {
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
             transport_identity: None,
+            #[cfg(test)]
+            isolated_attachment_writer: false,
             #[cfg(test)]
             transport_device_id_override: None,
         };
@@ -7351,6 +7394,8 @@ pub(crate) mod tests {
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
             transport_identity: None,
             #[cfg(test)]
+            isolated_attachment_writer: false,
+            #[cfg(test)]
             transport_device_id_override: Some(
                 "AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA".into(),
             ),
@@ -7586,6 +7631,8 @@ pub(crate) mod tests {
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
             transport_identity: None,
+            #[cfg(test)]
+            isolated_attachment_writer: false,
             transport_device_id_override: None,
         };
         let (started_send, started_recv) = sync_channel(1);
@@ -8289,6 +8336,8 @@ pub(crate) mod tests {
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
             transport_identity: None,
             #[cfg(test)]
+            isolated_attachment_writer: false,
+            #[cfg(test)]
             transport_device_id_override: None,
         };
         let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
@@ -8328,6 +8377,8 @@ pub(crate) mod tests {
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
             transport_identity: None,
+            #[cfg(test)]
+            isolated_attachment_writer: false,
             #[cfg(test)]
             transport_device_id_override: None,
         };
@@ -8561,6 +8612,8 @@ pub(crate) mod tests {
             transport_status: None,
             #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
             transport_identity: None,
+            #[cfg(test)]
+            isolated_attachment_writer: false,
             #[cfg(test)]
             transport_device_id_override: None,
         };

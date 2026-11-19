@@ -942,6 +942,16 @@ impl VerifiedCanonicalSnapshot {
         self.security_history.expected_brain_id()
     }
 
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
+    pub(crate) fn already_links(&self, note: &str, digest: &[u8; 32]) -> bool {
+        self.attachment_links
+            .get(note)
+            .is_some_and(|links| links.values().any(|d| d == digest))
+    }
+
     pub(crate) fn verified_records(&self) -> &[cryptex_events::VersionedRecord] {
         self.history.records()
     }
