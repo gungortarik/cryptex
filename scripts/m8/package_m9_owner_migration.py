@@ -20,7 +20,7 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def build(artifact, transport_packet, revision, ci_run, output):
+def build(artifact, transport_packet, revision, ci_run, output, *, reader=False):
     source = subprocess.check_output(['git', 'rev-parse', revision + '^{commit}'], cwd=ROOT, text=True).strip()
     provenance = json.loads((artifact / 'provenance.json').read_text(encoding='utf-8-sig'))
     if (provenance['source_commit'] != source or provenance['run_id'] != ci_run
@@ -58,6 +58,10 @@ def build(artifact, transport_packet, revision, ci_run, output):
                 source_sha256=digest(source_zip), run_id=str(uuid.uuid5(uuid.NAMESPACE_URL, 'cryptex/owner-m9/' + source)),
                 hashes={name: digest(raw) for name, raw in payload.items()})
     members['candidate.json'] = json.dumps(plan, indent=2).encode()
+    if reader:
+        from package_m9_reader import reader_members
+        folder, members = reader_members(members, plan)
+        return write_packet(folder, members, output)
     for op, flag in (('GECIS', ''), ('AC', ' --open')):
         members['M9-' + op + '-MAC.command'] = (
             '#!/bin/zsh\nset -eu\ncd -- "${0:A:h}"\nexec /usr/bin/python3 -B m9_owner_migration.py' + flag + '\n').encode()
@@ -75,18 +79,22 @@ def build(artifact, transport_packet, revision, ci_run, output):
         'Ek yazma kapali. Basarili gecisten sonra M9-AC-MAC.command veya M9-AC-VM.cmd ile ac.\n'
         'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()
 
+    return write_packet(FOLDER, members, output)
+
+
+def write_packet(folder, members, output):
     output = output.resolve()
     if output == ROOT or ROOT in output.parents:
         raise ValueError('output_inside_repository')
     with zipfile.ZipFile(output, 'x') as archive:
         for name, raw in members.items():
-            info = zipfile.ZipInfo(FOLDER + name)
+            info = zipfile.ZipInfo(folder + name)
             info.create_system = 3
             info.external_attr = (0o100700 if name.endswith('.command') else 0o100600) << 16
             archive.writestr(info, raw, compress_type=zipfile.ZIP_DEFLATED)
     with zipfile.ZipFile(output) as archive:
         for name, raw in members.items():
-            if archive.read(FOLDER + name) != raw:
+            if archive.read(folder + name) != raw:
                 raise ValueError('package_readback_failed')
     return digest(output.read_bytes())
 
