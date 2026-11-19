@@ -183,6 +183,14 @@ the guarded reader returned the original bytes for each note's own link
 and rejected both swapped links. The disabled-writer control created no
 blob or signed link. [Windows and macOS receipts](https://github.com/gungortarik/cryptex/actions/runs/44572072946)
 
+At `3af794f` each native runner projected the same canonical attachment from
+two notes in paired temporary profiles. The owner restricted the peer to its
+first signed record. After reopening, the daemon denied the later peer note's
+link and returned the original bytes for the local note. Refreshing the
+unmodified vault removed the excluded copy and retained one authorized copy.
+The canonical store still held one file with the original SHA-256.
+[Windows and macOS cutoff receipts](https://github.com/gungortarik/cryptex/actions/runs/44576009511)
+
 ## M8 complete on November 18, 2026
 
 The owner approved candidate `7be9287`. Windows and macOS passed readiness and native recovery. The two-device follow-up reached the same sixteen signed records and retained all four test markers after a paused restart. The historical investigation below is closed. [Scope, security review and CI](../evidence/m8/m8-final-candidate-review-20261118.md)
