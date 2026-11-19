@@ -18,6 +18,7 @@ on:
       - 'services/cryptexd/src/import_staging/export_fs.rs'
       - 'services/cryptexd/src/import_staging.rs'
       - 'services/cryptexd/src/import_staging/*inbox.rs'
+      - 'services/cryptexd/src/import_staging/inbox_order.rs'
       - 'services/cryptexd/src/managed_profile/sealed_export.rs'
       - 'services/cryptexd/src/managed_profile/sealed_export/**'
       - 'services/cryptexd/src/managed_profile/connection_settings/backend.rs'
