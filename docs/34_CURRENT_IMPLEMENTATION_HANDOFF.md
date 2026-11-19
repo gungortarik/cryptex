@@ -151,6 +151,16 @@ still withholds attachment packs and keeps attachment writing disabled.
 At `d536dd2` both OS runs reported the same SHA-256 and one canonical blob
 on the reopened receiver. [Native transfer receipts](https://github.com/gungortarik/cryptex/actions/runs/44564942176)
 
+The paired trial now damages the receiver's local file after delivery, then
+requests the original bytes again from the paired source. It verifies those
+bytes against the signed link and preserves each damaged file in private
+quarantine. A simulated interruption after quarantine leaves the canonical
+blob missing. After reopening, a fresh delivery restores the file. Replaying
+the delivery preserves one canonical blob and the original sealed event pack.
+The repair path is available only in the disposable test daemon. Windows and
+macOS both verified the interrupted retry at `20d1a66`, with one canonical
+blob and two quarantined originals. [Repair receipts](https://github.com/gungortarik/cryptex/actions/runs/44567124985)
+
 ## M8 complete on November 18, 2026
 
 The owner approved candidate `7be9287`. Windows and macOS passed readiness and native recovery. The two-device follow-up reached the same sixteen signed records and retained all four test markers after a paused restart. The historical investigation below is closed. [Scope, security review and CI](../evidence/m8/m8-final-candidate-review-20261118.md)
