@@ -103,6 +103,12 @@ impl Directory {
     }
     pub(crate) fn open_file(&self, name: &str, create: bool) -> Result<File, Error> {
         leaf(name)?;
+        self.open_regular(name, create)
+    }
+    pub(crate) fn open_existing_brain_identity(&self) -> Result<File, Error> {
+        self.open_regular(crate::identity_runtime::BRAIN_FILE, false)
+    }
+    fn open_regular(&self, name: &str, create: bool) -> Result<File, Error> {
         self.validate()?;
         #[cfg(windows)]
         let file = {

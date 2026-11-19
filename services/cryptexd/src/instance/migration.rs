@@ -47,7 +47,7 @@ pub fn migrate_profile(root: &Path) -> Result<(), MigrationError> {
     let namespace = Directory::open(root)?;
     let identity = namespace.child("identity", false)?;
     let mut brain = String::new();
-    let file = identity.open_file("brain_identity.json", false)?;
+    let file = identity.open_existing_brain_identity()?;
     if file.metadata()?.len() > 65536 {
         return Err(MigrationError::InvalidProfile);
     }

@@ -17,7 +17,7 @@ use crate::secure_store::{
 };
 
 const IDENTITY_DIR: &str = "identity";
-const BRAIN_FILE: &str = "brain_identity.json";
+pub(crate) const BRAIN_FILE: &str = "brain_identity.json";
 
 static BRAIN_TMP_SEQ: AtomicU64 = AtomicU64::new(1);
 
