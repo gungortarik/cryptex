@@ -104,13 +104,15 @@ for (const mode of ["blocked", "allowed"]) {
         if (mode === "blocked") {
           assert.equal(await review.count(), 0);
           assert.deepEqual(await decide(prepare), { Err: "disabled" });
+          assert.deepEqual(await client.invoke("approval_inventory", {}), []);
           assert.equal(await picker.count(), 0);
           assert.deepEqual(await client.invoke("m9_attach_file", { file: selected }), { Err: "disabled" });
         } else {
           assert.deepEqual(await client.invoke("m9_attach_file", { file: { ...selected, noteHash: "0".repeat(64) } }), { Err: "target_unavailable" });
           assert.deepEqual(await decide({ ...prepare, note_hash: "0".repeat(64) }), { Err: "target_unavailable" });
           const dialog = page.getByRole("dialog", { name: "Permanently delete this note?" });
-          for (const choice of ["cancel", "escape", "confirm"]) {
+          let firstReceipt;
+          for (const choice of ["cancel", "escape", "confirm", "confirm"]) {
             await review.click();
             await dialog.getByText(title, { exact: true }).waitFor();
             assert.ok((await dialog.textContent()).includes(detail.eventId));
@@ -122,6 +124,15 @@ for (const mode of ["blocked", "allowed"]) {
             await dialog.waitFor({ state: "hidden" });
             await page.getByText(choice === "confirm" ? /Permanent deletion confirmed for this test note/ : "Deletion cancelled.").waitFor();
             assert.deepEqual(await decide({ kind: "confirm", ticket: reviewTicket }), { Err: "review_expired" });
+            const inventory = await client.invoke("approval_inventory", {});
+            if (choice === "confirm") {
+              assert.equal(inventory.length, 1);
+              assert.equal(inventory[0][0], detail.eventId + ".json");
+              if (firstReceipt) assert.deepEqual(inventory, firstReceipt);
+              firstReceipt = inventory;
+            } else {
+              assert.deepEqual(inventory, []);
+            }
           }
           await writeFile(file, Buffer.from(bytes));
           await picker.setInputFiles(file);

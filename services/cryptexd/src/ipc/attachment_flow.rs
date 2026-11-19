@@ -56,6 +56,26 @@ fn isolated_server() {
         if command == "finish" {
             break;
         }
+        if command == "approval_inventory" {
+            let ledger = root.join("canonical").join(purge_review::receipt::FOLDER);
+            let mut inventory = Vec::new();
+            if ledger.try_exists().unwrap() {
+                for entry in fs::read_dir(ledger).unwrap() {
+                    let path = entry.unwrap().path();
+                    inventory.push((
+                        path.file_name().unwrap().to_str().unwrap().to_owned(),
+                        format!("{:x}", sha2::Sha256::digest(fs::read(&path).unwrap())),
+                    ));
+                }
+            }
+            inventory.sort();
+            println!(
+                "approval-inventory {}",
+                serde_json::to_string(&inventory).unwrap()
+            );
+            io::stdout().flush().unwrap();
+            continue;
+        }
         let before = (command == "review").then(|| crate::test_temp::event_hashes(root));
         let mut connection = listener.accept().unwrap();
         handle_connection(
@@ -113,6 +133,10 @@ fn isolated_server() {
         assert_eq!(fields.bind(note).unwrap().blob_sha256, digest);
         pairs.push((note.event_id.clone(), link.event_id.clone()));
     }
+    let approved_note = pairs.first().map(|(id, _)| {
+        let note = chain.iter().find(|record| record.event_id() == id).unwrap();
+        (id.clone(), note.content_hash().as_str().to_owned())
+    });
     drop(snapshot);
     let blobs = root.join("canonical/blobs");
     if enabled {
@@ -159,7 +183,92 @@ fn isolated_server() {
         assert!(!blobs.exists());
     }
     drop((original, listener));
+    if let Some((id, hash)) = approved_note {
+        // Reopen from another process with the public trust anchor only.
+        let checked = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "ipc::attachment_flow::reopen_approval",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env(
+                "CRYPTEX_TRIAL_REOPEN",
+                serde_json::to_string(&(
+                    root,
+                    &fixture.brain_id,
+                    fixture.device.as_str(),
+                    id,
+                    hash,
+                    anchor.public_key(),
+                ))
+                .unwrap(),
+            )
+            .output()
+            .unwrap();
+        assert!(
+            checked.status.success(),
+            "{}",
+            String::from_utf8_lossy(&checked.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&checked.stdout).contains("approval-reopened-and-verified")
+        );
+    }
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[ignore = "fresh process spawned after the disposable profile closes"]
+fn reopen_approval() {
+    let (root, brain, device, note, hash, public): (
+        PathBuf,
+        String,
+        String,
+        String,
+        String,
+        [u8; 32],
+    ) = serde_json::from_str(&std::env::var("CRYPTEX_TRIAL_REOPEN").unwrap()).unwrap();
+    let _instance = crate::instance::try_acquire_instance(&root).unwrap();
+    purge_review::receipt::verify_reopened(&root, &brain, &device, &note, &hash, &public).unwrap();
+    assert!(matches!(
+        purge_review::receipt::verify_reopened(
+            &root,
+            &brain,
+            &device,
+            &note,
+            &"0".repeat(64),
+            &public
+        ),
+        Err(purge_review::ReviewError::ReceiptIntegrity)
+    ));
+    let file = root
+        .join("canonical")
+        .join(purge_review::receipt::FOLDER)
+        .join(format!("{note}.json"));
+    let stored: serde_json::Value = serde_json::from_slice(&fs::read(file).unwrap()).unwrap();
+    assert_eq!(stored.as_object().unwrap().len(), 2);
+    assert_eq!(stored["signature"].as_str().unwrap().len(), 128);
+    assert_eq!(
+        stored["approval"],
+        serde_json::json!({
+            "purpose": "cryptex.purge-approval.v1", "brain_id": brain,
+            "device_id": device, "note_id": note, "note_hash": hash
+        })
+    );
+    let wrong_key = ed25519_dalek::SigningKey::from_bytes(&[17; 32]).verifying_key();
+    assert!(matches!(
+        purge_review::receipt::verify_reopened(
+            &root,
+            &brain,
+            &device,
+            &note,
+            &hash,
+            wrong_key.as_bytes()
+        ),
+        Err(purge_review::ReviewError::ReceiptIntegrity)
+    ));
+    println!("approval-reopened-and-verified");
 }
 
 #[test]
@@ -190,10 +299,19 @@ fn browser_client() {
     println!("browser-ready");
     io::stdout().flush().unwrap();
     let timeout = Duration::from_secs(2);
-    for line in io::stdin().lock().lines() {
-        let request: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+    for input in io::stdin().lock().lines() {
+        let request: serde_json::Value = serde_json::from_str(&input.unwrap()).unwrap();
         let args = &request["args"];
         let command = request["command"].as_str().unwrap();
+        if command == "approval_inventory" {
+            writeln!(child.stdin.as_mut().unwrap(), "approval_inventory").unwrap();
+            line.clear();
+            server_log.read_line(&mut line).unwrap();
+            let inventory = line.trim().strip_prefix("approval-inventory ").unwrap();
+            println!("browser-reply {inventory}");
+            io::stdout().flush().unwrap();
+            continue;
+        }
         let check = if command == "m10_purge_review" {
             "review"
         } else {

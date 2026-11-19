@@ -43,7 +43,7 @@ export function PurgeReview({ note }: { note: Note }) {
       const reply = await invoke<Outcome>("m10_purge_review", { action: { kind, ticket } });
       if (reply.kind !== (kind === "cancel" ? "cancelled" : "confirmed")) throw Error();
       if (reply.kind === "confirmed" && (reply.note_id !== note.eventId || reply.note_hash !== note.contentHash)) throw Error();
-      setStatus(kind === "cancel" ? "Deletion cancelled." : "Permanent deletion confirmed for this test note. The note is still stored.");
+      setStatus(kind === "cancel" ? "Deletion cancelled." : "Permanent deletion confirmed for this test note. Your approval was saved.");
     } catch {
       setStatus("Cryptex could not verify the decision. Review the note again.");
     } finally {
@@ -62,7 +62,7 @@ export function PurgeReview({ note }: { note: Note }) {
         <p>{note.classification} · <code>{note.eventId}</code></p>
         <blockquote className="purge-note">{note.text}</blockquote>
         <p>Permanent deletion cannot be undone. Copies on unreachable devices or external backups may remain.</p>
-        <p>This temporary profile tests your decision only. The note will stay stored.</p>
+        <p>This temporary profile saves a signed record of your approval. The note will stay stored.</p>
         <div className="capture-confirm-actions">
           <button type="button" ref={cancel} disabled={busy} onClick={() => void finish("cancel")}>Cancel</button>
           <button type="button" className="purge-confirm" disabled={busy} onClick={() => void finish("confirm")}>Confirm permanent deletion</button>

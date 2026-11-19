@@ -2332,6 +2332,53 @@ pub(crate) fn scan_verified_canonical_from_local_anchor_with_import_devices_and_
     )
 }
 
+/// Retain the inventory and writer locks until the isolated daemon publishes the approval.
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+pub(crate) fn lock_visible_purge_target(
+    root: &Path,
+    brain: &str,
+    anchor: &LocalTrustAnchor,
+    id: &str,
+    hash: &str,
+    deadline: Instant,
+) -> KnowledgeMaterializationResult<VerifiedCanonicalSnapshot> {
+    let snapshot = scan_anchored_history(
+        root,
+        brain,
+        anchor,
+        ImportScanScope {
+            candidate_devices: &[],
+            recovery_exclusions: &[],
+            lifecycle: NoteLifecycleRead::Apply,
+        },
+        Some(deadline),
+    )?;
+    let device = anchor.device_id();
+    let active_owner = snapshot
+        .verified_trust_context()
+        .is_some_and(|(history, trust)| {
+            &history.local_device == device
+                && !history.restricted(trust, device)
+                && trust.effective_cutoffs.get(device) == Some(&u64::MAX)
+        });
+    let matching = snapshot.verified_records().iter().any(|record| matches!(record,
+        VersionedRecord::VerifiedV1(note) if note.device_id == device.as_str() && note.event_id == id && note.content_hash.as_str() == hash
+    ));
+    if !active_owner
+        || !matching
+        || snapshot.forgotten.contains(id)
+        || !snapshot.locks_runtime(root)
+    {
+        return Err(KnowledgeMaterializationError::Verification(
+            "purge target unavailable".into(),
+        ));
+    }
+    Ok(snapshot)
+}
+
 fn scan_anchored_history(
     runtime_root: &Path,
     expected_brain_id: &str,

@@ -1,4 +1,9 @@
-//! Review of owner intent. There is intentionally no storage mutation in this protocol.
+//! Review of owner intent. Only the isolated daemon can persist a confirmation.
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+pub(super) mod receipt;
 use super::*;
 
 pub(super) const OPERATION: &str = "purge.review";
@@ -29,6 +34,8 @@ pub enum ReviewError {
     ReviewExpired,
     TargetUnavailable,
     Unavailable,
+    ReceiptIntegrity,
+    ReceiptStorage,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -60,7 +67,10 @@ pub(super) struct Pending {
 pub(super) fn enabled(ctx: &SearchContext) -> bool {
     #[cfg(test)]
     {
-        ctx.purge_reviews.is_some()
+        cfg!(any(
+            windows,
+            all(target_os = "macos", feature = "m8-local-startup-check")
+        )) && ctx.purge_reviews.is_some()
     }
     #[cfg(not(test))]
     {
@@ -158,10 +168,19 @@ fn decide(ctx: &SearchContext, action: Action) -> Result<Outcome, ReviewError> {
                 return Err(ReviewError::ReviewExpired);
             }
             verify_target(&ctx, &current.note_id, &current.note_hash)?;
-            Ok(Outcome::Confirmed {
-                note_id: current.note_id,
-                note_hash: current.note_hash,
-            })
+            #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+            {
+                receipt::persist(&ctx, &current.note_id, &current.note_hash, current.expires)?;
+                Ok(Outcome::Confirmed {
+                    note_id: current.note_id,
+                    note_hash: current.note_hash,
+                })
+            }
+            #[cfg(not(any(
+                windows,
+                all(target_os = "macos", feature = "m8-local-startup-check")
+            )))]
+            Err(ReviewError::Disabled)
         }
     }
 }
