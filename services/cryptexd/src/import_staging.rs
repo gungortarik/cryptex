@@ -236,6 +236,30 @@ mod cleanup;
 pub(crate) mod export_fs;
 pub(crate) mod policy_hold;
 
+/// Open only an existing PID file inside the minimum-reader directory. Use
+/// the same original-directory and no-alias checks as canonical staging.
+#[cfg(any(windows, target_os = "macos"))]
+pub(crate) fn open_existing_profile_lock(
+    directory: &Path,
+    leaf: &str,
+) -> crate::error::LifecycleResult<File> {
+    use crate::error::LifecycleError;
+    let unsafe_layout =
+        || LifecycleError::UnsafeRuntimePath("invalid M9 profile lock layout".into());
+    #[cfg(windows)]
+    {
+        let _pins = inspect_directory_chain(directory, true).map_err(|_| unsafe_layout())?;
+        crate::platform::instance_file::open(&directory.join(leaf), false)
+            .map_err(|_| unsafe_layout())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        macos_fs::Directory::open(directory, true)
+            .and_then(|dir| dir.open_file(leaf.as_ref(), libc::O_RDWR))
+            .map_err(|_| unsafe_layout())
+    }
+}
+
 fn create_import_file(path: &Path) -> io::Result<File> {
     #[cfg(target_os = "macos")]
     {

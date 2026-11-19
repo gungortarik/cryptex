@@ -57,10 +57,42 @@ fn note_and_link(key: &SigningKey) -> (AcceptedEvent, Value) {
 }
 
 #[test]
+fn incomplete_m9_layout_is_never_repaired_by_open_or_probe() {
+    use crate::instance::{create_m9_profile_root, observe_instance, try_acquire_instance};
+    let temporary = Profile::new();
+    let root = temporary.0.join("incomplete");
+    fs::create_dir_all(root.join("daemon.lock")).unwrap();
+    assert!(try_acquire_instance(&root).is_err());
+    assert!(observe_instance(&root).is_err());
+    assert!(create_m9_profile_root(&temporary.0, "incomplete").is_err());
+    assert_eq!(fs::read_dir(root.join("daemon.lock")).unwrap().count(), 0);
+}
+
+#[test]
 #[ignore = "CI supplies an independently built, pinned pre-M9 daemon"]
 fn audit_pre_m9_profile_admission() {
     let old_daemon = std::env::var_os("CRYPTEX_M9_PREVIOUS_DAEMON").expect("pinned M8 daemon");
-    let profile = Profile::new();
+    use crate::instance::{create_m9_profile_root, observe_instance, try_acquire_instance};
+    use std::process::Command;
+
+    let temporary = Profile::new();
+    let legacy = temporary.0.join("legacy");
+    fs::create_dir(&legacy).unwrap();
+    let old_run = |root: &std::path::Path, command: &str, extra: &[&str]| {
+        Command::new(&old_daemon)
+            .args(["lifecycle", command, "--runtime-root"])
+            .arg(root)
+            .args(extra)
+            .output()
+            .expect("execute independently built M8")
+    };
+    let probe = old_run(&legacy, "probe", &[]);
+    assert!(probe.status.success());
+    assert!(String::from_utf8_lossy(&probe.stdout).contains("probe acquired instance lock"));
+    assert!(create_m9_profile_root(&temporary.0, "legacy").is_err());
+    assert!(legacy.join("daemon.lock").is_file());
+
+    let root = create_m9_profile_root(&temporary.0, "protected").unwrap();
     let key = SigningKey::from_bytes(&[21; 32]);
     let (note, unsigned) = note_and_link(&key);
     let note = serde_json_canonicalizer::to_vec(&note).unwrap();
@@ -69,40 +101,47 @@ fn audit_pre_m9_profile_admission() {
         verify_v2_history(&[&note, &link], TrustedTestDevice(key.verifying_key())).unwrap();
     cryptex_events::attachment_link::resolve(&history, LINK).unwrap();
     let device = DeviceId::new(DEVICE).unwrap();
-    for record in [note, link] {
-        cryptex_storage::append_frame(&profile.0, &device, 0, &record).unwrap();
+    {
+        let _writer = try_acquire_instance(&root).unwrap();
+        assert!(observe_instance(&root).unwrap().lock_held);
+        assert!(matches!(
+            try_acquire_instance(&root),
+            Err(crate::error::LifecycleError::AlreadyRunning { .. })
+        ));
+        for record in [note, link] {
+            cryptex_storage::append_frame(&root, &device, 0, &record).unwrap();
+        }
     }
-    let pack = cryptex_storage::active_segment_path(&profile.0, &device, 0);
+    let pack = cryptex_storage::active_segment_path(&root, &device, 0);
     let before = fs::read(&pack).unwrap();
-    // Exercise actual pre-downgrade profile admission, without starting IPC,
-    // touching OS credentials or handing a real user's history to the binary.
-    let result = std::process::Command::new(old_daemon)
-        .args(["lifecycle", "probe", "--runtime-root"])
-        .arg(&profile.0)
-        .output()
-        .unwrap();
-    assert_eq!(
-        fs::read(pack).unwrap(),
-        before,
-        "historical probe modified canonical bytes"
-    );
-    if result.status.success() {
+    assert!(!observe_instance(&root).unwrap().lock_held);
+    for (command, args) in [("probe", &[][..]), ("hold", &["--hold-ms", "1"][..])] {
+        let result = old_run(&root, command, args);
+        // The old executable reports the native error opening daemon.lock as
+        // a file. A busy lock, bad command or unrelated crash cannot pass.
+        let stderr = String::from_utf8(result.stderr).unwrap();
+        let expected_os_code = if cfg!(windows) { 5 } else { 21 };
+        assert_eq!(result.status.code(), Some(2), "{command}: {stderr}");
         assert!(
-            String::from_utf8(result.stdout)
-                .unwrap()
-                .contains("probe acquired instance lock")
+            stderr.trim_start().starts_with("cryptexd: io error: "),
+            "{command}: {stderr}"
         );
-        println!("historical_profile_lock=acquired production_v2_activation=blocked");
-    } else {
-        assert_eq!(
-            result.status.code(),
-            Some(3),
-            "generic startup failure is not downgrade evidence"
+        assert!(
+            stderr
+                .trim_end()
+                .ends_with(&format!("(os error {expected_os_code})")),
+            "{command}: {stderr}"
         );
-        println!(
-            "historical_profile_probe=incompatible production_v2_activation=requires_full_gate"
-        );
+        assert!(!root.join("lifecycle.status").exists());
+        assert_eq!(fs::read(&pack).unwrap(), before);
     }
+    // Reopen after the rejected downgrade and check the signed store again.
+    let _reader = try_acquire_instance(&root).unwrap();
+    assert_eq!(fs::read(&pack).unwrap(), before);
+    assert!(observe_instance(&root).unwrap().lock_held);
+    println!(
+        "historical_profile_lock=denied legacy_probe=allowed protected_hold=denied current_reopen=allowed pack_unchanged=true production_v2_activation=blocked"
+    );
 }
 
 #[test]

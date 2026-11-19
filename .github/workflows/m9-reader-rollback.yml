@@ -6,6 +6,10 @@ on:
       - '.github/workflows/m9-reader-rollback.yml'
       - 'services/cryptexd/src/attachment_blobs/tests/signed_link.rs'
       - 'services/cryptexd/src/instance.rs'
+      - 'services/cryptexd/src/import_staging.rs'
+      - 'services/cryptexd/src/import_staging/macos_fs.rs'
+      - 'services/cryptexd/src/platform/instance_file.rs'
+      - 'scripts/m8/*standard-user*'
       - 'services/cryptexd/src/compat.rs'
 permissions:
   contents: read
@@ -20,7 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: candidate
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
@@ -30,14 +33,23 @@ jobs:
       - name: Build the unmodified pre-M9 daemon
         working-directory: m8
         run: cargo build --locked -p cryptexd --bin cryptexd
-      - name: Observe old daemon admission on a disposable signed store
-        working-directory: candidate
+      - name: Verify M8 denial under a standard Windows account
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M9HistoricalDaemon (Resolve-Path 'm8/target/debug/cryptexd.exe').Path | Tee-Object -FilePath rollback-observation.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $receipt = @(Select-String -Path rollback-observation.txt -Pattern '^historical_profile_lock=denied ')
+          if ($receipt.Count -ne 1) { throw 'Missing historical denial receipt.' }
+          $receipt[0].Line >> $env:GITHUB_STEP_SUMMARY
+      - name: Verify M8 denial on the controlled Mac product path
+        if: runner.os == 'macOS'
         env:
-          CRYPTEX_M9_PREVIOUS_DAEMON: ${{ github.workspace }}/m8/target/debug/cryptexd${{ runner.os == 'Windows' && '.exe' || '' }}
-          CRYPTEX_M8_DEVELOPMENT_CERT_DER: ${{ github.workspace }}/candidate/services/cryptexd/src/m8_owner_channel/release_inventory/fixtures/signer.der
+          CRYPTEX_M9_PREVIOUS_DAEMON: ${{ github.workspace }}/m8/target/debug/cryptexd
+          CRYPTEX_M8_DEVELOPMENT_CERT_DER: ${{ github.workspace }}/services/cryptexd/src/m8_owner_channel/release_inventory/fixtures/signer.der
           CRYPTEX_M8_DEVELOPMENT_RELEASE_ID: cryptex-dev-attachment-ci
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --locked -p cryptexd ${{ runner.os == 'macOS' && '--features m8-development-product' || '' }} --lib attachment_blobs::tests::signed_link::audit_pre_m9_profile_admission -- --ignored --exact --nocapture | tee rollback-observation.txt
-          grep -E '^historical_profile_(lock|probe)=' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"
+          cargo test --locked -p cryptexd --features m8-development-product --lib attachment_blobs::tests::signed_link::audit_pre_m9_profile_admission -- --ignored --exact --nocapture | tee rollback-observation.txt
+          grep '^historical_profile_lock=denied ' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"

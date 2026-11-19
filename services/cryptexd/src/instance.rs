@@ -65,11 +65,49 @@ pub struct InstanceObservation {
     pub recorded_pid: Option<u32>,
 }
 
+#[cfg(any(windows, target_os = "macos"))]
+const M9_INSTANCE_FILE: &str = "reader-m9.pid";
+
+/// Prepare only a brand-new profile. Never replace a legacy lock or upgrade an
+/// occupied root. The caller may populate the store only after successful return.
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub fn create_m9_profile_root(parent: &Path, name: &str) -> LifecycleResult<PathBuf> {
+    use crate::import_staging::export_fs::Directory;
+    let path = parent.join(name);
+    crate::paths::assert_outside_repository(&path)?;
+    let prepare = || -> Result<(), crate::import_staging::export_fs::Error> {
+        let parent = Directory::open(parent)?;
+        let root = parent.create_child_exclusive(name)?;
+        // M8 requires this exact entry to be a writable regular file. The
+        // directory persists while offline and across process termination.
+        let barrier = root.create_child_exclusive("daemon.lock")?;
+        barrier.open_file(M9_INSTANCE_FILE, true)?.sync_all()?;
+        barrier.sync()?;
+        root.sync()?;
+        parent.sync()
+    };
+    prepare().map_err(|e| LifecycleError::Attention(format!("M9 profile preparation: {e:?}")))?;
+    Ok(path)
+}
+
+fn open_instance_file(path: &Path, create_legacy: bool) -> LifecycleResult<File> {
+    match crate::platform::instance_file::open(path, create_legacy) {
+        Ok(file) => Ok(file),
+        #[cfg(any(windows, target_os = "macos"))]
+        Err(_) if fs::symlink_metadata(path).is_ok_and(|m| m.is_dir()) => {
+            // The native adapter pins the directory without following aliases.
+            // Opening a partial layout must never create the missing PID file.
+            crate::import_staging::open_existing_profile_lock(path, M9_INSTANCE_FILE)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
 /// Attempt to become the sole daemon instance for `runtime_root`.
 pub fn try_acquire_instance(runtime_root: &Path) -> LifecycleResult<InstanceLock> {
     fs::create_dir_all(runtime_root)?;
     let path = lock_path(runtime_root);
-    let mut file = crate::platform::instance_file::open(&path, true)?;
+    let mut file = open_instance_file(&path, true)?;
 
     match file.try_lock_exclusive() {
         Ok(()) => {}
@@ -122,7 +160,7 @@ pub fn observe_instance(runtime_root: &Path) -> LifecycleResult<InstanceObservat
         });
     }
 
-    let mut probe = crate::platform::instance_file::open(&path, false)?;
+    let mut probe = open_instance_file(&path, false)?;
     match probe.try_lock_exclusive() {
         Ok(()) => {
             let holder_pid = read_lock_pid(&mut probe)?;

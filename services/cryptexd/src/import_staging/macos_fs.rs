@@ -492,7 +492,7 @@ impl Directory {
         Ok(ExistingLock::Opened(file))
     }
 
-    fn open_file(&self, name: &OsStr, flags: libc::c_int) -> io::Result<File> {
+    pub(super) fn open_file(&self, name: &OsStr, flags: libc::c_int) -> io::Result<File> {
         self.validate()?;
         let name = leaf(name)?;
         let file = owned(unsafe {

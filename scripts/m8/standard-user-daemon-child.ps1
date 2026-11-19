@@ -67,6 +67,18 @@ function Assert-CompleteSuite([int]$Code,[string]$Stdout,[int]$Count,[bool]$NoIg
     if([int]$Matches[3] -ne $Filtered){throw 'Unexpected excluded test inventory.'}
     if($NoIgnored -and [int]$Matches[2] -ne 0){throw 'Startup suite must execute every test, including the endpoint fixture.'}
 }
+if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) {
+    $env:CRYPTEX_M9_PREVIOUS_DAEMON=$p.m9_historical_daemon
+    $suite='attachment_blobs::tests::signed_link::audit_pre_m9_profile_admission'
+    $result=Invoke-TestBinary $p.executables[0] "$suite --exact --ignored --nocapture"
+    $result.stdout | Write-Output
+    $result.stderr | Write-Output
+    if($result.code -ne 0 -or $result.stdout -notmatch '1 passed; 0 failed; 0 ignored' -or
+        $result.stdout -notmatch 'historical_profile_lock=denied'){throw 'Historical M8 denial was not verified.'}
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=1} | ConvertTo-Json |
+        Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
+    exit 0
+}
 $cutoffOnly=$p.PSObject.Properties['lan_cutoff_only'] -and $p.lan_cutoff_only
 if($cutoffOnly -or ($p.PSObject.Properties['lan_setup_only'] -and $p.lan_setup_only)) {
     if($cutoffOnly) {
