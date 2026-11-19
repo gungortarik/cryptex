@@ -119,7 +119,7 @@ if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) 
     $live.stderr | Write-Output
     $proofs=@($live.stderr -split '\r?\n' | Where-Object {$_ -ceq 'component=m9_reader_check status=verified peers=1'})
     if($live.code -ne 0 -or $live.stdout -notmatch '1 passed; 0 failed; 0 ignored' -or $proofs.Count -lt 2){throw 'Live paired reader verification incomplete.'}
-    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=4} | ConvertTo-Json |
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=5} | ConvertTo-Json |
         Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
     exit 0
 }

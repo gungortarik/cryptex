@@ -4,6 +4,11 @@ on:
   push:
     paths:
       - '.github/workflows/m9-reader-rollback.yml'
+      - 'crates/events/src/attachment_link.rs'
+      - 'services/cryptexd/src/attachment_blobs.rs'
+      - 'services/cryptexd/src/canonical_writer/isolated_attachment.rs'
+      - 'services/cryptexd/src/incoming_publication.rs'
+      - 'services/cryptexd/src/incoming_publication/**'
       - 'services/cryptexd/src/attachment_blobs/tests/signed_link.rs'
       - 'services/cryptexd/src/attachment_blobs/tests/signed_link/**'
       - 'services/cryptexd/src/instance.rs'

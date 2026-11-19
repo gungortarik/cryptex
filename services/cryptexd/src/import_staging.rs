@@ -2000,7 +2000,10 @@ fn verify_segment_stream<R: TrustedDaemonKeyResolver>(
                 ),
                 #[cfg(test)]
                 VersionedRecord::VerifiedUnsupported(event)
-                    if crate::test_temp::ATTACHMENT_PAIR.with(|pair| pair.get().is_some())
+                    if candidate
+                        .staged_path
+                        .ancestors()
+                        .any(crate::test_temp::attachment_trial)
                         && envelope.get("event_type").and_then(|v| v.as_str())
                             == Some(cryptex_events::attachment_link::EVENT_TYPE) =>
                 {
