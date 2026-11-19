@@ -663,20 +663,16 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
     owner_a.shutdown().unwrap();
     drop((owner_a, instance_a));
     let retired = canonical_files(&source, true);
-    assert_ne!(
-        retired, restricted,
-        "retirement must append durable evidence"
-    );
+    assert_eq!(retired.len(), restricted.len() + 1, "one terminal segment");
     for (path, bytes) in &restricted {
-        let after = &retired.iter().find(|(p, _)| p == path).unwrap().1;
-        if path.extension().is_some_and(|ext| ext == "open") {
-            assert!(
-                after.starts_with(bytes),
-                "active pack must remain append-only"
-            );
-        } else {
-            assert_eq!(after, bytes, "sealed bytes must remain immutable");
-        }
+        // Retirement seals the existing prefix, then writes its own segment.
+        let sealed_path = path.with_extension("seg");
+        let after = &retired
+            .iter()
+            .find(|(p, _)| *p == sealed_path)
+            .expect("sealed prefix present")
+            .1;
+        assert_eq!(after, bytes, "all prefix bytes must remain immutable");
     }
     let (mut owner_a, instance_a) = a.start(&source, &package_path, store.clone());
     restricted_view(&owner_a, true);

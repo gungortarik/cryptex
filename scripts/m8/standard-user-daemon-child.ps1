@@ -95,6 +95,11 @@ if($p.PSObject.Properties['exchange_native_only'] -and $p.exchange_native_only) 
     $diagnostics.stdout | Write-Output
     $diagnostics.stderr | Write-Output
     Assert-CompleteSuite $diagnostics.code $diagnostics.stdout 3 $true ($fullCount-3)
+    $filter='managed_profile::native_product_receive_test::restriction::self_retirement_reaches_offline_peer_through_native_relay'
+    $result=Invoke-TestBinary $exe "$filter --ignored --exact --test-threads=1"
+    $result.stdout | Write-Output
+    $result.stderr | Write-Output
+    Assert-CompleteSuite $result.code $result.stdout 1 $true ($fullCount-1)
     $filter='managed_profile::native_xml::exchange::tests::supervised_exchange_install_restart_and_revocation'
     $result=Invoke-TestBinary $exe "$filter --ignored --exact --test-threads=1"
     $result.stdout | Write-Output
@@ -106,11 +111,6 @@ if($p.PSObject.Properties['exchange_native_only'] -and $p.exchange_native_only) 
     $result.stderr | Write-Output
     Assert-CompleteSuite $result.code $result.stdout 1 $true ($fullCount-1)
     $filter='managed_profile::native_product_receive_test::restriction::restriction_propagates_to_remaining_peer_and_survives_restart'
-    $result=Invoke-TestBinary $exe "$filter --ignored --exact --test-threads=1"
-    $result.stdout | Write-Output
-    $result.stderr | Write-Output
-    Assert-CompleteSuite $result.code $result.stdout 1 $true ($fullCount-1)
-    $filter='managed_profile::native_product_receive_test::restriction::self_retirement_reaches_offline_peer_through_native_relay'
     $result=Invoke-TestBinary $exe "$filter --ignored --exact --test-threads=1"
     $result.stdout | Write-Output
     $result.stderr | Write-Output
