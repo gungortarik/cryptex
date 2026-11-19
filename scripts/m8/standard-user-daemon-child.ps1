@@ -87,7 +87,13 @@ if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) 
     $env:CRYPTEX_M9_READER_ATTEMPT=[guid]::NewGuid().ToString('N')
     $readerUnits=Invoke-TestBinary $p.executables[0] 'managed_profile::sealed_export::reader::'
     $readerUnits.stdout | Write-Output
-    if($readerUnits.code -ne 0 -or $readerUnits.stdout -notmatch '3 passed; 0 failed; 0 ignored'){throw 'Reader unit checks incomplete.'}
+    if($readerUnits.code -ne 0 -or $readerUnits.stdout -notmatch '3 passed; 0 failed; 1 ignored'){throw 'Reader unit checks incomplete.'}
+    foreach($phase in @('write','reopen')) {
+        $env:CRYPTEX_M9_OBSERVATION_PHASE=$phase
+        $nativeReceipt=Invoke-TestBinary $p.executables[0] 'managed_profile::sealed_export::reader::retained::tests::native_observation_survives_process_exit --exact --ignored'
+        $nativeReceipt.stdout | Write-Output
+        if($nativeReceipt.code -ne 0 -or $nativeReceipt.stdout -notmatch '1 passed; 0 failed; 0 ignored'){throw "Native reader evidence $phase failed."}
+    }
     $preflight=Invoke-TestBinary $p.executables[0] 'managed_profile::sealed_export::tests::reader_preflight:: --nocapture'
     $preflight.stdout | Write-Output
     $preflight.stderr | Write-Output

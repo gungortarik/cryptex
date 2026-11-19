@@ -1,5 +1,5 @@
-//! Reader evidence is local to a transport session. Slots in the disposable
-//! exchange tree are untrusted inputs, never canonical events or admission grants.
+//! Live challenges and previously witnessed reader capability have distinct
+//! statuses. Exchange slots are untrusted inputs, never admission grants.
 use super::Directory;
 use crate::knowledge_materialization::VerifiedCanonicalSnapshot;
 use crate::managed_profile::exchange_policy::ExchangePeers;
@@ -180,7 +180,26 @@ impl ReaderCheck {
                     observed = Some(reply.clone());
                 }
                 if round.recorded.get(&slot) != Some(reply) {
-                    match evidence.save(&round.context, &round.nonce, bytes, signer()?) {
+                    let previous = evidence.load(
+                        &round.context,
+                        &reverse,
+                        &history.local_public_key,
+                        &peer.public_key,
+                        &resolved_blob,
+                        Some(reply),
+                    );
+                    let saved = match previous {
+                        Ok(Some(_)) => Ok(()),
+                        Ok(None) => evidence.save(&round.context, &round.nonce, bytes, signer()?),
+                        Err(Error::Message) => {
+                            eprintln!(
+                                "component=m9_reader_check status=damaged_observation_fresh_reply"
+                            );
+                            evidence.save(&round.context, &round.nonce, bytes, signer()?)
+                        }
+                        Err(error) => Err(error),
+                    };
+                    match saved {
                         Ok(()) => {
                             round.recorded.insert(slot, reply.clone());
                         }

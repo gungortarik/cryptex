@@ -77,5 +77,9 @@ jobs:
           grep '^existing_profile_migration=verified ' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"
           export CRYPTEX_M9_READER_ATTEMPT=$(python3 -c 'import uuid; print(uuid.uuid4().hex)')
           cargo test --locked -p cryptexd --features m8-development-product --lib managed_profile::sealed_export::reader::
+          for phase in write reopen; do
+            CRYPTEX_M9_OBSERVATION_PHASE="$phase" cargo test --locked -p cryptexd --features m8-development-product --lib managed_profile::sealed_export::reader::retained::tests::native_observation_survives_process_exit -- --exact --ignored | tee native-reader.txt
+            grep -F '1 passed; 0 failed; 0 ignored' native-reader.txt >> "$GITHUB_STEP_SUMMARY"
+          done
           cargo test --locked -p cryptexd --features m8-development-product --lib managed_profile::sealed_export::tests::reader_preflight:: -- --nocapture | tee preflight.txt
           grep -F '5 passed; 0 failed; 0 ignored' preflight.txt >> "$GITHUB_STEP_SUMMARY"
