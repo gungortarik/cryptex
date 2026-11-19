@@ -10,6 +10,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cryptex_core::DeviceId;
+use cryptex_events::security_history::NoteLifecycleRead;
 use cryptex_events::{
     AuthenticatedSecurityRecord, CancellableSecurityHistoryError, LocalTrustAnchor,
     SecurityEventTypeV3, SecurityPayloadV3, SigningKeyId, TrustedDaemonKeyResolver,
@@ -23,7 +24,7 @@ use cryptex_knowledge::sqlite::{
 use cryptex_projection::{
     ProjectionDb, ProjectionError, SearchHit, SearchQuery, TimelinePage, TimelineQuery,
     VaultEntity, VaultFact, VaultKnowledgeView, VaultRelation, event_detail, event_detail_until,
-    search_events, timeline_events, timeline_events_until, validate_schema_v1_read_only,
+    validate_schema_v1_read_only,
 };
 use cryptex_storage::layout::{
     active_segment_path, canonical_events_device_dir, sealed_segment_path,
@@ -731,6 +732,7 @@ pub(crate) struct ImportRecoverySegmentExclusion {
 }
 
 struct ImportScanScope<'a> {
+    lifecycle: NoteLifecycleRead,
     candidate_devices: &'a [DeviceId],
     recovery_exclusions: &'a [ImportRecoverySegmentExclusion],
 }
@@ -739,6 +741,7 @@ struct ImportScanScope<'a> {
 // production publication path consumes them until the full M8 gate exists.
 #[allow(dead_code)]
 pub(crate) struct VerifiedCanonicalSnapshot {
+    forgotten: std::collections::BTreeSet<String>,
     runtime_root: std::path::PathBuf,
     attachment_links: AdmittedLinks,
     devices: Vec<DeviceId>,
@@ -1327,10 +1330,15 @@ pub(crate) fn rebuild_knowledge_from_local_approval_history(
     anchor: &LocalTrustAnchor,
     db: &mut ProjectionDb,
 ) -> KnowledgeMaterializationResult<KnowledgeRebuildReport> {
-    let snapshot = scan_verified_canonical_from_local_anchor_until(
+    let snapshot = scan_anchored_history(
         runtime_root,
         expected_brain_id,
         anchor,
+        ImportScanScope {
+            candidate_devices: &[],
+            recovery_exclusions: &[],
+            lifecycle: NoteLifecycleRead::Apply,
+        },
         None,
     )?;
     if snapshot
@@ -2216,6 +2224,7 @@ fn scan_verified_canonical_until<R: TrustedDaemonKeyResolver>(
     Ok(VerifiedCanonicalSnapshot {
         runtime_root: runtime_root.to_path_buf(),
         attachment_links: AdmittedLinks::new(),
+        forgotten: Default::default(),
         devices,
         security_frames: frames.clone(),
         frames,
@@ -2274,6 +2283,28 @@ pub(crate) fn scan_verified_canonical_from_local_anchor_with_import_devices_and_
     exclusions: &[ImportRecoverySegmentExclusion],
     deadline: Option<Instant>,
 ) -> KnowledgeMaterializationResult<VerifiedCanonicalSnapshot> {
+    scan_anchored_history(
+        runtime_root,
+        expected_brain_id,
+        anchor,
+        ImportScanScope {
+            candidate_devices: import_devices,
+            recovery_exclusions: exclusions,
+            lifecycle: NoteLifecycleRead::Hold,
+        },
+        deadline,
+    )
+}
+
+fn scan_anchored_history(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    anchor: &LocalTrustAnchor,
+    scope: ImportScanScope<'_>,
+    deadline: Option<Instant>,
+) -> KnowledgeMaterializationResult<VerifiedCanonicalSnapshot> {
+    let import_devices = scope.candidate_devices;
+    let exclusions = scope.recovery_exclusions;
     check_deadline(deadline)?;
     crate::paths::assert_outside_repository(runtime_root)
         .map_err(|error| KnowledgeMaterializationError::InvalidInput(error.to_string()))?;
@@ -2329,12 +2360,13 @@ pub(crate) fn scan_verified_canonical_from_local_anchor_with_import_devices_and_
         .map(|frame| frame.bytes.as_slice())
         .collect::<Vec<_>>();
     let (mut security_history, mut reduction, mut verified_trust) =
-        crate::trust_reducer::verify_history_from_local_anchors_with_verified_cancellable(
+        crate::trust_reducer::verify_anchored_history_for_reads(
             &raw_refs,
             expected_brain_id,
             anchor.device_id().clone(),
             anchor.signing_key_id().clone(),
             *anchor.public_key(),
+            scope.lifecycle,
             || deadline.is_some_and(|deadline| Instant::now() >= deadline),
         )
         .map_err(|hold| match hold {
@@ -2535,7 +2567,20 @@ pub(crate) fn scan_verified_canonical_from_local_anchor_with_import_devices_and_
         .iter()
         .map(|(device, cutoff)| (device.as_str().to_owned(), *cutoff))
         .collect::<std::collections::BTreeMap<_, _>>();
-    let attachment_links = admitted_attachment_links(&security_history, &cutoffs, deadline)?;
+    let mut attachment_links = admitted_attachment_links(&security_history, &cutoffs, deadline)?;
+    let forgotten = security_history
+        .forgotten_note_ids(&cutoffs, || {
+            deadline.is_some_and(|end| Instant::now() >= end)
+        })
+        .map_err(|error| match error {
+            CancellableSecurityHistoryError::Cancelled => {
+                KnowledgeMaterializationError::DeadlineExceeded
+            }
+            CancellableSecurityHistoryError::InvalidRecord(err) => {
+                KnowledgeMaterializationError::Verification(err.to_string())
+            }
+        })?;
+    attachment_links.retain(|note, _| !forgotten.contains(note));
     let history = security_history
         .content_history_through_cutoffs_cancellable(&cutoffs, || {
             deadline.is_some_and(|deadline| Instant::now() >= deadline)
@@ -2614,6 +2659,7 @@ pub(crate) fn scan_verified_canonical_from_local_anchor_with_import_devices_and_
         frames: content_frames,
         security_frames,
         attachment_links,
+        forgotten,
         history,
         security_history,
         trust_history: Some(verified_trust),
@@ -2664,6 +2710,7 @@ pub fn search_events_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolver>
         key_resolver,
         db,
         deadline,
+        NoteLifecycleRead::Apply,
     );
     if safety.snapshot.is_none() {
         return Err(GuardedSearchError::BrainWideHold(
@@ -2675,7 +2722,7 @@ pub fn search_events_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolver>
     let result = {
         // Keep the verified snapshot borrowed throughout the query. The state
         // owns its RAII locks and is dropped only after this scope completes.
-        let _snapshot = safety.snapshot.as_ref().expect("checked above");
+        let snapshot = safety.snapshot.as_ref().expect("checked above");
         if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
             return Err(GuardedSearchError::BrainWideHold(
                 RetrievalSafetyHold::OperationDeadlineExceeded,
@@ -2683,24 +2730,16 @@ pub fn search_events_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolver>
         }
         let mut guarded_query = query.clone();
         guarded_query.brain_id = Some(expected_brain_id.to_owned());
-        match deadline {
-            Some(deadline) => match cryptex_projection::search_events_until(
-                db.connection(),
-                &guarded_query,
-                deadline,
-            ) {
-                Ok(_) if Instant::now() >= deadline => Err(GuardedSearchError::BrainWideHold(
-                    RetrievalSafetyHold::OperationDeadlineExceeded,
-                )),
-                Ok(hits) => Ok(hits),
-                Err(_) if Instant::now() >= deadline => Err(GuardedSearchError::BrainWideHold(
-                    RetrievalSafetyHold::OperationDeadlineExceeded,
-                )),
-                Err(error) => Err(GuardedSearchError::Query(error)),
-            },
-            None => {
-                search_events(db.connection(), &guarded_query).map_err(GuardedSearchError::Query)
-            }
+        match cryptex_projection::search::search_visible_events(
+            db.connection(),
+            &guarded_query,
+            &snapshot.forgotten,
+            deadline,
+        ) {
+            _ if deadline.is_some_and(|end| Instant::now() >= end) => Err(
+                GuardedSearchError::BrainWideHold(RetrievalSafetyHold::OperationDeadlineExceeded),
+            ),
+            result => result.map_err(GuardedSearchError::Query),
         }
     };
     // Make the lock lifetime explicit: both canonical locks and inventory
@@ -2728,6 +2767,7 @@ pub fn timeline_events_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolve
         key_resolver,
         db,
         deadline,
+        NoteLifecycleRead::Apply,
     );
     if safety.snapshot.is_none() {
         return Err(GuardedSearchError::BrainWideHold(
@@ -2737,7 +2777,7 @@ pub fn timeline_events_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolve
         ));
     }
     let result = {
-        let _snapshot = safety.snapshot.as_ref().expect("checked above");
+        let snapshot = safety.snapshot.as_ref().expect("checked above");
         if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
             return Err(GuardedSearchError::BrainWideHold(
                 RetrievalSafetyHold::OperationDeadlineExceeded,
@@ -2747,22 +2787,16 @@ pub fn timeline_events_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolve
         // Timeline is scoped to the verified local Brain. The projection
         // query receives that trusted ID; the Desktop cannot choose it.
         guarded_query.brain_id = Some(expected_brain_id.to_owned());
-        match deadline {
-            Some(deadline) => {
-                match timeline_events_until(db.connection(), &guarded_query, deadline) {
-                    Ok(_) if Instant::now() >= deadline => Err(GuardedSearchError::BrainWideHold(
-                        RetrievalSafetyHold::OperationDeadlineExceeded,
-                    )),
-                    Ok(page) => Ok(page),
-                    Err(_) if Instant::now() >= deadline => Err(GuardedSearchError::BrainWideHold(
-                        RetrievalSafetyHold::OperationDeadlineExceeded,
-                    )),
-                    Err(error) => Err(GuardedSearchError::Query(error)),
-                }
-            }
-            None => {
-                timeline_events(db.connection(), &guarded_query).map_err(GuardedSearchError::Query)
-            }
+        match cryptex_projection::search::timeline_visible_events(
+            db.connection(),
+            &guarded_query,
+            &snapshot.forgotten,
+            deadline,
+        ) {
+            _ if deadline.is_some_and(|end| Instant::now() >= end) => Err(
+                GuardedSearchError::BrainWideHold(RetrievalSafetyHold::OperationDeadlineExceeded),
+            ),
+            result => result.map_err(GuardedSearchError::Query),
         }
     };
     drop(safety);
@@ -2808,6 +2842,7 @@ pub(crate) fn event_detail_with_attachments<R: TrustedDaemonKeyResolver>(
         key_resolver,
         db,
         deadline,
+        NoteLifecycleRead::Apply,
     );
     if safety.snapshot.is_none() {
         return Err(GuardedSearchError::BrainWideHold(
@@ -2822,6 +2857,9 @@ pub(crate) fn event_detail_with_attachments<R: TrustedDaemonKeyResolver>(
             return Err(GuardedSearchError::BrainWideHold(
                 RetrievalSafetyHold::OperationDeadlineExceeded,
             ));
+        }
+        if snapshot.forgotten.contains(event_id) {
+            return Ok(None);
         }
         match deadline {
             Some(deadline) => {
@@ -2870,6 +2908,7 @@ pub fn evaluate_retrieval_safety<R: TrustedDaemonKeyResolver>(
         key_resolver,
         db,
         None,
+        NoteLifecycleRead::Hold,
     )
 }
 
@@ -2892,6 +2931,7 @@ pub(crate) fn evaluate_import_retrieval_safety<R: TrustedDaemonKeyResolver>(
         expected_brain_id,
         &[],
         ImportScanScope {
+            lifecycle: NoteLifecycleRead::Hold,
             candidate_devices,
             recovery_exclusions: &[],
         },
@@ -2918,6 +2958,7 @@ pub(crate) fn evaluate_import_recovery_retrieval_safety<R: TrustedDaemonKeyResol
         expected_brain_id,
         &[],
         ImportScanScope {
+            lifecycle: NoteLifecycleRead::Hold,
             candidate_devices,
             recovery_exclusions: exclusions,
         },
@@ -3080,12 +3121,14 @@ fn evaluate_retrieval_safety_until<R: TrustedDaemonKeyResolver>(
     key_resolver: &mut R,
     db: &ProjectionDb,
     deadline: Option<Instant>,
+    lifecycle: NoteLifecycleRead,
 ) -> RetrievalSafetyState {
     evaluate_retrieval_safety_with_import_devices_until(
         runtime_root,
         expected_brain_id,
         trusted_devices,
         ImportScanScope {
+            lifecycle,
             candidate_devices: &[],
             recovery_exclusions: &[],
         },
@@ -3107,20 +3150,11 @@ fn evaluate_retrieval_safety_with_import_devices_until<R: TrustedDaemonKeyResolv
     let import_devices = import_scope.candidate_devices;
     let exclusions = import_scope.recovery_exclusions;
     let scanned = match key_resolver.local_trust_anchor() {
-        Some(anchor) if !import_devices.is_empty() || !exclusions.is_empty() => {
-            scan_verified_canonical_from_local_anchor_with_import_devices_and_exclusions_until(
-                runtime_root,
-                expected_brain_id,
-                &anchor,
-                import_devices,
-                exclusions,
-                deadline,
-            )
-        }
-        Some(anchor) => scan_verified_canonical_from_local_anchor_until(
+        Some(anchor) => scan_anchored_history(
             runtime_root,
             expected_brain_id,
             &anchor,
+            import_scope,
             deadline,
         ),
         None if !import_devices.is_empty() || !exclusions.is_empty() => {
@@ -4897,6 +4931,7 @@ mod tests {
             &mut resolver,
             &db,
             Some(Instant::now() - std::time::Duration::from_millis(1)),
+            NoteLifecycleRead::Apply,
         );
         assert!(!safety.allows_content());
         assert_eq!(

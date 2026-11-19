@@ -11,8 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use cryptex_core::ids::DeviceId;
 use cryptex_events::{
     AuthenticatedSecurityRecord, SecurityPayloadV3, SigningKeyId, TrustedDaemonKeyResolver,
-    VerifiedSecurityHistory, ZERO_CONTENT_HASH_HEX, verify_bootstrap_transcript_values,
-    verify_security_history_cancellable,
+    VerifiedSecurityHistory, ZERO_CONTENT_HASH_HEX,
+    security_history::verify_security_history_for_note_reads, verify_bootstrap_transcript_values,
 };
 use ed25519_dalek::VerifyingKey;
 
@@ -530,6 +530,36 @@ pub(crate) fn verify_history_from_local_anchors_with_verified_cancellable<C>(
     local_device: DeviceId,
     local_signing_key_id: SigningKeyId,
     local_public_key: [u8; 32],
+    cancelled: C,
+) -> Result<
+    (
+        VerifiedSecurityHistory,
+        TrustReduction,
+        VerifiedTrustHistory,
+    ),
+    TrustHold,
+>
+where
+    C: FnMut() -> bool,
+{
+    verify_anchored_history_for_reads(
+        raw_records,
+        expected_brain_id,
+        local_device,
+        local_signing_key_id,
+        local_public_key,
+        cryptex_events::security_history::NoteLifecycleRead::Hold,
+        cancelled,
+    )
+}
+
+pub(crate) fn verify_anchored_history_for_reads<C>(
+    raw_records: &[&[u8]],
+    expected_brain_id: &str,
+    local_device: DeviceId,
+    local_signing_key_id: SigningKeyId,
+    local_public_key: [u8; 32],
+    lifecycle: cryptex_events::security_history::NoteLifecycleRead,
     mut cancelled: C,
 ) -> Result<
     (
@@ -568,7 +598,7 @@ where
     if local_records.is_empty() {
         return Err(TrustHold::MissingOrUnverifiableHistory);
     }
-    let local_history = verify_security_history_cancellable(
+    let local_history = verify_security_history_for_note_reads(
         &local_records,
         expected_brain_id,
         LocalOnlyResolver {
@@ -576,6 +606,7 @@ where
             local_key_id: local_signing_key_id.clone(),
             local_key,
         },
+        lifecycle,
         &mut cancelled,
     )
     .map_err(|error| match error {
@@ -594,7 +625,7 @@ where
         &local_public_key,
         &mut cancelled,
     )?;
-    let history = verify_security_history_cancellable(
+    let history = verify_security_history_for_note_reads(
         raw_records,
         expected_brain_id,
         LocalAnchorResolver {
@@ -605,6 +636,7 @@ where
             // authenticated union, and these provisional pins never escape.
             peers: evidence.bindings,
         },
+        lifecycle,
         &mut cancelled,
     )
     .map_err(|error| match error {

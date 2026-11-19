@@ -6,7 +6,7 @@
 //! ordering is never used for ranges.
 
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
+use std::collections::{BTreeSet, BinaryHeap};
 use std::time::Instant;
 
 use cryptex_core::validate::{Rfc3339UtcInstant, rfc3339_utc_instant};
@@ -123,12 +123,33 @@ pub fn event_detail(
 /// Invalid/unsupported FTS queries and invalid RFC3339 bounds return
 /// [`ProjectionError::InvalidQuery`] rather than an empty hit list.
 pub fn search_events(conn: &Connection, query: &SearchQuery) -> ProjectionResult<Vec<SearchHit>> {
-    search_events_internal(conn, query, None, false)
+    search_visible_events(conn, query, &BTreeSet::new(), None)
+}
+
+/// Apply canonical visibility before ranking, limiting or returning matches.
+pub fn search_visible_events(
+    conn: &Connection,
+    query: &SearchQuery,
+    forgotten: &BTreeSet<String>,
+    deadline: Option<Instant>,
+) -> ProjectionResult<Vec<SearchHit>> {
+    with_query_deadline(conn, deadline, || {
+        search_events_internal(conn, query, None, false, forgotten)
+    })
 }
 
 /// Return one bounded newest-first page. The `limit + 1` probe determines
 /// whether another page exists without retaining every matching row.
 pub fn timeline_events(conn: &Connection, query: &TimelineQuery) -> ProjectionResult<TimelinePage> {
+    timeline_visible_events(conn, query, &BTreeSet::new(), None)
+}
+
+pub fn timeline_visible_events(
+    conn: &Connection,
+    query: &TimelineQuery,
+    forgotten: &BTreeSet<String>,
+    deadline: Option<Instant>,
+) -> ProjectionResult<TimelinePage> {
     if !(1..=50).contains(&query.limit) {
         return Err(ProjectionError::InvalidQuery {
             detail: "timeline limit must be between 1 and 50".into(),
@@ -144,7 +165,9 @@ pub fn timeline_events(conn: &Connection, query: &TimelineQuery) -> ProjectionRe
         created_at_to: query.created_at_to.clone(),
         limit: Some(query.limit + 1),
     };
-    let hits = search_events_internal(conn, &search_query, query.cursor.as_ref(), true)?;
+    let hits = with_query_deadline(conn, deadline, || {
+        search_events_internal(conn, &search_query, query.cursor.as_ref(), true, forgotten)
+    })?;
     let mut hits = hits;
     let has_more = hits.len() > query.limit as usize;
     hits.truncate(query.limit as usize);
@@ -164,6 +187,7 @@ fn search_events_internal(
     query: &SearchQuery,
     cursor: Option<&TimelineCursor>,
     descending: bool,
+    forgotten: &BTreeSet<String>,
 ) -> ProjectionResult<Vec<SearchHit>> {
     if let Some(text) = &query.text
         && text.is_empty()
@@ -278,6 +302,9 @@ fn search_events_internal(
 
     for row in rows {
         let hit = row.map_err(map_err)?;
+        if forgotten.contains(&hit.event_id) {
+            continue;
+        }
         let instant = rfc3339_utc_instant(&hit.created_at).map_err(|err| {
             ProjectionError::SchemaInconsistent {
                 detail: format!(
@@ -350,22 +377,7 @@ pub fn search_events_until(
     query: &SearchQuery,
     deadline: Instant,
 ) -> ProjectionResult<Vec<SearchHit>> {
-    if Instant::now() >= deadline {
-        return Err(ProjectionError::OperationDeadlineExceeded);
-    }
-    conn.progress_handler(1_000, Some(move || Instant::now() >= deadline))?;
-    let result = search_events(conn, query);
-    let deadline_expired = Instant::now() >= deadline;
-    let clear_result = conn.progress_handler(0, None::<fn() -> bool>);
-    if deadline_expired {
-        clear_result?;
-        return Err(ProjectionError::OperationDeadlineExceeded);
-    }
-    match (result, clear_result) {
-        (Ok(hits), Ok(())) => Ok(hits),
-        (Err(error), _) => Err(error),
-        (_, Err(error)) => Err(error.into()),
-    }
+    search_visible_events(conn, query, &BTreeSet::new(), Some(deadline))
 }
 
 /// Run one bounded timeline page with SQLite VM cancellation.
@@ -374,22 +386,7 @@ pub fn timeline_events_until(
     query: &TimelineQuery,
     deadline: Instant,
 ) -> ProjectionResult<TimelinePage> {
-    if Instant::now() >= deadline {
-        return Err(ProjectionError::OperationDeadlineExceeded);
-    }
-    conn.progress_handler(1_000, Some(move || Instant::now() >= deadline))?;
-    let result = timeline_events(conn, query);
-    let deadline_expired = Instant::now() >= deadline;
-    let clear_result = conn.progress_handler(0, None::<fn() -> bool>);
-    if deadline_expired {
-        clear_result?;
-        return Err(ProjectionError::OperationDeadlineExceeded);
-    }
-    match (result, clear_result) {
-        (Ok(page), Ok(())) => Ok(page),
-        (Err(error), _) => Err(error),
-        (_, Err(error)) => Err(error.into()),
-    }
+    timeline_visible_events(conn, query, &BTreeSet::new(), Some(deadline))
 }
 
 pub fn event_detail_until(
@@ -398,11 +395,24 @@ pub fn event_detail_until(
     event_id: &str,
     deadline: Instant,
 ) -> ProjectionResult<Option<SearchHit>> {
+    with_query_deadline(conn, Some(deadline), || {
+        event_detail(conn, brain_id, event_id)
+    })
+}
+
+fn with_query_deadline<T>(
+    conn: &Connection,
+    deadline: Option<Instant>,
+    query: impl FnOnce() -> ProjectionResult<T>,
+) -> ProjectionResult<T> {
+    let Some(deadline) = deadline else {
+        return query();
+    };
     if Instant::now() >= deadline {
         return Err(ProjectionError::OperationDeadlineExceeded);
     }
     conn.progress_handler(1_000, Some(move || Instant::now() >= deadline))?;
-    let result = event_detail(conn, brain_id, event_id);
+    let result = query();
     let deadline_expired = Instant::now() >= deadline;
     let clear_result = conn.progress_handler(0, None::<fn() -> bool>);
     if deadline_expired {

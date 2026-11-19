@@ -1,5 +1,4 @@
-//! First M10 experiment. Only disposable, single-author profiles use this
-//! vocabulary. This module is absent from the daemon binary.
+//! Disposable signed histories and an independent reference replay for the M10 note reader.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -115,6 +114,14 @@ fn visible_notes(history: &VerifiedV2History) -> Result<Vec<&AcceptedEvent>, Rep
 struct FixtureKey(VerifyingKey);
 
 impl TrustedDaemonKeyResolver for FixtureKey {
+    fn local_trust_anchor(&self) -> Option<cryptex_events::LocalTrustAnchor> {
+        Some(cryptex_events::LocalTrustAnchor::new(
+            DeviceId::new(DEVICE).unwrap(),
+            signing_key_id_from_verifying_key(&self.0).unwrap(),
+            self.0.to_bytes(),
+        ))
+    }
+
     fn trusted_daemon_key(&mut self, device: &str, id: &str) -> Option<VerifyingKey> {
         (device == DEVICE && signing_key_id_from_verifying_key(&self.0).unwrap().as_str() == id)
             .then_some(self.0)
@@ -231,9 +238,16 @@ fn assert_reopened_views(
     assert!(ids.contains(&OTHER));
 }
 
-#[test]
-fn forgotten_and_restored_views_survive_profile_reopen() {
-    let profile = Profile(crate::test_temp::exclusive_temp_dir("cryptex-m10-forget"));
+struct SignedFixture {
+    key: SigningKey,
+    target: AcceptedEvent,
+    original: Vec<u8>,
+    unaffected: Vec<u8>,
+    forget: Vec<u8>,
+    restore: Vec<u8>,
+}
+
+fn signed_fixture() -> SignedFixture {
     let key = SigningKey::from_bytes(&[31; 32]);
     let target = note(
         &key,
@@ -277,6 +291,27 @@ fn forgotten_and_restored_views_survive_profile_reopen() {
         ),
         &key,
     );
+    SignedFixture {
+        key,
+        target,
+        original,
+        unaffected,
+        forget,
+        restore,
+    }
+}
+
+#[test]
+fn forgotten_and_restored_views_survive_profile_reopen() {
+    let profile = Profile(crate::test_temp::exclusive_temp_dir("cryptex-m10-forget"));
+    let SignedFixture {
+        key,
+        target,
+        original,
+        unaffected,
+        forget,
+        restore,
+    } = signed_fixture();
     let device = DeviceId::new(DEVICE).unwrap();
     let append = |body: &[u8]| {
         cryptex_storage::append_frame(&profile.0, &device, 0, body).unwrap();
@@ -361,4 +396,140 @@ fn invalid_controls_cannot_change_visibility() {
     forged["event_type"] = json!("memory.restore");
     let forged = serde_json_canonicalizer::to_vec(&forged).unwrap();
     assert!(verify_v2_history(&[&original, &forged], FixtureKey(key.verifying_key())).is_err());
+}
+
+#[test]
+fn normal_reads_enforce_signed_visibility_with_an_unchanged_index() {
+    use crate::knowledge_materialization as reads;
+    use std::time::{Duration, Instant};
+    let profile = Profile(crate::test_temp::exclusive_temp_dir("cryptex-m10-guarded"));
+    let SignedFixture {
+        key,
+        target,
+        original,
+        unaffected,
+        forget,
+        restore,
+    } = signed_fixture();
+    let device = DeviceId::new(DEVICE).unwrap();
+    let devices = std::slice::from_ref(&device);
+    let resolver = FixtureKey(key.verifying_key());
+    let append = |bytes: &[u8]| {
+        cryptex_storage::append_frame(&profile.0, &device, 0, bytes).unwrap();
+    };
+    append(&original);
+    append(&unaffected);
+    {
+        let mut db = ProjectionDb::open_or_create(&profile.0).unwrap();
+        reads::rebuild_knowledge_from_local_approval_history(
+            &profile.0,
+            BRAIN,
+            &resolver.local_trust_anchor().unwrap(),
+            &mut db,
+        )
+        .unwrap();
+    }
+    let query = SearchQuery {
+        text: Some("orchid".into()),
+        limit: Some(1),
+        ..Default::default()
+    };
+    let check = |visible| {
+        let db = ProjectionDb::open_existing_read_only(&profile.0).unwrap();
+        let mut resolver = FixtureKey(key.verifying_key());
+        let deadline = Some(Instant::now() + Duration::from_secs(10));
+        let raw = cryptex_projection::search_events(db.connection(), &query).unwrap();
+        assert_eq!(raw.len(), 1);
+        assert_eq!(raw[0].content_hash, target.content_hash.as_str());
+        let hits = reads::search_events_with_retrieval_safety_deadline(
+            &profile.0,
+            BRAIN,
+            devices,
+            &mut resolver,
+            &db,
+            &query,
+            deadline,
+        )
+        .unwrap();
+        let detail = reads::event_detail_with_retrieval_safety_deadline(
+            &profile.0,
+            BRAIN,
+            devices,
+            &mut resolver,
+            &db,
+            NOTE,
+            deadline,
+        )
+        .unwrap();
+        assert_eq!(detail.as_ref(), hits.first());
+        if visible {
+            assert_eq!(hits, raw);
+        } else {
+            assert!(hits.is_empty());
+        }
+        let timeline = reads::timeline_events_with_retrieval_safety_deadline(
+            &profile.0,
+            BRAIN,
+            devices,
+            &mut resolver,
+            &db,
+            &TimelineQuery {
+                limit: 1,
+                ..Default::default()
+            },
+            deadline,
+        )
+        .unwrap();
+        assert_eq!(timeline.hits.len(), 1);
+        assert_eq!(timeline.next_cursor.is_some(), visible);
+        if !visible {
+            assert_eq!(timeline.hits[0].event_id, OTHER);
+        }
+        let first = reads::search_events_with_retrieval_safety_deadline(
+            &profile.0,
+            BRAIN,
+            devices,
+            &mut resolver,
+            &db,
+            &SearchQuery {
+                limit: Some(1),
+                ..Default::default()
+            },
+            deadline,
+        )
+        .unwrap();
+        assert_eq!(first[0].event_id, if visible { NOTE } else { OTHER });
+    };
+    check(true);
+    append(&forget);
+    check(false);
+    append(&restore);
+    check(true);
+    // A signed but stale restore cannot release any result from the old index.
+    let raw: Value = serde_json::from_slice(&restore).unwrap();
+    let tip = serde_json::from_value(raw["content_hash"].clone()).unwrap();
+    append(&crate::test_temp::sign_v2_fixture(
+        control(
+            &target,
+            "aaaaaaaa-1111-4111-8111-000000000006",
+            5,
+            "memory.restore",
+            &tip,
+            &target.content_hash,
+        ),
+        &key,
+    ));
+    let db = ProjectionDb::open_existing_read_only(&profile.0).unwrap();
+    let result = reads::search_events_with_retrieval_safety(
+        &profile.0,
+        BRAIN,
+        devices,
+        &mut FixtureKey(key.verifying_key()),
+        &db,
+        &query,
+    );
+    assert!(matches!(
+        result,
+        Err(reads::GuardedSearchError::BrainWideHold(_))
+    ));
 }

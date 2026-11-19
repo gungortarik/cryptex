@@ -6,6 +6,8 @@ on:
       - '.github/workflows/m10-forget-restore.yml'
       - 'services/cryptexd/src/m10_forget_restore.rs'
       - 'services/cryptexd/src/test_temp.rs'
+      - 'services/cryptexd/src/knowledge_materialization.rs'
+      - 'services/cryptexd/src/trust_reducer.rs'
       - 'crates/events/**'
       - 'crates/storage/**'
       - 'crates/projection/**'
@@ -29,7 +31,7 @@ jobs:
           $options = @('test', '--locked', '-p', 'cryptexd', '--lib', 'm10_forget_restore::')
           $cases = cargo @options -- --list
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($case in 'forgotten_and_restored_views_survive_profile_reopen', 'invalid_controls_cannot_change_visibility') {
+          foreach ($case in 'forgotten_and_restored_views_survive_profile_reopen', 'invalid_controls_cannot_change_visibility', 'normal_reads_enforce_signed_visibility_with_an_unchanged_index') {
             if ($cases -notcontains "m10_forget_restore::${case}: test") { throw "Missing test $case" }
           }
           cargo @options

@@ -22,6 +22,37 @@ use crate::versioned_reader::{
     VerifiedV2KnowledgeAssertion, VersionedChainVerifier, VersionedRecord, read_versioned_record,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteLifecycleRead {
+    Hold,
+    Apply,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+enum Operation {
+    #[serde(rename = "memory.forget")]
+    Forget,
+    #[serde(rename = "memory.restore")]
+    Restore,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LifecycleTarget {
+    note_event_id: String,
+    note_content_hash: ContentHashHex,
+    prior_state_hash: ContentHashHex,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct SignedNoteLifecycle {
+    event_type: Operation,
+    payload_schema_version: u32,
+    brain_id: String,
+    classification: crate::Classification,
+    payload: LifecycleTarget,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CancellableSecurityHistoryError {
     InvalidRecord(ValidationFailure),
@@ -42,6 +73,7 @@ pub enum AuthenticatedSecurityRecord {
         VerifiedUnsupportedV2,
         crate::attachment_link::SignedLinkFields,
     ),
+    Lifecycle(VerifiedUnsupportedV2, SignedNoteLifecycle),
     SecurityV3(SecurityEventV3),
 }
 
@@ -49,7 +81,7 @@ impl AuthenticatedSecurityRecord {
     pub fn event_id(&self) -> &str {
         match self {
             Self::V1(event) => &event.event_id,
-            Self::Attachment(event, _) => &event.event_id,
+            Self::Attachment(event, _) | Self::Lifecycle(event, _) => &event.event_id,
             Self::V2(event) => &event.event().event_id,
             Self::SecurityV3(event) => event.event_id(),
         }
@@ -59,6 +91,7 @@ impl AuthenticatedSecurityRecord {
         match self {
             Self::V1(event) => &event.brain_id,
             Self::Attachment(_, link) => &link.brain_id,
+            Self::Lifecycle(_, change) => &change.brain_id,
             Self::V2(event) => &event.event().brain_id,
             Self::SecurityV3(event) => event.brain_id(),
         }
@@ -67,7 +100,7 @@ impl AuthenticatedSecurityRecord {
     pub fn device_id(&self) -> &str {
         match self {
             Self::V1(event) => &event.device_id,
-            Self::Attachment(event, _) => &event.device_id,
+            Self::Attachment(event, _) | Self::Lifecycle(event, _) => &event.device_id,
             Self::V2(event) => &event.event().device_id,
             Self::SecurityV3(event) => event.device_id().as_str(),
         }
@@ -76,7 +109,9 @@ impl AuthenticatedSecurityRecord {
     pub fn device_seq(&self) -> u64 {
         match self {
             Self::V1(event) => event.device_seq.to_u64().expect("validated v1 sequence"),
-            Self::Attachment(event, _) => event.device_seq.to_u64().expect("validated v2 sequence"),
+            Self::Attachment(event, _) | Self::Lifecycle(event, _) => {
+                event.device_seq.to_u64().expect("validated v2 sequence")
+            }
             Self::V2(event) => event
                 .event()
                 .device_seq
@@ -89,7 +124,7 @@ impl AuthenticatedSecurityRecord {
     pub fn content_hash(&self) -> &ContentHashHex {
         match self {
             Self::V1(event) => &event.content_hash,
-            Self::Attachment(event, _) => &event.content_hash,
+            Self::Attachment(event, _) | Self::Lifecycle(event, _) => &event.content_hash,
             Self::V2(event) => &event.event().content_hash,
             Self::SecurityV3(event) => event.content_hash(),
         }
@@ -98,7 +133,7 @@ impl AuthenticatedSecurityRecord {
     pub fn signing_key_id(&self) -> &SigningKeyId {
         match self {
             Self::V1(event) => &event.signing_key_id,
-            Self::Attachment(event, _) => &event.signing_key_id,
+            Self::Attachment(event, _) | Self::Lifecycle(event, _) => &event.signing_key_id,
             Self::V2(event) => &event.event().signing_key_id,
             Self::SecurityV3(event) => event.signing_key_id(),
         }
@@ -123,6 +158,56 @@ impl VerifiedSecurityHistory {
     #[must_use]
     pub fn expected_brain_id(&self) -> &str {
         &self.expected_brain_id
+    }
+
+    /// Replay cutoff-admitted, same-author transitions against immutable notes.
+    /// A restore must reference the latest forget hash for this specific note.
+    pub fn forgotten_note_ids(
+        &self,
+        cutoffs: &BTreeMap<String, u64>,
+        mut cancelled: impl FnMut() -> bool,
+    ) -> Result<std::collections::BTreeSet<String>, CancellableSecurityHistoryError> {
+        let mut notes = BTreeMap::new();
+        for record in self.content_records_through_cutoffs(cutoffs) {
+            if cancelled() {
+                return Err(CancellableSecurityHistoryError::Cancelled);
+            }
+            match record {
+                AuthenticatedSecurityRecord::V1(note) => {
+                    notes.insert(note.event_id.as_str(), (note, &note.content_hash, false));
+                }
+                AuthenticatedSecurityRecord::Lifecycle(raw, change) => {
+                    let invalid = || {
+                        failure(
+                            ValidationReasonCode::InvalidRecord,
+                            "invalid note lifecycle transition",
+                        )
+                    };
+                    let (note, latest, forgotten) = notes
+                        .get_mut(change.payload.note_event_id.as_str())
+                        .ok_or_else(invalid)?;
+                    let forget = change.event_type == Operation::Forget;
+                    if note.device_id != raw.device_id
+                        || note.signing_key_id != raw.signing_key_id
+                        || note.brain_id != change.brain_id
+                        || note.classification != change.classification
+                        || note.content_hash != change.payload.note_content_hash
+                        || **latest != change.payload.prior_state_hash
+                        || *forgotten == forget
+                    {
+                        return Err(invalid().into());
+                    }
+                    *latest = &raw.content_hash;
+                    *forgotten = forget;
+                }
+                _ => {}
+            }
+        }
+        Ok(notes
+            .into_iter()
+            .filter(|(_, (_, _, hidden))| *hidden)
+            .map(|(id, _)| id.to_owned())
+            .collect())
     }
 
     /// Select authenticated v1/v2 content records at or before each device's
@@ -185,7 +270,8 @@ impl VerifiedSecurityHistory {
                 }
                 // M9 reference metadata is evaluated against both device
                 // cutoffs by the daemon and is never an M3 note or M4 assertion.
-                AuthenticatedSecurityRecord::Attachment(..) => {}
+                AuthenticatedSecurityRecord::Attachment(..)
+                | AuthenticatedSecurityRecord::Lifecycle(..) => {}
                 AuthenticatedSecurityRecord::SecurityV3(_) => {
                     unreachable!("content_records_through_cutoffs excludes policy records")
                 }
@@ -229,7 +315,27 @@ pub fn verify_security_history<R: TrustedDaemonKeyResolver>(
 pub fn verify_security_history_cancellable<R, C>(
     raw_records: &[&[u8]],
     expected_brain_id: &str,
+    key_resolver: R,
+    cancelled: C,
+) -> Result<VerifiedSecurityHistory, CancellableSecurityHistoryError>
+where
+    R: TrustedDaemonKeyResolver,
+    C: FnMut() -> bool,
+{
+    verify_security_history_for_note_reads(
+        raw_records,
+        expected_brain_id,
+        key_resolver,
+        NoteLifecycleRead::Hold,
+        cancelled,
+    )
+}
+
+pub fn verify_security_history_for_note_reads<R, C>(
+    raw_records: &[&[u8]],
+    expected_brain_id: &str,
     mut key_resolver: R,
+    lifecycle: NoteLifecycleRead,
     mut cancelled: C,
 ) -> Result<VerifiedSecurityHistory, CancellableSecurityHistoryError>
 where
@@ -317,6 +423,29 @@ where
                 VersionedRecord::VerifiedV2Supported(event) => {
                     AuthenticatedSecurityRecord::V2(event)
                 }
+                VersionedRecord::VerifiedUnsupported(record)
+                    if lifecycle == NoteLifecycleRead::Apply
+                        && matches!(
+                            value["event_type"].as_str(),
+                            Some("memory.forget" | "memory.restore")
+                        ) =>
+                {
+                    let change: SignedNoteLifecycle = serde_json::from_value(value.clone())
+                        .map_err(|_| {
+                            failure(
+                                ValidationReasonCode::InvalidRecord,
+                                "invalid note lifecycle fields",
+                            )
+                        })?;
+                    if change.payload_schema_version != 1 {
+                        return Err(failure(
+                            ValidationReasonCode::InvalidRecord,
+                            "unsupported note lifecycle payload version",
+                        )
+                        .into());
+                    }
+                    AuthenticatedSecurityRecord::Lifecycle(record, change)
+                }
                 VersionedRecord::VerifiedUnsupported(record) => {
                     let fields = crate::attachment_link::SignedLinkFields::parse(&record.raw_record)
                         .map_err(|_| failure(ValidationReasonCode::InvalidRecord,
@@ -384,7 +513,8 @@ where
                     AuthenticatedSecurityRecord::V2(event) => {
                         VersionedRecord::VerifiedV2Supported(event.clone())
                     }
-                    AuthenticatedSecurityRecord::Attachment(event, _) => {
+                    AuthenticatedSecurityRecord::Attachment(event, _)
+                    | AuthenticatedSecurityRecord::Lifecycle(event, _) => {
                         VersionedRecord::VerifiedUnsupported(event.clone())
                     }
                     AuthenticatedSecurityRecord::SecurityV3(_) => unreachable!(),
