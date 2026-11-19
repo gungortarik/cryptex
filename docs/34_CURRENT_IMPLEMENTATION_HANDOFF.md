@@ -140,6 +140,17 @@ the file control is absent and direct requests leave no blob or link.
 Only the test daemon can enable the writer. Production activation, blob
 transfer, repair and the M6 copy-only projection remain open.
 
+The [paired attachment trial](milestones/M9_ATTACHMENTS.md#attachment-transfer-trial)
+uses two protected profiles and two pinned Syncthing workers on each CI host.
+The workers exchange fresh reader challenges, a sealed pack containing the
+signed link and an 8,193-byte test file. The recipient imports the pack under
+its own trust policy and checks the file against the admitted link before
+publication. The runner verifies the bytes again after reopening the profile.
+Only the test executable admits this transfer. The installed application
+still withholds attachment packs and keeps attachment writing disabled.
+At `d536dd2` both OS runs reported the same SHA-256 and one canonical blob
+on the reopened receiver. [Native transfer receipts](https://github.com/gungortarik/cryptex/actions/runs/44564942176)
+
 ## M8 complete on November 18, 2026
 
 The owner approved candidate `7be9287`. Windows and macOS passed readiness and native recovery. The two-device follow-up reached the same sixteen signed records and retained all four test markers after a paused restart. The historical investigation below is closed. [Scope, security review and CI](../evidence/m8/m8-final-candidate-review-20261118.md)
