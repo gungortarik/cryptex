@@ -390,6 +390,19 @@ fn invalid_controls_cannot_change_visibility() {
         let history =
             verify_v2_history(&[&original, &signed], FixtureKey(key.verifying_key())).unwrap();
         assert_eq!(visible_notes(&history).unwrap_err(), error, "{field}");
+        use cryptex_events::security_history::{
+            NoteLifecycleRead, verify_security_history_for_note_reads,
+        };
+        let cutoffs = BTreeMap::from([(DEVICE.to_owned(), u64::MAX)]);
+        let product = verify_security_history_for_note_reads(
+            &[&original, &signed],
+            BRAIN,
+            FixtureKey(key.verifying_key()),
+            NoteLifecycleRead::Apply,
+            || false,
+        )
+        .and_then(|history| history.forgotten_note_ids(&cutoffs, || false));
+        assert!(product.is_err(), "product accepted {field}");
     }
     let signed = crate::test_temp::sign_v2_fixture(forget, &key);
     let mut forged: Value = serde_json::from_slice(&signed).unwrap();
@@ -503,6 +516,18 @@ fn normal_reads_enforce_signed_visibility_with_an_unchanged_index() {
     check(true);
     append(&forget);
     check(false);
+    // Consumers that do not apply lifecycle policy must still hold all reads.
+    {
+        let db = ProjectionDb::open_existing_read_only(&profile.0).unwrap();
+        let safety = reads::evaluate_retrieval_safety(
+            &profile.0,
+            BRAIN,
+            devices,
+            &mut FixtureKey(key.verifying_key()),
+            &db,
+        );
+        assert!(!safety.allows_content());
+    }
     append(&restore);
     check(true);
     // A signed but stale restore cannot release any result from the old index.

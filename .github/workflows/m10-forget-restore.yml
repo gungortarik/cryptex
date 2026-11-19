@@ -36,3 +36,7 @@ jobs:
           }
           cargo @options
           exit $LASTEXITCODE
+      - name: Check existing search and timeline behavior
+        run: cargo test --locked -p cryptex-projection --lib search::tests
+      - name: Check existing signed-history rules
+        run: cargo test --locked -p cryptex-events --lib security_history::tests

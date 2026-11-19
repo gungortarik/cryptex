@@ -147,6 +147,7 @@ impl AuthenticatedSecurityRecord {
 pub struct VerifiedSecurityHistory {
     records: Vec<AuthenticatedSecurityRecord>,
     expected_brain_id: String,
+    has_note_lifecycle: bool,
 }
 
 impl VerifiedSecurityHistory {
@@ -167,6 +168,12 @@ impl VerifiedSecurityHistory {
         cutoffs: &BTreeMap<String, u64>,
         mut cancelled: impl FnMut() -> bool,
     ) -> Result<std::collections::BTreeSet<String>, CancellableSecurityHistoryError> {
+        if cancelled() {
+            return Err(CancellableSecurityHistoryError::Cancelled);
+        }
+        if !self.has_note_lifecycle {
+            return Ok(Default::default());
+        }
         let mut notes = BTreeMap::new();
         for record in self.content_records_through_cutoffs(cutoffs) {
             if cancelled() {
@@ -352,6 +359,7 @@ where
         .to_ascii_lowercase();
     let mut seen_event_bytes = HashMap::<String, Vec<u8>>::new();
     let mut records = Vec::<AuthenticatedSecurityRecord>::with_capacity(raw_records.len());
+    let mut has_note_lifecycle = false;
 
     for bytes in raw_records {
         if cancelled() {
@@ -444,6 +452,7 @@ where
                         )
                         .into());
                     }
+                    has_note_lifecycle = true;
                     AuthenticatedSecurityRecord::Lifecycle(record, change)
                 }
                 VersionedRecord::VerifiedUnsupported(record) => {
@@ -527,6 +536,7 @@ where
     Ok(VerifiedSecurityHistory {
         records,
         expected_brain_id,
+        has_note_lifecycle,
     })
 }
 
