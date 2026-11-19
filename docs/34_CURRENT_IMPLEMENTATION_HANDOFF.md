@@ -32,9 +32,13 @@ An edit to a managed note blocks refresh and preserves the edit.
 At `d765910`, both Windows and macOS passed 36 focused tests each, including
 the on-disk forget/restore check and 15 vault projection tests. [Vault refresh CI](https://github.com/gungortarik/cryptex/actions/runs/44596987474)
 
-Lifecycle writes are confined to test fixtures. Replication retains its
-compatibility hold on these records.
-Multi-device reconciliation, destructive purge and M10 acceptance remain open.
+The paired-profile trial signs forget and restore on one disposable profile.
+Two native Syncthing workers deliver its sealed segments. The receiving daemon
+authenticates and imports each transition. Guarded search hides only the target
+and restores its original result. Replaying either segment is idempotent.
+Windows and macOS each passed this scenario at `7ce0939`. [Paired profile CI](https://github.com/gungortarik/cryptex/actions/runs/44598541780)
+Real profiles keep lifecycle writing and replication disabled. Broader
+multi-device reconciliation, destructive purge and M10 acceptance remain open.
 
 ## M9 complete on November 19, 2026
 
