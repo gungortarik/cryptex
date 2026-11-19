@@ -1,0 +1,19 @@
+name: M9 owner migration packet
+on:
+  push:
+    paths:
+      - '.github/workflows/m9-owner-packet.yml'
+      - 'scripts/m8/*m9_owner_migration.py'
+permissions:
+  contents: read
+jobs:
+  receipts:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify preflight, durable receipts and retry in temporary directories
+        run: python -B -m unittest discover -s scripts/m8 -p test_m9_owner_migration.py -v
