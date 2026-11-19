@@ -90,6 +90,7 @@ if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) 
     if($preflight.code -ne 0 -or $preflight.stdout -notmatch '2 passed; 0 failed; 0 ignored'){throw 'Paired reader checks incomplete.'}
     Set-NativeTestPackage
     $suite='managed_profile::native_product_receive_test::reader_preflight::normal_owners_verify_readers_over_the_private_network'
+    $env:CRYPTEX_M9_READER_ATTEMPT=[guid]::NewGuid().ToString('N')
     $live=Invoke-TestBinary $p.executables[0] "$suite --ignored --exact --nocapture"
     $live.stdout | Write-Output
     $live.stderr | Write-Output

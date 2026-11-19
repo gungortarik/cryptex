@@ -55,10 +55,30 @@ fn normal_owners_verify_readers_over_the_private_network() {
     connect(&owner_a, ip, b.ports.sync);
     connect(&owner_b, ip, a.ports.sync);
     let deadline = Instant::now() + Duration::from_secs(200);
+    let attempt = std::env::var("CRYPTEX_M9_READER_ATTEMPT").expect("CI reader receipt attempt");
+    let receipt = |root: &Path| {
+        let file = root
+            .join("transport/m9-control-staging")
+            .join(format!("{attempt}.receipt"));
+        let bytes = fs::read(file).ok()?;
+        Some(serde_json::from_slice::<serde_json::Value>(&bytes).unwrap())
+    };
     loop {
         if let Some(left) = exchanged(&source)
             && Some(left) == exchanged(&receiver)
+            && let (Some(a), Some(b)) = (receipt(&source), receipt(&receiver))
         {
+            for (local, peer) in [
+                ("local", "peer"),
+                ("local_build", "peer_build"),
+                ("local_nonce", "peer_nonce"),
+            ] {
+                assert!(a[local].is_string() && b[local].is_string());
+                assert_eq!(a[local], b[peer]);
+                assert_eq!(b[local], a[peer]);
+            }
+            assert_eq!(a["attempt"], attempt);
+            assert_eq!(b["attempt"], attempt);
             break;
         }
         assert!(
@@ -67,8 +87,6 @@ fn normal_owners_verify_readers_over_the_private_network() {
         );
         std::thread::sleep(Duration::from_millis(500));
     }
-    // Allow two normal export ticks to authenticate the last delivered echo.
-    std::thread::sleep(Duration::from_secs(12));
     for owner in [&mut owner_a, &mut owner_b] {
         assert_eq!(owner.handle().request(None).unwrap().error, None);
         owner.shutdown().unwrap();

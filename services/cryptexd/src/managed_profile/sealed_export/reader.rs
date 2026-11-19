@@ -11,6 +11,7 @@ use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 
 mod probe;
+mod receipt;
 mod wire;
 use wire::{Body, Route};
 
@@ -44,6 +45,7 @@ struct Round {
 #[derive(Default)]
 pub(super) struct ReaderCheck {
     round: Option<Round>,
+    receipt_written: bool,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -97,6 +99,7 @@ impl ReaderCheck {
         let mut verified = BTreeMap::new();
         let mut rejected = false;
         let mut signer = None;
+        let mut observed = None;
         for peer in bindings {
             check().map_err(|_| Error::Authority)?;
             let route = Route {
@@ -121,6 +124,9 @@ impl ReaderCheck {
                 && other.echo.as_ref() == Some(&round.nonce)
             {
                 verified.insert(route.receiver.clone(), other.daemon_sha256.clone());
+                if !self.receipt_written && bindings.len() == 1 {
+                    observed = Some(other.clone());
+                }
             }
             let slot = route.slot()?;
             let body = Body {
@@ -159,6 +165,14 @@ impl ReaderCheck {
             return Ok(Status::Rejected);
         }
         if verified.len() == bindings.len() && round.started.elapsed() < FRESHNESS {
+            if let Some(peer) = observed {
+                match receipt::write_if_requested(&staging, &round.nonce, &build, &peer) {
+                    Ok(written) => self.receipt_written = written,
+                    Err(error) => {
+                        eprintln!("component=m9_reader_receipt status=unavailable error={error:?}")
+                    }
+                }
+            }
             Ok(Status::Verified(verified))
         } else {
             Ok(Status::Waiting)
