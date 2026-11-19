@@ -1037,6 +1037,17 @@ fn lower_hex(bytes: &[u8]) -> String {
 }
 
 impl VerifiedCanonicalSnapshot {
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
+    pub(crate) fn trial_security_frames(&self) -> Vec<&[u8]> {
+        self.security_frames
+            .iter()
+            .map(|frame| frame.bytes.as_slice())
+            .collect()
+    }
+
     #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     pub(crate) fn admitted_blob_digests(&self) -> impl Iterator<Item = [u8; 32]> + '_ {
         self.attachment_links

@@ -121,9 +121,10 @@ pub(in crate::managed_profile) fn run() {
             ] {
                 pair.with(|slot| slot.set([left.clone(), right.clone()]).unwrap());
             }
-            let a = Side::new(left, &a_id);
+            let mut a = Side::new(left, &a_id);
             let mut b = Side::new(right, &b_id);
             lifecycle::resume(&transport, &a, &mut b, &store);
+            lifecycle::conflict::exercise(&transport, &mut a, &mut b, &store);
             return;
         }
         Ok("enroll") => (),

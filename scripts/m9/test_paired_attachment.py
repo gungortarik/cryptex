@@ -194,10 +194,16 @@ def main():
                 wait_marker(test, "release-forget-segment", 150)
                 start_worker(receiver, 1)
                 delay.unlink()
+                wait_marker(test, "partition-note-conflict", 240)
+                workers.close()
+                (base / "note-conflict-offline").touch()
+                wait_marker(test, "reconnect-note-conflict", 120)
+                start(workers)
                 after = finish_phase(test, log, (
                     "offline_note_lifecycle=verified queued=2 imported=2 identical_replays=2",
                     "reordered_note_lifecycle=verified first=restore deferred=1 converged=true",
                     "corrupt_forget_recovery=verified signature=rejected published_on_rejection=0 corrected_imports=2 replay_added=0",
+                    "offline_note_conflict=verified peer_restore=rejected author_forget=applied histories=equal target=hidden replay_added=0",
                 ))
             if before != after:
                 raise RuntimeError("pending restore or visible notes changed across restart")

@@ -1,10 +1,11 @@
 //! Continue on the genuinely paired profiles while the two native workers share
-//! the live exchange directories. Only the source signs a lifecycle record.
+//! the live exchange directories.
 use super::*;
 use crate::incoming_publication::{IncomingPublicationReport, publish_incoming_with_instance};
 use cryptex_events::{AcceptedEvent, ContentHashHex};
 use serde_json::json;
 
+pub(super) mod conflict;
 mod offline;
 pub(super) use offline::resume;
 
@@ -40,7 +41,11 @@ fn signed_control(
     kind: &str,
     prior: &ContentHashHex,
 ) -> (Vec<u8>, ContentHashHex) {
-    let device = DeviceId::new(note.device_id.clone()).unwrap();
+    let device = resolver(sender, store)
+        .local_trust_anchor()
+        .unwrap()
+        .device_id()
+        .clone();
     let history = snapshot(sender, store);
     let tip = history
         .reader_device_chain(device.as_str())
