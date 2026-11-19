@@ -11,9 +11,22 @@ The lifecycle vocabulary and replay code are test-only. Both lifecycle tests
 passed on Windows and macOS at `b287dea`, including rejection of invalid
 signed transitions and signature tampering. [CI results](https://github.com/gungortarik/cryptex/actions/runs/44593502606)
 
-The next slice needs to apply lifecycle state to guarded product retrieval,
-including stale derived data and every path that can expose forgotten content.
-Multi-device reconciliation, destructive purge and M10 acceptance are still open.
+Desktop search, timeline and note detail now replay signed forget/restore
+transitions on the daemon's locked, locally anchored history. The reader checks
+the original note, author, classification, prior state hash and effective device
+cutoff before applying visibility. It excludes hidden IDs before search limits
+and timeline pagination. The ordinary projection checks still validate the
+stored note rows. A stale index that retains a forgotten note cannot expose it
+through these reads.
+
+The native regression opens the original SQLite index read-only after each
+transition, proves raw FTS still finds the note, and checks guarded results,
+the unaffected note, pagination, restore and rejection of an invalid transition.
+At `c2914af`, Windows and macOS each passed all 3 lifecycle tests, 13 search
+and timeline tests, and 4 security-history tests. [Native CI results](https://github.com/gungortarik/cryptex/actions/runs/44595508670)
+Lifecycle writes are confined to test fixtures. Other consumers, including
+vault export and replication, retain their compatibility hold on these records.
+Multi-device reconciliation, destructive purge and M10 acceptance remain open.
 
 ## M9 complete on November 19, 2026
 
