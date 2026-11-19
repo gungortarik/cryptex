@@ -39,6 +39,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export CRYPTEX_M8_LOCAL_STARTUP_CERT_DER="$RUNNER_TEMP/restriction-test.der"
+          openssl req -new -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=Cryptex disposable restriction CI/' \
+            -keyout /dev/null -outform DER -out "$CRYPTEX_M8_LOCAL_STARTUP_CERT_DER"
           test_name=incoming_publication::tests::offline_restricted_peer_tail_is_refused_after_owner_confirmed_cutoff
           cargo test --locked -p cryptexd --features m8-local-startup-check --lib "$test_name" -- --exact | tee "$RUNNER_TEMP/restriction-test.log"
           grep -Fx "test $test_name ... ok" "$RUNNER_TEMP/restriction-test.log"
