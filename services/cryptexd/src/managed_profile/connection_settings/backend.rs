@@ -438,6 +438,9 @@ impl Controller {
     }
     fn close(&mut self) -> Result<(), Error> {
         self.exporter.end_reader_session();
+        self.stop_worker()
+    }
+    fn stop_worker(&mut self) -> Result<(), Error> {
         *self.reader.lock().map_err(|_| Error::Unavailable)? = None;
         if self.cleanup_failed {
             return Err(Error::Shutdown);
@@ -602,6 +605,9 @@ impl Controller {
                 self.view.devices.clear();
             }
         }
+        if self.view.state != State::ReadyLocally {
+            self.exporter.end_reader_session();
+        }
         result.map(|()| self.view.clone())
     }
     fn apply_inner(&mut self, update: Option<Update>, interest: &Interest) -> Result<(), Error> {
@@ -632,7 +638,13 @@ impl Controller {
                 return Err(Error::Held);
             }
         };
-        if let Err(error) = self.close() {
+        // A normal verified import invalidates the transport guard. Give the
+        // peer time to answer the live challenge across that internal rescan.
+        // ReaderCheck still rechecks its trust context, roster and deadline.
+        if update.is_some() {
+            self.exporter.end_reader_session();
+        }
+        if let Err(error) = self.stop_worker() {
             permit.finish(None);
             return Err(error);
         }

@@ -304,16 +304,19 @@ fn pending_batch_survives_local_capture_until_verified_projection_catches_up() {
         IncomingTick::Deferred
     ));
     assert_eq!(controller.pending.as_ref(), Some(&fixture.paths));
-    {
-        let _permit = admission.enter(&fixture.receiver).unwrap();
-        crate::incoming_publication::rebuild_imported_state(
-            &fixture.receiver,
-            &fixture.report.brain_id,
-            &fixture.store,
-            ENV,
-        )
-        .unwrap();
-    }
+    assert!(matches!(
+        admission.enter(&fixture.receiver),
+        Err(AdmissionError::Held(
+            crate::runtime_admission::RuntimeHold::DerivedRebuildRequired
+        ))
+    ));
+    crate::incoming_publication::recover_live_with_instance(
+        &fixture.receiver,
+        &mut instance,
+        &fixture.store,
+        ENV,
+    )
+    .unwrap();
     let IncomingTick::Published(report) = worker
         .process_incoming(&mut controller, &mut instance, &fixture.store)
         .unwrap()

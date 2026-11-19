@@ -160,8 +160,17 @@ impl IncomingController {
             Err(IncomingPublicationError::Rejected(ImportStagingError::RetrievalHeld(
                 RetrievalSafetyHold::MaterializationStateMissingOrStale
                 | RetrievalSafetyHold::ProjectionDoesNotMatchCanonical,
-            )))
-            | Err(IncomingPublicationError::Admission(AdmissionError::Busy)) => {
+            ))) => {
+                match admission.enter(&self.root) {
+                    Ok(permit) => admission
+                        .require_derived_rebuild(&self.root, &permit)
+                        .map_err(IncomingControllerError::Admission)?,
+                    Err(AdmissionError::Busy) => return Ok(IncomingTick::Deferred),
+                    Err(error) => return Err(IncomingControllerError::Admission(error)),
+                }
+                Ok(IncomingTick::Deferred)
+            }
+            Err(IncomingPublicationError::Admission(AdmissionError::Busy)) => {
                 Ok(IncomingTick::Deferred)
             }
             Err(error @ IncomingPublicationError::Rejected(_)) => {

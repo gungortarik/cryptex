@@ -86,7 +86,12 @@ fn normal_owners_verify_readers_over_the_private_network() {
             }
             assert!(
                 Instant::now() < deadline,
-                "live controls and receipts must agree"
+                "live controls and receipts must agree: rejoin={} controls=({},{}) receipts=({},{})",
+                old_nonce.is_some(),
+                exchanged(&source).is_some(),
+                exchanged(&receiver).is_some(),
+                receipt(&source).is_some(),
+                receipt(&receiver).is_some()
             );
             std::thread::sleep(Duration::from_millis(500));
         }
