@@ -4776,7 +4776,7 @@ fn random_transaction_id() -> Result<String, ImportStagingError> {
     ))
 }
 
-fn random_hex_16() -> Result<String, ImportStagingError> {
+pub(crate) fn random_hex_16() -> Result<String, ImportStagingError> {
     Ok(encode_hex(&random_bytes::<16>()?))
 }
 

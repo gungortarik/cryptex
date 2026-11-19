@@ -231,7 +231,7 @@ impl RetrievalSafetyState {
         {
             return Err(LocalLinkError::Blob(BlobError::IntegrityMismatch));
         }
-        crate::attachment_blobs::store(&snapshot.runtime_root, bytes)
+        crate::attachment_blobs::restore(&snapshot.runtime_root, *expected, bytes)
             .map_err(LocalLinkError::Blob)?;
         self.verify_local_attachment(note, link)
     }

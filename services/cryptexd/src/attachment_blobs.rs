@@ -32,7 +32,31 @@ impl From<io::Error> for BlobError {
 /// Store one binary stream in an existing owner-controlled runtime root.
 /// Returns the SHA-256 of the verified bytes. A separate attachment writer
 /// lock permits event reads and writes while long attachments are streaming.
-pub fn store(runtime_root: &Path, mut source: impl Read) -> Result<[u8; 32], BlobError> {
+pub fn store(runtime_root: &Path, source: impl Read) -> Result<[u8; 32], BlobError> {
+    store_stream(runtime_root, source, StoreIntent::Capture)
+}
+
+enum StoreIntent {
+    Capture,
+    #[cfg(test)]
+    Restore([u8; 32]),
+}
+
+/// Called only after the disposable receiver admits the signed link.
+#[cfg(test)]
+pub(crate) fn restore(
+    runtime_root: &Path,
+    expected: [u8; 32],
+    bytes: &[u8],
+) -> Result<[u8; 32], BlobError> {
+    store_stream(runtime_root, bytes, StoreIntent::Restore(expected))
+}
+
+fn store_stream(
+    runtime_root: &Path,
+    mut source: impl Read,
+    _intent: StoreIntent,
+) -> Result<[u8; 32], BlobError> {
     crate::paths::assert_outside_repository(runtime_root)
         .map_err(|_| BlobError::UnsafeFilesystem)?;
     let root = Directory::open(runtime_root)?;
@@ -54,9 +78,33 @@ pub fn store(runtime_root: &Path, mut source: impl Read) -> Result<[u8; 32], Blo
         }
     };
     let name = format!("{digest:x}");
+    #[cfg(test)]
+    if matches!(_intent, StoreIntent::Restore(expected) if expected.as_slice() != digest.as_slice())
+    {
+        staging.discard_scratch(staged)?;
+        return Err(BlobError::IntegrityMismatch);
+    }
     if blobs.exists(&name)? {
         let mut existing = blobs.open_file(&name, false)?;
         let result = verify(&mut existing, &digest);
+        #[cfg(test)]
+        if result == Err(BlobError::IntegrityMismatch) && matches!(_intent, StoreIntent::Restore(_))
+        {
+            // Authenticate the replacement on disk before moving the original.
+            staged.rewind()?;
+            verify(&mut staged, &digest)?;
+            export_fs::flush(&staged)?;
+            let evidence = staging.child("quarantine", true)?;
+            staging.sync()?;
+            let nonce = crate::import_staging::random_hex_16()
+                .map_err(|_| BlobError::Io(io::ErrorKind::Other))?;
+            blobs.promote(&name, &existing, &evidence, &format!("{name}-{nonce}"))?;
+            if INTERRUPT_AFTER_QUARANTINE.with(|pending| pending.replace(false)) {
+                return Err(BlobError::Io(io::ErrorKind::Interrupted));
+            }
+            staging.promote("segment.tmp", &staged, &blobs, &name)?;
+            return Ok(digest.into());
+        }
         staging.discard_scratch(staged)?;
         result?;
         // Also complete a previous publication whose flush reply was lost.
@@ -143,6 +191,11 @@ fn verify(
         return Err(BlobError::IntegrityMismatch);
     }
     Ok(())
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(crate) static INTERRUPT_AFTER_QUARANTINE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 #[cfg(test)]

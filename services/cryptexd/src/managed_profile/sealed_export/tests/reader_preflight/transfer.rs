@@ -195,15 +195,91 @@ pub(in crate::managed_profile) fn run() {
     drop(state);
     drop((a, b));
     let b = Side::new(right.clone(), &b_id);
-    guarded(&b, &store)
-        .verify_local_attachment(note, &link)
-        .unwrap();
+    let state = guarded(&b, &store);
+    state.verify_local_attachment(note, &link).unwrap();
     let blobs = right.join("canonical/blobs");
     assert_eq!(fs::read_dir(&blobs).unwrap().count(), 1);
-    assert_eq!(fs::read(blobs.join(name)).unwrap(), selection.bytes);
+    let local_blob = blobs.join(&name);
+    assert_eq!(fs::read(&local_blob).unwrap(), selection.bytes);
     println!(
         "paired_attachment_transfer=verified bytes={} sha256={digest:x} receiver_reopened=true canonical_blobs=1",
         selection.bytes.len()
+    );
+    // Corrupt only this disposable receiver. No signed record changes during repair.
+    let peer_pack = right.join("canonical/events").join(&relative);
+    let original_pack = fs::read(&peer_pack).unwrap();
+    let evidence = right.join("blob-staging/quarantine");
+    fs::write(&local_blob, &damaged).unwrap();
+    assert_eq!(
+        state.verify_local_attachment(note, &link),
+        Err(LocalLinkError::Blob(BlobError::IntegrityMismatch))
+    );
+    assert!(
+        state
+            .receive_trial_attachment(note, &link, &damaged)
+            .is_err()
+    );
+    assert_eq!(fs::read(&local_blob).unwrap(), damaged);
+    assert!(!evidence.exists());
+
+    let replacement = ab.deliver("repair-file", &source);
+    assert!(
+        state
+            .receive_trial_attachment(&link, &link, &replacement)
+            .is_err()
+    );
+    assert!(!evidence.exists());
+    let alias = right.join("shared-damaged-file");
+    fs::hard_link(&local_blob, &alias).unwrap();
+    assert_eq!(
+        state.receive_trial_attachment(note, &link, &replacement),
+        Err(LocalLinkError::Blob(BlobError::UnsafeFilesystem))
+    );
+    assert_eq!(fs::read(&alias).unwrap(), damaged);
+    assert!(!evidence.exists());
+    fs::remove_file(alias).unwrap();
+    state
+        .receive_trial_attachment(note, &link, &replacement)
+        .unwrap();
+    state.verify_local_attachment(note, &link).unwrap();
+    assert_eq!(fs::read_dir(&evidence).unwrap().count(), 1);
+
+    // A second incident interrupts the daemon after it preserves the damaged file.
+    fs::write(&local_blob, &damaged).unwrap();
+    crate::attachment_blobs::INTERRUPT_AFTER_QUARANTINE.with(|pending| pending.set(true));
+    assert_eq!(
+        state.receive_trial_attachment(note, &link, &replacement),
+        Err(LocalLinkError::Blob(BlobError::Io(
+            std::io::ErrorKind::Interrupted
+        )))
+    );
+    assert_eq!(
+        state.verify_local_attachment(note, &link),
+        Err(LocalLinkError::Blob(BlobError::Missing))
+    );
+    drop(state);
+    drop(b);
+    let b = Side::new(right.clone(), &b_id);
+    let state = guarded(&b, &store);
+    let retry = ab.deliver("repair-retry", &source);
+    state.receive_trial_attachment(note, &link, &retry).unwrap();
+    state.receive_trial_attachment(note, &link, &retry).unwrap();
+    drop(state);
+    drop(b);
+    let b = Side::new(right.clone(), &b_id);
+    guarded(&b, &store)
+        .verify_local_attachment(note, &link)
+        .unwrap();
+    assert_eq!(fs::read(local_blob).unwrap(), selection.bytes);
+    assert_eq!(fs::read_dir(blobs).unwrap().count(), 1);
+    let retained: Vec<_> = fs::read_dir(evidence)
+        .unwrap()
+        .map(|entry| fs::read(entry.unwrap().path()).unwrap())
+        .collect();
+    assert_eq!(retained, vec![damaged.clone(), damaged]);
+    assert_eq!(fs::read(peer_pack).unwrap(), original_pack);
+    println!(
+        "paired_attachment_repair=verified receiver_reopened=true interrupted_retry=verified canonical_blobs=1 quarantined=2"
     );
     drop(b);
     for root in [left, right, scratch] {

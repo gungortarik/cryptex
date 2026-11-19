@@ -81,6 +81,14 @@ bytes, an unrelated target, duplicate delivery and verification after reopening.
 The trial's import and export permissions exist only in the test executable.
 Automatic blob delivery in the installed product remains a separate step.
 
+In the paired trial the receiver can also restore a damaged local blob from
+the peer. It requires the admitted signed reference, verifies replacement bytes
+in staging, and moves the original into private quarantine before publishing the
+replacement under its expected SHA-256. Unrelated links, corrupt replacement
+bytes and multiply linked files stop repair. A retry after interruption can fill
+the missing canonical name from a verified delivery. Ordinary capture and
+read-only integrity checks continue to report local corruption.
+
 For a newly prepared M9 profile, the daemon exclusively creates a fresh
 profile directory. Before the first v2 record, it reserves `daemon.lock` as
 a directory and creates the regular PID lock file `daemon.lock/reader-m9.pid`.
