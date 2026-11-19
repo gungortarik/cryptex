@@ -771,20 +771,47 @@ fn start_projection_sync_worker(context: &mut SearchContext) {
     let spawned = thread::Builder::new()
         .name("cryptex-derived-catchup".into())
         .spawn(move || {
-            while receiver.recv().is_ok() {
-                if let Err(error) = synchronize_local_derived_state(&worker_context) {
-                    // Do not log paths, memory content, or identity material.
-                    eprintln!(
-                        "cryptexd: derived catch-up deferred ({error:?}); retrieval remains guarded"
-                    );
-                }
-            }
+            run_projection_sync(receiver, || {
+                synchronize_local_derived_state(&worker_context)
+            })
         });
     if spawned.is_ok() {
         context.projection_sync = Some(sender.clone());
         let _ = sender.try_send(()); // Reconcile canonical commits discovered after restart.
     } else {
         eprintln!("cryptexd: derived catch-up worker unavailable; retrieval remains guarded");
+    }
+}
+
+fn run_projection_sync(
+    receiver: std::sync::mpsc::Receiver<()>,
+    mut refresh: impl FnMut() -> Result<(), DerivedCatchupError>,
+) {
+    use std::sync::mpsc::RecvTimeoutError;
+
+    let mut pending = false;
+    loop {
+        if pending {
+            // An exclusive import temporarily refused ordinary admission.
+            // Coalesce further requests and also retry if no new capture arrives.
+            if receiver.recv_timeout(Duration::from_millis(250))
+                == Err(RecvTimeoutError::Disconnected)
+            {
+                return;
+            }
+        } else if receiver.recv().is_err() {
+            return;
+        }
+        pending = match refresh() {
+            Err(DerivedCatchupError::RuntimeBusy) => true,
+            Err(error) => {
+                eprintln!(
+                    "cryptexd: derived catch-up deferred ({error:?}); retrieval remains guarded"
+                );
+                false
+            }
+            Ok(()) => false,
+        };
     }
 }
 
@@ -802,6 +829,7 @@ fn request_projection_sync(context: &SearchContext) {
 
 #[derive(Debug)]
 enum DerivedCatchupError {
+    RuntimeBusy,
     RuntimeHeld,
     BrainIdentityUnavailable,
     SigningIdentityUnavailable,
@@ -810,9 +838,10 @@ enum DerivedCatchupError {
 }
 
 fn synchronize_local_derived_state(context: &SearchContext) -> Result<(), DerivedCatchupError> {
-    let admitted = context
-        .admitted()
-        .map_err(|_| DerivedCatchupError::RuntimeHeld)?;
+    let admitted = context.admitted().map_err(|error| match error {
+        crate::runtime_admission::AdmissionError::Busy => DerivedCatchupError::RuntimeBusy,
+        _ => DerivedCatchupError::RuntimeHeld,
+    })?;
     let context = &admitted;
     let brain = load_brain_identity(&context.runtime_root)
         .map_err(|_| DerivedCatchupError::BrainIdentityUnavailable)?;
@@ -7773,6 +7802,39 @@ pub(crate) mod tests {
         exclusive.finish(None);
         server.join().unwrap();
         fs::remove_dir_all(fixture.root).unwrap();
+    }
+
+    #[test]
+    fn background_refresh_keeps_one_busy_request_and_respects_a_hold() {
+        let (requests, receiver) = sync_channel(1);
+        let (attempt, observed) = sync_channel(1);
+        let worker = thread::spawn(move || {
+            let mut count = 0;
+            run_projection_sync(receiver, || {
+                count += 1;
+                attempt.send(count).unwrap();
+                match count {
+                    1 => Err(DerivedCatchupError::RuntimeBusy),
+                    2 => Err(DerivedCatchupError::RuntimeHeld),
+                    _ => Ok(()),
+                }
+            });
+        });
+        requests.send(()).unwrap();
+        for expected in [1, 2] {
+            assert_eq!(
+                observed.recv_timeout(Duration::from_secs(3)).unwrap(),
+                expected
+            );
+        }
+        assert_eq!(
+            observed.recv_timeout(Duration::from_millis(600)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        );
+        requests.send(()).unwrap();
+        assert_eq!(observed.recv_timeout(Duration::from_secs(3)).unwrap(), 3);
+        drop(requests);
+        worker.join().unwrap();
     }
 
     #[test]

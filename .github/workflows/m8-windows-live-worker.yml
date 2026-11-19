@@ -7,6 +7,9 @@ on:
       - services/cryptexd/src/managed_profile/worker.rs
       - services/cryptexd/src/managed_profile/worker/**
       - services/cryptexd/src/managed_profile/connection_settings/**
+      - services/cryptexd/src/managed_profile/incoming.rs
+      - services/cryptexd/src/managed_profile/incoming/**
+      - services/cryptexd/src/ipc.rs
       - services/cryptexd/src/managed_profile/native_product_receive_test.rs
       - services/cryptexd/src/managed_profile/native_product_receive_test/**
       - services/cryptexd/src/managed_profile/sealed_export.rs
@@ -34,6 +37,7 @@ jobs:
       - name: Verify canonical lock contention and writer regression on macOS
         run: |
           cargo test --locked -p cryptexd --lib canonical_writer::tests:: -- --test-threads=1
+          cargo test --locked -p cryptexd --lib ipc::tests::background_refresh_keeps_one_busy_request_and_respects_a_hold -- --exact
       - run: cargo clippy --locked -p cryptexd --lib -- -D warnings
   product-receive:
     uses: ./.github/workflows/m8-peer-recovery.yml

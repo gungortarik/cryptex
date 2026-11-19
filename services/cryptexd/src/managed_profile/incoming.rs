@@ -9,8 +9,10 @@ use cryptex_events::TrustedDaemonKeyResolver;
 
 #[cfg(windows)]
 use super::worker::StatusReader;
+use crate::import_staging::ImportStagingError;
 use crate::incoming_publication::{IncomingPublicationError, IncomingPublicationReport};
 use crate::instance::InstanceLock;
+use crate::knowledge_materialization::RetrievalSafetyHold;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
 use crate::m8_owner_channel::transport_helper::StatusReader;
 use crate::runtime_admission::AdmissionError;
@@ -155,10 +157,11 @@ impl IncomingController {
             }
             // A local capture can commit before the derived worker catches up.
             // Keep the exact hint and run the full verifier again on the next tick.
-            Err(IncomingPublicationError::Rejected(crate::import_staging::ImportStagingError::RetrievalHeld(
-                crate::knowledge_materialization::RetrievalSafetyHold::MaterializationStateMissingOrStale
-                | crate::knowledge_materialization::RetrievalSafetyHold::ProjectionDoesNotMatchCanonical,
-            ))) | Err(IncomingPublicationError::Admission(AdmissionError::Busy)) => {
+            Err(IncomingPublicationError::Rejected(ImportStagingError::RetrievalHeld(
+                RetrievalSafetyHold::MaterializationStateMissingOrStale
+                | RetrievalSafetyHold::ProjectionDoesNotMatchCanonical,
+            )))
+            | Err(IncomingPublicationError::Admission(AdmissionError::Busy)) => {
                 Ok(IncomingTick::Deferred)
             }
             Err(error @ IncomingPublicationError::Rejected(_)) => {
