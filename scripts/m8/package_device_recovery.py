@@ -14,7 +14,7 @@ from windows_lan_setup import HASHES
 ROOT=Path(__file__).resolve().parents[2]
 
 
-def build(artifact, revision, output, *, inspection=False, windows_inspection_run=None, queued_note=False, vm_queued_note=False):
+def build(artifact, revision, output, *, inspection=False, windows_inspection_run=None, queued_note=False, vm_queued_note=False, followup=False):
     source=subprocess.check_output(['git','rev-parse',revision+'^{commit}'],cwd=ROOT,text=True).strip()
     provenance=json.loads((artifact/'provenance.json').read_text(encoding='utf-8-sig'))
     if provenance['source_commit'] != source or provenance['feature'] != 'm8-device-recovery-check':
@@ -68,6 +68,24 @@ def build(artifact, revision, output, *, inspection=False, windows_inspection_ru
             'Eski uygulama ve kisayol degismez. Sonuc raporunda not icerigi ve ozel anahtar bulunmaz.\n'
             'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()})
     folder='Cryptex-Kesinti'
+    if followup:
+        from lan_device_recovery import FOLLOWUP_RUN
+        folder = 'Cryptex-Toparlanma'
+        for name in ('recovery.json','KESINTI-WINDOWS.cmd','KESINTI-MAC.command'):
+            members.pop(name)
+        plan.update(run_id=FOLLOWUP_RUN, purpose='cryptex-existing-marker-followup-packet')
+        members['followup.json'] = (json.dumps(plan, indent=2) + '\n').encode()
+        members['MAC-KONTROL.command'] = b'#!/bin/zsh\nset -eu\ncd -- "${0:A:h}"\n/usr/bin/python3 -B lan_recovery_followup.py\n'
+        members['WINDOWS-KONTROL.cmd'] = (
+            b'@echo off\r\ncd /d "%~dp0"\r\nif not exist lan_recovery_followup.py (echo ZIP dosyasini tamamen ayiklayin. & pause & exit /b 1)\r\n'
+            b'py -3 -B lan_recovery_followup.py\r\npause\r\n')
+        members['BASLA.txt'] = (
+            'Cryptex aciksa iki cihazda da normal Quit ile kapat. ZIPi iki cihazda tamamen ayikla.\n'
+            'Once Mac: MAC-KONTROL.command. MAC HAZIR yazinca Windows VM: WINDOWS-KONTROL.cmd.\n'
+            'Iki cihaz ayni agda ve uyanik, terminaller acik kalsin. Mac ilk acilista derleme yapar.\n'
+            'Mevcut dort test notu aktarilir. Cevrimdisi kontrol icin esitleme duraklatilir; basarida eski ayar geri gelir.\n'
+            'Hata olursa ayarin duraklatilmis kalmasi mumkundur. Iki TOPARLANMA-SONUC ZIPini gonder.\n'
+            'Syncthing 2.1.5 MPL-2.0: https://github.com/syncthing/syncthing/tree/v2.1.5\n').encode()
     if inspection or windows_inspection_run or queued_note or vm_queued_note:
         folder='Cryptex-Kesinti-Tani'
         plan.update(purpose='cryptex-device-recovery-inspection-packet',
@@ -157,10 +175,11 @@ if __name__=='__main__':
     parser.add_argument('--output',type=Path,required=True)
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--inspect',action='store_true')
+    mode.add_argument('--followup',action='store_true')
     mode.add_argument('--vm-inspect-run')
     mode.add_argument('--queued-note',action='store_true')
     mode.add_argument('--vm-queued-note',action='store_true')
     args=parser.parse_args()
     print(json.dumps(build(args.artifact,args.revision,args.output,inspection=args.inspect,
                            windows_inspection_run=args.vm_inspect_run,queued_note=args.queued_note,
-                           vm_queued_note=args.vm_queued_note)))
+                           vm_queued_note=args.vm_queued_note,followup=args.followup)))

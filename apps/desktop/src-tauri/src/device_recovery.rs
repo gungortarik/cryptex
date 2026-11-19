@@ -11,6 +11,8 @@ const FLAG: &str = "--cryptex-device-recovery-check";
 const INSPECT_FLAG: &str = "--cryptex-device-recovery-inspect";
 pub(super) const START_INSPECT_FLAG: &str = "--cryptex-inspect-connection-start";
 pub(super) const QUEUED_NOTE_FLAG: &str = "--cryptex-inspect-queued-note";
+const FOLLOWUP_FLAG: &str = "--cryptex-resume-existing-markers";
+const FOLLOWUP_RUN: &str = "9b502d61-00ed-4686-841d-10bce8fec61b";
 #[cfg(target_os = "macos")]
 const CUT_FLAG: &str = "--cryptex-device-recovery-desktop-loss";
 const PRIOR_MAC_CAPTURES: [(&str, &str); 2] = [
@@ -783,17 +785,44 @@ fn run(plan: &Plan, root: &Path) -> Result<()> {
     session.capture(plan, true)?;
     session.wait_found(plan, &plan.local, true, 60)?;
     session.wait_found(plan, &plan.peer, true, 1200)?;
+    finish_recovery(plan, root, session, originally_paused)
+}
+
+fn finish_recovery(
+    plan: &Plan,
+    root: &Path,
+    mut session: Session,
+    originally_paused: bool,
+) -> Result<()> {
     stage("allow_peer_receipt_delivery");
     // This is only delivery grace, never evidence of remote durability. Both
     // final daemon digests and all four notes must still match independently.
     for _ in 0..30 {
-        session.heartbeat()?;
+        if let Err(error) = session.heartbeat() {
+            if originally_paused {
+                session.pause(plan, true)?;
+            }
+            return Err(error);
+        }
         std::thread::sleep(Duration::from_secs(2));
     }
     session.pause(plan, true)?;
     session.close()?;
     stage("offline_restart");
     let mut session = Session::start(root, plan)?;
+    let verified = verify_offline_markers(&mut session, plan);
+    // Restore the saved preference even if a guarded check refused a marker.
+    // During verification both owners must continue enforcing the saved pause.
+    if !originally_paused {
+        session.pause(plan, false)?;
+    }
+    session.close()?;
+    verified?;
+    stage("completed");
+    Ok(())
+}
+
+fn verify_offline_markers(session: &mut Session, plan: &Plan) -> Result<()> {
     let paused = session.recovery_settings(plan, None)?;
     if !paused.paused || paused.state != State::Paused {
         return Err(Failure::Connections);
@@ -803,15 +832,55 @@ fn run(plan: &Plan, root: &Path) -> Result<()> {
             return Err(Failure::CaptureUncertain);
         }
     }
-    for device in [&plan.local, &plan.peer] {
-        for ack in [false, true] {
-            session.wait_found(plan, device, ack, 60)?;
+    for (device, ack, step) in [
+        (&plan.local, false, "offline_local_queued"),
+        (&plan.local, true, "offline_local_received"),
+        (&plan.peer, false, "offline_peer_queued"),
+        (&plan.peer, true, "offline_peer_received"),
+    ] {
+        session.wait_found(plan, device, ack, 60)?;
+        observation(step, "found", None, None);
+    }
+    Ok(())
+}
+
+fn resume_existing_markers(plan: &Plan, root: &Path) -> Result<()> {
+    if plan.run != FOLLOWUP_RUN {
+        return Err(Failure::Arguments);
+    }
+    stage("verify_existing_receipts");
+    let mut session = Session::start(root, plan)?;
+    let original = session.recovery_settings(plan, None)?.paused;
+    for (ack, step) in [(false, "resolve_queued"), (true, "resolve_received")] {
+        if !session.inspect_receipt(&plan.capture_id(ack), step)? {
+            return Err(Failure::CaptureUncertain);
         }
     }
-    session.pause(plan, originally_paused)?;
-    session.close()?;
-    stage("completed");
-    Ok(())
+    stage("receive_existing_markers");
+    if original {
+        session.pause(plan, false)?;
+    }
+    let delivery = (|| {
+        for device in [&plan.local, &plan.peer] {
+            for ack in [false, true] {
+                session.wait_found(
+                    plan,
+                    device,
+                    ack,
+                    if device == &plan.peer && ack { 360 } else { 60 },
+                )?;
+            }
+        }
+        Ok(())
+    })();
+    if let Err(error) = delivery {
+        if original {
+            session.pause(plan, true)?;
+        }
+        session.close()?;
+        return Err(error);
+    }
+    finish_recovery(plan, root, session, original)
 }
 
 pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
@@ -819,7 +888,8 @@ pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
     let start_only = cfg!(windows) && args.first().is_some_and(|v| v == START_INSPECT_FLAG);
     let queued_note = args.first().is_some_and(|v| v == QUEUED_NOTE_FLAG);
     let inspect = start_only || queued_note || args.first().is_some_and(|v| v == INSPECT_FLAG);
-    if inspect {
+    let followup = args.first().is_some_and(|v| v == FOLLOWUP_FLAG);
+    if inspect || followup {
         args[0] = FLAG.into();
     }
     #[cfg(target_os = "macos")]
@@ -875,13 +945,29 @@ pub(super) fn entry() -> Option<std::result::Result<(), &'static str>> {
             );
             return result.map_err(|_| "recovery_incomplete");
         }
-        let result = run(&plan, &root);
+        let (purpose, interrupted, result) = if followup {
+            (
+                "cryptex-existing-marker-followup",
+                None,
+                resume_existing_markers(&plan, &root),
+            )
+        } else {
+            (
+                "cryptex-device-recovery",
+                Some(if cfg!(target_os = "macos") {
+                    "desktop"
+                } else {
+                    "daemon"
+                }),
+                run(&plan, &root),
+            )
+        };
         println!(
             "{}",
-            serde_json::json!({"schema":1,"purpose":"cryptex-device-recovery",
+            serde_json::json!({"schema":1,"purpose":purpose,
             "run_id":plan.run,"brain_id":plan.brain,"local_device_id":plan.local,"peer_device_id":plan.peer,
             "outcome":if result.is_ok(){"local_steps_passed"}else{"incomplete"},
-            "interrupted_component":if cfg!(target_os="macos"){"desktop"}else{"daemon"},
+            "interrupted_component":interrupted,
             "error":result.as_ref().err(),"midstream_bytes_interrupted":false,
             "remote_durability_verified":false})
         );
@@ -1149,6 +1235,14 @@ mod tests {
         ]
         .map(String::from)
         .to_vec()
+    }
+    #[test]
+    fn followup_rejects_an_unrelated_run_before_opening_a_session() {
+        let plan = Plan::parse(&args()).unwrap();
+        assert_eq!(
+            resume_existing_markers(&plan, Path::new("")),
+            Err(Failure::Arguments)
+        );
     }
     #[test]
     fn closed_arguments_refuse_paths_extra_controls_and_equal_identities() {

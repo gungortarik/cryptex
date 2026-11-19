@@ -62,6 +62,16 @@ sampled the missing files before they appeared on the receiving filesystem;
 it cannot attribute the original device timeout to this race. Preserve the
 existing four markers for actual-device follow-up on corrected builds.
 
+The follow-up launcher selects the existing recovery UUID. It admits each
+device's known 15-record starting digest or an already converged 16-record
+candidate. It resolves both local captures, waits for both origins' four
+markers, pauses transport, closes and reopens the app, verifies each marker
+offline, restores the prior pause preference and verifies the stopped set.
+Compare both final 16-record hashes on the exact delivered build. A passing
+follow-up establishes later recovery; the original timed-out run remains
+incomplete. The packet also includes a bounded disk inventory in each
+result for diagnosing missing segments.
+
 ## Windows guarded lookup of the already reconciled Mac record
 
 The old `search_hold` label covers several daemon reasons; the original

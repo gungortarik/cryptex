@@ -16,6 +16,9 @@ from mac_identity_preflight import unique_object
 
 BASELINE = '3b2bb10901798c7de74f41aaf05d891eec99d66fa246fd44a8098eb93a302898'
 BASELINE_RECORDS = 12
+FOLLOWUP_RUN = '9b502d61-00ed-4686-841d-10bce8fec61b'
+FOLLOWUP_STAGES = ['verify_existing_receipts', 'receive_existing_markers',
+                   'allow_peer_receipt_delivery', 'offline_restart', 'completed']
 STAGES = ['start_existing_profile', 'capture_while_disconnected', 'interrupt_owned_process_after_start',
           'restart_and_receive', 'allow_peer_receipt_delivery', 'offline_restart', 'completed']
 ERRORS = {'arguments', 'existing_profile_required', 'startup', 'identity', 'connections',
@@ -25,7 +28,8 @@ DRIVER_FIELDS = {'schema', 'purpose', 'run_id', 'brain_id', 'local_device_id', '
 OBSERVATION_STEPS = {'startup_health','brain_read','brain_parse','startup_identity','connections_read','connections_apply',
                      'resolve_prior_mac','resolve_prior_mac_queued','resolve_queued','resolve_received','guarded_search','search_local_queued',
                      'search_local_received','search_peer_queued','search_peer_received',
-                     'queued_before_restart','queued_after_restart'}
+                     'queued_before_restart','queued_after_restart','offline_local_queued','offline_local_received',
+                     'offline_peer_queued','offline_peer_received'}
 OBSERVATION_OUTCOMES = {'begin','ok','error','paused','ready','committed','not_committed','held','found','not_visible'}
 OBSERVATION_CODES = {'brain_response_mismatch','brain_operation_mismatch','local_identity_unavailable',
     'bootstrap_request_rejected','unauthorized_client_process','runtime_busy','timed_out','permission_denied',
@@ -53,12 +57,15 @@ def validate_observation(value):
     return value
 
 
-def validate_driver(value, plan, local, peer):
+def validate_driver(value, plan, local, peer, *, followup=False):
+    purpose = 'cryptex-existing-marker-followup' if followup else 'cryptex-device-recovery'
+    interrupted = None if followup else ('desktop' if local == MAC else 'daemon')
     if (not isinstance(value, dict) or set(value) != DRIVER_FIELDS
             or type(value['schema']) is not int or value['schema'] != 1
-            or value['purpose'] != 'cryptex-device-recovery' or value['run_id'] != plan['run_id']
+            or value['purpose'] != purpose or value['run_id'] != plan['run_id']
+            or (followup and plan['run_id'] != FOLLOWUP_RUN)
             or value['brain_id'] != BRAIN or value['local_device_id'] != local or value['peer_device_id'] != peer
-            or value['interrupted_component'] != ('desktop' if local == MAC else 'daemon')
+            or value['interrupted_component'] != interrupted
             or value['midstream_bytes_interrupted'] is not False
             or value['remote_durability_verified'] is not False
             or not ((value['outcome'] == 'local_steps_passed' and value['error'] is None)
@@ -67,7 +74,8 @@ def validate_driver(value, plan, local, peer):
     return value
 
 
-def parse_driver(output, code, plan, local, peer):
+def parse_driver(output, code, plan, local, peer, *, followup=False):
+    expected = FOLLOWUP_STAGES if followup else STAGES
     if not isinstance(output, str) or len(output) > 65536:
         raise Refused('recovery_output_bound')
     stages, receipt, cleanup_unknown, observations = [], None, False, []
@@ -79,19 +87,22 @@ def parse_driver(output, code, plan, local, peer):
             continue
         value = json.loads(line, object_pairs_hook=unique_object)
         if isinstance(value, dict) and set(value) == {'recovery_observation'} and receipt is None:
-            observations.append(validate_observation(value['recovery_observation']))
+            item = validate_observation(value['recovery_observation'])
+            if followup and item['step'].startswith('offline_') and stages[-1:] != ['offline_restart']:
+                raise Refused('recovery_stage_order')
+            observations.append(item)
         elif isinstance(value, dict) and set(value) == {'recovery_stage'} and receipt is None:
             stages.append(value['recovery_stage'])
-            if stages != STAGES[:len(stages)]:
+            if stages != expected[:len(stages)]:
                 raise Refused('recovery_stage_order')
         elif receipt is None:
-            receipt = validate_driver(value, plan, local, peer)
+            receipt = validate_driver(value, plan, local, peer, followup=followup)
         else:
             raise Refused('duplicate_recovery_receipt')
     if receipt is None or not stages:
         raise Refused('missing_recovery_receipt')
     passed = receipt['outcome'] == 'local_steps_passed'
-    if passed and (code != 0 or stages != STAGES or cleanup_unknown
+    if passed and (code != 0 or stages != expected or cleanup_unknown
                    or any(v['outcome']=='error' for v in observations)):
         raise Refused('incomplete_recovery_evidence')
     if not passed and code == 0:
