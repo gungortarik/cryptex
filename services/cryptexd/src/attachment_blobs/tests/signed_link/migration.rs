@@ -96,6 +96,16 @@ pub(super) fn exercise_existing_profile(root: &Path, old_daemon: &OsStr) {
     assert_eq!(migrate_profile(root), Err(MigrationError::Busy));
     assert!(root.join("daemon.lock").is_file());
     drop(lock);
+    let stage = root.join(crate::instance::migration::STAGED);
+    fs::create_dir(&stage).unwrap();
+    let foreign = stage.join("unexpected");
+    fs::write(&foreign, b"retain").unwrap();
+    assert_eq!(migrate_profile(root), Err(MigrationError::UnexpectedLayout));
+    assert_eq!(fs::read(&foreign).unwrap(), b"retain");
+    assert!(root.join("daemon.lock").is_file());
+    check();
+    fs::remove_file(foreign).unwrap();
+    fs::remove_dir(stage).unwrap();
     for step in ["prepared", "retired", "published"] {
         let status = Command::new(std::env::current_exe().unwrap())
             .args([

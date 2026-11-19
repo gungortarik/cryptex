@@ -101,14 +101,17 @@ impl Directory {
         sync_staged_parent(&self.path.join("enrollment"))?;
         self.validate()
     }
+    pub(crate) fn open_existing_brain_identity(&self) -> Result<File, Error> {
+        let name = crate::identity_runtime::BRAIN_FILE;
+        self.validate()?;
+        #[cfg(windows)]
+        let file = open_source_from_directory_chain(&self.pins, &self.path.join(name))?;
+        #[cfg(target_os = "macos")]
+        let file = self.native.open_file(name.as_ref(), libc::O_RDONLY)?;
+        self.checked_regular(file)
+    }
     pub(crate) fn open_file(&self, name: &str, create: bool) -> Result<File, Error> {
         leaf(name)?;
-        self.open_regular(name, create)
-    }
-    pub(crate) fn open_existing_brain_identity(&self) -> Result<File, Error> {
-        self.open_regular(crate::identity_runtime::BRAIN_FILE, false)
-    }
-    fn open_regular(&self, name: &str, create: bool) -> Result<File, Error> {
         self.validate()?;
         #[cfg(windows)]
         let file = {
@@ -133,6 +136,9 @@ impl Directory {
         };
         #[cfg(target_os = "macos")]
         let file = self.native.export_open(name.as_ref(), create)?;
+        self.checked_regular(file)
+    }
+    fn checked_regular(&self, file: File) -> Result<File, Error> {
         let meta = source_snapshot(&file)?;
         if !meta.is_regular_file || meta.link_count != 1 {
             return Err(Error::Unsafe);

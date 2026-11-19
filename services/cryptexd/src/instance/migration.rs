@@ -88,7 +88,12 @@ pub fn migrate_profile(root: &Path) -> Result<(), MigrationError> {
             return Err(MigrationError::UnexpectedLayout);
         }
     }
-    let pid = stage.open_file(M9_INSTANCE_FILE, !stage.exists(M9_INSTANCE_FILE)?)?;
+    let prepared_pid = stage.exists(M9_INSTANCE_FILE)?;
+    if !prepared_pid && !legacy_exists {
+        // The old name can be retired only after the staged PID was flushed.
+        return Err(MigrationError::UnexpectedLayout);
+    }
+    let pid = stage.open_file(M9_INSTANCE_FILE, !prepared_pid)?;
     if pid.metadata()?.len() != 0 {
         return Err(MigrationError::UnexpectedLayout);
     }
