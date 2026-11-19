@@ -19,11 +19,27 @@ readiness jobs and the cross-account IPC check passed. [CI results](https://gith
 The M9 reference reader resolves an `attachment.link` in authenticated
 history, verifies the target note's hash, Brain ID and classification, and
 checks the stored blob's SHA-256. Isolated daemon tests sign and append the
-link, seal and reopen the canonical pack, and replay the record. The general
-reader retains its unsupported-semantics hold. Before enabling writes on
-real profiles, integrate policy-aware reading and satisfy the ADR-0017 reader
-compatibility and downgrade gates. Capture, transfer, repair and the M6
-copy-only projection still need integration and acceptance.
+link, seal and reopen the canonical pack, and replay the record.
+
+At `f1a7500`, the normal guarded note detail reports a signed link count
+from the local-anchor trust snapshot. Both the link and the target note must
+fall within their respective devices' effective cutoffs and their signed
+metadata must agree. The count can be read offline even if the blob has yet
+to arrive. Checking local bytes requires the admitted note/link pair and
+rehashes the blob under the same snapshot locks. Unknown v2 semantics still
+hold retrieval. M8 export withholds packs containing M9 links.
+The [native daemon tests](https://github.com/gungortarik/cryptex/actions/runs/44462233200)
+exercise both directions of the link across paired devices and check the
+visible notes and link counts after one device is restricted.
+
+The [historical-reader audit](https://github.com/gungortarik/cryptex/actions/runs/44462226739)
+rebuilt the pre-M9 daemon at `2efc3dd` on Windows and macOS. Its ordinary
+profile probe acquired the exclusive instance lock on both synthetic
+v2-bearing stores. The signed packs remained byte-identical. Both audits
+reported `production_v2_activation=blocked`. The probe measures admission
+only. A future release needs enforceable old-binary exclusion and the
+remaining ADR-0017 §8.2 evidence before enabling a real-profile writer.
+Capture, transfer, repair and the M6 copy-only projection remain open.
 
 ## M8 complete on November 18, 2026
 
