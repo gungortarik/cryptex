@@ -1125,6 +1125,34 @@ mod tests {
     }
 
     #[test]
+    fn staged_bytes_must_match_the_signed_digest_before_replacing_the_vault() {
+        let vault = temporary_vault();
+        let note = note("preserve the previous vault");
+        rebuild_vault_notes(&vault, [&note]).unwrap();
+        let tree = vault.join(GENERATED_DIR);
+        let manifest = fs::read(tree.join(MANIFEST_FILE)).unwrap();
+        let source = vault.join("source");
+        fs::write(&source, b"incorrect bytes").unwrap();
+        let expected = Sha256::digest(b"authentic bytes").into();
+        let result = rebuild_vault_with_signed_attachments(
+            &vault,
+            [&note],
+            &VaultKnowledgeView::default(),
+            [("33333333-3333-4333-8333-333333333333", &expected)],
+            |_| Ok(fs::File::open(&source)?),
+        );
+        assert!(matches!(
+            result,
+            Err(ProjectionError::SchemaInconsistent { .. })
+        ));
+        assert_eq!(fs::read(tree.join(MANIFEST_FILE)).unwrap(), manifest);
+        assert!(!tree.join("attachments").exists());
+        validate_owned_tree(&tree).unwrap();
+        assert_eq!(fs::read_dir(&vault).unwrap().count(), 2);
+        fs::remove_dir_all(vault).unwrap();
+    }
+
+    #[test]
     fn attachment_projection_rejects_path_names_before_writing() {
         let root = temporary_vault();
         let source = root.join("source.txt");

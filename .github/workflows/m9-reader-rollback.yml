@@ -55,7 +55,7 @@ jobs:
           path: m8
           persist-credentials: false
       - name: Verify generated vault copies and ownership manifests
-        run: cargo test --locked -p cryptex-projection --lib vault::tests::
+        run: 'cargo test --locked -p cryptex-projection --lib vault::tests::'
       - name: Build the unmodified pre-M9 daemon
         working-directory: m8
         run: cargo build --locked -p cryptexd --bin cryptexd
