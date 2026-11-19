@@ -434,7 +434,7 @@ impl ImportPolicyVerifiedBatch {
                 let admitted = admitted
                     || self
                         .post_import
-                        .admitted_trial_links
+                        .admitted_trial_records
                         .contains(&record.event_id);
                 admitted
                     && self
@@ -473,9 +473,18 @@ impl ImportPolicyVerifiedBatch {
 /// publication or cleanup authority.
 pub(crate) struct PostImportRetrievalSafetyState {
     #[cfg(test)]
-    admitted_trial_links: std::collections::BTreeSet<String>,
+    admitted_trial_records: std::collections::BTreeSet<String>,
     pub(crate) trust: crate::trust_reducer::TrustSnapshot,
     pub(crate) content: cryptex_knowledge::KnowledgeState,
+}
+
+// Real profiles keep M10 controls outside both the send and receive paths.
+fn transport_lifecycle_read(_root: &Path) -> NoteLifecycleRead {
+    #[cfg(test)]
+    if crate::test_temp::lifecycle_trial(_root) {
+        return NoteLifecycleRead::Apply;
+    }
+    NoteLifecycleRead::Hold
 }
 
 fn verify_post_import_policy(
@@ -502,16 +511,16 @@ fn verify_post_import_policy(
     );
     raw_records.extend(verified.records().map(|record| record.bytes.as_slice()));
 
-    let (history, reduction, _) =
-        crate::trust_reducer::verify_history_from_local_anchors_with_verified_cancellable(
-            &raw_records,
-            snapshot.security_history.expected_brain_id(),
-            local_history.local_device.clone(),
-            local_history.local_signing_key_id.clone(),
-            local_history.local_public_key,
-            || false,
-        )
-        .map_err(post_import_hold)?;
+    let (history, reduction, _) = crate::trust_reducer::verify_anchored_history_for_reads(
+        &raw_records,
+        snapshot.security_history.expected_brain_id(),
+        local_history.local_device.clone(),
+        local_history.local_signing_key_id.clone(),
+        local_history.local_public_key,
+        transport_lifecycle_read(&snapshot.runtime_root),
+        || false,
+    )
+    .map_err(post_import_hold)?;
     if history.records().len() != raw_records.len() {
         return Err(ImportStagingError::Invalid(
             "post-import policy union contains duplicate canonical records".into(),
@@ -552,7 +561,7 @@ fn verify_post_import_policy(
         })
         .collect::<std::collections::BTreeSet<_>>();
     #[cfg(test)]
-    let admitted_trial_links = if crate::test_temp::attachment_trial(&snapshot.runtime_root) {
+    let mut admitted_trial_records = if crate::test_temp::attachment_trial(&snapshot.runtime_root) {
         admitted_attachment_links(&history, &cutoffs, None)
             .map_err(|_| ImportStagingError::Invalid("invalid attachment binding".into()))?
             .into_values()
@@ -561,9 +570,25 @@ fn verify_post_import_policy(
     } else {
         Default::default()
     };
+    #[cfg(test)]
+    if crate::test_temp::lifecycle_trial(&snapshot.runtime_root) {
+        // Replay the complete authenticated union before the first canonical move,
+        // including the prior state hash and note author for every admitted transition.
+        history
+            .forgotten_note_ids(&cutoffs, || false)
+            .map_err(|_| ImportStagingError::Invalid("invalid signed note transition".into()))?;
+        admitted_trial_records.extend(
+            history
+                .content_records_through_cutoffs(&cutoffs)
+                .filter_map(|record| match record {
+                    AuthenticatedSecurityRecord::Lifecycle(raw, _) => Some(raw.event_id.clone()),
+                    _ => None,
+                }),
+        );
+    }
     for record in verified.records() {
         #[cfg(test)]
-        if admitted_trial_links.contains(&record.event_id) {
+        if admitted_trial_records.contains(&record.event_id) {
             continue;
         }
         if record.security_control {
@@ -611,7 +636,7 @@ fn verify_post_import_policy(
         trust,
         content,
         #[cfg(test)]
-        admitted_trial_links,
+        admitted_trial_records,
     })
 }
 
@@ -2290,7 +2315,7 @@ pub(crate) fn scan_verified_canonical_from_local_anchor_with_import_devices_and_
         ImportScanScope {
             candidate_devices: import_devices,
             recovery_exclusions: exclusions,
-            lifecycle: NoteLifecycleRead::Hold,
+            lifecycle: transport_lifecycle_read(runtime_root),
         },
         deadline,
     )
@@ -2504,12 +2529,13 @@ fn scan_anchored_history(
             .map(|frame| frame.bytes.as_slice())
             .collect::<Vec<_>>();
         (security_history, reduction, verified_trust) =
-            crate::trust_reducer::verify_history_from_local_anchors_with_verified_cancellable(
+            crate::trust_reducer::verify_anchored_history_for_reads(
                 &raw_refs,
                 expected_brain_id,
                 anchor.device_id().clone(),
                 anchor.signing_key_id().clone(),
                 *anchor.public_key(),
+                scope.lifecycle,
                 || deadline.is_some_and(|deadline| Instant::now() >= deadline),
             )
             .map_err(|hold| match hold {
@@ -2931,7 +2957,7 @@ pub(crate) fn evaluate_import_retrieval_safety<R: TrustedDaemonKeyResolver>(
         expected_brain_id,
         &[],
         ImportScanScope {
-            lifecycle: NoteLifecycleRead::Hold,
+            lifecycle: transport_lifecycle_read(runtime_root),
             candidate_devices,
             recovery_exclusions: &[],
         },
@@ -2958,7 +2984,7 @@ pub(crate) fn evaluate_import_recovery_retrieval_safety<R: TrustedDaemonKeyResol
         expected_brain_id,
         &[],
         ImportScanScope {
-            lifecycle: NoteLifecycleRead::Hold,
+            lifecycle: transport_lifecycle_read(runtime_root),
             candidate_devices,
             recovery_exclusions: exclusions,
         },

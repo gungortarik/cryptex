@@ -125,7 +125,7 @@ pub(super) fn exercise(
     );
     b.tick(store);
     drop(b);
-    let b = Side::new(right.clone(), b_id);
+    let mut b = Side::new(right.clone(), b_id);
     guarded(&b, store)
         .verify_local_attachment(note, link)
         .unwrap();
@@ -144,4 +144,5 @@ pub(super) fn exercise(
     println!(
         "automatic_attachment_sync=verified missing=restored offline=held reconnect=fresh interrupted_repair=recovered canonical_blobs=1 pack=unchanged"
     );
+    super::lifecycle::exercise(&mut a, &mut b, store);
 }

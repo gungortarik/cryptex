@@ -2002,15 +2002,13 @@ fn verify_segment_stream<R: TrustedDaemonKeyResolver>(
                 ),
                 #[cfg(test)]
                 VersionedRecord::VerifiedUnsupported(event)
-                    if candidate
-                        .staged_path
-                        .ancestors()
-                        .any(crate::test_temp::attachment_trial)
-                        && envelope.get("event_type").and_then(|v| v.as_str())
-                            == Some(cryptex_events::attachment_link::EVENT_TYPE) =>
+                    if crate::test_temp::admits_staged_trial(
+                        &candidate.staged_path,
+                        envelope.get("event_type").and_then(|v| v.as_str()),
+                    ) =>
                 {
                     // The signed envelope passed read_versioned_record. The locked
-                    // post-import union below must also admit this exact note/link.
+                    // post-import union must also admit this exact record.
                     (
                         event.event_id.as_str(),
                         event.device_id.as_str(),

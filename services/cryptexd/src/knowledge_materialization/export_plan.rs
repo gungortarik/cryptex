@@ -99,6 +99,10 @@ impl VerifiedCanonicalSnapshot {
                     };
                     eligible &= trial_admitted;
                 }
+                if matches!(record, AuthenticatedSecurityRecord::Lifecycle(..)) {
+                    eligible &=
+                        transport_lifecycle_read(&self.runtime_root) == NoteLifecycleRead::Apply;
+                }
                 retirement_only = single
                     && history.self_retirements.iter().any(|terminal| {
                         terminal.device == device && terminal.event_seq == record.device_seq()

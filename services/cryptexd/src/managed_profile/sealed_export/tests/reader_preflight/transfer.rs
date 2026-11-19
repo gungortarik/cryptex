@@ -6,6 +6,7 @@ use cryptex_events::AuthenticatedSecurityRecord;
 use std::thread;
 
 mod automatic;
+mod lifecycle;
 
 struct Wire {
     sender: PathBuf,

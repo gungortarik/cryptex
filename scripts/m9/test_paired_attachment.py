@@ -144,7 +144,7 @@ def main():
                     (base / "offline").touch()
                     wait_marker("reconnect", 45)
                     start(workers)
-                    if test.wait(timeout=240):
+                    if test.wait(timeout=420):
                         raise RuntimeError("paired attachment suite failed")
                 finally:
                     if test.poll() is None:
@@ -154,8 +154,9 @@ def main():
                     output = log.read()
                     print(output, flush=True)
                 if ("1 passed; 0 failed; 0 ignored" not in output
-                        or "automatic_attachment_sync=verified" not in output):
-                    raise RuntimeError("missing automatic recovery receipt")
+                        or "automatic_attachment_sync=verified" not in output
+                        or "paired_note_lifecycle=verified receiver_search=visible-hidden-restored" not in output):
+                    raise RuntimeError("missing paired profile test receipt")
 
 
 if __name__ == "__main__":

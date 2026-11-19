@@ -10,6 +10,21 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // Only a test creating both profiles can opt them into the M9 transfer trial.
 thread_local! {
     pub(crate) static ATTACHMENT_PAIR: std::cell::OnceCell<[PathBuf; 2]> = const { std::cell::OnceCell::new() };
+    pub(crate) static LIFECYCLE_PAIR: std::cell::OnceCell<[PathBuf; 2]> = const { std::cell::OnceCell::new() };
+}
+pub(crate) fn lifecycle_trial(root: &Path) -> bool {
+    LIFECYCLE_PAIR.with(|pair| {
+        pair.get()
+            .is_some_and(|roots| roots.iter().any(|p| p == root))
+    })
+}
+
+pub(crate) fn admits_staged_trial(path: &Path, event_type: Option<&str>) -> bool {
+    match event_type {
+        Some(cryptex_events::attachment_link::EVENT_TYPE) => path.ancestors().any(attachment_trial),
+        Some("memory.forget" | "memory.restore") => path.ancestors().any(lifecycle_trial),
+        _ => false,
+    }
 }
 pub(crate) fn attachment_trial(root: &Path) -> bool {
     ATTACHMENT_PAIR.with(|pair| {
