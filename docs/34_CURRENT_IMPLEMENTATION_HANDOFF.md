@@ -72,6 +72,14 @@ follow-up establishes later recovery; the original timed-out run remains
 incomplete. The packet also includes a bounded disk inventory in each
 result for diagnosing missing segments.
 
+Follow-up packet `Cryptex-Toparlanma-7684286.zip` uses source `7684286`
+and the existing recovery run. Windows and macOS passed recovery CI
+[44431430611](https://github.com/gungortarik/cryptex/actions/runs/44431430611).
+ZIP readback verified both launchers, the embedded source and executable
+hashes. ZIP SHA-256 is
+`2fa2a529d16fa5cc0f9892e5d3a99c80837e5177219d01ab412efc8fc80b3be8`.
+Await the two `TOPARLANMA-SONUC` archives for physical acceptance.
+
 ## Windows guarded lookup of the already reconciled Mac record
 
 The old `search_hold` label covers several daemon reasons; the original
