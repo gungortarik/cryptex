@@ -36,6 +36,8 @@ mod frontend_build_mode;
 mod pilot_runtime;
 #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
 mod protected_assets;
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+mod retirement_file;
 
 fn runtime_root_path() -> Result<PathBuf, String> {
     if let Some(root) = pilot_runtime::root() {
@@ -288,6 +290,26 @@ fn m8_read_bootstrap_brain_identity() -> Result<String, String> {
 fn m8_read_transport_device_id() -> Result<String, String> {
     cryptexd::ipc::desktop_read_transport_device_id(Duration::from_secs(10))
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn m8_retirement_file(import: bool) -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            retirement_file::choose(import, |notice| {
+                cryptexd::ipc::desktop_retirement_notice(notice)
+                    .map_err(|_| "notice_unavailable".to_string())
+            })
+        })
+        .await
+        .map_err(|_| "notice_worker")?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = import;
+        Err("native_owner_required".into())
+    }
 }
 
 #[tauri::command]
@@ -2584,6 +2606,7 @@ fn main() {
             m8_read_bootstrap_brain_identity,
             m8_read_transport_device_id,
             m8_connection_settings,
+            m8_retirement_file,
             m8_create_bootstrap_offer,
             m8_create_bootstrap_proof,
             m8_prepare_peer_approval,

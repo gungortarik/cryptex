@@ -113,23 +113,6 @@ impl<'a> ExchangePeers<'a> {
     }
 }
 
-fn restricted(history: &VerifiedTrustHistory, trust: &TrustSnapshot, device: &DeviceId) -> bool {
-    // A cutoff of MAX still represents an explicit restriction. Checking only
-    // the numerical effective cutoff would accidentally keep that peer enabled.
-    history
-        .self_retirements
-        .iter()
-        .any(|event| &event.device == device)
-        || history.restrictions.iter().any(|event| {
-            &event.target == device
-                && trust.trusted_devices.contains(&event.issuer)
-                && trust
-                    .effective_cutoffs
-                    .get(&event.issuer)
-                    .is_some_and(|cutoff| event.issuer_seq <= *cutoff)
-        })
-}
-
 fn validate_bindings(
     history: &VerifiedTrustHistory,
     trust: &TrustSnapshot,
@@ -178,7 +161,7 @@ fn eligible_peers<'a>(
     observed_local_transport: &str,
 ) -> Result<Vec<&'a ApprovedPeerBinding>, ExchangePolicyError> {
     validate_bindings(history, trust, observed_local_transport)?;
-    if restricted(history, trust, &history.local_device)
+    if history.restricted(trust, &history.local_device)
         || trust.effective_cutoffs[&history.local_device] != u64::MAX
     {
         return Err(ExchangePolicyError::LocalRestricted);
@@ -187,7 +170,7 @@ fn eligible_peers<'a>(
         .approved_peer_bindings
         .iter()
         .filter(|(device, _)| {
-            trust.effective_cutoffs[*device] == u64::MAX && !restricted(history, trust, device)
+            trust.effective_cutoffs[*device] == u64::MAX && !history.restricted(trust, device)
         })
         .map(|(_, binding)| binding)
         .collect())

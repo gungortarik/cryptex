@@ -161,7 +161,7 @@ impl Exporter {
             budget
                 .admit_file(pack.length)
                 .map_err(|_| Error::SourceChanged)?;
-            if !pack.eligible {
+            if !(pack.eligible || pack.retirement_only) {
                 // Never slice/re-sign a physical pack at a reduced cutoff.
                 // Withhold the complete pack without starving unrelated peers.
                 report.withheld += 1;

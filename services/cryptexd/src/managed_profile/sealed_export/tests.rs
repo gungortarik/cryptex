@@ -4,6 +4,8 @@ use cryptex_core::DeviceId;
 use cryptex_events::envelope::Classification;
 use std::path::PathBuf;
 
+mod retirement_relay;
+
 const LOCAL: &str = "U2SYIGU-YWZX757-2WPZGCR-DHD7MLH-ZKV7HLJ-EYO6CXE-K3DU3DU-SDFXYAE";
 const REMOTE: &str = "XAAPCAD-GA4SF4J-BNQL3FS-T456WKV-FGLXUKO-CDWHVDW-EYWNRIG-SM5GUAZ";
 const ENV: SecureStoreEnvironment = SecureStoreEnvironment::Dev;

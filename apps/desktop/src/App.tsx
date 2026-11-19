@@ -456,6 +456,23 @@ export function App() {
     }
   }
 
+  async function retirementFile(importFile: boolean) {
+    setApprovalBusy(true);
+    setOwnerOperationStatus(null);
+    try {
+      const completed = await invoke<boolean>("m8_retirement_file", { import: importFile });
+      if (completed) setOwnerOperationStatus(importFile
+        ? "Retirement verified and recorded on this device."
+        : "Notice saved. Open it on one trusted device to share the retirement.");
+    } catch {
+      setOwnerOperationStatus(importFile
+        ? "Could not confirm local receipt. Keep the file for retry and check device trust and history."
+        : "Could not save the notice. Check that this device has a separate signed retirement record and choose a new filename.");
+    } finally {
+      setApprovalBusy(false);
+    }
+  }
+
   async function prepareOwnerSecurityOperation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setApprovalBusy(true);
@@ -1409,6 +1426,10 @@ export function App() {
               </div>
             )}
             {ownerOperationStatus ? <p className="capture-status" role="status">{ownerOperationStatus}</p> : null}
+            <div className="capture-confirm-actions">
+              <button className="capture-secondary" type="button" disabled={approvalBusy || !!ownerOperationPrepared} onClick={() => void retirementFile(false)}>Save retirement notice</button>
+              <button className="capture-secondary" type="button" disabled={approvalBusy || !!ownerOperationPrepared} onClick={() => void retirementFile(true)}>Open retirement notice</button>
+            </div>
           </section>
 
           <section className="capture-panel" aria-labelledby="capture-heading">

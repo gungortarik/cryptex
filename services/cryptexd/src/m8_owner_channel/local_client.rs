@@ -236,6 +236,21 @@ impl LocalDaemon {
         }
         result
     }
+    pub fn retirement_notice(
+        &mut self,
+        notice: Option<crate::retirement_notice::Notice>,
+    ) -> Result<Option<crate::retirement_notice::Notice>, Error> {
+        if !self.existing_profile {
+            return Err(Error::Arguments);
+        }
+        self.pending_review.take();
+        crate::retirement_notice::exchange(notice, |bytes| {
+            self.exchange_until(bytes, Duration::from_secs(120))
+                .map_err(|_| std::io::Error::other("notice_channel"))
+        })
+        .map_err(|_| Error::Unavailable)
+    }
+
     pub fn connection_settings(
         &mut self,
         update: Option<crate::managed_profile::connection_settings::Update>,

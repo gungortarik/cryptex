@@ -120,6 +120,16 @@ fn retained_peer(owner: &Owner, expected: &DeviceId) -> bool {
 #[test]
 #[ignore = "requires explicit pinned package, private CI interface and disposable OS credentials"]
 fn restriction_propagates_to_remaining_peer_and_survives_restart() {
+    exercise_three_peers(false);
+}
+
+#[test]
+#[ignore = "requires explicit pinned package, private CI interface and disposable OS credentials"]
+fn self_retirement_reaches_offline_peer_through_native_relay() {
+    exercise_three_peers(true);
+}
+
+fn exercise_three_peers(self_retirement: bool) {
     let package_path = PathBuf::from(
         std::env::var_os("CRYPTEX_EXCHANGE_NATIVE_PACKAGE").expect("explicit pinned package"),
     );
@@ -200,6 +210,84 @@ fn restriction_propagates_to_remaining_peer_and_survives_restart() {
     let before = canonical(&roots[0]);
     assert_eq!(before, canonical(&roots[1]));
     assert_eq!(before, canonical(&roots[2]));
+
+    if self_retirement {
+        // All network owners are stopped. A retires offline; only B receives
+        // the portable file. C must obtain A's final segment from B's helper.
+        use crate::retirement_notice as notice;
+        let ia = Arc::new(Mutex::new(
+            crate::instance::try_acquire_instance(&roots[0]).unwrap(),
+        ));
+        security_change(&roots[0], &ia, &store, true);
+        let portable = {
+            let mut instance = ia.lock().unwrap();
+            crate::incoming_publication::recover_live_with_instance(
+                &roots[0],
+                &mut instance,
+                store.as_ref(),
+                ENV,
+            )
+            .unwrap();
+            notice::exchange(None, |bytes| {
+                notice::reply(bytes, &roots[0], &mut instance, store.as_ref(), ENV)
+                    .map(|(bytes, _)| bytes)
+            })
+            .unwrap()
+            .unwrap()
+        };
+        drop(ia);
+        let (_, index, original) = portable.frame().unwrap();
+        let relative = PathBuf::from("canonical/events")
+            .join(devices[0].as_filename_stem())
+            .join(format!("{index:020}.seg"));
+        assert!(!roots[2].join(&relative).exists());
+        let file = serde_json::to_vec(&portable).unwrap();
+        let (mut b, ib) = natives[1].start(&roots[1], &package_path, store.clone());
+        {
+            let mut owner = ib.lock().unwrap();
+            notice::exchange(Some(notice::Notice::decode(&file).unwrap()), |bytes| {
+                notice::reply(bytes, &roots[1], &mut owner, store.as_ref(), ENV)
+                    .map(|(bytes, _)| bytes)
+            })
+            .unwrap();
+        }
+        assert_eq!(std::fs::read(roots[1].join(&relative)).unwrap(), original);
+        // Stop the first receiver before C starts and resume from B's durable copy.
+        b.shutdown().unwrap();
+        drop((b, ib));
+        let (mut b, ib) = natives[1].start(&roots[1], &package_path, store.clone());
+        let (mut c, ic) = natives[2].start(&roots[2], &package_path, store.clone());
+        pause(&b, false);
+        pause(&c, false);
+        let deadline = Instant::now() + Duration::from_secs(180);
+        while !(retained_peer(&b, &devices[2]) && retained_peer(&c, &devices[1])) {
+            assert!(
+                Instant::now() < deadline,
+                "retirement did not reach C through B"
+            );
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        assert_eq!(std::fs::read(roots[2].join(&relative)).unwrap(), original);
+        pause(&b, true);
+        pause(&c, true);
+        b.shutdown().unwrap();
+        c.shutdown().unwrap();
+        drop((b, ib, c, ic));
+        for i in [1, 2] {
+            let (mut peer, instance) = natives[i].start(&roots[i], &package_path, store.clone());
+            let view = peer.handle().request(None).unwrap();
+            assert_eq!(view.state, State::Paused);
+            assert_eq!(view.devices.len(), 1);
+            assert_eq!(view.devices[0].device_id, devices[3 - i].as_str());
+            assert_eq!(std::fs::read(roots[i].join(&relative)).unwrap(), original);
+            peer.shutdown().unwrap();
+            drop((peer, instance));
+        }
+        for root in roots {
+            std::fs::remove_dir_all(root).unwrap();
+        }
+        return;
+    }
 
     // B is offline. Its approved prefix is already on A/C. Only A's daemon
     // creates the new decision; C must learn it through normal network import.

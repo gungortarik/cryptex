@@ -218,6 +218,8 @@ enum Command {
 }
 #[derive(Clone)]
 pub struct Handle {
+    #[cfg(windows)]
+    pub(crate) instance: Option<std::sync::Weak<Mutex<crate::instance::InstanceLock>>>,
     sender: mpsc::SyncSender<Command>,
     reader: Arc<Mutex<Option<Reader>>>,
 }
@@ -264,6 +266,8 @@ impl Owner {
         let (sender, receive) = mpsc::sync_channel(4);
         let reader = Arc::new(Mutex::new(None));
         let handle = Handle {
+            #[cfg(windows)]
+            instance: recovery_owner.as_ref().map(Arc::downgrade),
             sender,
             reader: reader.clone(),
         };

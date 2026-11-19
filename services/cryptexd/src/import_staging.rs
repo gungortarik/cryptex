@@ -766,6 +766,54 @@ impl ImportStagingSession {
         Ok(&self.candidates)
     }
 
+    /// Owner-carried bytes stay private until the same policy review and
+    /// no-replace publication used by network candidates have succeeded.
+    #[cfg(any(windows, target_os = "macos"))]
+    pub(crate) fn stage_retirement_notice(
+        &mut self,
+        notice: &crate::retirement_notice::Notice,
+    ) -> Result<&[StagedSegment], ImportStagingError> {
+        self.validate_runtime_identity()?;
+        if self._single_flight.is_none()
+            || self.prepared
+            || self.failed
+            || !self.candidates.is_empty()
+        {
+            return Err(ImportStagingError::Invalid(
+                "retirement staging requires a fresh transaction".into(),
+            ));
+        }
+        let (device, index, bytes) = notice.frame()?;
+        self.budget.admit_file(bytes.len() as u64)?;
+        let dir = self.staging_dir.join(device.as_filename_stem());
+        ensure_directory_chain(&dir)?;
+        #[cfg(target_os = "macos")]
+        self.runtime_identity.pin(&dir)?;
+        let _pins = inspect_directory_chain(&dir, true)?;
+        let path = dir.join(format!("{index:020}.seg"));
+        let mut file = create_import_file(&path)?;
+        file.write_all(&bytes)?;
+        sync_import_file(&file)?;
+        file.seek(SeekFrom::Start(0))?;
+        let length = bytes.len() as u64;
+        let (actual, sha256) = hash_bounded(&mut file, length)?;
+        if actual != length || sha256 != format!("{:x}", Sha256::digest(&bytes)) {
+            return Err(ImportStagingError::Invalid(
+                "retirement staging readback mismatch".into(),
+            ));
+        }
+        sync_staged_parent(&path)?;
+        self.validate_runtime_identity()?;
+        self.candidates.push(StagedSegment {
+            device_id: device,
+            segment_index: index,
+            length,
+            sha256,
+            staged_path: path,
+        });
+        Ok(&self.candidates)
+    }
+
     /// Explicitly discard this unprepared staging transaction. Cleanup errors
     /// are returned; callers must not proceed to canonical locks after failure.
     pub fn discard(mut self) -> Result<(), ImportStagingError> {

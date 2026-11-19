@@ -421,6 +421,20 @@ pub(crate) fn serve(
             }
             Incoming::Settings(received) => {
                 let bytes = connection.consume_settings(received)?;
+                if super::is_retirement_notice(&bytes) {
+                    domain = super::native_domain::Domain::from_context(context.clone(), &registry);
+                    let (reply, _lease) = crate::retirement_notice::reply(
+                        &bytes,
+                        root,
+                        instance,
+                        context.store.as_ref(),
+                        context.environment,
+                    )?;
+                    send_checked(&backend.namespace, || {
+                        connection.send(&reply, Instant::now() + IPC_RESPONSE_DEADLINE)
+                    })?;
+                    continue;
+                }
                 if crate::managed_profile::connection_settings::Request::decode(&bytes)
                     .is_ok_and(|request| request.update.is_some())
                 {

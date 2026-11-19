@@ -100,6 +100,51 @@ fn publish_incoming_until<S: SecureStore + ?Sized>(
     environment: SecureStoreEnvironment,
     deadline: std::time::Instant,
 ) -> Result<IncomingPublicationReport, IncomingPublicationError> {
+    publish_batch(
+        root,
+        Batch::Transport(paths),
+        instance,
+        store,
+        environment,
+        deadline,
+    )
+}
+
+enum Batch<'a> {
+    Transport(&'a [PathBuf]),
+    Retirement(&'a crate::retirement_notice::Notice),
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(crate) static STOP_AFTER_PREPARE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub(crate) fn publish_retirement_notice(
+    root: &Path,
+    notice: &crate::retirement_notice::Notice,
+    instance: &mut crate::instance::InstanceLock,
+    store: &dyn SecureStore,
+    environment: SecureStoreEnvironment,
+) -> Result<IncomingPublicationReport, IncomingPublicationError> {
+    publish_batch(
+        root,
+        Batch::Retirement(notice),
+        instance,
+        store,
+        environment,
+        std::time::Instant::now() + std::time::Duration::from_secs(20),
+    )
+}
+
+fn publish_batch<S: SecureStore + ?Sized>(
+    root: &Path,
+    batch: Batch<'_>,
+    instance: &mut crate::instance::InstanceLock,
+    store: &S,
+    environment: SecureStoreEnvironment,
+    deadline: std::time::Instant,
+) -> Result<IncomingPublicationReport, IncomingPublicationError> {
     if instance.path() != crate::paths::lock_path(root) {
         return Err(IncomingPublicationError::Rejected(
             ImportStagingError::Invalid("publication instance belongs to another runtime".into()),
@@ -109,7 +154,7 @@ fn publish_incoming_until<S: SecureStore + ?Sized>(
         .admission()
         .exclusive(root, deadline, false)
         .map_err(IncomingPublicationError::Admission)?;
-    let result = publish_exclusively(root, paths, instance, store, environment);
+    let result = publish_exclusively(root, batch, instance, store, environment);
     exclusive.finish(match &result {
         Ok(_) | Err(IncomingPublicationError::Rejected(_)) => None,
         Err(IncomingPublicationError::RecoveryRequired(ImportStagingError::PolicyConflict(_)))
@@ -125,7 +170,7 @@ fn publish_incoming_until<S: SecureStore + ?Sized>(
 
 fn publish_exclusively<S: SecureStore + ?Sized>(
     root: &Path,
-    paths: &[PathBuf],
+    batch: Batch<'_>,
     instance: &mut crate::instance::InstanceLock,
     store: &S,
     environment: SecureStoreEnvironment,
@@ -161,8 +206,11 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
         let local_device = anchor.device_id().clone();
         let db = cryptex_projection::ProjectionDb::open_existing_read_only(root)
             .map_err(|error| ImportStagingError::Invalid(error.to_string()))?;
-        let mut devices = session
-            .stage_batch_from_transport_paths(paths)?
+        let staged = match batch {
+            Batch::Transport(paths) => session.stage_batch_from_transport_paths(paths)?,
+            Batch::Retirement(notice) => session.stage_retirement_notice(notice)?,
+        };
+        let mut devices = staged
             .iter()
             .map(|candidate| candidate.device_id.clone())
             .collect::<Vec<_>>();
@@ -176,6 +224,16 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
             &mut resolver,
             &db,
         );
+        if matches!(batch, Batch::Retirement(_))
+            && !devices
+                .first()
+                .is_some_and(|d| safety.admits_retirement_handoff(d))
+        {
+            return Err(ImportStagingError::Invalid(
+                "retirement handoff requires an eligible receiver and a directly approved sender"
+                    .into(),
+            ));
+        }
         let identical = safety.remove_identical_import_replays(&mut session)?;
         if session
             .candidates()
@@ -240,6 +298,12 @@ fn publish_exclusively<S: SecureStore + ?Sized>(
     session
         .prepare_verified_manifest(verified.verified())
         .map_err(RecoveryRequired)?;
+    #[cfg(test)]
+    if STOP_AFTER_PREPARE.with(|flag| flag.replace(false)) {
+        return Err(RecoveryRequired(ImportStagingError::RecoveryConflict(
+            "injected interruption after durable prepare".into(),
+        )));
+    }
     session
         .publish_verified_batch(&verified)
         .map_err(RecoveryRequired)?;

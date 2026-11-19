@@ -173,6 +173,18 @@ impl RetrievalSafetyState {
         })
     }
 
+    #[cfg(any(windows, target_os = "macos"))]
+    pub(crate) fn admits_retirement_handoff(&self, sender: &DeviceId) -> bool {
+        self.snapshot
+            .as_ref()
+            .and_then(|s| s.verified_trust_context())
+            .is_some_and(|(history, trust)| {
+                history.approved_peer_binding(sender).is_some()
+                    && !history.restricted(trust, &history.local_device)
+                    && trust.effective_cutoffs.get(&history.local_device) == Some(&u64::MAX)
+            })
+    }
+
     /// Idempotent replay is decided only inside this successful local-policy
     /// snapshot. Byte equality outside the trusted, locked inventory is not an
     /// admission decision. Normal transport publication remains gated.

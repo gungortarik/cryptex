@@ -45,6 +45,9 @@ jobs:
           test_name=incoming_publication::tests::offline_restricted_peer_tail_is_refused_after_owner_confirmed_cutoff
           cargo test --locked -p cryptexd --features m8-local-startup-check --lib "$test_name" -- --exact | tee "$RUNNER_TEMP/restriction-test.log"
           grep -Fx "test $test_name ... ok" "$RUNNER_TEMP/restriction-test.log"
+          test_name=managed_profile::sealed_export::tests::retirement_relay::interrupted_self_retirement_reaches_third_profile_after_first_owner_goes_offline
+          cargo test --locked -p cryptexd --features m8-local-startup-check --lib "$test_name" -- --exact | tee "$RUNNER_TEMP/retirement-test.log"
+          grep -Fx "test $test_name ... ok" "$RUNNER_TEMP/retirement-test.log"
       - name: Verify canonical lock contention and writer regression on macOS
         run: |
           cargo test --locked -p cryptexd --lib canonical_writer::tests:: -- --test-threads=1

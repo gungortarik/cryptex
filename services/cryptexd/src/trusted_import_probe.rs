@@ -242,7 +242,7 @@ pub(crate) mod tests {
     use cryptex_events::{BootstrapApprovalRole, DeviceSeq, SigningKeyId};
     use std::io::Write;
 
-    fn local(
+    pub(crate) fn local(
         root: &Path,
         brain: &str,
         store: &crate::FakeSecureStore,

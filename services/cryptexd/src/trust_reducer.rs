@@ -90,6 +90,22 @@ impl TrustedDaemonKeyResolver for LocalAnchorResolver {
 }
 
 impl VerifiedTrustHistory {
+    pub(crate) fn restricted(&self, trust: &TrustSnapshot, device: &DeviceId) -> bool {
+        // A cutoff of MAX still represents an explicit restriction. Checking only
+        // the numerical effective cutoff would accidentally keep that peer enabled.
+        self.self_retirements
+            .iter()
+            .any(|event| &event.device == device)
+            || self.restrictions.iter().any(|event| {
+                &event.target == device
+                    && trust.trusted_devices.contains(&event.issuer)
+                    && trust
+                        .effective_cutoffs
+                        .get(&event.issuer)
+                        .is_some_and(|cutoff| event.issuer_seq <= *cutoff)
+            })
+    }
+
     pub(crate) fn approved_peer_binding(
         &self,
         device_id: &DeviceId,

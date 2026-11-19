@@ -2188,6 +2188,24 @@ fn handle_connection_via(
         }
         Err(error) => return Err(error),
     };
+    #[cfg(windows)]
+    if peer_is_desktop && is_retirement_notice(&frame) {
+        let ctx = search.ok_or_else(|| invalid_data("notice_unavailable"))?;
+        let owner = ctx
+            .connections
+            .as_ref()
+            .and_then(|h| h.instance.as_ref()?.upgrade())
+            .ok_or_else(|| invalid_data("notice_unavailable"))?;
+        let mut instance = owner.try_lock().map_err(|_| invalid_data("notice_busy"))?;
+        let (reply, _lease) = crate::retirement_notice::reply(
+            &frame,
+            &ctx.runtime_root,
+            &mut instance,
+            ctx.store.as_ref(),
+            ctx.environment,
+        )?;
+        return write_response(stream, &reply, Instant::now() + IPC_RESPONSE_DEADLINE);
+    }
     if serde_json::from_slice::<serde_json::Value>(&frame)
         .ok()
         .and_then(|v| v.get("operation")?.as_str().map(str::to_owned))
@@ -2504,6 +2522,29 @@ fn connection_settings_reply(
 }
 
 /// Windows packaged Desktop route. Mac must use the native allocation channel.
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+fn is_retirement_notice(bytes: &[u8]) -> bool {
+    serde_json::from_slice::<serde_json::Value>(bytes)
+        .ok()
+        .is_some_and(|v| v["operation"] == crate::retirement_notice::OPERATION)
+}
+
+#[cfg(windows)]
+pub fn desktop_retirement_notice(
+    notice: Option<crate::retirement_notice::Notice>,
+) -> io::Result<Option<crate::retirement_notice::Notice>> {
+    crate::retirement_notice::exchange(notice, |bytes| {
+        let mut stream = Stream::connect(socket_name()?)?;
+        arm_ipc_stream(&stream)?;
+        write_response(&mut stream, bytes, Instant::now() + IPC_REQUEST_DEADLINE)?;
+        read_ipc_frame(
+            &mut stream,
+            crate::retirement_notice::MAX_NOTICE_BYTES * 2,
+            Instant::now() + Duration::from_secs(120),
+        )
+    })
+}
+
 pub fn desktop_connection_settings(
     update: Option<crate::managed_profile::connection_settings::Update>,
 ) -> io::Result<crate::managed_profile::connection_settings::View> {

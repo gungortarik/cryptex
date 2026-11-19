@@ -1,12 +1,12 @@
 # Delivering a device's final signed retirement
 
-**Proposed for owner review.** This proposal covers delivery of an existing
-`security.device_self_retired` event. Acceptance would require a narrow change
-to sealed export and a new owner-mediated handoff. The current product does
-neither. The signed event and the ADR-0019 trust decision keep their existing
-meaning.
+The owner approved one portable handoff followed by automatic forwarding.
+A exports its original signed retirement in a `.cxret` file. In Device Trust,
+use **Save retirement notice** on A and **Open retirement notice** on B.
+Once B applies the notice, C can obtain the original sealed segment from B
+through normal sync. A can remain offline throughout forwarding.
 
-## What happens today
+## Behavior before this change
 
 1. The owner confirms retirement on A. The daemon records the signed event
    once in A's canonical history. Its boundary identifies the preceding
@@ -31,7 +31,7 @@ Implementation references: [owner append](../../services/cryptexd/src/knowledge_
 The [physical cutoff receipts](../../evidence/m8/m8-physical-lan-cutoff-9a6dc973.json)
 exercise a restriction imposed by another still-authorized device.
 
-## Proposed first delivery and forwarding
+## Approved first delivery and forwarding
 
 | Stage | Action and observable result |
 | --- | --- |
@@ -40,14 +40,14 @@ exercise a restriction imposed by another still-authorized device.
 | B verifies and stores | B uses its own verified Brain history, device/key binding, original signature, preceding sequence/hash and canonical import rules. It publishes through the daemon's existing no-replace path. A matching replay has no additional canonical effect. B can report local application after durable publication and policy reduction. |
 | Other peers reconnect | B, or another eligible holder, automatically offers the exact verified terminal-only segment over its own eligible sessions. This requires a dedicated forwarding rule. Each receiving daemon verifies A's event independently and applies it when its verified history supports it. An offline peer can catch up while a holder remains available. No peer signs on A's behalf. |
 
-The forwarding rule would admit only a byte-identical sealed segment containing
+The forwarding rule admits only a byte-identical sealed segment containing
 one validated terminal event, from a locked verified snapshot. The ordinary
 cutoff continues to apply to every content record and every other policy event.
 A previously retired identity with its terminal event in a mixed segment needs
 separate recovery review. Rewriting its canonical segment or bundling its notes
 would invalidate the minimal handoff design.
 
-If history is missing, retain the candidate outside canonical storage and
+If B lacks the preceding history, keep the portable file for a retry and
 obtain the required history from an eligible replica. Apply the existing
 guarded-content hold wherever ADR-0019 requires it. A package manifest cannot
 establish authority. If the only prior copy is on A, an explicit recovery of
@@ -72,16 +72,20 @@ fixtures. They exercise today's event, authority and import behavior.
 | `-p cryptexd --lib retirement` | 7 | Confirm-once, durable append recovery, stale plan refusal, local exchange restrictions and terminal trust rules. |
 | `-p cryptexd --lib prepared_recovery_batch_verifies_existing_destination_against_preimport_policy` | 1 | Existing destination verified under pre-import policy and imported retirement cutoff reapplied on recovery. |
 
-After design approval, automate the delivery gate with three disposable
-identities. Retire A while B and C are offline. Interrupt A between prefix
-seal, terminal append, terminal seal and package creation. Recover one event
-with identical bytes. Hand it once to B, interrupt and replay B's import, then
-bring C online with A offline and obtain the same event through B. Restart B
-and C offline and compare the terminal event hash and effective cutoff.
-Include wrong Brain/key, missing predecessor, mixed segment, authenticated
-post-retirement tail and conflicting destination cases. Verify every injected
-failure preserves canonical history and the applicable hold. This end-to-end
-gate remains open.
+The three-profile interrupted-publication regression interrupts A after the
+durable append and B after staging its import. It verifies a reproducible
+package, idempotent recovery, refusal of ordinary exchange on A, and exact
+terminal bytes and cutoff on B and C after offline reopen. The complementary
+native worker test uses three disposable Windows owners. Only B opens the
+file. B is shut down before C comes online. The test requires B and C to
+converge through the product's network workers with A offline.
+
+The owner file contains the original signed UTF-8 event and its original
+segment index. The daemon reconstructs the canonical frame, checks its
+signature and preceding history on import, and publishes using its normal
+no-replace transaction. A mixed historical segment is ineligible for this
+handoff. A peer that has never directly approved the source cannot grant it
+authority by importing a file.
 
 Trust rules: [ADR-0019 protocol addendum](../adr/ADR-0019-m8-protocol-addendum-proposal.md)
 and [restriction authority addendum](../adr/ADR-0019-m8-restriction-authority-addendum.md).

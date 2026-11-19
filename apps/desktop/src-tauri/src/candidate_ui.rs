@@ -20,6 +20,10 @@ use std::time::{Duration, Instant};
 
 type Reply<T> = SyncSender<Result<T, String>>;
 enum Work {
+    Retirement(
+        Option<cryptexd::retirement_notice::Notice>,
+        Reply<Option<cryptexd::retirement_notice::Notice>>,
+    ),
     Bind([u8; 32], Reply<()>),
     Ping(Reply<()>),
     ProfileStatus(Reply<NativeProfileStatus>),
@@ -89,11 +93,13 @@ impl Client {
     ) -> Result<T, String> {
         let (reply, receive) = mpsc::sync_channel(1);
         let work = make(reply);
-        let budget = Duration::from_secs(if matches!(&work, Work::Connections(..)) {
-            125
-        } else {
-            25
-        });
+        let budget = Duration::from_secs(
+            if matches!(&work, Work::Connections(..) | Work::Retirement(..)) {
+                125
+            } else {
+                25
+            },
+        );
         self.sender
             .try_send(Queued {
                 deadline: Instant::now() + budget,
@@ -423,6 +429,13 @@ impl Owner {
                             let result = daemon.profile_status().map_err(|e| e.to_string());
                             deliver(&mut daemon, &delivery, reply, result);
                         }
+                        Work::Retirement(notice, reply) => {
+                            pending_delivery = None;
+                            let result = daemon
+                                .retirement_notice(notice)
+                                .map_err(|_| "notice_unavailable".to_string());
+                            deliver(&mut daemon, &delivery, reply, result);
+                        }
                         Work::Connections(update, reply) => {
                             if update.is_some() {
                                 pending_delivery = None;
@@ -622,6 +635,18 @@ async fn m8_native_profile_status(
     state: tauri::State<'_, Client>,
 ) -> Result<NativeProfileStatus, String> {
     async_call(state.inner().clone(), Work::ProfileStatus).await
+}
+
+#[tauri::command]
+async fn m8_retirement_file(state: tauri::State<'_, Client>, import: bool) -> Result<bool, String> {
+    let client = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::retirement_file::choose(import, |notice| {
+            client.call(|reply| Work::Retirement(notice, reply))
+        })
+    })
+    .await
+    .map_err(|_| "notice_worker")?
 }
 
 #[tauri::command]
@@ -1391,6 +1416,7 @@ pub fn entry() -> Option<Result<(), String>> {
                 m8_read_bootstrap_brain_identity,
                 m8_read_transport_device_id,
                 m8_connection_settings,
+                m8_retirement_file,
                 m8_create_bootstrap_offer,
                 m8_create_bootstrap_proof,
                 m8_prepare_peer_approval,

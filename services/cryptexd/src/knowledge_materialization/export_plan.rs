@@ -10,6 +10,7 @@ pub(crate) struct ExportPack<'a> {
     pub(crate) length: u64,
     pub(crate) digest: [u8; 32],
     pub(crate) eligible: bool,
+    pub(crate) retirement_only: bool,
 }
 impl ExportPack<'_> {
     pub(crate) fn validate(&self, root: &Path) -> bool {
@@ -20,7 +21,7 @@ impl ExportPack<'_> {
     }
     pub(crate) fn local_lock(&self) -> Option<&DeviceCanonicalLock> {
         let (history, _) = self.snapshot.verified_trust_context()?;
-        if self.device != history.local_device || !self.eligible {
+        if self.device != history.local_device || !(self.eligible || self.retirement_only) {
             return None;
         }
         self.snapshot
@@ -45,7 +46,7 @@ impl VerifiedCanonicalSnapshot {
         let invalid = || {
             KnowledgeMaterializationError::Verification("export pack authority unavailable".into())
         };
-        let (_, trust) = self.verified_trust_context().ok_or_else(invalid)?;
+        let (history, trust) = self.verified_trust_context().ok_or_else(invalid)?;
         let mut records = BTreeMap::new();
         for record in self.security_history.records() {
             check()?;
@@ -68,6 +69,8 @@ impl VerifiedCanonicalSnapshot {
             let mut length = 0u64;
             let mut hash = Sha256::new();
             let mut eligible = true;
+            let single = frames.len() == 1;
+            let mut retirement_only = false;
             for frame in frames {
                 check()?;
                 if frame.position.frame_offset != length {
@@ -77,6 +80,10 @@ impl VerifiedCanonicalSnapshot {
                     .get(&(device.as_str(), frame.position.event_id.as_str()))
                     .ok_or_else(invalid)?;
                 eligible &= record.device_seq() <= *cutoff;
+                retirement_only = single
+                    && history.self_retirements.iter().any(|terminal| {
+                        terminal.device == device && terminal.event_seq == record.device_seq()
+                    });
                 let header = cryptex_events::framing::encode_frame_header(
                     u32::try_from(frame.bytes.len()).map_err(|_| invalid())?,
                 )
@@ -97,6 +104,7 @@ impl VerifiedCanonicalSnapshot {
                 length,
                 digest: hash.finalize().into(),
                 eligible,
+                retirement_only,
             });
         }
         Ok(packs)

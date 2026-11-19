@@ -1118,6 +1118,12 @@ pub(crate) fn append_owner_security_operation_with_lock(
         cryptex_events::read_security_v3_event(&candidate, &signing_key.verifying_key())
             .map_err(|failure| CanonicalWriterError::Integrity(failure.to_string()))?;
 
+    let retirement = snapshot.operation == BootstrapOperation::SelfRetirement;
+    if retirement && state.events_in_active > 0 {
+        seal_active_segment(runtime_root, device_id, state.active_segment_index)?;
+        state = rebuild_chain_state(runtime_root, device_id, &validator)?;
+    }
+
     journal
         .record_append_attempt(
             &snapshot.transaction_id,
@@ -1147,7 +1153,7 @@ pub(crate) fn append_owner_security_operation_with_lock(
         }
     }
     let events_in_active = state.events_in_active.saturating_add(1);
-    if events_in_active >= DEFAULT_SEAL_EVENT_THRESHOLD_HINT {
+    if retirement || events_in_active >= DEFAULT_SEAL_EVENT_THRESHOLD_HINT {
         seal_active_segment(runtime_root, device_id, segment_index)?;
     }
     state = rebuild_chain_state(runtime_root, device_id, &validator)?;

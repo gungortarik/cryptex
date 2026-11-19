@@ -6,9 +6,9 @@ The disposable LAN cutoff check passed in both directions at source `30ac742`.
 Both receipts match the issued run and the SHA-256 of each direction's rejected
 segment. Each receiver retained its accepted prefix through both daemon recovery
 passes. The [self-retirement delivery review](proposals/m8-self-retirement-delivery.md)
-identifies the first-delivery and forwarding gaps and proposes a single owner
-handoff followed by automatic forwarding. Design approval and end-to-end
-delivery evidence are pending, along with final status, security and candidate review.
+records the approved single owner handoff and automatic forwarding design.
+Implementation includes interrupted-publication and native three-owner tests.
+Final status, security and candidate review remain open.
 [Paired device receipts](../evidence/m8/m8-physical-lan-cutoff-9a6dc973.json).
 
 ## November 18 checkpoint after the two transfer inventories
@@ -148,19 +148,10 @@ receipt for that run and source with matching segment hashes in both directions.
 remain covered separately by the three-owner test. The two-host packet only
 modifies disposable test profiles.
 
-Concrete propagation gap from the November 17 source review: self-retirement
-can remain in the canonical active pack (`append_confirmed_owner_security_operation`
-uses the ordinary threshold), and `exchange_policy::eligible_peers` refuses a
-retired local identity before the normal exporter can send its terminal record.
-Even a sealed retirement record would not bypass that eligibility refusal.
-Do not describe local retirement/transport shutdown as remote propagation. A
-reviewed terminal-record handoff/reconciliation path is still needed; do not keep
-retired transport alive, bypass trust or change the approved terminal policy to
-make a test green. Restriction propagation to remaining eligible peers is a
-separate case from delivering retirement from the retired installation itself.
-This limit is already explicit in
-[the sealed export checkpoint](milestones/M8_SEALED_EXPORT_CHECKPOINT.md);
-it is not a newly introduced regression or a reason to repeat owner setup.
+Self-retirement now seals the terminal event alone and offers one portable
+owner handoff. An eligible holder forwards the verified segment using normal
+exchange. The retired identity loses ordinary exchange authority immediately.
+See the [delivery design and test scope](proposals/m8-self-retirement-delivery.md).
 
 ## Historical November 14 snapshot
 
