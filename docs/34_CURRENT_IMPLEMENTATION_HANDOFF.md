@@ -96,6 +96,23 @@ These tests cover the closed purge boundary. A user-confirmed purge, its
 ledger and physical cleanup are still pending.
 Windows and macOS passed at `457b1e6`. [Local request tests](https://github.com/gungortarik/cryptex/actions/runs/44618932752) and [paired delivery tests](https://github.com/gungortarik/cryptex/actions/runs/44618932776).
 
+### Disposable Desktop purge review
+
+From Timeline, open a local note and select **Review permanent deletion**.
+The modal shows the full verified text, classification, event ID and deletion
+limits. Cancel has initial focus. The daemon prepares a five-minute ticket
+bound to the selected note ID and content hash. Cancel or Escape consumes the
+ticket. Explicit confirmation rechecks the guarded detail and returns the ID
+and hash of the confirmed note. The decision is session-only. Physical
+cleanup, an opaque purge ledger and stale-peer suppression remain open.
+
+At `85ac724`, automated browser tests on Windows and macOS exercised both
+decisions against disposable native daemon profiles, including Escape,
+replayed tickets, a mismatched note hash and disabled-profile refusal.
+Every review request preserved the SHA-256 inventory of the canonical event
+packs. Real daemons cannot enable this trial. [Desktop review tests](https://github.com/gungortarik/cryptex/actions/runs/44625230977)
+and [lifecycle regressions](https://github.com/gungortarik/cryptex/actions/runs/44625231124).
+
 Real profiles keep lifecycle writing and replication disabled. Broader
 multi-device reconciliation, destructive purge and M10 acceptance remain open.
 
