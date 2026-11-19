@@ -66,7 +66,20 @@ run ID and product revision. Each daemon verified signatures and chains for
 All four canonical-set digests were
 `bd2c949fc008d2363caf2eb4d9a7bdc8f217e07fe3e3d698e130bc4f4cac3abd`.
 Both protected profiles reported `production_v2_activation=blocked`.
-Trusted-device reader-capability checks and backup rejoin remain open.
+At `758bc20` the normal sync controller on protected profiles requests
+fresh signed reader proofs for M9 attachment links. Two- and three-profile
+tests passed on both platforms. They covered a missing peer, an old reply
+after restart, a modified message and a reflected message. On a private
+Windows CI interface two normal controllers exchanged both challenges and
+verified both replies through pinned Syncthing workers. The controlled Mac
+test delivered control files between temporary profiles. [Native test results](https://github.com/gungortarik/cryptex/actions/runs/44527753466)
+Windows and macOS also passed the full readiness jobs and Windows passed
+the cross-account IPC check. [Readiness results](https://github.com/gungortarik/cryptex/actions/runs/44527826334)
+
+The enrolled Mac and VM still have the earlier migration build according
+to the latest owner receipts. An updated pair can negotiate automatically
+when sync is enabled. Recording current evidence across offline sessions
+and revalidating restored backups remain open before writer activation.
 Capture, transfer, repair and the M6 copy-only projection remain open.
 
 ## M8 complete on November 18, 2026
