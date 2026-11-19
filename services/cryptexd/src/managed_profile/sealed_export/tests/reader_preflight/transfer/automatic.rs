@@ -57,19 +57,38 @@ pub(super) fn exercise(
 
     fs::write(wire.join("disconnect"), []).unwrap();
     wait_for(|| wire.join("offline").is_file(), "workers stopped");
-    drop(b);
-    let mut b = Side::new(right.clone(), b_id);
     let damaged = b"interrupted receiver";
     fs::write(&local, damaged).unwrap();
+    // Invalidate *both* transport copies while the workers are stopped. Only
+    // A still has authentic bytes. Recovery now requires a new native delivery.
+    let own = a
+        .root
+        .join("transport/incoming")
+        .join(crate::import_staging::ATTACHMENT_FOLDER)
+        .join(a_id)
+        .join(&digest);
+    for cached in [&own, &remote] {
+        fs::write(cached, b"broken advertisement").unwrap();
+    }
+
+    let quarantine = right.join("blob-staging/quarantine");
+    let before = fs::read_dir(&quarantine).unwrap().count();
+    // Even a still-valid proof cannot authorize bytes with the wrong digest.
+    b.tick(store);
+    assert!(matches!(
+        b.exporter.last_reader_status,
+        Some(reader::Status::Verified(_))
+    ));
+    assert_eq!(fs::read(&local).unwrap(), damaged);
+    assert_eq!(fs::read_dir(&quarantine).unwrap().count(), before);
+    drop(b);
+    let mut b = Side::new(right.clone(), b_id);
     b.tick(store);
     assert!(!matches!(
         b.exporter.last_reader_status,
         Some(reader::Status::Verified(_))
     ));
     assert_eq!(fs::read(&local).unwrap(), damaged);
-    let quarantine = right.join("blob-staging/quarantine");
-    let before = fs::read_dir(&quarantine).unwrap().count();
-
     crate::attachment_blobs::INTERRUPT_AFTER_QUARANTINE.with(|flag| flag.set(true));
     fs::write(wire.join("reconnect"), []).unwrap();
     wait_for(
@@ -91,6 +110,7 @@ pub(super) fn exercise(
         "interrupted promotion",
     );
     assert!(!local.exists());
+    assert_eq!(fs::read(&remote).unwrap(), bytes);
     assert_eq!(fs::read_dir(&quarantine).unwrap().count(), before + 1);
 
     drop(b);

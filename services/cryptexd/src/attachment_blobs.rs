@@ -65,6 +65,9 @@ pub(crate) fn restore(
     if !transfer_enabled(runtime_root) {
         return Err(BlobError::UnsafeFilesystem);
     }
+    if bytes.len() > crate::ipc::attachment::MAX_BYTES {
+        return Err(BlobError::IntegrityMismatch);
+    }
     store_stream(runtime_root, bytes, StoreIntent::Restore(expected))
 }
 
@@ -77,7 +80,10 @@ fn store_stream(
         .map_err(|_| BlobError::UnsafeFilesystem)?;
     let root = Directory::open(runtime_root)?;
     let staging = root.child("blob-staging", true)?;
-    let _writer = staging.lock_exclusive("writer.lock")?;
+    let _writer = match intent {
+        StoreIntent::Capture => staging.lock_exclusive("writer.lock"),
+        StoreIntent::Restore(_) => staging.try_lock_exclusive("writer.lock"),
+    }?;
     let canonical = root.child("canonical", true)?;
     root.sync()?;
     let blobs = canonical.child("blobs", true)?;
@@ -101,7 +107,11 @@ fn store_stream(
     }
     if blobs.exists(&name)? {
         let mut existing = blobs.open_file(&name, false)?;
-        let result = verify(&mut existing, &digest);
+        let result = if existing.metadata()?.len() == staged.metadata()?.len() {
+            verify(&mut existing, &digest)
+        } else {
+            Err(BlobError::IntegrityMismatch)
+        };
         if result == Err(BlobError::IntegrityMismatch) && matches!(intent, StoreIntent::Restore(_))
         {
             // Authenticate the replacement on disk before moving the original.
@@ -167,6 +177,37 @@ pub(crate) fn open_verified(
     runtime_root: &Path,
     digest: &[u8; 32],
 ) -> Result<impl Read + use<>, BlobError> {
+    let (blobs, mut file) = open_stored(runtime_root, digest)?;
+    verify(&mut file, &(*digest).into())?;
+    blobs.validate()?;
+    file.rewind()?;
+    Ok(file)
+}
+
+pub(crate) fn read_transfer_bytes(
+    source: impl Read,
+    expected: &[u8; 32],
+) -> Result<Vec<u8>, BlobError> {
+    let limit = crate::ipc::attachment::MAX_BYTES;
+    let mut bytes = Vec::new();
+    source.take(limit as u64 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > limit || <[u8; 32]>::from(Sha256::digest(&bytes)) != *expected {
+        return Err(BlobError::IntegrityMismatch);
+    }
+    Ok(bytes)
+}
+
+pub(crate) fn local_transfer_bytes(root: &Path, expected: &[u8; 32]) -> Result<Vec<u8>, BlobError> {
+    let (blobs, file) = open_stored(root, expected)?;
+    let bytes = read_transfer_bytes(file, expected)?;
+    blobs.validate()?;
+    Ok(bytes)
+}
+
+fn open_stored(
+    runtime_root: &Path,
+    digest: &[u8; 32],
+) -> Result<(Directory, std::fs::File), BlobError> {
     crate::paths::assert_outside_repository(runtime_root)
         .map_err(|_| BlobError::UnsafeFilesystem)?;
     let root = Directory::open(runtime_root)?;
@@ -183,11 +224,8 @@ pub(crate) fn open_verified(
     if !blobs.exists(&name)? {
         return Err(BlobError::Missing);
     }
-    let mut file = blobs.open_file(&name, false)?;
-    verify(&mut file, &expected)?;
-    blobs.validate()?;
-    file.rewind()?;
-    Ok(file)
+    let file = blobs.open_file(&name, false)?;
+    Ok((blobs, file))
 }
 
 fn copy_and_hash(

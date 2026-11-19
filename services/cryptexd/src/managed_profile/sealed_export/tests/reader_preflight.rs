@@ -160,6 +160,15 @@ fn paired_readers_exchange_fresh_proofs_before_attachment_export() {
             assert_eq!(right[local], left[peer]);
         }
     }
+    for side in [&a, &b] {
+        assert!(
+            !side
+                .root
+                .join("transport/incoming")
+                .join(crate::import_staging::ATTACHMENT_FOLDER)
+                .exists()
+        );
+    }
     a.exporter.end_reader_session();
     assert_eq!(a.tick(&store).attachment_waiting_for_reader, 1); // old response still on disk
     let peer_slot = a.controls().join(&from_b);
