@@ -114,6 +114,15 @@ Windows CI host, not a new Mac/VM receipt. All selected checks passed at source
 a1af58a: Windows105 and Mac30; see
 [the bounded result and initial fixture correction](../evidence/m8/m8-remaining-peer-restriction-20261117.json).
 
+The automated cutoff test now uses fresh paired profiles on both macOS and
+Windows. For each owner-confirmed reason (retired or compromised), the offline
+peer signs a note beyond sequence 3. The receiver runs daemon recovery before
+each of two deliveries of the same segment. Both must reach the cutoff check,
+leave canonical history byte-identical, and keep the earlier note searchable.
+CI stages the signed bytes directly into each receiver's temporary inbox.
+The mixed Windows–Mac LAN restriction check and the terminal self-retirement
+handoff remain open. [Native CI for 2dfc292](https://github.com/gungortarik/cryptex/actions/runs/44439423255).
+
 Concrete propagation gap from the November 17 source review: self-retirement
 can remain in the canonical active pack (`append_confirmed_owner_security_operation`
 uses the ordinary threshold), and `exchange_policy::eligible_peers` refuses a
