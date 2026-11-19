@@ -175,6 +175,14 @@ canonical bytes and the sealed event pack. The installed daemon continues
 to disable attachment writes. [Native vault receipts](https://github.com/gungortarik/cryptex/actions/runs/44570289719)
 and [Desktop attachment checks](https://github.com/gungortarik/cryptex/actions/runs/44570289844).
 
+At `043a198` the Windows and macOS Desktop trials selected the same binary
+file for two different notes in each temporary profile. Retrying the first
+submission and then attaching the file to the second note produced two
+distinct signed links and one canonical blob. After reopening the profile,
+the guarded reader returned the original bytes for each note's own link
+and rejected both swapped links. The disabled-writer control created no
+blob or signed link. [Windows and macOS receipts](https://github.com/gungortarik/cryptex/actions/runs/44572072946)
+
 ## M8 complete on November 18, 2026
 
 The owner approved candidate `7be9287`. Windows and macOS passed readiness and native recovery. The two-device follow-up reached the same sixteen signed records and retained all four test markers after a paused restart. The historical investigation below is closed. [Scope, security review and CI](../evidence/m8/m8-final-candidate-review-20261118.md)
