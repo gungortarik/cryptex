@@ -11,15 +11,19 @@ import { chromium } from "playwright-core";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const dist = path.join(repo, "apps/desktop/dist");
-const args = ["test", "--locked", "-p", "cryptexd", "--lib", "--no-run", "--message-format=json"];
-if (process.platform === "darwin") args.push("--features", "m8-development-product");
-const build = spawnSync("cargo", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], maxBuffer: 16 * 1024 * 1024 });
-assert.equal(build.status, 0);
-const artifact = build.stdout.trim().split("\n").map(JSON.parse).find(r => r.target?.name === "cryptexd" && r.executable && r.profile.test);
-assert.ok(artifact);
+function buildTestBinary() {
+  const args = ["test", "--locked", "-p", "cryptexd", "--lib", "--no-run", "--message-format=json"];
+  if (process.platform === "darwin") args.push("--features", "m8-development-product");
+  const build = spawnSync("cargo", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], maxBuffer: 16 * 1024 * 1024 });
+  assert.equal(build.status, 0);
+  const artifact = build.stdout.trim().split("\n").map(JSON.parse).find(r => r.target?.name === "cryptexd" && r.executable && r.profile.test);
+  assert.ok(artifact);
+  return artifact.executable;
+}
+const binary = process.env.CRYPTEX_ATTACHMENT_TEST_BINARY ?? buildTestBinary();
 
 async function startClient(mode) {
-  const proc = spawn(artifact.executable, ["--exact", "ipc::tests::attachment_flow::browser_client", "--ignored", "--nocapture"], {
+  const proc = spawn(binary, ["--exact", "ipc::attachment_flow::browser_client", "--ignored", "--nocapture"], {
     env: { ...process.env, CRYPTEX_FILE_FIXTURE_MODE: mode }, stdio: ["pipe", "pipe", "inherit"],
   });
   const exited = once(proc, "exit");
@@ -102,6 +106,11 @@ for (const mode of ["blocked", "allowed"]) {
           await row.getByRole("button", { name: "Open full note" }).click();
           await page.getByText("1 signed attachment link", { exact: true }).waitFor();
           assert.equal(detail.contentHash, selected.noteHash);
+          await page.getByRole("button", { name: "Close", exact: true }).click();
+          const other = page.getByRole("listitem").filter({ hasText: "synthetic IPC search fixture note" });
+          await other.getByRole("button", { name: "Open full note" }).click();
+          await page.getByRole("heading", { name: "Note detail" }).waitFor();
+          assert.equal(detail.attachmentLinkCount, 0);
         }
       } finally {
         await client.finish();

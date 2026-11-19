@@ -75,6 +75,17 @@ function Set-NativeTestPackage {
     }
     $env:CRYPTEX_EXCHANGE_NATIVE_PACKAGE=$nativePackage
 }
+if($p.PSObject.Properties['m9_attachment_browser_node'] -and $p.m9_attachment_browser_node) {
+    $env:CRYPTEX_ATTACHMENT_TEST_BINARY=$p.executables[0]
+    $script=Join-Path $p.workspace 'apps\desktop\scripts\attachment-flow.test.mjs'
+    $result=Invoke-TestBinary $p.m9_attachment_browser_node ('--test --test-reporter=tap "'+$script+'"')
+    $result.stdout | Write-Output
+    $result.stderr | Write-Output
+    if($result.code -ne 0 -or $result.stdout -notmatch '(?m)^# pass 2\r?$' -or $result.stdout -notmatch '(?m)^# fail 0\r?$'){throw 'Isolated attachment browser suite incomplete.'}
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=1} | ConvertTo-Json |
+        Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
+    exit 0
+}
 if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) {
     $env:CRYPTEX_M9_PREVIOUS_DAEMON=$p.m9_historical_daemon
     $env:CRYPTEX_M9_CANDIDATE_DAEMON=Join-Path $p.workspace 'target\debug\cryptexd.exe'

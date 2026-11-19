@@ -52,6 +52,22 @@ Resolution alone grants no access to attachment content. The first writer is
 exercised only in isolated tests. Production writes remain subject to the
 compatible-reader and downgrade gates of ADR-0017 sections 4.5 and 8.2.
 
+### Desktop capture in disposable profiles
+
+The protected note detail can advertise file attachment to Desktop. The
+selected-file request carries the exact note ID and content hash plus up to
+512 KiB of binary data. This limit bounds the initial IPC implementation.
+Only the authenticated Desktop process with the attachment capability can
+submit it. The daemon checks the note and author against locked history,
+stores the verified bytes and appends a signed link using the note's
+classification. Retrying the same bytes for the same note acknowledges the
+existing link. The guarded detail supplies the link count after indexing.
+
+Only the test daemon contains the link writer. The automated browser test
+creates its own enrolled profiles and exercises both settings of the gate.
+Ordinary binaries omit the file action from note detail and reject direct
+attachment requests. No filename or source path enters the IPC request.
+
 For a newly prepared M9 profile, the daemon exclusively creates a fresh
 profile directory. Before the first v2 record, it reserves `daemon.lock` as
 a directory and creates the regular PID lock file `daemon.lock/reader-m9.pid`.

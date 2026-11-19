@@ -2216,13 +2216,13 @@ fn handle_connection_via(
         Err(error) => return Err(error),
     };
     #[derive(Deserialize)]
-    struct Operation<'a> {
-        operation: &'a str,
+    struct Operation {
+        operation: String,
     }
     let operation = serde_json::from_slice::<Operation>(&frame)
         .ok()
         .map(|header| header.operation);
-    if operation == Some("attachment.add") {
+    if operation.as_deref() == Some("attachment.add") {
         let response = attachment::handle(&frame, search, peer_is_desktop, desktop_capture_workers);
         return write_response(
             stream,
@@ -5953,11 +5953,15 @@ fn desktop_capture_exchange(
     Ok(response)
 }
 
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+mod attachment_flow;
+
 #[cfg(test)]
 pub(crate) mod tests {
     mod approval_domain_tests;
-    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
-    mod attachment_flow;
     use std::fs;
 
     use cryptex_core::BrainIdentity;
@@ -7320,15 +7324,15 @@ pub(crate) mod tests {
         fs::remove_dir_all(fixture.root).expect("remove IPC fixture");
     }
 
-    struct SearchFixture {
-        root: PathBuf,
-        brain_id: String,
-        device: DeviceId,
-        store: Arc<FakeSecureStore>,
-        context: SearchContext,
+    pub(super) struct SearchFixture {
+        pub(super) root: PathBuf,
+        pub(super) brain_id: String,
+        pub(super) device: DeviceId,
+        pub(super) store: Arc<FakeSecureStore>,
+        pub(super) context: SearchContext,
     }
 
-    fn prepared_search_fixture(label: &str) -> SearchFixture {
+    pub(super) fn prepared_search_fixture(label: &str) -> SearchFixture {
         let root = exclusive_temp_dir(&format!("cryptex-ipc-search-{label}"));
         let brain = BrainIdentity::new(TEST_BRAIN_ID, "2026-10-08T00:00:00Z").expect("Brain");
         write_brain_identity(&root, &brain).expect("write Brain identity");

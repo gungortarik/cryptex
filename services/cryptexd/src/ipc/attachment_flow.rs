@@ -1,10 +1,13 @@
 //! Browser harness for the normal Desktop clients and the authenticated IPC dispatcher.
 //! Both helper processes are test executables. The server creates its own root.
+use super::tests::prepared_search_fixture;
 use super::*;
+use cryptex_events::Classification;
+use std::fs;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 
-const SERVER: &str = "ipc::tests::attachment_flow::isolated_server";
+const SERVER: &str = "ipc::attachment_flow::isolated_server";
 const TEST_BYTES: &[u8] = &[0, 255, 13, 10, 65, 128];
 
 fn fixture_name(token: &str) -> interprocess::local_socket::Name<'static> {
@@ -58,6 +61,7 @@ fn isolated_server() {
         )
         .unwrap();
     }
+    instance.drain_runtime(Duration::from_secs(5)).unwrap();
     drop(fixture.context);
     drop(instance);
     let original = crate::instance::try_acquire_instance(root).unwrap();

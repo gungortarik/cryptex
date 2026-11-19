@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/m9-attachment-flow.yml'
+      - 'scripts/m8/*standard-user*.ps1'
       - 'apps/desktop/src/**'
       - 'apps/desktop/src-tauri/src/**'
       - 'apps/desktop/scripts/attachment-flow.test.mjs'
@@ -41,7 +42,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cryptex/desktop build
-      - run: node --test apps/desktop/scripts/attachment-flow.test.mjs
+      - run: cargo test --locked -p cryptexd --lib ipc::attachment::tests::
+      - if: runner.os == 'macOS'
+        run: node --test apps/desktop/scripts/attachment-flow.test.mjs
+      - if: runner.os == 'Windows'
+        run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M9AttachmentBrowser
       - if: runner.os == 'macOS'
         run: cargo check --locked -p cryptex-desktop --features m8-development-product
       - if: runner.os == 'Windows'

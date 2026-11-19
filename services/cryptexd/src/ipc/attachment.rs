@@ -3,6 +3,7 @@ use super::*;
 // Fits the existing authenticated desktop frame even with decimal JSON bytes.
 pub const MAX_BYTES: usize = 512 * 1024;
 const OPERATION: &str = "attachment.add";
+const CAPABILITY: &str = "content.attach";
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -17,6 +18,8 @@ pub struct SelectedFile {
 struct AttachmentRequest {
     protocol_version: u32,
     request_id: String,
+    client_role: String,
+    capabilities: Vec<String>,
     operation: String,
     body: SelectedFile,
 }
@@ -43,17 +46,15 @@ pub(super) struct Reply {
 }
 
 pub(super) fn enabled(context: &SearchContext) -> bool {
-    #[cfg(all(
-        test,
-        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
-    ))]
+    #[cfg(test)]
     {
         context.isolated_attachment_writer
+            && cfg!(any(
+                windows,
+                all(target_os = "macos", feature = "m8-local-startup-check")
+            ))
     }
-    #[cfg(not(all(
-        test,
-        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
-    )))]
+    #[cfg(not(test))]
     {
         let _ = context;
         false
@@ -76,7 +77,10 @@ pub(super) fn handle(
         }
     };
     let result = (|| {
-        if !desktop {
+        if !desktop
+            || request.client_role != "desktop"
+            || request.capabilities.as_slice() != [CAPABILITY]
+        {
             return Err(AttachError::Unauthorized);
         }
         if request.operation != OPERATION
@@ -149,6 +153,8 @@ pub fn desktop_attach(file: SelectedFile) -> Result<(), AttachError> {
     let request = AttachmentRequest {
         protocol_version: PROTOCOL_VERSION,
         request_id: new_bootstrap_event_id().map_err(|_| AttachError::Busy)?,
+        client_role: "desktop".into(),
+        capabilities: vec![CAPABILITY.into()],
         operation: OPERATION.into(),
         body: file,
     };
@@ -163,4 +169,34 @@ pub fn desktop_attach(file: SelectedFile) -> Result<(), AttachError> {
         return Err(AttachError::Uncertain);
     }
     reply.result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn selected_bytes_need_the_desktop_process_role_and_attachment_capability() {
+        let request = serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION, "request_id": "ac123928-a245-4251-a141-cda32a57cdd8",
+            "client_role": "desktop", "capabilities": [CAPABILITY], "operation": OPERATION,
+            "body": { "noteId": "b83040d5-7529-4c75-a289-e9399ea8a0ba", "noteHash": "a".repeat(64), "bytes": [0,255] }
+        });
+        let call = |value: &serde_json::Value, desktop| {
+            handle(&serde_json::to_vec(value).unwrap(), None, desktop, None).result
+        };
+        assert_eq!(call(&request, true), Err(AttachError::Disabled));
+        assert_eq!(call(&request, false), Err(AttachError::Unauthorized));
+        for (field, wrong) in [
+            ("client_role", serde_json::json!("cli")),
+            ("capabilities", serde_json::json!(["content.search"])),
+        ] {
+            let mut other = request.clone();
+            other[field] = wrong;
+            assert_eq!(call(&other, true), Err(AttachError::Unauthorized));
+        }
+        let mut extra = request;
+        extra["body"]["path"] = serde_json::json!("file.bin");
+        assert_eq!(call(&extra, true), Err(AttachError::InvalidRequest));
+    }
 }
