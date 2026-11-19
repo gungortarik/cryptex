@@ -5,6 +5,8 @@ use crate::local_device_identity::load_local_device_identity;
 use cryptex_events::attachment_link::LinkPayload;
 use std::fs;
 
+mod recovery;
+
 const BRAIN: &str = "11111111-1111-4111-8111-111111111111";
 
 struct Side {

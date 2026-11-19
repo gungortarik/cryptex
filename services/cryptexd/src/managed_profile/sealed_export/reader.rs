@@ -59,6 +59,11 @@ pub(super) enum Status {
 }
 
 impl ReaderCheck {
+    #[cfg(test)]
+    pub(super) fn expire_current_round(&mut self) {
+        self.round.as_mut().expect("active reader round").started -= FRESHNESS;
+    }
+
     pub(super) fn tick(
         &mut self,
         snapshot: &VerifiedCanonicalSnapshot,
