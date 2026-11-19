@@ -12,7 +12,7 @@ fn interrupted_child() {
     panic!("interruption checkpoint was not reached");
 }
 
-pub(super) fn exercise_existing_profile(root: &Path, old_daemon: &OsStr, key: &SigningKey) {
+pub(super) fn exercise_existing_profile(root: &Path, old_daemon: &OsStr) {
     let current = std::env::var_os("CRYPTEX_M9_CANDIDATE_DAEMON").unwrap();
     let run = |bin: &OsStr, command: &str| {
         Command::new(bin)
@@ -24,35 +24,50 @@ pub(super) fn exercise_existing_profile(root: &Path, old_daemon: &OsStr, key: &S
     let lock = crate::instance::try_acquire_instance(root).unwrap();
     let brain = cryptex_core::BrainIdentity::new(BRAIN, TIMESTAMP).unwrap();
     crate::identity_runtime::write_brain_identity(root, &brain).unwrap();
-    let (first, _) = note_and_link(key);
-    let second = accept_event(
-        SignableEvent {
-            schema_version: 1,
-            event_id: LINK.into(),
-            brain_id: BRAIN.into(),
-            device_id: DEVICE.into(),
-            device_seq: DeviceSeq::from_u64(2).unwrap(),
-            created_at: TIMESTAMP.into(),
-            event_type: EventType::MemoryNote,
-            classification: Classification::Private,
-            signing_key_id: first.signing_key_id.clone(),
-            payload: EventPayload::MemoryNote(
-                MemoryNotePayload::new("Second synthetic note").unwrap(),
-            ),
-            prev_content_hash: first.content_hash.clone(),
-        },
-        key,
-    )
-    .unwrap();
-    let device = DeviceId::new(DEVICE).unwrap();
-    let signed = [first, second].map(|e| serde_json_canonicalizer::to_vec(&e).unwrap());
-    cryptex_storage::append_frame(root, &device, 0, &signed[0]).unwrap();
-    cryptex_storage::seal_active_segment(root, &device, 0).unwrap();
-    cryptex_storage::append_frame(root, &device, 1, &signed[1]).unwrap();
+    use crate::canonical_writer::{
+        AppendMemoryNoteArgs, CanonicalWriterConfig, append_memory_note,
+    };
+    use crate::local_device_identity::{LocalDeviceKeyResolver, enroll_local_device};
+    use crate::secure_store::{FakeSecureStore, SecureStoreEnvironment};
+    let credentials = FakeSecureStore::new();
+    let env = SecureStoreEnvironment::Dev;
+    let identity = enroll_local_device(root, &credentials, env).unwrap();
+    let device = DeviceId::new(identity.device_id.clone()).unwrap();
+    let capture = |classification, text, threshold| {
+        append_memory_note(
+            &credentials,
+            env,
+            AppendMemoryNoteArgs {
+                runtime_root: root,
+                brain_id: BRAIN,
+                device_id: &device,
+                classification,
+                text,
+                event_id: None,
+                config: &CanonicalWriterConfig {
+                    seal_event_threshold: threshold,
+                },
+            },
+        )
+        .unwrap()
+    };
+    let first = capture(
+        Classification::Restricted,
+        "First synthetic migration note",
+        1,
+    );
+    let second = capture(
+        Classification::Private,
+        "Second synthetic migration note",
+        100,
+    );
+    assert!(first.sealed && !second.sealed);
     let paths = [
-        cryptex_storage::sealed_segment_path(root, &device, 0),
-        cryptex_storage::active_segment_path(root, &device, 1),
+        cryptex_storage::sealed_segment_path(root, &device, first.segment_index),
+        cryptex_storage::active_segment_path(root, &device, second.segment_index),
     ];
+    let signed =
+        [first, second].map(|event| serde_json_canonicalizer::to_vec(&event.accepted).unwrap());
     let before = paths.each_ref().map(|p| fs::read(p).unwrap());
     let check = || {
         let packs = paths.each_ref().map(|p| fs::read(p).unwrap());
@@ -66,7 +81,7 @@ pub(super) fn exercise_existing_profile(root: &Path, old_daemon: &OsStr, key: &S
         assert_eq!(
             verify_v2_history(
                 &[&bodies[0], &bodies[1]],
-                TrustedTestDevice(key.verifying_key())
+                LocalDeviceKeyResolver::load(root, BRAIN, &credentials, env).unwrap()
             )
             .unwrap()
             .records()
@@ -122,7 +137,14 @@ pub(super) fn exercise_existing_profile(root: &Path, old_daemon: &OsStr, key: &S
     );
     assert!(run(&current, "probe").status.success());
     check();
+    let _instance = crate::instance::try_acquire_instance(root).unwrap();
+    let next = capture(Classification::Internal, "Post-migration v1 capture", 100);
+    assert_eq!(next.accepted.device_seq.to_u64().unwrap(), 3);
+    assert_eq!(next.accepted.device_id, identity.device_id);
+    let previous: AcceptedEvent = serde_json::from_slice(&signed[1]).unwrap();
+    assert_eq!(next.accepted.prev_content_hash, previous.content_hash);
+    assert_eq!(next.accepted.signing_key_id, previous.signing_key_id);
     println!(
-        "existing_profile_migration=verified signed_records=2 crash_points=3 stale_m8_retry=passed"
+        "existing_profile_migration=verified signed_records=2 crash_points=3 stale_m8_retry=passed next_v1_sequence=3"
     );
 }

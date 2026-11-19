@@ -141,7 +141,7 @@ fn audit_pre_m9_profile_admission() {
     let _reader = try_acquire_instance(&root).unwrap();
     assert_eq!(fs::read(&pack).unwrap(), before);
     assert!(observe_instance(&root).unwrap().lock_held);
-    migration::exercise_existing_profile(&legacy, &old_daemon, &key);
+    migration::exercise_existing_profile(&legacy, &old_daemon);
     println!(
         "historical_profile_lock=denied legacy_probe=allowed protected_hold=denied current_reopen=allowed pack_unchanged=true production_v2_activation=blocked"
     );
