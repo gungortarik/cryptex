@@ -1,4 +1,4 @@
-# M9 â€” Attachments
+# M9 — Attachments
 
 **Status:** ACCEPTED  
 **Baseline:** 2026-09-28
@@ -72,7 +72,7 @@ transition or confirm an already protected profile.
 
 The PID carries no trust or canonical data. Backup rejoin must prepare a
 protected destination before restoring v2 records. Production attachment
-writing remains gated by ADR-0017 Â§8.2.
+writing remains gated by ADR-0017 §8.2.
 
 ### Checking a paired reader before export
 
@@ -122,8 +122,9 @@ Remote changes can only be observed after reconnection.
 
 Before reconstruction, the daemon maintenance command
 `cryptexd lifecycle prepare-reader-rejoin-m9 --runtime-root <absolute-new-directory>`
-exclusively prepares an empty protected destination under an existing private
-parent. Success reports that the destination is prepared. Restore staging
+exclusively prepares a new protected destination under an existing private
+parent, including a private connection-settings directory and session lock.
+Restore saved preferences into that directory using its native permissions. Success reports that the destination is prepared. Restore staging
 requires the enrolled device and its signing and transport credentials. The
 controller opens the restored profile through ordinary startup recovery and
 uses its saved connection settings. Enabled sync runs the reader exchange

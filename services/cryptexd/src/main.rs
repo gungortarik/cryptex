@@ -1053,7 +1053,7 @@ fn run_lifecycle(
                         "expected a new named profile directory".into(),
                     ));
                 };
-                cryptexd::instance::create_m9_profile_root(parent, name)?;
+                cryptexd::managed_profile::prepare_reader_rejoin_destination(parent, name)?;
                 println!("reader_rejoin=destination_prepared production_v2_activation=blocked");
                 return Ok(());
             }

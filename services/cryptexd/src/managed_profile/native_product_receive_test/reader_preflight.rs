@@ -107,8 +107,8 @@ fn normal_owners_verify_readers_over_the_private_network() {
     note(&receiver, &store, AFTER_BACKUP);
     let (mut owner_a, instance_a) = a.start(&source, &path, store.clone());
     let ready = owner_a.handle().request(None).unwrap();
-    assert_eq!(ready.state, State::ReadyLocally);
     assert_eq!(ready.error, None);
+    assert_eq!(ready.state, State::ReadyLocally);
     let deadline = Instant::now() + Duration::from_secs(60);
     while receipt(&source).is_some() {
         assert!(

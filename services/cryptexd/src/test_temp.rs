@@ -105,11 +105,21 @@ pub(crate) fn stage_stopped_m9_profile(source: &Path, parent: &Path, name: &str)
         assert_eq!(prepare(source).status.code(), Some(2));
         assert_eq!(prepare(&restored).status.code(), Some(2));
     } else {
-        crate::instance::create_m9_profile_root(parent, name).unwrap();
+        crate::managed_profile::prepare_reader_rejoin_destination(parent, name).unwrap();
     }
     for entry in fs::read_dir(source).unwrap() {
         let entry = entry.unwrap();
-        if entry.file_name() != "daemon.lock" {
+        if entry.file_name() == "connection-settings" {
+            // Start with the destination's native private directory and lock.
+            // Restore preferences (including a pending write for fail-closed
+            // recovery) without importing an obsolete session lock or ACL.
+            for leaf in ["connections.json", "connections.tmp"] {
+                let file = entry.path().join(leaf);
+                if file.try_exists().unwrap() {
+                    copy_entry(&file, &restored.join("connection-settings").join(leaf));
+                }
+            }
+        } else if entry.file_name() != "daemon.lock" {
             copy_entry(&entry.path(), &restored.join(entry.file_name()));
         }
     }

@@ -16,6 +16,22 @@ use serde::{Deserialize, Serialize};
 use crate::secure_store::{SecureStore, SecureStoreEnvironment, SecureStoreError};
 use crate::syncthing_rest::{ApiCredential, credential_labels};
 
+/// Prepare a new restore destination with the same private settings ownership
+/// as normal enrollment. Only the saved preferences are restored into it.
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub fn prepare_reader_rejoin_destination(
+    parent: &Path,
+    name: &str,
+) -> crate::error::LifecycleResult<std::path::PathBuf> {
+    let root = crate::instance::create_m9_profile_root(parent, name)?;
+    platform::PrivateDirectory::acquire(&root.join("connection-settings"), true).map_err(
+        |error| {
+            crate::error::LifecycleError::Attention(format!("reader rejoin settings: {error:?}"))
+        },
+    )?;
+    Ok(root)
+}
+
 pub mod connection_settings;
 #[cfg(any(windows, test))]
 pub mod controller;

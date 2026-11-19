@@ -228,6 +228,8 @@ fn restored_profile_reconciles_a_missing_pack_and_requires_a_fresh_reader_reply(
     let path = PathBuf::from(device.as_filename_stem()).join(format!("{:020}.seg", 0));
     let expected = fs::read(peer.join("canonical/events").join(&path)).unwrap();
     import_peer_pack(&mut a, &b, &path, &store);
+    drop(a);
+    let mut a = Side::new(live.clone(), LOCAL);
     a.tick(&store);
     exchange(&mut a, &mut b, &from_a, &from_b, &store);
     let previous_a = saved(&from_b);
