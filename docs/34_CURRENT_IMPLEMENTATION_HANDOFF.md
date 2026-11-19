@@ -56,8 +56,17 @@ process exits and an intervening M8 probe preserved the exact pack bytes.
 The completed profile rejected the old reader, reopened with the same
 identity, and signed the next v1 note at sequence 3. A live instance and
 unexpected staging contents both stopped migration. The test used a synthetic
-credential store. Real-profile rollout, reader-capability checks and backup
-rejoin remain open and production attachment writing stays disabled.
+credential store.
+
+On November 19 the enrolled Mac and Windows VM completed the offline M9
+layout migration with product `74cf34b` and packet `7983e10`. The returned
+Windows `3d8388a563a2` and Darwin `50b0195abb31` reports matched the packet
+run ID and product revision. Each daemon verified signatures and chains for
+16 records across two device identities both before and after migration.
+All four canonical-set digests were
+`bd2c949fc008d2363caf2eb4d9a7bdc8f217e07fe3e3d698e130bc4f4cac3abd`.
+Both protected profiles reported `production_v2_activation=blocked`.
+Trusted-device reader-capability checks and backup rejoin remain open.
 Capture, transfer, repair and the M6 copy-only projection remain open.
 
 ## M8 complete on November 18, 2026
