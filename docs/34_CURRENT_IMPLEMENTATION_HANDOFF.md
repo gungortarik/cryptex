@@ -72,6 +72,16 @@ only the forget with the original signed bytes triggers discovery of both
 segments. The test checks convergence and zero additional events on replay.
 Windows and macOS passed at `3ede0d5`. [Corrupt forget recovery CI](https://github.com/gungortarik/cryptex/actions/runs/44608633407)
 
+The offline conflict trial starts with both disposable profiles observing the
+same signed forget. With both transport workers stopped, the note author
+restores and then forgets the note again. The peer signs its own restore of
+the forget it observed. Against that shared history both signatures verify,
+but only the author's restore passes lifecycle replay. On reconnection the
+canonical importer rejects the peer's restore and publishes the author's
+two records on the peer. Both device chains and guarded searches must match,
+the target must stay hidden, and replay must add zero events.
+Windows and macOS passed at `3d28a7c`. [Offline conflict CI](https://github.com/gungortarik/cryptex/actions/runs/44611177313)
+
 Real profiles keep lifecycle writing and replication disabled. Broader
 multi-device reconciliation, destructive purge and M10 acceptance remain open.
 
