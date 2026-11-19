@@ -78,4 +78,4 @@ jobs:
           export CRYPTEX_M9_READER_ATTEMPT=$(python3 -c 'import uuid; print(uuid.uuid4().hex)')
           cargo test --locked -p cryptexd --features m8-development-product --lib managed_profile::sealed_export::reader::
           cargo test --locked -p cryptexd --features m8-development-product --lib managed_profile::sealed_export::tests::reader_preflight:: -- --nocapture | tee preflight.txt
-          grep -F '4 passed; 0 failed; 0 ignored' preflight.txt >> "$GITHUB_STEP_SUMMARY"
+          grep -F '5 passed; 0 failed; 0 ignored' preflight.txt >> "$GITHUB_STEP_SUMMARY"

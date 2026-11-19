@@ -12,13 +12,14 @@ use std::time::{Duration, Instant};
 
 mod probe;
 mod receipt;
+mod retained;
 mod wire;
 use wire::{Body, Route};
 
 use crate::import_staging::READER_CONTROL_FOLDER;
 const FRESHNESS: Duration = Duration::from_secs(5 * 60);
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Error {
     Message,
     Storage,
@@ -40,6 +41,8 @@ struct Round {
     started: Instant,
     roster: Vec<ApprovedPeerBinding>,
     nonce: ContentHashHex,
+    context: ContentHashHex,
+    recorded: BTreeMap<String, Body>,
 }
 
 #[derive(Default)]
@@ -56,6 +59,7 @@ pub(super) enum Status {
     Rejected,
     Unavailable(Error),
     Verified(BTreeMap<String, ContentHashHex>),
+    PreviouslyVerified(BTreeMap<String, ContentHashHex>),
 }
 
 impl ReaderCheck {
@@ -79,16 +83,20 @@ impl ReaderCheck {
             self.round = None;
             return Ok(Status::Legacy);
         }
-        crate::import_staging::open_existing_profile_lock(&lock, "reader-m9.pid")
-            .map_err(|_| Error::LocalReader)?;
+        let profile_lock =
+            crate::import_staging::open_existing_profile_lock(&lock, "reader-m9.pid")
+                .map_err(|_| Error::LocalReader)?;
         let (build, resolved_blob) = probe::local_build()?;
+        let context = retained::context(snapshot, &profile_lock, &build)?;
         let (history, _) = snapshot.verified_trust_context().ok_or(Error::Authority)?;
         let bindings = peers.bindings();
         if bindings.is_empty() || bindings.len() > super::super::connection_settings::MAX_PEERS {
             return Err(Error::Authority);
         }
         if self.round.as_ref().is_none_or(|r| {
-            r.started.elapsed() >= FRESHNESS || !r.roster.iter().eq(bindings.iter().copied())
+            r.started.elapsed() >= FRESHNESS
+                || r.context != context
+                || !r.roster.iter().eq(bindings.iter().copied())
         }) {
             let mut random = [0; 32];
             getrandom::getrandom(&mut random).map_err(|_| Error::LocalReader)?;
@@ -96,14 +104,37 @@ impl ReaderCheck {
                 started: Instant::now(),
                 roster: bindings.iter().map(|p| (**p).clone()).collect(),
                 nonce: ContentHashHex::from_bytes(&random).map_err(|_| Error::Message)?,
+                context,
+                recorded: BTreeMap::new(),
             });
         }
-        let round = self.round.as_ref().ok_or(Error::LocalReader)?;
+        let round = self.round.as_mut().ok_or(Error::LocalReader)?;
         let controls = incoming.child(READER_CONTROL_FOLDER, true)?;
         let staging = transport.child("m9-control-staging", true)?;
         let mut verified = BTreeMap::new();
         let mut rejected = false;
-        let mut signer = None;
+        let signing_key = std::cell::OnceCell::new();
+        let signer = || {
+            signing_key
+                .get_or_init(|| {
+                    let key = crate::event_signing_key::load_existing_event_signing_key(
+                        credentials.0,
+                        credentials.1,
+                        root,
+                        &history.local_device,
+                    )
+                    .map_err(|_| Error::Authority)?
+                    .signing_key;
+                    if key.verifying_key().to_bytes() != history.local_public_key {
+                        return Err(Error::Authority);
+                    }
+                    Ok(key)
+                })
+                .as_ref()
+                .map_err(|e| *e)
+        };
+        let mut retained = BTreeMap::new();
+        let mut evidence_error = None;
         let mut observed = None;
         for peer in bindings {
             check().map_err(|_| Error::Authority)?;
@@ -115,59 +146,71 @@ impl ReaderCheck {
                 receiver_transport: peer.transport_device_id.clone(),
             };
             let reverse = route.reversed();
-            let other = match read(&controls, &reverse.slot()?)? {
-                Some(raw) => match wire::authenticate(&raw, &reverse, &peer.public_key) {
-                    Ok(body) if body.resolved_blob == resolved_blob => Some(body),
-                    _ => {
-                        rejected = true;
-                        None
-                    }
-                },
-                None => None,
-            };
-            if let Some(other) = &other
-                && other.echo.as_ref() == Some(&round.nonce)
-            {
-                verified.insert(route.receiver.clone(), other.daemon_sha256.clone());
-                if !self.receipt_written && bindings.len() == 1 {
-                    observed = Some(other.clone());
-                }
-            }
+            let raw = read(&controls, &reverse.slot()?)?;
+            let other = raw
+                .as_deref()
+                .and_then(|msg| wire::authenticate(msg, &reverse, &peer.public_key).ok());
+            let compatible = other.as_ref().filter(|m| m.resolved_blob == resolved_blob);
+            rejected |= raw.is_some() && compatible.is_none();
             let slot = route.slot()?;
             let body = Body {
                 route,
                 nonce: round.nonce.clone(),
-                echo: other.map(|m| m.nonce),
+                echo: compatible.map(|m| m.nonce.clone()),
                 daemon_sha256: build.clone(),
                 resolved_blob: resolved_blob.clone(),
             };
-            if let Some(raw) = read(&controls, &slot)?
-                && wire::authenticate(&raw, &body.route, &history.local_public_key)
+            let unchanged = read(&controls, &slot)?.is_some_and(|raw| {
+                wire::authenticate(&raw, &body.route, &history.local_public_key)
                     .is_ok_and(|previous| previous == body)
-            {
-                continue;
+            });
+            if !unchanged {
+                let signed = wire::sign(body, signer()?)?;
+                check().map_err(|_| Error::Authority)?;
+                publish(&staging, &controls, &slot, &signed)?;
             }
-            if signer.is_none() {
-                let key = crate::event_signing_key::load_existing_event_signing_key(
-                    credentials.0,
-                    credentials.1,
-                    root,
-                    &history.local_device,
-                )
-                .map_err(|_| Error::Authority)?
-                .signing_key;
-                if key.verifying_key().to_bytes() != history.local_public_key {
-                    return Err(Error::Authority);
-                }
-                signer = Some(key);
-            }
-            let signed = wire::sign(body, signer.as_ref().ok_or(Error::Authority)?)?;
+            let evidence = retained::Slot::new(credentials, &reverse)?;
             check().map_err(|_| Error::Authority)?;
-            publish(&staging, &controls, &slot, &signed)?;
+            if let (Some(reply), Some(bytes)) = (compatible, raw.as_deref())
+                && reply.echo.as_ref() == Some(&round.nonce)
+                && round.started.elapsed() < FRESHNESS
+            {
+                verified.insert(peer.device_id.to_string(), reply.daemon_sha256.clone());
+                if !self.receipt_written && bindings.len() == 1 {
+                    observed = Some(reply.clone());
+                }
+                if round.recorded.get(&slot) != Some(reply) {
+                    match evidence.save(&round.context, &round.nonce, bytes, signer()?) {
+                        Ok(()) => {
+                            round.recorded.insert(slot, reply.clone());
+                        }
+                        Err(error) => evidence_error = Some(error),
+                    }
+                }
+            } else {
+                round.recorded.remove(&slot);
+                match evidence.load(
+                    &round.context,
+                    &reverse,
+                    &history.local_public_key,
+                    &peer.public_key,
+                    &resolved_blob,
+                    other.as_ref(),
+                ) {
+                    Ok(Some(build)) => {
+                        retained.insert(peer.device_id.to_string(), build);
+                    }
+                    Ok(None) => {}
+                    Err(error) => evidence_error = Some(error),
+                }
+            }
         }
         check().map_err(|_| Error::Authority)?;
         if rejected {
             return Ok(Status::Rejected);
+        }
+        if let Some(error) = evidence_error {
+            return Err(error);
         }
         if verified.len() == bindings.len() && round.started.elapsed() < FRESHNESS {
             if let Some(peer) = observed {
@@ -179,6 +222,9 @@ impl ReaderCheck {
                 }
             }
             Ok(Status::Verified(verified))
+        } else if !retained.is_empty() && verified.len() + retained.len() == bindings.len() {
+            retained.extend(verified);
+            Ok(Status::PreviouslyVerified(retained))
         } else {
             Ok(Status::Waiting)
         }

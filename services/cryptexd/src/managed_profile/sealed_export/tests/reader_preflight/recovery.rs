@@ -42,6 +42,95 @@ fn exchange(
 }
 
 #[test]
+fn offline_evidence_survives_reopen_and_separate_sessions_only_for_the_same_roster() {
+    use super::super::retirement_relay::{Peer, pair};
+    use reader::Status;
+    const THIRD: &str = "CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC-CCCCCCC";
+    let store = crate::FakeSecureStore::new();
+    let hub = Peer::new("retained-reader", LOCAL, &store);
+    let first = Peer::new("retained-peer", REMOTE, &store);
+    let third = Peer::new("new-peer", THIRD, &store);
+    pair(&hub, &first, 1, &store);
+    let mut a = Side::new(hub.root.clone(), LOCAL);
+    let mut b = Side::new(first.root.clone(), REMOTE);
+    let from_a = first_challenge(&mut a, &store);
+    let from_b = first_challenge(&mut b, &store);
+    exchange(&mut a, &mut b, &from_a, &from_b, &store);
+    fs::remove_file(a.controls().join(&from_b)).unwrap();
+    drop(a);
+
+    let mut a = Side::new(hub.root.clone(), LOCAL);
+    let local_device = DeviceId::new(
+        load_local_device_identity(&a.root, BRAIN)
+            .unwrap()
+            .device_id,
+    )
+    .unwrap();
+    append_memory_note(
+        &store,
+        ENV,
+        AppendMemoryNoteArgs {
+            runtime_root: &a.root,
+            brain_id: BRAIN,
+            device_id: &local_device,
+            classification: Classification::Public,
+            text: "ordinary offline note",
+            event_id: None,
+            config: &CanonicalWriterConfig::default(),
+        },
+    )
+    .unwrap();
+    a.tick(&store);
+    assert!(
+        matches!(&a.exporter.last_reader_status, Some(Status::PreviouslyVerified(peers)) if peers.len() == 1)
+    );
+    let account = from_b.to_str().unwrap();
+    let service = "Cryptex-Dev-M9ReaderObservations";
+    let original = store.get(service, account).unwrap();
+    let mut corrupt: serde_json::Value = serde_json::from_slice(&original).unwrap();
+    corrupt["signature"] = serde_json::Value::from("00".repeat(64));
+    store
+        .put(service, account, &serde_json::to_vec(&corrupt).unwrap())
+        .unwrap();
+    a.tick(&store);
+    assert_eq!(
+        a.exporter.last_reader_status,
+        Some(Status::Unavailable(reader::Error::Message))
+    );
+    store.put(service, account, &original).unwrap();
+    drop(a);
+
+    pair(&hub, &third, 2, &store);
+    let mut a = Side::new(hub.root.clone(), LOCAL);
+    let mut c = Side::new(third.root.clone(), THIRD);
+    a.tick(&store);
+    let to_c = fs::read_dir(a.controls())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .find(|name| *name != from_a)
+        .unwrap();
+    let from_c = first_challenge(&mut c, &store);
+    deliver(&a, &c, &to_c);
+    c.tick(&store);
+    deliver(&c, &a, &from_c);
+    a.tick(&store);
+    // The new peer answered. The old proof predates its admission.
+    assert_eq!(a.exporter.last_reader_status, Some(Status::Waiting));
+
+    fs::remove_file(a.controls().join(&from_c)).unwrap();
+    a.exporter.end_reader_session();
+    a.tick(&store);
+    deliver(&a, &b, &from_a);
+    b.tick(&store);
+    deliver(&b, &a, &from_b);
+    a.tick(&store);
+    // Each eligible peer answered under the new roster, in different sessions.
+    assert!(
+        matches!(&a.exporter.last_reader_status, Some(Status::PreviouslyVerified(peers)) if peers.len() == 2)
+    );
+}
+
+#[test]
 fn offline_round_expires_and_both_readers_reverify_after_reconnect() {
     let (left, right, scratch, store) =
         crate::trusted_import_probe::tests::pair_with_transport(LOCAL, REMOTE);
@@ -62,10 +151,8 @@ fn offline_round_expires_and_both_readers_reverify_after_reconnect() {
     for side in [&mut a, &mut b] {
         side.exporter.reader_check.expire_current_round();
         let report = side.tick(&store);
-        assert_eq!(
-            side.exporter.last_reader_status,
-            Some(reader::Status::Waiting)
-        );
+        assert!(matches!(&side.exporter.last_reader_status,
+            Some(reader::Status::PreviouslyVerified(peers)) if peers.len() == 1));
         if side.transport == LOCAL {
             assert_eq!(
                 (
@@ -180,7 +267,9 @@ fn restored_profile_reconciles_a_missing_pack_and_requires_a_fresh_reader_reply(
     assert_eq!(a.exporter.last_reader_status, Some(reader::Status::Waiting));
     b.exporter.end_reader_session();
     b.tick(&store);
-    assert_eq!(b.exporter.last_reader_status, Some(reader::Status::Waiting));
+    assert!(
+        matches!(&b.exporter.last_reader_status, Some(reader::Status::PreviouslyVerified(peers)) if peers.len() == 1)
+    );
     exchange(&mut a, &mut b, &from_a, &from_b, &store);
     assert_ne!(fs::read(a.controls().join(&from_b)).unwrap(), stale_reply);
     assert_eq!(fs::read(restored_pack).unwrap(), expected);

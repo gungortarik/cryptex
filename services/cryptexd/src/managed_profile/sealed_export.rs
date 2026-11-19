@@ -173,6 +173,7 @@ impl Exporter {
                 }
                 reader::Status::Unavailable(reader::Error::Message) => "message_unavailable",
                 reader::Status::Verified(_) => "verified",
+                reader::Status::PreviouslyVerified(_) => "previously_verified",
             };
             eprintln!(
                 "component=m9_reader_check status={label} peers={}",
