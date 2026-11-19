@@ -90,8 +90,21 @@ comparator accepted Windows VM report `77ea83168f06` and Mac report
 `fbcfb1660eb8`. Both reported `local_peer_verified` for this run on
 product `c733ca4`. Each peer nonce and executable digest matched the
 other device's local value. Both reported `production_v2_activation=blocked`.
-Recording current evidence across offline sessions
-and revalidating restored backups remain open before writer activation.
+At `7a42780`, two automated regressions exercise the reader check with
+disposable paired profiles. The disconnect test withholds control delivery
+and advances both rounds to expiry. Each daemon waits despite retaining a
+correctly signed old reply. After delivery resumes both peers verify again,
+and the synthetic v2 pack remains byte-identical and withheld.
+
+The restore test copies a stopped fixture into a separate M9-protected
+destination with its saved control messages. The original then imports a
+two-record peer pack. On the restored profile the saved reply leaves the
+reader waiting. Startup recovery and ordinary import reconcile the missing
+pack byte for byte before the peers exchange new proofs. This exercises a
+staged restore with the same synthetic signing credentials. Both scenarios
+passed on macOS and a standard Windows account in the [native reader suite](https://github.com/gungortarik/cryptex/actions/runs/44541797263).
+Durable offline
+capability authority and a product restore/rejoin workflow remain open.
 Capture, transfer, repair and the M6 copy-only projection remain open.
 
 ## M8 complete on November 18, 2026
