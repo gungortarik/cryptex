@@ -64,6 +64,14 @@ Fresh inbox discovery still waits for the forget. After delivery, both records
 are imported in order and replay adds zero events.
 Windows and macOS passed at `ecc387e`. [Receiver restart CI](https://github.com/gungortarik/cryptex/actions/runs/44606016075)
 
+The paired trial also replaces one signature digit in the transport copy of
+the delayed forget. The receiver rejects that batch for signature verification
+failure. Both canonical segments remain absent, the earlier restore stays in
+the inbox, and guarded search still matches its previous results. Replacing
+only the forget with the original signed bytes triggers discovery of both
+segments. The test checks convergence and zero additional events on replay.
+Windows and macOS passed at `3ede0d5`. [Corrupt forget recovery CI](https://github.com/gungortarik/cryptex/actions/runs/44608633407)
+
 Real profiles keep lifecycle writing and replication disabled. Broader
 multi-device reconciliation, destructive purge and M10 acceptance remain open.
 
