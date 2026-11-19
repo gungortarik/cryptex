@@ -1,0 +1,43 @@
+name: M9 historical reader check
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/m9-reader-rollback.yml'
+      - 'services/cryptexd/src/attachment_blobs/tests/signed_link.rs'
+      - 'services/cryptexd/src/instance.rs'
+      - 'services/cryptexd/src/compat.rs'
+permissions:
+  contents: read
+jobs:
+  reader:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 2efc3dd60ce4acd67cc84bd4056973eae5b29a86
+          path: m8
+          persist-credentials: false
+      - name: Build the unmodified pre-M9 daemon
+        working-directory: m8
+        run: cargo build --locked -p cryptexd --bin cryptexd
+      - name: Observe old daemon admission on a disposable signed store
+        working-directory: candidate
+        env:
+          CRYPTEX_M9_PREVIOUS_DAEMON: ${{ github.workspace }}/m8/target/debug/cryptexd${{ runner.os == 'Windows' && '.exe' || '' }}
+          CRYPTEX_M8_DEVELOPMENT_CERT_DER: ${{ github.workspace }}/candidate/services/cryptexd/src/m8_owner_channel/release_inventory/fixtures/signer.der
+          CRYPTEX_M8_DEVELOPMENT_RELEASE_ID: cryptex-dev-attachment-ci
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p cryptexd ${{ runner.os == 'macOS' && '--features m8-development-product' || '' }} --lib attachment_blobs::tests::signed_link::audit_pre_m9_profile_admission -- --ignored --exact --nocapture | tee rollback-observation.txt
+          grep -E '^historical_profile_(lock|probe)=' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"

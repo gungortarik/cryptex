@@ -39,3 +39,25 @@ pub fn exclusive_temp_dir_in(parent: &Path, prefix: &str) -> PathBuf {
     }
     panic!("exclusive_temp_dir_in: exhausted unique candidates for prefix {prefix}");
 }
+
+// Deliberately test-only until the ADR-0017 rollout gate permits v2 writes.
+pub(crate) fn sign_v2_fixture(
+    mut body: serde_json::Value,
+    key: &ed25519_dalek::SigningKey,
+) -> Vec<u8> {
+    use cryptex_events::{
+        ContentHashHex, SignatureHex, V2_CONTENT_HASH_DOMAIN, V2_SIGNATURE_DOMAIN,
+    };
+    use ed25519_dalek::Signer;
+    use serde_json::json;
+    let canonical = serde_json_canonicalizer::to_vec(&body).unwrap();
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(V2_CONTENT_HASH_DOMAIN);
+    hasher.update(&[0]);
+    hasher.update(&canonical);
+    let hash = hasher.finalize();
+    let signature = key.sign(&[V2_SIGNATURE_DOMAIN, &[0], hash.as_bytes()].concat());
+    body["content_hash"] = json!(ContentHashHex::from_bytes(hash.as_bytes()).unwrap());
+    body["signature"] = json!(SignatureHex::from_bytes(&signature.to_bytes()).unwrap());
+    serde_json_canonicalizer::to_vec(&body).unwrap()
+}

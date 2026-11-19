@@ -503,6 +503,8 @@ impl DesktopSearchQuery {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopSearchHit {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachment_link_count: Option<usize>,
     pub event_id: String,
     pub brain_id: String,
     pub device_id: String,
@@ -518,6 +520,7 @@ pub struct DesktopSearchHit {
 impl From<SearchHit> for DesktopSearchHit {
     fn from(hit: SearchHit) -> Self {
         Self {
+            attachment_link_count: None,
             event_id: hit.event_id,
             brain_id: hit.brain_id,
             device_id: hit.device_id,
@@ -5022,7 +5025,7 @@ fn handle_event_detail_until_checked(
     if deadline_expired(deadline) {
         return event_detail_held(Some(request_id), "operation_deadline_exceeded");
     }
-    match crate::knowledge_materialization::event_detail_with_retrieval_safety_deadline(
+    match crate::knowledge_materialization::event_detail_with_attachments(
         &context.runtime_root,
         &brain.brain_id,
         &[device],
@@ -5031,7 +5034,7 @@ fn handle_event_detail_until_checked(
         &event_id,
         deadline,
     ) {
-        Ok(detail) => event_detail_results(Some(request_id), detail.into_iter().collect()),
+        Ok(detail) => event_detail_results(Some(request_id), detail),
         Err(GuardedSearchError::BrainWideHold(reason)) => {
             if matches!(
                 reason,
@@ -5117,7 +5120,17 @@ fn timeline_results(
     }
 }
 
-fn event_detail_results(request_id: Option<String>, hits: Vec<SearchHit>) -> DesktopSearchResponse {
+fn event_detail_results(
+    request_id: Option<String>,
+    detail: Option<(SearchHit, usize)>,
+) -> DesktopSearchResponse {
+    let hits = detail
+        .into_iter()
+        .map(|(note, count)| DesktopSearchHit {
+            attachment_link_count: Some(count),
+            ..note.into()
+        })
+        .collect();
     DesktopSearchResponse {
         protocol_version: PROTOCOL_VERSION,
         request_id,
@@ -5125,7 +5138,7 @@ fn event_detail_results(request_id: Option<String>, hits: Vec<SearchHit>) -> Des
         error: None,
         operation: Some("content.event.detail.result".into()),
         daemon_pid: process::id(),
-        hits: Some(hits.into_iter().map(DesktopSearchHit::from).collect()),
+        hits: Some(hits),
         hold_reason: None,
         next_cursor: None,
         has_more: false,

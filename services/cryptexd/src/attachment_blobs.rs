@@ -1,7 +1,7 @@
 //! Daemon storage for immutable attachment bytes. A stored blob does not by
 //! itself create a reference, authorize retrieval, or make content visible.
 use crate::import_staging::export_fs::{self, Directory};
-use cryptex_events::attachment_link::{self, LinkError, ResolvedAttachmentLink};
+use cryptex_events::attachment_link::LinkError;
 use sha2::{Digest, Sha256};
 use std::io::{self, Read, Seek, Write};
 use std::path::Path;
@@ -74,24 +74,26 @@ pub fn store(runtime_root: &Path, mut source: impl Read) -> Result<[u8; 32], Blo
 pub enum LocalLinkError {
     Reference(LinkError),
     Blob(BlobError),
+    Held(crate::knowledge_materialization::RetrievalSafetyHold),
 }
 
 /// Check a reference against the supplied authenticated snapshot and rehash
 /// its local bytes. Callers must separately enforce device and access policy.
-pub fn verify_local_link<'a>(
+#[cfg(test)]
+fn verify_local_link<'a>(
     runtime_root: &Path,
     history: &'a cryptex_events::VerifiedV2History,
     link_event_id: &str,
-) -> Result<ResolvedAttachmentLink<'a>, LocalLinkError> {
-    let link =
-        attachment_link::resolve(history, link_event_id).map_err(LocalLinkError::Reference)?;
+) -> Result<cryptex_events::attachment_link::ResolvedAttachmentLink<'a>, LocalLinkError> {
+    let link = cryptex_events::attachment_link::resolve(history, link_event_id)
+        .map_err(LocalLinkError::Reference)?;
     verify_stored(runtime_root, &link.blob_sha256).map_err(LocalLinkError::Blob)?;
     Ok(link)
 }
 
 /// Recheck a stored blob before a daemon operation refers to its bytes.
 /// A missing object is distinct from an existing object with the wrong hash.
-fn verify_stored(runtime_root: &Path, digest: &[u8; 32]) -> Result<(), BlobError> {
+pub(crate) fn verify_stored(runtime_root: &Path, digest: &[u8; 32]) -> Result<(), BlobError> {
     crate::paths::assert_outside_repository(runtime_root)
         .map_err(|_| BlobError::UnsafeFilesystem)?;
     let root = Directory::open(runtime_root)?;

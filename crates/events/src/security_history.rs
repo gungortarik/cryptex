@@ -38,6 +38,10 @@ impl From<ValidationFailure> for CancellableSecurityHistoryError {
 pub enum AuthenticatedSecurityRecord {
     V1(AcceptedEvent),
     V2(VerifiedV2KnowledgeAssertion),
+    Attachment(
+        VerifiedUnsupportedV2,
+        crate::attachment_link::SignedLinkFields,
+    ),
     SecurityV3(SecurityEventV3),
 }
 
@@ -45,6 +49,7 @@ impl AuthenticatedSecurityRecord {
     pub fn event_id(&self) -> &str {
         match self {
             Self::V1(event) => &event.event_id,
+            Self::Attachment(event, _) => &event.event_id,
             Self::V2(event) => &event.event().event_id,
             Self::SecurityV3(event) => event.event_id(),
         }
@@ -53,6 +58,7 @@ impl AuthenticatedSecurityRecord {
     pub fn brain_id(&self) -> &str {
         match self {
             Self::V1(event) => &event.brain_id,
+            Self::Attachment(_, link) => &link.brain_id,
             Self::V2(event) => &event.event().brain_id,
             Self::SecurityV3(event) => event.brain_id(),
         }
@@ -61,6 +67,7 @@ impl AuthenticatedSecurityRecord {
     pub fn device_id(&self) -> &str {
         match self {
             Self::V1(event) => &event.device_id,
+            Self::Attachment(event, _) => &event.device_id,
             Self::V2(event) => &event.event().device_id,
             Self::SecurityV3(event) => event.device_id().as_str(),
         }
@@ -69,6 +76,7 @@ impl AuthenticatedSecurityRecord {
     pub fn device_seq(&self) -> u64 {
         match self {
             Self::V1(event) => event.device_seq.to_u64().expect("validated v1 sequence"),
+            Self::Attachment(event, _) => event.device_seq.to_u64().expect("validated v2 sequence"),
             Self::V2(event) => event
                 .event()
                 .device_seq
@@ -81,6 +89,7 @@ impl AuthenticatedSecurityRecord {
     pub fn content_hash(&self) -> &ContentHashHex {
         match self {
             Self::V1(event) => &event.content_hash,
+            Self::Attachment(event, _) => &event.content_hash,
             Self::V2(event) => &event.event().content_hash,
             Self::SecurityV3(event) => event.content_hash(),
         }
@@ -89,6 +98,7 @@ impl AuthenticatedSecurityRecord {
     pub fn signing_key_id(&self) -> &SigningKeyId {
         match self {
             Self::V1(event) => &event.signing_key_id,
+            Self::Attachment(event, _) => &event.signing_key_id,
             Self::V2(event) => &event.event().signing_key_id,
             Self::SecurityV3(event) => event.signing_key_id(),
         }
@@ -173,6 +183,9 @@ impl VerifiedSecurityHistory {
                     records.push(VersionedRecord::VerifiedV2Supported(assertion.clone()));
                     assertions.push(assertion.clone());
                 }
+                // M9 reference metadata is evaluated against both device
+                // cutoffs by the daemon and is never an M3 note or M4 assertion.
+                AuthenticatedSecurityRecord::Attachment(..) => {}
                 AuthenticatedSecurityRecord::SecurityV3(_) => {
                     unreachable!("content_records_through_cutoffs excludes policy records")
                 }
@@ -304,12 +317,11 @@ where
                 VersionedRecord::VerifiedV2Supported(event) => {
                     AuthenticatedSecurityRecord::V2(event)
                 }
-                VersionedRecord::VerifiedUnsupported(VerifiedUnsupportedV2 { .. }) => {
-                    return Err(failure(
-                        ValidationReasonCode::InvalidRecord,
-                        "unsupported v2 event semantics block security-history verification",
-                    )
-                    .into());
+                VersionedRecord::VerifiedUnsupported(record) => {
+                    let fields = crate::attachment_link::SignedLinkFields::parse(&record.raw_record)
+                        .map_err(|_| failure(ValidationReasonCode::InvalidRecord,
+                            "invalid or unsupported v2 semantics block security-history verification"))?;
+                    AuthenticatedSecurityRecord::Attachment(record, fields)
                 }
                 VersionedRecord::VerifiedSecurityV3(event) => {
                     AuthenticatedSecurityRecord::SecurityV3(event)
@@ -371,6 +383,9 @@ where
                     }
                     AuthenticatedSecurityRecord::V2(event) => {
                         VersionedRecord::VerifiedV2Supported(event.clone())
+                    }
+                    AuthenticatedSecurityRecord::Attachment(event, _) => {
+                        VersionedRecord::VerifiedUnsupported(event.clone())
                     }
                     AuthenticatedSecurityRecord::SecurityV3(_) => unreachable!(),
                 };

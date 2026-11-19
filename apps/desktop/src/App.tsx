@@ -21,6 +21,7 @@ import {
 import { createSearchRequestGate, normalizeSearchText } from "./search-policy.mjs";
 
 type SearchHit = {
+  attachmentLinkCount?: number;
   eventId: string;
   brainId: string;
   deviceId: string;
@@ -1646,6 +1647,9 @@ export function App() {
                     <span>{detailHit.classification}</span>
                   </div>
                   <p>{detailHit.text}</p>
+                  {!!detailHit.attachmentLinkCount && (
+                    <p>{detailHit.attachmentLinkCount} signed attachment {detailHit.attachmentLinkCount === 1 ? "link" : "links"}</p>
+                  )}
                   <dl className="timeline-detail-source">
                     <dt>Event</dt><dd>{detailHit.eventId}</dd>
                     <dt>Brain</dt><dd>{detailHit.brainId}</dd>

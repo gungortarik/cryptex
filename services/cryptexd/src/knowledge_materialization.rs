@@ -123,7 +123,81 @@ pub struct RetrievalSafetyState {
     snapshot: Option<VerifiedCanonicalSnapshot>,
 }
 
+// note event ID -> signed link ID -> blob digest. Populated exclusively by
+// the local-anchor path, under the same locks as the note projection.
+type AdmittedLinks =
+    std::collections::BTreeMap<String, std::collections::BTreeMap<String, [u8; 32]>>;
+
+fn admitted_attachment_links(
+    history: &VerifiedSecurityHistory,
+    cutoffs: &std::collections::BTreeMap<String, u64>,
+    deadline: Option<Instant>,
+) -> KnowledgeMaterializationResult<AdmittedLinks> {
+    let mut notes = std::collections::BTreeMap::new();
+    let mut links = Vec::new();
+    for record in history.records() {
+        check_deadline(deadline)?;
+        let admitted = cutoffs
+            .get(record.device_id())
+            .is_some_and(|limit| record.device_seq() <= *limit);
+        match record {
+            AuthenticatedSecurityRecord::V1(note) => {
+                notes.insert(note.event_id.to_ascii_lowercase(), (note, admitted));
+            }
+            AuthenticatedSecurityRecord::Attachment(record, fields) if admitted => {
+                links.push((record, fields))
+            }
+            _ => {}
+        }
+    }
+    let mut result = AdmittedLinks::new();
+    for (record, fields) in links {
+        check_deadline(deadline)?;
+        let (note, admitted) = notes
+            .get(&fields.note_event_id().to_ascii_lowercase())
+            .ok_or_else(|| {
+                KnowledgeMaterializationError::Verification("attachment target is missing".into())
+            })?;
+        let binding = fields.bind(note).map_err(|_| {
+            KnowledgeMaterializationError::Verification(
+                "attachment target binding is invalid".into(),
+            )
+        })?;
+        if *admitted {
+            result
+                .entry(note.event_id.clone())
+                .or_default()
+                .insert(record.event_id.clone(), binding.blob_sha256);
+        }
+    }
+    Ok(result)
+}
+
 impl RetrievalSafetyState {
+    /// Verify local bytes only for a note/link pair admitted by this locked
+    /// policy snapshot. Never accept a caller-selected path or blob digest.
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    pub fn verify_local_attachment(
+        &self,
+        note_id: &str,
+        link_id: &str,
+    ) -> Result<(), crate::attachment_blobs::LocalLinkError> {
+        use crate::attachment_blobs::{LocalLinkError, verify_stored};
+        let snapshot = self.snapshot.as_ref().ok_or_else(|| {
+            LocalLinkError::Held(
+                self.hold
+                    .unwrap_or(RetrievalSafetyHold::CanonicalVerificationUnavailable),
+            )
+        })?;
+        let digest = snapshot
+            .attachment_links
+            .get(note_id)
+            .and_then(|links| links.get(link_id))
+            .ok_or(LocalLinkError::Reference(
+                cryptex_events::attachment_link::LinkError::MissingLink,
+            ))?;
+        verify_stored(&snapshot.runtime_root, digest).map_err(LocalLinkError::Blob)
+    }
     #[must_use]
     pub fn allows_content(&self) -> bool {
         self.hold.is_none() && self.snapshot.is_some()
@@ -590,6 +664,7 @@ struct ImportScanScope<'a> {
 #[allow(dead_code)]
 pub(crate) struct VerifiedCanonicalSnapshot {
     runtime_root: std::path::PathBuf,
+    attachment_links: AdmittedLinks,
     devices: Vec<DeviceId>,
     frames: Vec<RawFrame>,
     security_frames: Vec<RawFrame>,
@@ -2023,6 +2098,7 @@ fn scan_verified_canonical_until<R: TrustedDaemonKeyResolver>(
     check_deadline(deadline)?;
     Ok(VerifiedCanonicalSnapshot {
         runtime_root: runtime_root.to_path_buf(),
+        attachment_links: AdmittedLinks::new(),
         devices,
         security_frames: frames.clone(),
         frames,
@@ -2342,6 +2418,7 @@ pub(crate) fn scan_verified_canonical_from_local_anchor_with_import_devices_and_
         .iter()
         .map(|(device, cutoff)| (device.as_str().to_owned(), *cutoff))
         .collect::<std::collections::BTreeMap<_, _>>();
+    let attachment_links = admitted_attachment_links(&security_history, &cutoffs, deadline)?;
     let history = security_history
         .content_history_through_cutoffs_cancellable(&cutoffs, || {
             deadline.is_some_and(|deadline| Instant::now() >= deadline)
@@ -2419,6 +2496,7 @@ pub(crate) fn scan_verified_canonical_from_local_anchor_with_import_devices_and_
         devices,
         frames: content_frames,
         security_frames,
+        attachment_links,
         history,
         security_history,
         trust_history: Some(verified_trust),
@@ -2585,6 +2663,27 @@ pub fn event_detail_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolver>(
     event_id: &str,
     deadline: Option<Instant>,
 ) -> Result<Option<SearchHit>, GuardedSearchError> {
+    event_detail_with_attachments(
+        runtime_root,
+        expected_brain_id,
+        trusted_devices,
+        key_resolver,
+        db,
+        event_id,
+        deadline,
+    )
+    .map(|detail| detail.map(|(note, _)| note))
+}
+
+pub(crate) fn event_detail_with_attachments<R: TrustedDaemonKeyResolver>(
+    runtime_root: &Path,
+    expected_brain_id: &str,
+    trusted_devices: &[DeviceId],
+    key_resolver: &mut R,
+    db: &ProjectionDb,
+    event_id: &str,
+    deadline: Option<Instant>,
+) -> Result<Option<(SearchHit, usize)>, GuardedSearchError> {
     let safety = evaluate_retrieval_safety_until(
         runtime_root,
         expected_brain_id,
@@ -2601,7 +2700,7 @@ pub fn event_detail_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolver>(
         ));
     }
     let result = {
-        let _snapshot = safety.snapshot.as_ref().expect("checked above");
+        let snapshot = safety.snapshot.as_ref().expect("checked above");
         if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
             return Err(GuardedSearchError::BrainWideHold(
                 RetrievalSafetyHold::OperationDeadlineExceeded,
@@ -2623,6 +2722,15 @@ pub fn event_detail_with_retrieval_safety_deadline<R: TrustedDaemonKeyResolver>(
             None => event_detail(db.connection(), expected_brain_id, event_id)
                 .map_err(GuardedSearchError::Query),
         }
+        .map(|detail| {
+            detail.map(|note| {
+                let count = snapshot
+                    .attachment_links
+                    .get(&note.event_id)
+                    .map_or(0, |links| links.len());
+                (note, count)
+            })
+        })
     };
     drop(safety);
     result

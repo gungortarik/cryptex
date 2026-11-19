@@ -1,14 +1,14 @@
 use super::{ABC, Profile};
 use crate::attachment_blobs::{BlobError, LocalLinkError, store, verify_local_link};
+use crate::test_temp::sign_v2_fixture;
 use cryptex_core::DeviceId;
 use cryptex_events::attachment_link::{EVENT_TYPE, LinkError, LinkPayload};
 use cryptex_events::{
     AcceptedEvent, Classification, ContentHashHex, DeviceSeq, EventPayload, EventType,
-    MemoryNotePayload, SignableEvent, SignatureHex, TrustedDaemonKeyResolver,
-    V2_CONTENT_HASH_DOMAIN, V2_SIGNATURE_DOMAIN, VersionedRecord, accept_event,
+    MemoryNotePayload, SignableEvent, TrustedDaemonKeyResolver, VersionedRecord, accept_event,
     signing_key_id_from_verifying_key, verify_v2_history,
 };
-use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -56,18 +56,53 @@ fn note_and_link(key: &SigningKey) -> (AcceptedEvent, Value) {
     (note, link)
 }
 
-// Deliberately test-only until the ADR-0017 rollout gate permits v2 writes.
-fn sign_link(mut body: Value, key: &SigningKey) -> Vec<u8> {
-    let canonical = serde_json_canonicalizer::to_vec(&body).unwrap();
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(V2_CONTENT_HASH_DOMAIN);
-    hasher.update(&[0]);
-    hasher.update(&canonical);
-    let hash = hasher.finalize();
-    let signature = key.sign(&[V2_SIGNATURE_DOMAIN, &[0], hash.as_bytes()].concat());
-    body["content_hash"] = json!(ContentHashHex::from_bytes(hash.as_bytes()).unwrap());
-    body["signature"] = json!(SignatureHex::from_bytes(&signature.to_bytes()).unwrap());
-    serde_json_canonicalizer::to_vec(&body).unwrap()
+#[test]
+#[ignore = "CI supplies an independently built, pinned pre-M9 daemon"]
+fn audit_pre_m9_profile_admission() {
+    let old_daemon = std::env::var_os("CRYPTEX_M9_PREVIOUS_DAEMON").expect("pinned M8 daemon");
+    let profile = Profile::new();
+    let key = SigningKey::from_bytes(&[21; 32]);
+    let (note, unsigned) = note_and_link(&key);
+    let note = serde_json_canonicalizer::to_vec(&note).unwrap();
+    let link = sign_v2_fixture(unsigned, &key);
+    let history =
+        verify_v2_history(&[&note, &link], TrustedTestDevice(key.verifying_key())).unwrap();
+    cryptex_events::attachment_link::resolve(&history, LINK).unwrap();
+    let device = DeviceId::new(DEVICE).unwrap();
+    for record in [note, link] {
+        cryptex_storage::append_frame(&profile.0, &device, 0, &record).unwrap();
+    }
+    let pack = cryptex_storage::active_segment_path(&profile.0, &device, 0);
+    let before = fs::read(&pack).unwrap();
+    // Exercise actual pre-downgrade profile admission, without starting IPC,
+    // touching OS credentials or handing a real user's history to the binary.
+    let result = std::process::Command::new(old_daemon)
+        .args(["lifecycle", "probe", "--runtime-root"])
+        .arg(&profile.0)
+        .output()
+        .unwrap();
+    assert_eq!(
+        fs::read(pack).unwrap(),
+        before,
+        "historical probe modified canonical bytes"
+    );
+    if result.status.success() {
+        assert!(
+            String::from_utf8(result.stdout)
+                .unwrap()
+                .contains("probe acquired instance lock")
+        );
+        println!("historical_profile_lock=acquired production_v2_activation=blocked");
+    } else {
+        assert_eq!(
+            result.status.code(),
+            Some(3),
+            "generic startup failure is not downgrade evidence"
+        );
+        println!(
+            "historical_profile_probe=incompatible production_v2_activation=requires_full_gate"
+        );
+    }
 }
 
 #[test]
@@ -76,7 +111,7 @@ fn signed_note_and_link_reopen_with_verified_bytes_and_replay_once() {
     let key = SigningKey::from_bytes(&[21; 32]);
     let (note, unsigned) = note_and_link(&key);
     let original = serde_json_canonicalizer::to_vec(&note).unwrap();
-    let signed = sign_link(unsigned, &key);
+    let signed = sign_v2_fixture(unsigned, &key);
     let device = DeviceId::new(DEVICE).unwrap();
     cryptex_storage::append_frame(&profile.0, &device, 1, &original).unwrap();
     let history = verify_v2_history(
@@ -165,7 +200,7 @@ fn signed_but_invalid_references_are_rejected() {
     ] {
         let mut changed = unsigned.clone();
         *changed.pointer_mut(field).unwrap() = value;
-        let signed = sign_link(changed, &key);
+        let signed = sign_v2_fixture(changed, &key);
         let history = verify_v2_history(
             &[&original, &signed],
             TrustedTestDevice(key.verifying_key()),
@@ -184,11 +219,11 @@ fn changed_blob_reference_or_untrusted_signer_fails_history_verification() {
     let key = SigningKey::from_bytes(&[21; 32]);
     let (note, unsigned) = note_and_link(&key);
     let original = serde_json_canonicalizer::to_vec(&note).unwrap();
-    let signed = sign_link(unsigned.clone(), &key);
+    let signed = sign_v2_fixture(unsigned.clone(), &key);
     let mut altered: Value = serde_json::from_slice(&signed).unwrap();
     altered["payload"]["blob_sha256"] = json!("00".repeat(32));
     let tampered = serde_json_canonicalizer::to_vec(&altered).unwrap();
-    let wrong_signature = sign_link(unsigned, &SigningKey::from_bytes(&[22; 32]));
+    let wrong_signature = sign_v2_fixture(unsigned, &SigningKey::from_bytes(&[22; 32]));
     for invalid in [tampered, wrong_signature] {
         let err = verify_v2_history(
             &[&original, &invalid],

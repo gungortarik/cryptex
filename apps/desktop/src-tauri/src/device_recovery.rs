@@ -1329,6 +1329,7 @@ mod tests {
         let plan = Plan::parse(&args()).unwrap();
         let marker = plan.marker(&plan.peer, false);
         let hit = ipc::DesktopSearchHit {
+            attachment_link_count: None,
             event_id: plan.run.clone(),
             brain_id: plan.brain.clone(),
             device_id: plan.peer.clone(),

@@ -294,6 +294,138 @@ fn guarded_ids(profiles: &PairProfiles, db: &ProjectionDb) -> BTreeSet<String> {
     .collect()
 }
 
+#[test]
+fn normal_note_detail_checks_both_ends_of_a_signed_attachment() {
+    use crate::bootstrap_journal::RestrictionReason;
+    use cryptex_events::attachment_link::{EVENT_TYPE, LinkPayload};
+    let profiles = PairProfiles::new();
+    profiles.pair(0, [true, true], false);
+    profiles.import_peer_fixture(0);
+    let root = &profiles.profiles[0];
+    let policy = profiles.policy();
+    let digest: [u8; 32] = Sha256::digest(b"synthetic bytes").into();
+    let ids = [
+        "aaaaaaaa-aaaa-4aaa-8111-aaaaaaaaaaaa",
+        "bbbbbbbb-bbbb-4bbb-8111-bbbbbbbbbbbb",
+    ];
+    let mut targets = Vec::new();
+    let mut bodies = Vec::new();
+    for (side, id) in ids.iter().enumerate() {
+        let signer = &profiles.devices[side];
+        let target_device = &profiles.devices[1 - side];
+        let target_seq = if side == 0 { 3 } else { 1 };
+        let target = policy
+            .history
+            .records()
+            .iter()
+            .find_map(|record| match record {
+                AuthenticatedSecurityRecord::V1(note)
+                    if record.device_id() == target_device.as_str()
+                        && record.device_seq() == target_seq =>
+                {
+                    Some(note)
+                }
+                _ => None,
+            })
+            .unwrap();
+        let tip = policy
+            .history
+            .records()
+            .iter()
+            .rev()
+            .find(|r| r.device_id() == signer.as_str())
+            .unwrap();
+        let seq = tip.device_seq() + 1;
+        let record = serde_json::json!({
+            "schema_version": 2, "event_id": id, "brain_id": BRAIN, "device_id": signer.as_str(),
+            "device_seq": seq.to_string(), "created_at": "2026-11-18T00:00:00Z",
+            "event_type": EVENT_TYPE, "payload_schema_version": 1, "classification": target.classification,
+            "signing_key_id": tip.signing_key_id(), "prev_content_hash": tip.content_hash(),
+            "payload": LinkPayload::for_note(target, &digest).unwrap(),
+        });
+        bodies.push(crate::test_temp::sign_v2_fixture(
+            record,
+            &profiles.keys[side],
+        ));
+        targets.push(target.event_id.clone());
+    }
+    drop(policy);
+    // Reserve the local writer's sequence before appending the test-only
+    // fixture. The peer's sealed prefix occupies segment zero.
+    assert_eq!(
+        crate::sequence_runtime::allocate_device_sequence(root, &profiles.devices[0]).unwrap(),
+        3
+    );
+    for (side, body) in bodies.iter().enumerate() {
+        cryptex_storage::append_frame(root, &profiles.devices[side], side as u64, body).unwrap();
+    }
+    cryptex_storage::seal_active_segment(root, &profiles.devices[1], 1).unwrap();
+    let (mut db, _) = crate::projection::open_projection_db(root).unwrap();
+    refresh(&profiles, &mut db).unwrap();
+    let detail = |db: &ProjectionDb, id: &str| {
+        event_detail_with_attachments(root, BRAIN, &[], &mut resolver(&profiles), db, id, None)
+            .unwrap()
+    };
+    for note in &targets {
+        assert_eq!(detail(&db, note).unwrap().1, 1);
+    }
+    assert!(detail(&db, ids[0]).is_none());
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    {
+        let state = evaluate_retrieval_safety(root, BRAIN, &[], &mut resolver(&profiles), &db);
+        use crate::attachment_blobs::{BlobError, LocalLinkError, store};
+        assert_eq!(
+            state.verify_local_attachment(&targets[0], ids[0]),
+            Err(LocalLinkError::Blob(BlobError::Missing))
+        );
+        store(root, &b"synthetic bytes"[..]).unwrap();
+        state.verify_local_attachment(&targets[0], ids[0]).unwrap();
+        assert!(state.verify_local_attachment(&targets[1], ids[0]).is_err());
+    }
+    let transaction = "bd".repeat(32);
+    let request = profiles
+        .policy()
+        .device_restriction_approval_snapshot(
+            transaction.clone(),
+            &profiles.devices[1],
+            RestrictionReason::Compromised,
+            1,
+        )
+        .unwrap();
+    let journal = BootstrapJournalStore::new(root).unwrap();
+    journal
+        .begin_owner_operation(request.clone(), "cccccccc-cccc-4ccc-8111-cccccccccccc")
+        .unwrap();
+    journal
+        .confirm_owner_operation(&transaction, &request.digest().unwrap())
+        .unwrap();
+    append_confirmed_owner_security_operation(
+        root,
+        BRAIN,
+        &profiles.store,
+        SecureStoreEnvironment::Dev,
+        &transaction,
+    )
+    .unwrap();
+    refresh(&profiles, &mut db).unwrap();
+    assert!(
+        detail(&db, &targets[0]).is_none(),
+        "target note is beyond its device cutoff"
+    );
+    assert_eq!(
+        detail(&db, &targets[1]).unwrap().1,
+        0,
+        "link signer is beyond its device cutoff"
+    );
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    {
+        let state = evaluate_retrieval_safety(root, BRAIN, &[], &mut resolver(&profiles), &db);
+        for (note, id) in targets.iter().zip(ids) {
+            assert!(state.verify_local_attachment(note, id).is_err());
+        }
+    }
+}
+
 fn assert_stale_views_hold(
     profiles: &PairProfiles,
     db: &ProjectionDb,

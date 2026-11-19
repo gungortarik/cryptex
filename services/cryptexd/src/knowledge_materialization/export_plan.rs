@@ -80,6 +80,9 @@ impl VerifiedCanonicalSnapshot {
                     .get(&(device.as_str(), frame.position.event_id.as_str()))
                     .ok_or_else(invalid)?;
                 eligible &= record.device_seq() <= *cutoff;
+                // The transport contract currently admits only note and
+                // security records. M9 read support does not activate transfer.
+                eligible &= !matches!(record, AuthenticatedSecurityRecord::Attachment(..));
                 retirement_only = single
                     && history.self_retirements.iter().any(|terminal| {
                         terminal.device == device && terminal.event_seq == record.device_seq()
