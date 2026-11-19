@@ -5962,6 +5962,7 @@ mod attachment_flow;
 #[cfg(test)]
 pub(crate) mod tests {
     mod approval_domain_tests;
+    mod purge_tests;
     use std::fs;
 
     use cryptex_core::BrainIdentity;

@@ -6,6 +6,9 @@ on:
       - '.github/workflows/m10-forget-restore.yml'
       - 'services/cryptexd/src/m10_forget_restore.rs'
       - 'services/cryptexd/src/test_temp.rs'
+      - 'services/cryptexd/src/ipc.rs'
+      - 'services/cryptexd/src/ipc/tests/purge_tests.rs'
+      - 'services/cryptexd/src/m8_owner_channel/request.rs'
       - 'services/cryptexd/src/knowledge_materialization.rs'
       - 'services/cryptexd/src/trust_reducer.rs'
       - 'crates/events/**'
@@ -36,6 +39,14 @@ jobs:
           }
           cargo @options
           exit $LASTEXITCODE
+      - name: Verify unconfirmed purge requests preserve signed records
+        shell: pwsh
+        run: |
+          $case = 'ipc::tests::purge_tests::unconfirmed_purge_requests_preserve_all_records'
+          $result = cargo test --locked -p cryptexd --lib $case -- --exact
+          $result
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($result -notcontains "test $case ... ok") { throw "Missing purge test result" }
       - name: Check existing search and timeline behavior
         run: cargo test --locked -p cryptex-projection --lib search::tests
       - name: Check existing signed-history rules

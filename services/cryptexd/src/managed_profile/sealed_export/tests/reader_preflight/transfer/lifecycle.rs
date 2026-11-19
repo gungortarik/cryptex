@@ -7,7 +7,9 @@ use serde_json::json;
 
 pub(super) mod conflict;
 mod offline;
+mod purge;
 pub(super) use offline::resume;
+pub(super) use purge::unconfirmed_purge;
 
 fn publish(
     side: &mut Side,

@@ -782,30 +782,7 @@ fn copy_incoming(source: &Path, receiver: &Path, relative: &Path) {
     fs::copy(source.join("canonical/events").join(relative), target).unwrap();
 }
 
-pub(super) fn event_hashes(root: &Path) -> Vec<(PathBuf, String)> {
-    use sha2::{Digest, Sha256};
-    let mut hashes = Vec::new();
-    for device in fs::read_dir(root.join("canonical/events")).unwrap() {
-        let device = device.unwrap();
-        if !device.file_type().unwrap().is_dir() {
-            continue;
-        }
-        for file in fs::read_dir(device.path()).unwrap() {
-            let path = file.unwrap().path();
-            if matches!(
-                path.extension().and_then(|s| s.to_str()),
-                Some("seg" | "open")
-            ) {
-                hashes.push((
-                    path.strip_prefix(root).unwrap().to_owned(),
-                    format!("{:x}", Sha256::digest(fs::read(path).unwrap())),
-                ));
-            }
-        }
-    }
-    hashes.sort();
-    hashes
-}
+pub(super) use crate::test_temp::event_hashes;
 
 #[test]
 fn publishes_peer_batch_persists_reopens_and_replays_without_rewriting() {

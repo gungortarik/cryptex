@@ -125,6 +125,7 @@ pub(in crate::managed_profile) fn run() {
             let mut b = Side::new(right, &b_id);
             lifecycle::resume(&transport, &a, &mut b, &store);
             lifecycle::conflict::exercise(&transport, &mut a, &mut b, &store);
+            lifecycle::unconfirmed_purge(&a, &mut b, &store);
             return;
         }
         Ok("enroll") => (),
