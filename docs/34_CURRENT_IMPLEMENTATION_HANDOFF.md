@@ -161,6 +161,20 @@ The repair path is available only in the disposable test daemon. Windows and
 macOS both verified the interrupted retry at `20d1a66`, with one canonical
 blob and two quarantined originals. [Repair receipts](https://github.com/gungortarik/cryptex/actions/runs/44567124985)
 
+The guarded Obsidian refresh copies each admitted attachment to a new
+file at `Cryptex/attachments/<signed-link-uuid>/attachment.bin` in the
+selected vault. The daemon verifies the canonical file before copying and
+the materializer checks the staged copy against the signed SHA-256 before
+publishing the tree. The link carries no original filename. An edited
+generated file blocks refresh so the vault retains the edit.
+
+At `050d986` Windows and macOS each passed 15 vault tests and the paired
+temporary-profile trial. Both received the same 8,193 bytes, refreshed twice,
+edited the copy in place and reopened the recipient. Both verified the
+canonical bytes and the sealed event pack. The installed daemon continues
+to disable attachment writes. [Native vault receipts](https://github.com/gungortarik/cryptex/actions/runs/44570289719)
+and [Desktop attachment checks](https://github.com/gungortarik/cryptex/actions/runs/44570289844).
+
 ## M8 complete on November 18, 2026
 
 The owner approved candidate `7be9287`. Windows and macOS passed readiness and native recovery. The two-device follow-up reached the same sixteen signed records and retained all four test markers after a paused restart. The historical investigation below is closed. [Scope, security review and CI](../evidence/m8/m8-final-candidate-review-20261118.md)
@@ -245,15 +259,7 @@ and the existing recovery run. Windows and macOS passed recovery CI
 ZIP readback verified both launchers, the embedded source and executable
 hashes. ZIP SHA-256 is
 `2fa2a529d16fa5cc0f9892e5d3a99c80837e5177219d01ab412efc8fc80b3be8`.
-The returned Windows `1801b0320f2b` and Darwin `c670b0de12fc`
-follow-up archives passed the paired report comparison against that packet.
-Both began at their respective known 15-record digests and finished with
-16 signed records and the same SHA-256
-`bd2c949fc008d2363caf2eb4d9a7bdc8f217e07fe3e3d698e130bc4f4cac3abd`.
-Each device found all four existing markers after paused restart, closed
-cleanly and reported sync enabled afterwards. This verifies later convergence
-and offline persistence for the interrupted run. The original attempt still
-timed out. No repeat of this follow-up is needed.
+Await the two `TOPARLANMA-SONUC` archives for physical acceptance.
 
 ## Windows guarded lookup of the already reconciled Mac record
 
