@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 const ENV: SecureStoreEnvironment = SecureStoreEnvironment::Dev;
 
+mod reader_preflight;
 mod restriction;
 
 // Canonical fixture signing keys stay in memory; real native workers use exactly

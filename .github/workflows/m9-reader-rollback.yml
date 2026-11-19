@@ -11,9 +11,16 @@ on:
       - 'services/cryptexd/src/main.rs'
       - 'services/cryptexd/src/import_staging/export_fs.rs'
       - 'services/cryptexd/src/import_staging.rs'
+      - 'services/cryptexd/src/import_staging/*inbox.rs'
+      - 'services/cryptexd/src/managed_profile/sealed_export.rs'
+      - 'services/cryptexd/src/managed_profile/sealed_export/**'
+      - 'services/cryptexd/src/managed_profile/connection_settings/backend.rs'
+      - 'services/cryptexd/src/knowledge_materialization/export_plan.rs'
       - 'services/cryptexd/src/import_staging/macos_fs.rs'
       - 'services/cryptexd/src/platform/instance_file.rs'
       - 'scripts/m8/*standard-user*'
+      - 'scripts/m8/prepare_native_test_package.py'
+      - 'services/cryptexd/src/managed_profile/native_product_receive_test/reader_preflight.rs'
       - 'services/cryptexd/src/compat.rs'
 permissions:
   contents: read
@@ -37,13 +44,16 @@ jobs:
       - name: Build the unmodified pre-M9 daemon
         working-directory: m8
         run: cargo build --locked -p cryptexd --bin cryptexd
-      - name: Verify M8 denial under a standard Windows account
+      - name: Prepare pinned native worker for paired Windows profiles
+        if: runner.os == 'Windows'
+        run: python scripts/m8/prepare_native_test_package.py
+      - name: Verify reader preflight and M8 denial under a standard Windows account
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           cargo build --locked -p cryptexd --bin cryptexd
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M9HistoricalDaemon (Resolve-Path 'm8/target/debug/cryptexd.exe').Path | Tee-Object -FilePath rollback-observation.txt
+          ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M9HistoricalDaemon (Resolve-Path 'm8/target/debug/cryptexd.exe').Path -ExchangePackage "$env:RUNNER_TEMP/exchange-package" | Tee-Object -FilePath rollback-observation.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $receipt = @(Select-String -Path rollback-observation.txt -Pattern '^historical_profile_lock=denied ')
           if ($receipt.Count -ne 1) { throw 'Missing historical denial receipt.' }
@@ -65,3 +75,5 @@ jobs:
           cargo test --locked -p cryptexd --features m8-development-product --lib attachment_blobs::tests::signed_link::audit_pre_m9_profile_admission -- --ignored --exact --nocapture | tee rollback-observation.txt
           grep '^historical_profile_lock=denied ' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"
           grep '^existing_profile_migration=verified ' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"
+          cargo test --locked -p cryptexd --features m8-development-product --lib managed_profile::sealed_export::tests::reader_preflight:: -- --nocapture | tee preflight.txt
+          grep -F '2 passed; 0 failed; 0 ignored' preflight.txt >> "$GITHUB_STEP_SUMMARY"

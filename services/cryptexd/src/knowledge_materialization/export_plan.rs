@@ -10,6 +10,7 @@ pub(crate) struct ExportPack<'a> {
     pub(crate) length: u64,
     pub(crate) digest: [u8; 32],
     pub(crate) eligible: bool,
+    pub(crate) contains_attachment: bool,
     pub(crate) retirement_only: bool,
 }
 impl ExportPack<'_> {
@@ -71,6 +72,7 @@ impl VerifiedCanonicalSnapshot {
             let mut eligible = true;
             let single = frames.len() == 1;
             let mut retirement_only = false;
+            let mut contains_attachment = false;
             for frame in frames {
                 check()?;
                 if frame.position.frame_offset != length {
@@ -82,7 +84,8 @@ impl VerifiedCanonicalSnapshot {
                 eligible &= record.device_seq() <= *cutoff;
                 // The transport contract currently admits only note and
                 // security records. M9 read support does not activate transfer.
-                eligible &= !matches!(record, AuthenticatedSecurityRecord::Attachment(..));
+                contains_attachment |=
+                    matches!(record, AuthenticatedSecurityRecord::Attachment(..));
                 retirement_only = single
                     && history.self_retirements.iter().any(|terminal| {
                         terminal.device == device && terminal.event_seq == record.device_seq()
@@ -106,7 +109,8 @@ impl VerifiedCanonicalSnapshot {
                 index,
                 length,
                 digest: hash.finalize().into(),
-                eligible,
+                eligible: eligible && !contains_attachment,
+                contains_attachment,
                 retirement_only,
             });
         }

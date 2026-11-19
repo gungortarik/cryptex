@@ -278,6 +278,19 @@ impl Directory {
         self.unlink_opened("segment.tmp", file)
     }
 
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    pub(crate) fn remove_reader_slot(&self, name: &str, file: File) -> Result<(), Error> {
+        if !name.strip_suffix(".control").is_some_and(|id| {
+            id.len() == 64
+                && id
+                    .bytes()
+                    .all(|c| c.is_ascii_digit() || matches!(c, b'a'..=b'f'))
+        }) {
+            return Err(Error::Unsafe);
+        }
+        self.unlink_opened(name, file)
+    }
+
     pub(crate) fn retire_m8_pid(&self, file: File) -> Result<(), Error> {
         self.unlink_opened("daemon.lock", file)
     }

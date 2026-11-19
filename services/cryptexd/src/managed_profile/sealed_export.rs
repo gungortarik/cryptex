@@ -12,6 +12,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+pub(crate) mod reader;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Error {
     Deferred,
@@ -44,6 +46,8 @@ impl From<crate::import_staging::export_fs::Error> for Error {
 #[derive(Default)]
 pub(crate) struct Exporter {
     after: Option<(String, u64)>,
+    reader_check: reader::ReaderCheck,
+    last_reader_status: Option<reader::Status>,
 }
 #[derive(Default, Debug)]
 pub(crate) struct Report {
@@ -51,6 +55,8 @@ pub(crate) struct Report {
     pub(crate) present: usize,
     pub(crate) sealed: usize,
     pub(crate) withheld: usize,
+    pub(crate) attachment_waiting_for_reader: usize,
+    pub(crate) attachment_transfer_disabled: usize,
 }
 
 #[cfg(test)]
@@ -79,6 +85,11 @@ fn authority(_stage: &'static str) -> Error {
 }
 
 impl Exporter {
+    pub(crate) fn end_reader_session(&mut self) {
+        self.reader_check = reader::ReaderCheck::default();
+        self.last_reader_status = None;
+    }
+
     pub(crate) fn tick(
         &mut self,
         root: &Path,
@@ -137,6 +148,38 @@ impl Exporter {
         let canonical = root_pin.child("canonical", false)?.child("events", false)?;
         let transport = root_pin.child("transport", false)?;
         let incoming = transport.child("incoming", false)?;
+        let status = self
+            .reader_check
+            .tick(
+                &snapshot,
+                &peers,
+                &incoming,
+                &transport,
+                credentials,
+                &check,
+            )
+            .unwrap_or_else(reader::Status::Unavailable);
+        check()?;
+        let readers_verified = matches!(status, reader::Status::Verified(_));
+        if self.last_reader_status.as_ref() != Some(&status) {
+            let label = match &status {
+                reader::Status::Legacy => "legacy_profile",
+                reader::Status::Waiting => "waiting",
+                reader::Status::Rejected => "rejected",
+                reader::Status::Unavailable(reader::Error::Authority) => "authority_unavailable",
+                reader::Status::Unavailable(reader::Error::Storage) => "storage_unavailable",
+                reader::Status::Unavailable(reader::Error::LocalReader) => {
+                    "local_reader_unavailable"
+                }
+                reader::Status::Unavailable(reader::Error::Message) => "message_unavailable",
+                reader::Status::Verified(_) => "verified",
+            };
+            eprintln!(
+                "component=m9_reader_check status={label} peers={}",
+                peers.bindings().len()
+            );
+            self.last_reader_status = Some(status);
+        }
         let scratch = transport.child("export-staging", true)?;
         if scratch.exists("segment.tmp")? {
             let old = scratch.open_file("segment.tmp", false)?;
@@ -161,7 +204,16 @@ impl Exporter {
             budget
                 .admit_file(pack.length)
                 .map_err(|_| Error::SourceChanged)?;
+            if pack.contains_attachment && !readers_verified {
+                report.attachment_waiting_for_reader += 1;
+                report.withheld += 1;
+                self.after = Some(key);
+                continue;
+            }
             if !(pack.eligible || pack.retirement_only) {
+                if pack.contains_attachment {
+                    report.attachment_transfer_disabled += 1;
+                }
                 // Never slice/re-sign a physical pack at a reduced cutoff.
                 // Withhold the complete pack without starving unrelated peers.
                 report.withheld += 1;

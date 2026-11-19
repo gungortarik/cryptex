@@ -8,14 +8,14 @@ use cryptex_events::BootstrapApprovalRole;
 use std::fs;
 
 const BRAIN: &str = "11111111-1111-4111-8111-111111111111";
-struct Peer {
-    root: PathBuf,
+pub(super) struct Peer {
+    pub(super) root: PathBuf,
     device: DeviceId,
     transport: String,
     key: ed25519_dalek::SigningKey,
 }
 impl Peer {
-    fn new(name: &str, transport: &str, store: &crate::FakeSecureStore) -> Self {
+    pub(super) fn new(name: &str, transport: &str, store: &crate::FakeSecureStore) -> Self {
         let root = crate::test_temp::exclusive_temp_dir(name);
         let (device, _) = crate::trusted_import_probe::tests::local(&root, BRAIN, store);
         let key =
@@ -76,7 +76,7 @@ impl Drop for Peer {
     }
 }
 
-fn pair(a: &Peer, b: &Peer, ordinal: u8, store: &crate::FakeSecureStore) {
+pub(super) fn pair(a: &Peer, b: &Peer, ordinal: u8, store: &crate::FakeSecureStore) {
     let tx = format!("{ordinal:064x}");
     let offer = cryptex_events::create_bootstrap_offer(
         BRAIN,

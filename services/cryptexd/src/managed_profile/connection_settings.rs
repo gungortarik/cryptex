@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 pub const MAX_FRAME: usize = 64 * 1024;
-const MAX_PEERS: usize = 64;
+pub(super) const MAX_PEERS: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

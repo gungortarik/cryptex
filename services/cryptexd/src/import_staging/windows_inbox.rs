@@ -93,7 +93,10 @@ impl Inbox {
         for directory in fs::read_dir(&incoming).map_err(|_| Error::Io)? {
             count_entry(&mut count)?;
             let path = directory.map_err(|_| Error::Io)?.path();
-            if path.file_name().is_some_and(|n| n == ".stfolder") {
+            if path
+                .file_name()
+                .is_some_and(|n| n == ".stfolder" || n == super::READER_CONTROL_FOLDER)
+            {
                 continue;
             }
             self.pin(&path)?;

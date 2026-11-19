@@ -67,6 +67,14 @@ function Assert-CompleteSuite([int]$Code,[string]$Stdout,[int]$Count,[bool]$NoIg
     if([int]$Matches[3] -ne $Filtered){throw 'Unexpected excluded test inventory.'}
     if($NoIgnored -and [int]$Matches[2] -ne 0){throw 'Startup suite must execute every test, including the endpoint fixture.'}
 }
+function Set-NativeTestPackage {
+    $nativePackage=Join-Path $env:TEMP 'exchange-native-package'
+    New-Item -ItemType Directory -Path $nativePackage | Out-Null
+    foreach($leaf in @('syncthing.exe','LICENSE.txt','AUTHORS.txt')) {
+        Copy-Item -LiteralPath (Join-Path $p.exchange_package $leaf) -Destination $nativePackage
+    }
+    $env:CRYPTEX_EXCHANGE_NATIVE_PACKAGE=$nativePackage
+}
 if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) {
     $env:CRYPTEX_M9_PREVIOUS_DAEMON=$p.m9_historical_daemon
     $env:CRYPTEX_M9_CANDIDATE_DAEMON=Join-Path $p.workspace 'target\debug\cryptexd.exe'
@@ -76,7 +84,18 @@ if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) 
     $result.stderr | Write-Output
     if($result.code -ne 0 -or $result.stdout -notmatch '1 passed; 0 failed; 0 ignored' -or
         $result.stdout -notmatch 'historical_profile_lock=denied'){throw 'Historical M8 denial was not verified.'}
-    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=1} | ConvertTo-Json |
+    $preflight=Invoke-TestBinary $p.executables[0] 'managed_profile::sealed_export::tests::reader_preflight:: --nocapture'
+    $preflight.stdout | Write-Output
+    $preflight.stderr | Write-Output
+    if($preflight.code -ne 0 -or $preflight.stdout -notmatch '2 passed; 0 failed; 0 ignored'){throw 'Paired reader checks incomplete.'}
+    Set-NativeTestPackage
+    $suite='managed_profile::native_product_receive_test::reader_preflight::normal_owners_verify_readers_over_the_private_network'
+    $live=Invoke-TestBinary $p.executables[0] "$suite --ignored --exact --nocapture"
+    $live.stdout | Write-Output
+    $live.stderr | Write-Output
+    $proofs=@($live.stderr -split '\r?\n' | Where-Object {$_ -ceq 'component=m9_reader_check status=verified peers=1'})
+    if($live.code -ne 0 -or $live.stdout -notmatch '1 passed; 0 failed; 0 ignored' -or $proofs.Count -lt 2){throw 'Live paired reader verification incomplete.'}
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=3} | ConvertTo-Json |
         Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
     exit 0
 }
@@ -93,12 +112,7 @@ if($cutoffOnly -or ($p.PSObject.Properties['lan_setup_only'] -and $p.lan_setup_o
     exit 0
 }
 if($p.PSObject.Properties['exchange_native_only'] -and $p.exchange_native_only) {
-    $nativePackage=Join-Path $env:TEMP 'exchange-native-package'
-    New-Item -ItemType Directory -Path $nativePackage | Out-Null
-    foreach($leaf in @('syncthing.exe','LICENSE.txt','AUTHORS.txt')) {
-        Copy-Item -LiteralPath (Join-Path $p.exchange_package $leaf) -Destination $nativePackage
-    }
-    $env:CRYPTEX_EXCHANGE_NATIVE_PACKAGE=$nativePackage
+    Set-NativeTestPackage
     $exe=$p.executables[0]
     $full=Invoke-TestBinary $exe '--list'
     $fullCount=@($full.stdout -split '\r?\n' | Where-Object {$_ -cmatch ': test$'}).Count

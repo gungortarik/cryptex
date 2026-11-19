@@ -437,6 +437,7 @@ impl Controller {
         }
     }
     fn close(&mut self) -> Result<(), Error> {
+        self.exporter.end_reader_session();
         *self.reader.lock().map_err(|_| Error::Unavailable)? = None;
         if self.cleanup_failed {
             return Err(Error::Shutdown);
@@ -524,8 +525,10 @@ impl Controller {
                     Ok(report) => {
                         if report.withheld > 0 {
                             eprintln!(
-                                "component=sealed_export status=partial reason=cutoff_boundary withheld_packs={}",
-                                report.withheld
+                                "component=sealed_export status=partial withheld_packs={} waiting_for_reader={} attachment_transfer_disabled={}",
+                                report.withheld,
+                                report.attachment_waiting_for_reader,
+                                report.attachment_transfer_disabled
                             );
                         }
                     }

@@ -236,6 +236,9 @@ mod cleanup;
 pub(crate) mod export_fs;
 pub(crate) mod policy_hold;
 
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub(crate) const READER_CONTROL_FOLDER: &str = "m9-reader-v1";
+
 /// Open only an existing PID file inside the minimum-reader directory. Use
 /// the same original-directory and no-alias checks as canonical staging.
 #[cfg(any(windows, target_os = "macos"))]

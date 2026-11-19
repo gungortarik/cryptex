@@ -230,8 +230,9 @@ fn trace_key_load<T, E>(_name: &'static str, work: impl FnOnce() -> Result<T, E>
 
 /// Load the already enrolled signing key without creating or repairing any
 /// SecureStore item, runtime directory, lock file, or public metadata. This is
-/// reserved for daemon operations that have passed an explicit owner-approval
-/// gate; ordinary identity/retrieval paths should use the verifying-key API.
+/// used by approved owner operations and by the domain-separated M9 reader
+/// check on an enabled connection to an owner-approved peer. Ordinary
+/// identity/retrieval paths should use the verifying-key API.
 pub fn load_existing_event_signing_key<S: SecureStore + ?Sized>(
     store: &S,
     env: SecureStoreEnvironment,

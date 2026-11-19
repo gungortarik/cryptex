@@ -8,7 +8,7 @@ if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted
 $workspace=(Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
 $manifest=Join-Path $workspace 'services\cryptexd'
 $python=$null
-if($ExchangeNativeOnly){$ExchangePackage=(Resolve-Path -LiteralPath $ExchangePackage).Path}
+if($ExchangeNativeOnly -or $M9HistoricalDaemon){$ExchangePackage=(Resolve-Path -LiteralPath $ExchangePackage).Path}
 if($LanSetupOnly -or $LanCutoffOnly) {
     $LanArtifact=(Resolve-Path -LiteralPath $LanArtifact).Path
     $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
@@ -25,7 +25,7 @@ $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Objec
     $_.profile.test -and $_.executable
 } | ForEach-Object {$_.executable} | Sort-Object -Unique)
 $expectedArtifacts=if($DesktopStartupOnly -or $DesktopSessionOnly -or $TransportPolicyOnly -or $ExchangeNativeOnly -or $LocalVerificationOnly -or $M9HistoricalDaemon){1}else{2}
-$expectedSuites=if($LocalVerificationOnly){1}elseif($ExchangeNativeOnly){5}elseif($TransportPolicyOnly){13}elseif($DesktopSessionOnly){3}else{$expectedArtifacts}
+$expectedSuites=if($M9HistoricalDaemon){3}elseif($LocalVerificationOnly){1}elseif($ExchangeNativeOnly){5}elseif($TransportPolicyOnly){13}elseif($DesktopSessionOnly){3}else{$expectedArtifacts}
 if($executables.Count -ne $expectedArtifacts){throw 'Expected exact daemon test artifacts.'}
 foreach($exe in $executables) {
     $full=(Resolve-Path -LiteralPath $exe).Path
@@ -49,7 +49,7 @@ try {
     }
     # Fresh account reads checkout/build artifacts; only scratch is writable.
     $access=@(@{path=$workspace;rights='ReadAndExecute'},@{path=$scratch;rights='FullControl'})
-    if($ExchangeNativeOnly){$access+=@{path=$ExchangePackage;rights='ReadAndExecute'}}
+    if($ExchangeNativeOnly -or $M9HistoricalDaemon){$access+=@{path=$ExchangePackage;rights='ReadAndExecute'}}
     if($LanSetupOnly -or $LanCutoffOnly){$access+=@{path=$LanArtifact;rights='ReadAndExecute'}}
     foreach($entry in $access) {
         $acl=Get-Acl -LiteralPath $entry.path

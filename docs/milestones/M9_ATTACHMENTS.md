@@ -74,6 +74,31 @@ The PID carries no trust or canonical data. Backup rejoin must prepare a
 protected destination before restoring v2 records. Production attachment
 writing remains gated by ADR-0017 §8.2.
 
+### Checking a paired reader before export
+
+During normal enabled sync, a daemon on a protected M9 profile checks every
+eligible paired reader before considering a pack that contains an attachment
+link. Each daemon reads a fixed signed synthetic note and v2 link with the
+production event verifier and link resolver. It checks the target note, the
+classification and the digest of the referenced bytes. The vector runs in
+memory and contains no user data.
+
+The adapter carries separate signed messages under
+`transport/incoming/m9-reader-v1`. Each direction has its own slot, named
+by the SHA-256 of the canonical route. The Ed25519 signature covers a
+protocol-specific prefix and the canonical JSON body, including Brain ID,
+both device and transport IDs, a fresh nonce, the peer nonce being answered,
+the daemon executable digest and the resolved blob digest. The verifier
+uses the signing key from the current locked, approved device binding.
+The inbox importer skips this directory.
+
+An unanswered challenge, invalid signature, incorrect reader result or
+missing peer holds attachment export. Proofs expire after five minutes and
+are refreshed when the controller restarts or its roster changes. This
+session check records the build reported by the enrolled daemon. Global
+writer activation, offline capability retention and backup rejoin require
+separate evidence. Production attachment writing and transfer remain closed.
+
 M9 connects the real canonical attachment/blob subsystem to the projection boundary already proven in M6, using the accepted hard-link/copy fallback evidence rather than redesigning the projection contract.
 
 ## Required invariants
