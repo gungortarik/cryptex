@@ -36,9 +36,17 @@ The [historical-reader audit](https://github.com/gungortarik/cryptex/actions/run
 rebuilt the pre-M9 daemon at `2efc3dd` on Windows and macOS. Its ordinary
 profile probe acquired the exclusive instance lock on both synthetic
 v2-bearing stores. The signed packs remained byte-identical. Both audits
-reported `production_v2_activation=blocked`. The probe measures admission
-only. A future release needs enforceable old-binary exclusion and the
-remaining ADR-0017 §8.2 evidence before enabling a real-profile writer.
+reported `production_v2_activation=blocked` on the legacy layout.
+
+At `6d3e1ef` the [protected-profile regression](https://github.com/gungortarik/cryptex/actions/runs/44465850361)
+passed on Windows under a standard user and on macOS. With no instance
+running, the same unmodified M8 binary opened the legacy control and was
+refused at the protected profile for both `lifecycle probe` and normal
+`lifecycle hold` startup. The current reader reacquired its exclusive
+lock and the signed note/link pack remained byte-identical. Creation of the
+protected layout is exclusive to a new destination. Existing profiles,
+trusted-device capability and backup rejoin still need a safe rollout
+before real-profile v2 writing can be enabled under ADR-0017 §8.2.
 Capture, transfer, repair and the M6 copy-only projection remain open.
 
 ## M8 complete on November 18, 2026

@@ -52,6 +52,19 @@ Resolution alone grants no access to attachment content. The first writer is
 exercised only in isolated tests. Production writes remain subject to the
 compatible-reader and downgrade gates of ADR-0017 sections 4.5 and 8.2.
 
+For a newly prepared M9 profile, the daemon exclusively creates a fresh
+profile directory. Before the first v2 record, it reserves `daemon.lock` as
+a directory and creates the regular PID lock file `daemon.lock/reader-m9.pid`.
+M8 requires the outer entry itself to open as a writable regular file at
+startup, even with the newer daemon stopped. Current readers reopen the
+existing inner file and use the normal single-instance lock. A missing
+inner file holds startup. Legacy profiles retain their ordinary lock file.
+
+The initializer refuses an existing destination. Any future migration or
+backup rejoin must prepare a protected destination before restoring v2
+records into it. The inner PID is local runtime bookkeeping. It carries no
+trust or canonical data. Production attachment writing remains gated.
+
 M9 connects the real canonical attachment/blob subsystem to the projection boundary already proven in M6, using the accepted hard-link/copy fallback evidence rather than redesigning the projection contract.
 
 ## Required invariants
