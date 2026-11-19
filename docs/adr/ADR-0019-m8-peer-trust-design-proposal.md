@@ -1,8 +1,8 @@
 # ADR-0019 — M8 peer admission and security-event evolution
 
-**Status:** ACCEPTED product direction only — complete protocol/security-event activation remains gated  
+**Status.** Accepted for the controlled Windows and macOS development products. The owner accepted the protocol decisions in the implemented candidate. [Disposition of the §8 gates](../../evidence/m8/m8-final-candidate-review-20261118.md)
 **Date:** 2026-10-20  
-**Scope:** M8 device trust; no implementation activation
+**Original scope:** M8 device trust design. See the November 18 candidate review for controlled product acceptance.
 
 **Owner direction (2026-10-20):** After reviewing the concrete recommendation,
 the owner answered "kurallara uygun ve dogru is elutfen yap". Proceed with the
@@ -149,7 +149,7 @@ cutoff, clock skew, revocation reordering/conflicts, partial transport, untruste
 streams and offline convergence. Retain current golden vectors and safety guards.
 Actions require separate owner authorization.
 
-## 9. Current effect
+## 9. Effect of the original October decision
 
 The product direction is accepted within the scope above. No peer trust, key
 creation, schema change or writer activation results from this document.

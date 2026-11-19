@@ -1,5 +1,9 @@
 # M8 remaining acceptance
 
+## Closed on November 18, 2026
+
+The [final candidate review](../evidence/m8/m8-final-candidate-review-20261118.md) records the disposition of every M8 contract area for the controlled Windows and macOS development products. The checkpoints below preserve the evidence and the open questions at each earlier revision.
+
 ## Physical Windows–Mac cutoff result
 
 The disposable LAN cutoff check passed in both directions at source `30ac742`.
@@ -13,7 +17,7 @@ with A offline. B and C retained the same bytes and excluded A after
 reopening offline. This three-profile test passed in 143.05 seconds.
 The macOS interrupted-publication, prefix-seal and terminal-seal checks
 passed on the same source. [Automated Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44449594662).
-Final status, security and candidate review remain open.
+At that checkpoint, the final status, security and candidate reviews remained open.
 [Paired device receipts](../evidence/m8/m8-physical-lan-cutoff-9a6dc973.json).
 
 ## November 18 checkpoint after the two transfer inventories
@@ -60,7 +64,7 @@ even after a native failure. It does not retry capture or interrupt a process.
 Physical inspection results and the original causes remain pending; M8 remains
 open. [Packet and limits](../evidence/m8/m8-recovery-inspection-packet-20261118.json).
 
-## Current continuation (supersedes the historical November 14 gap list below)
+## November 17 continuation (historical)
 
 Both normal product paths now have incoming integration. The Windows missing
 receive pump was fixed and passed native CI including genuine two-process

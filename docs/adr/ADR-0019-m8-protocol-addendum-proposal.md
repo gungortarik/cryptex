@@ -1,6 +1,8 @@
 # ADR-0019 M8 protocol and security-event addendum — proposal
 
-**Status:** PROPOSED overall; owner accepted §§2–4 as the Windows
+**November 18 disposition.** Accepted as implemented in the controlled Windows and macOS development candidate. The final review records the availability tradeoff, security review, platform results and owner decision. [Final acceptance](../../evidence/m8/m8-final-candidate-review-20261118.md)
+
+**Earlier status:** PROPOSED overall; owner accepted §§2–4 as the Windows
 implementation basis on 2026-10-29, including the operation-specific owner
 approval digest fields below. This does not accept the full addendum or enable
 trust, transport, retrieval, or publication.
@@ -1274,7 +1276,7 @@ their inclusion here; the required independent security review must challenge
 the selected limits, approval binding, journal transitions, v3 reader contract,
 and canonical identity rules before acceptance.
 
-## 7. Current status
+## 7. November 14 status before integrated product acceptance
 
 **Updated November 14.** The full addendum remains PROPOSED. The owner accepted
 §§2–4 as the Windows implementation basis on October 29, in addition to the
@@ -1351,7 +1353,7 @@ write/flush/replace/readback/sync fault coverage must not be reopened as a gener
 new campaign without a change/failure. Evidence limits do not automatically add
 installed old Desktop, OS-store reinstall or physical power-loss campaigns.
 
-Remaining protocol gates are finite: complete supported-product integration and
+At the November 14 checkpoint the remaining protocol gates were finite: complete supported-product integration and
 its observable crash/uncertainty behavior, and independently review/accept the
 complete protocol, including the
 Brain-wide SCC hold and compromised-issuer availability consequence. Process

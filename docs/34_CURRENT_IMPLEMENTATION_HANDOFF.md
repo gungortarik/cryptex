@@ -1,5 +1,11 @@
 # 34 — Current Implementation Handoff
 
+## M8 complete on November 18, 2026
+
+The owner approved candidate `7be9287`. Windows and macOS passed readiness and native recovery. The two-device follow-up reached the same sixteen signed records and retained all four test markers after a paused restart. The historical investigation below is closed. [Scope, security review and CI](../evidence/m8/m8-final-candidate-review-20261118.md)
+
+The next milestone is [M9 Attachments](milestones/M9_ATTACHMENTS.md). M7 remains deferred under its existing scheduling exception.
+
 ## Physical interruption from twelve verified records
 
 The before and after receipts from the Windows and Mac queued-note checks

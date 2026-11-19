@@ -1,6 +1,10 @@
 # M8 completion ledger
 
-## November 17 current product checkpoint
+## Closed on November 18, 2026
+
+All seven contract areas passed for the controlled development product. The candidate review records the physical recovery and cutoff receipts, three-profile relay, UI and security findings, exact-source CI and human approval. [Final M8 review](../evidence/m8/m8-final-candidate-review-20261118.md)
+
+## November 17 product checkpoint (historical)
 
 Remaining-peer propagation source `a1af58a` passed CI44220199842:
 Windows105/Mac30 selected checks, zero failures, both isolated standard-user

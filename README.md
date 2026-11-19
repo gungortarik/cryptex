@@ -2,9 +2,11 @@
 
 Cryptex is a cross-platform, local-first personal memory and knowledge system for macOS and Windows.
 
-Current implementation milestone: **M8 — Device trust and replication (in progress, not complete)**.
+**M8 device trust and replication is complete** for the controlled Windows and macOS development products. The next milestone is M9 Attachments. [Candidate review and platform results](evidence/m8/m8-final-candidate-review-20261118.md)
 
-**Latest Mac integration checkpoint — November 14:** descriptor-relative import
+## Historical integration checkpoints
+
+**Mac integration checkpoint, November 14.** descriptor-relative import
 and the default-off existing-profile native domain/session/incoming/status bridge
 passed separate agent review and exact-source
 [full CI43671790009](https://github.com/gungortarik/cryptex/actions/runs/43671790009)
@@ -133,7 +135,7 @@ product session lifetime, bundle replacement and Unix frame attribution remain
 open. No unchanged Mac/VM rerun is needed. Product Unix IPC, owner-operation gates
 and minimum-OS policy are unchanged; M8 remains open.
 
-## Implementation status — 2026-11-09
+## Historical implementation status — 2026-11-09
 
 Active branch: `codex/m8-device-trust`. **M8 remains OPEN.** This is an
 implementation checkpoint; normal transport/publication activation and M9 are gated.

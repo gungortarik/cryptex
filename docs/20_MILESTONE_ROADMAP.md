@@ -5,8 +5,8 @@ The order minimizes architectural rework. Milestones may be split into smaller P
 **Owner-approved scheduling exception (2026-10-19):** M7 remains OPEN /
 DEFERRED with managed-note write-back disabled while its physical-containment
 prerequisite is unresolved. M6 generated Markdown and Obsidian visualization
-remain available. M8 is the next active implementation milestone; its existing
-prerequisites and completion gates apply. M7's scope and eventual completion
+remain available. This exception allowed M8 to proceed under its existing
+prerequisites and completion gates. M7's scope and eventual completion
 requirements remain in force. Decision:
 `evidence/m7/m7-temporary-deferral-and-m8-sequencing-proposal-20261019.md`.
 
@@ -82,6 +82,8 @@ requirements remain in force. Decision:
 - proposal/review/apply/reject
 
 ## M8 — Device Trust + Replication
+
+Completed for the controlled Windows and macOS development products. [Candidate and acceptance evidence](../evidence/m8/m8-final-candidate-review-20261118.md)
 
 - pairing UI/flow
 - Syncthing transport controller

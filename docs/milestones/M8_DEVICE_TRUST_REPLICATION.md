@@ -3,6 +3,8 @@
 **Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
+**Implementation complete on November 18, 2026.** The owner accepted the controlled Windows and macOS development candidate after diff review, conditional on the required checks. Both platform suites passed. [Acceptance evidence](../../evidence/m8/m8-final-candidate-review-20261118.md)
+
 ## Purpose
 
 M8 productizes trusted-device replication on top of the identity, event and managed-Syncthing foundations established earlier.
