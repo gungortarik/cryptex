@@ -10,6 +10,12 @@ rehashes an existing blob before accepting a duplicate. A private staging
 lock allows event processing to continue while an attachment is written.
 A retry reclaims an interrupted staging file.
 
+At `fa439f3`, all five attachment tests passed on both a standard-user
+Windows runner and a macOS runner using the controlled development configuration.
+They cover binary SHA-256 identity and deduplication, same-length corruption,
+linked files, interrupted staging and concurrent submissions. Both platform
+readiness jobs and the cross-account IPC check passed. [CI results](https://github.com/gungortarik/cryptex/actions/runs/44456022190)
+
 The next slice is a signed attachment reference linking the verified blob
 to a memory record. User-facing capture, transfer, repair and the M6
 copy-only projection still need integration and acceptance. The first
