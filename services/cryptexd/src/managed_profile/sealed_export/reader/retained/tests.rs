@@ -2,9 +2,7 @@ use super::*;
 
 /// The CI driver runs this test twice in distinct processes under a disposable
 /// account. A random run ID isolates the synthetic route from enrolled devices.
-#[test]
-#[ignore = "uses a disposable native credential store"]
-fn native_observation_survives_process_exit() {
+pub(crate) fn native_observation_phase() {
     #[cfg(windows)]
     let store = crate::WindowsCredentialStore::new();
     #[cfg(target_os = "macos")]

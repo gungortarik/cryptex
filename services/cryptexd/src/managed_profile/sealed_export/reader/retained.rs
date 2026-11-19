@@ -57,7 +57,7 @@ struct Record {
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
 
 pub(super) struct Slot<'a> {
     store: &'a dyn SecureStore,

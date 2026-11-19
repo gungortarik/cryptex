@@ -50,6 +50,16 @@ mod native_transfer_test;
 pub(crate) mod native_xml;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 pub(crate) mod sealed_export;
+
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+#[test]
+#[ignore = "uses a disposable native credential store across two processes"]
+fn native_observation_survives_process_exit() {
+    sealed_export::reader::native_observation_phase();
+}
 #[cfg(all(test, windows))]
 mod tests;
 #[cfg(windows)]

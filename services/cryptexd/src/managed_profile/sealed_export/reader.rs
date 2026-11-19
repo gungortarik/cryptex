@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 mod probe;
 mod receipt;
 mod retained;
+#[cfg(test)]
+pub(crate) use retained::tests::native_observation_phase;
 mod wire;
 use wire::{Body, Route};
 
