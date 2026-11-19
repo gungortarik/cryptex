@@ -79,7 +79,16 @@ note/link pair and checks the incoming bytes against the link's SHA-256 before
 placing them in its canonical blob store. The trial checks missing and damaged
 bytes, an unrelated target, duplicate delivery and verification after reopening.
 The trial's import and export permissions exist only in the test executable.
-Automatic blob delivery in the installed product remains a separate step.
+The normal sync controller also reconciles admitted links when this exact pair
+of disposable profiles is enabled. After a live reader exchange, each peer
+publishes verified bytes under its own transport ID and the signed SHA-256
+in `transport/incoming/m9-blobs-v1`. This disposable directory is excluded
+from sealed-segment discovery. The receiver considers only digests from its
+locked note/link inventory and slots of currently approved peers. Each tick
+checks up to 16 distinct digests. A missing delivery is retried on a later
+pass. A mismatching delivery cannot displace the local file. The sender can
+regenerate a damaged offer from its verified canonical copy. The installed
+product keeps real-profile attachment writing and blob exchange disabled.
 
 In the paired trial the receiver can also restore a damaged local blob from
 the peer. It requires the admitted signed reference, verifies replacement bytes
