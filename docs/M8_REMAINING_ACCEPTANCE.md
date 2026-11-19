@@ -123,6 +123,22 @@ CI stages the signed bytes directly into each receiver's temporary inbox.
 The mixed Windows–Mac LAN restriction check and the terminal self-retirement
 handoff remain open. [Native CI for 2dfc292](https://github.com/gungortarik/cryptex/actions/runs/44439423255).
 
+The two-host cutoff packet at `30ac742` runs both directions with independent
+temporary profiles. Pinned Syncthing processes deliver the signed pairing
+messages, the accepted prefix and the late segment. The test driver presents
+the delivered bytes to the daemon inbox, confirms a restriction at sequence 3
+on the receiving profile, and checks refusal of the same late segment after
+two daemon recovery passes. Canonical hashes and guarded search must preserve
+the prefix. Each platform passed a two-process loopback rehearsal, including
+comparison of both directional segment hashes. [Native packet CI](https://github.com/gungortarik/cryptex/actions/runs/44442835699).
+
+The issued Windows VM and Mac packets share run
+`9a6dc973-14c3-42e1-a022-d0142f4f30f0`. Physical evidence requires one
+successful receipt from each platform for this run and source, with matching
+segment hashes for both directions. Normal product transport roster changes
+remain covered separately by the three-owner test. The two-host packet only
+modifies disposable test profiles.
+
 Concrete propagation gap from the November 17 source review: self-retirement
 can remain in the canonical active pack (`append_confirmed_owner_security_operation`
 uses the ordinary threshold), and `exchange_policy::eligible_peers` refuses a
