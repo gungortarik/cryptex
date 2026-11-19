@@ -128,8 +128,17 @@ The macOS and Windows daemon fixtures reconciled the missing signed pack
 before recording fresh replies. Two Windows product controllers also
 exchanged the new proofs over the private network, imported a note written
 after the backup and returned it through guarded search.
-Global writer activation remains open.
-Capture, transfer, repair and the M6 copy-only projection remain open.
+
+At `82ab595` the [Windows and macOS attachment tests](https://github.com/gungortarik/cryptex/actions/runs/44559918703)
+drive the built Desktop interface in Chromium. Selecting a file on the
+saved note calls the normal native IPC client through a test bridge. A
+separate daemon process verifies the note, stores the bytes and signs the
+link in a disposable protected profile. After reopening the profile, the
+test verifies the signed link and the exact binary digest. Retrying leaves
+one link. An unrelated note retains zero links. With the writer disabled,
+the file control is absent and direct requests leave no blob or link.
+Only the test daemon can enable the writer. Production activation, blob
+transfer, repair and the M6 copy-only projection remain open.
 
 ## M8 complete on November 18, 2026
 
