@@ -294,12 +294,22 @@ pub(crate) mod tests {
         let source = crate::test_temp::exclusive_temp_dir("trusted-source");
         let receiver = crate::test_temp::exclusive_temp_dir("trusted-receiver");
         let negative = crate::test_temp::exclusive_temp_dir("trusted-negative");
+        let store = enroll_transport_pair(&source, &receiver, transport_a, transport_b);
+        (source, receiver, negative, store)
+    }
+
+    pub(crate) fn enroll_transport_pair(
+        source: &Path,
+        receiver: &Path,
+        transport_a: &str,
+        transport_b: &str,
+    ) -> crate::FakeSecureStore {
         let store = crate::FakeSecureStore::new();
         let brain = "11111111-1111-4111-8111-111111111111";
-        let (a, first_a) = local(&source, brain, &store);
-        let (b, first_b) = local(&receiver, brain, &store);
-        let key_a = load_existing_event_signing_key(&store, ENV, &source, &a).unwrap();
-        let key_b = load_existing_event_signing_key(&store, ENV, &receiver, &b).unwrap();
+        let (a, first_a) = local(source, brain, &store);
+        let (b, first_b) = local(receiver, brain, &store);
+        let key_a = load_existing_event_signing_key(&store, ENV, source, &a).unwrap();
+        let key_b = load_existing_event_signing_key(&store, ENV, receiver, &b).unwrap();
         let offer = cryptex_events::create_bootstrap_offer(
             brain,
             &"a".repeat(64),
@@ -342,14 +352,14 @@ pub(crate) mod tests {
         // not injected trust rows or fake policy flags. Product code only reads them.
         for (root, device, first, key, event_id) in [
             (
-                &source,
+                source,
                 &a,
                 first_a,
                 &key_a,
                 "22222222-2222-4222-8222-222222222222",
             ),
             (
-                &receiver,
+                receiver,
                 &b,
                 first_b,
                 &key_b,
@@ -378,7 +388,7 @@ pub(crate) mod tests {
                 .unwrap();
             file.write_all(&body).unwrap();
         }
-        (source, receiver, negative, store)
+        store
     }
     #[test]
     fn trusted_peer_stream_passes_full_import_policy_without_publication() {

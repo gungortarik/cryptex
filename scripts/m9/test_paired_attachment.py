@@ -12,6 +12,7 @@ import tempfile
 import time
 import urllib.request
 import uuid
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/m8"))
@@ -97,22 +98,64 @@ def main():
         assert ids[0] != ids[1]
         a, b, gui_a, gui_b = ports()
         run = str(uuid.uuid4())
-        with contextlib.ExitStack() as stack:
-            for i, (port, peer_port, gui) in enumerate([(a, b, gui_a), (b, a, gui_b)]):
-                root = roots[i]
-                cfg = dict(local_id=ids[i], peer_id=ids[1-i], local_ip=LOCAL, peer_ip=LOCAL,
-                           port=port, peer_port=peer_port, packet=root / "identity", side=root.name, run=run)
-                key, _ = configure(native, root, cfg, gui)
-                if stack.enter_context(worker(native, root, gui, key)) != ids[i]:
+        configs = []
+        for i, (port, peer_port, gui) in enumerate([(a, b, gui_a), (b, a, gui_b)]):
+            root = roots[i]
+            cfg = dict(local_id=ids[i], peer_id=ids[1-i], local_ip=LOCAL, peer_ip=LOCAL,
+                       port=port, peer_port=peer_port, packet=root / "identity", side=root.name, run=run)
+            key, _ = configure(native, root, cfg, gui)
+            configs.append((root, gui, key))
+
+        def start(stack):
+            for identity, (root, gui, key) in zip(ids, configs):
+                if stack.enter_context(worker(native, root, gui, key)) != identity:
                     raise RuntimeError("Syncthing identity mismatch")
-            result = subprocess.run([binary, "managed_profile::paired_attachment_transfer", "--exact",
-                                     "--ignored", "--nocapture"], env=dict(os.environ, CRYPTEX_TEST_WIRE=tmp,
-                                     CRYPTEX_TEST_DEVICE_A=ids[0], CRYPTEX_TEST_DEVICE_B=ids[1]),
-                                    stdout=subprocess.PIPE, text=True, timeout=480)
-            print(result.stdout, flush=True)
-            result.check_returncode()
-            if "1 passed; 0 failed; 0 ignored" not in result.stdout:
-                raise RuntimeError("paired attachment suite did not run")
+
+        with contextlib.ExitStack() as workers:
+            start(workers)
+            cmd = [binary, "managed_profile::paired_attachment_transfer", "--exact", "--ignored", "--nocapture"]
+            env = dict(os.environ, CRYPTEX_TEST_WIRE=tmp, CRYPTEX_TEST_DEVICE_A=ids[0], CRYPTEX_TEST_DEVICE_B=ids[1])
+            with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as log, subprocess.Popen(
+                    cmd, env=env, stdout=log) as test:
+                def wait_marker(name, timeout):
+                    deadline = time.monotonic() + timeout
+                    while not (base / name).is_file():
+                        if test.poll() is not None or time.monotonic() >= deadline:
+                            raise RuntimeError(f"controller did not reach {name}")
+                        time.sleep(.15)
+
+                try:
+                    wait_marker("connect", 420)
+                    workers.close()
+                    for root in roots:
+                        config = root / "transport/config.xml"
+                        tree = ET.parse(config)
+                        inbox = root / "profile/transport/incoming"
+                        assert inbox.is_dir()
+                        (inbox / ".stfolder").mkdir(exist_ok=True)
+                        folder = ET.SubElement(tree.getroot(), "folder", id=f"m9-{run}", path=str(inbox),
+                                               type="sendreceive", rescanIntervalS="1", fsWatcherEnabled="false")
+                        for identity in ids:
+                            ET.SubElement(folder, "device", id=identity)
+                        tree.write(config, encoding="utf-8", xml_declaration=True)
+                    start(workers)
+                    wait_marker("disconnect", 130)
+                    workers.close()
+                    (base / "offline").touch()
+                    wait_marker("reconnect", 45)
+                    start(workers)
+                    if test.wait(timeout=240):
+                        raise RuntimeError("paired attachment suite failed")
+                finally:
+                    if test.poll() is None:
+                        test.kill()
+                        test.wait()
+                    log.seek(0)
+                    output = log.read()
+                    print(output, flush=True)
+                if ("1 passed; 0 failed; 0 ignored" not in output
+                        or "automatic_attachment_sync=verified" not in output):
+                    raise RuntimeError("missing automatic recovery receipt")
 
 
 if __name__ == "__main__":

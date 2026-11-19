@@ -5,6 +5,8 @@ use crate::local_device_identity::LocalDeviceKeyResolver;
 use cryptex_events::AuthenticatedSecurityRecord;
 use std::thread;
 
+mod automatic;
+
 struct Wire {
     sender: PathBuf,
     receiver: PathBuf,
@@ -105,8 +107,13 @@ pub(in crate::managed_profile) fn run() {
     let transport = PathBuf::from(std::env::var_os("CRYPTEX_TEST_WIRE").unwrap());
     let a_id = std::env::var("CRYPTEX_TEST_DEVICE_A").unwrap();
     let b_id = std::env::var("CRYPTEX_TEST_DEVICE_B").unwrap();
-    let (left, right, scratch, store) =
-        crate::trusted_import_probe::tests::pair_with_transport(&a_id, &b_id);
+    let left = transport.join("A/profile");
+    let right = transport.join("B/profile");
+    for root in [&left, &right] {
+        fs::create_dir(root).unwrap();
+    }
+    let store =
+        crate::trusted_import_probe::tests::enroll_transport_pair(&left, &right, &a_id, &b_id);
     let mut a = Side::new(left.clone(), &a_id);
     let mut b = Side::new(right.clone(), &b_id);
     let sender = resolver(&a, &store)
@@ -336,7 +343,15 @@ pub(in crate::managed_profile) fn run() {
         selection.bytes.len()
     );
     drop(b);
-    for root in [left, right, scratch, vault] {
-        fs::remove_dir_all(root).unwrap();
-    }
+    fs::remove_dir_all(vault).unwrap();
+    automatic::exercise(
+        &transport,
+        [&a_id, &b_id],
+        &store,
+        &relative,
+        note,
+        &link,
+        &selection.bytes,
+    );
+    // The parent stops both native workers before removing its private tree.
 }

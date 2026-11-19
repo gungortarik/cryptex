@@ -12,6 +12,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+mod attachments;
 pub(crate) mod reader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +47,7 @@ impl From<crate::import_staging::export_fs::Error> for Error {
 #[derive(Default)]
 pub(crate) struct Exporter {
     after: Option<(String, u64)>,
+    blob_after: Option<[u8; 32]>,
     reader_check: reader::ReaderCheck,
     last_reader_status: Option<reader::Status>,
 }
@@ -86,6 +88,7 @@ fn authority(_stage: &'static str) -> Error {
 
 impl Exporter {
     pub(crate) fn end_reader_session(&mut self) {
+        self.blob_after = None;
         self.reader_check = reader::ReaderCheck::default();
         self.last_reader_status = None;
     }
@@ -309,6 +312,16 @@ impl Exporter {
         }
         if !remaining {
             self.after = None;
+        }
+        if readers_verified && crate::attachment_blobs::transfer_enabled(root) {
+            attachments::reconcile(
+                &snapshot,
+                &peers,
+                &incoming,
+                &transport,
+                &mut self.blob_after,
+                &check,
+            )?;
         }
         Ok(report)
     }

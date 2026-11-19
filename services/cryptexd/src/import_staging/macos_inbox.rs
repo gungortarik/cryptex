@@ -60,10 +60,11 @@ impl Inbox {
             }
             let directory = directory?;
             let path = directory.path();
-            if path
-                .file_name()
-                .is_some_and(|name| name == ".stfolder" || name == super::READER_CONTROL_FOLDER)
-            {
+            if path.file_name().is_some_and(|name| {
+                name == ".stfolder"
+                    || name == super::READER_CONTROL_FOLDER
+                    || name == super::ATTACHMENT_FOLDER
+            }) {
                 continue;
             }
             if !fs::symlink_metadata(&path)?.is_dir() {

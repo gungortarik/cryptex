@@ -41,24 +41,37 @@ pub fn store(runtime_root: &Path, source: impl Read) -> Result<[u8; 32], BlobErr
 
 enum StoreIntent {
     Capture,
-    #[cfg(test)]
     Restore([u8; 32]),
 }
 
-/// Called only after the disposable receiver admits the signed link.
-#[cfg(test)]
+/// The trial executable admits only the two explicitly enrolled disposable roots.
+pub(crate) fn transfer_enabled(_root: &Path) -> bool {
+    #[cfg(test)]
+    {
+        crate::test_temp::attachment_trial(_root)
+    }
+    #[cfg(not(test))]
+    {
+        false
+    }
+}
+
+/// Caller retains the locked snapshot authorizing the expected digest.
 pub(crate) fn restore(
     runtime_root: &Path,
     expected: [u8; 32],
     bytes: &[u8],
 ) -> Result<[u8; 32], BlobError> {
+    if !transfer_enabled(runtime_root) {
+        return Err(BlobError::UnsafeFilesystem);
+    }
     store_stream(runtime_root, bytes, StoreIntent::Restore(expected))
 }
 
 fn store_stream(
     runtime_root: &Path,
     mut source: impl Read,
-    _intent: StoreIntent,
+    intent: StoreIntent,
 ) -> Result<[u8; 32], BlobError> {
     crate::paths::assert_outside_repository(runtime_root)
         .map_err(|_| BlobError::UnsafeFilesystem)?;
@@ -81,8 +94,7 @@ fn store_stream(
         }
     };
     let name = format!("{digest:x}");
-    #[cfg(test)]
-    if matches!(_intent, StoreIntent::Restore(expected) if expected.as_slice() != digest.as_slice())
+    if matches!(intent, StoreIntent::Restore(expected) if expected.as_slice() != digest.as_slice())
     {
         staging.discard_scratch(staged)?;
         return Err(BlobError::IntegrityMismatch);
@@ -90,8 +102,7 @@ fn store_stream(
     if blobs.exists(&name)? {
         let mut existing = blobs.open_file(&name, false)?;
         let result = verify(&mut existing, &digest);
-        #[cfg(test)]
-        if result == Err(BlobError::IntegrityMismatch) && matches!(_intent, StoreIntent::Restore(_))
+        if result == Err(BlobError::IntegrityMismatch) && matches!(intent, StoreIntent::Restore(_))
         {
             // Authenticate the replacement on disk before moving the original.
             staged.rewind()?;
@@ -102,6 +113,7 @@ fn store_stream(
             let nonce = crate::import_staging::random_hex_16()
                 .map_err(|_| BlobError::Io(io::ErrorKind::Other))?;
             blobs.promote(&name, &existing, &evidence, &format!("{name}-{nonce}"))?;
+            #[cfg(test)]
             if INTERRUPT_AFTER_QUARANTINE.with(|pending| pending.replace(false)) {
                 return Err(BlobError::Io(io::ErrorKind::Interrupted));
             }
