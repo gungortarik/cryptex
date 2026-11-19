@@ -24,8 +24,16 @@ transition, proves raw FTS still finds the note, and checks guarded results,
 the unaffected note, pagination, restore and rejection of an invalid transition.
 At `c2914af`, Windows and macOS each passed all 3 lifecycle tests, 13 search
 and timeline tests, and 4 security-history tests. [Native CI results](https://github.com/gungortarik/cryptex/actions/runs/44595508670)
-Lifecycle writes are confined to test fixtures. Other consumers, including
-vault export and replication, retain their compatibility hold on these records.
+Obsidian refresh now applies the same signed visibility rules. Refreshing
+the selected vault removes a forgotten note from the managed Markdown tree
+and manifest. Restoring it and refreshing reproduces the original Markdown.
+The publisher still checks the previous manifest before replacing the tree.
+An edit to a managed note blocks refresh and preserves the edit.
+At `d765910`, both Windows and macOS passed 36 focused tests each, including
+the on-disk forget/restore check and 15 vault projection tests. [Vault refresh CI](https://github.com/gungortarik/cryptex/actions/runs/44596987474)
+
+Lifecycle writes are confined to test fixtures. Replication retains its
+compatibility hold on these records.
 Multi-device reconciliation, destructive purge and M10 acceptance remain open.
 
 ## M9 complete on November 19, 2026
