@@ -42,7 +42,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cryptex/desktop build
-      - run: cargo test --locked -p cryptexd --lib ipc::attachment::tests::
+      - run: cargo test --locked -p cryptexd --lib ipc::attachment::tests
       - if: runner.os == 'macOS'
         run: node --test apps/desktop/scripts/attachment-flow.test.mjs
       - if: runner.os == 'Windows'
