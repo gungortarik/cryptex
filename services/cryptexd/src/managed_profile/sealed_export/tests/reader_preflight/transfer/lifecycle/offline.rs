@@ -186,10 +186,56 @@ pub(in super::super) fn resume(
     inbox.consumed().unwrap();
     assert!(inbox.discover().unwrap().is_empty());
     report_pending(&baseline, &early_bytes);
+    let source_forget = sender.root.join("canonical/events").join(forget);
+    let valid = fs::read(&source_forget).unwrap();
+    let mut damaged = valid.clone();
+    let signature = b"\"signature\":\"";
+    let digit = damaged
+        .windows(signature.len())
+        .position(|s| s == signature)
+        .unwrap()
+        + signature.len();
+    damaged[digit] = if damaged[digit] == b'0' { b'1' } else { b'0' };
+    let outgoing = sender.root.join("transport/incoming").join(forget);
+    let replace_transport_copy = |bytes: &[u8]| {
+        let temp = wire.join("replacement-forget.tmp");
+        fs::write(&temp, bytes).unwrap();
+        fs::rename(temp, &outgoing).unwrap();
+    };
+    assert_eq!(fs::read(&outgoing).unwrap(), valid);
+    replace_transport_copy(&damaged);
     fs::write(wire.join("release-forget-segment"), []).unwrap();
     wait_for(
-        || remote_inbox.join(forget).is_file(),
-        "delayed forget delivery",
+        || fs::read(remote_inbox.join(forget)).is_ok_and(|bytes| bytes == damaged),
+        "damaged forget delivery",
+    );
+    let rejected = inbox.discover().unwrap();
+    assert_eq!(rejected, batch);
+    let result = publish_incoming_with_instance(
+        &receiver.root,
+        &rejected,
+        &mut receiver.instance,
+        store,
+        ENV,
+    );
+    assert!(
+        matches!(&result, Err(crate::incoming_publication::IncomingPublicationError::Rejected(
+        crate::import_staging::ImportStagingError::Invalid(reason))) if reason.contains("v2 signature verification failed")),
+        "{result:?}"
+    );
+    inbox.rejected().unwrap();
+    assert!(inbox.discover().unwrap().is_empty());
+    for path in &batch {
+        assert!(!remote_canonical.join(path).try_exists().unwrap());
+    }
+    assert_eq!(fs::read(remote_inbox.join(restore)).unwrap(), early_bytes);
+    assert_eq!(search(receiver, store), baseline);
+    assert_eq!(fs::read(source_forget).unwrap(), valid);
+
+    replace_transport_copy(&valid);
+    wait_for(
+        || fs::read(remote_inbox.join(forget)).is_ok_and(|bytes| bytes == valid),
+        "corrected forget delivery",
     );
     let discovered = inbox.discover().unwrap();
     assert_eq!(discovered, batch);
@@ -208,4 +254,7 @@ pub(in super::super) fn resume(
     assert_eq!(search(sender, store), search(receiver, store));
     println!("offline_note_lifecycle=verified queued=2 imported=2 identical_replays=2");
     println!("reordered_note_lifecycle=verified first=restore deferred=1 converged=true");
+    println!(
+        "corrupt_forget_recovery=verified signature=rejected published_on_rejection=0 corrected_imports=2 replay_added=0"
+    );
 }

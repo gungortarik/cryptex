@@ -28,6 +28,7 @@ pub(crate) struct Inbox {
     root: PathBuf,
     namespace: macos_fs::RuntimeIdentity,
     seen: BTreeMap<PathBuf, Fingerprint>,
+    rejected_batches: super::inbox_order::RejectedBatches,
     pending: Vec<(PathBuf, Fingerprint)>,
 }
 impl Inbox {
@@ -36,6 +37,7 @@ impl Inbox {
             root: root.to_owned(),
             namespace: macos_fs::RuntimeIdentity::capture(root)?,
             seen: BTreeMap::new(),
+            rejected_batches: Default::default(),
             pending: Vec::new(),
         })
     }
@@ -91,12 +93,12 @@ impl Inbox {
                 let file = open_source_from_directory_chain(&chain, &path)
                     .map_err(|_| discovery_object())?;
                 let fingerprint = Fingerprint::of(&file)?;
-                if self.seen.get(&relative) != Some(&fingerprint) {
-                    candidates.insert(relative, fingerprint);
-                }
+                candidates.insert(relative, fingerprint);
             }
         }
         self.namespace.validate()?;
+        self.rejected_batches
+            .select_unseen(&mut self.seen, &mut candidates);
         self.pending = super::inbox_order::ready_batch(&self.root, candidates)?;
         Ok(self.pending.iter().map(|(p, _)| p.clone()).collect())
     }
@@ -115,6 +117,13 @@ impl Inbox {
             return Err(discovery_limit());
         }
         self.seen.extend(self.pending.drain(..));
+        Ok(())
+    }
+
+    pub(crate) fn rejected(&mut self) -> io::Result<()> {
+        let paths = self.pending.iter().map(|(p, _)| p.clone()).collect();
+        self.consumed()?;
+        self.rejected_batches.remember(paths);
         Ok(())
     }
 }

@@ -313,7 +313,7 @@ impl Backend {
             Err(IncomingControllerError::Publication(
                 crate::incoming_publication::IncomingPublicationError::Rejected(_),
             )) => {
-                self.inbox.consumed()?;
+                self.inbox.rejected()?;
                 Status::new(IncomingState::Rejected, observed)
             }
             Err(IncomingControllerError::Publication(_))

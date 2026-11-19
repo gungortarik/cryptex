@@ -7,6 +7,39 @@ use std::{
     path::{Path, PathBuf},
 };
 
+// A clean rejection publishes none of the batch. Keep its members together
+// until one changes, so an unchanged successor can accompany a corrected pack.
+#[derive(Default)]
+pub(super) struct RejectedBatches(Vec<Vec<PathBuf>>);
+
+impl RejectedBatches {
+    pub(super) fn remember(&mut self, paths: Vec<PathBuf>) {
+        if paths.len() > 1 {
+            self.0.push(paths);
+        }
+    }
+
+    pub(super) fn select_unseen<T: PartialEq>(
+        &mut self,
+        seen: &mut BTreeMap<PathBuf, T>,
+        inventory: &mut BTreeMap<PathBuf, T>,
+    ) {
+        self.0.retain(|batch| {
+            if batch
+                .iter()
+                .all(|path| inventory.get(path) == seen.get(path))
+            {
+                return true;
+            }
+            for path in batch {
+                seen.remove(path);
+            }
+            false
+        });
+        inventory.retain(|path, fingerprint| seen.get(path) != Some(fingerprint));
+    }
+}
+
 fn present(path: &Path) -> io::Result<bool> {
     match fs::symlink_metadata(path) {
         Ok(_) => Ok(true),

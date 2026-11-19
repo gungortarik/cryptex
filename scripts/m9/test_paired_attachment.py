@@ -197,6 +197,7 @@ def main():
                 after = finish_phase(test, log, (
                     "offline_note_lifecycle=verified queued=2 imported=2 identical_replays=2",
                     "reordered_note_lifecycle=verified first=restore deferred=1 converged=true",
+                    "corrupt_forget_recovery=verified signature=rejected published_on_rejection=0 corrected_imports=2 replay_added=0",
                 ))
             if before != after:
                 raise RuntimeError("pending restore or visible notes changed across restart")

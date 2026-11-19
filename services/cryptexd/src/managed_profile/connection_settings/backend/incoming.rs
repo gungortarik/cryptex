@@ -45,7 +45,7 @@ impl Pump {
                 Ok(())
             }
             Err(IncomingControllerError::Publication(IncomingPublicationError::Rejected(_))) => {
-                self.inbox.consumed().map_err(|_| Error::Storage)?;
+                self.inbox.rejected().map_err(|_| Error::Storage)?;
                 // Untrusted input is not a canonical hold. Preserve it, report
                 // the refusal without raw paths/content and avoid a hot retry.
                 eprintln!("component=incoming_publication status=rejected");

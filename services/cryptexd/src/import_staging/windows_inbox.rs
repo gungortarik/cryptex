@@ -52,6 +52,7 @@ pub(crate) struct Inbox {
     _runtime: Vec<DirectoryPin>,
     directories: BTreeMap<PathBuf, Vec<DirectoryPin>>,
     seen: BTreeMap<PathBuf, Fingerprint>,
+    rejected_batches: super::inbox_order::RejectedBatches,
     pending: Vec<(PathBuf, Fingerprint)>,
 }
 impl Inbox {
@@ -62,6 +63,7 @@ impl Inbox {
             _runtime: inspect_directory_chain(root, true).map_err(|_| Error::Unsafe)?,
             directories: BTreeMap::new(),
             seen: BTreeMap::new(),
+            rejected_batches: Default::default(),
             pending: Vec::new(),
         })
     }
@@ -116,11 +118,11 @@ impl Inbox {
                 let file =
                     open_source_from_directory_chain(pins, &path).map_err(|_| Error::Unsafe)?;
                 let fingerprint = Fingerprint::of(&file)?;
-                if self.seen.get(&relative) != Some(&fingerprint) {
-                    candidates.insert(relative, fingerprint);
-                }
+                candidates.insert(relative, fingerprint);
             }
         }
+        self.rejected_batches
+            .select_unseen(&mut self.seen, &mut candidates);
         self.pending =
             super::inbox_order::ready_batch(&self.root, candidates).map_err(|_| Error::Io)?;
         Ok(self.pending.iter().map(|(p, _)| p.clone()).collect())
@@ -139,6 +141,13 @@ impl Inbox {
             return Err(Error::Limit);
         }
         self.seen.extend(self.pending.drain(..));
+        Ok(())
+    }
+
+    pub(crate) fn rejected(&mut self) -> Result<(), Error> {
+        let paths = self.pending.iter().map(|(p, _)| p.clone()).collect();
+        self.consumed()?;
+        self.rejected_batches.remember(paths);
         Ok(())
     }
 }
