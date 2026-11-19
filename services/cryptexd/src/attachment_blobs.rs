@@ -17,7 +17,10 @@ pub enum BlobError {
 impl From<export_fs::Error> for BlobError {
     fn from(error: export_fs::Error) -> Self {
         match error {
-            export_fs::Error::Unsafe => Self::UnsafeFilesystem,
+            // The Mac capability adapter rejects unsafe metadata with a
+            // synthetic PermissionDenied. Preserve native OS errors separately.
+            export_fs::Error::Unsafe
+            | export_fs::Error::Io(io::ErrorKind::PermissionDenied, None) => Self::UnsafeFilesystem,
             export_fs::Error::Io(kind, _) => Self::Io(kind),
         }
     }
