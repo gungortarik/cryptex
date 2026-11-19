@@ -153,7 +153,7 @@ pub(crate) fn verify_stored(runtime_root: &Path, digest: &[u8; 32]) -> Result<()
 pub(crate) fn open_verified(
     runtime_root: &Path,
     digest: &[u8; 32],
-) -> Result<std::fs::File, BlobError> {
+) -> Result<impl Read + use<>, BlobError> {
     crate::paths::assert_outside_repository(runtime_root)
         .map_err(|_| BlobError::UnsafeFilesystem)?;
     let root = Directory::open(runtime_root)?;

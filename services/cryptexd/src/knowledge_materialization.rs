@@ -2972,7 +2972,7 @@ pub fn rebuild_vault_with_retrieval_safety<R: TrustedDaemonKeyResolver>(
                 windows,
                 all(target_os = "macos", feature = "m8-local-startup-check")
             )))]
-            Err(cryptex_projection::ProjectionError::SchemaInconsistent {
+            Err::<std::io::Empty, _>(cryptex_projection::ProjectionError::SchemaInconsistent {
                 detail: "attachment storage unavailable on this build".into(),
             })
         },

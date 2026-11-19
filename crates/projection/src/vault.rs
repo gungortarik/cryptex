@@ -167,12 +167,12 @@ where
 
 /// Each signed link has its own stable directory. Link records contain no
 /// original filename. The daemon streams the authorized blob to a new file.
-pub fn rebuild_vault_with_signed_attachments<'a>(
+pub fn rebuild_vault_with_signed_attachments<'a, R: Read>(
     vault_root: &Path,
     events: impl IntoIterator<Item = &'a AcceptedEvent>,
     knowledge: &VaultKnowledgeView,
     attachments: impl IntoIterator<Item = (&'a str, &'a [u8; 32])>,
-    open_blob: impl Fn(&[u8; 32]) -> ProjectionResult<fs::File>,
+    open_blob: impl Fn(&[u8; 32]) -> ProjectionResult<R>,
 ) -> ProjectionResult<VaultProjectionSummary> {
     let mut sources = BTreeMap::new();
     for (link, digest) in attachments {
