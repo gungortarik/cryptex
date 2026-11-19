@@ -1,5 +1,20 @@
 # 34 — Current Implementation Handoff
 
+## M9 in progress · attachment storage
+
+The first [M9](milestones/M9_ATTACHMENTS.md) slice adds daemon-side streaming
+storage for attachment bytes on Windows and the controlled Mac product path.
+The blob name is the lowercase SHA-256 of the raw bytes. The daemon verifies
+the staged file before exclusive publication under `canonical/blobs` and
+rehashes an existing blob before accepting a duplicate. A private staging
+lock allows event processing to continue while an attachment is written.
+A retry reclaims an interrupted staging file.
+
+The next slice is a signed attachment reference linking the verified blob
+to a memory record. User-facing capture, transfer, repair and the M6
+copy-only projection still need integration and acceptance. The first
+slice uses temporary profiles for its platform tests.
+
 ## M8 complete on November 18, 2026
 
 The owner approved candidate `7be9287`. Windows and macOS passed readiness and native recovery. The two-device follow-up reached the same sixteen signed records and retained all four test markers after a paused restart. The historical investigation below is closed. [Scope, security review and CI](../evidence/m8/m8-final-candidate-review-20261118.md)

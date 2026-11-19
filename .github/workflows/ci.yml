@@ -398,6 +398,13 @@ jobs:
         if: runner.os != 'Windows'
         run: cargo test --locked -p cryptexd
 
+      - name: Test attachment storage on the controlled Mac product path
+        if: runner.os == 'macOS'
+        env:
+          CRYPTEX_M8_DEVELOPMENT_CERT_DER: ${{ github.workspace }}/services/cryptexd/src/m8_owner_channel/release_inventory/fixtures/signer.der
+          CRYPTEX_M8_DEVELOPMENT_RELEASE_ID: cryptex-dev-attachment-ci
+        run: cargo test --locked -p cryptexd --features m8-development-product --lib attachment_blobs::tests
+
       - name: Test daemon with real standard-user ownership (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

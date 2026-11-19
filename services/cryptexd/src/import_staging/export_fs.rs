@@ -141,6 +141,42 @@ impl Directory {
         self.validate()?;
         result
     }
+    /// Serialize daemon staging work without holding the event inventory lock.
+    pub(crate) fn lock_exclusive(&self, name: &str) -> Result<File, Error> {
+        leaf(name)?;
+        self.validate()?;
+        #[cfg(windows)]
+        let file = {
+            use windows_sys::Wdk::Storage::FileSystem::{
+                FILE_OPEN_IF, FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT,
+            };
+            use windows_sys::Win32::Storage::FileSystem::*;
+            open_nt_child(
+                self.pins.last().ok_or(Error::Unsafe)?,
+                name.as_ref(),
+                FILE_READ_DATA
+                    | FILE_WRITE_DATA
+                    | FILE_READ_ATTRIBUTES
+                    | SYNCHRONIZE
+                    | READ_CONTROL,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+                FILE_OPEN_IF,
+                FILE_ATTRIBUTE_NORMAL,
+            )?
+        };
+        #[cfg(target_os = "macos")]
+        let file = self.native.open_lock(name.as_ref())?;
+        let meta = source_snapshot(&file)?;
+        if !meta.is_regular_file || meta.link_count != 1 {
+            return Err(Error::Unsafe);
+        }
+        fs2::FileExt::lock_exclusive(&file)?;
+        self.validate()?;
+        #[cfg(target_os = "macos")]
+        self.native.validate_lock(name.as_ref(), &file)?;
+        Ok(file)
+    }
     pub(crate) fn promote(
         &self,
         name: &str,

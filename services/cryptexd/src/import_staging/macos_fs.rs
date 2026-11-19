@@ -439,7 +439,7 @@ impl Directory {
         self.validate()
     }
 
-    fn open_lock(&self, name: &OsStr) -> io::Result<File> {
+    pub(super) fn open_lock(&self, name: &OsStr) -> io::Result<File> {
         // Separate an existing-object lookup from atomic first creation. Do not
         // issue a nonexclusive O_CREAT against a concurrently created leaf.
         // Missing parents/replacements still fail the original capability
@@ -457,6 +457,11 @@ impl Directory {
                 }
             }
         }
+    }
+
+    #[cfg(feature = "m8-local-startup-check")]
+    pub(super) fn validate_lock(&self, name: &OsStr, file: &File) -> io::Result<()> {
+        self.validate_open_file(&leaf(name)?, file)
     }
 
     fn lookup_existing_lock(&self, name: &OsStr) -> io::Result<ExistingLock> {
