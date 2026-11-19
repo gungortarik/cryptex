@@ -30,6 +30,8 @@ pub(super) fn exercise(
     );
     recover_live_with_instance(&sender.root, &mut sender.instance, store, ENV).unwrap();
     publish(sender, &[peer_pack], store);
+    // The exclusive import closes the previous transport admission epoch.
+    sender.guard = Side::transport_guard(&sender.instance, &sender.root);
     let baseline = search(receiver, store);
     assert_eq!(search(sender, store), baseline);
     let mut hidden = baseline.clone();

@@ -23,12 +23,7 @@ impl Side {
         migrate_profile(&root).unwrap();
         crate::managed_profile::platform::ensure_exchange_tree(&root).unwrap();
         let instance = try_acquire_instance(&root).unwrap();
-        let permit = instance
-            .admission()
-            .exclusive(&root, Instant::now() + Duration::from_secs(5), false)
-            .unwrap();
-        let guard = permit.transport_guard(&root).unwrap();
-        permit.finish(None);
+        let guard = Self::transport_guard(&instance, &root);
         Self {
             root,
             transport: transport.to_owned(),
@@ -36,6 +31,15 @@ impl Side {
             guard,
             exporter: Exporter::default(),
         }
+    }
+    fn transport_guard(instance: &InstanceLock, root: &Path) -> TransportGuard {
+        let permit = instance
+            .admission()
+            .exclusive(root, Instant::now() + Duration::from_secs(5), false)
+            .unwrap();
+        let guard = permit.transport_guard(root).unwrap();
+        permit.finish(None);
+        guard
     }
     fn tick(&mut self, store: &crate::FakeSecureStore) -> Report {
         self.exporter
