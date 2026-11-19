@@ -2,6 +2,7 @@
 //!
 //! Authority: accepted ADR-0016. Canonical writes remain `cryptexd`-only.
 
+pub mod attachment_link;
 pub mod bootstrap;
 pub mod device_seq;
 pub mod envelope;

@@ -1,6 +1,7 @@
 //! Daemon storage for immutable attachment bytes. A stored blob does not by
 //! itself create a reference, authorize retrieval, or make content visible.
 use crate::import_staging::export_fs::{self, Directory};
+use cryptex_events::attachment_link::{self, LinkError, ResolvedAttachmentLink};
 use sha2::{Digest, Sha256};
 use std::io::{self, Read, Seek, Write};
 use std::path::Path;
@@ -9,6 +10,7 @@ use std::path::Path;
 pub enum BlobError {
     UnsafeFilesystem,
     Io(io::ErrorKind),
+    Missing,
     IntegrityMismatch,
 }
 
@@ -66,6 +68,50 @@ pub fn store(runtime_root: &Path, mut source: impl Read) -> Result<[u8; 32], Blo
         staging.promote("segment.tmp", &staged, &blobs, &name)?;
     }
     Ok(digest.into())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum LocalLinkError {
+    Reference(LinkError),
+    Blob(BlobError),
+}
+
+/// Check a reference against the supplied authenticated snapshot and rehash
+/// its local bytes. Callers must separately enforce device and access policy.
+pub fn verify_local_link<'a>(
+    runtime_root: &Path,
+    history: &'a cryptex_events::VerifiedV2History,
+    link_event_id: &str,
+) -> Result<ResolvedAttachmentLink<'a>, LocalLinkError> {
+    let link =
+        attachment_link::resolve(history, link_event_id).map_err(LocalLinkError::Reference)?;
+    verify_stored(runtime_root, &link.blob_sha256).map_err(LocalLinkError::Blob)?;
+    Ok(link)
+}
+
+/// Recheck a stored blob before a daemon operation refers to its bytes.
+/// A missing object is distinct from an existing object with the wrong hash.
+fn verify_stored(runtime_root: &Path, digest: &[u8; 32]) -> Result<(), BlobError> {
+    crate::paths::assert_outside_repository(runtime_root)
+        .map_err(|_| BlobError::UnsafeFilesystem)?;
+    let root = Directory::open(runtime_root)?;
+    if !root.exists("canonical")? {
+        return Err(BlobError::Missing);
+    }
+    let canonical = root.child("canonical", false)?;
+    if !canonical.exists("blobs")? {
+        return Err(BlobError::Missing);
+    }
+    let blobs = canonical.child("blobs", false)?;
+    let expected = sha2::digest::Output::<Sha256>::from(*digest);
+    let name = format!("{expected:x}");
+    if !blobs.exists(&name)? {
+        return Err(BlobError::Missing);
+    }
+    let mut file = blobs.open_file(&name, false)?;
+    verify(&mut file, &expected)?;
+    blobs.validate()?;
+    Ok(())
 }
 
 fn copy_and_hash(

@@ -16,10 +16,14 @@ They cover binary SHA-256 identity and deduplication, same-length corruption,
 linked files, interrupted staging and concurrent submissions. Both platform
 readiness jobs and the cross-account IPC check passed. [CI results](https://github.com/gungortarik/cryptex/actions/runs/44456022190)
 
-The next slice is a signed attachment reference linking the verified blob
-to a memory record. User-facing capture, transfer, repair and the M6
-copy-only projection still need integration and acceptance. The first
-slice uses temporary profiles for its platform tests.
+The M9 reference reader resolves an `attachment.link` in authenticated
+history, verifies the target note's hash, Brain ID and classification, and
+checks the stored blob's SHA-256. Isolated daemon tests sign and append the
+link, seal and reopen the canonical pack, and replay the record. The general
+reader retains its unsupported-semantics hold. Before enabling writes on
+real profiles, integrate policy-aware reading and satisfy the ADR-0017 reader
+compatibility and downgrade gates. Capture, transfer, repair and the M6
+copy-only projection still need integration and acceptance.
 
 ## M8 complete on November 18, 2026
 

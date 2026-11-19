@@ -1,6 +1,8 @@
 use super::*;
 use std::{fs, path::PathBuf};
 
+mod signed_link;
+
 struct Profile(PathBuf);
 
 impl Profile {
@@ -21,6 +23,24 @@ impl Drop for Profile {
 
 const ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 const EMPTY: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+#[test]
+fn reference_check_revalidates_bytes_and_never_creates_or_repairs_a_blob() {
+    let profile = Profile::new();
+    let digest: [u8; 32] = Sha256::digest(b"abc").into();
+    assert_eq!(verify_stored(&profile.0, &digest), Err(BlobError::Missing));
+    assert_eq!(fs::read_dir(&profile.0).unwrap().count(), 0);
+    store(&profile.0, &b"abc"[..]).unwrap();
+    verify_stored(&profile.0, &digest).unwrap();
+    assert_eq!(verify_stored(&profile.0, &[0; 32]), Err(BlobError::Missing));
+    let path = profile.blobs().join(ABC);
+    fs::write(&path, b"xyz").unwrap();
+    assert_eq!(
+        verify_stored(&profile.0, &digest),
+        Err(BlobError::IntegrityMismatch)
+    );
+    assert_eq!(fs::read(path).unwrap(), b"xyz");
+}
 
 #[test]
 fn stores_raw_bytes_by_standard_sha256_and_verifies_duplicates_after_reopen() {

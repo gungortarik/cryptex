@@ -35,6 +35,23 @@ M6 must not implement:
 
 Those responsibilities begin here in M9.
 
+### Signed link to a note
+
+An `attachment.link` uses the ADR-0017 v2 signed envelope and payload schema
+version 1. Its payload contains exactly three fields. `note_event_id` is the
+target v1 memory note's UUID, `note_content_hash` is that note's signed
+content hash, and `blob_sha256` is the SHA-256 of the raw attachment bytes.
+Both hashes use 64 lowercase hexadecimal characters. The envelope carries
+the same Brain ID and classification as the note. The original note remains
+immutable and the link contains no filename or source path.
+
+The M9 reader resolves the link and note from one authenticated history.
+The daemon verifies the local blob before reporting that the link resolves
+to local bytes. Missing bytes and integrity failures have distinct outcomes.
+Resolution alone grants no access to attachment content. The first writer is
+exercised only in isolated tests. Production writes remain subject to the
+compatible-reader and downgrade gates of ADR-0017 sections 4.5 and 8.2.
+
 M9 connects the real canonical attachment/blob subsystem to the projection boundary already proven in M6, using the accepted hard-link/copy fallback evidence rather than redesigning the projection contract.
 
 ## Required invariants
