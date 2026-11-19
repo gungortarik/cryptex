@@ -143,6 +143,8 @@ fn context(
         #[cfg(test)]
         isolated_attachment_writer: false,
         #[cfg(test)]
+        purge_reviews: None,
+        #[cfg(test)]
         transport_device_id_override: None,
     };
     let _permit = context.admission.enter(root).map_err(io::Error::other)?;

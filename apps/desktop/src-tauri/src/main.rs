@@ -446,6 +446,15 @@ fn p0_5_guarded_timeline(
 }
 
 #[tauri::command]
+async fn m10_purge_review(
+    action: cryptexd::ipc::purge_review::Action,
+) -> Result<cryptexd::ipc::purge_review::Outcome, cryptexd::ipc::purge_review::ReviewError> {
+    tauri::async_runtime::spawn_blocking(move || cryptexd::ipc::purge_review::desktop(action))
+        .await
+        .map_err(|_| cryptexd::ipc::purge_review::ReviewError::Unavailable)?
+}
+
+#[tauri::command]
 async fn m9_attach_file(
     file: cryptexd::ipc::attachment::SelectedFile,
 ) -> Result<(), cryptexd::ipc::attachment::AttachError> {
@@ -2629,6 +2638,7 @@ fn main() {
             p0_5_guarded_timeline,
             p0_5_guarded_event_detail,
             m9_attach_file,
+            m10_purge_review,
             p0_6_materialize_and_open_vault,
             p0_4_enroll_local_device,
             p0_5_capture_memory,

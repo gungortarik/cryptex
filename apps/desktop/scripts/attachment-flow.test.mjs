@@ -51,7 +51,7 @@ async function startClient(mode) {
 }
 
 for (const mode of ["blocked", "allowed"]) {
-  test("note detail file attachment with writer " + mode, { timeout: 120_000 }, async () => {
+  test("note detail purge review and file attachment with disposable controls " + mode, { timeout: 120_000 }, async () => {
     const tmp = await mkdtemp(path.join(os.tmpdir(), "cryptex-selected-file-"));
     const file = path.join(tmp, "sample.bin");
     const bytes = [0, 255, 13, 10, 65, 128];
@@ -61,10 +61,16 @@ for (const mode of ["blocked", "allowed"]) {
       try {
         const page = await browser.newPage();
         let detail;
+        let reviewTicket;
         await page.exposeFunction("nativeInvoke", async (command, args) => {
           if (command === "p0_3_ipc_health" || command === "p0_5_set_capture_session_guard") return;
-          if (!["m9_attach_file", "p0_5_guarded_timeline", "p0_5_guarded_event_detail", "p0_5_capture_memory"].includes(command)) throw Error("unsupported");
+          if (!["m9_attach_file", "m10_purge_review", "p0_5_guarded_timeline", "p0_5_guarded_event_detail", "p0_5_capture_memory"].includes(command)) throw Error("unsupported");
           const result = await client.invoke(command, args);
+          if (command === "m10_purge_review") {
+            if (result.Err) throw Error(result.Err);
+            if (result.Ok.kind === "prepared") reviewTicket = result.Ok.ticket;
+            return result.Ok;
+          }
           if (command === "m9_attach_file" && result.Err) throw Error(result.Err);
           if (command === "p0_5_guarded_event_detail") detail = result.hits?.[0];
           return result;
@@ -92,11 +98,31 @@ for (const mode of ["blocked", "allowed"]) {
         assert.equal(detail.text, title);
         assert.equal(detail.attachmentLinkCount, 0);
         const selected = { noteId: detail.eventId, noteHash: detail.contentHash, bytes };
+        const prepare = { kind: "prepare", note_id: detail.eventId, note_hash: detail.contentHash };
+        const review = page.getByRole("button", { name: "Review permanent deletion" });
+        const decide = action => client.invoke("m10_purge_review", { action });
         if (mode === "blocked") {
+          assert.equal(await review.count(), 0);
+          assert.deepEqual(await decide(prepare), { Err: "disabled" });
           assert.equal(await picker.count(), 0);
           assert.deepEqual(await client.invoke("m9_attach_file", { file: selected }), { Err: "disabled" });
         } else {
           assert.deepEqual(await client.invoke("m9_attach_file", { file: { ...selected, noteHash: "0".repeat(64) } }), { Err: "target_unavailable" });
+          assert.deepEqual(await decide({ ...prepare, note_hash: "0".repeat(64) }), { Err: "target_unavailable" });
+          const dialog = page.getByRole("dialog", { name: "Permanently delete this note?" });
+          for (const choice of ["cancel", "escape", "confirm"]) {
+            await review.click();
+            await dialog.getByText(title, { exact: true }).waitFor();
+            assert.ok((await dialog.textContent()).includes(detail.eventId));
+            const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+            assert.ok(await cancel.evaluate(button => button === document.activeElement));
+            if (choice === "escape") await page.keyboard.press("Escape");
+            else if (choice === "cancel") await cancel.click();
+            else await dialog.getByRole("button", { name: "Confirm permanent deletion" }).click();
+            await dialog.waitFor({ state: "hidden" });
+            await page.getByText(choice === "confirm" ? /Permanent deletion confirmed for this test note/ : "Deletion cancelled.").waitFor();
+            assert.deepEqual(await decide({ kind: "confirm", ticket: reviewTicket }), { Err: "review_expired" });
+          }
           await writeFile(file, Buffer.from(bytes));
           await picker.setInputFiles(file);
           await page.getByText(/File attached\./).waitFor();

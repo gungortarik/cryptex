@@ -10,6 +10,7 @@ mod native_domain;
 pub(crate) mod native_profile;
 
 pub mod attachment;
+pub mod purge_review;
 
 use std::collections::HashMap;
 use std::fs;
@@ -509,6 +510,8 @@ pub struct DesktopSearchHit {
     pub attachment_link_count: Option<usize>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub can_attach_file: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub can_review_purge: bool,
     pub event_id: String,
     pub brain_id: String,
     pub device_id: String,
@@ -526,6 +529,7 @@ impl From<SearchHit> for DesktopSearchHit {
         Self {
             attachment_link_count: None,
             can_attach_file: false,
+            can_review_purge: false,
             event_id: hit.event_id,
             brain_id: hit.brain_id,
             device_id: hit.device_id,
@@ -611,6 +615,8 @@ pub fn spawn_retrieval_server(
         transport_identity: None,
         #[cfg(test)]
         isolated_attachment_writer: false,
+        #[cfg(test)]
+        purge_reviews: None,
         #[cfg(test)]
         transport_device_id_override: None,
     };
@@ -720,6 +726,8 @@ fn spawn_daemon_ipc_server_inner(
         #[cfg(test)]
         isolated_attachment_writer: false,
         #[cfg(test)]
+        purge_reviews: None,
+        #[cfg(test)]
         transport_device_id_override: None,
     };
     start_projection_sync_worker(&mut context);
@@ -748,6 +756,8 @@ struct SearchContext {
     transport_identity: Option<crate::m8_owner_channel::transport_helper::StatusReader>,
     #[cfg(test)]
     isolated_attachment_writer: bool,
+    #[cfg(test)]
+    purge_reviews: Option<Arc<std::sync::Mutex<Option<purge_review::Pending>>>>,
     #[cfg(test)]
     transport_device_id_override: Option<String>,
 }
@@ -2222,6 +2232,14 @@ fn handle_connection_via(
     let operation = serde_json::from_slice::<Operation>(&frame)
         .ok()
         .map(|header| header.operation);
+    if operation.as_deref() == Some(purge_review::OPERATION) {
+        let reply = purge_review::handle(&frame, search, peer_is_desktop);
+        return write_response(
+            stream,
+            &serde_json::to_vec(&reply)?,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        );
+    }
     if operation.as_deref() == Some("attachment.add") {
         let response = attachment::handle(&frame, search, peer_is_desktop, desktop_capture_workers);
         return write_response(
@@ -5063,13 +5081,18 @@ fn handle_event_detail_until_checked(
     match crate::knowledge_materialization::event_detail_with_attachments(
         &context.runtime_root,
         &brain.brain_id,
-        &[device],
+        std::slice::from_ref(&device),
         &mut resolver,
         &db,
         &event_id,
         deadline,
     ) {
-        Ok(detail) => event_detail_results(Some(request_id), detail, attachment::enabled(context)),
+        Ok(detail) => event_detail_results(
+            Some(request_id),
+            detail,
+            attachment::enabled(context),
+            purge_review::enabled(context).then_some(device.as_str()),
+        ),
         Err(GuardedSearchError::BrainWideHold(reason)) => {
             if matches!(
                 reason,
@@ -5159,12 +5182,14 @@ fn event_detail_results(
     request_id: Option<String>,
     detail: Option<(SearchHit, usize)>,
     can_attach_file: bool,
+    purge_author: Option<&str>,
 ) -> DesktopSearchResponse {
     let hits = detail
         .into_iter()
         .map(|(note, count)| DesktopSearchHit {
             attachment_link_count: Some(count),
             can_attach_file,
+            can_review_purge: purge_author == Some(note.device_id.as_str()),
             ..note.into()
         })
         .collect();
@@ -6027,6 +6052,8 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            #[cfg(test)]
+            purge_reviews: None,
             transport_device_id_override: None,
         };
         let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
@@ -6347,6 +6374,8 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            #[cfg(test)]
+            purge_reviews: None,
             #[cfg(test)]
             transport_device_id_override: None,
         };
@@ -7401,6 +7430,8 @@ pub(crate) mod tests {
             #[cfg(test)]
             isolated_attachment_writer: false,
             #[cfg(test)]
+            purge_reviews: None,
+            #[cfg(test)]
             transport_device_id_override: Some(
                 "AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA-AAAAAAA".into(),
             ),
@@ -7638,6 +7669,8 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            #[cfg(test)]
+            purge_reviews: None,
             transport_device_id_override: None,
         };
         let (started_send, started_recv) = sync_channel(1);
@@ -8343,6 +8376,8 @@ pub(crate) mod tests {
             #[cfg(test)]
             isolated_attachment_writer: false,
             #[cfg(test)]
+            purge_reviews: None,
+            #[cfg(test)]
             transport_device_id_override: None,
         };
         let response = content_search_ipc_round_trip(Some(context), DesktopSearchQuery::default());
@@ -8384,6 +8419,8 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            #[cfg(test)]
+            purge_reviews: None,
             #[cfg(test)]
             transport_device_id_override: None,
         };
@@ -8619,6 +8656,8 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            #[cfg(test)]
+            purge_reviews: None,
             #[cfg(test)]
             transport_device_id_override: None,
         };

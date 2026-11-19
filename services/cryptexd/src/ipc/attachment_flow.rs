@@ -44,14 +44,19 @@ fn isolated_server() {
     let instance = crate::instance::try_acquire_instance(root).unwrap();
     fixture.context.admission = instance.admission();
     fixture.context.isolated_attachment_writer = enabled;
+    if enabled {
+        fixture.context.purge_reviews = Some(Arc::default());
+    }
     start_projection_sync_worker(&mut fixture.context);
     let workers = Arc::new(AtomicUsize::new(0));
     println!("fixture-ready");
     io::stdout().flush().unwrap();
     for command in io::stdin().lock().lines() {
-        if command.unwrap() == "finish" {
+        let command = command.unwrap();
+        if command == "finish" {
             break;
         }
+        let before = (command == "review").then(|| crate::test_temp::event_hashes(root));
         let mut connection = listener.accept().unwrap();
         handle_connection(
             &mut connection,
@@ -61,6 +66,10 @@ fn isolated_server() {
             None,
         )
         .unwrap();
+        if let Some(before) = before {
+            assert!(!before.is_empty());
+            assert_eq!(crate::test_temp::event_hashes(root), before);
+        }
     }
     instance.drain_runtime(Duration::from_secs(5)).unwrap();
     drop(fixture.context);
@@ -184,8 +193,18 @@ fn browser_client() {
     for line in io::stdin().lock().lines() {
         let request: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
         let args = &request["args"];
-        writeln!(child.stdin.as_mut().unwrap(), "serve").unwrap();
-        let result = match request["command"].as_str().unwrap() {
+        let command = request["command"].as_str().unwrap();
+        let check = if command == "m10_purge_review" {
+            "review"
+        } else {
+            "serve"
+        };
+        writeln!(child.stdin.as_mut().unwrap(), "{check}").unwrap();
+        let result = match command {
+            "m10_purge_review" => serde_json::to_value(purge_review::desktop(
+                serde_json::from_value(args["action"].clone()).unwrap(),
+            ))
+            .unwrap(),
             "p0_5_guarded_timeline" => serde_json::to_value(
                 desktop_timeline(
                     serde_json::from_value(args["query"].clone()).unwrap(),

@@ -197,6 +197,7 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
                 crate::p0_5_guarded_timeline,
                 crate::p0_5_guarded_event_detail,
                 crate::m9_attach_file,
+                crate::m10_purge_review,
                 crate::p0_5_capture_memory,
                 crate::p0_5_resolve_capture,
                 crate::p0_6_materialize_and_open_vault,

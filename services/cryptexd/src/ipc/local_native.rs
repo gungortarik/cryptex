@@ -89,6 +89,8 @@ pub(crate) fn serve(
         #[cfg(test)]
         isolated_attachment_writer: false,
         #[cfg(test)]
+        purge_reviews: None,
+        #[cfg(test)]
         transport_device_id_override: None,
     };
     if profile.resumes() {

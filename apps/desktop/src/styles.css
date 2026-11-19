@@ -227,6 +227,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, va
   border-radius: 16px; background: var(--surface); color: var(--ink);
   box-shadow: 0 24px 80px rgb(0 0 0 / 28%);
 }
+.purge-review { margin-block: 1rem; padding-top: .75rem; border-top: 1px solid var(--line); }
+.purge-review .purge-confirm { color: var(--warning); background: var(--warning-surface); border: 1px solid currentColor; border-radius: 6px; padding: .5rem .75rem; }
+.purge-note { max-height: 32vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin-inline: 0; }
 .capture-confirm-dialog::backdrop { background: rgb(18 17 15 / 58%); }
 .capture-confirm-dialog h2 { margin: 0; font-family: var(--display); font-size: 27px; font-weight: 500; }
 .capture-confirm-dialog > p:not(.panel-kicker) { color: var(--muted); line-height: 1.55; }

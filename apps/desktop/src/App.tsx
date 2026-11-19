@@ -1,3 +1,4 @@
+import { PurgeReview } from "./PurgeReview";
 import { NoteAttachment } from "./NoteAttachment";
 import { invoke } from "@tauri-apps/api/core";
 import { ConnectionSettings } from "./ConnectionSettings";
@@ -24,6 +25,7 @@ import { createSearchRequestGate, normalizeSearchText } from "./search-policy.mj
 type SearchHit = {
   attachmentLinkCount?: number;
   canAttachFile?: boolean;
+  canReviewPurge?: boolean;
   eventId: string;
   brainId: string;
   deviceId: string;
@@ -1655,6 +1657,7 @@ export function App() {
                   {detailHit.canAttachFile && (
                     <NoteAttachment key={detailHit.eventId} noteId={detailHit.eventId} noteHash={detailHit.contentHash} />
                   )}
+                  {detailHit.canReviewPurge && <PurgeReview key={detailHit.eventId + detailHit.contentHash} note={detailHit} />}
                   <dl className="timeline-detail-source">
                     <dt>Event</dt><dd>{detailHit.eventId}</dd>
                     <dt>Brain</dt><dd>{detailHit.brainId}</dd>
