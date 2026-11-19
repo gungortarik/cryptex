@@ -3,6 +3,8 @@
 **Status:** ACCEPTED  
 **Baseline:** 2026-09-28
 
+**Implementation complete on November 19, 2026.** The owner reviewed candidate `fa479ff`. Native recovery, Desktop attachment handling and full CI passed on Windows and macOS. Real-profile writes remain gated. [Acceptance evidence](../../evidence/m9/attachment-closeout-review-20261119.md)
+
 ## Purpose
 
 M9 productizes canonical attachment/blob storage and integrity behavior.

@@ -1,8 +1,10 @@
 # 34 — Current Implementation Handoff
 
-## M9 in progress · attachment storage
+## M9 complete on November 19, 2026
 
-See the [M9 closeout review](../evidence/m9/attachment-closeout-review-20261119.md) for the verified attachment behavior, product integration gap and remaining reviews.
+The owner accepted candidate `fa479ff` after diff review. Full CI, native reader and interrupted-repair checks, and Desktop attachment tests passed on Windows and macOS. Review of the rendered note detail and security boundaries is recorded in the [M9 acceptance report](../evidence/m9/attachment-closeout-review-20261119.md). Real profiles keep attachment writing disabled. M10 Forget + Purge is next on the roadmap.
+
+### M9 implementation history
 
 The first [M9](milestones/M9_ATTACHMENTS.md) slice adds daemon-side streaming
 storage for attachment bytes on Windows and the controlled Mac product path.

@@ -95,6 +95,8 @@ Completed for the controlled Windows and macOS development products. [Candidate 
 
 ## M9 — Attachments
 
+Completed for the reviewed Windows and macOS candidate with real-profile attachment writing disabled. [Acceptance evidence](../evidence/m9/attachment-closeout-review-20261119.md)
+
 - SHA-256 blob store
 - dedup
 - reference tracking

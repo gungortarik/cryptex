@@ -2,7 +2,9 @@
 
 Cryptex is a cross-platform, local-first personal memory and knowledge system for macOS and Windows.
 
-**M8 device trust and replication is complete** for the controlled Windows and macOS development products. The next milestone is M9 Attachments. [Candidate review and platform results](evidence/m8/m8-final-candidate-review-20261118.md)
+**M9 Attachments is complete** for the reviewed Windows and macOS candidate. The attachment writer and peer repair were exercised with disposable profiles. Real-profile attachment writing stays disabled. The roadmap continues with M10 Forget + Purge. [M9 review and CI results](evidence/m9/attachment-closeout-review-20261119.md)
+
+M8 device trust and replication was accepted for the controlled development products. [M8 acceptance](evidence/m8/m8-final-candidate-review-20261118.md)
 
 ## Historical integration checkpoints
 
