@@ -82,6 +82,20 @@ two records on the peer. Both device chains and guarded searches must match,
 the target must stay hidden, and replay must add zero events.
 Windows and macOS passed at `3d28a7c`. [Offline conflict CI](https://github.com/gungortarik/cryptex/actions/runs/44611177313)
 
+### First purge check — requests without owner confirmation
+
+The socket regression sends an unconfirmed purge request for a signed note,
+a caller-supplied confirmation flag, an MCP request and a purge disguised as
+an owner security operation. It checks each rejection against both original
+notes and the SHA-256 inventory of every canonical event pack.
+The paired trial delivers a correctly signed purge-shaped record for an
+already forgotten note over Syncthing. The receiving daemon rejects the
+unsupported record on both deliveries. Recovery preserves the signed packs,
+the receiver's attachment bytes and the guarded search results.
+These tests cover the closed purge boundary. A user-confirmed purge, its
+ledger and physical cleanup are still pending.
+Windows and macOS passed at `457b1e6`. [Local request tests](https://github.com/gungortarik/cryptex/actions/runs/44618932752) and [paired delivery tests](https://github.com/gungortarik/cryptex/actions/runs/44618932776).
+
 Real profiles keep lifecycle writing and replication disabled. Broader
 multi-device reconciliation, destructive purge and M10 acceptance remain open.
 
