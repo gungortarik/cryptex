@@ -47,6 +47,15 @@ replays the batch, checks that zero events were added, and compares both
 profiles' search results with the original baseline.
 Windows and macOS passed at `84f461d`. [Offline reconciliation CI](https://github.com/gungortarik/cryptex/actions/runs/44601506373)
 
+The reordered-delivery trial delays the forget segment in the sender's
+temporary transport. The receiver observes the signed restore in its inbox
+while the forget is absent. Native inbox discovery leaves the restore pending
+for a later scan, and the canonical importer rejects an explicit early hint.
+Once the forget arrives, the same inbox instance discovers both segments in
+chain order. The test compares canonical bytes and search results across
+the profiles and checks that replay adds zero events on the receiver.
+Windows and macOS passed at `c827319`. [Reordered delivery CI](https://github.com/gungortarik/cryptex/actions/runs/44603483467)
+
 Real profiles keep lifecycle writing and replication disabled. Broader
 multi-device reconciliation, destructive purge and M10 acceptance remain open.
 
