@@ -1,5 +1,6 @@
 use super::*;
 use crate::trust_reducer::{TrustReduction, VerifiedRestriction, VerifiedSelfRetirement};
+use cryptex_core::DeviceId;
 use std::collections::BTreeMap;
 
 const LOCAL: &str = "U2SYIGU-YWZX757-2WPZGCR-DHD7MLH-ZKV7HLJ-EYO6CXE-K3DU3DU-SDFXYAE";

@@ -4142,6 +4142,15 @@ mod tests {
 
     #[test]
     fn confirmed_self_retirement_append_recovers_after_durable_append() {
+        recover_interrupted_retirement(false);
+    }
+
+    #[test]
+    fn confirmed_self_retirement_recovers_after_sealing_both_segments() {
+        recover_interrupted_retirement(true);
+    }
+
+    fn recover_interrupted_retirement(interrupt_seals: bool) {
         use crate::bootstrap_journal::{BootstrapJournalStore, BootstrapState};
         use cryptex_core::BrainIdentity;
 
@@ -4209,7 +4218,33 @@ mod tests {
             .confirm_owner_operation(&transaction_id, &snapshot.digest().unwrap())
             .unwrap();
 
-        crate::canonical_writer::fail_after_append_before_tip();
+        let prefix = fs::read(cryptex_storage::layout::active_segment_path(
+            &root, &device, 0,
+        ))
+        .unwrap();
+        if interrupt_seals {
+            crate::canonical_writer::fail_after_seal_before_tip();
+            assert!(
+                append_confirmed_owner_security_operation(
+                    &root,
+                    brain,
+                    &store,
+                    SecureStoreEnvironment::Dev,
+                    &transaction_id
+                )
+                .is_err()
+            );
+            let interrupted = journal.load().unwrap();
+            assert_eq!(
+                interrupted.transactions[0].state,
+                BootstrapState::OwnerApproved
+            );
+            assert!(interrupted.transactions[0].append_attempts.is_empty());
+            // Retry the same confirmed operation and interrupt after the final seal.
+            crate::canonical_writer::fail_after_seal_before_tip();
+        } else {
+            crate::canonical_writer::fail_after_append_before_tip();
+        }
         assert!(
             append_confirmed_owner_security_operation(
                 &root,
@@ -4223,6 +4258,17 @@ mod tests {
         assert_eq!(
             journal.load().unwrap().transactions[0].state,
             BootstrapState::AppendUnknown
+        );
+        assert_eq!(
+            fs::read(cryptex_storage::layout::sealed_segment_path(
+                &root, &device, 0
+            ))
+            .unwrap(),
+            prefix
+        );
+        assert_eq!(
+            cryptex_storage::layout::sealed_segment_path(&root, &device, 1).is_file(),
+            interrupt_seals
         );
 
         reconcile_peer_approval_anchors_before_startup(&root, &store, SecureStoreEnvironment::Dev)

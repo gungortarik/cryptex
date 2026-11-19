@@ -96,6 +96,16 @@ pub fn fail_after_seal_before_tip() {
     FAIL_AFTER_SEAL_BEFORE_TIP.with(|f| f.set(true));
 }
 
+#[cfg(test)]
+fn check_owner_seal_interruption() -> Result<(), CanonicalWriterError> {
+    if FAIL_AFTER_SEAL_BEFORE_TIP.with(|armed| armed.replace(false)) {
+        return Err(CanonicalWriterError::Path(
+            "injected interruption after owner segment seal".into(),
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 pub struct CanonicalWriterConfig {
     /// Tunable seal threshold (not a protocol constant).
@@ -1121,6 +1131,8 @@ pub(crate) fn append_owner_security_operation_with_lock(
     let retirement = snapshot.operation == BootstrapOperation::SelfRetirement;
     if retirement && state.events_in_active > 0 {
         seal_active_segment(runtime_root, device_id, state.active_segment_index)?;
+        #[cfg(test)]
+        check_owner_seal_interruption()?;
         state = rebuild_chain_state(runtime_root, device_id, &validator)?;
     }
 
@@ -1155,6 +1167,8 @@ pub(crate) fn append_owner_security_operation_with_lock(
     let events_in_active = state.events_in_active.saturating_add(1);
     if retirement || events_in_active >= DEFAULT_SEAL_EVENT_THRESHOLD_HINT {
         seal_active_segment(runtime_root, device_id, segment_index)?;
+        #[cfg(test)]
+        check_owner_seal_interruption()?;
     }
     state = rebuild_chain_state(runtime_root, device_id, &validator)?;
     let expected_hash = verified_candidate.content_hash().as_str();

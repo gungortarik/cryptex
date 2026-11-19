@@ -6,8 +6,6 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use cryptex_core::DeviceId;
-
 use crate::knowledge_materialization::VerifiedCanonicalSnapshot;
 use crate::syncthing_rest::native_id_shape;
 use crate::trust_reducer::{

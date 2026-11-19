@@ -215,6 +215,31 @@ fn interrupted_self_retirement_reaches_third_profile_after_first_owner_goes_offl
     assert!(a.tick(&owner_a, &store).is_err());
     drop(owner_a);
     let mut owner_b = b.reopen(&store);
+    // A file with an edited Brain or an incorrect pack index must leave the
+    // receiver able to accept the authentic notice in the same session.
+    for altered in [
+        {
+            let mut packet = serde_json::to_value(&portable).unwrap();
+            let record = packet["signed_record"].as_str().unwrap();
+            assert!(record.contains(BRAIN));
+            packet["signed_record"] = record
+                .replace(BRAIN, "99999999-9999-4999-8999-999999999999")
+                .into();
+            packet
+        },
+        {
+            let mut packet = serde_json::to_value(&portable).unwrap();
+            packet["segment_index"] = (index + 1).into();
+            packet
+        },
+    ] {
+        let altered = handoff::Notice::decode(&serde_json::to_vec(&altered).unwrap()).unwrap();
+        let rejected = handoff::exchange(Some(altered), |request| {
+            handoff::reply(request, &b.root, &mut owner_b, &store, ENV).map(|(bytes, _)| bytes)
+        });
+        assert!(rejected.is_err());
+        assert!(!b.root.join("canonical/events").join(&path).exists());
+    }
     crate::incoming_publication::STOP_AFTER_PREPARE.with(|f| f.set(true));
     let import = |owner: &mut InstanceLock| {
         handoff::exchange(Some(handoff::Notice::decode(&bytes).unwrap()), |request| {
