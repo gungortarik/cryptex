@@ -1,7 +1,7 @@
-param([switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly)
+param([switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[switch]$LanCutoffOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-if(([int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly+[int][bool]$ExchangeNativeOnly+[int][bool]$LocalVerificationOnly) -gt 1){throw 'Choose one scoped suite.'}
+if(([int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly+[int][bool]$LanCutoffOnly+[int][bool]$ExchangeNativeOnly+[int][bool]$LocalVerificationOnly) -gt 1){throw 'Choose one scoped suite.'}
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'Disposable GitHub-hosted Windows runner required.'
 }
@@ -9,7 +9,7 @@ $workspace=(Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
 $manifest=Join-Path $workspace 'services\cryptexd'
 $python=$null
 if($ExchangeNativeOnly){$ExchangePackage=(Resolve-Path -LiteralPath $ExchangePackage).Path}
-if($LanSetupOnly) {
+if($LanSetupOnly -or $LanCutoffOnly) {
     $LanArtifact=(Resolve-Path -LiteralPath $LanArtifact).Path
     $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
     $executables=@(); $expectedSuites=1
@@ -50,14 +50,14 @@ try {
     # Fresh account reads checkout/build artifacts; only scratch is writable.
     $access=@(@{path=$workspace;rights='ReadAndExecute'},@{path=$scratch;rights='FullControl'})
     if($ExchangeNativeOnly){$access+=@{path=$ExchangePackage;rights='ReadAndExecute'}}
-    if($LanSetupOnly){$access+=@{path=$LanArtifact;rights='ReadAndExecute'}}
+    if($LanSetupOnly -or $LanCutoffOnly){$access+=@{path=$LanArtifact;rights='ReadAndExecute'}}
     foreach($entry in $access) {
         $acl=Get-Acl -LiteralPath $entry.path
         $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($user.SID,$entry.rights,'ContainerInherit,ObjectInherit','None','Allow'))
         Set-Acl -LiteralPath $entry.path -AclObject $acl
     }
     $payload=Join-Path $scratch 'tests.json'
-    @{schema=1;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
+    @{schema=1;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $payload -Encoding UTF8
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'

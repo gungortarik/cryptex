@@ -91,10 +91,11 @@ def role(root, cfg, native, runner, timeout=420):
     key, folders = configure(native, root, cfg, gui)
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
-    def get(path):
-        req = urllib.request.Request(f"http://127.0.0.1:{gui}/rest/{path}", headers={"X-API-Key": key})
+    def get(path, method="GET"):
+        req = urllib.request.Request(f"http://127.0.0.1:{gui}/rest/{path}", method=method,
+                                     headers={"X-API-Key": key})
         with opener.open(req, timeout=2) as response:
-            return json.load(response)
+            return json.load(response) if method == "GET" else None
 
     with contextlib.ExitStack() as stack:
         def start(args, env, output):
@@ -113,6 +114,16 @@ def role(root, cfg, native, runner, timeout=420):
         env = dict(os.environ, STNOUPGRADE="1", STNODEFAULTFOLDER="1")
         transport = start([native, "serve", "--home", root/"transport", "--no-browser", "--no-restart",
                            "--no-upgrade"], env, subprocess.DEVNULL)
+        def shutdown_transport():
+            if transport.poll() is None:
+                try:
+                    get("system/shutdown", "POST")
+                    transport.wait(timeout=15)
+                except (OSError, subprocess.TimeoutExpired):
+                    if os.name == "nt" and transport.poll() is None:
+                        subprocess.run(["taskkill", "/PID", str(transport.pid), "/T", "/F"],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+        stack.callback(shutdown_transport)
         for _ in range(80):
             if transport.poll() is not None:
                 raise RuntimeError("transport_start")

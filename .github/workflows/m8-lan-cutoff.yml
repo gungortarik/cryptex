@@ -23,7 +23,15 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@1.98.1
       - uses: Swatinem/rust-cache@v2
-      - run: python -B scripts/m8/test_lan_cutoff_pair.py
+      - if: runner.os == 'macOS'
+        run: python -B scripts/m8/test_lan_cutoff_pair.py
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $packet = Join-Path $env:RUNNER_TEMP 'cutoff-runner'
+          python -B scripts/m8/test_lan_cutoff_pair.py --build-windows "$packet"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -LanCutoffOnly -LanArtifact "$packet"
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:

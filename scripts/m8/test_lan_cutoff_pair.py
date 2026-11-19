@@ -67,19 +67,23 @@ if __name__=="__main__":
     repo=Path(__file__).resolve().parents[2]
     with tempfile.TemporaryDirectory(prefix="cx-cutoff-smoke-") as tmp:
         work=Path(tmp).resolve()
-        if sys.platform=="darwin":
+        if sys.argv[1:2] == ["--build-windows"]:
+            dest = Path(sys.argv[2])
+            dest.mkdir()
+            runner = build_runner(repo, repo/"target")
+            shutil.copyfile(runner, dest/"cutoff-test.exe")
+            windows_native(dest)
+            (dest/"provenance.json").write_text(json.dumps(dict(source=os.environ["GITHUB_SHA"],
+                runner_sha256=hashlib.sha256(runner.read_bytes()).hexdigest())))
+        elif sys.argv[1:2] == ["--test-windows"]:
+            artifact = Path(sys.argv[2])
+            smoke(artifact/"syncthing.exe", artifact/"cutoff-test.exe", work)
+        elif sys.platform=="darwin":
             from mac_transport_package import prepare
             def codesign(args, stage):
                 return subprocess.check_output(args,stderr=subprocess.STDOUT,text=True)
             prepare(work/"package", codesign)
             native=work/"package/syncthing"
+            smoke(native, build_runner(repo, repo/"target"), work)
         else:
-            native=windows_native(work)
-        runner=build_runner(repo, repo/"target")
-        smoke(native,runner,work)
-        if sys.platform=="win32" and "GITHUB_OUTPUT" in os.environ:
-            dest=Path(os.environ["RUNNER_TEMP"])/"cutoff-runner"
-            dest.mkdir()
-            shutil.copyfile(runner,dest/"cutoff-test.exe")
-            (dest/"provenance.json").write_text(json.dumps(dict(source=os.environ["GITHUB_SHA"],
-                runner_sha256=hashlib.sha256(runner.read_bytes()).hexdigest())))
+            raise RuntimeError("use standard-user Windows CI")
