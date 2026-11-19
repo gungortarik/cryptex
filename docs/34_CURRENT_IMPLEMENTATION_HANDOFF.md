@@ -103,8 +103,20 @@ reader waiting. Startup recovery and ordinary import reconcile the missing
 pack byte for byte before the peers exchange new proofs. This exercises a
 staged restore with the same synthetic signing credentials. Both scenarios
 passed on macOS and a standard Windows account in the [native reader suite](https://github.com/gungortarik/cryptex/actions/runs/44541797263).
-Durable offline
-capability authority and a product restore/rejoin workflow remain open.
+At `9cb90e5` the daemon retains each witnessed reader reply in the local
+OS credential store. The local signature binds it to a fresh challenge,
+the protected profile lock, the local daemon build and the full locked
+security-event history. Enabled sync checks the enrolled peer signature
+and the reader result again when using the stored observation. Separate
+sessions can cover all eligible peers. Only live responses produce a
+per-launch rollout receipt. A changed roster or a staged restore requires
+new evidence. See the [offline rules](milestones/M9_ATTACHMENTS.md#checking-a-paired-reader-before-export)
+and the [Windows and macOS regression run](https://github.com/gungortarik/cryptex/actions/runs/44547628663).
+On both platforms a new process read the signed observation after the
+writer exited. The three-profile roster change and separate-session
+checks also passed on both platforms.
+
+Global writer activation and a product restore/rejoin workflow remain open.
 Capture, transfer, repair and the M6 copy-only projection remain open.
 
 ## M8 complete on November 18, 2026
