@@ -68,6 +68,19 @@ creates its own enrolled profiles and exercises both settings of the gate.
 Ordinary binaries omit the file action from note detail and reject direct
 attachment requests. No filename or source path enters the IPC request.
 
+### Attachment transfer trial
+
+On each native CI runner two disposable profiles sign a pairing using the
+transport IDs of two pinned Syncthing processes. The test driver moves reader
+messages, a sealed event pack and attachment bytes through private test
+folders over loopback. The sender waits for a live reader proof. The receiving
+daemon imports the pack using its local trust history, resolves the signed
+note/link pair and checks the incoming bytes against the link's SHA-256 before
+placing them in its canonical blob store. The trial checks missing and damaged
+bytes, an unrelated target, duplicate delivery and verification after reopening.
+The trial's import and export permissions exist only in the test executable.
+Automatic blob delivery in the installed product remains a separate step.
+
 For a newly prepared M9 profile, the daemon exclusively creates a fresh
 profile directory. Before the first v2 record, it reserves `daemon.lock` as
 a directory and creates the regular PID lock file `daemon.lock/reader-m9.pid`.

@@ -201,6 +201,10 @@ pub(in crate::managed_profile) fn run() {
     let blobs = right.join("canonical/blobs");
     assert_eq!(fs::read_dir(&blobs).unwrap().count(), 1);
     assert_eq!(fs::read(blobs.join(name)).unwrap(), selection.bytes);
+    println!(
+        "paired_attachment_transfer=verified bytes={} sha256={digest:x} receiver_reopened=true canonical_blobs=1",
+        selection.bytes.len()
+    );
     drop(b);
     for root in [left, right, scratch] {
         fs::remove_dir_all(root).unwrap();

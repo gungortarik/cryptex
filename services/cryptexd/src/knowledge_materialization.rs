@@ -418,7 +418,14 @@ impl ImportPolicyVerifiedBatch {
                 if record.security_control {
                     return true;
                 }
-                record.content_v1
+                let admitted = record.content_v1;
+                #[cfg(test)]
+                let admitted = admitted
+                    || self
+                        .post_import
+                        .admitted_trial_links
+                        .contains(&record.event_id);
+                admitted
                     && self
                         .post_import
                         .trust
@@ -454,6 +461,8 @@ impl ImportPolicyVerifiedBatch {
 /// snapshot and one staged batch. This is validation state only; it grants no
 /// publication or cleanup authority.
 pub(crate) struct PostImportRetrievalSafetyState {
+    #[cfg(test)]
+    admitted_trial_links: std::collections::BTreeSet<String>,
     pub(crate) trust: crate::trust_reducer::TrustSnapshot,
     pub(crate) content: cryptex_knowledge::KnowledgeState,
 }
@@ -587,7 +596,12 @@ fn verify_post_import_policy(
         ));
     }
 
-    Ok(PostImportRetrievalSafetyState { trust, content })
+    Ok(PostImportRetrievalSafetyState {
+        trust,
+        content,
+        #[cfg(test)]
+        admitted_trial_links,
+    })
 }
 
 fn post_import_hold(
