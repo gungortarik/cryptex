@@ -245,29 +245,37 @@ fn offline_restricted_peer_tail_is_refused_after_owner_confirmed_cutoff() {
         let before = event_hashes(&fixture.receiver);
         let incoming = fixture.receiver.join("transport/incoming").join(&tail);
         let bytes = fs::read(&incoming).unwrap();
-        let result = publish_incoming(
-            &fixture.receiver,
-            std::slice::from_ref(&tail),
-            &fixture.store,
-            ENV,
-        );
-        assert!(
-            matches!(result, Err(IncomingPublicationError::Rejected(_))),
-            "{reason:?}: {result:?}"
-        );
-        assert_eq!(event_hashes(&fixture.receiver), before);
-        assert_eq!(fs::read(&incoming).unwrap(), bytes);
-        assert!(
-            !fixture
-                .receiver
-                .join("canonical/events")
-                .join(&tail)
-                .exists()
-        );
-        let notes = verified_note_texts(&fixture, &fixture.receiver);
-        assert!(notes.contains(crate::trusted_import_probe::NOTE));
-        assert!(!notes.contains("Synthetic stale restricted tail."));
-        fixture.assert_clean();
+        for attempt in ["first delivery", "redelivery after restart"] {
+            let mut instance = crate::instance::try_acquire_instance(&fixture.receiver).unwrap();
+            recover_live_with_instance(&fixture.receiver, &mut instance, &fixture.store, ENV)
+                .unwrap();
+            let result = publish_incoming_with_instance(
+                &fixture.receiver,
+                std::slice::from_ref(&tail),
+                &mut instance,
+                &fixture.store,
+                ENV,
+            );
+            assert!(
+                matches!(&result, Err(IncomingPublicationError::Rejected(
+                    ImportStagingError::Invalid(reason)
+                )) if reason == "staged content lies beyond the post-import effective trust cutoff"),
+                "{reason:?}, {attempt}: {result:?}"
+            );
+            assert_eq!(event_hashes(&fixture.receiver), before);
+            assert_eq!(fs::read(&incoming).unwrap(), bytes);
+            assert!(
+                !fixture
+                    .receiver
+                    .join("canonical/events")
+                    .join(&tail)
+                    .exists()
+            );
+            let notes = verified_note_texts(&fixture, &fixture.receiver);
+            assert!(notes.contains(crate::trusted_import_probe::NOTE));
+            assert!(!notes.contains("Synthetic stale restricted tail."));
+            fixture.assert_clean();
+        }
     }
 }
 

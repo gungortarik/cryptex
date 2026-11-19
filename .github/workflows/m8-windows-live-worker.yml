@@ -10,6 +10,7 @@ on:
       - services/cryptexd/src/managed_profile/incoming.rs
       - services/cryptexd/src/managed_profile/incoming/**
       - services/cryptexd/src/ipc.rs
+      - services/cryptexd/src/incoming_publication_tests.rs
       - services/cryptexd/src/managed_profile/native_product_receive_test.rs
       - services/cryptexd/src/managed_profile/native_product_receive_test/**
       - services/cryptexd/src/managed_profile/sealed_export.rs
@@ -34,6 +35,13 @@ jobs:
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
+      - name: Verify owner restriction and redelivery after restart on disposable macOS profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_name=incoming_publication::tests::offline_restricted_peer_tail_is_refused_after_owner_confirmed_cutoff
+          cargo test --locked -p cryptexd --features m8-local-startup-check --lib "$test_name" -- --exact | tee "$RUNNER_TEMP/restriction-test.log"
+          grep -Fx "test $test_name ... ok" "$RUNNER_TEMP/restriction-test.log"
       - name: Verify canonical lock contention and writer regression on macOS
         run: |
           cargo test --locked -p cryptexd --lib canonical_writer::tests:: -- --test-threads=1
