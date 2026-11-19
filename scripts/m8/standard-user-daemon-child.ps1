@@ -96,6 +96,10 @@ if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) 
     if($result.code -ne 0 -or $result.stdout -notmatch '1 passed; 0 failed; 0 ignored' -or
         $result.stdout -notmatch 'historical_profile_lock=denied'){throw 'Historical M8 denial was not verified.'}
     $env:CRYPTEX_M9_READER_ATTEMPT=[guid]::NewGuid().ToString('N')
+    $cutoff=Invoke-TestBinary $p.executables[0] 'knowledge_materialization::pairing_recovery_tests::shared_attachment::cutoff_preserves_the_other_notes_shared_attachment --exact --nocapture'
+    $cutoff.stdout | Write-Output
+    $cutoff.stderr | Write-Output
+    if($cutoff.code -ne 0 -or $cutoff.stdout -notmatch 'shared_attachment_cutoff=verified'){throw 'Shared attachment cutoff check incomplete.'}
     $readerUnits=Invoke-TestBinary $p.executables[0] 'managed_profile::sealed_export::reader::'
     $readerUnits.stdout | Write-Output
     if($readerUnits.code -ne 0 -or $readerUnits.stdout -notmatch '3 passed; 0 failed; 0 ignored'){throw 'Reader unit checks incomplete.'}

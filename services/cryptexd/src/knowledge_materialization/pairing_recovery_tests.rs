@@ -294,9 +294,41 @@ fn guarded_ids(profiles: &PairProfiles, db: &ProjectionDb) -> BTreeSet<String> {
     .collect()
 }
 
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+#[path = "pairing_recovery_tests/shared_attachment.rs"]
+mod shared_attachment;
+
+fn restrict_peer_after_first_record(profiles: &PairProfiles) {
+    use crate::bootstrap_journal::RestrictionReason;
+    let transaction = "bd".repeat(32);
+    let request = profiles
+        .policy()
+        .device_restriction_approval_snapshot(
+            transaction.clone(),
+            &profiles.devices[1],
+            RestrictionReason::Compromised,
+            1,
+        )
+        .unwrap();
+    let journal = BootstrapJournalStore::new(&profiles.profiles[0]).unwrap();
+    journal
+        .begin_owner_operation(request.clone(), "cccccccc-cccc-4ccc-8111-cccccccccccc")
+        .unwrap();
+    journal
+        .confirm_owner_operation(&transaction, &request.digest().unwrap())
+        .unwrap();
+    append_confirmed_owner_security_operation(
+        &profiles.profiles[0],
+        BRAIN,
+        &profiles.store,
+        SecureStoreEnvironment::Dev,
+        &transaction,
+    )
+    .unwrap();
+}
+
 #[test]
 fn normal_note_detail_checks_both_ends_of_a_signed_attachment() {
-    use crate::bootstrap_journal::RestrictionReason;
     use cryptex_events::attachment_link::{EVENT_TYPE, LinkPayload};
     let profiles = PairProfiles::new();
     profiles.pair(0, [true, true], false);
@@ -382,31 +414,7 @@ fn normal_note_detail_checks_both_ends_of_a_signed_attachment() {
         state.verify_local_attachment(&targets[0], ids[0]).unwrap();
         assert!(state.verify_local_attachment(&targets[1], ids[0]).is_err());
     }
-    let transaction = "bd".repeat(32);
-    let request = profiles
-        .policy()
-        .device_restriction_approval_snapshot(
-            transaction.clone(),
-            &profiles.devices[1],
-            RestrictionReason::Compromised,
-            1,
-        )
-        .unwrap();
-    let journal = BootstrapJournalStore::new(root).unwrap();
-    journal
-        .begin_owner_operation(request.clone(), "cccccccc-cccc-4ccc-8111-cccccccccccc")
-        .unwrap();
-    journal
-        .confirm_owner_operation(&transaction, &request.digest().unwrap())
-        .unwrap();
-    append_confirmed_owner_security_operation(
-        root,
-        BRAIN,
-        &profiles.store,
-        SecureStoreEnvironment::Dev,
-        &transaction,
-    )
-    .unwrap();
+    restrict_peer_after_first_record(&profiles);
     refresh(&profiles, &mut db).unwrap();
     assert!(
         detail(&db, &targets[0]).is_none(),

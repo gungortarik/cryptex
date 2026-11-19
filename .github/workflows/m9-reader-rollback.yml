@@ -25,6 +25,8 @@ on:
       - 'services/cryptexd/src/managed_profile/mod.rs'
       - 'services/cryptexd/src/test_temp.rs'
       - 'services/cryptexd/src/knowledge_materialization.rs'
+      - 'services/cryptexd/src/knowledge_materialization/pairing_recovery_tests.rs'
+      - 'services/cryptexd/src/knowledge_materialization/pairing_recovery_tests/**'
       - 'services/cryptexd/src/knowledge_materialization/export_plan.rs'
       - 'services/cryptexd/src/import_staging/macos_fs.rs'
       - 'services/cryptexd/src/platform/instance_file.rs'
@@ -90,6 +92,8 @@ jobs:
           cargo test --locked -p cryptexd --features m8-development-product --lib attachment_blobs::tests::signed_link::audit_pre_m9_profile_admission -- --ignored --exact --nocapture | tee rollback-observation.txt
           grep '^historical_profile_lock=denied ' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"
           grep '^existing_profile_migration=verified ' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"
+          cargo test --locked -p cryptexd --features m8-development-product --lib knowledge_materialization::pairing_recovery_tests::shared_attachment:: -- --nocapture | tee shared-cutoff.txt
+          grep '^shared_attachment_cutoff=verified ' shared-cutoff.txt >> "$GITHUB_STEP_SUMMARY"
           export CRYPTEX_M9_READER_ATTEMPT=$(python3 -c 'import uuid; print(uuid.uuid4().hex)')
           cargo test --locked -p cryptexd --features m8-development-product --lib managed_profile::sealed_export::reader::
           for phase in write reopen; do
