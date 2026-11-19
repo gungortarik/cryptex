@@ -318,6 +318,20 @@ impl Directory {
         to.validate_open_file(&target, file)
     }
 
+    #[cfg(feature = "m8-local-startup-check")]
+    pub(super) fn rename_child_exclusive(&self, source: &OsStr, target: &OsStr) -> io::Result<()> {
+        let source = leaf(source)?;
+        let target = leaf(target)?;
+        self.validate()?;
+        let parent = self.last()?.as_raw_fd();
+        if unsafe { cx_import_rename_exclusive(parent, source.as_ptr(), parent, target.as_ptr()) }
+            != 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        self.validate()
+    }
+
     pub(crate) fn open(path: &Path, current_owner: bool) -> io::Result<Self> {
         let requested = path.to_path_buf();
         let path = normalize(path)?;

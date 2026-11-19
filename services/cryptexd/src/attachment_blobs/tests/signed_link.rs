@@ -56,6 +56,8 @@ fn note_and_link(key: &SigningKey) -> (AcceptedEvent, Value) {
     (note, link)
 }
 
+mod migration;
+
 #[test]
 fn incomplete_m9_layout_is_never_repaired_by_open_or_probe() {
     use crate::instance::{create_m9_profile_root, observe_instance, try_acquire_instance};
@@ -139,6 +141,7 @@ fn audit_pre_m9_profile_admission() {
     let _reader = try_acquire_instance(&root).unwrap();
     assert_eq!(fs::read(&pack).unwrap(), before);
     assert!(observe_instance(&root).unwrap().lock_held);
+    migration::exercise_existing_profile(&legacy, &old_daemon, &key);
     println!(
         "historical_profile_lock=denied legacy_probe=allowed protected_hold=denied current_reopen=allowed pack_unchanged=true production_v2_activation=blocked"
     );

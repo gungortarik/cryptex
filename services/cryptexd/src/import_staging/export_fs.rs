@@ -143,6 +143,12 @@ impl Directory {
     }
     /// Serialize daemon staging work without holding the event inventory lock.
     pub(crate) fn lock_exclusive(&self, name: &str) -> Result<File, Error> {
+        self.lock(name, true)
+    }
+    pub(crate) fn try_lock_exclusive(&self, name: &str) -> Result<File, Error> {
+        self.lock(name, false)
+    }
+    fn lock(&self, name: &str, wait: bool) -> Result<File, Error> {
         leaf(name)?;
         self.validate()?;
         #[cfg(windows)]
@@ -171,7 +177,11 @@ impl Directory {
         if !meta.is_regular_file || meta.link_count != 1 {
             return Err(Error::Unsafe);
         }
-        fs2::FileExt::lock_exclusive(&file)?;
+        if wait {
+            fs2::FileExt::lock_exclusive(&file)?;
+        } else {
+            fs2::FileExt::try_lock_exclusive(&file)?;
+        }
         self.validate()?;
         #[cfg(target_os = "macos")]
         self.native.validate_lock(name.as_ref(), &file)?;
@@ -239,13 +249,31 @@ impl Directory {
         self.validate()?;
         to.validate()
     }
-    /// Only the fixed derived scratch leaf may be discarded during retry.
-    /// Canonical files never use this cleanup entry.
-    pub(crate) fn discard_scratch(&self, file: File) -> Result<(), Error> {
+    /// Publish the prepared profile lock directory without displacing a legacy
+    /// process that recreated its PID file during the cutover.
+    pub(crate) fn publish_m9_lock(&self) -> Result<(), Error> {
         self.validate()?;
+        let staged = crate::instance::migration::STAGED;
+        #[cfg(windows)]
+        publish_staged_no_replace(&self.path.join(staged), &self.path.join("daemon.lock"))?;
         #[cfg(target_os = "macos")]
         self.native
-            .remove_owned_file("segment.tmp".as_ref(), &file)?;
+            .rename_child_exclusive(staged.as_ref(), "daemon.lock".as_ref())?;
+        self.sync()
+    }
+
+    pub(crate) fn discard_scratch(&self, file: File) -> Result<(), Error> {
+        self.unlink_opened("segment.tmp", file)
+    }
+
+    pub(crate) fn retire_m8_pid(&self, file: File) -> Result<(), Error> {
+        self.unlink_opened("daemon.lock", file)
+    }
+
+    fn unlink_opened(&self, name: &str, file: File) -> Result<(), Error> {
+        self.validate()?;
+        #[cfg(target_os = "macos")]
+        self.native.remove_owned_file(name.as_ref(), &file)?;
         #[cfg(windows)]
         {
             use std::os::windows::io::AsRawHandle;
@@ -265,7 +293,7 @@ impl Directory {
                 return Err(io::Error::last_os_error().into());
             }
             drop(file);
-            sync_staged_parent(&self.path.join("segment.tmp"))?;
+            sync_staged_parent(&self.path.join(name))?;
         }
         self.validate()
     }

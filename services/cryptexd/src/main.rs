@@ -1032,6 +1032,24 @@ fn run_lifecycle(
         .ok_or_else(|| LifecycleError::Usage(usage_text()))?;
 
     match command.as_str() {
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        "migrate-profile-m9" => {
+            let [_, flag, root] = args else {
+                return Err(LifecycleError::Usage(
+                    "migrate-profile-m9 requires --runtime-root <absolute profile>".into(),
+                ));
+            };
+            if flag != "--runtime-root" || !Path::new(root).is_absolute() {
+                return Err(LifecycleError::Usage(
+                    "expected an explicit absolute profile path".into(),
+                ));
+            }
+            cryptexd::instance::migration::migrate_profile(Path::new(root)).map_err(|error| {
+                LifecycleError::Attention(format!("m9_profile_migration={error:?}"))
+            })?;
+            println!("profile_layout=m9 production_v2_activation=blocked");
+            Ok(())
+        }
         "status" => {
             let runtime_root = parse_runtime_root(&args[1..])?;
             ensure_runtime_root(&runtime_root)?;
@@ -1617,6 +1635,8 @@ fn usage_text() -> String {
         "  cryptexd pilot-transport --confirm-isolated-pilot <fresh-marked-root> <pinned-package-dir> <api-port> <sync-port> (Windows)",
         "  cryptexd lifecycle status [--runtime-root <path>]",
         "  cryptexd lifecycle probe [--runtime-root <path>]",
+        #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+        "  cryptexd lifecycle migrate-profile-m9 --runtime-root <absolute-existing-profile> (offline layout migration)",
         "  cryptexd lifecycle hold --runtime-root <path> (--stop-file <path> | --hold-ms <ms> | --crash-after-ready) [--ready-file <path>]",
         "    Windows opt-in: --managed-profile <existing-ready-path> --managed-package <pinned-package-dir> --managed-api-port <port> --managed-sync-port <port>",
         "  cryptexd lifecycle login-hold --runtime-root <path> (test-only; ready/stop under runtime root)",

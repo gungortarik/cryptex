@@ -5,7 +5,11 @@ on:
     paths:
       - '.github/workflows/m9-reader-rollback.yml'
       - 'services/cryptexd/src/attachment_blobs/tests/signed_link.rs'
+      - 'services/cryptexd/src/attachment_blobs/tests/signed_link/**'
       - 'services/cryptexd/src/instance.rs'
+      - 'services/cryptexd/src/instance/**'
+      - 'services/cryptexd/src/main.rs'
+      - 'services/cryptexd/src/import_staging/export_fs.rs'
       - 'services/cryptexd/src/import_staging.rs'
       - 'services/cryptexd/src/import_staging/macos_fs.rs'
       - 'services/cryptexd/src/platform/instance_file.rs'
@@ -37,19 +41,27 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          cargo build --locked -p cryptexd --bin cryptexd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M9HistoricalDaemon (Resolve-Path 'm8/target/debug/cryptexd.exe').Path | Tee-Object -FilePath rollback-observation.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $receipt = @(Select-String -Path rollback-observation.txt -Pattern '^historical_profile_lock=denied ')
           if ($receipt.Count -ne 1) { throw 'Missing historical denial receipt.' }
           $receipt[0].Line >> $env:GITHUB_STEP_SUMMARY
+          $migration = @(Select-String -Path rollback-observation.txt -Pattern '^existing_profile_migration=verified ')
+          if ($migration.Count -ne 1) { throw 'Missing profile migration receipt.' }
+          $migration[0].Line >> $env:GITHUB_STEP_SUMMARY
       - name: Verify M8 denial on the controlled Mac product path
         if: runner.os == 'macOS'
         env:
           CRYPTEX_M9_PREVIOUS_DAEMON: ${{ github.workspace }}/m8/target/debug/cryptexd
+          CRYPTEX_M9_CANDIDATE_DAEMON: ${{ github.workspace }}/target/debug/cryptexd
           CRYPTEX_M8_DEVELOPMENT_CERT_DER: ${{ github.workspace }}/services/cryptexd/src/m8_owner_channel/release_inventory/fixtures/signer.der
           CRYPTEX_M8_DEVELOPMENT_RELEASE_ID: cryptex-dev-attachment-ci
         shell: bash
         run: |
           set -euo pipefail
+          cargo build --locked -p cryptexd --bin cryptexd --features m8-development-product
           cargo test --locked -p cryptexd --features m8-development-product --lib attachment_blobs::tests::signed_link::audit_pre_m9_profile_admission -- --ignored --exact --nocapture | tee rollback-observation.txt
           grep '^historical_profile_lock=denied ' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"
+          grep '^existing_profile_migration=verified ' rollback-observation.txt >> "$GITHUB_STEP_SUMMARY"

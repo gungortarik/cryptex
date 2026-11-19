@@ -69,6 +69,7 @@ function Assert-CompleteSuite([int]$Code,[string]$Stdout,[int]$Count,[bool]$NoIg
 }
 if($p.PSObject.Properties['m9_historical_daemon'] -and $p.m9_historical_daemon) {
     $env:CRYPTEX_M9_PREVIOUS_DAEMON=$p.m9_historical_daemon
+    $env:CRYPTEX_M9_CANDIDATE_DAEMON=Join-Path $p.workspace 'target\debug\cryptexd.exe'
     $suite='attachment_blobs::tests::signed_link::audit_pre_m9_profile_admission'
     $result=Invoke-TestBinary $p.executables[0] "$suite --exact --ignored --nocapture"
     $result.stdout | Write-Output

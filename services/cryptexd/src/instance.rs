@@ -9,6 +9,9 @@ use crate::error::{LifecycleError, LifecycleResult};
 use crate::paths::lock_path;
 use crate::status::{read_status_pid, read_status_recorded_pid};
 
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub mod migration;
+
 /// Exclusive single-instance lock for one local runtime context.
 pub struct InstanceLock {
     _file: Arc<File>,
