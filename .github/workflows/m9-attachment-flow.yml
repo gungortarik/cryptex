@@ -14,6 +14,10 @@ on:
       - 'services/cryptexd/src/canonical_writer*'
       - 'services/cryptexd/src/canonical_writer/**'
       - 'services/cryptexd/src/knowledge_materialization.rs'
+      - 'services/cryptexd/src/knowledge_materialization/physical_purge.rs'
+      - 'services/cryptexd/src/metadata_persistence.rs'
+      - 'crates/events/src/security_history.rs'
+      - 'crates/events/src/versioned_reader.rs'
       - 'crates/events/src/attachment_link.rs'
 permissions:
   contents: read

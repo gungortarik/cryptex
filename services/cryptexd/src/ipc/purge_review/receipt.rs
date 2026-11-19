@@ -163,7 +163,7 @@ pub(super) fn persist(
         )?;
         snapshot.compact_approved_note(&anchor, note, hash, &key, expires)?;
         drop(snapshot);
-        super::physical::finish_cleanup(ctx)?;
+        super::physical::finish_cleanup(root, &brain.brain_id, &anchor)?;
     }
     ctx.admission
         .check_namespace()

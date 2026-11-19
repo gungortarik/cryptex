@@ -94,7 +94,15 @@ for (const mode of ["blocked", "allowed", "physical"]) {
           await page.getByLabel("Note", { exact: true }).fill("survivor following the purged record");
           await page.getByLabel("Classification", { exact: true }).selectOption("internal");
           await page.getByRole("button", { name: "Save capture" }).click();
-          await page.waitForFunction(() => document.querySelector("textarea")?.value === "");
+          await page.waitForFunction(() => document.querySelector("#capture-text")?.value === "");
+          // Capture commits first. Wait for the normal asynchronous indexing worker.
+          const deadline = Date.now() + 10_000;
+          for (;;) {
+            const timeline = await client.invoke("p0_5_guarded_timeline", { query: { limit: 20, cursor: null } });
+            if (timeline.hits?.some(note => note.text === "survivor following the purged record")) break;
+            assert.ok(Date.now() < deadline, "third signed note must reach the guarded timeline");
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
         }
         const row = page.getByRole("listitem").filter({ hasText: title });
         await page.getByRole("button", { name: "Open timeline" }).click();
@@ -119,7 +127,12 @@ for (const mode of ["blocked", "allowed", "physical"]) {
           await row.waitFor({ state: "detached" });
           assert.deepEqual(await decide({ kind: "confirm", ticket: reviewTicket }), { Err: "review_expired" });
           const removed = await client.invoke("p0_5_guarded_event_detail", { eventId: selected.noteId });
-          assert.equal(removed.hits?.length ?? 0, 0);
+          assert.equal(removed.accepted, true);
+          assert.ok(!removed.holdReason);
+          assert.deepEqual(removed.hits, []);
+          const remaining = await client.invoke("p0_5_guarded_timeline", { query: { limit: 20 } });
+          assert.deepEqual(remaining.hits.map(note => note.text).sort(),
+            ["survivor following the purged record", "synthetic IPC search fixture note"]);
         } else if (mode === "blocked") {
           assert.equal(await review.count(), 0);
           assert.deepEqual(await decide(prepare), { Err: "disabled" });
@@ -176,6 +189,9 @@ for (const mode of ["blocked", "allowed", "physical"]) {
           await page.getByText("1 signed attachment link", { exact: true }).waitFor();
           assert.equal(detail.eventId, secondNoteId);
         }
+      } catch (error) {
+        console.error(error);
+        throw error;
       } finally {
         await client.finish();
       }

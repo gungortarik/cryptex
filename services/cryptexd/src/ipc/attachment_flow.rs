@@ -301,6 +301,7 @@ fn reopen_physical() {
         cryptex_events::signing_key_id_from_verifying_key(&key).unwrap(),
         public,
     );
+    inspect(&root);
     {
         let _instance = crate::instance::try_acquire_instance(&root).unwrap();
         let snapshot =
@@ -328,14 +329,11 @@ fn reopen_physical() {
             |r| matches!(r, cryptex_events::VersionedRecord::VerifiedV1(n) if n.event_id != id)
         ));
         drop(snapshot);
-        let mut db = ProjectionDb::open_or_create(&root).unwrap();
         for rebuild in [false, true] {
             if rebuild {
-                crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
-                    &root, &brain, &anchor, &mut db,
-                )
-                .unwrap();
+                purge_review::physical::finish_cleanup(&root, &brain, &anchor).unwrap();
             }
+            let db = ProjectionDb::open_or_create(&root).unwrap();
             let conn = db.connection();
             let count = |sql| conn.query_row::<i64, _, _>(sql, [], |r| r.get(0)).unwrap();
             assert_eq!(count("SELECT count(*) FROM events"), 2);

@@ -1,5 +1,5 @@
 //! Opt-in for the native disposable-profile harness. Production has no entry point.
-use super::{ReviewError, SearchContext};
+use super::ReviewError;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -21,20 +21,29 @@ pub(crate) fn enabled(root: &Path) -> bool {
     PROFILE.get().is_some_and(|p| p == root)
 }
 
-pub(in crate::ipc) fn finish_cleanup(ctx: &SearchContext) -> Result<(), ReviewError> {
-    if !enabled(&ctx.runtime_root) {
+/// Rebuild from the approved, authenticated survivors before reclaiming SQLite pages.
+/// May be repeated after a crash between pack replacement and derived cleanup.
+pub(crate) fn finish_cleanup(
+    root: &Path,
+    brain: &str,
+    anchor: &cryptex_events::LocalTrustAnchor,
+) -> Result<(), ReviewError> {
+    if !enabled(root) {
         return Err(ReviewError::Disabled);
     }
-    crate::ipc::synchronize_local_derived_state(ctx).map_err(|_| ReviewError::CleanupPending)?;
-    let db = cryptex_projection::ProjectionDb::open_or_create(&ctx.runtime_root)
+    let mut db = cryptex_projection::ProjectionDb::open_or_create(root)
         .map_err(|_| ReviewError::CleanupPending)?;
-    let conn = db.connection();
-    conn.execute_batch(
-        "PRAGMA secure_delete=ON;
-        INSERT INTO events_fts(events_fts) VALUES ('rebuild');
-        VACUUM;",
+    db.connection()
+        .execute_batch("PRAGMA secure_delete=ON")
+        .map_err(|_| ReviewError::CleanupPending)?;
+    crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
+        root, brain, anchor, &mut db,
     )
     .map_err(|_| ReviewError::CleanupPending)?;
+    // The projection rebuild also reconstructs the external-content FTS table.
+    let conn = db.connection();
+    conn.execute_batch("VACUUM")
+        .map_err(|_| ReviewError::CleanupPending)?;
     let busy: i64 = conn
         .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get(0))
         .map_err(|_| ReviewError::CleanupPending)?;
