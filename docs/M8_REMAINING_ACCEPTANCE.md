@@ -5,8 +5,10 @@
 The disposable LAN cutoff check passed in both directions at source `30ac742`.
 Both receipts match the issued run and the SHA-256 of each direction's rejected
 segment. Each receiver retained its accepted prefix through both daemon recovery
-passes. Next, review how remaining devices receive a self-retiring device's final
-signed record. Final status, security and candidate review are still pending.
+passes. The [self-retirement delivery review](proposals/m8-self-retirement-delivery.md)
+identifies the first-delivery and forwarding gaps and proposes a single owner
+handoff followed by automatic forwarding. Design approval and end-to-end
+delivery evidence are pending, along with final status, security and candidate review.
 [Paired device receipts](../evidence/m8/m8-physical-lan-cutoff-9a6dc973.json).
 
 ## November 18 checkpoint after the two transfer inventories
