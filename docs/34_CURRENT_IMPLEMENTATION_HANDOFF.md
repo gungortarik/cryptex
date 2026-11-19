@@ -37,6 +37,16 @@ Two native Syncthing workers deliver its sealed segments. The receiving daemon
 authenticates and imports each transition. Guarded search hides only the target
 and restores its original result. Replaying either segment is idempotent.
 Windows and macOS each passed this scenario at `7ce0939`. [Paired profile CI](https://github.com/gungortarik/cryptex/actions/runs/44598541780)
+
+The offline trial stops the receiving profile's Syncthing process before the
+sender signs forget and restore. It checks the sender's search after each
+operation, the receiver's unchanged search, and the absence of both segments
+on the receiver until reconnection. After restart the receiver imports both
+signed segments in one batch. The trial compares their canonical bytes,
+replays the batch, checks that zero events were added, and compares both
+profiles' search results with the original baseline.
+Windows and macOS passed at `84f461d`. [Offline reconciliation CI](https://github.com/gungortarik/cryptex/actions/runs/44601506373)
+
 Real profiles keep lifecycle writing and replication disabled. Broader
 multi-device reconciliation, destructive purge and M10 acceptance remain open.
 
