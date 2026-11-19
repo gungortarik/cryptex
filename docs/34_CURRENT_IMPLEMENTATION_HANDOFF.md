@@ -47,6 +47,17 @@ lock and the signed note/link pack remained byte-identical. Creation of the
 protected layout is exclusive to a new destination. Existing profiles,
 trusted-device capability and backup rejoin still need a safe rollout
 before real-profile v2 writing can be enabled under ADR-0017 §8.2.
+
+At `0b496e4` the explicit offline migration passed the
+[Windows and macOS existing-profile test](https://github.com/gungortarik/cryptex/actions/runs/44470901307).
+An enrolled disposable profile retained both daemon-signed records, one in a
+sealed pack and one in an active pack, at their original paths. Three abrupt
+process exits and an intervening M8 probe preserved the exact pack bytes.
+The completed profile rejected the old reader, reopened with the same
+identity, and signed the next v1 note at sequence 3. A live instance and
+unexpected staging contents both stopped migration. The test used a synthetic
+credential store. Real-profile rollout, reader-capability checks and backup
+rejoin remain open and production attachment writing stays disabled.
 Capture, transfer, repair and the M6 copy-only projection remain open.
 
 ## M8 complete on November 18, 2026

@@ -60,10 +60,19 @@ startup, even with the newer daemon stopped. Current readers reopen the
 existing inner file and use the normal single-instance lock. A missing
 inner file holds startup. Legacy profiles retain their ordinary lock file.
 
-The initializer refuses an existing destination. Any future migration or
-backup rejoin must prepare a protected destination before restoring v2
-records into it. The inner PID is local runtime bookkeeping. It carries no
-trust or canonical data. Production attachment writing remains gated.
+The initializer refuses an existing destination. The explicit offline
+`cryptexd lifecycle migrate-profile-m9 --runtime-root <absolute-profile>`
+command upgrades an existing M8 profile in place on Windows and the
+controlled Mac product path. Canonical packs, device identity, signing
+keys, sequence state and transport keep their original locations. The
+daemon prepares and flushes the new lock directory before retiring the
+old PID file under exclusive access. It publishes the directory without
+replacing an intervening M8 lock. A retry can finish an interrupted
+transition or confirm an already protected profile.
+
+The PID carries no trust or canonical data. Backup rejoin must prepare a
+protected destination before restoring v2 records. Production attachment
+writing remains gated by ADR-0017 §8.2.
 
 M9 connects the real canonical attachment/blob subsystem to the projection boundary already proven in M6, using the accepted hard-link/copy fallback evidence rather than redesigning the projection contract.
 
