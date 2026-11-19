@@ -14,7 +14,7 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
   const [message, setMessage] = useState<string | null>(null);
   const generation = useRef(0);
   const inFlight = useRef(false);
-  const edit = () => { generation.current += 1; setDirty(true); setMessage(null); };
+  const edit = () => { generation.current += 1; setDirty(true); if (!uncertain) setMessage(null); };
 
   function adopt(next: ConnectionView) {
     setView(next); setPaused(next.paused); setListen(next.listenAddress ?? "");
@@ -42,14 +42,14 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
     onApply();
     try {
       const next = parseConnectionView(await invoke("m8_connection_settings", { update }));
-      if (token === generation.current) { adopt(next); setMessage("Settings saved. " + connectionMessage(next)); }
+      if (token === generation.current) { adopt(next); setMessage(next.error ? null : "Settings saved. " + connectionMessage(next)); }
     } catch {
       if (token === generation.current) { setUncertain(true); setMessage("The result is uncertain. Reload current settings before making another change; your draft is still shown."); }
     } finally { inFlight.current = false; setBusy(false); }
   }
   useEffect(() => {
     generation.current += 1;
-    if (!active) setView(null);
+    if (!active) { setView(null); setMessage(null); }
     if (open && active) void load();
     return () => { generation.current += 1; };
   }, [active, open]);
@@ -68,7 +68,7 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
     <p className="capture-help">Connect trusted devices on your private network. Local memory stays available while sync is paused.</p>
     {open && <div className="bootstrap-form connections-form">
       {view && <>
-        <p role="status" className="capture-help">{connectionMessage(view)}</p>
+        {!message && <p role="status" className="capture-help">{dirty ? "Unsaved connection settings." : connectionMessage(view)}</p>}
         <label className="connections-pause"><input type="checkbox" checked={paused} disabled={busy || !active || view.state === "not_enrolled"} onChange={e => { edit(); setPaused(e.target.checked); }} /> Pause sync</label>
         <label htmlFor="connection-local-ip">This device’s LAN IPv4 address</label>
         <div className="connections-local-address"><input id="connection-local-ip" placeholder="192.168.1.20" maxLength={15} value={listen} disabled={busy || !active || view.state === "not_enrolled"} onChange={e => { edit(); setListen(e.target.value); }} />
@@ -76,7 +76,7 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
         <p className="capture-help">The transport port belongs to this device’s enrolled profile and cannot be changed here.</p>
         <div className="connections-devices">
           <h3>Trusted devices</h3>
-          {view.devices.length === 0 && <p className="capture-help">No eligible devices. Complete a signed pairing to add one.</p>}
+          {view.devices.length === 0 && <p className="capture-help">{view.state === "attention" ? "No verified device list is available." : "No eligible devices. Complete a signed pairing to add one."}</p>}
           {view.devices.map(device => <div className="connections-device" key={device.deviceId}>
             <label htmlFor={`endpoint-${device.deviceId}`}>Device <code>{device.deviceId}</code></label>
             <p className="capture-help connections-identity">Transport identity <code>{device.transportId}</code></p>
@@ -89,6 +89,7 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
         {view && <button type="button" className="search-button" disabled={busy || !active || !dirty || uncertain || view.state === "not_enrolled"} onClick={() => void save()}>Save connection settings</button>}
       </div>
       {message && <p role="status" className="capture-status">{message}</p>}
+      {!active && <p role="status" className="capture-status">Connection settings are unavailable until the local service responds.</p>}
     </div>}
   </section>;
 }

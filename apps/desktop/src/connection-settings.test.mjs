@@ -26,6 +26,7 @@ test("same LAN endpoint cannot describe local and remote devices", () => {
 });
 test("local readiness never claims remote durable storage", () => {
   assert.match(connectionMessage({...view(),state:"ready_locally"}),/Remote durable storage has not been verified/);
+  assert.equal(connectionMessage({...view(),state:"ready_locally",error:"held"}), "Connection status could not be verified.");
 });
 
 test("attention shows only allowlisted diagnostic codes, never raw service output", () => {

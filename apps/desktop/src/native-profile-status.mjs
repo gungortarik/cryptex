@@ -11,8 +11,11 @@ export function parseNativeProfileStatus(value) {
 }
 export function nativeProfileMessage(status) {
   if (!status) return "Device status is unavailable. A remote copy has not been verified.";
-  if (status.incoming === "held") return "Security review required. Incoming data is retained and changes are paused.";
-  if (status.protection === "attention") return "Incoming data needs attention. A remote copy has not been verified.";
-  if (!status.transportObserved) return "Local memory. Waiting for a device connection.";
+  if (status.incoming === "held") return "Incoming changes are paused for verification.";
+  if (status.incoming === "rejected") return "This device rejected incoming data during verification.";
+  if (status.incoming === "unavailable") return "Incoming status is unavailable. A remote copy has not been verified.";
+  if (status.incoming === "deferred") return "Incoming processing is deferred on this device.";
+  if (status.incoming === "published") return "Incoming data was verified on this device. Remote durable storage has not been verified.";
+  if (!status.transportObserved) return "Local transport has not been observed. Remote storage is unverified.";
   return "Local memory is available. A remote durable copy has not been verified.";
 }

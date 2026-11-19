@@ -15,3 +15,15 @@ test("held and unavailable observations keep attention explicit; stale success i
   assert.equal(parse(null), null);
   assert.equal(parse([]), null);
 });
+test("device diagnostics distinguish local observations, deferral and refusal", () => {
+  for (const [incoming, transportObserved, protection, expected] of [
+    ["waiting_for_transport", false, "local_only", /Local transport has not been observed/],
+    ["idle", true, "local_only", /remote durable copy has not been verified/i],
+    ["deferred", true, "local_only", /deferred on this device/],
+    ["published", true, "local_only", /verified on this device/],
+    ["rejected", true, "attention", /rejected incoming data/],
+    ["unavailable", false, "attention", /Incoming status is unavailable/],
+  ]) {
+    assert.match(message(parse({...observed, incoming, transportObserved, protection})), expected);
+  }
+});

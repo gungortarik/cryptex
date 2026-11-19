@@ -179,11 +179,13 @@ export function App() {
     const refresh = async () => {
       try {
         const status = parseNativeProfileStatus(await invoke<unknown>("m8_native_profile_status"));
-        if (!status) throw new Error("native_profile_status_unavailable");
         active = true;
         if (!disposed) setNativeProfile({ active: true, status });
-      } catch {
-        if (!disposed && active) setNativeProfile({ active: true, status: null });
+      } catch (error) {
+        // Only an unregistered route means this shell has no native observation.
+        if (!active && error === "Command m8_native_profile_status not found") return;
+        active = true;
+        if (!disposed) setNativeProfile({ active: true, status: null });
       }
       // Normal/unsupported modes have no native profile route. Do not poll or
       // claim that their metadata-only diagnostics are product protection.
@@ -1100,7 +1102,7 @@ export function App() {
           <div className="wordmark">Cryptex</div>
           <div className={`connection-state state-${connection}`} role="status">
             <span className="state-dot" />
-            {connection === "checking" ? "Checking" : connection === "active" ? "Active" : "Attention"}
+            {connection === "checking" ? "Checking local service" : connection === "active" ? "Local service ready" : "Local service needs attention"}
           </div>
         </header>
 
@@ -1141,7 +1143,7 @@ export function App() {
 
           <section className="bootstrap-panel" aria-labelledby="bootstrap-heading">
             <div>
-              <p className="panel-kicker">Device trust · M8 Windows flow</p>
+              <p className="panel-kicker">Device trust</p>
               <h2 id="bootstrap-heading">Review a signed pairing request</h2>
               <p className="capture-help">
                 Exchange signed public messages by copy and paste. Compare full device IDs, key fingerprints, and transport IDs through a separate trusted channel. Connections follow your local connection settings after trust is verified.

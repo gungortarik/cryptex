@@ -54,6 +54,8 @@ export function connectionUpdate(view, paused, listen, addresses) {
 export function connectionMessage(view) {
   if (view.state === "attention" && view.error === "start_rest_deadline") return "Connection needs attention (start_rest_deadline). The local transport service timed out during startup.";
   if (view.error === "local_restricted") return "This device is retired or restricted. Sync is unavailable; retained local history remains subject to its verified access policy.";
+  if (view.error && view.state !== "attention" && !(view.state === "not_enrolled" && view.error === "not_enrolled"))
+    return "Connection status could not be verified.";
   if (view.state === "attention") {
     const code = errors.has(view.error) ? ` (${view.error})` : "";
     return `Connection needs attention${code}. Local settings or device authority could not be verified.`;
