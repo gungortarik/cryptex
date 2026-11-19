@@ -245,7 +245,15 @@ and the existing recovery run. Windows and macOS passed recovery CI
 ZIP readback verified both launchers, the embedded source and executable
 hashes. ZIP SHA-256 is
 `2fa2a529d16fa5cc0f9892e5d3a99c80837e5177219d01ab412efc8fc80b3be8`.
-Await the two `TOPARLANMA-SONUC` archives for physical acceptance.
+The returned Windows `1801b0320f2b` and Darwin `c670b0de12fc`
+follow-up archives passed the paired report comparison against that packet.
+Both began at their respective known 15-record digests and finished with
+16 signed records and the same SHA-256
+`bd2c949fc008d2363caf2eb4d9a7bdc8f217e07fe3e3d698e130bc4f4cac3abd`.
+Each device found all four existing markers after paused restart, closed
+cleanly and reported sync enabled afterwards. This verifies later convergence
+and offline persistence for the interrupted run. The original attempt still
+timed out. No repeat of this follow-up is needed.
 
 ## Windows guarded lookup of the already reconciled Mac record
 
