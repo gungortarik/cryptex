@@ -103,8 +103,7 @@ The modal shows the full verified text, classification, event ID and deletion
 limits. Cancel has initial focus. The daemon prepares a five-minute ticket
 bound to the selected note ID and content hash. Cancel or Escape consumes the
 ticket. Explicit confirmation rechecks the guarded detail and returns the ID
-and hash of the confirmed note. The decision is session-only. Physical
-cleanup, an opaque purge ledger and stale-peer suppression remain open.
+and hash of the confirmed note. The initial decision at `85ac724` was session-only.
 
 At `85ac724`, automated browser tests on Windows and macOS exercised both
 decisions against disposable native daemon profiles, including Escape,
@@ -112,6 +111,23 @@ replayed tickets, a mismatched note hash and disabled-profile refusal.
 Every review request preserved the SHA-256 inventory of the canonical event
 packs. Real daemons cannot enable this trial. [Desktop review tests](https://github.com/gungortarik/cryptex/actions/runs/44625230977)
 and [lifecycle regressions](https://github.com/gungortarik/cryptex/actions/runs/44625231124).
+
+### Durable purge approval in disposable profiles
+
+At `3709709`, explicit confirmation writes a single immutable, locally signed
+approval under `canonical/purge-approvals/`. Its body contains the versioned
+purpose, Brain ID, author device ID, note event ID and note content hash.
+The daemon rechecks the visible target and author under the inventory lock.
+A retry authenticates the existing file. The original event packs remain intact.
+
+The Windows and macOS browser tests exercised Cancel, Escape, disabled profiles
+and repeated confirmation. A fresh process reopened each enabled profile and
+verified the receipt with the original public key, checked its exact fields
+and rejected a different target hash and verification key.
+[Desktop and restart checks](https://github.com/gungortarik/cryptex/actions/runs/44626948887)
+and [lifecycle regressions](https://github.com/gungortarik/cryptex/actions/runs/44626948832).
+The approval records owner intent. Physical removal, integrity bridging and
+stale-peer suppression are subsequent M10 work.
 
 Real profiles keep lifecycle writing and replication disabled. Broader
 multi-device reconciliation, destructive purge and M10 acceptance remain open.
