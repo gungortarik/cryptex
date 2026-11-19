@@ -2968,8 +2968,8 @@ pub(crate) fn evaluate_import_recovery_retrieval_safety<R: TrustedDaemonKeyResol
     )
 }
 
-/// Rebuild the Obsidian projection only from the complete, currently verified
-/// v1 history. The retrieval gate owns canonical locks through publication;
+/// Rebuild the Obsidian projection from the visible notes in verified history.
+/// The retrieval gate owns canonical locks through publication;
 /// unsupported or stale state fails closed before the vault is touched.
 pub fn rebuild_vault_with_retrieval_safety<R: TrustedDaemonKeyResolver>(
     runtime_root: &Path,
@@ -2979,12 +2979,14 @@ pub fn rebuild_vault_with_retrieval_safety<R: TrustedDaemonKeyResolver>(
     db: &ProjectionDb,
     vault_root: &Path,
 ) -> Result<cryptex_projection::VaultProjectionSummary, GuardedVaultError> {
-    let safety = evaluate_retrieval_safety(
+    let safety = evaluate_retrieval_safety_until(
         runtime_root,
         expected_brain_id,
         trusted_devices,
         key_resolver,
         db,
+        None,
+        NoteLifecycleRead::Apply,
     );
     let Some(snapshot) = safety.snapshot.as_ref() else {
         return Err(GuardedVaultError::BrainWideHold(
@@ -2999,13 +3001,11 @@ pub fn rebuild_vault_with_retrieval_safety<R: TrustedDaemonKeyResolver>(
         .records()
         .iter()
         .filter_map(|record| match record {
-            VersionedRecord::VerifiedV1(event) => Some(event),
-            VersionedRecord::VerifiedV2Supported(_)
-            | VersionedRecord::VerifiedUnsupported(_)
-            | VersionedRecord::VerifiedSecurityV3(_)
-            | VersionedRecord::Unverifiable(_) => None,
-        })
-        .collect::<Vec<_>>();
+            VersionedRecord::VerifiedV1(event) if !snapshot.forgotten.contains(&event.event_id) => {
+                Some(event)
+            }
+            _ => None,
+        });
     let knowledge = vault_knowledge_view(&snapshot.state);
     let links = snapshot
         .attachment_links

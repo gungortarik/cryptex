@@ -31,7 +31,7 @@ jobs:
           $options = @('test', '--locked', '-p', 'cryptexd', '--lib', 'm10_forget_restore::')
           $cases = cargo @options -- --list
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($case in 'forgotten_and_restored_views_survive_profile_reopen', 'invalid_controls_cannot_change_visibility', 'normal_reads_enforce_signed_visibility_with_an_unchanged_index') {
+          foreach ($case in 'forgotten_and_restored_views_survive_profile_reopen', 'invalid_controls_cannot_change_visibility', 'normal_reads_enforce_signed_visibility_with_an_unchanged_index', 'vault_refresh_removes_and_restores_the_managed_note') {
             if ($cases -notcontains "m10_forget_restore::${case}: test") { throw "Missing test $case" }
           }
           cargo @options
@@ -40,3 +40,5 @@ jobs:
         run: cargo test --locked -p cryptex-projection --lib search::tests
       - name: Check existing signed-history rules
         run: cargo test --locked -p cryptex-events --lib security_history::tests
+      - name: Check managed vault publication and file ownership
+        run: cargo test --locked -p cryptex-projection --lib vault::tests

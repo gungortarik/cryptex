@@ -247,6 +247,85 @@ struct SignedFixture {
     restore: Vec<u8>,
 }
 
+#[test]
+fn vault_refresh_removes_and_restores_the_managed_note() {
+    use crate::knowledge_materialization as reads;
+
+    let profile = Profile(crate::test_temp::exclusive_temp_dir("cryptex-m10-profile"));
+    let vault = Profile(crate::test_temp::exclusive_temp_dir("cryptex-m10-vault"));
+    let signed = signed_fixture();
+    let device = DeviceId::new(DEVICE).unwrap();
+    let append = |bytes: &[u8]| {
+        cryptex_storage::append_frame(&profile.0, &device, 0, bytes).unwrap();
+    };
+    append(&signed.original);
+    append(&signed.unaffected);
+    let key = signed.key.verifying_key();
+    let anchor = FixtureKey(key).local_trust_anchor().unwrap();
+    let refresh = || {
+        let mut db = ProjectionDb::open_or_create(&profile.0).unwrap();
+        reads::rebuild_knowledge_from_local_approval_history(&profile.0, BRAIN, &anchor, &mut db)
+            .unwrap();
+        reads::rebuild_vault_with_retrieval_safety(
+            &profile.0,
+            BRAIN,
+            std::slice::from_ref(&device),
+            &mut FixtureKey(key),
+            &db,
+            &vault.0,
+        )
+    };
+
+    let personal = vault.0.join("Personal.md");
+    fs::write(&personal, b"My own note").unwrap();
+    let tree = vault.0.join("Cryptex");
+    let note_path = tree.join("notes").join(format!("{NOTE}.md"));
+    let other_path = tree.join("notes").join(format!("{OTHER}.md"));
+    let manifest_path = tree.join(".cryptex-manifest.json");
+    assert_eq!(refresh().unwrap().note_count, 2);
+    let original = fs::read(&note_path).unwrap();
+    assert_eq!(
+        original,
+        cryptex_projection::render_vault_note(&signed.target)
+            .unwrap()
+            .markdown
+            .as_bytes()
+    );
+    let other = fs::read(&other_path).unwrap();
+    let manifest_before = fs::read(&manifest_path).unwrap();
+
+    append(&signed.forget);
+    // A user's edit inside the managed tree must still block replacement.
+    fs::write(&note_path, b"My pending edit").unwrap();
+    assert!(matches!(
+        refresh(),
+        Err(reads::GuardedVaultError::Projection(_))
+    ));
+    assert_eq!(fs::read(&note_path).unwrap(), b"My pending edit");
+    assert_eq!(fs::read(&manifest_path).unwrap(), manifest_before);
+    fs::write(&note_path, &original).unwrap();
+
+    for _ in 0..2 {
+        let summary = refresh().unwrap();
+        assert_eq!(summary.note_count, 1);
+        assert_eq!(tree.join(summary.open_note_path.unwrap()), other_path);
+        assert!(!note_path.try_exists().unwrap());
+        let manifest: Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        let files = manifest["files"].as_object().unwrap();
+        assert!(!files.contains_key(&format!("notes/{NOTE}.md")));
+        assert!(files.contains_key(&format!("notes/{OTHER}.md")));
+        assert_eq!(fs::read(&other_path).unwrap(), other);
+        assert_eq!(fs::read(&personal).unwrap(), b"My own note");
+    }
+
+    append(&signed.restore);
+    assert_eq!(refresh().unwrap().note_count, 2);
+    assert_eq!(fs::read(note_path).unwrap(), original);
+    assert_eq!(fs::read(manifest_path).unwrap(), manifest_before);
+    assert_eq!(fs::read(other_path).unwrap(), other);
+    assert_eq!(fs::read(personal).unwrap(), b"My own note");
+}
+
 fn signed_fixture() -> SignedFixture {
     let key = SigningKey::from_bytes(&[31; 32]);
     let target = note(
