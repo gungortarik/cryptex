@@ -288,6 +288,20 @@ selection is rejected. The reopened profile contains the two original notes
 and exactly two authenticated transitions. [Desktop tests](https://github.com/gungortarik/cryptex/actions/runs/44673608423)
 and [lifecycle and owner-authorization checks](https://github.com/gungortarik/cryptex/actions/runs/44673458774).
 
+### Forgotten notes in AI context
+
+At `5aae4fc`, the daemon can assemble public note text and event IDs for AI
+context through its guarded search. The disposable-profile test opens the
+same SQLite index read-only before Forget, after Forget and after Restore.
+Raw search still finds all three notes. The serialized context initially
+contains the two public notes, contains only the unaffected public note after
+Forget, and returns to its original contents after Restore. The restricted
+note stays excluded. A signed transition with a stale prior-state hash blocks
+the entire context read. [Windows and macOS tests](https://github.com/gungortarik/cryptex/actions/runs/44674973517)
+
+This verifies the daemon read boundary. Adapter integration and client
+authorization belong to M12. M10 writes remain limited to temporary profiles.
+
 ## M9 complete on November 19, 2026
 
 The owner accepted candidate `fa479ff` after diff review. Full CI, native reader and interrupted-repair checks, and Desktop attachment tests passed on Windows and macOS. Review of the rendered note detail and security boundaries is recorded in the [M9 acceptance report](../evidence/m9/attachment-closeout-review-20261119.md). Real profiles keep attachment writing disabled. M10 Forget + Purge is next on the roadmap.
