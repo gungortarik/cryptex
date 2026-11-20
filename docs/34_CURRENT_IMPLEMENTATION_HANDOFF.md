@@ -14,6 +14,8 @@ At `ec403c0` the compiled Desktop Search form returned the archived and replacem
 
 At `d421d3c` both native jobs installed the isolated Desktop package and searched the same disposable profile twice. The system WebView showed the archived and replacement note together after a full Desktop and reader restart. The package uses a rehearsal-only reader. [Installed Desktop results](../evidence/m11/backup-container.md#installed-desktop-recovery-search)
 
+At `d9de747` the ordinary `cryptexd` search dispatcher reads an authorized recovered profile using the device credential store and the signed first-device receipt. Windows and macOS installed the Desktop with the daemon binary and found both notes on both launches. Canonical packs matched byte for byte. Only temporary profiles receive a recovery binding in this stage. [Normal daemon reader evidence](../evidence/m11/backup-container.md#recovered-profiles-in-the-normal-daemon-search-reader)
+
 ## M10 complete on November 20, 2026
 
 The owner reviewed and accepted candidate `9de456f` subject to successful CI and technical review. Windows and macOS passed all nine required jobs across four workflows. The closeout regression reproduced and corrected physical deletion failing after an unrelated note was forgotten. After reopening a disposable profile, the corrected candidate also preserved the forgotten note and removed a previously restored note. The [M10 review and CI evidence](../evidence/m10/forget-purge-closeout-review.md) records authorization, recovery, Desktop review and the limits of physical cleanup.
