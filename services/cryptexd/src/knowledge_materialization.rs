@@ -45,6 +45,7 @@ use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 #[path = "knowledge_materialization/anchor_recovery.rs"]
 mod anchor_recovery;
 
+pub mod ai_context;
 pub mod local_receipt;
 
 #[cfg(test)]

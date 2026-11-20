@@ -637,3 +637,129 @@ fn normal_reads_enforce_signed_visibility_with_an_unchanged_index() {
         Err(reads::GuardedSearchError::BrainWideHold(_))
     ));
 }
+
+#[test]
+fn ai_context_excludes_forgotten_public_notes_with_a_stale_index() {
+    use crate::knowledge_materialization::{self as reads, ai_context::read_public_note_context};
+    use std::time::{Duration, Instant};
+
+    const RESTRICTED: &str = "aaaaaaaa-1111-4111-8111-000000000007";
+    let profile = Profile(crate::test_temp::exclusive_temp_dir(
+        "cryptex-m10-ai-context",
+    ));
+    let device = DeviceId::new(DEVICE).unwrap();
+    let devices = std::slice::from_ref(&device);
+    let key = SigningKey::from_bytes(&[31; 32]);
+    let append = |bytes: &[u8]| {
+        cryptex_storage::append_frame(&profile.0, &device, 0, bytes).unwrap();
+    };
+    let target = note(
+        &key,
+        NOTE,
+        1,
+        ContentHashHex::zero(),
+        "garden orchid",
+        Classification::Public,
+    );
+    let unaffected = note(
+        &key,
+        OTHER,
+        2,
+        target.content_hash.clone(),
+        "garden fern",
+        Classification::Public,
+    );
+    let restricted = note(
+        &key,
+        RESTRICTED,
+        3,
+        unaffected.content_hash.clone(),
+        "garden nettle",
+        Classification::Restricted,
+    );
+    for note in [&target, &unaffected, &restricted] {
+        append(&serde_json_canonicalizer::to_vec(note).unwrap());
+    }
+    {
+        let mut db = ProjectionDb::open_or_create(&profile.0).unwrap();
+        let anchor = FixtureKey(key.verifying_key())
+            .local_trust_anchor()
+            .unwrap();
+        reads::rebuild_knowledge_from_local_approval_history(&profile.0, BRAIN, &anchor, &mut db)
+            .unwrap();
+    }
+    let context = || {
+        let db = ProjectionDb::open_existing_read_only(&profile.0).unwrap();
+        let raw = cryptex_projection::search_events(
+            db.connection(),
+            &SearchQuery {
+                text: Some("garden".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(raw.len(), 3);
+        assert!(
+            raw.iter()
+                .any(|hit| hit.event_id == NOTE && hit.text == "garden orchid")
+        );
+        read_public_note_context(
+            &profile.0,
+            BRAIN,
+            devices,
+            &mut FixtureKey(key.verifying_key()),
+            &db,
+            "garden",
+            Instant::now() + Duration::from_secs(10),
+        )
+        .map(|excerpts| serde_json::to_value(excerpts).unwrap())
+    };
+    let target_excerpt = json!({"event_id":NOTE,"text":"garden orchid"});
+    let other_excerpt = json!({"event_id":OTHER,"text":"garden fern"});
+    let baseline = context().unwrap();
+    let excerpts = baseline.as_array().unwrap();
+    assert_eq!(excerpts.len(), 2);
+    assert!(excerpts.contains(&target_excerpt) && excerpts.contains(&other_excerpt));
+
+    let forget = crate::test_temp::sign_v2_fixture(
+        control(
+            &target,
+            FORGET,
+            4,
+            "memory.forget",
+            &restricted.content_hash,
+            &target.content_hash,
+        ),
+        &key,
+    );
+    append(&forget);
+    assert_eq!(context().unwrap(), json!([other_excerpt]));
+
+    let signed: Value = serde_json::from_slice(&forget).unwrap();
+    let tip = serde_json::from_value(signed["content_hash"].clone()).unwrap();
+    let restore = crate::test_temp::sign_v2_fixture(
+        control(&target, RESTORE, 5, "memory.restore", &tip, &tip),
+        &key,
+    );
+    append(&restore);
+    assert_eq!(context().unwrap(), baseline);
+
+    // A stale but signed transition must withhold even the otherwise visible control note.
+    let signed: Value = serde_json::from_slice(&restore).unwrap();
+    let tip = serde_json::from_value(signed["content_hash"].clone()).unwrap();
+    append(&crate::test_temp::sign_v2_fixture(
+        control(
+            &target,
+            "aaaaaaaa-1111-4111-8111-000000000008",
+            6,
+            "memory.forget",
+            &tip,
+            &target.content_hash,
+        ),
+        &key,
+    ));
+    assert!(matches!(
+        context(),
+        Err(reads::GuardedSearchError::BrainWideHold(_))
+    ));
+}

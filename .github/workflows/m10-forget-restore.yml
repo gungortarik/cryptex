@@ -12,6 +12,7 @@ on:
       - 'services/cryptexd/src/ipc/tests/purge_tests.rs'
       - 'services/cryptexd/src/m8_owner_channel/request.rs'
       - 'services/cryptexd/src/knowledge_materialization.rs'
+      - 'services/cryptexd/src/knowledge_materialization/ai_context.rs'
       - 'services/cryptexd/src/trust_reducer.rs'
       - 'crates/events/**'
       - 'crates/storage/**'
@@ -36,7 +37,7 @@ jobs:
           $options = @('test', '--locked', '-p', 'cryptexd', '--lib', 'm10_forget_restore::')
           $cases = cargo @options -- --list
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($case in 'forgotten_and_restored_views_survive_profile_reopen', 'invalid_controls_cannot_change_visibility', 'normal_reads_enforce_signed_visibility_with_an_unchanged_index', 'vault_refresh_removes_and_restores_the_managed_note') {
+          foreach ($case in 'forgotten_and_restored_views_survive_profile_reopen', 'invalid_controls_cannot_change_visibility', 'normal_reads_enforce_signed_visibility_with_an_unchanged_index', 'vault_refresh_removes_and_restores_the_managed_note', 'ai_context_excludes_forgotten_public_notes_with_a_stale_index') {
             if ($cases -notcontains "m10_forget_restore::${case}: test") { throw "Missing test $case" }
           }
           cargo @options
