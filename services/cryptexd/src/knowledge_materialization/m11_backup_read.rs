@@ -9,6 +9,105 @@ use std::process::Command;
 #[path = "m11_first_device.rs"]
 mod first_device;
 
+fn run_archive(action: &str, paths: &[&Path]) {
+    let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tools/m11-backup-spike/daemon_roundtrip.py");
+    assert!(
+        Command::new("python")
+            .arg("-B")
+            .arg(script)
+            .arg(action)
+            .args(paths)
+            .status()
+            .unwrap()
+            .success(),
+        "M11 archive operation failed: {action}"
+    );
+}
+
+#[test]
+#[ignore = "requires the M11 Node/Python fixture installed by native CI"]
+fn next_backup_restores_the_offline_capture_after_reconnection() {
+    use crate::capture::{CaptureOutcome, CaptureRequest, capture_memory_note};
+
+    let work = tempfile::tempdir().unwrap();
+    let writer = tempfile::tempdir().unwrap();
+    let source = tempfile::tempdir().unwrap();
+    let store = FakeSecureStore::new();
+    let env = SecureStoreEnvironment::Dev;
+    let (_, signing_key) = PairProfiles::enroll(source.path(), &store);
+    drop(signing_key);
+    let mut reader = LocalDeviceKeyResolver::load(source.path(), BRAIN, &store, env).unwrap();
+    let anchor = reader.local_trust_anchor().unwrap();
+    let kit = work.path().join("recovery-kit");
+    let volume = work.path().join("backup-volume");
+    fs::create_dir(&volume).unwrap();
+    let first = volume.join("first.pgp");
+    let next = volume.join("next.pgp");
+    run_archive("prepare", &[source.path(), &kit, &first, writer.path()]);
+    let first_digest = Sha256::digest(fs::read(&first).unwrap());
+
+    let detached = work.path().join("detached-volume");
+    fs::rename(&volume, &detached).unwrap();
+    assert_eq!(
+        fs::File::open(&first).unwrap_err().kind(),
+        std::io::ErrorKind::NotFound
+    );
+    let text = "M11 reconnectcapture saved offline";
+    let outcome = capture_memory_note(
+        &store,
+        env,
+        source.path(),
+        CaptureRequest {
+            capture_id: "44f9399a-688d-4c43-b688-cabea438c9ad".into(),
+            classification: Classification::Public,
+            text: text.into(),
+        },
+        &CanonicalWriterConfig::default(),
+    );
+    let CaptureOutcome::Committed(receipt) = outcome else {
+        panic!("expected committed offline capture");
+    };
+    assert!(!volume.try_exists().unwrap());
+    fs::rename(detached, &volume).unwrap();
+    run_archive("write-generation", &[source.path(), writer.path(), &next]);
+    assert_eq!(Sha256::digest(fs::read(&first).unwrap()), first_digest);
+
+    // Only public event verification material and the independent kit survive.
+    drop(store);
+    source.close().unwrap();
+    writer.close().unwrap();
+    let query = SearchQuery {
+        text: Some("prefix OR reconnectcapture".into()),
+        ..Default::default()
+    };
+    let mut restore_hits = |file: &Path, name: &str| {
+        let sandbox = work.path().join(name);
+        run_archive("recover", &[&kit, &sandbox, file]);
+        assert_eq!(fs::read_dir(&sandbox).unwrap().count(), 1);
+        let (mut db, _) = crate::projection::open_projection_db(&sandbox).unwrap();
+        rebuild_knowledge_from_local_approval_history(&sandbox, BRAIN, &anchor, &mut db).unwrap();
+        search_events_with_retrieval_safety(&sandbox, BRAIN, &[], &mut reader, &db, &query).unwrap()
+    };
+    let before = restore_hits(&first, "restore-first");
+    assert_eq!(before.len(), 1);
+    assert_eq!(before[0].text, "synthetic original prefix");
+    assert_ne!(before[0].event_id, receipt.event_id);
+    let after = restore_hits(&next, "restore-next");
+    assert_eq!(after.len(), 2);
+    assert!(after.contains(&before[0]));
+    let saved = after
+        .iter()
+        .find(|hit| hit.event_id == receipt.event_id)
+        .unwrap();
+    assert_eq!(saved.content_hash, receipt.content_hash);
+    assert_eq!(saved.device_id, receipt.device_id);
+    assert_eq!(saved.text, text);
+    println!(
+        "m11_reconnected_backup=passed generations=2 original=preserved offline_capture=restored receipt=matched"
+    );
+}
+
 #[test]
 #[ignore = "requires the M11 Node/Python fixture installed by native CI"]
 fn restored_note_and_attachment_pass_guarded_reads() {
@@ -88,29 +187,13 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     let volume = work.path().join("backup-volume");
     fs::create_dir(&volume).unwrap();
     let backup = volume.join("backup.pgp");
-    let script = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tools/m11-backup-spike/daemon_roundtrip.py");
-    let run = |action: &str, first: &Path, second: &Path| {
-        assert!(
-            Command::new("python")
-                .arg("-B")
-                .arg(&script)
-                .arg(action)
-                .arg(first)
-                .arg(second)
-                .arg(&backup)
-                .status()
-                .unwrap()
-                .success()
-        );
-    };
-    run("prepare", source, &kit);
+    run_archive("prepare", &[source, &kit, &backup]);
     drop((snapshot, instance));
     let old_profiles = profiles.profiles.clone();
     drop(profiles); // Drops both original private keys and the old secure store.
     assert!(old_profiles.iter().all(|root| !root.exists()));
     fs::create_dir_all(restored.parent().unwrap()).unwrap();
-    run("recover", &kit, &restored);
+    run_archive("recover", &[&kit, &restored, &backup]);
     let backup_sha256: [u8; 32] = Sha256::digest(fs::read(&backup).unwrap()).into();
     // Model an unmounted filesystem target after decrypting the archive. Only
     // the test parent knows where the volume went. Local credentials stay put.

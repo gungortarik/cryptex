@@ -12,7 +12,7 @@ import time
 import unittest
 import zipfile
 
-from restore_publication import publish_tree
+from restore_publication import publish_exclusive
 
 
 HERE = Path(__file__).resolve().parent
@@ -105,7 +105,7 @@ def restore(backup, key, expected, destination):
                     shutil.copyfileobj(inp, out, MIB)
                 if path.stat().st_size != size or digest(path) != checksum:
                     raise ValueError("Restored member failed independent comparison")
-        publish_tree(tree, destination)
+        publish_exclusive(tree, destination)
 
 
 class Rehearsal(unittest.TestCase):

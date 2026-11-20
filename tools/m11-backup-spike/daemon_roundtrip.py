@@ -9,7 +9,7 @@ import tempfile
 import zipfile
 
 from rehearse import MIB, NODE
-from restore_publication import publish_tree
+from restore_publication import publish_exclusive
 
 
 MEMBER = re.compile(r"canonical/(?:events/(?:[0-9a-f]{2}){1,128}/[0-9]{20}\.(?:seg|open)|blobs/[0-9a-f]{64})")
@@ -37,22 +37,12 @@ def unpack(bundle, destination):
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 with dest.open("xb") as out, archive.open(item) as inp:
                     shutil.copyfileobj(inp, out, MIB)
-            publish_tree(tree, destination)
+            publish_exclusive(tree, destination)
 
 
-def prepare(source, kit, backup):
-    kit.mkdir()
+def write_generation(source, writer, backup, unsigned=None):
     with tempfile.TemporaryDirectory(prefix="cryptex-m11-pack-") as temp:
-        work = Path(temp)
-        # The recipient and authorized backup signer have independent fixture keys.
-        def keypair(name):
-            public, private = work / (name + ".pub"), work / (name + ".sec")
-            subprocess.run(NODE + ["keygen", public, private], check=True, timeout=30)
-            return public, private
-
-        recipient, recovery = keypair("recovery")
-        signer, signing = keypair("writer")
-        plain = work / "source.zip"
+        plain = Path(temp) / "source.zip"
         with zipfile.ZipFile(plain, "x") as archive:
             for path in sorted((source / "canonical").rglob("*")):
                 name = path.relative_to(source).as_posix()
@@ -63,16 +53,25 @@ def prepare(source, kit, backup):
                 if not path.is_file() or not MEMBER.fullmatch(name):
                     raise ValueError(f"Unexpected file in synthetic fixture: {name}")
                 archive.write(path, name)
-        encrypted = work / "backup.pgp"
-        envelope("sign-encrypt", [recipient, signing], plain, encrypted)
-        # Also encrypt the legitimate inventory without an authorized signature.
-        unsigned = work / "unsigned.pgp"
-        envelope("encrypt", [recipient], plain, unsigned)
-        plain.unlink()
-        signing.unlink()
-        shutil.move(encrypted, backup)
-        for asset in (recipient, recovery, signer, unsigned):
-            shutil.move(asset, kit / asset.name)
+        recipient = writer / "recovery.pub"
+        if unsigned is not None:
+            envelope("encrypt", [recipient], plain, unsigned)
+        with tempfile.TemporaryDirectory(dir=backup.parent) as staging:
+            encrypted = Path(staging) / "backup.pgp"
+            envelope("sign-encrypt", [recipient, writer / "writer.sec"], plain, encrypted)
+            publish_exclusive(encrypted, backup)
+
+
+def prepare(source, kit, backup, writer=None):
+    kit.mkdir()
+    # The single-generation case discards the backup signer before recovery.
+    with tempfile.TemporaryDirectory(prefix="cryptex-m11-writer-") as temp:
+        writer = Path(temp) if writer is None else writer
+        for public, private in ((writer / "recovery.pub", kit / "recovery.sec"),
+                                (kit / "writer.pub", writer / "writer.sec")):
+            subprocess.run(NODE + ["keygen", public, private], check=True, timeout=30)
+        shutil.copyfile(writer / "recovery.pub", kit / "recovery.pub")
+        write_generation(source, writer, backup, unsigned=kit / "unsigned.pgp")
 
 
 def recover(kit, destination, backup):
@@ -80,10 +79,10 @@ def recover(kit, destination, backup):
     unsigned = kit / "unsigned.pgp"
     with tempfile.TemporaryDirectory(prefix="cryptex-m11-unpack-") as temp:
         work = Path(temp)
-        for attempt, backup, verifier in (("unsigned", unsigned, signer),
+        for attempt, sample, verifier in (("unsigned", unsigned, signer),
                                           ("wrong-signer", backup, recipient)):
             try:
-                envelope("decrypt-verify", [recovery, verifier], backup, work / attempt)
+                envelope("decrypt-verify", [recovery, verifier], sample, work / attempt)
             except subprocess.CalledProcessError:
                 continue
             raise AssertionError("Accepted unauthorized backup")
@@ -93,5 +92,6 @@ def recover(kit, destination, backup):
 
 
 if __name__ == "__main__":
-    command, first, second, backup = sys.argv[1:]
-    {"prepare": prepare, "recover": recover}[command](Path(first), Path(second), Path(backup))
+    command, *args = sys.argv[1:]
+    actions = {"prepare": prepare, "recover": recover, "write-generation": write_generation}
+    actions[command](*(Path(arg) for arg in args))

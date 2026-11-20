@@ -83,6 +83,10 @@ jobs:
           if [[ "$RUNNER_OS" == macOS ]]; then features=(--features m8-local-startup-check); fi
           cargo clippy --locked -p cryptexd --lib --tests "${features[@]}" -- -D warnings
           cargo test --locked -p cryptexd --lib "${features[@]}" \
+            knowledge_materialization::pairing_recovery_tests::m11_backup_read::next_backup_restores_the_offline_capture_after_reconnection \
+            -- --exact --ignored --nocapture | tee "$RUNNER_TEMP/m11-next-backup.txt"
+          grep -Fx 'm11_reconnected_backup=passed generations=2 original=preserved offline_capture=restored receipt=matched' "$RUNNER_TEMP/m11-next-backup.txt" >> "$GITHUB_STEP_SUMMARY"
+          cargo test --locked -p cryptexd --lib "${features[@]}" \
             knowledge_materialization::pairing_recovery_tests::m11_backup_read::restored_note_and_attachment_pass_guarded_reads \
             -- --exact --ignored --nocapture | tee "$RUNNER_TEMP/m11-daemon-read.txt"
           grep '^m11_guarded_restore=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
