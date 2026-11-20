@@ -3,6 +3,7 @@
   "bundle": {
     "active": true,
     "macOS": { "minimumSystemVersion": "11.0" },
-    "externalBin": ["binaries/cryptexd"]
+    "externalBin": ["binaries/cryptexd"],
+    "resources": { "binaries/m11-codec/": "m11-codec/" }
   }
 }
