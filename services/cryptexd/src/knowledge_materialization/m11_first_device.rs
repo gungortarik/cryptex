@@ -1,36 +1,14 @@
 //! Disposable restore ceremony. No IPC route or production record format.
 use super::*;
+use crate::knowledge_materialization::recovered_search::*;
 use cryptex_core::{RecoveryKitPublicMetadata, RecoveryPurpose};
 use cryptex_events::LocalTrustAnchor;
-use ed25519_dalek::{Signature, Signer, VerifyingKey};
-use serde::{Deserialize, Serialize};
+use ed25519_dalek::{Signer, VerifyingKey};
 use sha2::{Digest, Sha256};
 use std::io::Write;
 
 #[path = "m11_restarted_search.rs"]
 pub(super) mod restarted_search;
-
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Request {
-    operation: String,
-    kit_id: String,
-    brain_id: String,
-    challenge: [u8; 32],
-    backup_sha256: [u8; 32],
-    new_device: DeviceId,
-    new_key: [u8; 32],
-    archive_device: DeviceId,
-    archive_key: [u8; 32],
-    archive_history_sha256: [u8; 32],
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Approval {
-    request: Request,
-    signature: Vec<u8>,
-}
 
 impl Approval {
     // Models an explicit owner signature produced with the offline kit.
@@ -43,41 +21,7 @@ impl Approval {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum Denial {
-    Context,
-    Signature,
-    AlreadyAuthorized,
-    Receipt,
-}
-
-struct Ceremony {
-    expected: Request,
-    kit: RecoveryKitPublicMetadata,
-    trusted_root: VerifyingKey,
-    receipt: PathBuf,
-}
-
 impl Ceremony {
-    fn verify(&self, approval: &Approval) -> Result<(), Denial> {
-        if self.kit.validate().is_err()
-            || !self.kit.purposes.contains(&RecoveryPurpose::TrustBootstrap)
-            || self.kit.brain_id != self.expected.brain_id
-            || self.kit.kit_id != self.expected.kit_id
-            || self.expected.operation != "cryptex.m11.trial.authorize-first-device.v1"
-            || self.expected != approval.request
-        {
-            return Err(Denial::Context);
-        }
-        let bytes =
-            serde_json_canonicalizer::to_vec(&approval.request).map_err(|_| Denial::Receipt)?;
-        let signature =
-            Signature::from_slice(&approval.signature).map_err(|_| Denial::Signature)?;
-        self.trusted_root
-            .verify_strict(&bytes, &signature)
-            .map_err(|_| Denial::Signature)
-    }
-
     // One slot per restore. Publish a complete receipt without overwriting a
     // concurrent winner. An identical retry must pass signature checks again.
     fn admit(&self, approval: &Approval) -> Result<(), Denial> {
@@ -103,21 +47,6 @@ impl Ceremony {
         }
     }
 
-    fn reopen(&self) -> Result<ArchiveReader, Denial> {
-        let reader = fs::File::open(&self.receipt).map_err(|_| Denial::Receipt)?;
-        let approval: Approval = serde_json::from_reader(reader).map_err(|_| Denial::Receipt)?;
-        self.verify(&approval)?;
-        let history = &approval.request;
-        let key = VerifyingKey::from_bytes(&history.archive_key).map_err(|_| Denial::Receipt)?;
-        let id =
-            cryptex_events::signing_key_id_from_verifying_key(&key).map_err(|_| Denial::Receipt)?;
-        Ok(ArchiveReader(LocalTrustAnchor::new(
-            history.archive_device.clone(),
-            id,
-            key.to_bytes(),
-        )))
-    }
-
     fn open_replacement(
         &self,
         root: &Path,
@@ -138,21 +67,6 @@ impl Ceremony {
             return Err(Denial::Context);
         }
         Ok((local, archive))
-    }
-}
-
-// This resolver is confined to historical reads. The replacement signs with
-// its newly enrolled key in its own device stream.
-pub(super) struct ArchiveReader(LocalTrustAnchor);
-impl TrustedDaemonKeyResolver for ArchiveReader {
-    fn local_trust_anchor(&self) -> Option<LocalTrustAnchor> {
-        Some(self.0.clone())
-    }
-    fn trusted_daemon_key(&mut self, device: &str, key: &str) -> Option<VerifyingKey> {
-        if self.0.device_id().as_str() != device || self.0.signing_key_id().as_str() != key {
-            return None;
-        }
-        VerifyingKey::from_bytes(self.0.public_key()).ok()
     }
 }
 
@@ -210,7 +124,7 @@ pub(super) fn rehearse(
         expected: request.clone(),
         kit: public,
         trusted_root: pinned,
-        receipt: work.join("first-device.json"),
+        receipt: new_root.join(RECOVERY).join(RECEIPT),
     };
     assert!(matches!(
         ceremony.open_replacement(&new_root, &store),
@@ -299,6 +213,20 @@ pub(super) fn rehearse(
     fs::write(&ceremony.receipt, serde_json::to_vec(&tampered).unwrap()).unwrap();
     assert!(matches!(ceremony.reopen(), Err(Denial::Signature)));
     fs::write(&ceremony.receipt, original).unwrap();
+    let binding = Binding {
+        request: ceremony.expected.clone(),
+        kit: ceremony.kit.clone(),
+        pinned: ceremony.trusted_root.to_bytes(),
+    };
+    let account = crate::secure_store::AccountLabel::recovery_search(device.as_str());
+    let service = crate::secure_store::ServiceLabel::device_credentials(env);
+    store
+        .put(
+            service.as_str(),
+            account.as_str(),
+            &serde_json::to_vec(&binding).unwrap(),
+        )
+        .unwrap();
     restarted_search::save_public_context(work, &ceremony, &hits[0].event_id);
     historical_reader
 }

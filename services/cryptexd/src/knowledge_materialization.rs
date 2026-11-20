@@ -47,6 +47,7 @@ mod anchor_recovery;
 
 pub mod ai_context;
 pub mod local_receipt;
+pub(crate) mod recovered_search;
 
 #[cfg(test)]
 thread_local! {

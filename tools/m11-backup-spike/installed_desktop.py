@@ -29,9 +29,11 @@ def install_and_run():
                if (item := json.loads(line)).get("executable") and item["target"]["name"] == "cryptexd"]
     triple, = [line.split()[1] for line in run("rustc", "-vV", capture_output=True, text=True).stdout.splitlines()
                if line.startswith("host:")]
-    sidecar = APP / "src-tauri/binaries" / ("cryptex-m11-reader-" + triple + binary.suffix)
+    run("cargo", "build", "--locked", "-p", "cryptexd", "--bin", "cryptexd", "--features", "m11-installed-search-check")
+    daemon = binary.parent.parent / ("cryptexd" + binary.suffix)
+    sidecar = APP / "src-tauri/binaries" / ("cryptexd-" + triple + binary.suffix)
     sidecar.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(binary, sidecar)
+    shutil.copy2(daemon, sidecar)
     pnpm = shutil.which("pnpm.cmd" if windows else "pnpm")
     run(pnpm, "--dir", str(APP), "exec", "tauri", "build", "--debug",
         "--features", "m11-installed-search-check", "--bundles", "nsis" if windows else "app",

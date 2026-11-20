@@ -4,7 +4,7 @@
 //! Errors are typed and redacted: Display/Debug must never recover secret bytes.
 
 mod fake;
-#[cfg(test)]
+#[cfg(any(test, feature = "m11-installed-search-check"))]
 mod file_backed;
 mod naming;
 
@@ -15,7 +15,7 @@ mod windows;
 mod macos;
 
 pub use fake::FakeSecureStore;
-#[cfg(test)]
+#[cfg(any(test, feature = "m11-installed-search-check"))]
 pub use file_backed::FileBackedSecureStore;
 pub use naming::{AccountLabel, SecureStoreEnvironment, ServiceLabel};
 

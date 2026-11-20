@@ -12,7 +12,7 @@ const work = process.env.CRYPTEX_M11_REOPEN_FIXTURE;
 const archiveId = process.env.CRYPTEX_M11_ARCHIVE_NOTE;
 const { replacement_note_id: replacementId } = JSON.parse(await readFile(path.join(work, "public-test-context.json")));
 assert.ok(archiveId && replacementId && archiveId !== replacementId);
-const receipt = path.join(work, "first-device.json");
+const receipt = path.join(work, "replacement", "recovery", "first-device.json");
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const origin = "http://127.0.0.1:1420";
 const nativeTest = "ipc::attachment_flow::browser_client";

@@ -81,8 +81,8 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     let anchor = resolver(&profiles).local_trust_anchor().unwrap();
     let snapshot =
         scan_verified_canonical_from_local_anchor_until(source, BRAIN, &anchor, None).unwrap();
-    let history_digest = first_device::restarted_search::history_digest(&snapshot);
-    let restored = work.path().join("rehearsal");
+    let history_digest = super::super::recovered_search::history_digest(&snapshot);
+    let restored = work.path().join("replacement/recovery/archive");
     let kit = work.path().join("kit");
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tools/m11-backup-spike/daemon_roundtrip.py");
@@ -104,6 +104,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     let old_profiles = profiles.profiles.clone();
     drop(profiles); // Drops both original private keys and the old secure store.
     assert!(old_profiles.iter().all(|root| !root.exists()));
+    fs::create_dir_all(restored.parent().unwrap()).unwrap();
     run("recover", &kit, &restored);
     let mut keys = first_device::rehearse(
         work.path(),

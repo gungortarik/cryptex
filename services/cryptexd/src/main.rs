@@ -27,6 +27,14 @@ use cryptexd::supervision::selected_supervision;
 use cryptexd::update::run_update_rollback_proof;
 
 fn main() {
+    #[cfg(feature = "m11-installed-search-check")]
+    if cfg!(feature = "m11-installed-search-check") {
+        if let Err(error) = cryptexd::ipc::recovered_desktop::installed() {
+            eprintln!("recovery search startup failed: {}", error.kind());
+            process::exit(2);
+        }
+        return;
+    }
     let mut args: Vec<String> = env::args().skip(1).collect();
     #[cfg(all(target_os = "macos", feature = "m8-local-startup-check"))]
     if let Some(result) = cryptexd::mac_transport_helper_entry(&args) {

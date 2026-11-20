@@ -3,6 +3,6 @@
   "bundle": {
     "active": true,
     "macOS": { "minimumSystemVersion": "11.0" },
-    "externalBin": ["binaries/cryptex-m11-reader"]
+    "externalBin": ["binaries/cryptexd"]
   }
 }

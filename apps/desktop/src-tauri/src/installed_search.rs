@@ -34,20 +34,22 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
             .file_name()
             .and_then(|s| s.to_str())
             .is_some_and(|s| s.starts_with("cryptex-m11-recovery-"))
-        || !work.join("public-test-context.json").is_file()
+        || !work
+            .join("replacement/recovery/first-device.json")
+            .is_file()
     {
         return Err("invalid disposable profile".into());
     }
     let desktop = std::env::current_exe()?;
-    let reader_path = desktop.with_file_name(format!(
-        "cryptex-m11-reader{}",
-        std::env::consts::EXE_SUFFIX
-    ));
-    let mut reader = Reader(Command::new(reader_path)
-        .args(["--exact", "knowledge_materialization::pairing_recovery_tests::m11_backup_read::restored_note_and_attachment_pass_guarded_reads", "--ignored", "--nocapture"])
-        .env("CRYPTEX_M11_REOPEN_CASE", "installed")
-        .env("CRYPTEX_M11_REOPEN_FIXTURE", &work)
-        .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?);
+    let reader_path = desktop.with_file_name(format!("cryptexd{}", std::env::consts::EXE_SUFFIX));
+    let mut reader = Reader(
+        Command::new(reader_path)
+            .arg("--rehearse-recovered-search")
+            .env("CRYPTEX_M11_REOPEN_FIXTURE", &work)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()?,
+    );
     let mut output = BufReader::new(reader.0.stdout.take().ok_or("missing reader output")?);
     let mut line = String::new();
     loop {

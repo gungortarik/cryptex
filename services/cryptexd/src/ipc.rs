@@ -617,8 +617,6 @@ pub fn spawn_retrieval_server(
         #[cfg(test)]
         isolated_attachment_writer: false,
         #[cfg(test)]
-        recovered_search: None,
-        #[cfg(test)]
         purge_reviews: None,
         #[cfg(test)]
         transport_device_id_override: None,
@@ -729,8 +727,6 @@ fn spawn_daemon_ipc_server_inner(
         #[cfg(test)]
         isolated_attachment_writer: false,
         #[cfg(test)]
-        recovered_search: None,
-        #[cfg(test)]
         purge_reviews: None,
         #[cfg(test)]
         transport_device_id_override: None,
@@ -743,11 +739,6 @@ fn spawn_daemon_ipc_server_inner(
     }
     spawn_server(Some(context))
 }
-
-#[cfg(test)]
-pub(crate) type RecoveredSearch = dyn Fn(&SearchQuery, Option<Instant>) -> Result<Vec<SearchHit>, GuardedSearchError>
-    + Send
-    + Sync;
 
 #[derive(Clone)]
 struct SearchContext {
@@ -766,8 +757,6 @@ struct SearchContext {
     transport_identity: Option<crate::m8_owner_channel::transport_helper::StatusReader>,
     #[cfg(test)]
     isolated_attachment_writer: bool,
-    #[cfg(test)]
-    recovered_search: Option<Arc<RecoveredSearch>>,
     #[cfg(test)]
     purge_reviews: Option<Arc<std::sync::Mutex<Option<purge_review::Pending>>>>,
     #[cfg(test)]
@@ -4846,20 +4835,39 @@ fn handle_search_until_checked(
     if deadline_expired(deadline) {
         return search_held(Some(request_id.clone()), "operation_deadline_exceeded");
     }
-    // A disposable restored profile can supply its two-history reader at admission.
-    // The renderer cannot select a profile, archive, key or alternate read path.
-    #[cfg(test)]
-    if let Some(read) = &context.recovered_search {
-        return match read(&query, deadline) {
-            _ if deadline_expired(deadline) => {
-                search_held(Some(request_id), "operation_deadline_exceeded")
-            }
-            Ok(hits) => search_results(Some(request_id), hits),
-            Err(GuardedSearchError::BrainWideHold(reason)) => {
-                search_held(Some(request_id), hold_reason_code(reason))
-            }
-            Err(GuardedSearchError::Query(_)) => search_rejected(Some(request_id), "invalid_query"),
-        };
+    use crate::knowledge_materialization::recovered_search;
+    let recovered = recovered_search::for_profile(
+        &context.runtime_root,
+        &brain.brain_id,
+        &device,
+        context.store.as_ref(),
+        context.environment,
+    );
+    match recovered {
+        Ok(Some(binding)) => {
+            let result = recovered_search::search(
+                &context.runtime_root,
+                &binding,
+                &mut resolver,
+                &query,
+                deadline,
+            );
+            return match result {
+                _ if deadline_expired(deadline) => {
+                    search_held(Some(request_id), "operation_deadline_exceeded")
+                }
+                Ok(hits) => search_results(Some(request_id), hits),
+                Err(recovered_search::SearchHold::InvalidQuery) => {
+                    search_rejected(Some(request_id), "invalid_query")
+                }
+                Err(recovered_search::SearchHold::Deadline) => {
+                    search_held(Some(request_id), "operation_deadline_exceeded")
+                }
+                Err(_) => search_held(Some(request_id), "canonical_verification_unavailable"),
+            };
+        }
+        Err(_) => return search_held(Some(request_id), "canonical_verification_unavailable"),
+        Ok(None) => {}
     }
     let db = match ProjectionDb::open_or_create(&context.runtime_root) {
         Ok(db) => db,
@@ -6047,11 +6055,14 @@ fn desktop_capture_exchange(
 ))]
 mod attachment_flow;
 
-#[cfg(all(
-    test,
-    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+#[cfg(any(
+    feature = "m11-installed-search-check",
+    all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    )
 ))]
-pub(crate) mod recovered_desktop;
+pub mod recovered_desktop;
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -6121,8 +6132,6 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
-            #[cfg(test)]
-            recovered_search: None,
             #[cfg(test)]
             purge_reviews: None,
             transport_device_id_override: None,
@@ -6445,8 +6454,6 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
-            #[cfg(test)]
-            recovered_search: None,
             #[cfg(test)]
             purge_reviews: None,
             #[cfg(test)]
@@ -7503,8 +7510,6 @@ pub(crate) mod tests {
             #[cfg(test)]
             isolated_attachment_writer: false,
             #[cfg(test)]
-            recovered_search: None,
-            #[cfg(test)]
             purge_reviews: None,
             #[cfg(test)]
             transport_device_id_override: Some(
@@ -7744,8 +7749,6 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
-            #[cfg(test)]
-            recovered_search: None,
             #[cfg(test)]
             purge_reviews: None,
             transport_device_id_override: None,
@@ -8453,8 +8456,6 @@ pub(crate) mod tests {
             #[cfg(test)]
             isolated_attachment_writer: false,
             #[cfg(test)]
-            recovered_search: None,
-            #[cfg(test)]
             purge_reviews: None,
             #[cfg(test)]
             transport_device_id_override: None,
@@ -8498,8 +8499,6 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
-            #[cfg(test)]
-            recovered_search: None,
             #[cfg(test)]
             purge_reviews: None,
             #[cfg(test)]
@@ -8737,8 +8736,6 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
-            #[cfg(test)]
-            recovered_search: None,
             #[cfg(test)]
             purge_reviews: None,
             #[cfg(test)]

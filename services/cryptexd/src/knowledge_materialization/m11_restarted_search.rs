@@ -2,6 +2,7 @@
 //! Confined to disposable M11 rehearsals.
 use super::*;
 use crate::secure_store::FileBackedSecureStore;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 struct PublicContext {
@@ -27,133 +28,6 @@ pub(super) fn save_public_context(work: &Path, ceremony: &Ceremony, id: &str) {
     .unwrap();
 }
 
-pub(in super::super) fn history_digest(snapshot: &VerifiedCanonicalSnapshot) -> [u8; 32] {
-    // security_history is ordered by device and sequence; each content hash is
-    // fixed-width. Distinguish a purge bridge from an original record with the
-    // same chain hash.
-    let mut digest = Sha256::new();
-    for event in snapshot.security_history.records() {
-        digest.update([u8::from(matches!(
-            event,
-            AuthenticatedSecurityRecord::PurgeBridge(..)
-        ))]);
-        digest.update(event.content_hash().as_str().as_bytes());
-    }
-    digest.finalize().into()
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum SearchHold {
-    Approval,
-    Archive,
-    ArchiveCheckpoint,
-    Replacement,
-    Overlap,
-    Projection,
-    Deadline,
-    InvalidQuery,
-}
-
-fn search(
-    work: &Path,
-    ceremony: &Ceremony,
-    query: &SearchQuery,
-    deadline: Option<std::time::Instant>,
-) -> Result<Vec<SearchHit>, SearchHold> {
-    let old = work.join("rehearsal");
-    let new = work.join("replacement");
-    let store = FileBackedSecureStore::open(work.join("test-credentials"))
-        .map_err(|_| SearchHold::Approval)?;
-    let (mut local, mut archived) = ceremony
-        .open_replacement(&new, &store)
-        .map_err(|_| SearchHold::Approval)?;
-    let (old_db, _) =
-        crate::projection::open_projection_db(&old).map_err(|_| SearchHold::Archive)?;
-    let (new_db, _) =
-        crate::projection::open_projection_db(&new).map_err(|_| SearchHold::Replacement)?;
-    let old_guard = evaluate_retrieval_safety_until(
-        &old,
-        BRAIN,
-        &[],
-        &mut archived,
-        &old_db,
-        deadline,
-        NoteLifecycleRead::Apply,
-    );
-    let old_snapshot = old_guard.snapshot.as_ref().ok_or(SearchHold::Archive)?;
-    if history_digest(old_snapshot) != ceremony.expected.archive_history_sha256 {
-        return Err(SearchHold::ArchiveCheckpoint);
-    }
-    let new_guard = evaluate_retrieval_safety_until(
-        &new,
-        BRAIN,
-        &[],
-        &mut local,
-        &new_db,
-        deadline,
-        NoteLifecycleRead::Apply,
-    );
-    let new_snapshot = new_guard.snapshot.as_ref().ok_or(SearchHold::Replacement)?;
-    // The first-device trial admits a single fresh device's note stream. New
-    // trust or lifecycle controls require reduction across both histories.
-    let device = &ceremony.expected.new_device;
-    if old_snapshot.locked_devices().contains(device)
-        || new_snapshot.locked_devices() != std::slice::from_ref(device)
-        || new_snapshot
-            .security_history
-            .records()
-            .iter()
-            .any(|r| !matches!(r, AuthenticatedSecurityRecord::V1(_)))
-    {
-        return Err(SearchHold::Overlap);
-    }
-    let ids: BTreeSet<_> = old_snapshot
-        .security_history
-        .records()
-        .iter()
-        .map(|e| e.event_id())
-        .collect();
-    if new_snapshot
-        .security_history
-        .records()
-        .iter()
-        .any(|e| ids.contains(e.event_id()))
-    {
-        return Err(SearchHold::Overlap);
-    }
-    // Both canonical locks stay held through the single FTS query. Project
-    // only policy-admitted note bodies into this short-lived read model.
-    let union = ProjectionDb::open_in_memory().map_err(|_| SearchHold::Projection)?;
-    for snapshot in [old_snapshot, new_snapshot] {
-        for record in snapshot.verified_records() {
-            if deadline.is_some_and(|until| std::time::Instant::now() >= until) {
-                return Err(SearchHold::Deadline);
-            }
-            if let VersionedRecord::VerifiedV1(note) = record
-                && !snapshot.forgotten.contains(&note.event_id)
-            {
-                cryptex_projection::project_memory_note(union.connection(), note)
-                    .map_err(|_| SearchHold::Projection)?;
-            }
-        }
-    }
-    let scoped = SearchQuery {
-        brain_id: Some(BRAIN.into()),
-        ..query.clone()
-    };
-    cryptex_projection::search::search_visible_events(
-        union.connection(),
-        &scoped,
-        &BTreeSet::new(),
-        deadline,
-    )
-    .map_err(|e| match e {
-        ProjectionError::OperationDeadlineExceeded => SearchHold::Deadline,
-        ProjectionError::InvalidQuery { .. } => SearchHold::InvalidQuery,
-        _ => SearchHold::Projection,
-    })
-}
-
 pub(in super::super) fn child(work: &Path) {
     let ctx: PublicContext =
         serde_json::from_slice(&fs::read(work.join("public-test-context.json")).unwrap()).unwrap();
@@ -161,45 +35,41 @@ pub(in super::super) fn child(work: &Path) {
         expected: ctx.request,
         kit: ctx.kit,
         trusted_root: VerifyingKey::from_bytes(&ctx.pinned).unwrap(),
-        receipt: work.join("first-device.json"),
+        receipt: work.join("replacement/recovery/first-device.json"),
     };
     let query = SearchQuery {
         text: Some("prefix OR recovered".into()),
         ..SearchQuery::default()
     };
     let case = std::env::var("CRYPTEX_M11_REOPEN_CASE").unwrap();
-    if matches!(case.as_str(), "desktop" | "installed") {
-        let root = work.join("replacement");
-        let store = FileBackedSecureStore::open(work.join("test-credentials")).unwrap();
-        let work = work.to_owned();
-        crate::ipc::recovered_desktop::run(
-            &root,
-            std::sync::Arc::new(store),
-            std::sync::Arc::new(move |query, deadline| {
-                search(&work, &ceremony, query, deadline).map_err(|reason| match reason {
-                    SearchHold::Deadline => GuardedSearchError::BrainWideHold(
-                        RetrievalSafetyHold::OperationDeadlineExceeded,
-                    ),
-                    SearchHold::InvalidQuery => {
-                        GuardedSearchError::Query(ProjectionError::InvalidQuery {
-                            detail: "invalid search query".into(),
-                        })
-                    }
-                    _ => GuardedSearchError::BrainWideHold(
-                        RetrievalSafetyHold::CanonicalVerificationUnavailable,
-                    ),
-                })
-            }),
-        );
+    let root = work.join("replacement");
+    let store = FileBackedSecureStore::open(work.join("test-credentials")).unwrap();
+    if case == "desktop" {
+        crate::ipc::recovered_desktop::run_fixture(&root, std::sync::Arc::new(store));
         return;
     }
+    let mut resolver =
+        LocalDeviceKeyResolver::load(&root, BRAIN, &store, SecureStoreEnvironment::Dev).unwrap();
+    let bound = for_profile(
+        &root,
+        BRAIN,
+        &ceremony.expected.new_device,
+        &store,
+        SecureStoreEnvironment::Dev,
+    );
+    if case == "missing-binding" {
+        assert!(matches!(bound, Err(SearchHold::Approval)));
+        println!("m11_restarted_search_child=passed");
+        return;
+    }
+    let bound = bound.unwrap().unwrap();
     if matches!(case.as_str(), "checkpoint-held" | "rebuilt-ready") {
-        let root = work.join("rehearsal");
+        let root = work.join("replacement/recovery/archive");
         let key = ceremony.reopen().unwrap().local_trust_anchor().unwrap();
         let (mut db, _) = crate::projection::open_projection_db(&root).unwrap();
         rebuild_knowledge_from_local_approval_history(&root, BRAIN, &key, &mut db).unwrap();
     }
-    let result = search(work, &ceremony, &query, None);
+    let result = search(&root, &bound, &mut resolver, &query, None);
     match case.as_str() {
         "ready" | "rebuilt-ready" => {
             let hits = result.unwrap();
@@ -215,8 +85,9 @@ pub(in super::super) fn child(work: &Path) {
             assert_eq!(new.text, "First recovered device note");
             assert_eq!(
                 search(
-                    work,
-                    &ceremony,
+                    &root,
+                    &bound,
+                    &mut resolver,
                     &SearchQuery {
                         limit: Some(1),
                         ..query
@@ -279,6 +150,15 @@ pub(in super::super) fn check(work: &Path, old_id: &str, case: &str) {
         );
     }
     if let Some(executable) = std::env::var_os("CRYPTEX_M11_INSTALLED_DESKTOP") {
+        let archive = work.join("replacement/recovery/archive");
+        let root = work.join("replacement");
+        let old_packs = canonical_bytes(&archive);
+        let new_packs = canonical_bytes(&root);
+        assert!(!old_packs.is_empty() && !new_packs.is_empty());
+        // The libtest oracle belongs only to the fixture generator.
+        let oracle = work.join("public-test-context.json");
+        let saved_oracle = fs::read(&oracle).unwrap();
+        fs::remove_file(&oracle).unwrap();
         let script = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tools/m11-backup-spike/installed_desktop.py");
         assert!(
@@ -292,9 +172,26 @@ pub(in super::super) fn check(work: &Path, old_id: &str, case: &str) {
                 .unwrap()
                 .success()
         );
-        println!("m11_installed_search=passed launches=2 archive=true replacement=true");
+        assert_eq!(canonical_bytes(&archive), old_packs);
+        assert_eq!(canonical_bytes(&root), new_packs);
+        fs::write(oracle, saved_oracle).unwrap();
+        println!(
+            "m11_installed_search=passed launches=2 archive=true replacement=true reader=cryptexd canonical=unchanged"
+        );
     }
-    let receipt = work.join("first-device.json");
+    let root = work.join("replacement");
+    let identity = crate::local_device_identity::load_local_device_identity(&root, BRAIN).unwrap();
+    let store = FileBackedSecureStore::open(work.join("test-credentials")).unwrap();
+    let service =
+        crate::secure_store::ServiceLabel::device_credentials(SecureStoreEnvironment::Dev);
+    let account = crate::secure_store::AccountLabel::recovery_search(&identity.device_id);
+    let binding = store.get(service.as_str(), account.as_str()).unwrap();
+    store.delete(service.as_str(), account.as_str()).unwrap();
+    launch(work, old_id, "missing-binding");
+    store
+        .put(service.as_str(), account.as_str(), &binding)
+        .unwrap();
+    let receipt = work.join("replacement/recovery/first-device.json");
     let original = fs::read(&receipt).unwrap();
     let mut bad: Approval = serde_json::from_slice(&original).unwrap();
     bad.signature[0] ^= 1;
@@ -312,7 +209,7 @@ pub(in super::super) fn check(work: &Path, old_id: &str, case: &str) {
     fs::write(path, bytes).unwrap();
     // A shorter but internally valid signed history can rebuild its index.
     // Only the offline grant distinguishes it from the selected recovery point.
-    for (path, bytes) in canonical_bytes(&work.join("rehearsal")) {
+    for (path, bytes) in canonical_bytes(&work.join("replacement/recovery/archive")) {
         let (frames, consumed) = cryptex_storage::scan_complete_frames(&bytes).unwrap();
         assert_eq!(bytes.len(), consumed);
         let Some(last) = frames.last() else { continue };
