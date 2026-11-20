@@ -6134,7 +6134,7 @@ pub(crate) mod tests {
         }
     }
 
-    pub(super) fn test_connected_process_identity() -> DesktopProcessIdentity {
+    fn test_connected_process_identity() -> DesktopProcessIdentity {
         let pid = process::id();
         #[cfg(windows)]
         {

@@ -498,8 +498,14 @@ fn reopen_approval() {
 fn browser_client() {
     let token = new_bootstrap_event_id().unwrap();
     FIXTURE_SOCKET.with(|slot| slot.set(fixture_name(&token)).unwrap());
+    let recovery = std::env::var("CRYPTEX_FILE_FIXTURE_MODE").as_deref() == Ok("recovered-search");
+    let server = if recovery {
+        "knowledge_materialization::pairing_recovery_tests::m11_backup_read::restored_note_and_attachment_pass_guarded_reads"
+    } else {
+        SERVER
+    };
     let mut child = Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", SERVER, "--ignored", "--nocapture"])
+        .args(["--exact", server, "--ignored", "--nocapture"])
         .env("CRYPTEX_FILE_FIXTURE_SOCKET", token)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -525,6 +531,9 @@ fn browser_client() {
         let request: serde_json::Value = serde_json::from_str(&input.unwrap()).unwrap();
         let args = &request["args"];
         let command = request["command"].as_str().unwrap();
+        if recovery {
+            assert_eq!(command, "p0_4_guarded_search");
+        }
         if command == "approval_inventory" {
             writeln!(child.stdin.as_mut().unwrap(), "approval_inventory").unwrap();
             line.clear();

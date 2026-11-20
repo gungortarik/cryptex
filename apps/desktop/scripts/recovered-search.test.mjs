@@ -15,11 +15,14 @@ assert.ok(archiveId && replacementId && archiveId !== replacementId);
 const receipt = path.join(work, "first-device.json");
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const origin = "http://127.0.0.1:1420";
-const nativeTest = "knowledge_materialization::pairing_recovery_tests::m11_backup_read::restored_note_and_attachment_pass_guarded_reads";
+const nativeTest = "ipc::attachment_flow::browser_client";
 
 async function session(checkDamagedReceipt) {
   const browser = await chromium.launch({ channel: "chrome" });
-  const native = spawn(process.argv[2], ["--exact", nativeTest, "--ignored", "--nocapture"], { stdio: ["pipe", "pipe", "inherit"] });
+  const native = spawn(process.argv[2], ["--exact", nativeTest, "--ignored", "--nocapture"], {
+    env: { ...process.env, CRYPTEX_FILE_FIXTURE_MODE: "recovered-search" },
+    stdio: ["pipe", "pipe", "inherit"],
+  });
   const exited = once(native, "exit");
   const lines = createInterface({ input: native.stdout })[Symbol.asyncIterator]();
   async function read(prefix) {
@@ -30,14 +33,14 @@ async function session(checkDamagedReceipt) {
     }
   }
   try {
-    await read("desktop-search-ready");
+    await read("browser-ready");
     const page = await browser.newPage();
     let response;
     await page.exposeFunction("nativeInvoke", async (command, args) => {
       if (command !== "p0_4_guarded_search") throw Error("unsupported rehearsal command");
       assert.deepEqual(args, { query: { text: "prefix OR recovered", limit: 20 } });
-      native.stdin.write(JSON.stringify(args.query) + "\n");
-      response = JSON.parse(await read("desktop-search-reply "));
+      native.stdin.write(JSON.stringify({ command, args }) + "\n");
+      response = JSON.parse(await read("browser-reply "));
       assert.equal(response.operation, "content.search.result");
       assert.equal(response.accepted, true);
       return response;

@@ -11,7 +11,7 @@ pub(crate) fn run(root: &Path, store: Arc<dyn SecureStore>, reader: Arc<Recovere
         operation: None,
         store,
         environment: SecureStoreEnvironment::Dev,
-        expected_desktop: Arc::new(tests::test_connected_process_identity()),
+        expected_desktop: Arc::new(test_desktop_process_identity().unwrap()),
         projection_sync: None,
         connections: None,
         #[cfg(windows)]
@@ -23,30 +23,22 @@ pub(crate) fn run(root: &Path, store: Arc<dyn SecureStore>, reader: Arc<Recovere
         purge_reviews: None,
         transport_device_id_override: None,
     };
-    let name = attachment_flow::fixture_name(&new_bootstrap_event_id().unwrap());
+    let token = std::env::var("CRYPTEX_FILE_FIXTURE_SOCKET").unwrap();
     let listener = ListenerOptions::new()
-        .name(name.clone())
+        .name(attachment_flow::fixture_name(&token))
         .create_sync()
         .unwrap();
-    FIXTURE_SOCKET.with(|socket| socket.set(name).unwrap());
     let workers = Arc::new(AtomicUsize::new(0));
-    println!("desktop-search-ready");
+    println!("fixture-ready");
     io::stdout().flush().unwrap();
-    for line in io::stdin().lock().lines() {
-        let query: DesktopSearchQuery = serde_json::from_str(&line.unwrap()).unwrap();
-        let response = thread::scope(|scope| {
-            let server = scope.spawn(|| {
+    for command in io::stdin().lock().lines() {
+        match command.unwrap().as_str() {
+            "finish" => break,
+            "serve" => {
                 let mut stream = listener.accept().unwrap();
                 handle_connection(&mut stream, Some(&context), Some(&workers), None, None).unwrap();
-            });
-            let response = desktop_search(query, Duration::from_secs(2)).unwrap();
-            server.join().unwrap();
-            response
-        });
-        println!(
-            "desktop-search-reply {}",
-            serde_json::to_string(&response).unwrap()
-        );
-        io::stdout().flush().unwrap();
+            }
+            _ => panic!("unexpected recovery host control"),
+        }
     }
 }
