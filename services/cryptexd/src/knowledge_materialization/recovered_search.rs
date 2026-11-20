@@ -85,7 +85,7 @@ impl Ceremony {
         }
         let reader = options.open(&self.receipt).map_err(|_| Denial::Receipt)?;
         let meta = reader.metadata().map_err(|_| Denial::Receipt)?;
-        if !meta.is_file() || crate::import_staging::is_link_or_reparse(&meta) {
+        if !meta.is_file() || is_link_or_reparse(&meta) {
             return Err(Denial::Receipt);
         }
         let approval: Approval =
@@ -125,9 +125,21 @@ pub(super) struct Binding {
     pub(super) pinned: [u8; 32],
 }
 
+fn is_link_or_reparse(meta: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+        meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    }
+    #[cfg(not(windows))]
+    {
+        meta.file_type().is_symlink()
+    }
+}
+
 fn plain_directory(path: &Path) -> bool {
-    fs::symlink_metadata(path)
-        .is_ok_and(|meta| meta.is_dir() && !crate::import_staging::is_link_or_reparse(&meta))
+    fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir() && !is_link_or_reparse(&meta))
 }
 
 fn read_receipt(file: fs::File) -> Result<Vec<u8>, Denial> {
