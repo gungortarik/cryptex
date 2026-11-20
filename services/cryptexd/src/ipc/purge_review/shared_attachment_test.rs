@@ -165,3 +165,82 @@ fn purge_shared_attachment() {
     std::fs::remove_dir_all(root).unwrap();
     println!("shared_purge=verified first_preserved=true last_removed=true control_preserved=true");
 }
+
+#[test]
+#[ignore = "launched in a separate process for its disposable native profile"]
+fn review_mixed_history_purge() {
+    let mut fixture = prepared_search_fixture("physical-closeout-mixed");
+    let root = &fixture.root;
+    let env = SecureStoreEnvironment::Dev;
+    let store = fixture.store.as_ref();
+    drop(crate::instance::try_acquire_instance(root).unwrap());
+    crate::instance::migration::migrate_profile(root).unwrap();
+    let instance = crate::instance::try_acquire_instance(root).unwrap();
+    physical::register(root);
+    let ctx = &mut fixture.context;
+    ctx.admission = instance.admission();
+    ctx.isolated_attachment_writer = true;
+    ctx.purge_reviews = Some(Arc::default());
+    let mut resolver = LocalDeviceKeyResolver::load(root, &fixture.brain_id, store, env).unwrap();
+    let anchor = resolver.local_trust_anchor().unwrap();
+    let add_note = |text, classification| {
+        append_memory_note(
+            store,
+            env,
+            AppendMemoryNoteArgs {
+                runtime_root: root,
+                brain_id: &fixture.brain_id,
+                device_id: &fixture.device,
+                classification,
+                text,
+                event_id: None,
+                config: &CanonicalWriterConfig::default(),
+            },
+        )
+        .unwrap()
+        .accepted
+    };
+    let forgotten = add_note("old review fixture", Classification::Public);
+    let target = add_note("unrelated visible review fixture", Classification::Public);
+    synchronize_local_derived_state(ctx).unwrap();
+    {
+        let snapshot = crate::knowledge_materialization::lock_local_lifecycle_history(
+            root,
+            &fixture.brain_id,
+            &anchor,
+            Instant::now() + Duration::from_secs(10),
+        )
+        .unwrap();
+        let key = crate::event_signing_key::load_existing_event_signing_key(
+            store,
+            env,
+            root,
+            &fixture.device,
+        )
+        .unwrap();
+        crate::canonical_writer::isolated_attachment::append_note_control(root,&fixture.device,&forgotten,&key,"memory.forget",
+            serde_json::json!({"note_event_id":forgotten.event_id,"note_content_hash":forgotten.content_hash,"prior_state_hash":forgotten.content_hash})).unwrap();
+        drop(snapshot);
+    }
+    let prepared = decide(
+        ctx,
+        Action::Prepare {
+            note_id: target.event_id.clone(),
+            note_hash: target.content_hash.as_str().into(),
+        },
+    )
+    .unwrap();
+    let Outcome::Prepared {
+        ticket,
+        remove_locally: true,
+    } = prepared
+    else {
+        panic!("expected physical review")
+    };
+    let result = decide(ctx, Action::Confirm { ticket }).unwrap();
+    println!("closeout_probe outcome={result:?}");
+    assert!(
+        matches!(result, Outcome::Purged { .. }),
+        "confirmed deletion of unrelated visible note must finish"
+    );
+}
