@@ -197,7 +197,22 @@ another reopen the independent file still opens. A byte scan of the closed
 profile checks both the absence of the shared content and the presence of the
 control content. [Windows and macOS checks](https://github.com/gungortarik/cryptex/actions/runs/44663719908)
 
-Real profiles keep M10 writes disabled. Version history, backups and M10
+### Purging archived note content in a disposable profile
+
+At `0c2cd19`, confirmed purge also checks the managed transport's local
+`.stversions` directory. It verifies each historical pack against its device
+and pack position, including the signature and original hash of any purged
+note. A replacement preserves the historical frame count and every surviving
+frame. The daemon keeps the original in private staging until it can verify
+or durably publish the replacement. Retrying can finish interrupted cleanup.
+
+The Windows and macOS trial seeded timestamped and trashcan versions of the
+same pack, including a shorter historical prefix, and an independent pack.
+It checked cancellation, confirmed deletion, closed-profile content scans,
+preservation of the other notes and archives, retry after interrupted
+publication, and rejection of a truncated archive. [Native trial results](https://github.com/gungortarik/cryptex/actions/runs/44665998666)
+
+Real profiles keep M10 writes disabled. Backup and snapshot cleanup and M10
 acceptance remain open.
 
 ## M9 complete on November 19, 2026
