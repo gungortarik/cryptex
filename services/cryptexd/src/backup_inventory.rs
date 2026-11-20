@@ -24,6 +24,61 @@ pub struct Checkpoint<'a> {
     pub brain_identity_sha256: [u8; 32],
 }
 
+/// Public selection saved independently of the encrypted backup. Its trust
+/// comes from the owner's authenticated recovery material.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecoverySelection {
+    version: u8,
+    brain_id: String,
+    writer_device: cryptex_core::DeviceId,
+    writer_key: [u8; 32],
+    generation: u64,
+    history_sha256: [u8; 32],
+    brain_identity_sha256: [u8; 32],
+}
+
+impl RecoverySelection {
+    pub fn capture(checkpoint: &Checkpoint<'_>) -> Self {
+        Self {
+            version: 1,
+            brain_id: checkpoint.brain_id.into(),
+            writer_device: checkpoint.writer.device_id().clone(),
+            writer_key: *checkpoint.writer.public_key(),
+            generation: checkpoint.generation,
+            history_sha256: checkpoint.history_sha256,
+            brain_identity_sha256: checkpoint.brain_identity_sha256,
+        }
+    }
+
+    pub fn writer(&self) -> Result<LocalTrustAnchor, Error> {
+        if self.version != 1 {
+            return Err(Error::Checkpoint);
+        }
+        let key = VerifyingKey::from_bytes(&self.writer_key).map_err(|_| Error::Credentials)?;
+        let id = cryptex_events::signing_key_id_from_verifying_key(&key)
+            .map_err(|_| Error::Credentials)?;
+        Ok(LocalTrustAnchor::new(
+            self.writer_device.clone(),
+            id,
+            self.writer_key,
+        ))
+    }
+
+    pub fn checkpoint<'a>(&'a self, writer: &'a LocalTrustAnchor) -> Result<Checkpoint<'a>, Error> {
+        if self.writer()? != *writer || self.generation == 0 {
+            return Err(Error::Checkpoint);
+        }
+        Ok(Checkpoint {
+            brain_id: &self.brain_id,
+            writer,
+            generation: self.generation,
+            history_sha256: self.history_sha256,
+            brain_identity_sha256: self.brain_identity_sha256,
+        })
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     Credentials,
@@ -31,6 +86,14 @@ pub enum Error {
     Checkpoint,
     Signature,
     Inventory,
+    Attachment,
+}
+
+/// Check a privately extracted profile before publishing it or marking a
+/// generation verified. The caller must first authenticate the envelope.
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub fn verify_reconstruction(root: &Path, expected: &Checkpoint<'_>) -> Result<(), Error> {
+    crate::knowledge_materialization::recovered_search::verify_backup_reconstruction(root, expected)
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize)]

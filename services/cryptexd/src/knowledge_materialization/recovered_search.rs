@@ -212,6 +212,48 @@ pub(super) fn history_digest(snapshot: &VerifiedCanonicalSnapshot) -> [u8; 32] {
     digest.finalize().into()
 }
 
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub(crate) fn verify_backup_reconstruction(
+    root: &Path,
+    expected: &crate::backup_inventory::Checkpoint<'_>,
+) -> Result<(), crate::backup_inventory::Error> {
+    use crate::backup_inventory::Error;
+    use crate::import_staging::export_fs::Directory;
+    let directory = Directory::open(&root.join("identity")).map_err(|_| Error::Archive)?;
+    let mut identity = directory
+        .open_existing_brain_identity()
+        .map_err(|_| Error::Archive)?;
+    let mut bytes = Vec::new();
+    (&mut identity)
+        .take(4097)
+        .read_to_end(&mut bytes)
+        .map_err(|_| Error::Archive)?;
+    if bytes.len() > 4096
+        || <[u8; 32]>::from(Sha256::digest(&bytes)) != expected.brain_identity_sha256
+    {
+        return Err(Error::Checkpoint);
+    }
+    let snapshot = scan_verified_canonical_from_local_anchor_until(
+        root,
+        expected.brain_id,
+        expected.writer,
+        None,
+    )
+    .map_err(|_| Error::Checkpoint)?;
+    if history_digest(&snapshot) != expected.history_sha256 {
+        return Err(Error::Checkpoint);
+    }
+    let digests: BTreeSet<_> = snapshot
+        .attachment_links
+        .values()
+        .flat_map(|links| links.values())
+        .collect();
+    for digest in digests {
+        crate::attachment_blobs::open_verified(root, digest).map_err(|_| Error::Attachment)?;
+    }
+    Ok(())
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SearchHold {
     Approval,

@@ -396,6 +396,13 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         history_sha256: history_digest,
         brain_identity_sha256: Sha256::digest(&original_identity).into(),
     };
+    let selection = crate::backup_inventory::RecoverySelection::capture(&checkpoint);
+    fs::write(
+        kit.join("selected-backup.json"),
+        serde_json::to_vec(&selection).unwrap(),
+    )
+    .unwrap();
+    drop(selection);
     {
         let staging = tempfile::tempdir().unwrap();
         let payload = staging.path().join("content.zip");
@@ -438,6 +445,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     drop(offline);
     fs::remove_dir_all(&kit).unwrap();
     drop((snapshot, instance));
+    drop(anchor);
     let old_profiles = profiles.profiles.clone();
     drop(profiles); // Drops both original private keys and the old secure store.
     assert!(old_profiles.iter().all(|root| !root.exists()));
@@ -452,6 +460,10 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     assert!(archive_operation("open-kit", &[&damaged_kit, &password, &kit]).is_err());
     assert!(!kit.try_exists().unwrap());
     run_archive("open-kit", &[&sealed_kit, &password, &kit]);
+    let selection: crate::backup_inventory::RecoverySelection =
+        serde_json::from_slice(&fs::read(kit.join("selected-backup.json")).unwrap()).unwrap();
+    let anchor = selection.writer().unwrap();
+    let checkpoint = selection.checkpoint(&anchor).unwrap();
     let offline =
         SigningKey::from_pkcs8_der(&fs::read(kit.join("bootstrap.pk8")).unwrap()).unwrap();
     assert_eq!(offline.verifying_key(), pinned_recovery_key);
@@ -470,13 +482,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
                 &kit.join("brain-identity.sha256"),
             ],
         );
-        let legacy_scan =
-            scan_verified_canonical_from_local_anchor_until(&legacy_profile, BRAIN, &anchor, None)
-                .unwrap();
-        assert_eq!(
-            super::super::recovered_search::history_digest(&legacy_scan),
-            history_digest
-        );
+        crate::backup_inventory::verify_reconstruction(&legacy_profile, &checkpoint).unwrap();
     }
     let staging = tempfile::tempdir_in(restored.parent().unwrap()).unwrap();
     let opened = staging.path().join("opened");
@@ -522,14 +528,18 @@ fn restored_note_and_attachment_pass_guarded_reads() {
             &kit.join("brain-identity.sha256"),
         ],
     );
-    let replay =
-        scan_verified_canonical_from_local_anchor_until(&staged_profile, BRAIN, &anchor, None)
-            .unwrap();
+    let blob = staged_profile
+        .join("canonical/blobs")
+        .join(format!("{:x}", Sha256::digest(bytes)));
+    let parked_blob = staging.path().join("held-attachment");
+    fs::rename(&blob, &parked_blob).unwrap();
     assert_eq!(
-        super::super::recovered_search::history_digest(&replay),
-        history_digest
+        crate::backup_inventory::verify_reconstruction(&staged_profile, &checkpoint),
+        Err(crate::backup_inventory::Error::Attachment)
     );
-    drop(replay);
+    assert!(!restored.exists());
+    fs::rename(&parked_blob, &blob).unwrap();
+    crate::backup_inventory::verify_reconstruction(&staged_profile, &checkpoint).unwrap();
     fs::rename(&staged_profile, &restored).unwrap();
     println!(
         "m11_backup_inventory=passed daemon_signed=true public_only_encryption=true legacy=restored replay=matched"
