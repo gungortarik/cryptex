@@ -8,6 +8,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "m11-backup-spike"))
@@ -72,9 +73,17 @@ def fetch(root, kind, peer):
         listing = subprocess.run(["gh", "api", api], check=True, capture_output=True, timeout=30)
         if any(a["name"] == artifact and not a["expired"] for a in json.loads(listing.stdout)["artifacts"]):
             destination = root / ("peer-public" if kind == "public" else "incoming")
-            subprocess.run(["gh", "run", "download", run, "--name", artifact, "--dir", destination],
-                           check=True, timeout=60)
-            return
+            with tempfile.TemporaryDirectory(dir=root) as tmp:
+                downloaded = Path(tmp) / "artifact"
+                result = subprocess.run(["gh", "run", "download", run, "--name", artifact, "--dir", downloaded],
+                                        capture_output=True, timeout=60)
+                if result.returncode == 0:
+                    downloaded.rename(destination)
+                    return
+                # The list and download endpoints can briefly disagree just
+                # after upload. Other errors (including integrity failures) stop the job.
+                if b"no artifact matches" not in result.stderr.lower():
+                    raise RuntimeError(f"Peer artifact download failed ({result.returncode}): {artifact}")
         time.sleep(5)
     raise TimeoutError(f"Peer artifact unavailable: {artifact}")
 
