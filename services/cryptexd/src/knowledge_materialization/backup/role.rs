@@ -291,13 +291,17 @@ impl DeviceRole<'_> {
 
     /// The native owner selects a new child directory. Existing directories,
     /// including disconnected old targets remounted at the same path, cannot be adopted.
-    pub fn create(&self, parent: &Path, name: &str, brain: &str) -> Result<Assignment, Error> {
+    pub fn create(&self, profile: &Path, parent: &Path, name: &str) -> Result<Assignment, Error> {
+        let brain = crate::identity_runtime::load_brain_identity(profile)
+            .map_err(|_| Error::History)?
+            .brain_id;
+        let _snapshot = self.check_authority(profile, &brain, None)?;
         let mut nonce = [0; 32];
         getrandom::getrandom(&mut nonce).map_err(|_| Error::Store)?;
         let initial = Assignment {
             origin: Origin {
                 version: 1,
-                brain: brain.into(),
+                brain,
                 nonce,
                 writer: self.local.into(),
             },
@@ -333,24 +337,32 @@ impl DeviceRole<'_> {
         }
     }
 
-    fn check_peer(
+    fn check_authority(
         &self,
         profile: &Path,
         brain: &str,
-        peer: &Writer,
+        peer: Option<&Writer>,
     ) -> Result<crate::knowledge_materialization::VerifiedCanonicalSnapshot, Error> {
+        let enrolled = crate::local_device_identity::load_local_device_identity(profile, brain)
+            .map_err(|_| Error::Authority)?;
+        if enrolled.device_id != self.local.device_id().as_str() {
+            return Err(Error::Authority);
+        }
         let snapshot =
             scan_verified_canonical_from_local_anchor_until(profile, brain, self.local, None)
                 .map_err(|_| Error::History)?;
         let (history, trust) = snapshot.verified_trust_context().ok_or(Error::Authority)?;
-        if history.local_public_key != *self.local.public_key()
+        if history.local_device != *self.local.device_id()
+            || history.local_public_key != *self.local.public_key()
             || !trust.trusted_devices.contains(self.local.device_id())
             || history.restricted(trust, self.local.device_id())
-            || !trust.trusted_devices.contains(&peer.device)
-            || history.restricted(trust, &peer.device)
-            || !history
-                .approved_peer_binding(&peer.device)
-                .is_some_and(|bound| bound.public_key == peer.key)
+            || peer.is_some_and(|peer| {
+                !trust.trusted_devices.contains(&peer.device)
+                    || history.restricted(trust, &peer.device)
+                    || !history
+                        .approved_peer_binding(&peer.device)
+                        .is_some_and(|bound| bound.public_key == peer.key)
+            })
         {
             return Err(Error::Authority);
         }
@@ -373,7 +385,7 @@ impl DeviceRole<'_> {
         if current == &Writer::from(self.local) {
             return Err(Error::Authority);
         }
-        let _snapshot = self.check_peer(profile, &assignment.origin.brain, current)?;
+        let _snapshot = self.check_authority(profile, &assignment.origin.brain, Some(current))?;
         match self.load(id)? {
             None => {}
             Some(LocalRole::Awaiting(request)) if request.prior == prior => return Ok(request),
@@ -417,7 +429,7 @@ impl DeviceRole<'_> {
         {
             return Err(Error::Authority);
         }
-        let _snapshot = self.check_peer(profile, &assignment.origin.brain, &next)?;
+        let _snapshot = self.check_authority(profile, &assignment.origin.brain, Some(&next))?;
         match self.load(id)? {
             Some(LocalRole::Active(active)) if active == head => {}
             Some(LocalRole::Released(old)) if old == *request => {}
@@ -463,7 +475,7 @@ impl DeviceRole<'_> {
             .rev()
             .nth(1)
             .map_or(&assignment.origin.writer, |g| &g.request.next);
-        let _snapshot = self.check_peer(profile, &assignment.origin.brain, previous)?;
+        let _snapshot = self.check_authority(profile, &assignment.origin.brain, Some(previous))?;
         match self.load(id)? {
             Some(LocalRole::Active(active)) if active == head => self.bind(target, id),
             Some(LocalRole::Awaiting(request)) if request == grant.request => {

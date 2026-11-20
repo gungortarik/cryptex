@@ -44,7 +44,15 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         env,
         local: &b,
     };
-    first.create(work.path(), "original", BRAIN).unwrap();
+    assert!(
+        first
+            .create(&pair.profiles[1], work.path(), "wrong-owner")
+            .is_err()
+    );
+    assert!(!work.path().join("wrong-owner").exists());
+    first
+        .create(&pair.profiles[0], work.path(), "original")
+        .unwrap();
     let target = work.path().join("original");
     let original = first.reopen(&target).unwrap();
     let prior = target.join("backup-00000000000000000001.pgp");
@@ -60,14 +68,18 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         target: &target,
     };
     catalog.set_retention(&a, NonZeroUsize::new(1)).unwrap();
-    assert!(second.create(work.path(), "original", BRAIN).is_err());
+    assert!(
+        second
+            .create(&pair.profiles[1], work.path(), "original")
+            .is_err()
+    );
     assert!(
         second
             .accept(&pair.profiles[1], &target, &original)
             .is_err()
     );
     let independent = second
-        .create(work.path(), "replacement-target", BRAIN)
+        .create(&pair.profiles[1], work.path(), "replacement-target")
         .unwrap();
     let replacement = work.path().join("replacement-target");
     let separate_head = second.assigned_head(&replacement).unwrap();
@@ -313,7 +325,7 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
         env,
         local: &anchor,
     }
-    .create(work.path(), "backup-volume", BRAIN)
+    .create(source.path(), work.path(), "backup-volume")
     .unwrap();
     let first = volume.join("backup-00000000000000000001.pgp");
     let next = volume.join("backup-00000000000000000002.pgp");

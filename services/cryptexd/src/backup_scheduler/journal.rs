@@ -305,27 +305,47 @@ mod tests {
     use super::*;
     use crate::secure_store::FakeSecureStore;
     use cryptex_core::DeviceId;
-    use cryptex_events::signing_key_id_from_verifying_key;
-    use ed25519_dalek::SigningKey;
+    use cryptex_events::TrustedDaemonKeyResolver;
     use std::sync::mpsc;
 
     #[test]
     fn publication_gap_requires_the_durable_ciphertext_digest() {
         let root = tempfile::tempdir().unwrap();
-        let key = SigningKey::from_bytes(&[13; 32]).verifying_key();
-        let owner = LocalTrustAnchor::new(
-            DeviceId::new("7ad3ac64-7aa8-4be4-99d0-b1c53210a6da").unwrap(),
-            signing_key_id_from_verifying_key(&key).unwrap(),
-            key.to_bytes(),
-        );
+        use crate::canonical_writer::{
+            AppendMemoryNoteArgs, CanonicalWriterConfig, append_memory_note,
+        };
+        use crate::local_device_identity::{LocalDeviceKeyResolver, enroll_local_device};
+        let brain = "7ad3ac64-7aa8-4be4-99d0-b1c53210a6da";
+        let profile = root.path().join("profile");
+        let env = SecureStoreEnvironment::Dev;
         let store = FakeSecureStore::new();
+        let identity = cryptex_core::BrainIdentity::new(brain, "2026-01-01T00:00:00Z").unwrap();
+        crate::identity_runtime::write_brain_identity(&profile, &identity).unwrap();
+        let local = enroll_local_device(&profile, &store, env).unwrap();
+        append_memory_note(
+            &store,
+            env,
+            AppendMemoryNoteArgs {
+                runtime_root: &profile,
+                brain_id: brain,
+                device_id: &DeviceId::new(local.device_id).unwrap(),
+                classification: cryptex_events::Classification::Public,
+                text: "synthetic scheduled generation",
+                event_id: None,
+                config: &CanonicalWriterConfig::default(),
+            },
+        )
+        .unwrap();
+        let owner = LocalDeviceKeyResolver::load(&profile, brain, &store, env)
+            .unwrap()
+            .local_trust_anchor()
+            .unwrap();
         let role = crate::knowledge_materialization::backup::role::DeviceRole {
             store: &store,
             env: SecureStoreEnvironment::Dev,
             local: &owner,
         };
-        role.create(root.path(), "target", "journal-fixture")
-            .unwrap();
+        role.create(&profile, root.path(), "target").unwrap();
         let prior = root.path().join("target/first.pgp");
         fs::write(&prior, b"prior fixture").unwrap();
         let queue = DeviceJobs::new(&store, SecureStoreEnvironment::Dev, &owner);
@@ -340,8 +360,7 @@ mod tests {
         };
         let original = generation_digest(&prior).unwrap();
         queue.enqueue(&prior, original, 2).unwrap();
-        role.create(root.path(), "another", "journal-fixture")
-            .unwrap();
+        role.create(&profile, root.path(), "another").unwrap();
         let elsewhere = root.path().join("another/first.pgp");
         assert_eq!(
             queue.enqueue(&elsewhere, original, 2).unwrap_err().kind(),
