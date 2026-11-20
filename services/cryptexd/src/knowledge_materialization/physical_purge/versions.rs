@@ -1,7 +1,7 @@
 //! Scrub only managed Syncthing archive packs covered by authenticated purge bridges.
 use super::*;
 use cryptex_events::framing::{FRAME_HEADER_BYTES, decode_frame_header, encode_frame_header};
-use std::{collections::BTreeSet, fs::File};
+use std::collections::BTreeSet;
 
 impl VerifiedCanonicalSnapshot {
     pub(crate) fn clean_archived_versions(&self) -> Result<(), ReviewError> {
@@ -88,9 +88,9 @@ impl VerifiedCanonicalSnapshot {
 
     /// A historical pack may end on an earlier frame boundary. Every included
     /// frame must match its anchored position or the signed original of its bridge.
-    fn inspect_version(
+    pub(super) fn inspect_version(
         &self,
-        file: &mut File,
+        file: &mut impl Read,
         frames: &[&RawFrame],
     ) -> Result<(usize, bool), ReviewError> {
         let mut count = 0;

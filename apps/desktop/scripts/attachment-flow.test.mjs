@@ -22,6 +22,13 @@ function buildTestBinary() {
 }
 const binary = process.env.CRYPTEX_ATTACHMENT_TEST_BINARY ?? buildTestBinary();
 
+test("purge cleans independent encrypted backups and preserves their surviving notes", () => {
+  const result = spawnSync(binary, ["--exact", "ipc::purge_review::physical::retained::tests::purge_independent_encrypted_backups",
+    "--ignored", "--nocapture"], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /retained_encrypted_purge=verified cleaned=2 untouched=1 authenticated_restore=true/);
+});
+
 test("purge scrubs archived note versions and preserves other notes", () => {
   const result = spawnSync(binary, ["--exact", "ipc::purge_review::version_history_test::confirmed_purge_scrubs_archived_versions",
     "--ignored", "--nocapture"], { encoding: "utf8" });

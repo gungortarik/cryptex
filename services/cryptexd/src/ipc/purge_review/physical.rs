@@ -3,6 +3,8 @@ use super::ReviewError;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+pub(crate) mod retained;
+
 static PROFILE: OnceLock<PathBuf> = OnceLock::new();
 
 pub(crate) fn register(root: &Path) {
@@ -79,7 +81,8 @@ pub(crate) fn finish_cleanup(
     if busy != 0 {
         return Err(ReviewError::CleanupPending);
     }
-    Ok(())
+    drop(db);
+    retained::clean_registered(root, brain, anchor)
 }
 
 /// Simulate the already-tested explicit Desktop prepare/confirm sequence for

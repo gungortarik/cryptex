@@ -5,6 +5,7 @@ use crate::ipc::purge_review::{ReviewError, physical, receipt};
 use std::io::{Read, Write};
 
 mod replica;
+mod retained;
 mod versions;
 
 pub(super) fn check_receipts(
