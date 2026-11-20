@@ -16,6 +16,8 @@ At `d421d3c` both native jobs installed the isolated Desktop package and searche
 
 At `d9de747` the ordinary `cryptexd` search dispatcher reads an authorized recovered profile using the device credential store and the signed first-device receipt. Windows and macOS installed the Desktop with the daemon binary and found both notes on both launches. Canonical packs matched byte for byte. Only temporary profiles receive a recovery binding in this stage. [Normal daemon reader evidence](../evidence/m11/backup-container.md#recovered-profiles-in-the-normal-daemon-search-reader)
 
+At `f3b4f8f` Windows and macOS restored both synthetic event packs after a late extraction failure and retry. A restore preserves existing destinations, including empty directories. Competing restores expose one complete tree. [Restore publication evidence](../evidence/m11/backup-container.md#publishing-a-restored-archive-after-extraction)
+
 ## M10 complete on November 20, 2026
 
 The owner reviewed and accepted candidate `9de456f` subject to successful CI and technical review. Windows and macOS passed all nine required jobs across four workflows. The closeout regression reproduced and corrected physical deletion failing after an unrelated note was forgotten. After reopening a disposable profile, the corrected candidate also preserved the forgotten note and removed a previously restored note. The [M10 review and CI evidence](../evidence/m10/forget-purge-closeout-review.md) records authorization, recovery, Desktop review and the limits of physical cleanup.

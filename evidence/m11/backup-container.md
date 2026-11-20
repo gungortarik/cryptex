@@ -76,3 +76,13 @@ The regular Desktop `content.search` dispatcher checks the admitted local device
 The installed CI package contains a `cryptexd` binary built with Cargo's normal binary target. A CI-only launch adapter supplies the temporary credential store and a dedicated IPC endpoint. The previous libtest executable is used only to prepare and verify the fixture. The installed daemon cannot use the fixture generator's public oracle file during either launch because the test removes it before starting Desktop. Each system WebView clicks Search, and both the historical and replacement note must appear on both launches. The test compares both sets of canonical event packs before and after the two sessions.
 
 At `d9de747` both native jobs reported two successful launches using `reader=cryptexd` and `canonical=unchanged`. [Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44807209480)
+
+## Publishing a restored archive after extraction
+
+At `63e2bde` a bad ZIP checksum on the second canonical member left an incomplete archive at the requested destination. The Windows regression test reproduced this using two synthetic event packs.
+
+At `f3b4f8f` the guarded restore rehearsal extracts the verified envelope's inventory into a private sibling staging area. After the last member passes its ZIP checksum and the output files close, a same-volume exclusive rename publishes the tree. The large-object rehearsal uses the same publication operation. The daemon subsequently verifies canonical signatures and rebuilds the derived index.
+
+The regression suite checks an absent destination after a late checksum failure, a successful retry with both original payloads, preservation of existing empty and populated directories, and a single intact winner when two restores compete. These checks cover reported I/O failures and atomic visibility in disposable profiles. Power-loss durability and cleanup of scratch files left by a killed process are outside this evidence.
+
+Both native jobs at `f3b4f8f` passed the three publication tests, guarded daemon reads and installed Desktop searches across two launches. [Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44809862842)
