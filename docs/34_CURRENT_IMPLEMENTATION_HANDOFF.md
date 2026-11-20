@@ -212,8 +212,23 @@ It checked cancellation, confirmed deletion, closed-profile content scans,
 preservation of the other notes and archives, retry after interrupted
 publication, and rejection of a truncated archive. [Native trial results](https://github.com/gungortarik/cryptex/actions/runs/44665998666)
 
-Real profiles keep M10 writes disabled. Backup and snapshot cleanup and M10
-acceptance remain open.
+### Rejoining from a pre-purge receiver snapshot
+
+The paired trial at `3fd3dc1` takes a snapshot of the stopped temporary
+receiver before the owner confirms deletion. It restores that snapshot after
+both devices have completed purge. With the owner's signed notice still
+available through the paired transport, the receiver's first reconciliation
+reconstructs the signed approval and the same canonical pack hashes. Both
+surviving notes remain searchable. A separate restore replaces only the closed
+SQLite projection with its pre-purge files. Reopening reconciles those files
+against the current signed history. A scan of the closed receiver finds zero
+copies of the target text after each restore. Cleanup completion is cached in
+the current transport session so a restored disk marker cannot skip this check.
+[Paired snapshot recovery checks](https://github.com/gungortarik/cryptex/actions/runs/44668161163)
+
+Real profiles keep M10 writes disabled. Cleanup of independently retained
+backups and snapshots and final M10 acceptance remain open. M11 owns the
+encrypted backup container and disaster restore.
 
 ## M9 complete on November 19, 2026
 
