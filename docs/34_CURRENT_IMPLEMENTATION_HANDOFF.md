@@ -4,7 +4,9 @@
 
 The [container rehearsal](../evidence/m11/backup-container.md) passed on Windows and macOS at `b11b29e`. Both systems restored a signed frame and large blob with the recovery decryption key after loss of the synthetic source profile. The previous complete backup survived an interrupted replacement.
 
-At `75916b0` both native jobs also verified the backup writer signature, reconstructed the paired devices' history in disposable storage, rebuilt SQLite and opened the recovered note and its attachment through guarded daemon reads. An invalid note signature blocked access even with the populated index. The trial retained an independently trusted device anchor. The next M11 step is Recovery Kit authorization of the first new trusted device after loss of the original devices. Real profiles keep their existing write gates. [Guarded restore evidence](../evidence/m11/backup-container.md#guarded-reads-after-restore)
+At `75916b0` both native jobs also verified the backup writer signature, reconstructed the paired devices' history in disposable storage, rebuilt SQLite and opened the recovered note and its attachment through guarded daemon reads. An invalid note signature blocked access even with the populated index. [Guarded restore evidence](../evidence/m11/backup-container.md#guarded-reads-after-restore)
+
+At `5505f24` the Windows and macOS rehearsals dropped both original devices before decrypting the backup. An independently pinned offline Kit key authorized a replacement device for that restore. The replacement signed a fresh note and read the historical note and attachment in a separate sandbox. The next integration step is one guarded view across the recovered history and the replacement's stream after restart. Real profiles keep their existing write gates. [First-device rehearsal](../evidence/m11/backup-container.md#first-replacement-device-after-loss-of-both-source-devices)
 
 ## M10 complete on November 20, 2026
 
