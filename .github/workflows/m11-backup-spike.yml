@@ -88,6 +88,7 @@ jobs:
           grep '^m11_guarded_restore=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_first_device=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_restarted_search=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -Fx 'm11_offline_backup_target=passed capture=committed search=reopened backup=unchanged' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_desktop_search=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install the isolated Desktop and search in two fresh WebView sessions
@@ -98,3 +99,4 @@ jobs:
           set -euo pipefail
           python -B tools/m11-backup-spike/installed_desktop.py install | tee "$RUNNER_TEMP/m11-installed.txt"
           grep '^m11_installed_search=passed launches=2 archive=true replacement=true reader=cryptexd canonical=unchanged$' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -Fx 'm11_offline_backup_target=passed capture=committed search=reopened backup=unchanged' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"

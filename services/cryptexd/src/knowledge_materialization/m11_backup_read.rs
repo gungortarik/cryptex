@@ -2,6 +2,7 @@ use super::*;
 use crate::attachment_blobs::{BlobError, LocalLinkError};
 use crate::ipc::attachment::SelectedFile;
 use cryptex_events::attachment_link::LinkError;
+use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::process::Command;
 
@@ -84,6 +85,9 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     let history_digest = super::super::recovered_search::history_digest(&snapshot);
     let restored = work.path().join("replacement/recovery/archive");
     let kit = work.path().join("kit");
+    let volume = work.path().join("backup-volume");
+    fs::create_dir(&volume).unwrap();
+    let backup = volume.join("backup.pgp");
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tools/m11-backup-spike/daemon_roundtrip.py");
     let run = |action: &str, first: &Path, second: &Path| {
@@ -94,6 +98,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
                 .arg(action)
                 .arg(first)
                 .arg(second)
+                .arg(&backup)
                 .status()
                 .unwrap()
                 .success()
@@ -106,9 +111,19 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     assert!(old_profiles.iter().all(|root| !root.exists()));
     fs::create_dir_all(restored.parent().unwrap()).unwrap();
     run("recover", &kit, &restored);
+    let backup_sha256: [u8; 32] = Sha256::digest(fs::read(&backup).unwrap()).into();
+    // Model an unmounted filesystem target after decrypting the archive. Only
+    // the test parent knows where the volume went. Local credentials stay put.
+    let detached = tempfile::tempdir().unwrap();
+    let parked = detached.path().join("volume");
+    fs::rename(&volume, &parked).unwrap();
+    assert_eq!(
+        fs::File::open(&backup).unwrap_err().kind(),
+        std::io::ErrorKind::NotFound
+    );
     let mut keys = first_device::rehearse(
         work.path(),
-        &kit.join("backup.pgp"),
+        backup_sha256,
         &anchor,
         offline,
         pinned_recovery_key,
@@ -147,6 +162,13 @@ fn restored_note_and_attachment_pass_guarded_reads() {
 
     drop(db);
     first_device::restarted_search::check(work.path(), &note.event_id, "ready");
+    assert!(!volume.try_exists().unwrap());
+    fs::rename(&parked, &volume).unwrap();
+    assert_eq!(
+        <[u8; 32]>::from(Sha256::digest(fs::read(&backup).unwrap())),
+        backup_sha256
+    );
+    println!("m11_offline_backup_target=passed capture=committed search=reopened backup=unchanged");
     let (mut db, _) = crate::projection::open_projection_db(&restored).unwrap();
 
     // Exercise blob checks independently from envelope and event verification.

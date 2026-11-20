@@ -1,10 +1,10 @@
 //! Disposable restore ceremony. No IPC route or production record format.
 use super::*;
+use crate::capture::{CaptureOutcome, CaptureRequest, capture_memory_note};
 use crate::knowledge_materialization::recovered_search::*;
 use cryptex_core::{RecoveryKitPublicMetadata, RecoveryPurpose};
 use cryptex_events::LocalTrustAnchor;
 use ed25519_dalek::{Signer, VerifyingKey};
-use sha2::{Digest, Sha256};
 use std::io::Write;
 
 #[path = "m11_restarted_search.rs"]
@@ -78,7 +78,7 @@ fn random_bytes() -> [u8; 32] {
 
 pub(super) fn rehearse(
     work: &Path,
-    backup: &Path,
+    backup_sha256: [u8; 32],
     archived: &LocalTrustAnchor,
     offline: SigningKey,
     pinned: VerifyingKey,
@@ -113,7 +113,7 @@ pub(super) fn rehearse(
         kit_id: public.kit_id.clone(),
         brain_id: public.brain_id.clone(),
         challenge: random_bytes(),
-        backup_sha256: Sha256::digest(fs::read(backup).unwrap()).into(),
+        backup_sha256,
         new_device: device.clone(),
         new_key: *target.public_key(),
         archive_device: archived.device_id().clone(),
@@ -180,20 +180,20 @@ pub(super) fn rehearse(
     ));
     let (mut local, historical_reader) = ceremony.open_replacement(&new_root, &store).unwrap();
 
-    append_memory_note(
+    let outcome = capture_memory_note(
         &store,
         env,
-        AppendMemoryNoteArgs {
-            runtime_root: &new_root,
-            brain_id: BRAIN,
-            device_id: &device,
+        &new_root,
+        CaptureRequest {
+            capture_id: "3d8412fa-c224-4799-a3db-08d891ee0cb9".into(),
             classification: Classification::Public,
-            text: "First recovered device note",
-            event_id: None,
-            config: &CanonicalWriterConfig::default(),
+            text: "First recovered device note".into(),
         },
-    )
-    .unwrap();
+        &CanonicalWriterConfig::default(),
+    );
+    let CaptureOutcome::Committed(commit) = outcome else {
+        panic!("offline local capture did not commit: {outcome:?}");
+    };
     let (mut db, _) = crate::projection::open_projection_db(&new_root).unwrap();
     rebuild_knowledge_from_local_approval_history(&new_root, BRAIN, &target, &mut db).unwrap();
     let hits = search_events_with_retrieval_safety(
@@ -206,6 +206,7 @@ pub(super) fn rehearse(
     )
     .unwrap();
     assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].event_id, commit.event_id);
     assert_eq!(hits[0].device_id, device.as_str());
     assert_eq!(hits[0].text, "First recovered device note");
     let mut tampered = grant;
@@ -227,6 +228,6 @@ pub(super) fn rehearse(
             &serde_json::to_vec(&binding).unwrap(),
         )
         .unwrap();
-    restarted_search::save_public_context(work, &ceremony, &hits[0].event_id);
+    restarted_search::save_public_context(work, &ceremony, &commit.event_id);
     historical_reader
 }

@@ -40,7 +40,7 @@ def unpack(bundle, destination):
             publish_tree(tree, destination)
 
 
-def prepare(source, kit):
+def prepare(source, kit, backup):
     kit.mkdir()
     with tempfile.TemporaryDirectory(prefix="cryptex-m11-pack-") as temp:
         work = Path(temp)
@@ -70,27 +70,28 @@ def prepare(source, kit):
         envelope("encrypt", [recipient], plain, unsigned)
         plain.unlink()
         signing.unlink()
-        for asset in (recipient, recovery, signer, encrypted, unsigned):
+        shutil.move(encrypted, backup)
+        for asset in (recipient, recovery, signer, unsigned):
             shutil.move(asset, kit / asset.name)
 
 
-def recover(kit, destination):
+def recover(kit, destination, backup):
     recovery, signer, recipient = (kit / name for name in ("recovery.sec", "writer.pub", "recovery.pub"))
-    encrypted, unsigned = kit / "backup.pgp", kit / "unsigned.pgp"
+    unsigned = kit / "unsigned.pgp"
     with tempfile.TemporaryDirectory(prefix="cryptex-m11-unpack-") as temp:
         work = Path(temp)
         for attempt, backup, verifier in (("unsigned", unsigned, signer),
-                                          ("wrong-signer", encrypted, recipient)):
+                                          ("wrong-signer", backup, recipient)):
             try:
                 envelope("decrypt-verify", [recovery, verifier], backup, work / attempt)
             except subprocess.CalledProcessError:
                 continue
             raise AssertionError("Accepted unauthorized backup")
         decoded = work / "verified.zip"
-        envelope("decrypt-verify", [recovery, signer], encrypted, decoded)
+        envelope("decrypt-verify", [recovery, signer], backup, decoded)
         unpack(decoded, destination)
 
 
 if __name__ == "__main__":
-    command, first, second = sys.argv[1:]
-    {"prepare": prepare, "recover": recover}[command](Path(first), Path(second))
+    command, first, second, backup = sys.argv[1:]
+    {"prepare": prepare, "recover": recover}[command](Path(first), Path(second), Path(backup))
