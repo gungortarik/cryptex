@@ -9,6 +9,7 @@ import tempfile
 import zipfile
 
 from rehearse import MIB, NODE
+from restore_publication import publish_tree
 
 
 MEMBER = re.compile(r"canonical/(?:events/(?:[0-9a-f]{2}){1,128}/[0-9]{20}\.(?:seg|open)|blobs/[0-9a-f]{64})")
@@ -20,7 +21,7 @@ def envelope(command, keys, source, output):
         subprocess.run(NODE + [command, *keys], stdin=inp, stdout=out, check=True, timeout=90)
 
 
-def unpack(bundle, staging):
+def unpack(bundle, destination):
     with zipfile.ZipFile(bundle) as archive:
         members = archive.infolist()
         if (not 0 < len(members) <= 100 or len(set(archive.namelist())) != len(members)
@@ -29,12 +30,14 @@ def unpack(bundle, staging):
         for item in members:
             if not MEMBER.fullmatch(item.filename) or item.compress_type != zipfile.ZIP_STORED:
                 raise ValueError("Unexpected canonical member")
-        staging.mkdir()
-        for item in members:
-            dest = staging / item.filename
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            with dest.open("xb") as out, archive.open(item) as inp:
-                shutil.copyfileobj(inp, out, MIB)
+        with tempfile.TemporaryDirectory(dir=destination.parent, prefix=".m11-restore-") as temp:
+            tree = Path(temp) / "tree"
+            for item in members:
+                dest = tree / item.filename
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with dest.open("xb") as out, archive.open(item) as inp:
+                    shutil.copyfileobj(inp, out, MIB)
+            publish_tree(tree, destination)
 
 
 def prepare(source, kit):

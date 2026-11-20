@@ -12,6 +12,8 @@ import time
 import unittest
 import zipfile
 
+from restore_publication import publish_tree
+
 
 HERE = Path(__file__).resolve().parent
 FIXTURE = HERE.parents[1] / "crates/events/tests/fixtures/m8-old-reader-v1-v3.json"
@@ -103,7 +105,7 @@ def restore(backup, key, expected, destination):
                     shutil.copyfileobj(inp, out, MIB)
                 if path.stat().st_size != size or digest(path) != checksum:
                     raise ValueError("Restored member failed independent comparison")
-        tree.rename(destination)
+        publish_tree(tree, destination)
 
 
 class Rehearsal(unittest.TestCase):

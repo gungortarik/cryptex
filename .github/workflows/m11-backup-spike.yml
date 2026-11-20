@@ -70,6 +70,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cryptex/desktop build
       - run: python -B tools/m11-backup-spike/rehearse.py
+      - name: Verify atomic restore publication and retry
+        run: python -B tools/m11-backup-spike/test_restore_publication.py
       - name: Verify recovered notes and attachments through guarded daemon reads
         shell: bash
         env:
