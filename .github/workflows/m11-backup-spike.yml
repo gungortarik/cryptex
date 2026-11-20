@@ -51,6 +51,34 @@ on:
 permissions:
   contents: read
 jobs:
+  native-codec:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --prefix tools/m11-backup-spike --ignore-scripts
+      - name: Read native signed and encrypted output with the existing recovery reader
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest=tools/m11-backup-spike/native-codec/Cargo.toml
+          binary=tools/m11-backup-spike/native-codec/target/debug/m11-native-codec-trial
+          if [[ "$RUNNER_OS" == macOS ]]; then export OPENSSL_DIR="$(brew --prefix openssl@3)"; else binary="$binary.exe"; fi
+          cargo fmt --manifest-path "$manifest" -- --check
+          cargo clippy --locked --manifest-path "$manifest" -- -D warnings
+          cargo build --locked --manifest-path "$manifest"
+          python -B tools/m11-backup-spike/test_native_codec.py "$binary" | tee "$RUNNER_TEMP/m11-codec.txt"
+          grep -Fx 'm11_native_writer=passed js_restore=verified wrong_recipient=denied wrong_signer=denied' "$RUNNER_TEMP/m11-codec.txt" >> "$GITHUB_STEP_SUMMARY"
   rehearsal:
     strategy:
       fail-fast: false

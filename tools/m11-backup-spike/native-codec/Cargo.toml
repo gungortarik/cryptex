@@ -1,0 +1,15 @@
+[package]
+name = "m11-native-codec-trial"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Keep evaluation dependencies out of the installed daemon.
+[workspace]
+resolver = "3"
+
+[target.'cfg(windows)'.dependencies]
+openpgp = { package = "sequoia-openpgp", version = "=2.4.2", default-features = false, features = ["crypto-cng"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+openpgp = { package = "sequoia-openpgp", version = "=2.4.2", default-features = false, features = ["crypto-openssl"] }
