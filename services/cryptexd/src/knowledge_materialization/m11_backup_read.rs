@@ -501,29 +501,23 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         .is_err()
     );
     assert!(!restored.exists());
-    verify(&payload, &signed, &checkpoint).unwrap();
-    let staged_profile = staging.path().join("profile");
-    run_archive(
-        "unpack-checked",
-        &[
-            &payload,
-            &staged_profile,
-            &kit.join("brain-identity.sha256"),
-        ],
-    );
+    let sandbox =
+        crate::backup_inventory::reconstruct_v2(&payload, &signed, &checkpoint, staging.path())
+            .unwrap();
+    let staged_profile = sandbox.path();
     let blob = staged_profile
         .join("canonical/blobs")
         .join(format!("{:x}", Sha256::digest(bytes)));
     let parked_blob = staging.path().join("held-attachment");
     fs::rename(&blob, &parked_blob).unwrap();
     assert_eq!(
-        crate::backup_inventory::verify_reconstruction(&staged_profile, &checkpoint),
+        crate::backup_inventory::verify_reconstruction(staged_profile, &checkpoint),
         Err(crate::backup_inventory::Error::Attachment)
     );
     assert!(!restored.exists());
     fs::rename(&parked_blob, &blob).unwrap();
-    crate::backup_inventory::verify_reconstruction(&staged_profile, &checkpoint).unwrap();
-    fs::rename(&staged_profile, &restored).unwrap();
+    crate::backup_inventory::verify_reconstruction(staged_profile, &checkpoint).unwrap();
+    fs::rename(staged_profile, &restored).unwrap();
     println!(
         "m11_backup_inventory=passed daemon_signed=true public_only_encryption=true legacy=restored replay=matched"
     );

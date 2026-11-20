@@ -269,7 +269,11 @@ pub fn sign(
     encode(&Inventory { body, signature })
 }
 
-pub fn verify(payload: &Path, signed: &[u8], expected: &Checkpoint<'_>) -> Result<(), Error> {
+fn authenticated_members(
+    payload: &Path,
+    signed: &[u8],
+    expected: &Checkpoint<'_>,
+) -> Result<BTreeMap<String, Member>, Error> {
     if signed.len() > MAX_INVENTORY_BYTES {
         return Err(Error::Inventory);
     }
@@ -290,5 +294,49 @@ pub fn verify(payload: &Path, signed: &[u8], expected: &Checkpoint<'_>) -> Resul
     if inventory.body != inspect(payload, expected, Some(&inventory.body.archive_sha256))? {
         return Err(Error::Checkpoint);
     }
-    Ok(())
+    Ok(inventory.body.members)
+}
+
+pub fn verify(payload: &Path, signed: &[u8], expected: &Checkpoint<'_>) -> Result<(), Error> {
+    authenticated_members(payload, signed, expected).map(drop)
+}
+
+/// Extract independently checked members into a fresh, owner-private sandbox.
+/// A failed restore drops the scratch directory before returning to the caller.
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub fn reconstruct_v2(
+    payload: &Path,
+    signed: &[u8],
+    expected: &Checkpoint<'_>,
+    parent: &Path,
+) -> Result<tempfile::TempDir, Error> {
+    let mut members = authenticated_members(payload, signed, expected)?;
+    let input = File::open(payload).map_err(|_| Error::Archive)?;
+    let mut zip = zip::ZipArchive::new(input).map_err(|_| Error::Archive)?;
+    let sandbox = tempfile::tempdir_in(parent).map_err(|_| Error::Archive)?;
+    for i in 0..zip.len() {
+        let source = zip.by_index(i).map_err(|_| Error::Archive)?;
+        let name = source.name().map_err(|_| Error::Archive)?.into_owned();
+        let member = members.remove(&name).ok_or(Error::Inventory)?;
+        if source.compression() != zip::CompressionMethod::Stored || source.size() != member.bytes {
+            return Err(Error::Inventory);
+        }
+        let target = sandbox.path().join(name);
+        std::fs::create_dir_all(target.parent().ok_or(Error::Archive)?)
+            .map_err(|_| Error::Archive)?;
+        let mut file = File::create_new(target).map_err(|_| Error::Archive)?;
+        let count = io::copy(&mut source.take(member.bytes.saturating_add(1)), &mut file)
+            .map_err(|_| Error::Archive)?;
+        file.rewind().map_err(|_| Error::Archive)?;
+        let mut digest = Sha256::new();
+        io::copy(&mut file, &mut digest).map_err(|_| Error::Archive)?;
+        if count != member.bytes || format!("{:x}", digest.finalize()) != member.sha256 {
+            return Err(Error::Inventory);
+        }
+    }
+    if !members.is_empty() {
+        return Err(Error::Inventory);
+    }
+    verify_reconstruction(sandbox.path(), expected)?;
+    Ok(sandbox)
 }
