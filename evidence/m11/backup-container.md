@@ -2,6 +2,18 @@
 
 ## Current retention and recovery behavior
 
+Each hosted OS restored two notes from the other platform's daemon-signed v2
+backup at `8e34330`. The same exchange restored the older OpenPGP-signed format
+in both directions. [Windows and macOS exchange](https://github.com/gungortarik/cryptex/actions/runs/44836563124)
+
+The scheduled writer now relinquishes its role durably before signing a
+target-specific grant for a paired device. A replacement can start on a
+new target independently. Local credential storage keeps the assignment
+chain, pending challenge and current authority across restarts. The two-profile
+test exercises publication by the successor, rejection of a modified signature,
+denial of pruning by the former writer, and rejection of a stale queued job
+after an authorized return transfer.
+
 The default retains every generation. An explicit positive count applies only to automatic generations on the selected target of the designated writer. The device credential store holds the preference and each reconstruction receipt. After a sandbox restore, the writer checks the saved policy, takes the target lock, checks the surviving ciphertext against its receipts and removes only eligible older files. A missing policy retains everything. A corrupt receipt or a changed verified file stops cleanup. An encrypted manual export and an unrecognized file remain outside cleanup.
 
 The Windows and macOS scheduler tests interrupt a child process while the backup disk is absent. A fresh process resumes the job and recognizes its own already published ciphertext on replay. The two-generation scenario separately restores the prior and current backups and checks the offline note against its capture receipt. [Native scheduler run](https://github.com/gungortarik/cryptex/actions/runs/44825884830)

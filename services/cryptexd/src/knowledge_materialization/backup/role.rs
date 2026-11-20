@@ -70,6 +70,16 @@ struct Grant {
     signature: Vec<u8>,
 }
 
+impl Grant {
+    fn head(&self) -> Result<Hash, Error> {
+        Ok(Sha256::new()
+            .chain_update(message(&self.request)?)
+            .chain_update(&self.signature)
+            .finalize()
+            .into())
+    }
+}
+
 /// Public, portable proof rooted in the independently selected target ID.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -115,8 +125,7 @@ impl Assignment {
                 .map_err(|_| Error::Signature)?
                 .verify_strict(&bytes, &signature)
                 .map_err(|_| Error::Signature)?;
-            previous =
-                Sha256::digest([bytes.as_slice(), grant.signature.as_slice()].concat()).into();
+            previous = grant.head()?;
             current = &grant.request.next;
         }
         Ok((previous, current))
@@ -190,6 +199,72 @@ impl DeviceRole<'_> {
             .map_err(|_| Error::Store)
     }
 
+    // Store one public proof per credential item. A long history would exceed
+    // a Windows credential's size limit if stored as a single JSON value.
+    fn proof_account(&self, target: Hash, head: Hash) -> Result<AccountLabel, Error> {
+        let key = Sha256::digest(encoded(&("proof", target, head, Writer::from(self.local)))?);
+        Ok(AccountLabel::backup_role(&format!("{key:x}")))
+    }
+
+    fn remember(&self, id: Hash, head: Hash, record: &impl Serialize) -> Result<(), Error> {
+        let service = ServiceLabel::device_credentials(self.env);
+        let account = self.proof_account(id, head)?;
+        let bytes = encoded(record)?;
+        match self.store.get(service.as_str(), account.as_str()) {
+            Ok(stored) if stored == bytes => Ok(()),
+            Ok(_) => Err(Error::History),
+            Err(SecureStoreError::Missing) => self
+                .store
+                .put(service.as_str(), account.as_str(), &bytes)
+                .map_err(|_| Error::Store),
+            Err(_) => Err(Error::Store),
+        }
+    }
+
+    fn remember_assignment(&self, id: Hash, assignment: &Assignment) -> Result<(), Error> {
+        self.remember(id, id, &assignment.origin)?;
+        for grant in &assignment.grants {
+            self.remember(id, grant.head()?, grant)?;
+        }
+        Ok(())
+    }
+
+    /// Reopen the exact proof behind the local role, including the predecessor
+    /// necessary to reissue an interrupted handoff after durable relinquishment.
+    pub fn reopen(&self, target: &Path) -> Result<Assignment, Error> {
+        let dir = Directory::open(target).map_err(|_| Error::Target)?;
+        let id = marker(&dir)?;
+        let _change = self.changes()?;
+        let expected = match self.load(id)?.ok_or(Error::Authority)? {
+            LocalRole::Active(head) => head,
+            LocalRole::Awaiting(request) | LocalRole::Released(request) => request.prior,
+        };
+        let service = ServiceLabel::device_credentials(self.env);
+        let read = |head| {
+            self.store
+                .get(service.as_str(), self.proof_account(id, head)?.as_str())
+                .map_err(|_| Error::Store)
+        };
+        let mut cursor = expected;
+        let mut grants = Vec::new();
+        while cursor != id {
+            let grant: Grant =
+                serde_json::from_slice(&read(cursor)?).map_err(|_| Error::History)?;
+            if grant.head()? != cursor {
+                return Err(Error::History);
+            }
+            cursor = grant.request.prior;
+            grants.push(grant);
+        }
+        grants.reverse();
+        let origin = serde_json::from_slice(&read(id)?).map_err(|_| Error::History)?;
+        let assignment = Assignment { origin, grants };
+        if assignment.verify(id)?.0 != expected {
+            return Err(Error::History);
+        }
+        Ok(assignment)
+    }
+
     fn path_account(&self, path: &Path) -> Result<AccountLabel, Error> {
         let digest = Sha256::digest(encoded(&("path", path, Writer::from(self.local)))?);
         Ok(AccountLabel::backup_role(&format!("{digest:x}")))
@@ -241,6 +316,7 @@ impl DeviceRole<'_> {
         dir.sync()
             .and_then(|()| parent.sync())
             .map_err(|_| Error::Target)?;
+        self.remember(id, id, &initial.origin)?;
         self.save(id, &LocalRole::Active(id))?;
         self.bind(&path, id)?;
         Ok(initial)
@@ -312,6 +388,7 @@ impl DeviceRole<'_> {
             next: self.local.into(),
             challenge,
         };
+        self.remember_assignment(id, assignment)?;
         self.save(id, &LocalRole::Awaiting(request.clone()))?;
         Ok(request)
     }
@@ -390,6 +467,7 @@ impl DeviceRole<'_> {
         match self.load(id)? {
             Some(LocalRole::Active(active)) if active == head => self.bind(target, id),
             Some(LocalRole::Awaiting(request)) if request == grant.request => {
+                self.remember(id, head, grant)?;
                 self.save(id, &LocalRole::Active(head))?;
                 self.bind(target, id)
             }

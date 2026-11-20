@@ -104,20 +104,37 @@ impl<'a> DeviceJobs<'a> {
             .role()
             .assigned_head(prior.parent().unwrap())
             .map_err(super::role_error)?;
-        if let Some(job) = self.load()?
-            && job.role_head == Some(role)
-        {
-            if job.prior == prior && job.prior_hash == prior_hash && job.generation == generation {
-                return Ok(());
-            }
-            if job.phase != Phase::Published(prior_hash)
-                || job.output() != prior
-                || job.generation.checked_add(1) != Some(generation)
+        if let Some(job) = self.load()? {
+            if job.role_head == Some(role) {
+                if job.prior == prior
+                    && job.prior_hash == prior_hash
+                    && job.generation == generation
+                {
+                    return Ok(());
+                }
+                if job.phase != Phase::Published(prior_hash)
+                    || job.output() != prior
+                    || job.generation.checked_add(1) != Some(generation)
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::AlreadyExists,
+                        "different backup assignment",
+                    ));
+                }
+            } else if let Some(prior_head) = job.role_head
+                && !matches!(job.phase, Phase::Published(_))
             {
-                return Err(io::Error::new(
-                    io::ErrorKind::AlreadyExists,
-                    "different backup assignment",
-                ));
+                match self.role().assigned_head(job.prior.parent().unwrap()) {
+                    Ok(current) if current == prior_head => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::AlreadyExists,
+                            "another target has a pending backup",
+                        ));
+                    }
+                    Ok(_)
+                    | Err(crate::knowledge_materialization::backup::role::Error::Authority) => {}
+                    Err(error) => return Err(super::role_error(error)),
+                }
             }
         }
         self.save(&Job {
@@ -323,6 +340,13 @@ mod tests {
         };
         let original = generation_digest(&prior).unwrap();
         queue.enqueue(&prior, original, 2).unwrap();
+        role.create(root.path(), "another", "journal-fixture")
+            .unwrap();
+        let elsewhere = root.path().join("another/first.pgp");
+        assert_eq!(
+            queue.enqueue(&elsewhere, original, 2).unwrap_err().kind(),
+            io::ErrorKind::AlreadyExists
+        );
         queue.enqueue(&prior, original, 2).unwrap();
         assert!(queue.enqueue(&prior, original, 3).is_err());
         let mut job = queue.load().unwrap().unwrap();

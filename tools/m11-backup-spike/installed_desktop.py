@@ -1,4 +1,5 @@
 """Install an isolated M11 Desktop package on disposable native CI runners."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -60,8 +61,11 @@ def install_and_run():
         if not desktop.is_file() or not desktop.with_name(sidecar.name.replace("-" + triple, "")).is_file():
             raise RuntimeError("installed Desktop or bundled recovery reader missing")
         codec = (desktop.parent if windows else installed / "Contents/Resources") / "m11-codec"
-        if not (codec / ("node.exe" if windows else "node")).is_file():
-            raise RuntimeError("installed backup codec missing")
+        for role, name in {"runtime": "node.exe" if windows else "node",
+                           "entry": "encrypt.cjs", "openpgp": "openpgp.min.cjs"}.items():
+            with (codec / name).open("rb") as installed_file:
+                if hashlib.file_digest(installed_file, "sha256").hexdigest() != pins[role]:
+                    raise RuntimeError(f"Installed backup {role} differs from the build input")
         env = dict(os.environ, CRYPTEX_M11_INSTALLED_DESKTOP=str(desktop),
                    CRYPTEX_M11_TEST_INSTALLED_CODEC=str(codec))
         run(str(binary), "--exact", TEST, "--ignored", "--nocapture", env=env, timeout=240)

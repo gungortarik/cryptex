@@ -44,8 +44,9 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         env,
         local: &b,
     };
-    let original = first.create(work.path(), "original", BRAIN).unwrap();
+    first.create(work.path(), "original", BRAIN).unwrap();
     let target = work.path().join("original");
+    let original = first.reopen(&target).unwrap();
     let prior = target.join("backup-00000000000000000001.pgp");
     fs::write(&prior, b"prior synthetic backup").unwrap();
     let queue = DeviceJobs::new(&a_store, env, &a);
@@ -94,7 +95,13 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
     assert!(catalog.prune(&a).is_err());
     assert_eq!(fs::read(&prior).unwrap(), b"prior synthetic backup");
     let retry = old
-        .release(&pair.profiles[0], &target, &original, &b, &request)
+        .release(
+            &pair.profiles[0],
+            &target,
+            &old.reopen(&target).unwrap(),
+            &b,
+            &request,
+        )
         .unwrap();
     assert_eq!(
         serde_json::to_vec(&granted).unwrap(),
@@ -134,6 +141,7 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         fs::read(target.join("backup-00000000000000000002.pgp")).unwrap(),
         b"new writer"
     );
+    let granted = second.reopen(&target).unwrap();
     let return_request = old.request(&pair.profiles[0], &target, &granted).unwrap();
     let returned = second
         .release(&pair.profiles[1], &target, &granted, &a, &return_request)
