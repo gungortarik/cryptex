@@ -1,0 +1,36 @@
+name: M11 backup container
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/m11-backup-spike/**'
+      - '.github/workflows/m11-backup-spike.yml'
+      - 'crates/events/tests/fixtures/m8-old-reader-v1-v3.json'
+      - '.node-version'
+  pull_request:
+    paths:
+      - 'tools/m11-backup-spike/**'
+      - '.github/workflows/m11-backup-spike.yml'
+      - 'crates/events/tests/fixtures/m8-old-reader-v1-v3.json'
+      - '.node-version'
+
+permissions:
+  contents: read
+jobs:
+  rehearsal:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --prefix tools/m11-backup-spike --ignore-scripts
+      - run: python -B tools/m11-backup-spike/rehearse.py

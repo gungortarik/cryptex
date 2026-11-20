@@ -1,0 +1,9 @@
+{
+  "name": "cryptex-m11-backup-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "openpgp": "6.3.2"
+  }
+}
