@@ -39,6 +39,23 @@ def setup(root):
                        check=True, timeout=30)
 
 
+def native(root, action, platform):
+    env = dict(os.environ, CRYPTEX_M11_CROSS_ROOT=str(root), CRYPTEX_M11_CROSS_ACTION=action,
+               CRYPTEX_M11_CROSS_PLATFORM=platform)
+    features = ["--features", "m8-local-startup-check"] if sys.platform == "darwin" else []
+    test = "knowledge_materialization::pairing_recovery_tests::m11_backup_read::exchange_native_backup_with_peer_os"
+    result = subprocess.run(["cargo", "test", "--locked", "-p", "cryptexd", "--lib", *features,
+                             test, "--", "--exact", "--ignored", "--nocapture"], env=env,
+                            stdout=subprocess.PIPE, check=True, timeout=900)
+    if b"1 passed; 0 failed" not in result.stdout:
+        raise RuntimeError("Native exchange test did not run")
+    if action == "restore":
+        receipt = f"m11_cross_inventory=passed source={platform} signed_notes=2"
+        if receipt.encode() not in result.stdout.splitlines():
+            raise RuntimeError("Missing native restore result")
+        print(receipt)
+
+
 def send(root, platform):
     profile = root / "source"
     for name, data in contents(platform).items():
@@ -50,6 +67,7 @@ def send(root, platform):
     output = root / "outgoing"
     output.mkdir()
     write_generation(profile, private, output / "backup.pgp")
+    envelope("encrypt", [root / "peer-public/recipient.asc"], private / "content.zip", output / "backup-v2.pgp")
 
 
 def receive(root, peer):
@@ -62,6 +80,12 @@ def receive(root, peer):
     if {p.relative_to(restore).as_posix(): p.read_bytes() for p in restore.rglob("*") if p.is_file()} != expected:
         raise ValueError("Restored peer inventory mismatch")
     print(f"m11_cross_restore=passed from={peer} members={len(expected)} signer=verified")
+    from daemon_roundtrip import open_payload
+    kit = root / "local-kit"
+    kit.mkdir()
+    shutil.copyfile(root / "private/recipient.sec", kit / "recovery.sec")
+    open_payload(kit, root / "incoming/backup-v2.pgp", root / "opened")
+    native(root, "restore", peer)
 
 
 def fetch(root, kind, peer):
@@ -90,4 +114,4 @@ def fetch(root, kind, peer):
 
 if __name__ == "__main__":
     action, path, *args = sys.argv[1:]
-    {"setup": setup, "send": send, "receive": receive, "fetch": fetch}[action](Path(path), *args)
+    {"setup": setup, "native": native, "send": send, "receive": receive, "fetch": fetch}[action](Path(path), *args)

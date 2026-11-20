@@ -9,6 +9,78 @@ use std::process::Command;
 #[path = "m11_first_device.rs"]
 mod first_device;
 
+#[test]
+#[ignore = "two hosted OS runners exchange their independently prepared files"]
+fn exchange_native_backup_with_peer_os() {
+    let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_CROSS_ROOT").unwrap());
+    let mode = std::env::var("CRYPTEX_M11_CROSS_ACTION").unwrap();
+    let platform = std::env::var("CRYPTEX_M11_CROSS_PLATFORM").unwrap();
+    assert!(matches!(platform.as_str(), "windows" | "macos"));
+    let note_text = format!("portable M11 note from {platform}");
+    let env = SecureStoreEnvironment::Dev;
+    if mode == "prepare" {
+        let source = tempfile::tempdir().unwrap();
+        let store = FakeSecureStore::new();
+        let (device, _) = PairProfiles::enroll(source.path(), &store);
+        append_memory_note(
+            &store,
+            env,
+            AppendMemoryNoteArgs {
+                runtime_root: source.path(),
+                brain_id: BRAIN,
+                device_id: &device,
+                classification: Classification::Public,
+                text: &note_text,
+                event_id: None,
+                config: &CanonicalWriterConfig::default(),
+            },
+        )
+        .unwrap();
+        let backup = super::super::backup::prepare(source.path(), &store, env, 1).unwrap();
+        fs::write(
+            work.join("public/selection.json"),
+            serde_json::to_vec(&backup.selection).unwrap(),
+        )
+        .unwrap();
+        fs::copy(
+            backup.encryption_input().unwrap().path(),
+            work.join("private/content.zip"),
+        )
+        .unwrap();
+    } else {
+        assert_eq!(mode, "restore");
+        let selection: crate::backup_inventory::RecoverySelection =
+            serde_json::from_slice(&fs::read(work.join("peer-public/selection.json")).unwrap())
+                .unwrap();
+        let anchor = selection.writer().unwrap();
+        let checkpoint = selection.checkpoint(&anchor).unwrap();
+        let archive = crate::backup_inventory::reconstruct_v2(
+            &work.join("opened/content.zip"),
+            &fs::read(work.join("opened/inventory.json")).unwrap(),
+            &checkpoint,
+            &work,
+        )
+        .unwrap();
+        let snapshot =
+            scan_verified_canonical_from_local_anchor_until(archive.path(), BRAIN, &anchor, None)
+                .unwrap();
+        let texts: Vec<_> = snapshot
+            .verified_records()
+            .iter()
+            .filter_map(|record| {
+                if let VersionedRecord::VerifiedV1(note) = record {
+                    let cryptex_events::EventPayload::MemoryNote(payload) = &note.payload;
+                    Some(payload.text.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(texts, ["synthetic original prefix", note_text.as_str()]);
+        println!("m11_cross_inventory=passed source={platform} signed_notes=2");
+    }
+}
+
 fn run_archive(action: &str, paths: &[&Path]) {
     archive_operation(action, paths).unwrap();
 }

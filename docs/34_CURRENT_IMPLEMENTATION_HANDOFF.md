@@ -2,6 +2,8 @@
 
 ## M11 encrypted backup rehearsal
 
+The daemon now prepares a signed inventory from locked canonical history. The isolated Desktop package includes a public-key-only encryptor. Existing outer-signed backups remain readable, and the encrypted Kit can carry the independently selected generation, writer and history checkpoint. Cross-OS exchange uses hosted runners and disposable credentials. The next owner-facing integration is native backup target selection and export. A replacement device with archived and new histories requires both histories to be preserved before it can create another verified backup. [Implementation, verification and open work](../evidence/m11/backup-container.md#private-keys-in-the-installed-backup-path)
+
 The scheduled job survives a process restart while its disk is offline. Retention defaults to keeping every generation. When the designated device has a saved count, it prunes older automatic backups after reconstruction and preserves manual exports. New recovery trials preserve the original Brain identity through replacement-device enrollment and bind it to the signed read approval. The next integration is owner-operated backup and restore in the installed app. [M11 behavior, native runs and remaining gates](../evidence/m11/backup-container.md#current-retention-and-recovery-behavior)
 
 The [container rehearsal](../evidence/m11/backup-container.md) passed on Windows and macOS at `b11b29e`. Both systems restored a signed frame and large blob with the recovery decryption key after loss of the synthetic source profile. The previous complete backup survived an interrupted replacement.

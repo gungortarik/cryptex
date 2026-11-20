@@ -3,12 +3,18 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'services/cryptexd/src/backup_inventory.rs'
+      - 'services/cryptexd/src/knowledge_materialization/backup.rs'
+      - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
       - '.github/workflows/m11-cross-restore.yml'
       - 'tools/m11-cross-platform/**'
       - 'tools/m11-backup-spike/**'
       - 'crates/events/tests/fixtures/m8-old-reader-v1-v3.json'
   pull_request:
     paths:
+      - 'services/cryptexd/src/backup_inventory.rs'
+      - 'services/cryptexd/src/knowledge_materialization/backup.rs'
+      - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
       - '.github/workflows/m11-cross-restore.yml'
       - 'tools/m11-cross-platform/**'
       - 'tools/m11-backup-spike/**'
@@ -21,7 +27,9 @@ permissions:
 jobs:
   exchange:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 22
+    env:
+      CRYPTEX_M8_LOCAL_STARTUP_CERT_DER: ${{ github.workspace }}/services/cryptexd/src/m8_owner_channel/release_inventory/fixtures/signer.der
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -38,11 +46,13 @@ jobs:
           python-version: '3.12'
       - run: npm ci --prefix tools/m11-backup-spike --ignore-scripts
       - run: python -B tools/m11-cross-platform/exchange.py setup "${{ runner.temp }}/exchange"
+      - run: python -B tools/m11-cross-platform/exchange.py native "${{ runner.temp }}/exchange" prepare ${{ matrix.local }}
       - uses: actions/upload-artifact@v4
         with:
           name: m11-public-${{ matrix.local }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/exchange/public/recipient.asc
+            ${{ runner.temp }}/exchange/public/selection.json
             ${{ runner.temp }}/exchange/public/writer.asc
           if-no-files-found: error
           retention-days: 1
@@ -53,7 +63,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: m11-backup-${{ matrix.local }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/exchange/outgoing/backup.pgp
+          path: |
+            ${{ runner.temp }}/exchange/outgoing/backup.pgp
+            ${{ runner.temp }}/exchange/outgoing/backup-v2.pgp
           if-no-files-found: error
           retention-days: 1
       - run: python -B tools/m11-cross-platform/exchange.py fetch "${{ runner.temp }}/exchange" backup ${{ matrix.peer }}
