@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'services/cryptexd/src/backup_scheduler/**'
       - 'services/cryptexd/src/backup_scheduler.rs'
       - 'tools/m11-backup-spike/**'
       - 'apps/desktop/src/**'
@@ -25,6 +26,7 @@ on:
       - '.node-version'
   pull_request:
     paths:
+      - 'services/cryptexd/src/backup_scheduler/**'
       - 'services/cryptexd/src/backup_scheduler.rs'
       - 'tools/m11-backup-spike/**'
       - 'apps/desktop/src/**'
@@ -84,11 +86,13 @@ jobs:
           features=()
           if [[ "$RUNNER_OS" == macOS ]]; then features=(--features m8-local-startup-check); fi
           cargo clippy --locked -p cryptexd --lib --tests "${features[@]}" -- -D warnings
+          cargo test --locked -p cryptexd --lib "${features[@]}" backup_scheduler::journal::tests
           cargo test --locked -p cryptexd --lib "${features[@]}" \
             knowledge_materialization::pairing_recovery_tests::m11_backup_read::next_backup_restores_the_offline_capture_after_reconnection \
             -- --exact --ignored --nocapture | tee "$RUNNER_TEMP/m11-next-backup.txt"
           grep -Fx 'm11_reconnected_backup=passed generations=2 original=preserved offline_capture=restored receipt=matched' "$RUNNER_TEMP/m11-next-backup.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_scheduled_reconnect=passed designated=published peer=skipped offline_capture=restored' "$RUNNER_TEMP/m11-next-backup.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -Fx 'm11_backup_job_restart=passed offline_exit=recovered published_replay=idempotent' "$RUNNER_TEMP/m11-next-backup.txt" >> "$GITHUB_STEP_SUMMARY"
           cargo test --locked -p cryptexd --lib "${features[@]}" \
             knowledge_materialization::pairing_recovery_tests::m11_backup_read::restored_note_and_attachment_pass_guarded_reads \
             -- --exact --ignored --nocapture | tee "$RUNNER_TEMP/m11-daemon-read.txt"

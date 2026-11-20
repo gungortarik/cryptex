@@ -34,16 +34,39 @@ fn archive_operation(action: &str, paths: &[&Path]) -> std::io::Result<()> {
 #[test]
 #[ignore = "requires the M11 Node/Python fixture installed by native CI"]
 fn next_backup_restores_the_offline_capture_after_reconnection() {
+    use crate::backup_scheduler::journal::DeviceJobs;
     use crate::backup_scheduler::{Outcome, PendingBackup};
     use crate::capture::{CaptureOutcome, CaptureRequest, capture_memory_note};
+    use crate::secure_store::FileBackedSecureStore;
     use std::sync::mpsc;
     use std::time::Duration;
 
+    let env = SecureStoreEnvironment::Dev;
+    if let Some(profile) = std::env::var_os("CRYPTEX_M11_JOB_CHILD") {
+        let root = Path::new(&profile);
+        let _instance = crate::instance::try_acquire_instance(root).unwrap();
+        let store = FileBackedSecureStore::open(root.join("qa-credentials")).unwrap();
+        let reader = LocalDeviceKeyResolver::load(root, BRAIN, &store, env).unwrap();
+        let enrolled = reader.local_trust_anchor().unwrap();
+        let jobs = DeviceJobs::new(&store, env, &enrolled);
+        let (_tx, stop) = mpsc::channel();
+        let outcome = jobs
+            .resume(
+                &enrolled,
+                &stop,
+                || {
+                    crate::test_interrupt::abrupt_exit_at_boundary("m11-waiting", root, "pending");
+                },
+                |_| panic!("replay attempted a second publication"),
+            )
+            .unwrap();
+        assert_eq!(outcome, Some(Outcome::Published));
+        return;
+    }
     let work = tempfile::tempdir().unwrap();
     let writer = tempfile::tempdir().unwrap();
     let source = tempfile::tempdir().unwrap();
-    let store = FakeSecureStore::new();
-    let env = SecureStoreEnvironment::Dev;
+    let store = FileBackedSecureStore::open(source.path().join("qa-credentials")).unwrap();
     let (_, signing_key) = PairProfiles::enroll(source.path(), &store);
     drop(signing_key);
     let mut reader = LocalDeviceKeyResolver::load(source.path(), BRAIN, &store, env).unwrap();
@@ -52,9 +75,11 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     let volume = work.path().join("backup-volume");
     fs::create_dir(&volume).unwrap();
     let first = volume.join("first.pgp");
-    let next = volume.join("next.pgp");
+    let next = volume.join("backup-00000000000000000002.pgp");
     run_archive("prepare", &[source.path(), &kit, &first, writer.path()]);
     let first_digest = Sha256::digest(fs::read(&first).unwrap());
+    let jobs = DeviceJobs::new(&store, env, &anchor);
+    jobs.enqueue(&first, first_digest.into(), 2).unwrap();
     let job = PendingBackup {
         designated_writer: &anchor,
         previous_generation: &first,
@@ -100,16 +125,26 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
         fs::File::open(&first).unwrap_err().kind(),
         std::io::ErrorKind::NotFound
     );
+    let launch_saved_job = || {
+        Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "knowledge_materialization::pairing_recovery_tests::m11_backup_read::next_backup_restores_the_offline_capture_after_reconnection", "--ignored", "--nocapture"])
+        .env("CRYPTEX_M11_JOB_CHILD", source.path()).status().unwrap()
+    };
+    assert_eq!(
+        launch_saved_job().code(),
+        Some(crate::test_interrupt::INTERRUPT_EXIT_CODE)
+    );
     let text = "M11 reconnectcapture saved offline";
     let receipt = std::thread::scope(|scope| {
         let (stop, shutdown) = mpsc::channel();
         let (waiting, observed) = mpsc::channel();
         let (result, finished) = mpsc::channel();
-        let publish =
-            || archive_operation("write-generation", &[source.path(), writer.path(), &next]);
+        let publish = |staged: &Path| {
+            archive_operation("write-generation", &[source.path(), writer.path(), staged])
+        };
         let assigned = &anchor;
         scope.spawn(move || {
-            let outcome = job.run(assigned, &shutdown, || waiting.send(()).unwrap(), publish);
+            let outcome = jobs.resume(assigned, &shutdown, || waiting.send(()).unwrap(), publish);
             let _ = result.send(outcome);
         });
         observed.recv_timeout(Duration::from_secs(10)).unwrap();
@@ -128,18 +163,25 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
             panic!("expected committed offline capture");
         };
         assert!(!volume.try_exists().unwrap());
-        assert!(!detached.join("next.pgp").try_exists().unwrap());
+        assert!(
+            !detached
+                .join(next.file_name().unwrap())
+                .try_exists()
+                .unwrap()
+        );
         fs::rename(detached, &volume).unwrap();
         assert_eq!(
             finished
                 .recv_timeout(Duration::from_secs(120))
                 .unwrap()
                 .unwrap(),
-            Outcome::Published
+            Some(Outcome::Published)
         );
         drop(stop);
         receipt
     });
+    assert!(launch_saved_job().success());
+    println!("m11_backup_job_restart=passed offline_exit=recovered published_replay=idempotent");
     assert_eq!(fs::read_dir(&volume).unwrap().count(), 2);
     assert_eq!(Sha256::digest(fs::read(&first).unwrap()), first_digest);
 

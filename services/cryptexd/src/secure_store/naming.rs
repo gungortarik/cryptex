@@ -45,6 +45,10 @@ impl fmt::Display for ServiceLabel {
 pub struct AccountLabel(String);
 
 impl AccountLabel {
+    pub fn backup_job(device_id: &str) -> Self {
+        Self(format!("backup-job:{device_id}"))
+    }
+
     pub fn recovery_search(device_id: &str) -> Self {
         Self(format!("recovered-search:{device_id}"))
     }

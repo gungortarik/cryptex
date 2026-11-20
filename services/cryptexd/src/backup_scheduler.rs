@@ -1,8 +1,9 @@
 //! One pending backup on an explicitly designated device. Currently wired
 //! only to the disposable M11 daemon profile runner.
+pub(crate) mod journal;
 use cryptex_events::LocalTrustAnchor;
 use sha2::{Digest, Sha256};
-use std::fs::File;
+use std::fs::OpenOptions;
 use std::io;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
@@ -21,16 +22,53 @@ pub(crate) enum Outcome {
     Stopped,
 }
 
+fn generation_digest(path: &Path) -> io::Result<[u8; 32]> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let mut file = options.open(path)?;
+    let metadata = file.metadata()?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if metadata.file_attributes()
+            & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT
+            != 0
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "linked backup generation",
+            ));
+        }
+    }
+    if !metadata.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid backup generation",
+        ));
+    }
+    let mut digest = Sha256::new();
+    io::copy(&mut file, &mut digest)?;
+    Ok(digest.finalize().into())
+}
+
 impl PendingBackup<'_> {
     fn target_is_ready(&self) -> io::Result<bool> {
-        let mut file = match File::open(self.previous_generation) {
-            Ok(file) => file,
+        let digest = match generation_digest(self.previous_generation) {
+            Ok(digest) => digest,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
             Err(error) => return Err(error),
         };
-        let mut digest = Sha256::new();
-        io::copy(&mut file, &mut digest)?;
-        if <[u8; 32]>::from(digest.finalize()) != self.previous_sha256 {
+        if digest != self.previous_sha256 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "previous backup differs from the selected generation",

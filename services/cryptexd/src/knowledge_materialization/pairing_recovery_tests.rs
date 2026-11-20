@@ -41,7 +41,10 @@ impl PairProfiles {
         }
     }
 
-    fn enroll(root: &Path, store: &FakeSecureStore) -> (DeviceId, SigningKey) {
+    fn enroll(
+        root: &Path,
+        store: &impl crate::secure_store::SecureStore,
+    ) -> (DeviceId, SigningKey) {
         crate::identity_runtime::write_brain_identity(
             root,
             &BrainIdentity::new(BRAIN, "2026-01-01T00:00:00Z").unwrap(),
