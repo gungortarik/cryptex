@@ -8,7 +8,9 @@ At `75916b0` both native jobs also verified the backup writer signature, reconst
 
 At `5505f24` the Windows and macOS rehearsals dropped both original devices before decrypting the backup. An independently pinned offline Kit key authorized a replacement device for that restore. The replacement signed a fresh note and read the historical note and attachment in a separate sandbox. [First-device rehearsal](../evidence/m11/backup-container.md#first-replacement-device-after-loss-of-both-source-devices)
 
-At `328e067` fresh native test processes on both platforms returned the archived note and the replacement's note from one guarded text search. Damaging either history or the receipt held the whole query. A shorter valid archive also failed against the selected recovery checkpoint after rebuilding SQLite. Next, connect this bounded read path to the Desktop search request for a disposable recovered profile. Real profiles keep their existing write gates. [Restarted search evidence](../evidence/m11/backup-container.md#searching-both-histories-after-restart)
+At `328e067` fresh native test processes on both platforms returned the archived note and the replacement's note from one guarded text search. Damaging either history or the receipt held the whole query. A shorter valid archive also failed against the selected recovery checkpoint after rebuilding SQLite. Real profiles keep their existing write gates. [Restarted search evidence](../evidence/m11/backup-container.md#searching-both-histories-after-restart)
+
+At `ec403c0` the compiled Desktop Search form returned the archived and replacement notes from the same query after reopening the temporary recovered profile. A damaged recovery receipt cleared the visible results. Windows and macOS passed using a native client and child daemon. The two-history binding is test-only. [Desktop search evidence](../evidence/m11/backup-container.md#desktop-search-after-reopening-a-recovered-profile)
 
 ## M10 complete on November 20, 2026
 

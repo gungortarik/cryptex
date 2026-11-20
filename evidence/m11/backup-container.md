@@ -50,3 +50,13 @@ The reader holds the two canonical retrieval guards while building a temporary S
 Separate child processes exercise a damaged receipt, a modified signature in each history with populated indexes, and an archive shortened by one otherwise valid signed record. The shortened archive can rebuild its own projection but fails the grant checkpoint. Restoring the original pack and rebuilding the index permits the same search again. This is a daemon test entry point. Desktop IPC, production credential persistence, and performance on large archives need separate verification.
 
 Both hosted platforms passed Clippy and the complete M11 rehearsal at `328e067`. [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/44796685105)
+
+## Desktop Search after reopening a recovered profile
+
+The disposable recovery host at `ec403c0` binds the admitted replacement profile to the guarded reader for both histories. The Desktop form sends only the bounded search query. The ordinary native `content.search` dispatcher checks the local peer, capability, admission, identity and credential before calling the recovery reader. The request deadline also applies to both canonical checks and the combined FTS search.
+
+Playwright clicks **Search** in the built Desktop interface and checks both signed event IDs in the native reply and both note bodies on screen. It closes the browser, native client and child daemon, opens fresh processes on the same files, and repeats the query. The operating system identifies the connecting client as the daemon’s parent. With the successful results visible, the test damages the disposable recovery receipt signature and clicks **Search** again. The host withholds all hits and the interface clears both notes.
+
+The browser supplies a test Tauri invoke bridge to the native search client, which communicates over the platform IPC transport. This covers the compiled renderer and daemon search path. Installed application launch and production recovery enrollment remain separate. The recovery reader binding is available only in a test build.
+
+Windows and macOS passed the Desktop restart check, invalid-signature check, native Clippy and earlier M11 recovery cases at `ec403c0`. [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/44800505466)
