@@ -289,9 +289,13 @@ impl DeviceRole<'_> {
         }
     }
 
-    /// The native owner selects a new child directory. Existing directories,
-    /// including disconnected old targets remounted at the same path, cannot be adopted.
-    pub fn create(&self, profile: &Path, parent: &Path, name: &str) -> Result<Assignment, Error> {
+    /// An owner selects the parent. Separate offline replicas must not create
+    /// the same destination name even if neither can see the other's directory.
+    pub fn create(
+        &self,
+        profile: &Path,
+        parent: &Path,
+    ) -> Result<(std::path::PathBuf, Assignment), Error> {
         let brain = crate::identity_runtime::load_brain_identity(profile)
             .map_err(|_| Error::History)?
             .brain_id;
@@ -308,10 +312,17 @@ impl DeviceRole<'_> {
             grants: Vec::new(),
         };
         let id = initial.id()?;
-        let path = parent.join(name);
+        let name = format!(
+            "cryptex-backup-{:x}",
+            sha2::digest::Output::<Sha256>::from(id)
+        );
+        let path = parent.join(&name);
         let parent = Directory::open(parent).map_err(|_| Error::Target)?;
+        if parent.exists(MARKER).map_err(|_| Error::Target)? {
+            return Err(Error::Target);
+        }
         let dir = parent
-            .create_child_exclusive(name)
+            .create_child_exclusive(&name)
             .map_err(|_| Error::Target)?;
         let mut file = dir.open_file(MARKER, true).map_err(|_| Error::Target)?;
         file.write_all(&id)
@@ -323,7 +334,7 @@ impl DeviceRole<'_> {
         self.remember(id, id, &initial.origin)?;
         self.save(id, &LocalRole::Active(id))?;
         self.bind(&path, id)?;
-        Ok(initial)
+        Ok((path, initial))
     }
 
     /// Called while the scheduler holds this target's writer lock, including

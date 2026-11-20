@@ -345,8 +345,8 @@ mod tests {
             env: SecureStoreEnvironment::Dev,
             local: &owner,
         };
-        role.create(&profile, root.path(), "target").unwrap();
-        let prior = root.path().join("target/first.pgp");
+        let (first_target, _) = role.create(&profile, root.path()).unwrap();
+        let prior = first_target.join("first.pgp");
         fs::write(&prior, b"prior fixture").unwrap();
         let queue = DeviceJobs::new(&store, SecureStoreEnvironment::Dev, &owner);
         let (_keep, stop) = mpsc::channel();
@@ -360,8 +360,8 @@ mod tests {
         };
         let original = generation_digest(&prior).unwrap();
         queue.enqueue(&prior, original, 2).unwrap();
-        role.create(&profile, root.path(), "another").unwrap();
-        let elsewhere = root.path().join("another/first.pgp");
+        let (second_target, _) = role.create(&profile, root.path()).unwrap();
+        let elsewhere = second_target.join("first.pgp");
         assert_eq!(
             queue.enqueue(&elsewhere, original, 2).unwrap_err().kind(),
             io::ErrorKind::AlreadyExists

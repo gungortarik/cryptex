@@ -14,6 +14,11 @@ test exercises publication by the successor, rejection of a modified signature,
 denial of pruning by the former writer, and rejection of a stale queued job
 after an authorized return transfer.
 
+The daemon creates a uniquely named target under the owner's selected folder.
+The offline fallback test detaches the first target, writes a generation on the
+second, and checks the first target's bytes when it returns. Distinct directory
+names also keep independently created targets separate in a synchronized folder.
+
 Both native installations encrypted a manual export onto the selected test
 volume and reconstructed it after loss of the synthetic source profiles.
 They also exercised the signed writer handoff and denial of an obsolete

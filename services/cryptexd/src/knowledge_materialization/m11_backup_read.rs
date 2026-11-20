@@ -142,16 +142,8 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         env,
         local: &b,
     };
-    assert!(
-        first
-            .create(&pair.profiles[1], work.path(), "wrong-owner")
-            .is_err()
-    );
-    assert!(!work.path().join("wrong-owner").exists());
-    first
-        .create(&pair.profiles[0], work.path(), "original")
-        .unwrap();
-    let target = work.path().join("original");
+    assert!(first.create(&pair.profiles[1], work.path()).is_err());
+    let (target, _) = first.create(&pair.profiles[0], work.path()).unwrap();
     let original = first.reopen(&target).unwrap();
     let prior = target.join("backup-00000000000000000001.pgp");
     fs::write(&prior, b"prior synthetic backup").unwrap();
@@ -166,22 +158,44 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         target: &target,
     };
     catalog.set_retention(&a, NonZeroUsize::new(1)).unwrap();
-    assert!(
-        second
-            .create(&pair.profiles[1], work.path(), "original")
-            .is_err()
-    );
+    assert!(second.create(&pair.profiles[1], &target).is_err());
     assert!(
         second
             .accept(&pair.profiles[1], &target, &original)
             .is_err()
     );
-    let independent = second
-        .create(&pair.profiles[1], work.path(), "replacement-target")
-        .unwrap();
-    let replacement = work.path().join("replacement-target");
+    let detached = work.path().join("detached-original");
+    fs::rename(&target, &detached).unwrap();
+    let (replacement, independent) = second.create(&pair.profiles[1], work.path()).unwrap();
+    assert_ne!(target.file_name(), replacement.file_name());
     let separate_head = second.assigned_head(&replacement).unwrap();
     assert_ne!(first.assigned_head(&target).unwrap(), separate_head);
+    let separate_prior = replacement.join("backup-00000000000000000001.pgp");
+    fs::write(&separate_prior, b"independent target").unwrap();
+    let successor_jobs = DeviceJobs::new(&pair.store, env, &b);
+    successor_jobs
+        .enqueue(
+            &separate_prior,
+            Sha256::digest(b"independent target").into(),
+            2,
+        )
+        .unwrap();
+    let (_keep, stop) = std::sync::mpsc::channel();
+    assert_eq!(
+        successor_jobs
+            .resume(
+                &b,
+                &stop,
+                || {},
+                |out| fs::write(out, b"new target generation")
+            )
+            .unwrap(),
+        Some(crate::backup_scheduler::Outcome::Published)
+    );
+    assert!(first.assigned_head(&replacement).is_err());
+    fs::rename(&detached, &target).unwrap();
+    assert_eq!(fs::read(&prior).unwrap(), b"prior synthetic backup");
+    assert!(!target.join("backup-00000000000000000002.pgp").exists());
     let request = second
         .request(&pair.profiles[1], &target, &original)
         .unwrap();
@@ -196,7 +210,6 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         local: &a,
     };
     assert!(old.assigned_head(&target).is_err());
-    let (_keep, stop) = std::sync::mpsc::channel();
     assert!(
         DeviceJobs::new(&reopened, env, &a)
             .resume(&a, &stop, || {}, |_| panic!("former writer published"))
@@ -237,12 +250,11 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
     second.accept(&pair.profiles[1], &target, &granted).unwrap();
     second.accept(&pair.profiles[1], &target, &retry).unwrap();
     assert_ne!(second.assigned_head(&target).unwrap(), separate_head);
-    let transferred = DeviceJobs::new(&pair.store, env, &b);
-    transferred
+    successor_jobs
         .enqueue(&prior, Sha256::digest(fs::read(&prior).unwrap()).into(), 2)
         .unwrap();
     assert_eq!(
-        transferred
+        successor_jobs
             .resume(&b, &stop, || {}, |out| fs::write(out, b"new writer"))
             .unwrap(),
         Some(crate::backup_scheduler::Outcome::Published)
@@ -416,14 +428,13 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     let mut reader = LocalDeviceKeyResolver::load(source.path(), BRAIN, &store, env).unwrap();
     let anchor = reader.local_trust_anchor().unwrap();
     let kit = work.path().join("recovery-kit");
-    let volume = work.path().join("backup-volume");
     let receipt_store = FileBackedSecureStore::open(work.path().join("restore-receipts")).unwrap();
-    super::super::backup::role::DeviceRole {
+    let (volume, _) = super::super::backup::role::DeviceRole {
         store: &receipt_store,
         env,
         local: &anchor,
     }
-    .create(source.path(), work.path(), "backup-volume")
+    .create(source.path(), work.path())
     .unwrap();
     let first = volume.join("backup-00000000000000000001.pgp");
     let next = volume.join("backup-00000000000000000002.pgp");
