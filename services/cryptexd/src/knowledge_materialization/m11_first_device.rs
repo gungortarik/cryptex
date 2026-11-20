@@ -88,11 +88,10 @@ pub(super) fn rehearse(
     let store =
         crate::secure_store::FileBackedSecureStore::open(work.join("test-credentials")).unwrap();
     let env = SecureStoreEnvironment::Dev;
-    crate::identity_runtime::write_brain_identity(
-        &new_root,
-        &BrainIdentity::new(BRAIN, "2026-01-01T00:00:00Z").unwrap(),
-    )
-    .unwrap();
+    let identity =
+        crate::identity_runtime::load_brain_identity(&new_root.join("recovery/archive")).unwrap();
+    assert_eq!(identity.brain_id, BRAIN);
+    crate::identity_runtime::write_brain_identity(&new_root, &identity).unwrap();
     let target = crate::local_device_identity::enroll_local_device(&new_root, &store, env).unwrap();
     let device = DeviceId::new(target.device_id).unwrap();
     let local = LocalDeviceKeyResolver::load(&new_root, BRAIN, &store, env).unwrap();

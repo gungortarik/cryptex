@@ -201,7 +201,13 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     let mut restore_hits = |file: &Path, name: &str| {
         let sandbox = work.path().join(name);
         run_archive("recover", &[&kit, &sandbox, file]);
-        assert_eq!(fs::read_dir(&sandbox).unwrap().count(), 1);
+        assert_eq!(fs::read_dir(&sandbox).unwrap().count(), 2);
+        assert_eq!(
+            crate::identity_runtime::load_brain_identity(&sandbox)
+                .unwrap()
+                .brain_id,
+            BRAIN
+        );
         let (mut db, _) = crate::projection::open_projection_db(&sandbox).unwrap();
         rebuild_knowledge_from_local_approval_history(&sandbox, BRAIN, &anchor, &mut db).unwrap();
         search_events_with_retrieval_safety(&sandbox, BRAIN, &[], &mut reader, &db, &query).unwrap()
@@ -379,6 +385,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     let volume = work.path().join("backup-volume");
     fs::create_dir(&volume).unwrap();
     let backup = volume.join("backup.pgp");
+    let original_identity = fs::read(crate::identity_runtime::brain_identity_path(source)).unwrap();
     run_archive("prepare", &[source, &kit, &backup]);
     drop((snapshot, instance));
     let old_profiles = profiles.profiles.clone();
@@ -405,7 +412,13 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         history_digest,
     );
     let anchor = keys.local_trust_anchor().unwrap();
-    assert_eq!(fs::read_dir(&restored).unwrap().count(), 1);
+    assert_eq!(fs::read_dir(&restored).unwrap().count(), 2);
+    for root in [&restored, &work.path().join("replacement")] {
+        assert_eq!(
+            fs::read(crate::identity_runtime::brain_identity_path(root)).unwrap(),
+            original_identity
+        );
+    }
     let (mut db, _) = crate::projection::open_projection_db(&restored).unwrap();
     rebuild_knowledge_from_local_approval_history(&restored, BRAIN, &anchor, &mut db).unwrap();
     let detail = event_detail_with_retrieval_safety_deadline(

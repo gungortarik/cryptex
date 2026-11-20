@@ -1,6 +1,7 @@
 """Round-trip only the synthetic daemon test's canonical files into private staging."""
 
 from pathlib import Path
+import hashlib
 import re
 import shutil
 import subprocess
@@ -14,6 +15,19 @@ from restore_publication import publish_exclusive
 
 MEMBER = re.compile(r"canonical/(?:events/(?:[0-9a-f]{2}){1,128}/[0-9]{20}\.(?:seg|open)|blobs/[0-9a-f]{64})")
 DEVICE_RUNTIME = re.compile(r"canonical/events/[0-9a-f]+/(?:writer_tip\.json|writer\.lock|[0-9]{20}\.open\.lock)")
+BRAIN_IDENTITY = "identity/brain_identity.json"
+
+
+def brain_identity_bytes(source):
+    path = source / BRAIN_IDENTITY
+    if (path.parent.is_symlink() or path.parent.is_junction() or path.is_symlink()
+            or not path.is_file()):
+        raise ValueError("Invalid Brain identity file")
+    with path.open("rb") as identity:
+        data = identity.read(4097)
+    if not 0 < len(data) <= 4096:
+        raise ValueError("Invalid Brain identity size")
+    return data
 
 
 def envelope(command, keys, source, output):
@@ -21,15 +35,21 @@ def envelope(command, keys, source, output):
         subprocess.run(NODE + [command, *keys], stdin=inp, stdout=out, check=True, timeout=90)
 
 
-def unpack(bundle, destination):
+def unpack(bundle, destination, expected_identity_digest):
     with zipfile.ZipFile(bundle) as archive:
         members = archive.infolist()
         if (not 0 < len(members) <= 100 or len(set(archive.namelist())) != len(members)
                 or sum(item.file_size for item in members) > 32 * MIB):
             raise ValueError("Invalid fixture inventory")
         for item in members:
-            if not MEMBER.fullmatch(item.filename) or item.compress_type != zipfile.ZIP_STORED:
+            if ((item.filename != BRAIN_IDENTITY and not MEMBER.fullmatch(item.filename))
+                    or item.compress_type != zipfile.ZIP_STORED):
                 raise ValueError("Unexpected canonical member")
+        if BRAIN_IDENTITY not in archive.namelist():
+            raise ValueError("Missing canonical Brain identity")
+        if (archive.getinfo(BRAIN_IDENTITY).file_size > 4096
+                or hashlib.sha256(archive.read(BRAIN_IDENTITY)).digest() != expected_identity_digest):
+            raise ValueError("Brain identity differs from Recovery Kit")
         with tempfile.TemporaryDirectory(dir=destination.parent, prefix=".m11-restore-") as temp:
             tree = Path(temp) / "tree"
             for item in members:
@@ -44,6 +64,7 @@ def write_generation(source, writer, backup, unsigned=None):
     with tempfile.TemporaryDirectory(prefix="cryptex-m11-pack-") as temp:
         plain = Path(temp) / "source.zip"
         with zipfile.ZipFile(plain, "x") as archive:
+            archive.writestr(BRAIN_IDENTITY, brain_identity_bytes(source))
             for path in sorted((source / "canonical").rglob("*")):
                 name = path.relative_to(source).as_posix()
                 if path.is_symlink():
@@ -71,6 +92,8 @@ def prepare(source, kit, backup, writer=None):
                                 (kit / "writer.pub", writer / "writer.sec")):
             subprocess.run(NODE + ["keygen", public, private], check=True, timeout=30)
         shutil.copyfile(writer / "recovery.pub", kit / "recovery.pub")
+        with (kit / "brain-identity.sha256").open("xb") as checkpoint:
+            checkpoint.write(hashlib.sha256(brain_identity_bytes(source)).digest())
         write_generation(source, writer, backup, unsigned=kit / "unsigned.pgp")
 
 
@@ -88,7 +111,7 @@ def recover(kit, destination, backup):
             raise AssertionError("Accepted unauthorized backup")
         decoded = work / "verified.zip"
         envelope("decrypt-verify", [recovery, signer], backup, decoded)
-        unpack(decoded, destination)
+        unpack(decoded, destination, (kit / "brain-identity.sha256").read_bytes())
 
 
 if __name__ == "__main__":
