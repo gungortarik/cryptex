@@ -266,13 +266,27 @@ notes in a fresh process. [Desktop and daemon checks](https://github.com/gungort
 
 The M10 contract has evidence above for signed transitions, delayed peer
 reconciliation, purge bridges, restoration from stale snapshots, reachable
-backup cleanup and shared attachments. The next product gap is an owner-facing
-Forget and Restore flow in a disposable Desktop profile. Today the test
-harness authors those transitions. Restore needs a way to select the
-forgotten note while ordinary retrieval continues to hide it. At candidate
+backup cleanup and shared attachments. At candidate
 review, check AI retrieval and authorization boundaries, recovery and visual
 behavior, run required full CI, and obtain human review of the candidate diff.
 Real-profile writing remains disabled.
+
+### Desktop Forget and Restore in a disposable profile
+
+At `12c48e6`, Timeline offers **Forget note** in a local note's detail.
+**Forgotten notes** opens a paged picker with previews, timestamps and an
+individual **Restore note** action. The test daemon binds each selection to
+the original event and the latest signed transition for that note. It checks
+the local author's authority and current state under the canonical locks.
+Ordinary daemons reject the operation and do not expose the picker.
+
+The browser trial searches for a term shared by the target and a control
+note. Only the control matches after Forget, and direct detail returns no
+target. After a page reload the owner restores the selected note. Both notes
+match the same search, the picker is empty, and replaying the earlier Forget
+selection is rejected. The reopened profile contains the two original notes
+and exactly two authenticated transitions. [Desktop tests](https://github.com/gungortarik/cryptex/actions/runs/44673608423)
+and [lifecycle and owner-authorization checks](https://github.com/gungortarik/cryptex/actions/runs/44673458774).
 
 ## M9 complete on November 19, 2026
 
