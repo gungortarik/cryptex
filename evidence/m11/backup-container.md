@@ -86,3 +86,11 @@ At `f3b4f8f` the guarded restore rehearsal extracts the verified envelope's inve
 The regression suite checks an absent destination after a late checksum failure, a successful retry with both original payloads, preservation of existing empty and populated directories, and a single intact winner when two restores compete. These checks cover reported I/O failures and atomic visibility in disposable profiles. Power-loss durability and cleanup of scratch files left by a killed process are outside this evidence.
 
 Both native jobs at `f3b4f8f` passed the three publication tests, guarded daemon reads and installed Desktop searches across two launches. [Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44809862842)
+
+## Local capture and search while the backup target is offline
+
+The rehearsal at `ac40e86` puts the signed, encrypted backup in its own filesystem directory. After decrypting the archive and recording its SHA-256, the test moves that directory outside the temporary profile workspace. Opening the original backup path must return `NotFound`. The Recovery Kit and device credential store are separate from the simulated removable disk.
+
+With the target absent, the replacement device uses the daemon’s normal capture handler to save a Public note. Its commit receipt must match the event returned by the guarded local reader. A fresh process searches for the replacement and historical notes and checks their event IDs. The installed Desktop also displays both notes on two launches with fresh daemon processes. Before reconnecting the target the test checks that the directory is still absent. After reconnection it compares the backup with the original SHA-256.
+
+The disk disconnect is simulated at the filesystem boundary on disposable native profiles. Both Windows and macOS passed the capture, reopened search and reattachment checks, including the installed Desktop run. [Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44811868294)
