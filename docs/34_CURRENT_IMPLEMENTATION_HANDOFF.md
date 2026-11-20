@@ -163,8 +163,25 @@ rebuild their projections, exclude the target from search and direct detail,
 and preserve the identities and hashes of the two other notes.
 [Native paired CI](https://github.com/gungortarik/cryptex/actions/runs/44658238961)
 
-Real profiles keep M10 writes disabled. Physical cleanup of replica storage,
-attached notes, backups and M10 acceptance remain open.
+### Physical cleanup on a reconnected disposable replica
+
+At `ee2b6ba`, the receiver validates the author's approval and the exact
+content-free bridge against its original note and signed pairing. Under the
+canonical writer locks it installs the signed replacement pack atomically.
+Reconciliation rebuilds and compacts SQLite, checkpoints the WAL and checks
+the sealed transport copy against every authenticated canonical frame before
+removing it. A repeated delivery or restart retries pending cleanup.
+
+The native trial preserves an exchange file containing unexpected trailing
+bytes, reopens the receiver and completes cleanup after the original transport
+copy returns. At `18548c3` the trial also scans the closed receiver immediately
+after cleanup, before another delivery or explicit rebuild. It rejects subsequent replay. After reopening and rebuilding
+both profiles, both surviving notes retain their IDs and hashes. A byte scan of
+every regular file in each closed temporary profile finds zero copies of the
+synthetic target text. [Windows and macOS native trial](https://github.com/gungortarik/cryptex/actions/runs/44661505049)
+
+Real profiles keep M10 writes disabled. Attached notes, version history,
+backups and M10 acceptance remain open.
 
 ## M9 complete on November 19, 2026
 
