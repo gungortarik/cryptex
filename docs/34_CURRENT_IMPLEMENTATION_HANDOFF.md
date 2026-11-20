@@ -20,6 +20,8 @@ At `f3b4f8f` Windows and macOS restored both synthetic event packs after a late 
 
 The M11 rehearsal at `ac40e86` disconnects the encrypted backup target before saving a local note. It checks the capture receipt, searches both histories after restart and compares the backup digest on reconnection. [Offline target evidence](../evidence/m11/backup-container.md#local-capture-and-search-while-the-backup-target-is-offline)
 
+The two-generation rehearsal at `fa614a3` invokes the backup writer after the filesystem target returns. It removes the temporary source profile and restores both generations separately to verify the offline note against its capture receipt. [Reconnected backup evidence](../evidence/m11/backup-container.md#restoring-the-next-backup-after-reconnection)
+
 ## M10 complete on November 20, 2026
 
 The owner reviewed and accepted candidate `9de456f` subject to successful CI and technical review. Windows and macOS passed all nine required jobs across four workflows. The closeout regression reproduced and corrected physical deletion failing after an unrelated note was forgotten. After reopening a disposable profile, the corrected candidate also preserved the forgotten note and removed a previously restored note. The [M10 review and CI evidence](../evidence/m10/forget-purge-closeout-review.md) records authorization, recovery, Desktop review and the limits of physical cleanup.

@@ -94,3 +94,11 @@ The rehearsal at `ac40e86` puts the signed, encrypted backup in its own filesyst
 With the target absent, the replacement device uses the daemon’s normal capture handler to save a Public note. Its commit receipt must match the event returned by the guarded local reader. A fresh process searches for the replacement and historical notes and checks their event IDs. The installed Desktop also displays both notes on two launches with fresh daemon processes. Before reconnecting the target the test checks that the directory is still absent. After reconnection it compares the backup with the original SHA-256.
 
 The disk disconnect is simulated at the filesystem boundary on disposable native profiles. Both Windows and macOS passed the capture, reopened search and reattachment checks, including the installed Desktop run. [Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44811868294)
+
+## Restoring the next backup after reconnection
+
+The two-generation rehearsal at `fa614a3` starts with an enrolled temporary profile containing one note. It publishes a signed, encrypted backup, moves the target directory away and checks that opening the backup returns `NotFound`. A normal daemon capture must commit a second note while the target is absent. After the target returns, the test invokes the backup writer again with the original recipient and signer and checks the first backup's SHA-256.
+
+Before either restore, the test drops the source device's credential store and removes the source profile and backup signing key. It decrypts and verifies each generation with the same Recovery Kit in a separate empty sandbox. Cryptex rebuilds each search index from authenticated events. The first search must return just the original note. The second must return that same result and the offline note with its original text, committed event ID, device ID and content hash.
+
+Windows and macOS both passed the two-generation case and the existing M11 restore and installed Desktop checks. The rehearsal invokes the next backup directly after simulating reconnection. [Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44813997532)
