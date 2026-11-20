@@ -2,7 +2,9 @@
 
 ## M11 encrypted backup rehearsal
 
-The [container rehearsal](../evidence/m11/backup-container.md) passed on Windows and macOS at `b11b29e`. After loss of the synthetic source profile, both systems restored its signed frame and large blob with the recovery decryption key. The previous complete backup survived an interrupted replacement. The next M11 step is daemon verification of the recovered event history, blob references and backup inventory in a disposable profile. Real profiles keep their existing write gates.
+The [container rehearsal](../evidence/m11/backup-container.md) passed on Windows and macOS at `b11b29e`. Both systems restored a signed frame and large blob with the recovery decryption key after loss of the synthetic source profile. The previous complete backup survived an interrupted replacement.
+
+At `75916b0` both native jobs also verified the backup writer signature, reconstructed the paired devices' history in disposable storage, rebuilt SQLite and opened the recovered note and its attachment through guarded daemon reads. An invalid note signature blocked access even with the populated index. The trial retained an independently trusted device anchor. The next M11 step is Recovery Kit authorization of the first new trusted device after loss of the original devices. Real profiles keep their existing write gates. [Guarded restore evidence](../evidence/m11/backup-container.md#guarded-reads-after-restore)
 
 ## M10 complete on November 20, 2026
 
