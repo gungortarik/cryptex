@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 const SERVER: &str = "ipc::attachment_flow::isolated_server";
 const TEST_BYTES: &[u8] = &[0, 255, 13, 10, 65, 128];
 
-fn fixture_name(token: &str) -> interprocess::local_socket::Name<'static> {
+pub(super) fn fixture_name(token: &str) -> interprocess::local_socket::Name<'static> {
     cryptex_core::validate::parse_uuid_str(token).unwrap();
     #[cfg(windows)]
     {

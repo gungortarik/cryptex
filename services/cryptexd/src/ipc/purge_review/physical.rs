@@ -111,6 +111,8 @@ pub(crate) fn confirm_fixture(
         #[cfg(target_os = "macos")]
         transport_identity: None,
         isolated_attachment_writer: false,
+        #[cfg(test)]
+        recovered_search: None,
         purge_reviews: Some(Arc::default()),
         transport_device_id_override: None,
     };

@@ -4,6 +4,11 @@ on:
   push:
     paths:
       - 'tools/m11-backup-spike/**'
+      - 'apps/desktop/src/**'
+      - 'apps/desktop/src-tauri/src/main.rs'
+      - 'apps/desktop/scripts/recovered-search.test.mjs'
+      - 'services/cryptexd/src/ipc.rs'
+      - 'services/cryptexd/src/ipc/recovered_desktop.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_first_device.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_restarted_search.rs'
@@ -14,6 +19,11 @@ on:
   pull_request:
     paths:
       - 'tools/m11-backup-spike/**'
+      - 'apps/desktop/src/**'
+      - 'apps/desktop/src-tauri/src/main.rs'
+      - 'apps/desktop/scripts/recovered-search.test.mjs'
+      - 'services/cryptexd/src/ipc.rs'
+      - 'services/cryptexd/src/ipc/recovered_desktop.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_first_device.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_restarted_search.rs'
@@ -34,6 +44,10 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+          run_install: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
@@ -41,10 +55,13 @@ jobs:
         with:
           python-version: '3.12'
       - run: npm ci --prefix tools/m11-backup-spike --ignore-scripts
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cryptex/desktop build
       - run: python -B tools/m11-backup-spike/rehearse.py
       - name: Verify recovered notes and attachments through guarded daemon reads
         shell: bash
         env:
+          CRYPTEX_M11_DESKTOP_BROWSER: "1"
           CRYPTEX_M8_LOCAL_STARTUP_CERT_DER: ${{ github.workspace }}/services/cryptexd/src/m8_owner_channel/release_inventory/fixtures/signer.der
         run: |
           set -euo pipefail
@@ -57,3 +74,4 @@ jobs:
           grep '^m11_guarded_restore=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_first_device=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_restarted_search=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep '^m11_desktop_search=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"

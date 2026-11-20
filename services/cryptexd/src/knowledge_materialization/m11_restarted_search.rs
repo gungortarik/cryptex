@@ -50,12 +50,15 @@ enum SearchHold {
     Replacement,
     Overlap,
     Projection,
+    Deadline,
+    InvalidQuery,
 }
 
 fn search(
     work: &Path,
     ceremony: &Ceremony,
     query: &SearchQuery,
+    deadline: Option<std::time::Instant>,
 ) -> Result<Vec<SearchHit>, SearchHold> {
     let old = work.join("rehearsal");
     let new = work.join("replacement");
@@ -74,7 +77,7 @@ fn search(
         &[],
         &mut archived,
         &old_db,
-        None,
+        deadline,
         NoteLifecycleRead::Apply,
     );
     let old_snapshot = old_guard.snapshot.as_ref().ok_or(SearchHold::Archive)?;
@@ -87,7 +90,7 @@ fn search(
         &[],
         &mut local,
         &new_db,
-        None,
+        deadline,
         NoteLifecycleRead::Apply,
     );
     let new_snapshot = new_guard.snapshot.as_ref().ok_or(SearchHold::Replacement)?;
@@ -123,6 +126,9 @@ fn search(
     let union = ProjectionDb::open_in_memory().map_err(|_| SearchHold::Projection)?;
     for snapshot in [old_snapshot, new_snapshot] {
         for record in snapshot.verified_records() {
+            if deadline.is_some_and(|until| std::time::Instant::now() >= until) {
+                return Err(SearchHold::Deadline);
+            }
             if let VersionedRecord::VerifiedV1(note) = record
                 && !snapshot.forgotten.contains(&note.event_id)
             {
@@ -135,8 +141,17 @@ fn search(
         brain_id: Some(BRAIN.into()),
         ..query.clone()
     };
-    cryptex_projection::search::search_events(union.connection(), &scoped)
-        .map_err(|_| SearchHold::Projection)
+    cryptex_projection::search::search_visible_events(
+        union.connection(),
+        &scoped,
+        &BTreeSet::new(),
+        deadline,
+    )
+    .map_err(|e| match e {
+        ProjectionError::OperationDeadlineExceeded => SearchHold::Deadline,
+        ProjectionError::InvalidQuery { .. } => SearchHold::InvalidQuery,
+        _ => SearchHold::Projection,
+    })
 }
 
 pub(in super::super) fn child(work: &Path) {
@@ -153,13 +168,38 @@ pub(in super::super) fn child(work: &Path) {
         ..SearchQuery::default()
     };
     let case = std::env::var("CRYPTEX_M11_REOPEN_CASE").unwrap();
+    if case == "desktop" {
+        let root = work.join("replacement");
+        let store = FileBackedSecureStore::open(work.join("test-credentials")).unwrap();
+        let work = work.to_owned();
+        crate::ipc::recovered_desktop::run(
+            &root,
+            std::sync::Arc::new(store),
+            std::sync::Arc::new(move |query, deadline| {
+                search(&work, &ceremony, query, deadline).map_err(|reason| match reason {
+                    SearchHold::Deadline => GuardedSearchError::BrainWideHold(
+                        RetrievalSafetyHold::OperationDeadlineExceeded,
+                    ),
+                    SearchHold::InvalidQuery => {
+                        GuardedSearchError::Query(ProjectionError::InvalidQuery {
+                            detail: "invalid search query".into(),
+                        })
+                    }
+                    _ => GuardedSearchError::BrainWideHold(
+                        RetrievalSafetyHold::CanonicalVerificationUnavailable,
+                    ),
+                })
+            }),
+        );
+        return;
+    }
     if matches!(case.as_str(), "checkpoint-held" | "rebuilt-ready") {
         let root = work.join("rehearsal");
         let key = ceremony.reopen().unwrap().local_trust_anchor().unwrap();
         let (mut db, _) = crate::projection::open_projection_db(&root).unwrap();
         rebuild_knowledge_from_local_approval_history(&root, BRAIN, &key, &mut db).unwrap();
     }
-    let result = search(work, &ceremony, &query);
+    let result = search(work, &ceremony, &query, None);
     match case.as_str() {
         "ready" | "rebuilt-ready" => {
             let hits = result.unwrap();
@@ -180,7 +220,8 @@ pub(in super::super) fn child(work: &Path) {
                     &SearchQuery {
                         limit: Some(1),
                         ..query
-                    }
+                    },
+                    None
                 )
                 .unwrap(),
                 hits[..1]
@@ -218,6 +259,24 @@ pub(in super::super) fn check(work: &Path, old_id: &str, case: &str) {
     launch(work, old_id, case);
     if case != "ready" {
         return;
+    }
+    if std::env::var_os("CRYPTEX_M11_DESKTOP_BROWSER").is_some() {
+        let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/scripts/recovered-search.test.mjs");
+        assert!(
+            Command::new("node")
+                .arg(script)
+                .arg(std::env::current_exe().unwrap())
+                .env("CRYPTEX_M11_REOPEN_FIXTURE", work)
+                .env("CRYPTEX_M11_REOPEN_CASE", "desktop")
+                .env("CRYPTEX_M11_ARCHIVE_NOTE", old_id)
+                .status()
+                .unwrap()
+                .success()
+        );
+        println!(
+            "m11_desktop_search=passed reopened=true archived=true replacement=true invalid_receipt=held"
+        );
     }
     let receipt = work.join("first-device.json");
     let original = fs::read(&receipt).unwrap();
