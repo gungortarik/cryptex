@@ -34,7 +34,8 @@ fn isolated_server() {
     let token = std::env::var("CRYPTEX_FILE_FIXTURE_SOCKET").unwrap();
     let mode = std::env::var("CRYPTEX_FILE_FIXTURE_MODE").unwrap();
     let enabled = mode == "allowed";
-    let physical = mode == "physical";
+    let damaged_archive = mode == "damaged-archive";
+    let physical = mode == "physical" || damaged_archive;
     let listener = ListenerOptions::new()
         .name(fixture_name(&token))
         .create_sync()
@@ -47,6 +48,7 @@ fn isolated_server() {
     fixture.context.admission = instance.admission();
     fixture.context.isolated_attachment_writer = enabled;
     let mut survivors = Vec::new();
+    let mut intact_archive = None;
     if physical {
         purge_review::physical::register(root);
     }
@@ -109,6 +111,35 @@ fn isolated_server() {
                 .map(|f| format!("{:x}", sha2::Sha256::digest(f)))
                 .collect();
             assert_eq!(survivors.len(), 2);
+            if damaged_archive {
+                let directory = root
+                    .join("transport/incoming/.stversions")
+                    .join(fixture.device.as_filename_stem());
+                fs::create_dir_all(&directory).unwrap();
+                for entry in fs::read_dir(cryptex_storage::canonical_events_device_dir(
+                    root,
+                    &fixture.device,
+                ))
+                .unwrap()
+                {
+                    let path = entry.unwrap().path();
+                    if !matches!(
+                        path.extension().and_then(|s| s.to_str()),
+                        Some("seg" | "open")
+                    ) {
+                        continue;
+                    }
+                    let bytes = fs::read(&path).unwrap();
+                    if contains_marker(&bytes) {
+                        let archived = directory
+                            .join(path.file_name().unwrap())
+                            .with_extension("seg");
+                        fs::write(&archived, &bytes[..bytes.len() - 1]).unwrap();
+                        assert!(intact_archive.replace((archived, bytes)).is_none());
+                    }
+                }
+                assert!(intact_archive.is_some());
+            }
         }
         let before =
             (!physical && command == "review").then(|| crate::test_temp::event_hashes(root));
@@ -147,7 +178,13 @@ fn isolated_server() {
         )
         .unwrap();
     if physical {
-        drop((snapshot, original, listener));
+        drop(snapshot);
+        if let Some((path, intact)) = intact_archive {
+            assert_eq!(fs::read(&path).unwrap(), intact[..intact.len() - 1]);
+            fs::write(path, intact).unwrap();
+            purge_review::physical::finish_cleanup(root, &fixture.brain_id, &anchor).unwrap();
+        }
+        drop((original, listener));
         let output = Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",

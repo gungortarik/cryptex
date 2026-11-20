@@ -208,6 +208,7 @@ export function App() {
   const [timelineHasMore, setTimelineHasMore] = useState(false);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [detailHit, setDetailHit] = useState<SearchHit | null>(null);
+  const [purgeStatus, setPurgeStatus] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [holdReason, setHoldReason] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("checking");
@@ -649,6 +650,7 @@ export function App() {
   }
 
   async function loadTimeline(cursor: TimelineCursor | null) {
+    setPurgeStatus("");
     const generation = searchRequestGate.begin();
     setDetailHit(null);
     setDetailLoading(false);
@@ -702,6 +704,7 @@ export function App() {
   }
 
   async function openEventDetail(eventId: string) {
+    setPurgeStatus("");
     const generation = searchRequestGate.begin();
     setDetailLoading(true);
     setDetailHit(null);
@@ -1634,6 +1637,7 @@ export function App() {
 
           {timelineMode && !holdCopy && !notice ? (
             <section className="results timeline-results" aria-label="Recent notes" aria-live="polite">
+              {purgeStatus && <p className="notice" role="status">{purgeStatus}</p>}
               <div className="results-heading">
                 <h2>Timeline</h2>
                 <span>{timelineHits.length} {timelineHits.length === 1 ? "note" : "notes"}</span>
@@ -1657,7 +1661,8 @@ export function App() {
                   {detailHit.canAttachFile && (
                     <NoteAttachment key={detailHit.eventId} noteId={detailHit.eventId} noteHash={detailHit.contentHash} />
                   )}
-                  {detailHit.canReviewPurge && <PurgeReview key={detailHit.eventId + detailHit.contentHash} note={detailHit} onPurged={() => {
+                  {detailHit.canReviewPurge && <PurgeReview key={detailHit.eventId + detailHit.contentHash} note={detailHit} onDeletionRecorded={message => {
+                    setPurgeStatus(message);
                     setHits(current => current.filter(hit => hit.eventId !== detailHit.eventId));
                     setTimelineHits(current => current.filter(hit => hit.eventId !== detailHit.eventId));
                     setDetailHit(null);

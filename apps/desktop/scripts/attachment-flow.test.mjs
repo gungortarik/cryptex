@@ -71,7 +71,7 @@ async function startClient(mode) {
   };
 }
 
-for (const mode of ["blocked", "allowed", "physical"]) {
+for (const mode of ["blocked", "allowed", "physical", "damaged-archive"]) {
   test("note detail purge review and file attachment with disposable controls " + mode, { timeout: 120_000 }, async () => {
     const tmp = await mkdtemp(path.join(os.tmpdir(), "cryptex-selected-file-"));
     const file = path.join(tmp, "sample.bin");
@@ -106,12 +106,13 @@ for (const mode of ["blocked", "allowed", "physical"]) {
           await route.fulfill({ path: asset });
         });
         await page.goto(origin);
-        const title = mode === "physical" ? "purgetrialbodyxqkz" : "Note selected for a binary attachment";
+        const physical = mode === "physical" || mode === "damaged-archive";
+        const title = physical ? "purgetrialbodyxqkz" : "Note selected for a binary attachment";
         await page.getByLabel("Note", { exact: true }).fill(title);
         await page.getByLabel("Classification", { exact: true }).selectOption("internal");
         await page.getByRole("button", { name: "Save capture" }).click();
         await page.getByText(/Saved to durable memory/).waitFor();
-        if (mode === "physical") {
+        if (physical) {
           await page.getByLabel("Note", { exact: true }).fill("survivor following the purged record");
           await page.getByLabel("Classification", { exact: true }).selectOption("internal");
           await page.getByRole("button", { name: "Save capture" }).click();
@@ -136,7 +137,7 @@ for (const mode of ["blocked", "allowed", "physical"]) {
         const prepare = { kind: "prepare", note_id: detail.eventId, note_hash: detail.contentHash };
         const review = page.getByRole("button", { name: "Review permanent deletion" });
         const decide = action => client.invoke("m10_purge_review", { action });
-        if (mode === "physical") {
+        if (physical) {
           const dialog = page.getByRole("dialog", { name: "Permanently delete this note?" });
           await review.click();
           await dialog.getByText(/Confirm to remove the note/).waitFor();
@@ -145,8 +146,14 @@ for (const mode of ["blocked", "allowed", "physical"]) {
           assert.deepEqual(await client.invoke("approval_inventory", {}), []);
           await review.click();
           await dialog.getByRole("button", { name: "Confirm permanent deletion" }).click();
+          const message = mode === "damaged-archive"
+            ? "Deletion approval saved. Cleanup is incomplete because an integrity check failed. Copies may remain."
+            : "Local cleanup finished. Copies on offline devices or in external backups may remain.";
+          await page.getByText(message, { exact: true }).waitFor();
           await row.waitFor({ state: "detached" });
+          assert.equal((await client.invoke("approval_inventory", {})).length, 1);
           assert.deepEqual(await decide({ kind: "confirm", ticket: reviewTicket }), { Err: "review_expired" });
+          if (mode === "damaged-archive") return; // The native process repairs the archive and verifies both survivors on reopen.
           const removed = await client.invoke("p0_5_guarded_event_detail", { eventId: selected.noteId });
           assert.equal(removed.accepted, true);
           assert.ok(!removed.holdReason);

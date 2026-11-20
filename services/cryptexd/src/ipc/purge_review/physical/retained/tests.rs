@@ -123,7 +123,8 @@ fn purge_independent_encrypted_backups() {
         .unwrap();
     assert!(matches!(
         decide(ctx, Action::Confirm { ticket: prepare() }),
-        Err(ReviewError::CleanupPending)
+        Ok(Outcome::CleanupIncomplete { note_id, note_hash, reason: ReviewError::CleanupPending })
+            if note_id == target.event_id && note_hash == target.content_hash.as_str()
     ));
     assert_ne!(fs::read(path("earlier")).unwrap(), early_cipher);
     assert_eq!(fs::read(path("later")).unwrap(), late_cipher);

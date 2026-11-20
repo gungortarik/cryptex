@@ -2,9 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 type Note = { eventId: string; contentHash: string; text: string; classification: string };
-type Outcome = { kind: "prepared"; ticket: string; remove_locally: boolean } | { kind: "cancelled" } | { kind: "confirmed" | "purged"; note_id: string; note_hash: string };
+type ReviewedNote = { note_id: string; note_hash: string };
+type Outcome =
+  | { kind: "prepared"; ticket: string; remove_locally: boolean }
+  | { kind: "cancelled" }
+  | ({ kind: "confirmed" } & ReviewedNote)
+  | ({ kind: "purged" } & ReviewedNote)
+  | ({ kind: "cleanup_incomplete"; reason: string } & ReviewedNote);
 
-export function PurgeReview({ note, onPurged }: { note: Note; onPurged: () => void }) {
+export function PurgeReview({ note, onDeletionRecorded }: { note: Note; onDeletionRecorded: (message: string) => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const [ticket, setTicket] = useState("");
@@ -43,12 +49,23 @@ export function PurgeReview({ note, onPurged }: { note: Note; onPurged: () => vo
     setBusy(true);
     try {
       const reply = await invoke<Outcome>("m10_purge_review", { action: { kind, ticket } });
-      if (reply.kind !== (kind === "cancel" ? "cancelled" : removeLocally ? "purged" : "confirmed")) throw Error();
-      if ((reply.kind === "confirmed" || reply.kind === "purged") && (reply.note_id !== note.eventId || reply.note_hash !== note.contentHash)) throw Error();
-      if (reply.kind === "purged") { onPurged(); return; }
+      if (kind === "confirm" && removeLocally) {
+        if ((reply.kind !== "purged" && reply.kind !== "cleanup_incomplete") || reply.note_id !== note.eventId || reply.note_hash !== note.contentHash) throw Error();
+        if (reply.kind === "purged") {
+          onDeletionRecorded("Local cleanup finished. Copies on offline devices or in external backups may remain.");
+        } else {
+          const integrity = reply.reason === "pack_integrity" || reply.reason === "receipt_integrity";
+          onDeletionRecorded(integrity
+            ? "Deletion approval saved. Cleanup is incomplete because an integrity check failed. Copies may remain."
+            : "Deletion approval saved. Cleanup is incomplete. Copies may remain.");
+        }
+        return;
+      }
+      if (reply.kind !== (kind === "cancel" ? "cancelled" : "confirmed")) throw Error();
+      if (reply.kind === "confirmed" && (reply.note_id !== note.eventId || reply.note_hash !== note.contentHash)) throw Error();
       setStatus(kind === "cancel" ? "Deletion cancelled." : "Permanent deletion confirmed for this test note. Your approval was saved.");
     } catch {
-      setStatus("Cryptex could not verify the decision. Review the note again.");
+      setStatus("Cryptex could not verify the outcome. Reopen the timeline to check the note.");
     } finally {
       setTicket("");
       setBusy(false);

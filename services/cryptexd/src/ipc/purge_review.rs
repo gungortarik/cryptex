@@ -44,6 +44,11 @@ pub enum Outcome {
         note_id: String,
         note_hash: String,
     },
+    CleanupIncomplete {
+        note_id: String,
+        note_hash: String,
+        reason: ReviewError,
+    },
     Confirmed {
         note_id: String,
         note_hash: String,
@@ -208,17 +213,7 @@ fn decide(ctx: &SearchContext, action: Action) -> Result<Outcome, ReviewError> {
             verify_target(&ctx, &current.note_id, &current.note_hash)?;
             #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
             {
-                receipt::persist(&ctx, &current.note_id, &current.note_hash, current.expires)?;
-                if physical::enabled(&ctx.runtime_root) {
-                    return Ok(Outcome::Purged {
-                        note_id: current.note_id,
-                        note_hash: current.note_hash,
-                    });
-                }
-                Ok(Outcome::Confirmed {
-                    note_id: current.note_id,
-                    note_hash: current.note_hash,
-                })
+                receipt::persist(&ctx, current.note_id, current.note_hash, current.expires)
             }
             #[cfg(not(any(
                 windows,

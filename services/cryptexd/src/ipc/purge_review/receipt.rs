@@ -1,5 +1,5 @@
 //! Local confirmation evidence. Its signature covers a fixed, content-free schema.
-use super::{ReviewError, SearchContext};
+use super::{Outcome, ReviewError, SearchContext};
 use crate::import_staging::export_fs::{self, Directory};
 use crate::local_device_identity::LocalDeviceKeyResolver;
 use cryptex_events::{ContentHashHex, SignatureHex, TrustedDaemonKeyResolver};
@@ -84,10 +84,11 @@ fn authenticate(
 
 pub(super) fn persist(
     ctx: &SearchContext,
-    note: &str,
-    hash: &str,
+    note_id: String,
+    note_hash: String,
     expires: Instant,
-) -> Result<(), ReviewError> {
+) -> Result<Outcome, ReviewError> {
+    let (note, hash) = (note_id.as_str(), note_hash.as_str());
     let root = &ctx.runtime_root;
     let brain =
         crate::identity_runtime::load_brain_identity(root).map_err(|_| ReviewError::Unavailable)?;
@@ -128,7 +129,7 @@ pub(super) fn persist(
         return Err(ReviewError::Unavailable);
     }
     store_receipt(root, &expected, &key.verifying_key(), &bytes, expires)?;
-    if super::physical::enabled(root) {
+    let outcome = if super::physical::enabled(root) {
         verify_reopened(
             root,
             &brain.brain_id,
@@ -137,13 +138,24 @@ pub(super) fn persist(
             hash,
             anchor.public_key(),
         )?;
-        snapshot.compact_approved_note(&anchor, note, hash, &key, expires)?;
+        let compact = snapshot.compact_approved_note(&anchor, note, hash, &key, expires);
         drop(snapshot);
-        super::physical::finish_cleanup(root, &brain.brain_id, &anchor)?;
-    }
+        match compact.and_then(|()| super::physical::finish_cleanup(root, &brain.brain_id, &anchor))
+        {
+            Ok(()) => Outcome::Purged { note_id, note_hash },
+            Err(reason) => Outcome::CleanupIncomplete {
+                note_id,
+                note_hash,
+                reason,
+            },
+        }
+    } else {
+        Outcome::Confirmed { note_id, note_hash }
+    };
     ctx.admission
         .check_namespace()
-        .map_err(|_| ReviewError::Unavailable)
+        .map_err(|_| ReviewError::Unavailable)?;
+    Ok(outcome)
 }
 
 // Caller holds the inventory and device locks throughout publication.
