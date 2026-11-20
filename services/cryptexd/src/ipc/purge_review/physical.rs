@@ -146,6 +146,7 @@ pub(crate) fn reconcile(
     root: &Path,
     brain: &str,
     anchor: &cryptex_events::LocalTrustAnchor,
+    cleaned: &mut Option<(PathBuf, Vec<String>)>,
 ) -> Result<(), ReviewError> {
     use crate::import_staging::export_fs::Directory;
     use cryptex_events::AuthenticatedSecurityRecord;
@@ -238,6 +239,9 @@ pub(crate) fn reconcile(
         }
     }
     drop(snapshot);
+    if !candidates.is_empty() {
+        *cleaned = None;
+    }
     for notice in candidates {
         super::receipt::receive(
             root,
@@ -247,8 +251,8 @@ pub(crate) fn reconcile(
             notice.approval.as_bytes(),
         )?;
     }
-    // A committed remote bridge without its completion marker resumes derived
-    // cleanup even if the transport notice disappeared while the daemon was down.
+    // A restore can roll SQLite back independently of the signed packs and
+    // any on-disk completion marker. Recheck every reopened transport session.
     let snapshot =
         crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
             root,
@@ -260,25 +264,16 @@ pub(crate) fn reconcile(
     let remote = snapshot.clean_purged_exchange(anchor.device_id())?;
     snapshot.clean_archived_versions()?;
     drop(snapshot);
-    if !remote.is_empty() {
+    if remote.is_empty() {
+        *cleaned = None;
+    } else if !cleaned
+        .as_ref()
+        .is_some_and(|(path, ids)| path == root && *ids == remote)
+    {
         let staging = Directory::open(root)?.child("purge-staging", true)?;
         let _lock = staging.lock_exclusive("cleanup.lock")?;
-        let mut pending = Vec::new();
-        for id in remote {
-            let name = format!("{id}.clean");
-            if !staging.exists(&name)? {
-                pending.push(name);
-            }
-        }
-        if !pending.is_empty() {
-            finish_cleanup(root, brain, anchor)?;
-            for name in pending {
-                let marker = staging.open_file(&name, true)?;
-                crate::import_staging::export_fs::flush(&marker)
-                    .map_err(|_| ReviewError::CleanupPending)?;
-            }
-            staging.sync()?;
-        }
+        finish_cleanup(root, brain, anchor)?;
+        *cleaned = Some((root.to_owned(), remote));
     }
     Ok(())
 }

@@ -46,6 +46,8 @@ impl From<crate::import_staging::export_fs::Error> for Error {
 
 #[derive(Default)]
 pub(crate) struct Exporter {
+    #[cfg(test)]
+    purge_cleanup: Option<(std::path::PathBuf, Vec<String>)>,
     after: Option<(String, u64)>,
     blob_after: Option<[u8; 32]>,
     reader_check: reader::ReaderCheck,
@@ -88,6 +90,10 @@ fn authority(_stage: &'static str) -> Error {
 
 impl Exporter {
     pub(crate) fn end_reader_session(&mut self) {
+        #[cfg(test)]
+        {
+            self.purge_cleanup = None;
+        }
         self.blob_after = None;
         self.reader_check = reader::ReaderCheck::default();
         self.last_reader_status = None;
@@ -132,8 +138,14 @@ impl Exporter {
             .ok_or_else(|| authority("anchor"))?;
         #[cfg(test)]
         if crate::ipc::purge_review::physical::paired(root) {
-            crate::ipc::purge_review::physical::reconcile(identity, root, &brain.brain_id, &anchor)
-                .map_err(|_| authority("purge_control"))?;
+            crate::ipc::purge_review::physical::reconcile(
+                identity,
+                root,
+                &brain.brain_id,
+                &anchor,
+                &mut self.purge_cleanup,
+            )
+            .map_err(|_| authority("purge_control"))?;
         }
         let snapshot = crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(root, &brain.brain_id, &anchor, Some(deadline)).map_err(|e| match e {
             crate::knowledge_materialization::KnowledgeMaterializationError::DeadlineExceeded => Error::Deferred,

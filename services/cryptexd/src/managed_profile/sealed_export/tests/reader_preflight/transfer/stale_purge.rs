@@ -7,6 +7,7 @@ use crate::secure_store::{FileBackedSecureStore, SecureStore};
 use std::sync::Arc;
 
 const TARGET: &str = "isolatedpurgeoffline";
+mod snapshot;
 
 /// Inspect actual regular files, including SQLite, its sidecars and transport staging.
 fn body_copies(dir: &Path) -> Vec<PathBuf> {
@@ -143,6 +144,15 @@ pub(super) fn exercise(wire: &Path, owner_transport: &str, peer_transport: &str)
         || wire.join("purge-offline").exists(),
         "both native workers stopped",
     );
+    drop(peer);
+    let snapshot =
+        crate::test_temp::stage_stopped_m9_profile(&right, &wire.join("B"), "before-purge");
+    assert!(!snapshot.join("canonical").join(receipt::FOLDER).exists());
+    assert_eq!(
+        fs::read(snapshot.join("canonical/events").join(&a_path)).unwrap(),
+        baseline
+    );
+    peer = Side::new(right.clone(), peer_transport);
     physical::confirm_fixture(
         &left,
         &owner.instance,
@@ -220,7 +230,7 @@ pub(super) fn exercise(wire: &Path, owner_transport: &str, peer_transport: &str)
     conflict.extend_from_slice(b"unaccounted");
     fs::write(&inbox, &conflict).unwrap();
     assert!(matches!(
-        physical::reconcile(peer_transport, &right, BRAIN, &remote),
+        physical::reconcile(peer_transport, &right, BRAIN, &remote, &mut None),
         Err(crate::ipc::purge_review::ReviewError::PackIntegrity)
     ));
     assert_eq!(fs::read(&inbox).unwrap(), conflict);
@@ -250,6 +260,7 @@ pub(super) fn exercise(wire: &Path, owner_transport: &str, peer_transport: &str)
     ));
     assert_eq!(fs::read(&peer_copy).unwrap(), compacted);
     drop((owner, peer));
+    snapshot::exercise(&right, &snapshot, peer_transport, keys, &remaining, &ledger);
     for (root, transport) in [(left, owner_transport), (right, peer_transport)] {
         let mut side = Side::new(root, transport);
         side.tick(keys);
