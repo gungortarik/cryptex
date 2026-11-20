@@ -89,6 +89,9 @@ pub enum Error {
     Attachment,
     RecoveryHistory,
     Codec,
+    CodecIntegrity,
+    CodecStart,
+    CodecExit,
     SourceIdentity,
     SourcePack,
 }

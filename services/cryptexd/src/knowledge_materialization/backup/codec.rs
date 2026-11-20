@@ -46,7 +46,7 @@ fn copy_pinned(source: &Path, destination: &Path, expected: &str) -> Result<(), 
         digest.update(&buffer[..n]);
     }
     if format!("{:x}", digest.finalize()) != expected {
-        return Err(Error::Codec);
+        return Err(Error::CodecIntegrity);
     }
     Ok(())
 }
@@ -67,23 +67,29 @@ impl Prepared {
             staging.permissions(std::fs::Permissions::from_mode(0o700));
         }
         let staging = staging.tempdir().map_err(|_| Error::Codec)?;
+        // Node resolves module paths before checking its filesystem permission.
+        // macOS exposes the private temp folder via both /var and /private/var.
+        #[cfg(target_os = "macos")]
+        let path = staging.path().canonicalize().map_err(|_| Error::Codec)?;
+        #[cfg(not(target_os = "macos"))]
+        let path = staging.path();
         let runtime = if cfg!(windows) { "node.exe" } else { "node" };
         for (name, pin) in [
             (runtime, &pins.runtime),
             ("encrypt.cjs", &pins.entry),
             ("openpgp.min.cjs", &pins.openpgp),
         ] {
-            copy_pinned(&directory.join(name), &staging.path().join(name), pin)?;
+            copy_pinned(&directory.join(name), &path.join(name), pin)?;
         }
-        let node = staging.path().join(runtime);
+        let node = path.join(runtime);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&node, std::fs::Permissions::from_mode(0o700))
                 .map_err(|_| Error::Codec)?;
         }
-        let script = staging.path().join("encrypt.cjs");
-        let library = staging.path().join("openpgp.min.cjs");
+        let script = path.join("encrypt.cjs");
+        let library = path.join("openpgp.min.cjs");
         let assembly = self.encryption_input()?;
         let mut input = assembly.reopen().map_err(|_| Error::Archive)?;
         let output = NamedTempFile::new().map_err(|_| Error::Archive)?;
@@ -92,7 +98,7 @@ impl Prepared {
         let mut command = Command::new(node);
         command
             .env_clear()
-            .current_dir(staging.path())
+            .current_dir(path)
             .args(["--permission", "--no-addons"])
             .arg(read_library)
             .arg(script)
@@ -107,7 +113,7 @@ impl Prepared {
             let system = std::env::var_os("SystemRoot").ok_or(Error::Codec)?;
             command.env("SystemRoot", system);
         }
-        let mut child = command.spawn().map_err(|_| Error::Codec)?;
+        let mut child = command.spawn().map_err(|_| Error::CodecStart)?;
         let mut pipe = child.stdin.take().expect("piped child input");
         let status = std::thread::scope(|scope| {
             let feeder = scope.spawn(move || -> io::Result<()> {
@@ -140,7 +146,7 @@ impl Prepared {
                 .len()
                 == 0
         {
-            return Err(Error::Codec);
+            return Err(Error::CodecExit);
         }
         output.as_file().sync_all().map_err(|_| Error::Archive)?;
         Ok(output)

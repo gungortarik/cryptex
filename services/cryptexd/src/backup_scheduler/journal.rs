@@ -23,6 +23,8 @@ enum Phase {
 #[serde(deny_unknown_fields)]
 struct Job {
     version: u8,
+    #[serde(default)]
+    role_head: Option<[u8; 32]>,
     writer_key: [u8; 32],
     prior: PathBuf,
     prior_hash: [u8; 32],
@@ -39,6 +41,7 @@ pub(crate) struct PublishedGeneration {
 }
 
 pub(crate) struct DeviceJobs<'a> {
+    env: SecureStoreEnvironment,
     store: &'a dyn SecureStore,
     service: ServiceLabel,
     account: AccountLabel,
@@ -52,6 +55,7 @@ impl<'a> DeviceJobs<'a> {
         owner: &'a LocalTrustAnchor,
     ) -> Self {
         Self {
+            env,
             store,
             service: ServiceLabel::device_credentials(env),
             account: AccountLabel::backup_job(owner.device_id().as_str()),
@@ -96,7 +100,13 @@ impl<'a> DeviceJobs<'a> {
                 "invalid prior generation",
             ));
         }
-        if let Some(job) = self.load()? {
+        let role = self
+            .role()
+            .assigned_head(prior.parent().unwrap())
+            .map_err(super::role_error)?;
+        if let Some(job) = self.load()?
+            && job.role_head == Some(role)
+        {
             if job.prior == prior && job.prior_hash == prior_hash && job.generation == generation {
                 return Ok(());
             }
@@ -112,12 +122,21 @@ impl<'a> DeviceJobs<'a> {
         }
         self.save(&Job {
             version: 1,
+            role_head: Some(role),
             writer_key: *self.owner.public_key(),
             prior: prior.to_owned(),
             prior_hash,
             generation,
             phase: Phase::Queued,
         })
+    }
+
+    fn role(&self) -> crate::knowledge_materialization::backup::role::DeviceRole<'_> {
+        crate::knowledge_materialization::backup::role::DeviceRole {
+            store: self.store,
+            env: self.env,
+            local: self.owner,
+        }
     }
 
     pub(crate) fn published_pair(&self) -> io::Result<[PublishedGeneration; 2]> {
@@ -168,6 +187,13 @@ impl<'a> DeviceJobs<'a> {
         if enrolled != self.owner {
             return Ok(Some(Outcome::NotDesignated));
         }
+        let role = self.role();
+        let prior = job.prior.clone();
+        let target_path = prior.parent().unwrap();
+        let assigned = role.assigned_head(target_path).map_err(super::role_error)?;
+        if job.role_head != Some(assigned) {
+            return Ok(Some(Outcome::NotDesignated));
+        }
         if let Phase::Published(expected) = job.phase {
             // Retention may have removed the previous generation after this
             // ciphertext was durably published. Recheck the surviving artifact.
@@ -179,7 +205,6 @@ impl<'a> DeviceJobs<'a> {
                 "published backup changed",
             ));
         }
-        let prior = job.prior.clone();
         let pending = PendingBackup {
             designated_writer: self.owner,
             previous_generation: &prior,
@@ -194,6 +219,15 @@ impl<'a> DeviceJobs<'a> {
                 let _lock = target
                     .try_lock_exclusive("backup-writer.lock")
                     .map_err(super::retention::directory_error)?;
+                let (_role_guard, current) = role
+                    .guard_writer(target_path, &target)
+                    .map_err(super::role_error)?;
+                if current != assigned {
+                    return Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "backup role has changed",
+                    ));
+                }
                 if generation_digest(&prior)? != job.prior_hash {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidData,
@@ -261,8 +295,6 @@ mod tests {
     #[test]
     fn publication_gap_requires_the_durable_ciphertext_digest() {
         let root = tempfile::tempdir().unwrap();
-        let prior = root.path().join("first.pgp");
-        fs::write(&prior, b"prior fixture").unwrap();
         let key = SigningKey::from_bytes(&[13; 32]).verifying_key();
         let owner = LocalTrustAnchor::new(
             DeviceId::new("7ad3ac64-7aa8-4be4-99d0-b1c53210a6da").unwrap(),
@@ -270,6 +302,15 @@ mod tests {
             key.to_bytes(),
         );
         let store = FakeSecureStore::new();
+        let role = crate::knowledge_materialization::backup::role::DeviceRole {
+            store: &store,
+            env: SecureStoreEnvironment::Dev,
+            local: &owner,
+        };
+        role.create(root.path(), "target", "journal-fixture")
+            .unwrap();
+        let prior = root.path().join("target/first.pgp");
+        fs::write(&prior, b"prior fixture").unwrap();
         let queue = DeviceJobs::new(&store, SecureStoreEnvironment::Dev, &owner);
         let (_keep, stop) = mpsc::channel();
         let resume = || {

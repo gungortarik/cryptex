@@ -151,6 +151,14 @@ impl VerifiedBackups<'_> {
         let _lock = dir
             .try_lock_exclusive("backup-writer.lock")
             .map_err(directory_error)?;
+        let role = crate::knowledge_materialization::backup::role::DeviceRole {
+            store: self.store,
+            env: self.environment,
+            local: enrolled,
+        };
+        let _role_guard = role
+            .guard_writer(self.target, &dir)
+            .map_err(super::role_error)?;
         let mut verified = Vec::new();
         for entry in fs::read_dir(self.target)? {
             let name = entry?.file_name();

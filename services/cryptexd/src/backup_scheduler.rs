@@ -1,5 +1,4 @@
-//! One pending backup on an explicitly designated device. Currently wired
-//! only to the disposable M11 daemon profile runner.
+//! Daemon scheduler exercised on disposable M11 profiles.
 pub(crate) mod journal;
 pub(crate) mod retention;
 use cryptex_events::LocalTrustAnchor;
@@ -9,6 +8,16 @@ use std::io;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
+
+fn role_error(error: crate::knowledge_materialization::backup::role::Error) -> io::Error {
+    use crate::knowledge_materialization::backup::role::Error;
+    let kind = match error {
+        Error::Authority => io::ErrorKind::PermissionDenied,
+        Error::Store => io::ErrorKind::Other,
+        Error::Target | Error::Signature | Error::History => io::ErrorKind::InvalidData,
+    };
+    io::Error::new(kind, format!("backup role: {error:?}"))
+}
 
 pub(crate) struct PendingBackup<'a> {
     pub designated_writer: &'a LocalTrustAnchor,

@@ -72,6 +72,13 @@ Other trusted devices may:
 - take manual emergency backups
 - explicitly take over the scheduled-backup role through a controlled role change
 
+If the designated device is lost, the owner may start scheduled backups on a new
+target with another trusted device. Taking over the existing target requires its
+current writer's signed approval. Before issuing approval, the outgoing writer
+durably gives up its authority to publish and prune on that target. The recipient
+verifies the target, the current writer's signature and its own pending request.
+Restarting the former writer cannot reactivate its previous jobs.
+
 The designated backup writer is not the canonical master device.
 
 It is an operational role only.

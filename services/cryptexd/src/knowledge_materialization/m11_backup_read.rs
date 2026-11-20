@@ -10,6 +10,157 @@ use std::process::Command;
 mod first_device;
 
 #[test]
+fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
+    use crate::backup_scheduler::{journal::DeviceJobs, retention::VerifiedBackups};
+    use crate::knowledge_materialization::backup::role::{Assignment, DeviceRole, Error};
+    use crate::secure_store::{AccountLabel, FileBackedSecureStore, ServiceLabel};
+    use std::num::NonZeroUsize;
+    let pair = PairProfiles::new();
+    pair.pair(0, [true, true], false);
+    let env = SecureStoreEnvironment::Dev;
+    let work = tempfile::tempdir().unwrap();
+    let a_store = FileBackedSecureStore::open(work.path().join("a-state")).unwrap();
+    let a = resolver(&pair).local_trust_anchor().unwrap();
+    let b = LocalDeviceKeyResolver::load(&pair.profiles[1], BRAIN, &pair.store, env)
+        .unwrap()
+        .local_trust_anchor()
+        .unwrap();
+    // This disposable credential store belongs solely to the synthetic first device.
+    let account = AccountLabel::device_event_signing_seed(a.device_id().as_str());
+    a_store
+        .put(
+            ServiceLabel::device_credentials(env).as_str(),
+            account.as_str(),
+            pair.keys[0].as_bytes(),
+        )
+        .unwrap();
+    let first = DeviceRole {
+        store: &a_store,
+        env,
+        local: &a,
+    };
+    let second = DeviceRole {
+        store: &pair.store,
+        env,
+        local: &b,
+    };
+    let original = first.create(work.path(), "original", BRAIN).unwrap();
+    let target = work.path().join("original");
+    let prior = target.join("backup-00000000000000000001.pgp");
+    fs::write(&prior, b"prior synthetic backup").unwrap();
+    let queue = DeviceJobs::new(&a_store, env, &a);
+    queue
+        .enqueue(&prior, Sha256::digest(fs::read(&prior).unwrap()).into(), 2)
+        .unwrap();
+    let catalog = VerifiedBackups {
+        store: &a_store,
+        environment: env,
+        designated: &a,
+        target: &target,
+    };
+    catalog.set_retention(&a, NonZeroUsize::new(1)).unwrap();
+    assert!(second.create(work.path(), "original", BRAIN).is_err());
+    assert!(
+        second
+            .accept(&pair.profiles[1], &target, &original)
+            .is_err()
+    );
+    let independent = second
+        .create(work.path(), "replacement-target", BRAIN)
+        .unwrap();
+    let replacement = work.path().join("replacement-target");
+    let separate_head = second.assigned_head(&replacement).unwrap();
+    assert_ne!(first.assigned_head(&target).unwrap(), separate_head);
+    let request = second
+        .request(&pair.profiles[1], &target, &original)
+        .unwrap();
+    assert!(second.assigned_head(&target).is_err());
+    let granted = first
+        .release(&pair.profiles[0], &target, &original, &b, &request)
+        .unwrap();
+    let reopened = FileBackedSecureStore::open(a_store.root()).unwrap();
+    let old = DeviceRole {
+        store: &reopened,
+        env,
+        local: &a,
+    };
+    assert!(old.assigned_head(&target).is_err());
+    let (_keep, stop) = std::sync::mpsc::channel();
+    assert!(
+        DeviceJobs::new(&reopened, env, &a)
+            .resume(&a, &stop, || {}, |_| panic!("former writer published"))
+            .is_err()
+    );
+    assert!(catalog.prune(&a).is_err());
+    assert_eq!(fs::read(&prior).unwrap(), b"prior synthetic backup");
+    let retry = old
+        .release(&pair.profiles[0], &target, &original, &b, &request)
+        .unwrap();
+    assert_eq!(
+        serde_json::to_vec(&granted).unwrap(),
+        serde_json::to_vec(&retry).unwrap()
+    );
+    let mut damaged = serde_json::to_value(&granted).unwrap();
+    let byte = damaged["grants"][0]["signature"][0].as_u64().unwrap();
+    damaged["grants"][0]["signature"][0] = (byte ^ 1).into();
+    let damaged: Assignment = serde_json::from_value(damaged).unwrap();
+    assert_eq!(
+        second.accept(&pair.profiles[1], &target, &damaged),
+        Err(Error::Signature)
+    );
+    assert_eq!(
+        second.accept(&pair.profiles[1], &replacement, &granted),
+        Err(Error::Target)
+    );
+    assert!(
+        second
+            .accept(&pair.profiles[1], &target, &independent)
+            .is_err()
+    );
+    second.accept(&pair.profiles[1], &target, &granted).unwrap();
+    second.accept(&pair.profiles[1], &target, &retry).unwrap();
+    assert_ne!(second.assigned_head(&target).unwrap(), separate_head);
+    let transferred = DeviceJobs::new(&pair.store, env, &b);
+    transferred
+        .enqueue(&prior, Sha256::digest(fs::read(&prior).unwrap()).into(), 2)
+        .unwrap();
+    assert_eq!(
+        transferred
+            .resume(&b, &stop, || {}, |out| fs::write(out, b"new writer"))
+            .unwrap(),
+        Some(crate::backup_scheduler::Outcome::Published)
+    );
+    assert_eq!(
+        fs::read(target.join("backup-00000000000000000002.pgp")).unwrap(),
+        b"new writer"
+    );
+    let return_request = old.request(&pair.profiles[0], &target, &granted).unwrap();
+    let returned = second
+        .release(&pair.profiles[1], &target, &granted, &a, &return_request)
+        .unwrap();
+    assert!(second.accept(&pair.profiles[1], &target, &granted).is_err());
+    old.accept(&pair.profiles[0], &target, &returned).unwrap();
+    assert_eq!(
+        queue
+            .resume(&a, &stop, || {}, |_| panic!("previous assignment reused"))
+            .unwrap(),
+        Some(crate::backup_scheduler::Outcome::NotDesignated)
+    );
+    assert_ne!(old.assigned_head(&target).unwrap(), separate_head);
+    assert_eq!(second.assigned_head(&replacement).unwrap(), separate_head);
+    let wiped = FakeSecureStore::new();
+    assert!(
+        DeviceRole {
+            store: &wiped,
+            env,
+            local: &b
+        }
+        .accept(&pair.profiles[1], &target, &granted)
+        .is_err()
+    );
+}
+
+#[test]
 #[ignore = "two hosted OS runners exchange their independently prepared files"]
 fn exchange_native_backup_with_peer_os() {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_CROSS_ROOT").unwrap());
@@ -120,7 +271,10 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
         let store = FileBackedSecureStore::open(root.join("qa-credentials")).unwrap();
         let reader = LocalDeviceKeyResolver::load(root, BRAIN, &store, env).unwrap();
         let enrolled = reader.local_trust_anchor().unwrap();
-        let jobs = DeviceJobs::new(&store, env, &enrolled);
+        let job_store =
+            FileBackedSecureStore::open(std::env::var_os("CRYPTEX_M11_JOB_STORE").unwrap())
+                .unwrap();
+        let jobs = DeviceJobs::new(&job_store, env, &enrolled);
         let (_tx, stop) = mpsc::channel();
         let outcome = jobs
             .resume(
@@ -145,12 +299,19 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     let anchor = reader.local_trust_anchor().unwrap();
     let kit = work.path().join("recovery-kit");
     let volume = work.path().join("backup-volume");
-    fs::create_dir(&volume).unwrap();
+    let receipt_store = FileBackedSecureStore::open(work.path().join("restore-receipts")).unwrap();
+    super::super::backup::role::DeviceRole {
+        store: &receipt_store,
+        env,
+        local: &anchor,
+    }
+    .create(work.path(), "backup-volume", BRAIN)
+    .unwrap();
     let first = volume.join("backup-00000000000000000001.pgp");
     let next = volume.join("backup-00000000000000000002.pgp");
     run_archive("prepare", &[source.path(), &kit, &first, writer.path()]);
     let first_digest = Sha256::digest(fs::read(&first).unwrap());
-    let jobs = DeviceJobs::new(&store, env, &anchor);
+    let jobs = DeviceJobs::new(&receipt_store, env, &anchor);
     jobs.enqueue(&first, first_digest.into(), 2).unwrap();
     let job = PendingBackup {
         designated_writer: &anchor,
@@ -200,7 +361,7 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     let launch_saved_job = || {
         Command::new(std::env::current_exe().unwrap())
         .args(["--exact", "knowledge_materialization::pairing_recovery_tests::m11_backup_read::next_backup_restores_the_offline_capture_after_reconnection", "--ignored", "--nocapture"])
-        .env("CRYPTEX_M11_JOB_CHILD", source.path()).status().unwrap()
+        .env("CRYPTEX_M11_JOB_CHILD", source.path()).env("CRYPTEX_M11_JOB_STORE", receipt_store.root()).status().unwrap()
     };
     assert_eq!(
         launch_saved_job().code(),
@@ -254,11 +415,11 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     });
     assert!(launch_saved_job().success());
     println!("m11_backup_job_restart=passed offline_exit=recovered published_replay=idempotent");
-    assert_eq!(fs::read_dir(&volume).unwrap().count(), 3); // two archives and writer lock
+    assert_eq!(fs::read_dir(&volume).unwrap().count(), 4); // two archives, target marker and writer lock
     assert_eq!(Sha256::digest(fs::read(&first).unwrap()), first_digest);
     let manual = volume.join("manual-export.pgp");
     run_archive("write-generation", &[source.path(), writer.path(), &manual]);
-    let [first_publication, next_publication] = DeviceJobs::new(&store, env, &anchor)
+    let [first_publication, next_publication] = DeviceJobs::new(&receipt_store, env, &anchor)
         .published_pair()
         .unwrap();
 
@@ -284,7 +445,6 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
         rebuild_knowledge_from_local_approval_history(&sandbox, BRAIN, &anchor, &mut db).unwrap();
         search_events_with_retrieval_safety(&sandbox, BRAIN, &[], &mut reader, &db, &query).unwrap()
     };
-    let receipt_store = FileBackedSecureStore::open(work.path().join("restore-receipts")).unwrap();
     let catalog = crate::backup_scheduler::retention::VerifiedBackups {
         store: &receipt_store,
         environment: env,
@@ -498,7 +658,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
             .unwrap();
             assert!(matches!(
                 prepared.encrypt(scratch.path(), &public),
-                Err(crate::backup_inventory::Error::Codec)
+                Err(crate::backup_inventory::Error::CodecIntegrity)
             ));
             let encrypted = prepared.encrypt(directory, &public).unwrap();
             encrypted.persist_noclobber(&backup).unwrap();
