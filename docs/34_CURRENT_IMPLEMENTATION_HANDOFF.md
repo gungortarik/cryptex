@@ -22,6 +22,8 @@ The M11 rehearsal at `ac40e86` disconnects the encrypted backup target before sa
 
 The two-generation rehearsal at `fa614a3` invokes the backup writer after the filesystem target returns. It removes the temporary source profile and restores both generations separately to verify the offline note against its capture receipt. [Reconnected backup evidence](../evidence/m11/backup-container.md#restoring-the-next-backup-after-reconnection)
 
+At `ce47aff` the designated temporary device waits for its backup target and automatically publishes the pending generation on reconnection. The other enrolled device skips the job. The restore test checks the offline capture against its receipt. [Scheduled reconnection evidence](../evidence/m11/backup-container.md#automatic-backup-by-the-designated-device-on-target-return)
+
 ## M10 complete on November 20, 2026
 
 The owner reviewed and accepted candidate `9de456f` subject to successful CI and technical review. Windows and macOS passed all nine required jobs across four workflows. The closeout regression reproduced and corrected physical deletion failing after an unrelated note was forgotten. After reopening a disposable profile, the corrected candidate also preserved the forgotten note and removed a previously restored note. The [M10 review and CI evidence](../evidence/m10/forget-purge-closeout-review.md) records authorization, recovery, Desktop review and the limits of physical cleanup.

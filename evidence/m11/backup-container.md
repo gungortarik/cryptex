@@ -102,3 +102,13 @@ The two-generation rehearsal at `fa614a3` starts with an enrolled temporary prof
 Before either restore, the test drops the source device's credential store and removes the source profile and backup signing key. It decrypts and verifies each generation with the same Recovery Kit in a separate empty sandbox. Cryptex rebuilds each search index from authenticated events. The first search must return just the original note. The second must return that same result and the offline note with its original text, committed event ID, device ID and content hash.
 
 Windows and macOS both passed the two-generation case and the existing M11 restore and installed Desktop checks. The rehearsal invokes the next backup directly after simulating reconnection. [Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44813997532)
+
+## Automatic backup by the designated device on target return
+
+At `ce47aff` the disposable daemon fixture assigns one pending generation to an enrolled device's public identity. A second enrolled profile receives the same assignment and exits before invoking the writer. A different backup at the configured path yields an integrity error.
+
+The assigned worker starts while the backup volume is absent and reports that it is waiting. Capture commits locally. The test reconnects the volume by restoring its directory at the configured path. The worker independently detects the prior generation, checks its SHA-256, and publishes the next signed and encrypted generation once. Both generations are restored after removing the source profile. The new note must match the offline capture receipt and the first generation must retain its original digest.
+
+This stage uses an in-memory pending job and a filesystem poll in the test daemon. It covers a running worker on Windows and macOS. Persisting pending work across daemon restarts is a separate step.
+
+Both native jobs passed the scheduled reconnection, restore, and installed Desktop checks. [Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44816940599)
