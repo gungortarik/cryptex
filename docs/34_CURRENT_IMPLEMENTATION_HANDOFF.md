@@ -143,8 +143,28 @@ their exact frame digests and searches every regular file for the synthetic
 target text. It checks FTS and the surviving rows before and after a second
 derived rebuild. [Windows and macOS browser and reopen checks](https://github.com/gungortarik/cryptex/actions/runs/44630511482)
 
-Real profiles keep M10 writes disabled. Multi-device purge, stale-peer
-suppression, attached notes, backups and M10 acceptance remain open.
+### Reconnecting a stale disposable peer after purge
+
+At `a44240f`, the paired trial registers two disposable profiles with distinct
+device keys and a signed pairing. The normal transport tick exchanges the
+author's signed approval and signed pack bridge in separate Syncthing control
+folders. Admission checks the local pairing, active author, original note
+identity, hash and chain position. The receipt survives reconnect and reopen.
+Guarded reads suppress the original frame even when the replica still has it
+in its canonical pack and SQLite projection. A pack containing the suppressed
+note is ineligible for further export.
+
+The test stops both native transport workers, confirms a local purge and
+queues the peer's original signed pack for delivery back to the author.
+After reconnect, the canonical importer rejects the stale replacement.
+The receiver rejects a forged signature, processes the genuine control and
+replays the original segment with zero new records. Both reopened profiles
+rebuild their projections, exclude the target from search and direct detail,
+and preserve the identities and hashes of the two other notes.
+[Native paired CI](https://github.com/gungortarik/cryptex/actions/runs/44658238961)
+
+Real profiles keep M10 writes disabled. Physical cleanup of replica storage,
+attached notes, backups and M10 acceptance remain open.
 
 ## M9 complete on November 19, 2026
 
