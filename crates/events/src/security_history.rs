@@ -76,7 +76,12 @@ pub enum AuthenticatedSecurityRecord {
         crate::attachment_link::SignedLinkFields,
     ),
     Lifecycle(VerifiedUnsupportedV2, SignedNoteLifecycle),
-    PurgeBridge(VerifiedUnsupportedV2, String, ContentHashHex),
+    PurgeBridge(
+        VerifiedUnsupportedV2,
+        String,
+        ContentHashHex,
+        Option<crate::Classification>,
+    ),
     SecurityV3(SecurityEventV3),
 }
 
@@ -97,7 +102,7 @@ impl AuthenticatedSecurityRecord {
             Self::V1(event) => &event.brain_id,
             Self::Attachment(_, link) => &link.brain_id,
             Self::Lifecycle(_, change) => &change.brain_id,
-            Self::PurgeBridge(_, brain, _) => brain,
+            Self::PurgeBridge(_, brain, ..) => brain,
             Self::V2(event) => &event.event().brain_id,
             Self::SecurityV3(event) => event.brain_id(),
         }
@@ -134,7 +139,7 @@ impl AuthenticatedSecurityRecord {
     pub fn content_hash(&self) -> &ContentHashHex {
         match self {
             Self::V1(event) => &event.content_hash,
-            Self::PurgeBridge(_, _, original) => original,
+            Self::PurgeBridge(_, _, original, _) => original,
             Self::Attachment(event, _) | Self::Lifecycle(event, _) => &event.content_hash,
             Self::V2(event) => &event.event().content_hash,
             Self::SecurityV3(event) => event.content_hash(),
@@ -453,6 +458,7 @@ where
                     #[serde(deny_unknown_fields)]
                     struct Bridge {
                         original_hash: ContentHashHex,
+                        original_classification: Option<crate::Classification>,
                     }
                     let bad =
                         || failure(ValidationReasonCode::InvalidRecord, "invalid purge bridge");
@@ -462,7 +468,12 @@ where
                     let body: Bridge =
                         serde_json::from_value(value["payload"].clone()).map_err(|_| bad())?;
                     let brain = value["brain_id"].as_str().ok_or_else(bad)?.to_owned();
-                    AuthenticatedSecurityRecord::PurgeBridge(record, brain, body.original_hash)
+                    AuthenticatedSecurityRecord::PurgeBridge(
+                        record,
+                        brain,
+                        body.original_hash,
+                        body.original_classification,
+                    )
                 }
                 VersionedRecord::VerifiedUnsupported(record)
                     if lifecycle != NoteLifecycleRead::Hold
@@ -547,7 +558,7 @@ where
             AuthenticatedSecurityRecord::SecurityV3(event) => {
                 verifier.verify_security_v3_next(event)?;
             }
-            AuthenticatedSecurityRecord::PurgeBridge(bridge, _, original) => {
+            AuthenticatedSecurityRecord::PurgeBridge(bridge, _, original, _) => {
                 verifier.verify_purge_bridge(bridge, original)?;
             }
             legacy => {

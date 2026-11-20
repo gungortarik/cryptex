@@ -46,7 +46,7 @@ fn offer(
     read_transfer_bytes(&temp, digest).map_err(blob_error)?;
     check()?;
     if let Some(file) = damaged {
-        own.remove_blob_offer(digest, file)?;
+        own.remove_blob(digest, file)?;
         eprintln!("component=attachment_sync status=damaged_offer_replaced");
     }
     match stage.promote("segment.tmp", &temp, own, name) {

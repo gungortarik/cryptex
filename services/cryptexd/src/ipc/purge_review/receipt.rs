@@ -183,14 +183,21 @@ fn store_receipt(
     Ok(())
 }
 
-pub(crate) fn bridge_body(note: &cryptex_events::AcceptedEvent) -> serde_json::Value {
+pub(crate) fn bridge_body(
+    note: &cryptex_events::AcceptedEvent,
+    has_links: bool,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({"original_hash": note.content_hash});
+    if has_links {
+        payload["original_classification"] = serde_json::json!(note.classification);
+    }
     serde_json::json!({
         "schema_version": 2, "event_id": note.event_id, "brain_id": note.brain_id,
         "device_id": note.device_id, "device_seq": note.device_seq,
         "prev_content_hash": note.prev_content_hash, "created_at": note.created_at,
         "signing_key_id": note.signing_key_id, "classification": "restricted",
         "event_type": "memory.purge.bridge", "payload_schema_version": 1,
-        "payload": {"original_hash": note.content_hash}
+        "payload": payload
     })
 }
 
@@ -263,7 +270,15 @@ pub(crate) fn receive(
     }
     envelope.remove("content_hash");
     envelope.remove("signature");
-    if serde_json::Value::Object(envelope) != bridge_body(note) {
+    // Plain-note bridges retain the original schema. A receiver with a link
+    // also needs the signed original class to validate that link after purge.
+    let has_links = snapshot.reader_has_link_target(&note.event_id)
+        || envelope
+            .get("payload")
+            .and_then(|payload| payload.get("original_classification"))
+            .is_some();
+    let expected_bridge = bridge_body(note, has_links);
+    if serde_json::Value::Object(envelope) != expected_bridge {
         return Err(ReviewError::ReceiptIntegrity);
     }
     store_receipt(root, &expected, &key, approval, expires)?;

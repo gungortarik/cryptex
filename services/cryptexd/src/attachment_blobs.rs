@@ -204,6 +204,28 @@ pub(crate) fn local_transfer_bytes(root: &Path, expected: &[u8; 32]) -> Result<V
     Ok(bytes)
 }
 
+/// The caller holds a verified purge snapshot and the blob writer lock.
+#[cfg(test)]
+pub(crate) fn remove_verified_copy(
+    dir: &Directory,
+    digest: &[u8; 32],
+) -> Result<(), crate::ipc::purge_review::ReviewError> {
+    use crate::ipc::purge_review::ReviewError;
+    let hash = sha2::digest::Output::<Sha256>::from(*digest);
+    let name = format!("{hash:x}");
+    if dir.exists(&name)? {
+        let mut file = dir.open_file(&name, false)?;
+        verify(&mut file, &hash).map_err(|err| match err {
+            BlobError::IntegrityMismatch => ReviewError::PackIntegrity,
+            _ => ReviewError::CleanupPending,
+        })?;
+        dir.remove_blob(digest, file)?;
+    }
+    // Complete a previous unlink even if its directory flush was interrupted.
+    dir.sync()?;
+    Ok(())
+}
+
 fn open_stored(
     runtime_root: &Path,
     digest: &[u8; 32],

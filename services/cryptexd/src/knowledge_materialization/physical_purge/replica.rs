@@ -66,7 +66,7 @@ impl VerifiedCanonicalSnapshot {
                 if bytes == frame.bytes {
                     continue;
                 }
-                let Some(AuthenticatedSecurityRecord::PurgeBridge(bridge, _, hash)) = self
+                let Some(AuthenticatedSecurityRecord::PurgeBridge(bridge, _, hash, _)) = self
                     .security_history
                     .records()
                     .iter()

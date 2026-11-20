@@ -91,21 +91,37 @@ impl SignedLinkFields {
         &self,
         note: &'a AcceptedEvent,
     ) -> Result<ResolvedAttachmentLink<'a>, LinkError> {
-        if !self.note_event_id().eq_ignore_ascii_case(&note.event_id) {
+        self.bind_identity(
+            &note.event_id,
+            &note.brain_id,
+            &note.content_hash,
+            note.classification,
+        )
+    }
+
+    /// A verified purge bridge can supply the same content-free binding fields.
+    pub fn bind_identity<'a>(
+        &self,
+        event_id: &'a str,
+        brain_id: &str,
+        hash: &ContentHashHex,
+        classification: Classification,
+    ) -> Result<ResolvedAttachmentLink<'a>, LinkError> {
+        if !self.note_event_id().eq_ignore_ascii_case(event_id) {
             return Err(LinkError::MissingNote);
         }
-        if !self.brain_id.eq_ignore_ascii_case(&note.brain_id) {
+        if !self.brain_id.eq_ignore_ascii_case(brain_id) {
             return Err(LinkError::BrainMismatch);
         }
-        if self.payload.note_content_hash != note.content_hash {
+        if &self.payload.note_content_hash != hash {
             return Err(LinkError::NoteHashMismatch);
         }
-        if self.classification != note.classification {
+        if self.classification != classification {
             return Err(LinkError::ClassificationMismatch);
         }
         Ok(ResolvedAttachmentLink {
-            note_event_id: &note.event_id,
-            classification: note.classification,
+            note_event_id: event_id,
+            classification,
             blob_sha256: self
                 .payload
                 .blob_sha256

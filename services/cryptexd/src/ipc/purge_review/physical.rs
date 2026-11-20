@@ -51,6 +51,14 @@ pub(crate) fn finish_cleanup(
     if !enabled(root) {
         return Err(ReviewError::Disabled);
     }
+    {
+        let snapshot =
+            crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+                root, brain, anchor, None,
+            )
+            .map_err(|_| ReviewError::CleanupPending)?;
+        snapshot.clean_purged_blobs()?;
+    }
     let mut db = cryptex_projection::ProjectionDb::open_or_create(root)
         .map_err(|_| ReviewError::CleanupPending)?;
     db.connection()

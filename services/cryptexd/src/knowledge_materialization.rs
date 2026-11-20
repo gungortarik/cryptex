@@ -129,12 +129,20 @@ pub struct RetrievalSafetyState {
 type AdmittedLinks =
     std::collections::BTreeMap<String, std::collections::BTreeMap<String, [u8; 32]>>;
 
+#[derive(Default)]
+struct AttachmentInventory {
+    live: AdmittedLinks,
+    orphaned_by_purge: std::collections::BTreeSet<[u8; 32]>,
+}
+
 fn admitted_attachment_links(
     history: &VerifiedSecurityHistory,
     cutoffs: &std::collections::BTreeMap<String, u64>,
     deadline: Option<Instant>,
-) -> KnowledgeMaterializationResult<AdmittedLinks> {
-    let mut notes = std::collections::BTreeMap::new();
+) -> KnowledgeMaterializationResult<AttachmentInventory> {
+    // Include purged targets for binding checks only. Their signed links
+    // cannot authorize reading, projecting or repairing the former attachment.
+    let mut targets = std::collections::BTreeMap::new();
     let mut links = Vec::new();
     for record in history.records() {
         check_deadline(deadline)?;
@@ -142,8 +150,8 @@ fn admitted_attachment_links(
             .get(record.device_id())
             .is_some_and(|limit| record.device_seq() <= *limit);
         match record {
-            AuthenticatedSecurityRecord::V1(note) => {
-                notes.insert(note.event_id.to_ascii_lowercase(), (note, admitted));
+            AuthenticatedSecurityRecord::V1(_) | AuthenticatedSecurityRecord::PurgeBridge(..) => {
+                targets.insert(record.event_id().to_ascii_lowercase(), (record, admitted));
             }
             AuthenticatedSecurityRecord::Attachment(record, fields) if admitted => {
                 links.push((record, fields))
@@ -151,24 +159,49 @@ fn admitted_attachment_links(
             _ => {}
         }
     }
-    let mut result = AdmittedLinks::new();
-    for (record, fields) in links {
+    let mut result = AttachmentInventory::default();
+    for (link, fields) in links {
         check_deadline(deadline)?;
-        let (note, admitted) = notes
+        let &(target, admitted) = targets
             .get(&fields.note_event_id().to_ascii_lowercase())
             .ok_or_else(|| {
                 KnowledgeMaterializationError::Verification("attachment target is missing".into())
             })?;
-        let binding = fields.bind(note).map_err(|_| {
+        let invalid = |_| {
             KnowledgeMaterializationError::Verification(
                 "attachment target binding is invalid".into(),
             )
-        })?;
-        if *admitted {
-            result
-                .entry(note.event_id.clone())
-                .or_default()
-                .insert(record.event_id.clone(), binding.blob_sha256);
+        };
+        match target {
+            AuthenticatedSecurityRecord::V1(note) => {
+                let binding = fields.bind(note).map_err(invalid)?;
+                if admitted {
+                    result
+                        .live
+                        .entry(note.event_id.clone())
+                        .or_default()
+                        .insert(link.event_id.clone(), binding.blob_sha256);
+                }
+            }
+            AuthenticatedSecurityRecord::PurgeBridge(bridge, brain, original, Some(class)) => {
+                let binding = fields
+                    .bind_identity(&bridge.event_id, brain, original, *class)
+                    .map_err(invalid)?;
+                if admitted {
+                    result.orphaned_by_purge.insert(binding.blob_sha256);
+                }
+            }
+            _ => {
+                return Err(KnowledgeMaterializationError::Verification(
+                    "attachment target has no verified classification".into(),
+                ));
+            }
+        }
+    }
+    // Count surviving references before retrieval policy hides forgotten notes.
+    for links in result.live.values() {
+        for digest in links.values() {
+            result.orphaned_by_purge.remove(digest);
         }
     }
     Ok(result)
@@ -564,6 +597,7 @@ fn verify_post_import_policy(
     let mut admitted_trial_records = if crate::test_temp::attachment_trial(&snapshot.runtime_root) {
         admitted_attachment_links(&history, &cutoffs, None)
             .map_err(|_| ImportStagingError::Invalid("invalid attachment binding".into()))?
+            .live
             .into_values()
             .flat_map(|links| links.into_keys())
             .collect::<std::collections::BTreeSet<_>>()
@@ -774,6 +808,11 @@ pub(crate) struct VerifiedCanonicalSnapshot {
     forgotten: std::collections::BTreeSet<String>,
     runtime_root: std::path::PathBuf,
     attachment_links: AdmittedLinks,
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
+    orphaned_by_purge: std::collections::BTreeSet<[u8; 32]>,
     devices: Vec<DeviceId>,
     frames: Vec<RawFrame>,
     security_frames: Vec<RawFrame>,
@@ -2265,6 +2304,11 @@ fn scan_verified_canonical_until<R: TrustedDaemonKeyResolver>(
     Ok(VerifiedCanonicalSnapshot {
         runtime_root: runtime_root.to_path_buf(),
         attachment_links: AdmittedLinks::new(),
+        #[cfg(all(
+            test,
+            any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+        ))]
+        orphaned_by_purge: Default::default(),
         forgotten: Default::default(),
         devices,
         security_frames: frames.clone(),
@@ -2689,7 +2733,8 @@ fn scan_anchored_history(
         .iter()
         .map(|(device, cutoff)| (device.as_str().to_owned(), *cutoff))
         .collect::<std::collections::BTreeMap<_, _>>();
-    let mut attachment_links = admitted_attachment_links(&security_history, &cutoffs, deadline)?;
+    let attachment_inventory = admitted_attachment_links(&security_history, &cutoffs, deadline)?;
+    let mut attachment_links = attachment_inventory.live;
     let forgotten = security_history
         .forgotten_note_ids(&cutoffs, || {
             deadline.is_some_and(|end| Instant::now() >= end)
@@ -2798,6 +2843,11 @@ fn scan_anchored_history(
         frames: content_frames,
         security_frames,
         attachment_links,
+        #[cfg(all(
+            test,
+            any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+        ))]
+        orphaned_by_purge: attachment_inventory.orphaned_by_purge,
         forgotten,
         history,
         security_history,

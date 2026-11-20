@@ -14,7 +14,7 @@ pub(super) fn check_receipts(
 ) -> KnowledgeMaterializationResult<()> {
     let mut resolver = trust.key_resolver();
     for record in history.records() {
-        if let AuthenticatedSecurityRecord::PurgeBridge(bridge, _, original) = record {
+        if let AuthenticatedSecurityRecord::PurgeBridge(bridge, _, original, _) = record {
             let invalid = || {
                 KnowledgeMaterializationError::Verification("invalid purge bridge approval".into())
             };
@@ -93,6 +93,62 @@ fn append_framed(buffer: &mut Vec<u8>, body: &[u8]) -> Result<(), ReviewError> {
 }
 
 impl VerifiedCanonicalSnapshot {
+    pub(crate) fn reader_has_link_target(&self, id: &str) -> bool {
+        self.security_history.records().iter().any(|r|
+            matches!(r, AuthenticatedSecurityRecord::Attachment(_, f) if f.note_event_id().eq_ignore_ascii_case(id)))
+    }
+
+    pub(crate) fn clean_purged_blobs(&self) -> Result<(), ReviewError> {
+        if !physical::enabled(&self.runtime_root) || !self.locks_runtime(&self.runtime_root) {
+            return Err(ReviewError::Disabled);
+        }
+        if self.orphaned_by_purge.is_empty() {
+            return Ok(());
+        }
+        let root = Directory::open(&self.runtime_root)?;
+        let staging = root.child("blob-staging", true)?;
+        let _lock = staging
+            .try_lock_exclusive("writer.lock")
+            .map_err(|_| ReviewError::CleanupPending)?;
+        let canonical = root.child("canonical", false)?;
+        let mut locations = Vec::new();
+        if canonical.exists("blobs")? {
+            locations.push(canonical.child("blobs", false)?);
+        }
+        let mut exchange = Some(root);
+        for component in [
+            "transport",
+            "incoming",
+            crate::import_staging::ATTACHMENT_FOLDER,
+        ] {
+            exchange = match exchange {
+                Some(dir) if dir.exists(component)? => Some(dir.child(component, false)?),
+                _ => None,
+            };
+        }
+        if let Some(exchange) = exchange {
+            let (history, _) = self
+                .verified_trust_context()
+                .ok_or(ReviewError::Unauthorized)?;
+            let slots: std::collections::BTreeSet<_> = history
+                .approved_peer_bindings
+                .values()
+                .flat_map(|b| [&b.local_transport_device_id, &b.transport_device_id])
+                .collect();
+            for slot in slots {
+                if exchange.exists(slot)? {
+                    locations.push(exchange.child(slot, false)?);
+                }
+            }
+        }
+        for digest in &self.orphaned_by_purge {
+            for loc in &locations {
+                crate::attachment_blobs::remove_verified_copy(loc, digest)?;
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn compact_approved_note(
         &self,
         anchor: &LocalTrustAnchor,
@@ -116,7 +172,10 @@ impl VerifiedCanonicalSnapshot {
         else {
             return Err(ReviewError::TargetUnavailable);
         };
-        let bridge = crate::test_temp::sign_v2_fixture(receipt::bridge_body(original), key);
+        let bridge = crate::test_temp::sign_v2_fixture(
+            receipt::bridge_body(original, self.reader_has_link_target(note)),
+            key,
+        );
         self.replace_approved_frame(anchor, device, note, &bridge, expires)
     }
 
@@ -136,11 +195,12 @@ impl VerifiedCanonicalSnapshot {
         {
             return Err(ReviewError::Disabled);
         }
-        // Cross-record references need their own purge protocol.
+        // Other cross-record dependencies still require a dedicated purge protocol.
         if !self.security_history.records().iter().all(|r| {
             matches!(
                 r,
                 AuthenticatedSecurityRecord::V1(_)
+                    | AuthenticatedSecurityRecord::Attachment(..)
                     | AuthenticatedSecurityRecord::PurgeBridge(..)
                     | AuthenticatedSecurityRecord::SecurityV3(_)
             )

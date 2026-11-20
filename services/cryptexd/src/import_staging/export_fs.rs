@@ -299,7 +299,7 @@ impl Directory {
         self.unlink_opened(name, file)
     }
 
-    pub(crate) fn remove_blob_offer(&self, digest: &[u8; 32], file: File) -> Result<(), Error> {
+    pub(crate) fn remove_blob(&self, digest: &[u8; 32], file: File) -> Result<(), Error> {
         let name = format!("{:x}", sha2::digest::Output::<sha2::Sha256>::from(*digest));
         self.unlink_opened(&name, file)
     }

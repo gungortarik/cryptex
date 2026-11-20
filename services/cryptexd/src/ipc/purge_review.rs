@@ -9,6 +9,11 @@ pub(crate) mod physical;
     any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
 ))]
 pub(crate) mod receipt;
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+mod shared_attachment_test;
 use super::*;
 
 pub(super) const OPERATION: &str = "purge.review";
