@@ -1,0 +1,62 @@
+name: M11 cross-platform restore
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/m11-cross-restore.yml'
+      - 'tools/m11-cross-platform/**'
+      - 'tools/m11-backup-spike/**'
+      - 'crates/events/tests/fixtures/m8-old-reader-v1-v3.json'
+  pull_request:
+    paths:
+      - '.github/workflows/m11-cross-restore.yml'
+      - 'tools/m11-cross-platform/**'
+      - 'tools/m11-backup-spike/**'
+      - 'crates/events/tests/fixtures/m8-old-reader-v1-v3.json'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  exchange:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: windows-latest, local: windows, peer: macos}
+          - {os: macos-latest, local: macos, peer: windows}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --prefix tools/m11-backup-spike --ignore-scripts
+      - run: python -B tools/m11-cross-platform/exchange.py setup "${{ runner.temp }}/exchange"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m11-public-${{ matrix.local }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/exchange/public/recipient.asc
+            ${{ runner.temp }}/exchange/public/writer.asc
+          if-no-files-found: error
+          retention-days: 1
+      - run: python -B tools/m11-cross-platform/exchange.py fetch "${{ runner.temp }}/exchange" public ${{ matrix.peer }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: python -B tools/m11-cross-platform/exchange.py send "${{ runner.temp }}/exchange" ${{ matrix.local }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m11-backup-${{ matrix.local }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/exchange/outgoing/backup.pgp
+          if-no-files-found: error
+          retention-days: 1
+      - run: python -B tools/m11-cross-platform/exchange.py fetch "${{ runner.temp }}/exchange" backup ${{ matrix.peer }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: python -B tools/m11-cross-platform/exchange.py receive "${{ runner.temp }}/exchange" ${{ matrix.peer }}
