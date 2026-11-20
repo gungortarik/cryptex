@@ -450,6 +450,14 @@ fn restored_note_and_attachment_pass_guarded_reads() {
 
     drop(db);
     first_device::restarted_search::check(work.path(), &note.event_id, "ready");
+    let identity_path = crate::identity_runtime::brain_identity_path(&restored);
+    let changed = BrainIdentity::new(BRAIN, "2026-02-01T00:00:00Z")
+        .unwrap()
+        .to_json_lf()
+        .unwrap();
+    fs::write(&identity_path, changed).unwrap();
+    first_device::restarted_search::check(work.path(), &note.event_id, "checkpoint-held");
+    fs::write(&identity_path, &original_identity).unwrap();
     assert!(!volume.try_exists().unwrap());
     fs::rename(&parked, &volume).unwrap();
     assert_eq!(

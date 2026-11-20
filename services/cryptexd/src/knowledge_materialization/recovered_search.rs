@@ -23,6 +23,8 @@ pub(super) struct Request {
     pub(super) archive_device: DeviceId,
     pub(super) archive_key: [u8; 32],
     pub(super) archive_history_sha256: [u8; 32],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) brain_identity_sha256: Option<[u8; 32]>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -54,7 +56,14 @@ impl Ceremony {
             || !self.kit.purposes.contains(&RecoveryPurpose::TrustBootstrap)
             || self.kit.brain_id != self.expected.brain_id
             || self.kit.kit_id != self.expected.kit_id
-            || self.expected.operation != "cryptex.m11.trial.authorize-first-device.v1"
+            || !matches!(
+                (
+                    self.expected.operation.as_str(),
+                    self.expected.brain_identity_sha256
+                ),
+                ("cryptex.m11.trial.authorize-first-device.v1", None)
+                    | ("cryptex.m11.trial.authorize-first-device.v2", Some(_))
+            )
             || self.expected != approval.request
         {
             return Err(Denial::Context);
@@ -69,27 +78,8 @@ impl Ceremony {
     }
 
     pub(super) fn reopen(&self) -> Result<ArchiveReader, Denial> {
-        let mut options = fs::OpenOptions::new();
-        options.read(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            options.custom_flags(
-                windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT,
-            );
-        }
-        let reader = options.open(&self.receipt).map_err(|_| Denial::Receipt)?;
-        let meta = reader.metadata().map_err(|_| Denial::Receipt)?;
-        if !meta.is_file() || is_link_or_reparse(&meta) {
-            return Err(Denial::Receipt);
-        }
-        let approval: Approval =
-            serde_json::from_slice(&read_receipt(reader)?).map_err(|_| Denial::Receipt)?;
+        let approval: Approval = serde_json::from_slice(&read_metadata(&self.receipt, 16 * 1024)?)
+            .map_err(|_| Denial::Receipt)?;
         self.verify(&approval)?;
         let history = &approval.request;
         let key = VerifyingKey::from_bytes(&history.archive_key).map_err(|_| Denial::Receipt)?;
@@ -142,13 +132,29 @@ fn plain_directory(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir() && !is_link_or_reparse(&meta))
 }
 
-fn read_receipt(file: fs::File) -> Result<Vec<u8>, Denial> {
-    const MAX_RECEIPT: u64 = 16 * 1024;
+fn read_metadata(path: &Path, limit: u64) -> Result<Vec<u8>, Denial> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let file = options.open(path).map_err(|_| Denial::Receipt)?;
+    let meta = file.metadata().map_err(|_| Denial::Receipt)?;
+    if !meta.is_file() || is_link_or_reparse(&meta) {
+        return Err(Denial::Receipt);
+    }
     let mut data = Vec::new();
-    file.take(MAX_RECEIPT + 1)
+    file.take(limit + 1)
         .read_to_end(&mut data)
         .map_err(|_| Denial::Receipt)?;
-    if data.len() > MAX_RECEIPT as usize {
+    if data.len() > limit as usize {
         return Err(Denial::Receipt);
     }
     Ok(data)
@@ -235,6 +241,19 @@ pub(crate) fn search(
     let old = new.join(RECOVERY).join("archive");
     if !plain_directory(&old) {
         return Err(SearchHold::Archive);
+    }
+    if let Some(expected) = ceremony.expected.brain_identity_sha256 {
+        for (root, hold) in [
+            (&old as &Path, SearchHold::ArchiveCheckpoint),
+            (new, SearchHold::Replacement),
+        ] {
+            if !plain_directory(&root.join("identity"))
+                || !read_metadata(&crate::identity_runtime::brain_identity_path(root), 4096)
+                    .is_ok_and(|bytes| <[u8; 32]>::from(Sha256::digest(bytes)) == expected)
+            {
+                return Err(hold);
+            }
+        }
     }
     let old_db = ProjectionDb::open_existing_read_only(&old).map_err(|_| SearchHold::Archive)?;
     let new_db = ProjectionDb::open_existing_read_only(new).map_err(|_| SearchHold::Replacement)?;

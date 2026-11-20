@@ -108,7 +108,7 @@ pub(super) fn rehearse(
     )
     .unwrap();
     let request = Request {
-        operation: "cryptex.m11.trial.authorize-first-device.v1".into(),
+        operation: "cryptex.m11.trial.authorize-first-device.v2".into(),
         kit_id: public.kit_id.clone(),
         brain_id: public.brain_id.clone(),
         challenge: random_bytes(),
@@ -118,6 +118,9 @@ pub(super) fn rehearse(
         archive_device: archived.device_id().clone(),
         archive_key: *archived.public_key(),
         archive_history_sha256: history_digest,
+        brain_identity_sha256: Some(
+            Sha256::digest(identity.to_json_lf().unwrap().as_bytes()).into(),
+        ),
     };
     let mut ceremony = Ceremony {
         expected: request.clone(),
@@ -130,6 +133,24 @@ pub(super) fn rehearse(
         Err(Denial::Receipt)
     ));
     let grant = Approval::issue(&request, &offline);
+    let mut legacy = request.clone();
+    legacy.operation = "cryptex.m11.trial.authorize-first-device.v1".into();
+    legacy.brain_identity_sha256 = None;
+    assert!(
+        serde_json::to_value(&legacy)
+            .unwrap()
+            .get("brain_identity_sha256")
+            .is_none()
+    );
+    ceremony.expected = legacy.clone();
+    ceremony
+        .verify(&Approval::issue(&legacy, &offline))
+        .unwrap();
+    ceremony.expected = request.clone();
+    assert_eq!(
+        ceremony.verify(&Approval::issue(&legacy, &offline)),
+        Err(Denial::Context)
+    );
     // A normal device can sign, but has no recovery authority.
     let ordinary = load_existing_event_signing_key(&store, env, &new_root, &device).unwrap();
     assert_eq!(
@@ -147,6 +168,7 @@ pub(super) fn rehearse(
         |r| r.kit_id.push('x'),
         |r| r.challenge[0] ^= 1,
         |r| r.backup_sha256[0] ^= 1,
+        |r| r.brain_identity_sha256 = None,
         |r| r.new_key[0] ^= 1,
         |r| r.archive_key[0] ^= 1,
         |r| r.new_device = r.archive_device.clone(),
