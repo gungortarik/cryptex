@@ -180,8 +180,25 @@ both profiles, both surviving notes retain their IDs and hashes. A byte scan of
 every regular file in each closed temporary profile finds zero copies of the
 synthetic target text. [Windows and macOS native trial](https://github.com/gungortarik/cryptex/actions/runs/44661505049)
 
-Real profiles keep M10 writes disabled. Attached notes, version history,
-backups and M10 acceptance remain open.
+### Purging a shared attachment in a disposable profile
+
+At `d5eed28`, the daemon binds each signed attachment link to the target note
+or its authenticated purge bridge. Bridges for attached notes preserve the
+original classification for this binding check. Under the canonical locks,
+the daemon subtracts all surviving admitted references before applying any
+visibility filter. It rehashes the selected blob under the blob writer lock
+before unlinking it. Repeating cleanup derives the decision from signed history.
+
+The native trial uses two notes with different classifications and a shared
+binary file, plus an independent note and attachment. It opens the shared
+file through the remaining note after the first confirmed purge, reopens the
+profile, confirms the second purge and checks that the blob is absent. After
+another reopen the independent file still opens. A byte scan of the closed
+profile checks both the absence of the shared content and the presence of the
+control content. [Windows and macOS checks](https://github.com/gungortarik/cryptex/actions/runs/44663719908)
+
+Real profiles keep M10 writes disabled. Version history, backups and M10
+acceptance remain open.
 
 ## M9 complete on November 19, 2026
 
