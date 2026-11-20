@@ -71,8 +71,10 @@ async function startClient(mode) {
   };
 }
 
-for (const mode of ["blocked", "allowed", "physical", "damaged-archive"]) {
-  test("note detail purge review and file attachment with disposable controls " + mode, { timeout: 120_000 }, async () => {
+for (const mode of ["blocked", "allowed", "physical", "damaged-archive", "lifecycle"]) {
+  const name = mode === "lifecycle" ? "Desktop forget hides a note from search and restores the selected forgotten note"
+    : "note detail purge review and file attachment with disposable controls " + mode;
+  test(name, { timeout: 120_000 }, async () => {
     const tmp = await mkdtemp(path.join(os.tmpdir(), "cryptex-selected-file-"));
     const file = path.join(tmp, "sample.bin");
     const bytes = [0, 255, 13, 10, 65, 128];
@@ -85,8 +87,12 @@ for (const mode of ["blocked", "allowed", "physical", "damaged-archive"]) {
         let reviewTicket;
         await page.exposeFunction("nativeInvoke", async (command, args) => {
           if (command === "p0_3_ipc_health" || command === "p0_5_set_capture_session_guard") return;
-          if (!["m9_attach_file", "m10_purge_review", "p0_5_guarded_timeline", "p0_5_guarded_event_detail", "p0_5_capture_memory"].includes(command)) throw Error("unsupported");
+          if (!["m9_attach_file", "m10_purge_review", "m10_note_lifecycle", "p0_4_guarded_search", "p0_5_guarded_timeline", "p0_5_guarded_event_detail", "p0_5_capture_memory"].includes(command)) throw Error("unsupported");
           const result = await client.invoke(command, args);
+          if (command === "m10_note_lifecycle") {
+            if (result.Err) throw result.Err;
+            return result.Ok;
+          }
           if (command === "m10_purge_review") {
             if (result.Err) throw Error(result.Err);
             if (result.Ok.kind === "prepared") reviewTicket = result.Ok.ticket;
@@ -107,7 +113,7 @@ for (const mode of ["blocked", "allowed", "physical", "damaged-archive"]) {
         });
         await page.goto(origin);
         const physical = mode === "physical" || mode === "damaged-archive";
-        const title = physical ? "purgetrialbodyxqkz" : "Note selected for a binary attachment";
+        const title = mode === "lifecycle" ? "synthetic forget and restore test" : physical ? "purgetrialbodyxqkz" : "Note selected for a binary attachment";
         await page.getByLabel("Note", { exact: true }).fill(title);
         await page.getByLabel("Classification", { exact: true }).selectOption("internal");
         await page.getByRole("button", { name: "Save capture" }).click();
@@ -137,6 +143,39 @@ for (const mode of ["blocked", "allowed", "physical", "damaged-archive"]) {
         const prepare = { kind: "prepare", note_id: detail.eventId, note_hash: detail.contentHash };
         const review = page.getByRole("button", { name: "Review permanent deletion" });
         const decide = action => client.invoke("m10_purge_review", { action });
+        const lifecycle = action => client.invoke("m10_note_lifecycle", { action });
+        if (mode === "lifecycle") {
+          const original = (await lifecycle({ kind: "inspect", note_id: selected.noteId })).Ok.target;
+          assert.equal(original.state_hash, selected.noteHash);
+          await page.getByRole("button", { name: "Forget note", exact: true }).click();
+          await page.getByRole("button", { name: "Forgotten notes" }).waitFor();
+          const checkSearch = async visible => {
+            await page.getByRole("button", { name: "Search memory" }).click();
+            await page.getByPlaceholder("Search notes, people, or ideas").fill("synthetic");
+            await page.getByRole("button", { name: "Search", exact: true }).click();
+            const results = page.getByRole("region", { name: "Search results" });
+            await results.getByText("synthetic IPC search fixture note", { exact: true }).waitFor();
+            assert.equal(await results.getByText(title, { exact: true }).count(), visible ? 1 : 0);
+          };
+          await checkSearch(false);
+          const hiddenDetail = await client.invoke("p0_5_guarded_event_detail", { eventId: selected.noteId });
+          assert.ok(hiddenDetail.accepted && !hiddenDetail.holdReason);
+          assert.deepEqual(hiddenDetail.hits, []);
+          await page.reload();
+          await page.getByRole("button", { name: "Open timeline" }).click();
+          await page.getByRole("button", { name: "Forgotten notes" }).click();
+          const forgotten = page.getByRole("region", { name: "Forgotten notes" });
+          await forgotten.getByText(title, { exact: true }).waitFor();
+          assert.equal(await forgotten.getByRole("article").count(), 1);
+          await forgotten.getByRole("button", { name: "Restore note" }).click();
+          await row.waitFor();
+          assert.deepEqual(await lifecycle({ kind: "forget", target: original }), { Err: "stale_selection" });
+          await checkSearch(true);
+          await page.getByRole("button", { name: "Open timeline" }).click();
+          await page.getByRole("button", { name: "Forgotten notes" }).click();
+          await page.getByText("No forgotten notes.", { exact: true }).waitFor();
+          return;
+        }
         if (physical) {
           const dialog = page.getByRole("dialog", { name: "Permanently delete this note?" });
           await review.click();
@@ -162,6 +201,11 @@ for (const mode of ["blocked", "allowed", "physical", "damaged-archive"]) {
           assert.deepEqual(remaining.hits.map(note => note.text).sort(),
             ["survivor following the purged record", "synthetic IPC search fixture note"]);
         } else if (mode === "blocked") {
+          const target = { note_id: selected.noteId, note_hash: selected.noteHash, state_hash: selected.noteHash };
+          for (const action of [{ kind: "list" }, { kind: "forget", target }, { kind: "restore", target }]) {
+            assert.deepEqual(await lifecycle(action), { Err: "disabled" });
+          }
+          assert.equal(await page.getByRole("button", { name: "Forget note", exact: true }).count(), 0);
           assert.equal(await review.count(), 0);
           assert.deepEqual(await decide(prepare), { Err: "disabled" });
           assert.deepEqual(await client.invoke("approval_inventory", {}), []);

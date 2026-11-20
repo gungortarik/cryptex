@@ -55,6 +55,12 @@ pub struct SignedNoteLifecycle {
     payload: LifecycleTarget,
 }
 
+impl SignedNoteLifecycle {
+    pub fn note_event_id(&self) -> &str {
+        &self.payload.note_event_id
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CancellableSecurityHistoryError {
     InvalidRecord(ValidationFailure),

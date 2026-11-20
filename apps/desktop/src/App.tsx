@@ -1,4 +1,5 @@
 import { PurgeReview } from "./PurgeReview";
+import { NoteLifecycle } from "./NoteLifecycle";
 import { NoteAttachment } from "./NoteAttachment";
 import { invoke } from "@tauri-apps/api/core";
 import { ConnectionSettings } from "./ConnectionSettings";
@@ -1642,6 +1643,7 @@ export function App() {
                 <h2>Timeline</h2>
                 <span>{timelineHits.length} {timelineHits.length === 1 ? "note" : "notes"}</span>
               </div>
+              {!detailHit && <NoteLifecycle onChanged={openTimeline} />}
               {detailHit ? (
                 <article className="timeline-detail" aria-label="Note detail">
                   <div className="results-heading">
@@ -1655,6 +1657,7 @@ export function App() {
                     <span>{detailHit.classification}</span>
                   </div>
                   <p>{detailHit.text}</p>
+                  <NoteLifecycle key={detailHit.eventId + detailHit.contentHash} note={detailHit} onChanged={openTimeline} />
                   {!!detailHit.attachmentLinkCount && (
                     <p>{detailHit.attachmentLinkCount} signed attachment {detailHit.attachmentLinkCount === 1 ? "link" : "links"}</p>
                   )}

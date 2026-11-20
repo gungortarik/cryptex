@@ -10,7 +10,7 @@ pub(crate) fn append(
     env: SecureStoreEnvironment,
     file: &SelectedFile,
 ) -> Result<(), AttachError> {
-    use AttachError::{Storage, TargetUnavailable, Uncertain, VerificationFailed};
+    use AttachError::{Storage, TargetUnavailable, VerificationFailed};
     let _protected = crate::import_staging::open_existing_profile_lock(
         &root.join("daemon.lock"),
         "reader-m9.pid",
@@ -63,6 +63,26 @@ pub(crate) fn append(
     if snapshot.already_links(&note.event_id, &digest) {
         return Ok(());
     }
+    append_note_control(
+        root,
+        device,
+        note,
+        &key,
+        cryptex_events::attachment_link::EVENT_TYPE,
+        serde_json::json!(LinkPayload::for_note(note, &digest).map_err(|_| VerificationFailed)?),
+    )
+}
+
+/// The caller retains the verified snapshot's inventory and device locks.
+pub(crate) fn append_note_control(
+    root: &Path,
+    device: &DeviceId,
+    note: &AcceptedEvent,
+    key: &crate::event_signing_key::ReadyEventSigningKey,
+    event_type: &str,
+    payload: serde_json::Value,
+) -> Result<(), AttachError> {
+    use AttachError::{Storage, Uncertain, VerificationFailed};
     let validator = VerifyingBodyValidator {
         verifying_key: key.signing_key.verifying_key(),
         expected_device_id: device.clone(),
@@ -76,11 +96,11 @@ pub(crate) fn append(
     let id = new_event_id().map_err(|_| Storage)?;
     let body = crate::test_temp::sign_v2_fixture(
         serde_json::json!({
-            "schema_version": 2, "event_id": id, "brain_id": brain.brain_id, "device_id": device.as_str(),
+            "schema_version": 2, "event_id": id, "brain_id": note.brain_id, "device_id": device.as_str(),
             "device_seq": DeviceSeq::from_u64(seq).map_err(|_| VerificationFailed)?,
-            "created_at": now_rfc3339().map_err(|_| Storage)?, "event_type": cryptex_events::attachment_link::EVENT_TYPE,
+            "created_at": now_rfc3339().map_err(|_| Storage)?, "event_type": event_type,
             "payload_schema_version": 1, "classification": note.classification, "signing_key_id": key.public.signing_key_id,
-            "prev_content_hash": state.last_content_hash, "payload": LinkPayload::for_note(note, &digest).map_err(|_| VerificationFailed)?
+            "prev_content_hash": state.last_content_hash, "payload": payload
         }),
         &key.signing_key,
     );

@@ -10,6 +10,7 @@ mod native_domain;
 pub(crate) mod native_profile;
 
 pub mod attachment;
+pub mod lifecycle;
 pub mod purge_review;
 
 use std::collections::HashMap;
@@ -1997,7 +1998,7 @@ fn exchange(
 
 fn exchange_until(
     stream: &mut Stream,
-    request: &Request,
+    request: &impl Serialize,
     max_response_bytes: usize,
     deadline: Instant,
 ) -> io::Result<Vec<u8>> {
@@ -2234,6 +2235,14 @@ fn handle_connection_via(
         .map(|header| header.operation);
     if operation.as_deref() == Some(purge_review::OPERATION) {
         let reply = purge_review::handle(&frame, search, peer_is_desktop);
+        return write_response(
+            stream,
+            &serde_json::to_vec(&reply)?,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        );
+    }
+    if operation.as_deref() == Some(lifecycle::OPERATION) {
+        let reply = lifecycle::handle(&frame, search, peer_is_desktop);
         return write_response(
             stream,
             &serde_json::to_vec(&reply)?,

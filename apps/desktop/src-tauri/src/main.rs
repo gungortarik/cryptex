@@ -446,6 +446,15 @@ fn p0_5_guarded_timeline(
 }
 
 #[tauri::command]
+async fn m10_note_lifecycle(
+    action: cryptexd::ipc::lifecycle::Action,
+) -> Result<cryptexd::ipc::lifecycle::Outcome, cryptexd::ipc::lifecycle::Error> {
+    tauri::async_runtime::spawn_blocking(move || cryptexd::ipc::lifecycle::desktop(action))
+        .await
+        .map_err(|_| cryptexd::ipc::lifecycle::Error::Uncertain)?
+}
+
+#[tauri::command]
 async fn m10_purge_review(
     action: cryptexd::ipc::purge_review::Action,
 ) -> Result<cryptexd::ipc::purge_review::Outcome, cryptexd::ipc::purge_review::ReviewError> {
@@ -2639,6 +2648,7 @@ fn main() {
             p0_5_guarded_event_detail,
             m9_attach_file,
             m10_purge_review,
+            m10_note_lifecycle,
             p0_6_materialize_and_open_vault,
             p0_4_enroll_local_device,
             p0_5_capture_memory,

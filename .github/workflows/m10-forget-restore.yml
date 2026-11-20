@@ -7,6 +7,8 @@ on:
       - 'services/cryptexd/src/m10_forget_restore.rs'
       - 'services/cryptexd/src/test_temp.rs'
       - 'services/cryptexd/src/ipc.rs'
+      - 'services/cryptexd/src/ipc/lifecycle.rs'
+      - 'services/cryptexd/src/ipc/lifecycle/**'
       - 'services/cryptexd/src/ipc/tests/purge_tests.rs'
       - 'services/cryptexd/src/m8_owner_channel/request.rs'
       - 'services/cryptexd/src/knowledge_materialization.rs'
@@ -47,6 +49,8 @@ jobs:
           $result
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($result -notcontains "test $case ... ok") { throw "Missing purge test result" }
+      - name: Check owner authorization for the forgotten picker and reversible changes
+        run: cargo test --locked -p cryptexd --lib ipc::lifecycle::tests
       - name: Check existing search and timeline behavior
         run: cargo test --locked -p cryptex-projection --lib search::tests
       - name: Check existing signed-history rules

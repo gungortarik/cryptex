@@ -1085,6 +1085,13 @@ impl VerifiedCanonicalSnapshot {
         test,
         any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
     ))]
+    pub(crate) fn is_forgotten(&self, id: &str) -> bool {
+        self.forgotten.contains(id)
+    }
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
     pub(crate) fn trial_security_frames(&self) -> Vec<&[u8]> {
         self.security_frames
             .iter()
@@ -2381,7 +2388,30 @@ pub(crate) fn scan_verified_canonical_from_local_anchor_with_import_devices_and_
     )
 }
 
-/// Retain the inventory and writer locks until the isolated daemon publishes the approval.
+/// Retain the verified owner history and canonical locks through a local lifecycle decision.
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+pub(crate) fn lock_local_lifecycle_history(
+    root: &Path,
+    brain: &str,
+    anchor: &LocalTrustAnchor,
+    deadline: Instant,
+) -> KnowledgeMaterializationResult<VerifiedCanonicalSnapshot> {
+    scan_anchored_history(
+        root,
+        brain,
+        anchor,
+        ImportScanScope {
+            candidate_devices: &[],
+            recovery_exclusions: &[],
+            lifecycle: NoteLifecycleRead::Apply,
+        },
+        Some(deadline),
+    )
+}
+
 #[cfg(all(
     test,
     any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
@@ -2394,17 +2424,7 @@ pub(crate) fn lock_visible_purge_target(
     hash: &str,
     deadline: Instant,
 ) -> KnowledgeMaterializationResult<VerifiedCanonicalSnapshot> {
-    let snapshot = scan_anchored_history(
-        root,
-        brain,
-        anchor,
-        ImportScanScope {
-            candidate_devices: &[],
-            recovery_exclusions: &[],
-            lifecycle: NoteLifecycleRead::Apply,
-        },
-        Some(deadline),
-    )?;
+    let snapshot = lock_local_lifecycle_history(root, brain, anchor, deadline)?;
     let device = anchor.device_id();
     let active_owner = snapshot
         .verified_trust_context()

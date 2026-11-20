@@ -2,7 +2,7 @@
 //! Both helper processes are test executables. The server creates its own root.
 use super::tests::prepared_search_fixture;
 use super::*;
-use cryptex_events::Classification;
+use cryptex_events::{AuthenticatedSecurityRecord, Classification};
 use sha2::Digest;
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -40,8 +40,18 @@ fn isolated_server() {
         .name(fixture_name(&token))
         .create_sync()
         .unwrap();
-    let mut fixture = prepared_search_fixture(if physical { "physical" } else { "attachment" });
+    let label = if physical {
+        "physical"
+    } else if mode == "lifecycle" {
+        "lifecycle"
+    } else {
+        "attachment"
+    };
+    let mut fixture = prepared_search_fixture(label);
     let root = &fixture.root;
+    if mode == "lifecycle" {
+        lifecycle::register(root);
+    }
     drop(crate::instance::try_acquire_instance(root).unwrap());
     crate::instance::migration::migrate_profile(root).unwrap();
     let instance = crate::instance::try_acquire_instance(root).unwrap();
@@ -169,6 +179,31 @@ fn isolated_server() {
     )
     .unwrap();
     let anchor = resolver.local_trust_anchor().unwrap();
+    if mode == "lifecycle" {
+        let snapshot = crate::knowledge_materialization::lock_local_lifecycle_history(
+            root,
+            &fixture.brain_id,
+            &anchor,
+            Instant::now() + IPC_REQUEST_DEADLINE,
+        )
+        .unwrap();
+        let chain = snapshot.reader_device_chain(fixture.device.as_str());
+        let [
+            AuthenticatedSecurityRecord::V1(_),
+            AuthenticatedSecurityRecord::V1(note),
+            AuthenticatedSecurityRecord::Lifecycle(_, forget),
+            AuthenticatedSecurityRecord::Lifecycle(_, restore),
+        ] = chain
+        else {
+            panic!("expected two notes and exactly two signed transitions")
+        };
+        assert_eq!(forget.note_event_id(), note.event_id);
+        assert_eq!(restore.note_event_id(), note.event_id);
+        assert!(!snapshot.is_forgotten(&note.event_id));
+        drop((snapshot, original, listener));
+        fs::remove_dir_all(root).unwrap();
+        return;
+    }
     let snapshot =
         crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
             root,
@@ -506,6 +541,18 @@ fn browser_client() {
         };
         writeln!(child.stdin.as_mut().unwrap(), "{check}").unwrap();
         let result = match command {
+            "m10_note_lifecycle" => serde_json::to_value(lifecycle::desktop(
+                serde_json::from_value(args["action"].clone()).unwrap(),
+            ))
+            .unwrap(),
+            "p0_4_guarded_search" => serde_json::to_value(
+                desktop_search(
+                    serde_json::from_value(args["query"].clone()).unwrap(),
+                    timeout,
+                )
+                .unwrap(),
+            )
+            .unwrap(),
             "m10_purge_review" => serde_json::to_value(purge_review::desktop(
                 serde_json::from_value(args["action"].clone()).unwrap(),
             ))
