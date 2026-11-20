@@ -286,6 +286,34 @@ impl Directory {
         self.unlink_opened("segment.tmp", file)
     }
 
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
+    pub(crate) fn archived_segments(&self) -> Result<Vec<(u64, String)>, Error> {
+        self.validate()?;
+        let mut segments = Vec::new();
+        for entry in fs::read_dir(&self.path)? {
+            let name = entry?.file_name();
+            if let Some(name) = name.to_str()
+                && let Some(index) = archived_segment_index(name)
+            {
+                segments.push((index, name.to_owned()));
+            }
+        }
+        self.validate()?;
+        Ok(segments)
+    }
+
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
+    pub(crate) fn discard_archived_segment(&self, name: &str, file: File) -> Result<(), Error> {
+        archived_segment_index(name).ok_or(Error::Unsafe)?;
+        self.unlink_opened(name, file)
+    }
+
     #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     pub(crate) fn remove_reader_slot(&self, name: &str, file: File) -> Result<(), Error> {
         if !name.strip_suffix(".control").is_some_and(|id| {
@@ -349,6 +377,13 @@ impl Directory {
     }
 }
 fn leaf(name: &str) -> Result<(), Error> {
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
+    if name.contains('~') && archived_segment_index(name).is_some() {
+        return Ok(());
+    }
     if name.is_empty()
         || !name
             .bytes()
@@ -358,4 +393,29 @@ fn leaf(name: &str) -> Result<(), Error> {
         return Err(Error::Unsafe);
     }
     Ok(())
+}
+
+/// Syncthing trashcan and timestamped versions of a daemon-generated sealed pack.
+#[cfg(all(
+    test,
+    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+))]
+fn archived_segment_index(name: &str) -> Option<u64> {
+    let stem = name.strip_suffix(".seg")?;
+    let index = if let Some((index, stamp)) = stem.split_once('~') {
+        let (date, time) = stamp.split_once('-')?;
+        if date.len() != 8
+            || time.len() != 6
+            || !date.bytes().chain(time.bytes()).all(|b| b.is_ascii_digit())
+        {
+            return None;
+        }
+        index
+    } else {
+        stem
+    };
+    if index.len() != 20 || !index.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    index.parse().ok()
 }

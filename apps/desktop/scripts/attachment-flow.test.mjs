@@ -22,6 +22,13 @@ function buildTestBinary() {
 }
 const binary = process.env.CRYPTEX_ATTACHMENT_TEST_BINARY ?? buildTestBinary();
 
+test("purge scrubs archived note versions and preserves other notes", () => {
+  const result = spawnSync(binary, ["--exact", "ipc::purge_review::version_history_test::confirmed_purge_scrubs_archived_versions",
+    "--ignored", "--nocapture"], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /archive_purge=verified/);
+});
+
 test("purge preserves a shared attachment until its last note is deleted", () => {
   const result = spawnSync(binary, ["--exact", "ipc::purge_review::shared_attachment_test::purge_shared_attachment",
     "--ignored", "--nocapture"], { encoding: "utf8" });

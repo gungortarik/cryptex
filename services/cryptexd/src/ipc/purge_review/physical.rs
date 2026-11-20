@@ -58,6 +58,7 @@ pub(crate) fn finish_cleanup(
             )
             .map_err(|_| ReviewError::CleanupPending)?;
         snapshot.clean_purged_blobs()?;
+        snapshot.clean_archived_versions()?;
     }
     let mut db = cryptex_projection::ProjectionDb::open_or_create(root)
         .map_err(|_| ReviewError::CleanupPending)?;
@@ -257,6 +258,7 @@ pub(crate) fn reconcile(
         )
         .map_err(|_| ReviewError::CleanupPending)?;
     let remote = snapshot.clean_purged_exchange(anchor.device_id())?;
+    snapshot.clean_archived_versions()?;
     drop(snapshot);
     if !remote.is_empty() {
         let staging = Directory::open(root)?.child("purge-staging", true)?;

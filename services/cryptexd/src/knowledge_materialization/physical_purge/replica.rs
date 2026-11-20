@@ -47,11 +47,6 @@ impl VerifiedCanonicalSnapshot {
                 continue;
             }
             let mut file = dir.open_file(&name, false)?;
-            let mut keys = self
-                .trust_history
-                .as_ref()
-                .ok_or(ReviewError::Unauthorized)?
-                .key_resolver();
             for frame in self.security_frames.iter().filter(|f| {
                 f.position.device_id == device.as_str() && f.position.pack_index == index
             }) {
@@ -66,22 +61,7 @@ impl VerifiedCanonicalSnapshot {
                 if bytes == frame.bytes {
                     continue;
                 }
-                let Some(AuthenticatedSecurityRecord::PurgeBridge(bridge, _, hash, _)) = self
-                    .security_history
-                    .records()
-                    .iter()
-                    .find(|r| r.event_id() == frame.position.event_id)
-                else {
-                    return Err(ReviewError::PackIntegrity);
-                };
-                let key = keys
-                    .trusted_daemon_key(device.as_str(), bridge.signing_key_id.as_str())
-                    .ok_or(ReviewError::Unauthorized)?;
-                if !matches!(read_versioned_record(&bytes, &key), Ok(VersionedRecord::VerifiedV1(note))
-                    if note.event_id == bridge.event_id && note.content_hash == *hash)
-                {
-                    return Err(ReviewError::PackIntegrity);
-                }
+                self.verify_original_for_bridge(frame, &bytes)?;
             }
             if file.read(&mut [0]).map_err(|_| ReviewError::PackStorage)? != 0 {
                 return Err(ReviewError::PackIntegrity);
@@ -90,5 +70,33 @@ impl VerifiedCanonicalSnapshot {
             dir.sync()?;
         }
         Ok(remote_bridges)
+    }
+
+    pub(super) fn verify_original_for_bridge(
+        &self,
+        frame: &RawFrame,
+        bytes: &[u8],
+    ) -> Result<(), ReviewError> {
+        let Some(AuthenticatedSecurityRecord::PurgeBridge(bridge, _, hash, _)) = self
+            .security_history
+            .records()
+            .iter()
+            .find(|r| r.event_id() == frame.position.event_id)
+        else {
+            return Err(ReviewError::PackIntegrity);
+        };
+        let key = self
+            .trust_history
+            .as_ref()
+            .ok_or(ReviewError::Unauthorized)?
+            .key_resolver()
+            .trusted_daemon_key(&bridge.device_id, bridge.signing_key_id.as_str())
+            .ok_or(ReviewError::Unauthorized)?;
+        if !matches!(read_versioned_record(bytes, &key), Ok(VersionedRecord::VerifiedV1(note))
+            if note.event_id == bridge.event_id && note.content_hash == *hash)
+        {
+            return Err(ReviewError::PackIntegrity);
+        }
+        Ok(())
     }
 }
