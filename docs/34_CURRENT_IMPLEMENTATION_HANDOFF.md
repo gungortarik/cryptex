@@ -226,9 +226,26 @@ copies of the target text after each restore. Cleanup completion is cached in
 the current transport session so a restored disk marker cannot skip this check.
 [Paired snapshot recovery checks](https://github.com/gungortarik/cryptex/actions/runs/44668161163)
 
-Real profiles keep M10 writes disabled. Cleanup of independently retained
-backups and snapshots and final M10 acceptance remain open. M11 owns the
-encrypted backup container and disaster restore.
+### Purging notes from independently retained pack backups
+
+At `221370f`, the native disposable-profile trial registers three separate
+encrypted pack backups outside the source profile. After owner confirmation,
+the daemon matches each historical frame against verified local history and
+the signed purge approval. It reopens and decrypts the published replacement
+before discarding the old encrypted file. A locked backup leaves cleanup
+pending while other reachable backups are processed.
+
+The trial decrypts two backup generations and verifies that the target text
+is absent, that surviving signed frames match the originals byte for byte,
+and that each generation contains the expected approval. A third backup
+predates the target and retains its original ciphertext. The trial also
+covers cancellation, a damaged encrypted file, interrupted publication and
+repeat cleanup. [Windows and macOS checks](https://github.com/gungortarik/cryptex/actions/runs/44670152740)
+
+The backup key and directory registrations live only for the temporary trial.
+Real profiles keep M10 writes disabled. Production backup inventory, encrypted
+container selection and disaster restore remain M11 work. Final M10 acceptance
+remains open.
 
 ## M9 complete on November 19, 2026
 
