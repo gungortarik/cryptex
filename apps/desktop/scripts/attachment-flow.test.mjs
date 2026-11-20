@@ -43,6 +43,13 @@ test("purge preserves a shared attachment until its last note is deleted", () =>
   assert.match(result.stdout, /shared_purge=verified first_preserved=true last_removed=true control_preserved=true/);
 });
 
+test("M10 closeout: purge a different note after a signed forget", () => {
+  const result = spawnSync(binary, ["--exact", "ipc::purge_review::shared_attachment_test::review_mixed_history_purge",
+    "--ignored", "--nocapture"], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /closeout_probe outcome=Purged/);
+});
+
 async function startClient(mode) {
   const proc = spawn(binary, ["--exact", "ipc::attachment_flow::browser_client", "--ignored", "--nocapture"], {
     env: { ...process.env, CRYPTEX_FILE_FIXTURE_MODE: mode }, stdio: ["pipe", "pipe", "inherit"],
