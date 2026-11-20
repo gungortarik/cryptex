@@ -6,7 +6,9 @@ The [container rehearsal](../evidence/m11/backup-container.md) passed on Windows
 
 At `75916b0` both native jobs also verified the backup writer signature, reconstructed the paired devices' history in disposable storage, rebuilt SQLite and opened the recovered note and its attachment through guarded daemon reads. An invalid note signature blocked access even with the populated index. [Guarded restore evidence](../evidence/m11/backup-container.md#guarded-reads-after-restore)
 
-At `5505f24` the Windows and macOS rehearsals dropped both original devices before decrypting the backup. An independently pinned offline Kit key authorized a replacement device for that restore. The replacement signed a fresh note and read the historical note and attachment in a separate sandbox. The next integration step is one guarded view across the recovered history and the replacement's stream after restart. Real profiles keep their existing write gates. [First-device rehearsal](../evidence/m11/backup-container.md#first-replacement-device-after-loss-of-both-source-devices)
+At `5505f24` the Windows and macOS rehearsals dropped both original devices before decrypting the backup. An independently pinned offline Kit key authorized a replacement device for that restore. The replacement signed a fresh note and read the historical note and attachment in a separate sandbox. [First-device rehearsal](../evidence/m11/backup-container.md#first-replacement-device-after-loss-of-both-source-devices)
+
+At `328e067` fresh native test processes on both platforms returned the archived note and the replacement's note from one guarded text search. Damaging either history or the receipt held the whole query. A shorter valid archive also failed against the selected recovery checkpoint after rebuilding SQLite. Next, connect this bounded read path to the Desktop search request for a disposable recovered profile. Real profiles keep their existing write gates. [Restarted search evidence](../evidence/m11/backup-container.md#searching-both-histories-after-restart)
 
 ## M10 complete on November 20, 2026
 

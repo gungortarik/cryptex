@@ -40,3 +40,13 @@ The signed request binds the operation, Brain, Kit, fresh restore challenge, SHA
 After the offline signer is dropped, the candidate signs a new note with its own key. A rebuilt index and guarded search return that note with the new device ID. The archival reader derives its historical anchor from the verified grant, rebuilds the recovered projection and opens the original note and attachment. Normal event verification and the wrong-note, missing-blob, altered-blob and altered-signature cases are rerun. [Native Windows and macOS run](https://github.com/gungortarik/cryptex/actions/runs/44684314482)
 
 The rehearsal separates the writable replacement profile from the historical read sandbox. Combining the two histories in one guarded view after restart is the next integration step. Owner interaction, a portable Kit format, independent backup freshness and coordination across separately reconstructed copies of a restore remain outside this trial. The receipt and its verifier are test-only.
+
+## Searching both histories after restart
+
+The updated disposable grant binds the selected archive's ordered authenticated history. Each restarted reader opens both projections from disk, verifies the signed receipt against the separately provisioned public test context, and reloads the replacement credential from a temporary file-backed test store. The offline signer is gone. The writable stream and historical archive remain separately owned.
+
+The reader holds the two canonical retrieval guards while building a temporary SQLite view from admitted, visible notes and executing one text query. It checks the archive checkpoint, disjoint device streams and event IDs, and admits only notes from the replacement device. FTS filtering, date ordering and the result limit apply to the combined view. The fixture exercises a shared query matching both known note IDs, both authors, the original bodies and a global one-result limit.
+
+Separate child processes exercise a damaged receipt, a modified signature in each history with populated indexes, and an archive shortened by one otherwise valid signed record. The shortened archive can rebuild its own projection but fails the grant checkpoint. Restoring the original pack and rebuilding the index permits the same search again. This is a daemon test entry point. Desktop IPC, production credential persistence, and performance on large archives need separate verification.
+
+Both hosted platforms passed Clippy and the complete M11 rehearsal at `328e067`. [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/44796685105)
