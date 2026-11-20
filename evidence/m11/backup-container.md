@@ -1,5 +1,17 @@
 # M11 encrypted backup container rehearsal
 
+## Current retention and recovery behavior
+
+The default retains every generation. An explicit positive count applies only to automatic generations on the selected target of the designated writer. The device credential store holds the preference and each reconstruction receipt. After a sandbox restore, the writer checks the saved policy, takes the target lock, checks the surviving ciphertext against its receipts and removes only eligible older files. A missing policy retains everything. A corrupt receipt or a changed verified file stops cleanup. An encrypted manual export and an unrecognized file remain outside cleanup.
+
+The Windows and macOS scheduler tests interrupt a child process while the backup disk is absent. A fresh process resumes the job and recognizes its own already published ciphertext on replay. The two-generation scenario separately restores the prior and current backups and checks the offline note against its capture receipt. [Native scheduler run](https://github.com/gungortarik/cryptex/actions/runs/44825884830)
+
+The retention rehearsal reopens the credential store, denies a second device permission to prune, substitutes damaged ciphertext before pruning and restores a manual export after cleanup. Eligibility requires the writer's journal and successful reconstruction of those exact bytes. [Native retention run](https://github.com/gungortarik/cryptex/actions/runs/44827314035)
+
+The daemon rehearsal now archives the original immutable Brain identity with the event packs and blobs. Restore checks its bytes against the independent Kit checkpoint before publishing the sandbox. The replacement device uses that recovered identity. New first-device approvals bind its digest and the normal recovery search checks both histories against that approval on reopen. Earlier disposable v1 approvals retain their original signature format. [Native identity and recovery-search run](https://github.com/gungortarik/cryptex/actions/runs/44828117191)
+
+The current writer, retention operation and Kit ceremony run in disposable profiles. The installed Desktop proof exercises recovery search. Remaining product work includes owner-operated backup and recovery in the installed app, packaging the encrypted writer and offline Kit, controlled transfer of the scheduled-writer role, and reconciliation with purge on reachable backups. Release review must cover those entry points before M11 closeout.
+
 The P1 trial selects a stored ZIP archive inside an RFC 9580 OpenPGP message. The fixture runner uses the streaming public-key encryption and decryption APIs of OpenPGP.js 6.3.2, pinned by npm integrity hash. The reader requires a version 2 integrity-protected encrypted data packet and consumes the stream through its final authentication check before extracting the archive. Upstream reports two Cure53 audits of the library. The published historical audit does not establish coverage of the pinned 6.3.2 artifact. [OpenPGP.js audit disclosure](https://docs.openpgpjs.org/#security-audit) · [Published audit scope](https://github.com/openpgpjs/openpgpjs/wiki/Cure53-security-audit) · [RFC 9580](https://www.rfc-editor.org/rfc/rfc9580.html)
 
 ## Rehearsal

@@ -2,6 +2,8 @@
 
 ## M11 encrypted backup rehearsal
 
+The scheduled job survives a process restart while its disk is offline. Retention defaults to keeping every generation. When the designated device has a saved count, it prunes older automatic backups after reconstruction and preserves manual exports. New recovery trials preserve the original Brain identity through replacement-device enrollment and bind it to the signed read approval. The next integration is owner-operated backup and restore in the installed app. [M11 behavior, native runs and remaining gates](../evidence/m11/backup-container.md#current-retention-and-recovery-behavior)
+
 The [container rehearsal](../evidence/m11/backup-container.md) passed on Windows and macOS at `b11b29e`. Both systems restored a signed frame and large blob with the recovery decryption key after loss of the synthetic source profile. The previous complete backup survived an interrupted replacement.
 
 At `75916b0` both native jobs also verified the backup writer signature, reconstructed the paired devices' history in disposable storage, rebuilt SQLite and opened the recovered note and its attachment through guarded daemon reads. An invalid note signature blocked access even with the populated index. [Guarded restore evidence](../evidence/m11/backup-container.md#guarded-reads-after-restore)
