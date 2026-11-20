@@ -2,6 +2,7 @@
   "identifier": "com.cryptex.m11-search-rehearsal",
   "bundle": {
     "active": true,
+    "macOS": { "minimumSystemVersion": "11.0" },
     "externalBin": ["binaries/cryptex-m11-reader"]
   }
 }
