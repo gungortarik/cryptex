@@ -205,7 +205,18 @@ impl VerifiedSecurityHistory {
             }
             match record {
                 AuthenticatedSecurityRecord::V1(note) => {
-                    notes.insert(note.event_id.as_str(), (note, &note.content_hash, false));
+                    notes.insert(
+                        record.event_id(),
+                        (record, note.classification, record.content_hash(), false),
+                    );
+                }
+                // A purged original still authenticates earlier transitions. The
+                // bridge itself is never projected as note content.
+                AuthenticatedSecurityRecord::PurgeBridge(_, _, _, Some(class)) => {
+                    notes.insert(
+                        record.event_id(),
+                        (record, *class, record.content_hash(), false),
+                    );
                 }
                 AuthenticatedSecurityRecord::Lifecycle(raw, change) => {
                     let invalid = || {
@@ -214,15 +225,15 @@ impl VerifiedSecurityHistory {
                             "invalid note lifecycle transition",
                         )
                     };
-                    let (note, latest, forgotten) = notes
+                    let (note, class, latest, forgotten) = notes
                         .get_mut(change.payload.note_event_id.as_str())
                         .ok_or_else(invalid)?;
                     let forget = change.event_type == Operation::Forget;
-                    if note.device_id != raw.device_id
-                        || note.signing_key_id != raw.signing_key_id
-                        || note.brain_id != change.brain_id
-                        || note.classification != change.classification
-                        || note.content_hash != change.payload.note_content_hash
+                    if note.device_id() != raw.device_id
+                        || note.signing_key_id() != &raw.signing_key_id
+                        || note.brain_id() != change.brain_id
+                        || *class != change.classification
+                        || note.content_hash() != &change.payload.note_content_hash
                         || **latest != change.payload.prior_state_hash
                         || *forgotten == forget
                     {
@@ -236,7 +247,7 @@ impl VerifiedSecurityHistory {
         }
         Ok(notes
             .into_iter()
-            .filter(|(_, (_, _, hidden))| *hidden)
+            .filter(|(_, (_, _, _, hidden))| *hidden)
             .map(|(id, _)| id.to_owned())
             .collect())
     }

@@ -95,9 +95,14 @@ fn append_framed(buffer: &mut Vec<u8>, body: &[u8]) -> Result<(), ReviewError> {
 }
 
 impl VerifiedCanonicalSnapshot {
-    pub(crate) fn reader_has_link_target(&self, id: &str) -> bool {
-        self.security_history.records().iter().any(|r|
-            matches!(r, AuthenticatedSecurityRecord::Attachment(_, f) if f.note_event_id().eq_ignore_ascii_case(id)))
+    pub(crate) fn purge_requires_original_class(&self, id: &str) -> bool {
+        self.security_history.records().iter().any(|r| match r {
+            AuthenticatedSecurityRecord::Attachment(_, link) => {
+                link.note_event_id().eq_ignore_ascii_case(id)
+            }
+            AuthenticatedSecurityRecord::Lifecycle(_, change) => change.note_event_id() == id,
+            _ => false,
+        })
     }
 
     pub(crate) fn clean_purged_blobs(&self) -> Result<(), ReviewError> {
@@ -175,7 +180,7 @@ impl VerifiedCanonicalSnapshot {
             return Err(ReviewError::TargetUnavailable);
         };
         let bridge = crate::test_temp::sign_v2_fixture(
-            receipt::bridge_body(original, self.reader_has_link_target(note)),
+            receipt::bridge_body(original, self.purge_requires_original_class(note)),
             key,
         );
         self.replace_approved_frame(anchor, device, note, &bridge, expires)
@@ -203,6 +208,7 @@ impl VerifiedCanonicalSnapshot {
                 r,
                 AuthenticatedSecurityRecord::V1(_)
                     | AuthenticatedSecurityRecord::Attachment(..)
+                    | AuthenticatedSecurityRecord::Lifecycle(..)
                     | AuthenticatedSecurityRecord::PurgeBridge(..)
                     | AuthenticatedSecurityRecord::SecurityV3(_)
             )
@@ -230,7 +236,7 @@ impl VerifiedCanonicalSnapshot {
                 append_framed(&mut after, next)?;
             }
         }
-        crate::trust_reducer::verify_anchored_history_for_reads(
+        let (history, reduction, _) = crate::trust_reducer::verify_anchored_history_for_reads(
             &candidate,
             self.security_history.expected_brain_id(),
             anchor.device_id().clone(),
@@ -240,6 +246,20 @@ impl VerifiedCanonicalSnapshot {
             || Instant::now() >= expires,
         )
         .map_err(|_| ReviewError::PackIntegrity)?;
+        let crate::trust_reducer::TrustReduction::Ready(trust) = reduction else {
+            return Err(ReviewError::Unauthorized);
+        };
+        let cutoffs = trust
+            .effective_cutoffs
+            .into_iter()
+            .map(|(device, cutoff)| (device.as_str().to_owned(), cutoff))
+            .collect();
+        history
+            .forgotten_note_ids(&cutoffs, || Instant::now() >= expires)
+            .map_err(|e| match e {
+                CancellableSecurityHistoryError::Cancelled => ReviewError::ReviewExpired,
+                CancellableSecurityHistoryError::InvalidRecord(_) => ReviewError::PackIntegrity,
+            })?;
         let profile = Directory::open(root)?;
         let packs = profile
             .child("canonical", false)?

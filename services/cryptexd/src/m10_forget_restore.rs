@@ -491,6 +491,62 @@ fn invalid_controls_cannot_change_visibility() {
 }
 
 #[test]
+fn purged_note_history_requires_the_original_signed_classification() {
+    use cryptex_events::security_history::{
+        NoteLifecycleRead, verify_security_history_for_note_reads,
+    };
+    let SignedFixture {
+        key,
+        target,
+        unaffected,
+        forget,
+        restore,
+        ..
+    } = signed_fixture();
+    let cutoffs = BTreeMap::from([(DEVICE.to_owned(), u64::MAX)]);
+    for class in [
+        None,
+        Some(Classification::Public),
+        Some(target.classification),
+    ] {
+        let mut payload = json!({"original_hash": target.content_hash});
+        if let Some(class) = class {
+            payload["original_classification"] = json!(class);
+        }
+        let bridge = crate::test_temp::sign_v2_fixture(
+            json!({
+                "schema_version":2, "event_type":"memory.purge.bridge", "payload_schema_version":1,
+                "event_id":NOTE, "brain_id":BRAIN, "device_id":DEVICE, "device_seq":"1",
+                "prev_content_hash":target.prev_content_hash, "created_at":TIME,
+                "classification":"restricted", "signing_key_id":target.signing_key_id, "payload":payload
+            }),
+            &key,
+        );
+        let history = verify_security_history_for_note_reads(
+            &[&bridge, &unaffected, &forget, &restore],
+            BRAIN,
+            FixtureKey(key.verifying_key()),
+            NoteLifecycleRead::LocalPurgeTrial,
+            || false,
+        )
+        .unwrap();
+        let replay = history.forgotten_note_ids(&cutoffs, || false);
+        if class == Some(target.classification) {
+            assert!(replay.unwrap().is_empty());
+            let content = history.content_history_through_cutoffs(&cutoffs);
+            assert!(
+                matches!(content.records(), [VersionedRecord::VerifiedV1(note)] if note.event_id == OTHER)
+            );
+        } else {
+            assert!(matches!(
+                replay,
+                Err(cryptex_events::CancellableSecurityHistoryError::InvalidRecord(_))
+            ));
+        }
+    }
+}
+
+#[test]
 fn normal_reads_enforce_signed_visibility_with_an_unchanged_index() {
     use crate::knowledge_materialization as reads;
     use std::time::{Duration, Instant};

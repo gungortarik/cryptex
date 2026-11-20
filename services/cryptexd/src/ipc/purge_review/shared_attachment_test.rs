@@ -7,6 +7,21 @@ use crate::knowledge_materialization::{
 use cryptex_events::{AcceptedEvent, AuthenticatedSecurityRecord, Classification};
 use sha2::{Digest, Sha256};
 
+fn contains_bytes(dir: &std::path::Path, needle: &[u8]) -> bool {
+    std::fs::read_dir(dir).unwrap().any(|entry| {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            contains_bytes(&entry.path(), needle)
+        } else {
+            assert!(entry.file_type().unwrap().is_file());
+            std::fs::read(entry.path())
+                .unwrap()
+                .windows(needle.len())
+                .any(|part| part == needle)
+        }
+    })
+}
+
 #[test]
 #[ignore = "launched in a separate process for its disposable native profile"]
 fn purge_shared_attachment() {
@@ -145,20 +160,6 @@ fn purge_shared_attachment() {
     inspect(&mut resolver, &control, &control_link, Some(separate));
     assert!(!path(shared).try_exists().unwrap());
     drop(reopened);
-    fn contains_bytes(dir: &std::path::Path, needle: &[u8]) -> bool {
-        std::fs::read_dir(dir).unwrap().any(|entry| {
-            let entry = entry.unwrap();
-            if entry.file_type().unwrap().is_dir() {
-                contains_bytes(&entry.path(), needle)
-            } else {
-                assert!(entry.file_type().unwrap().is_file());
-                std::fs::read(entry.path())
-                    .unwrap()
-                    .windows(needle.len())
-                    .any(|part| part == needle)
-            }
-        })
-    }
     assert!(!contains_bytes(root, shared));
     assert!(contains_bytes(root, separate));
     assert_eq!(root.parent(), Some(std::env::temp_dir().as_path()));
@@ -168,7 +169,7 @@ fn purge_shared_attachment() {
 
 #[test]
 #[ignore = "launched in a separate process for its disposable native profile"]
-fn review_mixed_history_purge() {
+fn purge_preserves_mixed_note_lifecycle_history() {
     let mut fixture = prepared_search_fixture("physical-closeout-mixed");
     let root = &fixture.root;
     let env = SecureStoreEnvironment::Dev;
@@ -179,9 +180,8 @@ fn review_mixed_history_purge() {
     physical::register(root);
     let ctx = &mut fixture.context;
     ctx.admission = instance.admission();
-    ctx.isolated_attachment_writer = true;
     ctx.purge_reviews = Some(Arc::default());
-    let mut resolver = LocalDeviceKeyResolver::load(root, &fixture.brain_id, store, env).unwrap();
+    let resolver = LocalDeviceKeyResolver::load(root, &fixture.brain_id, store, env).unwrap();
     let anchor = resolver.local_trust_anchor().unwrap();
     let add_note = |text, classification| {
         append_memory_note(
@@ -200,10 +200,21 @@ fn review_mixed_history_purge() {
         .unwrap()
         .accepted
     };
-    let forgotten = add_note("old review fixture", Classification::Public);
-    let target = add_note("unrelated visible review fixture", Classification::Public);
+    let hidden_text = "mixed-history hidden orchid";
+    let unrelated_text = "mixed-history visible fern";
+    let restored_text = "mixed-history restored willow";
+    let hidden = add_note(hidden_text, Classification::Restricted);
+    let unrelated = add_note(unrelated_text, Classification::Public);
+    let restored = add_note(restored_text, Classification::Internal);
     synchronize_local_derived_state(ctx).unwrap();
-    {
+    let key = crate::event_signing_key::load_existing_event_signing_key(
+        store,
+        env,
+        root,
+        &fixture.device,
+    )
+    .unwrap();
+    let transition = |note: &AcceptedEvent, operation| {
         let snapshot = crate::knowledge_materialization::lock_local_lifecycle_history(
             root,
             &fixture.brain_id,
@@ -211,36 +222,87 @@ fn review_mixed_history_purge() {
             Instant::now() + Duration::from_secs(10),
         )
         .unwrap();
-        let key = crate::event_signing_key::load_existing_event_signing_key(
-            store,
-            env,
+        let prior = snapshot
+            .reader_device_chain(fixture.device.as_str())
+            .iter()
+            .rev()
+            .find_map(|r| match r {
+                AuthenticatedSecurityRecord::Lifecycle(raw, change)
+                    if change.note_event_id() == note.event_id =>
+                {
+                    Some(&raw.content_hash)
+                }
+                _ => None,
+            })
+            .unwrap_or(&note.content_hash);
+        let payload = serde_json::json!({
+            "note_event_id": note.event_id, "note_content_hash": note.content_hash, "prior_state_hash": prior
+        });
+        crate::canonical_writer::isolated_attachment::append_note_control(
             root,
             &fixture.device,
+            note,
+            &key,
+            operation,
+            payload,
         )
         .unwrap();
-        crate::canonical_writer::isolated_attachment::append_note_control(root,&fixture.device,&forgotten,&key,"memory.forget",
-            serde_json::json!({"note_event_id":forgotten.event_id,"note_content_hash":forgotten.content_hash,"prior_state_hash":forgotten.content_hash})).unwrap();
-        drop(snapshot);
-    }
-    let prepared = decide(
-        ctx,
-        Action::Prepare {
-            note_id: target.event_id.clone(),
-            note_hash: target.content_hash.as_str().into(),
-        },
-    )
-    .unwrap();
-    let Outcome::Prepared {
-        ticket,
-        remove_locally: true,
-    } = prepared
-    else {
-        panic!("expected physical review")
     };
-    let result = decide(ctx, Action::Confirm { ticket }).unwrap();
-    println!("closeout_probe outcome={result:?}");
-    assert!(
-        matches!(result, Outcome::Purged { .. }),
-        "confirmed deletion of unrelated visible note must finish"
+    transition(&hidden, "memory.forget");
+    transition(&restored, "memory.forget");
+    transition(&restored, "memory.restore");
+    for note in [&unrelated, &restored] {
+        let prepared = decide(
+            ctx,
+            Action::Prepare {
+                note_id: note.event_id.clone(),
+                note_hash: note.content_hash.as_str().into(),
+            },
+        )
+        .unwrap();
+        let Outcome::Prepared {
+            ticket,
+            remove_locally: true,
+        } = prepared
+        else {
+            panic!("expected physical review")
+        };
+        let outcome = decide(ctx, Action::Confirm { ticket }).unwrap();
+        assert!(
+            matches!(&outcome, Outcome::Purged { note_id, note_hash } if note_id == &note.event_id && note_hash == note.content_hash.as_str()),
+            "{outcome:?}"
+        );
+    }
+    drop(instance);
+    let reopened = crate::instance::try_acquire_instance(root).unwrap();
+    physical::finish_cleanup(root, &fixture.brain_id, &anchor).unwrap();
+    let snapshot =
+        scan_verified_canonical_from_local_anchor_until(root, &fixture.brain_id, &anchor, None)
+            .unwrap();
+    assert!(snapshot.is_forgotten(&hidden.event_id));
+    let chain = snapshot.reader_device_chain(fixture.device.as_str());
+    assert_eq!(
+        chain
+            .iter()
+            .filter(|r| matches!(r, AuthenticatedSecurityRecord::Lifecycle(..)))
+            .count(),
+        3
+    );
+    assert_eq!(
+        chain
+            .iter()
+            .filter(|r| matches!(r, AuthenticatedSecurityRecord::PurgeBridge(..)))
+            .count(),
+        2
+    );
+    drop(snapshot);
+    drop(reopened);
+    assert!(contains_bytes(root, hidden_text.as_bytes()));
+    assert!(!contains_bytes(root, unrelated_text.as_bytes()));
+    assert!(!contains_bytes(root, restored_text.as_bytes()));
+    assert_eq!(root.parent(), Some(std::env::temp_dir().as_path()));
+    std::fs::remove_dir_all(root).unwrap();
+    println!(
+        "mixed_lifecycle_purge=verified hidden=preserved unrelated=removed restored=removed reopened=true"
     );
 }

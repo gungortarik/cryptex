@@ -197,10 +197,10 @@ fn store_receipt(
 
 pub(crate) fn bridge_body(
     note: &cryptex_events::AcceptedEvent,
-    has_links: bool,
+    needs_original_class: bool,
 ) -> serde_json::Value {
     let mut payload = serde_json::json!({"original_hash": note.content_hash});
-    if has_links {
+    if needs_original_class {
         payload["original_classification"] = serde_json::json!(note.classification);
     }
     serde_json::json!({
@@ -282,14 +282,14 @@ pub(crate) fn receive(
     }
     envelope.remove("content_hash");
     envelope.remove("signature");
-    // Plain-note bridges retain the original schema. A receiver with a link
-    // also needs the signed original class to validate that link after purge.
-    let has_links = snapshot.reader_has_link_target(&note.event_id)
+    // The sender may already know about a link or transition still in transit.
+    // Bind the supplied class to the receiver's signed original before storing it.
+    let needs_original_class = snapshot.purge_requires_original_class(&note.event_id)
         || envelope
             .get("payload")
             .and_then(|payload| payload.get("original_classification"))
             .is_some();
-    let expected_bridge = bridge_body(note, has_links);
+    let expected_bridge = bridge_body(note, needs_original_class);
     if serde_json::Value::Object(envelope) != expected_bridge {
         return Err(ReviewError::ReceiptIntegrity);
     }
