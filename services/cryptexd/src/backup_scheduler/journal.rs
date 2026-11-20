@@ -122,6 +122,20 @@ impl<'a> DeviceJobs<'a> {
         let Some(mut job) = self.load()? else {
             return Ok(None);
         };
+        if enrolled != self.owner {
+            return Ok(Some(Outcome::NotDesignated));
+        }
+        if let Phase::Published(expected) = job.phase {
+            // Retention may have removed the previous generation after this
+            // ciphertext was durably published. Recheck the surviving artifact.
+            if generation_digest(&job.output())? == expected {
+                return Ok(Some(Outcome::Published));
+            }
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "published backup changed",
+            ));
+        }
         let prior = job.prior.clone();
         let pending = PendingBackup {
             designated_writer: self.owner,
@@ -131,11 +145,20 @@ impl<'a> DeviceJobs<'a> {
         pending
             .run(enrolled, stop, waiting, || {
                 let output = job.output();
+                let target =
+                    crate::import_staging::export_fs::Directory::open(output.parent().unwrap())
+                        .map_err(super::retention::directory_error)?;
+                let _lock = target
+                    .try_lock_exclusive("backup-writer.lock")
+                    .map_err(super::retention::directory_error)?;
+                if generation_digest(&prior)? != job.prior_hash {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "prior backup changed",
+                    ));
+                }
                 match generation_digest(&output) {
-                    Ok(actual)
-                        if job.phase == Phase::Prepared(actual)
-                            || job.phase == Phase::Published(actual) =>
-                    {
+                    Ok(actual) if job.phase == Phase::Prepared(actual) => {
                         cryptex_storage::durability::sync_parent_directory(&output)
                             .map_err(io::Error::other)?;
                         job.phase = Phase::Published(actual);
@@ -147,9 +170,7 @@ impl<'a> DeviceJobs<'a> {
                             "backup generation collision",
                         ));
                     }
-                    Err(error)
-                        if error.kind() == io::ErrorKind::NotFound
-                            && !matches!(job.phase, Phase::Published(_)) => {}
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
                     Err(error) => return Err(error),
                 }
                 let directory = tempfile::Builder::new()
@@ -181,7 +202,7 @@ impl<'a> DeviceJobs<'a> {
 impl Job {
     fn output(&self) -> PathBuf {
         self.prior
-            .with_file_name(format!("backup-{:020}.pgp", self.generation))
+            .with_file_name(super::retention::generation_name(self.generation))
     }
 }
 
@@ -233,6 +254,8 @@ mod tests {
             queue.load().unwrap().unwrap().phase,
             Phase::Published(expected)
         );
+        fs::remove_file(&prior).unwrap();
+        assert_eq!(resume().unwrap(), Some(Outcome::Published));
         fs::write(&output, b"modified after publication").unwrap();
         assert_eq!(resume().unwrap_err().kind(), io::ErrorKind::AlreadyExists);
         fs::remove_file(&output).unwrap();

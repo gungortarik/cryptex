@@ -1,6 +1,7 @@
 //! One pending backup on an explicitly designated device. Currently wired
 //! only to the disposable M11 daemon profile runner.
 pub(crate) mod journal;
+pub(crate) mod retention;
 use cryptex_events::LocalTrustAnchor;
 use sha2::{Digest, Sha256};
 use std::fs::OpenOptions;

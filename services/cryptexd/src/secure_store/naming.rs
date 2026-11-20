@@ -45,6 +45,9 @@ impl fmt::Display for ServiceLabel {
 pub struct AccountLabel(String);
 
 impl AccountLabel {
+    pub fn verified_backup(binding: &str) -> Self {
+        Self(format!("verified-backup:{binding}"))
+    }
     pub fn backup_job(device_id: &str) -> Self {
         Self(format!("backup-job:{device_id}"))
     }

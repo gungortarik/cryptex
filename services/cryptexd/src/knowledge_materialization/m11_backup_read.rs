@@ -74,7 +74,7 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     let kit = work.path().join("recovery-kit");
     let volume = work.path().join("backup-volume");
     fs::create_dir(&volume).unwrap();
-    let first = volume.join("first.pgp");
+    let first = volume.join("backup-00000000000000000001.pgp");
     let next = volume.join("backup-00000000000000000002.pgp");
     run_archive("prepare", &[source.path(), &kit, &first, writer.path()]);
     let first_digest = Sha256::digest(fs::read(&first).unwrap());
@@ -182,8 +182,10 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     });
     assert!(launch_saved_job().success());
     println!("m11_backup_job_restart=passed offline_exit=recovered published_replay=idempotent");
-    assert_eq!(fs::read_dir(&volume).unwrap().count(), 2);
+    assert_eq!(fs::read_dir(&volume).unwrap().count(), 3); // two archives and writer lock
     assert_eq!(Sha256::digest(fs::read(&first).unwrap()), first_digest);
+    let manual = volume.join("manual-export.pgp");
+    run_archive("write-generation", &[source.path(), writer.path(), &manual]);
 
     // Only public event verification material and the independent kit survive.
     drop(store);
@@ -201,11 +203,32 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
         rebuild_knowledge_from_local_approval_history(&sandbox, BRAIN, &anchor, &mut db).unwrap();
         search_events_with_retrieval_safety(&sandbox, BRAIN, &[], &mut reader, &db, &query).unwrap()
     };
-    let before = restore_hits(&first, "restore-first");
-    assert_eq!(before.len(), 1);
-    assert_eq!(before[0].text, "synthetic original prefix");
-    assert_ne!(before[0].event_id, receipt.event_id);
-    let after = restore_hits(&next, "restore-next");
+    let receipt_store = FileBackedSecureStore::open(work.path().join("restore-receipts")).unwrap();
+    let catalog = crate::backup_scheduler::retention::VerifiedBackups {
+        store: &receipt_store,
+        environment: env,
+        designated: &anchor,
+        target: &volume,
+    };
+    let before = catalog
+        .verify(1, |file| {
+            let hits = restore_hits(file, "restore-first");
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].text, "synthetic original prefix");
+            assert_ne!(hits[0].event_id, receipt.event_id);
+            Ok(hits)
+        })
+        .unwrap();
+    let after =
+        catalog
+            .verify(2, |file| {
+                let hits = restore_hits(file, "restore-next");
+                assert!(hits.iter().any(|hit| hit.event_id == receipt.event_id
+                    && hit.content_hash == receipt.content_hash));
+                assert!(hits.contains(&before[0]));
+                Ok(hits)
+            })
+            .unwrap();
     assert_eq!(after.len(), 2);
     assert!(after.contains(&before[0]));
     let saved = after
@@ -215,6 +238,38 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     assert_eq!(saved.content_hash, receipt.content_hash);
     assert_eq!(saved.device_id, receipt.device_id);
     assert_eq!(saved.text, text);
+    let keep = std::num::NonZeroUsize::new(1);
+    let unknown = volume.join("backup-00000000000000000003.pgp");
+    fs::write(&unknown, b"unverified fixture").unwrap();
+    assert!(
+        catalog
+            .verify(3, |_| Err::<(), _>(std::io::Error::other(
+                "reconstruction failed"
+            )))
+            .is_err()
+    );
+    assert_eq!(
+        catalog.prune(&peer_anchor, keep).unwrap_err().kind(),
+        std::io::ErrorKind::PermissionDenied
+    );
+    assert_eq!(catalog.prune(&anchor, None).unwrap(), 0);
+    let good = fs::read(&next).unwrap();
+    fs::write(&next, b"corrupt fixture").unwrap();
+    assert_eq!(
+        catalog.prune(&anchor, keep).unwrap_err().kind(),
+        std::io::ErrorKind::InvalidData
+    );
+    assert!(first.exists());
+    fs::write(&next, good).unwrap();
+    assert_eq!(catalog.prune(&anchor, keep).unwrap(), 1);
+    assert!(!first.try_exists().unwrap());
+    assert_eq!(catalog.prune(&anchor, keep).unwrap(), 0);
+    assert!(next.is_file());
+    assert_eq!(fs::read(unknown).unwrap(), b"unverified fixture");
+    assert_eq!(restore_hits(&manual, "restore-manual"), after);
+    println!(
+        "m11_retention=passed default=keep_all retained=1 manual=restored unverified=preserved damaged=blocked"
+    );
     println!(
         "m11_scheduled_reconnect=passed designated=published peer=skipped offline_capture=restored"
     );
