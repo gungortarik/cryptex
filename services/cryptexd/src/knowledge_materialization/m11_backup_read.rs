@@ -309,6 +309,7 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
 #[test]
 #[ignore = "requires the M11 Node/Python fixture installed by native CI"]
 fn restored_note_and_attachment_pass_guarded_reads() {
+    use ed25519_dalek::pkcs8::{DecodePrivateKey, EncodePrivateKey};
     if let Some(work) = std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE") {
         first_device::restarted_search::child(Path::new(&work));
         return;
@@ -387,10 +388,46 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     let backup = volume.join("backup.pgp");
     let original_identity = fs::read(crate::identity_runtime::brain_identity_path(source)).unwrap();
     run_archive("prepare", &[source, &kit, &backup]);
+    let sealed_kit = work.path().join("offline-kit.pgp");
+    let unlock = tempfile::tempdir().unwrap();
+    let password = unlock.path().join("owner-unlock");
+    let mut random = [0u8; 32];
+    getrandom::getrandom(&mut random).unwrap();
+    fs::write(
+        &password,
+        random
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>(),
+    )
+    .unwrap();
+    random.fill(0);
+    fs::write(
+        kit.join("bootstrap.pk8"),
+        offline.to_pkcs8_der().unwrap().as_bytes(),
+    )
+    .unwrap();
+    run_archive("seal-kit", &[&kit, &password, &sealed_kit]);
+    drop(offline);
+    fs::remove_dir_all(&kit).unwrap();
     drop((snapshot, instance));
     let old_profiles = profiles.profiles.clone();
     drop(profiles); // Drops both original private keys and the old secure store.
     assert!(old_profiles.iter().all(|root| !root.exists()));
+    let wrong = unlock.path().join("wrong");
+    fs::write(&wrong, "00".repeat(32)).unwrap();
+    assert!(archive_operation("open-kit", &[&sealed_kit, &wrong, &kit]).is_err());
+    assert!(!kit.try_exists().unwrap());
+    let damaged_kit = work.path().join("damaged-kit.pgp");
+    let mut damaged = fs::read(&sealed_kit).unwrap();
+    *damaged.last_mut().unwrap() ^= 1;
+    fs::write(&damaged_kit, damaged).unwrap();
+    assert!(archive_operation("open-kit", &[&damaged_kit, &password, &kit]).is_err());
+    assert!(!kit.try_exists().unwrap());
+    run_archive("open-kit", &[&sealed_kit, &password, &kit]);
+    let offline =
+        SigningKey::from_pkcs8_der(&fs::read(kit.join("bootstrap.pk8")).unwrap()).unwrap();
+    assert_eq!(offline.verifying_key(), pinned_recovery_key);
     fs::create_dir_all(restored.parent().unwrap()).unwrap();
     run_archive("recover", &[&kit, &restored, &backup]);
     let backup_sha256: [u8; 32] = Sha256::digest(fs::read(&backup).unwrap()).into();
@@ -412,6 +449,9 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         history_digest,
     );
     let anchor = keys.local_trust_anchor().unwrap();
+    println!(
+        "m11_portable_kit=passed source=lost wrong_unlock=denied decrypt=restored bootstrap=authorized"
+    );
     assert_eq!(fs::read_dir(&restored).unwrap().count(), 2);
     for root in [&restored, &work.path().join("replacement")] {
         assert_eq!(

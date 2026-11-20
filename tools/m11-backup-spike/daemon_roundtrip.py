@@ -11,6 +11,7 @@ import zipfile
 
 from rehearse import MIB, NODE
 from restore_publication import publish_exclusive
+from recovery_kit import seal, unseal
 
 
 MEMBER = re.compile(r"canonical/(?:events/(?:[0-9a-f]{2}){1,128}/[0-9]{20}\.(?:seg|open)|blobs/[0-9a-f]{64})")
@@ -60,7 +61,7 @@ def unpack(bundle, destination, expected_identity_digest):
             publish_exclusive(tree, destination)
 
 
-def write_generation(source, writer, backup, unsigned=None):
+def write_generation(source, writer, backup):
     with tempfile.TemporaryDirectory(prefix="cryptex-m11-pack-") as temp:
         plain = Path(temp) / "source.zip"
         with zipfile.ZipFile(plain, "x") as archive:
@@ -75,8 +76,6 @@ def write_generation(source, writer, backup, unsigned=None):
                     raise ValueError(f"Unexpected file in synthetic fixture: {name}")
                 archive.write(path, name)
         recipient = writer / "recovery.pub"
-        if unsigned is not None:
-            envelope("encrypt", [recipient], plain, unsigned)
         with tempfile.TemporaryDirectory(dir=backup.parent) as staging:
             encrypted = Path(staging) / "backup.pgp"
             envelope("sign-encrypt", [recipient, writer / "writer.sec"], plain, encrypted)
@@ -94,14 +93,17 @@ def prepare(source, kit, backup, writer=None):
         shutil.copyfile(writer / "recovery.pub", kit / "recovery.pub")
         with (kit / "brain-identity.sha256").open("xb") as checkpoint:
             checkpoint.write(hashlib.sha256(brain_identity_bytes(source)).digest())
-        write_generation(source, writer, backup, unsigned=kit / "unsigned.pgp")
+        write_generation(source, writer, backup)
 
 
 def recover(kit, destination, backup):
     recovery, signer, recipient = (kit / name for name in ("recovery.sec", "writer.pub", "recovery.pub"))
-    unsigned = kit / "unsigned.pgp"
     with tempfile.TemporaryDirectory(prefix="cryptex-m11-unpack-") as temp:
         work = Path(temp)
+        decoded = work / "verified.zip"
+        envelope("decrypt-verify", [recovery, signer], backup, decoded)
+        unsigned = work / "unsigned.pgp"
+        envelope("encrypt", [recipient], decoded, unsigned)
         for attempt, sample, verifier in (("unsigned", unsigned, signer),
                                           ("wrong-signer", backup, recipient)):
             try:
@@ -109,12 +111,14 @@ def recover(kit, destination, backup):
             except subprocess.CalledProcessError:
                 continue
             raise AssertionError("Accepted unauthorized backup")
-        decoded = work / "verified.zip"
-        envelope("decrypt-verify", [recovery, signer], backup, decoded)
         unpack(decoded, destination, (kit / "brain-identity.sha256").read_bytes())
 
 
 if __name__ == "__main__":
     command, *args = sys.argv[1:]
-    actions = {"prepare": prepare, "recover": recover, "write-generation": write_generation}
-    actions[command](*(Path(arg) for arg in args))
+    actions = {"prepare": prepare, "recover": recover, "write-generation": write_generation,
+               "seal-kit": seal, "open-kit": unseal}
+    try:
+        actions[command](*(Path(arg) for arg in args))
+    except (OSError, ValueError, subprocess.SubprocessError, zipfile.BadZipFile):
+        sys.exit("M11 archive operation failed")

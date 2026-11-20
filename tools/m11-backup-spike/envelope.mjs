@@ -16,6 +16,26 @@ async function run() {
     await writeFile(keyFile, keys.publicKey, { flag: "wx" });
     return;
   }
+  if (operation === "lock-kit" || operation === "unlock-kit") {
+    // Test fixture models a separately held, random owner unlock credential.
+    const password = (await readFile(keyFile, "utf8")).trim();
+    if (!/^[0-9a-f]{64}$/.test(password)) throw new Error("Invalid fixture credential");
+    const data = new Uint8Array(await readBoundedKitInput());
+    if (operation === "lock-kit") {
+      const output = await pgp.encrypt({
+        message: await pgp.createMessage({binary: data}), passwords: [password], format: "binary", config,
+      });
+      await pipeline(Readable.from([output]), process.stdout);
+    } else {
+      const message = await pgp.readMessage({binaryMessage: data});
+      const encrypted = message.packets.filterByTag(pgp.enums.packet.symEncryptedIntegrityProtectedData);
+      if (encrypted.length !== 1 || encrypted[0].version !== 2) throw new Error("Invalid kit envelope");
+      const {data: plaintext} = await pgp.decrypt({message, passwords: [password], format: "binary",
+        config: {...config, maxDecompressedMessageSize: 128 * 1024}});
+      await pipeline(Readable.from([plaintext]), process.stdout);
+    }
+    return;
+  }
   const armoredKey = await readFile(keyFile, "utf8");
   const input = Readable.toWeb(process.stdin);
   let output;
@@ -51,6 +71,17 @@ async function run() {
     if (signatures.length !== 1) throw new Error("Expected one backup writer signature");
     await signatures[0].verified;
   }
+}
+
+async function readBoundedKitInput() {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of process.stdin) {
+    size += chunk.length;
+    if (size > 256 * 1024) throw new Error("Oversized kit");
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, size);
 }
 
 try {
