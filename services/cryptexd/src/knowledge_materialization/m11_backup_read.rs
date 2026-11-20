@@ -389,37 +389,20 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     let backup = volume.join("backup.pgp");
     let original_identity = fs::read(crate::identity_runtime::brain_identity_path(source)).unwrap();
     run_archive("prepare", &[source, &kit, &legacy]);
-    let checkpoint = crate::backup_inventory::Checkpoint {
-        brain_id: BRAIN,
-        writer: &anchor,
-        generation: 1,
-        history_sha256: history_digest,
-        brain_identity_sha256: Sha256::digest(&original_identity).into(),
-    };
-    let selection = crate::backup_inventory::RecoverySelection::capture(&checkpoint);
-    fs::write(
-        kit.join("selected-backup.json"),
-        serde_json::to_vec(&selection).unwrap(),
-    )
-    .unwrap();
-    drop(selection);
+    drop(snapshot);
     {
-        let staging = tempfile::tempdir().unwrap();
-        let payload = staging.path().join("content.zip");
-        let manifest = staging.path().join("inventory.json");
-        run_archive("pack", &[source, &payload]);
-        let signed = crate::backup_inventory::sign(
-            source,
-            &profiles.store,
-            SecureStoreEnvironment::Dev,
-            &payload,
-            &checkpoint,
+        let prepared =
+            super::super::backup::prepare(source, &profiles.store, SecureStoreEnvironment::Dev, 1)
+                .unwrap();
+        fs::write(
+            kit.join("selected-backup.json"),
+            serde_json::to_vec(&prepared.selection).unwrap(),
         )
         .unwrap();
-        fs::write(&manifest, signed).unwrap();
+        let inner = prepared.encryption_input().unwrap();
         run_archive(
             "seal-inventory",
-            &[&kit.join("recovery.pub"), &payload, &manifest, &backup],
+            &[&kit.join("recovery.pub"), inner.path(), &backup],
         );
     }
     let sealed_kit = work.path().join("offline-kit.pgp");
@@ -444,7 +427,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     run_archive("seal-kit", &[&kit, &password, &sealed_kit]);
     drop(offline);
     fs::remove_dir_all(&kit).unwrap();
-    drop((snapshot, instance));
+    drop(instance);
     drop(anchor);
     let old_profiles = profiles.profiles.clone();
     drop(profiles); // Drops both original private keys and the old secure store.

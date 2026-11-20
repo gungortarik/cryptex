@@ -243,13 +243,8 @@ pub(crate) fn verify_backup_reconstruction(
     if history_digest(&snapshot) != expected.history_sha256 {
         return Err(Error::Checkpoint);
     }
-    let digests: BTreeSet<_> = snapshot
-        .attachment_links
-        .values()
-        .flat_map(|links| links.values())
-        .collect();
-    for digest in digests {
-        crate::attachment_blobs::open_verified(root, digest).map_err(|_| Error::Attachment)?;
+    for digest in snapshot.admitted_blob_digests().collect::<BTreeSet<_>>() {
+        crate::attachment_blobs::open_verified(root, &digest).map_err(|_| Error::Attachment)?;
     }
     Ok(())
 }

@@ -44,6 +44,7 @@ http-body-util = "=0.1.5"
 tokio = { version = "=1.53.1", features = ["rt", "time", "net"] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["std"] }
 zip = { version = "=9.8.1", default-features = false }
+tempfile = "=3.27.0"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
@@ -59,7 +60,6 @@ libc = "=0.2.189"
 
 [dev-dependencies]
 ed25519-dalek = { workspace = true, features = ["pkcs8"] }
-tempfile = "=3.27.0"
 # Disposable, independently encrypted pack backups in native purge trials.
 age = { version = "=0.12.1", default-features = false }
 # Legacy URL-client fixtures only. Product requests use the attested socket.

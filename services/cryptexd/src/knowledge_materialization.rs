@@ -46,6 +46,8 @@ use crate::secure_store::{SecureStore, SecureStoreEnvironment};
 mod anchor_recovery;
 
 pub mod ai_context;
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub mod backup;
 pub mod local_receipt;
 pub(crate) mod recovered_search;
 

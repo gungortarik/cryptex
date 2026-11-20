@@ -251,7 +251,7 @@ fn preimage(body: &Body) -> Result<Vec<u8>, Error> {
 /// Sign with the existing enrolled credential. Never initializes a missing key.
 pub fn sign(
     root: &Path,
-    store: &impl SecureStore,
+    store: &(impl SecureStore + ?Sized),
     env: SecureStoreEnvironment,
     payload: &Path,
     expected: &Checkpoint<'_>,

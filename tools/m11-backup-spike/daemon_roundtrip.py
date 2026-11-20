@@ -95,21 +95,16 @@ def write_generation(source, writer, backup):
             publish_exclusive(encrypted, backup)
 
 
-def seal_inventory(recipient, payload, inventory, backup):
-    with tempfile.TemporaryDirectory() as temp:
-        inner = Path(temp) / "inner.zip"
-        with zipfile.ZipFile(inner, "x") as archive:
-            archive.write(payload, "content.zip")
-            archive.write(inventory, "inventory.json")
-        with tempfile.TemporaryDirectory(dir=backup.parent) as staging:
-            encrypted = Path(staging) / "backup.pgp"
-            installed = os.environ.get("CRYPTEX_M11_TEST_INSTALLED_CODEC")
-            if installed:
-                from packaged_codec import encrypt
-                encrypt(Path(installed), recipient, inner, encrypted)
-            else:
-                envelope("encrypt", [recipient], inner, encrypted)
-            publish_exclusive(encrypted, backup)
+def seal_inventory(recipient, inner, backup):
+    with tempfile.TemporaryDirectory(dir=backup.parent) as staging:
+        encrypted = Path(staging) / "backup.pgp"
+        installed = os.environ.get("CRYPTEX_M11_TEST_INSTALLED_CODEC")
+        if installed:
+            from packaged_codec import encrypt
+            encrypt(Path(installed), recipient, inner, encrypted)
+        else:
+            envelope("encrypt", [recipient], inner, encrypted)
+        publish_exclusive(encrypted, backup)
 
 
 def open_payload(kit, backup, destination):

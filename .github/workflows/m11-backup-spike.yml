@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'services/cryptexd/src/knowledge_materialization/backup.rs'
       - 'services/cryptexd/backup-codec/**'
       - 'services/cryptexd/src/backup_inventory.rs'
       - 'Cargo.lock'
@@ -29,6 +30,7 @@ on:
       - '.node-version'
   pull_request:
     paths:
+      - 'services/cryptexd/src/knowledge_materialization/backup.rs'
       - 'services/cryptexd/backup-codec/**'
       - 'services/cryptexd/src/backup_inventory.rs'
       - 'Cargo.lock'
