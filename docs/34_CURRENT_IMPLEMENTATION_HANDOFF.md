@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M11 encrypted backup rehearsal
+
+The [container rehearsal](../evidence/m11/backup-container.md) passed on Windows and macOS at `b11b29e`. After loss of the synthetic source profile, both systems restored its signed frame and large blob with the recovery decryption key. The previous complete backup survived an interrupted replacement. The next M11 step is daemon verification of the recovered event history, blob references and backup inventory in a disposable profile. Real profiles keep their existing write gates.
+
 ## M10 complete on November 20, 2026
 
 The owner reviewed and accepted candidate `9de456f` subject to successful CI and technical review. Windows and macOS passed all nine required jobs across four workflows. The closeout regression reproduced and corrected physical deletion failing after an unrelated note was forgotten. After reopening a disposable profile, the corrected candidate also preserved the forgotten note and removed a previously restored note. The [M10 review and CI evidence](../evidence/m10/forget-purge-closeout-review.md) records authorization, recovery, Desktop review and the limits of physical cleanup.
