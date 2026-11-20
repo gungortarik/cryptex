@@ -385,9 +385,36 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     let kit = work.path().join("kit");
     let volume = work.path().join("backup-volume");
     fs::create_dir(&volume).unwrap();
+    let legacy = volume.join("legacy.pgp");
     let backup = volume.join("backup.pgp");
     let original_identity = fs::read(crate::identity_runtime::brain_identity_path(source)).unwrap();
-    run_archive("prepare", &[source, &kit, &backup]);
+    run_archive("prepare", &[source, &kit, &legacy]);
+    let checkpoint = crate::backup_inventory::Checkpoint {
+        brain_id: BRAIN,
+        writer: &anchor,
+        generation: 1,
+        history_sha256: history_digest,
+        brain_identity_sha256: Sha256::digest(&original_identity).into(),
+    };
+    {
+        let staging = tempfile::tempdir().unwrap();
+        let payload = staging.path().join("content.zip");
+        let manifest = staging.path().join("inventory.json");
+        run_archive("pack", &[source, &payload]);
+        let signed = crate::backup_inventory::sign(
+            source,
+            &profiles.store,
+            SecureStoreEnvironment::Dev,
+            &payload,
+            &checkpoint,
+        )
+        .unwrap();
+        fs::write(&manifest, signed).unwrap();
+        run_archive(
+            "seal-inventory",
+            &[&kit.join("recovery.pub"), &payload, &manifest, &backup],
+        );
+    }
     let sealed_kit = work.path().join("offline-kit.pgp");
     let unlock = tempfile::tempdir().unwrap();
     let password = unlock.path().join("owner-unlock");
@@ -429,7 +456,84 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         SigningKey::from_pkcs8_der(&fs::read(kit.join("bootstrap.pk8")).unwrap()).unwrap();
     assert_eq!(offline.verifying_key(), pinned_recovery_key);
     fs::create_dir_all(restored.parent().unwrap()).unwrap();
-    run_archive("recover", &[&kit, &restored, &backup]);
+    {
+        let staging = tempfile::tempdir().unwrap();
+        let opened = staging.path().join("legacy");
+        run_archive("open-payload", &[&kit, &legacy, &opened]);
+        assert!(!opened.join("inventory.json").exists());
+        let legacy_profile = staging.path().join("legacy-profile");
+        run_archive(
+            "unpack-checked",
+            &[
+                &opened.join("content.zip"),
+                &legacy_profile,
+                &kit.join("brain-identity.sha256"),
+            ],
+        );
+        let legacy_scan =
+            scan_verified_canonical_from_local_anchor_until(&legacy_profile, BRAIN, &anchor, None)
+                .unwrap();
+        assert_eq!(
+            super::super::recovered_search::history_digest(&legacy_scan),
+            history_digest
+        );
+    }
+    let staging = tempfile::tempdir_in(restored.parent().unwrap()).unwrap();
+    let opened = staging.path().join("opened");
+    run_archive("open-payload", &[&kit, &backup, &opened]);
+    let payload = opened.join("content.zip");
+    let signed = fs::read(opened.join("inventory.json")).unwrap();
+    use crate::backup_inventory::{Checkpoint, verify};
+    let damaged_payload = staging.path().join("altered-content.zip");
+    fs::write(&damaged_payload, b"incomplete archive").unwrap();
+    assert_eq!(
+        verify(&damaged_payload, &signed, &checkpoint),
+        Err(crate::backup_inventory::Error::Checkpoint)
+    );
+    assert!(
+        verify(
+            &payload,
+            &signed,
+            &Checkpoint {
+                generation: 2,
+                ..checkpoint
+            }
+        )
+        .is_err()
+    );
+    let mut wrong_signature: serde_json::Value = serde_json::from_slice(&signed).unwrap();
+    wrong_signature["signature"] = "00".repeat(64).into();
+    assert!(
+        verify(
+            &payload,
+            &serde_json_canonicalizer::to_vec(&wrong_signature).unwrap(),
+            &checkpoint
+        )
+        .is_err()
+    );
+    assert!(!restored.exists());
+    verify(&payload, &signed, &checkpoint).unwrap();
+    let staged_profile = staging.path().join("profile");
+    run_archive(
+        "unpack-checked",
+        &[
+            &payload,
+            &staged_profile,
+            &kit.join("brain-identity.sha256"),
+        ],
+    );
+    let replay =
+        scan_verified_canonical_from_local_anchor_until(&staged_profile, BRAIN, &anchor, None)
+            .unwrap();
+    assert_eq!(
+        super::super::recovered_search::history_digest(&replay),
+        history_digest
+    );
+    drop(replay);
+    fs::rename(&staged_profile, &restored).unwrap();
+    println!(
+        "m11_backup_inventory=passed daemon_signed=true public_only_encryption=true legacy=restored replay=matched"
+    );
     let backup_sha256: [u8; 32] = Sha256::digest(fs::read(&backup).unwrap()).into();
     // Model an unmounted filesystem target after decrypting the archive. Only
     // the test parent knows where the volume went. Local credentials stay put.

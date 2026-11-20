@@ -11,6 +11,7 @@
 pub(crate) mod approval_session;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 pub mod attachment_blobs;
+pub mod backup_inventory;
 #[cfg(all(
     test,
     any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))

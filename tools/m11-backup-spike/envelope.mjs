@@ -48,28 +48,31 @@ async function run() {
       message: await pgp.createMessage({ binary: input }),
       encryptionKeys: await pgp.readKey({ armoredKey }), signingKeys, format: "binary", config,
     });
-  } else if (operation === "decrypt" || operation === "decrypt-verify") {
+  } else if (["decrypt", "decrypt-verify", "decrypt-backup"].includes(operation)) {
     const message = await pgp.readMessage({ binaryMessage: input });
     const packets = message.packets.filterByTag(pgp.enums.packet.symEncryptedIntegrityProtectedData);
     if (packets.length !== 1 || packets[0].version !== 2) {
       throw new Error("Expected one RFC 9580 authenticated encrypted payload");
     }
-    const verificationKeys = operation === "decrypt-verify"
+    const verificationKeys = operation === "decrypt-verify" || (operation === "decrypt-backup" && secondKeyFile !== "-")
       ? await pgp.readKey({ armoredKey: await readFile(secondKeyFile, "utf8") })
       : undefined;
     const result = await pgp.decrypt({
       message, decryptionKeys: await pgp.readPrivateKey({ armoredKey }), verificationKeys,
-      expectSigned: Boolean(verificationKeys), format: "binary", config,
+      expectSigned: operation === "decrypt-verify", format: "binary", config,
     });
     output = result.data;
-    if (verificationKeys) signatures = result.signatures;
+    if (verificationKeys || operation === "decrypt-backup") signatures = result.signatures;
   } else {
     throw new Error("Unknown operation");
   }
   await pipeline(Readable.fromWeb(output), process.stdout);
   if (signatures) {
-    if (signatures.length !== 1) throw new Error("Expected one backup writer signature");
-    await signatures[0].verified;
+    if (signatures.length === 1) await signatures[0].verified;
+    else if (signatures.length || operation !== "decrypt-backup") throw new Error("Unexpected backup signatures");
+    if (operation === "decrypt-backup") {
+      await writeFile(process.argv[5], signatures.length ? "legacy" : "inventory", {flag: "wx", mode: 0o600});
+    }
   }
 }
 

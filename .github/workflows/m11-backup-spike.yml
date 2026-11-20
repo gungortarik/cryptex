@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'services/cryptexd/src/backup_inventory.rs'
+      - 'Cargo.lock'
       - 'services/cryptexd/src/backup_scheduler/**'
       - 'services/cryptexd/src/backup_scheduler.rs'
       - 'tools/m11-backup-spike/**'
@@ -26,6 +28,8 @@ on:
       - '.node-version'
   pull_request:
     paths:
+      - 'services/cryptexd/src/backup_inventory.rs'
+      - 'Cargo.lock'
       - 'services/cryptexd/src/backup_scheduler/**'
       - 'services/cryptexd/src/backup_scheduler.rs'
       - 'tools/m11-backup-spike/**'
@@ -104,6 +108,8 @@ jobs:
       - run: python -B tools/m11-backup-spike/rehearse.py
       - name: Verify atomic restore publication and retry
         run: python -B tools/m11-backup-spike/test_restore_publication.py
+      - name: Reject unsigned legacy backups and ambiguous envelopes
+        run: python -B tools/m11-backup-spike/test_inventory_envelope.py
       - name: Verify recovered notes and attachments through guarded daemon reads
         shell: bash
         env:
@@ -128,6 +134,7 @@ jobs:
           grep '^m11_guarded_restore=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_first_device=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_portable_kit=passed source=lost wrong_unlock=denied decrypt=restored bootstrap=authorized' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -Fx 'm11_backup_inventory=passed daemon_signed=true public_only_encryption=true legacy=restored replay=matched' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_restarted_search=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_offline_backup_target=passed capture=committed search=reopened backup=unchanged' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_desktop_search=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"

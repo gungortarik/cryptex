@@ -69,25 +69,75 @@ def unpack(bundle, destination, expected_identity_digest):
             publish_exclusive(tree, destination)
 
 
+def pack(source, plain):
+    with zipfile.ZipFile(plain, "x") as archive:
+        archive.writestr(BRAIN_IDENTITY, brain_identity_bytes(source))
+        for path in sorted((source / "canonical").rglob("*")):
+            name = path.relative_to(source).as_posix()
+            if path.is_symlink() or path.is_junction():
+                raise ValueError("Unexpected link in source fixture")
+            if path.is_dir() or name == "canonical/events/inventory.lock" or DEVICE_RUNTIME.fullmatch(name):
+                continue
+            if not path.is_file() or not MEMBER.fullmatch(name):
+                raise ValueError(f"Unexpected file in synthetic fixture: {name}")
+            archive.write(path, name)
+
+
 def write_generation(source, writer, backup):
     with tempfile.TemporaryDirectory(prefix="cryptex-m11-pack-") as temp:
         plain = Path(temp) / "source.zip"
-        with zipfile.ZipFile(plain, "x") as archive:
-            archive.writestr(BRAIN_IDENTITY, brain_identity_bytes(source))
-            for path in sorted((source / "canonical").rglob("*")):
-                name = path.relative_to(source).as_posix()
-                if path.is_symlink():
-                    raise ValueError("Unexpected link in source fixture")
-                if path.is_dir() or name == "canonical/events/inventory.lock" or DEVICE_RUNTIME.fullmatch(name):
-                    continue
-                if not path.is_file() or not MEMBER.fullmatch(name):
-                    raise ValueError(f"Unexpected file in synthetic fixture: {name}")
-                archive.write(path, name)
+        pack(source, plain)
         recipient = writer / "recovery.pub"
         with tempfile.TemporaryDirectory(dir=backup.parent) as staging:
             encrypted = Path(staging) / "backup.pgp"
             envelope("sign-encrypt", [recipient, writer / "writer.sec"], plain, encrypted)
             publish_exclusive(encrypted, backup)
+
+
+def seal_inventory(recipient, payload, inventory, backup):
+    with tempfile.TemporaryDirectory() as temp:
+        inner = Path(temp) / "inner.zip"
+        with zipfile.ZipFile(inner, "x") as archive:
+            archive.write(payload, "content.zip")
+            archive.write(inventory, "inventory.json")
+        with tempfile.TemporaryDirectory(dir=backup.parent) as staging:
+            encrypted = Path(staging) / "backup.pgp"
+            envelope("encrypt", [recipient], inner, encrypted)
+            publish_exclusive(encrypted, backup)
+
+
+def open_payload(kit, backup, destination):
+    """Leave authenticated envelope contents only in the caller's private staging.
+
+    Before extracting a v2 payload the daemon must authenticate its inventory.
+    """
+    with tempfile.TemporaryDirectory(dir=destination.parent) as temp:
+        work = Path(temp)
+        stage = work / "payload"
+        stage.mkdir()
+        plain, mode = work / "decrypted.zip", work / "mode"
+        signer = kit / "writer.pub"
+        envelope("decrypt-backup", [kit / "recovery.sec", signer if signer.exists() else "-", mode], backup, plain)
+        with zipfile.ZipFile(plain) as archive:
+            names = archive.namelist()
+            if mode.read_bytes() == b"inventory":
+                if sorted(names) != ["content.zip", "inventory.json"]:
+                    raise ValueError("Missing signed inventory")
+                for name, limit in (("inventory.json", 4 * MIB), ("content.zip", 128 * MIB)):
+                    meta = archive.getinfo(name)
+                    if meta.compress_type != zipfile.ZIP_STORED or not 0 < meta.file_size <= limit:
+                        raise ValueError("Invalid inner backup member")
+                    with archive.open(meta) as inp, (stage / name).open("xb") as out:
+                        shutil.copyfileobj(inp, out, MIB)
+            elif mode.read_bytes() != b"legacy" or any(name in ("inventory.json", "content.zip") for name in names):
+                raise ValueError("Unexpected backup format")
+        if not (stage / "inventory.json").exists():
+            plain.rename(stage / "content.zip")
+        publish_exclusive(stage, destination)
+
+
+def unpack_checked(payload, destination, checkpoint):
+    unpack(payload, destination, checkpoint.read_bytes())
 
 
 def prepare(source, kit, backup, writer=None):
@@ -125,7 +175,8 @@ def recover(kit, destination, backup):
 if __name__ == "__main__":
     command, *args = sys.argv[1:]
     actions = {"prepare": prepare, "recover": recover, "write-generation": write_generation,
-               "seal-kit": seal, "open-kit": unseal}
+               "seal-kit": seal, "open-kit": unseal, "pack": pack, "seal-inventory": seal_inventory,
+               "open-payload": open_payload, "unpack-checked": unpack_checked}
     try:
         actions[command](*(Path(arg) for arg in args))
     except (OSError, ValueError, subprocess.SubprocessError, zipfile.BadZipFile):
