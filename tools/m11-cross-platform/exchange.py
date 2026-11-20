@@ -105,21 +105,30 @@ def fetch(root, kind, peer):
     run = os.environ["GITHUB_RUN_ID"]
     api = f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run}/artifacts?per_page=100"
     deadline = time.monotonic() + 480
+    failures = 0
     while time.monotonic() < deadline:
         listing = subprocess.run(["gh", "api", api], check=True, capture_output=True, timeout=30)
         if any(a["name"] == artifact and not a["expired"] for a in json.loads(listing.stdout)["artifacts"]):
             destination = root / ("peer-public" if kind == "public" else "incoming")
             with tempfile.TemporaryDirectory(dir=root) as tmp:
                 downloaded = Path(tmp) / "artifact"
-                result = subprocess.run(["gh", "run", "download", run, "--name", artifact, "--dir", downloaded],
-                                        capture_output=True, timeout=60)
-                if result.returncode == 0:
+                try:
+                    result = subprocess.run(["gh", "run", "download", run, "--name", artifact, "--dir", downloaded],
+                                            capture_output=True, timeout=60)
+                except subprocess.TimeoutExpired:
+                    result = None
+                if result is not None and result.returncode == 0:
                     downloaded.rename(destination)
                     return
-                # The list and download endpoints can briefly disagree just
-                # after upload. Other errors (including integrity failures) stop the job.
-                if b"no artifact matches" not in result.stderr.lower():
-                    raise RuntimeError(f"Peer artifact download failed ({result.returncode}): {artifact}")
+                # A failed transfer is discarded together with its partial files.
+                # Each attempt requires a fresh successful CLI verification.
+                detail = result.stderr.lower() if result is not None else b""
+                if any(reason in detail for reason in (b"digest mismatch", b"checksum", b"http 401", b"http 403")):
+                    raise RuntimeError(f"Peer artifact integrity or access check failed: {artifact}")
+                if b"no artifact matches" not in detail:
+                    failures += 1
+                    if failures >= 3:
+                        raise RuntimeError(f"Peer artifact download failed on three fresh attempts: {artifact}")
         time.sleep(5)
     raise TimeoutError(f"Peer artifact unavailable: {artifact}")
 
