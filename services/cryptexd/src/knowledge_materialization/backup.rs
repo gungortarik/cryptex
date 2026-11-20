@@ -10,6 +10,7 @@ use tempfile::NamedTempFile;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 mod codec;
+mod manual;
 pub mod role;
 
 pub struct Prepared {

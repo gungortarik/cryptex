@@ -626,7 +626,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     let volume = work.path().join("backup-volume");
     fs::create_dir(&volume).unwrap();
     let legacy = volume.join("legacy.pgp");
-    let backup = volume.join("backup.pgp");
+    let backup;
     let original_identity = fs::read(crate::identity_runtime::brain_identity_path(source)).unwrap();
     run_archive("prepare", &[source, &kit, &legacy]);
     drop(snapshot);
@@ -668,9 +668,9 @@ fn restored_note_and_attachment_pass_guarded_reads() {
                 prepared.encrypt(scratch.path(), &public),
                 Err(crate::backup_inventory::Error::CodecIntegrity)
             ));
-            let encrypted = prepared.encrypt(directory, &public).unwrap();
-            encrypted.persist_noclobber(&backup).unwrap();
+            backup = prepared.export_manual(directory, &public, &volume).unwrap();
         } else {
+            backup = volume.join("backup.pgp");
             let inner = prepared.encryption_input().unwrap();
             run_archive("seal-inventory", &[&recipient, inner.path(), &backup]);
         }

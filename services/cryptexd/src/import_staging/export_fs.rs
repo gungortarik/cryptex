@@ -286,6 +286,11 @@ impl Directory {
         self.unlink_opened("segment.tmp", file)
     }
 
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    pub(crate) fn discard_partial_manual_export(&self, id: u128, file: File) -> Result<(), Error> {
+        self.unlink_opened(&format!("manual-{id:032x}.partial"), file)
+    }
+
     #[cfg(all(
         test,
         any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))

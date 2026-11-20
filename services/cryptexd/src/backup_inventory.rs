@@ -92,6 +92,8 @@ pub enum Error {
     CodecIntegrity,
     CodecStart,
     CodecExit,
+    ExportDestination,
+    ExportPublication,
     SourceIdentity,
     SourcePack,
 }
