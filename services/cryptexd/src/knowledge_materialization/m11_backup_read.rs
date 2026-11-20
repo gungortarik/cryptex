@@ -390,6 +390,13 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     let original_identity = fs::read(crate::identity_runtime::brain_identity_path(source)).unwrap();
     run_archive("prepare", &[source, &kit, &legacy]);
     drop(snapshot);
+    let incomplete = source.join("recovery");
+    fs::create_dir(&incomplete).unwrap();
+    assert!(matches!(
+        super::super::backup::prepare(source, &profiles.store, SecureStoreEnvironment::Dev, 1),
+        Err(crate::backup_inventory::Error::RecoveryHistory)
+    ));
+    fs::remove_dir(incomplete).unwrap();
     {
         let prepared =
             super::super::backup::prepare(source, &profiles.store, SecureStoreEnvironment::Dev, 1)

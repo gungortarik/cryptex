@@ -50,7 +50,7 @@ fn append(
 
 pub fn prepare(
     root: &Path,
-    store: &(impl SecureStore + ?Sized),
+    store: &dyn SecureStore,
     env: SecureStoreEnvironment,
     generation: u64,
 ) -> Result<Prepared, Error> {
@@ -73,6 +73,14 @@ pub fn prepare(
         .map_err(|_| Error::Credentials)?
         .local_trust_anchor()
         .ok_or(Error::Credentials)?;
+    // A replacement device can have two independently authenticated histories.
+    // A single-history backup would silently omit the archived notes.
+    if recovered_search::for_profile(root, &identity.brain_id, anchor.device_id(), store, env)
+        .map_err(|_| Error::RecoveryHistory)?
+        .is_some()
+    {
+        return Err(Error::RecoveryHistory);
+    }
     let snapshot =
         scan_verified_canonical_from_local_anchor_until(root, &identity.brain_id, &anchor, None)
             .map_err(|_| Error::Checkpoint)?;

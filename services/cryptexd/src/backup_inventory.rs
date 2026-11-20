@@ -87,6 +87,7 @@ pub enum Error {
     Signature,
     Inventory,
     Attachment,
+    RecoveryHistory,
 }
 
 /// Check a privately extracted profile before publishing it or marking a
