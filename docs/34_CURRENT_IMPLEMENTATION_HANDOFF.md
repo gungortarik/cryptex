@@ -247,6 +247,33 @@ Real profiles keep M10 writes disabled. Production backup inventory, encrypted
 container selection and disaster restore remain M11 work. Final M10 acceptance
 remains open.
 
+### M10 closeout audit and deletion status
+
+At `0f2b5e9`, Desktop distinguishes a verified signed approval, incomplete
+cleanup, and completed local cleanup. The daemon binds the outcome to the
+reviewed event ID and hash. If compaction or subsequent cleanup fails after
+approval verification, the response carries the typed reason. An uncertain
+IPC response makes no claim about the outcome. The timeline removes the
+selected text from its displayed results and shows the verified status.
+Successful local cleanup still leaves offline devices and external copies
+outside the claim.
+
+The native browser trial truncates a disposable archived pack, confirms
+deletion, and checks the integrity warning and the single saved approval.
+It verifies that cleanup preserved the damaged archive. Returning the
+intact bytes allows the daemon to finish cleanup and verify both surviving
+notes in a fresh process. [Desktop and daemon checks](https://github.com/gungortarik/cryptex/actions/runs/44671503596)
+
+The M10 contract has evidence above for signed transitions, delayed peer
+reconciliation, purge bridges, restoration from stale snapshots, reachable
+backup cleanup and shared attachments. The next product gap is an owner-facing
+Forget and Restore flow in a disposable Desktop profile. Today the test
+harness authors those transitions. Restore needs a way to select the
+forgotten note while ordinary retrieval continues to hide it. At candidate
+review, check AI retrieval and authorization boundaries, recovery and visual
+behavior, run required full CI, and obtain human review of the candidate diff.
+Real-profile writing remains disabled.
+
 ## M9 complete on November 19, 2026
 
 The owner accepted candidate `fa479ff` after diff review. Full CI, native reader and interrupted-repair checks, and Desktop attachment tests passed on Windows and macOS. Review of the rendered note detail and security boundaries is recorded in the [M9 acceptance report](../evidence/m9/attachment-closeout-review-20261119.md). Real profiles keep attachment writing disabled. M10 Forget + Purge is next on the roadmap.
