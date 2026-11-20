@@ -5,6 +5,7 @@ on:
     paths:
       - 'tools/m11-backup-spike/**'
       - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
+      - 'services/cryptexd/src/knowledge_materialization/m11_first_device.rs'
       - 'services/cryptexd/src/knowledge_materialization/pairing_recovery_tests.rs'
       - '.github/workflows/m11-backup-spike.yml'
       - 'crates/events/tests/fixtures/m8-old-reader-v1-v3.json'
@@ -13,6 +14,7 @@ on:
     paths:
       - 'tools/m11-backup-spike/**'
       - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
+      - 'services/cryptexd/src/knowledge_materialization/m11_first_device.rs'
       - 'services/cryptexd/src/knowledge_materialization/pairing_recovery_tests.rs'
       - '.github/workflows/m11-backup-spike.yml'
       - 'crates/events/tests/fixtures/m8-old-reader-v1-v3.json'
@@ -50,3 +52,4 @@ jobs:
             knowledge_materialization::pairing_recovery_tests::m11_backup_read::restored_note_and_attachment_pass_guarded_reads \
             -- --exact --ignored --nocapture | tee "$RUNNER_TEMP/m11-daemon-read.txt"
           grep '^m11_guarded_restore=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep '^m11_first_device=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"

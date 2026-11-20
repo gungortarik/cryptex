@@ -5,9 +5,18 @@ use cryptex_events::attachment_link::LinkError;
 use std::io::Read;
 use std::process::Command;
 
+#[path = "m11_first_device.rs"]
+mod first_device;
+
 #[test]
 #[ignore = "requires the M11 Node/Python fixture installed by native CI"]
 fn restored_note_and_attachment_pass_guarded_reads() {
+    let work = tempfile::tempdir().unwrap();
+    let mut seed = [0u8; 32];
+    getrandom::getrandom(&mut seed).unwrap();
+    let offline = SigningKey::from_bytes(&seed);
+    seed.fill(0);
+    let pinned_recovery_key = offline.verifying_key();
     let profiles = PairProfiles::new();
     profiles.pair(0, [true, true], false);
     profiles.import_peer_fixture(0);
@@ -61,26 +70,41 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         })
         .unwrap();
     drop(policy);
-    // The fixture retains its trusted public device anchor outside the archive.
-    let mut keys = resolver(&profiles);
-    let anchor = keys.local_trust_anchor().unwrap();
+    // Public historical identity captured when preparing the trusted kit.
+    let anchor = resolver(&profiles).local_trust_anchor().unwrap();
     let snapshot =
         scan_verified_canonical_from_local_anchor_until(source, BRAIN, &anchor, None).unwrap();
-    let restored = profiles.root.join("rehearsal");
+    let restored = work.path().join("rehearsal");
+    let kit = work.path().join("kit");
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tools/m11-backup-spike/daemon_roundtrip.py");
-    assert!(
-        Command::new("python")
-            .arg("-B")
-            .arg(script)
-            .arg(source)
-            .arg(&restored)
-            .status()
-            .unwrap()
-            .success()
-    );
+    let run = |action: &str, first: &Path, second: &Path| {
+        assert!(
+            Command::new("python")
+                .arg("-B")
+                .arg(&script)
+                .arg(action)
+                .arg(first)
+                .arg(second)
+                .status()
+                .unwrap()
+                .success()
+        );
+    };
+    run("prepare", source, &kit);
     drop((snapshot, instance));
-    fs::remove_dir_all(source).unwrap();
+    let old_profiles = profiles.profiles.clone();
+    drop(profiles); // Drops both original private keys and the old secure store.
+    assert!(old_profiles.iter().all(|root| !root.exists()));
+    run("recover", &kit, &restored);
+    let mut keys = first_device::rehearse(
+        work.path(),
+        &kit.join("backup.pgp"),
+        &anchor,
+        offline,
+        pinned_recovery_key,
+    );
+    let anchor = keys.local_trust_anchor().unwrap();
     assert_eq!(fs::read_dir(&restored).unwrap().count(), 1);
     let (mut db, _) = crate::projection::open_projection_db(&restored).unwrap();
     rebuild_knowledge_from_local_approval_history(&restored, BRAIN, &anchor, &mut db).unwrap();
@@ -165,5 +189,8 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     ));
     println!(
         "m11_guarded_restore=passed signed_inventory=verified wrong_note=denied missing_blob=denied damaged_blob=denied forged_note=held"
+    );
+    println!(
+        "m11_first_device=passed old_devices=lost kit_authorized=true replacement_note=verified historical_attachment=verified"
     );
 }

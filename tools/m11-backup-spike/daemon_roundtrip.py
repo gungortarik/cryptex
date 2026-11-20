@@ -37,8 +37,9 @@ def unpack(bundle, staging):
                 shutil.copyfileobj(inp, out, MIB)
 
 
-def run(source, destination):
-    with tempfile.TemporaryDirectory(prefix="cryptex-m11-envelope-") as temp:
+def prepare(source, kit):
+    kit.mkdir()
+    with tempfile.TemporaryDirectory(prefix="cryptex-m11-pack-") as temp:
         work = Path(temp)
         # The recipient and authorized backup signer have independent fixture keys.
         def keypair(name):
@@ -66,6 +67,15 @@ def run(source, destination):
         envelope("encrypt", [recipient], plain, unsigned)
         plain.unlink()
         signing.unlink()
+        for asset in (recipient, recovery, signer, encrypted, unsigned):
+            shutil.move(asset, kit / asset.name)
+
+
+def recover(kit, destination):
+    recovery, signer, recipient = (kit / name for name in ("recovery.sec", "writer.pub", "recovery.pub"))
+    encrypted, unsigned = kit / "backup.pgp", kit / "unsigned.pgp"
+    with tempfile.TemporaryDirectory(prefix="cryptex-m11-unpack-") as temp:
+        work = Path(temp)
         for attempt, backup, verifier in (("unsigned", unsigned, signer),
                                           ("wrong-signer", encrypted, recipient)):
             try:
@@ -79,4 +89,5 @@ def run(source, destination):
 
 
 if __name__ == "__main__":
-    run(Path(sys.argv[1]), Path(sys.argv[2]))
+    command, first, second = sys.argv[1:]
+    {"prepare": prepare, "recover": recover}[command](Path(first), Path(second))
