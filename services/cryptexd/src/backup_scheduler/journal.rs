@@ -30,6 +30,14 @@ struct Job {
     phase: Phase,
 }
 
+/// Only the local scheduler's journal can identify an automatic publication.
+pub(crate) struct PublishedGeneration {
+    pub(super) writer: LocalTrustAnchor,
+    pub(super) path: PathBuf,
+    pub(super) number: u64,
+    pub(super) digest: [u8; 32],
+}
+
 pub(crate) struct DeviceJobs<'a> {
     store: &'a dyn SecureStore,
     service: ServiceLabel,
@@ -110,6 +118,41 @@ impl<'a> DeviceJobs<'a> {
             generation,
             phase: Phase::Queued,
         })
+    }
+
+    pub(crate) fn published_pair(&self) -> io::Result<[PublishedGeneration; 2]> {
+        let job = self
+            .load()?
+            .ok_or_else(|| io::Error::other("missing scheduled job"))?;
+        let Phase::Published(digest) = job.phase else {
+            return Err(io::Error::other("scheduled backup is pending"));
+        };
+        let previous_number = job
+            .generation
+            .checked_sub(1)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid generation"))?;
+        if job.prior.file_name()
+            != Some(super::retention::generation_name(previous_number).as_ref())
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "prior backup is not a scheduled generation",
+            ));
+        }
+        Ok([
+            PublishedGeneration {
+                writer: self.owner.clone(),
+                path: job.prior.clone(),
+                number: previous_number,
+                digest: job.prior_hash,
+            },
+            PublishedGeneration {
+                writer: self.owner.clone(),
+                path: job.output(),
+                number: job.generation,
+                digest,
+            },
+        ])
     }
 
     pub fn resume(

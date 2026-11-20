@@ -38,12 +38,14 @@ pub(crate) struct VerifiedBackups<'a> {
 }
 
 impl VerifiedBackups<'_> {
-    fn account(&self, number: u64) -> io::Result<AccountLabel> {
+    // None addresses the retention preference. Some(n) addresses an
+    // individual reconstruction receipt in this writer and target namespace.
+    fn account(&self, generation: Option<u64>) -> io::Result<AccountLabel> {
         let binding = serde_json::to_vec(&(
             self.target,
             self.designated.device_id().as_str(),
             self.designated.public_key(),
-            number,
+            generation,
         ))?;
         Ok(AccountLabel::verified_backup(&format!(
             "{:x}",
@@ -55,9 +57,20 @@ impl VerifiedBackups<'_> {
     /// identifies. The caller supplies the daemon's sandbox reconstruction.
     pub fn verify<T>(
         &self,
-        number: u64,
+        enrolled: &LocalTrustAnchor,
+        publication: &super::journal::PublishedGeneration,
         reconstruct: impl FnOnce(&Path) -> io::Result<T>,
     ) -> io::Result<T> {
+        self.require_writer(enrolled)?;
+        let number = publication.number;
+        if self.designated != &publication.writer
+            || self.target.join(generation_name(number)) != publication.path
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "wrong scheduled backup target",
+            ));
+        }
         let dir = Directory::open(self.target).map_err(directory_error)?;
         let mut input = dir
             .open_file(&generation_name(number), false)
@@ -69,43 +82,75 @@ impl VerifiedBackups<'_> {
         drop(copy);
         drop(input);
         let digest = super::generation_digest(&path)?;
+        if digest != publication.digest {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "backup differs from publication",
+            ));
+        }
         let verified = reconstruct(&path)?;
         let service = ServiceLabel::device_credentials(self.environment);
-        let account = self.account(number)?;
+        let account = self.account(Some(number))?;
         match self.store.get(service.as_str(), account.as_str()) {
-            Ok(old) if old.as_slice() == digest => return Ok(verified),
+            Ok(old) if old.as_slice() == digest => {}
             Ok(_) => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "verified generation changed",
                 ));
             }
-            Err(SecureStoreError::Missing) => (),
+            Err(SecureStoreError::Missing) => self
+                .store
+                .put(service.as_str(), account.as_str(), &digest)
+                .map_err(io::Error::other)?,
             Err(error) => return Err(io::Error::other(error)),
         }
-        self.store
-            .put(service.as_str(), account.as_str(), &digest)
-            .map_err(io::Error::other)?;
+        self.prune(enrolled)?;
         Ok(verified)
     }
 
-    pub fn prune(
+    fn require_writer(&self, enrolled: &LocalTrustAnchor) -> io::Result<()> {
+        if enrolled == self.designated {
+            return Ok(());
+        }
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "backup writer required",
+        ))
+    }
+
+    pub fn set_retention(
         &self,
         enrolled: &LocalTrustAnchor,
         keep: Option<NonZeroUsize>,
-    ) -> io::Result<usize> {
-        if enrolled != self.designated {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "backup writer required",
-            ));
-        }
+    ) -> io::Result<()> {
+        self.require_writer(enrolled)?;
+        let service = ServiceLabel::device_credentials(self.environment);
+        self.store
+            .put(
+                service.as_str(),
+                self.account(None)?.as_str(),
+                &serde_json::to_vec(&keep)?,
+            )
+            .map_err(io::Error::other)
+    }
+
+    pub fn prune(&self, enrolled: &LocalTrustAnchor) -> io::Result<usize> {
+        self.require_writer(enrolled)?;
+        let service = ServiceLabel::device_credentials(self.environment);
+        let keep: Option<NonZeroUsize> = match self
+            .store
+            .get(service.as_str(), self.account(None)?.as_str())
+        {
+            Ok(bytes) => serde_json::from_slice(&bytes)?,
+            Err(SecureStoreError::Missing) => None,
+            Err(error) => return Err(io::Error::other(error)),
+        };
         let Some(keep) = keep else { return Ok(0) };
         let dir = Directory::open(self.target).map_err(directory_error)?;
         let _lock = dir
             .try_lock_exclusive("backup-writer.lock")
             .map_err(directory_error)?;
-        let service = ServiceLabel::device_credentials(self.environment);
         let mut verified = Vec::new();
         for entry in fs::read_dir(self.target)? {
             let name = entry?.file_name();
@@ -114,7 +159,7 @@ impl VerifiedBackups<'_> {
             };
             let digest = match self
                 .store
-                .get(service.as_str(), self.account(number)?.as_str())
+                .get(service.as_str(), self.account(Some(number))?.as_str())
             {
                 Ok(bytes) => <[u8; 32]>::try_from(bytes).map_err(|_| {
                     io::Error::new(io::ErrorKind::InvalidData, "invalid verification receipt")

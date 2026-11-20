@@ -186,6 +186,9 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     assert_eq!(Sha256::digest(fs::read(&first).unwrap()), first_digest);
     let manual = volume.join("manual-export.pgp");
     run_archive("write-generation", &[source.path(), writer.path(), &manual]);
+    let [first_publication, next_publication] = DeviceJobs::new(&store, env, &anchor)
+        .published_pair()
+        .unwrap();
 
     // Only public event verification material and the independent kit survive.
     drop(store);
@@ -211,7 +214,7 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
         target: &volume,
     };
     let before = catalog
-        .verify(1, |file| {
+        .verify(&anchor, &first_publication, |file| {
             let hits = restore_hits(file, "restore-first");
             assert_eq!(hits.len(), 1);
             assert_eq!(hits[0].text, "synthetic original prefix");
@@ -219,9 +222,16 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
             Ok(hits)
         })
         .unwrap();
+    assert!(
+        catalog
+            .verify(&anchor, &next_publication, |_| Err::<(), _>(
+                std::io::Error::other("reconstruction failed")
+            ))
+            .is_err()
+    );
     let after =
         catalog
-            .verify(2, |file| {
+            .verify(&anchor, &next_publication, |file| {
                 let hits = restore_hits(file, "restore-next");
                 assert!(hits.iter().any(|hit| hit.event_id == receipt.event_id
                     && hit.content_hash == receipt.content_hash));
@@ -241,29 +251,41 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     let keep = std::num::NonZeroUsize::new(1);
     let unknown = volume.join("backup-00000000000000000003.pgp");
     fs::write(&unknown, b"unverified fixture").unwrap();
-    assert!(
-        catalog
-            .verify(3, |_| Err::<(), _>(std::io::Error::other(
-                "reconstruction failed"
-            )))
-            .is_err()
-    );
     assert_eq!(
-        catalog.prune(&peer_anchor, keep).unwrap_err().kind(),
+        catalog
+            .set_retention(&peer_anchor, keep)
+            .unwrap_err()
+            .kind(),
         std::io::ErrorKind::PermissionDenied
     );
-    assert_eq!(catalog.prune(&anchor, None).unwrap(), 0);
+    assert_eq!(catalog.prune(&anchor).unwrap(), 0);
+    catalog.set_retention(&anchor, keep).unwrap();
+    let reopened = FileBackedSecureStore::open(receipt_store.root()).unwrap();
+    let catalog = crate::backup_scheduler::retention::VerifiedBackups {
+        store: &reopened,
+        ..catalog
+    };
+    assert_eq!(
+        catalog.prune(&peer_anchor).unwrap_err().kind(),
+        std::io::ErrorKind::PermissionDenied
+    );
     let good = fs::read(&next).unwrap();
     fs::write(&next, b"corrupt fixture").unwrap();
     assert_eq!(
-        catalog.prune(&anchor, keep).unwrap_err().kind(),
+        catalog.prune(&anchor).unwrap_err().kind(),
         std::io::ErrorKind::InvalidData
     );
     assert!(first.exists());
     fs::write(&next, good).unwrap();
-    assert_eq!(catalog.prune(&anchor, keep).unwrap(), 1);
+    catalog
+        .verify(&anchor, &next_publication, |file| {
+            assert_eq!(restore_hits(file, "recheck-after-restart"), after);
+            Ok(())
+        })
+        .unwrap();
     assert!(!first.try_exists().unwrap());
-    assert_eq!(catalog.prune(&anchor, keep).unwrap(), 0);
+    assert_eq!(catalog.prune(&anchor).unwrap(), 0);
+    catalog.set_retention(&anchor, None).unwrap();
     assert!(next.is_file());
     assert_eq!(fs::read(unknown).unwrap(), b"unverified fixture");
     assert_eq!(restore_hits(&manual, "restore-manual"), after);
