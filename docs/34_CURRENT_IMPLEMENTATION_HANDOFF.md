@@ -1,6 +1,12 @@
 # 34 — Current Implementation Handoff
 
-## M10 in progress — reversible Forget in disposable profiles
+## M10 complete on November 20, 2026
+
+The owner reviewed and accepted candidate `9de456f` subject to successful CI and technical review. Windows and macOS passed all nine required jobs across four workflows. The closeout regression reproduced and corrected physical deletion failing after an unrelated note was forgotten. After reopening a disposable profile, the corrected candidate also preserved the forgotten note and removed a previously restored note. The [M10 review and CI evidence](../evidence/m10/forget-purge-closeout-review.md) records authorization, recovery, Desktop review and the limits of physical cleanup.
+
+Real profiles keep M10 writes disabled. The next milestone is [M11 Backup and Disaster Restore](milestones/M11_BACKUP_DISASTER_RESTORE.md).
+
+### M10 implementation history
 
 The first daemon test appends signed note, forget and restore records in a
 disposable single-device profile. It rereads and authenticates the pack at
