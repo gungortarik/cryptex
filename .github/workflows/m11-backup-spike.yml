@@ -4,12 +4,16 @@ on:
   push:
     paths:
       - 'tools/m11-backup-spike/**'
+      - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
+      - 'services/cryptexd/src/knowledge_materialization/pairing_recovery_tests.rs'
       - '.github/workflows/m11-backup-spike.yml'
       - 'crates/events/tests/fixtures/m8-old-reader-v1-v3.json'
       - '.node-version'
   pull_request:
     paths:
       - 'tools/m11-backup-spike/**'
+      - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
+      - 'services/cryptexd/src/knowledge_materialization/pairing_recovery_tests.rs'
       - '.github/workflows/m11-backup-spike.yml'
       - 'crates/events/tests/fixtures/m8-old-reader-v1-v3.json'
       - '.node-version'
@@ -23,7 +27,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,3 +38,15 @@ jobs:
           python-version: '3.12'
       - run: npm ci --prefix tools/m11-backup-spike --ignore-scripts
       - run: python -B tools/m11-backup-spike/rehearse.py
+      - name: Verify recovered notes and attachments through guarded daemon reads
+        shell: bash
+        env:
+          CRYPTEX_M8_LOCAL_STARTUP_CERT_DER: ${{ github.workspace }}/services/cryptexd/src/m8_owner_channel/release_inventory/fixtures/signer.der
+        run: |
+          set -euo pipefail
+          features=()
+          if [[ "$RUNNER_OS" == macOS ]]; then features=(--features m8-local-startup-check); fi
+          cargo test --locked -p cryptexd --lib "${features[@]}" \
+            knowledge_materialization::pairing_recovery_tests::m11_backup_read::restored_note_and_attachment_pass_guarded_reads \
+            -- --exact --ignored --nocapture | tee "$RUNNER_TEMP/m11-daemon-read.txt"
+          grep '^m11_guarded_restore=passed ' "$RUNNER_TEMP/m11-daemon-read.txt" >> "$GITHUB_STEP_SUMMARY"

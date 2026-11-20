@@ -298,6 +298,10 @@ fn guarded_ids(profiles: &PairProfiles, db: &ProjectionDb) -> BTreeSet<String> {
 #[path = "pairing_recovery_tests/shared_attachment.rs"]
 mod shared_attachment;
 
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+#[path = "m11_backup_read.rs"]
+mod m11_backup_read;
+
 fn restrict_peer_after_first_record(profiles: &PairProfiles) {
     use crate::bootstrap_journal::RestrictionReason;
     let transaction = "bd".repeat(32);
