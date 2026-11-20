@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'services/cryptexd/src/knowledge_materialization/backup.rs'
+      - 'services/cryptexd/src/knowledge_materialization/backup/**'
       - 'services/cryptexd/backup-codec/**'
       - 'services/cryptexd/src/backup_inventory.rs'
       - 'Cargo.lock'
@@ -31,6 +32,7 @@ on:
   pull_request:
     paths:
       - 'services/cryptexd/src/knowledge_materialization/backup.rs'
+      - 'services/cryptexd/src/knowledge_materialization/backup/**'
       - 'services/cryptexd/backup-codec/**'
       - 'services/cryptexd/src/backup_inventory.rs'
       - 'Cargo.lock'

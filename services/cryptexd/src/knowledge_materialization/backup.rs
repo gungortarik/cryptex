@@ -9,6 +9,8 @@ use std::io::{self, Write};
 use tempfile::NamedTempFile;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
+mod codec;
+pub use codec::CodecPins;
 
 pub struct Prepared {
     payload: NamedTempFile,
@@ -56,7 +58,7 @@ pub fn prepare(
 ) -> Result<Prepared, Error> {
     let (identity_file, _) =
         open_recovery_source(&crate::identity_runtime::brain_identity_path(root))
-            .map_err(|_| Error::Archive)?;
+            .map_err(|_| Error::SourceIdentity)?;
     let mut bytes = Vec::new();
     identity_file
         .take(4097)
@@ -123,7 +125,7 @@ pub fn prepare(
         }
         for name in packs {
             let (mut file, before) =
-                open_recovery_source(&directory.join(&name)).map_err(|_| Error::Archive)?;
+                open_recovery_source(&directory.join(&name)).map_err(|_| Error::SourcePack)?;
             let member = format!("canonical/events/{}/{name}", device.as_filename_stem());
             let copied = append(&mut archive, &member, &mut file)?;
             if copied != before.length

@@ -35,7 +35,7 @@ def install_and_run():
     sidecar = APP / "src-tauri/binaries" / ("cryptexd-" + triple + binary.suffix)
     sidecar.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(daemon, sidecar)
-    stage_codec(sidecar.parent / "m11-codec")
+    pins = stage_codec(sidecar.parent / "m11-codec")
     pnpm = shutil.which("pnpm.cmd" if windows else "pnpm")
     run(pnpm, "--dir", str(APP), "exec", "tauri", "build", "--debug",
         "--features", "m11-installed-search-check", "--bundles", "nsis" if windows else "app",
@@ -60,7 +60,8 @@ def install_and_run():
         codec = (desktop.parent if windows else installed / "Contents/Resources") / "m11-codec"
         if not (codec / ("node.exe" if windows else "node")).is_file():
             raise RuntimeError("installed backup codec missing")
-        env = dict(os.environ, CRYPTEX_M11_INSTALLED_DESKTOP=str(desktop), CRYPTEX_M11_TEST_INSTALLED_CODEC=str(codec))
+        env = dict(os.environ, CRYPTEX_M11_INSTALLED_DESKTOP=str(desktop),
+                   CRYPTEX_M11_TEST_INSTALLED_CODEC=str(codec), CRYPTEX_M11_TEST_CODEC_PINS=json.dumps(pins))
         run(str(binary), "--exact", TEST, "--ignored", "--nocapture", env=env, timeout=240)
         print("m11_installed_codec=passed public_recipient=true restored_with_daemon_signature=true", flush=True)
 

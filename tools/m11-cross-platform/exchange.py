@@ -46,7 +46,10 @@ def native(root, action, platform):
     test = "knowledge_materialization::pairing_recovery_tests::m11_backup_read::exchange_native_backup_with_peer_os"
     result = subprocess.run(["cargo", "test", "--locked", "-p", "cryptexd", "--lib", *features,
                              test, "--", "--exact", "--ignored", "--nocapture"], env=env,
-                            stdout=subprocess.PIPE, check=True, timeout=900)
+                            stdout=subprocess.PIPE, timeout=900)
+    if result.returncode:
+        sys.stdout.buffer.write(result.stdout)
+        result.check_returncode()
     if b"1 passed; 0 failed" not in result.stdout:
         raise RuntimeError("Native exchange test did not run")
     if action == "restore":

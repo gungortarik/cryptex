@@ -19,7 +19,7 @@ fn exchange_native_backup_with_peer_os() {
     let note_text = format!("portable M11 note from {platform}");
     let env = SecureStoreEnvironment::Dev;
     if mode == "prepare" {
-        let source = tempfile::tempdir().unwrap();
+        let source = tempfile::tempdir_in(work.join("private")).unwrap();
         let store = FakeSecureStore::new();
         let (device, _) = PairProfiles::enroll(source.path(), &store);
         append_memory_note(
@@ -478,11 +478,25 @@ fn restored_note_and_attachment_pass_guarded_reads() {
             serde_json::to_vec(&prepared.selection).unwrap(),
         )
         .unwrap();
-        let inner = prepared.encryption_input().unwrap();
-        run_archive(
-            "seal-inventory",
-            &[&kit.join("recovery.pub"), inner.path(), &backup],
-        );
+        let recipient = kit.join("recovery.pub");
+        if let Some(directory) = std::env::var_os("CRYPTEX_M11_TEST_INSTALLED_CODEC") {
+            use super::super::backup::CodecPins;
+            let directory = Path::new(&directory);
+            let pins = std::env::var("CRYPTEX_M11_TEST_CODEC_PINS").unwrap();
+            let mut wrong: serde_json::Value = serde_json::from_str(&pins).unwrap();
+            wrong["entry"] = "00".repeat(32).into();
+            let public = fs::read(recipient).unwrap();
+            assert!(matches!(
+                prepared.encrypt(directory, &serde_json::from_value(wrong).unwrap(), &public),
+                Err(crate::backup_inventory::Error::Codec)
+            ));
+            let pins: CodecPins = serde_json::from_str(&pins).unwrap();
+            let encrypted = prepared.encrypt(directory, &pins, &public).unwrap();
+            encrypted.persist_noclobber(&backup).unwrap();
+        } else {
+            let inner = prepared.encryption_input().unwrap();
+            run_archive("seal-inventory", &[&recipient, inner.path(), &backup]);
+        }
     }
     let sealed_kit = work.path().join("offline-kit.pgp");
     let unlock = tempfile::tempdir().unwrap();

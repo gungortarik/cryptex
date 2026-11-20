@@ -88,6 +88,9 @@ pub enum Error {
     Inventory,
     Attachment,
     RecoveryHistory,
+    Codec,
+    SourceIdentity,
+    SourcePack,
 }
 
 /// Check a privately extracted profile before publishing it or marking a

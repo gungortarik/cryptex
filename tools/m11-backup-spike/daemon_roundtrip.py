@@ -2,7 +2,6 @@
 
 from pathlib import Path
 import hashlib
-import os
 import re
 import shutil
 import subprocess
@@ -98,12 +97,7 @@ def write_generation(source, writer, backup):
 def seal_inventory(recipient, inner, backup):
     with tempfile.TemporaryDirectory(dir=backup.parent) as staging:
         encrypted = Path(staging) / "backup.pgp"
-        installed = os.environ.get("CRYPTEX_M11_TEST_INSTALLED_CODEC")
-        if installed:
-            from packaged_codec import encrypt
-            encrypt(Path(installed), recipient, inner, encrypted)
-        else:
-            envelope("encrypt", [recipient], inner, encrypted)
+        envelope("encrypt", [recipient], inner, encrypted)
         publish_exclusive(encrypted, backup)
 
 
