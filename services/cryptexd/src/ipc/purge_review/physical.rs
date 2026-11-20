@@ -238,5 +238,37 @@ pub(crate) fn reconcile(
             notice.approval.as_bytes(),
         )?;
     }
+    // A committed remote bridge without its completion marker resumes derived
+    // cleanup even if the transport notice disappeared while the daemon was down.
+    let snapshot =
+        crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+            root,
+            brain,
+            anchor,
+            Some(Instant::now() + Duration::from_secs(5)),
+        )
+        .map_err(|_| ReviewError::CleanupPending)?;
+    let remote = snapshot.clean_purged_exchange(anchor.device_id())?;
+    drop(snapshot);
+    if !remote.is_empty() {
+        let staging = Directory::open(root)?.child("purge-staging", true)?;
+        let _lock = staging.lock_exclusive("cleanup.lock")?;
+        let mut pending = Vec::new();
+        for id in remote {
+            let name = format!("{id}.clean");
+            if !staging.exists(&name)? {
+                pending.push(name);
+            }
+        }
+        if !pending.is_empty() {
+            finish_cleanup(root, brain, anchor)?;
+            for name in pending {
+                let marker = staging.open_file(&name, true)?;
+                crate::import_staging::export_fs::flush(&marker)
+                    .map_err(|_| ReviewError::CleanupPending)?;
+            }
+            staging.sync()?;
+        }
+    }
     Ok(())
 }

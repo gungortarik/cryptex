@@ -6,6 +6,28 @@ use crate::ipc::purge_review::{physical, receipt};
 use crate::secure_store::{FileBackedSecureStore, SecureStore};
 use std::sync::Arc;
 
+const TARGET: &str = "isolatedpurgeoffline";
+
+/// Inspect actual regular files, including SQLite, its sidecars and transport staging.
+fn body_copies(dir: &Path) -> Vec<PathBuf> {
+    let mut copies = Vec::new();
+    for entry in fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        let ty = entry.file_type().unwrap();
+        if ty.is_dir() {
+            copies.extend(body_copies(&entry.path()));
+        } else if ty.is_file()
+            && fs::read(entry.path())
+                .unwrap()
+                .windows(TARGET.len())
+                .any(|w| w == TARGET.as_bytes())
+        {
+            copies.push(entry.path());
+        }
+    }
+    copies
+}
+
 fn relative(device: &DeviceId) -> PathBuf {
     PathBuf::from(device.as_filename_stem()).join("00000000000000000000.seg")
 }
@@ -58,7 +80,7 @@ pub(super) fn exercise(wire: &Path, owner_transport: &str, peer_transport: &str)
             brain_id: BRAIN,
             device_id: author.device_id(),
             classification: Classification::Public,
-            text: "isolatedpurgeoffline",
+            text: TARGET,
             event_id: None,
             config: &CanonicalWriterConfig::default(),
         },
@@ -185,8 +207,31 @@ pub(super) fn exercise(wire: &Path, owner_transport: &str, peer_transport: &str)
         .is_err()
     );
     assert_eq!(lifecycle::search(&peer, keys), visible);
+    assert!(
+        baseline
+            .windows(TARGET.len())
+            .any(|w| w == TARGET.as_bytes())
+    );
+    assert_eq!(fs::read(&peer_copy).unwrap(), baseline);
+    // An exchange copy with unaccounted bytes must survive intact. Stop after
+    // canonical replacement, then reopen and finish cleanup from the signed ledger.
+    let inbox = right.join("transport/incoming").join(&a_path);
+    let mut conflict = baseline.clone();
+    conflict.extend_from_slice(b"unaccounted");
+    fs::write(&inbox, &conflict).unwrap();
+    assert!(matches!(
+        physical::reconcile(peer_transport, &right, BRAIN, &remote),
+        Err(crate::ipc::purge_review::ReviewError::PackIntegrity)
+    ));
+    assert_eq!(fs::read(&inbox).unwrap(), conflict);
+    assert_eq!(fs::read(&peer_copy).unwrap(), compacted);
+    drop(peer);
+    peer = Side::new(right.clone(), peer_transport);
+    fs::write(&inbox, &baseline).unwrap();
     peer.tick(keys);
     assert_eq!(lifecycle::search(&peer, keys), remaining);
+    assert_eq!(fs::read(&peer_copy).unwrap(), compacted);
+    assert!(!right.join("transport/incoming").join(&a_path).exists());
     let ledger = right
         .join("canonical")
         .join(receipt::FOLDER)
@@ -194,15 +239,15 @@ pub(super) fn exercise(wire: &Path, owner_transport: &str, peer_transport: &str)
     let durable = fs::read(&ledger).unwrap();
     peer.tick(keys);
     assert_eq!(fs::read(&ledger).unwrap(), durable);
-    assert_eq!(
-        publish(&mut peer, &a_path, &replay, keys)
-            .unwrap()
-            .published_events,
-        0
-    );
+    assert!(matches!(
+        publish(&mut peer, &a_path, &replay, keys),
+        Err(crate::incoming_publication::IncomingPublicationError::Rejected(_))
+    ));
+    assert_eq!(fs::read(&peer_copy).unwrap(), compacted);
     drop((owner, peer));
     for (root, transport) in [(left, owner_transport), (right, peer_transport)] {
-        let side = Side::new(root, transport);
+        let mut side = Side::new(root, transport);
+        side.tick(keys);
         crate::incoming_publication::rebuild_imported_state(&side.root, BRAIN, keys, ENV).unwrap();
         assert_eq!(lifecycle::search(&side, keys), remaining);
         let db = crate::projection::open_projection_db(&side.root).unwrap().0;
@@ -229,10 +274,16 @@ pub(super) fn exercise(wire: &Path, owner_transport: &str, peer_transport: &str)
                 keep.content_hash
             );
         }
+        drop(db);
         assert_eq!(
             fs::read(side.root.join("canonical/events").join(&b_path)).unwrap(),
             other
         );
+        let root = side.root.clone();
+        drop(side);
+        assert_eq!(body_copies(&root), Vec::<PathBuf>::new());
     }
-    println!("stale_purge_reconnect=verified stale_replay=refused survivors=2 reopened=2");
+    println!(
+        "stale_purge_reconnect=verified stale_replay=refused replica_disk=clean survivors=2 reopened=2"
+    );
 }

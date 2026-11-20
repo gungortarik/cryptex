@@ -274,6 +274,14 @@ impl Directory {
         self.sync()
     }
 
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
+    pub(crate) fn remove_purged_exchange(&self, index: u64, file: File) -> Result<(), Error> {
+        self.unlink_opened(&format!("{index:020}.seg"), file)
+    }
+
     pub(crate) fn discard_scratch(&self, file: File) -> Result<(), Error> {
         self.unlink_opened("segment.tmp", file)
     }

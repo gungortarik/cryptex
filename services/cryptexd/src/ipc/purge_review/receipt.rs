@@ -183,6 +183,17 @@ fn store_receipt(
     Ok(())
 }
 
+pub(crate) fn bridge_body(note: &cryptex_events::AcceptedEvent) -> serde_json::Value {
+    serde_json::json!({
+        "schema_version": 2, "event_id": note.event_id, "brain_id": note.brain_id,
+        "device_id": note.device_id, "device_seq": note.device_seq,
+        "prev_content_hash": note.prev_content_hash, "created_at": note.created_at,
+        "signing_key_id": note.signing_key_id, "classification": "restricted",
+        "event_type": "memory.purge.bridge", "payload_schema_version": 1,
+        "payload": {"original_hash": note.content_hash}
+    })
+}
+
 /// Admit the owner's completed deletion only against this receiver's verified
 /// copy of that exact note and the key in its own signed pairing history.
 pub(crate) fn receive(
@@ -242,25 +253,21 @@ pub(crate) fn receive(
         &note.event_id,
         note.content_hash.as_str(),
     )?;
-    let Ok(VersionedRecord::VerifiedUnsupported(record)) = read_versioned_record(bridge, &key)
-    else {
+    let Ok(VersionedRecord::VerifiedUnsupported(_)) = read_versioned_record(bridge, &key) else {
         return Err(ReviewError::ReceiptIntegrity);
     };
-    let value: serde_json::Value =
+    let mut envelope: serde_json::Map<String, serde_json::Value> =
         serde_json::from_slice(bridge).map_err(|_| ReviewError::ReceiptIntegrity)?;
-    if record.event_id != note.event_id
-        || record.device_id != note.device_id
-        || record.signing_key_id != note.signing_key_id
-        || record.device_seq != note.device_seq
-        || record.prev_content_hash != note.prev_content_hash
-        || value["event_type"] != "memory.purge.bridge"
-        || value["brain_id"] != brain
-        || value["payload_schema_version"] != 1
-        || value["payload"] != serde_json::json!({"original_hash": note.content_hash})
-    {
+    if encode(&envelope)? != bridge {
         return Err(ReviewError::ReceiptIntegrity);
     }
-    store_receipt(root, &expected, &key, approval, expires)
+    envelope.remove("content_hash");
+    envelope.remove("signature");
+    if serde_json::Value::Object(envelope) != bridge_body(note) {
+        return Err(ReviewError::ReceiptIntegrity);
+    }
+    store_receipt(root, &expected, &key, approval, expires)?;
+    snapshot.replace_approved_frame(local, &device, &note.event_id, bridge, expires)
 }
 
 pub(crate) fn verify_reopened(

@@ -1,39 +1,33 @@
-//! Single-device disposable profile compaction under the canonical writer locks.
+//! Disposable profile compaction under the canonical writer locks.
 use super::*;
 use crate::import_staging::export_fs::{self, Directory};
 use crate::ipc::purge_review::{ReviewError, physical, receipt};
 use std::io::{Read, Write};
 
-const BRIDGE: &str = "memory.purge.bridge";
+mod replica;
 
 pub(super) fn check_receipts(
     root: &Path,
     brain: &str,
-    anchor: &LocalTrustAnchor,
-    frames: &[RawFrame],
+    history: &VerifiedSecurityHistory,
+    trust: &crate::trust_reducer::VerifiedTrustHistory,
 ) -> KnowledgeMaterializationResult<()> {
-    for frame in frames {
-        let invalid = || {
-            KnowledgeMaterializationError::Verification(
-                "invalid local purge bridge or approval".into(),
-            )
-        };
-        let record: serde_json::Value =
-            serde_json::from_slice(&frame.bytes).map_err(|_| invalid())?;
-        if record["event_type"] == BRIDGE {
-            if frame.position.device_id != anchor.device_id().as_str() {
-                return Err(invalid());
-            }
-            let original = record["payload"]["original_hash"]
-                .as_str()
+    let mut resolver = trust.key_resolver();
+    for record in history.records() {
+        if let AuthenticatedSecurityRecord::PurgeBridge(bridge, _, original) = record {
+            let invalid = || {
+                KnowledgeMaterializationError::Verification("invalid purge bridge approval".into())
+            };
+            let key = resolver
+                .trusted_daemon_key(&bridge.device_id, bridge.signing_key_id.as_str())
                 .ok_or_else(invalid)?;
             receipt::verify_reopened(
                 root,
                 brain,
-                anchor.device_id().as_str(),
-                &frame.position.event_id,
-                original,
-                anchor.public_key(),
+                &bridge.device_id,
+                &bridge.event_id,
+                original.as_str(),
+                key.as_bytes(),
             )
             .map_err(|_| invalid())?;
         }
@@ -115,7 +109,34 @@ impl VerifiedCanonicalSnapshot {
         {
             return Err(ReviewError::Disabled);
         }
-        // Cross-record references and replicas need their own purge protocol.
+        let Some(AuthenticatedSecurityRecord::V1(original)) = self
+            .reader_device_chain(device.as_str())
+            .iter()
+            .find(|r| r.event_id() == note && r.content_hash().as_str() == hash)
+        else {
+            return Err(ReviewError::TargetUnavailable);
+        };
+        let bridge = crate::test_temp::sign_v2_fixture(receipt::bridge_body(original), key);
+        self.replace_approved_frame(anchor, device, note, &bridge, expires)
+    }
+
+    /// Install the author's exact signed bridge, keeping all other frames byte-identical.
+    pub(crate) fn replace_approved_frame(
+        &self,
+        anchor: &LocalTrustAnchor,
+        device: &DeviceId,
+        note: &str,
+        bridge: &[u8],
+        expires: Instant,
+    ) -> Result<(), ReviewError> {
+        let root = &self.runtime_root;
+        if !physical::enabled(root)
+            || !self.locks_runtime(root)
+            || (device != anchor.device_id() && !physical::paired(root))
+        {
+            return Err(ReviewError::Disabled);
+        }
+        // Cross-record references need their own purge protocol.
         if !self.security_history.records().iter().all(|r| {
             matches!(
                 r,
@@ -129,26 +150,15 @@ impl VerifiedCanonicalSnapshot {
         let target = self
             .security_frames
             .iter()
-            .find(|f| f.position.event_id == note && f.position.content_hash == hash)
+            .find(|f| f.position.device_id == device.as_str() && f.position.event_id == note)
             .ok_or(ReviewError::TargetUnavailable)?;
-        let original: serde_json::Value =
-            serde_json::from_slice(&target.bytes).map_err(|_| ReviewError::PackIntegrity)?;
-        let bridge = crate::test_temp::sign_v2_fixture(
-            serde_json::json!({
-                "schema_version": 2, "event_id": note, "brain_id": original["brain_id"], "device_id": device.as_str(),
-                "device_seq": original["device_seq"], "prev_content_hash": original["prev_content_hash"],
-                "created_at": original["created_at"], "signing_key_id": anchor.signing_key_id(), "classification": "restricted",
-                "event_type": BRIDGE, "payload_schema_version": 1, "payload": {"original_hash": hash}
-            }),
-            key,
-        );
         let mut before = Vec::new();
         let mut after = Vec::new();
         let mut candidate = Vec::new();
         let index = target.position.pack_index;
         for frame in &self.security_frames {
-            let next = if frame.position.event_id == note {
-                bridge.as_slice()
+            let next = if frame.position == target.position {
+                bridge
             } else {
                 &frame.bytes
             };
@@ -160,10 +170,8 @@ impl VerifiedCanonicalSnapshot {
         }
         crate::trust_reducer::verify_anchored_history_for_reads(
             &candidate,
-            original["brain_id"]
-                .as_str()
-                .ok_or(ReviewError::PackIntegrity)?,
-            device.clone(),
+            self.security_history.expected_brain_id(),
+            anchor.device_id().clone(),
             anchor.signing_key_id().clone(),
             *anchor.public_key(),
             NoteLifecycleRead::LocalPurgeTrial,

@@ -163,7 +163,7 @@ def main():
                 if test.wait(timeout=150):
                     raise RuntimeError("paired purge reconciliation failed")
                 log.seek(0)
-                if "stale_purge_reconnect=verified" not in log.read():
+                if "stale_purge_reconnect=verified stale_replay=refused replica_disk=clean survivors=2 reopened=2" not in log.read():
                     raise RuntimeError("missing purge reconciliation evidence")
             if args.purge_only:
                 return

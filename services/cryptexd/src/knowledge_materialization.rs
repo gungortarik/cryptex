@@ -2461,7 +2461,6 @@ fn scan_anchored_history(
                 "local purge trial requires a single device".into(),
             ));
         }
-        physical_purge::check_receipts(runtime_root, expected_brain_id, anchor, &frames)?;
         ImportScanScope {
             lifecycle: NoteLifecycleRead::LocalPurgeTrial,
             ..scope
@@ -2671,6 +2670,18 @@ fn scan_anchored_history(
                     .into(),
             ));
         }
+    }
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
+    if crate::ipc::purge_review::physical::enabled(runtime_root) {
+        physical_purge::check_receipts(
+            runtime_root,
+            expected_brain_id,
+            &security_history,
+            &verified_trust,
+        )?;
     }
     let security_frames = frames.clone();
     let cutoffs = trust
