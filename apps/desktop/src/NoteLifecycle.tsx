@@ -12,7 +12,7 @@ const request = (action: object) => invoke<Reply>("m10_note_lifecycle", { action
 
 export function NoteLifecycle({ note, onChanged }: {
   note?: { eventId: string; contentHash: string };
-  onChanged: () => void;
+  onChanged: (action: "forget" | "restore") => void;
 }) {
   const [ready, setReady] = useState(false);
   const [target, setTarget] = useState<Selection | null>(null);
@@ -53,7 +53,7 @@ export function NoteLifecycle({ note, onChanged }: {
     try {
       const reply = await request({ kind, target: selection });
       if (reply.kind !== "changed") throw Error();
-      if (mounted.current) { setPage(null); onChanged(); }
+      if (mounted.current) { setPage(null); onChanged(kind); }
     } catch {
       if (mounted.current) {
         setPage(null);
@@ -64,15 +64,15 @@ export function NoteLifecycle({ note, onChanged }: {
   }
 
   if (!ready && !error) return null;
-  return <div>
+  return <div className="note-lifecycle">
     {error && <p role="status">{error}</p>}
     {note ? target && <button type="button" className="text-button" disabled={busy} onClick={() => void change("forget", target)}>Forget note</button>
       : ready && <button type="button" className="text-button" aria-expanded={page !== null} disabled={busy}
         onClick={() => page ? setPage(null) : void list(null)}>Forgotten notes</button>}
-    {page && <section aria-label="Forgotten notes">
+    {page && <section className="forgotten-picker" aria-label="Forgotten notes">
       {page.choices.length === 0 && <p>No forgotten notes.</p>}
-      {page.choices.map(choice => <article key={choice.target.note_id}>
-        <time dateTime={choice.created_at}>{new Date(choice.created_at).toLocaleString()}</time>
+      {page.choices.map(choice => <article key={choice.target.note_id} className="result-card">
+        <div className="result-meta"><time dateTime={choice.created_at}>{new Date(choice.created_at).toLocaleString()}</time></div>
         <p>{choice.preview}</p>
         <button type="button" className="text-button" disabled={busy} onClick={() => void change("restore", choice.target)}>Restore note</button>
       </article>)}

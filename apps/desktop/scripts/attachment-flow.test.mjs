@@ -148,6 +148,7 @@ for (const mode of ["blocked", "allowed", "physical", "damaged-archive", "lifecy
           const original = (await lifecycle({ kind: "inspect", note_id: selected.noteId })).Ok.target;
           assert.equal(original.state_hash, selected.noteHash);
           await page.getByRole("button", { name: "Forget note", exact: true }).click();
+          await page.getByText("Note forgotten. You can restore it from Forgotten notes.", { exact: true }).waitFor();
           await page.getByRole("button", { name: "Forgotten notes" }).waitFor();
           const checkSearch = async visible => {
             await page.getByRole("button", { name: "Search memory" }).click();
@@ -168,6 +169,7 @@ for (const mode of ["blocked", "allowed", "physical", "damaged-archive", "lifecy
           await forgotten.getByText(title, { exact: true }).waitFor();
           assert.equal(await forgotten.getByRole("article").count(), 1);
           await forgotten.getByRole("button", { name: "Restore note" }).click();
+          await page.getByText("Note restored.", { exact: true }).waitFor();
           await row.waitFor();
           assert.deepEqual(await lifecycle({ kind: "forget", target: original }), { Err: "stale_selection" });
           await checkSearch(true);

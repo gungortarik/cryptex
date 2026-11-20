@@ -94,6 +94,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, va
 .result-meta span { padding: 3px 7px; border-radius: 99px; background: #f0efe9; color: #68665e; font-size: 9px; text-transform: capitalize; }
 .result-card p { margin: 11px 0 0; color: var(--ink); font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .timeline-results { margin-top: 42px; }
+.note-lifecycle { margin-bottom: 12px; }
+.forgotten-picker { display: grid; gap: 8px; margin: 10px 0 18px; padding-left: 12px; border-left: 2px solid var(--accent); }
 .timeline-empty { color: var(--muted); font-size: 13px; }
 .timeline-detail { margin-bottom: 18px; padding: 18px 20px; border: 1px solid var(--accent); border-radius: 11px; background: var(--surface); }
 .timeline-detail .results-heading h3 { margin: 0; font-family: var(--display); font-size: 20px; font-weight: 500; }
