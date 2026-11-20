@@ -12,6 +12,8 @@ At `328e067` fresh native test processes on both platforms returned the archived
 
 At `ec403c0` the compiled Desktop Search form returned the archived and replacement notes from the same query after reopening the temporary recovered profile. A damaged recovery receipt cleared the visible results. Windows and macOS passed using a native client and child daemon. The two-history binding is test-only. [Desktop search evidence](../evidence/m11/backup-container.md#desktop-search-after-reopening-a-recovered-profile)
 
+At `d421d3c` both native jobs installed the isolated Desktop package and searched the same disposable profile twice. The system WebView showed the archived and replacement note together after a full Desktop and reader restart. The package uses a rehearsal-only reader. [Installed Desktop results](../evidence/m11/backup-container.md#installed-desktop-recovery-search)
+
 ## M10 complete on November 20, 2026
 
 The owner reviewed and accepted candidate `9de456f` subject to successful CI and technical review. Windows and macOS passed all nine required jobs across four workflows. The closeout regression reproduced and corrected physical deletion failing after an unrelated note was forgotten. After reopening a disposable profile, the corrected candidate also preserved the forgotten note and removed a previously restored note. The [M10 review and CI evidence](../evidence/m10/forget-purge-closeout-review.md) records authorization, recovery, Desktop review and the limits of physical cleanup.

@@ -60,3 +60,11 @@ Playwright clicks **Search** in the built Desktop interface and checks both sign
 The browser supplies a test Tauri invoke bridge to the native search client, which communicates over the platform IPC transport. This covers the compiled renderer and daemon search path. Installed application launch and production recovery enrollment remain separate. The recovery reader binding is available only in a test build.
 
 Windows and macOS passed the Desktop restart check, invalid-signature check, native Clippy and earlier M11 recovery cases at `ec403c0`. [Windows and macOS CI](https://github.com/gungortarik/cryptex/actions/runs/44800505466)
+
+## Installed Desktop recovery search
+
+The CI-only package runs the built React interface in a Tauri system WebView. Its unique application identifier and per-launch IPC address isolate it from the user's Desktop. The test package supplies the existing native recovery reader as a sibling helper and checks the installed Desktop parent's identity before serving the guarded search. The rehearsal registers the regular Desktop search command and a fixed pass/fail observer.
+
+The Windows runner installs the NSIS package. The macOS runner copies the application bundle into a temporary Applications directory. Each runner launches the installed executable twice on the same disposable recovered profile. On each launch, a fixed WebView action enters `prefix OR recovered`, clicks the form's Search button, and requires both complete note bodies in visible result cards. The first Desktop and reader must exit successfully before the second launch. Production recovery enrollment, packaging for distribution and real-profile writing are outside this check.
+
+Both native jobs passed at `d421d3c`. Each recorded `both_notes_visible=true` on launches 1 and 2. The macOS ARM rehearsal package targets macOS 11.0 or later. [Windows and macOS installation and restart results](https://github.com/gungortarik/cryptex/actions/runs/44803749696)
