@@ -57,7 +57,15 @@ def unpack(bundle, destination, expected_identity_digest):
                 dest = tree / item.filename
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 with dest.open("xb") as out, archive.open(item) as inp:
-                    shutil.copyfileobj(inp, out, MIB)
+                    if item.filename.startswith("canonical/blobs/"):
+                        digest = hashlib.sha256()
+                        while chunk := inp.read(MIB):
+                            digest.update(chunk)
+                            out.write(chunk)
+                        if digest.hexdigest() != dest.name:
+                            raise ValueError("Attachment content differs from its canonical name")
+                    else:
+                        shutil.copyfileobj(inp, out, MIB)
             publish_exclusive(tree, destination)
 
 

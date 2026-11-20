@@ -54,6 +54,22 @@ class RestorePublication(unittest.TestCase):
                 unpack(io.BytesIO(bundle(b"source", identity)), self.destination, DIGEST)
             self.assertFalse(self.destination.exists())
 
+    def test_attachment_digest_is_checked_before_publication_even_with_valid_zip_crc(self):
+        original = b"original attachment"
+        name = "canonical/blobs/" + hashlib.sha256(original).hexdigest()
+
+        def with_attachment(data):
+            archive = io.BytesIO(bundle(b"note"))
+            with zipfile.ZipFile(archive, "a") as writer:
+                writer.writestr(name, data)
+            return archive
+
+        with self.assertRaisesRegex(ValueError, "Attachment content"):
+            unpack(with_attachment(b"different attachment"), self.destination, DIGEST)
+        self.assertEqual(list(self.root.iterdir()), [])
+        unpack(with_attachment(original), self.destination, DIGEST)
+        self.assertEqual(self.contents()[name], original)
+
     def test_existing_empty_and_populated_directories_are_preserved(self):
         self.destination.mkdir()
         for existing in ({}, {"keep": b"original"}):
