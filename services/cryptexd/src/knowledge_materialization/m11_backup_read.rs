@@ -10,25 +10,34 @@ use std::process::Command;
 mod first_device;
 
 fn run_archive(action: &str, paths: &[&Path]) {
+    archive_operation(action, paths).unwrap();
+}
+
+fn archive_operation(action: &str, paths: &[&Path]) -> std::io::Result<()> {
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tools/m11-backup-spike/daemon_roundtrip.py");
-    assert!(
-        Command::new("python")
-            .arg("-B")
-            .arg(script)
-            .arg(action)
-            .args(paths)
-            .status()
-            .unwrap()
-            .success(),
-        "M11 archive operation failed: {action}"
-    );
+    let status = Command::new("python")
+        .arg("-B")
+        .arg(script)
+        .arg(action)
+        .args(paths)
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "M11 archive {action}: {status}"
+        )))
+    }
 }
 
 #[test]
 #[ignore = "requires the M11 Node/Python fixture installed by native CI"]
 fn next_backup_restores_the_offline_capture_after_reconnection() {
+    use crate::backup_scheduler::{Outcome, PendingBackup};
     use crate::capture::{CaptureOutcome, CaptureRequest, capture_memory_note};
+    use std::sync::mpsc;
+    use std::time::Duration;
 
     let work = tempfile::tempdir().unwrap();
     let writer = tempfile::tempdir().unwrap();
@@ -46,31 +55,92 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     let next = volume.join("next.pgp");
     run_archive("prepare", &[source.path(), &kit, &first, writer.path()]);
     let first_digest = Sha256::digest(fs::read(&first).unwrap());
+    let job = PendingBackup {
+        designated_writer: &anchor,
+        previous_generation: &first,
+        previous_sha256: first_digest.into(),
+    };
+    // Both devices see the same target and assignment. Only the enrolled
+    // identity matching the assignment may enter the publication path.
+    let peer = tempfile::tempdir().unwrap();
+    let peer_store = FakeSecureStore::new();
+    PairProfiles::enroll(peer.path(), &peer_store);
+    let peer_reader = LocalDeviceKeyResolver::load(peer.path(), BRAIN, &peer_store, env).unwrap();
+    let peer_anchor = peer_reader.local_trust_anchor().unwrap();
+    let (_keep_running, shutdown) = mpsc::channel();
+    assert_eq!(
+        job.run(
+            &peer_anchor,
+            &shutdown,
+            || panic!("peer waited for target"),
+            || panic!("peer started backup")
+        )
+        .unwrap(),
+        Outcome::NotDesignated
+    );
 
     let detached = work.path().join("detached-volume");
     fs::rename(&volume, &detached).unwrap();
+    fs::create_dir(&volume).unwrap();
+    fs::write(&first, b"different backup target").unwrap();
+    assert_eq!(
+        job.run(
+            &anchor,
+            &shutdown,
+            || panic!("unexpected wait"),
+            || panic!("wrong target")
+        )
+        .unwrap_err()
+        .kind(),
+        std::io::ErrorKind::InvalidData
+    );
+    fs::remove_file(&first).unwrap();
+    fs::remove_dir(&volume).unwrap();
     assert_eq!(
         fs::File::open(&first).unwrap_err().kind(),
         std::io::ErrorKind::NotFound
     );
     let text = "M11 reconnectcapture saved offline";
-    let outcome = capture_memory_note(
-        &store,
-        env,
-        source.path(),
-        CaptureRequest {
-            capture_id: "44f9399a-688d-4c43-b688-cabea438c9ad".into(),
-            classification: Classification::Public,
-            text: text.into(),
-        },
-        &CanonicalWriterConfig::default(),
-    );
-    let CaptureOutcome::Committed(receipt) = outcome else {
-        panic!("expected committed offline capture");
-    };
-    assert!(!volume.try_exists().unwrap());
-    fs::rename(detached, &volume).unwrap();
-    run_archive("write-generation", &[source.path(), writer.path(), &next]);
+    let receipt = std::thread::scope(|scope| {
+        let (stop, shutdown) = mpsc::channel();
+        let (waiting, observed) = mpsc::channel();
+        let (result, finished) = mpsc::channel();
+        let publish =
+            || archive_operation("write-generation", &[source.path(), writer.path(), &next]);
+        let assigned = &anchor;
+        scope.spawn(move || {
+            let outcome = job.run(assigned, &shutdown, || waiting.send(()).unwrap(), publish);
+            let _ = result.send(outcome);
+        });
+        observed.recv_timeout(Duration::from_secs(10)).unwrap();
+        let outcome = capture_memory_note(
+            &store,
+            env,
+            source.path(),
+            CaptureRequest {
+                capture_id: "44f9399a-688d-4c43-b688-cabea438c9ad".into(),
+                classification: Classification::Public,
+                text: text.into(),
+            },
+            &CanonicalWriterConfig::default(),
+        );
+        let CaptureOutcome::Committed(receipt) = outcome else {
+            panic!("expected committed offline capture");
+        };
+        assert!(!volume.try_exists().unwrap());
+        assert!(!detached.join("next.pgp").try_exists().unwrap());
+        fs::rename(detached, &volume).unwrap();
+        assert_eq!(
+            finished
+                .recv_timeout(Duration::from_secs(120))
+                .unwrap()
+                .unwrap(),
+            Outcome::Published
+        );
+        drop(stop);
+        receipt
+    });
+    assert_eq!(fs::read_dir(&volume).unwrap().count(), 2);
     assert_eq!(Sha256::digest(fs::read(&first).unwrap()), first_digest);
 
     // Only public event verification material and the independent kit survive.
@@ -103,6 +173,9 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     assert_eq!(saved.content_hash, receipt.content_hash);
     assert_eq!(saved.device_id, receipt.device_id);
     assert_eq!(saved.text, text);
+    println!(
+        "m11_scheduled_reconnect=passed designated=published peer=skipped offline_capture=restored"
+    );
     println!(
         "m11_reconnected_backup=passed generations=2 original=preserved offline_capture=restored receipt=matched"
     );
