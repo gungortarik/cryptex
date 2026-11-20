@@ -1,0 +1,7 @@
+{
+  "identifier": "com.cryptex.m11-search-rehearsal",
+  "bundle": {
+    "active": true,
+    "externalBin": ["binaries/cryptex-m11-reader"]
+  }
+}

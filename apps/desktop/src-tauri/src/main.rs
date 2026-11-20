@@ -2515,7 +2515,14 @@ fn local_signed_startup_check() -> Option<Result<(), String>> {
     })())
 }
 
+#[cfg(feature = "m11-installed-search-check")]
+mod installed_search;
+
 fn main() {
+    #[cfg(feature = "m11-installed-search-check")]
+    if cfg!(feature = "m11-installed-search-check") {
+        std::process::exit(installed_search::run());
+    }
     #[cfg(feature = "m8-device-recovery-check")]
     if let Some(result) = device_recovery::entry() {
         if let Err(error) = &result {

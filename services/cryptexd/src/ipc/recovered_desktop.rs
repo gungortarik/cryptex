@@ -11,7 +11,13 @@ pub(crate) fn run(root: &Path, store: Arc<dyn SecureStore>, reader: Arc<Recovere
         operation: None,
         store,
         environment: SecureStoreEnvironment::Dev,
-        expected_desktop: Arc::new(test_desktop_process_identity().unwrap()),
+        expected_desktop: Arc::new(
+            if std::env::var("CRYPTEX_M11_REOPEN_CASE").as_deref() == Ok("installed") {
+                desktop_process_identity().expect("installed Desktop must be the sibling parent")
+            } else {
+                test_desktop_process_identity().unwrap()
+            },
+        ),
         projection_sync: None,
         connections: None,
         #[cfg(windows)]

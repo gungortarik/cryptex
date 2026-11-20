@@ -12,20 +12,7 @@ const SERVER: &str = "ipc::attachment_flow::isolated_server";
 const TEST_BYTES: &[u8] = &[0, 255, 13, 10, 65, 128];
 
 pub(super) fn fixture_name(token: &str) -> interprocess::local_socket::Name<'static> {
-    cryptex_core::validate::parse_uuid_str(token).unwrap();
-    #[cfg(windows)]
-    {
-        std::ffi::OsString::from(format!("cryptex-file-{token}"))
-            .to_ns_name::<GenericNamespaced>()
-            .unwrap()
-    }
-    #[cfg(unix)]
-    {
-        PathBuf::from("/tmp")
-            .join(format!("cpx-file-{token}"))
-            .to_fs_name::<interprocess::local_socket::GenericFilePath>()
-            .unwrap()
-    }
+    super::rehearsal_socket(token).unwrap()
 }
 
 #[test]

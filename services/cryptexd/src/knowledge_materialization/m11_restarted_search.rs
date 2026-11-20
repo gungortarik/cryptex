@@ -168,7 +168,7 @@ pub(in super::super) fn child(work: &Path) {
         ..SearchQuery::default()
     };
     let case = std::env::var("CRYPTEX_M11_REOPEN_CASE").unwrap();
-    if case == "desktop" {
+    if matches!(case.as_str(), "desktop" | "installed") {
         let root = work.join("replacement");
         let store = FileBackedSecureStore::open(work.join("test-credentials")).unwrap();
         let work = work.to_owned();
@@ -277,6 +277,22 @@ pub(in super::super) fn check(work: &Path, old_id: &str, case: &str) {
         println!(
             "m11_desktop_search=passed reopened=true archived=true replacement=true invalid_receipt=held"
         );
+    }
+    if let Some(executable) = std::env::var_os("CRYPTEX_M11_INSTALLED_DESKTOP") {
+        let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tools/m11-backup-spike/installed_desktop.py");
+        assert!(
+            Command::new("python")
+                .arg("-B")
+                .arg(script)
+                .arg("check")
+                .arg(executable)
+                .arg(work)
+                .status()
+                .unwrap()
+                .success()
+        );
+        println!("m11_installed_search=passed launches=2 archive=true replacement=true");
     }
     let receipt = work.join("first-device.json");
     let original = fs::read(&receipt).unwrap();

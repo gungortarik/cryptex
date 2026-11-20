@@ -2049,7 +2049,35 @@ thread_local! {
     static FIXTURE_SOCKET: std::cell::OnceCell<interprocess::local_socket::Name<'static>> = const { std::cell::OnceCell::new() };
 }
 
+#[cfg(any(
+    feature = "m11-installed-search-check",
+    all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    )
+))]
+fn rehearsal_socket(token: &str) -> io::Result<interprocess::local_socket::Name<'static>> {
+    cryptex_core::validate::parse_uuid_str(token)
+        .map_err(|_| invalid_data("invalid rehearsal socket ID"))?;
+    #[cfg(windows)]
+    {
+        std::ffi::OsString::from(format!("cryptex-file-{token}")).to_ns_name::<GenericNamespaced>()
+    }
+    #[cfg(unix)]
+    {
+        PathBuf::from("/tmp")
+            .join(format!("cpx-file-{token}"))
+            .to_fs_name::<interprocess::local_socket::GenericFilePath>()
+    }
+}
+
 fn socket_name() -> io::Result<interprocess::local_socket::Name<'static>> {
+    #[cfg(feature = "m11-installed-search-check")]
+    if cfg!(feature = "m11-installed-search-check") {
+        let token = std::env::var("CRYPTEX_FILE_FIXTURE_SOCKET")
+            .map_err(|_| invalid_data("missing rehearsal socket ID"))?;
+        return rehearsal_socket(&token);
+    }
     #[cfg(test)]
     if let Some(name) = FIXTURE_SOCKET.with(|slot| slot.get().cloned()) {
         return Ok(name);

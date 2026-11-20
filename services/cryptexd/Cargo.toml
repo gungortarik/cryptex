@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [features]
+m11-installed-search-check = []
 m8-start-inspection = []
 # Isolated, headless real-binary startup experiment. Never enables owner routes.
 m8-local-startup-check = []

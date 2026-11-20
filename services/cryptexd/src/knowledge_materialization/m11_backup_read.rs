@@ -15,7 +15,10 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         first_device::restarted_search::child(Path::new(&work));
         return;
     }
-    let work = tempfile::tempdir().unwrap();
+    let work = tempfile::Builder::new()
+        .prefix("cryptex-m11-recovery-")
+        .tempdir()
+        .unwrap();
     let mut seed = [0u8; 32];
     getrandom::getrandom(&mut seed).unwrap();
     let offline = SigningKey::from_bytes(&seed);
