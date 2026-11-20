@@ -40,6 +40,15 @@ def setup(root):
 
 
 def native(root, action, platform):
+    if sys.platform == "win32" and os.environ.get("GITHUB_ACTIONS") == "true":
+        if root.resolve() != (Path(os.environ["RUNNER_TEMP"]) / "exchange").resolve():
+            raise ValueError("Unexpected Windows exchange directory")
+        expected = {"prepare": "windows", "restore": "macos"}
+        if expected[action] != platform:
+            raise ValueError("Unexpected exchange direction")
+        subprocess.run(["pwsh", "-NoProfile", "-File", "scripts/m8/run-daemon-tests-standard-user-ci.ps1",
+                        "-M11CrossBackup", action], check=True, timeout=1200)
+        return
     env = dict(os.environ, CRYPTEX_M11_CROSS_ROOT=str(root), CRYPTEX_M11_CROSS_ACTION=action,
                CRYPTEX_M11_CROSS_PLATFORM=platform)
     features = ["--features", "m8-local-startup-check"] if sys.platform == "darwin" else []

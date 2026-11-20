@@ -480,18 +480,27 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         .unwrap();
         let recipient = kit.join("recovery.pub");
         if let Some(directory) = std::env::var_os("CRYPTEX_M11_TEST_INSTALLED_CODEC") {
-            use super::super::backup::CodecPins;
             let directory = Path::new(&directory);
-            let pins = std::env::var("CRYPTEX_M11_TEST_CODEC_PINS").unwrap();
-            let mut wrong: serde_json::Value = serde_json::from_str(&pins).unwrap();
-            wrong["entry"] = "00".repeat(32).into();
             let public = fs::read(recipient).unwrap();
+            // Exercise substitution without altering the installed application.
+            let scratch = tempfile::tempdir().unwrap();
+            let node = if cfg!(windows) { "node.exe" } else { "node" };
+            fs::copy(directory.join(node), scratch.path().join(node)).unwrap();
+            fs::copy(
+                directory.join("openpgp.min.cjs"),
+                scratch.path().join("openpgp.min.cjs"),
+            )
+            .unwrap();
+            fs::write(
+                scratch.path().join("encrypt.cjs"),
+                b"process.stdout.write('unverified');",
+            )
+            .unwrap();
             assert!(matches!(
-                prepared.encrypt(directory, &serde_json::from_value(wrong).unwrap(), &public),
+                prepared.encrypt(scratch.path(), &public),
                 Err(crate::backup_inventory::Error::Codec)
             ));
-            let pins: CodecPins = serde_json::from_str(&pins).unwrap();
-            let encrypted = prepared.encrypt(directory, &pins, &public).unwrap();
+            let encrypted = prepared.encrypt(directory, &public).unwrap();
             encrypted.persist_noclobber(&backup).unwrap();
         } else {
             let inner = prepared.encryption_input().unwrap();

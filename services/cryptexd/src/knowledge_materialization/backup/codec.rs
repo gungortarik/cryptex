@@ -12,10 +12,17 @@ use tempfile::NamedTempFile;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CodecPins {
+struct CodecPins {
     runtime: String,
     entry: String,
     openpgp: String,
+}
+
+impl CodecPins {
+    fn packaged() -> Result<Self, Error> {
+        let manifest = option_env!("CRYPTEX_M11_PACKAGE_CODEC_DIGESTS").ok_or(Error::Codec)?;
+        serde_json::from_str(manifest).map_err(|_| Error::Codec)
+    }
 }
 
 // Verify the very bytes that will run. Package files can be owned by the OS.
@@ -47,12 +54,8 @@ fn copy_pinned(source: &Path, destination: &Path, expected: &str) -> Result<(), 
 impl Prepared {
     /// The directory must be the OS-protected resource directory of the
     /// owner's selected installation. No renderer-supplied command is accepted.
-    pub fn encrypt(
-        &self,
-        directory: &Path,
-        pins: &CodecPins,
-        recipient: &[u8],
-    ) -> Result<NamedTempFile, Error> {
+    pub fn encrypt(&self, directory: &Path, recipient: &[u8]) -> Result<NamedTempFile, Error> {
+        let pins = CodecPins::packaged()?;
         if !directory.is_absolute() || recipient.is_empty() || recipient.len() > 64 * 1024 {
             return Err(Error::Codec);
         }

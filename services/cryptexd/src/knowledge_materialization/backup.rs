@@ -10,7 +10,6 @@ use tempfile::NamedTempFile;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 mod codec;
-pub use codec::CodecPins;
 
 pub struct Prepared {
     payload: NamedTempFile,

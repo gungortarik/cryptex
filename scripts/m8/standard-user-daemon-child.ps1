@@ -75,6 +75,20 @@ function Set-NativeTestPackage {
     }
     $env:CRYPTEX_EXCHANGE_NATIVE_PACKAGE=$nativePackage
 }
+if($p.PSObject.Properties['m11_cross_backup'] -and $p.m11_cross_backup) {
+    $env:CRYPTEX_M11_CROSS_ACTION=$p.m11_cross_backup
+    $env:CRYPTEX_M11_CROSS_ROOT=$p.scratch
+    $env:CRYPTEX_M11_CROSS_PLATFORM=if($p.m11_cross_backup -eq 'prepare'){'windows'}else{'macos'}
+    $suite='knowledge_materialization::pairing_recovery_tests::m11_backup_read::exchange_native_backup_with_peer_os'
+    $result=Invoke-TestBinary $p.executables[0] "$suite --exact --ignored --nocapture"
+    Write-Output $result.stdout
+    Write-Output $result.stderr
+    if($result.code -ne 0 -or $result.stdout -notmatch '1 passed; 0 failed; 0 ignored'){throw 'Native backup exchange failed.'}
+    if($p.m11_cross_backup -eq 'restore' -and $result.stdout -notmatch '(?m)^m11_cross_inventory=passed source=macos signed_notes=2\r?$'){throw 'Native restore receipt missing.'}
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=1} | ConvertTo-Json |
+        Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
+    exit 0
+}
 if($p.PSObject.Properties['m9_attachment_browser_node'] -and $p.m9_attachment_browser_node) {
     $env:CRYPTEX_ATTACHMENT_TEST_BINARY=$p.executables[0]
     $script=Join-Path $p.workspace 'apps\desktop\scripts\attachment-flow.test.mjs'
