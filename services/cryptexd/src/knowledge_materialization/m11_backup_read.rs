@@ -11,6 +11,10 @@ mod first_device;
 #[test]
 #[ignore = "requires the M11 Node/Python fixture installed by native CI"]
 fn restored_note_and_attachment_pass_guarded_reads() {
+    if let Some(work) = std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE") {
+        first_device::restarted_search::child(Path::new(&work));
+        return;
+    }
     let work = tempfile::tempdir().unwrap();
     let mut seed = [0u8; 32];
     getrandom::getrandom(&mut seed).unwrap();
@@ -74,6 +78,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     let anchor = resolver(&profiles).local_trust_anchor().unwrap();
     let snapshot =
         scan_verified_canonical_from_local_anchor_until(source, BRAIN, &anchor, None).unwrap();
+    let history_digest = first_device::restarted_search::history_digest(&snapshot);
     let restored = work.path().join("rehearsal");
     let kit = work.path().join("kit");
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -103,6 +108,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         &anchor,
         offline,
         pinned_recovery_key,
+        history_digest,
     );
     let anchor = keys.local_trust_anchor().unwrap();
     assert_eq!(fs::read_dir(&restored).unwrap().count(), 1);
@@ -134,6 +140,10 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         Err(LocalLinkError::Reference(LinkError::MissingLink))
     );
     drop(state);
+
+    drop(db);
+    first_device::restarted_search::check(work.path(), &note.event_id, "ready");
+    let (mut db, _) = crate::projection::open_projection_db(&restored).unwrap();
 
     // Exercise blob checks independently from envelope and event verification.
     let blobs = restored.join("canonical/blobs");
@@ -167,6 +177,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         }
     }
     assert_eq!(changed, 1);
+    first_device::restarted_search::check(work.path(), &note.event_id, "history-held");
     assert!(
         rebuild_knowledge_from_local_approval_history(&restored, BRAIN, &anchor, &mut db).is_err()
     );
@@ -192,5 +203,8 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     );
     println!(
         "m11_first_device=passed old_devices=lost kit_authorized=true replacement_note=verified historical_attachment=verified"
+    );
+    println!(
+        "m11_restarted_search=passed single_fts=true stale_index_held=both damaged_receipt=held"
     );
 }

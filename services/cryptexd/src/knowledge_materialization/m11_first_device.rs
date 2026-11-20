@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::Write;
 
+#[path = "m11_restarted_search.rs"]
+pub(super) mod restarted_search;
+
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
@@ -19,6 +22,7 @@ struct Request {
     new_key: [u8; 32],
     archive_device: DeviceId,
     archive_key: [u8; 32],
+    archive_history_sha256: [u8; 32],
 }
 
 #[derive(Serialize, Deserialize)]
@@ -117,7 +121,7 @@ impl Ceremony {
     fn open_replacement(
         &self,
         root: &Path,
-        store: &FakeSecureStore,
+        store: &dyn SecureStore,
     ) -> Result<(LocalDeviceKeyResolver, ArchiveReader), Denial> {
         let archive = self.reopen()?;
         let local = LocalDeviceKeyResolver::load(
@@ -164,9 +168,11 @@ pub(super) fn rehearse(
     archived: &LocalTrustAnchor,
     offline: SigningKey,
     pinned: VerifyingKey,
+    history_digest: [u8; 32],
 ) -> ArchiveReader {
     let new_root = work.join("replacement");
-    let store = FakeSecureStore::new();
+    let store =
+        crate::secure_store::FileBackedSecureStore::open(work.join("test-credentials")).unwrap();
     let env = SecureStoreEnvironment::Dev;
     crate::identity_runtime::write_brain_identity(
         &new_root,
@@ -198,6 +204,7 @@ pub(super) fn rehearse(
         new_key: *target.public_key(),
         archive_device: archived.device_id().clone(),
         archive_key: *archived.public_key(),
+        archive_history_sha256: history_digest,
     };
     let mut ceremony = Ceremony {
         expected: request.clone(),
@@ -292,5 +299,6 @@ pub(super) fn rehearse(
     fs::write(&ceremony.receipt, serde_json::to_vec(&tampered).unwrap()).unwrap();
     assert!(matches!(ceremony.reopen(), Err(Denial::Signature)));
     fs::write(&ceremony.receipt, original).unwrap();
+    restarted_search::save_public_context(work, &ceremony, &hits[0].event_id);
     historical_reader
 }
