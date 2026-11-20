@@ -232,6 +232,11 @@ pub(super) fn exercise(wire: &Path, owner_transport: &str, peer_transport: &str)
     assert_eq!(lifecycle::search(&peer, keys), remaining);
     assert_eq!(fs::read(&peer_copy).unwrap(), compacted);
     assert!(!right.join("transport/incoming").join(&a_path).exists());
+    // Inspect the closed replica immediately, before an explicit derived rebuild
+    // or another delivery could clean up bytes left by the reconciliation tick.
+    drop(peer);
+    assert!(body_copies(&right).is_empty());
+    peer = Side::new(right.clone(), peer_transport);
     let ledger = right
         .join("canonical")
         .join(receipt::FOLDER)
