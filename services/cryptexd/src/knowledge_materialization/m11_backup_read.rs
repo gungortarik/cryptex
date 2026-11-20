@@ -10,6 +10,104 @@ use std::process::Command;
 mod first_device;
 
 #[test]
+fn a_forgotten_notes_attachment_survives_backup_reconstruction() {
+    use super::super::backup;
+    let profiles = PairProfiles::new();
+    profiles.pair(0, [true, true], false);
+    profiles.import_peer_fixture(0);
+    let root = &profiles.profiles[0];
+    let env = SecureStoreEnvironment::Dev;
+    drop(crate::instance::try_acquire_instance(root).unwrap());
+    crate::instance::migration::migrate_profile(root).unwrap();
+    let _instance = crate::instance::try_acquire_instance(root).unwrap();
+    let owner = resolver(&profiles).local_trust_anchor().unwrap();
+    let note = append_memory_note(
+        &profiles.store,
+        env,
+        AppendMemoryNoteArgs {
+            runtime_root: root,
+            brain_id: BRAIN,
+            device_id: owner.device_id(),
+            classification: Classification::Public,
+            text: "reversible note",
+            event_id: None,
+            config: &CanonicalWriterConfig::default(),
+        },
+    )
+    .unwrap()
+    .accepted;
+    let bytes = b"file on a forgotten note";
+    crate::canonical_writer::isolated_attachment::append(
+        root,
+        &profiles.store,
+        env,
+        &SelectedFile {
+            note_id: note.event_id.clone(),
+            note_hash: note.content_hash.as_str().into(),
+            bytes: bytes.to_vec(),
+        },
+    )
+    .unwrap();
+    {
+        let locked = backup::snapshot(root, BRAIN, &owner).unwrap();
+        let original = locked
+            .security_history
+            .records()
+            .iter()
+            .find_map(|r| match r {
+                AuthenticatedSecurityRecord::V1(n) if n.event_id == note.event_id => Some(n),
+                _ => None,
+            })
+            .unwrap();
+        let key =
+            load_existing_event_signing_key(&profiles.store, env, root, owner.device_id()).unwrap();
+        crate::canonical_writer::isolated_attachment::append_note_control(root, owner.device_id(), original, &key,
+            "memory.forget", serde_json::json!({"note_event_id":note.event_id,"note_content_hash":note.content_hash,"prior_state_hash":note.content_hash})).unwrap();
+    }
+    let prepared = backup::prepare(root, &profiles.store, env, 1).unwrap();
+    let checkpoint = prepared.selection.checkpoint(&owner).unwrap();
+    let outer = prepared.encryption_input().unwrap();
+    let mut archive = zip::ZipArchive::new(outer.reopen().unwrap()).unwrap();
+    let scratch = tempfile::tempdir().unwrap();
+    let content = scratch.path().join("content.zip");
+    std::io::copy(
+        &mut archive.by_name("content.zip").unwrap(),
+        &mut fs::File::create(&content).unwrap(),
+    )
+    .unwrap();
+    let mut signature = Vec::new();
+    archive
+        .by_name("inventory.json")
+        .unwrap()
+        .read_to_end(&mut signature)
+        .unwrap();
+    let rebuilt =
+        crate::backup_inventory::reconstruct_v2(&content, &signature, &checkpoint, scratch.path())
+            .unwrap();
+    let hidden = backup::snapshot(rebuilt.path(), BRAIN, &owner).unwrap();
+    assert!(hidden.is_forgotten(&note.event_id));
+    assert_eq!(hidden.admitted_blob_digests().count(), 0);
+    drop(hidden);
+    let blob = rebuilt
+        .path()
+        .join("canonical/blobs")
+        .join(format!("{:x}", Sha256::digest(bytes)));
+    assert_eq!(fs::read(&blob).unwrap(), bytes);
+    fs::remove_file(blob).unwrap();
+    assert_eq!(
+        crate::backup_inventory::verify_reconstruction(rebuilt.path(), &checkpoint),
+        Err(crate::backup_inventory::Error::Attachment)
+    );
+    let pending = root.join("canonical/purge-approvals");
+    fs::create_dir_all(&pending).unwrap();
+    fs::write(pending.join("unverified.json"), b"{}").unwrap();
+    assert!(matches!(
+        backup::prepare(root, &profiles.store, env, 2),
+        Err(crate::backup_inventory::Error::PurgeHistory)
+    ));
+}
+
+#[test]
 fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
     use crate::backup_scheduler::{journal::DeviceJobs, retention::VerifiedBackups};
     use crate::knowledge_materialization::backup::role::{Assignment, DeviceRole, Error};

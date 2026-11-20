@@ -88,6 +88,7 @@ pub enum Error {
     Inventory,
     Attachment,
     RecoveryHistory,
+    PurgeHistory,
     Codec,
     CodecIntegrity,
     CodecStart,

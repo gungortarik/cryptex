@@ -233,17 +233,11 @@ pub(crate) fn verify_backup_reconstruction(
     {
         return Err(Error::Checkpoint);
     }
-    let snapshot = scan_verified_canonical_from_local_anchor_until(
-        root,
-        expected.brain_id,
-        expected.writer,
-        None,
-    )
-    .map_err(|_| Error::Checkpoint)?;
+    let snapshot = super::backup::snapshot(root, expected.brain_id, expected.writer)?;
     if history_digest(&snapshot) != expected.history_sha256 {
         return Err(Error::Checkpoint);
     }
-    for digest in snapshot.admitted_blob_digests().collect::<BTreeSet<_>>() {
+    for digest in super::backup::blob_digests(&snapshot)? {
         crate::attachment_blobs::open_verified(root, &digest).map_err(|_| Error::Attachment)?;
     }
     Ok(())

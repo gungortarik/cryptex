@@ -13,6 +13,70 @@ mod codec;
 mod manual;
 pub mod role;
 
+pub(super) fn snapshot(
+    root: &Path,
+    brain: &str,
+    anchor: &LocalTrustAnchor,
+) -> Result<VerifiedCanonicalSnapshot, Error> {
+    let snapshot = scan_anchored_history(
+        root,
+        brain,
+        anchor,
+        ImportScanScope {
+            candidate_devices: &[],
+            recovery_exclusions: &[],
+            lifecycle: NoteLifecycleRead::Apply,
+        },
+        None,
+    )
+    .map_err(|_| Error::Checkpoint)?;
+    // A content-free purge approval needs its own authenticated archive member.
+    // Never discard that ledger or publish a still-pending approved note.
+    let canonical = crate::import_staging::export_fs::Directory::open(&root.join("canonical"))
+        .map_err(|_| Error::Archive)?;
+    if canonical
+        .exists("purge-approvals")
+        .map_err(|_| Error::Archive)?
+    {
+        let _ledger = canonical
+            .child("purge-approvals", false)
+            .map_err(|_| Error::Archive)?;
+        if fs::read_dir(root.join("canonical/purge-approvals"))
+            .map_err(|_| Error::Archive)?
+            .next()
+            .transpose()
+            .map_err(|_| Error::Archive)?
+            .is_some()
+        {
+            return Err(Error::PurgeHistory);
+        }
+    }
+    Ok(snapshot)
+}
+
+/// Forget is reversible. Retrieval hides these links, but the verified backup
+/// must retain the bytes needed when the owner later restores the note.
+pub(super) fn blob_digests(
+    snapshot: &VerifiedCanonicalSnapshot,
+) -> Result<BTreeSet<[u8; 32]>, Error> {
+    if snapshot.forgotten.is_empty() {
+        return Ok(snapshot.admitted_blob_digests().collect());
+    }
+    let (_, trust) = snapshot.verified_trust_context().ok_or(Error::Checkpoint)?;
+    let cutoffs = trust
+        .effective_cutoffs
+        .iter()
+        .map(|(device, &seq)| (device.as_str().to_owned(), seq))
+        .collect();
+    let all = admitted_attachment_links(&snapshot.security_history, &cutoffs, None)
+        .map_err(|_| Error::Attachment)?;
+    Ok(all
+        .live
+        .into_values()
+        .flat_map(|links| links.into_values())
+        .collect())
+}
+
 pub struct Prepared {
     payload: NamedTempFile,
     inventory: Vec<u8>,
@@ -84,9 +148,7 @@ pub fn prepare(
     {
         return Err(Error::RecoveryHistory);
     }
-    let snapshot =
-        scan_verified_canonical_from_local_anchor_until(root, &identity.brain_id, &anchor, None)
-            .map_err(|_| Error::Checkpoint)?;
+    let snapshot = snapshot(root, &identity.brain_id, &anchor)?;
     let (history, state) = snapshot
         .verified_trust_context()
         .ok_or(Error::Credentials)?;
@@ -136,7 +198,7 @@ pub fn prepare(
             }
         }
     }
-    for digest in snapshot.admitted_blob_digests().collect::<BTreeSet<_>>() {
+    for digest in blob_digests(&snapshot)? {
         let hash = sha2::digest::Output::<Sha256>::from(digest);
         let file =
             crate::attachment_blobs::open_verified(root, &digest).map_err(|_| Error::Attachment)?;
