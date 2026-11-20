@@ -260,8 +260,7 @@ pub(super) fn exercise(wire: &Path, owner_transport: &str, peer_transport: &str)
     ));
     assert_eq!(fs::read(&peer_copy).unwrap(), compacted);
     drop((owner, peer));
-    snapshot::exercise(&right, &snapshot, peer_transport, keys, &remaining, &ledger);
-    for (root, transport) in [(left, owner_transport), (right, peer_transport)] {
+    for (root, transport) in [(left, owner_transport), (right.clone(), peer_transport)] {
         let mut side = Side::new(root, transport);
         side.tick(keys);
         crate::incoming_publication::rebuild_imported_state(&side.root, BRAIN, keys, ENV).unwrap();
@@ -299,6 +298,7 @@ pub(super) fn exercise(wire: &Path, owner_transport: &str, peer_transport: &str)
         drop(side);
         assert_eq!(body_copies(&root), Vec::<PathBuf>::new());
     }
+    snapshot::exercise(&right, &snapshot, peer_transport, keys, &remaining, &ledger);
     println!(
         "stale_purge_reconnect=verified stale_replay=refused replica_disk=clean survivors=2 reopened=2"
     );
