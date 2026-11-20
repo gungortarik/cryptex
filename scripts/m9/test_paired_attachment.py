@@ -108,6 +108,7 @@ def build_binary():
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--purge-only", action="store_true")
     parser.add_argument("--native", type=Path)
     parser.add_argument("--test-binary", type=Path)
     args = parser.parse_args()
@@ -153,6 +154,19 @@ def main():
                         raise RuntimeError(f"controller did not reach {name}")
                     time.sleep(.15)
 
+            with test_process(cmd, env, "purge") as (test, log):
+                wait_marker(test, "partition-purge", 150)
+                workers.close()
+                (base / "purge-offline").touch()
+                wait_marker(test, "reconnect-purge", 90)
+                start(workers)
+                if test.wait(timeout=150):
+                    raise RuntimeError("paired purge reconciliation failed")
+                log.seek(0)
+                if "stale_purge_reconnect=verified" not in log.read():
+                    raise RuntimeError("missing purge reconciliation evidence")
+            if args.purge_only:
+                return
             with test_process(cmd, env, "enroll") as (test, log):
                 wait_marker(test, "connect", 420)
                 workers.close()

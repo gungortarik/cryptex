@@ -9,10 +9,10 @@ use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 
 const PURPOSE: &str = "cryptex.purge-approval.v1";
-pub(in crate::ipc) const FOLDER: &str = "purge-approvals";
+pub(crate) const FOLDER: &str = "purge-approvals";
 const LIMIT: u64 = 1024;
 
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct Approval {
     purpose: String,
@@ -118,40 +118,16 @@ pub(super) fn persist(
         return Err(ReviewError::ReceiptIntegrity);
     }
     let expected = Approval::new(&brain.brain_id, anchor.device_id().as_str(), note, hash)?;
-    let profile = Directory::open(root)?;
-    let canonical = profile.child("canonical", false)?;
-    let ledger = canonical.child(FOLDER, true)?;
-    canonical.sync()?;
-    let name = format!("{}.json", expected.note_id);
-    if ledger.exists(&name)? {
-        let file = ledger.open_file(&name, false)?;
-        authenticate(&file, &expected, &key.verifying_key())?;
-        export_fs::flush(&file).map_err(|_| ReviewError::ReceiptStorage)?;
-        ledger.sync()?;
-    } else {
-        // The canonical inventory lock serializes writers and orphan staging cleanup.
-        let staging = profile.child("purge-staging", true)?;
-        profile.sync()?;
-        if staging.exists("segment.tmp")? {
-            staging.discard_scratch(staging.open_file("segment.tmp", false)?)?;
-        }
-        let signature = SignatureHex::from_bytes(&key.sign(&encode(&expected)?).to_bytes())
-            .map_err(|_| ReviewError::ReceiptIntegrity)?;
-        let bytes = encode(&Signed {
-            approval: expected,
-            signature,
-        })?;
-        let mut file = staging.open_file("segment.tmp", true)?;
-        file.write_all(&bytes)
-            .map_err(|_| ReviewError::ReceiptStorage)?;
-        if Instant::now() >= expires {
-            return Err(ReviewError::ReviewExpired);
-        }
-        if !snapshot.locks_runtime(root) {
-            return Err(ReviewError::Unavailable);
-        }
-        staging.promote("segment.tmp", &file, &ledger, &name)?;
+    let signature = SignatureHex::from_bytes(&key.sign(&encode(&expected)?).to_bytes())
+        .map_err(|_| ReviewError::ReceiptIntegrity)?;
+    let bytes = encode(&Signed {
+        approval: expected.clone(),
+        signature,
+    })?;
+    if !snapshot.locks_runtime(root) {
+        return Err(ReviewError::Unavailable);
     }
+    store_receipt(root, &expected, &key.verifying_key(), &bytes, expires)?;
     if super::physical::enabled(root) {
         verify_reopened(
             root,
@@ -168,6 +144,123 @@ pub(super) fn persist(
     ctx.admission
         .check_namespace()
         .map_err(|_| ReviewError::Unavailable)
+}
+
+// Caller holds the inventory and device locks throughout publication.
+fn store_receipt(
+    root: &std::path::Path,
+    expected: &Approval,
+    public: &VerifyingKey,
+    bytes: &[u8],
+    expires: Instant,
+) -> Result<(), ReviewError> {
+    authenticate(bytes, expected, public)?;
+    let profile = Directory::open(root)?;
+    let canonical = profile.child("canonical", false)?;
+    let ledger = canonical.child(FOLDER, true)?;
+    canonical.sync()?;
+    let name = format!("{}.json", expected.note_id);
+    if ledger.exists(&name)? {
+        let file = ledger.open_file(&name, false)?;
+        authenticate(&file, expected, public)?;
+        export_fs::flush(&file).map_err(|_| ReviewError::ReceiptStorage)?;
+        ledger.sync()?;
+    } else {
+        // The canonical inventory lock serializes writers and orphan staging cleanup.
+        let staging = profile.child("purge-staging", true)?;
+        profile.sync()?;
+        if staging.exists("segment.tmp")? {
+            staging.discard_scratch(staging.open_file("segment.tmp", false)?)?;
+        }
+        let mut file = staging.open_file("segment.tmp", true)?;
+        file.write_all(bytes)
+            .map_err(|_| ReviewError::ReceiptStorage)?;
+        if Instant::now() >= expires {
+            return Err(ReviewError::ReviewExpired);
+        }
+        staging.promote("segment.tmp", &file, &ledger, &name)?;
+    }
+    Ok(())
+}
+
+/// Admit the owner's completed deletion only against this receiver's verified
+/// copy of that exact note and the key in its own signed pairing history.
+pub(crate) fn receive(
+    root: &std::path::Path,
+    brain: &str,
+    local: &cryptex_events::LocalTrustAnchor,
+    bridge: &[u8],
+    approval: &[u8],
+) -> Result<(), ReviewError> {
+    use cryptex_events::{AuthenticatedSecurityRecord, VersionedRecord, read_versioned_record};
+    if !super::physical::paired(root) {
+        return Err(ReviewError::Disabled);
+    }
+    if approval.len() as u64 > LIMIT
+        || bridge.len() > cryptex_events::MAX_ACCEPTED_RECORD_BYTES as usize
+    {
+        return Err(ReviewError::ReceiptIntegrity);
+    }
+    let expires = Instant::now() + Duration::from_secs(5);
+    let snapshot =
+        crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(
+            root,
+            brain,
+            local,
+            Some(expires),
+        )
+        .map_err(|_| ReviewError::Unavailable)?;
+    let (history, trust) = snapshot
+        .verified_trust_context()
+        .ok_or(ReviewError::Unauthorized)?;
+    let signed: Signed =
+        serde_json::from_slice(approval).map_err(|_| ReviewError::ReceiptIntegrity)?;
+    let device = cryptex_core::ids::DeviceId::new(signed.approval.device_id)
+        .map_err(|_| ReviewError::ReceiptIntegrity)?;
+    let binding = history
+        .approved_peer_binding(&device)
+        .ok_or(ReviewError::Unauthorized)?;
+    if history.restricted(trust, &device) || trust.effective_cutoffs.get(&device) != Some(&u64::MAX)
+    {
+        return Err(ReviewError::Unauthorized);
+    }
+    let key =
+        VerifyingKey::from_bytes(&binding.public_key).map_err(|_| ReviewError::ReceiptIntegrity)?;
+    let note = snapshot
+        .reader_device_chain(device.as_str())
+        .iter()
+        .find_map(|r| match r {
+            AuthenticatedSecurityRecord::V1(note) if note.event_id == signed.approval.note_id => {
+                Some(note)
+            }
+            _ => None,
+        })
+        .ok_or(ReviewError::TargetUnavailable)?;
+    let expected = Approval::new(
+        brain,
+        device.as_str(),
+        &note.event_id,
+        note.content_hash.as_str(),
+    )?;
+    let Ok(VersionedRecord::VerifiedUnsupported(record)) = read_versioned_record(bridge, &key)
+    else {
+        return Err(ReviewError::ReceiptIntegrity);
+    };
+    let value: serde_json::Value =
+        serde_json::from_slice(bridge).map_err(|_| ReviewError::ReceiptIntegrity)?;
+    if record.event_id != note.event_id
+        || record.device_id != note.device_id
+        || record.signing_key_id != note.signing_key_id
+        || record.device_seq != note.device_seq
+        || record.prev_content_hash != note.prev_content_hash
+        || value["event_type"] != "memory.purge.bridge"
+        || value["brain_id"] != brain
+        || value["payload_schema_version"] != 1
+        || value["payload"] != serde_json::json!({"original_hash": note.content_hash})
+    {
+        return Err(ReviewError::ReceiptIntegrity);
+    }
+    store_receipt(root, &expected, &key, approval, expires)
 }
 
 pub(crate) fn verify_reopened(

@@ -7,6 +7,7 @@ use std::thread;
 
 mod automatic;
 mod lifecycle;
+mod stale_purge;
 
 struct Wire {
     sender: PathBuf,
@@ -114,6 +115,10 @@ pub(in crate::managed_profile) fn run() {
         crate::secure_store::FileBackedSecureStore::open(transport.join("fixture-credentials"))
             .unwrap();
     match std::env::var("CRYPTEX_TEST_RECEIVER_PHASE").as_deref() {
+        Ok("purge") => {
+            stale_purge::exercise(&transport, &a_id, &b_id);
+            return;
+        }
         Ok("reopen") => {
             for pair in [
                 &crate::test_temp::ATTACHMENT_PAIR,

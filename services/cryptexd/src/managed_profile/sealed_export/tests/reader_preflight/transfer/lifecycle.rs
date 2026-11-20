@@ -19,7 +19,7 @@ fn publish(
     publish_incoming_with_instance(&side.root, segments, &mut side.instance, store, ENV).unwrap()
 }
 
-fn search(
+pub(super) fn search(
     side: &Side,
     store: &dyn crate::secure_store::SecureStore,
 ) -> Vec<cryptex_projection::SearchHit> {

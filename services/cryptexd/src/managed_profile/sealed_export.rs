@@ -130,6 +130,11 @@ impl Exporter {
         let anchor = resolver
             .local_trust_anchor()
             .ok_or_else(|| authority("anchor"))?;
+        #[cfg(test)]
+        if crate::ipc::purge_review::physical::paired(root) {
+            crate::ipc::purge_review::physical::reconcile(identity, root, &brain.brain_id, &anchor)
+                .map_err(|_| authority("purge_control"))?;
+        }
         let snapshot = crate::knowledge_materialization::scan_verified_canonical_from_local_anchor_until(root, &brain.brain_id, &anchor, Some(deadline)).map_err(|e| match e {
             crate::knowledge_materialization::KnowledgeMaterializationError::DeadlineExceeded => Error::Deferred,
             crate::knowledge_materialization::KnowledgeMaterializationError::Canonical(_) => authority("scan_canonical"),

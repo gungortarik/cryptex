@@ -29,6 +29,8 @@ on:
       - 'services/cryptexd/src/knowledge_materialization/pairing_recovery_tests.rs'
       - 'services/cryptexd/src/knowledge_materialization/pairing_recovery_tests/**'
       - 'services/cryptexd/src/knowledge_materialization/export_plan.rs'
+      - 'services/cryptexd/src/knowledge_materialization/physical_purge.rs'
+      - 'services/cryptexd/src/ipc/purge_review/**'
       - 'services/cryptexd/src/import_staging/macos_fs.rs'
       - 'services/cryptexd/src/platform/instance_file.rs'
       - 'scripts/m8/*standard-user*'

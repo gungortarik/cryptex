@@ -2452,9 +2452,10 @@ fn scan_anchored_history(
         any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
     ))]
     let scope = if crate::ipc::purge_review::physical::enabled(runtime_root) {
-        if !import_devices.is_empty()
-            || !exclusions.is_empty()
-            || devices != [anchor.device_id().clone()]
+        if !crate::ipc::purge_review::physical::paired(runtime_root)
+            && (!import_devices.is_empty()
+                || !exclusions.is_empty()
+                || devices != [anchor.device_id().clone()])
         {
             return Err(KnowledgeMaterializationError::Verification(
                 "local purge trial requires a single device".into(),
@@ -2690,6 +2691,23 @@ fn scan_anchored_history(
                 KnowledgeMaterializationError::Verification(err.to_string())
             }
         })?;
+    #[cfg(all(
+        test,
+        any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
+    ))]
+    let forgotten = if crate::ipc::purge_review::physical::paired(runtime_root) {
+        let mut hidden = forgotten;
+        physical_purge::suppress_approved_notes(
+            runtime_root,
+            expected_brain_id,
+            &security_history,
+            &verified_trust,
+            &mut hidden,
+        )?;
+        hidden
+    } else {
+        forgotten
+    };
     attachment_links.retain(|note, _| !forgotten.contains(note));
     let history = security_history
         .content_history_through_cutoffs_cancellable(&cutoffs, || {

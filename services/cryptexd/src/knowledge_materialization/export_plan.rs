@@ -82,6 +82,13 @@ impl VerifiedCanonicalSnapshot {
                     .get(&(device.as_str(), frame.position.event_id.as_str()))
                     .ok_or_else(invalid)?;
                 eligible &= record.device_seq() <= *cutoff;
+                eligible &= !matches!(record, AuthenticatedSecurityRecord::PurgeBridge(..));
+                #[cfg(test)]
+                if crate::ipc::purge_review::physical::paired(&self.runtime_root)
+                    && self.forgotten.contains(record.event_id())
+                {
+                    eligible = false;
+                }
                 // The transport contract currently admits only note and
                 // security records. M9 read support does not activate transfer.
                 if let AuthenticatedSecurityRecord::Attachment(link, _fields) = record {

@@ -41,6 +41,53 @@ pub(super) fn check_receipts(
     Ok(())
 }
 
+/// A replica can retain an old signed frame. Its author's durable decision
+/// takes precedence on every guarded read, including after an index rebuild.
+pub(super) fn suppress_approved_notes(
+    root: &Path,
+    brain: &str,
+    history: &VerifiedSecurityHistory,
+    trust: &crate::trust_reducer::VerifiedTrustHistory,
+    hidden: &mut std::collections::BTreeSet<String>,
+) -> KnowledgeMaterializationResult<()> {
+    let invalid = || KnowledgeMaterializationError::Verification("invalid purge ledger".into());
+    let canonical = Directory::open(root)
+        .and_then(|p| p.child("canonical", false))
+        .map_err(|_| invalid())?;
+    if !canonical.exists(receipt::FOLDER).map_err(|_| invalid())? {
+        return Ok(());
+    }
+    let ledger = canonical
+        .child(receipt::FOLDER, false)
+        .map_err(|_| invalid())?;
+    let mut resolver = trust.key_resolver();
+    for record in history.records() {
+        let AuthenticatedSecurityRecord::V1(note) = record else {
+            continue;
+        };
+        if !ledger
+            .exists(&format!("{}.json", note.event_id))
+            .map_err(|_| invalid())?
+        {
+            continue;
+        }
+        let key = resolver
+            .trusted_daemon_key(&note.device_id, note.signing_key_id.as_str())
+            .ok_or_else(invalid)?;
+        receipt::verify_reopened(
+            root,
+            brain,
+            &note.device_id,
+            &note.event_id,
+            note.content_hash.as_str(),
+            key.as_bytes(),
+        )
+        .map_err(|_| invalid())?;
+        hidden.insert(note.event_id.clone());
+    }
+    Ok(())
+}
+
 fn append_framed(buffer: &mut Vec<u8>, body: &[u8]) -> Result<(), ReviewError> {
     let len = u32::try_from(body.len()).map_err(|_| ReviewError::PackIntegrity)?;
     buffer.extend(
@@ -62,7 +109,9 @@ impl VerifiedCanonicalSnapshot {
     ) -> Result<(), ReviewError> {
         let root = &self.runtime_root;
         let device = anchor.device_id();
-        if !physical::enabled(root) || !self.locks_runtime(root) || self.devices != [device.clone()]
+        if !physical::enabled(root)
+            || !self.locks_runtime(root)
+            || (!physical::paired(root) && self.devices != [device.clone()])
         {
             return Err(ReviewError::Disabled);
         }
@@ -70,7 +119,9 @@ impl VerifiedCanonicalSnapshot {
         if !self.security_history.records().iter().all(|r| {
             matches!(
                 r,
-                AuthenticatedSecurityRecord::V1(_) | AuthenticatedSecurityRecord::PurgeBridge(..)
+                AuthenticatedSecurityRecord::V1(_)
+                    | AuthenticatedSecurityRecord::PurgeBridge(..)
+                    | AuthenticatedSecurityRecord::SecurityV3(_)
             )
         }) {
             return Err(ReviewError::TargetUnavailable);
@@ -102,7 +153,7 @@ impl VerifiedCanonicalSnapshot {
                 &frame.bytes
             };
             candidate.push(next);
-            if frame.position.pack_index == index {
+            if frame.position.device_id == device.as_str() && frame.position.pack_index == index {
                 append_framed(&mut before, &frame.bytes)?;
                 append_framed(&mut after, next)?;
             }
