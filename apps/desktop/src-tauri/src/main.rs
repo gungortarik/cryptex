@@ -38,6 +38,8 @@ mod pilot_runtime;
 mod protected_assets;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 mod retirement_file;
+#[cfg(feature = "m13-shell-check")]
+mod shell_check;
 
 fn runtime_root_path() -> Result<PathBuf, String> {
     if let Some(root) = pilot_runtime::root() {
@@ -2263,7 +2265,7 @@ fn build_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .cloned()
         .ok_or("default tray icon is missing")?;
 
-    TrayIconBuilder::new()
+    TrayIconBuilder::with_id("cryptex-main-tray")
         .icon(icon)
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -2873,6 +2875,11 @@ fn main() {
         eprintln!("PILOT_RUNTIME_REJECTED: {error:?}");
         std::process::exit(2);
     }
+    #[cfg(feature = "m13-shell-check")]
+    if pilot_runtime::root().is_none() {
+        eprintln!("The shell rehearsal requires a disposable pilot runtime.");
+        std::process::exit(2);
+    }
     if let Err(error) = frontend_build_mode::ensure_current() {
         eprintln!(
             "RELEASE_FRONTEND_MODE_REJECTED: {error:?}; use the Tauri packaging command or --features tauri/custom-protocol"
@@ -3027,6 +3034,8 @@ fn main() {
                 window.hide()?;
             }
             spawn_control_file_watcher(app.handle().clone(), probe_state.clone());
+            #[cfg(feature = "m13-shell-check")]
+            shell_check::start(app.handle().clone());
             Ok(())
         })
         .build(context)
