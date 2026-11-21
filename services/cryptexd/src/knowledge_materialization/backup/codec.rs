@@ -124,6 +124,8 @@ fn run_codec(
     // macOS exposes the private temp folder via both /var and /private/var.
     #[cfg(target_os = "macos")]
     let path = staging.path().canonicalize().map_err(|_| Error::Codec)?;
+    #[cfg(target_os = "macos")]
+    let path = path.as_path();
     #[cfg(not(target_os = "macos"))]
     let path = staging.path();
     let runtime = if cfg!(windows) { "node.exe" } else { "node" };
