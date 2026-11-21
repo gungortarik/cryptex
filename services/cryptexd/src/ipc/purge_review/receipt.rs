@@ -1,5 +1,5 @@
 //! Local confirmation evidence. Its signature covers a fixed, content-free schema.
-use super::ReviewError;
+use super::{MAX_RECEIPT_BYTES, ReviewError};
 #[cfg(test)]
 use super::{Outcome, SearchContext};
 use crate::import_staging::export_fs::{self, Directory};
@@ -20,7 +20,6 @@ use std::time::{Duration, Instant};
 
 const PURPOSE: &str = "cryptex.purge-approval.v1";
 pub(crate) const FOLDER: &str = "purge-approvals";
-pub(crate) const LIMIT: u64 = 1024;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -73,10 +72,10 @@ fn authenticate(
     let mut bytes = Vec::new();
     source
         .by_ref()
-        .take(LIMIT + 1)
+        .take(MAX_RECEIPT_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| ReviewError::ReceiptStorage)?;
-    if bytes.len() as u64 > LIMIT {
+    if bytes.len() as u64 > MAX_RECEIPT_BYTES {
         return Err(ReviewError::ReceiptIntegrity);
     }
     let signed: Signed =
@@ -241,7 +240,7 @@ pub(crate) fn receive(
     if !super::physical::paired(root) {
         return Err(ReviewError::Disabled);
     }
-    if approval.len() as u64 > LIMIT
+    if approval.len() as u64 > MAX_RECEIPT_BYTES
         || bridge.len() > cryptex_events::MAX_ACCEPTED_RECORD_BYTES as usize
     {
         return Err(ReviewError::ReceiptIntegrity);

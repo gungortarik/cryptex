@@ -204,7 +204,9 @@ fn inspect(
         {
             return Err(Error::Archive);
         }
-        if name.starts_with("canonical/purge-approvals/") && file.size() > 1024 {
+        if name.starts_with("canonical/purge-approvals/")
+            && file.size() > crate::ipc::purge_review::MAX_RECEIPT_BYTES
+        {
             return Err(Error::PurgeHistory);
         }
         let mut hasher = Sha256::new();

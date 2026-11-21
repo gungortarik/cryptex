@@ -237,7 +237,30 @@ pub(crate) fn verify_backup_reconstruction(
     if history_digest(&snapshot) != expected.history_sha256 {
         return Err(Error::Checkpoint);
     }
-    for digest in super::backup::blob_digests(&snapshot)? {
+    // An intact blob name and digest alone do not authorize restoring its
+    // bytes. A previous attachment may have lost its final link to a purge.
+    let digests = super::backup::blob_digests(&snapshot)?;
+    let canonical = Directory::open(&root.join("canonical")).map_err(|_| Error::Archive)?;
+    if canonical.exists("blobs").map_err(|_| Error::Attachment)? {
+        let directory = canonical
+            .child("blobs", false)
+            .map_err(|_| Error::Attachment)?;
+        let mut expected: BTreeSet<_> = digests
+            .iter()
+            .map(|&value| format!("{:x}", sha2::digest::Output::<Sha256>::from(value)))
+            .collect();
+        for entry in fs::read_dir(root.join("canonical/blobs")).map_err(|_| Error::Attachment)? {
+            let name = entry.map_err(|_| Error::Attachment)?.file_name();
+            if !name.to_str().is_some_and(|n| expected.remove(n)) {
+                return Err(Error::Attachment);
+            }
+        }
+        directory.validate().map_err(|_| Error::Attachment)?;
+        if !expected.is_empty() {
+            return Err(Error::Attachment);
+        }
+    }
+    for digest in digests {
         crate::attachment_blobs::open_verified(root, &digest).map_err(|_| Error::Attachment)?;
     }
     Ok(())

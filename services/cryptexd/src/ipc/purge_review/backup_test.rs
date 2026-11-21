@@ -4,6 +4,7 @@ use crate::canonical_writer::{AppendMemoryNoteArgs, append_memory_note};
 use crate::ipc::tests::prepared_search_fixture;
 use crate::knowledge_materialization::backup;
 use cryptex_events::Classification;
+use sha2::Digest;
 use std::{fs, io::Read};
 
 #[test]
@@ -85,6 +86,15 @@ fn verified_backup_preserves_purge_and_unaffected_notes() {
         pack.windows(remaining.len())
             .any(|w| w == remaining.as_bytes())
     );
+    let blobs = restored.path().join("canonical/blobs");
+    fs::create_dir_all(&blobs).unwrap();
+    let orphan = blobs.join(format!("{:x}", sha2::Sha256::digest(secret.as_bytes())));
+    fs::write(&orphan, secret).unwrap();
+    assert_eq!(
+        backup_inventory::verify_reconstruction(restored.path(), &checkpoint),
+        Err(Error::Attachment)
+    );
+    fs::remove_file(orphan).unwrap();
     let relative = std::path::PathBuf::from("canonical/purge-approvals")
         .join(format!("{}.json", target.event_id));
     let file = restored.path().join(&relative);

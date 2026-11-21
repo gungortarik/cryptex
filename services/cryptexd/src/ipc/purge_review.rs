@@ -23,6 +23,7 @@ mod shared_attachment_test;
 mod version_history_test;
 use super::*;
 
+pub(crate) const MAX_RECEIPT_BYTES: u64 = 1024;
 pub(super) const OPERATION: &str = "purge.review";
 const CAPABILITY: &str = "purge.review.owner";
 
