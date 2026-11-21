@@ -27,8 +27,12 @@ scheduled job. [Installed export and role tests](https://github.com/gungortarik/
 Backup and reconstruction now follow signed forget and restore events.
 The backup preserves the attachment bytes for a reversibly forgotten note
 while ordinary retrieval hides the attachment. Missing bytes stop recovery
-verification. The current writer holds a profile with a nonempty permanent
-deletion ledger until the archive can preserve and verify those approvals.
+verification. For a permanently purged note the archive carries its signed,
+content-free bridge and the owner's original confirmation. Reconstruction
+checks the confirmation against the verified device history. An absent, extra
+or invalid confirmation blocks verification. An approval alongside its old note
+body stops backup creation. The disposable purge test checks that the other
+note survives. Cleanup of older encrypted generations is a separate operation.
 
 The default retains every generation. An explicit positive count applies only to automatic generations on the selected target of the designated writer. The device credential store holds the preference and each reconstruction receipt. After a sandbox restore, the writer checks the saved policy, takes the target lock, checks the surviving ciphertext against its receipts and removes only eligible older files. A missing policy retains everything. A corrupt receipt or a changed verified file stops cleanup. An encrypted manual export and an unrecognized file remain outside cleanup.
 

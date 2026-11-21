@@ -1,16 +1,26 @@
 //! Local confirmation evidence. Its signature covers a fixed, content-free schema.
-use super::{Outcome, ReviewError, SearchContext};
+use super::ReviewError;
+#[cfg(test)]
+use super::{Outcome, SearchContext};
 use crate::import_staging::export_fs::{self, Directory};
+#[cfg(test)]
 use crate::local_device_identity::LocalDeviceKeyResolver;
-use cryptex_events::{ContentHashHex, SignatureHex, TrustedDaemonKeyResolver};
-use ed25519_dalek::{Signature, Signer, VerifyingKey};
+#[cfg(test)]
+use cryptex_events::TrustedDaemonKeyResolver;
+use cryptex_events::{ContentHashHex, SignatureHex};
+#[cfg(test)]
+use ed25519_dalek::Signer;
+use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
+use std::io::Read;
+#[cfg(test)]
+use std::io::Write;
+#[cfg(test)]
 use std::time::{Duration, Instant};
 
 const PURPOSE: &str = "cryptex.purge-approval.v1";
 pub(crate) const FOLDER: &str = "purge-approvals";
-const LIMIT: u64 = 1024;
+pub(crate) const LIMIT: u64 = 1024;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -59,7 +69,7 @@ fn authenticate(
     mut source: impl Read,
     expected: &Approval,
     key: &VerifyingKey,
-) -> Result<(), ReviewError> {
+) -> Result<Vec<u8>, ReviewError> {
     let mut bytes = Vec::new();
     source
         .by_ref()
@@ -79,9 +89,11 @@ fn authenticate(
         .to_bytes()
         .map_err(|_| ReviewError::ReceiptIntegrity)?;
     key.verify_strict(&encode(expected)?, &Signature::from_bytes(&sig))
-        .map_err(|_| ReviewError::ReceiptIntegrity)
+        .map_err(|_| ReviewError::ReceiptIntegrity)?;
+    Ok(bytes)
 }
 
+#[cfg(test)]
 pub(super) fn persist(
     ctx: &SearchContext,
     note_id: String,
@@ -159,6 +171,7 @@ pub(super) fn persist(
 }
 
 // Caller holds the inventory and device locks throughout publication.
+#[cfg(test)]
 fn store_receipt(
     root: &std::path::Path,
     expected: &Approval,
@@ -195,6 +208,7 @@ fn store_receipt(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn bridge_body(
     note: &cryptex_events::AcceptedEvent,
     needs_original_class: bool,
@@ -215,6 +229,7 @@ pub(crate) fn bridge_body(
 
 /// Admit the owner's completed deletion only against this receiver's verified
 /// copy of that exact note and the key in its own signed pairing history.
+#[cfg(test)]
 pub(crate) fn receive(
     root: &std::path::Path,
     brain: &str,
@@ -297,6 +312,7 @@ pub(crate) fn receive(
     snapshot.replace_approved_frame(local, &device, &note.event_id, bridge, expires)
 }
 
+#[cfg(test)]
 pub(crate) fn verify_reopened(
     root: &std::path::Path,
     brain: &str,
@@ -305,10 +321,22 @@ pub(crate) fn verify_reopened(
     hash: &str,
     public: &[u8; 32],
 ) -> Result<(), ReviewError> {
-    let expected = Approval::new(brain, device, note, hash)?;
     let ledger = Directory::open(root)?
         .child("canonical", false)?
         .child(FOLDER, false)?;
+    verified_bytes(&ledger, brain, device, note, hash, public).map(drop)
+}
+
+/// Return the same bounded file bytes whose owner signature was verified.
+pub(crate) fn verified_bytes(
+    ledger: &Directory,
+    brain: &str,
+    device: &str,
+    note: &str,
+    hash: &str,
+    public: &[u8; 32],
+) -> Result<Vec<u8>, ReviewError> {
+    let expected = Approval::new(brain, device, note, hash)?;
     let file = ledger.open_file(&format!("{}.json", expected.note_id), false)?;
     let key = VerifyingKey::from_bytes(public).map_err(|_| ReviewError::ReceiptIntegrity)?;
     authenticate(file, &expected, &key)

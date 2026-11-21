@@ -139,6 +139,12 @@ fn lower_hex(s: &str) -> bool {
 }
 
 fn canonical_member(name: &str) -> bool {
+    if let Some(file) = name.strip_prefix("canonical/purge-approvals/") {
+        return file.strip_suffix(".json").is_some_and(|id| {
+            cryptex_core::validate::parse_uuid_str(id).is_ok()
+                && !id.bytes().any(|b| b.is_ascii_uppercase())
+        });
+    }
     if let Some(hash) = name.strip_prefix("canonical/blobs/") {
         return hash.len() == 64 && lower_hex(hash);
     }
@@ -197,6 +203,9 @@ fn inspect(
             || file.is_symlink()
         {
             return Err(Error::Archive);
+        }
+        if name.starts_with("canonical/purge-approvals/") && file.size() > 1024 {
+            return Err(Error::PurgeHistory);
         }
         let mut hasher = Sha256::new();
         let bytes = if name == IDENTITY {

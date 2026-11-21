@@ -4,7 +4,7 @@ use super::*;
 use crate::backup_inventory::{Checkpoint, Error, RecoverySelection};
 use crate::import_staging::{open_recovery_source, source_snapshot};
 use crate::local_device_identity::LocalDeviceKeyResolver;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 use tempfile::NamedTempFile;
 use zip::ZipWriter;
@@ -18,6 +18,18 @@ pub(super) fn snapshot(
     brain: &str,
     anchor: &LocalTrustAnchor,
 ) -> Result<VerifiedCanonicalSnapshot, Error> {
+    snapshot_and_approvals(root, brain, anchor).map(|(snapshot, _)| snapshot)
+}
+
+type Approvals = BTreeMap<String, Vec<u8>>;
+
+fn snapshot_and_approvals(
+    root: &Path,
+    brain: &str,
+    anchor: &LocalTrustAnchor,
+) -> Result<(VerifiedCanonicalSnapshot, Approvals), Error> {
+    use crate::import_staging::export_fs::Directory;
+    use crate::ipc::purge_review::receipt;
     let snapshot = scan_anchored_history(
         root,
         brain,
@@ -25,33 +37,70 @@ pub(super) fn snapshot(
         ImportScanScope {
             candidate_devices: &[],
             recovery_exclusions: &[],
-            lifecycle: NoteLifecycleRead::Apply,
+            lifecycle: NoteLifecycleRead::LocalPurgeTrial,
         },
         None,
     )
     .map_err(|_| Error::Checkpoint)?;
-    // A content-free purge approval needs its own authenticated archive member.
-    // Never discard that ledger or publish a still-pending approved note.
-    let canonical = crate::import_staging::export_fs::Directory::open(&root.join("canonical"))
-        .map_err(|_| Error::Archive)?;
-    if canonical
-        .exists("purge-approvals")
-        .map_err(|_| Error::Archive)?
+    // This reader admits bridges only with the corresponding independently
+    // signed owner receipts. Pending approvals still paired with an original
+    // note stop the whole backup, even if some other notes were already purged.
+    let canonical = Directory::open(&root.join("canonical")).map_err(|_| Error::Archive)?;
+    let ledger = if canonical
+        .exists(receipt::FOLDER)
+        .map_err(|_| Error::PurgeHistory)?
     {
-        let _ledger = canonical
-            .child("purge-approvals", false)
-            .map_err(|_| Error::Archive)?;
-        if fs::read_dir(root.join("canonical/purge-approvals"))
-            .map_err(|_| Error::Archive)?
-            .next()
-            .transpose()
-            .map_err(|_| Error::Archive)?
-            .is_some()
-        {
+        Some(
+            canonical
+                .child(receipt::FOLDER, false)
+                .map_err(|_| Error::PurgeHistory)?,
+        )
+    } else {
+        None
+    };
+    let (history, _) = snapshot.verified_trust_context().ok_or(Error::Checkpoint)?;
+    let mut keys = history.key_resolver();
+    let mut approvals = BTreeMap::new();
+    for record in snapshot.security_history.records() {
+        if let AuthenticatedSecurityRecord::PurgeBridge(bridge, _, original, _) = record {
+            let key = keys
+                .trusted_daemon_key(&bridge.device_id, bridge.signing_key_id.as_str())
+                .ok_or(Error::PurgeHistory)?;
+            let bytes = receipt::verified_bytes(
+                ledger.as_ref().ok_or(Error::PurgeHistory)?,
+                brain,
+                &bridge.device_id,
+                &bridge.event_id,
+                original.as_str(),
+                key.as_bytes(),
+            )
+            .map_err(|_| Error::PurgeHistory)?;
+            if approvals
+                .insert(format!("{}.json", bridge.event_id), bytes)
+                .is_some()
+            {
+                return Err(Error::PurgeHistory);
+            }
+        }
+    }
+    if let Some(ledger) = ledger {
+        ledger.validate().map_err(|_| Error::PurgeHistory)?;
+        let mut observed = 0;
+        let entries = fs::read_dir(root.join("canonical").join(receipt::FOLDER))
+            .map_err(|_| Error::PurgeHistory)?;
+        for entry in entries {
+            let name = entry.map_err(|_| Error::PurgeHistory)?.file_name();
+            observed += 1;
+            if !name.to_str().is_some_and(|n| approvals.contains_key(n)) {
+                return Err(Error::PurgeHistory);
+            }
+        }
+        ledger.validate().map_err(|_| Error::PurgeHistory)?;
+        if observed != approvals.len() {
             return Err(Error::PurgeHistory);
         }
     }
-    Ok(snapshot)
+    Ok((snapshot, approvals))
 }
 
 /// Forget is reversible. Retrieval hides these links, but the verified backup
@@ -148,7 +197,7 @@ pub fn prepare(
     {
         return Err(Error::RecoveryHistory);
     }
-    let snapshot = snapshot(root, &identity.brain_id, &anchor)?;
+    let (snapshot, approvals) = snapshot_and_approvals(root, &identity.brain_id, &anchor)?;
     let (history, state) = snapshot
         .verified_trust_context()
         .ok_or(Error::Credentials)?;
@@ -197,6 +246,13 @@ pub fn prepare(
                 return Err(Error::Archive);
             }
         }
+    }
+    for (name, bytes) in approvals {
+        append(
+            &mut archive,
+            &format!("canonical/purge-approvals/{name}"),
+            bytes.as_slice(),
+        )?;
     }
     for digest in blob_digests(&snapshot)? {
         let hash = sha2::digest::Output::<Sha256>::from(digest);
