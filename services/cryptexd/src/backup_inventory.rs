@@ -361,6 +361,7 @@ fn reconstruct_members(
     let input = File::open(payload).map_err(|_| Error::Archive)?;
     let mut zip = zip::ZipArchive::new(input).map_err(|_| Error::Archive)?;
     let sandbox = tempfile::tempdir_in(parent).map_err(|_| Error::Archive)?;
+    let mut directories = std::collections::BTreeSet::new();
     for i in 0..zip.len() {
         let source = zip.by_index(i).map_err(|_| Error::Archive)?;
         let name = source.name().map_err(|_| Error::Archive)?.into_owned();
@@ -369,8 +370,14 @@ fn reconstruct_members(
             return Err(Error::Inventory);
         }
         let target = sandbox.path().join(name);
-        std::fs::create_dir_all(target.parent().ok_or(Error::Archive)?)
-            .map_err(|_| Error::Archive)?;
+        let directory = target.parent().ok_or(Error::Archive)?;
+        std::fs::create_dir_all(directory).map_err(|_| Error::Archive)?;
+        directories.extend(
+            directory
+                .ancestors()
+                .take_while(|p| p.starts_with(sandbox.path()))
+                .map(Path::to_owned),
+        );
         let mut file = File::create_new(target).map_err(|_| Error::Archive)?;
         let count = io::copy(&mut source.take(member.bytes.saturating_add(1)), &mut file)
             .map_err(|_| Error::Archive)?;
@@ -380,9 +387,17 @@ fn reconstruct_members(
         if count != member.bytes || format!("{:x}", digest.finalize()) != member.sha256 {
             return Err(Error::Inventory);
         }
+        crate::import_staging::export_fs::flush(&file).map_err(|_| Error::Archive)?;
     }
     if !members.is_empty() {
         return Err(Error::Inventory);
+    }
+    // Children sort after their ancestors. Persist their directory entries
+    // before a verified sandbox can be published as the replacement archive.
+    for directory in directories.iter().rev() {
+        crate::import_staging::export_fs::Directory::open(directory)
+            .and_then(|dir| dir.sync())
+            .map_err(|_| Error::Archive)?;
     }
     verify_reconstruction(sandbox.path(), expected)?;
     Ok(sandbox)

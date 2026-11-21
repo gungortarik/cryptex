@@ -121,6 +121,28 @@ pub(super) fn blank_replacement(
     trial("first-device-clean-reject");
     assert!(!identity.exists() && !root.join(RECOVERY).exists());
     fs::copy(files.backup, selected).unwrap();
+    // A normal M8 instance lock is insufficient for the restored v2 history.
+    let legacy = work.join("legacy-first-device");
+    let _old_layout = crate::instance::try_acquire_instance(&legacy).unwrap();
+    let isolated = crate::secure_store::FakeSecureStore::new();
+    let codec = std::env::var_os("CRYPTEX_M11_TEST_INSTALLED_CODEC").unwrap();
+    let sources = crate::ipc::backup_verify::Selection {
+        backup: selected.into(),
+        checkpoint: work.join("kit/selected-backup.json"),
+        kit: files.sealed_kit.into(),
+        unlock: files.unlock.into(),
+    };
+    assert!(
+        crate::knowledge_materialization::backup::first_device::prepare(
+            &legacy,
+            &isolated,
+            SecureStoreEnvironment::Dev,
+            Path::new(&codec),
+            &sources
+        )
+        .is_err()
+    );
+    assert!(!legacy.join(RECOVERY).exists() && !legacy.join("identity").exists());
     let sentinel = root.join("existing-profile");
     fs::write(&sentinel, b"keep").unwrap();
     trial("first-device-clean-reject");

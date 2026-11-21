@@ -9,6 +9,18 @@ use cryptex_core::{RecoveryKitPublicMetadata, RecoveryPurpose};
 pub(super) fn check_blank(root: &Path, recovering: bool) -> Result<(), Error> {
     for entry in std::fs::read_dir(root).map_err(|_| Error::SourceIdentity)? {
         let name = entry.map_err(|_| Error::SourceIdentity)?.file_name();
+        if name == "lifecycle.status" {
+            // The ordinary service records its own PID here on startup.
+            let status = restore::read_selected(&root.join(&name), 16 * 1024)?;
+            if std::str::from_utf8(&status)
+                .ok()
+                .and_then(|text| text.lines().find_map(|line| line.strip_prefix("pid=")))
+                .and_then(|pid| pid.trim().parse::<u32>().ok())
+                == Some(std::process::id())
+            {
+                continue;
+            }
+        }
         if name != "daemon.lock" && !(recovering && name == RECOVERY) {
             return Err(Error::SourceIdentity);
         }
@@ -24,6 +36,13 @@ pub(crate) fn prepare(
     files: &crate::ipc::backup_verify::Selection,
 ) -> Result<(), Error> {
     let live = Directory::open(root).map_err(|_| Error::SourceIdentity)?;
+    // Restored history may contain v2 attachment records. An older daemon
+    // must be fenced out even after the replacement is shut down.
+    let _protected = crate::import_staging::open_existing_profile_lock(
+        &crate::paths::lock_path(root),
+        "reader-m9.pid",
+    )
+    .map_err(|_| Error::SourceIdentity)?;
     let parent = root.parent().ok_or(Error::SourceIdentity)?;
     let parent_dir = Directory::open(parent).map_err(|_| Error::SourceIdentity)?;
     let staging = restore::private_scratch(Some(parent))?;
