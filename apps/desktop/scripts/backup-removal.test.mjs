@@ -51,7 +51,7 @@ try {
     await route.fulfill({ path: asset });
   });
   await page.goto(origin);
-  await page.getByRole("button", { name: "Connection settings", exact: true }).click();
+  await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Backups" }).click();
   const inspect = page.getByRole("button", { name: "Review backup removal" });
   const dialog = page.getByRole("dialog", { name: "Remove this entire encrypted backup?" });
   await inspect.click();

@@ -1,5 +1,7 @@
 import { ManualBackup } from "./ManualBackup";
 import { BackupWriter } from "./BackupWriter";
+import { BackupRemovalReview } from "./BackupRemovalReview";
+import { PublicReadReview } from "./PublicReadReview";
 import { PurgeReview } from "./PurgeReview";
 import { NoteLifecycle } from "./NoteLifecycle";
 import { NoteAttachment } from "./NoteAttachment";
@@ -204,6 +206,15 @@ export function App() {
   }, []);
   const isMac = navigator.platform.toLowerCase().includes("mac");
   const [query, setQuery] = useState("");
+  const [activeAnchor, setActiveAnchor] = useState(() => window.location.hash || "#health-heading");
+  useEffect(() => {
+    const update = () => setActiveAnchor(window.location.hash || "#health-heading");
+    window.addEventListener("hashchange", update);
+    return () => window.removeEventListener("hashchange", update);
+  }, []);
+  const [searchedText, setSearchedText] = useState("");
+  const detailRef = useRef<HTMLElement>(null);
+  const detailTrigger = useRef<HTMLButtonElement | null>(null);
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [timelineMode, setTimelineMode] = useState(false);
   const [timelineHits, setTimelineHits] = useState<SearchHit[]>([]);
@@ -211,10 +222,14 @@ export function App() {
   const [timelineHasMore, setTimelineHasMore] = useState(false);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [detailHit, setDetailHit] = useState<SearchHit | null>(null);
+  useEffect(() => { if (detailHit) detailRef.current?.focus(); }, [detailHit]);
   const [timelineStatus, setTimelineStatus] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [holdReason, setHoldReason] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("checking");
+  const [serviceCheckTime, setServiceCheckTime] = useState<Date | null>(null);
+  const [checkingService, setCheckingService] = useState(false);
+  const refreshService = useRef<() => void>(() => {});
   const [searching, setSearching] = useState(false);
   const [vaultBusy, setVaultBusy] = useState(false);
   const [vaultStatus, setVaultStatus] = useState<string | null>(null);
@@ -560,6 +575,7 @@ export function App() {
     async function checkService() {
       if (pending || document.visibilityState === "hidden") return;
       pending = true;
+      setCheckingService(true);
       try {
         await invoke("p0_3_ipc_health");
         if (!disposed) setConnection("active");
@@ -567,8 +583,13 @@ export function App() {
         if (!disposed) setConnection("attention");
       } finally {
         pending = false;
+        if (!disposed) {
+          setServiceCheckTime(new Date());
+          setCheckingService(false);
+        }
       }
     }
+    refreshService.current = checkService;
     void checkService();
     const timer = window.setInterval(checkService, 15000);
     window.addEventListener("focus", checkService);
@@ -582,6 +603,7 @@ export function App() {
   }, []);
 
   const openSearch = useCallback(() => {
+    setActiveAnchor("#memory-search");
     if (timelineMode) {
       searchRequestGate.invalidate();
       setTimelineMode(false);
@@ -657,6 +679,7 @@ export function App() {
     setTimelineMode(false);
     setDetailHit(null);
     setDetailLoading(false);
+    setSearchedText("");
     const text = normalizeSearchText(query);
     const generation = searchRequestGate.begin();
     setHits([]);
@@ -674,15 +697,13 @@ export function App() {
       });
       if (!searchRequestGate.isCurrent(generation)) return;
       if (response.holdReason) {
-        setConnection("attention");
         setHoldReason(response.holdReason);
         return;
       }
-      setConnection("active");
       setHits(response.hits ?? []);
+      setSearchedText(text);
     } catch {
       if (!searchRequestGate.isCurrent(generation)) return;
-      setConnection("attention");
       setNotice("Cryptex could not complete a guarded search. No results were kept on screen.");
     } finally {
       if (searchRequestGate.isCurrent(generation)) setSearching(false);
@@ -708,7 +729,6 @@ export function App() {
       });
       if (!searchRequestGate.isCurrent(generation)) return;
       if (response.holdReason) {
-        setConnection("attention");
         setHoldReason(response.holdReason);
         setTimelineHits([]);
         setTimelineCursor(null);
@@ -716,14 +736,12 @@ export function App() {
         setDetailHit(null);
         return;
       }
-      setConnection("active");
       const page = response.hits ?? [];
       setTimelineHits((current) => (cursor ? [...current, ...page] : page));
       setTimelineCursor(response.nextCursor ?? null);
       setTimelineHasMore(response.hasMore);
     } catch {
       if (!searchRequestGate.isCurrent(generation)) return;
-      setConnection("attention");
       setNotice("Cryptex could not load a guarded timeline page. No results were kept on screen.");
       setTimelineHits([]);
       setTimelineCursor(null);
@@ -735,6 +753,8 @@ export function App() {
   }
 
   function openTimeline() {
+    setActiveAnchor("#timeline-heading");
+    setSearchedText("");
     searchRequestGate.invalidate();
     setHits([]);
     setDetailHit(null);
@@ -748,7 +768,8 @@ export function App() {
     setTimelineStatus(action === "forget" ? "Note forgotten. You can restore it from Forgotten notes." : "Note restored.");
   }
 
-  async function openEventDetail(eventId: string) {
+  async function openEventDetail(eventId: string, trigger: HTMLButtonElement) {
+    detailTrigger.current = trigger;
     setTimelineStatus("");
     const generation = searchRequestGate.begin();
     setDetailLoading(true);
@@ -761,16 +782,22 @@ export function App() {
       });
       if (!searchRequestGate.isCurrent(generation)) return;
       if (response.holdReason) {
-        setConnection("attention");
+        setHits([]);
+        setTimelineHits([]);
         setHoldReason(response.holdReason);
         return;
       }
-      setConnection("active");
-      setDetailHit(response.hits?.[0] ?? null);
-      if (!response.hits?.length) setNotice("This note is no longer available in the verified local timeline.");
+      if (response.hits?.length === 1 && response.hits[0].eventId === eventId) {
+        setDetailHit(response.hits[0]);
+      } else {
+        setHits([]);
+        setTimelineHits([]);
+        setNotice("This note is unavailable. Refresh the search or timeline.");
+      }
     } catch {
       if (!searchRequestGate.isCurrent(generation)) return;
-      setConnection("attention");
+      setHits([]);
+      setTimelineHits([]);
       setNotice("Cryptex could not open this guarded note. No content was kept on screen.");
     } finally {
       if (searchRequestGate.isCurrent(generation)) setDetailLoading(false);
@@ -784,7 +811,6 @@ export function App() {
       const response = await invoke<LocalEnrollmentResponse>("p0_4_enroll_local_device");
       setDeviceId(response.deviceId);
       setHoldReason(null);
-      setConnection("active");
       setNotice("This device is enrolled. Search again to check whether local memory is ready.");
     } catch (error) {
       const code = String(error);
@@ -1116,36 +1142,83 @@ export function App() {
     ? HOLD_COPY[holdReason] ?? "Search is paused because Cryptex could not verify a safe retrieval state."
     : null;
 
+  const noteDetail = detailHit ? (
+    <article className="timeline-detail" aria-label="Note detail" tabIndex={-1} ref={detailRef}>
+      <div className="results-heading">
+        <h3>Note detail</h3>
+        <button type="button" className="text-button" onClick={() => { setDetailHit(null); detailTrigger.current?.focus(); }}>
+          Close
+        </button>
+      </div>
+      <div className="result-meta">
+        <time dateTime={detailHit.createdAt}>{displayTimelineDate(detailHit.createdAt)}</time>
+        <span>{detailHit.classification}</span>
+      </div>
+      <p>{detailHit.text}</p>
+      <NoteLifecycle key={detailHit.eventId + detailHit.contentHash} note={detailHit} onChanged={afterVisibilityChange} />
+      {!!detailHit.attachmentLinkCount && (
+        <p>{detailHit.attachmentLinkCount} signed attachment {detailHit.attachmentLinkCount === 1 ? "link" : "links"}</p>
+      )}
+      {detailHit.canAttachFile && (
+        <NoteAttachment key={detailHit.eventId} noteId={detailHit.eventId} noteHash={detailHit.contentHash} />
+      )}
+      {detailHit.canReviewPurge && <PurgeReview key={detailHit.eventId + detailHit.contentHash} note={detailHit} onDeletionRecorded={message => {
+        setTimelineStatus(message);
+        setHits(current => current.filter(hit => hit.eventId !== detailHit.eventId));
+        setTimelineHits(current => current.filter(hit => hit.eventId !== detailHit.eventId));
+        setDetailHit(null);
+      }} />}
+      <dl className="timeline-detail-source">
+        <dt>Event</dt><dd>{detailHit.eventId}</dd>
+        <dt>Brain</dt><dd>{detailHit.brainId}</dd>
+        <dt>Device / sequence</dt><dd>{detailHit.deviceId} · {detailHit.deviceSeq}</dd>
+        <dt>Type</dt><dd>{detailHit.eventType}</dd>
+        <dt>Signing key</dt><dd>{detailHit.signingKeyId}</dd>
+        <dt>Content hash</dt><dd>{detailHit.contentHash}</dd>
+      </dl>
+    </article>
+  ) : null;
+
   return (
     <main className="app-shell">
-      <aside className="side-rail" aria-label="Primary">
-        <a className="brand-mark" href="#home" aria-label="Cryptex home">
-          C<span>.</span>
-        </a>
+      <nav className="side-rail" aria-label="Primary" onClick={event => {
+        const link = (event.target as HTMLElement).closest("a");
+        if (link) setActiveAnchor(link.hash);
+      }}>
+        <a className="brand-mark" href="#home" aria-label="Cryptex home">Cryptex</a>
         <div className="rail-rule" />
+        <a className="rail-link" href="#health-heading" aria-current={["#home", "#health-heading"].includes(activeAnchor) ? "location" : undefined}>Health</a>
+        <a className="rail-link" href="#capture-text" aria-current={activeAnchor === "#capture-text" ? "location" : undefined}>Memory</a>
         <button
-          className={`rail-action ${!timelineMode ? "is-selected" : ""}`}
+          className="rail-action"
           type="button"
           aria-label="Search memory"
-          aria-pressed={!timelineMode}
+          aria-pressed={activeAnchor === "#memory-search"}
           onClick={openSearch}
         >
-          <span aria-hidden="true">⌕</span>
+          <span aria-hidden="true">⌕ </span>Search
         </button>
         <button
-          className={`rail-action ${timelineMode ? "is-selected" : ""}`}
+          className="rail-action"
           type="button"
           aria-label="Open timeline"
-          aria-pressed={timelineMode}
-          onClick={openTimeline}
+          aria-pressed={activeAnchor === "#timeline-heading"}
+          onClick={() => {
+            openTimeline();
+            requestAnimationFrame(() => document.getElementById("timeline-heading")?.focus());
+          }}
         >
-          <span aria-hidden="true">◷</span>
+          Timeline
         </button>
-      </aside>
+        {[
+          ["#connections-heading", "Devices"], ["#ai-access", "AI access"],
+          ["#manual-backup-heading", "Backups"], ["#doctor-heading", "Doctor"],
+        ].map(([href, label]) => <a key={href} className="rail-link" href={href}
+          aria-current={activeAnchor === href ? "location" : undefined}>{label}</a>)}
+      </nav>
 
       <section className="workspace" id="home">
         <header className="topbar">
-          <div className="wordmark">Cryptex</div>
           <div className={`connection-state state-${connection}`} role="status">
             <span className="state-dot" />
             {connection === "checking" ? "Checking local service" : connection === "active" ? "Local service ready" : "Local service needs attention"}
@@ -1169,6 +1242,19 @@ export function App() {
             </nav>
           </section>
 
+          <section className="vault-panel" aria-labelledby="doctor-heading">
+            <div>
+              <h2 id="doctor-heading">Doctor</h2>
+              <p className="capture-help" role="status">{connection === "checking" ? "Checking the local service."
+                : connection === "active" ? "The local service answered the health check."
+                : "The local service did not complete the health check."}</p>
+              {serviceCheckTime && <p className="capture-help">Last checked <time dateTime={serviceCheckTime.toISOString()}>{serviceCheckTime.toLocaleTimeString()}</time></p>}
+            </div>
+            <button type="button" className="capture-secondary" disabled={checkingService} onClick={() => refreshService.current()}>
+              {checkingService ? "Checking service…" : "Check local service"}
+            </button>
+          </section>
+
           <section className="vault-panel" aria-labelledby="vault-heading">
             <div>
               <p className="panel-kicker">Obsidian</p>
@@ -1190,7 +1276,18 @@ export function App() {
 
           <ManualBackup />
           <BackupWriter />
+          <section id="backup-removal" className="vault-panel" aria-labelledby="backup-removal-heading">
+            <div><h2 id="backup-removal-heading">Backup removal</h2></div>
+            {connection === "active" ? <BackupRemovalReview /> : <p role="status">Waiting for the local service.</p>}
+          </section>
           <ConnectionSettings active={connection === "active"} onApply={() => { setApprovalPrepared(null); setOwnerOperationPrepared(null); }} />
+          <section id="ai-access" className="vault-panel" aria-labelledby="ai-heading">
+            <div>
+              <h2 id="ai-heading">AI access</h2>
+              <p className="capture-help">Review a connected client's request to search public notes.</p>
+            </div>
+            {connection === "active" ? <PublicReadReview /> : <p role="status">Waiting for the local service.</p>}
+          </section>
 
           <section className="bootstrap-panel" aria-labelledby="bootstrap-heading">
             <div>
@@ -1636,11 +1733,17 @@ export function App() {
             <input
               id="memory-search"
               ref={searchRef}
+              onFocus={() => setActiveAnchor("#memory-search")}
               value={query}
               onChange={(event) => {
                 searchRequestGate.invalidate();
                 setSearching(false);
+                setDetailHit(null);
+                setDetailLoading(false);
+                setSearchedText("");
                 setQuery(event.target.value);
+                setTimelineMode(false);
+                setTimelineLoading(false);
                 setHits([]);
                 setHoldReason(null);
                 setNotice(null);
@@ -1682,46 +1785,11 @@ export function App() {
             <section className="results timeline-results" aria-label="Recent notes" aria-live="polite">
               {timelineStatus && <p className="notice" role="status">{timelineStatus}</p>}
               <div className="results-heading">
-                <h2>Timeline</h2>
+                <h2 id="timeline-heading" tabIndex={-1}>Timeline</h2>
                 <span>{timelineHits.length} {timelineHits.length === 1 ? "note" : "notes"}</span>
               </div>
               {!detailHit && <NoteLifecycle onChanged={afterVisibilityChange} />}
-              {detailHit ? (
-                <article className="timeline-detail" aria-label="Note detail">
-                  <div className="results-heading">
-                    <h3>Note detail</h3>
-                    <button type="button" className="text-button" onClick={() => setDetailHit(null)}>
-                      Close
-                    </button>
-                  </div>
-                  <div className="result-meta">
-                    <time dateTime={detailHit.createdAt}>{displayTimelineDate(detailHit.createdAt)}</time>
-                    <span>{detailHit.classification}</span>
-                  </div>
-                  <p>{detailHit.text}</p>
-                  <NoteLifecycle key={detailHit.eventId + detailHit.contentHash} note={detailHit} onChanged={afterVisibilityChange} />
-                  {!!detailHit.attachmentLinkCount && (
-                    <p>{detailHit.attachmentLinkCount} signed attachment {detailHit.attachmentLinkCount === 1 ? "link" : "links"}</p>
-                  )}
-                  {detailHit.canAttachFile && (
-                    <NoteAttachment key={detailHit.eventId} noteId={detailHit.eventId} noteHash={detailHit.contentHash} />
-                  )}
-                  {detailHit.canReviewPurge && <PurgeReview key={detailHit.eventId + detailHit.contentHash} note={detailHit} onDeletionRecorded={message => {
-                    setTimelineStatus(message);
-                    setHits(current => current.filter(hit => hit.eventId !== detailHit.eventId));
-                    setTimelineHits(current => current.filter(hit => hit.eventId !== detailHit.eventId));
-                    setDetailHit(null);
-                  }} />}
-                  <dl className="timeline-detail-source">
-                    <dt>Event</dt><dd>{detailHit.eventId}</dd>
-                    <dt>Brain</dt><dd>{detailHit.brainId}</dd>
-                    <dt>Device / sequence</dt><dd>{detailHit.deviceId} · {detailHit.deviceSeq}</dd>
-                    <dt>Type</dt><dd>{detailHit.eventType}</dd>
-                    <dt>Signing key</dt><dd>{detailHit.signingKeyId}</dd>
-                    <dt>Content hash</dt><dd>{detailHit.contentHash}</dd>
-                  </dl>
-                </article>
-              ) : null}
+              {noteDetail}
               {timelineHits.length === 0 && !timelineLoading ? (
                 <p className="timeline-empty">No notes in this local timeline yet.</p>
               ) : null}
@@ -1737,7 +1805,7 @@ export function App() {
                       type="button"
                       className="text-button timeline-open-detail"
                       disabled={detailLoading}
-                      onClick={() => void openEventDetail(hit.eventId)}
+                      onClick={event => void openEventDetail(hit.eventId, event.currentTarget)}
                     >
                       {detailLoading ? "Opening…" : "Open full note"}
                     </button>
@@ -1768,20 +1836,19 @@ export function App() {
             </section>
           ) : null}
 
-          {!timelineMode && !holdCopy && !notice && hits.length === 0 ? (
+          {!timelineMode && !searching && !holdCopy && !notice && hits.length === 0 ? (
             <section className="empty-state" aria-live="polite">
-              <div className="empty-rule" />
-              <p className="empty-title">A quiet place for what matters.</p>
-              <p>Enter a phrase above to search your verified local notes.</p>
+              {searchedText ? <p>No matching notes for “{searchedText}”.</p> : <p>Search your verified local notes.</p>}
             </section>
           ) : null}
 
-          {!timelineMode && hits.length > 0 ? (
+          {!timelineMode && !holdCopy && !notice && hits.length > 0 ? (
             <section className="results" aria-label="Search results" aria-live="polite">
               <div className="results-heading">
                 <h2>Notes</h2>
                 <span>{hits.length} {hits.length === 1 ? "result" : "results"}</span>
               </div>
+              {noteDetail}
               <ul>
                 {hits.map((hit) => (
                   <li className="result-card" key={hit.eventId}>
@@ -1790,6 +1857,8 @@ export function App() {
                       <span>{hit.classification}</span>
                     </div>
                     <p>{hit.text}</p>
+                    <button type="button" className="text-button" disabled={detailLoading}
+                      onClick={event => void openEventDetail(hit.eventId, event.currentTarget)}>Open full note</button>
                   </li>
                 ))}
               </ul>

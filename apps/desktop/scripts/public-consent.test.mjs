@@ -56,7 +56,7 @@ try {
     await route.fulfill({ path: asset });
   });
   await page.goto(origin);
-  await page.getByRole("button", { name: "Connection settings", exact: true }).click();
+  await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "AI access" }).click();
   const inspect = page.getByRole("button", { name: "Review AI access" });
   const dialog = page.getByRole("dialog", { name: "Allow one public-note search?" });
   denied(await search());

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import path from "node:path";
+import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
@@ -17,6 +18,15 @@ function installFixture(mac) {
       return;
     }
     if (command === "p0_5_set_capture_session_guard") return;
+    if (command === "p0_4_guarded_search") {
+      const hits = args.query.text === "shell fixture" ? [{ eventId: "fixture-note", text: "Fixture excerpt",
+        classification: "public", createdAt: "2026-01-01T12:00:00Z" }] : [];
+      return { hits, holdReason: null, hasMore: false, nextCursor: null };
+    }
+    if (command === "p0_5_guarded_event_detail") {
+      return { hits: state.hideNote ? [] : [{ eventId: args.eventId, text: "Full fixture note",
+        classification: "public", createdAt: "2026-01-01T12:00:00Z" }], holdReason: null };
+    }
     if (command === "m8_native_profile_status") {
       if (!mac) throw "Command m8_native_profile_status not found";
       if (state.native === "unavailable") throw "channel_unavailable";
@@ -53,12 +63,42 @@ for (const mac of [false, true]) {
       await page.goto(origin);
       await page.getByText("Local service ready", { exact: true }).waitFor();
       const health = page.getByRole("region", { name: "Device health" });
+      const nav = page.getByRole("navigation", { name: "Primary" });
+      await nav.getByRole("link", { name: "AI access" }).click();
+      assert.equal(await page.getByRole("region", { name: "AI access" }).getByRole("button", { name: "Review AI access" }).isVisible(), true);
+      await nav.getByRole("link", { name: "Doctor" }).click();
+      const doctor = page.getByRole("region", { name: "Doctor" });
+      await doctor.getByText("The local service answered the health check.").waitFor();
       await health.getByText("Ready", { exact: true }).waitFor();
       await health.getByText("Unverified", { exact: true }).waitFor();
+      if (process.env.CRYPTEX_M13_RENDER_DIR) {
+        const directory = path.resolve(process.env.CRYPTEX_M13_RENDER_DIR);
+        await mkdir(directory, { recursive: true });
+        await nav.getByRole("link", { name: "Cryptex home" }).click();
+        await page.screenshot({ path: path.join(directory, mac ? "home-light.png" : "home-dark.png") });
+      }
       await health.getByRole("link", { name: "Write a note" }).click();
       assert.equal(await page.evaluate(() => document.activeElement.id), "capture-text");
       await health.getByRole("button", { name: "Search notes" }).click();
       assert.equal(await page.evaluate(() => document.activeElement.id), "memory-search");
+      const query = page.getByRole("textbox", { name: "Search your memory" });
+      await query.fill("empty fixture");
+      await query.press("Enter");
+      await page.getByText("No matching notes for “empty fixture”.").waitFor();
+      await query.fill("shell fixture");
+      await query.press("Enter");
+      const results = page.getByRole("region", { name: "Search results" });
+      const open = results.getByRole("button", { name: "Open full note" });
+      await open.click();
+      const detail = results.getByRole("article", { name: "Note detail" });
+      await detail.getByText("Full fixture note").waitFor();
+      assert.equal(await detail.evaluate(el => el === document.activeElement), true);
+      await detail.getByRole("button", { name: "Close", exact: true }).click();
+      assert.equal(await open.evaluate(el => el === document.activeElement), true);
+      await page.evaluate(() => { window.fixture.hideNote = true; });
+      await open.click();
+      await page.getByText("This note is unavailable. Refresh the search or timeline.").waitFor();
+      assert.equal(await page.getByText("Fixture excerpt").count(), 0);
       await page.getByRole("button", { name: "Connection settings", exact: true }).click();
       const panel = page.locator(".connections-panel");
       const pause = panel.getByLabel("Pause sync");
@@ -95,9 +135,10 @@ for (const mac of [false, true]) {
       await draft.fill("Keep this draft across a service restart");
       await page.evaluate(() => {
         window.fixture.serviceDown = true;
-        window.dispatchEvent(new Event("focus"));
       });
+      await doctor.getByRole("button", { name: "Check local service" }).click();
       await page.getByText("Local service needs attention", { exact: true }).waitFor();
+      await doctor.getByText("The local service did not complete the health check.").waitFor();
       await health.getByText("Needs attention", { exact: true }).waitFor();
       assert.equal(await health.getByText("Ready", { exact: true }).count(), 0);
       assert.equal(await panel.getByText("Connection settings are unavailable until the local service responds.").isVisible(), true);
