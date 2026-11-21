@@ -1,8 +1,8 @@
 # 34 — Current Implementation Handoff
 
-## M13 desktop shell
+## M13 closure
 
-The review candidate covers native window behavior, observed Home health, guarded note detail, product navigation, owner-controlled AI access and Doctor controls for the pilot daemon. Maintenance Mode keeps local capture and search available while suspending AI and managed sync for the current daemon session. Final CI and owner acceptance remain open. [Shell receipts](../evidence/m13/desktop-shell.md) · [M13 contract](milestones/M13_DESKTOP_PRODUCT_UI.md)
+M13 closed on November 21, 2026 for the owner-reviewed disposable-profile candidate `ec1b112`. All seven workflows passed, including Windows and Mac desktop checks and full CI. Maintenance Mode preserves local reading and capture and pauses sync and AI for the daemon session. Doctor controls the desktop-owned pilot daemon. Personal profiles retain their existing restrictions. M14 platform polish is next. [Candidate and receipts](../evidence/m13/desktop-shell.md)
 
 ## M12 closure
 
