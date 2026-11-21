@@ -52,6 +52,7 @@ async function run() {
   }
   assert.deepEqual(await fs.readFile(kit), await fs.readFile(path.join(args.kitDir, "pinned-kit.pgp")));
   await rejectBeforeReview({...args, ...folders("repeat"), kit: path.join(args.kitDir, "approved-kit.pgp"), backup: newer});
+  console.log("offline_kit_same_writer=verified");
   const transfer = {...args, ...folders("new-writer"), newer: peerBackup, selection: peerCheck};
   await rejectBeforeReview({...transfer, newer: unknownBackup, selection: unknownCheck});
   assert.equal(await keepBackup(transfer, () => "APPROVE 1"), false);
@@ -64,6 +65,7 @@ async function run() {
     assert.ok(review.includes("New signing-key SHA-256 " + peerFingerprint));
     return peerFingerprint;
   }), true);
+  console.log("offline_kit_successor_approval=verified");
   const advanced = path.join(transfer.kitDir, "approved-kit.pgp");
   const advancedBackup = path.join(transfer.archiveDir, "approved.pgp");
   for (const label of ["pinned", "approved"]) {

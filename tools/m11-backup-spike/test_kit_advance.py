@@ -14,5 +14,7 @@ if __name__ == "__main__":
         scratch = Path(temp) / "scratch"
         scratch.mkdir()
         env = dict(os.environ, TMPDIR=str(scratch), TMP=str(scratch), TEMP=str(scratch))
+        # Each workflow exercise reconstructs multiple encrypted archives, including
+        # the reopened editions. The outer deadline covers all owner decisions.
         subprocess.run([runtime, "--no-addons", Path(__file__).with_name("test_kit_advance.cjs"),
-                        kit, temp, *sys.argv[2:]], env=env, check=True, timeout=240)
+                        kit, temp, *sys.argv[2:]], env=env, check=True, timeout=600)

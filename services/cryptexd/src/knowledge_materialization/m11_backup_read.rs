@@ -1079,11 +1079,15 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         assert!(matches!(outcome, CaptureOutcome::Committed(_)));
         let independent = work.path().join("later-checkpoints");
         fs::create_dir(&independent).unwrap();
-        let make_backup = |profile: &Path, store: &FakeSecureStore, number, name: &str| {
+        let make_backup = |profile: &Path,
+                           store: &FakeSecureStore,
+                           number,
+                           target: &Path,
+                           name: &str| {
             let prepared =
                 super::super::backup::prepare(profile, store, SecureStoreEnvironment::Dev, number)
                     .unwrap();
-            let ciphertext = volume.join(format!("{name}.pgp"));
+            let ciphertext = target.join(format!("{name}.pgp"));
             let checkpoint = independent.join(format!("{name}.json"));
             fs::write(
                 &checkpoint,
@@ -1100,7 +1104,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
             );
             (ciphertext, checkpoint)
         };
-        let (newer, selected) = make_backup(source, &profiles.store, 2, "daily-2");
+        let (newer, selected) = make_backup(source, &profiles.store, 2, &volume, "daily-2");
         let peer = &profiles.profiles[1];
         // Deliver the former writer's sealed packs and attachment to the enrolled peer.
         // The successor's first generation is signed using only the successor credential.
@@ -1130,7 +1134,10 @@ fn restored_note_and_attachment_pass_guarded_reads() {
                 profiles.keys[1].as_bytes(),
             )
             .unwrap();
-        let (peer_backup, peer_check) = make_backup(peer, &successor_store, 1, "successor-1");
+        let new_target = work.path().join("successor-target");
+        fs::create_dir(&new_target).unwrap();
+        let (peer_backup, peer_check) =
+            make_backup(peer, &successor_store, 1, &new_target, "successor-1");
         let fingerprint = format!(
             "{:x}",
             Sha256::digest(profiles.keys[1].verifying_key().to_bytes())
@@ -1138,7 +1145,8 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         let unrelated = work.path().join("unpaired-profile");
         let isolated = FakeSecureStore::new();
         PairProfiles::enroll(&unrelated, &isolated);
-        let (unknown_backup, unknown_check) = make_backup(&unrelated, &isolated, 1, "unpaired-1");
+        let (unknown_backup, unknown_check) =
+            make_backup(&unrelated, &isolated, 1, &new_target, "unpaired-1");
         let test = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tools/m11-backup-spike/test_kit_advance.py");
         assert!(
