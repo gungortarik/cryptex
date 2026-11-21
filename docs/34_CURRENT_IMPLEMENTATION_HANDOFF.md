@@ -1,6 +1,10 @@
 # 34 — Current Implementation Handoff
 
-## M12 local MCP
+## M13 desktop shell
+
+Begin with the native shell spike on Windows and macOS. Verify menu and tray operations, window lifecycle, light and dark appearance, and system fonts before broad screen work. [M13 contract](milestones/M13_DESKTOP_PRODUCT_UI.md)
+
+## M12 closure
 
 The opt-in installed stdio bridge requests a one-search public-note grant.
 Desktop shows the matching review code, defaults to Deny, and sends the owner's
@@ -10,11 +14,7 @@ workflow exercises approval, denial, and reuse on disposable Windows and Mac pro
 through both the SDK reference client and the installed Codex app-server.
 [Bridge and native tests](../tools/local-mcp/README.md)
 
-The current M12 candidate is `f5a0bc6`. The client review records what each
-installed runtime exercised, the provider-unavailable path and the scope of
-the one-search grant. The owner reviewed this candidate and approved closure
-conditional on the remaining checks. Its two native M12 jobs passed. The
-authenticated Mac Antigravity catalog is still open. [Candidate evidence](../evidence/m12/local-mcp-review.md)
+M12 closed at owner-reviewed candidate `f5a0bc6`. Eleven CI jobs passed. The owner's Mac displayed the three expected tools in the authenticated Antigravity catalog. [Candidate evidence](../evidence/m12/local-mcp-review.md)
 
 ## M11 closure
 
