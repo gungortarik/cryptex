@@ -315,6 +315,60 @@ pub(crate) enum SearchHold {
     InvalidQuery,
 }
 
+// Only a replacement bound to a signed first-device receipt can read the
+// archive before its first local event. Hold both canonical locks through the
+// query. A missing stream, a pack (even empty), or prior capture evidence
+// cannot be interpreted as a new device.
+fn pristine_snapshot(
+    root: &Path,
+    brain: &str,
+    device: &DeviceId,
+    local: &mut LocalDeviceKeyResolver,
+    db: &ProjectionDb,
+    deadline: Option<Instant>,
+) -> Result<VerifiedCanonicalSnapshot, SearchHold> {
+    let directory = canonical_events_device_dir(root, device);
+    if !plain_directory(&directory) || validate_schema_v1_read_only(db.connection()).is_err() {
+        return Err(SearchHold::Replacement);
+    }
+    let snapshot =
+        scan_verified_canonical_until(root, brain, std::slice::from_ref(device), local, deadline)
+            .map_err(|error| match error {
+            KnowledgeMaterializationError::DeadlineExceeded => SearchHold::Deadline,
+            _ => SearchHold::Replacement,
+        })?;
+    if snapshot._locks.len() != 1 || !snapshot.security_history.records().is_empty() {
+        return Err(SearchHold::Replacement);
+    }
+    let mut entries = fs::read_dir(directory).map_err(|_| SearchHold::Replacement)?;
+    let first = entries
+        .next()
+        .transpose()
+        .map_err(|_| SearchHold::Replacement)?;
+    if !first.is_some_and(|entry| {
+        entry.file_name() == "writer.lock" && entry.file_type().is_ok_and(|t| t.is_file())
+    }) || entries.next().is_some()
+    {
+        return Err(SearchHold::Replacement);
+    }
+    match fs::symlink_metadata(crate::capture_receipt::capture_receipts_root(root)) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        _ => return Err(SearchHold::Replacement),
+    }
+    let used: bool = db
+        .connection()
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM events) OR EXISTS(SELECT 1 FROM device_checkpoint)",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| SearchHold::Replacement)?;
+    if used {
+        return Err(SearchHold::Replacement);
+    }
+    Ok(snapshot)
+}
+
 pub(crate) fn search(
     new: &Path,
     ceremony: &Ceremony,
@@ -370,7 +424,25 @@ pub(crate) fn search(
         deadline,
         NoteLifecycleRead::Apply,
     );
-    let new_snapshot = new_guard.snapshot.as_ref().ok_or(SearchHold::Replacement)?;
+    let fresh;
+    let new_snapshot = match new_guard.snapshot.as_ref() {
+        Some(snapshot) => snapshot,
+        None if new_guard.hold == Some(RetrievalSafetyHold::CanonicalVerificationUnavailable) => {
+            fresh = pristine_snapshot(
+                new,
+                &ceremony.expected.brain_id,
+                key.device_id(),
+                local,
+                &new_db,
+                deadline,
+            )?;
+            &fresh
+        }
+        None if new_guard.hold == Some(RetrievalSafetyHold::OperationDeadlineExceeded) => {
+            return Err(SearchHold::Deadline);
+        }
+        None => return Err(SearchHold::Replacement),
+    };
     // The first-device trial admits a single fresh device's note stream. New
     // trust or lifecycle controls require reduction across both histories.
     if !disjoint_histories(old_snapshot, new_snapshot, &ceremony.expected.new_device) {
@@ -427,4 +499,32 @@ pub(super) fn disjoint_histories(
             .records()
             .iter()
             .all(|e| matches!(e, AuthenticatedSecurityRecord::V1(_)) && !ids.contains(e.event_id()))
+}
+
+#[cfg(test)]
+#[test]
+fn only_a_pristine_replacement_stream_can_open_an_archive_without_local_records() {
+    let stage = tempfile::tempdir().unwrap();
+    let root = stage.path();
+    let brain = "99999999-9999-4999-8999-999999999999";
+    let store = crate::secure_store::FakeSecureStore::new();
+    let env = SecureStoreEnvironment::Dev;
+    let raw = cryptex_core::BrainIdentity::new(brain, "2026-10-08T00:00:00Z")
+        .unwrap()
+        .to_json_lf()
+        .unwrap();
+    crate::local_device_identity::join_existing_brain(root, &store, env, &raw, brain).unwrap();
+    let mut local = LocalDeviceKeyResolver::load(root, brain, &store, env).unwrap();
+    let anchor = local.local_trust_anchor().unwrap();
+    let device = anchor.device_id();
+    let (db, _) = crate::projection::open_projection_db(root).unwrap();
+    assert!(pristine_snapshot(root, brain, device, &mut local, &db, None).is_err());
+    drop(crate::canonical_writer::acquire_device_canonical_lock(root, device).unwrap());
+    drop(pristine_snapshot(root, brain, device, &mut local, &db, None).unwrap());
+    let pack = active_segment_path(root, device, 0);
+    fs::write(&pack, []).unwrap();
+    assert!(pristine_snapshot(root, brain, device, &mut local, &db, None).is_err());
+    fs::remove_file(pack).unwrap();
+    fs::create_dir(crate::capture_receipt::capture_receipts_root(root)).unwrap();
+    assert!(pristine_snapshot(root, brain, device, &mut local, &db, None).is_err());
 }

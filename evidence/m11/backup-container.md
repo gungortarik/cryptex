@@ -1,5 +1,15 @@
 # M11 encrypted backup container rehearsal
 
+## Offline change of backup writer
+
+The offline tool first restores the Kit's current selection. It verifies the proposed inventory under the new device's signing key, reconstructs the proposed archive and authenticates its history from the previous writer's trust anchor. The new writer needs a signed peer binding to its exact key and an active device authorization. The proposed history must preserve the previous records and purge decisions. A new target may start its own generation numbering at one.
+
+The owner compares the new device's full signing-key SHA-256 offline and enters it to authorize the change. The tool creates the successor Kit after that confirmation. It reopens the new edition before publishing the protected files. Cancellation preserves the original Kit and archive. The original target's writer-transfer rules still apply. [Offline ceremony](../../tools/m11-backup-spike/offline-kit/recovery-backup.cjs) and [history verification](../../services/cryptexd/src/knowledge_materialization/backup/kit_review.rs)
+
+## Desktop visual review
+
+Chromium rendered the built application with synthetic IPC responses at 960 px in light mode and 720 px in dark mode. The recovery view displayed the complete backup digest, replacement device ID and signing-key fingerprint. The removal dialog displayed the paths and digests for both files, opened with keyboard focus on **Keep backup**, and kept the backup on Escape. Both panels fit horizontally. Native backup operations are exercised separately by the installed application rehearsals. [First-device request](first-device-review-light.png) and [backup removal](backup-removal-dark.png)
+
 ## First-device approval on a single replacement computer
 
 At `e93b36f`, both installed rehearsals started with the replacement directory absent. The daemon prepared the minimum-reader lock and the owner command refused an occupied destination. A damaged archive left the profile without an identity, recovery archive or canonical stream. The separate signing tool required the full new device ID. An empty answer, the old device ID, a trailing space and a generic confirmation all failed before signing. After owner approval and restart, both platforms verified the recovered attachment and the new note. [Windows and macOS application tests](https://github.com/gungortarik/cryptex/actions/runs/44865311269) · [Windows-to-macOS and macOS-to-Windows backup restores](https://github.com/gungortarik/cryptex/actions/runs/44865311249)

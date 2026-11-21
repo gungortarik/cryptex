@@ -96,16 +96,10 @@ pub(crate) fn prepare(
         )
         .map_err(|_| Error::RecoveryHistory)?;
         drop(device_lock);
-        let (mut db, _) = crate::projection::open_projection_db(staging.path())
+        // The replacement has no signed records yet. Its first read authenticates
+        // the archive using the owner's grant and checks the empty local stream.
+        crate::projection::open_projection_db(staging.path())
             .map_err(|_| Error::RecoveryHistory)?;
-        crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
-            staging.path(),
-            expected.brain_id,
-            &local,
-            &mut db,
-        )
-        .map_err(|_| Error::RecoveryHistory)?;
-        drop(db);
         let binding = Binding {
             request: Request {
                 operation: "cryptex.m11.trial.authorize-first-device.v2".into(),
