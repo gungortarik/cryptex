@@ -9,7 +9,6 @@ use cryptex_events::LocalTrustAnchor;
 use sha2::{Digest, Sha256};
 use std::{fs, io, num::NonZeroUsize, path::Path};
 
-#[cfg(test)]
 pub(crate) mod removal;
 
 pub(crate) fn generation_number(name: &str) -> Option<u64> {

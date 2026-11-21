@@ -24,6 +24,11 @@ pub enum Action {
     Verify {
         files: super::backup_verify::Selection,
     },
+    PrepareRemoval {
+        older: PathBuf,
+        older_checkpoint: PathBuf,
+        files: super::backup_verify::Selection,
+    },
     Pause,
 }
 
@@ -37,6 +42,7 @@ pub enum Outcome {
     Paused,
     RetentionSaved,
     Verified,
+    RemovalPrepared,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,7 +63,9 @@ pub enum Error {
 
 pub fn desktop(action: Action) -> Result<Outcome, Error> {
     let uncertain = !matches!(action, Action::Inspect { .. });
-    let timeout = if matches!(action, Action::Verify { .. }) {
+    let timeout = if matches!(action, Action::PrepareRemoval { .. }) {
+        720
+    } else if matches!(action, Action::Verify { .. }) {
         360
     } else {
         90
@@ -108,7 +116,9 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
         Action::Inspect { target }
         | Action::Schedule { target, .. }
         | Action::Retain { target, .. } => target.as_path(),
-        Action::Verify { files } => files.backup.parent().ok_or(Error::UnsafeTarget)?,
+        Action::Verify { files } | Action::PrepareRemoval { files, .. } => {
+            files.backup.parent().ok_or(Error::UnsafeTarget)?
+        }
         Action::Pause => {
             jobs.pause().map_err(|_| Error::Uncertain)?;
             return Ok(Outcome::Paused);
@@ -145,6 +155,24 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
             })
         }
         Action::Pause => unreachable!(),
+        Action::PrepareRemoval {
+            older,
+            older_checkpoint,
+            files,
+        } => {
+            let target = files.backup.parent().ok_or(Error::UnsafeTarget)?;
+            writer
+                .verify_local_writer(&ctx.runtime_root, target)
+                .map_err(map)?;
+            removal_review::prepare(
+                &ctx,
+                &anchor,
+                &config.codec,
+                &older,
+                &older_checkpoint,
+                &files,
+            )
+        }
         Action::Retain { target, keep } => {
             writer
                 .verify_local_writer(&ctx.runtime_root, &target)
@@ -276,6 +304,8 @@ fn recipient(ctx: &SearchContext) -> Result<Vec<u8>, Error> {
         .ok_or(Error::Recipient)
 }
 
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+mod removal_review;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 mod worker;
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]

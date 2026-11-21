@@ -162,11 +162,9 @@ pub(super) fn blob_digests(
 /// A newer verified archive may replace an affected generation only when the
 /// approved bridge replaces that exact original and every unrelated record and
 /// surviving attachment remains recoverable, including forgotten references.
-#[cfg(test)]
 pub(crate) fn preserves_after_purge(
     before: &VerifiedCanonicalSnapshot,
     after: &VerifiedCanonicalSnapshot,
-    note: &str,
 ) -> Result<bool, Error> {
     use AuthenticatedSecurityRecord::{PurgeBridge, V1};
     if before.security_history.expected_brain_id() != after.security_history.expected_brain_id() {
@@ -178,15 +176,16 @@ pub(crate) fn preserves_after_purge(
         .iter()
         .map(|r| (r.event_id(), r))
         .collect();
-    let mut matched = false;
+    let mut purged_note = None;
     for old in before.security_history.records() {
         let Some(&new) = records.get(old.event_id()) else {
             return Ok(false);
         };
-        if old.event_id() == note {
-            matched = matches!((old,new), (V1(original), PurgeBridge(bridge, _, hash, _))
-                if original.device_id == bridge.device_id && &original.content_hash == hash);
-            if !matched {
+        if let (V1(original), PurgeBridge(bridge, _, hash, _)) = (old, new) {
+            if original.device_id != bridge.device_id
+                || &original.content_hash != hash
+                || purged_note.replace(old.event_id()).is_some()
+            {
                 return Ok(false);
             }
         } else if match (old, new) {
@@ -197,6 +196,9 @@ pub(crate) fn preserves_after_purge(
             return Ok(false);
         }
     }
+    let Some(note) = purged_note else {
+        return Ok(false);
+    };
     let (_, trust) = before.verified_trust_context().ok_or(Error::Checkpoint)?;
     let cutoffs = trust
         .effective_cutoffs
@@ -206,13 +208,12 @@ pub(crate) fn preserves_after_purge(
     let old_links = admitted_attachment_links(&before.security_history, &cutoffs, None)
         .map_err(|_| Error::Attachment)?;
     let available = blob_digests(after)?;
-    Ok(matched
-        && old_links
-            .live
-            .iter()
-            .filter(|(id, _)| id.as_str() != note)
-            .flat_map(|(_, links)| links.values())
-            .all(|digest| available.contains(digest)))
+    Ok(old_links
+        .live
+        .iter()
+        .filter(|(id, _)| id.as_str() != note)
+        .flat_map(|(_, links)| links.values())
+        .all(|digest| available.contains(digest)))
 }
 
 pub struct Prepared {

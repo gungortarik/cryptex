@@ -505,6 +505,7 @@ enum WriterCommand {
     Schedule,
     Retain,
     Verify,
+    PrepareRemoval,
     Pause,
 }
 
@@ -519,6 +520,18 @@ async fn m11_backup_writer(
         if mode == WriterCommand::Verify {
             let Some(files) = backup_verification_files("Select the scheduled generation to verify") else {return Ok(Outcome::Cancelled)};
             return backup_writer::desktop(Action::Verify {files});
+        }
+        if mode == WriterCommand::PrepareRemoval {
+            let Some(older) = backup_input_file("Select the older scheduled backup for removal review") else {
+                return Ok(Outcome::Cancelled);
+            };
+            let Some(older_checkpoint) = backup_input_file("Select the older backup's independent checkpoint") else {
+                return Ok(Outcome::Cancelled);
+            };
+            let Some(files) = backup_verification_files("Select the newer scheduled backup to keep") else {
+                return Ok(Outcome::Cancelled);
+            };
+            return backup_writer::desktop(Action::PrepareRemoval { older, older_checkpoint, files });
         }
         let create = mode == WriterCommand::Create;
         #[cfg(feature = "m11-installed-search-check")]

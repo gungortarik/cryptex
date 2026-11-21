@@ -20,16 +20,21 @@ export function BackupRemovalReview() {
     }
   }, [review]);
 
-  async function inspect() {
+  async function inspect(prepare: boolean) {
     setBusy(true);
     setStatus("");
     try {
+      if (prepare) {
+        const result = await invoke<{ kind: string }>("m11_backup_writer", { mode: "prepare_removal", keep: null });
+        if (result.kind === "cancelled") { setStatus("Selection cancelled."); return; }
+        if (result.kind !== "removal_prepared") throw Error();
+      }
       const result = await invoke<Outcome>("m11_backup_removal", { action: { kind: "inspect" } });
       if (result.kind === "review") setReview(result);
       else if (result.kind === "empty") setStatus("No backup is awaiting removal.");
       else throw Error();
     } catch {
-      setStatus("Cryptex could not load the backup review.");
+      setStatus(prepare ? "Cryptex could not verify both scheduled backups for removal. Check the selected files and their checkpoints." : "Cryptex could not load the backup review.");
     } finally { setBusy(false); }
   }
 
@@ -50,7 +55,8 @@ export function BackupRemovalReview() {
   }
 
   return <div>
-    <button type="button" className="quiet-button" disabled={busy} onClick={inspect}>Review backup removal</button>
+    <button type="button" className="quiet-button" disabled={busy} onClick={() => void inspect(true)}>Select backups to compare</button>
+    <button type="button" className="quiet-button" disabled={busy} onClick={() => void inspect(false)}>Review backup removal</button>
     {status && <p role="status" className="capture-help">{status}</p>}
     <dialog ref={dialog} className="capture-confirm-dialog" aria-labelledby="backup-removal-title"
       onCancel={event => { event.preventDefault(); void decide("keep"); }}>

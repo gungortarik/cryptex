@@ -70,6 +70,8 @@ def install_and_run():
         env = dict(os.environ, CRYPTEX_M11_INSTALLED_DESKTOP=str(desktop),
                    CRYPTEX_M11_TEST_INSTALLED_CODEC=str(codec))
         run(str(binary), "--exact", TEST, "--ignored", "--nocapture", env=env, timeout=420)
+        run(str(binary), "--exact", "ipc::purge_review::backup_test::verified_backup_preserves_purge_and_unaffected_notes",
+            "--ignored", "--nocapture", env=env, timeout=180)
         print("m11_installed_codec=passed public_recipient=true restored_with_daemon_signature=true", flush=True)
 
 

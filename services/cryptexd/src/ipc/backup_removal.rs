@@ -51,10 +51,7 @@ pub(super) struct Pending {
     remove: Box<dyn FnOnce() -> io::Result<bool> + Send>,
 }
 
-#[cfg(all(
-    test,
-    any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
-))]
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 impl Pending {
     pub(super) fn from_review(
         ctx: &SearchContext,

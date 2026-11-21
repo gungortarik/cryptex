@@ -18,6 +18,7 @@ pub(crate) struct Review {
 }
 
 pub(crate) enum Decision {
+    #[cfg(test)]
     Cancel,
     Confirm(std::path::PathBuf),
 }
@@ -75,7 +76,6 @@ impl VerifiedBackups<'_> {
         enrolled: &LocalTrustAnchor,
         old: u64,
         new: u64,
-        note: &str,
         mut restore: impl FnMut(u64, &Path) -> io::Result<tempfile::TempDir>,
     ) -> io::Result<Review> {
         self.require_writer(enrolled)?;
@@ -94,13 +94,15 @@ impl VerifiedBackups<'_> {
         let mut reconstruct = |number, receipt: &Receipt| -> io::Result<_> {
             let mut source = checked_generation(&dir, number, receipt.digest)?;
             source.rewind()?;
-            let mut copy = tempfile::NamedTempFile::new()?;
+            let scratch = tempfile::tempdir()?;
+            let mut copy = tempfile::NamedTempFile::new_in(scratch.path())?;
             io::copy(&mut source, &mut copy)?;
             copy.flush()?;
-            if super::super::generation_digest(copy.path())? != receipt.digest {
+            let path = copy.into_temp_path();
+            if super::super::generation_digest(&path)? != receipt.digest {
                 return Err(denied());
             }
-            restore(number, copy.path())
+            restore(number, &path)
         };
         let prior = self.receipt(old)?;
         let next = self.receipt(new)?;
@@ -114,7 +116,7 @@ impl VerifiedBackups<'_> {
         if prior.purges != first_purges
             || current_purges != next_purges
             || next.purges != next_purges
-            || !preserves_after_purge(&a, &b, note).map_err(|_| denied())?
+            || !preserves_after_purge(&a, &b).map_err(|_| denied())?
         {
             return Err(denied());
         }
@@ -139,6 +141,7 @@ impl VerifiedBackups<'_> {
         decision: Decision,
     ) -> io::Result<bool> {
         match decision {
+            #[cfg(test)]
             Decision::Cancel => return Ok(false),
             Decision::Confirm(selected)
                 if self.target == review.target && selected == review.selected_file() => {}

@@ -219,7 +219,7 @@ fn verified_backup_preserves_purge_and_unaffected_notes() {
         .set_retention(&writer, std::num::NonZeroUsize::new(1))
         .unwrap();
     assert_eq!(catalog.prune(&writer).unwrap(), 0);
-    let review = || catalog.review_removal(&writer, 1, 2, &target.event_id, restore);
+    let review = || catalog.review_removal(&writer, 1, 2, restore);
     fs::rename(&kit, work.path().join("offline-kit")).unwrap();
     assert!(review().is_err());
     assert_eq!(fs::read(&first).unwrap(), encrypted_old);
@@ -248,12 +248,70 @@ fn verified_backup_preserves_purge_and_unaffected_notes() {
     );
     assert_eq!(fs::read(&first).unwrap(), encrypted_old);
     fs::write(&second, &encrypted_new).unwrap();
-    let pending =
-        || backup_removal::Pending::from_review(ctx, writer.clone(), review().unwrap()).unwrap();
-    *ctx.backup_removal.lock().unwrap() = Some(pending());
+    if let Some(installed_codec) = std::env::var_os("CRYPTEX_M11_TEST_INSTALLED_CODEC") {
+        use ed25519_dalek::pkcs8::EncodePrivateKey;
+        let sealed = work.path().join("sealed-kit.pgp");
+        let unlock = work.path().join("unlock");
+        let trusted = work.path().join("checkpoints");
+        fs::create_dir(&trusted).unwrap();
+        let older_checkpoint = trusted.join("older.json");
+        let newer_checkpoint = trusted.join("newer.json");
+        for (file, selection) in [
+            (&older_checkpoint, &old.selection),
+            (&newer_checkpoint, &prepared.selection),
+        ] {
+            fs::write(file, serde_json::to_vec(selection).unwrap()).unwrap();
+        }
+        fs::write(
+            kit.join("brain-identity.sha256"),
+            checkpoint.brain_identity_sha256,
+        )
+        .unwrap();
+        fs::copy(&public, kit.join("writer.pub")).unwrap();
+        let signing = ed25519_dalek::SigningKey::from_bytes(&[43; 32]);
+        fs::write(
+            kit.join("bootstrap.pk8"),
+            signing.to_pkcs8_der().unwrap().as_bytes(),
+        )
+        .unwrap();
+        fs::write(&unlock, "ac".repeat(32)).unwrap();
+        codec("seal-kit", &[&kit, &unlock, &sealed]).unwrap();
+        ctx.backup_export = Some(Arc::new(backup_export::Config {
+            codec: installed_codec.into(),
+            busy: Mutex::default(),
+        }));
+        let prepare = |check: &Path| {
+            let frame = serde_json::json!({
+                "protocol_version": PROTOCOL_VERSION, "request_id": new_bootstrap_event_id().unwrap(),
+                "client_role": "desktop", "capabilities": ["backup.writer.owner"],
+                "operation": backup_writer::OPERATION, "action": {
+                    "kind":"prepare_removal", "older":first, "older_checkpoint":check,
+                    "files":{"backup":second, "checkpoint":newer_checkpoint, "kit":sealed, "unlock":unlock}
+                }
+            });
+            backup_writer::handle(&serde_json::to_vec(&frame).unwrap(), Some(ctx), true).result
+        };
+        assert_eq!(
+            prepare(&newer_checkpoint),
+            Err(backup_writer::Error::Verification)
+        );
+        assert!(ctx.backup_removal.lock().unwrap().is_none());
+        assert_eq!(
+            prepare(&older_checkpoint),
+            Ok(backup_writer::Outcome::RemovalPrepared)
+        );
+        assert_eq!(fs::read(&first).unwrap(), encrypted_old);
+        assert_eq!(fs::read(&second).unwrap(), encrypted_new);
+    } else {
+        *ctx.backup_removal.lock().unwrap() = Some(
+            backup_removal::Pending::from_review(ctx, writer.clone(), review().unwrap()).unwrap(),
+        );
+    }
     if browser_server {
         use std::io::{BufRead, Write};
-        let mut after_cancel = Some(pending());
+        let mut after_cancel = Some(
+            backup_removal::Pending::from_review(ctx, writer.clone(), review().unwrap()).unwrap(),
+        );
         let token = std::env::var("CRYPTEX_FILE_FIXTURE_SOCKET").unwrap();
         let listener = ListenerOptions::new()
             .name(rehearsal_socket(&token).unwrap())
