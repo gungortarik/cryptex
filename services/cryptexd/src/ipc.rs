@@ -6125,6 +6125,9 @@ mod attachment_flow;
 ))]
 pub mod recovered_desktop;
 
+#[cfg(all(test, any(windows, target_os = "macos")))]
+mod m12_health_tests;
+
 #[cfg(test)]
 pub(crate) mod tests {
     mod approval_domain_tests;

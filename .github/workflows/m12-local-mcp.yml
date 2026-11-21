@@ -1,0 +1,40 @@
+name: M12 local MCP
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/local-mcp/**'
+      - 'services/cryptexd/src/ipc.rs'
+      - 'services/cryptexd/src/ipc/m12_health_tests.rs'
+      - '.github/workflows/m12-local-mcp.yml'
+  pull_request:
+    paths:
+      - 'tools/local-mcp/**'
+      - 'services/cryptexd/src/ipc.rs'
+      - 'services/cryptexd/src/ipc/m12_health_tests.rs'
+      - '.github/workflows/m12-local-mcp.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: npm ci --prefix tools/local-mcp --ignore-scripts
+      - run: cargo fmt --all -- --check
+      - name: Exercise stdio and the native daemon dispatcher in a disposable profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p cryptexd --lib ipc::m12_health_tests::native_stdio_bridge -- --exact --ignored --nocapture | tee "$RUNNER_TEMP/m12-stdio.txt"
+          grep -F '1 passed; 0 failed' "$RUNNER_TEMP/m12-stdio.txt"

@@ -1,8 +1,15 @@
 # 34 — Current Implementation Handoff
 
+## M12 local MCP
+
+The owner authorized M12 after M11 closed. The first slice exposes a local
+stdio health tool with only the daemon's `mcp` role and `status.read`
+capability. Native CI exercises the bridge with disposable profiles. The next
+step is a daemon-authorized, classification-filtered read. [Bridge and test scope](../tools/local-mcp/README.md)
+
 ## M11 closure
 
-M11 closed for disposable Windows and macOS profiles on November 21, 2026 at owner-reviewed candidate `8a80275`. All nine required jobs passed, including both installed applications and bidirectional restore. Personal-profile backup and recovery writes remain disabled. M12 awaits a separate owner decision. [Closure review and CI receipts](../evidence/m11/backup-closeout-review.md)
+M11 closed for disposable Windows and macOS profiles on November 21, 2026 at owner-reviewed candidate `8a80275`. All nine required jobs passed, including both installed applications and bidirectional restore. Personal-profile backup and recovery writes remain disabled. [Closure review and CI receipts](../evidence/m11/backup-closeout-review.md)
 
 ## M11 encrypted backup rehearsal history
 
