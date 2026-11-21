@@ -26,6 +26,58 @@ fn webview_matches(window: &WebviewWindow, expression: &str) -> Result<bool> {
     Ok(rx.recv_timeout(Duration::from_secs(5))? == "true")
 }
 
+fn check_engine(app: &AppHandle, window: &WebviewWindow) -> Result<()> {
+    let state = app.state::<super::ProbeState>();
+    let runtime = super::pilot_runtime::root().ok_or("missing temporary engine profile")?;
+    let original = super::check_local_service()?.daemon_pid;
+    if state
+        .child
+        .lock()
+        .map_err(|_| "engine lock")?
+        .as_ref()
+        .map(|child| child.id())
+        != Some(original)
+    {
+        return Err("health check did not identify the owned pilot engine".into());
+    }
+    let click = |label: &str| -> Result<bool> {
+        let expression = format!(
+            "(() => {{ const b = Array.from(document.querySelectorAll('.engine-controls button')).find(b => b.textContent === '{label}' && !b.disabled && b.offsetWidth); if (!b) return false; b.click(); return true; }})()"
+        );
+        webview_matches(window, &expression)
+    };
+    until("restart control", || click("Restart engine"))?;
+    until("replacement engine health", || {
+        Ok(super::check_local_service().is_ok_and(|r| r.daemon_pid != original))
+    })?;
+    if !webview_matches(
+        window,
+        "(() => { document.querySelector('.engine-controls summary').click(); return true; })()",
+    )? {
+        return Err("advanced controls unavailable".into());
+    }
+    until("stop review", || click("Stop engine…"))?;
+    until("cancel focused", || {
+        webview_matches(window, "document.activeElement?.textContent === 'Cancel'")
+    })?;
+    if !click("Cancel")? || super::check_local_service().is_err() {
+        return Err("cancel interrupted engine service".into());
+    }
+    until("reopen stop review", || click("Stop engine…"))?;
+    until("confirm stop", || click("Stop engine"))?;
+    until("observed engine stop", || {
+        Ok(webview_matches(
+            window,
+            "document.querySelector('.engine-controls [role=status]')?.textContent.includes('Local engine stopped.') === true",
+        )? && super::current_daemon_pid(&runtime, &state)?.is_none())
+    })?;
+    super::restart_exited_daemon(&state, &runtime)?;
+    if super::current_daemon_pid(&runtime, &state)?.is_some() {
+        return Err("supervisor restarted an intentionally stopped engine".into());
+    }
+    Ok(())
+}
+
 fn check(app: &AppHandle) -> Result<()> {
     let window = app
         .get_webview_window("main")
@@ -87,7 +139,7 @@ fn check(app: &AppHandle) -> Result<()> {
     })?;
     if !webview_matches(
         &window,
-        "(() => { const input = document.querySelector('#memory-search'); if (!input) return false; input.value = 'shell-reopen'; return true; })()",
+        "(() => { const input = document.querySelector('#memory-search'); if (!input) return false; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'shell-reopen'); input.dispatchEvent(new Event('input', { bubbles: true })); return true; })()",
     )? {
         return Err("search field unavailable before close".into());
     }
@@ -101,6 +153,7 @@ fn check(app: &AppHandle) -> Result<()> {
                 "document.querySelector('#memory-search')?.value === 'shell-reopen'",
             )?)
     })?;
+    check_engine(app, &window)?;
     Ok(())
 }
 
@@ -109,6 +162,9 @@ pub(super) fn start(app: AppHandle) {
         let result = check(&app);
         if let Err(error) = result {
             eprintln!("M13 shell check failed: {error}");
+            if let Err(error) = super::stop_supervised_daemon(&app.state::<super::ProbeState>()) {
+                eprintln!("M13 pilot engine cleanup failed: {error}");
+            }
             app.exit(1);
         } else {
             println!("M13 native shell verified");

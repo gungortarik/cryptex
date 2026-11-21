@@ -148,6 +148,23 @@ for (const mac of [false, true]) {
       });
       await page.getByText("Local service ready", { exact: true }).waitFor();
       assert.equal(await draft.inputValue(), "Keep this draft across a service restart");
+      await page.setViewportSize({ width: 390, height: 700 });
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "narrow desktop layout");
+      for (const field of [draft, page.getByLabel("Classification", { exact: true }), page.getByRole("button", { name: "Search", exact: true })]) {
+        const contrast = await field.evaluate(element => {
+          const style = getComputedStyle(element);
+          function luminance(color) {
+            const [r, g, b] = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(channel => {
+              const value = channel / 255;
+              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          }
+          const text = luminance(style.color), background = luminance(style.backgroundColor);
+          return (Math.max(text, background) + 0.05) / (Math.min(text, background) + 0.05);
+        });
+        assert.ok(contrast >= 4.5, `text contrast ${contrast}`);
+      }
     } finally {
       await browser.close();
     }

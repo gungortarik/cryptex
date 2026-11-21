@@ -2,6 +2,7 @@ import { ManualBackup } from "./ManualBackup";
 import { BackupWriter } from "./BackupWriter";
 import { BackupRemovalReview } from "./BackupRemovalReview";
 import { PublicReadReview } from "./PublicReadReview";
+import { EngineControls } from "./EngineControls";
 import { PurgeReview } from "./PurgeReview";
 import { NoteLifecycle } from "./NoteLifecycle";
 import { NoteAttachment } from "./NoteAttachment";
@@ -1253,6 +1254,7 @@ export function App() {
             <button type="button" className="capture-secondary" disabled={checkingService} onClick={() => refreshService.current()}>
               {checkingService ? "Checking service…" : "Check local service"}
             </button>
+            <EngineControls onChange={() => refreshService.current()} />
           </section>
 
           <section className="vault-panel" aria-labelledby="vault-heading">

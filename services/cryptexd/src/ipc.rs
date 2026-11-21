@@ -2065,7 +2065,7 @@ thread_local! {
 }
 
 #[cfg(any(
-    feature = "m11-installed-search-check",
+    feature = "disposable-ipc",
     all(
         test,
         any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))
@@ -2087,8 +2087,8 @@ fn rehearsal_socket(token: &str) -> io::Result<interprocess::local_socket::Name<
 }
 
 fn socket_name() -> io::Result<interprocess::local_socket::Name<'static>> {
-    #[cfg(feature = "m11-installed-search-check")]
-    if cfg!(feature = "m11-installed-search-check") {
+    #[cfg(feature = "disposable-ipc")]
+    if cfg!(feature = "disposable-ipc") {
         let token = std::env::var("CRYPTEX_FILE_FIXTURE_SOCKET")
             .map_err(|_| invalid_data("missing rehearsal socket ID"))?;
         return rehearsal_socket(&token);

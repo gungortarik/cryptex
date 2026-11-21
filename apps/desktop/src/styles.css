@@ -62,6 +62,9 @@ button { color: inherit; }
 .health-overview dl > div { display: grid; grid-template-columns: minmax(90px, 30%) 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .health-overview dt { color: var(--muted); }
 .health-overview dd { margin: 0; }
+.vault-panel > .engine-controls { flex-basis: 100%; border-top: 1px solid var(--line); padding-top: 12px; }
+.engine-controls details { margin-top: 10px; }
+.engine-controls summary { cursor: pointer; }
 .health-overview nav { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .health-overview nav > * { background: transparent; color: var(--accent); padding: 5px 0; border: 0; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .eyebrow, .panel-kicker { margin: 0 0 14px; color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: .15em; text-transform: uppercase; }

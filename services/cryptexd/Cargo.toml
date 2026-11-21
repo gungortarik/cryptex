@@ -8,7 +8,8 @@ default-run = "cryptexd"
 
 [features]
 m11-offline-verifier = []
-m11-installed-search-check = []
+disposable-ipc = []
+m11-installed-search-check = ["disposable-ipc"]
 m8-start-inspection = []
 # Isolated, headless real-binary startup experiment. Never enables owner routes.
 m8-local-startup-check = []

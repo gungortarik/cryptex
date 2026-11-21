@@ -64,6 +64,7 @@ struct ProbeState {
     restart_attempts: Arc<Mutex<u8>>,
     restart_not_before: Arc<Mutex<Instant>>,
     pending_exit_code: Arc<Mutex<Option<i32>>>,
+    engine_stopped_by_owner: Arc<Mutex<bool>>,
     supervised_pid: Arc<Mutex<Option<u32>>>,
     /// Session-only capture draft / unresolved submission guard for user-initiated Quit.
     capture_session_dirty: Arc<AtomicBool>,
@@ -214,6 +215,10 @@ fn resolve_cryptexd_binary(
 
 #[tauri::command]
 fn p0_2_start_daemon(state: State<'_, ProbeState>, cryptexd: String) -> Result<u32, String> {
+    start_supervised_sidecar(state.inner(), cryptexd)
+}
+
+fn start_supervised_sidecar(state: &ProbeState, cryptexd: String) -> Result<u32, String> {
     let expected = resolve_cryptexd_binary(
         daemon_override(),
         &std::env::current_exe().map_err(|error| error.to_string())?,
@@ -2148,6 +2153,94 @@ fn p0_2_stop_daemon(state: State<'_, ProbeState>) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum EngineAction {
+    Inspect,
+    Restart,
+    Stop,
+}
+
+#[derive(serde::Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum EngineState {
+    Running,
+    Stopped,
+    Unavailable,
+}
+
+fn control_pilot_engine(
+    state: &ProbeState,
+    action: EngineAction,
+) -> Result<EngineState, &'static str> {
+    if !cfg!(feature = "m13-shell-check") {
+        return Ok(EngineState::Unavailable);
+    }
+    let Some(root) = pilot_runtime::root() else {
+        return Ok(EngineState::Unavailable);
+    };
+    let mut stopped = if matches!(action, EngineAction::Inspect) {
+        state
+            .engine_stopped_by_owner
+            .lock()
+            .map_err(|_| "unavailable")?
+    } else {
+        state
+            .engine_stopped_by_owner
+            .try_lock()
+            .map_err(|_| "busy")?
+    };
+    if state
+        .runtime_root
+        .lock()
+        .map_err(|_| "unavailable")?
+        .as_deref()
+        != Some(root.as_path())
+    {
+        return Ok(EngineState::Unavailable);
+    }
+    // A daemon attached by PID is outside this control. Require our child handle.
+    let owned = {
+        let mut child = state.child.lock().map_err(|_| "unavailable")?;
+        match child.as_mut() {
+            Some(process) => process.try_wait().map_err(|_| "unavailable")?.is_none(),
+            None => false,
+        }
+    };
+    if !owned && !*stopped {
+        return Ok(EngineState::Unavailable);
+    }
+    if matches!(action, EngineAction::Inspect) {
+        return Ok(if owned {
+            EngineState::Running
+        } else {
+            EngineState::Stopped
+        });
+    }
+    if owned {
+        stop_supervised_daemon(state).map_err(|_| "stop_unconfirmed")?;
+        *stopped = true;
+    }
+    if matches!(action, EngineAction::Stop) {
+        return Ok(EngineState::Stopped);
+    }
+    let path = p0_2_default_cryptexd().map_err(|_| "sidecar_unavailable")?;
+    start_supervised_sidecar(state, path).map_err(|_| "start_unconfirmed")?;
+    *stopped = false;
+    Ok(EngineState::Running)
+}
+
+#[tauri::command]
+async fn m13_engine_control(
+    state: State<'_, ProbeState>,
+    action: EngineAction,
+) -> Result<EngineState, &'static str> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || control_pilot_engine(&state, action))
+        .await
+        .map_err(|_| "unavailable")?
+}
+
 #[tauri::command]
 fn p0_2_show_main_window(app: AppHandle, state: State<'_, ProbeState>) -> Result<(), String> {
     show_main_window(&app, "p0_2_show_main_window", &state)
@@ -2529,6 +2622,13 @@ fn daemon_hold_command(cryptexd: &str, runtime: &Path) -> Result<std::process::C
 }
 
 fn restart_exited_daemon(state: &ProbeState, runtime: &Path) -> Result<(), String> {
+    let stopped = state
+        .engine_stopped_by_owner
+        .lock()
+        .map_err(|e| e.to_string())?;
+    if *stopped {
+        return Ok(());
+    }
     let newly_exited = {
         let mut child = state.child.lock().map_err(|e| e.to_string())?;
         match child.as_mut() {
@@ -2882,8 +2982,19 @@ fn main() {
         std::process::exit(2);
     }
     #[cfg(feature = "m13-shell-check")]
-    if pilot_runtime::root().is_none() {
-        eprintln!("The shell rehearsal requires a disposable pilot runtime.");
+    if !pilot_runtime::root().is_some_and(|root| {
+        let Ok(temp) = std::env::temp_dir().canonicalize() else {
+            return false;
+        };
+        root.canonicalize().ok().as_deref().and_then(Path::parent) == Some(temp.as_path())
+            && fs::read_dir(root).is_ok_and(|mut entries| {
+                entries
+                    .next()
+                    .is_some_and(|e| e.is_ok_and(|e| e.file_name() == "pilot-runtime.marker"))
+                    && entries.next().is_none()
+            })
+    }) {
+        eprintln!("The shell rehearsal requires a fresh temporary pilot runtime.");
         std::process::exit(2);
     }
     if let Err(error) = frontend_build_mode::ensure_current() {
@@ -2903,6 +3014,7 @@ fn main() {
         restart_attempts: Arc::new(Mutex::new(0)),
         restart_not_before: Arc::new(Mutex::new(Instant::now())),
         pending_exit_code: Arc::new(Mutex::new(None)),
+        engine_stopped_by_owner: Arc::new(Mutex::new(false)),
         supervised_pid: Arc::new(Mutex::new(None)),
         capture_session_dirty: Arc::new(AtomicBool::new(false)),
         capture_guard_sync_ok: Arc::new(AtomicBool::new(false)),
@@ -2973,6 +3085,7 @@ fn main() {
             p0_2_start_daemon,
             p0_2_daemon_status,
             p0_3_ipc_health,
+            m13_engine_control,
             m8_new_bootstrap_transaction_id,
             m8_read_bootstrap_brain_identity,
             m8_read_transport_device_id,
@@ -3023,6 +3136,8 @@ fn main() {
         })
         .setup(move |app| {
             build_tray(app.handle())?;
+            #[cfg(all(debug_assertions, feature = "m13-shell-check"))]
+            start_supervised_sidecar(&probe_state, p0_2_default_cryptexd()?)?;
             #[cfg(not(debug_assertions))]
             if let Err(error) = start_daemon_for_desktop_launch(&probe_state)
                 && let Ok(root) = runtime_root_path()

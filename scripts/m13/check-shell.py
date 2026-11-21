@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import uuid
 
 
 def main():
@@ -15,10 +16,11 @@ def main():
         result = subprocess.run(
             [binary, "--cryptex-pilot-runtime", runtime], cwd=runtime, timeout=120,
             capture_output=True, text=True, errors="replace",
+            env={**os.environ, "CRYPTEX_FILE_FIXTURE_SOCKET": str(uuid.uuid4())},
         )
         if result.returncode or "M13 native shell verified" not in result.stdout.splitlines():
             raise RuntimeError(f"Shell rehearsal exited {result.returncode}. {result.stderr[-2000:]}")
-        print("Verified title bar, menus and tray presence, system font policy, both themes, close and reopen.")
+        print("Verified the native shell, keyboard navigation, engine restart, stop review and confirmed stop.")
 
 
 if __name__ == "__main__":
