@@ -49,11 +49,13 @@ async function restore() {
     return out;
   }
   const length = (await read(4)).readUInt32BE();
-  if (length <= 96 || length > 96 + 2 * kitLimit) throw new Error("Invalid Kit input");
+  if (length <= 104 || length > 104 + 2 * kitLimit) throw new Error("Invalid Kit input");
   const header = await read(length);
   const password = header.toString("latin1", 32, 96);
   if (!/^[0-9a-f]{64}$/.test(password)) throw new Error("Invalid unlock file");
-  const kit = await pgp.decrypt({message: await authenticatedMessage(header.subarray(96)),
+  const limit = Number(header.readBigUInt64BE(96));
+  if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error("Invalid backup length");
+  const kit = await pgp.decrypt({message: await authenticatedMessage(header.subarray(104)),
     passwords: [password], format: "binary", config: {maxDecompressedMessageSize: kitLimit}});
   const members = unpackKit(kit.data);
   if (!header.subarray(0, 32).equals(members["brain-identity.sha256"])) throw new Error("Wrong Brain");
@@ -67,7 +69,6 @@ async function restore() {
     yield* input;
   }
   const message = await authenticatedMessage(Readable.toWeb(Readable.from(ciphertext(), {objectMode: false})));
-  const limit = 4 * 1024 ** 3;
   const opened = await pgp.decrypt({message, decryptionKeys: key, format: "binary",
     config: {maxDecompressedMessageSize: limit}});
   let bytes = 0;

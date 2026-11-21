@@ -44,7 +44,7 @@ async function encrypt() {
   const stream = Readable.toWeb(Readable.from(archive(), {objectMode: false}));
   const message = await pgp.createMessage({binary: stream});
   const encrypted = await pgp.encrypt({message, encryptionKeys: key, format: "binary",
-    config: {v6Keys: true, aeadProtect: true}});
+    config: {v6Keys: true, aeadProtect: true, preferredCompressionAlgorithm: pgp.enums.compression.uncompressed}});
   await pipeline(Readable.fromWeb(encrypted), process.stdout);
 }
 

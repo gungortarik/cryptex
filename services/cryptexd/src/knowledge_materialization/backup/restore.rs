@@ -39,6 +39,7 @@ pub(crate) fn verify_manual(
         serde_json::from_slice(&read_selected(checkpoint, 8192)?).map_err(|_| Error::Checkpoint)?;
     let writer = selected.writer()?;
     let expected = selected.checkpoint(&writer)?;
+    let (file, before) = open_recovery_source(backup).map_err(|_| Error::Archive)?;
     let mut header = expected.brain_identity_sha256.to_vec();
     let credential = read_selected(unlock, 128)?;
     let password = credential.trim_ascii();
@@ -50,8 +51,10 @@ pub(crate) fn verify_manual(
         return Err(Error::Credentials);
     }
     header.extend_from_slice(password);
+    // Manual exports use a stored ZIP and uncompressed OpenPGP payload. Its
+    // plaintext cannot exceed this particular ciphertext's measured length.
+    header.extend_from_slice(&before.length.to_be_bytes());
     header.extend(read_selected(kit, 256 * 1024)?);
-    let (file, before) = open_recovery_source(backup).map_err(|_| Error::Archive)?;
     let plain = codec::decrypt_manual(
         codec,
         &header,

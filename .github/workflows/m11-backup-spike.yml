@@ -120,6 +120,8 @@ jobs:
         run: python -B tools/m11-backup-spike/test_restore_publication.py
       - name: Verify the offline Recovery Kit recipient before enrollment
         run: python -B tools/m11-backup-spike/test_public_recipient.py
+      - name: Check authenticated manual decryption and its per-file size bound
+        run: python -B tools/m11-backup-spike/test_restore_codec.py
       - name: Reject unsigned legacy backups and ambiguous envelopes
         run: python -B tools/m11-backup-spike/test_inventory_envelope.py
       - name: Verify recovered notes and attachments through guarded daemon reads
