@@ -37,7 +37,7 @@ const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const origin = "http://127.0.0.1:1420";
 const browser = await chromium.launch({ channel: "chrome" });
 try {
-  const page = await browser.newPage();
+  const page = await browser.newPage({ viewport: { width: 860, height: 680 } });
   await page.exposeFunction("nativeInvoke", async (command, args) => {
     if (command === "p0_3_ipc_health") return {};
     if (command !== "m12_public_read_review") throw Error("Unsupported fixture command");
@@ -66,6 +66,11 @@ try {
     const ticket = result.content[0].text.split(" ").at(-1);
     await inspect.click();
     await dialog.getByText(ticket, { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), "Deny");
+    assert.ok(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth));
+    await page.keyboard.press("Tab");
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), "Allow one search");
+    await page.keyboard.press("Shift+Tab");
     assert.equal(await page.evaluate(() => document.activeElement.textContent), "Deny");
     const waiting = search();
     if (outcome === "Escape") await page.keyboard.press("Escape");

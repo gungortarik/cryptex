@@ -9,6 +9,8 @@ import sys
 import tempfile
 import threading
 import time
+import platform
+import uuid
 
 TOOLS = ["cryptex_health", "cryptex_request_public_read", "cryptex_search_public_notes"]
 
@@ -94,5 +96,18 @@ def probe(exe, entry, *, interactive=False):
 if __name__ == "__main__":
     state = probe(sys.argv[1], Path(sys.argv[2]), interactive="--interactive" in sys.argv[3:])
     print("antigravity_acp=" + state)
+    if "--expect-signed-out" in sys.argv[3:]:
+        # This is the explicit unavailable-provider check. The live check
+        # below is separate and still requires a real catalog on each OS.
+        sys.exit(0 if state == "authentication_required" else 1)
     if state != "discovered":
         sys.exit(1)
+    if "--receipt-dir" in sys.argv[3:]:
+        destination = Path(sys.argv[sys.argv.index("--receipt-dir") + 1])
+        run_id = uuid.uuid4().hex[:12]
+        receipt = destination / f"M12-ANTIGRAVITY-{platform.system()}-{run_id}.json"
+        version = subprocess.check_output([sys.argv[1], "--version"], text=True, timeout=10).strip()
+        receipt.write_text(json.dumps({"schema_version": 1, "platform": platform.system(),
+            "client": "Antigravity", "version": version, "bridge": "cryptex-local",
+            "outcome": state, "tools": TOOLS, "tool_calls_forwarded": 0}, indent=2) + "\n", encoding="utf-8")
+        print("Sonuc dosyasi:", receipt, flush=True)

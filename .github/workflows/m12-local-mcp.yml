@@ -87,8 +87,16 @@ jobs:
           python tools/local-mcp/test/vendor-clients.py $tools $config $claude
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $agy = if ($IsWindows) { 'agy.exe' } else { 'agy' }
-          python tools/local-mcp/test/antigravity-acp.py (Join-Path $tools $agy) $env:M12_INSTALLED_STDIO
+          python tools/local-mcp/test/antigravity-acp.py (Join-Path $tools $agy) $env:M12_INSTALLED_STDIO --expect-signed-out
           exit $LASTEXITCODE
+      - name: Rehearse the one-click Mac handoff in a fresh account
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/local-mcp/test/package-mac-check.py "$RUNNER_TEMP/m12-mac.zip"
+          unzip -q "$RUNNER_TEMP/m12-mac.zip" -d "$RUNNER_TEMP/m12-kit"
+          "$RUNNER_TEMP/m12-kit/Cryptex-M12-Antigravity/KONTROL.command" --expect-signed-out
       - run: cargo fmt --all -- --check
       - name: Exercise stdio and the native daemon dispatcher in a disposable profile
         shell: bash

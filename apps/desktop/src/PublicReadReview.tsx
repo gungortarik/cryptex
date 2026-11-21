@@ -31,10 +31,10 @@ export function PublicReadReview() {
   }
   return <div>
     <button type="button" className="quiet-button" disabled={busy} onClick={() => void act("inspect")}>Review AI access</button>
-    <dialog ref={dialog} className="capture-confirm-dialog" aria-labelledby="public-read-title"
+    <dialog ref={dialog} className="capture-confirm-dialog" aria-labelledby="public-read-title" aria-describedby="public-read-scope"
       onCancel={event => { event.preventDefault(); void act("deny"); }}>
       <h3 id="public-read-title">Allow one public-note search?</h3>
-      <p>Compare this code with the one in your MCP client. Approval lets that connection read up to ten public note excerpts for one search.</p>
+      <p id="public-read-scope">Compare this code with the one in your MCP client. Approval lets that connection read up to ten public note excerpts for one search.</p>
       <p><code>{request?.ticket}</code></p>
       <p>Local bridge process {request?.peer_pid}</p>
       <button ref={deny} type="button" disabled={busy} onClick={() => void act("deny")}>Deny</button>
