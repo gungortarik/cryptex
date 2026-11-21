@@ -77,7 +77,7 @@ def verify(real_login):
               "launches": len(attempts), "startup_entry_removed": True,
               "distinct_login_session": ready != armed, "observation_seconds": 60}
     (STATE / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(json.dumps(result), flush=True)
+    return result
 
 
 def disarm_owned(binary):
@@ -107,11 +107,18 @@ def main():
     if not args.ci and STATE.exists():
         if (STATE / "executable").read_text(encoding="utf-8") != str(binary):
             raise RuntimeError("Use the original test folder")
+        armed = (STATE / "armed-session").read_text().strip()
+        current = subprocess.check_output([binary, "--m14-session"], text=True, timeout=15).strip()
+        if current == armed:
+            print("Test hazir. Gecici kullanicidan cikis yapip tekrar girin, sonra KONTROL dosyasini acin.")
+            return
         try:
-            verify(real_login=True)
+            result = verify(real_login=True)
         finally:
             disarm_owned(binary)
-        print(f"Sonuc: {STATE / 'result.json'}")
+        report = Path(__file__).with_name(f"M14-OTURUM-SONUC-{sys.platform}.json")
+        report.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        print(f"Sonuc: {report}")
         return
     if STATE.exists() or registration() is not None:
         raise RuntimeError("Use a fresh temporary OS account")
@@ -126,7 +133,7 @@ def main():
             domain = f"gui/{os.getuid()}"
             subprocess.run(["/bin/launchctl", "bootstrap", domain, str(PLIST)], check=True)
         try:
-            verify(real_login=False)
+            print(json.dumps(verify(real_login=False)), flush=True)
         finally:
             if not WINDOWS:
                 subprocess.run(["/bin/launchctl", "bootout", f"{domain}/Cryptex"], check=True)

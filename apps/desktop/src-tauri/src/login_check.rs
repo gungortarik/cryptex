@@ -67,6 +67,10 @@ fn session() -> Result<String> {
 pub(super) fn record_attempt() -> Result<()> {
     let root = root()?;
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args == ["--m14-session"] {
+        println!("{}", session()?);
+        std::process::exit(0);
+    }
     if args == ["--cryptex-background"] {
         // Count attempts before the single-instance plugin can absorb a duplicate.
         let mut record = tempfile::Builder::new()
