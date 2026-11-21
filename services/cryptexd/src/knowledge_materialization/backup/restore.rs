@@ -32,14 +32,7 @@ pub(crate) fn verify_manual(
     kit: &Path,
     unlock: &Path,
 ) -> Result<usize, Error> {
-    let mut private = tempfile::Builder::new();
-    private.prefix("cryptex-backup-verify-");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        private.permissions(std::fs::Permissions::from_mode(0o700));
-    }
-    let scratch = private.tempdir().map_err(|_| Error::Archive)?;
+    let scratch = private_scratch(None)?;
     let profiles = reconstruct_files(codec, backup, checkpoint, kit, unlock, scratch.path())?;
     let verified = profiles.len();
     for profile in profiles {
@@ -164,7 +157,7 @@ pub(crate) fn inspect_first_archive(
     Ok(result)
 }
 
-pub(super) fn private_scratch(parent: Option<&Path>) -> Result<tempfile::TempDir, Error> {
+pub(crate) fn private_scratch(parent: Option<&Path>) -> Result<tempfile::TempDir, Error> {
     let mut private = tempfile::Builder::new();
     private.prefix("cryptex-recovery-");
     #[cfg(unix)]
@@ -184,6 +177,18 @@ pub(super) struct FirstArchive {
     pub selection: RecoverySelection,
     pub hash: [u8; 32],
     pub pin: [u8; 32],
+}
+
+#[cfg(all(test, unix))]
+#[test]
+fn reconstructed_plaintext_staging_is_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+    let parent = tempfile::tempdir().unwrap();
+    for location in [None, Some(parent.path())] {
+        let scratch = private_scratch(location).unwrap();
+        let permissions = scratch.path().metadata().unwrap().permissions();
+        assert_eq!(permissions.mode() & 0o777, 0o700);
+    }
 }
 
 pub(super) fn first_archive(

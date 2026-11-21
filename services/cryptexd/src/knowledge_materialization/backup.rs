@@ -19,6 +19,7 @@ mod restore;
 pub mod role;
 pub(crate) use paired::{Destination, PriorFiles, export_recovered};
 pub(crate) use restore::inspect_first_archive;
+pub(crate) use restore::private_scratch;
 pub(crate) use restore::reconstruct_files;
 pub(crate) use restore::verify_manual;
 

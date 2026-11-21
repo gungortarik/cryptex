@@ -151,6 +151,10 @@ jobs:
           features=()
           if [[ "$RUNNER_OS" == macOS ]]; then features=(--features m8-local-startup-check); fi
           cargo clippy --locked -p cryptexd --lib --tests "${features[@]}" -- -D warnings
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            cargo test --locked -p cryptexd --lib "${features[@]}" knowledge_materialization::backup::restore::reconstructed_plaintext_staging_is_owner_only -- --exact | tee "$RUNNER_TEMP/m11-staging-permissions.txt"
+            grep -F '1 passed; 0 failed' "$RUNNER_TEMP/m11-staging-permissions.txt" >> "$GITHUB_STEP_SUMMARY"
+          fi
           cargo test --locked -p cryptexd --lib "${features[@]}" ipc::purge_review::backup_test::verified_backup_preserves_purge_and_unaffected_notes -- --exact --ignored --nocapture | tee "$RUNNER_TEMP/m11-purge-backup.txt"
           grep -F '1 passed; 0 failed' "$RUNNER_TEMP/m11-purge-backup.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_backup_removal_ui=passed cancelled=kept confirmed=removed replay=denied replacement=restored' "$RUNNER_TEMP/m11-purge-backup.txt" >> "$GITHUB_STEP_SUMMARY"

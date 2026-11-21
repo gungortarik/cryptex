@@ -213,7 +213,8 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
                 designated: &anchor,
                 writer_profile: &ctx.runtime_root,
             };
-            let scratch = tempfile::tempdir().map_err(|_| Error::Unavailable)?;
+            let scratch = crate::knowledge_materialization::backup::private_scratch(None)
+                .map_err(|_| Error::Unavailable)?;
             catalog
                 .verify(&anchor, &published, |cipher| {
                     let mut profiles = crate::knowledge_materialization::backup::reconstruct_files(

@@ -1,6 +1,8 @@
 use super::*;
 use crate::backup_scheduler::retention::{VerifiedBackups, generation_number};
-use crate::knowledge_materialization::backup::{independent_folders, reconstruct_files};
+use crate::knowledge_materialization::backup::{
+    independent_folders, private_scratch, reconstruct_files,
+};
 use cryptex_events::LocalTrustAnchor;
 
 pub(super) fn prepare(
@@ -46,7 +48,7 @@ pub(super) fn prepare(
         environment: ctx.environment,
         writer_profile: &ctx.runtime_root,
     };
-    let scratch = tempfile::tempdir().map_err(|_| Error::Unavailable)?;
+    let scratch = private_scratch(None).map_err(|_| Error::Unavailable)?;
     let review = catalog
         .review_removal(anchor, old, new, |generation, cipher| {
             let checkpoint = if generation == old {
