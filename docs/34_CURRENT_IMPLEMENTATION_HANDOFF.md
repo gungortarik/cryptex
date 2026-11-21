@@ -12,8 +12,9 @@ through both the SDK reference client and the installed Codex app-server.
 
 The current M12 candidate is `f5a0bc6`. The client review records what each
 installed runtime exercised, the provider-unavailable path and the scope of
-the one-search grant. The authenticated Mac Antigravity catalog and the
-owner's diff review are still open. [Candidate evidence](../evidence/m12/local-mcp-review.md)
+the one-search grant. The owner reviewed this candidate and approved closure
+conditional on the remaining checks. Its two native M12 jobs passed. The
+authenticated Mac Antigravity catalog is still open. [Candidate evidence](../evidence/m12/local-mcp-review.md)
 
 ## M11 closure
 

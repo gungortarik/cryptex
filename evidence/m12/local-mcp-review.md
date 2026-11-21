@@ -1,12 +1,12 @@
 # M12 local MCP acceptance review
 
-Candidate `f5a0bc6` uses disposable profiles for native tests. Personal profiles receive no new write capability. The owner review and authenticated Antigravity discovery on macOS are open. [Candidate diff](https://github.com/gungortarik/cryptex/compare/22c5026...f5a0bc6), [candidate native jobs](https://github.com/gungortarik/cryptex/actions/runs/44922498629) and [general CI](https://github.com/gungortarik/cryptex/actions/runs/44922498223).
+The owner reviewed candidate `f5a0bc6` and approved M12 closure conditional on the remaining checks. Its two native M12 jobs passed using disposable profiles. The Mac job also built, extracted and ran the owner handoff in a signed-out account. Authenticated Antigravity discovery on macOS remains open. Personal profiles receive no new write capability. [Candidate diff](https://github.com/gungortarik/cryptex/compare/22c5026...f5a0bc6), [candidate native jobs](https://github.com/gungortarik/cryptex/actions/runs/44922498629) and [general CI](https://github.com/gungortarik/cryptex/actions/runs/44922498223).
 
 ## What the client tests exercise
 
 | Installed client | Evidence |
 | --- | --- |
-| Codex 0.155.1 | The actual app-server discovers three tools and calls the packaged stdio bridge. In an ephemeral read-only thread, a pending request returns one synthetic public excerpt only after the Desktop decision. Deny and Escape both withhold content. A second search and reuse of the old ticket fail. Windows and macOS passed this flow before the final dialog spacing change. [Two-platform run](https://github.com/gungortarik/cryptex/actions/runs/44921548208) |
+| Codex 0.155.1 | The actual app-server discovers three tools and calls the packaged stdio bridge. In an ephemeral read-only thread, a pending request returns one synthetic public excerpt only after the Desktop decision. Deny and Escape both withhold content. A second search and reuse of the old ticket fail. Windows and macOS passed on the reviewed candidate. [Two-platform run](https://github.com/gungortarik/cryptex/actions/runs/44922498629) |
 | Claude Code 2.1.263 | The installed client adds the generated entry to a temporary home. Its own connection check reports Connected. |
 | Cursor Agent 2026.11.19-f005e9d | The installed client enables the entry in a temporary workspace and lists the three named Cryptex tools. |
 | Grok Build 1.0.92 | The client's doctor reports a successful stdio handshake and discovers three tools. |
