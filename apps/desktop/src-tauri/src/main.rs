@@ -498,36 +498,43 @@ fn confirm_backup_recipient(digest: &str) -> bool {
 }
 
 #[tauri::command]
-async fn m11_verify_manual_backup() -> Result<bool, cryptexd::ipc::backup_verify::Error> {
+async fn m11_verify_manual_backup() -> Result<usize, cryptexd::ipc::backup_verify::Error> {
     use cryptexd::ipc::backup_verify::{self, Error, Selection};
     tauri::async_runtime::spawn_blocking(|| {
-        #[cfg(feature = "m11-installed-search-check")]
-        let select = installed_search::verification_file;
-        #[cfg(not(feature = "m11-installed-search-check"))]
-        let select = |title: &str| rfd::FileDialog::new().set_title(title).pick_file();
+        let select = backup_input_file;
         let Some(backup) = select("Select the encrypted manual backup") else {
-            return Ok(false);
+            return Ok(0);
         };
         let Some(checkpoint) = select("Select its checkpoint from your separate trusted folder")
         else {
-            return Ok(false);
+            return Ok(0);
         };
         let Some(kit) = select("Select your encrypted offline Recovery Kit") else {
-            return Ok(false);
+            return Ok(0);
         };
         let Some(unlock) = select("Select the separately held Kit unlock file") else {
-            return Ok(false);
+            return Ok(0);
         };
         backup_verify::desktop(Selection {
             backup,
             checkpoint,
             kit,
             unlock,
-        })?;
-        Ok(true)
+        })
     })
     .await
     .map_err(|_| Error::Unavailable)?
+}
+
+fn backup_input_file(title: &str) -> Option<std::path::PathBuf> {
+    #[cfg(feature = "m11-installed-search-check")]
+    {
+        installed_search::verification_file(title)
+    }
+    #[cfg(not(feature = "m11-installed-search-check"))]
+    {
+        rfd::FileDialog::new().set_title(title).pick_file()
+    }
 }
 
 #[tauri::command]
@@ -562,7 +569,29 @@ async fn m11_export_backup()
         let Some(checkpoint) = backup_folder(true) else {
             return Ok(Outcome::Cancelled);
         };
-        desktop(Action::Export { target, checkpoint })
+        let result = desktop(Action::Export {
+            target: target.clone(),
+            checkpoint: checkpoint.clone(),
+        })?;
+        if result != Outcome::NeedsOriginal {
+            return Ok(result);
+        }
+        let Some(prior_backup) =
+            backup_input_file("Select the original encrypted backup used to recover this device")
+        else {
+            return Ok(Outcome::Cancelled);
+        };
+        let Some(prior_checkpoint) =
+            backup_input_file("Select the independently saved checkpoint for that original backup")
+        else {
+            return Ok(Outcome::Cancelled);
+        };
+        desktop(Action::ExportRecovered {
+            target,
+            checkpoint,
+            prior_backup,
+            prior_checkpoint,
+        })
     })
     .await
     .map_err(|_| Error::Uncertain)?

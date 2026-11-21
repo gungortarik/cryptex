@@ -10,6 +10,8 @@ use std::process::Command;
 mod first_device;
 #[path = "m11_installed_export.rs"]
 mod installed_export;
+#[path = "m11_separate_backups.rs"]
+mod separate_backups;
 
 #[test]
 fn public_kit_allows_ordinary_backup_but_partial_recovery_holds() {
@@ -1052,6 +1054,15 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         backup_sha256
     );
     println!("m11_offline_backup_target=passed capture=committed search=reopened backup=unchanged");
+    let pair = std::env::var_os("CRYPTEX_M11_INSTALLED_DESKTOP").map(|desktop| {
+        separate_backups::export(
+            work.path(),
+            Path::new(&desktop),
+            &backup,
+            &sealed_kit,
+            &password,
+        )
+    });
     let (mut db, _) = crate::projection::open_projection_db(&restored).unwrap();
 
     // Exercise blob checks independently from envelope and event verification.
@@ -1113,6 +1124,11 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     println!(
         "m11_first_device=passed old_devices=lost kit_authorized=true replacement_note=verified historical_attachment=verified"
     );
+    drop(state);
+    drop(db);
+    if let Some(pair) = pair {
+        pair.restore_after_source_loss(work.path(), &sealed_kit, &password, &note.event_id);
+    }
     println!(
         "m11_restarted_search=passed single_fts=true stale_index_held=both damaged_receipt=held"
     );

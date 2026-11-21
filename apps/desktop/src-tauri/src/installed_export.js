@@ -13,7 +13,9 @@
         button.click();
       }
       const status = panel()?.querySelector('[role="status"]')?.textContent;
-      visible = mode === "verify" ? status === "Backup verified by restoring it in temporary storage." :
+      visible = mode === "pair-write" ? /^Original backup copied as manual-[0-9a-f]{32}\.prior\.pgp\./.test(status ?? "") :
+        mode === "verify-pair" ? status === "Original and new device backups both restored and verified." :
+        mode === "verify" ? status === "Backup verified by restoring it in temporary storage." :
         mode === "verify-cancel" ? status === "Verification cancelled." :
         mode.startsWith("verify-") ? status?.startsWith("Verification failed.") === true :
         ["wrong-brain", "damaged"].includes(mode) ? status === "Cryptex could not verify the Recovery Kit certificate for this profile." :

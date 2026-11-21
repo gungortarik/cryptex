@@ -32,6 +32,24 @@ pub(super) fn recipient_folder() -> Option<PathBuf> {
 pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
     match title {
+        "Select the original encrypted backup used to recover this device" => {
+            Some(work.join("pair-input/original.pgp"))
+        }
+        "Select the independently saved checkpoint for that original backup" => {
+            Some(work.join("pair-checkpoints/original.json"))
+        }
+        "Select the encrypted manual backup"
+            if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT")
+                .is_ok_and(|m| m.starts_with("verify-pair")) =>
+        {
+            Some(work.join("pair-volume/selected.pgp"))
+        }
+        "Select its checkpoint from your separate trusted folder"
+            if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT")
+                .is_ok_and(|m| m.starts_with("verify-pair")) =>
+        {
+            Some(work.join("pair-checkpoints/selected.json"))
+        }
         "Select the encrypted manual backup" => Some(work.join("export-volume/restore-input.pgp")),
         "Select its checkpoint from your separate trusted folder" => {
             Some(work.join("export-checkpoints/restore-selection.json"))
@@ -55,6 +73,13 @@ pub(super) fn selected_folder(checkpoint: bool) -> Option<PathBuf> {
     if checkpoint && mode == "cancel" {
         return None;
     }
+    if mode == "pair-write" {
+        return Some(work.join(if checkpoint {
+            "pair-checkpoints"
+        } else {
+            "pair-volume"
+        }));
+    }
     Some(work.join(if checkpoint && mode != "overlap" {
         "export-checkpoints"
     } else {
@@ -70,6 +95,8 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
     let mode = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").ok();
     let expected = match mode.as_deref() {
         None => "replacement/recovery/first-device.json",
+        Some("pair-write") => "replacement/recovery/first-device.json",
+        Some("verify-pair" | "verify-pair-missing") => "offline-kit.pgp",
         Some(
             "verify"
             | "verify-cancel"
@@ -114,6 +141,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
     }
     let requests = match mode.as_deref() {
         Some("verify-cancel") => 0,
+        Some("pair-write") => 5,
         Some("decline" | "wrong-brain" | "write" | "overlap") => 2,
         Some("cancel") => 3, // First confirmation, then cancellation at folder selection.
         _ => 1,

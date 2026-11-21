@@ -106,7 +106,7 @@ fn run_codec(
 ) -> Result<NamedTempFile, Error> {
     let pins = CodecPins::packaged()?;
     let (entry, entry_pin, limit) = match operation {
-        Operation::Restore => ("restore.cjs", &pins.restore, 256 * 1024 + 104),
+        Operation::Restore => ("restore.cjs", &pins.restore, 256 * 1024 + 137),
         _ => ("encrypt.cjs", &pins.entry, 64 * 1024),
     };
     if !directory.is_absolute() || header.is_empty() || header.len() > limit {

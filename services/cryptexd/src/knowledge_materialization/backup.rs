@@ -13,8 +13,12 @@ mod codec;
 pub(crate) use codec::public_recipient;
 mod manual;
 pub(crate) use manual::independent_folders;
+mod paired;
 mod restore;
 pub mod role;
+pub(crate) use paired::{Destination, PriorFiles, export_recovered};
+#[cfg(test)]
+pub(crate) use restore::reconstruct_files;
 pub(crate) use restore::verify_manual;
 
 pub(super) fn snapshot(
@@ -255,6 +259,16 @@ pub fn prepare(
     env: SecureStoreEnvironment,
     generation: u64,
 ) -> Result<Prepared, Error> {
+    prepare_selected(root, store, env, generation, None).map(|(prepared, _)| prepared)
+}
+
+fn prepare_selected(
+    root: &Path,
+    store: &dyn SecureStore,
+    env: SecureStoreEnvironment,
+    generation: u64,
+    prior: Option<&RecoverySelection>,
+) -> Result<(Prepared, Option<paired::ParentAuthority>), Error> {
     let (identity_file, _) =
         open_recovery_source(&crate::identity_runtime::brain_identity_path(root))
             .map_err(|_| Error::SourceIdentity)?;
@@ -276,13 +290,48 @@ pub fn prepare(
         .ok_or(Error::Credentials)?;
     // A replacement device can have two independently authenticated histories.
     // A single-history backup would silently omit the archived notes.
-    if recovered_search::for_profile(root, &identity.brain_id, anchor.device_id(), store, env)
-        .map_err(|_| Error::RecoveryHistory)?
-        .is_some()
-    {
-        return Err(Error::RecoveryHistory);
-    }
+    let ceremony =
+        recovered_search::for_profile(root, &identity.brain_id, anchor.device_id(), store, env)
+            .map_err(|_| Error::RecoveryHistory)?;
+    let historical = match (ceremony, prior) {
+        (None, None) => None,
+        (Some(ceremony), Some(prior)) => {
+            let approval = ceremony
+                .checked_receipt()
+                .map_err(|_| Error::RecoveryHistory)?;
+            let old_key = prior.writer()?;
+            let old_checkpoint = prior.checkpoint(&old_key)?;
+            paired::validate_lineage(
+                &approval.request,
+                &old_checkpoint,
+                &anchor,
+                &Sha256::digest(&bytes).into(),
+            )?;
+            let archive = root.join(recovered_search::RECOVERY).join("archive");
+            crate::backup_inventory::verify_reconstruction(&archive, &old_checkpoint)?;
+            let old = snapshot(&archive, &identity.brain_id, &old_key)?;
+            if recovered_search::history_digest(&old) != old_checkpoint.history_sha256 {
+                return Err(Error::RecoveryHistory);
+            }
+            Some((
+                paired::ParentAuthority {
+                    approval,
+                    signing_key: ceremony.trusted_root.to_bytes(),
+                },
+                old,
+            ))
+        }
+        _ => return Err(Error::RecoveryHistory),
+    };
     let (snapshot, approvals) = snapshot_and_approvals(root, &identity.brain_id, &anchor)?;
+    let parent = if let Some((approval, old)) = historical {
+        if !recovered_search::disjoint_histories(&old, &snapshot, anchor.device_id()) {
+            return Err(Error::RecoveryHistory);
+        }
+        Some(approval)
+    } else {
+        None
+    };
     let (history, state) = snapshot
         .verified_trust_context()
         .ok_or(Error::Credentials)?;
@@ -358,9 +407,12 @@ pub fn prepare(
         brain_identity_sha256: Sha256::digest(bytes).into(),
     };
     let inventory = crate::backup_inventory::sign(root, store, env, payload.path(), &checkpoint)?;
-    Ok(Prepared {
-        payload,
-        inventory,
-        selection: RecoverySelection::capture(&checkpoint),
-    })
+    Ok((
+        Prepared {
+            payload,
+            inventory,
+            selection: RecoverySelection::capture(&checkpoint),
+        },
+        parent,
+    ))
 }

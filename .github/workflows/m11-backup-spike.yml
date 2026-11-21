@@ -24,6 +24,7 @@ on:
       - 'services/cryptexd/src/ipc/recovered_desktop.rs'
       - 'services/cryptexd/src/ipc/backup*.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_installed_export.rs'
+      - 'services/cryptexd/src/knowledge_materialization/m11_separate_backups.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_first_device.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_restarted_search.rs'
@@ -54,6 +55,7 @@ on:
       - 'services/cryptexd/src/ipc/recovered_desktop.rs'
       - 'services/cryptexd/src/ipc/backup*.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_installed_export.rs'
+      - 'services/cryptexd/src/knowledge_materialization/m11_separate_backups.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_first_device.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_restarted_search.rs'
@@ -177,6 +179,7 @@ jobs:
           grep -Fx 'm11_recipient_enrollment=passed wrong_brain=held decline=kept offline_restart=restored modified_certificate=held' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_export=passed cancelled=true overlap=held written=true restored=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_verify=passed source_absent=true wrong_unlock=held wrong_checkpoint=held damaged=held cancelled=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -Fx 'm11_separate_files=passed archived_bytes=identical replacement=independent both_notes=restored missing=held swapped=held source=lost' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_codec=passed public_recipient=true restored_with_daemon_signature=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep '^m11_installed_search=passed launches=2 archive=true replacement=true reader=cryptexd canonical=unchanged$' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_offline_backup_target=passed capture=committed search=reopened backup=unchanged' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"

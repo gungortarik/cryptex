@@ -25,6 +25,12 @@ pub enum Action {
         target: PathBuf,
         checkpoint: PathBuf,
     },
+    ExportRecovered {
+        target: PathBuf,
+        checkpoint: PathBuf,
+        prior_backup: PathBuf,
+        prior_checkpoint: PathBuf,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -32,9 +38,20 @@ pub enum Action {
 pub enum Outcome {
     Ready,
     NeedsRecipient,
-    Review { digest: String },
+    NeedsOriginal,
+    Review {
+        digest: String,
+    },
     Cancelled,
-    Written { backup: String, checkpoint: String },
+    Written {
+        backup: String,
+        checkpoint: String,
+    },
+    WrittenPair {
+        archived: String,
+        backup: String,
+        checkpoint: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -61,7 +78,7 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
     let _job = config.busy.try_lock().map_err(|_| Error::Busy)?;
     let binding = super::backup_recipient::Binding::load(&ctx)?;
     let recipient = binding.existing(&ctx)?;
-    let (target, checkpoint) = match action {
+    let (target, checkpoint, original) = match action {
         Action::Inspect => {
             return Ok(if recipient.is_some() {
                 Outcome::Ready
@@ -80,7 +97,13 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
             binding.enroll(&ctx, &cert, &digest)?;
             return Ok(Outcome::Ready);
         }
-        Action::Export { target, checkpoint } => (target, checkpoint),
+        Action::Export { target, checkpoint } => (target, checkpoint, None),
+        Action::ExportRecovered {
+            target,
+            checkpoint,
+            prior_backup,
+            prior_checkpoint,
+        } => (target, checkpoint, Some((prior_backup, prior_checkpoint))),
         _ => return Err(Error::InvalidRecipient),
     };
     let recipient = recipient.ok_or(Error::InvalidRecipient)?;
@@ -93,8 +116,49 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
             .map_err(|_| Error::UnsafeDestination)?;
     }
     // Manual exports have their own namespace; each is a standalone generation.
-    let prepared = backup::prepare(&ctx.runtime_root, ctx.store.as_ref(), ctx.environment, 1)
-        .map_err(|_| Error::HistoryHeld)?;
+    if let Some((old, selection)) = original {
+        for path in [&old, &selection] {
+            if !path.is_absolute() {
+                return Err(Error::UnsafeDestination);
+            }
+            crate::paths::assert_outside_repository(path).map_err(|_| Error::UnsafeDestination)?;
+        }
+        let (archived, backup, checkpoint) = backup::export_recovered(
+            &ctx.runtime_root,
+            ctx.store.as_ref(),
+            ctx.environment,
+            backup::PriorFiles {
+                backup: &old,
+                checkpoint: &selection,
+            },
+            backup::Destination {
+                codec: &config.codec,
+                recipient: &recipient,
+                target: &target,
+                checkpoints: &checkpoint,
+            },
+        )
+        .map_err(|e| match e {
+            BackupError::ExportDestination => Error::UnsafeDestination,
+            BackupError::ExportPublication => Error::Uncertain,
+            BackupError::Codec
+            | BackupError::CodecStart
+            | BackupError::CodecExit
+            | BackupError::CodecIntegrity => Error::EncryptionFailed,
+            _ => Error::HistoryHeld,
+        })?;
+        return Ok(Outcome::WrittenPair {
+            archived,
+            backup,
+            checkpoint,
+        });
+    }
+    let prepared = match backup::prepare(&ctx.runtime_root, ctx.store.as_ref(), ctx.environment, 1)
+    {
+        Ok(prepared) => prepared,
+        Err(BackupError::RecoveryHistory) => return Ok(Outcome::NeedsOriginal),
+        Err(_) => return Err(Error::HistoryHeld),
+    };
     let (backup, checkpoint) = prepared
         .export_manual_bundle(&config.codec, &recipient, &target, &checkpoint)
         .map_err(|e| match e {
@@ -138,7 +202,7 @@ pub(super) fn handle(
 pub fn desktop(action: Action) -> Result<Outcome, Error> {
     let writing = matches!(
         action,
-        Action::Export { .. } | Action::EnrollRecipient { .. }
+        Action::Export { .. } | Action::ExportRecovered { .. } | Action::EnrollRecipient { .. }
     );
     let inspecting = matches!(action, Action::Inspect);
     let timeout = if !inspecting {

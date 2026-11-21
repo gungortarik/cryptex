@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
 
-type ExportResult = { kind: "cancelled" } | { kind: "written"; backup: string; checkpoint: string };
+type ExportResult = { kind: "cancelled" } | { kind: "written"; backup: string; checkpoint: string } |
+  { kind: "written_pair"; archived: string; backup: string; checkpoint: string };
 
 export function ManualBackup() {
   const pending = useRef(false);
@@ -15,8 +16,9 @@ export function ManualBackup() {
     setVerifying(true);
     setStatus("");
     try {
-      const verified = await invoke<boolean>("m11_verify_manual_backup");
-      setStatus(verified ? "Backup verified by restoring it in temporary storage." : "Verification cancelled.");
+      const count = await invoke<number>("m11_verify_manual_backup");
+      setStatus(count === 2 ? "Original and new device backups both restored and verified." :
+        count === 1 ? "Backup verified by restoring it in temporary storage." : "Verification cancelled.");
     } catch (error) {
       setStatus(String(error) === "unavailable" ? "Backup verification is unavailable for this profile." :
         "Verification failed. Check the backup, its independent checkpoint, and the Recovery Kit and unlock file.");
@@ -33,7 +35,8 @@ export function ManualBackup() {
     setStatus("");
     try {
       const result = await invoke<ExportResult>("m11_export_backup");
-      setStatus(result.kind === "cancelled" ? "Export cancelled." :
+      setStatus(result.kind === "cancelled" ? "Export cancelled." : result.kind === "written_pair" ?
+        `Original backup copied as ${result.archived}. New device backup written as ${result.backup}. Keep both files together and use ${result.checkpoint} to verify them.` :
         `Backup written as ${result.backup}. Keep ${result.checkpoint} for recovery. Restore verification is pending.`);
     } catch (error) {
       const messages: Record<string, string> = {

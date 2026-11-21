@@ -23,7 +23,7 @@ pub enum Error {
     Busy,
 }
 
-pub fn desktop(files: Selection) -> Result<(), Error> {
+pub fn desktop(files: Selection) -> Result<usize, Error> {
     backup_request::exchange(OPERATION, CAPABILITY, files, Duration::from_secs(360))
         .map_err(|_| Error::Unavailable)?
 }
@@ -32,7 +32,7 @@ pub(super) fn handle(
     bytes: &[u8],
     ctx: Option<&SearchContext>,
     desktop: bool,
-) -> backup_request::Reply<(), Error> {
+) -> backup_request::Reply<usize, Error> {
     backup_request::handle(
         bytes,
         desktop,
@@ -45,7 +45,7 @@ pub(super) fn handle(
 }
 
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
-fn verify(ctx: &SearchContext, files: Selection) -> Result<(), Error> {
+fn verify(ctx: &SearchContext, files: Selection) -> Result<usize, Error> {
     let ctx = ctx.admitted().map_err(|_| Error::Unavailable)?;
     let config = ctx.backup_export.as_ref().ok_or(Error::Unavailable)?;
     let _guard = config.busy.try_lock().map_err(|_| Error::Busy)?;
@@ -66,7 +66,7 @@ fn verify(ctx: &SearchContext, files: Selection) -> Result<(), Error> {
 }
 
 #[cfg(not(any(windows, all(target_os = "macos", feature = "m8-local-startup-check"))))]
-fn verify(_: &SearchContext, _: Selection) -> Result<(), Error> {
+fn verify(_: &SearchContext, _: Selection) -> Result<usize, Error> {
     Err(Error::Unavailable)
 }
 

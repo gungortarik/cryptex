@@ -5,6 +5,7 @@ const pgp = require("./openpgp.min.cjs");
 const { unzipSync } = require("./fflate.cjs");
 const { Readable, Transform } = require("node:stream");
 const { pipeline } = require("node:stream/promises");
+const {createPrivateKey, createPublicKey} = require("node:crypto");
 
 const kitLimit = 128 * 1024;
 const required = ["brain-identity.sha256", "recovery.sec", "recovery.pub", "writer.pub", "bootstrap.pk8"];
@@ -49,15 +50,24 @@ async function restore() {
     return out;
   }
   const length = (await read(4)).readUInt32BE();
-  if (length <= 104 || length > 104 + 2 * kitLimit) throw new Error("Invalid Kit input");
+  if (length <= 105 || length > 137 + 2 * kitLimit) throw new Error("Invalid Kit input");
   const header = await read(length);
   const password = header.toString("latin1", 32, 96);
   if (!/^[0-9a-f]{64}$/.test(password)) throw new Error("Invalid unlock file");
   const limit = Number(header.readBigUInt64BE(96));
   if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error("Invalid backup length");
-  const kit = await pgp.decrypt({message: await authenticatedMessage(header.subarray(104)),
+  const paired = header[104] === 1;
+  if (!paired && header[104] !== 0) throw new Error("Unknown recovery scope");
+  const kit = await pgp.decrypt({message: await authenticatedMessage(header.subarray(paired ? 137 : 105)),
     passwords: [password], format: "binary", config: {maxDecompressedMessageSize: kitLimit}});
   const members = unpackKit(kit.data);
+  if (paired) {
+    const bootstrap = createPrivateKey({key: Buffer.from(members["bootstrap.pk8"]),format:"der",type:"pkcs8"});
+    const pub = createPublicKey(bootstrap).export({format:"jwk"});
+    if (pub.crv !== "Ed25519" || !header.subarray(105,137).equals(Buffer.from(pub.x, "base64url"))) {
+      throw new Error("Wrong first-device authority");
+    }
+  }
   if (!header.subarray(0, 32).equals(members["brain-identity.sha256"])) throw new Error("Wrong Brain");
   const key = await pgp.readPrivateKey({armoredKey: Buffer.from(members["recovery.sec"]).toString("utf8")});
   const recipients = await pgp.readKeys({armoredKeys: Buffer.from(members["recovery.pub"]).toString("utf8")});
@@ -69,16 +79,20 @@ async function restore() {
     yield* input;
   }
   const message = await authenticatedMessage(Readable.toWeb(Readable.from(ciphertext(), {objectMode: false})));
-  const opened = await pgp.decrypt({message, decryptionKeys: key, format: "binary",
+  const verificationKeys = paired ? await pgp.readKey({armoredKey: Buffer.from(members["writer.pub"]).toString("utf8")}) : undefined;
+  const opened = await pgp.decrypt({message, decryptionKeys: key, verificationKeys, format: "binary",
     config: {maxDecompressedMessageSize: limit}});
   let bytes = 0;
   const bounded = new Transform({transform(chunk, encoding, done) {
     bytes += chunk.length;
     done(bytes > limit ? new Error("Oversized recovery archive") : null, chunk);
   }});
-  await pipeline(Readable.fromWeb(opened.data), bounded, process.stdout);
-  // The manual export format uses only the daemon's signed inner inventory.
-  if (opened.signatures.length) throw new Error("Unexpected outer signature");
+  await pipeline(Readable.fromWeb(opened.data), bounded, process.stdout, {end: !paired});
+  if (opened.signatures.length > 1 || (!paired && opened.signatures.length)) throw new Error("Unexpected outer signature");
+  if (opened.signatures.length) await opened.signatures[0].verified;
+  // The trailing tag exists only in the private helper pipe for a paired
+  // restore. It distinguishes a verified legacy signature from an inner inventory.
+  if (paired) process.stdout.end(Buffer.from([opened.signatures.length]));
 }
 
 restore().catch(() => { process.exitCode = 1; });

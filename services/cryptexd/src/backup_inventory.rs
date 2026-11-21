@@ -331,7 +331,33 @@ pub fn reconstruct_v2(
     expected: &Checkpoint<'_>,
     parent: &Path,
 ) -> Result<tempfile::TempDir, Error> {
-    let mut members = authenticated_members(payload, signed, expected)?;
+    let members = authenticated_members(payload, signed, expected)?;
+    reconstruct_members(payload, members, expected, parent)
+}
+
+/// Caller has already authenticated the legacy outer signature and the
+/// ciphertext digest bound by the owner's first-device grant.
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+pub(crate) fn reconstruct_signed_legacy(
+    payload: &Path,
+    expected: &Checkpoint<'_>,
+    parent: &Path,
+) -> Result<tempfile::TempDir, Error> {
+    reconstruct_members(
+        payload,
+        inspect(payload, expected, None)?.members,
+        expected,
+        parent,
+    )
+}
+
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+fn reconstruct_members(
+    payload: &Path,
+    mut members: BTreeMap<String, Member>,
+    expected: &Checkpoint<'_>,
+    parent: &Path,
+) -> Result<tempfile::TempDir, Error> {
     let input = File::open(payload).map_err(|_| Error::Archive)?;
     let mut zip = zip::ZipArchive::new(input).map_err(|_| Error::Archive)?;
     let sandbox = tempfile::tempdir_in(parent).map_err(|_| Error::Archive)?;

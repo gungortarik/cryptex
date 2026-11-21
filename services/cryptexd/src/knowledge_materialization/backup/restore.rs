@@ -3,10 +3,11 @@
 use super::{Error, RecoverySelection, codec, independent_folders};
 use crate::backup_inventory::{MAX_INVENTORY_BYTES, reconstruct_v2};
 use crate::import_staging::{open_recovery_source, source_snapshot};
-use std::io::{self, Read};
+use std::fs::File;
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 
-fn read_selected(path: &Path, limit: u64) -> Result<Vec<u8>, Error> {
+pub(super) fn read_selected(path: &Path, limit: u64) -> Result<Vec<u8>, Error> {
     let (mut input, before) = open_recovery_source(path).map_err(|_| Error::Archive)?;
     if before.length == 0 || before.length > limit {
         return Err(Error::Archive);
@@ -30,18 +31,80 @@ pub(crate) fn verify_manual(
     checkpoint: &Path,
     kit: &Path,
     unlock: &Path,
-) -> Result<(), Error> {
+) -> Result<usize, Error> {
+    let mut private = tempfile::Builder::new();
+    private.prefix("cryptex-backup-verify-");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        private.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    let scratch = private.tempdir().map_err(|_| Error::Archive)?;
+    let profiles = reconstruct_files(codec, backup, checkpoint, kit, unlock, scratch.path())?;
+    let verified = profiles.len();
+    for profile in profiles {
+        profile.close().map_err(|_| Error::Archive)?;
+    }
+    scratch.close().map_err(|_| Error::Archive)?;
+    Ok(verified)
+}
+
+pub(crate) fn reconstruct_files(
+    codec: &Path,
+    backup: &Path,
+    checkpoint: &Path,
+    kit: &Path,
+    unlock: &Path,
+    scratch: &Path,
+) -> Result<Vec<tempfile::TempDir>, Error> {
     independent_folders(
         backup.parent().ok_or(Error::Checkpoint)?,
         checkpoint.parent().ok_or(Error::Checkpoint)?,
     )?;
-    let selected: RecoverySelection =
-        serde_json::from_slice(&read_selected(checkpoint, 8192)?).map_err(|_| Error::Checkpoint)?;
+    let bytes = read_selected(checkpoint, 32768)?;
+    let keys = KitFiles { codec, kit, unlock };
+    if let Ok(selected) = serde_json::from_slice::<RecoverySelection>(&bytes) {
+        let (file, _) = open_recovery_source(backup).map_err(|_| Error::Archive)?;
+        return Ok(vec![open_file(&keys, file, &selected, None, scratch)?]);
+    }
+    let pair: super::paired::Pair =
+        serde_json::from_slice(&bytes).map_err(|_| Error::Checkpoint)?;
+    pair.validate()?;
+    let older = backup.with_extension("prior.pgp");
+    let old =
+        super::paired::copy_verified_cipher(&older, pair.parent.approval.request.backup_sha256)?;
+    let new = super::paired::copy_verified_cipher(backup, pair.replacement_sha256)?;
+    let pin = Some(&pair.parent.signing_key);
+    let old = open_file(&keys, old, &pair.archived, pin, scratch)?;
+    let new = open_file(&keys, new, &pair.replacement, pin, scratch)?;
+    let brain = &pair.parent.approval.request.brain_id;
+    let new_key = pair.replacement.writer()?;
+    let a = super::snapshot(old.path(), brain, &pair.archived.writer()?)?;
+    let b = super::snapshot(new.path(), brain, &new_key)?;
+    if !super::recovered_search::disjoint_histories(&a, &b, new_key.device_id()) {
+        return Err(Error::RecoveryHistory);
+    }
+    Ok(vec![old, new])
+}
+
+struct KitFiles<'a> {
+    codec: &'a Path,
+    kit: &'a Path,
+    unlock: &'a Path,
+}
+
+fn open_file(
+    keys: &KitFiles<'_>,
+    file: File,
+    selected: &RecoverySelection,
+    signing_key: Option<&[u8; 32]>,
+    scratch: &Path,
+) -> Result<tempfile::TempDir, Error> {
     let writer = selected.writer()?;
     let expected = selected.checkpoint(&writer)?;
-    let (file, before) = open_recovery_source(backup).map_err(|_| Error::Archive)?;
+    let before = source_snapshot(&file).map_err(|_| Error::Archive)?;
     let mut header = expected.brain_identity_sha256.to_vec();
-    let credential = read_selected(unlock, 128)?;
+    let credential = read_selected(keys.unlock, 128)?;
     let password = credential.trim_ascii();
     if password.len() != 64
         || !password
@@ -54,17 +117,39 @@ pub(crate) fn verify_manual(
     // Manual exports use a stored ZIP and uncompressed OpenPGP payload. Its
     // plaintext cannot exceed this particular ciphertext's measured length.
     header.extend_from_slice(&before.length.to_be_bytes());
-    header.extend(read_selected(kit, 256 * 1024)?);
+    header.push(u8::from(signing_key.is_some()));
+    if let Some(key) = signing_key {
+        header.extend_from_slice(key);
+    }
+    header.extend(read_selected(keys.kit, 256 * 1024)?);
     let plain = codec::decrypt_manual(
-        codec,
+        keys.codec,
         &header,
         file.try_clone().map_err(|_| Error::Archive)?,
     )?;
     if source_snapshot(&file).map_err(|_| Error::Archive)? != before {
         return Err(Error::Archive);
     }
-    let mut envelope = zip::ZipArchive::new(plain.reopen().map_err(|_| Error::Archive)?)
-        .map_err(|_| Error::Archive)?;
+    let mut input = plain.reopen().map_err(|_| Error::Archive)?;
+    if signing_key.is_some() {
+        let end = input.seek(SeekFrom::End(-1)).map_err(|_| Error::Archive)?;
+        let mut mode = [0];
+        input.read_exact(&mut mode).map_err(|_| Error::Archive)?;
+        input.set_len(end).map_err(|_| Error::Archive)?;
+        input.rewind().map_err(|_| Error::Archive)?;
+        match mode[0] {
+            1 => {
+                return crate::backup_inventory::reconstruct_signed_legacy(
+                    plain.path(),
+                    &expected,
+                    scratch,
+                );
+            }
+            0 => (),
+            _ => return Err(Error::Archive),
+        }
+    }
+    let mut envelope = zip::ZipArchive::new(input).map_err(|_| Error::Archive)?;
     if envelope.len() != 2
         || envelope
             .has_overlapping_files()
@@ -104,15 +189,5 @@ pub(crate) fn verify_manual(
             return Err(Error::Archive);
         }
     }
-    let mut private = tempfile::Builder::new();
-    private.prefix("cryptex-backup-verify-");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        private.permissions(std::fs::Permissions::from_mode(0o700));
-    }
-    let scratch = private.tempdir().map_err(|_| Error::Archive)?;
-    let restored = reconstruct_v2(payload.path(), &signed, &expected, scratch.path())?;
-    restored.close().map_err(|_| Error::Archive)?;
-    scratch.close().map_err(|_| Error::Archive)
+    reconstruct_v2(payload.path(), &signed, &expected, scratch)
 }

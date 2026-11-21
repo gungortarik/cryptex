@@ -78,9 +78,18 @@ impl Ceremony {
     }
 
     pub(super) fn reopen(&self) -> Result<ArchiveReader, Denial> {
+        let approval = self.checked_receipt()?;
+        Self::archive_reader(&approval)
+    }
+
+    pub(super) fn checked_receipt(&self) -> Result<Approval, Denial> {
         let approval: Approval = serde_json::from_slice(&read_metadata(&self.receipt, 16 * 1024)?)
             .map_err(|_| Denial::Receipt)?;
         self.verify(&approval)?;
+        Ok(approval)
+    }
+
+    fn archive_reader(approval: &Approval) -> Result<ArchiveReader, Denial> {
         let history = &approval.request;
         let key = VerifyingKey::from_bytes(&history.archive_key).map_err(|_| Denial::Receipt)?;
         let id =
@@ -364,29 +373,7 @@ pub(crate) fn search(
     let new_snapshot = new_guard.snapshot.as_ref().ok_or(SearchHold::Replacement)?;
     // The first-device trial admits a single fresh device's note stream. New
     // trust or lifecycle controls require reduction across both histories.
-    let device = &ceremony.expected.new_device;
-    if old_snapshot.locked_devices().contains(device)
-        || new_snapshot.locked_devices() != std::slice::from_ref(device)
-        || new_snapshot
-            .security_history
-            .records()
-            .iter()
-            .any(|r| !matches!(r, AuthenticatedSecurityRecord::V1(_)))
-    {
-        return Err(SearchHold::Overlap);
-    }
-    let ids: BTreeSet<_> = old_snapshot
-        .security_history
-        .records()
-        .iter()
-        .map(|e| e.event_id())
-        .collect();
-    if new_snapshot
-        .security_history
-        .records()
-        .iter()
-        .any(|e| ids.contains(e.event_id()))
-    {
+    if !disjoint_histories(old_snapshot, new_snapshot, &ceremony.expected.new_device) {
         return Err(SearchHold::Overlap);
     }
     // Both canonical locks stay held through the single FTS query. Project
@@ -420,4 +407,24 @@ pub(crate) fn search(
         ProjectionError::InvalidQuery { .. } => SearchHold::InvalidQuery,
         _ => SearchHold::Projection,
     })
+}
+
+pub(super) fn disjoint_histories(
+    old: &VerifiedCanonicalSnapshot,
+    new: &VerifiedCanonicalSnapshot,
+    device: &DeviceId,
+) -> bool {
+    let ids: BTreeSet<_> = old
+        .security_history
+        .records()
+        .iter()
+        .map(|e| e.event_id())
+        .collect();
+    !old.locked_devices().contains(device)
+        && new.locked_devices() == std::slice::from_ref(device)
+        && new
+            .security_history
+            .records()
+            .iter()
+            .all(|e| matches!(e, AuthenticatedSecurityRecord::V1(_)) && !ids.contains(e.event_id()))
 }

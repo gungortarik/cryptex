@@ -40,7 +40,7 @@ class RestoreCodec(unittest.TestCase):
                        f"--allow-fs-read={archive}", entry]
 
             def verify(expected_brain, measured_size, content):
-                header = expected_brain + unlock.read_bytes() + measured_size.to_bytes(8, "big") + locked
+                header = expected_brain + unlock.read_bytes() + measured_size.to_bytes(8, "big") + b"\0" + locked
                 framed = len(header).to_bytes(4, "big") + header + content
                 return subprocess.run(command, input=framed, capture_output=True, timeout=30)
 

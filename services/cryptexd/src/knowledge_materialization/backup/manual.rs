@@ -46,7 +46,7 @@ impl Prepared {
     }
 }
 
-fn export_id() -> Result<u128, Error> {
+pub(super) fn export_id() -> Result<u128, Error> {
     let mut nonce = [0; 16];
     getrandom::getrandom(&mut nonce).map_err(|_| Error::ExportPublication)?;
     Ok(u128::from_be_bytes(nonce))
@@ -70,7 +70,7 @@ fn publish(dir: &Directory, id: u128, input: impl Read) -> Result<String, Error>
     publish_file(dir, id, "pgp", input)
 }
 
-fn publish_file(
+pub(super) fn publish_file(
     dir: &Directory,
     id: u128,
     extension: &str,

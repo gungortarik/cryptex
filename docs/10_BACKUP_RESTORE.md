@@ -135,6 +135,12 @@ The exact bundle format is not selected here.
 
 Manual export must not weaken the security/recovery model or become a hidden unencrypted copy unless explicitly designed and accepted as such.
 
+After first-device recovery, keep the original encrypted backup and the new
+device's encrypted history in separate files. Preserve the original ciphertext
+byte for byte. A complete recovery check must open both files and verify the
+new device's relationship to the original history. Keep their public recovery
+checkpoint independently of the backup target.
+
 ## 12. Failure behavior
 
 Relevant backup/recovery testing includes:
