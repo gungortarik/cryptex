@@ -36,6 +36,13 @@ pub fn installed() -> io::Result<()> {
     {
         return Err(invalid_data("invalid fixture"));
     }
+    // Rebuild the already validated child under the native temp directory.
+    // On Windows canonicalize yields a verbatim prefix while the pinned
+    // directory adapter requires a rooted drive-letter path.
+    let work = std::env::temp_dir().join(
+        work.file_name()
+            .ok_or_else(|| invalid_data("missing fixture name"))?,
+    );
     let exporting = std::env::var_os("CRYPTEX_M11_INSTALLED_EXPORT").is_some();
     let (profile, credentials) = if exporting {
         ("export-source", "export-credentials")
