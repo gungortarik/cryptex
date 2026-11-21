@@ -46,9 +46,12 @@ profile, then the same client probes the closed endpoint. Additional tests
 exercise an absent listener, a mismatched reply, an oversized frame and a
 silent peer. The content test uses two distinct bridge processes, four privacy
 classes, a stale index after a signed forget, and a damaged canonical record.
-The hosted installed-package test installs a tarball in a fresh prefix, drives
-the installed SDK client and compiled Desktop review UI, and verifies both
-decisions through the daemon's native Desktop IPC using synthetic notes.
-Run that test on a disposable GitHub-hosted runner with the M12 workflow.
-The check uses a native test host for the webview command and does not exercise
-a particular third-party AI application's UI.
+The hosted Windows and macOS jobs install the bridge tarball and the pinned
+OpenAI Codex CLI (0.155.1). Both the SDK reference client and Codex repeat
+the same compiled Desktop review flow against a disposable daemon. Codex
+discovers and calls the configured stdio tools through its app-server using
+a fresh Codex home, an ephemeral read-only thread and a temporary workspace.
+The test needs no account or model turn. It checks the matching review code,
+approval, rejection, Escape, grant reuse and the synthetic profile's event
+hashes. The browser drives the Cryptex review screen through a native test
+host. This verifies the Codex MCP runtime independently of its chat UI.

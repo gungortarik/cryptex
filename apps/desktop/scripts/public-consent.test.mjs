@@ -3,14 +3,22 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import { connectCodex } from "./codex-mcp-client.mjs";
 import { chromium } from "playwright-core";
 
 const entry = process.env.M12_INSTALLED_STDIO;
 assert.ok(path.isAbsolute(entry));
-const installed = createRequire(entry);
-const { Client } = installed("@modelcontextprotocol/sdk/client/index.js");
-const { StdioClientTransport } = installed("@modelcontextprotocol/sdk/client/stdio.js");
-const client = new Client({ name: "installed-review-client", version: "1" });
+async function connectSdk() {
+  const installed = createRequire(entry);
+  const { Client } = installed("@modelcontextprotocol/sdk/client/index.js");
+  const { StdioClientTransport } = installed("@modelcontextprotocol/sdk/client/stdio.js");
+  const client = new Client({ name: "installed-review-client", version: "1" });
+  await client.connect(new StdioClientTransport({ command: process.execPath, args: [entry, "--public-notes"] }));
+  return client;
+}
+const client = process.env.M12_CODEX_BIN
+  ? await connectCodex(process.env.M12_CODEX_BIN, entry)
+  : await connectSdk();
 const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
 async function native(action) {
   process.stdout.write(JSON.stringify(action) + "\n");
@@ -29,7 +37,6 @@ const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const origin = "http://127.0.0.1:1420";
 const browser = await chromium.launch({ channel: "chrome" });
 try {
-  await client.connect(new StdioClientTransport({ command: process.execPath, args: [entry, "--public-notes"] }));
   const page = await browser.newPage();
   await page.exposeFunction("nativeInvoke", async (command, args) => {
     if (command === "p0_3_ipc_health") return {};

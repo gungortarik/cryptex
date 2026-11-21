@@ -315,7 +315,26 @@ fn installed_client_owner_consent() {
         .map(Result::unwrap)
         .any(|line| line.ends_with("consent-fixture-ready"));
     assert!(ready, "disposable daemon startup");
-    let mut browser = Command::new("node")
+    let binary = std::env::var_os("M12_CODEX_BIN").expect("installed Codex executable");
+    let sdk_passed = review_in_browser(None);
+    let codex_passed = review_in_browser(Some(&binary));
+    drop(daemon.stdin.take());
+    assert!(daemon.wait().unwrap().success(), "daemon integrity check");
+    assert!(sdk_passed, "SDK client / Desktop review");
+    assert!(codex_passed, "Codex client / Desktop review");
+    eprintln!(
+        "SDK and Codex each passed public-note approval, denial, Escape and grant reuse checks."
+    );
+}
+
+fn review_in_browser(codex: Option<&std::ffi::OsStr>) -> bool {
+    let mut command = Command::new("node");
+    if let Some(binary) = codex {
+        command.env("M12_CODEX_BIN", binary);
+    } else {
+        command.env_remove("M12_CODEX_BIN");
+    }
+    let mut browser = command
         .arg(
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../apps/desktop/scripts/public-consent.test.mjs"),
@@ -331,10 +350,7 @@ fn installed_client_owner_consent() {
         writeln!(replies, "{}", serde_json::to_string(&result).unwrap()).unwrap();
         replies.flush().unwrap();
     }
-    let status = browser.wait().unwrap();
-    drop(daemon.stdin.take());
-    assert!(daemon.wait().unwrap().success(), "daemon integrity check");
-    assert!(status.success(), "installed client / Desktop review");
+    browser.wait().unwrap().success()
 }
 
 fn serve_installed_consent_fixture() {

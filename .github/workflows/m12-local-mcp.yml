@@ -10,6 +10,7 @@ on:
       - 'services/cryptexd/src/ipc/public_consent.rs'
       - 'apps/desktop/src/PublicReadReview.tsx'
       - 'apps/desktop/scripts/public-consent.test.mjs'
+      - 'apps/desktop/scripts/codex-mcp-client.mjs'
       - 'services/cryptexd/src/knowledge_materialization/ai_context.rs'
       - '.github/workflows/m12-local-mcp.yml'
   pull_request:
@@ -21,6 +22,7 @@ on:
       - 'services/cryptexd/src/ipc/public_consent.rs'
       - 'apps/desktop/src/PublicReadReview.tsx'
       - 'apps/desktop/scripts/public-consent.test.mjs'
+      - 'apps/desktop/scripts/codex-mcp-client.mjs'
       - 'services/cryptexd/src/knowledge_materialization/ai_context.rs'
       - '.github/workflows/m12-local-mcp.yml'
 
@@ -57,6 +59,18 @@ jobs:
           npm install --prefix "$installed" --ignore-scripts (Join-Path $env:RUNNER_TEMP 'cryptex-local-mcp-0.0.0.tgz')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "M12_INSTALLED_STDIO=$(Join-Path $installed 'node_modules/cryptex-local-mcp/stdio.mjs')" >> $env:GITHUB_ENV
+      - name: Install the pinned native Codex client
+        shell: pwsh
+        run: |
+          $install = Join-Path $env:RUNNER_TEMP 'm12-codex'
+          npm install --prefix "$install" --ignore-scripts --include=optional @openai/codex@0.155.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $name = if ($IsWindows) { 'codex.exe' } else { 'codex' }
+          $native = @(Get-ChildItem -LiteralPath "$install/node_modules/@openai" -Recurse -File -Filter $name | Where-Object { $_.Directory.Name -eq 'bin' })
+          if ($native.Count -ne 1) { throw 'Expected one native Codex executable' }
+          $binary = $native[0].FullName
+          if ((& $binary --version) -ne 'codex-cli 0.155.1') { throw 'Unexpected Codex version' }
+          "M12_CODEX_BIN=$binary" >> $env:GITHUB_ENV
       - run: cargo fmt --all -- --check
       - name: Exercise stdio and the native daemon dispatcher in a disposable profile
         shell: bash

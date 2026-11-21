@@ -6,7 +6,8 @@ The opt-in installed stdio bridge requests a one-search public-note grant.
 Desktop shows the matching review code, defaults to Deny, and sends the owner's
 decision through authenticated daemon IPC. One approved connection may read
 visible public excerpts for up to two minutes from request creation. The M12
-workflow exercises approval, denial, and reuse on disposable Windows and Mac profiles.
+workflow exercises approval, denial, and reuse on disposable Windows and Mac profiles
+through both the SDK reference client and the installed Codex app-server.
 [Bridge and native tests](../tools/local-mcp/README.md)
 
 ## M11 closure
