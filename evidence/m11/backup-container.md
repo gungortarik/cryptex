@@ -6,6 +6,12 @@ In device settings, **Review backup removal** asks the daemon for the selected o
 
 The native rehearsal drives the compiled React interface in Chrome through the Desktop's Rust IPC client and a separate daemon on a disposable profile. It checks both digests against disk, cancels, rejects replay, then explicitly removes the old generation under a fresh ticket. The daemon decrypts the replacement and checks the surviving attachment. Ordinary profiles have no removal candidate until the owner-facing backup target and Recovery Kit integration is enabled.
 
+## Installed manual export and recovery checkpoint
+
+On Windows and macOS, the installed Desktop exported a disposable ordinary profile at `53e2f87`. The test clicked **Export encrypted backup** in the system WebView and supplied the two native folder selections through a fixture adapter. Cancelling the second selection or choosing the same directory left both directories empty. With separate destinations the daemon wrote matching `.pgp` and `.json` files. After deleting the source profile and its credentials, the test decrypted the export with its Kit and verified the reconstructed note against the independently retained writer identity and checkpoint. Both platforms also repeated the separate removal, cancellation and replay checks. [Native CI results](https://github.com/gungortarik/cryptex/actions/runs/44847803375)
+
+The isolated installation provisions a public encryption recipient for the disposable profile. Real-profile recipient provisioning, owner-operated restore, and backing up both histories after recovery remain open.
+
 ## Current retention and recovery behavior
 
 Each hosted OS restored two notes from the other platform's daemon-signed v2
@@ -45,7 +51,7 @@ or a legacy digest-only receipt stays on disk. The separate removal review
 reopens both ciphertexts, checks the other records and attachment references,
 and binds the owner's choice to the selected filename and the two digests.
 A missing Kit, cancellation, a different selection, or changed replacement
-keeps the old file. The desktop owner dialog is still open.
+keeps the old file. The separate Desktop review is exercised above.
 
 The default retains every generation. An explicit positive count applies only to automatic generations on the selected target of the designated writer. The device credential store holds the preference and each reconstruction receipt. After a sandbox restore, the writer checks the saved policy, takes the target lock, checks the surviving ciphertext against its receipts and removes only eligible older files. A missing policy retains everything. A corrupt receipt or a changed verified file stops cleanup. An encrypted manual export and an unrecognized file remain outside cleanup.
 
