@@ -5,6 +5,27 @@ use crate::knowledge_materialization::backup::{manual, restore};
 use serde::de::DeserializeOwned;
 
 const MAX_FILE: usize = 1024 * 1024;
+const REQUEST_DOMAIN: &[u8] = b"cryptex/backup/writer-request/v1\0";
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SignedRequest {
+    request: Request,
+    signature: Vec<u8>,
+}
+
+fn request_bytes(request: &Request) -> Result<Vec<u8>, Error> {
+    Ok([REQUEST_DOMAIN, &encoded(request)?].concat())
+}
+
+fn verified_request(target: &Path, path: &Path) -> Result<Request, Error> {
+    let signed: SignedRequest = selected(target, path)?;
+    let key = VerifyingKey::from_bytes(&signed.request.next.key).map_err(|_| Error::Signature)?;
+    let signature = Signature::from_slice(&signed.signature).map_err(|_| Error::Signature)?;
+    key.verify_strict(&request_bytes(&signed.request)?, &signature)
+        .map_err(|_| Error::Signature)?;
+    Ok(signed.request)
+}
 
 fn selected<T: DeserializeOwned>(target: &Path, path: &Path) -> Result<T, Error> {
     let parent = path.parent().ok_or(Error::Target)?;
@@ -63,19 +84,38 @@ impl DeviceRole<'_> {
             }
             Step::Request { assignment } => {
                 let request = self.request(profile, target, &selected(target, &assignment)?)?;
-                save(&dir, &request, "writer-request.json")
+                let key = load_existing_event_signing_key(
+                    self.store,
+                    self.env,
+                    profile,
+                    self.local.device_id(),
+                )
+                .map_err(|_| Error::Authority)?;
+                if key.signing_key.verifying_key().as_bytes() != &request.next.key {
+                    return Err(Error::Authority);
+                }
+                let signature = key
+                    .signing_key
+                    .sign(&request_bytes(&request)?)
+                    .to_bytes()
+                    .to_vec();
+                save(
+                    &dir,
+                    &SignedRequest { request, signature },
+                    "writer-request.json",
+                )
             }
             Step::Review { request } => {
                 let review = self.review_request(
                     profile,
                     &dir,
                     &self.reopen(target)?,
-                    &selected(target, &request)?,
+                    &verified_request(target, &request)?,
                 )?;
                 Ok(ResultView::Review { review })
             }
             Step::Approve { request, reviewed } => {
-                let request: Request = selected(target, &request)?;
+                let request = verified_request(target, &request)?;
                 let assignment = self.reopen(target)?;
                 if self.review_request(profile, &dir, &assignment, &request)? != reviewed {
                     return Err(Error::Authority);

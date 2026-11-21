@@ -377,8 +377,8 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         .unwrap();
     let original_bytes = fs::read(&request_path).unwrap();
     let mut changed: serde_json::Value = serde_json::from_slice(&original_bytes).unwrap();
-    let byte = changed["challenge"][0].as_u64().unwrap();
-    changed["challenge"][0] = (byte ^ 1).into();
+    let byte = changed["request"]["challenge"][0].as_u64().unwrap();
+    changed["request"]["challenge"][0] = (byte ^ 1).into();
     fs::write(&request_path, serde_json::to_vec(&changed).unwrap()).unwrap();
     let approve = |reviewed| {
         first.exchange(
@@ -390,11 +390,14 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
             },
         )
     };
-    assert_eq!(approve(reviewed.clone()), Err(Error::Authority));
+    assert_eq!(approve(reviewed.clone()), Err(Error::Signature));
+    let mut different_review = reviewed.clone();
+    different_review.request_sha256 = "00".repeat(32);
+    fs::write(&request_path, &original_bytes).unwrap();
+    assert_eq!(approve(different_review), Err(Error::Authority));
     first
         .verify_local_writer(&pair.profiles[0], &target)
         .unwrap();
-    fs::write(&request_path, original_bytes).unwrap();
     let grant_path = saved(approve(reviewed).unwrap());
     let granted: Assignment = serde_json::from_slice(&fs::read(&grant_path).unwrap()).unwrap();
     let reopened = FileBackedSecureStore::open(a_store.root()).unwrap();

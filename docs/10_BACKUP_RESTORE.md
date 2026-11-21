@@ -109,7 +109,8 @@ Restarting the former writer cannot reactivate its previous jobs.
 
 Under **Scheduled backup writer → Transfer the writer role**, the current
 device saves its public assignment in the target folder. The incoming device
-selects that assignment and saves its request there. The current device
+selects that assignment and signs its request with its enrolled device key.
+The current device verifies that signature against its trusted peer, then
 reviews the target ID, both device IDs and their signing-key fingerprints,
 then chooses whether to sign. The new device selects the signed grant and
 can enable its daily schedule. New grants sign the highest generation number
