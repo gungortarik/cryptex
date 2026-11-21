@@ -67,7 +67,12 @@ approves that challenge in the offline tool. Only the public signed approval
 returns to the replacement. Routine Desktop and daemon operation have no
 interface for producing a recovery signature.
 
-In a blank replacement profile, **Check Kit and backup** verifies the selected
+Before starting the service on a replacement, the owner can prepare a new
+profile with `cryptexd lifecycle prepare-first-device-m11 --runtime-root <absolute-new-directory>`.
+The parent directory must exist. The command refuses an existing destination
+and creates only the minimum-reader lock, without enrolling a device.
+
+In that blank profile, **Check Kit and backup** verifies the selected
 encrypted backup, its independently held checkpoint, the sealed Kit and its
 separate unlock file. **Prepare replacement profile** repeats those checks and
 stages the verified archive and a fresh device identity. An occupied profile

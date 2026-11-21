@@ -1041,7 +1041,7 @@ fn run_lifecycle(
 
     match command.as_str() {
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
-        "migrate-profile-m9" | "prepare-reader-rejoin-m9" => {
+        "migrate-profile-m9" | "prepare-reader-rejoin-m9" | "prepare-first-device-m11" => {
             let [_, flag, root] = args else {
                 return Err(LifecycleError::Usage(format!(
                     "{command} requires --runtime-root <absolute profile>"
@@ -1052,7 +1052,7 @@ fn run_lifecycle(
                     "expected an explicit absolute profile path".into(),
                 ));
             }
-            if command == "prepare-reader-rejoin-m9" {
+            if command != "migrate-profile-m9" {
                 let path = Path::new(root);
                 let (Some(parent), Some(name)) =
                     (path.parent(), path.file_name().and_then(|n| n.to_str()))
@@ -1061,8 +1061,13 @@ fn run_lifecycle(
                         "expected a new named profile directory".into(),
                     ));
                 };
-                cryptexd::managed_profile::prepare_reader_rejoin_destination(parent, name)?;
-                println!("reader_rejoin=destination_prepared production_v2_activation=blocked");
+                if command == "prepare-first-device-m11" {
+                    cryptexd::instance::create_m9_profile_root(parent, name)?;
+                    println!("first_device=destination_prepared owner_approval=pending");
+                } else {
+                    cryptexd::managed_profile::prepare_reader_rejoin_destination(parent, name)?;
+                    println!("reader_rejoin=destination_prepared production_v2_activation=blocked");
+                }
                 return Ok(());
             }
             cryptexd::instance::migration::migrate_profile(Path::new(root)).map_err(|error| {
@@ -1658,6 +1663,7 @@ fn usage_text() -> String {
         "  cryptexd lifecycle probe [--runtime-root <path>]",
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
         "  cryptexd lifecycle prepare-reader-rejoin-m9 --runtime-root <absolute-new-directory> (prepare protected restore destination)",
+        "  cryptexd lifecycle prepare-first-device-m11 --runtime-root <absolute-new-directory> (prepare blank replacement)",
         "  cryptexd lifecycle migrate-profile-m9 --runtime-root <absolute-existing-profile> (offline layout migration)",
         "  cryptexd lifecycle hold --runtime-root <path> (--stop-file <path> | --hold-ms <ms> | --crash-after-ready) [--ready-file <path>]",
         "    Windows opt-in: --managed-profile <existing-ready-path> --managed-package <pinned-package-dir> --managed-api-port <port> --managed-sync-port <port>",
@@ -1868,6 +1874,27 @@ mod tests {
                 Err(LifecycleError::Usage(_))
             ));
         }
+    }
+
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    #[test]
+    fn first_device_destination_starts_blank_and_preserves_existing_profiles() {
+        let parent = tempfile::tempdir().unwrap();
+        let root = parent.path().join("replacement");
+        let prepare = || {
+            run(vec![
+                "lifecycle".into(),
+                "prepare-first-device-m11".into(),
+                "--runtime-root".into(),
+                root.to_str().unwrap().into(),
+            ])
+        };
+        prepare().unwrap();
+        assert!(root.join("daemon.lock/reader-m9.pid").is_file());
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+        fs::write(root.join("existing-note"), b"preserve").unwrap();
+        assert!(prepare().is_err());
+        assert_eq!(fs::read(root.join("existing-note")).unwrap(), b"preserve");
     }
 
     #[test]

@@ -28,6 +28,9 @@ def install_and_run():
     resources = APP / "src-tauri/binaries"
     pins = stage_codec(resources / "m11-codec")
     build_env = dict(os.environ, CRYPTEX_M11_PACKAGE_CODEC_DIGESTS=json.dumps(pins))
+    run("cargo", "test", "--locked", "-p", "cryptexd", "--bin", "cryptexd", *features,
+        "tests::first_device_destination_starts_blank_and_preserves_existing_profiles",
+        "--", "--exact", env=build_env)
     artifacts = run("cargo", "test", "--locked", "-p", "cryptexd", "--lib", *features,
                     "--no-run", "--message-format=json", stdout=subprocess.PIPE, text=True, env=build_env)
     binary, = [Path(item["executable"]) for line in artifacts.stdout.splitlines()

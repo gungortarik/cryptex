@@ -914,7 +914,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
             &[&sealed_kit, &password, &work.path().join("kit-public")],
         );
         installed_export::check(work.path(), Path::new(&desktop), &kit, &password);
-        crate::instance::create_m9_profile_root(work.path(), "clean-replacement").unwrap();
+        assert!(!work.path().join("clean-replacement").try_exists().unwrap());
         let check_volume = work.path().join("first-check");
         fs::create_dir(&check_volume).unwrap();
         let selected = check_volume.join("backup.pgp");
@@ -925,7 +925,7 @@ fn restored_note_and_attachment_pass_guarded_reads() {
             }
             separate_backups::launched(Path::new(&desktop), work.path(), mode, &password, "");
             let blank = work.path().join("clean-replacement");
-            assert!(blank.is_dir());
+            assert!(blank.join("daemon.lock/reader-m9.pid").is_file());
             for leaf in ["identity", "canonical", "recovery"] {
                 assert!(!blank.join(leaf).try_exists().unwrap());
             }

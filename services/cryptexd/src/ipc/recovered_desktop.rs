@@ -60,6 +60,11 @@ pub fn installed() -> io::Result<()> {
     } else {
         ("replacement", "test-credentials")
     };
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    if profile == "clean-replacement" && !work.join(profile).try_exists()? {
+        crate::instance::create_m9_profile_root(&work, profile)
+            .map_err(|_| invalid_data("could not prepare replacement destination"))?;
+    }
     let store = crate::secure_store::FileBackedSecureStore::open(work.join(credentials))
         .map_err(|_| invalid_data("credentials unavailable"))?;
     serve(&work.join(profile), Arc::new(store), desktop, |ctx| {
