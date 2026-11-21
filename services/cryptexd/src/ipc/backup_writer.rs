@@ -108,7 +108,14 @@ pub(super) fn handle(
         CAPABILITY,
         Error::InvalidRequest,
         Error::Unauthorized,
-        |action| execute(ctx.ok_or(Error::Unavailable)?, action),
+        |action| {
+            let result = execute(ctx.ok_or(Error::Unavailable)?, action);
+            #[cfg(feature = "m11-installed-search-check")]
+            if let Err(error) = &result {
+                eprintln!("cryptexd: installed backup writer request ended ({error:?})");
+            }
+            result
+        },
     )
 }
 
@@ -119,10 +126,12 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
 
     let ctx = ctx.admitted().map_err(|_| Error::Unavailable)?;
     let config = ctx.backup_export.as_ref().ok_or(Error::Unavailable)?;
-    let _guard = if matches!(action, Action::Inspect { .. }) {
-        None
-    } else {
-        Some(config.busy.try_lock().map_err(|_| Error::Busy)?)
+    let _guard = match action {
+        Action::Inspect { .. } => None,
+        // Finish any in-flight generation before persisting the owner's pause.
+        // The timer must not overwrite that decision with a late journal save.
+        Action::Pause => Some(config.busy.lock().map_err(|_| Error::Uncertain)?),
+        _ => Some(config.busy.try_lock().map_err(|_| Error::Busy)?),
     };
     let anchor = local_anchor(&ctx)?;
     let jobs = DeviceJobs::new(ctx.store.as_ref(), ctx.environment, &anchor);

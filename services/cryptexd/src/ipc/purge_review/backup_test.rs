@@ -280,6 +280,35 @@ fn verified_backup_preserves_purge_and_unaffected_notes() {
             codec: installed_codec.into(),
             busy: Mutex::default(),
         }));
+        // A first daily generation can already be running when Desktop reopens.
+        // A simultaneous owner pause must survive the worker's journal update.
+        let active = ctx.backup_export.as_ref().unwrap().busy.lock().unwrap();
+        let pause = serde_json::to_vec(&serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION, "request_id": new_bootstrap_event_id().unwrap(),
+            "client_role": "desktop", "capabilities": ["backup.writer.owner"],
+            "operation": backup_writer::OPERATION, "action": {"kind":"pause"}
+        }))
+        .unwrap();
+        std::thread::scope(|scope| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let (started, entered) = std::sync::mpsc::channel();
+            let context = &*ctx;
+            scope.spawn(move || {
+                started.send(()).unwrap();
+                tx.send(backup_writer::handle(&pause, Some(context), true).result)
+                    .unwrap();
+            });
+            entered.recv().unwrap();
+            assert!(matches!(
+                rx.recv_timeout(std::time::Duration::from_millis(100)),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            ));
+            drop(active);
+            assert_eq!(
+                rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap(),
+                Ok(backup_writer::Outcome::Paused)
+            );
+        });
         let prepare = |check: &Path| {
             let frame = serde_json::json!({
                 "protocol_version": PROTOCOL_VERSION, "request_id": new_bootstrap_event_id().unwrap(),
