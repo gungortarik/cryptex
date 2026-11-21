@@ -15,8 +15,9 @@ own evidence.
 and returns up to ten visible public notes as event IDs and 240-character
 excerpts. The daemon binds the read grant to one live bridge child in the
 profile session and checks the connecting process on every request. Only
-the native disposable harness provisions that grant today. Ordinary profiles
-deny the read. The reader opens the existing index read-only and verifies
+the native disposable harness provisions that grant today. The ordinary entry
+advertises health alone and never sends search phrases to the product socket.
+The reader opens the existing index read-only and verifies
 canonical visibility on each call. A recovery binding or failed verification
 withholds the entire result. A verified empty search returns an empty list.
 

@@ -30,7 +30,7 @@ async function searchPublicNotes(endpoint, args) {
   const reply = await exchange(endpoint, { operation, capabilities: ["context.public.read"], phrase: args.phrase },
     65536, 17000).catch(() => null);
   const notes = reply?.result?.Ok;
-  if (reply?.operation !== operation || !Array.isArray(notes) || notes.length > 10 ||
+  if (reply?.operation !== operation || !Array.isArray(notes) || Object.keys(reply.result).length !== 1 || notes.length > 10 ||
       !notes.every((n) => n && typeof n.event_id === "string" &&
         /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(n.event_id) &&
         typeof n.text === "string" && [...n.text].length <= 240)) {
@@ -41,12 +41,12 @@ async function searchPublicNotes(endpoint, args) {
   return { structuredContent: result, content: [{ type: "text", text: JSON.stringify(result) }] };
 }
 
-export async function serve(endpoint) {
+export async function serve(endpoint, { publicNotes = false } = {}) {
   const server = new Server({ name: "cryptex-local", version: "0.0.0" }, { capabilities: { tools: {} } });
-  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: [health, search] }));
+  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: publicNotes ? [health, search] : [health] }));
   let pending;
   server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
-    if (params.name === search.name) return searchPublicNotes(endpoint, params.arguments ?? {});
+    if (publicNotes && params.name === search.name) return searchPublicNotes(endpoint, params.arguments ?? {});
     if (params.name !== health.name || Object.keys(params.arguments ?? {}).length !== 0) {
       throw new McpError(ErrorCode.InvalidParams, "Unknown tool or unsupported arguments");
     }
