@@ -175,6 +175,23 @@ impl<'a> DeviceJobs<'a> {
         self.configure_history(target, checkpoints, None)
     }
 
+    pub fn bound_original(
+        &self,
+        target: &Path,
+        checkpoints: &Path,
+    ) -> io::Result<Option<ArchivedSource>> {
+        let head = self
+            .role()
+            .assigned_head(target)
+            .map_err(super::role_error)?;
+        Ok(self
+            .load()?
+            .filter(|job| job.role_head == Some(head) && job.prior.parent() == Some(target))
+            .and_then(|job| job.schedule)
+            .filter(|schedule| schedule.checkpoints == checkpoints)
+            .and_then(|schedule| schedule.original))
+    }
+
     pub fn configure_history(
         &self,
         target: &Path,

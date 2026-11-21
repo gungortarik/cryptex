@@ -120,6 +120,8 @@ pub(super) fn export(
     scheduled_action("writer-enable");
     fs::remove_file(input.join("original.pgp")).unwrap();
     fs::remove_file(selections.join("original.json")).unwrap();
+    scheduled_action("writer-pause");
+    scheduled_action("writer-reenable");
     scheduled_action("writer-resume");
     let target = fs::read_dir(targets)
         .unwrap()

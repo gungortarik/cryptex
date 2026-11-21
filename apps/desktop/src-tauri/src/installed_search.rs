@@ -153,7 +153,7 @@ pub(super) fn confirm_recipient(digest: &str) -> bool {
 pub(super) fn selected_folder(checkpoint: bool) -> Option<PathBuf> {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
     let mode = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").ok()?;
-    if checkpoint && mode == "writer-enable" {
+    if checkpoint && matches!(mode.as_str(), "writer-enable" | "writer-reenable") {
         return Some(work.join(writer_fixture_folder("schedule-checkpoints")));
     }
     if checkpoint && mode == "cancel" {
@@ -273,7 +273,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         {
             3
         }
-        Some("writer-transfer-sign") => 2,
+        Some("writer-transfer-sign" | "writer-reenable") => 2,
         Some("verify-cancel" | "writer-decline") => 0,
         Some("pair-write") => 5,
         Some("writer-enable" | "decline" | "wrong-brain" | "write" | "overlap") => 2,

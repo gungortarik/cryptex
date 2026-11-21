@@ -291,7 +291,17 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
             .is_some();
             recipient(&ctx)?;
             match (recovered, original) {
-                (true, None) => return Err(Error::OriginalRequired),
+                (true, None) => {
+                    let archive = jobs
+                        .bound_original(&target, &checkpoints)
+                        .map_err(|_| Error::History)?
+                        .ok_or(Error::OriginalRequired)?;
+                    let dir = crate::import_staging::export_fs::Directory::open(&target)
+                        .map_err(|_| Error::UnsafeTarget)?;
+                    crate::knowledge_materialization::backup::verify_archived(&dir, archive.digest)
+                        .map_err(|_| Error::Verification)?;
+                    jobs.configure_history(&target, &checkpoints, Some(archive))
+                }
                 (false, Some(_)) => return Err(Error::InvalidRequest),
                 (true, Some(source)) => {
                     for path in [&source.backup, &source.checkpoint] {
