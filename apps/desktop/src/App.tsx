@@ -1,4 +1,5 @@
 import { ManualBackup } from "./ManualBackup";
+import { BackupWriter } from "./BackupWriter";
 import { PurgeReview } from "./PurgeReview";
 import { NoteLifecycle } from "./NoteLifecycle";
 import { NoteAttachment } from "./NoteAttachment";
@@ -1155,6 +1156,7 @@ export function App() {
           </section>
 
           <ManualBackup />
+          <BackupWriter />
           <ConnectionSettings active={connection === "active"} onApply={() => { setApprovalPrepared(null); setOwnerOperationPrepared(null); }} />
 
           <section className="bootstrap-panel" aria-labelledby="bootstrap-heading">

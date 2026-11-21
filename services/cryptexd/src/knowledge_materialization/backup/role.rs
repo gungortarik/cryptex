@@ -289,6 +289,35 @@ impl DeviceRole<'_> {
         }
     }
 
+    /// Check the mounted target, the locally accepted chain and current device
+    /// authority before identifying this device as its scheduled writer.
+    pub fn verify_local_writer(&self, profile: &Path, target: &Path) -> Result<(), Error> {
+        let assignment = self.reopen(target)?;
+        let dir = Directory::open(target).map_err(|_| Error::Target)?;
+        let id = marker(&dir)?;
+        let (head, writer) = assignment.verify(id)?;
+        let _change = self.changes()?;
+        let service = ServiceLabel::device_credentials(self.env);
+        let bound = self
+            .store
+            .get(service.as_str(), self.path_account(target)?.as_str())
+            .map_err(|error| {
+                if error == SecureStoreError::Missing {
+                    Error::Authority
+                } else {
+                    Error::Store
+                }
+            })?;
+        if writer != &Writer::from(self.local)
+            || bound.as_slice() != id
+            || !matches!(self.load(id)?, Some(LocalRole::Active(current)) if current == head)
+        {
+            return Err(Error::Authority);
+        }
+        self.check_authority(profile, &assignment.origin.brain, None)?;
+        dir.validate().map_err(|_| Error::Target)
+    }
+
     /// An owner selects the parent. Separate offline replicas must not create
     /// the same destination name even if neither can see the other's directory.
     pub fn create(

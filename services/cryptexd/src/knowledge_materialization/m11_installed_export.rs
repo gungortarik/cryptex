@@ -23,6 +23,45 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path, password: &Path) {
     let brain = fs::read(&identity).unwrap();
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tools/m11-backup-spike/installed_desktop.py");
+    let targets = work.join("writer-targets");
+    fs::create_dir(&targets).unwrap();
+    for mode in [
+        "writer-decline",
+        "writer-create",
+        "writer-inspect",
+        "writer-copy",
+    ] {
+        if mode == "writer-copy" {
+            let owned = fs::read_dir(&targets)
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .path();
+            let other = work.join("other-target");
+            fs::create_dir(&other).unwrap();
+            fs::copy(
+                owned.join("backup-target.id"),
+                other.join("backup-target.id"),
+            )
+            .unwrap();
+        }
+        let status = Command::new("python")
+            .arg("-B")
+            .arg(&script)
+            .arg("export")
+            .arg(desktop)
+            .arg(work)
+            .env("CRYPTEX_M11_INSTALLED_EXPORT", mode)
+            .status()
+            .unwrap();
+        assert!(status.success(), "installed backup writer: {mode}");
+        assert_eq!(
+            fs::read_dir(&targets).unwrap().count(),
+            usize::from(mode != "writer-decline")
+        );
+    }
+    println!("m11_installed_writer=passed consent=required assignment=reopened copied_target=held");
     for mode in [
         "wrong-brain",
         "decline",

@@ -29,6 +29,23 @@ pub(super) fn recipient_folder() -> Option<PathBuf> {
     Some(work.join("kit-public"))
 }
 
+pub(super) fn writer_folder(create: bool) -> Option<PathBuf> {
+    let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
+    let parent = work.join("writer-targets");
+    if create {
+        return Some(parent);
+    }
+    if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() == Ok("writer-copy") {
+        return Some(work.join("other-target"));
+    }
+    let mut entries = std::fs::read_dir(parent).ok()?;
+    let target = entries.next()?.ok()?.path();
+    if entries.next().is_some() {
+        return None;
+    }
+    Some(target)
+}
+
 pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
     match title {
@@ -104,9 +121,10 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
             | "verify-wrong-key"
             | "verify-wrong-checkpoint",
         ) => "offline-kit.pgp",
-        Some("wrong-brain" | "decline" | "cancel" | "write" | "overlap" | "damaged") => {
-            "export-source/identity/brain_identity.json"
-        }
+        Some(
+            "wrong-brain" | "decline" | "cancel" | "write" | "overlap" | "damaged"
+            | "writer-decline" | "writer-create" | "writer-inspect" | "writer-copy",
+        ) => "export-source/identity/brain_identity.json",
         _ => return Err("invalid rehearsal mode".into()),
     };
     if work.parent() != Some(std::env::temp_dir().canonicalize()?.as_path())
@@ -140,7 +158,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         }
     }
     let requests = match mode.as_deref() {
-        Some("verify-cancel") => 0,
+        Some("verify-cancel" | "writer-decline") => 0,
         Some("pair-write") => 5,
         Some("decline" | "wrong-brain" | "write" | "overlap") => 2,
         Some("cancel") => 3, // First confirmation, then cancellation at folder selection.
@@ -158,6 +176,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         .invoke_handler(tauri::generate_handler![
             super::p0_4_guarded_search,
             super::m11_export_backup,
+            super::m11_backup_writer,
             super::m11_verify_manual_backup,
             m11_search_observed
         ])

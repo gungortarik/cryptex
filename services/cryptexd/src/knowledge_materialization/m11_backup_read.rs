@@ -200,6 +200,14 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
     assert!(first.create(&pair.profiles[1], work.path()).is_err());
     let (target, _) = first.create(&pair.profiles[0], work.path()).unwrap();
     let original = first.reopen(&target).unwrap();
+    first
+        .verify_local_writer(&pair.profiles[0], &target)
+        .unwrap();
+    assert!(
+        second
+            .verify_local_writer(&pair.profiles[1], &target)
+            .is_err()
+    );
     let prior = target.join("backup-00000000000000000001.pgp");
     fs::write(&prior, b"prior synthetic backup").unwrap();
     let queue = DeviceJobs::new(&a_store, env, &a);
@@ -266,6 +274,10 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         local: &a,
     };
     assert!(old.assigned_head(&target).is_err());
+    assert_eq!(
+        old.verify_local_writer(&pair.profiles[0], &target),
+        Err(Error::Authority)
+    );
     assert!(
         DeviceJobs::new(&reopened, env, &a)
             .resume(&a, &stop, || {}, |_| panic!("former writer published"))
@@ -305,6 +317,9 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
     );
     second.accept(&pair.profiles[1], &target, &granted).unwrap();
     second.accept(&pair.profiles[1], &target, &retry).unwrap();
+    second
+        .verify_local_writer(&pair.profiles[1], &target)
+        .unwrap();
     assert_ne!(second.assigned_head(&target).unwrap(), separate_head);
     successor_jobs
         .enqueue(&prior, Sha256::digest(fs::read(&prior).unwrap()).into(), 2)

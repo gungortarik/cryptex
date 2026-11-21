@@ -498,6 +498,37 @@ fn confirm_backup_recipient(digest: &str) -> bool {
 }
 
 #[tauri::command]
+async fn m11_backup_writer(
+    create: bool,
+) -> Result<cryptexd::ipc::backup_writer::Outcome, cryptexd::ipc::backup_writer::Error> {
+    use cryptexd::ipc::backup_writer::{self, Action, Error, Outcome};
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(feature = "m11-installed-search-check")]
+        let selected = installed_search::writer_folder(create);
+        #[cfg(not(feature = "m11-installed-search-check"))]
+        let selected = rfd::FileDialog::new().set_title(if create {
+            "Choose the parent folder for a new scheduled backup target"
+        } else {
+            "Choose the scheduled backup target to check"
+        }).pick_folder();
+        let Some(path) = selected else { return Ok(Outcome::Cancelled) };
+        if create {
+            #[cfg(feature = "m11-installed-search-check")]
+            let approved = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() == Ok("writer-create");
+            #[cfg(not(feature = "m11-installed-search-check"))]
+            let approved = rfd::MessageDialog::new().set_title("Designate this device as backup writer?")
+                .set_description(format!("Cryptex will create a new backup target in the following folder and assign it to this device.\n\n{}", path.display()))
+                .set_buttons(rfd::MessageButtons::OkCancelCustom("Create target".into(), "Cancel".into()))
+                .show() == rfd::MessageDialogResult::Custom("Create target".into());
+            if !approved { return Ok(Outcome::Cancelled); }
+            backup_writer::desktop(Action::Create { parent: path })
+        } else {
+            backup_writer::desktop(Action::Inspect { target: path })
+        }
+    }).await.map_err(|_| Error::Uncertain)?
+}
+
+#[tauri::command]
 async fn m11_verify_manual_backup() -> Result<usize, cryptexd::ipc::backup_verify::Error> {
     use cryptexd::ipc::backup_verify::{self, Error, Selection};
     tauri::async_runtime::spawn_blocking(|| {
@@ -2808,6 +2839,7 @@ fn main() {
             m9_attach_file,
             m11_backup_removal,
             m11_export_backup,
+            m11_backup_writer,
             m11_verify_manual_backup,
             m10_purge_review,
             m10_note_lifecycle,

@@ -1,19 +1,26 @@
 (async () => {
   const mode = "EXPECTED_MODE";
-  const panel = () => document.querySelector('[aria-labelledby="manual-backup-heading"]');
+  const writer = mode.startsWith("writer-");
+  const panel = () => document.querySelector(writer ? '[aria-labelledby="backup-writer-heading"]' : '[aria-labelledby="manual-backup-heading"]');
+  const action = writer ? (["writer-create", "writer-decline"].includes(mode) ? "Create backup target" : "Check writer") :
+    (mode.startsWith("verify") ? "Verify manual backup" : "Export encrypted backup");
   let clicked = false;
   let visible = false;
   try {
     const deadline = Date.now() + 60000;
     while (Date.now() < deadline) {
       const button = [...(panel()?.querySelectorAll("button") ?? [])].find(el =>
-        el.textContent === (mode.startsWith("verify") ? "Verify manual backup" : "Export encrypted backup"));
+        el.textContent === action);
       if (!clicked && button && !button.disabled) {
         clicked = true;
         button.click();
       }
       const status = panel()?.querySelector('[role="status"]')?.textContent;
-      visible = mode === "pair-write" ? /^Original backup copied as manual-[0-9a-f]{32}\.prior\.pgp\./.test(status ?? "") :
+      visible = mode === "writer-create" ? /^Assigned this device as writer for cryptex-backup-[0-9a-f]{64}\.$/.test(status ?? "") :
+        mode === "writer-decline" ? status === "Selection cancelled." :
+        mode === "writer-inspect" ? status === "This device is the designated writer for the selected target." :
+        mode === "writer-copy" ? status === "This device could not prove writer authority for the selected target." :
+        mode === "pair-write" ? /^Original backup copied as manual-[0-9a-f]{32}\.prior\.pgp\./.test(status ?? "") :
         mode === "verify-pair" ? status === "Original and new device backups both restored and verified." :
         mode === "verify" ? status === "Backup verified by restoring it in temporary storage." :
         mode === "verify-cancel" ? status === "Verification cancelled." :
