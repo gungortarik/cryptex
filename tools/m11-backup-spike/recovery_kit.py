@@ -1,5 +1,6 @@
 """Portable, disposable M11 Kit rehearsal. The unlock credential is held separately."""
 
+import base64
 import hashlib
 import io
 import json
@@ -19,8 +20,11 @@ LIMIT = 128 * 1024
 
 
 def public_recipient(members):
+    if len(members["brain-identity.sha256"]) != hashlib.sha256().digest_size:
+        raise ValueError("Invalid Brain identity digest")
     pair = [members[name].decode("ascii") for name in ("recovery.sec", "recovery.pub")]
-    return subprocess.run(NODE + ["kit-public-recipient"], input=json.dumps(pair).encode("ascii"),
+    keys = [*pair, base64.b64encode(members["bootstrap.pk8"]).decode("ascii")]
+    return subprocess.run(NODE + ["kit-public-recipient"], input=json.dumps(keys).encode("ascii"),
                           stdout=subprocess.PIPE, check=True, timeout=90).stdout
 
 
@@ -62,8 +66,6 @@ def read_kit(source, password):
                 or sum(e.file_size for e in entries) > LIMIT):
             raise ValueError("Unexpected Kit inventory")
         contents = {name: archive.read(name) for name in archive.namelist()}
-        if len(contents["brain-identity.sha256"]) != hashlib.sha256().digest_size:
-            raise ValueError("Invalid Brain identity digest")
         return contents, public_recipient(contents)
 
 

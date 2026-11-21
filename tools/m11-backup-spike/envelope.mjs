@@ -1,4 +1,5 @@
 // Disposable P1 runner. The writer receives only the recovery public key.
+import { createPrivateKey, createPublicKey, randomBytes, sign, verify } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -19,7 +20,7 @@ async function run() {
   if (operation === "kit-public-recipient") {
     // Only the offline Kit utility calls this. Derive the certificate from
     // the private key and reject a Kit whose advertised recipient differs.
-    const [secret, advertised] = JSON.parse((await readBoundedKitInput()).toString("utf8"));
+    const [secret, advertised, bootstrapDer] = JSON.parse((await readBoundedKitInput()).toString("utf8"));
     const privateKey = await pgp.readPrivateKey({armoredKey: secret});
     const publicKey = privateKey.toPublic();
     const supplied = await pgp.readKeys({armoredKeys: advertised});
@@ -29,7 +30,12 @@ async function run() {
     }
     // Exercise the encryption subkey, including whether the secret exists
     // and is usable. The public certificate alone cannot establish that.
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const bootstrap = createPrivateKey({key: Buffer.from(bootstrapDer, "base64"), format: "der", type: "pkcs8"});
+    if (bootstrap.asymmetricKeyType !== "ed25519") throw new Error("Invalid bootstrap key");
+    const challenge = randomBytes(32);
+    if (!verify(null, challenge, createPublicKey(bootstrap), sign(null, challenge, bootstrap))) {
+      throw new Error("Recovery bootstrap check failed");
+    }
     const cipher = await pgp.encrypt({message: await pgp.createMessage({binary: challenge}),
       encryptionKeys: publicKey, format: "binary", config});
     const opened = await pgp.decrypt({message: await pgp.readMessage({binaryMessage: cipher}),

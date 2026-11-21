@@ -21,8 +21,14 @@ class PublicRecipientTest(unittest.TestCase):
             subprocess.run(NODE + ["keygen", key, secret], check=True)
             password = root / "unlock"
             password.write_text(secrets.token_hex(32), encoding="ascii")
-            for name in ("writer.pub", "bootstrap.pk8"):
-                (source / name).write_bytes(b"separate test member")
+            (source / "writer.pub").write_bytes(key.read_bytes())
+            bootstrap_key = root / "bootstrap-for-test"
+            script = ("const {privateKey}=require('node:crypto').generateKeyPairSync('ed25519');"
+                      "process.stdout.write(privateKey.export({type:'pkcs8',format:'der'}))")
+            with bootstrap_key.open("xb") as out:
+                subprocess.run(["node", "-e", script], stdout=out, check=True)
+            bootstrap = source / "bootstrap.pk8"
+            bootstrap.write_bytes(bootstrap_key.read_bytes())
             brain = hashlib.sha256(b"test identity").digest()
             (source / "brain-identity.sha256").write_bytes(brain)
             sealed = root / "kit.pgp"
@@ -37,6 +43,12 @@ class PublicRecipientTest(unittest.TestCase):
             with self.assertRaises(OSError):
                 export_recipient(sealed, password, public)
             self.assertEqual((public / "recovery.pub").read_bytes(), certificate)
+
+            bootstrap.write_bytes(b"damaged bootstrap credential")
+            with self.assertRaises(subprocess.CalledProcessError):
+                seal(source, password, root / "invalid-bootstrap.pgp")
+            self.assertFalse((root / "invalid-bootstrap.pgp").exists())
+            bootstrap.write_bytes(bootstrap_key.read_bytes())
 
             key.unlink()
             subprocess.run(NODE + ["keygen", key, root / "different.sec"], check=True)
