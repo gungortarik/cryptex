@@ -1,6 +1,6 @@
 //! Installed Desktop export, followed by a restore after losing the disposable source.
 use super::*;
-use crate::secure_store::{FileBackedSecureStore, SecureStore};
+use crate::secure_store::FileBackedSecureStore;
 
 pub(super) fn check(work: &Path, desktop: &Path, kit: &Path) {
     let root = work.join("export-source");
@@ -12,17 +12,42 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path) {
     let store = FileBackedSecureStore::open(work.join("export-credentials")).unwrap();
     let (device, _) = PairProfiles::enroll(&root, &store);
     let local = resolver_for_export(&root, &store);
-    store
-        .put(
-            "m11-fixture",
-            "export-public-recipient",
-            &fs::read(kit.join("recovery.pub")).unwrap(),
-        )
-        .unwrap();
     drop(store);
+    let public = work.join("kit-public");
+    assert_eq!(fs::read_dir(&public).unwrap().count(), 2);
+    let digest = format!(
+        "{:x}",
+        Sha256::digest(fs::read(public.join("recovery.pub")).unwrap())
+    );
+    let identity = public.join("brain-identity.sha256");
+    let brain = fs::read(&identity).unwrap();
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tools/m11-backup-spike/installed_desktop.py");
-    for mode in ["cancel", "overlap", "write"] {
+    for mode in [
+        "wrong-brain",
+        "decline",
+        "cancel",
+        "overlap",
+        "write",
+        "damaged",
+    ] {
+        if mode == "wrong-brain" {
+            fs::write(&identity, [0; 32]).unwrap();
+        }
+        if mode == "decline" {
+            fs::write(&identity, &brain).unwrap();
+        }
+        if mode == "overlap" {
+            fs::remove_dir_all(&public).unwrap();
+        }
+        if mode == "damaged" {
+            fs::write(
+                root.join("backup-certificates")
+                    .join(format!("{digest}.asc")),
+                b"changed",
+            )
+            .unwrap();
+        }
         assert!(
             Command::new("python")
                 .arg("-B")
@@ -31,12 +56,16 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path) {
                 .arg(desktop)
                 .arg(work)
                 .env("CRYPTEX_M11_INSTALLED_EXPORT", mode)
+                .env("CRYPTEX_M11_EXPECT_PUBLIC_DIGEST", &digest)
                 .status()
                 .unwrap()
                 .success(),
             "installed export: {mode}"
         );
-        let expected = usize::from(mode == "write");
+        let expected = usize::from(matches!(mode, "write" | "damaged"));
+        if matches!(mode, "wrong-brain" | "decline") {
+            assert!(!root.join("backup-certificates").exists());
+        }
         assert_eq!(fs::read_dir(&volume).unwrap().count(), expected);
         assert_eq!(fs::read_dir(&selections).unwrap().count(), expected);
     }
@@ -65,6 +94,9 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path) {
             .unwrap();
     assert!(snapshot.verified_records().iter().any(|record| matches!(record, VersionedRecord::VerifiedV1(note)
         if note.device_id == device.as_str() && matches!(&note.payload, cryptex_events::EventPayload::MemoryNote(p) if p.text == "synthetic original prefix"))));
+    println!(
+        "m11_recipient_enrollment=passed wrong_brain=held decline=kept offline_restart=restored modified_certificate=held"
+    );
     println!("m11_installed_export=passed cancelled=true overlap=held written=true restored=true");
 }
 

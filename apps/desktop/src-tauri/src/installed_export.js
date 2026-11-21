@@ -12,7 +12,8 @@
         button.click();
       }
       const status = panel()?.querySelector('[role="status"]')?.textContent;
-      visible = mode === "cancel" ? status === "Export cancelled." :
+      visible = ["wrong-brain", "damaged"].includes(mode) ? status === "Cryptex could not verify the Recovery Kit certificate for this profile." :
+        ["decline", "cancel"].includes(mode) ? status === "Export cancelled." :
         mode === "overlap" ? status === "Choose two separate folders outside the Cryptex profile." :
         /^Backup written as manual-[0-9a-f]{32}\.pgp\./.test(status ?? "");
       if (visible || status) break;

@@ -48,6 +48,9 @@ impl AccountLabel {
     pub fn backup_role(binding: &str) -> Self {
         Self(format!("backup-role:{binding}"))
     }
+    pub fn backup_recipient(device: &str) -> Self {
+        Self(format!("backup-recipient:{device}"))
+    }
     pub fn verified_backup(binding: &str) -> Self {
         Self(format!("verified-backup:{binding}"))
     }

@@ -19,6 +19,7 @@ export function ManualBackup() {
         `Backup written as ${result.backup}. Keep ${result.checkpoint} for recovery. Restore verification is pending.`);
     } catch (error) {
       const messages: Record<string, string> = {
+        invalid_recipient: "Cryptex could not verify the Recovery Kit certificate for this profile.",
         unsafe_destination: "Choose two separate folders outside the Cryptex profile.",
         unavailable: "Manual backup is unavailable for this profile.",
         history_held: "Cryptex could not verify the complete profile history for export.",

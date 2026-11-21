@@ -11,6 +11,8 @@ pub(crate) mod native_profile;
 
 pub mod attachment;
 pub mod backup_export;
+#[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+mod backup_recipient;
 pub mod backup_removal;
 mod backup_request;
 pub mod lifecycle;

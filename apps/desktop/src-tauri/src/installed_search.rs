@@ -24,6 +24,16 @@ impl Drop for Reader {
     }
 }
 
+pub(super) fn recipient_folder() -> Option<PathBuf> {
+    let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
+    Some(work.join("kit-public"))
+}
+
+pub(super) fn confirm_recipient(digest: &str) -> bool {
+    std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() != Ok("decline")
+        && std::env::var("CRYPTEX_M11_EXPECT_PUBLIC_DIGEST").as_deref() == Ok(digest)
+}
+
 pub(super) fn selected_folder(checkpoint: bool) -> Option<PathBuf> {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
     let mode = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").ok()?;
@@ -45,7 +55,9 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
     let mode = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").ok();
     let expected = match mode.as_deref() {
         None => "replacement/recovery/first-device.json",
-        Some("cancel" | "write" | "overlap") => "export-source/identity/brain_identity.json",
+        Some("wrong-brain" | "decline" | "cancel" | "write" | "overlap" | "damaged") => {
+            "export-source/identity/brain_identity.json"
+        }
         _ => return Err("invalid rehearsal mode".into()),
     };
     if work.parent() != Some(std::env::temp_dir().canonicalize()?.as_path())
@@ -78,11 +90,12 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
             break;
         }
     }
-    writeln!(
-        reader.0.stdin.as_mut().ok_or("missing reader input")?,
-        "serve"
-    )?;
-    if matches!(mode.as_deref(), Some("write" | "overlap")) {
+    let requests = match mode.as_deref() {
+        Some("decline" | "wrong-brain" | "write" | "overlap") => 2,
+        Some("cancel") => 3, // First confirmation, then cancellation at folder selection.
+        _ => 1,
+    };
+    for _ in 0..requests {
         writeln!(
             reader.0.stdin.as_mut().ok_or("missing reader input")?,
             "serve"

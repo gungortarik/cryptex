@@ -25,8 +25,18 @@ async function encrypt() {
   }
   const size = (await readExactly(4)).readUInt32BE();
   if (!size || size > 64 * 1024) throw new Error("Invalid certificate length");
-  const key = await pgp.readKey({armoredKey: (await readExactly(size)).toString("utf8")});
-  if (key.isPrivate()) throw new Error("Public certificate required");
+  const armor = (await readExactly(size)).toString("utf8").trim();
+  if (!armor.startsWith("-----BEGIN PGP PUBLIC KEY BLOCK-----") ||
+      !armor.endsWith("-----END PGP PUBLIC KEY BLOCK-----") ||
+      armor.split("-----BEGIN PGP ").length !== 2) throw new Error("One certificate required");
+  const keys = await pgp.readKeys({armoredKeys: armor});
+  if (keys.length !== 1 || keys[0].isPrivate()) throw new Error("Public certificate required");
+  const [key] = keys;
+  if (process.argv[2] === "public-recipient") {
+    await key.getEncryptionKey();
+    process.stdout.write(key.armor());
+    return;
+  }
   async function* archive() {
     if (remainder.length) yield remainder;
     yield* input;

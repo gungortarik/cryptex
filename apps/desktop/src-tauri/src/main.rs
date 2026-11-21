@@ -470,13 +470,58 @@ fn backup_folder(checkpoint: bool) -> Option<std::path::PathBuf> {
     }
 }
 
+fn backup_recipient_folder() -> Option<std::path::PathBuf> {
+    #[cfg(feature = "m11-installed-search-check")]
+    {
+        installed_search::recipient_folder()
+    }
+    #[cfg(not(feature = "m11-installed-search-check"))]
+    {
+        rfd::FileDialog::new()
+            .set_title("Choose the public recipient folder exported by your Recovery Kit")
+            .pick_folder()
+    }
+}
+
+fn confirm_backup_recipient(digest: &str) -> bool {
+    #[cfg(feature = "m11-installed-search-check")]
+    {
+        installed_search::confirm_recipient(digest)
+    }
+    #[cfg(not(feature = "m11-installed-search-check"))]
+    {
+        rfd::MessageDialog::new().set_title("Use this Recovery Kit for backups?")
+            .set_description(format!("Compare the certificate SHA-256 below with the value shown by your offline Recovery Kit. Confirm only if the full values match.\n\n{digest}"))
+            .set_buttons(rfd::MessageButtons::OkCancelCustom("Use this certificate".into(), "Cancel".into()))
+            .show() == rfd::MessageDialogResult::Custom("Use this certificate".into())
+    }
+}
+
 #[tauri::command]
 async fn m11_export_backup()
 -> Result<cryptexd::ipc::backup_export::Outcome, cryptexd::ipc::backup_export::Error> {
     use cryptexd::ipc::backup_export::{Action, Error, Outcome, desktop};
     tauri::async_runtime::spawn_blocking(|| {
-        if desktop(Action::Inspect)? != Outcome::Ready {
-            return Err(Error::Unavailable);
+        match desktop(Action::Inspect)? {
+            Outcome::Ready => {}
+            Outcome::NeedsRecipient => {
+                let Some(folder) = backup_recipient_folder() else {
+                    return Ok(Outcome::Cancelled);
+                };
+                let Outcome::Review { digest } = desktop(Action::ReviewRecipient {
+                    folder: folder.clone(),
+                })?
+                else {
+                    return Err(Error::InvalidRecipient);
+                };
+                if !confirm_backup_recipient(&digest) {
+                    return Ok(Outcome::Cancelled);
+                }
+                if desktop(Action::EnrollRecipient { folder, digest })? != Outcome::Ready {
+                    return Err(Error::InvalidRecipient);
+                }
+            }
+            _ => return Err(Error::Unavailable),
         }
         let Some(target) = backup_folder(false) else {
             return Ok(Outcome::Cancelled);

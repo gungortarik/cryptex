@@ -11,7 +11,7 @@ import zipfile
 
 from rehearse import MIB, NODE
 from restore_publication import publish_exclusive
-from recovery_kit import seal, unseal
+from recovery_kit import export_recipient, seal, unseal
 
 
 MEMBER = re.compile(r"canonical/(?:events/(?:[0-9a-f]{2}){1,128}/[0-9]{20}\.(?:seg|open)|blobs/[0-9a-f]{64})")
@@ -170,7 +170,7 @@ def recover(kit, destination, backup):
 if __name__ == "__main__":
     command, *args = sys.argv[1:]
     actions = {"prepare": prepare, "recover": recover, "write-generation": write_generation,
-               "seal-kit": seal, "open-kit": unseal, "pack": pack, "seal-inventory": seal_inventory,
+               "kit-public-recipient": export_recipient, "seal-kit": seal, "open-kit": unseal, "pack": pack, "seal-inventory": seal_inventory,
                "open-payload": open_payload, "unpack-checked": unpack_checked}
     try:
         actions[command](*(Path(arg) for arg in args))

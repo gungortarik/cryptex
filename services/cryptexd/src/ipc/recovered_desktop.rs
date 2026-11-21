@@ -63,13 +63,8 @@ pub fn installed() -> io::Result<()> {
             } else {
                 parent.join("../Resources")
             };
-            let recipient = ctx
-                .store
-                .get("m11-fixture", "export-public-recipient")
-                .map_err(|_| invalid_data("missing recipient"))?;
             ctx.backup_export = Some(Arc::new(backup_export::Config {
                 codec: resources.join("m11-codec"),
-                recipient,
                 busy: Mutex::new(()),
             }));
         }

@@ -853,9 +853,6 @@ fn restored_note_and_attachment_pass_guarded_reads() {
             run_archive("seal-inventory", &[&recipient, inner.path(), &backup]);
         }
     }
-    if let Some(desktop) = std::env::var_os("CRYPTEX_M11_INSTALLED_DESKTOP") {
-        installed_export::check(work.path(), Path::new(&desktop), &kit);
-    }
     let sealed_kit = work.path().join("offline-kit.pgp");
     let unlock = tempfile::tempdir().unwrap();
     let password = unlock.path().join("owner-unlock");
@@ -894,6 +891,14 @@ fn restored_note_and_attachment_pass_guarded_reads() {
     assert!(archive_operation("open-kit", &[&damaged_kit, &password, &kit]).is_err());
     assert!(!kit.try_exists().unwrap());
     run_archive("open-kit", &[&sealed_kit, &password, &kit]);
+    if let Some(desktop) = std::env::var_os("CRYPTEX_M11_INSTALLED_DESKTOP") {
+        run_archive(
+            "kit-public-recipient",
+            &[&sealed_kit, &password, &work.path().join("kit-public")],
+        );
+        installed_export::check(work.path(), Path::new(&desktop), &kit);
+    }
+
     let selection: crate::backup_inventory::RecoverySelection =
         serde_json::from_slice(&fs::read(kit.join("selected-backup.json")).unwrap()).unwrap();
     let anchor = selection.writer().unwrap();

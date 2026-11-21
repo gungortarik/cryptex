@@ -55,100 +55,132 @@ impl Prepared {
     /// The directory must be the OS-protected resource directory of the
     /// owner's selected installation. No renderer-supplied command is accepted.
     pub fn encrypt(&self, directory: &Path, recipient: &[u8]) -> Result<NamedTempFile, Error> {
-        let pins = CodecPins::packaged()?;
-        if !directory.is_absolute() || recipient.is_empty() || recipient.len() > 64 * 1024 {
-            return Err(Error::Codec);
-        }
-        let mut staging = tempfile::Builder::new();
-        staging.prefix("cryptex-backup-codec-");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            staging.permissions(std::fs::Permissions::from_mode(0o700));
-        }
-        let staging = staging.tempdir().map_err(|_| Error::Codec)?;
-        // Node resolves module paths before checking its filesystem permission.
-        // macOS exposes the private temp folder via both /var and /private/var.
-        #[cfg(target_os = "macos")]
-        let path = staging.path().canonicalize().map_err(|_| Error::Codec)?;
-        #[cfg(not(target_os = "macos"))]
-        let path = staging.path();
-        let runtime = if cfg!(windows) { "node.exe" } else { "node" };
-        for (name, pin) in [
-            (runtime, &pins.runtime),
-            ("encrypt.cjs", &pins.entry),
-            ("openpgp.min.cjs", &pins.openpgp),
-        ] {
-            copy_pinned(&directory.join(name), &path.join(name), pin)?;
-        }
-        let node = path.join(runtime);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&node, std::fs::Permissions::from_mode(0o700))
-                .map_err(|_| Error::Codec)?;
-        }
-        let script = path.join("encrypt.cjs");
-        let library = path.join("openpgp.min.cjs");
         let assembly = self.encryption_input()?;
-        let mut input = assembly.reopen().map_err(|_| Error::Archive)?;
-        let output = NamedTempFile::new().map_err(|_| Error::Archive)?;
-        let mut read_library = std::ffi::OsString::from("--allow-fs-read=");
-        read_library.push(&library);
-        let mut command = Command::new(node);
-        command
-            .env_clear()
-            .current_dir(path)
-            .args(["--permission", "--no-addons"])
-            .arg(read_library)
-            .arg(script)
-            .stdin(Stdio::piped())
-            .stderr(Stdio::null())
-            .stdout(output.as_file().try_clone().map_err(|_| Error::Archive)?);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
-            command.creation_flags(CREATE_NO_WINDOW);
-            let system = std::env::var_os("SystemRoot").ok_or(Error::Codec)?;
-            command.env("SystemRoot", system);
-        }
-        let mut child = command.spawn().map_err(|_| Error::CodecStart)?;
-        let mut pipe = child.stdin.take().expect("piped child input");
-        let status = std::thread::scope(|scope| {
-            let feeder = scope.spawn(move || -> io::Result<()> {
-                pipe.write_all(&(recipient.len() as u32).to_be_bytes())?;
-                pipe.write_all(recipient)?;
-                io::copy(&mut input, &mut pipe)?;
-                Ok(())
-            });
-            let deadline = Instant::now() + Duration::from_secs(300);
-            let success = loop {
-                match child.try_wait() {
-                    Ok(Some(code)) => break code.success(),
-                    Ok(None) if Instant::now() < deadline => {
-                        std::thread::sleep(Duration::from_millis(50))
-                    }
-                    _ => {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        break false;
-                    }
-                }
-            };
-            success && matches!(feeder.join(), Ok(Ok(())))
-        });
-        if !status
-            || output
-                .as_file()
-                .metadata()
-                .map_err(|_| Error::Archive)?
-                .len()
-                == 0
-        {
-            return Err(Error::CodecExit);
-        }
-        output.as_file().sync_all().map_err(|_| Error::Archive)?;
-        Ok(output)
+        run_codec(
+            directory,
+            recipient,
+            Some(assembly.reopen().map_err(|_| Error::Archive)?),
+        )
     }
+}
+
+/// Parse and reserialize a single encryption-capable public certificate before
+/// its bytes may be retained by the daemon or displayed to the owner.
+pub(crate) fn public_recipient(directory: &Path, recipient: &[u8]) -> Result<Vec<u8>, Error> {
+    let file = run_codec(directory, recipient, None)?;
+    let mut bytes = Vec::new();
+    file.reopen()
+        .map_err(|_| Error::Codec)?
+        .take(65537)
+        .read_to_end(&mut bytes)
+        .map_err(|_| Error::Codec)?;
+    if bytes.is_empty() || bytes.len() > 65536 {
+        return Err(Error::Codec);
+    }
+    Ok(bytes)
+}
+
+fn run_codec(
+    directory: &Path,
+    recipient: &[u8],
+    mut payload: Option<File>,
+) -> Result<NamedTempFile, Error> {
+    let pins = CodecPins::packaged()?;
+    if !directory.is_absolute() || recipient.is_empty() || recipient.len() > 64 * 1024 {
+        return Err(Error::Codec);
+    }
+    let mut staging = tempfile::Builder::new();
+    staging.prefix("cryptex-backup-codec-");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        staging.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    let staging = staging.tempdir().map_err(|_| Error::Codec)?;
+    // Node resolves module paths before checking its filesystem permission.
+    // macOS exposes the private temp folder via both /var and /private/var.
+    #[cfg(target_os = "macos")]
+    let path = staging.path().canonicalize().map_err(|_| Error::Codec)?;
+    #[cfg(not(target_os = "macos"))]
+    let path = staging.path();
+    let runtime = if cfg!(windows) { "node.exe" } else { "node" };
+    for (name, pin) in [
+        (runtime, &pins.runtime),
+        ("encrypt.cjs", &pins.entry),
+        ("openpgp.min.cjs", &pins.openpgp),
+    ] {
+        copy_pinned(&directory.join(name), &path.join(name), pin)?;
+    }
+    let node = path.join(runtime);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&node, std::fs::Permissions::from_mode(0o700))
+            .map_err(|_| Error::Codec)?;
+    }
+    let script = path.join("encrypt.cjs");
+    let library = path.join("openpgp.min.cjs");
+    let output = NamedTempFile::new().map_err(|_| Error::Archive)?;
+    let mut read_library = std::ffi::OsString::from("--allow-fs-read=");
+    read_library.push(&library);
+    let mut command = Command::new(node);
+    command
+        .env_clear()
+        .current_dir(path)
+        .args(["--permission", "--no-addons"])
+        .arg(read_library)
+        .arg(script)
+        .stdin(Stdio::piped())
+        .stderr(Stdio::null())
+        .stdout(output.as_file().try_clone().map_err(|_| Error::Archive)?);
+    if payload.is_none() {
+        command.arg("public-recipient");
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+        command.creation_flags(CREATE_NO_WINDOW);
+        let system = std::env::var_os("SystemRoot").ok_or(Error::Codec)?;
+        command.env("SystemRoot", system);
+    }
+    let mut child = command.spawn().map_err(|_| Error::CodecStart)?;
+    let mut pipe = child.stdin.take().expect("piped child input");
+    let status = std::thread::scope(|scope| {
+        let feeder = scope.spawn(move || -> io::Result<()> {
+            pipe.write_all(&(recipient.len() as u32).to_be_bytes())?;
+            pipe.write_all(recipient)?;
+            if let Some(input) = payload.as_mut() {
+                io::copy(input, &mut pipe)?;
+            }
+            Ok(())
+        });
+        let deadline = Instant::now() + Duration::from_secs(300);
+        let success = loop {
+            match child.try_wait() {
+                Ok(Some(code)) => break code.success(),
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(50))
+                }
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break false;
+                }
+            }
+        };
+        success && matches!(feeder.join(), Ok(Ok(())))
+    });
+    if !status
+        || output
+            .as_file()
+            .metadata()
+            .map_err(|_| Error::Archive)?
+            .len()
+            == 0
+    {
+        return Err(Error::CodecExit);
+    }
+    output.as_file().sync_all().map_err(|_| Error::Archive)?;
+    Ok(output)
 }

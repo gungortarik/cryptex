@@ -7,7 +7,6 @@ const CAPABILITY: &str = "backup.export.owner";
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 pub(super) struct Config {
     pub(super) codec: PathBuf,
-    pub(super) recipient: Vec<u8>,
     pub(super) busy: Mutex<()>,
 }
 
@@ -15,6 +14,13 @@ pub(super) struct Config {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
     Inspect,
+    ReviewRecipient {
+        folder: PathBuf,
+    },
+    EnrollRecipient {
+        folder: PathBuf,
+        digest: String,
+    },
     Export {
         target: PathBuf,
         checkpoint: PathBuf,
@@ -25,6 +31,8 @@ pub enum Action {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Outcome {
     Ready,
+    NeedsRecipient,
+    Review { digest: String },
     Cancelled,
     Written { backup: String, checkpoint: String },
 }
@@ -34,6 +42,7 @@ pub enum Outcome {
 pub enum Error {
     Unauthorized,
     InvalidRequest,
+    InvalidRecipient,
     Unavailable,
     Busy,
     UnsafeDestination,
@@ -49,10 +58,32 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
 
     let ctx = ctx.admitted().map_err(|_| Error::Unavailable)?;
     let config = ctx.backup_export.as_ref().ok_or(Error::Unavailable)?;
-    let Action::Export { target, checkpoint } = action else {
-        return Ok(Outcome::Ready);
-    };
     let _job = config.busy.try_lock().map_err(|_| Error::Busy)?;
+    let binding = super::backup_recipient::Binding::load(&ctx)?;
+    let recipient = binding.existing(&ctx)?;
+    let (target, checkpoint) = match action {
+        Action::Inspect => {
+            return Ok(if recipient.is_some() {
+                Outcome::Ready
+            } else {
+                Outcome::NeedsRecipient
+            });
+        }
+        Action::ReviewRecipient { folder } if recipient.is_none() => {
+            let cert = binding.inspect(&folder, &config.codec)?;
+            return Ok(Outcome::Review {
+                digest: format!("{:x}", Sha256::digest(cert)),
+            });
+        }
+        Action::EnrollRecipient { folder, digest } if recipient.is_none() => {
+            let cert = binding.inspect(&folder, &config.codec)?;
+            binding.enroll(&ctx, &cert, &digest)?;
+            return Ok(Outcome::Ready);
+        }
+        Action::Export { target, checkpoint } => (target, checkpoint),
+        _ => return Err(Error::InvalidRecipient),
+    };
+    let recipient = recipient.ok_or(Error::InvalidRecipient)?;
     for directory in [&target, &checkpoint] {
         if !directory.is_absolute() || !directory.is_dir() {
             return Err(Error::UnsafeDestination);
@@ -65,7 +96,7 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
     let prepared = backup::prepare(&ctx.runtime_root, ctx.store.as_ref(), ctx.environment, 1)
         .map_err(|_| Error::HistoryHeld)?;
     let (backup, checkpoint) = prepared
-        .export_manual_bundle(&config.codec, &config.recipient, &target, &checkpoint)
+        .export_manual_bundle(&config.codec, &recipient, &target, &checkpoint)
         .map_err(|e| match e {
             BackupError::ExportDestination => Error::UnsafeDestination,
             BackupError::ExportPublication => Error::Uncertain,
@@ -105,8 +136,12 @@ pub(super) fn handle(
 }
 
 pub fn desktop(action: Action) -> Result<Outcome, Error> {
-    let writing = matches!(action, Action::Export { .. });
-    let timeout = if writing {
+    let writing = matches!(
+        action,
+        Action::Export { .. } | Action::EnrollRecipient { .. }
+    );
+    let inspecting = matches!(action, Action::Inspect);
+    let timeout = if !inspecting {
         Duration::from_secs(360)
     } else {
         IPC_RESPONSE_DEADLINE

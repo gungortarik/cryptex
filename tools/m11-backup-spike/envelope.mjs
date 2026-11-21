@@ -16,6 +16,28 @@ async function run() {
     await writeFile(keyFile, keys.publicKey, { flag: "wx" });
     return;
   }
+  if (operation === "kit-public-recipient") {
+    // Only the offline Kit utility calls this. Derive the certificate from
+    // the private key and reject a Kit whose advertised recipient differs.
+    const [secret, advertised] = JSON.parse((await readBoundedKitInput()).toString("utf8"));
+    const privateKey = await pgp.readPrivateKey({armoredKey: secret});
+    const publicKey = privateKey.toPublic();
+    const supplied = await pgp.readKeys({armoredKeys: advertised});
+    if (supplied.length !== 1 || supplied[0].isPrivate() ||
+        !Buffer.from(publicKey.write()).equals(Buffer.from(supplied[0].write()))) {
+      throw new Error("Recovery certificate mismatch");
+    }
+    // Exercise the encryption subkey, including whether the secret exists
+    // and is usable. The public certificate alone cannot establish that.
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const cipher = await pgp.encrypt({message: await pgp.createMessage({binary: challenge}),
+      encryptionKeys: publicKey, format: "binary", config});
+    const opened = await pgp.decrypt({message: await pgp.readMessage({binaryMessage: cipher}),
+      decryptionKeys: privateKey, format: "binary", config});
+    if (!Buffer.from(opened.data).equals(challenge)) throw new Error("Recovery check failed");
+    process.stdout.write(publicKey.armor());
+    return;
+  }
   if (operation === "lock-kit" || operation === "unlock-kit") {
     // Test fixture models a separately held, random owner unlock credential.
     const password = (await readFile(keyFile, "utf8")).trim();
