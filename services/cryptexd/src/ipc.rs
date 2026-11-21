@@ -942,6 +942,8 @@ impl DesktopProcessIdentity {
 
 fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
     let listener = create_listener()?;
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    let schedule = backup_writer::start(context.as_ref())?;
     let context = context.map(Arc::new);
     let unauthenticated_workers = Arc::new(AtomicUsize::new(0));
     let desktop_connections = Arc::new(AtomicUsize::new(0));
@@ -951,6 +953,8 @@ fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
     thread::Builder::new()
         .name("cryptex-ipc".into())
         .spawn(move || {
+            #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+            let _schedule = schedule;
             for incoming in listener.incoming() {
                 match incoming {
                     Ok(mut stream) => {

@@ -1,6 +1,8 @@
 //! Daemon scheduler exercised on disposable M11 profiles.
 pub(crate) mod journal;
+#[cfg(test)]
 pub(crate) mod retention;
+use crate::import_staging::export_fs::Error as DirectoryError;
 use cryptex_events::LocalTrustAnchor;
 use sha2::{Digest, Sha256};
 use std::fs::OpenOptions;
@@ -8,6 +10,19 @@ use std::io;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
+
+fn directory_error(error: DirectoryError) -> io::Error {
+    match error {
+        DirectoryError::Unsafe => {
+            io::Error::new(io::ErrorKind::InvalidData, "unsafe backup directory")
+        }
+        DirectoryError::Io(kind, _) => io::Error::new(kind, "backup filesystem operation failed"),
+    }
+}
+
+fn generation_name(number: u64) -> String {
+    format!("backup-{number:020}.pgp")
+}
 
 fn role_error(error: crate::knowledge_materialization::backup::role::Error) -> io::Error {
     use crate::knowledge_materialization::backup::role::Error;
@@ -32,7 +47,7 @@ pub(crate) enum Outcome {
     Stopped,
 }
 
-fn generation_digest(path: &Path) -> io::Result<[u8; 32]> {
+pub(crate) fn generation_digest(path: &Path) -> io::Result<[u8; 32]> {
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]

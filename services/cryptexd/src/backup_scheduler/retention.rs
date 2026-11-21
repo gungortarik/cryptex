@@ -1,6 +1,7 @@
 //! Retention only recognizes numbered automatic generations with a local
 //! reconstruction receipt bound to this writer, directory, and ciphertext.
-use crate::import_staging::export_fs::{Directory, Error as DirectoryError};
+use super::{directory_error, generation_name};
+use crate::import_staging::export_fs::Directory;
 use crate::secure_store::{
     AccountLabel, SecureStore, SecureStoreEnvironment, SecureStoreError, ServiceLabel,
 };
@@ -9,19 +10,6 @@ use sha2::{Digest, Sha256};
 use std::{fs, io, num::NonZeroUsize, path::Path};
 
 pub(crate) mod removal;
-
-pub(super) fn directory_error(error: DirectoryError) -> io::Error {
-    match error {
-        DirectoryError::Unsafe => {
-            io::Error::new(io::ErrorKind::InvalidData, "unsafe backup directory")
-        }
-        DirectoryError::Io(kind, _) => io::Error::new(kind, "backup filesystem operation failed"),
-    }
-}
-
-pub(super) fn generation_name(number: u64) -> String {
-    format!("backup-{number:020}.pgp")
-}
 
 fn generation_number(name: &str) -> Option<u64> {
     let number = name

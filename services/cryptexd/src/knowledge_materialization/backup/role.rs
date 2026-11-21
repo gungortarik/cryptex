@@ -160,7 +160,6 @@ impl DeviceRole<'_> {
         ROLE_CHANGES.lock().map_err(|_| Error::Store)
     }
 
-    #[cfg(test)] // The scheduler and retention runner currently operate only on disposable profiles.
     pub(crate) fn guard_writer(
         &self,
         target: &Path,
@@ -368,7 +367,6 @@ impl DeviceRole<'_> {
 
     /// Called while the scheduler holds this target's writer lock, including
     /// after a wait for reconnection and immediately before removing generations.
-    #[cfg(test)]
     fn active(&self, dir: &Directory) -> Result<Hash, Error> {
         let state = self.load(marker(dir)?)?.ok_or(Error::Authority)?;
         match state {

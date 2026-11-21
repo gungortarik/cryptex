@@ -112,6 +112,8 @@ fn serve(
         transport_device_id_override: None,
     };
     configure(&mut context)?;
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    let _schedule = backup_writer::start(Some(&context))?;
     let token = std::env::var("CRYPTEX_FILE_FIXTURE_SOCKET")
         .map_err(|_| invalid_data("missing socket ID"))?;
     let listener = ListenerOptions::new()

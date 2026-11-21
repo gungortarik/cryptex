@@ -87,6 +87,9 @@ pub(super) fn confirm_recipient(digest: &str) -> bool {
 pub(super) fn selected_folder(checkpoint: bool) -> Option<PathBuf> {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
     let mode = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").ok()?;
+    if checkpoint && mode == "writer-enable" {
+        return Some(work.join("schedule-checkpoints"));
+    }
     if checkpoint && mode == "cancel" {
         return None;
     }
@@ -123,7 +126,8 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         ) => "offline-kit.pgp",
         Some(
             "wrong-brain" | "decline" | "cancel" | "write" | "overlap" | "damaged"
-            | "writer-decline" | "writer-create" | "writer-inspect" | "writer-copy",
+            | "writer-enable" | "writer-resume" | "writer-pause" | "writer-decline"
+            | "writer-create" | "writer-inspect" | "writer-copy",
         ) => "export-source/identity/brain_identity.json",
         _ => return Err("invalid rehearsal mode".into()),
     };
@@ -160,7 +164,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
     let requests = match mode.as_deref() {
         Some("verify-cancel" | "writer-decline") => 0,
         Some("pair-write") => 5,
-        Some("decline" | "wrong-brain" | "write" | "overlap") => 2,
+        Some("writer-enable" | "decline" | "wrong-brain" | "write" | "overlap") => 2,
         Some("cancel") => 3, // First confirmation, then cancellation at folder selection.
         _ => 1,
     };
@@ -171,6 +175,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
         )?;
     }
     let observed = Arc::new(AtomicBool::new(false));
+    let wait_for_schedule = mode.as_deref() == Some("writer-resume");
     let app = tauri::Builder::default()
         .manage(observed.clone())
         .invoke_handler(tauri::generate_handler![
@@ -196,6 +201,16 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
     let code = app.run_return(|_, _| {});
     if code != 0 || !observed.load(Ordering::Acquire) {
         return Ok(false);
+    }
+    if wait_for_schedule {
+        let target = writer_folder(false).ok_or("missing scheduled target")?;
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(45);
+        while !target.join("backup-00000000000000000001.pgp").is_file() {
+            if std::time::Instant::now() >= end {
+                return Err("scheduled generation timed out".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
     }
     writeln!(
         reader.0.stdin.take().ok_or("missing reader input")?,

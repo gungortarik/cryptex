@@ -80,6 +80,20 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path, password: &Path) {
             fs::remove_dir_all(&public).unwrap();
         }
         if mode == "damaged" {
+            let scheduled = work.join("schedule-checkpoints");
+            fs::create_dir(&scheduled).unwrap();
+            for action in ["writer-enable", "writer-resume", "writer-pause"] {
+                let status = Command::new("python")
+                    .arg("-B")
+                    .arg(&script)
+                    .arg("export")
+                    .arg(desktop)
+                    .arg(work)
+                    .env("CRYPTEX_M11_INSTALLED_EXPORT", action)
+                    .status()
+                    .unwrap();
+                assert!(status.success(), "installed scheduler: {action}");
+            }
             fs::write(
                 root.join("backup-certificates")
                     .join(format!("{digest}.asc")),
@@ -116,6 +130,31 @@ pub(super) fn check(work: &Path, desktop: &Path, kit: &Path, password: &Path) {
     assert_eq!(selection_file.extension().unwrap(), "json");
     fs::remove_dir_all(&root).unwrap();
     fs::remove_dir_all(work.join("export-credentials")).unwrap();
+    let writer_dir = only_file(&targets);
+    let generation = writer_dir.join("backup-00000000000000000001.pgp");
+    let checkpoints = work.join("schedule-checkpoints");
+    assert_eq!(fs::read_dir(&checkpoints).unwrap().count(), 1);
+    assert!(!writer_dir.join("backup-00000000000000000002.pgp").exists());
+    let codec = std::env::var_os("CRYPTEX_M11_TEST_INSTALLED_CODEC").unwrap();
+    let scratch = tempfile::tempdir().unwrap();
+    let archives = backup::reconstruct_files(
+        Path::new(&codec),
+        &generation,
+        &only_file(&checkpoints),
+        &work.join("offline-kit.pgp"),
+        password,
+        scratch.path(),
+    )
+    .unwrap();
+    assert_eq!(archives.len(), 1);
+    let restored =
+        scan_verified_canonical_from_local_anchor_until(archives[0].path(), BRAIN, &local, None)
+            .unwrap();
+    assert!(restored.verified_records().iter().any(|record| matches!(record, VersionedRecord::VerifiedV1(note)
+        if note.device_id == device.as_str() && matches!(&note.payload, cryptex_events::EventPayload::MemoryNote(p) if p.text == "synthetic original prefix"))));
+    println!(
+        "m11_installed_schedule=passed restarted=true generation=1 paused=true original_note_restored=true"
+    );
     // The installed verifier opens on a new disposable session after source loss.
     let session = work.join("verify-session");
     fs::create_dir(&session).unwrap();

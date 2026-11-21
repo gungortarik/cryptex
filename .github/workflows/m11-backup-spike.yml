@@ -23,6 +23,7 @@ on:
       - 'services/cryptexd/src/knowledge_materialization/recovered_search.rs'
       - 'services/cryptexd/src/ipc/recovered_desktop.rs'
       - 'services/cryptexd/src/ipc/backup*.rs'
+      - 'services/cryptexd/src/ipc/backup_writer/**'
       - 'services/cryptexd/src/knowledge_materialization/m11_installed_export.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_separate_backups.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
@@ -54,6 +55,7 @@ on:
       - 'services/cryptexd/src/knowledge_materialization/recovered_search.rs'
       - 'services/cryptexd/src/ipc/recovered_desktop.rs'
       - 'services/cryptexd/src/ipc/backup*.rs'
+      - 'services/cryptexd/src/ipc/backup_writer/**'
       - 'services/cryptexd/src/knowledge_materialization/m11_installed_export.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_separate_backups.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_backup_read.rs'
@@ -177,6 +179,7 @@ jobs:
         run: |
           set -euo pipefail
           python -B tools/m11-backup-spike/installed_desktop.py install | tee "$RUNNER_TEMP/m11-installed.txt"
+          grep -Fx 'm11_installed_schedule=passed restarted=true generation=1 paused=true original_note_restored=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_writer=passed consent=required assignment=reopened copied_target=held' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_recipient_enrollment=passed wrong_brain=held decline=kept offline_restart=restored modified_certificate=held' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_export=passed cancelled=true overlap=held written=true restored=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"

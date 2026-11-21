@@ -30,9 +30,26 @@ struct Job {
     prior_hash: [u8; 32],
     generation: u64,
     phase: Phase,
+    #[serde(default)]
+    schedule: Option<Schedule>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Schedule {
+    checkpoints: PathBuf,
+    enabled: bool,
+    next_due: u64,
+}
+
+pub(crate) struct Due {
+    pub target: PathBuf,
+    pub checkpoints: PathBuf,
+    pub generation: u64,
 }
 
 /// Only the local scheduler's journal can identify an automatic publication.
+#[cfg(test)]
 pub(crate) struct PublishedGeneration {
     pub(super) writer: LocalTrustAnchor,
     pub(super) path: PathBuf,
@@ -145,7 +162,91 @@ impl<'a> DeviceJobs<'a> {
             prior_hash,
             generation,
             phase: Phase::Queued,
+            schedule: None,
         })
+    }
+
+    /// Persist the selected checkpoint directory before enabling autonomous publication.
+    pub fn configure(&self, target: &Path, checkpoints: &Path) -> io::Result<()> {
+        let head = self
+            .role()
+            .assigned_head(target)
+            .map_err(super::role_error)?;
+        let mut job = match self.load()? {
+            Some(job) if job.role_head == Some(head) && job.prior.parent() == Some(target) => job,
+            _ => {
+                let marker = target.join("backup-target.id");
+                self.enqueue(&marker, generation_digest(&marker)?, 1)?;
+                self.load()?
+                    .ok_or_else(|| io::Error::other("missing scheduled job"))?
+            }
+        };
+        if let Some(schedule) = &mut job.schedule {
+            if schedule.checkpoints != checkpoints {
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "different checkpoint folder",
+                ));
+            }
+            schedule.enabled = true;
+        } else {
+            job.schedule = Some(Schedule {
+                checkpoints: checkpoints.to_owned(),
+                enabled: true,
+                next_due: 0,
+            });
+        }
+        self.save(&job)
+    }
+
+    pub fn enabled(&self) -> io::Result<bool> {
+        Ok(self
+            .load()?
+            .and_then(|job| job.schedule)
+            .is_some_and(|s| s.enabled))
+    }
+
+    pub fn pause(&self) -> io::Result<()> {
+        if let Some(mut job) = self.load()?
+            && let Some(schedule) = &mut job.schedule
+        {
+            schedule.enabled = false;
+            self.save(&job)?;
+        }
+        Ok(())
+    }
+
+    pub fn due(&self, now: u64) -> io::Result<Option<Due>> {
+        let Some(mut job) = self.load()? else {
+            return Ok(None);
+        };
+        let Some(schedule) = job.schedule.clone().filter(|s| s.enabled) else {
+            return Ok(None);
+        };
+        if !schedule.checkpoints.is_absolute() {
+            return Err(io::Error::other("invalid checkpoint folder"));
+        }
+        if let Phase::Published(digest) = job.phase {
+            if now < schedule.next_due {
+                return Ok(None);
+            }
+            let prior = job.output();
+            let number = job
+                .generation
+                .checked_add(1)
+                .ok_or_else(|| io::Error::other("generation overflow"))?;
+            // Keep the schedule and generation rollover in a single durable update.
+            job.phase = Phase::Queued;
+            job.prior = prior;
+            job.prior_hash = digest;
+            job.generation = number;
+            self.save(&job)?;
+        }
+        Ok(Some(Due {
+            target: job.prior.parent().unwrap().to_owned(),
+            checkpoints: schedule.checkpoints,
+            generation: job.generation,
+        }))
     }
 
     fn role(&self) -> crate::knowledge_materialization::backup::role::DeviceRole<'_> {
@@ -156,6 +257,7 @@ impl<'a> DeviceJobs<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn published_pair(&self) -> io::Result<[PublishedGeneration; 2]> {
         let job = self
             .load()?
@@ -167,9 +269,7 @@ impl<'a> DeviceJobs<'a> {
             .generation
             .checked_sub(1)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid generation"))?;
-        if job.prior.file_name()
-            != Some(super::retention::generation_name(previous_number).as_ref())
-        {
+        if job.prior.file_name() != Some(super::generation_name(previous_number).as_ref()) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "prior backup is not a scheduled generation",
@@ -232,10 +332,10 @@ impl<'a> DeviceJobs<'a> {
                 let output = job.output();
                 let target =
                     crate::import_staging::export_fs::Directory::open(output.parent().unwrap())
-                        .map_err(super::retention::directory_error)?;
+                        .map_err(super::directory_error)?;
                 let _lock = target
                     .try_lock_exclusive("backup-writer.lock")
-                    .map_err(super::retention::directory_error)?;
+                    .map_err(super::directory_error)?;
                 let (_role_guard, current) = role
                     .guard_writer(target_path, &target)
                     .map_err(super::role_error)?;
@@ -255,7 +355,7 @@ impl<'a> DeviceJobs<'a> {
                     Ok(actual) if job.phase == Phase::Prepared(actual) => {
                         cryptex_storage::durability::sync_parent_directory(&output)
                             .map_err(io::Error::other)?;
-                        job.phase = Phase::Published(actual);
+                        job.record_publication(actual)?;
                         return self.save(&job);
                     }
                     Ok(_) => {
@@ -286,7 +386,7 @@ impl<'a> DeviceJobs<'a> {
                     .map_err(|e| e.error)?;
                 cryptex_storage::durability::sync_parent_directory(&output)
                     .map_err(io::Error::other)?;
-                job.phase = Phase::Published(digest);
+                job.record_publication(digest)?;
                 self.save(&job)
             })
             .map(Some)
@@ -294,9 +394,20 @@ impl<'a> DeviceJobs<'a> {
 }
 
 impl Job {
+    fn record_publication(&mut self, digest: [u8; 32]) -> io::Result<()> {
+        if let Some(schedule) = &mut self.schedule {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(io::Error::other)?;
+            schedule.next_due = now.as_secs().saturating_add(24 * 60 * 60);
+        }
+        self.phase = Phase::Published(digest);
+        Ok(())
+    }
+
     fn output(&self) -> PathBuf {
         self.prior
-            .with_file_name(super::retention::generation_name(self.generation))
+            .with_file_name(super::generation_name(self.generation))
     }
 }
 
@@ -308,8 +419,12 @@ mod tests {
     use cryptex_events::TrustedDaemonKeyResolver;
     use std::sync::mpsc;
 
-    #[test]
-    fn publication_gap_requires_the_durable_ciphertext_digest() {
+    fn fixture() -> (
+        tempfile::TempDir,
+        PathBuf,
+        FakeSecureStore,
+        LocalTrustAnchor,
+    ) {
         let root = tempfile::tempdir().unwrap();
         use crate::canonical_writer::{
             AppendMemoryNoteArgs, CanonicalWriterConfig, append_memory_note,
@@ -340,6 +455,73 @@ mod tests {
             .unwrap()
             .local_trust_anchor()
             .unwrap();
+        (root, profile, store, owner)
+    }
+
+    #[test]
+    fn a_daily_schedule_survives_pause_reconnection_and_the_next_due_date() {
+        let (root, profile, store, owner) = fixture();
+        let env = SecureStoreEnvironment::Dev;
+        let role = crate::knowledge_materialization::backup::role::DeviceRole {
+            store: &store,
+            env,
+            local: &owner,
+        };
+        let (target, _) = role.create(&profile, root.path()).unwrap();
+        let checkpoints = root.path().join("checkpoints");
+        fs::create_dir(&checkpoints).unwrap();
+        let reopen = || DeviceJobs::new(&store, env, &owner);
+        let offline = root.path().join("detached");
+        reopen().configure(&target, &checkpoints).unwrap();
+        reopen().pause().unwrap();
+        assert!(reopen().due(u64::MAX).unwrap().is_none());
+        reopen().configure(&target, &checkpoints).unwrap();
+        let first = reopen().due(0).unwrap().unwrap();
+        assert_eq!(
+            (first.target, first.checkpoints, first.generation),
+            (target.clone(), checkpoints.clone(), 1)
+        );
+        fs::rename(&target, &offline).unwrap();
+        let (tx, stop) = mpsc::channel();
+        drop(tx);
+        let waiting = reopen()
+            .resume(&owner, &stop, || {}, |_| panic!("offline write"))
+            .unwrap();
+        assert_eq!(waiting, Some(Outcome::Stopped));
+        fs::rename(offline, &target).unwrap();
+        assert_eq!(
+            reopen()
+                .resume(
+                    &owner,
+                    &stop,
+                    || panic!("disk available"),
+                    |p| fs::write(p, b"synthetic cipher")
+                )
+                .unwrap(),
+            Some(Outcome::Published)
+        );
+        let scheduled = reopen().load().unwrap().unwrap().schedule.unwrap();
+        assert!(scheduled.next_due > 86400);
+        assert!(reopen().due(scheduled.next_due - 1).unwrap().is_none());
+        let next = reopen().due(scheduled.next_due).unwrap().unwrap();
+        assert_eq!(next.generation, 2);
+        assert_eq!(
+            reopen()
+                .due(scheduled.next_due + 1)
+                .unwrap()
+                .unwrap()
+                .generation,
+            2
+        );
+        assert_eq!(
+            reopen().load().unwrap().unwrap().prior.file_name().unwrap(),
+            "backup-00000000000000000001.pgp"
+        );
+    }
+
+    #[test]
+    fn publication_gap_requires_the_durable_ciphertext_digest() {
+        let (root, profile, store, owner) = fixture();
         let role = crate::knowledge_materialization::backup::role::DeviceRole {
             store: &store,
             env: SecureStoreEnvironment::Dev,

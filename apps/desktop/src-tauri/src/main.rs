@@ -497,19 +497,30 @@ fn confirm_backup_recipient(digest: &str) -> bool {
     }
 }
 
+#[derive(serde::Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum WriterCommand {
+    Create,
+    Inspect,
+    Schedule,
+    Pause,
+}
+
 #[tauri::command]
 async fn m11_backup_writer(
-    create: bool,
+    mode: WriterCommand,
 ) -> Result<cryptexd::ipc::backup_writer::Outcome, cryptexd::ipc::backup_writer::Error> {
     use cryptexd::ipc::backup_writer::{self, Action, Error, Outcome};
     tauri::async_runtime::spawn_blocking(move || {
+        if mode == WriterCommand::Pause {return backup_writer::desktop(Action::Pause);}
+        let create = mode == WriterCommand::Create;
         #[cfg(feature = "m11-installed-search-check")]
         let selected = installed_search::writer_folder(create);
         #[cfg(not(feature = "m11-installed-search-check"))]
         let selected = rfd::FileDialog::new().set_title(if create {
             "Choose the parent folder for a new scheduled backup target"
         } else {
-            "Choose the scheduled backup target to check"
+            "Choose the designated backup target"
         }).pick_folder();
         let Some(path) = selected else { return Ok(Outcome::Cancelled) };
         if create {
@@ -522,6 +533,10 @@ async fn m11_backup_writer(
                 .show() == rfd::MessageDialogResult::Custom("Create target".into());
             if !approved { return Ok(Outcome::Cancelled); }
             backup_writer::desktop(Action::Create { parent: path })
+        } else if mode == WriterCommand::Schedule {
+            if !ensure_backup_recipient().map_err(|_| Error::Recipient)? {return Ok(Outcome::Cancelled);}
+            let Some(checkpoints) = backup_folder(true) else {return Ok(Outcome::Cancelled)};
+            backup_writer::desktop(Action::Schedule { target: path, checkpoints })
         } else {
             backup_writer::desktop(Action::Inspect { target: path })
         }
@@ -568,31 +583,39 @@ fn backup_input_file(title: &str) -> Option<std::path::PathBuf> {
     }
 }
 
+fn ensure_backup_recipient() -> Result<bool, cryptexd::ipc::backup_export::Error> {
+    use cryptexd::ipc::backup_export::{Action, Error, Outcome, desktop};
+    match desktop(Action::Inspect)? {
+        Outcome::Ready => {}
+        Outcome::NeedsRecipient => {
+            let Some(folder) = backup_recipient_folder() else {
+                return Ok(false);
+            };
+            let Outcome::Review { digest } = desktop(Action::ReviewRecipient {
+                folder: folder.clone(),
+            })?
+            else {
+                return Err(Error::InvalidRecipient);
+            };
+            if !confirm_backup_recipient(&digest) {
+                return Ok(false);
+            }
+            if desktop(Action::EnrollRecipient { folder, digest })? != Outcome::Ready {
+                return Err(Error::InvalidRecipient);
+            }
+        }
+        _ => return Err(Error::Unavailable),
+    }
+    Ok(true)
+}
+
 #[tauri::command]
 async fn m11_export_backup()
 -> Result<cryptexd::ipc::backup_export::Outcome, cryptexd::ipc::backup_export::Error> {
     use cryptexd::ipc::backup_export::{Action, Error, Outcome, desktop};
     tauri::async_runtime::spawn_blocking(|| {
-        match desktop(Action::Inspect)? {
-            Outcome::Ready => {}
-            Outcome::NeedsRecipient => {
-                let Some(folder) = backup_recipient_folder() else {
-                    return Ok(Outcome::Cancelled);
-                };
-                let Outcome::Review { digest } = desktop(Action::ReviewRecipient {
-                    folder: folder.clone(),
-                })?
-                else {
-                    return Err(Error::InvalidRecipient);
-                };
-                if !confirm_backup_recipient(&digest) {
-                    return Ok(Outcome::Cancelled);
-                }
-                if desktop(Action::EnrollRecipient { folder, digest })? != Outcome::Ready {
-                    return Err(Error::InvalidRecipient);
-                }
-            }
-            _ => return Err(Error::Unavailable),
+        if !ensure_backup_recipient()? {
+            return Ok(Outcome::Cancelled);
         }
         let Some(target) = backup_folder(false) else {
             return Ok(Outcome::Cancelled);
