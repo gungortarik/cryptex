@@ -75,6 +75,15 @@ function Set-NativeTestPackage {
     }
     $env:CRYPTEX_EXCHANGE_NATIVE_PACKAGE=$nativePackage
 }
+if($p.PSObject.Properties['m13_desktop_shell'] -and $p.m13_desktop_shell) {
+    Set-Location -LiteralPath $p.workspace
+    $env:CARGO_TARGET_DIR=Join-Path $p.workspace 'target'
+    & $p.python 'scripts/m13/check-shell.py'
+    if($LASTEXITCODE -ne 0){throw 'Native desktop shell rehearsal failed.'}
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=1} | ConvertTo-Json |
+        Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
+    exit 0
+}
 if($p.PSObject.Properties['m11_cross_backup'] -and $p.m11_cross_backup) {
     $env:CRYPTEX_M11_CROSS_ACTION=$p.m11_cross_backup
     $env:CRYPTEX_M11_CROSS_ROOT=$p.scratch

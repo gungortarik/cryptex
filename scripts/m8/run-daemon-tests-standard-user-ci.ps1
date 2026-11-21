@@ -1,7 +1,7 @@
-param([switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[switch]$LanCutoffOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly,[string]$M9HistoricalDaemon,[switch]$M9AttachmentBrowser,[ValidateSet('prepare','restore')][string]$M11CrossBackup)
+param([switch]$M13DesktopShell,[switch]$DesktopStartupOnly,[switch]$DesktopSessionOnly,[switch]$TransportPolicyOnly,[switch]$LanSetupOnly,[switch]$LanCutoffOnly,[string]$LanArtifact,[switch]$ExchangeNativeOnly,[string]$ExchangePackage,[switch]$LocalVerificationOnly,[string]$M9HistoricalDaemon,[switch]$M9AttachmentBrowser,[ValidateSet('prepare','restore')][string]$M11CrossBackup)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-if(([int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly+[int][bool]$LanCutoffOnly+[int][bool]$ExchangeNativeOnly+[int][bool]$LocalVerificationOnly+[int][bool]$M9HistoricalDaemon+[int][bool]$M9AttachmentBrowser+[int][bool]$M11CrossBackup) -gt 1){throw 'Choose one scoped suite.'}
+if(([int][bool]$M13DesktopShell+[int][bool]$DesktopStartupOnly+[int][bool]$DesktopSessionOnly+[int][bool]$TransportPolicyOnly+[int][bool]$LanSetupOnly+[int][bool]$LanCutoffOnly+[int][bool]$ExchangeNativeOnly+[int][bool]$LocalVerificationOnly+[int][bool]$M9HistoricalDaemon+[int][bool]$M9AttachmentBrowser+[int][bool]$M11CrossBackup) -gt 1){throw 'Choose one scoped suite.'}
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'Disposable GitHub-hosted Windows runner required.'
 }
@@ -10,7 +10,10 @@ $manifest=Join-Path $workspace 'services\cryptexd'
 $python=if($M9HistoricalDaemon){(Get-Command python -CommandType Application | Select-Object -First 1).Source}else{$null}
 $browserNode=if($M9AttachmentBrowser){(Get-Command node -CommandType Application | Select-Object -First 1).Source}else{$null}
 if($ExchangeNativeOnly -or $M9HistoricalDaemon){$ExchangePackage=(Resolve-Path -LiteralPath $ExchangePackage).Path}
-if($LanSetupOnly -or $LanCutoffOnly) {
+if($M13DesktopShell) {
+    $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
+    $executables=@(); $expectedSuites=1
+} elseif($LanSetupOnly -or $LanCutoffOnly) {
     $LanArtifact=(Resolve-Path -LiteralPath $LanArtifact).Path
     $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
     $executables=@(); $expectedSuites=1
@@ -69,7 +72,7 @@ try {
         }
     }
     $payload=Join-Path $scratch 'tests.json'
-    @{schema=1;m11_cross_backup=$M11CrossBackup;m9_attachment_browser_node=$browserNode;m9_historical_daemon=$M9HistoricalDaemon;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
+    @{schema=1;m13_desktop_shell=[bool]$M13DesktopShell;m11_cross_backup=$M11CrossBackup;m9_attachment_browser_node=$browserNode;m9_historical_daemon=$M9HistoricalDaemon;lan_cutoff_only=[bool]$LanCutoffOnly;local_verification_only=[bool]$LocalVerificationOnly;sid=$user.SID.Value;user_name=$userName;scratch=$scratch;manifest=$manifest;executables=$executables;desktop_startup_only=[bool]$DesktopStartupOnly;desktop_session_only=[bool]$DesktopSessionOnly;transport_policy_only=[bool]$TransportPolicyOnly;lan_setup_only=[bool]$LanSetupOnly;lan_artifact=$LanArtifact;exchange_native_only=[bool]$ExchangeNativeOnly;exchange_package=$ExchangePackage;python=$python;workspace=$workspace} |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $payload -Encoding UTF8
     $stdout=Join-Path $scratch 'stdout.log'; $stderr=Join-Path $scratch 'stderr.log'
     $bootstrap=Join-Path $PSScriptRoot 'standard-user-daemon-child.ps1'

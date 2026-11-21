@@ -50,4 +50,9 @@ jobs:
       - run: cargo build --locked -p cryptex-desktop --features m13-shell-check
       - run: cargo build --locked -p cryptexd --bin cryptexd --features disposable-ipc
       - name: Exercise the native window and embedded WebView in a disposable profile
+        if: runner.os == 'macOS'
         run: python scripts/m13/check-shell.py
+      - name: Exercise the native window with standard-user file ownership
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M13DesktopShell
