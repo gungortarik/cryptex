@@ -5,7 +5,6 @@ use crate::knowledge_materialization::recovered_search::*;
 use cryptex_core::{RecoveryKitPublicMetadata, RecoveryPurpose};
 use cryptex_events::LocalTrustAnchor;
 use ed25519_dalek::{Signer, VerifyingKey};
-use std::io::Write;
 
 #[path = "m11_restarted_search.rs"]
 pub(super) mod restarted_search;
@@ -22,31 +21,6 @@ impl Approval {
 }
 
 impl Ceremony {
-    // One slot per restore. Publish a complete receipt without overwriting a
-    // concurrent winner. An identical retry must pass signature checks again.
-    fn admit(&self, approval: &Approval) -> Result<(), Denial> {
-        self.verify(approval)?;
-        let parent = self.receipt.parent().ok_or(Denial::Receipt)?;
-        let mut file = tempfile::NamedTempFile::new_in(parent).map_err(|_| Denial::Receipt)?;
-        serde_json::to_writer(&mut file, approval).map_err(|_| Denial::Receipt)?;
-        file.flush()
-            .and_then(|()| file.as_file().sync_all())
-            .map_err(|_| Denial::Receipt)?;
-        match file.persist_noclobber(&self.receipt) {
-            Ok(_) => Ok(()),
-            Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {
-                self.reopen().map(|_| ()).map_err(|e| {
-                    if e == Denial::Context {
-                        Denial::AlreadyAuthorized
-                    } else {
-                        e
-                    }
-                })
-            }
-            Err(_) => Err(Denial::Receipt),
-        }
-    }
-
     fn open_replacement(
         &self,
         root: &Path,
@@ -83,14 +57,31 @@ pub(super) struct OfflineInputs<'a> {
 }
 
 impl OfflineInputs<'_> {
-    fn owner_approval(&self, work: &Path, request: &Request) -> Approval {
-        let challenge = work.join("owner-challenge.json");
-        let approval = work.join("owner-approval.json");
-        fs::write(
-            &challenge,
-            serde_json_canonicalizer::to_vec(request).unwrap(),
-        )
-        .unwrap();
+    fn owner_approval(&self, work: &Path, request: &Request, ceremony: &Ceremony) -> Approval {
+        let folder = work.join("public-challenges");
+        fs::create_dir(&folder).unwrap();
+        let challenge = if let Some(desktop) = std::env::var_os("CRYPTEX_M11_INSTALLED_DESKTOP") {
+            super::separate_backups::launched(
+                Path::new(&desktop),
+                work,
+                "first-device-export",
+                self.unlock,
+                "",
+            );
+            let files = fs::read_dir(&folder)
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            assert_eq!(files.len(), 1);
+            files[0].path()
+        } else {
+            folder.join(ceremony.export_challenge(&folder).unwrap().0)
+        };
+        assert_eq!(
+            fs::read(&challenge).unwrap(),
+            serde_json_canonicalizer::to_vec(request).unwrap()
+        );
+        let approval = folder.join("owner-approval.json");
         let script = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tools/m11-backup-spike/offline_approval_test.py");
         assert!(
@@ -169,7 +160,21 @@ pub(super) fn rehearse(
         ceremony.open_replacement(&new_root, &store),
         Err(Denial::Receipt)
     ));
-    let grant = owner_inputs.owner_approval(work, &request);
+    let binding = Binding {
+        request: ceremony.expected.clone(),
+        kit: ceremony.kit.clone(),
+        pinned: ceremony.trusted_root.to_bytes(),
+    };
+    let account = crate::secure_store::AccountLabel::recovery_search(device.as_str());
+    let service = crate::secure_store::ServiceLabel::device_credentials(env);
+    store
+        .put(
+            service.as_str(),
+            account.as_str(),
+            &serde_json::to_vec(&binding).unwrap(),
+        )
+        .unwrap();
+    let grant = owner_inputs.owner_approval(work, &request, &ceremony);
     let mut legacy = request.clone();
     legacy.operation = "cryptex.m11.trial.authorize-first-device.v1".into();
     legacy.brain_identity_sha256 = None;
@@ -219,7 +224,34 @@ pub(super) fn rehearse(
     }
     assert!(!ceremony.receipt.exists());
     assert!(!new_root.join("canonical/events").exists());
-    ceremony.admit(&grant).unwrap();
+    let exchange = work.join("public-challenges");
+    if let Some(desktop) = std::env::var_os("CRYPTEX_M11_INSTALLED_DESKTOP") {
+        let wrong = Approval::issue(&request, &SigningKey::from_bytes(&random_bytes()));
+        fs::write(
+            exchange.join("wrong-approval.json"),
+            serde_json::to_vec(&wrong).unwrap(),
+        )
+        .unwrap();
+        super::separate_backups::launched(
+            Path::new(&desktop),
+            work,
+            "first-device-wrong",
+            owner_inputs.unlock,
+            "",
+        );
+        assert!(!ceremony.receipt.exists());
+        super::separate_backups::launched(
+            Path::new(&desktop),
+            work,
+            "first-device-import",
+            owner_inputs.unlock,
+            "",
+        );
+    } else {
+        ceremony
+            .accept_owner_file(&new_root, &exchange.join("owner-approval.json"))
+            .unwrap();
+    }
     let original = fs::read(&ceremony.receipt).unwrap();
     ceremony.admit(&grant).unwrap();
     let mut competing = request.clone();
@@ -272,20 +304,6 @@ pub(super) fn rehearse(
     fs::write(&ceremony.receipt, serde_json::to_vec(&tampered).unwrap()).unwrap();
     assert!(matches!(ceremony.reopen(), Err(Denial::Signature)));
     fs::write(&ceremony.receipt, original).unwrap();
-    let binding = Binding {
-        request: ceremony.expected.clone(),
-        kit: ceremony.kit.clone(),
-        pinned: ceremony.trusted_root.to_bytes(),
-    };
-    let account = crate::secure_store::AccountLabel::recovery_search(device.as_str());
-    let service = crate::secure_store::ServiceLabel::device_credentials(env);
-    store
-        .put(
-            service.as_str(),
-            account.as_str(),
-            &serde_json::to_vec(&binding).unwrap(),
-        )
-        .unwrap();
     restarted_search::save_public_context(work, &ceremony, &commit.event_id);
     historical_reader
 }

@@ -10,6 +10,7 @@ use tempfile::NamedTempFile;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 mod codec;
+pub(crate) mod first_device;
 pub(crate) use codec::public_recipient;
 mod manual;
 pub(crate) use manual::independent_folders;

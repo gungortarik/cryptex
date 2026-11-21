@@ -17,6 +17,7 @@ pub mod backup_removal;
 mod backup_request;
 pub mod backup_verify;
 pub mod backup_writer;
+pub mod first_device;
 pub mod lifecycle;
 pub mod purge_review;
 
@@ -2291,6 +2292,14 @@ fn handle_connection_via(
     }
     if operation.as_deref() == Some(backup_verify::OPERATION) {
         let reply = backup_verify::handle(&frame, search, peer_is_desktop);
+        return write_response(
+            stream,
+            &serde_json::to_vec(&reply)?,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        );
+    }
+    if operation.as_deref() == Some(first_device::OPERATION) {
+        let reply = first_device::handle(&frame, search, peer_is_desktop);
         return write_response(
             stream,
             &serde_json::to_vec(&reply)?,

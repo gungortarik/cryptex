@@ -560,6 +560,36 @@ async fn m11_backup_writer(
 }
 
 #[tauri::command]
+async fn m11_first_device(
+    import: bool,
+) -> Result<cryptexd::ipc::first_device::Outcome, cryptexd::ipc::first_device::Error> {
+    use cryptexd::ipc::first_device::{self, Action, Error, Outcome};
+    tauri::async_runtime::spawn_blocking(move || {
+        let action = if import {
+            let Some(approval) = backup_input_file("Select the signed first-device approval")
+            else {
+                return Ok(Outcome::Cancelled);
+            };
+            Action::Import { approval }
+        } else {
+            #[cfg(feature = "m11-installed-search-check")]
+            let folder = installed_search::challenge_folder();
+            #[cfg(not(feature = "m11-installed-search-check"))]
+            let folder = rfd::FileDialog::new()
+                .set_title("Choose a folder for the public recovery request")
+                .pick_folder();
+            let Some(folder) = folder else {
+                return Ok(Outcome::Cancelled);
+            };
+            Action::Export { folder }
+        };
+        first_device::desktop(action)
+    })
+    .await
+    .map_err(|_| Error::Unavailable)?
+}
+
+#[tauri::command]
 async fn m11_verify_manual_backup() -> Result<usize, cryptexd::ipc::backup_verify::Error> {
     use cryptexd::ipc::backup_verify::{self, Error};
     tauri::async_runtime::spawn_blocking(|| {
@@ -2873,6 +2903,7 @@ fn main() {
             m11_export_backup,
             m11_backup_writer,
             m11_verify_manual_backup,
+            m11_first_device,
             m10_purge_review,
             m10_note_lifecycle,
             p0_6_materialize_and_open_vault,

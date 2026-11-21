@@ -49,7 +49,8 @@ pub fn installed() -> io::Result<()> {
     let (profile, credentials) = if verifying {
         ("verify-session", "verify-credentials")
     } else if exporting
-        && std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() != Ok("pair-write")
+        && !std::env::var("CRYPTEX_M11_INSTALLED_EXPORT")
+            .is_ok_and(|mode| mode == "pair-write" || mode.starts_with("first-device-"))
     {
         ("export-source", "export-credentials")
     } else {

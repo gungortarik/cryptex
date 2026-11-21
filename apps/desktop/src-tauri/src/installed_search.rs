@@ -49,6 +49,14 @@ pub(super) fn writer_folder(create: bool) -> Option<PathBuf> {
 pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
     let work = PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?);
     match title {
+        "Select the signed first-device approval" => Some(work.join("public-challenges").join(
+            if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() == Ok("first-device-wrong")
+            {
+                "wrong-approval.json"
+            } else {
+                "owner-approval.json"
+            },
+        )),
         "Select the scheduled generation to verify" => {
             Some(writer_folder(false)?.join("backup-00000000000000000001.pgp"))
         }
@@ -93,6 +101,10 @@ pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
     }
 }
 
+pub(super) fn challenge_folder() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?).join("public-challenges"))
+}
+
 pub(super) fn confirm_recipient(digest: &str) -> bool {
     std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() != Ok("decline")
         && std::env::var("CRYPTEX_M11_EXPECT_PUBLIC_DIGEST").as_deref() == Ok(digest)
@@ -130,6 +142,9 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
     let expected = match mode.as_deref() {
         None => "replacement/recovery/first-device.json",
         Some("pair-write") => "replacement/recovery/first-device.json",
+        Some("first-device-export" | "first-device-wrong" | "first-device-import") => {
+            "replacement/identity/brain_identity.json"
+        }
         Some("verify-pair" | "verify-pair-missing") => "offline-kit.pgp",
         Some(
             "verify"
@@ -210,6 +225,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
             super::m11_export_backup,
             super::m11_backup_writer,
             super::m11_verify_manual_backup,
+            super::m11_first_device,
             m11_search_observed
         ])
         .on_page_load(move |view, payload| {

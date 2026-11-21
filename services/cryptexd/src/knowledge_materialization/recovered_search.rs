@@ -38,7 +38,7 @@ pub(super) struct Approval {
 pub(super) enum Denial {
     Context,
     Signature,
-    #[cfg(test)]
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     AlreadyAuthorized,
     Receipt,
 }
@@ -89,7 +89,7 @@ impl Ceremony {
         Ok(approval)
     }
 
-    fn archive_reader(approval: &Approval) -> Result<ArchiveReader, Denial> {
+    pub(super) fn archive_reader(approval: &Approval) -> Result<ArchiveReader, Denial> {
         let history = &approval.request;
         let key = VerifyingKey::from_bytes(&history.archive_key).map_err(|_| Denial::Receipt)?;
         let id =

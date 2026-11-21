@@ -177,6 +177,10 @@ button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, va
 .vault-panel .capture-help { margin-bottom: 0; }
 .vault-panel > button { margin-left: auto; }
 .vault-panel .capture-status { flex-basis: 100%; margin-bottom: 0; }
+.vault-panel [data-first-device-recovery] { flex-basis: 100%; min-width: 0; border-top: 1px solid var(--line); padding-top: 12px; }
+[data-first-device-recovery] summary { cursor: pointer; }
+[data-first-device-recovery] button { margin: 4px 8px 4px 0; }
+[data-first-device-recovery] dd { margin: 4px 0 12px; overflow-wrap: anywhere; user-select: text; }
 
 .capture-panel {
   margin: 28px 0 8px;

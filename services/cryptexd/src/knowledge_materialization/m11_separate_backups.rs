@@ -8,7 +8,7 @@ pub(super) struct Trial {
     checkpoint: std::path::PathBuf,
 }
 
-fn launched(desktop: &Path, work: &Path, mode: &str, password: &Path, digest: &str) {
+pub(super) fn launched(desktop: &Path, work: &Path, mode: &str, password: &Path, digest: &str) {
     let script = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tools/m11-backup-spike/installed_desktop.py");
     assert!(

@@ -23,6 +23,7 @@ on:
       - 'services/cryptexd/src/knowledge_materialization/recovered_search.rs'
       - 'services/cryptexd/src/ipc/recovered_desktop.rs'
       - 'services/cryptexd/src/ipc/backup*.rs'
+      - 'services/cryptexd/src/ipc/first_device.rs'
       - 'services/cryptexd/src/ipc/backup_writer/**'
       - 'services/cryptexd/src/knowledge_materialization/m11_installed_export.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_separate_backups.rs'
@@ -55,6 +56,7 @@ on:
       - 'services/cryptexd/src/knowledge_materialization/recovered_search.rs'
       - 'services/cryptexd/src/ipc/recovered_desktop.rs'
       - 'services/cryptexd/src/ipc/backup*.rs'
+      - 'services/cryptexd/src/ipc/first_device.rs'
       - 'services/cryptexd/src/ipc/backup_writer/**'
       - 'services/cryptexd/src/knowledge_materialization/m11_installed_export.rs'
       - 'services/cryptexd/src/knowledge_materialization/m11_separate_backups.rs'
@@ -152,6 +154,7 @@ jobs:
           grep -F '1 passed; 0 failed' "$RUNNER_TEMP/m11-public-kit.txt" >> "$GITHUB_STEP_SUMMARY"
           cargo test --locked -p cryptexd --lib "${features[@]}" ipc::backup_export::tests
           cargo test --locked -p cryptexd --lib "${features[@]}" ipc::backup_verify::tests
+          cargo test --locked -p cryptexd --lib "${features[@]}" ipc::first_device::tests
           cargo test --locked -p cryptexd --lib "${features[@]}" ipc::backup_writer::tests
           cargo test --locked -p cryptexd --lib "${features[@]}" ipc::backup_removal::tests
           cargo test --locked -p cryptexd --lib "${features[@]}" backup_scheduler::journal::tests

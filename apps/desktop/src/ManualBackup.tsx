@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useRef, useState } from "react";
+import { FirstDeviceRecovery } from "./FirstDeviceRecovery";
 
 type ExportResult = { kind: "cancelled" } | { kind: "written"; backup: string; checkpoint: string } |
   { kind: "written_pair"; archived: string; backup: string; checkpoint: string };
@@ -67,5 +68,6 @@ export function ManualBackup() {
       {verifying ? "Verifying…" : "Verify manual backup"}
     </button>
     {status && <p className="capture-status" role="status">{status}</p>}
+    <FirstDeviceRecovery />
   </section>;
 }

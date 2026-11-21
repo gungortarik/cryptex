@@ -1,6 +1,34 @@
 (async () => {
   const mode = "EXPECTED_MODE";
   const writer = mode.startsWith("writer-");
+  if (mode.startsWith("first-device-")) {
+    const deadline = Date.now() + 60000;
+    let clicked = false;
+    let visible = false;
+    try {
+      while (Date.now() < deadline) {
+        const section = document.querySelector("[data-first-device-recovery]");
+        if (section) {
+          section.open = true;
+          const label = mode === "first-device-export" ? "Save public request" : "Import signed approval";
+          const button = [...section.querySelectorAll("button")].find(el => el.textContent === label);
+          if (!clicked && button && !button.disabled) { clicked = true; button.click(); }
+          const status = section.querySelector('[role="status"]')?.textContent;
+          if (status) {
+            visible = mode === "first-device-export" ? status === "Public recovery request saved." &&
+              /[0-9a-f]{64}/.test(section.querySelector("dl")?.textContent ?? "") :
+              mode === "first-device-wrong" ? status.startsWith("Cryptex could not verify") :
+              status === "Signed approval verified for this device.";
+            break;
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    } finally {
+      await window.__TAURI_INTERNALS__.invoke("m11_search_observed", {visible});
+    }
+    return;
+  }
   const panel = () => document.querySelector(writer ? '[aria-labelledby="backup-writer-heading"]' : '[aria-labelledby="manual-backup-heading"]');
   const action = mode.startsWith("writer-verify") ? "Verify scheduled backup" : mode === "writer-retain" ? "Save retention" : mode === "writer-enable" ? "Enable daily backup" : mode === "writer-pause" ? "Pause scheduled backups" : writer ? (["writer-create", "writer-decline"].includes(mode) ? "Create backup target" : "Check writer") :
     (mode.startsWith("verify") ? "Verify manual backup" : "Export encrypted backup");
