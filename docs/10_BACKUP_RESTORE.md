@@ -1,4 +1,4 @@
-# 10 â€” Cryptex Backup and Restore
+# 10 — Cryptex Backup and Restore
 
 **Status:** ACCEPTED  
 **Baseline:** 2026-09-28
@@ -112,7 +112,7 @@ durably gives up its authority to publish and prune on that target. The recipien
 verifies the target, the current writer's signature and its own pending request.
 Restarting the former writer cannot reactivate its previous jobs.
 
-Under **Scheduled backup writer â†’ Transfer the writer role**, the current
+Under **Scheduled backup writer → Transfer the writer role**, the current
 device saves its public assignment in the target folder. The incoming device
 selects that assignment and signs its request with its enrolled device key.
 The current device verifies that signature against its trusted peer, then
@@ -177,6 +177,15 @@ Either edition can be used with its matching archive and the existing unlock
 file. Cancellation preserves the previous selection. Routine retention excludes
 the generation pinned by the Kit used for verification when it matches the
 scheduled writer and Brain.
+
+If the designated writer was lost, an already trusted device may start at
+generation one on a new target. The offline tool checks its signed inventory,
+replays its history from the previous Kit writer's public anchor, checks the
+successor's approved signing key and restrictions, and verifies that all
+previously selected history is present. Compare the new device's full signing
+key fingerprint through a trusted channel and enter it to approve the new Kit
+edition. The original Kit and ciphertext remain usable. Taking over the
+original scheduled target still requires its current writer's signed grant.
 
 ## 10. Retention
 
@@ -275,7 +284,7 @@ Adding a required cloud service, OAuth dependency or server-side canonical compo
 
 The backup encryption/container P1 spike must select an audited high-level format/library and verify the required failure/recovery scenarios.
 
-### M11 â€” Backup + Disaster Restore
+### M11 — Backup + Disaster Restore
 
 M11 includes:
 
@@ -288,11 +297,11 @@ M11 includes:
 - Recovery Kit first-device bootstrap
 - manual export bundle
 
-### M16 â€” Hardening
+### M16 — Hardening
 
 M16 includes broader backup/restore drills as part of product hardening.
 
-### M17 â€” Private Beta / Release Candidate
+### M17 — Private Beta / Release Candidate
 
 Real personal Brain onboarding occurs only after backup/recovery confidence.
 

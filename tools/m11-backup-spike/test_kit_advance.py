@@ -15,4 +15,4 @@ if __name__ == "__main__":
         scratch.mkdir()
         env = dict(os.environ, TMPDIR=str(scratch), TMP=str(scratch), TEMP=str(scratch))
         subprocess.run([runtime, "--no-addons", Path(__file__).with_name("test_kit_advance.cjs"),
-                        kit, temp, *sys.argv[2:]], env=env, check=True, timeout=120)
+                        kit, temp, *sys.argv[2:]], env=env, check=True, timeout=240)

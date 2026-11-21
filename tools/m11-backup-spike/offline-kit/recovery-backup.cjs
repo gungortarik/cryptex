@@ -88,9 +88,9 @@ async function keepBackup(args, confirm) {
       if (!candidate) return [old, null];
       const bytes = await readSmall(selection, 32768);
       const next = JSON.parse(bytes.toString("utf8"));
-      if (!Number.isSafeInteger(next.generation) || next.generation <= old.generation ||
-          next.brain_id !== old.brain_id || next.writer_device !== old.writer_device ||
-          JSON.stringify(next.writer_key) !== JSON.stringify(old.writer_key)) throw Error("Unexpected successor");
+      if (next.brain_id !== old.brain_id || !Number.isSafeInteger(next.generation) || next.generation < 1) {
+        throw Error("Unexpected successor");
+      }
       await fs.writeFile(candidate.checkpoint, bytes, options);
       return [old, next];
     });
@@ -102,8 +102,13 @@ async function keepBackup(args, confirm) {
     const review = ["Brain " + oldSelection.brain_id, "Writer " + oldSelection.writer_device,
       "Current generation " + oldSelection.generation, "Current backup SHA-256 " + hashes[0]];
     if (candidate) review.push("Proposed generation " + nextSelection.generation, "Proposed backup SHA-256 " + hashes[1]);
-    const expected = candidate ? "APPROVE " + nextSelection.generation : "KEEP " + oldSelection.generation;
-    if (await confirm(review.join("\n"), expected) !== expected) return false;
+    const changingWriter = candidate && nextSelection.writer_device !== oldSelection.writer_device;
+    let expected = candidate ? "APPROVE " + nextSelection.generation : "KEEP " + oldSelection.generation;
+    if (changingWriter) {
+      expected = createHash("sha256").update(Buffer.from(nextSelection.writer_key)).digest("hex");
+      review.push("New writer " + nextSelection.writer_device, "New signing-key SHA-256 " + expected);
+    }
+    if (await confirm(review.join("\n"), expected, changingWriter) !== expected) return false;
     if (candidate) {
       await withKit(current.kit, unlock, async (members, credential) => {
         const bytes = await readSmall(candidate.checkpoint, 32768);
@@ -155,7 +160,12 @@ async function main() {
     }
     await ask("archiveDir", "New folder outside the daily target for protected backup copies");
     await ask("kitDir", "New independent folder for Kit editions and checkpoints");
-    const saved = await keepBackup(args, (review, text) => term.question(review + "\nType " + text + " to confirm, or Enter to cancel: "));
+    const saved = await keepBackup(args, (review, text, changingWriter) => {
+      const prompt = changingWriter
+        ? "Enter the full signing-key SHA-256 from the new device to approve this writer, or Enter to cancel: "
+        : "Type " + text + " to confirm, or Enter to cancel: ";
+      return term.question(review + "\n" + prompt);
+    });
     process.stdout.write(saved ? "Verified recovery files saved to your selected folders.\n" : "Cancelled.\n");
   } finally { term.close(); }
 }

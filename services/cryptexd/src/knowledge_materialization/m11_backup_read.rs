@@ -1072,25 +1072,73 @@ fn restored_note_and_attachment_pass_guarded_reads() {
                 classification: Classification::Public,
                 text: "A later recovery edition".into(),
             },
-            &crate::canonical_writer::CanonicalWriterConfig::default(),
+            &crate::canonical_writer::CanonicalWriterConfig {
+                seal_event_threshold: 1,
+            },
         );
         assert!(matches!(outcome, CaptureOutcome::Committed(_)));
-        let next =
-            super::super::backup::prepare(source, &profiles.store, SecureStoreEnvironment::Dev, 2)
-                .unwrap();
         let independent = work.path().join("later-checkpoints");
         fs::create_dir(&independent).unwrap();
-        let selected = independent.join("later.json");
-        fs::write(&selected, serde_json::to_vec(&next.selection).unwrap()).unwrap();
-        let newer = volume.join("daily-2.pgp");
-        run_archive(
-            "seal-inventory",
-            &[
-                &kit.join("recovery.pub"),
-                next.encryption_input().unwrap().path(),
-                &newer,
-            ],
+        let make_backup = |profile: &Path, store: &FakeSecureStore, number, name: &str| {
+            let prepared =
+                super::super::backup::prepare(profile, store, SecureStoreEnvironment::Dev, number)
+                    .unwrap();
+            let ciphertext = volume.join(format!("{name}.pgp"));
+            let checkpoint = independent.join(format!("{name}.json"));
+            fs::write(
+                &checkpoint,
+                serde_json::to_vec(&prepared.selection).unwrap(),
+            )
+            .unwrap();
+            run_archive(
+                "seal-inventory",
+                &[
+                    &kit.join("recovery.pub"),
+                    prepared.encryption_input().unwrap().path(),
+                    &ciphertext,
+                ],
+            );
+            (ciphertext, checkpoint)
+        };
+        let (newer, selected) = make_backup(source, &profiles.store, 2, "daily-2");
+        let peer = &profiles.profiles[1];
+        // Deliver the former writer's sealed packs and attachment to the enrolled peer.
+        // The successor's first generation is signed using only the successor credential.
+        {
+            let _locks =
+                crate::canonical_writer::acquire_canonical_write_lock_set(peer, &profiles.devices)
+                    .unwrap();
+            let original = canonical_events_device_dir(source, &profiles.devices[0]);
+            let destination = canonical_events_device_dir(peer, &profiles.devices[0]);
+            for item in fs::read_dir(original).unwrap() {
+                let item = item.unwrap();
+                if item.path().extension().is_some_and(|ext| ext == "seg") {
+                    fs::File::create_new(destination.join(item.file_name()))
+                        .unwrap()
+                        .write_all(&fs::read(item.path()).unwrap())
+                        .unwrap();
+                }
+            }
+        }
+        crate::attachment_blobs::store(peer, bytes.as_slice()).unwrap();
+        let successor_store = FakeSecureStore::new();
+        use crate::secure_store::{AccountLabel, ServiceLabel};
+        successor_store
+            .put(
+                ServiceLabel::device_credentials(SecureStoreEnvironment::Dev).as_str(),
+                AccountLabel::device_event_signing_seed(profiles.devices[1].as_str()).as_str(),
+                profiles.keys[1].as_bytes(),
+            )
+            .unwrap();
+        let (peer_backup, peer_check) = make_backup(peer, &successor_store, 1, "successor-1");
+        let fingerprint = format!(
+            "{:x}",
+            Sha256::digest(profiles.keys[1].verifying_key().to_bytes())
         );
+        let unrelated = work.path().join("unpaired-profile");
+        let isolated = FakeSecureStore::new();
+        PairProfiles::enroll(&unrelated, &isolated);
+        let (unknown_backup, unknown_check) = make_backup(&unrelated, &isolated, 1, "unpaired-1");
         let test = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tools/m11-backup-spike/test_kit_advance.py");
         assert!(
@@ -1098,10 +1146,24 @@ fn restored_note_and_attachment_pass_guarded_reads() {
                 .arg("-B")
                 .arg(test)
                 .arg(package)
-                .args([&sealed_kit, &password, &backup, &newer, &selected])
+                .args([
+                    &sealed_kit,
+                    &password,
+                    &backup,
+                    &newer,
+                    &selected,
+                    &peer_backup,
+                    &peer_check,
+                    &unknown_backup,
+                    &unknown_check
+                ])
+                .arg(fingerprint)
                 .status()
                 .unwrap()
                 .success()
+        );
+        println!(
+            "m11_offline_writer_change=passed new_target=1 full_fingerprint=required unpaired=held rollback=held both_editions=restored"
         );
         println!(
             "m11_offline_kit_advance=passed cancelled=kept older=restorable newer=restorable substituted=held"

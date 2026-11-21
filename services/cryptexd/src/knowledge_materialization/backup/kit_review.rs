@@ -18,10 +18,13 @@ pub fn review_kit_backups(
             serde_json::from_slice(&restore::read_selected(&files.checkpoint, 32768)?)
                 .map_err(|_| Error::Checkpoint)?;
         let a = old.selection.checkpoint(&writer)?;
-        let b = selected.checkpoint(&writer)?;
+        let successor = selected.writer()?;
+        let b = selected.checkpoint(&successor)?;
+        let changing_writer = writer.device_id() != successor.device_id();
         if a.brain_id != b.brain_id
             || a.brain_identity_sha256 != b.brain_identity_sha256
-            || b.generation <= a.generation
+            || (changing_writer && writer.public_key() == successor.public_key())
+            || (!changing_writer && (writer != successor || b.generation <= a.generation))
             || b.generation > (1u64 << 53) - 1
         {
             return Err(Error::Checkpoint);
@@ -30,7 +33,19 @@ pub fn review_kit_backups(
             restore::open_proposed_daily(codec, current, files, &selected, scratch.path())?;
         {
             let (before, _) = retention_state(old.profile.path(), &writer)?;
-            let (after, _) = retention_state(new.path(), &writer)?;
+            // The Kit's original anchor independently authenticates the new
+            // history. A self-signed replacement inventory cannot admit its writer.
+            let after = snapshot(new.path(), b.brain_id, &writer)?;
+            let (history, trust) = after.verified_trust_context().ok_or(Error::Credentials)?;
+            if !trust.trusted_devices.contains(successor.device_id())
+                || history.restricted(trust, successor.device_id())
+                || (changing_writer
+                    && !history
+                        .approved_peer_binding(successor.device_id())
+                        .is_some_and(|binding| &binding.public_key == successor.public_key()))
+            {
+                return Err(Error::Credentials);
+            }
             let records: BTreeMap<_, _> = after
                 .security_history
                 .records()
