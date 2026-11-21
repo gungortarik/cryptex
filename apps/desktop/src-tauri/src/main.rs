@@ -2936,6 +2936,18 @@ fn main() {
             .build(),
     );
 
+    #[cfg(feature = "m13-shell-check")]
+    let builder = {
+        let started = AtomicBool::new(false);
+        builder.on_page_load(move |view, load| {
+            if view.label() == "main"
+                && matches!(load.event(), tauri::webview::PageLoadEvent::Finished)
+                && !started.swap(true, Ordering::AcqRel)
+            {
+                shell_check::start(view.app_handle().clone());
+            }
+        })
+    };
     builder
         .menu(build_cryptex_app_menu)
         .on_menu_event(|app, event| {
@@ -3034,8 +3046,6 @@ fn main() {
                 window.hide()?;
             }
             spawn_control_file_watcher(app.handle().clone(), probe_state.clone());
-            #[cfg(feature = "m13-shell-check")]
-            shell_check::start(app.handle().clone());
             Ok(())
         })
         .build(context)

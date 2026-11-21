@@ -5,7 +5,10 @@ on:
     paths:
       - '.github/workflows/m13-desktop-shell.yml'
       - 'apps/desktop/src-tauri/src/shell_check.rs'
+      - 'apps/desktop/src-tauri/src/shell_shortcut_check.js'
       - 'scripts/m13/check-shell.py'
+      - 'apps/desktop/src/App.tsx'
+      - 'apps/desktop/src-tauri/Cargo.toml'
       - 'apps/desktop/src/styles.css'
       - 'apps/desktop/src-tauri/src/main.rs'
 permissions:

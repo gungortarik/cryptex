@@ -59,6 +59,32 @@ fn check(app: &AppHandle) -> Result<()> {
         })?;
     }
     window.set_theme(None)?;
+    if !webview_matches(&window, include_str!("shell_shortcut_check.js"))? {
+        return Err("global Search intercepted a modal keypress".into());
+    }
+    until("timeline navigation", || {
+        webview_matches(
+            &window,
+            r#"document.querySelector('button[aria-label="Open timeline"]')?.getAttribute('aria-pressed') === 'true'"#,
+        )
+    })?;
+    let shortcut = if cfg!(target_os = "macos") {
+        "metaKey"
+    } else {
+        "ctrlKey"
+    };
+    let press = format!(
+        "!window.dispatchEvent(new KeyboardEvent('keydown', {{key:'k', {shortcut}:true, bubbles:true, cancelable:true}}))"
+    );
+    if !webview_matches(&window, &press)? {
+        return Err("global Search shortcut was not handled".into());
+    }
+    until("global Search focus", || {
+        webview_matches(
+            &window,
+            r#"document.activeElement?.id === 'memory-search' && document.querySelector('button[aria-label="Search memory"]')?.getAttribute('aria-pressed') === 'true'"#,
+        )
+    })?;
     if !webview_matches(
         &window,
         "(() => { const input = document.querySelector('#memory-search'); if (!input) return false; input.value = 'shell-reopen'; return true; })()",

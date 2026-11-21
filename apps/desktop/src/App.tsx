@@ -7,7 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ConnectionSettings } from "./ConnectionSettings";
 import { parseNativeProfileStatus, nativeProfileMessage, type NativeProfileStatus } from "./native-profile-status.mjs";
 import { completionMessages, pairingRejectionStatus, reviewMessages, swappedPairingField } from "./pairing-status.mjs";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CLASSIFICATIONS,
   MAX_CAPTURE_TEXT_BYTES,
@@ -558,16 +558,32 @@ export function App() {
     void invoke("p0_3_ipc_health")
       .then(() => setConnection("active"))
       .catch(() => setConnection("attention"));
+  }, []);
 
+  const openSearch = useCallback(() => {
+    if (timelineMode) {
+      searchRequestGate.invalidate();
+      setTimelineMode(false);
+      setTimelineLoading(false);
+      setDetailHit(null);
+      setDetailLoading(false);
+      setSearching(false);
+    }
+    searchRef.current?.focus();
+  }, [searchRequestGate, timelineMode]);
+
+  useEffect(() => {
     function onShortcut(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      const modifier = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+      if (modifier && !event.altKey && !event.shiftKey && !event.isComposing
+        && event.key.toLowerCase() === "k" && !document.querySelector("dialog[open]")) {
         event.preventDefault();
-        searchRef.current?.focus();
+        openSearch();
       }
     }
     window.addEventListener("keydown", onShortcut);
     return () => window.removeEventListener("keydown", onShortcut);
-  }, []);
+  }, [isMac, openSearch]);
 
   useEffect(() => {
     liveDraftRef.current = { text: draftText, classification };
@@ -1091,13 +1107,7 @@ export function App() {
           type="button"
           aria-label="Search memory"
           aria-pressed={!timelineMode}
-          onClick={() => {
-            searchRequestGate.invalidate();
-            setTimelineMode(false);
-            setTimelineLoading(false);
-            setDetailHit(null);
-            setDetailLoading(false);
-          }}
+          onClick={openSearch}
         >
           <span aria-hidden="true">⌕</span>
         </button>
