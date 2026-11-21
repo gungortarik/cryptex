@@ -8,6 +8,8 @@ use cryptex_events::LocalTrustAnchor;
 use sha2::{Digest, Sha256};
 use std::{fs, io, num::NonZeroUsize, path::Path};
 
+pub(crate) mod removal;
+
 pub(super) fn directory_error(error: DirectoryError) -> io::Error {
     match error {
         DirectoryError::Unsafe => {
@@ -30,11 +32,19 @@ fn generation_number(name: &str) -> Option<u64> {
     (generation_name(number) == name).then_some(number)
 }
 
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct Receipt {
+    digest: [u8; 32],
+    purges: [u8; 32],
+}
+
 pub(crate) struct VerifiedBackups<'a> {
     pub store: &'a dyn SecureStore,
     pub environment: SecureStoreEnvironment,
     pub designated: &'a LocalTrustAnchor,
     pub target: &'a Path,
+    pub writer_profile: &'a Path,
 }
 
 impl VerifiedBackups<'_> {
@@ -59,7 +69,7 @@ impl VerifiedBackups<'_> {
         &self,
         enrolled: &LocalTrustAnchor,
         publication: &super::journal::PublishedGeneration,
-        reconstruct: impl FnOnce(&Path) -> io::Result<T>,
+        reconstruct: impl FnOnce(&Path) -> io::Result<(T, std::path::PathBuf)>,
     ) -> io::Result<T> {
         self.require_writer(enrolled)?;
         let number = publication.number;
@@ -88,11 +98,23 @@ impl VerifiedBackups<'_> {
                 "backup differs from publication",
             ));
         }
-        let verified = reconstruct(&path)?;
+        let (verified, restored) = reconstruct(&path)?;
+        let (_, purges) =
+            crate::knowledge_materialization::backup::retention_state(&restored, enrolled)
+                .map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidData, "unverified purge history")
+                })?;
+        let record = serde_json::to_vec(&Receipt { digest, purges })?;
         let service = ServiceLabel::device_credentials(self.environment);
         let account = self.account(Some(number))?;
         match self.store.get(service.as_str(), account.as_str()) {
-            Ok(old) if old.as_slice() == digest => {}
+            Ok(old) if old == record => {}
+            // An older receipt proves only the bytes. Upgrade only after this
+            // reconstruction of the exact same ciphertext.
+            Ok(old) if old.as_slice() == digest => self
+                .store
+                .put(service.as_str(), account.as_str(), &record)
+                .map_err(io::Error::other)?,
             Ok(_) => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -101,7 +123,7 @@ impl VerifiedBackups<'_> {
             }
             Err(SecureStoreError::Missing) => self
                 .store
-                .put(service.as_str(), account.as_str(), &digest)
+                .put(service.as_str(), account.as_str(), &record)
                 .map_err(io::Error::other)?,
             Err(error) => return Err(io::Error::other(error)),
         }
@@ -159,6 +181,16 @@ impl VerifiedBackups<'_> {
         let _role_guard = role
             .guard_writer(self.target, &dir)
             .map_err(super::role_error)?;
+        let (_current, purges) = crate::knowledge_materialization::backup::retention_state(
+            self.writer_profile,
+            enrolled,
+        )
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "writer purge history unavailable",
+            )
+        })?;
         let mut verified = Vec::new();
         for entry in fs::read_dir(self.target)? {
             let name = entry?.file_name();
@@ -169,9 +201,18 @@ impl VerifiedBackups<'_> {
                 .store
                 .get(service.as_str(), self.account(Some(number))?.as_str())
             {
-                Ok(bytes) => <[u8; 32]>::try_from(bytes).map_err(|_| {
-                    io::Error::new(io::ErrorKind::InvalidData, "invalid verification receipt")
-                })?,
+                Ok(bytes) if bytes.len() == 32 => continue,
+                Ok(bytes) => {
+                    let receipt: Receipt = serde_json::from_slice(&bytes).map_err(|_| {
+                        io::Error::new(io::ErrorKind::InvalidData, "invalid verification receipt")
+                    })?;
+                    if receipt.purges != purges {
+                        // Never let routine retention consume an old generation
+                        // across a purge, even after another backup is verified.
+                        continue;
+                    }
+                    receipt.digest
+                }
                 Err(SecureStoreError::Missing) => continue,
                 Err(error) => return Err(io::Error::other(error)),
             };

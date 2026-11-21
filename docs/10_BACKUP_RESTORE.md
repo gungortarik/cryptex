@@ -170,7 +170,12 @@ Physical purge is best-effort across reachable Cryptex-controlled backups/snapsh
 
 Cryptex cannot promise deletion from provider-internal historical versions that it does not control.
 
-M10/M11 behavior must preserve accepted purge semantics without overstating deletion guarantees.
+When an affected encrypted generation contains other notes, retain it until the
+offline Kit is available and a sandbox restore establishes that a replacement
+preserves every unaffected record and attachment. The owner must then approve
+removal of that particular old generation separately. Verification, a note purge
+and a saved retention count do not grant this approval. Cancellation or loss of
+either target leaves the old generation pending.
 
 ## 15. Cross-platform behavior
 

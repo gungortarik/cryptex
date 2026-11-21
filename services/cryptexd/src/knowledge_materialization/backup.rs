@@ -21,6 +21,31 @@ pub(super) fn snapshot(
     snapshot_and_approvals(root, brain, anchor).map(|(snapshot, _)| snapshot)
 }
 
+/// Compare the authenticated purge decisions on both sides of automatic pruning.
+/// Keep the snapshot locks until the caller has finished its filesystem operation.
+#[cfg(test)]
+pub(crate) fn retention_state(
+    root: &Path,
+    anchor: &LocalTrustAnchor,
+) -> Result<(VerifiedCanonicalSnapshot, [u8; 32]), Error> {
+    let brain =
+        crate::identity_runtime::load_brain_identity(root).map_err(|_| Error::SourceIdentity)?;
+    let (snapshot, approvals) = snapshot_and_approvals(root, &brain.brain_id, anchor)?;
+    let (history, trust) = snapshot
+        .verified_trust_context()
+        .ok_or(Error::Credentials)?;
+    if !trust.trusted_devices.contains(anchor.device_id())
+        || history.restricted(trust, anchor.device_id())
+    {
+        return Err(Error::Credentials);
+    }
+    let mut hash = Sha256::new();
+    for proof in approvals.values() {
+        hash.update(Sha256::digest(proof));
+    }
+    Ok((snapshot, hash.finalize().into()))
+}
+
 type Approvals = BTreeMap<String, Vec<u8>>;
 
 fn snapshot_and_approvals(
@@ -124,6 +149,62 @@ pub(super) fn blob_digests(
         .into_values()
         .flat_map(|links| links.into_values())
         .collect())
+}
+
+/// A newer verified archive may replace an affected generation only when the
+/// approved bridge replaces that exact original and every unrelated record and
+/// surviving attachment remains recoverable, including forgotten references.
+#[cfg(test)]
+pub(crate) fn preserves_after_purge(
+    before: &VerifiedCanonicalSnapshot,
+    after: &VerifiedCanonicalSnapshot,
+    note: &str,
+) -> Result<bool, Error> {
+    use AuthenticatedSecurityRecord::{PurgeBridge, V1};
+    if before.security_history.expected_brain_id() != after.security_history.expected_brain_id() {
+        return Ok(false);
+    }
+    let records: BTreeMap<_, _> = after
+        .security_history
+        .records()
+        .iter()
+        .map(|r| (r.event_id(), r))
+        .collect();
+    let mut matched = false;
+    for old in before.security_history.records() {
+        let Some(&new) = records.get(old.event_id()) else {
+            return Ok(false);
+        };
+        if old.event_id() == note {
+            matched = matches!((old,new), (V1(original), PurgeBridge(bridge, _, hash, _))
+                if original.device_id == bridge.device_id && &original.content_hash == hash);
+            if !matched {
+                return Ok(false);
+            }
+        } else if match (old, new) {
+            (PurgeBridge(a, ..), PurgeBridge(b, ..)) => a.content_hash != b.content_hash,
+            (PurgeBridge(..), _) | (_, PurgeBridge(..)) => true,
+            _ => old.content_hash() != new.content_hash(),
+        } {
+            return Ok(false);
+        }
+    }
+    let (_, trust) = before.verified_trust_context().ok_or(Error::Checkpoint)?;
+    let cutoffs = trust
+        .effective_cutoffs
+        .iter()
+        .map(|(d, &s)| (d.as_str().to_owned(), s))
+        .collect();
+    let old_links = admitted_attachment_links(&before.security_history, &cutoffs, None)
+        .map_err(|_| Error::Attachment)?;
+    let available = blob_digests(after)?;
+    Ok(matched
+        && old_links
+            .live
+            .iter()
+            .filter(|(id, _)| id.as_str() != note)
+            .flat_map(|(_, links)| links.values())
+            .all(|digest| available.contains(digest)))
 }
 
 pub struct Prepared {

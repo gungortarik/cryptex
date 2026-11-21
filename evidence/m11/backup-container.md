@@ -32,7 +32,14 @@ content-free bridge and the owner's original confirmation. Reconstruction
 checks the confirmation against the verified device history. An absent, extra
 or invalid confirmation blocks verification. An approval alongside its old note
 body stops backup creation. The disposable purge test checks that the other
-note survives. Cleanup of older encrypted generations is a separate operation.
+note survives. A disposable writer also creates two OpenPGP-encrypted generations around
+a confirmed purge. Automatic retention compares the purge decisions in its
+live history and each reconstructed generation. A generation with older decisions
+or a legacy digest-only receipt stays on disk. The separate removal review
+reopens both ciphertexts, checks the other records and attachment references,
+and binds the owner's choice to the selected filename and the two digests.
+A missing Kit, cancellation, a different selection, or changed replacement
+keeps the old file. The desktop owner dialog is still open.
 
 The default retains every generation. An explicit positive count applies only to automatic generations on the selected target of the designated writer. The device credential store holds the preference and each reconstruction receipt. After a sandbox restore, the writer checks the saved policy, takes the target lock, checks the surviving ciphertext against its receipts and removes only eligible older files. A missing policy retains everything. A corrupt receipt or a changed verified file stops cleanup. An encrypted manual export and an unrecognized file remain outside cleanup.
 

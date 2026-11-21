@@ -156,6 +156,7 @@ fn scheduled_writer_relinquishes_before_a_peer_takes_the_same_target() {
         environment: env,
         designated: &a,
         target: &target,
+        writer_profile: &pair.profiles[0],
     };
     catalog.set_retention(&a, NonZeroUsize::new(1)).unwrap();
     assert!(second.create(&pair.profiles[1], &target).is_err());
@@ -579,6 +580,9 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
         environment: env,
         designated: &anchor,
         target: &volume,
+        // The original profile was destroyed. This trial supplies the freshly
+        // recovered complete history for the designated writer's pruning check.
+        writer_profile: &work.path().join("restore-next"),
     };
     let before = catalog
         .verify(&anchor, &first_publication, |file| {
@@ -586,12 +590,12 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
             assert_eq!(hits.len(), 1);
             assert_eq!(hits[0].text, "synthetic original prefix");
             assert_ne!(hits[0].event_id, receipt.event_id);
-            Ok(hits)
+            Ok((hits, work.path().join("restore-first")))
         })
         .unwrap();
     assert!(
         catalog
-            .verify(&anchor, &next_publication, |_| Err::<(), _>(
+            .verify(&anchor, &next_publication, |_| Err::<((), PathBuf), _>(
                 std::io::Error::other("reconstruction failed")
             ))
             .is_err()
@@ -603,7 +607,7 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
                 assert!(hits.iter().any(|hit| hit.event_id == receipt.event_id
                     && hit.content_hash == receipt.content_hash));
                 assert!(hits.contains(&before[0]));
-                Ok(hits)
+                Ok((hits, work.path().join("restore-next")))
             })
             .unwrap();
     assert_eq!(after.len(), 2);
@@ -647,7 +651,7 @@ fn next_backup_restores_the_offline_capture_after_reconnection() {
     catalog
         .verify(&anchor, &next_publication, |file| {
             assert_eq!(restore_hits(file, "recheck-after-restart"), after);
-            Ok(())
+            Ok(((), work.path().join("recheck-after-restart")))
         })
         .unwrap();
     assert!(!first.try_exists().unwrap());
