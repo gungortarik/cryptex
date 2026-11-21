@@ -354,25 +354,21 @@ fn review_in_browser(codex: Option<&std::ffi::OsStr>) -> bool {
 }
 
 fn serve_installed_consent_fixture() {
-    use crate::canonical_writer::{AppendMemoryNoteArgs, append_memory_note};
     use cryptex_events::TrustedDaemonKeyResolver;
     let mut fixture = tests::prepared_search_fixture("installed-m12-review");
     let instance = crate::instance::try_acquire_instance(&fixture.root).unwrap();
     fixture.context.admission = instance.admission();
-    append_memory_note(
-        fixture.store.as_ref(),
-        fixture.context.environment,
-        AppendMemoryNoteArgs {
-            runtime_root: &fixture.root,
-            brain_id: &fixture.brain_id,
-            device_id: &fixture.device,
-            classification: Classification::Public,
-            text: "synthetic installed public",
-            event_id: None,
-            config: &CanonicalWriterConfig::default(),
-        },
-    )
-    .unwrap();
+    // Neither an MCP client nor a model service has been started. Exercise the
+    // ordinary Desktop capture and guarded search before running any adapter.
+    let text = "synthetic installed public";
+    let capture = handle_capture_until(serde_json::from_value(json!({
+        "protocol_version": PROTOCOL_VERSION, "request_id": "offline-capture",
+        "client_role": "desktop", "capabilities": [CAPABILITY_CONTENT_CAPTURE],
+        "operation": "memory.capture", "capture": {
+            "captureId": new_bootstrap_event_id().unwrap(), "text": text, "classification": "public"
+        }
+    })).unwrap(), Some(&fixture.context), true);
+    assert_eq!(capture.outcome.as_deref(), Some("committed"));
     let resolver = LocalDeviceKeyResolver::load(
         &fixture.root,
         &fixture.brain_id,
@@ -389,6 +385,22 @@ fn serve_installed_consent_fixture() {
     )
     .unwrap();
     drop(db);
+    let search = handle_search_until(
+        serde_json::from_value(json!({
+            "protocol_version": PROTOCOL_VERSION, "request_id": "offline-search",
+            "client_role": "desktop", "capabilities": [CAPABILITY_CONTENT_SEARCH],
+            "operation": "content.search", "query": {"text": text}
+        }))
+        .unwrap(),
+        Some(&fixture.context),
+        true,
+        None,
+    );
+    assert!(search.accepted);
+    let hits = search.hits.expect("provider-independent guarded search");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].text, text);
+    assert_eq!(Some(hits[0].event_id.as_str()), capture.event_id.as_deref());
     let before = crate::test_temp::event_hashes(&fixture.root);
     let listener = create_listener(false).unwrap();
     let ctx = fixture.context.clone();
