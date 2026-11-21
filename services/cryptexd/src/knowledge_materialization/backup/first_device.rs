@@ -3,18 +3,35 @@ use super::super::recovered_search::{self, Approval, Ceremony, Denial, RECEIPT, 
 use super::*;
 use crate::import_staging::export_fs::Directory;
 use std::io::Write;
+use std::path::PathBuf;
 
 mod preparation;
 pub(crate) use preparation::prepare;
+
+fn device_profile(root: &Path) -> Result<PathBuf, Error> {
+    let live = Directory::open(root).map_err(|_| Error::SourceIdentity)?;
+    if live.exists("identity").map_err(|_| Error::SourceIdentity)? {
+        return Ok(root.to_owned());
+    }
+    let pending = live
+        .child(RECOVERY, false)
+        .map_err(|_| Error::RecoveryHistory)?;
+    pending
+        .child("identity", false)
+        .map_err(|_| Error::SourceIdentity)?;
+    preparation::check_blank(root, true)?;
+    Ok(root.join(RECOVERY))
+}
 
 pub(crate) fn bound(
     root: &Path,
     store: &dyn SecureStore,
     env: SecureStoreEnvironment,
 ) -> Result<Ceremony, Error> {
-    let brain =
-        crate::identity_runtime::load_brain_identity(root).map_err(|_| Error::SourceIdentity)?;
-    let local = LocalDeviceKeyResolver::load(root, &brain.brain_id, store, env)
+    let local_root = device_profile(root)?;
+    let brain = crate::identity_runtime::load_brain_identity(&local_root)
+        .map_err(|_| Error::SourceIdentity)?;
+    let local = LocalDeviceKeyResolver::load(&local_root, &brain.brain_id, store, env)
         .map_err(|_| Error::Credentials)?
         .local_trust_anchor()
         .ok_or(Error::Credentials)?;
@@ -93,7 +110,8 @@ impl Ceremony {
         let expected = &self.expected;
         let identity = expected.brain_identity_sha256.ok_or(Error::Checkpoint)?;
         let root_archive = root.join(RECOVERY).join("archive");
-        for profile in [root, root_archive.as_path()] {
+        let local_root = device_profile(root)?;
+        for profile in [local_root.as_path(), root_archive.as_path()] {
             let bytes = restore::read_selected(
                 &crate::identity_runtime::brain_identity_path(profile),
                 4096,
@@ -110,6 +128,17 @@ impl Ceremony {
             crate::attachment_blobs::open_verified(&root_archive, &digest)
                 .map_err(|_| Error::Attachment)?;
         }
-        self.admit(&approval).map_err(|_| Error::RecoveryHistory)
+        self.admit(&approval).map_err(|_| Error::RecoveryHistory)?;
+        if local_root != root {
+            preparation::check_blank(root, true)?;
+            let live = Directory::open(root).map_err(|_| Error::SourceIdentity)?;
+            let pending = live
+                .child(RECOVERY, false)
+                .map_err(|_| Error::RecoveryHistory)?;
+            pending
+                .publish_child("identity", &live, "identity")
+                .map_err(|_| Error::SourceIdentity)?;
+        }
+        Ok(())
     }
 }

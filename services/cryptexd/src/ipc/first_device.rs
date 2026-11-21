@@ -117,13 +117,15 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
     }
     crate::paths::assert_outside_repository(folder).map_err(|_| Error::InvalidSelection)?;
     independent_folders(&ctx.runtime_root, folder).map_err(|_| Error::InvalidSelection)?;
-    let ctx = ctx.admitted().map_err(|_| Error::Unavailable)?;
-    let ceremony = first_device::bound(&ctx.runtime_root, ctx.store.as_ref(), ctx.environment)
-        .map_err(|_| Error::NoPendingRecovery)?;
+    let bound = || {
+        first_device::bound(&ctx.runtime_root, ctx.store.as_ref(), ctx.environment)
+            .map_err(|_| Error::NoPendingRecovery)
+    };
     match action {
         Action::Inspect { .. } | Action::Prepare { .. } => unreachable!(),
         Action::Export { folder } => {
-            let (file, device, fingerprint) = ceremony
+            let _lease = ctx.admitted().map_err(|_| Error::Unavailable)?;
+            let (file, device, fingerprint) = bound()?
                 .export_challenge(&folder)
                 .map_err(|_| Error::InvalidSelection)?;
             Ok(Outcome::Challenge {
@@ -133,10 +135,21 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
             })
         }
         Action::Import { approval } => {
-            ceremony
-                .accept_owner_file(&ctx.runtime_root, &approval)
-                .map_err(|_| Error::Rejected)?;
-            Ok(Outcome::Accepted)
+            let permit = ctx
+                .admission
+                .exclusive(
+                    &ctx.runtime_root,
+                    Instant::now() + Duration::from_secs(10),
+                    false,
+                )
+                .map_err(|_| Error::Busy)?;
+            let result = bound().and_then(|ceremony| {
+                ceremony
+                    .accept_owner_file(&ctx.runtime_root, &approval)
+                    .map_err(|_| Error::Rejected)
+            });
+            permit.finish(None);
+            result.map(|()| Outcome::Accepted)
         }
     }
 }

@@ -129,12 +129,31 @@ pub(super) fn blank_replacement(
     fs::remove_file(sentinel).unwrap();
     trial("first-device-clean-prepare");
     let local = crate::local_device_identity::local_device_identity_path(&root);
-    let before = fs::read(&local).unwrap();
+    let staged_identity =
+        crate::local_device_identity::local_device_identity_path(&root.join(RECOVERY));
+    let before = fs::read(&staged_identity).unwrap();
     assert!(!receipt.exists());
-    // Model power loss after the archive is published but before activation.
-    fs::rename(&identity, root.join(RECOVERY).join("identity")).unwrap();
+    assert!(!identity.exists());
+    let store =
+        crate::secure_store::FileBackedSecureStore::open(work.join("clean-credentials")).unwrap();
+    let env = SecureStoreEnvironment::Dev;
+    let capture = || {
+        capture_memory_note(
+            &store,
+            env,
+            &root,
+            CaptureRequest {
+                capture_id: "3d8412fa-c224-4799-a3db-08d891ee0cb9".into(),
+                classification: Classification::Public,
+                text: "First recovered device note".into(),
+            },
+            &CanonicalWriterConfig::default(),
+        )
+    };
+    assert!(!matches!(capture(), CaptureOutcome::Committed(_)));
+    assert!(!root.join("canonical").exists());
     trial("first-device-clean-prepare");
-    assert_eq!(fs::read(&local).unwrap(), before);
+    assert_eq!(fs::read(&staged_identity).unwrap(), before);
     let exchange = work.join("clean-challenges");
     fs::create_dir(&exchange).unwrap();
     trial("first-device-clean-export");
@@ -153,12 +172,47 @@ pub(super) fn blank_replacement(
     let signed = exchange.join("owner-approval.json");
     files.sign(&challenge, &signed);
     trial("first-device-clean-import");
+    assert_eq!(fs::read(&local).unwrap(), before);
+    // Power loss after the receipt was saved but before identity activation.
+    fs::rename(&identity, root.join(RECOVERY).join("identity")).unwrap();
+    trial("first-device-clean-import");
+    assert_eq!(fs::read(&local).unwrap(), before);
     assert_eq!(
         fs::read(receipt).unwrap(),
         serde_json::to_vec(
             &serde_json::from_slice::<Approval>(&fs::read(&signed).unwrap()).unwrap()
         )
         .unwrap()
+    );
+    assert!(matches!(capture(), CaptureOutcome::Committed(_)));
+    let mut resolver = LocalDeviceKeyResolver::load(&root, BRAIN, &store, env).unwrap();
+    let (mut db, _) = crate::projection::open_projection_db(&root).unwrap();
+    rebuild_knowledge_from_local_approval_history(
+        &root,
+        BRAIN,
+        &resolver.local_trust_anchor().unwrap(),
+        &mut db,
+    )
+    .unwrap();
+    drop(db);
+    let ceremony =
+        crate::knowledge_materialization::backup::first_device::bound(&root, &store, env).unwrap();
+    let hits = crate::knowledge_materialization::recovered_search::search(
+        &root,
+        &ceremony,
+        &mut resolver,
+        &SearchQuery {
+            text: Some("prefix OR recovered".into()),
+            ..SearchQuery::default()
+        },
+        None,
+    )
+    .unwrap();
+    for text in ["synthetic original prefix", "First recovered device note"] {
+        assert!(hits.iter().any(|hit| hit.text == text));
+    }
+    println!(
+        "m11_replacement_activation=passed unsigned_capture=held signed_capture=committed guarded_search=both"
     );
     println!(
         "m11_blank_bootstrap=passed damaged=held existing=preserved interrupted=resumed device_key=stable offline_approval=verified"

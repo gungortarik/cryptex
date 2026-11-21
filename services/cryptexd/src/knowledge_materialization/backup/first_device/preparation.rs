@@ -1,12 +1,12 @@
 //! Prepare a replacement only in a blank profile. Publish its archive and
-//! pending identity together, then activate that exact identity without replacement.
+//! pending identity together. Only a verified grant can activate that identity.
 use super::*;
 use crate::backup_inventory::verify_reconstruction;
 use crate::knowledge_materialization::recovered_search::{Binding, Request};
 use crate::secure_store::{AccountLabel, SecureStoreError, ServiceLabel};
 use cryptex_core::{RecoveryKitPublicMetadata, RecoveryPurpose};
 
-fn check_blank(root: &Path, recovering: bool) -> Result<(), Error> {
+pub(super) fn check_blank(root: &Path, recovering: bool) -> Result<(), Error> {
     for entry in std::fs::read_dir(root).map_err(|_| Error::SourceIdentity)? {
         let name = entry.map_err(|_| Error::SourceIdentity)?.file_name();
         if name != "daemon.lock" && !(recovering && name == RECOVERY) {
@@ -128,8 +128,8 @@ pub(crate) fn prepare(
             .publish_child(leaf, &live, RECOVERY)
             .map_err(|_| Error::Archive)?;
     }
-    // A restart between the two exclusive publications finds the original
-    // device key in the pending directory. A retry cannot redirect its grant.
+    // Reopening while waiting for the owner's signature must keep the same
+    // pending key. An active key is accepted only for an already signed grant.
     let recovery = live
         .child(RECOVERY, false)
         .map_err(|_| Error::RecoveryHistory)?;
@@ -166,9 +166,8 @@ pub(crate) fn prepare(
     verify_reconstruction(&recovery_path.join("archive"), &expected)?;
     if pending {
         check_blank(root, true)?;
-        recovery
-            .publish_child("identity", &live, "identity")
-            .map_err(|_| Error::SourceIdentity)?;
+    } else {
+        ceremony.reopen().map_err(|_| Error::RecoveryHistory)?;
     }
     bound(root, store, env)?;
     Ok(())
