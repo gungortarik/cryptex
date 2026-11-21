@@ -95,4 +95,5 @@ async function restore() {
   if (paired) process.stdout.end(Buffer.from([opened.signatures.length]));
 }
 
-restore().catch(() => { process.exitCode = 1; });
+if (require.main === module) restore().catch(() => { process.exitCode = 1; });
+module.exports = {authenticatedMessage, unpackKit};

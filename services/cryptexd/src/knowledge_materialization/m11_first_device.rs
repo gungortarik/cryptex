@@ -76,6 +76,42 @@ fn random_bytes() -> [u8; 32] {
     bytes
 }
 
+pub(super) struct OfflineInputs<'a> {
+    pub(super) sealed_kit: &'a Path,
+    pub(super) unlock: &'a Path,
+    pub(super) backup: &'a Path,
+}
+
+impl OfflineInputs<'_> {
+    fn owner_approval(&self, work: &Path, request: &Request) -> Approval {
+        let challenge = work.join("owner-challenge.json");
+        let approval = work.join("owner-approval.json");
+        fs::write(
+            &challenge,
+            serde_json_canonicalizer::to_vec(request).unwrap(),
+        )
+        .unwrap();
+        let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tools/m11-backup-spike/offline_approval_test.py");
+        assert!(
+            std::process::Command::new("python")
+                .arg("-B")
+                .arg(script)
+                .args([
+                    challenge.as_path(),
+                    self.sealed_kit,
+                    self.unlock,
+                    self.backup,
+                    &approval
+                ])
+                .status()
+                .unwrap()
+                .success()
+        );
+        serde_json::from_slice(&fs::read(approval).unwrap()).unwrap()
+    }
+}
+
 pub(super) fn rehearse(
     work: &Path,
     backup_sha256: [u8; 32],
@@ -83,6 +119,7 @@ pub(super) fn rehearse(
     offline: SigningKey,
     pinned: VerifyingKey,
     history_digest: [u8; 32],
+    owner_inputs: OfflineInputs<'_>,
 ) -> ArchiveReader {
     let new_root = work.join("replacement");
     let store =
@@ -99,7 +136,7 @@ pub(super) fn rehearse(
     assert_ne!(target.device_id(), archived.device_id());
     assert_ne!(target.public_key(), archived.public_key());
     let public = RecoveryKitPublicMetadata::new(
-        "test-offline-kit",
+        format!("{:x}", Sha256::digest(pinned.as_bytes())),
         BRAIN,
         vec![
             RecoveryPurpose::TrustBootstrap,
@@ -132,7 +169,7 @@ pub(super) fn rehearse(
         ceremony.open_replacement(&new_root, &store),
         Err(Denial::Receipt)
     ));
-    let grant = Approval::issue(&request, &offline);
+    let grant = owner_inputs.owner_approval(work, &request);
     let mut legacy = request.clone();
     legacy.operation = "cryptex.m11.trial.authorize-first-device.v1".into();
     legacy.brain_identity_sha256 = None;

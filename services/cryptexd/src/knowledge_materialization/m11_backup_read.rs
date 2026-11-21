@@ -1011,6 +1011,11 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         offline,
         pinned_recovery_key,
         history_digest,
+        first_device::OfflineInputs {
+            sealed_kit: &sealed_kit,
+            unlock: &password,
+            backup: &parked.join(backup.file_name().unwrap()),
+        },
     );
     let anchor = keys.local_trust_anchor().unwrap();
     println!(

@@ -122,6 +122,13 @@ jobs:
       - run: python -B tools/m11-backup-spike/rehearse.py
       - name: Verify atomic restore publication and retry
         run: python -B tools/m11-backup-spike/test_restore_publication.py
+      - name: Package the owner-invoked offline approval utility
+        run: python -B tools/m11-backup-spike/offline_kit.py "${{ runner.temp }}/Cryptex-Offline-Kit.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cryptex-offline-kit-${{ runner.os }}-${{ runner.arch }}
+          path: ${{ runner.temp }}/Cryptex-Offline-Kit.zip
+          if-no-files-found: error
       - name: Verify the offline Recovery Kit recipient before enrollment
         run: python -B tools/m11-backup-spike/test_public_recipient.py
       - name: Check authenticated manual decryption and its per-file size bound

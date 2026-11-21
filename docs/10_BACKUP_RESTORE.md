@@ -59,6 +59,14 @@ The Recovery Kit therefore carries standardized recovery secret material for:
 
 The offline recovery signing secret is not routinely stored on normal devices.
 
+The owner can disconnect the replacement computer and use a separate offline
+Recovery Kit tool on it. A second computer is optional. The replacement
+prepares a public challenge bound to its fresh device key and the reconstructed
+archive. The owner checks the Brain, backup and device fingerprint and explicitly
+approves that challenge in the offline tool. Only the public signed approval
+returns to the replacement. Routine Desktop and daemon operation have no
+interface for producing a recovery signature.
+
 The exact Recovery Kit container/serialization is not selected by this document.
 
 ## 6. Scheduled backup writer
