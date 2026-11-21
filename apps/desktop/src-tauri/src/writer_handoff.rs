@@ -16,15 +16,12 @@ fn confirm(target: &std::path::Path, review: &Review) -> bool {
         review.incoming_device,
         review.incoming_fingerprint
     );
-    rfd::MessageDialog::new()
-        .set_title("Transfer scheduled backup and retention?")
-        .set_description(details)
-        .set_buttons(rfd::MessageButtons::OkCancelCustom(
-            "Sign transfer".into(),
-            "Keep current writer".into(),
-        ))
-        .show()
-        == rfd::MessageDialogResult::Custom("Sign transfer".into())
+    super::backup_confirmation::confirm(
+        "Transfer scheduled backup and retention?",
+        details,
+        "Sign transfer",
+        "Keep current writer",
+    )
 }
 
 #[cfg(feature = "m11-installed-search-check")]

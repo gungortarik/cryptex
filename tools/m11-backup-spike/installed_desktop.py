@@ -46,6 +46,12 @@ def install_and_run():
     run(pnpm, "--dir", str(APP), "exec", "tauri", "build", "--debug",
         "--features", "m11-installed-search-check", "--bundles", "nsis" if windows else "app",
         "--config", "src-tauri/tauri.m11-search.conf.json", env=build_env)
+    check = "backup_confirmation::tests::only_the_affirmative_ok_cancel_choice_authorizes_a_backup_action"
+    result = run("cargo", "test", "--locked", "-p", "cryptex-desktop", "--bin", "cryptex-desktop",
+                 check, "--", "--exact", env=build_env,
+                 stdout=subprocess.PIPE, text=True)
+    if f"test {check} ... ok" not in result.stdout:
+        raise RuntimeError("native backup confirmation regression did not run")
     bundles = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "debug/bundle"
     with tempfile.TemporaryDirectory(prefix="cryptex-m11-install-", dir=os.environ["RUNNER_TEMP"]) as directory:
         install = Path(directory)

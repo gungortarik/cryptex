@@ -490,13 +490,19 @@ fn confirm_backup_recipient(digest: &str) -> bool {
     }
     #[cfg(not(feature = "m11-installed-search-check"))]
     {
-        rfd::MessageDialog::new().set_title("Use this Recovery Kit for backups?")
-            .set_description(format!("Compare the certificate SHA-256 below with the value shown by your offline Recovery Kit. Confirm only if the full values match.\n\n{digest}"))
-            .set_buttons(rfd::MessageButtons::OkCancelCustom("Use this certificate".into(), "Cancel".into()))
-            .show() == rfd::MessageDialogResult::Custom("Use this certificate".into())
+        backup_confirmation::confirm(
+            "Use this Recovery Kit for backups?",
+            format!(
+                "Compare the certificate SHA-256 below with the value shown by your offline Recovery Kit. Confirm only if the full values match.\n\n{digest}"
+            ),
+            "Use this certificate",
+            "Cancel",
+        )
     }
 }
 
+#[cfg(any(test, not(feature = "m11-installed-search-check")))]
+mod backup_confirmation;
 mod writer_handoff;
 
 #[derive(serde::Deserialize, PartialEq)]
@@ -556,19 +562,16 @@ async fn m11_backup_writer(
             #[cfg(feature = "m11-installed-search-check")]
             let approved = std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() == Ok("writer-create");
             #[cfg(not(feature = "m11-installed-search-check"))]
-            let approved = rfd::MessageDialog::new().set_title("Designate this device as backup writer?")
-                .set_description(format!("Cryptex will create a new backup target in the following folder and assign it to this device.\n\n{}", path.display()))
-                .set_buttons(rfd::MessageButtons::OkCancelCustom("Create target".into(), "Cancel".into()))
-                .show() == rfd::MessageDialogResult::Custom("Create target".into());
+            let approved = backup_confirmation::confirm("Designate this device as backup writer?",
+                format!("Cryptex will create a new backup target in the following folder and assign it to this device.\n\n{}", path.display()), "Create target", "Cancel");
             if !approved { return Ok(Outcome::Cancelled); }
             backup_writer::desktop(Action::Create { parent: path })
         } else if mode == WriterCommand::Retain {
             #[cfg(not(feature = "m11-installed-search-check"))]
             if let Some(count) = keep {
-                let confirmed = rfd::MessageDialog::new().set_title("Set scheduled backup retention?")
-                    .set_description(format!("Keep the newest {count} verified scheduled backups in {}. After verification, Cryptex can remove older verified generations with the same purge history.", path.display()))
-                    .set_buttons(rfd::MessageButtons::OkCancelCustom("Save retention".into(), "Cancel".into())).show();
-                if confirmed != rfd::MessageDialogResult::Custom("Save retention".into()) {return Ok(Outcome::Cancelled);}
+                let confirmed = backup_confirmation::confirm("Set scheduled backup retention?",
+                    format!("Keep the newest {count} verified scheduled backups in {}. After verification, Cryptex can remove older verified generations with the same purge history.", path.display()), "Save retention", "Cancel");
+                if !confirmed {return Ok(Outcome::Cancelled);}
             }
             backup_writer::desktop(Action::Retain {target: path, keep})
         } else if mode == WriterCommand::Schedule {
