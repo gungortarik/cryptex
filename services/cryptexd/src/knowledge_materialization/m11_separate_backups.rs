@@ -49,10 +49,33 @@ pub(super) fn export(
     .unwrap();
     let public = work.join("kit-public");
     run_archive("kit-public-recipient", &[kit, password, &public]);
-    let digest = format!(
-        "{:x}",
-        Sha256::digest(fs::read(public.join("recovery.pub")).unwrap())
-    );
+    let recipient = fs::read(public.join("recovery.pub")).unwrap();
+    let digest = format!("{:x}", Sha256::digest(&recipient));
+    let wrong = input.join("unrelated.pgp");
+    fs::write(&wrong, b"not the original ciphertext").unwrap();
+    let store =
+        crate::secure_store::FileBackedSecureStore::open(work.join("test-credentials")).unwrap();
+    let codec = std::env::var_os("CRYPTEX_M11_TEST_INSTALLED_CODEC").unwrap();
+    assert!(matches!(
+        backup::export_recovered(
+            &work.join("replacement"),
+            &store,
+            SecureStoreEnvironment::Dev,
+            backup::PriorFiles {
+                backup: &wrong,
+                checkpoint: &selections.join("original.json"),
+            },
+            backup::Destination {
+                codec: Path::new(&codec),
+                recipient: &recipient,
+                target: &volume,
+                checkpoints: &selections,
+            },
+        ),
+        Err(crate::backup_inventory::Error::RecoveryHistory)
+    ));
+    assert_eq!(fs::read_dir(&volume).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(&selections).unwrap().count(), 1);
     launched(desktop, work, "pair-write", password, &digest);
     let files = fs::read_dir(&volume)
         .unwrap()
