@@ -2,9 +2,11 @@
 
 ## First-device approval on a single replacement computer
 
+At `bfbd51a`, the installed Windows and macOS applications began with a blank temporary profile. The daemon restored the archive and staged a distinct device key. An ordinary capture before owner approval failed without creating a canonical stream. The test interrupted activation after recording the signed approval, imported the same approval again, then saved a note with the activated key and found both the historical and new notes. [Windows and macOS results](https://github.com/gungortarik/cryptex/actions/runs/44862131516)
+
 At `6f9e2d8`, the installed Windows and macOS applications exported a public challenge from a prepared temporary replacement profile. The separate Recovery Kit program matched the selected backup bytes and authenticated Kit checkpoint, then signed the exact device key and challenge after the test supplied the explicit owner choice. Cancellation, redirected input, a wrong ciphertext and a different archive history all failed. The installed application rejected another key's signature and accepted the Kit's signature. After reopening, search returned the historical note and the replacement device's note. [Installed application and daemon checks](https://github.com/gungortarik/cryptex/actions/runs/44859268497)
 
-The Windows x64 and macOS ARM64 workflow artifacts contain the offline program, runtime and libraries. The signing program is absent from the ordinary Desktop package. The rehearsal prepares the restored archive and its independent device credential in the fixture before opening Desktop. Starting this preparation from a blank installation is still open. Personal profiles retain the existing write gate.
+The Windows x64 and macOS ARM64 workflow artifacts contain the offline program, runtime and libraries. The signing program is absent from the ordinary Desktop package. Personal profiles retain the existing write gate.
 
 ## Scheduled backup and retention in the installed application
 

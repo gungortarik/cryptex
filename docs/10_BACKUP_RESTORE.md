@@ -67,6 +67,20 @@ approves that challenge in the offline tool. Only the public signed approval
 returns to the replacement. Routine Desktop and daemon operation have no
 interface for producing a recovery signature.
 
+In a blank replacement profile, **Check Kit and backup** verifies the selected
+encrypted backup, its independently held checkpoint, the sealed Kit and its
+separate unlock file. **Prepare replacement profile** repeats those checks and
+stages the verified archive and a fresh device identity. An occupied profile
+is preserved. The replacement uses the minimum-reader lock layout for M9
+attachment history.
+
+Choose **Save public request** and take the replacement computer offline.
+Open the separate Recovery Kit utility, compare the Brain, backup digest,
+device ID and key fingerprint, and enter the displayed device ID to approve.
+Choose **Import signed approval** in Cryptex to activate the pending identity.
+After an interruption, the same signed approval can finish activation with the
+same device key. These steps are currently exercised on temporary profiles.
+
 The exact Recovery Kit container/serialization is not selected by this document.
 
 ## 6. Scheduled backup writer
