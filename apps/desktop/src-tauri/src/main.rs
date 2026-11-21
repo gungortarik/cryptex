@@ -2166,6 +2166,7 @@ enum EngineAction {
 #[serde(rename_all = "snake_case")]
 enum EngineState {
     Running,
+    Stopping,
     Stopped,
     Unavailable,
 }
@@ -2174,9 +2175,6 @@ fn control_pilot_engine(
     state: &ProbeState,
     action: EngineAction,
 ) -> Result<EngineState, &'static str> {
-    if !cfg!(feature = "m13-shell-check") {
-        return Ok(EngineState::Unavailable);
-    }
     let Some(root) = pilot_runtime::root() else {
         return Ok(EngineState::Unavailable);
     };
@@ -2201,27 +2199,52 @@ fn control_pilot_engine(
         return Ok(EngineState::Unavailable);
     }
     // A daemon attached by PID is outside this control. Require our child handle.
-    let owned = {
-        let mut child = state.child.lock().map_err(|_| "unavailable")?;
-        match child.as_mut() {
-            Some(process) => process.try_wait().map_err(|_| "unavailable")?.is_none(),
-            None => false,
-        }
+    let mut slot = state.child.lock().map_err(|_| "unavailable")?;
+    let live_pid = if let Some(process) = slot.as_mut() {
+        process
+            .try_wait()
+            .map_err(|_| "unavailable")?
+            .is_none()
+            .then_some(process.id())
+    } else {
+        None
     };
-    if !owned && !*stopped {
+    if live_pid.is_none() && !*stopped {
         return Ok(EngineState::Unavailable);
     }
     if matches!(action, EngineAction::Inspect) {
-        return Ok(if owned {
+        return Ok(if live_pid.is_some() && *stopped {
+            EngineState::Stopping
+        } else if live_pid.is_some() {
             EngineState::Running
         } else {
             EngineState::Stopped
         });
     }
-    if owned {
-        stop_supervised_daemon(state).map_err(|_| "stop_unconfirmed")?;
-        *stopped = true;
+    if let Some(pid) = live_pid {
+        if !*stopped {
+            if check_local_service().map_err(|_| "unavailable")?.daemon_pid != pid {
+                return Err("unavailable");
+            }
+            // The supervisor owns this child. A reported stop requires a clean
+            // exit. Keep its handle if draining outlasts the interactive wait.
+            fs::File::create_new(root.join("stop")).map_err(|_| "stop_unconfirmed")?;
+            *stopped = true;
+        }
+        let deadline = Instant::now() + Duration::from_secs(45);
+        let process = slot.as_mut().ok_or("unavailable")?;
+        loop {
+            match process.try_wait().map_err(|_| "stop_unconfirmed")? {
+                Some(status) if status.success() => break,
+                Some(_) => return Err("stop_unconfirmed"),
+                None if Instant::now() >= deadline => return Ok(EngineState::Stopping),
+                None => thread::sleep(Duration::from_millis(50)),
+            }
+        }
     }
+    slot.take();
+    drop(slot);
+    *state.supervised_pid.lock().map_err(|_| "unavailable")? = None;
     if matches!(action, EngineAction::Stop) {
         return Ok(EngineState::Stopped);
     }

@@ -251,6 +251,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn maintenance_revokes_an_outstanding_grant_even_after_exit() {
+        let session = Session::default();
+        let generation = session.0.lock().unwrap().generation.clone();
+        session.set_maintenance(true).unwrap();
+        assert!(matches!(
+            session.decide(Action::Resume),
+            Err(Error::Unavailable)
+        ));
+        session.set_maintenance(false).unwrap();
+        let access = session.0.lock().unwrap();
+        assert!(!access.paused && !access.maintenance);
+        assert!(!Arc::ptr_eq(&generation, &access.generation));
+    }
+
+    #[test]
     fn pause_cancels_the_pending_ticket_and_resume_requires_a_new_review() {
         let session = Session::default();
         let (answer, receiver) = mpsc::channel();

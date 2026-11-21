@@ -83,11 +83,19 @@ if($p.PSObject.Properties['m13_desktop_shell'] -and $p.m13_desktop_shell) {
     if($result.code -ne 0 -or $result.stdout -notmatch '1 passed; 0 failed; 0 ignored'){
         throw 'Maintenance Mode daemon test failed.'
     }
+    Set-NativeTestPackage
+    $paired='managed_profile::native_product_receive_test::two_normal_owners_exchange_offline_notes_and_replay_after_restart'
+    $result=Invoke-TestBinary $p.executables[0] "$paired --ignored --exact --test-threads=1"
+    Write-Output $result.stdout
+    Write-Output $result.stderr
+    if($result.code -ne 0 -or $result.stdout -notmatch '1 passed; 0 failed; 0 ignored'){
+        throw 'Paired transport maintenance check failed.'
+    }
     Set-Location -LiteralPath $p.workspace
     $env:CARGO_TARGET_DIR=Join-Path $p.workspace 'target'
     & $p.python 'scripts/m13/check-shell.py'
     if($LASTEXITCODE -ne 0){throw 'Native desktop shell rehearsal failed.'}
-    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=1} | ConvertTo-Json |
+    @{sid=$identity.User.Value;elevated=$false;passed=$true;suites=2} | ConvertTo-Json |
         Set-Content -LiteralPath (Join-Path $p.scratch 'result.json') -Encoding UTF8
     exit 0
 }

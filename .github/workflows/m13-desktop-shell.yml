@@ -59,10 +59,13 @@ jobs:
       - name: Exercise the native window and embedded WebView in a disposable profile
         if: runner.os == 'macOS'
         run: python scripts/m13/check-shell.py
+      - name: Prepare the pinned transport for the two-device maintenance check
+        if: runner.os == 'Windows'
+        run: python scripts/m8/prepare_native_test_package.py
       - name: Exercise the native window with standard-user file ownership
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M13DesktopShell
+        run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M13DesktopShell -ExchangePackage "$env:RUNNER_TEMP/exchange-package"
       - name: Verify Mac owner controls, local capture and guarded search during maintenance
         if: runner.os == 'macOS'
         shell: bash

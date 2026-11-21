@@ -2,7 +2,7 @@
 
 ## M13 desktop shell
 
-The native shell spike passed on Windows and macOS at `f72a1d8`. The Home screen now reports local service health, incoming observations when available, and the absence of a verified remote copy. Its read-only service check refreshes when focus returns and while the window is visible. Product navigation, remaining screens, visual and accessibility review, and final owner acceptance are open. [Shell receipts](../evidence/m13/desktop-shell.md) · [M13 contract](milestones/M13_DESKTOP_PRODUCT_UI.md)
+The review candidate covers native window behavior, observed Home health, guarded note detail, product navigation, owner-controlled AI access and Doctor controls for the pilot daemon. Maintenance Mode keeps local capture and search available while suspending AI and managed sync for the current daemon session. Final CI and owner acceptance remain open. [Shell receipts](../evidence/m13/desktop-shell.md) · [M13 contract](milestones/M13_DESKTOP_PRODUCT_UI.md)
 
 ## M12 closure
 

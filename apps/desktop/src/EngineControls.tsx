@@ -1,7 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 
-type EngineState = "running" | "stopped" | "unavailable";
+type EngineState = "running" | "stopping" | "stopped" | "unavailable";
+const descriptions: Record<EngineState, string> = {
+  running: "Local engine is running.",
+  stopping: "The local engine is finishing its work before it stops.",
+  stopped: "Local engine stopped.",
+  unavailable: "Engine controls are unavailable.",
+};
 
 export function EngineControls({ onChange }: { onChange: () => void }) {
   const [state, setState] = useState<EngineState>("unavailable");
@@ -30,7 +36,7 @@ export function EngineControls({ onChange }: { onChange: () => void }) {
     try {
       const result = await invoke<EngineState>("m13_engine_control", { action });
       setState(result);
-      setMessage(result === "running" ? "Local engine is running." : result === "stopped" ? "Local engine stopped." : "Engine controls are unavailable.");
+      setMessage(descriptions[result]);
     } catch {
       setMessage("The engine state could not be confirmed. Check again.");
     } finally {

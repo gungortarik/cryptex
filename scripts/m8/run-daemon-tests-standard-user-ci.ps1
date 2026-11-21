@@ -9,7 +9,7 @@ $workspace=(Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
 $manifest=Join-Path $workspace 'services\cryptexd'
 $python=if($M9HistoricalDaemon -or $M13DesktopShell){(Get-Command python -CommandType Application | Select-Object -First 1).Source}else{$null}
 $browserNode=if($M9AttachmentBrowser){(Get-Command node -CommandType Application | Select-Object -First 1).Source}else{$null}
-if($ExchangeNativeOnly -or $M9HistoricalDaemon){$ExchangePackage=(Resolve-Path -LiteralPath $ExchangePackage).Path}
+if($ExchangeNativeOnly -or $M9HistoricalDaemon -or $M13DesktopShell){$ExchangePackage=(Resolve-Path -LiteralPath $ExchangePackage).Path}
 if($LanSetupOnly -or $LanCutoffOnly) {
     $LanArtifact=(Resolve-Path -LiteralPath $LanArtifact).Path
     $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
@@ -26,7 +26,7 @@ $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Objec
     $_.profile.test -and $_.executable
 } | ForEach-Object {$_.executable} | Sort-Object -Unique)
 $expectedArtifacts=if($M13DesktopShell -or $DesktopStartupOnly -or $DesktopSessionOnly -or $TransportPolicyOnly -or $ExchangeNativeOnly -or $LocalVerificationOnly -or $M9HistoricalDaemon -or $M9AttachmentBrowser -or $M11CrossBackup){1}else{2}
-$expectedSuites=if($M9HistoricalDaemon){5}elseif($LocalVerificationOnly){1}elseif($ExchangeNativeOnly){5}elseif($TransportPolicyOnly){13}elseif($DesktopSessionOnly){3}else{$expectedArtifacts}
+$expectedSuites=if($M13DesktopShell){2}elseif($M9HistoricalDaemon){5}elseif($LocalVerificationOnly){1}elseif($ExchangeNativeOnly){5}elseif($TransportPolicyOnly){13}elseif($DesktopSessionOnly){3}else{$expectedArtifacts}
 if($executables.Count -ne $expectedArtifacts){throw 'Expected exact daemon test artifacts.'}
 foreach($exe in $executables) {
     $full=(Resolve-Path -LiteralPath $exe).Path
@@ -50,7 +50,7 @@ try {
     }
     # Fresh account reads checkout/build artifacts; only scratch is writable.
     $access=@(@{path=$workspace;rights='ReadAndExecute'},@{path=$scratch;rights='FullControl'})
-    if($ExchangeNativeOnly -or $M9HistoricalDaemon){$access+=@{path=$ExchangePackage;rights='ReadAndExecute'}}
+    if($ExchangeNativeOnly -or $M9HistoricalDaemon -or $M13DesktopShell){$access+=@{path=$ExchangePackage;rights='ReadAndExecute'}}
     if($LanSetupOnly -or $LanCutoffOnly){$access+=@{path=$LanArtifact;rights='ReadAndExecute'}}
     foreach($entry in $access) {
         $acl=Get-Acl -LiteralPath $entry.path
