@@ -10,6 +10,25 @@ use std::{fs, io::Read};
 #[test]
 #[ignore = "isolated native process with a disposable purge profile"]
 fn verified_backup_preserves_purge_and_unaffected_notes() {
+    let browser_server =
+        std::env::var("CRYPTEX_FILE_FIXTURE_MODE").as_deref() == Ok("backup-removal");
+    if !browser_server && std::env::var("CRYPTEX_M11_DESKTOP_BROWSER").as_deref() == Ok("1") {
+        assert!(
+            std::process::Command::new("node")
+                .arg(
+                    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../apps/desktop/scripts/backup-removal.test.mjs")
+                )
+                .arg(std::env::current_exe().unwrap())
+                .status()
+                .unwrap()
+                .success()
+        );
+        println!(
+            "m11_backup_removal_ui=passed cancelled=kept confirmed=removed replay=denied replacement=restored"
+        );
+        return;
+    }
     let mut fixture = prepared_search_fixture("physical-m11-backup");
     let root = &fixture.root;
     let env = SecureStoreEnvironment::Dev;
@@ -229,11 +248,45 @@ fn verified_backup_preserves_purge_and_unaffected_notes() {
     );
     assert_eq!(fs::read(&first).unwrap(), encrypted_old);
     fs::write(&second, &encrypted_new).unwrap();
-    assert!(
-        catalog
-            .decide_removal(&writer, review().unwrap(), Decision::Confirm(first.clone()))
-            .unwrap()
-    );
+    let pending =
+        || backup_removal::Pending::from_review(ctx, writer.clone(), review().unwrap()).unwrap();
+    *ctx.backup_removal.lock().unwrap() = Some(pending());
+    if browser_server {
+        use std::io::{BufRead, Write};
+        let mut after_cancel = Some(pending());
+        let token = std::env::var("CRYPTEX_FILE_FIXTURE_SOCKET").unwrap();
+        let listener = ListenerOptions::new()
+            .name(rehearsal_socket(&token).unwrap())
+            .create_sync()
+            .unwrap();
+        println!("fixture-ready");
+        io::stdout().flush().unwrap();
+        for command in io::stdin().lock().lines() {
+            let command = command.unwrap();
+            if command == "finish" {
+                break;
+            }
+            assert_eq!(command, "serve");
+            let mut stream = listener.accept().unwrap();
+            handle_connection(&mut stream, Some(ctx), None, None, None).unwrap();
+            let mut slot = ctx.backup_removal.lock().unwrap();
+            if slot.is_none() && after_cancel.is_some() {
+                assert_eq!(fs::read(&first).unwrap(), encrypted_old);
+                *slot = after_cancel.take();
+            }
+        }
+        assert!(after_cancel.is_none());
+    } else {
+        use backup_removal::{Action, Outcome};
+        let Outcome::Review { ticket, .. } = backup_removal::decide(ctx, Action::Inspect).unwrap()
+        else {
+            panic!("expected review")
+        };
+        assert!(matches!(
+            backup_removal::decide(ctx, Action::Remove { ticket }),
+            Ok(Outcome::Removed)
+        ));
+    }
     assert!(!first.exists());
     assert_eq!(fs::read(&second).unwrap(), encrypted_new);
     let last_copy = restore(2, &second).unwrap();

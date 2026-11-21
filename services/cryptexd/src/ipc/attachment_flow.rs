@@ -486,7 +486,11 @@ fn browser_client() {
     let token = new_bootstrap_event_id().unwrap();
     FIXTURE_SOCKET.with(|slot| slot.set(fixture_name(&token)).unwrap());
     let recovery = std::env::var("CRYPTEX_FILE_FIXTURE_MODE").as_deref() == Ok("recovered-search");
-    let server = if recovery {
+    let backup_removal =
+        std::env::var("CRYPTEX_FILE_FIXTURE_MODE").as_deref() == Ok("backup-removal");
+    let server = if backup_removal {
+        "ipc::purge_review::backup_test::verified_backup_preserves_purge_and_unaffected_notes"
+    } else if recovery {
         "knowledge_materialization::pairing_recovery_tests::m11_backup_read::restored_note_and_attachment_pass_guarded_reads"
     } else {
         SERVER
@@ -518,6 +522,9 @@ fn browser_client() {
         let request: serde_json::Value = serde_json::from_str(&input.unwrap()).unwrap();
         let args = &request["args"];
         let command = request["command"].as_str().unwrap();
+        if backup_removal {
+            assert_eq!(command, "m11_backup_removal");
+        }
         if recovery {
             assert_eq!(command, "p0_4_guarded_search");
         }
@@ -537,6 +544,10 @@ fn browser_client() {
         };
         writeln!(child.stdin.as_mut().unwrap(), "{check}").unwrap();
         let result = match command {
+            "m11_backup_removal" => serde_json::to_value(backup_removal::desktop(
+                serde_json::from_value(args["action"].clone()).unwrap(),
+            ))
+            .unwrap(),
             "m10_note_lifecycle" => serde_json::to_value(lifecycle::desktop(
                 serde_json::from_value(args["action"].clone()).unwrap(),
             ))

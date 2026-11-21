@@ -1,5 +1,11 @@
 # M11 encrypted backup container rehearsal
 
+## Desktop consent for removing an entire backup
+
+In device settings, **Review backup removal** asks the daemon for the selected old file and its verified replacement. The dialog shows both full paths and ciphertext SHA-256 values. **Keep backup** has initial focus. Escape cancels review. Only **Remove this backup** sends a removal decision. The daemon accepts a one-use ticket from the authenticated Desktop, rechecks the selected files, current writer and purge history, and consumes the ticket on cancellation or confirmation.
+
+The native rehearsal drives the compiled React interface in Chrome through the Desktop's Rust IPC client and a separate daemon on a disposable profile. It checks both digests against disk, cancels, rejects replay, then explicitly removes the old generation under a fresh ticket. The daemon decrypts the replacement and checks the surviving attachment. Ordinary profiles have no removal candidate until the owner-facing backup target and Recovery Kit integration is enabled.
+
 ## Current retention and recovery behavior
 
 Each hosted OS restored two notes from the other platform's daemon-signed v2

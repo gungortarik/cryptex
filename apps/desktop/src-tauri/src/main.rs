@@ -455,6 +455,15 @@ async fn m10_note_lifecycle(
 }
 
 #[tauri::command]
+async fn m11_backup_removal(
+    action: cryptexd::ipc::backup_removal::Action,
+) -> Result<cryptexd::ipc::backup_removal::Outcome, cryptexd::ipc::backup_removal::Error> {
+    tauri::async_runtime::spawn_blocking(move || cryptexd::ipc::backup_removal::desktop(action))
+        .await
+        .map_err(|_| cryptexd::ipc::backup_removal::Error::Unavailable)?
+}
+
+#[tauri::command]
 async fn m10_purge_review(
     action: cryptexd::ipc::purge_review::Action,
 ) -> Result<cryptexd::ipc::purge_review::Outcome, cryptexd::ipc::purge_review::ReviewError> {
@@ -2654,6 +2663,7 @@ fn main() {
             p0_5_guarded_timeline,
             p0_5_guarded_event_detail,
             m9_attach_file,
+            m11_backup_removal,
             m10_purge_review,
             m10_note_lifecycle,
             p0_6_materialize_and_open_vault,

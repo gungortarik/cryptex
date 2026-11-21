@@ -10,6 +10,7 @@ mod native_domain;
 pub(crate) mod native_profile;
 
 pub mod attachment;
+pub mod backup_removal;
 pub mod lifecycle;
 pub mod purge_review;
 
@@ -616,6 +617,7 @@ pub fn spawn_retrieval_server(
         transport_identity: None,
         #[cfg(test)]
         isolated_attachment_writer: false,
+        backup_removal: Default::default(),
         #[cfg(test)]
         purge_reviews: None,
         #[cfg(test)]
@@ -726,6 +728,7 @@ fn spawn_daemon_ipc_server_inner(
         transport_identity: None,
         #[cfg(test)]
         isolated_attachment_writer: false,
+        backup_removal: Default::default(),
         #[cfg(test)]
         purge_reviews: None,
         #[cfg(test)]
@@ -757,6 +760,7 @@ struct SearchContext {
     transport_identity: Option<crate::m8_owner_channel::transport_helper::StatusReader>,
     #[cfg(test)]
     isolated_attachment_writer: bool,
+    backup_removal: backup_removal::Session,
     #[cfg(test)]
     purge_reviews: Option<Arc<std::sync::Mutex<Option<purge_review::Pending>>>>,
     #[cfg(test)]
@@ -2261,6 +2265,14 @@ fn handle_connection_via(
     let operation = serde_json::from_slice::<Operation>(&frame)
         .ok()
         .map(|header| header.operation);
+    if operation.as_deref() == Some(backup_removal::OPERATION) {
+        let reply = backup_removal::handle(&frame, search, peer_is_desktop);
+        return write_response(
+            stream,
+            &serde_json::to_vec(&reply)?,
+            Instant::now() + IPC_RESPONSE_DEADLINE,
+        );
+    }
     if operation.as_deref() == Some(purge_review::OPERATION) {
         let reply = purge_review::handle(&frame, search, peer_is_desktop);
         return write_response(
@@ -6132,6 +6144,7 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            backup_removal: Default::default(),
             #[cfg(test)]
             purge_reviews: None,
             transport_device_id_override: None,
@@ -6454,6 +6467,7 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            backup_removal: Default::default(),
             #[cfg(test)]
             purge_reviews: None,
             #[cfg(test)]
@@ -7509,6 +7523,7 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            backup_removal: Default::default(),
             #[cfg(test)]
             purge_reviews: None,
             #[cfg(test)]
@@ -7749,6 +7764,7 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            backup_removal: Default::default(),
             #[cfg(test)]
             purge_reviews: None,
             transport_device_id_override: None,
@@ -8455,6 +8471,7 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            backup_removal: Default::default(),
             #[cfg(test)]
             purge_reviews: None,
             #[cfg(test)]
@@ -8499,6 +8516,7 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            backup_removal: Default::default(),
             #[cfg(test)]
             purge_reviews: None,
             #[cfg(test)]
@@ -8736,6 +8754,7 @@ pub(crate) mod tests {
             transport_identity: None,
             #[cfg(test)]
             isolated_attachment_writer: false,
+            backup_removal: Default::default(),
             #[cfg(test)]
             purge_reviews: None,
             #[cfg(test)]

@@ -142,6 +142,7 @@ fn context(
         transport_identity: transport,
         #[cfg(test)]
         isolated_attachment_writer: false,
+        backup_removal: Default::default(),
         #[cfg(test)]
         purge_reviews: None,
         #[cfg(test)]

@@ -23,6 +23,29 @@ pub(crate) enum Decision {
 }
 
 impl Review {
+    pub(crate) fn details(&self) -> io::Result<(crate::ipc::backup_removal::Selection, Instant)> {
+        let display = |p: std::path::PathBuf| {
+            p.into_os_string().into_string().map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "backup path cannot be displayed",
+                )
+            })
+        };
+        Ok((
+            crate::ipc::backup_removal::Selection {
+                old_file: display(self.selected_file())?,
+                old_digest: format!("{:x}", sha2::digest::Output::<Sha256>::from(self.digest)),
+                replacement_file: display(self.target.join(generation_name(self.replacement)))?,
+                replacement_digest: format!(
+                    "{:x}",
+                    sha2::digest::Output::<Sha256>::from(self.replacement_digest)
+                ),
+            },
+            self.expires,
+        ))
+    }
+
     pub(crate) fn selected_file(&self) -> std::path::PathBuf {
         self.target.join(generation_name(self.generation))
     }
