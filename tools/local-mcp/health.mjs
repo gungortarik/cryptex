@@ -10,21 +10,25 @@ export function localEndpoint() {
   throw new Error("Unsupported platform");
 }
 
-export async function exchange(endpoint, fields, maxBytes, timeout) {
+export async function connectLocal(endpoint) {
   if (process.platform === "darwin") {
     const parent = await lstat(dirname(endpoint));
     if (!parent.isDirectory() || parent.uid !== process.getuid() || (parent.mode & 0o077) !== 0) {
-      return null;
+      throw new Error("Unsafe local endpoint");
     }
-    if (!(await lstat(endpoint)).isSocket()) return null;
+    if (!(await lstat(endpoint)).isSocket()) throw new Error("Invalid local endpoint");
   }
+  return createConnection({ path: endpoint });
+}
+
+export async function exchange(endpoint, fields, maxBytes, timeout) {
+  const socket = await connectLocal(endpoint);
   const requestId = randomUUID();
   const request = {
     protocol_version: 1, request_id: requestId, client_role: "mcp",
     ...fields,
   };
   return new Promise((resolve) => {
-    const socket = createConnection({ path: endpoint });
     const timer = setTimeout(() => finish(null), timeout);
     let frame = Buffer.alloc(0);
     function finish(ok) {

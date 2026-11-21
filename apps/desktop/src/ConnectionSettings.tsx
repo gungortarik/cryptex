@@ -1,4 +1,5 @@
 import { BackupRemovalReview } from "./BackupRemovalReview";
+import { PublicReadReview } from "./PublicReadReview";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { connectionMessage, connectionUpdate, parseConnectionView, type ConnectionView } from "./connection-settings.mjs";
@@ -92,6 +93,7 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
         {view && <button type="button" className="search-button" disabled={readOnly || !dirty || uncertain} onClick={() => void save()}>Save connection settings</button>}
       </div>
       {active && <BackupRemovalReview />}
+      {active && <PublicReadReview />}
       {message && <p role="status" className="capture-status">{message}</p>}
       {!active && <p role="status" className="capture-status">Connection settings are unavailable until the local service responds.</p>}
     </div>}

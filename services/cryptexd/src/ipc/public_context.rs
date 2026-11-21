@@ -67,6 +67,7 @@ pub(super) fn respond(
     stream: &mut Stream,
     ctx: Option<&SearchContext>,
     bytes: &[u8],
+    owner_approved_stream: bool,
 ) -> io::Result<()> {
     let deadline = Instant::now() + IPC_RESPONSE_DEADLINE;
     let frame = serde_json::from_slice::<Frame>(bytes).ok();
@@ -89,13 +90,8 @@ pub(super) fn respond(
             return Err(Error::Unauthorized);
         }
         let ctx = ctx.ok_or(Error::Unauthorized)?;
-        let grant = ctx.public_reader.as_ref().ok_or(Error::Unauthorized)?;
-        let peer = peer_process_id(stream).map_err(|_| Error::Unauthorized)?;
-        {
-            let mut child = grant.lock().map_err(|_| Error::Unauthorized)?;
-            if peer != child.id() || child.try_wait().map_err(|_| Error::Unauthorized)?.is_some() {
-                return Err(Error::Unauthorized);
-            }
+        if !owner_approved_stream {
+            return Err(Error::Unauthorized);
         }
         admitted = Some(ctx.admitted().map_err(|_| Error::ReadHeld)?);
         let notes = read(ctx, &f.phrase, deadline)?;

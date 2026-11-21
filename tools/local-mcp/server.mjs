@@ -3,7 +3,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError,
 } from "@modelcontextprotocol/sdk/types.js";
-import { exchange, probeHealth } from "./health.mjs";
+import { probeHealth } from "./health.mjs";
+import { beginReview } from "./consent.mjs";
 
 const health = {
   name: "cryptex_health",
@@ -21,14 +22,22 @@ const search = {
   annotations: { readOnlyHint: true, openWorldHint: false },
 };
 
-async function searchPublicNotes(endpoint, args) {
+const requestRead = {
+  name: "cryptex_request_public_read",
+  description: "Request owner approval in Cryptex Desktop for one public-note search. Show the returned review code to the user.",
+  inputSchema: health.inputSchema,
+  annotations: { readOnlyHint: true, openWorldHint: false },
+};
+
+async function searchPublicNotes(takeReview, args) {
   if (Object.keys(args).length !== 1 || typeof args.phrase !== "string" ||
       !args.phrase.trim() || Buffer.byteLength(args.phrase) > 1024) {
     throw new McpError(ErrorCode.InvalidParams, "Provide only a nonempty phrase of up to 1024 UTF-8 bytes");
   }
   const operation = "context.public.search";
-  const reply = await exchange(endpoint, { operation, capabilities: ["context.public.read"], phrase: args.phrase },
-    65536, 17000).catch(() => null);
+  const review = takeReview();
+  if (!review) return { isError: true, content: [{ type: "text", text: "public_read_denied" }] };
+  const reply = await review.search(args.phrase).catch(() => null);
   const notes = reply?.result?.Ok;
   if (reply?.operation !== operation || !Array.isArray(notes) || Object.keys(reply.result).length !== 1 || notes.length > 10 ||
       !notes.every((n) => n && typeof n.event_id === "string" &&
@@ -43,10 +52,35 @@ async function searchPublicNotes(endpoint, args) {
 
 export async function serve(endpoint, { publicNotes = false } = {}) {
   const server = new Server({ name: "cryptex-local", version: "0.0.0" }, { capabilities: { tools: {} } });
-  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: publicNotes ? [health, search] : [health] }));
+  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: publicNotes ? [health, requestRead, search] : [health] }));
+  let review;
+  let requesting = false;
+  let active;
+  process.stdin.once("end", () => { review?.close(); active?.close(); });
   let pending;
   server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
-    if (publicNotes && params.name === search.name) return searchPublicNotes(endpoint, params.arguments ?? {});
+    if (publicNotes && params.name === requestRead.name && Object.keys(params.arguments ?? {}).length === 0) {
+      if (requesting || active) return { isError: true, content: [{ type: "text", text: "public_review_busy" }] };
+      requesting = true;
+      try {
+        if (!review || review.closed) review = await beginReview(endpoint);
+        return { content: [{ type: "text", text: "In Cryptex, open Connection settings and select Review AI access. Compare this code before allowing one search: " + review.ticket }] };
+      } catch {
+        review = undefined;
+        return { isError: true, content: [{ type: "text", text: "public_review_unavailable" }] };
+      } finally { requesting = false; }
+    }
+    if (publicNotes && params.name === search.name) {
+      let consumed;
+      try {
+        return await searchPublicNotes(() => {
+          consumed = review;
+          review = undefined;
+          if (consumed) active = consumed;
+          return consumed;
+        }, params.arguments ?? {});
+      } finally { if (consumed === active) active = undefined; }
+    }
     if (params.name !== health.name || Object.keys(params.arguments ?? {}).length !== 0) {
       throw new McpError(ErrorCode.InvalidParams, "Unknown tool or unsupported arguments");
     }

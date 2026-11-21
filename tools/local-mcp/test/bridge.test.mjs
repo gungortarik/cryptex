@@ -51,7 +51,7 @@ test("absent, mismatched, oversized and stalled IPC responses stay unavailable",
   t.after(() => rm(dir, { recursive: true, force: true }));
   const endpoint = process.platform === "win32" ? "\\\\.\\pipe\\cryptex-m12-" + randomUUID() : join(dir, "s");
   const client = await connect(t, [fixture, endpoint]);
-  assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), [health.name, "cryptex_search_public_notes"]);
+  assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name), [health.name, "cryptex_request_public_read", "cryptex_search_public_notes"]);
   for (const args of [{}, { phrase: "  " }, { phrase: "é".repeat(513) },
     { phrase: "x", classification: "private" }, { phrase: "x", role: "desktop" }]) {
     await assert.rejects(client.callTool({ name: "cryptex_search_public_notes", arguments: args }),

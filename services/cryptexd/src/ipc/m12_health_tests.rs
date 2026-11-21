@@ -119,18 +119,38 @@ impl Bridge {
         serde_json::from_str(&line).unwrap()
     }
 
-    fn search(
+    fn request(
         &mut self,
         listener: &interprocess::local_socket::Listener,
         ctx: &SearchContext,
-    ) -> Value {
+    ) -> String {
+        self.send(
+            json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
+                "name":"cryptex_request_public_read","arguments":{}
+            }}),
+        );
+        let mut stream = listener.accept().unwrap();
+        let ctx = ctx.clone();
+        thread::spawn(move || {
+            handle_connection(&mut stream, Some(&ctx), None, None, None).unwrap()
+        });
+        let reply = self.receive();
+        let ticket = reply["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .split_whitespace()
+            .last()
+            .unwrap();
+        cryptex_core::validate::parse_uuid_str(ticket).unwrap();
+        ticket.to_string()
+    }
+
+    fn search(&mut self) -> Value {
         self.send(
             json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
                 "name":"cryptex_search_public_notes","arguments":{"phrase":"synthetic"}
             }}),
         );
-        let mut stream = listener.accept().unwrap();
-        handle_connection(&mut stream, Some(ctx), None, None, None).unwrap();
         self.receive()["result"].clone()
     }
 }
@@ -188,11 +208,34 @@ fn approved_bridge_reads_only_visible_public_notes() {
     drop(db);
     let mut bridge = Bridge::start(&endpoint);
     let denied = json!({"isError":true,"content":[{"type":"text","text":"public_read_denied"}]});
-    assert_eq!(bridge.search(&listener, &fixture.context), denied);
-    fixture.context.public_reader = Some(bridge.child.clone());
+    use public_consent::Action;
+    let decide = |ticket: String, allow| {
+        let action = if allow {
+            Action::Allow { ticket }
+        } else {
+            Action::Deny { ticket }
+        };
+        fixture.context.public_consent.decide(action).unwrap();
+    };
+    assert_eq!(bridge.search(), denied);
+    let ticket = bridge.request(&listener, &fixture.context);
+    decide(ticket, false);
+    assert_eq!(bridge.search(), denied);
+    let ticket = bridge.request(&listener, &fixture.context);
+    assert!(
+        fixture
+            .context
+            .public_consent
+            .decide(Action::Allow {
+                ticket: "stale".into()
+            })
+            .is_err()
+    );
     let mut other = Bridge::start(&endpoint);
-    assert_eq!(other.search(&listener, &fixture.context), denied);
-    let hits = bridge.search(&listener, &fixture.context);
+    decide(ticket, true);
+    assert_eq!(other.search(), denied);
+    let hits = bridge.search();
+    assert_eq!(bridge.search(), denied);
     let visible_note = json!({"event_id":visible.event_id,"text":"synthetic visible"});
     let forgotten_note = json!({"event_id":target.event_id,"text":"synthetic forget"});
     let notes = hits["structuredContent"]["notes"].as_array().unwrap();
@@ -213,17 +256,130 @@ fn approved_bridge_reads_only_visible_public_notes() {
     );
     cryptex_storage::append_frame(&fixture.root, &fixture.device, 0, &forget).unwrap();
     let before = crate::test_temp::event_hashes(&fixture.root);
-    let after_forget = bridge.search(&listener, &fixture.context);
+    decide(bridge.request(&listener, &fixture.context), true);
+    let after_forget = bridge.search();
     let expected = json!({"notes":[visible_note]});
     assert_eq!(after_forget["structuredContent"], expected);
     assert_eq!(after_forget["content"][0]["text"], expected.to_string());
     assert_eq!(crate::test_temp::event_hashes(&fixture.root), before);
     cryptex_storage::append_frame(&fixture.root, &fixture.device, 0, b"broken record").unwrap();
+    decide(bridge.request(&listener, &fixture.context), true);
     assert_eq!(
-        bridge.search(&listener, &fixture.context),
+        bridge.search(),
         json!({"isError":true,"content":[{"type":"text","text":"public_read_unavailable"}]})
     );
     let root = fixture.root.clone();
     drop((fixture, instance));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+/// The hosted VM has no personal daemon. The parent represents the Desktop process;
+/// its child recognizes the parent's OS identity on the real product socket.
+#[test]
+#[ignore = "requires an installed npm package, built Desktop and an empty hosted runner"]
+fn installed_client_owner_consent() {
+    assert_eq!(
+        std::env::var("RUNNER_ENVIRONMENT").as_deref(),
+        Ok("github-hosted")
+    );
+    assert_eq!(std::env::var("GITHUB_ACTIONS").as_deref(), Ok("true"));
+    if std::env::var_os("CRYPTEX_M12_CONSENT_FIXTURE").is_some() {
+        serve_installed_consent_fixture();
+        return;
+    }
+    let mut daemon = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "ipc::m12_health_tests::installed_client_owner_consent",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env("CRYPTEX_M12_CONSENT_FIXTURE", "1")
+        .stdin(process::Stdio::piped())
+        .stdout(process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut daemon_output = BufReader::new(daemon.stdout.take().unwrap());
+    let ready = (&mut daemon_output)
+        .lines()
+        .map(Result::unwrap)
+        .any(|line| line.ends_with("consent-fixture-ready"));
+    assert!(ready, "disposable daemon startup");
+    let mut browser = Command::new("node")
+        .arg(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../apps/desktop/scripts/public-consent.test.mjs"),
+        )
+        .stdin(process::Stdio::piped())
+        .stdout(process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut replies = browser.stdin.take().unwrap();
+    for line in BufReader::new(browser.stdout.take().unwrap()).lines() {
+        let action: public_consent::Action = serde_json::from_str(&line.unwrap()).unwrap();
+        let result = public_consent::desktop(action);
+        writeln!(replies, "{}", serde_json::to_string(&result).unwrap()).unwrap();
+        replies.flush().unwrap();
+    }
+    let status = browser.wait().unwrap();
+    drop(daemon.stdin.take());
+    assert!(daemon.wait().unwrap().success(), "daemon integrity check");
+    assert!(status.success(), "installed client / Desktop review");
+}
+
+fn serve_installed_consent_fixture() {
+    use crate::canonical_writer::{AppendMemoryNoteArgs, append_memory_note};
+    use cryptex_events::TrustedDaemonKeyResolver;
+    let mut fixture = tests::prepared_search_fixture("installed-m12-review");
+    let instance = crate::instance::try_acquire_instance(&fixture.root).unwrap();
+    fixture.context.admission = instance.admission();
+    append_memory_note(
+        fixture.store.as_ref(),
+        fixture.context.environment,
+        AppendMemoryNoteArgs {
+            runtime_root: &fixture.root,
+            brain_id: &fixture.brain_id,
+            device_id: &fixture.device,
+            classification: Classification::Public,
+            text: "synthetic installed public",
+            event_id: None,
+            config: &CanonicalWriterConfig::default(),
+        },
+    )
+    .unwrap();
+    let resolver = LocalDeviceKeyResolver::load(
+        &fixture.root,
+        &fixture.brain_id,
+        fixture.store.as_ref(),
+        fixture.context.environment,
+    )
+    .unwrap();
+    let mut db = ProjectionDb::open_or_create(&fixture.root).unwrap();
+    crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
+        &fixture.root,
+        &fixture.brain_id,
+        &resolver.local_trust_anchor().unwrap(),
+        &mut db,
+    )
+    .unwrap();
+    drop(db);
+    let before = crate::test_temp::event_hashes(&fixture.root);
+    let listener = create_listener(false).unwrap();
+    let ctx = fixture.context.clone();
+    thread::spawn(move || {
+        while let Ok(mut stream) = listener.accept() {
+            let ctx = ctx.clone();
+            thread::spawn(move || {
+                handle_connection(&mut stream, Some(&ctx), None, None, None).unwrap()
+            });
+        }
+    });
+    println!("consent-fixture-ready");
+    io::stdout().flush().unwrap();
+    let mut end = String::new();
+    io::stdin().read_line(&mut end).unwrap();
+    assert_eq!(crate::test_temp::event_hashes(&fixture.root), before);
+    let root = fixture.root.clone();
+    drop((instance, fixture));
     std::fs::remove_dir_all(root).unwrap();
 }

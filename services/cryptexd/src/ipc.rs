@@ -19,6 +19,7 @@ pub mod backup_verify;
 pub mod backup_writer;
 pub mod first_device;
 pub mod lifecycle;
+pub mod public_consent;
 mod public_context;
 pub mod purge_review;
 
@@ -615,7 +616,7 @@ pub fn spawn_retrieval_server(
         operation: None,
         store,
         environment,
-        public_reader: None,
+        public_consent: Default::default(),
         expected_desktop: Arc::new(expected_desktop),
         projection_sync: None,
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -729,7 +730,7 @@ fn spawn_daemon_ipc_server_inner(
         operation: None,
         store,
         environment,
-        public_reader: None,
+        public_consent: Default::default(),
         expected_desktop: Arc::new(expected_desktop),
         projection_sync: None,
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -764,7 +765,7 @@ struct SearchContext {
     operation: Option<crate::runtime_admission::OperationPermit>,
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
-    public_reader: Option<Arc<Mutex<process::Child>>>,
+    public_consent: public_consent::Session,
     expected_desktop: Arc<DesktopProcessIdentity>,
     projection_sync: Option<SyncSender<()>>,
     #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -946,7 +947,7 @@ impl DesktopProcessIdentity {
 }
 
 fn spawn_server(context: Option<SearchContext>) -> io::Result<()> {
-    let listener = create_listener()?;
+    let listener = create_listener(true)?;
     #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
     let schedule = backup_writer::start(context.as_ref())?;
     let context = context.map(Arc::new);
@@ -2034,10 +2035,10 @@ fn exchange_until(
     read_ipc_frame(stream, max_response_bytes, deadline)
 }
 
-fn create_listener() -> io::Result<interprocess::local_socket::Listener> {
+fn create_listener(overwrite: bool) -> io::Result<interprocess::local_socket::Listener> {
     let options = ListenerOptions::new()
         .name(socket_name()?)
-        .try_overwrite(true);
+        .try_overwrite(overwrite);
     #[cfg(windows)]
     {
         use interprocess::os::windows::{
@@ -2286,8 +2287,19 @@ fn handle_connection_via(
     let operation = serde_json::from_slice::<Operation>(&frame)
         .ok()
         .map(|header| header.operation);
+    if operation.as_deref() == Some(public_consent::REQUEST) {
+        return public_consent::request(stream, search, &frame);
+    }
+    if operation.as_deref() == Some(public_consent::REVIEW) {
+        let reply = public_consent::review_frame(&frame, search, peer_is_desktop);
+        return write_response(
+            stream,
+            &serde_json::to_vec(&reply)?,
+            Instant::now() + IPC_REQUEST_DEADLINE,
+        );
+    }
     if operation.as_deref() == Some(public_context::OPERATION) {
-        return public_context::respond(stream, search, &frame);
+        return public_context::respond(stream, search, &frame, false);
     }
     if operation.as_deref() == Some(backup_writer::OPERATION) {
         let reply = backup_writer::handle(&frame, search, peer_is_desktop);
@@ -6194,7 +6206,7 @@ pub(crate) mod tests {
             operation: None,
             store,
             environment: SecureStoreEnvironment::Dev,
-            public_reader: None,
+            public_consent: Default::default(),
             expected_desktop: Arc::new(test_connected_process_identity()),
             projection_sync: None,
             #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -6517,7 +6529,7 @@ pub(crate) mod tests {
             runtime_root: missing_root,
             store: Arc::new(FakeSecureStore::new()),
             environment: SecureStoreEnvironment::Dev,
-            public_reader: None,
+            public_consent: Default::default(),
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("capture test Desktop identity"),
             ),
@@ -7576,7 +7588,7 @@ pub(crate) mod tests {
             runtime_root: root.clone(),
             store: store.clone(),
             environment: SecureStoreEnvironment::Dev,
-            public_reader: None,
+            public_consent: Default::default(),
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("capture test Desktop identity"),
             ),
@@ -7823,7 +7835,7 @@ pub(crate) mod tests {
             operation: None,
             store: store.clone(),
             environment: SecureStoreEnvironment::Dev,
-            public_reader: None,
+            public_consent: Default::default(),
             expected_desktop: Arc::new(test_connected_process_identity()),
             projection_sync: None,
             #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -8530,7 +8542,7 @@ pub(crate) mod tests {
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,
-            public_reader: None,
+            public_consent: Default::default(),
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
@@ -8578,7 +8590,7 @@ pub(crate) mod tests {
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,
-            public_reader: None,
+            public_consent: Default::default(),
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),
@@ -8819,7 +8831,7 @@ pub(crate) mod tests {
             runtime_root: root.clone(),
             store,
             environment: SecureStoreEnvironment::Dev,
-            public_reader: None,
+            public_consent: Default::default(),
             expected_desktop: Arc::new(
                 test_desktop_process_identity().expect("desktop parent identity"),
             ),

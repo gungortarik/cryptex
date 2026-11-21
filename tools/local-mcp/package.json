@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "bin": { "cryptex-mcp": "stdio.mjs" },
+  "files": ["stdio.mjs", "health.mjs", "consent.mjs", "server.mjs", "README.md"],
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2"
   }

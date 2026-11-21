@@ -103,7 +103,7 @@ pub(crate) fn confirm_fixture(
         operation: None,
         store,
         environment: crate::secure_store::SecureStoreEnvironment::Dev,
-        public_reader: None,
+        public_consent: Default::default(),
         expected_desktop: Arc::new(test_desktop_process_identity().unwrap()),
         projection_sync: None,
         connections: None,

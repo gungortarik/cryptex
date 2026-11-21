@@ -749,6 +749,15 @@ async fn m11_export_backup()
 }
 
 #[tauri::command]
+async fn m12_public_read_review(
+    action: cryptexd::ipc::public_consent::Action,
+) -> Result<cryptexd::ipc::public_consent::Outcome, cryptexd::ipc::public_consent::Error> {
+    tauri::async_runtime::spawn_blocking(move || cryptexd::ipc::public_consent::desktop(action))
+        .await
+        .map_err(|_| cryptexd::ipc::public_consent::Error::Unavailable)?
+}
+
+#[tauri::command]
 async fn m11_backup_removal(
     action: cryptexd::ipc::backup_removal::Action,
 ) -> Result<cryptexd::ipc::backup_removal::Outcome, cryptexd::ipc::backup_removal::Error> {
@@ -2958,6 +2967,7 @@ fn main() {
             p0_5_guarded_event_detail,
             m9_attach_file,
             m11_backup_removal,
+            m12_public_read_review,
             m11_export_backup,
             m11_backup_writer,
             m11_verify_manual_backup,

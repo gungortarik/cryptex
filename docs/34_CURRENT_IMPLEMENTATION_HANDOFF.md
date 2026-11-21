@@ -2,10 +2,11 @@
 
 ## M12 local MCP
 
-The local stdio bridge provides health and a public-note search. The daemon
-requires an approved live bridge process for the current profile and a fresh
-verified public-note read. Only disposable profiles provision a read grant.
-Owner-controlled grant provisioning for installed clients is still open.
+The opt-in installed stdio bridge requests a one-search public-note grant.
+Desktop shows the matching review code, defaults to Deny, and sends the owner's
+decision through authenticated daemon IPC. One approved connection may read
+visible public excerpts for up to two minutes from request creation. The M12
+workflow exercises approval, denial, and reuse on disposable Windows and Mac profiles.
 [Bridge and native tests](../tools/local-mcp/README.md)
 
 ## M11 closure

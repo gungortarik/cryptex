@@ -133,7 +133,7 @@ fn context(
         operation: None,
         store: Arc::new(crate::MacosKeychainStore::new()),
         environment: SecureStoreEnvironment::Dev,
-        public_reader: None,
+        public_consent: Default::default(),
         expected_desktop: Arc::new(DesktopProcessIdentity {
             pid: unsafe { libc::getppid() } as u32,
         }),

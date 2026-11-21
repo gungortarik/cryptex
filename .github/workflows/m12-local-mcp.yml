@@ -7,6 +7,9 @@ on:
       - 'services/cryptexd/src/ipc.rs'
       - 'services/cryptexd/src/ipc/m12_health_tests.rs'
       - 'services/cryptexd/src/ipc/public_context.rs'
+      - 'services/cryptexd/src/ipc/public_consent.rs'
+      - 'apps/desktop/src/PublicReadReview.tsx'
+      - 'apps/desktop/scripts/public-consent.test.mjs'
       - 'services/cryptexd/src/knowledge_materialization/ai_context.rs'
       - '.github/workflows/m12-local-mcp.yml'
   pull_request:
@@ -15,6 +18,9 @@ on:
       - 'services/cryptexd/src/ipc.rs'
       - 'services/cryptexd/src/ipc/m12_health_tests.rs'
       - 'services/cryptexd/src/ipc/public_context.rs'
+      - 'services/cryptexd/src/ipc/public_consent.rs'
+      - 'apps/desktop/src/PublicReadReview.tsx'
+      - 'apps/desktop/scripts/public-consent.test.mjs'
       - 'services/cryptexd/src/knowledge_materialization/ai_context.rs'
       - '.github/workflows/m12-local-mcp.yml'
 
@@ -31,14 +37,31 @@ jobs:
         os: [windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.28.0
+          run_install: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
       - run: npm ci --prefix tools/local-mcp --ignore-scripts
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cryptex/desktop build
+      - name: Install the packaged bridge and pinned SDK client outside the checkout
+        shell: pwsh
+        run: |
+          cd tools/local-mcp
+          npm pack --pack-destination "$env:RUNNER_TEMP"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installed = Join-Path $env:RUNNER_TEMP 'm12-installed'
+          npm install --prefix "$installed" --ignore-scripts (Join-Path $env:RUNNER_TEMP 'cryptex-local-mcp-0.0.0.tgz')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "M12_INSTALLED_STDIO=$(Join-Path $installed 'node_modules/cryptex-local-mcp/stdio.mjs')" >> $env:GITHUB_ENV
       - run: cargo fmt --all -- --check
       - name: Exercise stdio and the native daemon dispatcher in a disposable profile
         shell: bash
         run: |
           set -euo pipefail
+          cargo test --locked -p cryptexd --lib ipc::public_consent::tests::
           cargo test --locked -p cryptexd --lib ipc::m12_health_tests:: -- --ignored --nocapture | tee "$RUNNER_TEMP/m12-stdio.txt"
-          grep -F '2 passed; 0 failed' "$RUNNER_TEMP/m12-stdio.txt"
+          grep -F '3 passed; 0 failed' "$RUNNER_TEMP/m12-stdio.txt"
