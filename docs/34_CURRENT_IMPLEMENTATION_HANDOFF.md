@@ -1,6 +1,10 @@
 # 34 — Current Implementation Handoff
 
-## M11 encrypted backup rehearsal
+## M11 closure
+
+M11 closed for disposable Windows and macOS profiles on November 21, 2026 at owner-reviewed candidate `8a80275`. All nine required jobs passed, including both installed applications and bidirectional restore. Personal-profile backup and recovery writes remain disabled. M12 awaits a separate owner decision. [Closure review and CI receipts](../evidence/m11/backup-closeout-review.md)
+
+## M11 encrypted backup rehearsal history
 
 The owner chose a fresh target for a lost scheduled writer. Reusing its target
 requires the previous writer's signed approval. The daemon fences queued jobs
