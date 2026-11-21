@@ -59,6 +59,11 @@ The Recovery Kit therefore carries standardized recovery secret material for:
 
 The offline recovery signing secret is not routinely stored on normal devices.
 
+On the offline computer, open **Export public recipient** in the Recovery Kit
+utility. Select the sealed Kit, its separate unlock file and a new folder.
+Transfer that public folder to the backup writer and compare the full
+certificate SHA-256 shown by both applications before enrollment.
+
 The owner can disconnect the replacement computer and use a separate offline
 Recovery Kit tool on it. A second computer is optional. The replacement
 prepares a public challenge bound to its fresh device key and the reconstructed

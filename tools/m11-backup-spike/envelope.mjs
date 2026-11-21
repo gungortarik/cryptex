@@ -1,9 +1,9 @@
 // Disposable P1 runner. The writer receives only the recovery public key.
-import { createPrivateKey, createPublicKey, randomBytes, sign, verify } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import * as pgp from "openpgp";
+import recipient from "./offline-kit/verified-recipient.cjs";
 
 const config = { v6Keys: true, aeadProtect: true };
 const [operation, keyFile, secondKeyFile] = process.argv.slice(2);
@@ -21,27 +21,7 @@ async function run() {
     // Only the offline Kit utility calls this. Derive the certificate from
     // the private key and reject a Kit whose advertised recipient differs.
     const [secret, advertised, bootstrapDer] = JSON.parse((await readBoundedKitInput()).toString("utf8"));
-    const privateKey = await pgp.readPrivateKey({armoredKey: secret});
-    const publicKey = privateKey.toPublic();
-    const supplied = await pgp.readKeys({armoredKeys: advertised});
-    if (supplied.length !== 1 || supplied[0].isPrivate() ||
-        !Buffer.from(publicKey.write()).equals(Buffer.from(supplied[0].write()))) {
-      throw new Error("Recovery certificate mismatch");
-    }
-    // Exercise the encryption subkey, including whether the secret exists
-    // and is usable. The public certificate alone cannot establish that.
-    const bootstrap = createPrivateKey({key: Buffer.from(bootstrapDer, "base64"), format: "der", type: "pkcs8"});
-    if (bootstrap.asymmetricKeyType !== "ed25519") throw new Error("Invalid bootstrap key");
-    const challenge = randomBytes(32);
-    if (!verify(null, challenge, createPublicKey(bootstrap), sign(null, challenge, bootstrap))) {
-      throw new Error("Recovery bootstrap check failed");
-    }
-    const cipher = await pgp.encrypt({message: await pgp.createMessage({binary: challenge}),
-      encryptionKeys: publicKey, format: "binary", config});
-    const opened = await pgp.decrypt({message: await pgp.readMessage({binaryMessage: cipher}),
-      decryptionKeys: privateKey, format: "binary", config});
-    if (!Buffer.from(opened.data).equals(challenge)) throw new Error("Recovery check failed");
-    process.stdout.write(publicKey.armor());
+    process.stdout.write(await recipient.verifiedRecipient(pgp, secret, advertised, Buffer.from(bootstrapDer, "base64")));
     return;
   }
   if (operation === "lock-kit" || operation === "unlock-kit") {

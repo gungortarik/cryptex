@@ -9,6 +9,7 @@ import unittest
 import zipfile
 
 from recovery_kit import MEMBERS, NODE, export_recipient, seal, unseal
+from offline_kit import scripts
 
 
 class PublicRecipientTest(unittest.TestCase):
@@ -35,6 +36,17 @@ class PublicRecipientTest(unittest.TestCase):
             seal(source, password, sealed)
             public = root / "public"
             digest = export_recipient(sealed, password, public)
+            bundled = root / "offline"
+            scripts(bundled)
+            owner_output = root / "owner-public"
+            call = ["node", "-e",
+                    "require(process.argv[1]).exportRecipient(...process.argv.slice(2))"
+                    ".then(console.log).catch(()=>{process.exitCode=1})",
+                    bundled / "export-recipient.cjs", sealed, password, owner_output]
+            self.assertEqual(subprocess.check_output(call, text=True).strip(), digest)
+            self.assertEqual(sorted(p.name for p in owner_output.iterdir()), ["brain-identity.sha256", "recovery.pub"])
+            for item in owner_output.iterdir():
+                self.assertEqual(item.read_bytes(), (public / item.name).read_bytes())
             self.assertEqual(sorted(p.name for p in public.iterdir()), ["brain-identity.sha256", "recovery.pub"])
             self.assertEqual((public / "brain-identity.sha256").read_bytes(), brain)
             certificate = (public / "recovery.pub").read_bytes()
@@ -67,6 +79,9 @@ class PublicRecipientTest(unittest.TestCase):
                 with self.assertRaises(subprocess.CalledProcessError):
                     operation(root / "mismatched.pgp", password, destination)
                 self.assertFalse(destination.exists())
+            destination = root / "rejected-owner-export"
+            self.assertNotEqual(subprocess.run([*call[:-3], root / "mismatched.pgp", password, destination]).returncode, 0)
+            self.assertFalse(destination.exists())
 
 
 if __name__ == "__main__":
