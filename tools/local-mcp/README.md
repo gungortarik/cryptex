@@ -55,3 +55,23 @@ The test needs no account or model turn. It checks the matching review code,
 approval, rejection, Escape, grant reuse and the synthetic profile's event
 hashes. The browser drives the Cryptex review screen through a native test
 host. This verifies the Codex MCP runtime independently of its chat UI.
+
+## Configure a supported client
+
+Run `cryptex-mcp-config <client>` from the installed package to print the
+local stdio entry. It uses the installed Node and bridge paths and enables
+the owner-reviewed public reader. Merge the entry into your chosen
+client's configuration. Reprint it if you move the installation.
+
+| Client argument | Where the entry belongs |
+| --- | --- |
+| `codex` | Codex `config.toml`, under `mcp_servers` |
+| `claude` | Claude Code project `.mcp.json`, or add the named server with `claude mcp add-json` |
+| `cursor` | Project `.cursor/mcp.json` |
+| `antigravity` | Antigravity `~/.gemini/config/mcp_config.json` |
+| `grok` | Grok Build `~/.grok/config.toml` |
+
+A client may ask you to enable the local server. Each read still requires
+its own confirmation in Cryptex. A client reporting the server as enabled
+establishes configuration. A handshake establishes connectivity to the
+bridge. Use `cryptex_health` for a current daemon check.

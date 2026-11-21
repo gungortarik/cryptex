@@ -71,6 +71,21 @@ jobs:
           $binary = $native[0].FullName
           if ((& $binary --version) -ne 'codex-cli 0.155.1') { throw 'Unexpected Codex version' }
           "M12_CODEX_BIN=$binary" >> $env:GITHUB_ENV
+      - name: Check packaged stdio configuration with four vendor clients
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'm12-vendors'
+          python tools/local-mcp/test/install-vendor-clients.py $tools
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $platform = if ($IsWindows) { 'win32-x64' } else { 'darwin-arm64' }
+          $pkg = "@anthropic-ai/claude-code-$platform"
+          npm install --prefix $tools --ignore-scripts "${pkg}@2.1.263"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = if ($IsWindows) { 'claude.exe' } else { 'claude' }
+          $claude = Join-Path $tools "node_modules/$pkg/$exe"
+          $config = Join-Path (Split-Path $env:M12_INSTALLED_STDIO) 'client-config.mjs'
+          python tools/local-mcp/test/vendor-clients.py $tools $config $claude
+          exit $LASTEXITCODE
       - run: cargo fmt --all -- --check
       - name: Exercise stdio and the native daemon dispatcher in a disposable profile
         shell: bash
