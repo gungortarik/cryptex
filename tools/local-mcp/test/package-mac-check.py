@@ -27,8 +27,8 @@ with tempfile.TemporaryDirectory() as temp:
     bridge.mkdir(parents=True)
     for name in ["package.json", "package-lock.json", "stdio.mjs", "server.mjs", "consent.mjs", "health.mjs", "client-config.mjs"]:
         shutil.copyfile(SOURCE / name, bridge / name)
-    subprocess.run([shutil.which("npm.cmd" if os.name == "nt" else "npm"), "ci", "--prefix",
-                    bridge, "--ignore-scripts", "--omit=dev", "--no-audit"], check=True)
+    subprocess.run([shutil.which("npm.cmd" if os.name == "nt" else "npm"), "ci",
+                    "--ignore-scripts", "--omit=dev", "--no-audit"], cwd=bridge.resolve(), check=True)
     for name in ["discovery-witness.mjs", "antigravity-acp.py", "mac-owner-check.py"]:
         shutil.copyfile(HERE / name, root / name)
     (root / "KONTROL.command").write_bytes(LAUNCHER.encode())
