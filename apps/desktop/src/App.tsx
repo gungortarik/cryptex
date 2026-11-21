@@ -1236,7 +1236,7 @@ export function App() {
               <div><dt>Device connections</dt><dd>{
                 connection !== "active" || !connectionView ? "Unavailable"
                 : connectionView.error && connectionView.state !== "not_enrolled" ? "Needs attention"
-                : ({ not_enrolled: "No enrolled profile", paused: "Sync paused", address_needed: "LAN address needed",
+                : ({ maintenance: "Maintenance Mode", maintenance_attention: "Needs attention", not_enrolled: "No enrolled profile", paused: "Sync paused", address_needed: "LAN address needed",
                   applying: "Applying settings…", ready_locally: "Ready on this device", attention: "Needs attention" })[connectionView.state]
               }</dd></div>
               {connection === "active" && connectionView && !connectionView.error && connectionView.devices.length > 0 &&
@@ -1298,7 +1298,7 @@ export function App() {
               <h2 id="ai-heading">AI access</h2>
               <p className="capture-help">Review a connected client's request to search public notes.</p>
             </div>
-            {connection === "active" ? <PublicReadReview /> : <p role="status">Waiting for the local service.</p>}
+            {connection === "active" ? <PublicReadReview connectionMode={connectionView?.state} /> : <p role="status">Waiting for the local service.</p>}
           </section>
 
           <section className="bootstrap-panel" aria-labelledby="bootstrap-heading">

@@ -1,7 +1,7 @@
 export type ConnectionView = {
   revision: string; paused: boolean; listenAddress: string | null; localTransportPort: number | null;
   devices: { deviceId: string; transportId: string; endpoint: string | null }[];
-  state: "not_enrolled" | "paused" | "address_needed" | "applying" | "ready_locally" | "attention"; error: string | null;
+  state: "maintenance" | "maintenance_attention" | "not_enrolled" | "paused" | "address_needed" | "applying" | "ready_locally" | "attention"; error: string | null;
 };
 export function privateIPv4(value: unknown): boolean;
 export function publicEndpoint(value: unknown): boolean;

@@ -12,6 +12,13 @@ on:
       - 'apps/desktop/src/EngineControls.tsx'
       - 'apps/desktop/src-tauri/Cargo.toml'
       - 'apps/desktop/src/styles.css'
+      - 'apps/desktop/src/ConnectionSettings.tsx'
+      - 'apps/desktop/src/PublicReadReview.tsx'
+      - 'apps/desktop/src/connection-settings.*'
+      - 'apps/desktop/src-tauri/src/candidate_ui.rs'
+      - 'services/cryptexd/src/ipc/tests/maintenance_tests.rs'
+      - 'services/cryptexd/src/ipc/public_consent.rs'
+      - 'services/cryptexd/src/managed_profile/connection_settings/**'
       - 'apps/desktop/src-tauri/src/main.rs'
 permissions:
   contents: read
@@ -56,3 +63,15 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/m8/run-daemon-tests-standard-user-ci.ps1 -M13DesktopShell
+      - name: Verify Mac owner controls, local capture and guarded search during maintenance
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CRYPTEX_M8_DEVELOPMENT_CERT_DER: ${{ github.workspace }}/services/cryptexd/src/m8_owner_channel/release_inventory/fixtures/signer.der
+          CRYPTEX_M8_DEVELOPMENT_RELEASE_ID: cryptex-dev-maintenance-ci
+        run: |
+          set -euo pipefail
+          cargo check --locked -p cryptex-desktop --features m8-development-product
+          suite=ipc::tests::maintenance_tests::maintenance_preserves_local_read_and_capture_and_restores_prior_ai_policy
+          cargo test --locked -p cryptexd --features m8-development-product --lib "$suite" -- --exact | tee "$RUNNER_TEMP/maintenance.log"
+          grep -Fx "test $suite ... ok" "$RUNNER_TEMP/maintenance.log"

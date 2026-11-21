@@ -328,9 +328,10 @@ async fn m8_retirement_file(import: bool) -> Result<bool, String> {
 #[tauri::command]
 async fn m8_connection_settings(
     update: Option<cryptexd::managed_profile::connection_settings::Update>,
+    maintenance: Option<bool>,
 ) -> Result<cryptexd::managed_profile::connection_settings::View, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        cryptexd::ipc::desktop_connection_settings(update)
+        cryptexd::ipc::desktop_connection_control(update, maintenance)
             .map(|mut view| {
                 view.error = view.error.map(|error| error.public_error());
                 view

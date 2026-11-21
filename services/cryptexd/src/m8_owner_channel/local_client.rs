@@ -255,22 +255,26 @@ impl LocalDaemon {
         &mut self,
         update: Option<crate::managed_profile::connection_settings::Update>,
     ) -> Result<crate::managed_profile::connection_settings::View, Error> {
+        self.connection_control(update, None)
+    }
+    pub fn connection_control(
+        &mut self,
+        update: Option<crate::managed_profile::connection_settings::Update>,
+        maintenance: Option<bool>,
+    ) -> Result<crate::managed_profile::connection_settings::View, Error> {
         use crate::managed_profile::connection_settings::{MAX_FRAME, Request, Response};
         if !self.existing_profile {
             return Err(Error::Arguments);
         }
-        if update.is_some() {
+        if update.is_some() || maintenance.is_some() {
             self.pending_review.take();
         }
         let request = Request {
             schema_version: 1,
             request_id: random_id()?,
-            operation: if update.is_some() {
-                "connections.update"
-            } else {
-                "connections.read"
-            }
-            .into(),
+            operation: Request::operation(update.is_some(), maintenance)
+                .map_err(|_| Error::Arguments)?
+                .into(),
             client_role: "desktop".into(),
             update,
         };

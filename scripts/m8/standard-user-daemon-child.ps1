@@ -76,6 +76,13 @@ function Set-NativeTestPackage {
     $env:CRYPTEX_EXCHANGE_NATIVE_PACKAGE=$nativePackage
 }
 if($p.PSObject.Properties['m13_desktop_shell'] -and $p.m13_desktop_shell) {
+    $suite='ipc::tests::maintenance_tests::maintenance_preserves_local_read_and_capture_and_restores_prior_ai_policy'
+    $result=Invoke-TestBinary $p.executables[0] "$suite --exact --nocapture"
+    Write-Output $result.stdout
+    Write-Output $result.stderr
+    if($result.code -ne 0 -or $result.stdout -notmatch '1 passed; 0 failed; 0 ignored'){
+        throw 'Maintenance Mode daemon test failed.'
+    }
     Set-Location -LiteralPath $p.workspace
     $env:CARGO_TARGET_DIR=Join-Path $p.workspace 'target'
     & $p.python 'scripts/m13/check-shell.py'

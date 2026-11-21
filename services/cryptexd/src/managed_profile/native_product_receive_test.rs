@@ -440,6 +440,18 @@ fn two_normal_owners_exchange_offline_notes_and_replay_after_restart() {
         );
         std::thread::sleep(Duration::from_millis(500));
     }
+    let consent = crate::ipc::public_consent::Session::default();
+    let handle = owner_a.handle();
+    let active_revision = handle.request(None).unwrap().revision;
+    assert_eq!(
+        handle.set_maintenance(true, consent.clone()).unwrap().state,
+        State::Maintenance
+    );
+    assert!(handle.reader().is_none());
+    let restored = handle.set_maintenance(false, consent).unwrap();
+    assert_eq!(restored.revision, active_revision);
+    assert_eq!(restored.state, State::ReadyLocally);
+    drop(handle);
     pause(&owner_a, true);
     pause(&owner_b, true);
     owner_a.shutdown().unwrap();

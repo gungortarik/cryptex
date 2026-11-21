@@ -117,6 +117,16 @@ pub struct Request {
     pub update: Option<Update>,
 }
 impl Request {
+    pub fn operation(update: bool, maintenance: Option<bool>) -> Result<&'static str, Error> {
+        match (update, maintenance) {
+            (false, Some(true)) => Ok("connections.maintenance_enter"),
+            (false, Some(false)) => Ok("connections.maintenance_leave"),
+            (false, None) => Ok("connections.read"),
+            (true, None) => Ok("connections.update"),
+            (true, Some(_)) => Err(Error::InvalidRequest),
+        }
+    }
+
     pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.is_empty() || bytes.len() > MAX_FRAME {
             return Err(Error::InvalidRequest);
@@ -131,7 +141,12 @@ impl Request {
             || !request.request_id.bytes().all(|b| b.is_ascii_hexdigit())
             || !matches!(
                 (request.operation.as_str(), request.update.is_some()),
-                ("connections.read", false) | ("connections.update", true)
+                (
+                    "connections.read"
+                        | "connections.maintenance_enter"
+                        | "connections.maintenance_leave",
+                    false
+                ) | ("connections.update", true)
             )
         {
             return Err(Error::InvalidRequest);
@@ -147,6 +162,8 @@ impl Request {
 #[serde(rename_all = "snake_case")]
 pub enum State {
     NotEnrolled,
+    Maintenance,
+    MaintenanceAttention,
     Paused,
     AddressNeeded,
     Applying,

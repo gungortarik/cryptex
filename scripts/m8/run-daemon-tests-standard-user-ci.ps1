@@ -7,20 +7,17 @@ if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted
 }
 $workspace=(Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
 $manifest=Join-Path $workspace 'services\cryptexd'
-$python=if($M9HistoricalDaemon){(Get-Command python -CommandType Application | Select-Object -First 1).Source}else{$null}
+$python=if($M9HistoricalDaemon -or $M13DesktopShell){(Get-Command python -CommandType Application | Select-Object -First 1).Source}else{$null}
 $browserNode=if($M9AttachmentBrowser){(Get-Command node -CommandType Application | Select-Object -First 1).Source}else{$null}
 if($ExchangeNativeOnly -or $M9HistoricalDaemon){$ExchangePackage=(Resolve-Path -LiteralPath $ExchangePackage).Path}
-if($M13DesktopShell) {
-    $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
-    $executables=@(); $expectedSuites=1
-} elseif($LanSetupOnly -or $LanCutoffOnly) {
+if($LanSetupOnly -or $LanCutoffOnly) {
     $LanArtifact=(Resolve-Path -LiteralPath $LanArtifact).Path
     $python=(Get-Command python -CommandType Application | Select-Object -First 1).Source
     $executables=@(); $expectedSuites=1
 } else {
 $buildArgs=@('test','--locked','-p','cryptexd','--no-run','--message-format=json')
 if($DesktopStartupOnly){$buildArgs+=@('--test','desktop_startup')}
-if($DesktopSessionOnly -or $TransportPolicyOnly -or $ExchangeNativeOnly -or $LocalVerificationOnly -or $M9HistoricalDaemon -or $M9AttachmentBrowser -or $M11CrossBackup){$buildArgs+=@('--lib')}
+if($M13DesktopShell -or $DesktopSessionOnly -or $TransportPolicyOnly -or $ExchangeNativeOnly -or $LocalVerificationOnly -or $M9HistoricalDaemon -or $M9AttachmentBrowser -or $M11CrossBackup){$buildArgs+=@('--lib')}
 $artifacts=@(& cargo @buildArgs)
 if($LASTEXITCODE -ne 0){throw 'Daemon test build failed.'}
 $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Object {
@@ -28,7 +25,7 @@ $executables=@($artifacts | ForEach-Object {$_ | ConvertFrom-Json} | Where-Objec
     $_.target.name -eq $(if($DesktopStartupOnly){'desktop_startup'}else{'cryptexd'}) -and
     $_.profile.test -and $_.executable
 } | ForEach-Object {$_.executable} | Sort-Object -Unique)
-$expectedArtifacts=if($DesktopStartupOnly -or $DesktopSessionOnly -or $TransportPolicyOnly -or $ExchangeNativeOnly -or $LocalVerificationOnly -or $M9HistoricalDaemon -or $M9AttachmentBrowser -or $M11CrossBackup){1}else{2}
+$expectedArtifacts=if($M13DesktopShell -or $DesktopStartupOnly -or $DesktopSessionOnly -or $TransportPolicyOnly -or $ExchangeNativeOnly -or $LocalVerificationOnly -or $M9HistoricalDaemon -or $M9AttachmentBrowser -or $M11CrossBackup){1}else{2}
 $expectedSuites=if($M9HistoricalDaemon){5}elseif($LocalVerificationOnly){1}elseif($ExchangeNativeOnly){5}elseif($TransportPolicyOnly){13}elseif($DesktopSessionOnly){3}else{$expectedArtifacts}
 if($executables.Count -ne $expectedArtifacts){throw 'Expected exact daemon test artifacts.'}
 foreach($exe in $executables) {

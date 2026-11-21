@@ -34,12 +34,13 @@ function installFixture(mac) {
         transportObserved: true, remoteDurabilityVerified: false };
     }
     if (command !== "m8_connection_settings") throw "unsupported";
+    if (typeof args.maintenance === "boolean") state.maintenance = args.maintenance;
     if (args.update) {
       if (state.loseReply) throw "reply_lost";
       state.connection = args.update.paused ? "paused" : "ready_locally";
     }
     return { revision: "7", paused: state.connection === "paused", listenAddress: "192.168.1.20",
-      localTransportPort: 22000, state: state.connection, error: state.error,
+      localTransportPort: 22000, state: state.maintenance ? "maintenance" : state.connection, error: state.error,
       devices: state.error ? [] : [{ deviceId: "peer-a", transportId: Array(8).fill("AAAAAAA").join("-"),
         endpoint: "192.168.1.21:22001" }] };
   } };
@@ -119,6 +120,14 @@ for (const mac of [false, true]) {
       await save.click();
       await panel.getByText(/Settings saved. Sync paused/).waitFor();
       await health.getByText("Sync paused", { exact: true }).waitFor();
+      await panel.getByRole("button", { name: "Enter Maintenance Mode" }).click();
+      await panel.getByText(/Maintenance Mode is on/).waitFor();
+      assert.equal(await pause.isEnabled(), false);
+      await health.getByText("Maintenance Mode", { exact: true }).waitFor();
+      assert.equal(await page.getByLabel("Note", { exact: true }).isEnabled(), true);
+      await panel.getByRole("button", { name: "Exit Maintenance Mode" }).click();
+      await health.getByText("Sync paused", { exact: true }).waitFor();
+      assert.equal(await pause.isChecked(), true);
       await pause.uncheck();
       await page.evaluate(() => { window.fixture.loseReply = true; });
       await save.click();

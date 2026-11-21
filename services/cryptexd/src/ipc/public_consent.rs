@@ -8,12 +8,19 @@ const OWNER: &str = "context.public.owner";
 const WINDOW: Duration = Duration::from_secs(120);
 
 #[derive(Default, Clone)]
-pub(super) struct Session(Arc<Mutex<Access>>);
+pub(crate) struct Session(Arc<Mutex<Access>>);
 #[derive(Default)]
 struct Access {
     pending: Option<Pending>,
     paused: bool,
+    maintenance: bool,
     generation: Arc<()>,
+}
+impl Access {
+    fn revoke_grants(&mut self) {
+        self.pending = None;
+        self.generation = Arc::new(());
+    }
 }
 struct Pending {
     ticket: String,
@@ -37,7 +44,7 @@ pub enum Action {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Outcome {
     Empty,
-    Requests { paused: bool },
+    Requests { paused: bool, maintenance: bool },
     Review { ticket: String, peer_pid: u32 },
     Allowed,
     Denied,
@@ -53,6 +60,20 @@ pub enum Error {
 }
 
 impl Session {
+    #[cfg(any(
+        windows,
+        all(target_os = "macos", feature = "m8-local-startup-check"),
+        test
+    ))]
+    pub(crate) fn set_maintenance(&self, enabled: bool) -> Result<(), Error> {
+        let mut access = self.0.lock().map_err(|_| Error::Unavailable)?;
+        if enabled {
+            access.revoke_grants();
+        }
+        access.maintenance = enabled;
+        Ok(())
+    }
+
     pub(super) fn decide(&self, action: Action) -> Result<Outcome, Error> {
         let mut access = self.0.lock().map_err(|_| Error::Unavailable)?;
         let slot = &mut access.pending;
@@ -62,18 +83,22 @@ impl Session {
         let allow = matches!(action, Action::Allow { .. });
         match action {
             Action::Status => Ok(Outcome::Requests {
-                paused: access.paused,
+                paused: access.paused || access.maintenance,
+                maintenance: access.maintenance,
             }),
             Action::Pause | Action::Resume => {
+                if access.maintenance {
+                    return Err(Error::Unavailable);
+                }
                 if matches!(action, Action::Pause) {
-                    access.pending = None;
-                    access.generation = Arc::new(());
+                    access.revoke_grants();
                     access.paused = true;
                 } else {
                     access.paused = false;
                 }
                 Ok(Outcome::Requests {
-                    paused: access.paused,
+                    paused: access.paused || access.maintenance,
+                    maintenance: access.maintenance,
                 })
             }
             Action::Inspect => Ok(slot.as_ref().map_or(Outcome::Empty, |p| Outcome::Review {
@@ -164,7 +189,7 @@ pub(super) fn request(
             .0
             .lock()
             .map_err(|_| invalid_data("consent unavailable"))?;
-        if access.paused {
+        if access.paused || access.maintenance {
             drop(access);
             return state(stream, "denied", None);
         }
@@ -214,8 +239,10 @@ pub(super) fn request(
         .0
         .lock()
         .map_err(|_| invalid_data("consent unavailable"))?;
-    let valid =
-        !access.paused && Arc::ptr_eq(&access.generation, &generation) && Instant::now() < until;
+    let valid = !access.paused
+        && !access.maintenance
+        && Arc::ptr_eq(&access.generation, &generation)
+        && Instant::now() < until;
     public_context::respond(stream, Some(ctx), &frame, valid)
 }
 
@@ -239,12 +266,12 @@ mod tests {
         };
         assert!(matches!(
             session.decide(Action::Pause),
-            Ok(Outcome::Requests { paused: true })
+            Ok(Outcome::Requests { paused: true, .. })
         ));
         assert!(receiver.recv().is_err());
         assert!(matches!(
             session.decide(Action::Resume),
-            Ok(Outcome::Requests { paused: false })
+            Ok(Outcome::Requests { paused: false, .. })
         ));
         assert!(!Arc::ptr_eq(
             &generation,

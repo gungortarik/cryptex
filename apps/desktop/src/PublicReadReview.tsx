@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from "react";
 
 type Request = { kind: "review"; ticket: string; peer_pid: number };
 type Outcome = Request | { kind: "empty" | "allowed" | "denied" };
-type Access = { kind: "requests"; paused: boolean };
+type Access = { kind: "requests"; paused: boolean; maintenance?: boolean };
 
-export function PublicReadReview() {
+export function PublicReadReview({ connectionMode }: { connectionMode?: string }) {
   const [request, setRequest] = useState<Request | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [paused, setPaused] = useState<boolean | null>(null);
+  const [maintenance, setMaintenance] = useState(false);
   const accessGeneration = useRef(0);
   const changingAccess = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -21,7 +22,10 @@ export function PublicReadReview() {
       const seq = ++accessGeneration.current;
       try {
         const view = await invoke<Access>("m12_public_read_review", { action: { kind: "status" } });
-        if (!disposed && seq === accessGeneration.current) setPaused(view?.kind === "requests" && typeof view.paused === "boolean" ? view.paused : null);
+        if (!disposed && seq === accessGeneration.current) {
+          setPaused(view?.kind === "requests" && typeof view.paused === "boolean" ? view.paused : null);
+          setMaintenance(view?.maintenance === true);
+        }
       } catch {
         if (!disposed && seq === accessGeneration.current) setPaused(null);
       }
@@ -30,7 +34,7 @@ export function PublicReadReview() {
     const timer = window.setInterval(refresh, 15000);
     window.addEventListener("focus", refresh);
     return () => { disposed = true; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
-  }, []);
+  }, [connectionMode]);
   async function changeAccess() {
     if (busy || changingAccess.current || paused === null) return;
     changingAccess.current = true;
@@ -68,10 +72,10 @@ export function PublicReadReview() {
   }
   return <div>
     <button type="button" className="quiet-button" disabled={busy || paused === true} onClick={() => void act("inspect")}>Review AI access</button>
-    {paused !== null && <button type="button" className="capture-secondary" disabled={busy} onClick={() => void changeAccess()}>
+    {paused !== null && !maintenance && <button type="button" className="capture-secondary" disabled={busy} onClick={() => void changeAccess()}>
       {paused ? "Resume AI access" : "Pause AI access for this session"}
     </button>}
-    {paused && <p role="status">AI access is paused until you resume it or restart the local service.</p>}
+    {paused && <p role="status">{maintenance ? "AI access is paused by Maintenance Mode." : "AI access is paused until you resume it or restart the local service."}</p>}
     <dialog ref={dialog} className="capture-confirm-dialog" aria-labelledby="public-read-title" aria-describedby="public-read-scope"
       onCancel={event => { event.preventDefault(); void act("deny"); }}>
       <h2 id="public-read-title">Allow one public-note search?</h2>

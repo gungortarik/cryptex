@@ -609,6 +609,22 @@ pub fn spawn_retrieval_server(
     store: Arc<dyn SecureStore>,
     environment: SecureStoreEnvironment,
 ) -> io::Result<()> {
+    spawn_retrieval_with_consent(
+        runtime_root,
+        instance,
+        store,
+        environment,
+        Default::default(),
+    )
+}
+
+fn spawn_retrieval_with_consent(
+    runtime_root: &Path,
+    instance: &crate::instance::InstanceLock,
+    store: Arc<dyn SecureStore>,
+    environment: SecureStoreEnvironment,
+    public_consent: public_consent::Session,
+) -> io::Result<()> {
     let expected_desktop = desktop_process_identity()?;
     let mut context = SearchContext {
         runtime_root: runtime_root.to_path_buf(),
@@ -616,7 +632,7 @@ pub fn spawn_retrieval_server(
         operation: None,
         store,
         environment,
-        public_consent: Default::default(),
+        public_consent,
         expected_desktop: Arc::new(expected_desktop),
         projection_sync: None,
         #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
@@ -2673,11 +2689,16 @@ fn connection_settings_reply(
             .admission
             .check_namespace()
             .map_err(|_| Error::Held)?;
-        let view = context
-            .connections
-            .as_ref()
-            .ok_or(Error::Unavailable)?
-            .request(request.update)?;
+        let coordinator = context.connections.as_ref().ok_or(Error::Unavailable)?;
+        let view = match request.operation.as_str() {
+            "connections.maintenance_enter" => {
+                coordinator.set_maintenance(true, context.public_consent.clone())?
+            }
+            "connections.maintenance_leave" => {
+                coordinator.set_maintenance(false, context.public_consent.clone())?
+            }
+            _ => coordinator.request(request.update)?,
+        };
         context
             .admission
             .check_namespace()
@@ -2721,6 +2742,12 @@ pub fn desktop_retirement_notice(
 pub fn desktop_connection_settings(
     update: Option<crate::managed_profile::connection_settings::Update>,
 ) -> io::Result<crate::managed_profile::connection_settings::View> {
+    desktop_connection_control(update, None)
+}
+pub fn desktop_connection_control(
+    update: Option<crate::managed_profile::connection_settings::Update>,
+    maintenance: Option<bool>,
+) -> io::Result<crate::managed_profile::connection_settings::View> {
     #[cfg(windows)]
     {
         use crate::managed_profile::connection_settings::{Request, Response};
@@ -2730,12 +2757,9 @@ pub fn desktop_connection_settings(
         let request = Request {
             schema_version: 1,
             request_id: request_id.clone(),
-            operation: if update.is_some() {
-                "connections.update"
-            } else {
-                "connections.read"
-            }
-            .into(),
+            operation: Request::operation(update.is_some(), maintenance)
+                .map_err(io::Error::other)?
+                .into(),
             client_role: "desktop".into(),
             update,
         };
@@ -2767,7 +2791,7 @@ pub fn desktop_connection_settings(
     }
     #[cfg(not(windows))]
     {
-        let _ = update;
+        let _ = (update, maintenance);
         Err(invalid_data("native_connection_settings_required"))
     }
 }
@@ -6150,6 +6174,8 @@ mod m12_health_tests;
 #[cfg(test)]
 pub(crate) mod tests {
     mod approval_domain_tests;
+    #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
+    mod maintenance_tests;
     mod purge_tests;
     use std::fs;
 

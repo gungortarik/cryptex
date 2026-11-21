@@ -213,6 +213,12 @@ impl Drop for RequestLifetime {
     }
 }
 enum Command {
+    Maintenance(
+        bool,
+        crate::ipc::public_consent::Session,
+        Interest,
+        mpsc::SyncSender<Result<View, Error>>,
+    ),
     Read(Interest, mpsc::SyncSender<Result<View, Error>>),
     Update(Update, Interest, mpsc::SyncSender<Result<View, Error>>),
 }
@@ -228,13 +234,26 @@ impl Handle {
         self.reader.try_lock().ok()?.clone()
     }
     pub(crate) fn request(&self, update: Option<Update>) -> Result<View, Error> {
+        self.send(|interest, sender| match update {
+            Some(update) => Command::Update(update, interest, sender),
+            None => Command::Read(interest, sender),
+        })
+    }
+    pub(crate) fn set_maintenance(
+        &self,
+        enabled: bool,
+        consent: crate::ipc::public_consent::Session,
+    ) -> Result<View, Error> {
+        self.send(|interest, sender| Command::Maintenance(enabled, consent, interest, sender))
+    }
+    fn send(
+        &self,
+        build: impl FnOnce(Interest, mpsc::SyncSender<Result<View, Error>>) -> Command,
+    ) -> Result<View, Error> {
         let (sender, receiver) = mpsc::sync_channel(1);
         let interest = Interest::new();
         let _lifetime = RequestLifetime(interest.live.clone());
-        let command = match update {
-            Some(update) => Command::Update(update, interest, sender),
-            None => Command::Read(interest, sender),
-        };
+        let command = build(interest, sender);
         self.sender
             .try_send(command)
             .map_err(|_| Error::Unavailable)?;
@@ -330,6 +349,10 @@ impl Owner {
                 let _ = controller.apply(None, &Interest::new());
                 while !worker_stop.load(Ordering::Acquire) {
                     match receive.recv_timeout(Duration::from_millis(500)) {
+                        Ok(Command::Maintenance(enabled, consent, interest, reply)) => {
+                            let result = controller.set_maintenance(enabled, &consent, &interest);
+                            let _ = reply.try_send(result);
+                        }
                         Ok(Command::Read(interest, reply)) => {
                             if interest.check(&worker_stop).is_err() {
                                 let _ = reply.try_send(Err(Error::Unavailable));
@@ -468,7 +491,51 @@ impl Controller {
         self.guard = None;
         Ok(())
     }
+    fn in_maintenance(&self) -> bool {
+        matches!(
+            self.view.state,
+            State::Maintenance | State::MaintenanceAttention
+        )
+    }
+
+    fn set_maintenance(
+        &mut self,
+        enabled: bool,
+        consent: &crate::ipc::public_consent::Session,
+        interest: &Interest,
+    ) -> Result<View, Error> {
+        interest.check(&self.stop)?;
+        if enabled {
+            consent
+                .set_maintenance(true)
+                .map_err(|_| Error::Unavailable)?;
+            if let Err(error) = self.close() {
+                self.view.state = State::MaintenanceAttention;
+                self.view.error = Some(error);
+            } else {
+                self.view.state = State::Maintenance;
+                self.view.error = None;
+            }
+            self.view.devices.clear();
+        } else if self.in_maintenance() {
+            if self.cleanup_failed {
+                return Err(Error::Shutdown);
+            }
+            consent
+                .set_maintenance(false)
+                .map_err(|_| Error::Unavailable)?;
+            self.view.state = State::Applying;
+            // Re-evaluate the saved preferences and current authority on exit.
+            // apply publishes Attention or NotEnrolled if the worker cannot start.
+            let _ = self.apply(None, interest);
+        }
+        Ok(self.view.clone())
+    }
+
     fn check_generation(&mut self) {
+        if self.in_maintenance() {
+            return;
+        }
         #[cfg(windows)]
         if self.identity_only
             && matches!(
@@ -576,6 +643,9 @@ impl Controller {
     }
 
     fn apply(&mut self, update: Option<Update>, interest: &Interest) -> Result<View, Error> {
+        if self.in_maintenance() {
+            return Err(Error::PendingSettings);
+        }
         let result = self.apply_inner(update, interest);
         let mut restored = false;
         if matches!(

@@ -396,7 +396,13 @@ pub(crate) fn serve(
     // native namespace capability set and verified device pins.
     #[cfg(feature = "m8-development-product")]
     trace_stage("unix_data", || {
-        super::spawn_retrieval_server(root, instance, context.store.clone(), context.environment)
+        super::spawn_retrieval_with_consent(
+            root,
+            instance,
+            context.store.clone(),
+            context.environment,
+            context.public_consent.clone(),
+        )
     })?;
     let mut domain = super::native_domain::Domain::from_context(context.clone(), &registry);
     send_checked(&backend.namespace, || {
@@ -444,7 +450,7 @@ pub(crate) fn serve(
                     continue;
                 }
                 if crate::managed_profile::connection_settings::Request::decode(&bytes)
-                    .is_ok_and(|request| request.update.is_some())
+                    .is_ok_and(|request| request.operation != "connections.read")
                 {
                     domain = super::native_domain::Domain::from_context(context.clone(), &registry);
                 }

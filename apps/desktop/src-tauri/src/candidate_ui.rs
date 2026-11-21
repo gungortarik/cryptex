@@ -28,6 +28,7 @@ enum Work {
     Ping(Reply<()>),
     ProfileStatus(Reply<NativeProfileStatus>),
     Connections(
+        Option<bool>,
         Option<cryptexd::managed_profile::connection_settings::Update>,
         Reply<cryptexd::managed_profile::connection_settings::View>,
     ),
@@ -436,12 +437,12 @@ impl Owner {
                                 .map_err(|_| "notice_unavailable".to_string());
                             deliver(&mut daemon, &delivery, reply, result);
                         }
-                        Work::Connections(update, reply) => {
-                            if update.is_some() {
+                        Work::Connections(maintenance, update, reply) => {
+                            if update.is_some() || maintenance.is_some() {
                                 pending_delivery = None;
                             }
                             let result = daemon
-                                .connection_settings(update)
+                                .connection_control(update, maintenance)
                                 .map_err(|_| "connection_settings_unavailable".to_string());
                             deliver(&mut daemon, &delivery, reply, result);
                         }
@@ -653,9 +654,10 @@ async fn m8_retirement_file(state: tauri::State<'_, Client>, import: bool) -> Re
 async fn m8_connection_settings(
     state: tauri::State<'_, Client>,
     update: Option<cryptexd::managed_profile::connection_settings::Update>,
+    maintenance: Option<bool>,
 ) -> Result<cryptexd::managed_profile::connection_settings::View, String> {
     async_call(state.inner().clone(), move |reply| {
-        Work::Connections(update, reply)
+        Work::Connections(maintenance, update, reply)
     })
     .await
 }

@@ -1851,6 +1851,19 @@ fn check_connection_coordinator(
         return Err(Error::Policy);
     }
     let exported_before_pause = wait_exported_fixture(root, &handle)?;
+    let consent = crate::ipc::public_consent::Session::default();
+    let maintenance = handle
+        .set_maintenance(true, consent.clone())
+        .map_err(|_| Error::Engine)?;
+    if maintenance.state != State::Maintenance || handle.reader().is_some() {
+        return Err(Error::Policy);
+    }
+    let resumed = handle
+        .set_maintenance(false, consent)
+        .map_err(|_| Error::Engine)?;
+    if resumed.state != State::ReadyLocally || resumed.revision != active.revision {
+        return Err(Error::Policy);
+    }
     update.expected_revision = active.revision;
     update.paused = true;
     let paused = handle

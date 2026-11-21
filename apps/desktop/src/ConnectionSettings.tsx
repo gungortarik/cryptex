@@ -17,7 +17,8 @@ export function ConnectionSettings({ active, onApply, onStatus }: {
   const generation = useRef(0);
   const inFlight = useRef(false);
   const authorityUnavailable = view?.error === "local_restricted" || view?.error === "authority" || view?.error === "held";
-  const readOnly = busy || !active || !view || view.state === "not_enrolled" || authorityUnavailable;
+  const maintenance = view?.state === "maintenance" || view?.state === "maintenance_attention";
+  const readOnly = maintenance || busy || !active || !view || view.state === "not_enrolled" || authorityUnavailable;
   const edit = () => { generation.current += 1; setDirty(true); if (!uncertain) setMessage(null); };
 
   function adopt(next: ConnectionView) {
@@ -37,18 +38,18 @@ export function ConnectionSettings({ active, onApply, onStatus }: {
       if (token === generation.current) { onStatus(null); setView(null); setMessage("Connection settings are unavailable. Retry after the local service is ready."); }
     } finally { inFlight.current = false; setBusy(false); }
   }
-  async function save() {
-    if (!view || readOnly || uncertain || inFlight.current) return;
-    let update;
-    try { update = connectionUpdate(view, paused, listen, addresses); }
+  async function save(mode?: boolean) {
+    if (!view || !active || busy || uncertain || inFlight.current || (mode === undefined ? readOnly : dirty || authorityUnavailable)) return;
+    let update = null;
+    try { if (mode === undefined) update = connectionUpdate(view, paused, listen, addresses); }
     catch (error) { setMessage(error instanceof Error ? error.message : "Check the LAN addresses."); return; }
     const token = ++generation.current;
     inFlight.current = true; setBusy(true); setMessage("Applying settings and checking this device’s connection…");
     onApply();
     onStatus(null);
     try {
-      const next = parseConnectionView(await invoke("m8_connection_settings", { update }));
-      if (token === generation.current) { adopt(next); setMessage(next.error ? null : "Settings saved. " + connectionMessage(next)); }
+      const next = parseConnectionView(await invoke("m8_connection_settings", { update, maintenance: mode }));
+      if (token === generation.current) { adopt(next); setMessage(next.error || mode !== undefined ? null : "Settings saved. " + connectionMessage(next)); }
     } catch {
       if (token === generation.current) { setUncertain(true); setMessage("The result is uncertain. Reload current settings before making another change; your draft is still shown."); }
     } finally { inFlight.current = false; setBusy(false); }
@@ -78,6 +79,11 @@ export function ConnectionSettings({ active, onApply, onStatus }: {
     {open && <div className="bootstrap-form connections-form">
       {view && <>
         {!message && <p role="status" className="capture-help">{dirty ? "Unsaved connection settings." : connectionMessage(view)}</p>}
+        <div>
+          <button type="button" className="quiet-button" disabled={busy || !active || dirty || uncertain || authorityUnavailable}
+            onClick={() => void save(!maintenance)}>{maintenance ? "Exit Maintenance Mode" : "Enter Maintenance Mode"}</button>
+          <p className="capture-help">Pause sync and AI access for this service session. Local reading and note capture stay available.</p>
+        </div>
         <label className="connections-pause"><input type="checkbox" checked={paused} disabled={readOnly} onChange={e => { edit(); setPaused(e.target.checked); }} /> Pause sync</label>
         <label htmlFor="connection-local-ip">This device’s LAN IPv4 address</label>
         <div className="connections-local-address"><input id="connection-local-ip" placeholder="192.168.1.20" maxLength={15} value={listen} disabled={readOnly} onChange={e => { edit(); setListen(e.target.value); }} />
@@ -85,7 +91,7 @@ export function ConnectionSettings({ active, onApply, onStatus }: {
         <p className="capture-help">The transport port belongs to this device’s enrolled profile and cannot be changed here.</p>
         <div className="connections-devices">
           <h3>Trusted devices</h3>
-          {view.devices.length === 0 && <p className="capture-help">{view.state === "attention" ? "No verified device list is available." : "No eligible devices. Complete a signed pairing to add one."}</p>}
+          {!maintenance && view.devices.length === 0 && <p className="capture-help">{view.state === "attention" ? "No verified device list is available." : "No eligible devices. Complete a signed pairing to add one."}</p>}
           {view.devices.map(device => <div className="connections-device" key={device.deviceId}>
             <label htmlFor={`endpoint-${device.deviceId}`}>Device <code>{device.deviceId}</code></label>
             <p className="capture-help connections-identity">Transport identity <code>{device.transportId}</code></p>

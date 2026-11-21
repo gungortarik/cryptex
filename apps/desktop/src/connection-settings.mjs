@@ -1,4 +1,4 @@
-const states = new Set(["not_enrolled", "paused", "address_needed", "applying", "ready_locally", "attention"]);
+const states = new Set(["maintenance", "maintenance_attention", "not_enrolled", "paused", "address_needed", "applying", "ready_locally", "attention"]);
 const errors = new Set(["invalid_request", "unauthorized", "unavailable", "not_enrolled", "stale_revision", "unknown_device", "invalid_endpoint", "storage", "pending_settings", "authority", "local_restricted", "shutdown", "start", "start_rest_deadline", "held"]);
 function exact(value, keys) {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -52,6 +52,8 @@ export function connectionUpdate(view, paused, listen, addresses) {
   return { expectedRevision: view.revision, paused, listenAddress: ip || null, peers };
 }
 export function connectionMessage(view) {
+  if (view.state === "maintenance") return "Maintenance Mode is on. Sync and AI access are paused. You can still read and save notes.";
+  if (view.state === "maintenance_attention") return "AI access is paused. The service could not confirm that sync stopped.";
   if (view.state === "attention" && view.error === "start_rest_deadline") return "Connection needs attention (start_rest_deadline). The local transport service timed out during startup.";
   if (view.error === "local_restricted") return "This device is retired or restricted. Sync is unavailable; retained local history remains subject to its verified access policy.";
   if (view.error && view.state !== "attention" && !(view.state === "not_enrolled" && view.error === "not_enrolled"))
