@@ -7,6 +7,7 @@ on:
       - 'apps/desktop/src-tauri/src/shell_check.rs'
       - 'apps/desktop/src-tauri/src/shell_shortcut_check.js'
       - 'scripts/m13/check-shell.py'
+      - 'apps/desktop/scripts/connection-screen.test.mjs'
       - 'apps/desktop/src/App.tsx'
       - 'apps/desktop/src-tauri/Cargo.toml'
       - 'apps/desktop/src/styles.css'
@@ -35,6 +36,8 @@ jobs:
           node-version-file: .node-version
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cryptex/desktop build
+      - name: Check service loss, recovery and navigation in the rendered desktop UI
+        run: pnpm --filter @cryptex/desktop test:connection-screen
       - run: cargo fmt --all -- --check
       - run: cargo build --locked -p cryptex-desktop --features m13-shell-check
       - name: Exercise the native window and embedded WebView in a disposable profile

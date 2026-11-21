@@ -555,9 +555,30 @@ export function App() {
   }
 
   useEffect(() => {
-    void invoke("p0_3_ipc_health")
-      .then(() => setConnection("active"))
-      .catch(() => setConnection("attention"));
+    let disposed = false;
+    let pending = false;
+    async function checkService() {
+      if (pending || document.visibilityState === "hidden") return;
+      pending = true;
+      try {
+        await invoke("p0_3_ipc_health");
+        if (!disposed) setConnection("active");
+      } catch {
+        if (!disposed) setConnection("attention");
+      } finally {
+        pending = false;
+      }
+    }
+    void checkService();
+    const timer = window.setInterval(checkService, 15000);
+    window.addEventListener("focus", checkService);
+    document.addEventListener("visibilitychange", checkService);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", checkService);
+      document.removeEventListener("visibilitychange", checkService);
+    };
   }, []);
 
   const openSearch = useCallback(() => {
@@ -1120,7 +1141,6 @@ export function App() {
         >
           <span aria-hidden="true">◷</span>
         </button>
-        <div className="rail-bottom" aria-hidden="true">M5</div>
       </aside>
 
       <section className="workspace" id="home">
@@ -1133,18 +1153,21 @@ export function App() {
         </header>
 
         <div className="content-column">
-          {nativeProfile.active && (
-            <p className="capture-status" aria-label="Device status" role="status">
-              {nativeProfileMessage(nativeProfile.status)}
-            </p>
-          )}
-          <div className="page-heading">
-            <p className="eyebrow">Your personal archive</p>
-            <h1>Find what you remember.</h1>
-            <p className="intro">
-              Search stays on this device and works offline. No AI is needed to find a note.
-            </p>
-          </div>
+          <section className="health-overview" aria-labelledby="health-heading">
+            <h1 id="health-heading">Device health</h1>
+            <dl>
+              <div><dt>Local service</dt><dd>{connection === "checking" ? "Checking…" : connection === "active" ? "Ready" : "Needs attention"}</dd></div>
+              {nativeProfile.active && <div><dt>Incoming changes</dt>
+                <dd aria-label="Device status" role="status">{nativeProfileMessage(connection === "active" ? nativeProfile.status : null)}</dd>
+              </div>}
+              <div><dt>Remote storage</dt><dd>Unverified</dd></div>
+            </dl>
+            <nav aria-label="Archive shortcuts">
+              <a href="#capture-text">Write a note</a>
+              <button type="button" onClick={openSearch}>Search notes</button>
+              <a href="#connections-heading">Local connections</a>
+            </nav>
+          </section>
 
           <section className="vault-panel" aria-labelledby="vault-heading">
             <div>

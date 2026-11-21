@@ -12,7 +12,11 @@ function installFixture(mac) {
   Object.defineProperty(navigator, "platform", { value: mac ? "MacIntel" : "Win32" });
   const state = window.fixture = { native: "unavailable", connection: "ready_locally", error: null, loseReply: false };
   window.__TAURI_INTERNALS__ = { async invoke(command, args) {
-    if (command === "p0_3_ipc_health" || command === "p0_5_set_capture_session_guard") return;
+    if (command === "p0_3_ipc_health") {
+      if (state.serviceDown) throw "unavailable";
+      return;
+    }
+    if (command === "p0_5_set_capture_session_guard") return;
     if (command === "m8_native_profile_status") {
       if (!mac) throw "Command m8_native_profile_status not found";
       if (state.native === "unavailable") throw "channel_unavailable";
@@ -48,6 +52,13 @@ for (const mac of [false, true]) {
       await page.addInitScript(installFixture, mac);
       await page.goto(origin);
       await page.getByText("Local service ready", { exact: true }).waitFor();
+      const health = page.getByRole("region", { name: "Device health" });
+      await health.getByText("Ready", { exact: true }).waitFor();
+      await health.getByText("Unverified", { exact: true }).waitFor();
+      await health.getByRole("link", { name: "Write a note" }).click();
+      assert.equal(await page.evaluate(() => document.activeElement.id), "capture-text");
+      await health.getByRole("button", { name: "Search notes" }).click();
+      assert.equal(await page.evaluate(() => document.activeElement.id), "memory-search");
       await page.getByRole("button", { name: "Connection settings", exact: true }).click();
       const panel = page.locator(".connections-panel");
       const pause = panel.getByLabel("Pause sync");
@@ -80,6 +91,22 @@ for (const mac of [false, true]) {
       assert.equal(await pause.isEnabled(), false);
       assert.doesNotMatch(await panel.innerText(), /Complete a signed pairing/);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      const draft = page.getByLabel("Note", { exact: true });
+      await draft.fill("Keep this draft across a service restart");
+      await page.evaluate(() => {
+        window.fixture.serviceDown = true;
+        window.dispatchEvent(new Event("focus"));
+      });
+      await page.getByText("Local service needs attention", { exact: true }).waitFor();
+      await health.getByText("Needs attention", { exact: true }).waitFor();
+      assert.equal(await health.getByText("Ready", { exact: true }).count(), 0);
+      assert.equal(await panel.getByText("Connection settings are unavailable until the local service responds.").isVisible(), true);
+      await page.evaluate(() => {
+        window.fixture.serviceDown = false;
+        window.dispatchEvent(new Event("focus"));
+      });
+      await page.getByText("Local service ready", { exact: true }).waitFor();
+      assert.equal(await draft.inputValue(), "Keep this draft across a service restart");
     } finally {
       await browser.close();
     }

@@ -272,9 +272,15 @@ fn p0_2_daemon_status(state: State<'_, ProbeState>) -> Result<String, String> {
     query_daemon_status(&bin, &runtime)
 }
 
-#[tauri::command]
-fn p0_3_ipc_health() -> Result<cryptexd::ipc::HealthResponse, String> {
+fn check_local_service() -> Result<cryptexd::ipc::HealthResponse, String> {
     cryptexd::ipc::desktop_health_ping(Duration::from_secs(2)).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn p0_3_ipc_health() -> Result<cryptexd::ipc::HealthResponse, String> {
+    tauri::async_runtime::spawn_blocking(check_local_service)
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

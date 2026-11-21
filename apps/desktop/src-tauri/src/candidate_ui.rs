@@ -1523,7 +1523,7 @@ pub fn development_entry() -> Option<Result<(), String>> {
                         "profile_status",
                         owner.client.call(Work::ProfileStatus),
                     )?;
-                    development_ui::stage("unix_health", super::p0_3_ipc_health())
+                    development_ui::stage("unix_health", super::check_local_service())
                 })();
                 // Even a failed check must observe, rather than discard, cleanup.
                 development_ui::stage("close", owner.close())?;
