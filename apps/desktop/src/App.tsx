@@ -8,6 +8,7 @@ import { NoteLifecycle } from "./NoteLifecycle";
 import { NoteAttachment } from "./NoteAttachment";
 import { invoke } from "@tauri-apps/api/core";
 import { ConnectionSettings } from "./ConnectionSettings";
+import { type ConnectionView } from "./connection-settings.mjs";
 import { parseNativeProfileStatus, nativeProfileMessage, type NativeProfileStatus } from "./native-profile-status.mjs";
 import { completionMessages, pairingRejectionStatus, reviewMessages, swappedPairingField } from "./pairing-status.mjs";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -228,6 +229,7 @@ export function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [holdReason, setHoldReason] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("checking");
+  const [connectionView, setConnectionView] = useState<ConnectionView | null>(null);
   const [serviceCheckTime, setServiceCheckTime] = useState<Date | null>(null);
   const [checkingService, setCheckingService] = useState(false);
   const refreshService = useRef<() => void>(() => {});
@@ -1231,6 +1233,14 @@ export function App() {
             <h1 id="health-heading">Device health</h1>
             <dl>
               <div><dt>Local service</dt><dd>{connection === "checking" ? "Checking…" : connection === "active" ? "Ready" : "Needs attention"}</dd></div>
+              <div><dt>Device connections</dt><dd>{
+                connection !== "active" || !connectionView ? "Unavailable"
+                : connectionView.error && connectionView.state !== "not_enrolled" ? "Needs attention"
+                : ({ not_enrolled: "No enrolled profile", paused: "Sync paused", address_needed: "LAN address needed",
+                  applying: "Applying settings…", ready_locally: "Ready on this device", attention: "Needs attention" })[connectionView.state]
+              }</dd></div>
+              {connection === "active" && connectionView && !connectionView.error && connectionView.devices.length > 0 &&
+                <div><dt>Configured peers</dt><dd>{connectionView.devices.length}</dd></div>}
               {nativeProfile.active && <div><dt>Incoming changes</dt>
                 <dd aria-label="Device status" role="status">{nativeProfileMessage(connection === "active" ? nativeProfile.status : null)}</dd>
               </div>}
@@ -1282,7 +1292,7 @@ export function App() {
             <div><h2 id="backup-removal-heading">Backup removal</h2></div>
             {connection === "active" ? <BackupRemovalReview /> : <p role="status">Waiting for the local service.</p>}
           </section>
-          <ConnectionSettings active={connection === "active"} onApply={() => { setApprovalPrepared(null); setOwnerOperationPrepared(null); }} />
+          <ConnectionSettings active={connection === "active"} onStatus={setConnectionView} onApply={() => { setApprovalPrepared(null); setOwnerOperationPrepared(null); }} />
           <section id="ai-access" className="vault-panel" aria-labelledby="ai-heading">
             <div>
               <h2 id="ai-heading">AI access</h2>

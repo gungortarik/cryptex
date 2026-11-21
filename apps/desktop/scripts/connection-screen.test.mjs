@@ -70,6 +70,8 @@ for (const mac of [false, true]) {
       const doctor = page.getByRole("region", { name: "Doctor" });
       await doctor.getByText("The local service answered the health check.").waitFor();
       await health.getByText("Ready", { exact: true }).waitFor();
+      await health.getByText("Ready on this device", { exact: true }).waitFor();
+      await health.getByText("Configured peers", { exact: true }).waitFor();
       await health.getByText("Unverified", { exact: true }).waitFor();
       if (process.env.CRYPTEX_M13_RENDER_DIR) {
         const directory = path.resolve(process.env.CRYPTEX_M13_RENDER_DIR);
@@ -116,10 +118,13 @@ for (const mac of [false, true]) {
       await panel.getByText("Unsaved connection settings.").waitFor();
       await save.click();
       await panel.getByText(/Settings saved. Sync paused/).waitFor();
+      await health.getByText("Sync paused", { exact: true }).waitFor();
       await pause.uncheck();
       await page.evaluate(() => { window.fixture.loseReply = true; });
       await save.click();
       await panel.getByText(/result is uncertain/).waitFor();
+      await health.getByText("Unavailable", { exact: true }).waitFor();
+      assert.equal(await health.getByText("Configured peers", { exact: true }).count(), 0);
       assert.equal(await save.isEnabled(), false);
       assert.doesNotMatch(await panel.innerText(), /Connection ready|Sync paused\./);
       await page.evaluate(() => {

@@ -2607,6 +2607,8 @@ fn daemon_hold_command(cryptexd: &str, runtime: &Path) -> Result<std::process::C
         .args(pilot_runtime::daemon_transport_args(runtime))
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    #[cfg(feature = "m13-shell-check")]
+    command.stderr(Stdio::inherit());
     #[cfg(all(windows, feature = "m8-device-recovery-check"))]
     {
         command.env_remove("CRYPTEX_INSPECT_CURRENT_START");

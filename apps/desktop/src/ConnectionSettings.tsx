@@ -2,7 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { connectionMessage, connectionUpdate, parseConnectionView, type ConnectionView } from "./connection-settings.mjs";
 
-export function ConnectionSettings({ active, onApply }: { active: boolean; onApply: () => void }) {
+export function ConnectionSettings({ active, onApply, onStatus }: {
+  active: boolean; onApply: () => void; onStatus: (view: ConnectionView | null) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<ConnectionView | null>(null);
   const [paused, setPaused] = useState(true);
@@ -19,6 +21,7 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
   const edit = () => { generation.current += 1; setDirty(true); if (!uncertain) setMessage(null); };
 
   function adopt(next: ConnectionView) {
+    onStatus(next);
     setView(next); setPaused(next.paused); setListen(next.listenAddress ?? "");
     setAddresses(Object.fromEntries(next.devices.map(device => [device.deviceId, device.endpoint ?? ""])));
     setDirty(false); setUncertain(false);
@@ -31,7 +34,7 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
       const next = parseConnectionView(await invoke("m8_connection_settings", { update: null }));
       if (token === generation.current) { adopt(next); setMessage(null); }
     } catch {
-      if (token === generation.current) { setView(null); setMessage("Connection settings are unavailable. Retry after the local service is ready."); }
+      if (token === generation.current) { onStatus(null); setView(null); setMessage("Connection settings are unavailable. Retry after the local service is ready."); }
     } finally { inFlight.current = false; setBusy(false); }
   }
   async function save() {
@@ -42,6 +45,7 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
     const token = ++generation.current;
     inFlight.current = true; setBusy(true); setMessage("Applying settings and checking this device’s connection…");
     onApply();
+    onStatus(null);
     try {
       const next = parseConnectionView(await invoke("m8_connection_settings", { update }));
       if (token === generation.current) { adopt(next); setMessage(next.error ? null : "Settings saved. " + connectionMessage(next)); }
@@ -51,21 +55,24 @@ export function ConnectionSettings({ active, onApply }: { active: boolean; onApp
   }
   useEffect(() => {
     generation.current += 1;
-    if (!active) { setView(null); setMessage(null); }
-    if (open && active) void load();
+    if (!active) { onStatus(null); setView(null); setMessage(null); }
+    if (active) void load();
     return () => { generation.current += 1; };
-  }, [active, open]);
+  }, [active, onStatus]);
 
   useEffect(() => {
-    if (!open || !active || dirty || uncertain) return;
-    const timer = window.setInterval(() => { if (!inFlight.current) void load(); }, 5000);
+    if (!active || dirty || uncertain) return;
+    const timer = window.setInterval(() => { if (!inFlight.current && !document.hidden) void load(); }, open ? 5000 : 15000);
     return () => window.clearInterval(timer);
   }, [open, active, dirty, uncertain]);
 
   return <section className="bootstrap-panel connections-panel" aria-labelledby="connections-heading">
     <div className="connections-heading">
       <div><p className="panel-kicker">Settings · Devices</p><h2 id="connections-heading">Local connections</h2></div>
-      <button type="button" className="quiet-button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Close settings" : "Connection settings"}</button>
+      <button type="button" className="quiet-button" aria-expanded={open} onClick={() => {
+        if (!open && !dirty && !uncertain) void load();
+        setOpen(!open);
+      }}>{open ? "Close settings" : "Connection settings"}</button>
     </div>
     <p className="capture-help">Connect trusted devices on your private network. Local memory stays available while sync is paused.</p>
     {open && <div className="bootstrap-form connections-form">
