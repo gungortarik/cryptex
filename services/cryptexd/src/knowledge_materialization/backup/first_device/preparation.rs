@@ -88,6 +88,24 @@ pub(crate) fn prepare(
         }
         let mut challenge = [0; 32];
         getrandom::getrandom(&mut challenge).map_err(|_| Error::Credentials)?;
+        // Build the replacement's empty stream and its matching read model in the
+        // private pending tree. The live profile gains them only on owner approval.
+        let device_lock = crate::canonical_writer::acquire_device_canonical_lock(
+            staging.path(),
+            local.device_id(),
+        )
+        .map_err(|_| Error::RecoveryHistory)?;
+        drop(device_lock);
+        let (mut db, _) = crate::projection::open_projection_db(staging.path())
+            .map_err(|_| Error::RecoveryHistory)?;
+        crate::knowledge_materialization::rebuild_knowledge_from_local_approval_history(
+            staging.path(),
+            expected.brain_id,
+            &local,
+            &mut db,
+        )
+        .map_err(|_| Error::RecoveryHistory)?;
+        drop(db);
         let binding = Binding {
             request: Request {
                 operation: "cryptex.m11.trial.authorize-first-device.v2".into(),

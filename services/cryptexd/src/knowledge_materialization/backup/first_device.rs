@@ -138,15 +138,24 @@ impl Ceremony {
                 .map_err(|_| Error::Attachment)?;
         }
         self.admit(&approval).map_err(|_| Error::RecoveryHistory)?;
+        let live = Directory::open(root).map_err(|_| Error::SourceIdentity)?;
+        let pending = live
+            .child(RECOVERY, false)
+            .map_err(|_| Error::RecoveryHistory)?;
         if local_root != root {
             preparation::check_blank(root, true)?;
-            let live = Directory::open(root).map_err(|_| Error::SourceIdentity)?;
-            let pending = live
-                .child(RECOVERY, false)
-                .map_err(|_| Error::RecoveryHistory)?;
             pending
                 .publish_child("identity", &live, "identity")
                 .map_err(|_| Error::SourceIdentity)?;
+        }
+        // A restart may fall between renames. A consumed pending directory is
+        // never re-created or used to replace anything in a live profile.
+        for name in ["canonical", "derived"] {
+            if pending.exists(name).map_err(|_| Error::RecoveryHistory)? {
+                pending
+                    .publish_child(name, &live, name)
+                    .map_err(|_| Error::RecoveryHistory)?;
+            }
         }
         Ok(())
     }

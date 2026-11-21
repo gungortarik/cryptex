@@ -195,8 +195,14 @@ pub(super) fn blank_replacement(
     files.sign(&challenge, &signed);
     trial("first-device-clean-import");
     assert_eq!(fs::read(&local).unwrap(), before);
-    // Power loss after the receipt was saved but before identity activation.
+    // Reopen between activation renames. Neither the key nor the read model
+    // must change as the daemon finishes publishing the prepared directories.
+    for name in ["canonical", "derived"] {
+        fs::rename(root.join(name), root.join(RECOVERY).join(name)).unwrap();
+    }
     fs::rename(&identity, root.join(RECOVERY).join("identity")).unwrap();
+    trial("first-device-clean-import");
+    fs::rename(root.join("derived"), root.join(RECOVERY).join("derived")).unwrap();
     trial("first-device-clean-import");
     assert_eq!(fs::read(&local).unwrap(), before);
     assert_eq!(
@@ -206,6 +212,26 @@ pub(super) fn blank_replacement(
         )
         .unwrap()
     );
+    let ceremony =
+        crate::knowledge_materialization::backup::first_device::bound(&root, &store, env).unwrap();
+    let mut resolver = LocalDeviceKeyResolver::load(&root, BRAIN, &store, env).unwrap();
+    let historical = crate::knowledge_materialization::recovered_search::search(
+        &root,
+        &ceremony,
+        &mut resolver,
+        &SearchQuery {
+            text: Some("prefix".into()),
+            ..SearchQuery::default()
+        },
+        None,
+    )
+    .unwrap();
+    assert!(
+        historical
+            .iter()
+            .any(|hit| hit.text == "synthetic original prefix")
+    );
+    println!("m11_first_read=passed fresh_notes=0 archived_note=found restart=resumed");
     assert!(matches!(capture(), CaptureOutcome::Committed(_)));
     let mut resolver = LocalDeviceKeyResolver::load(&root, BRAIN, &store, env).unwrap();
     let (mut db, _) = crate::projection::open_projection_db(&root).unwrap();
