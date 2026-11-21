@@ -1,5 +1,9 @@
 # 34 — Current Implementation Handoff
 
+## M14 login startup
+
+The disposable Windows and Mac accounts each observed one Cryptex startup over 60 seconds and confirmed removal of the native startup entry at `ca1cd81`. CI exercised the registered launch in an existing session. New-login acceptance requires the two device receipts after signing out of the temporary OS accounts and signing back in. The native handoff packages are attached to the [M14 run](https://github.com/gungortarik/cryptex/actions/runs/44963838273). Each launcher writes `M14-OTURUM-SONUC-*.json` beside itself after verification.
+
 ## M13 closure
 
 M13 closed on November 21, 2026 for the owner-reviewed disposable-profile candidate `ec1b112`. All seven workflows passed, including Windows and Mac desktop checks and full CI. Maintenance Mode preserves local reading and capture and pauses sync and AI for the daemon session. Doctor controls the desktop-owned pilot daemon. Personal profiles retain their existing restrictions. M14 platform polish is next. [Candidate and receipts](../evidence/m13/desktop-shell.md)
