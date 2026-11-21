@@ -3,13 +3,50 @@ import { useEffect, useRef, useState } from "react";
 
 type Request = { kind: "review"; ticket: string; peer_pid: number };
 type Outcome = Request | { kind: "empty" | "allowed" | "denied" };
+type Access = { kind: "requests"; paused: boolean };
 
 export function PublicReadReview() {
   const [request, setRequest] = useState<Request | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [paused, setPaused] = useState<boolean | null>(null);
+  const accessGeneration = useRef(0);
+  const changingAccess = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const deny = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    let disposed = false;
+    async function refresh() {
+      if (changingAccess.current || document.visibilityState === "hidden") return;
+      const seq = ++accessGeneration.current;
+      try {
+        const view = await invoke<Access>("m12_public_read_review", { action: { kind: "status" } });
+        if (!disposed && seq === accessGeneration.current) setPaused(view?.kind === "requests" && typeof view.paused === "boolean" ? view.paused : null);
+      } catch {
+        if (!disposed && seq === accessGeneration.current) setPaused(null);
+      }
+    }
+    void refresh();
+    const timer = window.setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    return () => { disposed = true; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, []);
+  async function changeAccess() {
+    if (busy || changingAccess.current || paused === null) return;
+    changingAccess.current = true;
+    ++accessGeneration.current;
+    setBusy(true);
+    try {
+      const view = await invoke<Access>("m12_public_read_review", { action: { kind: paused ? "resume" : "pause" } });
+      if (view.kind !== "requests" || typeof view.paused !== "boolean") throw Error();
+      setPaused(view.paused);
+      setRequest(null);
+      setMessage("");
+    } catch {
+      setPaused(null);
+      setMessage("The service could not confirm the AI access setting.");
+    } finally { changingAccess.current = false; setBusy(false); }
+  }
   useEffect(() => {
     if (request) { dialog.current?.showModal(); deny.current?.focus(); }
     else dialog.current?.close();
@@ -30,7 +67,11 @@ export function PublicReadReview() {
     } finally { setBusy(false); }
   }
   return <div>
-    <button type="button" className="quiet-button" disabled={busy} onClick={() => void act("inspect")}>Review AI access</button>
+    <button type="button" className="quiet-button" disabled={busy || paused === true} onClick={() => void act("inspect")}>Review AI access</button>
+    {paused !== null && <button type="button" className="capture-secondary" disabled={busy} onClick={() => void changeAccess()}>
+      {paused ? "Resume AI access" : "Pause AI access for this session"}
+    </button>}
+    {paused && <p role="status">AI access is paused until you resume it or restart the local service.</p>}
     <dialog ref={dialog} className="capture-confirm-dialog" aria-labelledby="public-read-title" aria-describedby="public-read-scope"
       onCancel={event => { event.preventDefault(); void act("deny"); }}>
       <h2 id="public-read-title">Allow one public-note search?</h2>

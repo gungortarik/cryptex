@@ -8,7 +8,13 @@ const OWNER: &str = "context.public.owner";
 const WINDOW: Duration = Duration::from_secs(120);
 
 #[derive(Default, Clone)]
-pub(super) struct Session(Arc<Mutex<Option<Pending>>>);
+pub(super) struct Session(Arc<Mutex<Access>>);
+#[derive(Default)]
+struct Access {
+    pending: Option<Pending>,
+    paused: bool,
+    generation: Arc<()>,
+}
 struct Pending {
     ticket: String,
     peer_pid: u32,
@@ -20,6 +26,9 @@ struct Pending {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
     Inspect,
+    Status,
+    Pause,
+    Resume,
     Allow { ticket: String },
     Deny { ticket: String },
 }
@@ -28,6 +37,7 @@ pub enum Action {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Outcome {
     Empty,
+    Requests { paused: bool },
     Review { ticket: String, peer_pid: u32 },
     Allowed,
     Denied,
@@ -44,12 +54,28 @@ pub enum Error {
 
 impl Session {
     pub(super) fn decide(&self, action: Action) -> Result<Outcome, Error> {
-        let mut slot = self.0.lock().map_err(|_| Error::Unavailable)?;
+        let mut access = self.0.lock().map_err(|_| Error::Unavailable)?;
+        let slot = &mut access.pending;
         if slot.as_ref().is_some_and(|p| Instant::now() >= p.until) {
             *slot = None;
         }
         let allow = matches!(action, Action::Allow { .. });
         match action {
+            Action::Status => Ok(Outcome::Requests {
+                paused: access.paused,
+            }),
+            Action::Pause | Action::Resume => {
+                if matches!(action, Action::Pause) {
+                    access.pending = None;
+                    access.generation = Arc::new(());
+                    access.paused = true;
+                } else {
+                    access.paused = false;
+                }
+                Ok(Outcome::Requests {
+                    paused: access.paused,
+                })
+            }
             Action::Inspect => Ok(slot.as_ref().map_or(Outcome::Empty, |p| Outcome::Review {
                 ticket: p.ticket.clone(),
                 peer_pid: p.peer_pid,
@@ -132,34 +158,43 @@ pub(super) fn request(
     let ticket = new_bootstrap_event_id().map_err(invalid_data)?;
     let until = Instant::now() + WINDOW;
     let (answer, receive) = mpsc::channel();
-    {
-        let mut slot = ctx
+    let generation = {
+        let mut access = ctx
             .public_consent
             .0
             .lock()
             .map_err(|_| invalid_data("consent unavailable"))?;
-        if slot.as_ref().is_some_and(|p| Instant::now() < p.until) {
-            drop(slot);
+        if access.paused {
+            drop(access);
+            return state(stream, "denied", None);
+        }
+        if access
+            .pending
+            .as_ref()
+            .is_some_and(|p| Instant::now() < p.until)
+        {
+            drop(access);
             return state(stream, "busy", None);
         }
-        *slot = Some(Pending {
+        access.pending = Some(Pending {
             ticket: ticket.clone(),
             peer_pid,
             until,
             answer,
         });
-    }
+        access.generation.clone()
+    };
     let sent = state(stream, "pending", Some(&ticket));
     let allowed = sent.is_ok()
         && receive.recv_timeout(until.saturating_duration_since(Instant::now())) == Ok(true);
     {
-        let mut slot = ctx
+        let mut access = ctx
             .public_consent
             .0
             .lock()
             .map_err(|_| invalid_data("consent unavailable"))?;
-        if slot.as_ref().is_some_and(|p| p.ticket == ticket) {
-            *slot = None;
+        if access.pending.as_ref().is_some_and(|p| p.ticket == ticket) {
+            access.pending = None;
         }
     }
     sent?;
@@ -172,7 +207,16 @@ pub(super) fn request(
     if frame.is_empty() || Instant::now() >= until {
         return Ok(());
     }
-    public_context::respond(stream, Some(ctx), &frame, true)
+    // Serialize pause with this bounded response. Once pause is acknowledged,
+    // a previously granted socket cannot return more data, even after resume.
+    let access = ctx
+        .public_consent
+        .0
+        .lock()
+        .map_err(|_| invalid_data("consent unavailable"))?;
+    let valid =
+        !access.paused && Arc::ptr_eq(&access.generation, &generation) && Instant::now() < until;
+    public_context::respond(stream, Some(ctx), &frame, valid)
 }
 
 #[cfg(test)]
@@ -180,10 +224,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn pause_cancels_the_pending_ticket_and_resume_requires_a_new_review() {
+        let session = Session::default();
+        let (answer, receiver) = mpsc::channel();
+        let generation = {
+            let mut access = session.0.lock().unwrap();
+            access.pending = Some(Pending {
+                ticket: "first".into(),
+                peer_pid: 42,
+                until: Instant::now() + WINDOW,
+                answer,
+            });
+            access.generation.clone()
+        };
+        assert!(matches!(
+            session.decide(Action::Pause),
+            Ok(Outcome::Requests { paused: true })
+        ));
+        assert!(receiver.recv().is_err());
+        assert!(matches!(
+            session.decide(Action::Resume),
+            Ok(Outcome::Requests { paused: false })
+        ));
+        assert!(!Arc::ptr_eq(
+            &generation,
+            &session.0.lock().unwrap().generation
+        ));
+        assert!(matches!(
+            session.decide(Action::Allow {
+                ticket: "first".into()
+            }),
+            Err(Error::Expired)
+        ));
+    }
+
+    #[test]
     fn expired_ticket_releases_the_waiter_and_cannot_authorize_a_read() {
         let state = Session::default();
         let (answer, receiver) = mpsc::channel();
-        *state.0.lock().unwrap() = Some(Pending {
+        state.0.lock().unwrap().pending = Some(Pending {
             ticket: "expired".into(),
             peer_pid: 42,
             until: Instant::now(),

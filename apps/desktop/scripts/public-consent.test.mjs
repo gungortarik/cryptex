@@ -60,6 +60,29 @@ try {
   const inspect = page.getByRole("button", { name: "Review AI access" });
   const dialog = page.getByRole("dialog", { name: "Allow one public-note search?" });
   denied(await search());
+  const pause = page.getByRole("button", { name: "Pause AI access for this session" });
+  const resume = page.getByRole("button", { name: "Resume AI access" });
+  for (const grantBeforePause of [false, true]) {
+    const pending = await request();
+    assert.ok(!pending.isError);
+    if (grantBeforePause) {
+      await inspect.click();
+      await dialog.getByRole("button", { name: "Allow one search" }).click();
+      await dialog.waitFor({ state: "hidden" });
+    }
+    await pause.click();
+    await resume.waitFor();
+    assert.equal(await inspect.isEnabled(), false);
+    // A pause invalidates this socket even if the owner resumes before use.
+    await resume.click();
+    await pause.waitFor();
+    denied(await search());
+    await pause.click();
+    await resume.waitFor();
+    assert.equal((await request()).isError, true);
+    await resume.click();
+    await pause.waitFor();
+  }
   for (const outcome of ["Deny", "Escape", "Allow one search"]) {
     const result = await request();
     assert.ok(!result.isError);
