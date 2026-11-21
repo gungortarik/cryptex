@@ -10,6 +10,11 @@ workflow exercises approval, denial, and reuse on disposable Windows and Mac pro
 through both the SDK reference client and the installed Codex app-server.
 [Bridge and native tests](../tools/local-mcp/README.md)
 
+The current M12 candidate is `f5a0bc6`. The client review records what each
+installed runtime exercised, the provider-unavailable path and the scope of
+the one-search grant. The authenticated Mac Antigravity catalog and the
+owner's diff review are still open. [Candidate evidence](../evidence/m12/local-mcp-review.md)
+
 ## M11 closure
 
 M11 closed for disposable Windows and macOS profiles on November 21, 2026 at owner-reviewed candidate `8a80275`. All nine required jobs passed, including both installed applications and bidirectional restore. Personal-profile backup and recovery writes remain disabled. [Closure review and CI receipts](../evidence/m11/backup-closeout-review.md)

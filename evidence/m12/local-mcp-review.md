@@ -1,0 +1,22 @@
+# M12 local MCP acceptance review
+
+Candidate `f5a0bc6` uses disposable profiles for native tests. Personal profiles receive no new write capability. The owner review and authenticated Antigravity discovery on macOS are open. [Candidate diff](https://github.com/gungortarik/cryptex/compare/22c5026...f5a0bc6), [candidate native jobs](https://github.com/gungortarik/cryptex/actions/runs/44922498629) and [general CI](https://github.com/gungortarik/cryptex/actions/runs/44922498223).
+
+## What the client tests exercise
+
+| Installed client | Evidence |
+| --- | --- |
+| Codex 0.155.1 | The actual app-server discovers three tools and calls the packaged stdio bridge. In an ephemeral read-only thread, a pending request returns one synthetic public excerpt only after the Desktop decision. Deny and Escape both withhold content. A second search and reuse of the old ticket fail. Windows and macOS passed this flow before the final dialog spacing change. [Two-platform run](https://github.com/gungortarik/cryptex/actions/runs/44921548208) |
+| Claude Code 2.1.263 | The installed client adds the generated entry to a temporary home. Its own connection check reports Connected. |
+| Cursor Agent 2026.11.19-f005e9d | The installed client enables the entry in a temporary workspace and lists the three named Cryptex tools. |
+| Grok Build 1.0.92 | The client's doctor reports a successful stdio handshake and discovers three tools. |
+| Antigravity 1.5.14 | Both native clients load the generated configuration. Both clean hosted runners report authentication required when opening an ACP session. A Windows session reached the real bridge and listed exactly the three named tools. The discovery witness forwarded zero tool calls. The corresponding authenticated Mac result is outstanding. |
+
+The Codex test drives the compiled Cryptex consent screen in Chromium using native owner IPC. The other clients exercise configuration or discovery as indicated above. These tests require no model prompt. The single-click Mac check runs the pinned vendor CLI against an isolated discovery-only bridge and writes a receipt containing the catalog and client version. [Client smoke tests](../../tools/local-mcp/test/vendor-clients.py), [Codex driver](../../apps/desktop/scripts/codex-mcp-client.mjs), [Desktop test](../../apps/desktop/scripts/public-consent.test.mjs) and [discovery witness](../../tools/local-mcp/test/discovery-witness.mjs).
+
+## Security, failure handling and UI
+
+- The default bridge exposes a health probe. The opt-in reader adds an access request and a public search. An owner decision requires authenticated Desktop IPC. The daemon binds one decision to the waiting IPC stream, expires it 120 seconds after request creation, and consumes it on one search. Its in-memory grant ends with the process. [Daemon consent](../../services/cryptexd/src/ipc/public_consent.rs) and [tool catalog](../../tools/local-mcp/server.mjs).
+- The daemon opens the projection read-only and checks canonical visibility before returning at most ten event IDs and excerpts of up to 240 characters. Tests exercise four classifications, stale search after forgetting, a damaged canonical record and direct requests without an approved stream. The reader withholds results on profiles with a recovery binding until it can verify both histories together. Supported clients use stdio without a vault path. Independently granted filesystem access falls outside this interface. [Guarded reader](../../services/cryptexd/src/ipc/public_context.rs) and [native fixtures](../../services/cryptexd/src/ipc/m12_health_tests.rs).
+- Before any AI client starts, the fixture saves a synthetic public note through the Desktop capture dispatcher and finds its event ID through normal search. Failed and malformed health replies yield an unavailable result. Diagnostics checks exercise the bridge with an absent listener, mismatched response, oversized frame and silent peer. [Bridge failure tests](../../tools/local-mcp/test/bridge.test.mjs).
+- The dialog identifies the bridge process, displays the full comparison code, and describes the one-search scope. Light and dark visual inspection at 860 by 680 pixels confirmed the code fits and the two choices have distinct hit areas. The automated test checks focus starts on Deny, keyboard navigation in both directions, and Escape. [Consent UI](../../apps/desktop/src/PublicReadReview.tsx).
