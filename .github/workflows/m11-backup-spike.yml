@@ -190,6 +190,7 @@ jobs:
           set -euo pipefail
           python -B tools/m11-backup-spike/installed_desktop.py install | tee "$RUNNER_TEMP/m11-installed.txt"
           grep -Fx 'm11_blank_recovery_check=passed authenticated_kit=true damaged=denied profile_writes=none' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
+          grep -Fx 'm11_blank_bootstrap=passed damaged=held existing=preserved interrupted=resumed device_key=stable offline_approval=verified' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_retention=passed default=keep_all wrong_unlock=held scheduled_cipher=restored' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_schedule=passed restarted=true generation=1 paused=true original_note_restored=true' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"
           grep -Fx 'm11_installed_writer=passed consent=required assignment=reopened copied_target=held' "$RUNNER_TEMP/m11-installed.txt" >> "$GITHUB_STEP_SUMMARY"

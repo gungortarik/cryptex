@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 
 type Result = { kind: "challenge"; file: string; device: string; fingerprint: string }
   | { kind: "archive_verified"; brain: string; kit: string; backup_sha256: string }
-  | { kind: "accepted" | "cancelled" };
+  | { kind: "accepted" | "prepared" | "cancelled" };
 
 export function FirstDeviceRecovery() {
   const pending = useRef(false);
@@ -11,7 +11,7 @@ export function FirstDeviceRecovery() {
   const [status, setStatus] = useState("");
   const [request, setRequest] = useState<Extract<Result, { kind: "challenge" }> | null>(null);
   const [archive, setArchive] = useState<Extract<Result, { kind: "archive_verified" }> | null>(null);
-  async function exchange(action: "inspect" | "export" | "import") {
+  async function exchange(action: "inspect" | "prepare" | "export" | "import") {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
@@ -19,13 +19,16 @@ export function FirstDeviceRecovery() {
     setArchive(null);
     setStatus("");
     try {
-      const result = await invoke<Result>("m11_first_device", { import: action === "import", inspect: action === "inspect" });
+      const result = action === "prepare" ? await invoke<Result>("m11_prepare_replacement") :
+        await invoke<Result>("m11_first_device", { import: action === "import", inspect: action === "inspect" });
       if (result.kind === "archive_verified") {
         setArchive(result);
         setStatus("Recovery Kit and backup verified.");
       } else if (result.kind === "challenge") {
         setRequest(result);
         setStatus("Public recovery request saved.");
+      } else if (result.kind === "prepared") {
+        setStatus("Replacement profile prepared. Save its public request to continue.");
       } else {
         setStatus(result.kind === "accepted" ? "Signed approval verified for this device." : "Selection cancelled.");
       }
@@ -40,8 +43,9 @@ export function FirstDeviceRecovery() {
   }
   return <details data-first-device-recovery>
     <summary>Recover the first device</summary>
-    <p>Save the request for your prepared replacement profile. In the offline Recovery Kit, compare the device ID and key fingerprint before signing.</p>
+    <p>On a blank profile, select your backup, its checkpoint, your Recovery Kit and unlock file. Save the public request and compare the device ID and key fingerprint in the offline Kit before signing.</p>
     <button type="button" disabled={busy} onClick={() => void exchange("inspect")}>Check Kit and backup</button>
+    <button type="button" disabled={busy} onClick={() => void exchange("prepare")}>Prepare replacement profile</button>
     <button type="button" disabled={busy} onClick={() => void exchange("export")}>Save public request</button>
     <button type="button" disabled={busy} onClick={() => void exchange("import")}>Import signed approval</button>
     {status && <p role="status">{status}</p>}

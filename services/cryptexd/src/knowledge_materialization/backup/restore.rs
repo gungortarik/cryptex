@@ -150,6 +150,48 @@ pub(crate) fn inspect_first_archive(
     files: &crate::ipc::backup_verify::Selection,
 ) -> Result<(String, String, String), Error> {
     use sha2::{Digest, Sha256};
+    let scratch = private_scratch(None)?;
+    let archive = first_archive(codec, files, scratch.path())?;
+    let writer = archive.selection.writer()?;
+    let brain = archive.selection.checkpoint(&writer)?.brain_id.to_owned();
+    let result = (
+        brain,
+        format!("{:x}", Sha256::digest(archive.pin)),
+        format!("{:x}", sha2::digest::Output::<Sha256>::from(archive.hash)),
+    );
+    archive.profile.close().map_err(|_| Error::Archive)?;
+    scratch.close().map_err(|_| Error::Archive)?;
+    Ok(result)
+}
+
+pub(super) fn private_scratch(parent: Option<&Path>) -> Result<tempfile::TempDir, Error> {
+    let mut private = tempfile::Builder::new();
+    private.prefix("cryptex-recovery-");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        private.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    match parent {
+        Some(dir) => private.tempdir_in(dir),
+        None => private.tempdir(),
+    }
+    .map_err(|_| Error::Archive)
+}
+
+pub(super) struct FirstArchive {
+    pub profile: tempfile::TempDir,
+    pub selection: RecoverySelection,
+    pub hash: [u8; 32],
+    pub pin: [u8; 32],
+}
+
+pub(super) fn first_archive(
+    codec: &Path,
+    files: &crate::ipc::backup_verify::Selection,
+    scratch: &Path,
+) -> Result<FirstArchive, Error> {
+    use sha2::{Digest, Sha256};
     independent_folders(
         files.backup.parent().ok_or(Error::Checkpoint)?,
         files.checkpoint.parent().ok_or(Error::Checkpoint)?,
@@ -169,24 +211,13 @@ pub(crate) fn inspect_first_archive(
     let header = keys.header(&expected.brain_identity_sha256, 1, 2, Some(&selection_hash));
     let pin = codec::kit_public_pin(codec, &header)?;
     let (frozen, hash) = super::paired::freeze_cipher(&files.backup)?;
-    let mut private = tempfile::Builder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        private.permissions(std::fs::Permissions::from_mode(0o700));
-    }
-    let scratch = private
-        .prefix("cryptex-recovery-check-")
-        .tempdir()
-        .map_err(|_| Error::Archive)?;
-    let profile = open_file(&keys, frozen, &selected, Some(&pin), scratch.path())?;
-    profile.close().map_err(|_| Error::Archive)?;
-    scratch.close().map_err(|_| Error::Archive)?;
-    Ok((
-        expected.brain_id.to_owned(),
-        format!("{:x}", Sha256::digest(pin)),
-        format!("{:x}", sha2::digest::Output::<Sha256>::from(hash)),
-    ))
+    let profile = open_file(&keys, frozen, &selected, Some(&pin), scratch)?;
+    Ok(FirstArchive {
+        profile,
+        selection: selected,
+        hash,
+        pin,
+    })
 }
 
 fn open_file(

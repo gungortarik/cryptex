@@ -57,6 +57,26 @@ pub(super) struct OfflineInputs<'a> {
 }
 
 impl OfflineInputs<'_> {
+    fn sign(&self, challenge: &Path, approval: &Path) {
+        let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tools/m11-backup-spike/offline_approval_test.py");
+        assert!(
+            std::process::Command::new("python")
+                .arg("-B")
+                .arg(script)
+                .args([
+                    challenge,
+                    self.sealed_kit,
+                    self.unlock,
+                    self.backup,
+                    approval
+                ])
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+
     fn owner_approval(&self, work: &Path, request: &Request, ceremony: &Ceremony) -> Approval {
         let folder = work.join("public-challenges");
         fs::create_dir(&folder).unwrap();
@@ -82,25 +102,67 @@ impl OfflineInputs<'_> {
             serde_json_canonicalizer::to_vec(request).unwrap()
         );
         let approval = folder.join("owner-approval.json");
-        let script = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tools/m11-backup-spike/offline_approval_test.py");
-        assert!(
-            std::process::Command::new("python")
-                .arg("-B")
-                .arg(script)
-                .args([
-                    challenge.as_path(),
-                    self.sealed_kit,
-                    self.unlock,
-                    self.backup,
-                    &approval
-                ])
-                .status()
-                .unwrap()
-                .success()
-        );
+        self.sign(&challenge, &approval);
         serde_json::from_slice(&fs::read(approval).unwrap()).unwrap()
     }
+}
+
+pub(super) fn blank_replacement(
+    desktop: &Path,
+    work: &Path,
+    files: OfflineInputs<'_>,
+    selected: &Path,
+) {
+    let trial = |mode| super::separate_backups::launched(desktop, work, mode, files.unlock, "");
+    let root = work.join("clean-replacement");
+    let identity = root.join("identity");
+    let receipt = root.join(RECOVERY).join(RECEIPT);
+    // The preceding inspection left the selected ciphertext truncated.
+    trial("first-device-clean-reject");
+    assert!(!identity.exists() && !root.join(RECOVERY).exists());
+    fs::copy(files.backup, selected).unwrap();
+    let sentinel = root.join("existing-profile");
+    fs::write(&sentinel, b"keep").unwrap();
+    trial("first-device-clean-reject");
+    assert_eq!(fs::read(&sentinel).unwrap(), b"keep");
+    assert!(!identity.exists() && !root.join(RECOVERY).exists());
+    fs::remove_file(sentinel).unwrap();
+    trial("first-device-clean-prepare");
+    let local = crate::local_device_identity::local_device_identity_path(&root);
+    let before = fs::read(&local).unwrap();
+    assert!(!receipt.exists());
+    // Model power loss after the archive is published but before activation.
+    fs::rename(&identity, root.join(RECOVERY).join("identity")).unwrap();
+    trial("first-device-clean-prepare");
+    assert_eq!(fs::read(&local).unwrap(), before);
+    let exchange = work.join("clean-challenges");
+    fs::create_dir(&exchange).unwrap();
+    trial("first-device-clean-export");
+    let entries: Vec<_> = fs::read_dir(&exchange)
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(entries.len(), 1);
+    let challenge = entries[0].path();
+    let request: Request = serde_json::from_slice(&fs::read(&challenge).unwrap()).unwrap();
+    assert_eq!(
+        request.backup_sha256,
+        <[u8; 32]>::from(Sha256::digest(fs::read(selected).unwrap()))
+    );
+    assert_ne!(request.new_device, request.archive_device);
+    let signed = exchange.join("owner-approval.json");
+    files.sign(&challenge, &signed);
+    trial("first-device-clean-import");
+    assert_eq!(
+        fs::read(receipt).unwrap(),
+        serde_json::to_vec(
+            &serde_json::from_slice::<Approval>(&fs::read(&signed).unwrap()).unwrap()
+        )
+        .unwrap()
+    );
+    println!(
+        "m11_blank_bootstrap=passed damaged=held existing=preserved interrupted=resumed device_key=stable offline_approval=verified"
+    );
 }
 
 pub(super) fn rehearse(

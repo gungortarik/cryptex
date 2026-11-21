@@ -319,16 +319,29 @@ impl Directory {
     }
 
     #[cfg(feature = "m8-local-startup-check")]
-    pub(super) fn rename_child_exclusive(&self, source: &OsStr, target: &OsStr) -> io::Result<()> {
+    pub(super) fn move_child_exclusive(
+        &self,
+        source: &OsStr,
+        to: &Self,
+        target: &OsStr,
+    ) -> io::Result<()> {
         let source = leaf(source)?;
         let target = leaf(target)?;
         self.validate()?;
+        to.validate()?;
         let parent = self.last()?.as_raw_fd();
-        if unsafe { cx_import_rename_exclusive(parent, source.as_ptr(), parent, target.as_ptr()) }
-            != 0
+        if unsafe {
+            cx_import_rename_exclusive(
+                parent,
+                source.as_ptr(),
+                to.last()?.as_raw_fd(),
+                target.as_ptr(),
+            )
+        } != 0
         {
             return Err(io::Error::last_os_error());
         }
+        to.validate()?;
         self.validate()
     }
 

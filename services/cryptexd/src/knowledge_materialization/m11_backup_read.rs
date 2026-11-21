@@ -932,6 +932,16 @@ fn restored_note_and_attachment_pass_guarded_reads() {
         println!(
             "m11_blank_recovery_check=passed authenticated_kit=true damaged=denied profile_writes=none"
         );
+        first_device::blank_replacement(
+            Path::new(&desktop),
+            work.path(),
+            first_device::OfflineInputs {
+                sealed_kit: &sealed_kit,
+                unlock: &password,
+                backup: &backup,
+            },
+            &selected,
+        );
     }
 
     let selection: crate::backup_inventory::RecoverySelection =

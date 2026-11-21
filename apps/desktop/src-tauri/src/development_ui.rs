@@ -201,6 +201,7 @@ fn run_inner(runtime: PathBuf) -> Result<(), String> {
                 crate::m11_export_backup,
                 crate::m11_verify_manual_backup,
                 crate::m11_first_device,
+                crate::m11_prepare_replacement,
                 crate::m10_purge_review,
                 crate::m10_note_lifecycle,
                 crate::p0_5_capture_memory,

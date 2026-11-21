@@ -264,13 +264,23 @@ impl Directory {
     /// Publish the prepared profile lock directory without displacing a legacy
     /// process that recreated its PID file during the cutover.
     pub(crate) fn publish_m9_lock(&self) -> Result<(), Error> {
-        self.validate()?;
         let staged = crate::instance::migration::STAGED;
+        self.publish_child(staged, self, "daemon.lock")
+    }
+
+    pub(crate) fn publish_child(&self, staged: &str, to: &Self, name: &str) -> Result<(), Error> {
+        leaf(staged)?;
+        leaf(name)?;
+        self.validate()?;
+        to.validate()?;
         #[cfg(windows)]
-        publish_staged_no_replace(&self.path.join(staged), &self.path.join("daemon.lock"))?;
+        publish_staged_no_replace(&self.path.join(staged), &to.path.join(name))?;
         #[cfg(target_os = "macos")]
         self.native
-            .rename_child_exclusive(staged.as_ref(), "daemon.lock".as_ref())?;
+            .move_child_exclusive(staged.as_ref(), &to.native, name.as_ref())?;
+        if to.path != self.path {
+            to.sync()?;
+        }
         self.sync()
     }
 

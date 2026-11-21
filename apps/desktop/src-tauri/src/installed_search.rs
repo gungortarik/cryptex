@@ -51,12 +51,13 @@ pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
     match title {
         "Select the first-device recovery backup" => Some(work.join("first-check/backup.pgp")),
         "Select its checkpoint from your separate trusted folder"
-            if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT")
-                .is_ok_and(|m| m.starts_with("first-device-check")) =>
+            if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").is_ok_and(|m| {
+                m.starts_with("first-device-check") || m.starts_with("first-device-clean")
+            }) =>
         {
             Some(work.join("kit/selected-backup.json"))
         }
-        "Select the signed first-device approval" => Some(work.join("public-challenges").join(
+        "Select the signed first-device approval" => Some(challenge_folder()?.join(
             if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT").as_deref() == Ok("first-device-wrong")
             {
                 "wrong-approval.json"
@@ -109,7 +110,14 @@ pub(super) fn verification_file(title: &str) -> Option<PathBuf> {
 }
 
 pub(super) fn challenge_folder() -> Option<PathBuf> {
-    Some(PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?).join("public-challenges"))
+    let folder = if std::env::var("CRYPTEX_M11_INSTALLED_EXPORT")
+        .is_ok_and(|m| m.starts_with("first-device-clean"))
+    {
+        "clean-challenges"
+    } else {
+        "public-challenges"
+    };
+    Some(PathBuf::from(std::env::var_os("CRYPTEX_M11_REOPEN_FIXTURE")?).join(folder))
 }
 
 pub(super) fn confirm_recipient(digest: &str) -> bool {
@@ -156,6 +164,10 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
             "verify-pair"
             | "verify-pair-missing"
             | "first-device-check"
+            | "first-device-clean-prepare"
+            | "first-device-clean-reject"
+            | "first-device-clean-export"
+            | "first-device-clean-import"
             | "first-device-check-damaged",
         ) => "offline-kit.pgp",
         Some(
@@ -238,6 +250,7 @@ fn check() -> Result<bool, Box<dyn std::error::Error>> {
             super::m11_backup_writer,
             super::m11_verify_manual_backup,
             super::m11_first_device,
+            super::m11_prepare_replacement,
             m11_search_observed
         ])
         .on_page_load(move |view, payload| {

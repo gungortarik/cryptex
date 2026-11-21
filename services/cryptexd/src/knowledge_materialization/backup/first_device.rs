@@ -4,6 +4,9 @@ use super::*;
 use crate::import_staging::export_fs::Directory;
 use std::io::Write;
 
+mod preparation;
+pub(crate) use preparation::prepare;
+
 pub(crate) fn bound(
     root: &Path,
     store: &dyn SecureStore,

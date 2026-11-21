@@ -8,6 +8,7 @@ const CAPABILITY: &str = "recovery.first_device.owner";
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
     Inspect { files: backup_verify::Selection },
+    Prepare { files: backup_verify::Selection },
     Export { folder: PathBuf },
     Import { approval: PathBuf },
 }
@@ -16,6 +17,7 @@ pub enum Action {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Outcome {
     Cancelled,
+    Prepared,
     ArchiveVerified {
         brain: String,
         kit: String,
@@ -59,11 +61,10 @@ pub(super) fn handle(
 #[cfg(any(windows, all(target_os = "macos", feature = "m8-local-startup-check")))]
 fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
     use crate::knowledge_materialization::backup::{first_device, independent_folders};
-    let ctx = ctx.admitted().map_err(|_| Error::Unavailable)?;
     let config = ctx.backup_export.as_ref().ok_or(Error::Unavailable)?;
     let _busy = config.busy.try_lock().map_err(|_| Error::Busy)?;
     let folder = match &action {
-        Action::Inspect { files } => {
+        Action::Inspect { files } | Action::Prepare { files } => {
             for path in [&files.backup, &files.checkpoint, &files.kit, &files.unlock] {
                 if !path.is_absolute() {
                     return Err(Error::InvalidSelection);
@@ -73,6 +74,29 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
                 independent_folders(&ctx.runtime_root, path)
                     .map_err(|_| Error::InvalidSelection)?;
             }
+            if matches!(action, Action::Prepare { .. }) {
+                let permit = ctx
+                    .admission
+                    .exclusive(
+                        &ctx.runtime_root,
+                        Instant::now() + Duration::from_secs(10),
+                        false,
+                    )
+                    .map_err(|_| Error::Busy)?;
+                let prepared = first_device::prepare(
+                    &ctx.runtime_root,
+                    ctx.store.as_ref(),
+                    ctx.environment,
+                    &config.codec,
+                    files,
+                )
+                .map_err(|_| Error::Rejected);
+                // Both publication steps are exclusive and resumable. A pending
+                // archive cannot authorize an ordinary read without its signed grant.
+                permit.finish(None);
+                return prepared.map(|()| Outcome::Prepared);
+            }
+            let _ctx = ctx.admitted().map_err(|_| Error::Unavailable)?;
             let (brain, kit, backup_sha256) =
                 crate::knowledge_materialization::backup::inspect_first_archive(
                     &config.codec,
@@ -93,10 +117,11 @@ fn execute(ctx: &SearchContext, action: Action) -> Result<Outcome, Error> {
     }
     crate::paths::assert_outside_repository(folder).map_err(|_| Error::InvalidSelection)?;
     independent_folders(&ctx.runtime_root, folder).map_err(|_| Error::InvalidSelection)?;
+    let ctx = ctx.admitted().map_err(|_| Error::Unavailable)?;
     let ceremony = first_device::bound(&ctx.runtime_root, ctx.store.as_ref(), ctx.environment)
         .map_err(|_| Error::NoPendingRecovery)?;
     match action {
-        Action::Inspect { .. } => unreachable!(),
+        Action::Inspect { .. } | Action::Prepare { .. } => unreachable!(),
         Action::Export { folder } => {
             let (file, device, fingerprint) = ceremony
                 .export_challenge(&folder)
@@ -121,7 +146,7 @@ fn execute(_: &SearchContext, _: Action) -> Result<Outcome, Error> {
 }
 
 pub fn desktop(action: Action) -> Result<Outcome, Error> {
-    let timeout = if matches!(action, Action::Inspect { .. }) {
+    let timeout = if matches!(action, Action::Inspect { .. } | Action::Prepare { .. }) {
         660
     } else {
         120

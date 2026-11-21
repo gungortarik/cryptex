@@ -560,6 +560,21 @@ async fn m11_backup_writer(
 }
 
 #[tauri::command]
+async fn m11_prepare_replacement()
+-> Result<cryptexd::ipc::first_device::Outcome, cryptexd::ipc::first_device::Error> {
+    use cryptexd::ipc::first_device::{self, Action, Error, Outcome};
+    tauri::async_runtime::spawn_blocking(|| {
+        let Some(files) = backup_verification_files("Select the first-device recovery backup")
+        else {
+            return Ok(Outcome::Cancelled);
+        };
+        first_device::desktop(Action::Prepare { files })
+    })
+    .await
+    .map_err(|_| Error::Unavailable)?
+}
+
+#[tauri::command]
 async fn m11_first_device(
     import: bool,
     inspect: Option<bool>,
@@ -2914,6 +2929,7 @@ fn main() {
             m11_backup_writer,
             m11_verify_manual_backup,
             m11_first_device,
+            m11_prepare_replacement,
             m10_purge_review,
             m10_note_lifecycle,
             p0_6_materialize_and_open_vault,
